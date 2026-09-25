@@ -178,6 +178,19 @@ const MIGRATIONS: readonly SqliteMigration[] = [
       );
     `,
   },
+  {
+    version: 2,
+    up: `
+      -- Retention and every newest-first list are defined by \`seq\` within one
+      -- family, so both walk (kind, seq): the cap reads the row at rank \`cap\`
+      -- to know where the overflow starts, and a re-judged rating moving to the
+      -- end of the order pays for that read. Without this index each of those
+      -- steps scans and sorts the whole family, and the feedback family is
+      -- capped at twenty thousand rows — every 👎 on the stand would sort them.
+      CREATE INDEX IF NOT EXISTS quality_rows_kind_seq
+        ON quality_rows (kind, seq);
+    `,
+  },
 ];
 
 /** SQLite hands back null-prototype records. */

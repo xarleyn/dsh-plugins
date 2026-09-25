@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, expect, it } from "vitest";
-import { QaQualityStore, QA_ROW_CAPS } from "../../src/admin/quality-store.js";
+import {
+  QaQualityStore,
+  QA_ROW_CAPS,
+  type QualityRowKind,
+} from "../../src/admin/quality-store.js";
 
 const open: QaQualityStore[] = [];
 
@@ -47,36 +51,59 @@ function rowCount(file: string, kind: string): number {
 }
 
 /**
- * Fill the feedback family with `count` ratings, one per conversation, written
- * the way the store writes them. Reaching the cap through the store's own API
- * would cost one pass over the in-memory list per record, and the cap is what
- * the trim is defined over, so these rows are planted instead.
+ * Fill one family with `count` records, planted the way the store writes them.
+ * Reaching a cap through the store's own API would cost a linear pass over the
+ * in-memory list plus a write transaction per record, and the cap is what the
+ * trim is defined over — so the bulk is planted and only the write under test
+ * goes through the API.
  */
-function seedFeedback(file: string, count: number): void {
+function seedRows(
+  file: string,
+  kind: QualityRowKind,
+  count: number,
+  record: (index: number) => { key: string; json: unknown },
+): void {
   const db = new DatabaseSync(file);
   try {
     db.exec("BEGIN");
     const insert = db.prepare(
-      "INSERT INTO quality_rows (kind, key, seq, json) VALUES ('feedback', ?, ?, ?)",
+      "INSERT INTO quality_rows (kind, key, seq, json) VALUES (?, ?, ?, ?)",
     );
-    for (let seq = 1; seq <= count; seq += 1) {
-      insert.run(
-        `c${seq}\u001fm${seq}\u001fu1`,
-        seq,
-        JSON.stringify({
-          id: `feedback-${seq}`,
-          conversationId: `c${seq}`,
-          messageId: `m${seq}`,
-          userId: "u1",
-          rating: "positive",
-          createdAt: "2026-09-15T00:00:00.000Z",
-        }),
-      );
+    for (let index = 1; index <= count; index += 1) {
+      const planted = record(index);
+      insert.run(kind, planted.key, index, JSON.stringify(planted.json));
     }
     db.exec("COMMIT");
   } finally {
     db.close();
   }
+}
+
+/** One rating per conversation, so a conversation owns exactly one row. */
+function seedFeedback(file: string, count: number): void {
+  seedRows(file, "feedback", count, (index) => ({
+    key: `c${index}\u001fm${index}\u001fu1`,
+    json: {
+      id: `feedback-${index}`,
+      conversationId: `c${index}`,
+      messageId: `m${index}`,
+      userId: "u1",
+      rating: "positive",
+      createdAt: "2026-09-15T00:00:00.000Z",
+    },
+  }));
+}
+
+/** One parked conversation per row, as `enqueueReview` without a message parks. */
+function seedQueue(file: string, count: number): void {
+  seedRows(file, "queue", count, (index) => ({
+    key: `c${index}\u001f`,
+    json: {
+      conversationId: `c${index}`,
+      userId: "r1",
+      createdAt: "2026-09-15T00:00:00.000Z",
+    },
+  }));
 }
 
 /** Open a store once to apply the schema, then leave the file to the test. */
@@ -137,6 +164,15 @@ function writeLegacy(dir: string): string {
   );
   return file;
 }
+
+/**
+ * These tests walk a family up to its real cap — two thousand parked chats,
+ * twenty thousand ratings — and reopen the file to read what survived. Locally
+ * the whole file runs in about a second; the release runner is one shared
+ * container serving twenty jobs, where that walk is the difference between a
+ * pass and a timeout that reads as a broken store.
+ */
+const CAP_TIMEOUT = { timeout: 30_000 } as const;
 
 describe("QaQualityStore storage", () => {
   it("writes one row per record and reads it back in a second instance", () => {
@@ -209,64 +245,138 @@ describe("QaQualityStore storage", () => {
     closeAll();
   });
 
-  it("keeps every rating of a full family that only re-judged one", () => {
+  it(
+    "keeps every rating of a full family that only re-judged one",
+    CAP_TIMEOUT,
+    () => {
+      const { file } = rig();
+      createSchema(file);
+      const cap = QA_ROW_CAPS.feedback;
+      seedFeedback(file, cap);
+      const store = openStore(file);
+
+      // Re-rating the newest record adds no row: the oldest rating has nothing
+      // that displaced it. The updated record does move to the end of the order,
+      // which leaves its old `seq` behind as a gap, and the gap is not a row.
+      store.rateFeedback(
+        { conversationId: `c${cap}`, messageId: `m${cap}`, userId: "u1" },
+        { rating: "negative" },
+      );
+
+      expect(store.allFeedback()).toHaveLength(cap);
+      expect(rowCount(file, "feedback")).toBe(cap);
+      closeAll();
+
+      // The trimmed database, not the in-memory list, is what the next open reads.
+      const reopened = openStore(file);
+      expect(reopened.allFeedback()).toHaveLength(cap);
+      expect(reopened.feedbackOf("c1", "m1", "u1")?.rating).toBe("positive");
+      expect(reopened.feedbackOf(`c${cap}`, `m${cap}`, "u1")?.rating).toBe(
+        "negative",
+      );
+      closeAll();
+    },
+  );
+
+  it(
+    "counts rows of a full family, not the gap a dropped entry left",
+    CAP_TIMEOUT,
+    () => {
+      const { file } = rig();
+      createSchema(file);
+      const cap = QA_ROW_CAPS.queue;
+      seedQueue(file, cap);
+      const store = openStore(file);
+      expect(store.manualQueue()).toHaveLength(cap);
+
+      // The hole in the middle of the order must not be read as an extra row.
+      expect(store.dequeueReview("c1000")).toBe(true);
+      store.enqueueReview("r1", `c${cap + 1}`);
+      expect(store.manualQueue()).toHaveLength(cap);
+      expect(rowCount(file, "queue")).toBe(cap);
+      expect(
+        store.manualQueue().some((row) => row.conversationId === "c1"),
+      ).toBe(true);
+
+      // A write that does overflow the family still costs exactly its oldest entry.
+      store.enqueueReview("r1", `c${cap + 2}`);
+      expect(store.manualQueue()).toHaveLength(cap);
+      expect(rowCount(file, "queue")).toBe(cap);
+      expect(
+        store.manualQueue().some((row) => row.conversationId === "c1"),
+      ).toBe(false);
+      expect(
+        store.manualQueue().some((row) => row.conversationId === "c2"),
+      ).toBe(true);
+      closeAll();
+    },
+  );
+
+  it(
+    "gives a conversation the harness lost only the room its own rows made",
+    CAP_TIMEOUT,
+    () => {
+      const { file } = rig();
+      createSchema(file);
+      const cap = QA_ROW_CAPS.queue;
+      seedQueue(file, cap);
+      const store = openStore(file);
+
+      // The ownership sweep is the writer that empties a family without filling
+      // it back: it forgets a chat the Harness no longer holds, and the rows it
+      // deleted leave their places in the order behind. Three rows gone is three
+      // rows of room, so refilling to the cap must cost nothing — under a cut
+      // that measures the order instead of counting the rows, every hole costs
+      // one record of a conversation still on the stand.
+      expect(store.dropConversations(["c900", "c1000", "c1100"])).toBe(3);
+      const newcomers = [`c${cap + 1}`, `c${cap + 2}`, `c${cap + 3}`];
+      for (const conversationId of newcomers)
+        store.enqueueReview("r1", conversationId);
+
+      expect(rowCount(file, "queue")).toBe(cap);
+      expect(store.manualQueue()).toHaveLength(cap);
+      const kept = new Set(
+        store.manualQueue().map((entry) => entry.conversationId),
+      );
+      for (const dropped of ["c900", "c1000", "c1100"]) {
+        expect(kept.has(dropped)).toBe(false);
+      }
+      for (const newcomer of newcomers) expect(kept.has(newcomer)).toBe(true);
+      for (const oldest of ["c1", "c2", "c3"])
+        expect(kept.has(oldest)).toBe(true);
+      closeAll();
+
+      const reopened = openStore(file);
+      expect(reopened.manualQueue()).toHaveLength(cap);
+      closeAll();
+    },
+  );
+
+  it("reads a family in its own order instead of sorting it", () => {
     const { file } = rig();
     createSchema(file);
-    const cap = QA_ROW_CAPS.feedback;
-    seedFeedback(file, cap);
-    const store = openStore(file);
-
-    // Re-rating the newest record adds no row: the oldest rating has nothing
-    // that displaced it. The updated record does move to the end of the order,
-    // which leaves its old `seq` behind as a gap, and the gap is not a row.
-    store.rateFeedback(
-      { conversationId: `c${cap}`, messageId: `m${cap}`, userId: "u1" },
-      { rating: "negative" },
-    );
-
-    expect(store.allFeedback()).toHaveLength(cap);
-    expect(rowCount(file, "feedback")).toBe(cap);
-    closeAll();
-
-    // The trimmed database, not the in-memory list, is what the next open reads.
-    const reopened = openStore(file);
-    expect(reopened.allFeedback()).toHaveLength(cap);
-    expect(reopened.feedbackOf("c1", "m1", "u1")?.rating).toBe("positive");
-    expect(reopened.feedbackOf(`c${cap}`, `m${cap}`, "u1")?.rating).toBe(
-      "negative",
-    );
-    closeAll();
-  });
-
-  it("counts rows of a full family, not the gap a dropped entry left", () => {
-    const { file } = rig();
-    const store = openStore(file);
-    const cap = QA_ROW_CAPS.queue;
-    for (let index = 1; index <= cap; index += 1) {
-      store.enqueueReview("r1", `c${index}`);
+    const db = new DatabaseSync(file);
+    let plan: string;
+    try {
+      plan = (
+        db
+          .prepare(
+            `EXPLAIN QUERY PLAN
+             SELECT seq FROM quality_rows WHERE kind = ? ORDER BY seq DESC
+              LIMIT 1 OFFSET 10`,
+          )
+          .all("feedback") as { detail: string }[]
+      )
+        .map((row) => row.detail)
+        .join("\n");
+    } finally {
+      db.close();
     }
-    expect(store.manualQueue()).toHaveLength(cap);
 
-    // The hole in the middle of the order must not be read as an extra row.
-    expect(store.dequeueReview("c1000")).toBe(true);
-    store.enqueueReview("r1", `c${cap + 1}`);
-    expect(store.manualQueue()).toHaveLength(cap);
-    expect(rowCount(file, "queue")).toBe(cap);
-    expect(store.manualQueue().some((row) => row.conversationId === "c1")).toBe(
-      true,
-    );
-
-    // A write that does overflow the family still costs exactly its oldest entry.
-    store.enqueueReview("r1", `c${cap + 2}`);
-    expect(store.manualQueue()).toHaveLength(cap);
-    expect(rowCount(file, "queue")).toBe(cap);
-    expect(store.manualQueue().some((row) => row.conversationId === "c1")).toBe(
-      false,
-    );
-    expect(store.manualQueue().some((row) => row.conversationId === "c2")).toBe(
-      true,
-    );
-    closeAll();
+    // The cap reads the row at its rank on every write, so a scan with a sort
+    // here is a sort of twenty thousand ratings paid for by every 👎.
+    expect(plan).toContain("quality_rows_kind_seq");
+    expect(plan).not.toMatch(/TEMP B-TREE/);
   });
 
   it("imports the pre-SQLite file and renames it aside", () => {
