@@ -57,7 +57,7 @@ Session and Agent Loop.
   (list/add/set-password/set-role/disable/revoke), and a coarse honest boundary:
   accounts identify QA users, they do not fence the harness root;
 - gives each account a `Настройки` dialog — profile, starter messages,
-  integration tokens, general, and **personal skills**: ordinary Agent Skills stored as `SKILL.md` in the account's own
+  notification channels, integration tokens, general, and **personal skills**: ordinary Agent Skills stored as `SKILL.md` in the account's own
   directory (`accounts.skills`), edited with a catalog, an invocation-flag
   form, a Markdown body, a tool picker over the deployment's registry, and a
   preview of the exact file a save writes. Skills reach the model through a
@@ -218,6 +218,13 @@ config:
     # Let the /qa route run the one-time ?token= host-cookie exchange itself,
     # so transparent entry works without the deploy proxy.
     cookieBootstrap: true
+  # Turn-completion notices for the chats of this browser's own history.
+  notifications:
+    # Off: a finished turn stays silent on both channels.
+    enabled: true
+    # Off: the page never hands a finished turn to the operating system,
+    # whatever a reader chose there.
+    allowOs: true
   lockdown:
     enabled: true
     enforceFixedAgentPreset: true
@@ -565,6 +572,21 @@ user hides them with the section's toggle. The list is stored on the account
 is pure UI preference — none of it reaches the agent prompt.
 `accounts.starters.enabled` (default `true`) turns the section off for
 deployments that want the buttons to stay operator-defined.
+
+### Notification channels
+
+A turn that ends in a chat the reader is not looking at says so, and the «Уведомления»
+section of the same `Настройки` dialog is where they decide how far that reaches: the
+line inside the page, and the notice a hidden or backgrounded tab can hand to the
+operating system. Both belong to the account rather than to the browser, so the
+choice follows the person to another machine; where a stand has no accounts, the
+desktop choice stays in the browser that made it. The permission itself is the
+browser's and is asked for once, from a click. What the stand refuses with
+`notifications.enabled` or `notifications.allowOs` stays refused, and the section
+says which of the two closed a channel instead of offering a switch that cannot
+take effect. Like the starter messages, none of this reaches the agent prompt, and
+a notice never carries the answer itself — only the chat's title and the fact that
+its turn ended.
 
 ### Integration tokens
 

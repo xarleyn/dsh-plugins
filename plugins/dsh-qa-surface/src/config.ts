@@ -345,6 +345,12 @@ const configSchema = z.object({
       cookieBootstrap: z.boolean().default(D.entry.cookieBootstrap),
     })
     .default({ ...D.entry }),
+  notifications: z
+    .object({
+      enabled: z.boolean().default(D.notifications.enabled),
+      allowOs: z.boolean().default(D.notifications.allowOs),
+    })
+    .default({ ...D.notifications }),
   tools: z
     .object({
       dynamicActivation: z.boolean().default(D.tools.dynamicActivation),

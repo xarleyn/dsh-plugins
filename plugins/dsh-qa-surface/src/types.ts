@@ -330,6 +330,8 @@ export interface QaAccountUserPublic {
   readonly profile: QaAccountProfile;
   /** The account's own starter buttons; empty until customized. */
   readonly starters: QaAccountStarters;
+  /** Which channels a finished turn may use for this reader. */
+  readonly notifications: QaAccountNotifications;
 }
 
 /** One external system the deployment collects a handle for. */
@@ -384,6 +386,33 @@ export interface QaAccountStarters {
 export interface QaAccountStartersInput {
   readonly items: readonly QaAccountStarter[];
   readonly hideDefaults: boolean;
+}
+
+/**
+ * What one account allows a finished turn to do to it. Pure UI preferences:
+ * unlike the profile, none of this reaches the agent prompt, and unlike the
+ * starter buttons, none of it is content — it is two switches over the
+ * channels the plugin already knows how to raise.
+ *
+ * The deployment's `config.notifications` sits above these: a channel the stand
+ * closed stays closed whatever an account asks for, which is the operator's
+ * answer to a laptop more than one person signs in on.
+ */
+export interface QaAccountNotifications {
+  /** Show the in-page line naming the chat whose turn ended. */
+  readonly inApp: boolean;
+  /**
+   * Hand the same fact to the operating system while this page is hidden or
+   * behind another window. Needs the browser's permission as well: without it
+   * the line stays inside the page and nothing asks a second time.
+   */
+  readonly desktop: boolean;
+}
+
+/** Full-replace notifications write: both channels are always sent. */
+export interface QaAccountNotificationsInput {
+  readonly inApp: boolean;
+  readonly desktop: boolean;
 }
 
 /** One successful login/registration: the bearer token plus the user. */
@@ -943,6 +972,17 @@ export interface QaSurfaceConfig {
     /** Cookie-less /qa navigations go through the one-time ?token= exchange. */
     readonly cookieBootstrap?: boolean;
   };
+  /** Notices for a turn that ended in one of this browser's own chats. */
+  readonly notifications?: {
+    /** Master switch: with it off no channel raises anything. */
+    readonly enabled?: boolean;
+    /**
+     * Allow the desktop (operating-system) channel on this stand at all.
+     * A reader's own choice only applies while this is on: it is the answer
+     * for a shared laptop, where a personal notice is everybody's notice.
+     */
+    readonly allowOs?: boolean;
+  };
   readonly sources?: QaSourcesConfig;
   readonly attachments?: QaAttachmentsConfig;
   readonly notes?: QaNotesConfig;
@@ -1112,6 +1152,11 @@ export interface ResolvedQaSurfaceConfig {
   readonly entry: {
     readonly redirectNonLoopback: boolean;
     readonly cookieBootstrap: boolean;
+  };
+  /** Channels a finished turn of this browser's own chats may use. */
+  readonly notifications: {
+    readonly enabled: boolean;
+    readonly allowOs: boolean;
   };
   readonly tools: {
     readonly dynamicActivation: boolean;

@@ -5,6 +5,7 @@ import {
   defaultAccountsFilePath,
 } from "./accounts/store.js";
 import type {
+  QaAccountNotificationsInput,
   QaAccountProfileInput,
   QaAccountSession,
   QaAccountStartersInput,
@@ -86,6 +87,16 @@ export interface QaAccountRemotes {
   updateStarters(
     token: string,
     input: QaAccountStartersInput,
+  ): QaAccountUserPublic;
+  /**
+   * Replace the caller's own notification channels; the token is the identity.
+   * The deployment's own switches are not this write's business: they gate the
+   * channels at read time, so an account can only ever narrow what a stand
+   * allows, never widen it.
+   */
+  updateNotifications(
+    token: string,
+    input: QaAccountNotificationsInput,
   ): QaAccountUserPublic;
   /**
    * The caller's own integration tokens, newest last. Never a secret: the
@@ -252,6 +263,10 @@ export function createQaAccountRemotes(options: {
         }
         return store.updateOwnStarters(token, input);
       });
+    },
+    updateNotifications: (token, input) => {
+      const store = requireAccounts();
+      return run(() => store.updateOwnNotifications(token, input));
     },
     listServiceTokens: (token) => {
       const store = requireAccounts();

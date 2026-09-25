@@ -470,6 +470,41 @@ from the host connection service) before the marker hand-off. This makes the
 transparent entry work without the deploy proxy; with the proxy in front,
 either side may perform the exchange and the other becomes a no-op.
 
+## Turn completion notices
+
+A chat whose turn has just ended says so: one line in the page naming the chat,
+and — once the reader allowed it — the same line from the operating system.
+
+The scope is the browser's own chat history, not the stand's session list. A
+notice exists only for a chat this page would have listed in its sidebar, so
+another account's turn ends silently here even on a stand where an
+administrator can read those chats. A chat that was already running when the
+page opened is not attributed to this reader, and frames a reconnecting browser
+cannot vouch for are re-projected without notices. A turn that ends in the chat
+already on screen, with this window active, produces nothing: the answer is in
+front of the reader.
+
+What a notice may carry is the chat's own title and the fact that the turn
+ended — never the answer, a path, an account or a session id. The operating
+system writes down what it is handed and shows it over a shoulder.
+
+`notifications.enabled: true` (default) is the master switch. With it off the
+page raises nothing at all, whatever a reader chose earlier.
+
+`notifications.allowOs: true` (default) permits the operating-system channel —
+the one a hidden or backgrounded tab can use. With it off a finished turn stays
+inside the page, which is the answer for a shared laptop, where a personal
+notice is everybody's notice.
+
+The reader's own answer about both channels lives in the settings dialog, on the
+account: it follows the person to another browser, and what they chose yesterday
+in this browser decides nothing about who signs in today. On a stand without
+accounts there is no account to write to, so the desktop choice stays in the
+browser that made it. Either way the answer is asked for once — from a click,
+never on load or once per turn — and a denial, or a browser that offers no such
+API (which includes a stand served over plain HTTP), leaves the in-page line
+standing.
+
 ## Configuration channel over the LAN
 
 The browser normally reads the effective configuration from the Host-owned

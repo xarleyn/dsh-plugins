@@ -71,6 +71,7 @@ import {
   prepareQaUserWorkspace,
 } from "./user-workspace.js";
 import type { DocumentsFace } from "@yadsh/dsh-documents";
+import type { QaAccountNotificationsInput } from "./types.js";
 import type { QaTurnSources } from "./provenance/types.js";
 import type {
   QaAccountProfileInput,
@@ -741,6 +742,20 @@ export class QaSurface extends TypertRemoteService {
     input: QaAccountStartersInput,
   ): QaAccountUserPublic {
     return this.accountRemotes.updateStarters(token, input);
+  }
+
+  /**
+   * Replace the caller's own notification channels. The account the token
+   * authenticates is the only one editable, and the answer is the whole public
+   * record, so the settings form re-reads what the stand now holds rather than
+   * what it meant to send.
+   */
+  @Remote("accountsUpdateNotifications")
+  accountsUpdateNotifications(
+    token: string,
+    input: QaAccountNotificationsInput,
+  ): QaAccountUserPublic {
+    return this.accountRemotes.updateNotifications(token, input);
   }
 
   /**

@@ -16,6 +16,7 @@ import type {
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type {
+  QaAccountNotificationsInput,
   QaAccountProfileInput,
   QaAccountStartersInput,
   QaApprovalDecision,
@@ -72,6 +73,8 @@ import { collectChatFiles, countChatAttachments } from "./chat-files.js";
 import { QaFilesPanel } from "./components/QaFilesPanel.js";
 import { QaRightRail, type QaRailTabModel } from "./components/QaRightRail.js";
 import { QaSourcesPanel } from "./components/QaSourcesPanel.js";
+import { QaTurnNotice } from "./components/QaTurnNotice.js";
+import { useQaTurnNotifications } from "./notifications/use-turn-notifications.js";
 import {
   QA_TURN_FOLLOW_PX,
   QaTurnRail,
@@ -840,11 +843,28 @@ export function QaSurface(props: QaSurfaceProps) {
             accounts.updateStarters(input),
         }
       : undefined;
+    // One object serves both halves of the same decision: the form that edits
+    // it and the notices that obey it. A reader cannot be looking at one and
+    // waiting on the other, and a memo keeps the identity stable for the
+    // watcher that reads the channels out of it.
+    const notifications = {
+      notifications: accountsSnapshot.user.notifications,
+      switches: config.notifications,
+      onSave: (input: QaAccountNotificationsInput) =>
+        accounts.updateNotifications(input),
+    };
     const skills =
       config.accounts.skills.enabled && boundSkillApi !== undefined
         ? boundSkillApi
         : undefined;
-    return { profile, password, starters, skills, integrationTokens };
+    return {
+      profile,
+      password,
+      starters,
+      notifications,
+      skills,
+      integrationTokens,
+    };
   }, [accounts, accountsSnapshot, config, boundSkillApi, integrationTokens]);
   const busyTurn =
     state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
@@ -860,6 +880,22 @@ export function QaSurface(props: QaSurfaceProps) {
       ),
     [controller, listState, activeSessionId, ownerNames, state.chatsRevision],
   );
+  // A turn that ends in one of this browser's own chats gets a notice: the
+  // sidebar dot going out is otherwise the only sign, and it is easy to miss
+  // from behind another window. These are the sidebar's own rows, so a chat
+  // this page would not list can never raise one.
+  const turnNotices = useQaTurnNotifications({
+    chats: chatRows,
+    notifications: config.notifications,
+    storage: window.localStorage,
+    storageKey: `${stateKey}:notifications`,
+    // Signed in, the account's own channels decide and the settings form is
+    // what writes them; anonymously, the hook falls back to this browser.
+    account: settingsDialog?.notifications,
+    paused: state.phase === "reconnecting",
+    activeSessionId,
+    onSwitch: handleSwitch,
+  });
 
   // The audit provider is optional: `auditSnapshot.api` is null until the
   // audit plugin's client bundle is loaded, and the badge is absent until
@@ -1067,6 +1103,14 @@ export function QaSurface(props: QaSurfaceProps) {
   return (
     <>
       {welcomeNotice}
+      <QaTurnNotice
+        items={turnNotices.items}
+        onOpen={turnNotices.onOpen}
+        onDismiss={turnNotices.onDismiss}
+        {...(turnNotices.onEnableDesktop === undefined
+          ? {}
+          : { onEnableDesktop: turnNotices.onEnableDesktop })}
+      />
       {settingsDialog === undefined ? null : (
         <QaUserSettingsDialog
           open={settingsOpen}
@@ -1098,6 +1142,7 @@ export function QaSurface(props: QaSurfaceProps) {
           {...(settingsDialog.starters === undefined
             ? {}
             : { starters: settingsDialog.starters })}
+          notifications={settingsDialog.notifications}
           {...(settingsDialog.integrationTokens === undefined
             ? {}
             : { integrationTokens: settingsDialog.integrationTokens })}
