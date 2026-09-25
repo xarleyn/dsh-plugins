@@ -264,7 +264,9 @@ export function QaSurface(props: QaSurfaceProps) {
   // The palette belongs to the surface, so it is only painted while the
   // surface is what the visitor is looking at: outside its own route the
   // overlay is mounted and invisible, and flipping the Host document's
-  // attributes from there would be the QA stand restyling the harness.
+  // attributes from there would be the QA stand restyling the harness. What the
+  // surface borrowed for the visit it hands back on the way out, for the same
+  // reason — see `useQaThemePreference`.
   const theme = useQaThemePreference({
     active: route.active,
     storage: window.localStorage,

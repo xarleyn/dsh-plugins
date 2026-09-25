@@ -11,8 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   QaHeader,
   type QaHeaderProps,
-} from "../src/client/components/QaHeader.js";
-import { QaThemeSwitcher } from "../src/client/components/QaThemeSwitcher.js";
+} from "../../../src/client/components/QaHeader.js";
+import { QaThemeSwitcher } from "../../../src/client/components/QaThemeSwitcher.js";
 import {
   QA_DARK_THEME_ATTRIBUTE,
   QA_THEME_PREFERENCES,
@@ -24,7 +24,7 @@ import {
   writeQaThemePreference,
   type QaThemeDocument,
   type QaThemePreference,
-} from "../src/client/theme-preference.js";
+} from "../../../src/client/theme-preference.js";
 
 const STORAGE_KEY = "dsh-qa-surface.session:v1:/qa:theme";
 
@@ -118,6 +118,18 @@ function Harness({ active = true }: { readonly active?: boolean }) {
 
 function press(label: string): void {
   fireEvent.click(screen.getByRole("button", { name: label }));
+}
+
+const THEME_LABELS = ["Светлая тема", "Тёмная тема", "Системная тема"] as const;
+
+/** The preferences the control currently marks as chosen. */
+function pressedThemes(): string[] {
+  return THEME_LABELS.filter(
+    (label) =>
+      screen
+        .getByRole("button", { name: label })
+        .getAttribute("aria-pressed") === "true",
+  );
 }
 
 afterEach(() => {
@@ -326,6 +338,49 @@ describe("QA palette in the surface", () => {
     window.localStorage.setItem(STORAGE_KEY, "dark");
     render(<Harness active={false} />);
     expect(paintState()).toEqual({ scheme: "", dark: false });
+  });
+
+  it("hands the palette back when the route goes away", async () => {
+    // The choice owns the document only while the surface is what the visitor
+    // sees, and then has to give it back: once off-route the control is not on
+    // screen anywhere to undo what it did, so a harness left recolored would
+    // stay recolored for the rest of the visit. The empty `color-scheme` also
+    // proves the restore puts back what was *worn* rather than painting light.
+    window.localStorage.setItem(STORAGE_KEY, "dark");
+    const { rerender } = render(<Harness />);
+    expect(paintState()).toEqual({ scheme: "dark", dark: true });
+    // The restore itself is synchronous; the control's subscribed read answers
+    // it in a microtask, so the act is awaited.
+    await act(async () => {
+      rerender(<Harness active={false} />);
+    });
+    expect(paintState()).toEqual({ scheme: "", dark: false });
+  });
+
+  it("hands the palette back when the surface unmounts", () => {
+    window.localStorage.setItem(STORAGE_KEY, "light");
+    document.documentElement.style.colorScheme = "dark";
+    document.body.setAttribute(QA_DARK_THEME_ATTRIBUTE, "");
+    const { unmount } = render(<Harness />);
+    expect(paintState()).toEqual({ scheme: "light", dark: false });
+    unmount();
+    expect(paintState()).toEqual({ scheme: "dark", dark: true });
+  });
+
+  it("follows a palette the Host repaints under an untouched control", async () => {
+    // A browser with no choice of its own writes nothing, so the cube answers
+    // the document — including a repaint nobody told React about, which is why
+    // the painted palette is subscribed to rather than read while rendering.
+    render(<Harness />);
+    expect(pressedThemes()).toEqual(["Светлая тема"]);
+    await act(async () => {
+      document.body.setAttribute(QA_DARK_THEME_ATTRIBUTE, "");
+    });
+    expect(pressedThemes()).toEqual(["Тёмная тема"]);
+    await act(async () => {
+      document.body.removeAttribute(QA_DARK_THEME_ATTRIBUTE);
+    });
+    expect(pressedThemes()).toEqual(["Светлая тема"]);
   });
 });
 

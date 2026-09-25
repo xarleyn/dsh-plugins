@@ -542,12 +542,16 @@ the chat with it. Once a preference is chosen the control marks the *preference*
 never the resolved palette, so «Системная тема» stays pressed while the operating
 system decides which theme that is.
 
-Two consequences worth knowing. The control is part of the header, so a
-deployment that hides the header (`ui.showHeader: false`) hides the only way to
-reach it; and the choice holds until the application repaints the document for
-its own reason (a theme change made in the Host settings, or the OS scheme
-flipping while the Host preference is `system`), after which the Host's answer
-wins until the visitor picks again.
+The document is borrowed, not owned: what a click writes is put back when the
+surface stops being what the visitor sees — the route changing inside the
+application, or the overlay unmounting. Off its own route this control is not on
+screen to undo itself, and a harness left in a QA stand's palette would stay in
+it for the rest of the visit. The palette put back is the one the document wore
+when the choice was applied, retaken on every repaint, so the Host's own answer
+wins again the moment the visitor leaves.
+
+One consequence worth knowing: the control is part of the header, so a deployment
+that hides the header (`ui.showHeader: false`) hides the only way to reach it.
 
 ### Starter messages
 

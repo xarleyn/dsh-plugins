@@ -29,6 +29,13 @@ the font-size axis and a theme's own token overrides to the Host. `system`
 resolves through the OS and keeps listening, so a laptop that goes dark at dusk
 takes the chat with it.
 
+While the surface is on screen the choice owns the document; when it stops being
+what the visitor sees — the route changing inside the application, or the
+overlay unmounting — the palette the document wore is put back. That is the
+point of handing it over: off its own route the control is not on screen to
+undo itself, and a harness left in a QA stand's palette would stay in it for the
+rest of the visit.
+
 While the surface owns the row, the header no longer overflows on a phone: the
 title, the role, the palette and the action cluster now wrap instead of pushing
 «Настройки» past the clipped edge.

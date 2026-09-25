@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 /**
  * The palette the surface paints with. The Host owns the same three
@@ -105,6 +105,54 @@ function readSystemDarkScheme(): boolean {
   return matchMedia("(prefers-color-scheme: dark)").matches;
 }
 
+/** What the document is wearing before this browser's choice is painted over it. */
+interface QaThemePaintState {
+  readonly scheme: string;
+  readonly dark: boolean;
+}
+
+function readQaThemePaintState(target: QaThemeDocument): QaThemePaintState {
+  return {
+    scheme: target.documentElement.style.colorScheme,
+    dark: target.body.hasAttribute(QA_DARK_THEME_ATTRIBUTE),
+  };
+}
+
+/**
+ * Put one of these back verbatim. Unlike `applyQaThemePreference` it carries the
+ * empty `color-scheme` a browser that never chose leaves behind, so restoring is
+ * not the same as painting `light`.
+ */
+function writeQaThemePaintState(
+  target: QaThemeDocument,
+  state: QaThemePaintState,
+): void {
+  target.documentElement.style.colorScheme = state.scheme;
+  if (state.dark) target.body.setAttribute(QA_DARK_THEME_ATTRIBUTE, "");
+  else target.body.removeAttribute(QA_DARK_THEME_ATTRIBUTE);
+}
+
+/**
+ * The painted palette as an external store. Reading it during the render would
+ * report the palette the document wore the last time React rendered this
+ * component, and nothing re-renders it when the Host repaints underneath; the
+ * control would then name a theme the visitor is not looking at.
+ */
+function subscribeQaThemeScheme(onChange: () => void): () => void {
+  const observer = new MutationObserver(onChange);
+  observer.observe(document.body, {
+    attributes: true,
+    attributeFilter: [QA_DARK_THEME_ATTRIBUTE],
+  });
+  return () => {
+    observer.disconnect();
+  };
+}
+
+function getQaThemeSchemeSnapshot(): Exclude<QaThemePreference, "system"> {
+  return readQaThemeScheme(document);
+}
+
 export interface QaThemePreferenceState {
   /** The choice this browser owns, or the palette it is looking at. */
   readonly preference: QaThemePreference;
@@ -150,7 +198,19 @@ export function useQaThemePreference({
 
   useEffect(() => {
     if (!active || stored === null) return;
+    // The surface borrows the document rather than owning it: the palette it
+    // finds here is the one the Host put on the page, and leaving `/qa` — the
+    // route going inactive, or the overlay unmounting altogether — has to hand
+    // it back, because off its own route this control is not even on screen to
+    // take the choice back off. `QaSurfaceGuard` keeps the same contract for the
+    // body mask and the host's own icons. The snapshot is retaken on every run,
+    // so a Host repaint between two of them is a repaint the restore returns to,
+    // not one it overwrites.
+    const worn = readQaThemePaintState(document);
     applyQaThemePreference(document, stored, systemDark);
+    return () => {
+      writeQaThemePaintState(document, worn);
+    };
   }, [active, stored, systemDark]);
 
   const select = useCallback(
@@ -161,10 +221,15 @@ export function useQaThemePreference({
     [storage, storageKey],
   );
 
+  const painted = useSyncExternalStore(
+    subscribeQaThemeScheme,
+    getQaThemeSchemeSnapshot,
+  );
+
   return {
     // With no choice of its own, this browser reports what the document is
     // already painted with rather than claiming a preference nobody picked.
-    preference: stored ?? readQaThemeScheme(document),
+    preference: stored ?? painted,
     select,
   };
 }

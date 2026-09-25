@@ -529,6 +529,17 @@ for (const label of [/Светлая тема/u, /Тёмная тема/u, /Си
 }
 assert.match(client, /data-ds-dark-theme/u);
 assert.doesNotMatch(client, /data-ds-theme-source/u);
+// A `--dsw-alias-*` name the Host's token sheet never declares is not an error:
+// the browser drops that one declaration at computed-value time and writes
+// nothing to the console, so the whole failure would be a pressed theme cube
+// with no pressed look — no DOM assertion catches that. Pin the selected state
+// to the pairing this bundle already ships for `aria-pressed` elsewhere, and
+// keep the name that reached review out of the surface.
+assert.match(
+  client,
+  /\.dsh-qa-theme__option\[aria-pressed="true"\]\{background:var\(--dsw-alias-bg-layer-1\)/u,
+);
+assert.doesNotMatch(client, /--dsw-alias-interactive-bg-active/u);
 
 // The settings dialog: one shell for the profile, the general page and the
 // skills editor, with the legacy profile classes gone.

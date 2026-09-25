@@ -732,6 +732,39 @@ async function runBrowserPass({
       return pressed;
     };
     /**
+     * The chosen cube has to look chosen. A `var(--dsw-alias-*)` the Host sheet
+     * never declares is not an error: the browser drops that one declaration at
+     * computed-value time and writes nothing to the console, so the control
+     * would keep working while quietly losing the only thing that tells a
+     * visitor which theme is on. No DOM assertion can invent that — it has to be
+     * measured off the painted cube.
+     */
+    const cubeColours = () =>
+      palette.evaluate((group) => {
+        const paint = (cube) => {
+          const style = globalThis.getComputedStyle(cube);
+          return `${style.backgroundColor}|${style.color}`;
+        };
+        const cubes = [...group.querySelectorAll("button")];
+        const chosen = cubes.find(
+          (cube) => cube.getAttribute("aria-pressed") === "true",
+        );
+        const resting = cubes.find(
+          (cube) => cube.getAttribute("aria-pressed") !== "true",
+        );
+        return chosen && resting
+          ? { chosen: paint(chosen), resting: paint(resting) }
+          : null;
+      });
+    const expectChosenThemeIsVisible = async (where) => {
+      const cubes = await cubeColours();
+      if (!cubes || cubes.chosen === cubes.resting) {
+        throw new Error(
+          `the chosen theme is not painted on its own cube ${where}: ${JSON.stringify(cubes)}`,
+        );
+      }
+    };
+    /**
      * The palette reaches the document from an effect, after React processed
      * the click (or after the OS answered), so the pass waits for the body
      * attribute to agree before it measures colours — otherwise the assertion
@@ -770,7 +803,9 @@ async function runBrowserPass({
     }
     await page.emulateMedia({ colorScheme: "light" });
     const lightPalette = await choosePalette("Светлая тема", false);
+    await expectChosenThemeIsVisible("under the light palette");
     const darkPalette = await choosePalette("Тёмная тема", true);
+    await expectChosenThemeIsVisible("under the dark palette");
     if (lightPalette.darkPalette || !darkPalette.darkPalette) {
       throw new Error(
         `the palette control did not reach the token sheet: light=${JSON.stringify(lightPalette)} dark=${JSON.stringify(darkPalette)}`,
@@ -796,6 +831,9 @@ async function runBrowserPass({
         `the system palette ignored a light OS: ${JSON.stringify(systemLight)}`,
       );
     }
+    await expectChosenThemeIsVisible(
+      "under a system palette the OS answers light",
+    );
     await page.emulateMedia({ colorScheme: "dark" });
     const systemDark = await awaitPalette(true);
     if (
@@ -821,6 +859,35 @@ async function runBrowserPass({
     ) {
       throw new Error(
         `the palette choice did not survive the reload: ${JSON.stringify(reloaded)}`,
+      );
+    }
+    await expectChosenThemeIsVisible("after the reload");
+    // And the surface only borrows the document. A visitor who leaves `/qa` by
+    // the route the Host itself uses — `history.pushState`, which the surface
+    // watches — has to find the harness wearing what it wore before, because
+    // off its own route this control is not on screen to be turned back off.
+    // The OS is answered light first so the Host's own palette agrees with the
+    // one being restored, and the harness is painted by hand to make the two
+    // states distinguishable from a surface that simply never repainted.
+    await page.emulateMedia({ colorScheme: "light" });
+    await page.evaluate(() => {
+      globalThis.document.documentElement.style.colorScheme = "light";
+      globalThis.document.body.removeAttribute("data-ds-dark-theme");
+    });
+    await choosePalette("Тёмная тема", true);
+    await page.evaluate(() => {
+      globalThis.history.pushState(null, "", "/");
+    });
+    await page
+      .locator("main.dsh-qa-surface")
+      .waitFor({ state: "detached", timeout: 10_000 });
+    const handedBack = await page.evaluate(() => ({
+      darkPalette: globalThis.document.body.hasAttribute("data-ds-dark-theme"),
+      scheme: globalThis.document.documentElement.style.colorScheme,
+    }));
+    if (handedBack.darkPalette || handedBack.scheme !== "light") {
+      throw new Error(
+        `leaving /qa did not hand the harness palette back: ${JSON.stringify(handedBack)}`,
       );
     }
     await page.evaluate((key) => {
