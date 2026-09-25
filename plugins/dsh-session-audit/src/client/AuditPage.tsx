@@ -80,7 +80,10 @@ export function AuditPage(props: AuditPageProps): ReactNode {
     // "no audit for this session" is exactly the reader who needs to hear that
     // audits exist elsewhere in the root.
     return (
-      <div className="dsh-audit-page dsh-audit-page--empty">
+      <div
+        className="dsh-audit-page dsh-audit-page--empty"
+        data-testid="audit-page--empty"
+      >
         <UnattachedAudits items={unattached} />
         <div className="dsh-audit-page__state">
           <AuditEmptyState hint="An audit appears here after an auditor writes its analysis and report into the audit root." />
@@ -92,7 +95,7 @@ export function AuditPage(props: AuditPageProps): ReactNode {
   const value = summary.summary;
 
   return (
-    <div className="dsh-audit-page">
+    <div className="dsh-audit-page" data-testid="audit-page">
       <AuditStatusBar
         verdict={value.verdict}
         {...(value.outcomeStatus.length === 0
@@ -136,7 +139,11 @@ export function AuditPage(props: AuditPageProps): ReactNode {
           />
         </aside>
 
-        <div className="dsh-audit-page__main" role="tabpanel">
+        <div
+          className="dsh-audit-page__main"
+          role="tabpanel"
+          data-testid="audit-tabpanel"
+        >
           {detail.status === "error" ? (
             <AuditErrorState
               message={detail.error ?? "The audit could not be loaded"}
