@@ -317,10 +317,10 @@ export function DomainEditor(props: EditorProps) {
       {tab === "Memory" ? (
         <Section
           title="Memory"
-          note="The private namespace accepts writes. Shared namespaces are read-only, and a foreign namespace is refused by code, not by instruction."
+          note="An expert writes only its own namespace. Where the deployment has accounts, that namespace is this one suffixed with /u/ and the account id, and this one stays read-only for every account — what the domain knows for everyone. Shared namespaces are read-only too, and a foreign namespace is refused by code, not by instruction."
         >
           <TextInput
-            label="Private namespace"
+            label="Domain namespace"
             value={draft.memory.namespace}
             invalid={fieldIssue("memory.namespace") !== undefined}
             hint={
@@ -363,7 +363,7 @@ export function DomainEditor(props: EditorProps) {
               }
               onClick={props.onClearMemory}
             >
-              Clear private namespace
+              Clear domain namespace
             </button>
           </div>
           {props.memory.error === "" ? null : (

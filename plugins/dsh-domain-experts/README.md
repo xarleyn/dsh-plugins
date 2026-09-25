@@ -27,7 +27,13 @@ per restriction, whether it is **enforced** by code or merely **advisory**.
   cannot be replaced by accident.
 - **Scoped memory.** Each expert has a private read/write namespace and
   read-only shared namespaces. The private boundary is a storage key layout,
-  not a sentence in a prompt.
+  not a sentence in a prompt. Where the deployment has accounts, the private
+  namespace is one per account (`domain/payments/u/<account>`) and the domain's
+  own namespace stays read-only for every account — what one account's expert
+  learned is not a rule another account inherits. A note has to say who it is
+  true for: what only this caller's access showed (a tool that was refused, a
+  source that was not mounted) is the caller's situation, and the key layout
+  keeps it out of the common tiers.
 - **Scoped tools.** The selected tools are the only ones the expert can see or
   execute; a tool that is filtered out refuses to run.
 - **Honest enforcement.** Every filesystem rule, memory namespace and
@@ -75,7 +81,7 @@ The plugin registers three agent-facing tools.
 | --- | --- |
 | `domain_expert` | Ask one domain's expert to investigate, answer or review something. Called from inside an expert it is a delegation, and the caller's cross-domain policy decides whether it is allowed. |
 | `domain_experts_list` | Identifiers, names and one-line descriptions of the enabled domains. Scope, memory and policy stay out of the model's view. |
-| `domain_memory` | Read and write the calling expert's own memory. Only namespaces resolved from the persisted definition are reachable, and only the private one accepts writes. |
+| `domain_memory` | Read and write the calling expert's own memory. Only namespaces resolved from the persisted definition are reachable, and only the caller's own namespace accepts writes — that is the account's namespace where the deployment keeps memory per account. |
 
 `domain_delegate` is accepted as a tool-policy alias for `domain_expert` so a
 configuration written against the design vocabulary is not reported as
@@ -96,6 +102,7 @@ for the domains themselves). Changes apply to subsequent operations.
 | `defaultCrossDomainMode` | string | `expert-only` | Cross-domain mode pre-filled on new domains: `disabled`, `expert-only` or `direct-read`. |
 | `defaultMemoryProvider` | string | `builtin` | Memory provider id every expert uses. Providers are registered when the plugin loads, so naming one the deployment did not start with takes a restart. |
 | `memoryDbPath` | string | `<DSH_HOME>/domain-experts-memory.db` | Database file the `sqlite` memory provider owns. |
+| `perUserMemory` | boolean | `true` | Keep a separate memory namespace per account, in a deployment that has accounts. Takes effect only while the host's accounts surface is mounted. |
 | `recallLimit` | number | `5` | Memory records recalled into an expert's persona. |
 | `auditLimit` | number | `200` | Execution audit entries kept in memory and mirrored to the log. |
 
@@ -141,7 +148,7 @@ reported with one of two levels:
 | Restriction | Typical level | What makes it enforced |
 | --- | --- | --- |
 | Tool policy | `enforced` | The harness removes the tool from the child's view *and* refuses to execute it. |
-| Memory namespace | `enforced` | The storage key layout keeps other namespaces out of reach; reads and writes go through the resolved namespace only. |
+| Memory namespace | `enforced` | The storage key layout keeps other namespaces out of reach; reads and writes go through the resolved namespace only. In an account-scoped deployment the writable namespace is the caller's own account, and a run nobody claimed is refused a write rather than shown the door — the namespace it would reach is what every account reads. |
 | Delegation policy | `enforced` | The plugin refuses a delegation the caller's mode or target list forbids. |
 | Filesystem scope | `enforced` when a selected worker declares it applies the scope, otherwise `advisory` | A worker that actually restricts path access (`DomainWorker.enforces`). |
 | Persona wording | always `advisory` | Nothing but the model's compliance. |
