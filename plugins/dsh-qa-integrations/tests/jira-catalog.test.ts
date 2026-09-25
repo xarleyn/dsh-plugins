@@ -245,7 +245,7 @@ describe("Jira capability catalog", () => {
     // that the provider opens no second socket of its own.
     expect(READ_POLICY_SOURCE).toMatch(/method: "GET"/u);
     expect(READ_POLICY_SOURCE).toMatch(/redirect: "error"/u);
-    expect(TRANSPORT_SOURCE).toMatch(/fetchWithRetries\(this\.fetcher/u);
+    expect(TRANSPORT_SOURCE).toMatch(/fetchWithRetries\(\s*this\.fetcher/u);
     expect(TRANSPORT_SOURCE).not.toMatch(/\bfetch\(/u);
     expect(TRANSPORT_SOURCE).toMatch(
       /authorizationFor\(dialect, credential\)/u,
