@@ -54,6 +54,7 @@ describe("QA Browser Remote contribution", () => {
       humanControlLeaseSeconds: 30,
       autoRevealOnAgentActivity: true,
       focusOnAutoReveal: false,
+      runtimeMode: "launch",
       coordinateInputEnabled: true,
     };
     expect(() => state.create().parse(state$)).not.toThrow();
@@ -77,6 +78,55 @@ describe("QA Browser Remote contribution", () => {
     ).toThrow();
   });
 
+  it("names the runtime mode and separates a dropped link from a crash", () => {
+    const state = qaBrowserRemote.descriptors.find(
+      (item) => item.method === "panelState",
+    )?.result;
+    if (state?.mode !== "strict") throw new Error("panelState must be strict");
+    const base = {
+      session: null,
+      tabs: [],
+      policyRefusals: [],
+      humanControlEnabled: true,
+      humanControlLeaseSeconds: 30,
+      autoRevealOnAgentActivity: true,
+      focusOnAutoReveal: false,
+      coordinateInputEnabled: true,
+    };
+    const session = (status: string): Record<string, unknown> => ({
+      sessionId: "session_test",
+      status,
+      selectedTabId: null,
+      tabIds: [],
+      control: { owner: "agent", leaseExpiresAt: null },
+      profileName: null,
+      createdAt: 1,
+      lastActivityAt: 2,
+    });
+
+    // The panel words its wait for a first page from the mode, so a state
+    // without it cannot say what the operator is waiting for.
+    expect(() =>
+      state.schema.parse({ ...base, runtimeMode: "launch" }),
+    ).not.toThrow();
+    expect(() => state.schema.parse(base)).toThrow();
+    expect(() =>
+      state.schema.parse({ ...base, runtimeMode: "sidecar" }),
+    ).toThrow();
+    // A browser the runtime can no longer reach is a different fact from a
+    // browser that died: the person's own window is probably still open.
+    expect(() =>
+      state.schema.parse({
+        ...base,
+        runtimeMode: "attach",
+        session: session("disconnected"),
+      }),
+    ).not.toThrow();
+    expect(() =>
+      state.schema.parse({ ...base, session: session("detached") }),
+    ).toThrow();
+  });
+
   it("carries each refusal by code, kind, host, message and count", () => {
     const state = qaBrowserRemote.descriptors.find(
       (item) => item.method === "panelState",
@@ -97,6 +147,7 @@ describe("QA Browser Remote contribution", () => {
       humanControlLeaseSeconds: 30,
       autoRevealOnAgentActivity: true,
       focusOnAutoReveal: false,
+      runtimeMode: "launch",
       coordinateInputEnabled: true,
     };
     expect(() => state.create().parse(state$)).not.toThrow();

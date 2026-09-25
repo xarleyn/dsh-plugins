@@ -6,6 +6,7 @@
  * then on, and the context is what a close, an idle eviction or a crash of the
  * browser leaves nothing of behind.
  */
+import { QaBrowserError } from "../../errors.js";
 import type { BrowserSessionInfo } from "../../types.js";
 import type { SessionKernel } from "./kernel.js";
 import { createTab, disposeTabListeners, tabForPage } from "./registry.js";
@@ -19,7 +20,7 @@ export async function ensureSession(
   kernel.assertAvailable();
   const id = kernel.validSessionId(sessionId);
   const existing = kernel.sessions.get(id);
-  if (existing !== undefined && existing.status === "crashed") {
+  if (existing !== undefined && kernel.isLost(existing)) {
     kernel.sessions.delete(id);
   } else if (existing !== undefined && existing.status !== "starting") {
     kernel.touch(existing);
@@ -87,8 +88,10 @@ export async function closeIdleSessions(
 }
 
 export function handleProviderCrash(kernel: SessionKernel, error: Error): void {
+  const lost =
+    error instanceof QaBrowserError && error.code === "BROWSER_CONNECTION_LOST";
   for (const record of kernel.sessions.values()) {
-    record.status = "crashed";
+    record.status = lost ? "disconnected" : "crashed";
     record.selectedTabId = null;
     for (const tab of record.tabs.values()) {
       disposeTabListeners(tab);
@@ -96,7 +99,9 @@ export function handleProviderCrash(kernel: SessionKernel, error: Error): void {
     }
     record.tabs.clear();
   }
-  kernel.logger.error("browser.crashed", { error: error.message });
+  kernel.logger.error(lost ? "browser.connection-lost" : "browser.crashed", {
+    error: error.message,
+  });
 }
 
 async function createSession(

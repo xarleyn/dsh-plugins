@@ -121,6 +121,34 @@ Tools and UI must depend on Browser service contracts, not directly on Playwrigh
 
 Do **not** split a third npm package until a second consumer/provider actually requires it.
 
+### 3.3 Runtime modes: `launch` and `attach`
+
+The Browser runtime stays its own runtime. Joining someone else's Chromium is a
+second way to obtain the browser, not a different product: the seam already
+existed in `BrowserProvider`, so "remote CDP" from the list above shipped as
+`runtime.mode: attach` on the Playwright provider rather than as a third
+provider, a new package, or a replacement for the mode every deployment uses
+today.
+
+| | `launch` (default) | `attach` |
+| --- | --- | --- |
+| Chromium process | started and stopped by this runtime | started and stopped by the deployment |
+| Where the browser comes from | an installed executable, discovered or named | `runtime.cdpEndpoint`, loopback unless opened up |
+| `headless: false` | a window a person may watch and click in | refused: this runtime owns no window to show |
+| Session teardown | process exits | link and our own contexts drop, process stays |
+| Lost browser | `BROWSER_CRASHED` | `BROWSER_CONNECTION_LOST` |
+
+What the mode does not change: per-DSH-session browser contexts (§7), the
+server-side network policy (§17), the snapshot and ref model (§12), and the
+recovery rule that a browser which is gone is never pretended to still be there
+(§7.5).
+
+The endpoint is a control handle, so it is treated as one: an `attach` runtime
+reaches `localhost` by default, and any other host needs
+`runtime.allowRemoteCdpEndpoint: true` in the same config block. A person who
+can reach that host can reach the browser, which is a property of the deployment
+the operator built — the runtime documents it and does not promise otherwise.
+
 ---
 
 ## 4. Scope by delivery phase
@@ -331,6 +359,11 @@ On browser process crash:
 - return a clear structured result indicating that page state was lost;
 - never silently claim the previous tab still exists.
 
+An attached browser (§3.3) can also go away by the link dropping rather than the
+process dying. The recovery rule is the same and the panel still refuses to
+pretend the old tabs exist; only the reported code differs, because "our Chromium
+crashed" is a claim this runtime cannot make about a browser it does not own.
+
 ---
 
 ## 8. Storage layout
@@ -471,7 +504,7 @@ Developer APIs belong behind capabilities, not in the minimal interface exposed 
 ```ts
 interface BrowserSessionInfo {
   sessionId: string
-  status: 'starting' | 'ready' | 'idle' | 'crashed' | 'closed'
+  status: 'starting' | 'ready' | 'idle' | 'crashed' | 'disconnected' | 'closed'
   selectedTabId: string | null
   tabIds: string[]
   control: BrowserControlState
@@ -1651,8 +1684,11 @@ This approval UX is adjacent work, not a reason to couple Browser into QA Surfac
 
     runtime:
       provider: playwright
+      mode: launch
       executablePath: null
       browserChannel: chromium
+      cdpEndpoint: null
+      allowRemoteCdpEndpoint: false
       headless: true
       actionTimeoutMs: 15000
       navigationTimeoutMs: 30000
@@ -1738,6 +1774,7 @@ Recommended set:
 BROWSER_DISABLED
 BROWSER_START_FAILED
 BROWSER_CRASHED
+BROWSER_CONNECTION_LOST
 BROWSER_SESSION_NOT_FOUND
 BROWSER_CONTEXT_CLOSED
 BROWSER_TAB_NOT_FOUND
