@@ -30,6 +30,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -374,4 +375,96 @@ test("a cached build restores its artifacts, not only its verdict", (t) => {
     existsSync(artifact),
     "a cache hit must restore lib/ — replaying only the verdict leaves the tree without the artifacts later tasks import",
   );
+});
+
+// The coverage contract of `pnpm test:coverage` lives in one preset that every
+// package measures through, so nothing in the build proves it is still wired up:
+// a package can lose its `test:coverage` script, or keep a hand-copied setup
+// that drifts from its own `test`, and every command stays green. These checks
+// hold the three things the number depends on — the preset's shape, the script
+// of each package that runs vitest, and the merge semantics a package must not
+// fight.
+const PRESET = "packages/config/vitest/vitest.config.ts";
+const WORKSPACE_GROUPS = ["plugins", "packages", "tooling/generators"];
+
+/** Every workspace package directory that carries a manifest. */
+function workspacePackages() {
+  const found = [];
+  for (const group of WORKSPACE_GROUPS) {
+    const groupDir = new URL(`../${group}/`, import.meta.url);
+    if (!existsSync(fileURLToPath(groupDir))) continue;
+    for (const entry of readdirSync(groupDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dir = `${group}/${entry.name}`;
+      const manifest = new URL(`../${dir}/package.json`, import.meta.url);
+      if (!existsSync(fileURLToPath(manifest))) continue;
+      found.push({ dir, scripts: readJson(manifest).scripts ?? {} });
+    }
+  }
+  return found;
+}
+
+function readJson(url) {
+  return JSON.parse(readFileSync(url, "utf8"));
+}
+
+/** The commands a package runs before it hands over to vitest, if any. */
+function setupOf(script) {
+  const at = script.indexOf("vitest run");
+  return at === -1 ? null : script.slice(0, at);
+}
+
+test("the shared Vitest preset carries the coverage defaults", async () => {
+  const { baseConfig } = await import(new URL(`../${PRESET}`, import.meta.url));
+  const coverage = baseConfig.test?.coverage ?? {};
+  assert.equal(coverage.provider, "v8", "coverage must stay V8-instrumented");
+  assert.ok(
+    (coverage.reporter ?? []).includes("json-summary"),
+    "the machine-readable summary is what makes the number comparable",
+  );
+  assert.ok(
+    coverage.include?.length > 0 &&
+      coverage.include.every((glob) => glob.startsWith("src/")),
+    "every package measures its own src tree",
+  );
+  assert.equal(
+    coverage.reportOnFailure,
+    true,
+    "a red run still has to report its number",
+  );
+  assert.equal(
+    coverage.thresholds,
+    undefined,
+    "a floor turns the measurement into a gate that competes with the per-file size budget",
+  );
+});
+
+test("every package that runs vitest declares the matching test:coverage", () => {
+  const measured = workspacePackages().filter(
+    (pkg) => setupOf(pkg.scripts.test ?? "") !== null,
+  );
+  assert.ok(measured.length > 0, "no package runs vitest at all");
+  for (const { dir, scripts } of measured) {
+    const coverage = scripts["test:coverage"];
+    assert.ok(
+      coverage,
+      `${dir} runs vitest in \`test\` but declares no \`test:coverage\``,
+    );
+    assert.ok(
+      coverage.startsWith(`${setupOf(scripts.test)}vitest run --coverage`),
+      `${dir} \`test:coverage\` must run the same setup as \`test\` and then pass --coverage, got: ${coverage}`,
+    );
+  }
+});
+
+test("no package narrows coverage by re-declaring include", () => {
+  for (const { dir } of workspacePackages()) {
+    const file = new URL(`../${dir}/vitest.config.ts`, import.meta.url);
+    if (!existsSync(fileURLToPath(file))) continue;
+    assert.doesNotMatch(
+      readFileSync(file, "utf8"),
+      /coverage:\s*\{[^{}]*\binclude\s*:/su,
+      `${dir}/vitest.config.ts re-declares coverage.include; mergeConfig concatenates arrays, so it widens the measured tree instead of narrowing it — use coverage.exclude`,
+    );
+  }
 });
