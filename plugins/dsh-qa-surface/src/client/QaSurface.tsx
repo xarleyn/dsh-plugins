@@ -512,9 +512,9 @@ export function QaSurface(props: QaSurfaceProps) {
     props.sessions.list.getSnapshot,
   );
   // Draft text, attachments, variant offsets and drawers are chat-local; the
-  // hook clears them whenever the bound session changes. The rail controller
-  // takes the drawer slice; the surface keeps the composer and marks state.
-  const ui = useSessionUiState(state.sessionId);
+  // hook clears them whenever the chat changes. The rail controller takes the
+  // drawer slice; the surface keeps the composer and marks state.
+  const ui = useSessionUiState(state.chatKey);
   const rail = useRightRail(ui);
   const {
     activeTurn,
@@ -1371,9 +1371,12 @@ export function QaSurface(props: QaSurfaceProps) {
                     hidden={state.questions.length > 0}
                   >
                     {/* Keyed by chat: the composer's draft text is chat-local, so a
-                    switch remounts it empty instead of carrying text across. */}
+                    switch remounts it empty instead of carrying text across. The
+                    chat key survives a draft creating its session on the first
+                    prompt — that is the same chat, and remounting here would drop
+                    the question the Host has not accepted yet. */}
                     <QaComposer
-                      key={state.sessionId ?? "draft"}
+                      key={state.chatKey}
                       placeholder={config.branding.placeholder}
                       quickQuestions={empty ? quickQuestions : NO_QUESTIONS}
                       canSend={state.canSend}
