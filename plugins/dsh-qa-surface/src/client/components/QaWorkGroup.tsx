@@ -213,7 +213,11 @@ const QaTextWorkItem = memo(
           </span>
         </div>
         <div className="dsh-qa-work-item__text">
-          {renderMarkdown ? <Markdown text={item.text} /> : item.text}
+          {renderMarkdown ? (
+            <Markdown text={item.text} streaming={item.status === "running"} />
+          ) : (
+            item.text
+          )}
         </div>
       </section>
     );

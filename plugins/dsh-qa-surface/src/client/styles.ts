@@ -739,6 +739,8 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
 .dsh-qa-md-table tbody tr:nth-child(even){background:var(--dsw-alias-bg-layer-2)}
 .dsh-qa-md-math{overflow-x:auto;overflow-y:hidden;margin:16px 0;text-align:center}
 .dsh-qa-md-math .katex-display{margin:0}
+.dsh-qa-md-math--pending{text-align:left}
+.dsh-qa-md .dsh-qa-md-math--pending>code{display:block;padding:0;border:0;border-radius:0;background:transparent;color:var(--dsw-alias-label-secondary);font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Consolas,monospace);font-size:var(--dsw-font-markdown-code-block-font-size,12px);line-height:var(--dsw-font-markdown-code-block-line-height,19px);white-space:pre-wrap;overflow-wrap:anywhere}
 .dsh-qa-md-fn-ref{margin:0 1px;font-size:.8em;line-height:0;vertical-align:super}
 .dsh-qa-md-footnotes{margin:20px 0 0;padding-top:12px;border-top:1px solid var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);font-size:.9em}
 .dsh-qa-md-footnotes ol{margin:0;padding-left:22px}
