@@ -61,6 +61,45 @@ describe("QA surface stylesheet", () => {
     expect(dialogRules.join("")).toContain("var(--dsw-alias-border-l2)");
   });
 
+  it("keeps the palette control on tokens this stylesheet already ships", () => {
+    // The control is the thing that switches the palette, so it has to read
+    // correctly in both of them: a literal color would pin one theme's look
+    // into the other, which is exactly what the choice is for.
+    const rules = [
+      ...QA_SURFACE_STYLES.matchAll(/\.dsh-qa-theme[^{}]*\{[^}]*\}/gu),
+    ].map((match) => match[0] ?? "");
+    expect(rules.length).toBeGreaterThanOrEqual(6);
+    expect(
+      rules.filter((rule) => /#[0-9a-f]{3,8}|rgba?\(/iu.test(rule)),
+    ).toEqual([]);
+    // The Host's token sheet lives in the harness, not in this repository, so a
+    // `--dsw-alias-*` name nobody here has ever painted with cannot be checked
+    // from this file — and an unverifiable name fails silently: the browser
+    // drops the whole declaration at computed-value time without a word in the
+    // console, so the only symptom is a pressed theme cube that does not look
+    // pressed. Requiring a token the rest of this sheet already uses is the
+    // strongest claim available offline, and it is the pairing the preview
+    // toggle ships for the same `aria-pressed` state.
+    const themeRules = /\.dsh-qa-theme[^{}]*\{[^}]*\}/gu;
+    const named = new Set(
+      [...rules.join("").matchAll(/var\(--dsw-alias-([a-z0-9-]+)\)/gu)].map(
+        (match) => match[1] ?? "",
+      ),
+    );
+    const proven = new Set(
+      [
+        ...QA_SURFACE_STYLES.replace(themeRules, "").matchAll(
+          /var\(--dsw-alias-([a-z0-9-]+)\)/gu,
+        ),
+      ].map((match) => match[1] ?? ""),
+    );
+    expect([...named].filter((token) => !proven.has(token))).toEqual([]);
+    const pressed =
+      rules.find((rule) => rule.includes('[aria-pressed="true"]')) ?? "";
+    expect(pressed).toContain("background:var(--dsw-alias-bg-layer-1)");
+    expect(pressed).toContain("color:var(--dsw-alias-label-primary)");
+  });
+
   it("keeps the legacy profile shell out of the bundle", () => {
     expect(QA_SURFACE_STYLES).not.toContain("dsh-qa-profile");
   });

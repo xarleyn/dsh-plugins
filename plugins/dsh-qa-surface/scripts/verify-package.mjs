@@ -511,6 +511,36 @@ assert.match(client, /qa-card-notice/u);
 assert.match(client, /Проверять источники из отчёта/u);
 assert.match(client, /registerSettingsCard|slots\.register/u);
 
+// The palette choice the surface carries itself: the Host's own Appearance row
+// lives in settings the overlay suppresses, so `/qa` ships the three
+// preferences and writes the two fields the Host token sheet selects on. All
+// three labels have to survive bundling — a missing one leaves a theme
+// unreachable. The Host publishes its preference nowhere in the DOM, so a
+// marker attribute here would be a private invention the Host never reads and
+// never writes; reading the booted palette goes through the dark attribute.
+assert.match(client, /dsh-qa-theme__option/u);
+assert.match(client, /Тема оформления/u);
+for (const label of [/Светлая тема/u, /Тёмная тема/u, /Системная тема/u]) {
+  assert.match(
+    client,
+    label,
+    `the palette control must keep offering ${label}`,
+  );
+}
+assert.match(client, /data-ds-dark-theme/u);
+assert.doesNotMatch(client, /data-ds-theme-source/u);
+// A `--dsw-alias-*` name the Host's token sheet never declares is not an error:
+// the browser drops that one declaration at computed-value time and writes
+// nothing to the console, so the whole failure would be a pressed theme cube
+// with no pressed look — no DOM assertion catches that. Pin the selected state
+// to the pairing this bundle already ships for `aria-pressed` elsewhere, and
+// keep the name that reached review out of the surface.
+assert.match(
+  client,
+  /\.dsh-qa-theme__option\[aria-pressed="true"\]\{background:var\(--dsw-alias-bg-layer-1\)/u,
+);
+assert.doesNotMatch(client, /--dsw-alias-interactive-bg-active/u);
+
 // The settings dialog: one shell for the profile, the general page and the
 // skills editor, with the legacy profile classes gone.
 assert.match(client, /dsh-qa-modal__panel--settings/u);
