@@ -127,6 +127,52 @@ describe("sidebar chat deletion", () => {
     expect(onDelete).toHaveBeenCalledWith("s-2");
   });
 
+  it("numbers the chats that share a title, so each control names its own", () => {
+    const onDelete = vi.fn();
+    const rows = [
+      chatRow("s-1", "Новый чат"),
+      chatRow("s-2", "Где настройки модели"),
+      chatRow("s-3", "Новый чат"),
+    ];
+    const { rerender } = render(tree(rows, onDelete));
+
+    // «Новый чат» is what an unnamed chat reads until its first answer lands,
+    // so two of them standing in the list is the normal case, not a corner.
+    const secondOfTwo = screen.getByRole("button", {
+      name: "Удалить чат «Новый чат» (2 из 2)",
+    });
+    expect(
+      screen.getByRole("button", { name: "Удалить чат «Новый чат» (1 из 2)" }),
+    ).toBeTruthy();
+    // A title nothing else carries keeps the plain name.
+    expect(
+      screen.getByRole("button", {
+        name: "Удалить чат «Где настройки модели»",
+      }),
+    ).toBeTruthy();
+
+    fireEvent.click(secondOfTwo);
+    const dialog = screen.getByRole("dialog", {
+      name: "Подтвердите удаление чата",
+    });
+    expect(dialog.textContent).toContain("«Новый чат» (2 из 2)");
+    fireEvent.click(screen.getByRole("button", { name: "Удалить из истории" }));
+    expect(onDelete).toHaveBeenCalledWith("s-3");
+
+    // One of them gone, the survivor stops being a duplicate: the control
+    // drops the number instead of keeping a count that no longer holds.
+    rerender(
+      tree(
+        [chatRow("s-1", "Новый чат"), chatRow("s-2", "Где настройки модели")],
+        onDelete,
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: "Удалить чат «Новый чат»" }),
+    ).toBeTruthy();
+    expect(screen.queryByRole("button", { name: /из \d/u })).toBeNull();
+  });
+
   it("carries a run of deletions through the rows that move up", () => {
     const rows = [
       chatRow("s-1", "Как перевыставить счёт"),
@@ -169,6 +215,42 @@ describe("sidebar chat deletion", () => {
 
     fireEvent.click(trigger);
     fireEvent.click(screen.getByRole("button", { name: "Отмена" }));
+
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("returns the keyboard to the row when Escape closes the dialog", () => {
+    render(tree([chatRow("s-1", "Демо-чат")], vi.fn()));
+    const trigger = deleteControl("Демо-чат");
+
+    fireEvent.click(trigger);
+    fireEvent.keyDown(window, { key: "Escape" });
+
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("returns the keyboard to the row from the dialog's own close control", () => {
+    render(tree([chatRow("s-1", "Демо-чат")], vi.fn()));
+    const trigger = deleteControl("Демо-чат");
+
+    fireEvent.click(trigger);
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Закрыть подтверждение удаления чата",
+      }),
+    );
+
+    expect(document.activeElement).toBe(trigger);
+  });
+
+  it("returns the keyboard to the row when the backdrop closes the dialog", () => {
+    const { container } = render(tree([chatRow("s-1", "Демо-чат")], vi.fn()));
+    const trigger = deleteControl("Демо-чат");
+
+    fireEvent.click(trigger);
+    // The backdrop, not the panel standing inside it.
+    const backdrop = container.querySelector(".dsh-qa-modal") as Element;
+    fireEvent.click(backdrop);
 
     expect(document.activeElement).toBe(trigger);
   });

@@ -16,6 +16,19 @@ say which chat a control belongs to or tell the dialog from the button behind
 it. The control now names its own chat ("Удалить чат «Как перевыставить счёт»"),
 and the dialog is named for what it asks ("Подтвердите удаление чата").
 
+A title is not an identity, though, and the stand shows it: every chat reads
+«Новый чат» until its first answer lands, so two of them standing side by side
+would share one name again. Where a title repeats, the control numbers the chats
+carrying it by their place in the list — «Удалить чат «Новый чат» (2 из 2)» —
+and the confirmation asks about that same numbered chat, so it stays the right
+chat while the rows move up under it. The numbering runs over every chat the
+browser lists rather than only the rows a search leaves visible: a chat's name
+does not change because another one is filtered out, and a lone match still says
+how many share its title. The limit is the number itself — it names a row by
+where it stands, so a reader who cannot see the order has the row's timestamp to
+go on, which is what the row shows them. The session id would be unique and is
+deliberately not used: it is noise in a name read aloud.
+
 The control is drawn only while its row is hovered, but transparency alone does
 not step out of the way: it kept the right edge of the row and answered a click
 that arrived without the row being hovered — measured in Chromium against the
@@ -32,5 +45,7 @@ the chat list rather than on the document body, so the next Tab continues among
 the chats instead of restarting from the top of the page.
 
 Tests cover the history case (a chat with a real title is not removed before the
-dialog is answered), a run of deletions across rows that move up, focus
-restoration in both directions, and the hit-testing rule in the sheet.
+dialog is answered), two chats sharing one title, a run of deletions across rows
+that move up, focus restoration on every way the dialog closes — the cancel
+button, Escape, its own close control, the backdrop — and on a confirmed
+removal, and the hit-testing rule in the sheet.

@@ -205,6 +205,45 @@ function rowMatches(row: QaChatRow, query: string): boolean {
 }
 
 /**
+ * How each chat is named by the controls acting on it, keyed by id. A title is
+ * not unique — every chat reads «Новый чат» until its first answer lands — so
+ * a repeated title is numbered by its place in the list, which is the order
+ * the reader is shown. The numbering runs over every chat rather than only the
+ * rows a search leaves visible, so one chat's name does not change because
+ * another is filtered out, and a lone match still says how many share it.
+ */
+function nameChats(rows: readonly QaChatRow[]): Map<string, string> {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    totals.set(row.title, (totals.get(row.title) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  const names = new Map<string, string>();
+  for (const row of rows) {
+    const ordinal = (seen.get(row.title) ?? 0) + 1;
+    seen.set(row.title, ordinal);
+    const total = totals.get(row.title) ?? 1;
+    names.set(
+      row.id,
+      total > 1 ? `«${row.title}» (${ordinal} из ${total})` : `«${row.title}»`,
+    );
+  }
+  return names;
+}
+
+/**
+ * The name of one chat among the chats this browser lists. A row the list does
+ * not hold is the chat nobody has named yet, and that one reads «Новый чат».
+ */
+function nameOfChat(
+  names: ReadonlyMap<string, string>,
+  row: QaChatRow | undefined,
+): string {
+  if (row === undefined) return "«Новый чат»";
+  return names.get(row.id) ?? `«${row.title}»`;
+}
+
+/**
  * Whether two sidebar row lists show the same thing. Rows are rebuilt on
  * every surface render (relative timestamps drift), so the memoized sidebar
  * compares by content and skips frames that only move the transcript.
@@ -280,6 +319,7 @@ export const QaSidebar = memo(
       );
     }
     const normalizedQuery = query.trim().toLowerCase();
+    const chatNames = nameChats(props.rows);
     const visibleRows =
       normalizedQuery === ""
         ? props.rows
@@ -293,6 +333,7 @@ export const QaSidebar = memo(
         ? buildOwnerSections(visibleRows)
         : [{ name: "", rows: visibleRows }];
     const renderRow = (row: QaChatRow) => {
+      const name = nameOfChat(chatNames, row);
       return (
         <div
           key={row.id}
@@ -337,8 +378,8 @@ export const QaSidebar = memo(
             <button
               type="button"
               className="dsh-qa-sidebar__item-delete"
-              aria-label={`Удалить чат «${row.title}»`}
-              title={`Удалить чат «${row.title}»`}
+              aria-label={`Удалить чат ${name}`}
+              title={`Удалить чат ${name}`}
               onClick={(event) => {
                 deleteTrigger.current = event.currentTarget;
                 setConfirmingId(row.id);
@@ -520,8 +561,8 @@ export const QaSidebar = memo(
           }
         >
           <p className="dsh-qa-settings__lead">
-            Удалить чат «{confirmingRow?.title ?? "Новый чат"}» из истории в
-            этом браузере? Сам разговор останется на стенде.
+            Удалить чат {nameOfChat(chatNames, confirmingRow)} из истории в этом
+            браузере? Сам разговор останется на стенде.
           </p>
         </QaModal>
       </nav>
