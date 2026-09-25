@@ -104,7 +104,7 @@ Configure the plugin under the `lightrag` key in the DSH profile.
 | `enabled` | boolean | `true` | Register the knowledge-base tools. When false, no tool is registered. |
 | `endpoint` | string | `http://127.0.0.1:9621` | Origin of the LightRAG server, e.g. `http://lightrag:9621`. Must be a bare `http(s)` origin — no credentials, path, query or fragment. |
 | `apiKey` | string | `""` | API key sent as `X-API-Key`. Empty falls back to the `LIGHTRAG_API_KEY` environment variable. |
-| `timeoutMs` | number | `60000` | Wall-clock budget per HTTP request, clamped to 1000–300000 ms. |
+| `timeoutMs` | number | `60000` | Wall-clock budget per HTTP request — headers and response body alike, clamped to 1000–300000 ms. |
 | `query.mode` | string | `mix` | Default retrieval mode: `local`, `global`, `hybrid`, `naive`, `mix` or `bypass`. An unknown value falls back to `mix`. |
 | `query.topK` | number | `20` | Documents retrieved per query, clamped to 1–200. The server allows 1000; a review tool does not need it. |
 | `query.maxAnswerBytes` | number | `200000` | Byte cap for the returned answer, clamped to 1 KiB–1 MiB. The answer is cut at a UTF-8 boundary and marked. |

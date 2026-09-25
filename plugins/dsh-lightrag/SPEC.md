@@ -169,7 +169,7 @@ clamped in the resolver (the `dsh-git-readonly/src/config.ts` pattern: schema +
 | `enabled` | boolean | `true` | When false, no tool is registered. |
 | `endpoint` | string | `http://127.0.0.1:9621` | Must be a bare http(s) origin: credentials, path, query and fragment are load-time errors, not request-time surprises. |
 | `apiKey` | string | `""` | Falls back to `LIGHTRAG_API_KEY` from the environment (same shape as the OpenViking row's fallback). |
-| `timeoutMs` | number | `60000` | Clamped `[1000, 300000]`. One budget per HTTP request. |
+| `timeoutMs` | number | `60000` | Clamped `[1000, 300000]`. One budget per HTTP request, covering the response body as well as the request. |
 | `query.mode` | string | `mix` | Unknown value falls back to `mix`; valid set in §3. |
 | `query.topK` | number | `20` | Clamped `[1, 200]` (the server allows 1000; a review tool does not need it). |
 | `query.maxAnswerBytes` | number | `200000` | Clamped `[1024, 1048576]`; the answer is truncated with a marker. |

@@ -4,9 +4,10 @@
  *
  * Transport outcomes are folded into `LightRagError` with a stable code, and
  * every response is read through a byte cap so a misconfigured `endpoint`
- * cannot make the host buffer an unbounded body. Reads are defensive: the
- * server is an external component, so a field is read by name with a fallback
- * and never trusted for shape.
+ * cannot make the host buffer an unbounded body. The cap and the request
+ * deadline both apply to the body stream, not only to the headers. Reads are
+ * defensive: the server is an external component, so a field is read by name
+ * with a fallback and never trusted for shape.
  */
 
 import type { QueryMode, ResolvedLightRagConfig } from "./config.js";
@@ -274,28 +275,65 @@ function requireRecord(
   return value;
 }
 
-/** Read at most `maxBytes` of the body, cancelling the stream past the cap. */
+/**
+ * Settle `read` no later than `signal`. A body stream that stops delivering
+ * chunks has no other way out: the fetch already succeeded, so nothing in the
+ * read itself observes the request deadline.
+ */
+function withinDeadline<T>(read: Promise<T>, signal: AbortSignal): Promise<T> {
+  if (signal.aborted) return Promise.reject(signal.reason);
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(signal.reason);
+    signal.addEventListener("abort", onAbort, { once: true });
+    const settle = (finish: () => void): void => {
+      signal.removeEventListener("abort", onAbort);
+      finish();
+    };
+    read.then(
+      (value) => {
+        settle(() => resolve(value));
+      },
+      (error: unknown) => {
+        settle(() => reject(error));
+      },
+    );
+  });
+}
+
+/**
+ * Read at most `maxBytes` of the body, cancelling the stream past the cap.
+ * `signal` is the request deadline, so a stalled body ends this read inside the
+ * same budget the headers had to meet.
+ */
 async function readBounded(
   response: Response,
   maxBytes: number,
+  signal: AbortSignal,
 ): Promise<{ text: string; truncated: boolean }> {
   if (response.body === null) return { text: "", truncated: false };
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
   let bytes = 0;
   let truncated = false;
-  for (;;) {
-    const next = await reader.read();
-    if (next.done === true) break;
-    bytes += next.value.byteLength;
-    if (bytes > maxBytes) {
-      const room = maxBytes - (bytes - next.value.byteLength);
-      if (room > 0) chunks.push(next.value.subarray(0, room));
-      await reader.cancel();
-      truncated = true;
-      break;
+  try {
+    for (;;) {
+      const next = await withinDeadline(reader.read(), signal);
+      if (next.done === true) break;
+      bytes += next.value.byteLength;
+      if (bytes > maxBytes) {
+        const room = maxBytes - (bytes - next.value.byteLength);
+        if (room > 0) chunks.push(next.value.subarray(0, room));
+        truncated = true;
+        break;
+      }
+      chunks.push(next.value);
     }
-    chunks.push(next.value);
+  } finally {
+    // Whatever ended the read — the cap, a stall, a broken transfer — the
+    // stream is cancelled, so no body keeps a connection alive past its
+    // request. Not awaited: a source that never delivers a chunk can also
+    // never finish cancelling itself.
+    void reader.cancel().catch(() => undefined);
   }
   return {
     text: Buffer.concat(chunks.map((chunk) => Buffer.from(chunk))).toString(
@@ -346,40 +384,66 @@ export function createLightRagClient(
         ? controller.signal
         : AbortSignal.any([controller.signal, init.signal]);
 
-    let response: Response;
-    try {
-      response = await doFetch(`${config.endpoint}${path}`, {
-        method: init.method,
-        headers,
-        body: init.body === undefined ? undefined : JSON.stringify(init.body),
-        signal,
-      });
-    } catch (error) {
+    /**
+     * Fold a thrown transport error into the stable codes. `answered` says how
+     * far the exchange got, so a body that stalled mid-transfer is not reported
+     * as a host that never replied.
+     */
+    const foldTransportError = (error: unknown, answered: boolean) => {
       if (timedOut) {
-        throw new LightRagError(
+        return new LightRagError(
           "timeout",
-          `${init.context} did not answer within ${config.timeoutMs} ms`,
+          answered
+            ? `${init.context} did not finish sending its body within ${config.timeoutMs} ms`
+            : `${init.context} did not answer within ${config.timeoutMs} ms`,
           { cause: error },
         );
       }
       if (init.signal?.aborted === true) {
-        throw new LightRagError(
+        return new LightRagError(
           "timeout",
-          `${init.context} was cancelled before the server answered`,
+          `${init.context} was cancelled ${
+            answered
+              ? "while the body was arriving"
+              : "before the server answered"
+          }`,
           { cause: error },
         );
       }
       const reason = transportReason(error);
-      throw new LightRagError(
+      return new LightRagError(
         "unreachable",
-        `${init.context} could not reach ${config.endpoint}: ${reason}`,
+        answered
+          ? `${init.context} lost ${config.endpoint} while the body was arriving: ${reason}`
+          : `${init.context} could not reach ${config.endpoint}: ${reason}`,
         { cause: error },
       );
+    };
+
+    let response: Response;
+    let body: { text: string; truncated: boolean };
+    try {
+      try {
+        response = await doFetch(`${config.endpoint}${path}`, {
+          method: init.method,
+          headers,
+          body: init.body === undefined ? undefined : JSON.stringify(init.body),
+          signal,
+        });
+      } catch (error) {
+        throw foldTransportError(error, false);
+      }
+      try {
+        body = await readBounded(response, maxResponseBytes, signal);
+      } catch (error) {
+        throw foldTransportError(error, true);
+      }
     } finally {
+      // The budget covers the whole exchange, so the timer outlives the body
+      // read; clearing it once the headers arrived let a stalled body run on.
       clearTimeout(timer);
     }
 
-    const body = await readBounded(response, maxResponseBytes);
     if (!response.ok) throw errorForStatus(response.status, body.text);
     if (body.truncated) {
       throw new LightRagError(
