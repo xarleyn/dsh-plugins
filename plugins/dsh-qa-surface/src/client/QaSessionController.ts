@@ -154,6 +154,22 @@ const SLASH_CATALOG_STALE_MS = 3_000;
  */
 const PENDING_POLL_MS = 1_000;
 
+/**
+ * Source of chat identities. Page-wide rather than per controller: the surface
+ * re-creates this controller whenever the account, the config or the route
+ * changes, and a counter that restarted at its first value would name the new
+ * controller's chat exactly as it named the old one's — which is how a draft,
+ * its attachments and its per-chat UI state walked from one chat into another.
+ * `0` stays with `QA_SESSION_IDLE_STATE`, the snapshot the surface reads before
+ * any controller exists.
+ */
+let chatKeySequence = 0;
+
+function nextChatKey(): number {
+  chatKeySequence += 1;
+  return chatKeySequence;
+}
+
 interface PendingSubmission {
   readonly message: QaPendingUserMessage;
   /** Number of durable user rows present before this send started. */
@@ -245,12 +261,21 @@ export class QaSessionController {
   private disposed = false;
   private generation = 0;
   /**
-   * Chat identity handed to the surface (`QaSessionState.chatKey`). Bumped on
-   * every navigation between chats and never when the bound draft merely
-   * creates its session, so a component that keeps per-chat state in React
-   * survives the first prompt of a new chat.
+   * The session the current chat identity names, or null while the chat it
+   * names has no session yet. This is what makes the identity a chat identity
+   * rather than a counter: {@link bind} compares the session it is about to
+   * adopt against it, so any path that ends up in another session takes another
+   * identity — and a draft adopting its first session keeps the one it holds.
    */
-  private chatKey = 0;
+  private namedSession: string | null = null;
+  /**
+   * Chat identity handed to the surface (`QaSessionState.chatKey`). Taken from
+   * the page-wide sequence on every move to another chat, and never when the
+   * bound draft merely creates its session: a component that keeps per-chat
+   * state in React therefore survives the first prompt of a new chat, while two
+   * chats never read the same identity.
+   */
+  private chatKey = nextChatKey();
   private chatsRevision = 0;
   private selectedSubrole: string | null;
   private adminPreview: boolean;
@@ -919,7 +944,7 @@ export class QaSessionController {
       }
     }
     this.drafting = true;
-    this.chatKey += 1;
+    this.openChat();
     this.pendingSubmission = undefined;
     this.unbind();
     this.operationError = null;
@@ -993,7 +1018,7 @@ export class QaSessionController {
       return;
     const operation = ++this.generation;
     this.drafting = false;
-    this.chatKey += 1;
+    this.openChat();
     this.pendingSubmission = undefined;
     this.viewingSubagent = null;
     this.unbind();
@@ -1059,7 +1084,7 @@ export class QaSessionController {
     }
     const operation = ++this.generation;
     this.drafting = false;
-    this.chatKey += 1;
+    this.openChat();
     this.pendingSubmission = undefined;
     this.viewingSubagent = { id, title };
     this.unbind();
@@ -1272,6 +1297,19 @@ export class QaSessionController {
         this.unbind();
         this.operationError = null;
         this.chats.clearActive();
+        // The replacement is another chat — empty, and not one the user asked
+        // to open — so it takes its own identity: the unsent text, the staged
+        // attachments and the per-chat drawers of the refused chat are dropped
+        // instead of being handed to the chat that replaced it.
+        this.openChat();
+        this.pendingSubmission = undefined;
+        this.state = {
+          ...QA_SESSION_IDLE_STATE,
+          chatKey: this.chatKey,
+          chatsRevision: this.chatsRevision,
+          phase: "creating",
+        };
+        this.emit();
         id = await createQaSession({
           createSession: this.createSessionRemote,
           token: this.accounts?.token() ?? "",
@@ -1337,7 +1375,12 @@ export class QaSessionController {
         this.fail(CONFIGURATION_ERROR, new QaPolicyAttestationError());
         return null;
       }
+      // Only a chat that never received a prompt is replaced here, so the fresh
+      // id continues the chat the user is writing into. Hand the identity over
+      // to it — bind() would otherwise read another chat and take a new one —
+      // because the question this send carries is still in the composer.
       this.unbind();
+      this.namedSession = null;
       this.chats.clearActive();
       const created = await createQaSession({
         createSession: this.createSessionRemote,
@@ -1362,6 +1405,17 @@ export class QaSessionController {
     }
   }
 
+  /**
+   * Begin a chat of its own: take a fresh identity from the page-wide sequence
+   * and leave it naming no session yet. Called on every move between chats —
+   * reset, switch, subagent view — and by {@link bind} when it ends up in a
+   * session the current identity does not name.
+   */
+  private openChat(): void {
+    this.namedSession = null;
+    this.chatKey = nextChatKey();
+  }
+
   private async bind(
     id: string,
     options: {
@@ -1377,6 +1431,13 @@ export class QaSessionController {
       track = true,
       allowCompatibilityReadOnly = false,
     } = options;
+    // Another session under the identity that named the previous one is another
+    // chat: it takes its own identity, so nothing the previous chat was holding
+    // — an unsent question, staged attachments, an open drawer — walks into it.
+    // A chat that names no session yet adopts one under the identity it already
+    // has, which is what keeps a draft's first prompt on the screen.
+    if (this.namedSession !== null && this.namedSession !== id) this.openChat();
+    this.namedSession = id;
     this.sessions.open(id as SessionId);
     let binding = this.sessions.binding(id as SessionId);
     if (binding === undefined) {

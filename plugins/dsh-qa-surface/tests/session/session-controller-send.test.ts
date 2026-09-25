@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaSessionController } from "../../src/client/QaSessionController.js";
+import { QA_SESSION_IDLE_STATE } from "../../src/client/types.js";
 import type { QaFileDraft, QaImageDraft } from "../../src/types.js";
 import {
   deferredUpload,
@@ -372,8 +373,36 @@ describe("QA session controller", () => {
     // A real move to another chat does change the identity: that composer must
     // not carry the previous conversation's text.
     await controller.switchTo("created-1");
-    expect(controller.getSnapshot().chatKey).toBe(draftKey + 1);
+    expect(controller.getSnapshot().chatKey).not.toBe(draftKey);
     controller.dispose();
+  });
+
+  it("never hands two chats the same identity, however often the surface rebuilds the controller", async () => {
+    // The surface re-creates this controller whenever the account, the config
+    // or the route changes, and reads `QA_SESSION_IDLE_STATE` while no
+    // controller exists yet. Each of those snapshots has to be a chat of its
+    // own: two of them sharing an identity is how one chat's unsent text and
+    // staged attachments walked into the chat that took its place.
+    const world = harness();
+    const first = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await first.ensureSession();
+    expect(first.getSnapshot().sessionId).toBe("created-1");
+    const firstKey = first.getSnapshot().chatKey;
+    expect(firstKey).not.toBe(QA_SESSION_IDLE_STATE.chatKey);
+    first.dispose();
+
+    const second = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await second.ensureSession();
+    // The chat the first controller left behind, reopened by the second one.
+    expect(second.getSnapshot().sessionId).toBe("created-1");
+    expect(second.getSnapshot().chatKey).not.toBe(firstKey);
+    second.dispose();
   });
 
   it("reports a first send whose session cannot be created", async () => {

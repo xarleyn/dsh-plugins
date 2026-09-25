@@ -1820,11 +1820,14 @@ export interface QaSessionState {
   readonly phase: QaSessionPhase;
   readonly sessionId: string | null;
   /**
-   * Identity of the chat the surface is showing, bumped only when the user
-   * moves between chats. A draft that creates its session on the first prompt
-   * keeps its key, because the composer holds an unsent question in component
-   * state: remounting it on the new session id would throw that text away
-   * before the Host has accepted anything.
+   * Identity of the chat the surface is showing. Unique across every chat the
+   * page has opened — a controller that is re-created for a new chat is handed
+   * a new identity, so a component keyed by it cannot carry one chat's composer
+   * text into another. It is taken only when the chat changes: a draft that
+   * creates its session on the first prompt keeps its key, because the composer
+   * holds an unsent question in component state, and remounting it on the new
+   * session id would throw that text away before the Host has accepted
+   * anything. `0` means no chat — see `QA_SESSION_IDLE_STATE`.
    */
   readonly chatKey: number;
   readonly messages: readonly QaMessage[];

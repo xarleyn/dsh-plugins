@@ -98,6 +98,7 @@ describe("QA session controller", () => {
     world.secureSession
       .mockResolvedValueOnce(refusal)
       .mockResolvedValueOnce(refusal);
+    const chatKey = controller.getSnapshot().chatKey;
     expect(await controller.send("hello")).toBe(true);
     expect(world.create).toHaveBeenCalledTimes(2);
     expect(world.open).toHaveBeenCalledWith("created-2");
@@ -105,6 +106,11 @@ describe("QA session controller", () => {
       [{ type: "text", text: "hello" }],
       "queue",
     );
+    // Only a chat that never received a prompt is replaced here, so the fresh
+    // id is the same chat the user was writing into and it keeps its identity:
+    // a new one would remount the composer over the question this send is
+    // still carrying, which is how the first message of a chat used to go.
+    expect(controller.getSnapshot().chatKey).toBe(chatKey);
     const replacement = world.bindings.get("created-2");
     replacement?.snapshot.set(
       snapshot(

@@ -172,6 +172,76 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
+  it("opens the chat that replaces a refused restore as a chat of its own", async () => {
+    const world = harness(["saved"]);
+    const storageKey = "dsh-qa-surface.session:v1:/qa:session";
+    world.stored.set(storageKey, "saved");
+    const proof = (sessionId: string) => ({
+      ok: true as const,
+      value: {
+        sessionId,
+        enabled: true,
+        agentPresetMatches: true,
+        workspaceMatches: true,
+        modelMatches: true,
+        sandboxModeMatches: true,
+        approvalIsNever: true,
+        permissionPreset: "qa-read-only",
+        toolPolicyLoaded: true,
+        toolAllowList: [],
+      },
+    });
+    world.secureSession.mockImplementation(
+      async (_token: string, sessionId: string) =>
+        sessionId === "saved"
+          ? { ok: false as const, error: { code: "policy-unavailable" } }
+          : proof(sessionId),
+    );
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    const seen: number[] = [];
+    const stop = controller.subscribe(() =>
+      seen.push(controller.getSnapshot().chatKey),
+    );
+    await controller.ensureSession();
+    stop();
+
+    expect(controller.getSnapshot().sessionId).toBe("created-2");
+    // The refused chat was on screen under one identity, and an empty chat took
+    // its place with no prompt in flight: that is a move between chats, so the
+    // replacement arrives under its own identity and the surface drops the
+    // draft, the staged attachments and the drawers of the refused one instead
+    // of handing them to a conversation nobody chose to open.
+    expect(seen[0]).toBeTypeOf("number");
+    expect(controller.getSnapshot().chatKey).not.toBe(seen[0]);
+    controller.dispose();
+  });
+
+  it("treats a chat that disappeared under the surface as another chat", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    expect(controller.getSnapshot().sessionId).toBe("created-1");
+    const firstKey = controller.getSnapshot().chatKey;
+
+    // The Host stopped listing the chat this browser had persisted, and the
+    // operator pressed retry: the bootstrap lands on a session of its own, so
+    // the surface is looking at another chat than the one it named.
+    world.list.set({ ...world.list.getSnapshot(), ids: [], byId: {} });
+    await controller.ensureSession();
+
+    expect(controller.getSnapshot().sessionId).toBe("created-2");
+    // What the vanished chat was holding — an unsent question, an attachment,
+    // an open drawer — has to die with it rather than be inherited.
+    expect(controller.getSnapshot().chatKey).not.toBe(firstKey);
+    controller.dispose();
+  });
+
   it.each(["composition-mismatch", "agent-unavailable", "adoption-refused"])(
     "opens a persisted %s chat as a read-only historical transcript",
     async (reason) => {
