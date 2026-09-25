@@ -249,7 +249,7 @@ describe("the surface that hosts the admin console", () => {
     await waitFor(() =>
       expect(window.location.pathname).toBe("/qa/admin/users"),
     );
-    expect(document.querySelector(".dsh-qa-admin")).toBeTruthy();
+    expect(screen.getByTestId("qa-admin-root")).toBeTruthy();
     // The chat surface is what the console used to fall back to.
     expect(document.querySelector(".dsh-qa-surface")).toBeNull();
     expect(
@@ -268,13 +268,13 @@ describe("the surface that hosts the admin console", () => {
         .getByRole("button", { name: "Очередь разбора" })
         .getAttribute("aria-current"),
     ).toBe("page");
-    expect(document.querySelector(".dsh-qa-admin")).toBeTruthy();
+    expect(screen.getByTestId("qa-admin-root")).toBeTruthy();
     expect(document.querySelector(".dsh-qa-surface")).toBeNull();
   });
 
   it("leaves the chat surface in charge outside the console", async () => {
     render(<QaSurface {...surfaceAt("/qa")} />);
-    expect(document.querySelector(".dsh-qa-admin")).toBeNull();
+    expect(screen.queryByTestId("qa-admin-root")).toBeNull();
     expect(document.querySelector(".dsh-qa-surface")).toBeTruthy();
   });
 });

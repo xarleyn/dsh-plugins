@@ -90,7 +90,11 @@ export function AdminSkillFiles(props: AdminSkillFilesProps) {
     failure === undefined ? undefined : adminErrorMessage(failure);
   const ready = headerError === undefined && (chosen || !personal);
   return (
-    <section className="dsh-qa-admin__page" aria-label="Редактор навыков">
+    <section
+      className="dsh-qa-admin__page"
+      data-testid="qa-admin-skill-files"
+      aria-label="Редактор навыков"
+    >
       <div className="dsh-qa-admin__title-row">
         <div>
           <h1>Редактор навыков</h1>
@@ -101,9 +105,13 @@ export function AdminSkillFiles(props: AdminSkillFilesProps) {
           </p>
         </div>
       </div>
-      <div className="dsh-qa-admin__tabs">
+      <div
+        className="dsh-qa-admin__tabs"
+        data-testid="qa-admin-skill-files-tabs"
+      >
         <button
           type="button"
+          data-testid="qa-admin-skill-files-tab-shared"
           aria-current={personal ? undefined : "page"}
           onClick={() => setChoice({ kind: "shared" })}
         >
@@ -111,6 +119,7 @@ export function AdminSkillFiles(props: AdminSkillFilesProps) {
         </button>
         <button
           type="button"
+          data-testid="qa-admin-skill-files-tab-personal"
           aria-current={personal ? "page" : undefined}
           onClick={() =>
             setChoice((current) => ({
@@ -122,11 +131,15 @@ export function AdminSkillFiles(props: AdminSkillFilesProps) {
           Личные навыки пользователя
         </button>
       </div>
-      <ErrorLine message={headerError} />
+      <ErrorLine message={headerError} testId="qa-admin-skill-files-error" />
       {personal ? (
-        <label className="dsh-qa-admin__filter">
+        <label
+          className="dsh-qa-admin__filter"
+          data-testid="qa-admin-skill-files-filter-user"
+        >
           <span>Пользователь</span>
           <select
+            data-testid="qa-admin-skill-files-user"
             value={choice.userId ?? ""}
             onChange={(event) =>
               setChoice({ kind: "user", userId: event.currentTarget.value })
@@ -143,8 +156,11 @@ export function AdminSkillFiles(props: AdminSkillFilesProps) {
         </label>
       ) : null}
       {view.data === undefined || view.data.rootPath === "" ? null : (
-        <p className="dsh-qa-admin__facts">
-          <span>
+        <p
+          className="dsh-qa-admin__facts"
+          data-testid="qa-admin-skill-files-storage"
+        >
+          <span data-testid="qa-admin-skill-files-owner">
             {view.data.owner === null
               ? "Общее хранилище стенда"
               : `Личное хранилище ${
@@ -153,13 +169,20 @@ export function AdminSkillFiles(props: AdminSkillFilesProps) {
                     : view.data.owner.displayName
                 }`}
           </span>
-          <span className="dsh-qa-admin__mono" title={view.data.rootPath}>
+          <span
+            className="dsh-qa-admin__mono"
+            data-testid="qa-admin-skill-files-path"
+            title={view.data.rootPath}
+          >
             {view.data.rootPath}
           </span>
         </p>
       )}
       {personal && !chosen ? (
-        <p className="dsh-qa-admin__empty">
+        <p
+          className="dsh-qa-admin__empty"
+          data-testid="qa-admin-skill-files-pick-user"
+        >
           Выберите пользователя, чтобы открыть его личные навыки.
         </p>
       ) : null}
