@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaSessionController } from "../../src/client/QaSessionController.js";
 import type { QaFileDraft, QaImageDraft } from "../../src/types.js";
-import { harness } from "../helpers/session-fakes.js";
+import {
+  deferredUpload,
+  fileDraft,
+  harness,
+} from "../helpers/session-fakes.js";
 
 describe("QA session controller", () => {
   it("sends plain text, rejects slash commands, and stops generation", async () => {
@@ -203,6 +207,62 @@ describe("QA session controller", () => {
     expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
     expect(controller.getSnapshot().error).toMatch(/недоступны/u);
     controller.dispose();
+  });
+
+  it("drops an attachment whose upload finished after the chat was left", async () => {
+    // Issue #339: staging a file is an external round-trip, and the user
+    // may leave the chat while it runs. The binding is re-checked before the
+    // prompt, so a draft typed into one chat cannot be sent from it after the
+    // operator is looking at another — and cannot leave the new chat waiting on
+    // a send that was never its own.
+    const world = harness(["saved", "other"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const upload = deferredUpload();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+      fileUpload: () => upload.service,
+    });
+    await controller.ensureSession();
+    const sending = controller.send("вопрос с файлом", [fileDraft()]);
+    await vi.waitFor(() =>
+      expect(upload.service.upload).toHaveBeenCalledOnce(),
+    );
+
+    await controller.switchTo("other");
+    upload.settle();
+
+    expect(await sending).toBe(false);
+    expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    expect(world.faces.get("other")?.prompt).not.toHaveBeenCalled();
+    // The chat the operator moved to is not left showing a turn that is not
+    // its own: the abandoned send must not mark admission pending here.
+    expect(controller.getSnapshot().phase).toBe("ready");
+    expect(controller.getSnapshot().canSend).toBe(true);
+    expect(controller.getSnapshot().pendingMessage).toBeNull();
+    controller.dispose();
+  });
+
+  it("drops an attachment whose upload finished after the surface closed", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const upload = deferredUpload();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+      fileUpload: () => upload.service,
+    });
+    await controller.ensureSession();
+    const sending = controller.send("вопрос с файлом", [fileDraft()]);
+    await vi.waitFor(() =>
+      expect(upload.service.upload).toHaveBeenCalledOnce(),
+    );
+
+    controller.dispose();
+    upload.settle();
+
+    expect(await sending).toBe(false);
+    expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
   });
 
   it("starts a draft on reset and materializes the session on first send", async () => {
