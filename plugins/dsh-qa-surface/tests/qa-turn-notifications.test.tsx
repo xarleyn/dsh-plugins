@@ -15,7 +15,11 @@ import {
 } from "../src/client/components/QaTurnNotice.js";
 import { buildChatRows } from "../src/client/components/QaSidebar.js";
 import { useQaTurnNotifications } from "../src/client/notifications/use-turn-notifications.js";
-import type { ResolvedQaSurfaceConfig } from "../src/types.js";
+import type {
+  QaAccountNotifications,
+  QaAccountNotificationsInput,
+  ResolvedQaSurfaceConfig,
+} from "../src/types.js";
 
 type Switches = ResolvedQaSurfaceConfig["notifications"];
 
@@ -60,6 +64,13 @@ interface ProbeProps {
   readonly notifications: Switches;
   readonly paused: boolean;
   readonly onSwitch: (sessionId: string) => void;
+  /** The signed-in reader's channels and the write that changes them. */
+  readonly account?: {
+    readonly notifications: QaAccountNotifications;
+    readonly onSave: (
+      input: QaAccountNotificationsInput,
+    ) => Promise<string | null>;
+  };
 }
 
 function Probe(props: ProbeProps) {
@@ -71,6 +82,7 @@ function Probe(props: ProbeProps) {
     paused: props.paused,
     activeSessionId: props.activeSessionId,
     onSwitch: props.onSwitch,
+    ...(props.account === undefined ? {} : { account: props.account }),
   });
   return (
     <QaTurnNotice
@@ -117,6 +129,7 @@ function mountPage(
     notifications?: Switches;
     paused?: boolean;
     onSwitch?: (sessionId: string) => void;
+    account?: ProbeProps["account"];
   } = {},
 ) {
   const props = {
@@ -126,6 +139,7 @@ function mountPage(
     notifications: options.notifications ?? { ...ON },
     paused: options.paused ?? false,
     onSwitch: options.onSwitch ?? vi.fn(),
+    ...(options.account === undefined ? {} : { account: options.account }),
   };
   const view = render(<Probe {...props} />);
   return {
@@ -284,5 +298,62 @@ describe("turn completion notices", () => {
       screen.getByLabelText(`${QA_TURN_NOTICE_COPY.dismiss}: Чат mine`),
     );
     expect(storedPrefs()).toEqual({ osEnabled: false, osOffered: true });
+  });
+});
+
+describe("the account's own channels", () => {
+  /** One signed-in reader: the account's record and the write behind the form. */
+  function signedIn(
+    notifications: QaAccountNotifications,
+    onSave = vi.fn(async (_input: QaAccountNotificationsInput) => null),
+  ): { options: { account: ProbeProps["account"] }; onSave: typeof onSave } {
+    return { options: { account: { notifications, onSave } }, onSave };
+  }
+
+  it("follows the account and ignores what this browser once stored", () => {
+    // A browser that raised desktop notices for its previous reader must not
+    // decide anything about the account now signed in.
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ osEnabled: true, osOffered: true }),
+    );
+    document.hasFocus = () => false;
+    const { options } = signedIn({ inApp: true, desktop: false });
+    const page = mountPage(hostList([{ id: "mine", running: true }]), options);
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(FakeNotification.raised).toEqual([]);
+    expect(screen.getByText("Чат mine")).toBeTruthy();
+  });
+
+  it("raises the desktop notice because the account asked for it", () => {
+    document.hasFocus = () => false;
+    const { options } = signedIn({ inApp: true, desktop: true });
+    const page = mountPage(hostList([{ id: "mine", running: true }]), options);
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(FakeNotification.raised).toEqual(["Чат mine"]);
+  });
+
+  it("keeps the page line off when the reader switched it off", () => {
+    const { options } = signedIn({ inApp: false, desktop: false });
+    const page = mountPage(hostList([{ id: "mine", running: true }]), options);
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(screen.queryByText("Чат mine")).toBeNull();
+    expect(FakeNotification.raised).toEqual([]);
+  });
+
+  it("answers the desktop offer on the account, not on this browser", async () => {
+    FakeNotification.permission = "default";
+    const { options, onSave } = signedIn({ inApp: true, desktop: false });
+    const page = mountPage(hostList([{ id: "mine", running: true }]), options);
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    fireEvent.click(
+      screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    );
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({ inApp: true, desktop: true }),
+    );
+    // The browser still remembers it asked, which is a fact about this
+    // browser's prompt rather than about the person.
+    expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: true });
   });
 });

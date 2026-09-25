@@ -44,6 +44,7 @@ function session(token: string): {
           updatedAt: null,
         },
         starters: { items: [], hideDefaults: false },
+        notifications: { inApp: true, desktop: false },
       },
     },
   };
@@ -81,6 +82,10 @@ function remote(
     accountsUpdateStarters: vi.fn(async (_token, input) => ({
       ok: true as const,
       value: { ...session("t-login").value.user, starters: input },
+    })),
+    accountsUpdateNotifications: vi.fn(async (_token, input) => ({
+      ok: true as const,
+      value: { ...session("t-login").value.user, notifications: input },
     })),
     accountsChangePassword: vi.fn(async () => session("t-changed")),
     accountsRequestPasswordReset: vi.fn(async () => ({

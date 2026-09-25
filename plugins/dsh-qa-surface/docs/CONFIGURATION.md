@@ -496,10 +496,14 @@ the one a hidden or backgrounded tab can use. With it off a finished turn stays
 inside the page, which is the answer for a shared laptop, where a personal
 notice is everybody's notice.
 
-The reader's own choice is kept in the browser, not on the account. It is asked
-once, from a click on a notice, and never on load or once per turn; a denial —
-or a browser that offers no such API, which includes a stand served over plain
-HTTP — leaves the in-page line standing.
+The reader's own answer about both channels lives in the settings dialog, on the
+account: it follows the person to another browser, and what they chose yesterday
+in this browser decides nothing about who signs in today. On a stand without
+accounts there is no account to write to, so the desktop choice stays in the
+browser that made it. Either way the answer is asked for once — from a click,
+never on load or once per turn — and a denial, or a browser that offers no such
+API (which includes a stand served over plain HTTP), leaves the in-page line
+standing.
 
 ## Configuration channel over the LAN
 

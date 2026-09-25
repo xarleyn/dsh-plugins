@@ -1,6 +1,6 @@
 # SPEC / PLAN — Owner-scoped turn-completion notifications
 
-**Status:** partly implemented — Phases 1 and 2 shipped, the rest is
+**Status:** partly implemented — Phases 1 to 3 shipped, the rest is
 open (§12).
 **Target:** `@yadsh/dsh-qa-surface`.
 **Tracker:** issue #306 «Замена плагина dsh-notification».
@@ -531,7 +531,7 @@ removal is a deployment action, not a code change.
 
 ## 12. Implementation status
 
-**Shipped (0.13.0): Phases 1 and 2, plus the desktop channel.** One
+**Shipped (0.14.0): Phases 1, 2 and 3, plus the desktop channel.** One
 differ over the sidebar's own rows
 (`src/client/notifications/turn-completion-source.ts`) covers both
 scopes §3.1 separated, because `buildChatRows` is already the
@@ -548,16 +548,26 @@ notifications.ts` the wiring. `config.notifications`
 
 **Where this departs from the design above.**
 
-- §3.5's account-level `QaAccountNotifications` is not there yet, so no
-  `accounts` field, no `accountsUpdateNotifications` remote, no
-  `NotificationSettingsPage`: the reader's own answer lives in
-  `localStorage` (R4 — `starters` has no browser-side precedent either,
-  and a control that needed a signed-in account would leave an
-  anonymous stand with no mute switch at all). Consequence: choices do
-  not follow a user across browsers yet.
-- The permission prompt is raised from a button on the notice itself,
-  once per browser — the "explicit user action" §3.3 asks for, without
-  waiting for the settings page it had imagined.
+- §3.5's five booleans are two: `inApp` and `desktop`. A preference is only
+  worth storing if a channel exists to honor it, and the shipped dispatcher has
+  two — the line in the page and the notice the page hands to the operating
+  system. `boundChat`/`backgroundChats` collapsed into one when the sidebar's
+  own rows became the single source (§3.1 asked for two), and `sound` and
+  `titleBadge` stay unshipped, so §3.5's `QaAccountNotifications` carries what
+  the code can act on rather than what the draft imagined.
+- §3.5's `defaultOs`/`defaultSound`/`allowAdminCrossUser` are not in
+  `config.notifications`. Nothing consumes them yet: no channel falls back to a
+  deployment default for a reader who never answered, and cross-user notices (§4)
+  were never in scope.
+- The desktop answer also stays in `localStorage`, as the choice of a stand
+  without accounts — no account to write to there — and as the record of whether
+  this browser has been asked at all. The second is deliberately browser-local: a
+  permission prompt belongs to the browser that shows it, so an account signing in
+  on a fresh browser is asked once again rather than silently denied the channel
+  it already wants.
+- The permission prompt is raised from a button on the notice itself and from the
+  settings page, both on a click — the "explicit user action" §3.3 asks for, and
+  never on load or once per turn.
 - §3.4's reason is always "готово": the host list carries no outcome
   classification, and inventing "остановлено"/"ошибка" from a phase the
   browser cannot read would be a guess.
@@ -568,10 +578,8 @@ notifications.ts` the wiring. `config.notifications`
   see less than the page shows; whether the host bumps the list in the
   moment a *non-bound* chat settles is still a live-stand question.
 
-**Left.** Phase 3 (the account block, its remote and migration, the
-settings page, and promoting «Настройки уведомлений» out of
-`GeneralSettingsPage`), Phase 4, the operator toggle for
-`config.notifications`, the "the agent is waiting for your answer"
+**Left.** Phase 4 (sound, title badge), the cross-tab election, the operator
+toggle for `config.notifications`, the "the agent is waiting for your answer"
 signal (§9.2), subagent settlement notices (§9.3), and Phase 6 —
 taking `dsh-notification` off the stand, which is a deployment action
 and not a change in this repository.

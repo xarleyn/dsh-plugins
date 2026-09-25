@@ -16,6 +16,7 @@ import type {
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type {
+  QaAccountNotificationsInput,
   QaAccountProfileInput,
   QaAccountStartersInput,
   QaApprovalDecision,
@@ -842,11 +843,28 @@ export function QaSurface(props: QaSurfaceProps) {
             accounts.updateStarters(input),
         }
       : undefined;
+    // One object serves both halves of the same decision: the form that edits
+    // it and the notices that obey it. A reader cannot be looking at one and
+    // waiting on the other, and a memo keeps the identity stable for the
+    // watcher that reads the channels out of it.
+    const notifications = {
+      notifications: accountsSnapshot.user.notifications,
+      switches: config.notifications,
+      onSave: (input: QaAccountNotificationsInput) =>
+        accounts.updateNotifications(input),
+    };
     const skills =
       config.accounts.skills.enabled && boundSkillApi !== undefined
         ? boundSkillApi
         : undefined;
-    return { profile, password, starters, skills, integrationTokens };
+    return {
+      profile,
+      password,
+      starters,
+      notifications,
+      skills,
+      integrationTokens,
+    };
   }, [accounts, accountsSnapshot, config, boundSkillApi, integrationTokens]);
   const busyTurn =
     state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
@@ -871,6 +889,9 @@ export function QaSurface(props: QaSurfaceProps) {
     notifications: config.notifications,
     storage: window.localStorage,
     storageKey: `${stateKey}:notifications`,
+    // Signed in, the account's own channels decide and the settings form is
+    // what writes them; anonymously, the hook falls back to this browser.
+    account: settingsDialog?.notifications,
     paused: state.phase === "reconnecting",
     activeSessionId,
     onSwitch: handleSwitch,
@@ -1121,6 +1142,7 @@ export function QaSurface(props: QaSurfaceProps) {
           {...(settingsDialog.starters === undefined
             ? {}
             : { starters: settingsDialog.starters })}
+          notifications={settingsDialog.notifications}
           {...(settingsDialog.integrationTokens === undefined
             ? {}
             : { integrationTokens: settingsDialog.integrationTokens })}

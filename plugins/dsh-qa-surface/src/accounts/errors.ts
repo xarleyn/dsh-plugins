@@ -18,6 +18,8 @@ export type QaAccountsErrorReason =
   | "profile-disabled"
   | "invalid-starters"
   | "starters-disabled"
+  /** The notifications payload named a channel that is not a yes or a no. */
+  | "invalid-notifications"
   /** The endpoint this credential is for is switched off on this deployment. */
   | "integration-disabled"
   | "invalid-role"
