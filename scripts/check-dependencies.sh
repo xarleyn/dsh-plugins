@@ -25,6 +25,11 @@
 #   §27.9  No cross-package relative imports (`../../other-plugin/src/...`).
 #   §27.10 Workspace packages must be consumed through their declared
 #          package `exports` map only.
+#   §27.11 A plugin may depend on another plugin only through an explicit
+#          edge in plugin-dependency-allowlist.json (every dependency field
+#          counts; a missing file means no edge is allowed). The allow-list
+#          itself is validated: names must resolve to plugins and every edge
+#          must carry a reason.
 #
 # This wrapper owns the bash-specific parts of the contract:
 #   - resolves the repo root (DSH_DEPS_ROOT override for testing) and exports
