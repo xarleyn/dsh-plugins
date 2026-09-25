@@ -6,17 +6,23 @@
  *  - `interrupt`: chunks pass through; a detected violation stops the
  *    generation (an unsafe prefix may already be visible).
  *  - `buffered` (default): text/reasoning chunks are quarantined per channel
- *    until their rolling-window snapshot passes; blocked windows and their
- *    pending buffer never reach downstream; the active turn is cancelled so
- *    the abort reaches the provider.
+ *    until their rolling-window snapshot passes; a window releases only the
+ *    prefix it covered, blocked windows and their pending buffer never reach
+ *    downstream, and the active turn is cancelled so the abort reaches the
+ *    provider.
+ *
+ * Enforcement itself follows the gate profile (§24) through the shared mode
+ * mapping, so an auditing gate watches without withholding anything.
  *
  * Stream invariants (§33): quarantined content is released in original order
  * together with its stashed `block-start`, so no half block structure is ever
- * emitted; `usage`/`finish` flush pending content through a final check.
+ * emitted; `usage`/`finish` walk the pending buffer through final checks until
+ * it is drained.
  */
 
 import { isGateOff, type ResolvedSafetyGateConfig } from "../config.js";
 import type { CheckPipeline } from "../pipeline.js";
+import { applyGateMode } from "../rules/policy.js";
 import {
   isDeltaChunk,
   blockedFinish,
@@ -119,28 +125,44 @@ export function guardOutputStream(
         turn: options.turn,
         step: options.step,
       });
-      return result.decision;
+      // Same cap every other surface applies (SPEC §24): the audit mode
+      // records and never enforces, `warn` turns a block into a warning. A
+      // block that reaches the caller is the one thing that withholds text or
+      // cancels the turn, so an auditing gate releases what it quarantined.
+      return applyGateMode(result.decision, config.mode);
     };
 
-    /** Final-check and flush pending quarantined content. Returns null on block. */
+    /**
+     * Final-check and flush pending quarantined content, one window at a time:
+     * a passing check releases only the head it covered, so a buffer larger
+     * than the window is walked to the end rather than shipped unscanned.
+     * Returns null on block.
+     */
     const finalizePending = async (
       state: BlockChannelState,
     ): Promise<StreamChunk[] | null> => {
-      if (!state.quarantine.hasPending) return [];
-      const decision = await check(
-        state,
-        state.quarantine.snapshotText(state.tail.tail()),
-      );
-      state.quarantine.markChecked(Date.now());
-      if (decision === "block") {
-        stop(
-          codeFor(state.channel),
-          `blocked ${state.channel} output by safety policy`,
-          state.quarantine.size,
+      const out: StreamChunk[] = [];
+      while (state.quarantine.hasPending) {
+        const pendingBefore = state.quarantine.size;
+        const decision = await check(
+          state,
+          state.quarantine.snapshotText(state.tail.tail()),
         );
-        return null;
+        state.quarantine.markChecked(Date.now());
+        if (decision === "block") {
+          stop(
+            codeFor(state.channel),
+            `blocked ${state.channel} output by safety policy`,
+            state.quarantine.size,
+          );
+          return null;
+        }
+        out.push(...collectFlush(state));
+        // A passed window always advances past the pending head; a round that
+        // released nothing has nothing left that another check could release.
+        if (state.quarantine.size === pendingBefore) break;
       }
-      return collectFlush(state);
+      return out;
     };
 
     const collectFlush = (state: BlockChannelState): StreamChunk[] => {
