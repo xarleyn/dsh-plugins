@@ -104,6 +104,34 @@ describe("single-slot coordinator: slot lifecycle (SPEC §69-§75)", () => {
     }
   });
 
+  it("recovery: a later save clears the invalidation and A restores again (§31)", async () => {
+    const harness = await createHarness();
+    try {
+      await run(harness, "session-a");
+      await run(harness, "session-b"); // saves A
+      harness.backend.corruptSnapshot(residentKey(harness, "session-a"));
+      await run(harness, "session-a"); // restore fails -> invalid + cold
+      expect(
+        (await harness.repository.load(buildIdentity(harness, "session-a")))
+          ?.state,
+      ).toBe("invalid");
+
+      await run(harness, "session-b"); // save-before-evict writes A again
+      const recovered = await harness.repository.load(
+        buildIdentity(harness, "session-a"),
+      );
+      expect(recovered?.state).toBe("ready");
+      expect(recovered?.invalidReason).toBeNull();
+
+      await run(harness, "session-a");
+      expect(harness.metrics.counters.restoreFailures).toBe(1);
+      expect(harness.metrics.counters.restoreHits).toBe(2);
+      expect(harness.coordinator.slot.ownerSessionId).toBe("session-a");
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
   it("restore verification rejects n_restored <= 0 (SPEC §24)", async () => {
     const harness = await createHarness();
     harness.backend.setRestoredTokens(0);

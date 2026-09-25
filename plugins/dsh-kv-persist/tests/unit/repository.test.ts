@@ -163,6 +163,79 @@ describe("snapshot repository (SPEC §39-§40)", () => {
     expect(stored?.snapshotFilename).toBeDefined();
   });
 
+  it("a later successful write clears an invalidation (SPEC §31 recovery)", async () => {
+    const repository = await newRepository();
+    await repository.put({
+      identity: identity(),
+      slotId: 0,
+      sessionSeq: null,
+      tokens: null,
+      bytes: null,
+      now: "2026-08-29T20:00:00.000Z",
+    });
+    await repository.markInvalid(
+      identity(),
+      "RESTORE_FAILED",
+      "2026-08-29T20:10:00.000Z",
+    );
+    await repository.put({
+      identity: identity(),
+      slotId: 0,
+      sessionSeq: null,
+      tokens: null,
+      bytes: 1_024,
+      now: "2026-08-29T20:20:00.000Z",
+    });
+
+    const stored = await repository.load(identity());
+    expect(stored?.state).toBe("ready");
+    expect(stored?.invalidReason).toBeNull();
+    expect(stored?.createdAt).toBe("2026-08-29T20:00:00.000Z");
+    expect(stored?.updatedAt).toBe("2026-08-29T20:20:00.000Z");
+    await expect(repository.findCompatible(identity())).resolves.toMatchObject({
+      state: "ready",
+      bytes: 1_024,
+    });
+    await expect(repository.counts()).resolves.toEqual({
+      known: 1,
+      valid: 1,
+      invalid: 0,
+    });
+  });
+
+  it("re-adopts a fingerprint-invalidated manifest after a save for the new runtime", async () => {
+    const repository = await newRepository();
+    await repository.put({
+      identity: identity(),
+      slotId: 0,
+      sessionSeq: null,
+      tokens: null,
+      bytes: null,
+      now: "2026-08-29T20:00:00.000Z",
+    });
+    const changed = buildSnapshotIdentity({
+      sessionId: "session-a",
+      route: { provider: "local-qwen", model: "qwen-test" },
+      baseURL: "http://127.0.0.1:8080",
+      runtimeKey: "qwen38-v2",
+    });
+    await expect(repository.findCompatible(changed)).resolves.toBeNull();
+    // The cold path saves for the new runtime; the snapshot is one filename.
+    await repository.put({
+      identity: changed,
+      slotId: 0,
+      sessionSeq: null,
+      tokens: null,
+      bytes: 2_048,
+      now: "2026-08-29T20:30:00.000Z",
+    });
+    await expect(repository.findCompatible(changed)).resolves.toMatchObject({
+      state: "ready",
+      invalidReason: null,
+      compatibilityVersion: changed.compatibilityVersion,
+    });
+  });
+
   it("counts known/valid/invalid manifests", async () => {
     const repository = await newRepository();
     await repository.put({
