@@ -6,6 +6,7 @@ import {
 } from "node:crypto";
 import type {
   QaAccountIdentityField,
+  QaAccountNotificationsInput,
   QaAccountProfile,
   QaAccountProfileInput,
   QaAccountRole,
@@ -24,6 +25,10 @@ import type {
   QaUserAccess,
   QaWhoamiResult,
 } from "../types.js";
+import {
+  normalizeNotifications,
+  validateNotificationsWrite,
+} from "../notifications.js";
 import {
   QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX,
   normalizeProfile,
@@ -189,6 +194,7 @@ function toPublic(user: StoredUser): QaAccountUserPublic {
     disabled: user.disabled === true,
     profile: normalizeProfile(user.profile),
     starters: normalizeStarters(user.starters),
+    notifications: normalizeNotifications(user.notifications),
   };
 }
 
@@ -1533,6 +1539,34 @@ export class QaAccounts {
           items: result.value.items.map((item) => ({ ...item })),
           hideDefaults: result.value.hideDefaults,
         },
+      })),
+    );
+  }
+
+  /**
+   * Replace the token account's notification channels. Same self-service shape
+   * as {@link updateOwnStarters}: the token is the only identity, the write is
+   * full-replace, and a rejected payload leaves the stored record alone.
+   *
+   * Deliberately not gated by a config key the way profiles and starters are —
+   * a stand that wanted this switched off already has `notifications.enabled`,
+   * and two switches for one decision is how a deployment ends up with an
+   * answer nobody can find.
+   */
+  updateOwnNotifications(
+    token: string,
+    input: QaAccountNotificationsInput,
+  ): QaAccountUserPublic {
+    this.reloadIfChanged();
+    const user = this.requireUser(token);
+    const result = validateNotificationsWrite(input);
+    if (!result.ok) {
+      throw new QaAccountsError("invalid-notifications", result.message);
+    }
+    return toPublic(
+      this.editUser(user.email, (current) => ({
+        ...current,
+        notifications: { ...result.value },
       })),
     );
   }

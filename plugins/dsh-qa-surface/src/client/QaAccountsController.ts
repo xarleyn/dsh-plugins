@@ -1,4 +1,5 @@
 import type {
+  QaAccountNotificationsInput,
   QaAccountProfileInput,
   QaAccountSession,
   QaAccountStartersInput,
@@ -95,6 +96,8 @@ export function accountsErrorMessage(code: string | null): string {
       return "Проверьте подсказки: заполните название и промпт, текст не слишком длинный.";
     case "starters-disabled":
       return "Свои подсказки отключены на этом сервере.";
+    case "invalid-notifications":
+      return "Не удалось прочитать настройки уведомлений: каждый канал — это да или нет.";
     case "integration-disabled":
       return "Интеграционный API выключен на этом стенде: такому токену некуда обращаться. Включите его в настройках стенда.";
     case "auth-required":
@@ -425,6 +428,36 @@ export class QaAccountsController {
       return null;
     } catch (error) {
       console.warn("dsh-qa-surface: starters update failed", error);
+      return accountsErrorMessage(null);
+    }
+  }
+
+  /**
+   * Replace the signed-in user's own notification channels, mirroring
+   * {@link updateStarters}: refusal copy on rejection, null once the snapshot
+   * carries the stored record — which is also how the page learns the choice
+   * took effect, since it reads the same snapshot the notices plan with.
+   */
+  async updateNotifications(
+    input: QaAccountNotificationsInput,
+  ): Promise<string | null> {
+    const token = this.tokenValue;
+    if (this.disposed || token === null || this.snapshot.stage !== "authed") {
+      return accountsErrorMessage(null);
+    }
+    try {
+      const result = await this.options.remote.accountsUpdateNotifications(
+        token,
+        input,
+      );
+      if (this.disposed || this.snapshot.stage !== "authed") return null;
+      if (!result.ok) {
+        return accountsErrorMessage(accountsReasonOf(result.error));
+      }
+      this.publish({ ...this.snapshot, user: result.value });
+      return null;
+    } catch (error) {
+      console.warn("dsh-qa-surface: notifications update failed", error);
       return accountsErrorMessage(null);
     }
   }

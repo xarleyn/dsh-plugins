@@ -7,6 +7,7 @@ import type {} from "@deepseek-ai/dsh-api-session-controller/remote";
 import type {} from "@deepseek-ai/dsh-agent-presets/remote";
 import type { UiConversation } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {
+  QaAccountNotificationsInput,
   QaAccountProfileInput,
   QaAccountSession,
   QaAccountStartersInput,
@@ -597,6 +598,15 @@ export interface QaAccountsApi {
   accountsUpdateStarters(
     token: string,
     input: QaAccountStartersInput,
+  ): Promise<RemoteResult<QaAccountUserPublic>>;
+  /**
+   * Replace the caller's own notification channels; the token is the identity.
+   * The stand's switches are applied when a notice is planned, not here, so
+   * this write can only ever narrow what the deployment allows.
+   */
+  accountsUpdateNotifications(
+    token: string,
+    input: QaAccountNotificationsInput,
   ): Promise<RemoteResult<QaAccountUserPublic>>;
   /**
    * Replace the caller's own password. The answer carries a fresh token: the

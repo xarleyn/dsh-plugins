@@ -12,6 +12,7 @@ import type {
 import {
   snapshotDigest,
   type AccountsFile,
+  type StoredNotifications,
   type StoredOwnership,
   type StoredProfile,
   type StoredStarters,
@@ -110,6 +111,16 @@ const MIGRATIONS: readonly SqliteMigration[] = [
         ON qa_service_tokens (user_id, created_at);
     `,
   },
+  {
+    version: 3,
+    up: `
+      -- Which channels a finished turn may use for each reader. Its own column
+      -- rather than a field bolted onto the profile: the profile is content the
+      -- agent prompt renders, this is a switch the prompt must never see, and a
+      -- reader who has never opened the form stores nothing at all.
+      ALTER TABLE qa_accounts ADD COLUMN notifications_json TEXT;
+    `,
+  },
 ];
 
 interface AccountRow {
@@ -126,6 +137,8 @@ interface AccountRow {
   readonly profile_json: string | null;
   readonly starters_json: string | null;
   readonly qa_access_json: string | null;
+  /** Added by migration 3, so physically last. */
+  readonly notifications_json: string | null;
 }
 
 interface PasswordResetRow {
@@ -214,6 +227,9 @@ function toUser(row: AccountRow): StoredUser {
   const profile = parseJsonColumn<StoredProfile>(row.profile_json);
   const starters = parseJsonColumn<StoredStarters>(row.starters_json);
   const qaAccess = parseJsonColumn<QaUserAccess>(row.qa_access_json);
+  const notifications = parseJsonColumn<StoredNotifications>(
+    row.notifications_json,
+  );
   return {
     id: row.id,
     email: row.email,
@@ -227,6 +243,7 @@ function toUser(row: AccountRow): StoredUser {
     ...(profile === undefined ? {} : { profile }),
     ...(starters === undefined ? {} : { starters }),
     ...(qaAccess === undefined ? {} : { qaAccess }),
+    ...(notifications === undefined ? {} : { notifications }),
   };
 }
 
@@ -692,6 +709,9 @@ export class QaAccountsDatabase {
       user.profile === undefined ? null : JSON.stringify(user.profile),
       user.starters === undefined ? null : JSON.stringify(user.starters),
       user.qaAccess === undefined ? null : JSON.stringify(user.qaAccess),
+      user.notifications === undefined
+        ? null
+        : JSON.stringify(user.notifications),
     ];
   }
 
@@ -707,7 +727,8 @@ export class QaAccountsDatabase {
               SET email = ?, display_name = ?, role = ?, disabled = ?,
                   token_version = ?, created_at = ?, last_login_at = ?,
                   password_salt = ?, password_hash = ?, profile_json = ?,
-                  starters_json = ?, qa_access_json = ?
+                  starters_json = ?, qa_access_json = ?,
+                  notifications_json = ?
             WHERE id = ?`,
         )
         .run(...columns, user.id);
@@ -723,8 +744,8 @@ export class QaAccountsDatabase {
         `INSERT INTO qa_accounts
            (id, seq, email, display_name, role, disabled, token_version,
             created_at, last_login_at, password_salt, password_hash,
-            profile_json, starters_json, qa_access_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            profile_json, starters_json, qa_access_json, notifications_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(user.id, next.next, ...columns);
   }

@@ -1,0 +1,85 @@
+import { createPortal } from "react-dom";
+import type { QaTurnNoticeItem } from "../notifications/notification-dispatcher.js";
+
+export interface QaTurnNoticeProps {
+  /** Newest first; the stack keeps a handful and drops what it cannot show. */
+  readonly items: readonly QaTurnNoticeItem[];
+  /** Open the chat a notice is about. */
+  readonly onOpen: (sessionId: string) => void;
+  /** Take one line out of the stack. */
+  readonly onDismiss: (key: string) => void;
+  /**
+   * Offer the desktop channel. Omitted when it is unavailable, refused, or
+   * already answered: the offer is a single question per browser, never a
+   * fixture of the stack.
+   */
+  readonly onEnableDesktop?: () => void;
+}
+
+export const QA_TURN_NOTICE_COPY = Object.freeze({
+  region: "Уведомления о завершённых ходах",
+  finished: "Ход завершён",
+  dismiss: "Скрыть уведомление",
+  offer: "Системные уведомления приходят, даже когда эта вкладка свёрнута.",
+  offerAction: "Включить системные уведомления",
+});
+
+function CrossIcon() {
+  return (
+    <svg viewBox="0 0 14 14" aria-hidden="true">
+      <path d="m3.5 3.5 7 7m0-7-7 7" />
+    </svg>
+  );
+}
+
+/**
+ * The in-app half of a turn-completion notice: one line per chat that settled
+ * while the reader was elsewhere, carried by the page until they open the chat
+ * or wave it off. It names the chat and the fact — never the answer, which is
+ * what the transcript is for.
+ */
+export function QaTurnNotice(props: QaTurnNoticeProps) {
+  const { items, onOpen, onDismiss, onEnableDesktop } = props;
+  if (items.length === 0) return null;
+
+  return createPortal(
+    <div
+      className="dsh-qa-turn-notice"
+      role="region"
+      aria-label={QA_TURN_NOTICE_COPY.region}
+      aria-live="polite"
+    >
+      {items.map((item) => (
+        <div className="dsh-qa-turn-notice__item" key={item.key}>
+          <button
+            type="button"
+            className="dsh-qa-turn-notice__open"
+            onClick={() => onOpen(item.sessionId)}
+          >
+            <span className="dsh-qa-turn-notice__state">
+              {QA_TURN_NOTICE_COPY.finished}
+            </span>
+            <span className="dsh-qa-turn-notice__chat">{item.title}</span>
+          </button>
+          <button
+            type="button"
+            className="dsh-qa-turn-notice__dismiss"
+            aria-label={`${QA_TURN_NOTICE_COPY.dismiss}: ${item.title}`}
+            onClick={() => onDismiss(item.key)}
+          >
+            <CrossIcon />
+          </button>
+        </div>
+      ))}
+      {onEnableDesktop === undefined ? null : (
+        <div className="dsh-qa-turn-notice__offer">
+          <p>{QA_TURN_NOTICE_COPY.offer}</p>
+          <button type="button" onClick={onEnableDesktop}>
+            {QA_TURN_NOTICE_COPY.offerAction}
+          </button>
+        </div>
+      )}
+    </div>,
+    document.body,
+  );
+}
