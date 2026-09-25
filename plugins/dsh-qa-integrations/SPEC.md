@@ -152,6 +152,11 @@ After saving, replace the input with:
 
 There must be no `show token` / `copy existing token` action.
 
+A deployment that manages a service credential starts a new connection on it, so
+the form has to name the way out: an action labelled «Ввести свой токен» reaches
+these fields without the user first working out that unchecking «Использовать
+сервисный токен» is how one connects as themselves.
+
 ---
 
 ## 4. Goals

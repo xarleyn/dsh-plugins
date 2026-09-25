@@ -180,6 +180,7 @@ describe("Integrations Weblate card", () => {
     render(<Card token="qa-account-token" />);
     expect(await screen.findByText("Инстанс: Corporate Weblate")).toBeDefined();
     expect(screen.queryByLabelText("Инстанс Weblate")).toBeNull();
+    expect(screen.queryByText(/подключать нечего/u)).toBeNull();
     fireEvent.change(screen.getByLabelText("API-токен Weblate"), {
       target: { value: "wlu_abcdefghijklmnopqrstuvwxyz0123456789" },
     });

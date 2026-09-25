@@ -132,9 +132,10 @@ const SERVICE_REASON: Readonly<Record<CapabilityServiceState, string>> =
   });
 
 /**
- * The managed-credential block of a connect form: one checkbox, plus what the
- * mode does and does not give. Rendered by the providers a deployment may
- * manage a credential for, using the instance the form selected.
+ * The managed-credential block of a connect form: one checkbox, what the mode
+ * does and does not give, and — while the mode is on — the action that names
+ * the other way to connect. Rendered by the providers a deployment may manage a
+ * credential for, using the instance the form selected.
  */
 export function serviceConnectOption<Extra>(
   state: ProviderCardState<Extra>,
@@ -156,6 +157,21 @@ export function serviceConnectOption<Extra>(
           ? `Сервисный аккаунт: ${state.service.label}. Токен создавать не нужно; сервисный режим даёт только безопасное чтение — изменения, секреты и чувствительные данные недоступны.`
           : "Подключение под вашим личным аккаунтом: доступны все возможности, которые разрешает ваш токен."}
       </p>
+      {state.useService ? (
+        // The managed credential is the default, so the personal field this
+        // checkbox hides is otherwise reachable only by guessing that an
+        // unchecked box is how one opts out.
+        <div className="dsh-qa-integrations__actions">
+          <button
+            className="dsh-qa-integrations__button"
+            type="button"
+            disabled={state.busy}
+            onClick={() => state.setUseService(false)}
+          >
+            Ввести свой токен
+          </button>
+        </div>
+      ) : null}
     </div>
   );
 }

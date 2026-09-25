@@ -335,10 +335,11 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
         </div>
       );
     },
-    notConfiguredHint: () => (
-      <p className="dsh-qa-integrations__hint">
-        Оператор не настроил ни одного сайта Confluence, подключать нечего.
-      </p>
-    ),
+    notConfiguredHint: (state) =>
+      state.extra.sites.length === 0 ? (
+        <p className="dsh-qa-integrations__hint">
+          Оператор не настроил ни одного сайта Confluence, подключать нечего.
+        </p>
+      ) : null,
   });
 }

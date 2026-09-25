@@ -265,10 +265,11 @@ export function createWeblateCard(remote: WeblateRemote) {
         </div>
       );
     },
-    notConfiguredHint: () => (
-      <p className="dsh-qa-integrations__hint">
-        Оператор не настроил ни одного инстанса Weblate, подключать нечего.
-      </p>
-    ),
+    notConfiguredHint: (state) =>
+      state.extra.instances.length === 0 ? (
+        <p className="dsh-qa-integrations__hint">
+          Оператор не настроил ни одного инстанса Weblate, подключать нечего.
+        </p>
+      ) : null,
   });
 }

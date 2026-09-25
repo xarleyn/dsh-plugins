@@ -13,6 +13,8 @@ import {
   BITRIX24_COMMENT_TOOL_NAME,
   BITRIX24_TOOL_NAMES,
 } from "../src/providers/bitrix24/tools.js";
+import { GITLAB_TOOL_NAMES } from "../src/providers/gitlab/tools.js";
+import { TEAMCITY_TOOL_NAMES } from "../src/providers/teamcity/tools.js";
 import {
   createIntegrationTools,
   INTEGRATION_TOOL_NAMES,
@@ -273,6 +275,44 @@ describe("provider boundary", () => {
     );
     expect(brokerSuite).not.toMatch(
       /bitrix|confluence|gitlab|jira|teamcity|testit|weblate/iu,
+    );
+  });
+});
+
+describe("the mounted tools follow the providers a deployment enables", () => {
+  const mounted = (enabledProviders?: readonly string[]) =>
+    createIntegrationTools({
+      broker: { call: async () => undefined } as never,
+      principalForSession: () => undefined,
+      enabledProviders: enabledProviders as never,
+    }).map((tool) => tool.name);
+
+  it("takes a switched-off provider's tools away, mount and admission alike", () => {
+    const enabled = ["gitlab", "teamcity"];
+    const names = integrationToolNames({ enabledProviders: enabled });
+    expect(names).toEqual([...GITLAB_TOOL_NAMES, ...TEAMCITY_TOOL_NAMES]);
+    expect(names).not.toContain("testit_connection_get");
+    expect(mounted(enabled)).toEqual(names);
+  });
+
+  it("keeps the whole surface for a caller that names no providers", () => {
+    expect(integrationToolNames()).toEqual([...INTEGRATION_TOOL_NAMES]);
+    expect(mounted()).toEqual([...INTEGRATION_TOOL_NAMES]);
+  });
+
+  it("leaves the writing tool out together with its own provider", () => {
+    expect(
+      integrationToolNames({
+        bitrix24CrmCommentWrite: true,
+        enabledProviders: ["gitlab"],
+      }),
+    ).not.toContain(BITRIX24_COMMENT_TOOL_NAME);
+    const names = integrationToolNames({
+      bitrix24CrmCommentWrite: true,
+      enabledProviders: ["bitrix24", "gitlab"],
+    });
+    expect(names.indexOf(BITRIX24_COMMENT_TOOL_NAME)).toBe(
+      BITRIX24_TOOL_NAMES.length,
     );
   });
 });
