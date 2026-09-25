@@ -45,15 +45,25 @@ describe("turn completion notice", () => {
       name: QA_TURN_NOTICE_COPY.region,
     });
     expect(region.getAttribute("aria-live")).toBe("polite");
-    expect(screen.getAllByText(QA_TURN_NOTICE_COPY.finished)).toHaveLength(2);
-    expect(screen.getByText("Подбор оборудования")).toBeTruthy();
-    expect(screen.getByText("Монтаж кондиционера")).toBeTruthy();
+    expect(screen.getAllByTestId("qa-turn-notice-item")).toHaveLength(2);
+    expect(
+      screen.getByRole("button", {
+        name: `${QA_TURN_NOTICE_COPY.finished} Подбор оборудования`,
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("button", {
+        name: `${QA_TURN_NOTICE_COPY.finished} Монтаж кондиционера`,
+      }),
+    ).toBeTruthy();
   });
 
   it("opens the chat a line is about", () => {
     const onOpen = vi.fn();
     mount({ onOpen });
-    fireEvent.click(screen.getByText("Монтаж кондиционера"));
+    const opens = screen.getAllByTestId("qa-turn-notice-open");
+    expect(opens).toHaveLength(2);
+    fireEvent.click(opens[1] as HTMLElement);
     expect(onOpen).toHaveBeenCalledWith("a");
   });
 
@@ -70,7 +80,7 @@ describe("turn completion notice", () => {
 
   it("renders nothing while there is nothing to report", () => {
     render(<QaTurnNotice items={[]} onOpen={vi.fn()} onDismiss={vi.fn()} />);
-    expect(document.querySelector(".dsh-qa-turn-notice")).toBeNull();
+    expect(screen.queryByTestId("qa-turn-notice")).toBeNull();
   });
 
   it("offers the desktop channel only when the caller allows it", () => {

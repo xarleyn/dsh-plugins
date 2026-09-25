@@ -45,15 +45,21 @@ export function QaTurnNotice(props: QaTurnNoticeProps) {
   return createPortal(
     <div
       className="dsh-qa-turn-notice"
+      data-testid="qa-turn-notice"
       role="region"
       aria-label={QA_TURN_NOTICE_COPY.region}
       aria-live="polite"
     >
       {items.map((item) => (
-        <div className="dsh-qa-turn-notice__item" key={item.key}>
+        <div
+          className="dsh-qa-turn-notice__item"
+          data-testid="qa-turn-notice-item"
+          key={item.key}
+        >
           <button
             type="button"
             className="dsh-qa-turn-notice__open"
+            data-testid="qa-turn-notice-open"
             onClick={() => onOpen(item.sessionId)}
           >
             <span className="dsh-qa-turn-notice__state">
@@ -64,6 +70,7 @@ export function QaTurnNotice(props: QaTurnNoticeProps) {
           <button
             type="button"
             className="dsh-qa-turn-notice__dismiss"
+            data-testid="qa-turn-notice-dismiss"
             aria-label={`${QA_TURN_NOTICE_COPY.dismiss}: ${item.title}`}
             onClick={() => onDismiss(item.key)}
           >
@@ -74,7 +81,11 @@ export function QaTurnNotice(props: QaTurnNoticeProps) {
       {onEnableDesktop === undefined ? null : (
         <div className="dsh-qa-turn-notice__offer">
           <p>{QA_TURN_NOTICE_COPY.offer}</p>
-          <button type="button" onClick={onEnableDesktop}>
+          <button
+            type="button"
+            data-testid="qa-turn-notice-offer-action"
+            onClick={onEnableDesktop}
+          >
             {QA_TURN_NOTICE_COPY.offerAction}
           </button>
         </div>
