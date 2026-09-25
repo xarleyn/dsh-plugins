@@ -51,7 +51,7 @@ class FakeSocketRoute {
 }
 
 class FakeContext {
-  /** What the context was built with, so a test can read the policy options. */
+  /** The order the provider wired this context, for the routing test. */
   readonly events: string[] = [];
   readonly sockets: FakeSocketRoute[] = [];
   closed = false;
@@ -138,8 +138,8 @@ function createProvider(
     async () =>
       ({
         chromium: {
-          // Nothing on disk answers to this path, so the provider has exactly
-          // one candidate and one launch attempt per start to work through.
+          // Never consulted: the start options below pin one executable, so
+          // every start is exactly one launch attempt this test can gate.
           executablePath: () => "no-such-browser-on-purpose",
           launch: async () => {
             const browser = new FakeBrowser();
