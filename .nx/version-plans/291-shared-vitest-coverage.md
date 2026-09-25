@@ -1,5 +1,4 @@
 ---
-"@yadsh/dsh-documents": patch
 "@yadsh/dsh-draft-sessions": patch
 "@yadsh/dsh-qa-browser": patch
 "@yadsh/dsh-qa-integrations": patch
@@ -8,11 +7,22 @@
 "@yadsh/dsh-ui-repair": patch
 ---
 
-Every one of these plugins now takes its test coverage from the shared Vitest
-preset, so `pnpm run test:coverage` measures the same `src` tree in each of them
-and writes the same machine-readable summary. Four of them had a
-`coverage.include` of their own; the preset merges arrays instead of replacing
-them, so a narrowed one never applied and a repeated one only duplicated the
-base. `dsh-documents` raises its test timeout to 30s because its suites spawn
-real converters and that is the budget an instrumented run needs. No runtime
+Test coverage now comes from the shared Vitest preset, so `pnpm run
+test:coverage` measures the same tree in every package and writes the same
+machine-readable `coverage/coverage-summary.json` beside the printed table.
+
+Until this release the preset carried no coverage block at all, so whatever a
+package listed as its `include` was the whole denominator. That choice is gone:
+`mergeConfig` concatenates arrays instead of replacing them, so a re-declared
+`include` can only widen the tree and `exclude` is the only way left to measure
+less. The blocks are dropped rather than rewritten, which means a package that
+used to measure part of its sources now measures all of them, client code
+included. Where that happens the percentage falls with the wider denominator
+while not a single test changed, and the number is comparable with the other
+packages of this workspace but not with what the same package printed before.
+Neither is it comparable with the older test-lines-per-source-lines ratio, which
+counted words instead of executed statements.
+
+No thresholds on purpose: the percentage is a measurement to read before a
+refactor, not a gate that competes with the per-file size budget. No runtime
 change.

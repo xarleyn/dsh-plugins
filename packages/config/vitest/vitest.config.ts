@@ -34,10 +34,11 @@ import {
  * ```
  *
  * Coverage is configured here so every package measures the same denominator:
- * the `src` tree, reported as text plus a machine-readable summary. Note that
- * `mergeConfig` concatenates arrays: a package widens the measured tree with
- * `coverage.include` and narrows it with `coverage.exclude`, never by
- * re-declaring `include`.
+ * the `src` tree, reported as text plus a machine-readable summary. Because
+ * `mergeConfig` concatenates arrays instead of replacing them, re-declaring
+ * `coverage.include` in a package can only widen that tree; measuring less is
+ * `coverage.exclude`'s job, and it costs comparability with every other
+ * package. Leave the default alone unless there is a stated reason.
  *
  * No `thresholds` on purpose: a floor would turn the percentage into a gate that
  * competes with the per-file size budget, and the first response to a red gate is
