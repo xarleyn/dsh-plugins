@@ -50,6 +50,7 @@ function accountUser(): QaAccountUserPublic {
       updatedAt: null,
     },
     starters: { items: [], hideDefaults: false },
+    notifications: { inApp: true, desktop: false },
   };
 }
 

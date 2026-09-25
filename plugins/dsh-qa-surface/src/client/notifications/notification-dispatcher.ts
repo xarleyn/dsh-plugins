@@ -1,4 +1,5 @@
 import type { QaTurnCompletion } from "./turn-completion-source.js";
+import type { QaNoticeChannels } from "./preferences.js";
 
 /** What the browser exposes of the desktop notification API. */
 export type QaNotificationPermission = NotificationPermission | "unsupported";
@@ -13,6 +14,8 @@ export interface QaTurnNoticeItem {
 /** A finished turn and the channels it takes. */
 export interface PlannedTurnNotice {
   readonly item: QaTurnNoticeItem;
+  /** Keep the line in this page, or send the fact to the desktop alone. */
+  readonly inApp: boolean;
   /** Raise the desktop notice as well, or keep this one inside the page. */
   readonly desktop: boolean;
 }
@@ -20,8 +23,8 @@ export interface PlannedTurnNotice {
 export interface QaNoticeContext {
   /** `config.notifications`: the deployment's switches over both channels. */
   readonly switches: { readonly enabled: boolean; readonly allowOs: boolean };
-  /** The user's own choice, persisted per browser. */
-  readonly osChosen: boolean;
+  /** The reader's own choice, from their account or from this browser. */
+  readonly channels: QaNoticeChannels;
   readonly permission: QaNotificationPermission;
   /** Whether this page is the one the person is looking at right now. */
   readonly focused: boolean;
@@ -38,28 +41,32 @@ export const QA_TURN_NOTICE_BODY = "Ход завершён";
  * A notice exists to say "this happened where you were not looking". The chat
  * on screen answers itself — the reply arrives in front of the reader — so it
  * gets nothing, while a background chat that settles under their eyes still
- * gets the in-app line. The desktop channel additionally needs the
- * deployment's permission, the browser's, and the user's own choice.
+ * gets the in-app line. Each channel then needs its own two answers: the
+ * deployment's and the reader's. The desktop additionally needs the browser's
+ * permission, which neither of those can grant on its behalf.
  */
 export function planTurnNotice(
   completion: QaTurnCompletion,
   context: QaNoticeContext,
 ): PlannedTurnNotice | null {
-  const { switches, activeSessionId } = context;
+  const { switches, channels, activeSessionId } = context;
   if (!switches.enabled) return null;
   const onScreen = completion.sessionId === activeSessionId;
   if (context.focused && onScreen) return null;
+  const desktop =
+    !context.focused &&
+    switches.allowOs &&
+    channels.desktop &&
+    context.permission === "granted";
+  if (!channels.inApp && !desktop) return null;
   return {
     item: {
       key: `${completion.sessionId}:${completion.at}`,
       sessionId: completion.sessionId,
       title: completion.title,
     },
-    desktop:
-      !context.focused &&
-      switches.allowOs &&
-      context.osChosen &&
-      context.permission === "granted",
+    inApp: channels.inApp,
+    desktop,
   };
 }
 

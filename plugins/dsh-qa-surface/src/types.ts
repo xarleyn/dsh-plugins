@@ -330,6 +330,8 @@ export interface QaAccountUserPublic {
   readonly profile: QaAccountProfile;
   /** The account's own starter buttons; empty until customized. */
   readonly starters: QaAccountStarters;
+  /** Which channels a finished turn may use for this reader. */
+  readonly notifications: QaAccountNotifications;
 }
 
 /** One external system the deployment collects a handle for. */
@@ -384,6 +386,33 @@ export interface QaAccountStarters {
 export interface QaAccountStartersInput {
   readonly items: readonly QaAccountStarter[];
   readonly hideDefaults: boolean;
+}
+
+/**
+ * What one account allows a finished turn to do to it. Pure UI preferences:
+ * unlike the profile, none of this reaches the agent prompt, and unlike the
+ * starter buttons, none of it is content — it is two switches over the
+ * channels the plugin already knows how to raise.
+ *
+ * The deployment's `config.notifications` sits above these: a channel the stand
+ * closed stays closed whatever an account asks for, which is the operator's
+ * answer to a laptop more than one person signs in on.
+ */
+export interface QaAccountNotifications {
+  /** Show the in-page line naming the chat whose turn ended. */
+  readonly inApp: boolean;
+  /**
+   * Hand the same fact to the operating system while this page is hidden or
+   * behind another window. Needs the browser's permission as well: without it
+   * the line stays inside the page and nothing asks a second time.
+   */
+  readonly desktop: boolean;
+}
+
+/** Full-replace notifications write: both channels are always sent. */
+export interface QaAccountNotificationsInput {
+  readonly inApp: boolean;
+  readonly desktop: boolean;
 }
 
 /** One successful login/registration: the bearer token plus the user. */

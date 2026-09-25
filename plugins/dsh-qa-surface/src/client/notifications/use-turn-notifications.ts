@@ -1,5 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import type { ResolvedQaSurfaceConfig } from "../../types.js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type {
+  QaAccountNotifications,
+  QaAccountNotificationsInput,
+  ResolvedQaSurfaceConfig,
+} from "../../types.js";
 import type { StorageLike } from "../types.js";
 import {
   isPageFocused,
@@ -11,6 +15,7 @@ import {
 } from "./notification-dispatcher.js";
 import {
   readNotificationPrefs,
+  resolveNoticeChannels,
   writeNotificationPrefs,
   type QaNotificationPrefs,
 } from "./preferences.js";
@@ -28,6 +33,17 @@ export interface QaTurnNotificationsInput {
   readonly notifications: ResolvedQaSurfaceConfig["notifications"];
   readonly storage: StorageLike | undefined;
   readonly storageKey: string;
+  /**
+   * The signed-in reader's own channels and the write that changes them.
+   * Absent on a stand without accounts, where the browser's own answer is the
+   * only one there is to ask.
+   */
+  readonly account?: {
+    readonly notifications: QaAccountNotifications;
+    readonly onSave: (
+      input: QaAccountNotificationsInput,
+    ) => Promise<string | null>;
+  };
   /** The bound chat reports `reconnecting` while the host link is down. */
   readonly paused: boolean;
   readonly activeSessionId: string | null;
@@ -54,6 +70,7 @@ export function useQaTurnNotifications(
     notifications,
     storage,
     storageKey,
+    account,
     paused,
     activeSessionId,
     onSwitch,
@@ -62,6 +79,12 @@ export function useQaTurnNotifications(
   const [items, setItems] = useState<readonly QaTurnNoticeItem[]>([]);
   const [prefs, setPrefs] = useState<QaNotificationPrefs>(() =>
     readNotificationPrefs(storage, storageKey),
+  );
+  // Memoized because the watcher below re-runs on any change to it, and a fresh
+  // object per render would have it re-reading the chat list on every keystroke.
+  const channels = useMemo(
+    () => resolveNoticeChannels({ account: account?.notifications, prefs }),
+    [account, prefs],
   );
 
   const savePrefs = useCallback(
@@ -81,20 +104,20 @@ export function useQaTurnNotifications(
     for (const completion of completions) {
       const planned = planTurnNotice(completion, {
         switches: notifications,
-        osChosen: prefs.osEnabled,
+        channels,
         permission,
         focused,
         activeSessionId,
       });
       if (planned === null) continue;
       if (planned.desktop) raiseDesktopNotice(completion);
-      added.push(planned.item);
+      if (planned.inApp) added.push(planned.item);
     }
     if (added.length === 0) return;
     setItems((previous) =>
       [...added.reverse(), ...previous].slice(0, MAX_NOTICES),
     );
-  }, [activeSessionId, chats, notifications, paused, prefs]);
+  }, [channels, activeSessionId, chats, notifications, paused]);
 
   // Opening a chat by any other means is an answer to its notice.
   useEffect(() => {
@@ -137,11 +160,22 @@ export function useQaTurnNotifications(
     [offered, prefs, savePrefs],
   );
 
+  // Answering the offer writes the choice where it belongs: on the account once
+  // there is one, so it survives into another browser, and in this browser's own
+  // store otherwise. The browser keeps its own copy either way — what it decides
+  // is that the question has been asked here, which is a fact about this
+  // browser's permission prompt rather than about the person.
   const enableDesktop = useCallback(() => {
     void requestNotificationPermission().then((permission) => {
-      savePrefs({ osEnabled: permission === "granted", osOffered: true });
+      const granted = permission === "granted";
+      savePrefs({ ...prefs, osEnabled: granted, osOffered: true });
+      if (account === undefined) return;
+      void account.onSave({
+        inApp: account.notifications.inApp,
+        desktop: granted,
+      });
     });
-  }, [savePrefs]);
+  }, [account, prefs, savePrefs]);
 
   return {
     items,

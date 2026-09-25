@@ -21,7 +21,7 @@ const completion: QaTurnCompletion = {
 function context(overrides: Partial<QaNoticeContext> = {}): QaNoticeContext {
   return {
     switches: { enabled: true, allowOs: true },
-    osChosen: true,
+    channels: { inApp: true, desktop: true },
     permission: "granted",
     focused: false,
     activeSessionId: null,
@@ -102,7 +102,10 @@ describe("planning one finished turn", () => {
       )?.desktop,
     ).toBe(false);
     expect(
-      planTurnNotice(completion, context({ osChosen: false }))?.desktop,
+      planTurnNotice(
+        completion,
+        context({ channels: { inApp: true, desktop: false } }),
+      )?.desktop,
     ).toBe(false);
     expect(
       planTurnNotice(completion, context({ permission: "denied" }))?.desktop,
@@ -120,10 +123,33 @@ describe("planning one finished turn", () => {
   it("still shows the in-app line when the desktop channel is closed", () => {
     const planned = planTurnNotice(
       completion,
-      context({ permission: "unsupported", osChosen: false }),
+      context({
+        permission: "unsupported",
+        channels: { inApp: true, desktop: false },
+      }),
     );
     expect(planned?.item.sessionId).toBe("session-42");
+    expect(planned?.inApp).toBe(true);
     expect(planned?.desktop).toBe(false);
+  });
+
+  it("keeps a desktop-only reader's notice off the page", () => {
+    const planned = planTurnNotice(
+      completion,
+      context({ channels: { inApp: false, desktop: true } }),
+    );
+    // The stack is what `inApp` gates; the desktop fact still goes out.
+    expect(planned?.inApp).toBe(false);
+    expect(planned?.desktop).toBe(true);
+  });
+
+  it("says nothing at all when both of the reader's channels are off", () => {
+    expect(
+      planTurnNotice(
+        completion,
+        context({ channels: { inApp: false, desktop: false } }),
+      ),
+    ).toBeNull();
   });
 });
 

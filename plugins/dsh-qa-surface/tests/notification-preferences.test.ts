@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   QA_NOTIFICATION_DEFAULT_PREFS,
   readNotificationPrefs,
+  resolveNoticeChannels,
   writeNotificationPrefs,
 } from "../src/client/notifications/preferences.js";
 
@@ -65,5 +66,41 @@ describe("notification preferences", () => {
     expect(readNotificationPrefs(undefined, KEY)).toEqual(
       QA_NOTIFICATION_DEFAULT_PREFS,
     );
+  });
+});
+
+describe("the channels one reader may use", () => {
+  it("takes the account's answer once there is an account", () => {
+    // A shared browser: whatever the previous reader chose here decides nothing
+    // about the account signed in now.
+    expect(
+      resolveNoticeChannels({
+        account: { inApp: false, desktop: true },
+        prefs: { osEnabled: true, osOffered: true },
+      }),
+    ).toEqual({ inApp: false, desktop: true });
+    expect(
+      resolveNoticeChannels({
+        account: { inApp: true, desktop: false },
+        prefs: { osEnabled: true, osOffered: false },
+      }),
+    ).toEqual({ inApp: true, desktop: false });
+  });
+
+  it("falls back to this browser where there is no account to ask", () => {
+    expect(
+      resolveNoticeChannels({
+        account: undefined,
+        prefs: { osEnabled: true, osOffered: true },
+      }),
+    ).toEqual({ inApp: true, desktop: true });
+    // An anonymous stand keeps the in-page line: its mute switch is the
+    // deployment's own `notifications.enabled`, not a per-reader choice.
+    expect(
+      resolveNoticeChannels({
+        account: undefined,
+        prefs: { osEnabled: false, osOffered: false },
+      }),
+    ).toEqual({ inApp: true, desktop: false });
   });
 });
