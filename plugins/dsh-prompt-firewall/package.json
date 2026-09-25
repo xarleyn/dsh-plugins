@@ -104,7 +104,7 @@
   },
   "dependencies": {
     "@yadsh/dsh-plugin-log": "workspace:^",
-    "zod": "^4.4.3"
+    "zod": "catalog:runtime"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",

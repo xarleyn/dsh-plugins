@@ -1,8 +1,10 @@
 // check-dependencies.mjs — SPEC §27 dependency rule enforcement for the
 // dsh-plugins monorepo (the Node core of scripts/check-dependencies.sh).
 //
-// Enforced rules: §27.1–§27.11 — see the bash wrapper's header comment for
+// Enforced rules: §27.1–§27.12 — see the bash wrapper's header comment for
 // the full rule list; this module owns every manifest/source-level check.
+// §27.12 additionally reports, without failing, the literal ranges that no
+// catalog covers, so a shared range staying literal is a seen decision.
 //
 // Exit: 0 = no violations, 1 = violations found, 2 = setup error.
 // The repo root comes from DSH_DEPS_ROOT (test override) or this file's parent.
@@ -343,6 +345,156 @@ if (fs.existsSync(wsYamlPath)) {
 }
 
 // ---------------------------------------------------------------------------
+// §27.12 — one shared third-party range lives in one named catalog
+// ---------------------------------------------------------------------------
+
+function unquote(value) {
+  return value.trim().replace(/^(['"])(.*)\1$/u, "$2");
+}
+
+/**
+ * Which catalogs hold which third-party package, read from the `catalogs:`
+ * block of pnpm-workspace.yaml. Read as the two indent levels pnpm documents
+ * rather than as general YAML: nothing nests below a range, and a YAML parser
+ * would hand this gate a dependency of its own — the very thing it is there to
+ * keep an eye on.
+ */
+function readCatalogsHolding(yamlText) {
+  const lines = yamlText
+    .split(/\r?\n/u)
+    .map((line) => line.replace(/\s+$/u, ""));
+  const start = lines.findIndex((line) => line === "catalogs:");
+  const holding = new Map();
+  if (start === -1) return holding;
+
+  let catalog = null;
+  for (const line of lines.slice(start + 1)) {
+    if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
+    const indent = line.length - line.trimStart().length;
+    if (indent === 0) break; // the catalogs block is over
+    const body = line.trim();
+    if (indent <= 2) {
+      catalog = body.endsWith(":") ? unquote(body.slice(0, -1)) : null;
+      continue;
+    }
+    if (catalog === null) continue;
+    const entry = /^(?<key>"[^"]*"|'[^']*'|[^:\s]+)\s*:/u.exec(body);
+    if (!entry) continue;
+    const name = unquote(entry.groups.key);
+    if (!holding.has(name)) holding.set(name, []);
+    if (!holding.get(name).includes(catalog)) holding.get(name).push(catalog);
+  }
+  return holding;
+}
+
+const catalogsHolding = readCatalogsHolding(
+  fs.existsSync(wsYamlPath) ? fs.readFileSync(wsYamlPath, "utf8") : "",
+);
+
+/**
+ * The literal (non-catalog) third-party ranges. Peer ranges are kept apart: a
+ * published peer range is a compatibility promise rather than a build pin, so
+ * `react: ^18.2.0` says "any React 18 the host brings" while
+ * `catalog:frontend-dev` pins the exact 18.3.1 this workspace tests against.
+ */
+const literals = new Map(); // name -> Map<spec, [where]>
+const peerLiterals = new Map(); // name -> Map<spec, [relDir]>
+
+function tally(bag, name, spec, where) {
+  const bySpec = bag.get(name) ?? new Map();
+  bySpec.set(spec, [...(bySpec.get(spec) ?? []), where]);
+  bag.set(name, bySpec);
+}
+
+for (const m of members) {
+  for (const field of DEP_FIELDS) {
+    for (const [name, rawSpec] of Object.entries(m.pkg[field] ?? {})) {
+      const spec = String(rawSpec);
+      if (spec.startsWith("workspace:")) continue;
+      if (spec.startsWith("catalog:")) continue; // one place holds the range
+
+      const owners = catalogsHolding.get(name) ?? [];
+      if (owners.length > 0 && field !== "peerDependencies") {
+        violation(
+          "§27.12",
+          `'${m.name}' declares '${name}' in ${field} as the literal range ` +
+            `'${spec}' while catalog ${owners.map((o) => `'${o}'`).join(", ")} ` +
+            `holds it (${m.relDir}/package.json); write "catalog:${owners[0]}" — ` +
+            `pnpm rewrites the catalog back to its range when the package is ` +
+            `packed, so the published manifest does not change, and one place ` +
+            `is left to update the range`,
+        );
+      }
+      if (field === "peerDependencies")
+        tally(peerLiterals, name, spec, m.relDir);
+      else tally(literals, name, spec, `${m.relDir} → ${field}`);
+    }
+  }
+}
+
+/**
+ * What those literals add up to — printed, never a violation. A range one
+ * manifest needs has no shared place to live, and peers stay literal by design;
+ * what a reader cannot otherwise see is the moment a "one-off" has gained a
+ * second consumer, because that is exactly when a catalog starts paying.
+ */
+function describeLiterals() {
+  const shared = [];
+  const diverging = [];
+  const oneOff = [];
+
+  for (const [name, bySpec] of [...literals].sort((a, b) =>
+    a[0].localeCompare(b[0]),
+  )) {
+    const specs = [...bySpec];
+    const total = specs.reduce((sum, [, where]) => sum + where.length, 0);
+    if (total === 1) {
+      oneOff.push(name);
+      continue;
+    }
+    shared.push(
+      `    ${name.padEnd(24)} ${specs.map(([spec, where]) => `${spec} (${where.length})`).join(" | ")}`,
+    );
+    if (specs.length > 1) {
+      diverging.push(
+        `    ${name.padEnd(24)} ${specs.map(([spec]) => spec).join(" vs ")} — ` +
+          `${total} manifests, ${specs.length} ranges to reconcile`,
+      );
+    }
+  }
+
+  const lines = [
+    "==> Literals outside the catalogs (advisory, §27.12 — reported, not forbidden)",
+  ];
+  if (shared.length > 0) {
+    lines.push(
+      "  shared by 2+ manifests and still literal — a catalog keeps one place to update:",
+      ...shared,
+    );
+  } else {
+    lines.push("  every range two or more manifests share is catalog-backed");
+  }
+  if (diverging.length > 0) {
+    lines.push(
+      "  ⚠ the same package resolves by more than one literal range:",
+      ...diverging,
+    );
+  }
+  if (oneOff.length > 0) {
+    lines.push(
+      `  literal in a single manifest, local by design: ${oneOff.join(", ")}`,
+    );
+  }
+  if (peerLiterals.size > 0) {
+    lines.push(
+      "  peerDependencies stay literal on purpose — a published peer range is " +
+        `wider than the version a catalog pins: ${[...peerLiterals].map(([name, bySpec]) => `${name} ${[...bySpec.keys()].join("/")}`).join(", ")}`,
+    );
+  }
+  return lines;
+}
+
+// ---------------------------------------------------------------------------
 // §27.5 — pnpm dedupe gate result
 // ---------------------------------------------------------------------------
 if (process.env.DSH_DEPS_DEDUPE_STATUS === "fail-cycles") {
@@ -539,6 +691,8 @@ for (const m of members) {
 // Report
 // ---------------------------------------------------------------------------
 console.log(`==> Scanned ${filesScanned} source file(s)`);
+console.log("");
+for (const line of describeLiterals()) console.log(line);
 console.log("");
 if (violations.length > 0) {
   console.log(`✗ ${violations.length} dependency rule violation(s):`);

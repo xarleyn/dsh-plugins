@@ -72,6 +72,16 @@ rather than judged, because the release reads commits too. The check ignores
 the files Nx ignores for this decision, so a
 release commit that only rewrites versions and changelogs needs no further plan.
 
+Moving a manifest range into a catalog is invisible for the same reason, and is
+deliberately left unversioned: `pnpm pack` rewrites `catalog:runtime` back to the
+range the catalog holds, so the tarball a consumer installs carries the bytes it
+carried before (gate 6 of `scripts/tarball-verify.sh` is what proves no `catalog:`
+survives packing). A bump here would version a change no consumer can observe, and
+for the qa-surface package it would also force a `QaChangelog.tsx` entry about
+something its reader cannot see. The case that does need a plan is the one where
+the range's *value* changes — `^4.4.3` to `^4.5.0`, say — because that reaches
+every consumer that installs the package.
+
 ## Maintainer flow
 
 1. Merge the PR into `main`.
