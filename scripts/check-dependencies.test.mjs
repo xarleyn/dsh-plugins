@@ -48,6 +48,30 @@ const WORKSPACE_YAML = [
   "",
 ].join("\n");
 
+/**
+ * The same workspace with named catalogs, which is all §27.12 reads out of
+ * `pnpm-workspace.yaml`. `runtime` holds the one shared third-party range the
+ * cases move in and out of it; `dsh`/`dsh-dev` mirror how this repository keeps
+ * a peer range beside the exact version it pins for local builds.
+ */
+const WORKSPACE_WITH_CATALOGS = [
+  "packages:",
+  '  - "packages/*"',
+  '  - "plugins/*"',
+  '  - "tooling/generators/*"',
+  "nodeLinker: isolated",
+  "disallowWorkspaceCycles: true",
+  "",
+  "catalogs:",
+  "  dsh:",
+  "    '@deepseek-ai/dsh-llm': '^0.1.5-rc.2'",
+  "  dsh-dev:",
+  "    '@deepseek-ai/dsh-llm': '0.1.5-rc.2'",
+  "  runtime:",
+  "    zod: '^4.4.3'",
+  "",
+].join("\n");
+
 function writeFile(file, text) {
   mkdirSync(path.dirname(file), { recursive: true });
   writeFileSync(file, text);
@@ -134,6 +158,25 @@ function pluginPackage(overrides = {}) {
     devDependencies: { ...dshRuntime(), "@yadsh/dsh-test-kit": "workspace:*" },
     ...overrides,
   };
+}
+
+/**
+ * The §27.12 compliant plugin: every range a catalog holds comes through that
+ * catalog — the pinned dev copy included — while the peer keeps its literal
+ * published range, which is the exemption the rule documents.
+ */
+function catalogedPluginPackage(overrides = {}) {
+  return pluginPackage({
+    dependencies: {
+      "@yadsh/dsh-shared": "workspace:*",
+      zod: "catalog:runtime",
+    },
+    devDependencies: {
+      "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
+      "@yadsh/dsh-test-kit": "workspace:*",
+    },
+    ...overrides,
+  });
 }
 
 /** The compliant workspace the negative cases are derived from. */
@@ -484,6 +527,122 @@ test("pnpm-workspace.yaml must keep its two guards (§27.5, §27.7)", async () =
     assert.match(result.stdout, /\[§27\.5\]/u);
     assert.match(result.stdout, /pnpm-workspace\.yaml not found at repo root/u);
   });
+});
+
+test("a range a catalog holds is declared through that catalog (§27.12)", async () => {
+  await withFixture(
+    compliant({
+      workspace: WORKSPACE_WITH_CATALOGS,
+      members: { "plugins/one": catalogedPluginPackage() },
+    }),
+    (root) => {
+      const result = runChecker(root);
+      assert.equal(result.status, 0);
+      // The exempt peer is named as exempt, not simply missing from the report.
+      assert.match(result.stdout, /peerDependencies stay literal on purpose/u);
+      assert.match(result.stdout, /@deepseek-ai\/dsh-llm \^0\.1\.5-rc\.2/u);
+    },
+  );
+
+  const reTyped = (field) =>
+    withFixture(
+      compliant({
+        workspace: WORKSPACE_WITH_CATALOGS,
+        members: {
+          "plugins/one": catalogedPluginPackage(
+            field === "dependencies"
+              ? {
+                  dependencies: {
+                    "@yadsh/dsh-shared": "workspace:*",
+                    zod: "^4.4.3",
+                  },
+                }
+              : {
+                  devDependencies: {
+                    "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
+                    "@yadsh/dsh-test-kit": "workspace:*",
+                    zod: "^4.4.3",
+                  },
+                },
+          ),
+        },
+      }),
+      (root) => {
+        const result = runChecker(root);
+        assert.equal(result.status, 1);
+        assert.match(result.stdout, /\[§27\.12\]/u);
+        assert.match(
+          result.stdout,
+          new RegExp(
+            `declares 'zod' in ${field} as the literal range '\\^4\\.4\\.3' ` +
+              "while catalog 'runtime' holds it",
+            "u",
+          ),
+        );
+        // The message explains the move rather than just forbidding the form:
+        // packing expands the catalog, so nothing published changes.
+        assert.match(result.stdout, /write "catalog:runtime"/u);
+        assert.match(
+          result.stdout,
+          /packed, so the published manifest does not change/u,
+        );
+      },
+    );
+
+  await reTyped("dependencies");
+  // A dependency field is a dependency field, dev copies of the range included.
+  await reTyped("devDependencies");
+});
+
+test("literals no catalog covers are explained, not forbidden (§27.12)", async () => {
+  await withFixture(
+    compliant({
+      workspace: WORKSPACE_WITH_CATALOGS,
+      members: {
+        "plugins/one": catalogedPluginPackage({
+          dependencies: { "@yadsh/dsh-shared": "workspace:*", yaml: "^2.8.1" },
+        }),
+        "plugins/two": otherPluginPackage({
+          dependencies: { yaml: "^2.9.0" },
+        }),
+      },
+    }),
+    (root) => {
+      const result = runChecker(root);
+      // Nothing here breaks a rule: yaml is in no catalog, so each manifest is
+      // free to hold its own range. What the gate adds is that the two ranges
+      // are now visible as one package resolving two ways.
+      assert.equal(result.status, 0);
+      assert.match(result.stdout, /advisory, §27\.12/u);
+      assert.match(result.stdout, /yaml\s+\^2\.8\.1 \(1\) \| \^2\.9\.0 \(1\)/u);
+      assert.match(result.stdout, /\^2\.8\.1 vs \^2\.9\.0/u);
+      assert.match(result.stdout, /2 ranges to reconcile/u);
+    },
+  );
+
+  // A range only one manifest needs is local by design, and says so.
+  await withFixture(
+    compliant({
+      workspace: WORKSPACE_WITH_CATALOGS,
+      members: {
+        "plugins/one": catalogedPluginPackage({
+          dependencies: {
+            "@yadsh/dsh-shared": "workspace:*",
+            chokidar: "^4.0.3",
+          },
+        }),
+      },
+    }),
+    (root) => {
+      const result = runChecker(root);
+      assert.equal(result.status, 0);
+      assert.match(
+        result.stdout,
+        /literal in a single manifest, local by design: chokidar/u,
+      );
+      assert.doesNotMatch(result.stdout, /ranges to reconcile/u);
+    },
+  );
 });
 
 test("the wrapper's pnpm dedupe verdict reaches the checker (§27.5)", async () => {

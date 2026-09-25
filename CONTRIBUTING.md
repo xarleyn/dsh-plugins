@@ -205,6 +205,10 @@ These are enforced automatically by CI, but know them before writing code:
     the reason that justifies it, is listed in `plugin-dependency-allowlist.json`
     (SPEC §27.11); the gate checks the list too, so a stale or unexplained entry
     fails as well
+11. A third-party range a named catalog holds is declared as `catalog:<name>`,
+    never re-typed as a literal — ⚠️ (SPEC §27.12). `peerDependencies` stay
+    literal on purpose, and `pnpm deps:check` lists the remaining literals so a
+    range shared by two manifests is visible instead of accidental
 
 ---
 

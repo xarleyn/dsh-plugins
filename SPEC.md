@@ -950,6 +950,15 @@ The implementation should enforce the following:
 11. A plugin must not depend on another plugin unless that edge is declared with
     a reason in `plugin-dependency-allowlist.json`. Every dependency field counts,
     and a missing file means no such edge is allowed.
+12. A third-party range a named catalog holds is declared through that catalog
+    rather than re-typed as a literal, so one edit moves every consumer. Packing
+    rewrites the catalog back to its range, so the published manifest is
+    unchanged. `peerDependencies` are exempt: a published peer range is a
+    compatibility promise and stays wider than the exact version a catalog pins
+    for local builds. A range no catalog covers is reported, not forbidden — a
+    library one package uses has no shared place to live, while a range two
+    packages share, or one the manifests resolve by two different ranges, is
+    what a catalog exists to end.
 
 ---
 
