@@ -1,6 +1,10 @@
 import { Fragment, createElement } from "react";
 import type { ReactNode } from "react";
-import type { MarkdownBlock, MarkdownListItem } from "./blocks.js";
+import type {
+  MarkdownBlock,
+  MarkdownListItem,
+  MarkdownParseOptions,
+} from "./blocks.js";
 import { parseMarkdown } from "./blocks.js";
 import { parseInline, type MarkdownInline } from "./inline.js";
 import { CodeBlock, LinkGlyph } from "./CodeBlock.js";
@@ -31,14 +35,17 @@ interface RenderContext extends MarkdownSourceContext {
  * instead of a plain link or code token.
  * @param text - Assistant-authored markdown.
  * @param context - Source resolution handed down by the owning message.
+ * @param options - How to read the end of the text; a live stream frame holds
+ * the block it stopped inside instead of rendering it as settled.
  * @returns The document's blocks, plus the footnote section when the document
  * references a defined footnote.
  */
 export function renderMarkdown(
   text: string,
   context: MarkdownSourceContext,
+  options: MarkdownParseOptions = {},
 ): ReactNode[] {
-  const { blocks, definitions, footnotes } = parseMarkdown(text);
+  const { blocks, definitions, footnotes } = parseMarkdown(text, options);
   const pass: RenderContext = {
     ...context,
     definitions,
@@ -51,6 +58,36 @@ export function renderMarkdown(
   );
   const footnotesSection = renderFootnoteSection(pass);
   return footnotesSection === null ? elements : [...elements, footnotesSection];
+}
+
+/**
+ * One display formula. KaTeX once its source has settled; while the stream is
+ * still inside the block the TeX is held as a literal frame, because half a
+ * formula has no correct rendering — KaTeX answers it with an error span, and
+ * the dollars that open it mean nothing in prose.
+ * @param text - The TeX payload, delimiters already off.
+ * @param key - The block's React key.
+ * @param pending - Whether the block's closer is still to come.
+ * @returns The formula's element, or nothing while an empty block opens.
+ */
+function renderDisplayMath(
+  text: string,
+  key: string,
+  pending: boolean,
+): ReactNode {
+  if (!pending) {
+    return (
+      <div key={key} className="dsh-qa-md-math">
+        {renderTexToReact(text, true)}
+      </div>
+    );
+  }
+  if (text.trim() === "") return null;
+  return (
+    <div key={key} className="dsh-qa-md-math dsh-qa-md-math--pending">
+      <code>{text}</code>
+    </div>
+  );
 }
 
 function renderBlock(
@@ -70,13 +107,11 @@ function renderBlock(
     case "code":
       if (block.lang === "math" && block.text.trim() !== "") {
         // A ```math fence renders as display TeX, the way the Host does.
-        return (
-          <div key={key} className="dsh-qa-md-math">
-            {renderTexToReact(block.text, true)}
-          </div>
-        );
+        return renderDisplayMath(block.text, key, block.pending === true);
       }
-      if (block.lang?.toLowerCase() === "mermaid") {
+      if (block.lang?.toLowerCase() === "mermaid" && !block.pending) {
+        // An open fence is still being typed, and mermaid answers half a
+        // diagram with a syntax error: the source stands until its closer.
         return <MermaidBlock key={key} code={block.text} />;
       }
       return (
@@ -87,11 +122,7 @@ function renderBlock(
         />
       );
     case "math":
-      return (
-        <div key={key} className="dsh-qa-md-math">
-          {renderTexToReact(block.text, true)}
-        </div>
-      );
+      return renderDisplayMath(block.text, key, block.pending === true);
     case "quote":
       return (
         <blockquote key={key}>

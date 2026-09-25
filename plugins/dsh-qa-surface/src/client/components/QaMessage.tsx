@@ -576,6 +576,7 @@ export const QaMessage = memo(
           {message.role === "assistant" && renderMarkdown ? (
             <Markdown
               text={message.text}
+              streaming={message.status === "streaming"}
               sourceRefs={sourceRefs}
               onSourceOpen={onSourceDetail}
             />
