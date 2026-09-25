@@ -22,7 +22,11 @@ import type { SnapshotRepository } from "../snapshots/repository.js";
 import type { KvPersistLogger } from "../observability/diagnostics.js";
 import { abbreviateSessionId } from "../observability/diagnostics.js";
 import type { KvPersistMetrics } from "../observability/metrics.js";
-import { KvPersistError, KvRestoreFailedError } from "../errors.js";
+import {
+  KvCoordinatorDisposedError,
+  KvPersistError,
+  KvRestoreFailedError,
+} from "../errors.js";
 import type { SnapshotInvalidationReason } from "../errors.js";
 import { CheckpointPolicy } from "./checkpoint-policy.js";
 import type { CheckpointTrigger } from "./checkpoint-policy.js";
@@ -41,6 +45,10 @@ import type {
   SessionRuntime,
   SnapshotResult,
 } from "./state-machine.js";
+
+/** Why `runSessionRequest` turns a request away after `dispose()`. */
+const COORDINATOR_DISPOSED =
+  "kv persistence coordinator is disposed and accepts no new work";
 
 /** One coordinated llm/stream request. */
 export interface CoordinatorRequest {
@@ -119,10 +127,14 @@ export class SingleSlotCoordinator {
    * terminal finish marks the session dirty. This internal API is entered by
    * the service's lazy generator only once consumption starts; its returned
    * iterable must always be consumed or closed so the lease can be released.
+   * A disposed coordinator refuses the request instead of starting work
+   * (SPEC §58), and so does a request that was already waiting for a lease.
    */
   async runSessionRequest(
     input: CoordinatorRequest,
   ): Promise<AsyncIterable<StreamChunk>> {
+    if (this.#disposed)
+      throw new KvCoordinatorDisposedError(COORDINATOR_DISPOSED);
     if (input.purpose !== undefined || input.sessionId === null) {
       this.#metrics.counters.auxiliaryRequests += 1;
       return this.#runAuxiliary(input);
@@ -131,6 +143,8 @@ export class SingleSlotCoordinator {
     this.#ensureRuntime(sessionId, input);
     const release = await this.#mutex.acquire();
     try {
+      if (this.#disposed)
+        throw new KvCoordinatorDisposedError(COORDINATOR_DISPOSED);
       this.#cancelIdleTimer();
       if (this.#breaker.isOpen(this.#now())) {
         this.#metrics.counters.circuitSkips += 1;
@@ -168,6 +182,8 @@ export class SingleSlotCoordinator {
   ): Promise<AsyncIterable<StreamChunk>> {
     const release = await this.#mutex.acquire();
     try {
+      if (this.#disposed)
+        throw new KvCoordinatorDisposedError(COORDINATOR_DISPOSED);
       this.#cancelIdleTimer();
       if (this.#breaker.isOpen(this.#now())) {
         this.#metrics.counters.circuitSkips += 1;
