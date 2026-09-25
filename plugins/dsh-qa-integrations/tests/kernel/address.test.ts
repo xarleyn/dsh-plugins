@@ -20,7 +20,11 @@ const policy: EndpointListPolicy = {
 };
 
 function one(baseUrl: string, extra: Record<string, unknown> = {}) {
-  return resolveEndpointList([{ id: "a", label: "A", baseUrl, ...extra }], false, policy);
+  return resolveEndpointList(
+    [{ id: "a", label: "A", baseUrl, ...extra }],
+    false,
+    policy,
+  );
 }
 
 describe("kernel address policy", () => {
@@ -53,9 +57,15 @@ describe("kernel address policy", () => {
   });
 
   it("names the field it refused, so the operator finds the row", () => {
-    expect(() => one("not a URL")).toThrow(/sites\[0\]\.baseUrl must be an absolute URL/u);
+    expect(() => one("not a URL")).toThrow(
+      /sites\[0\]\.baseUrl must be an absolute URL/u,
+    );
     expect(() =>
-      resolveEndpointList([{ id: "A", label: "A", baseUrl: "https://x" }], false, policy),
+      resolveEndpointList(
+        [{ id: "A", label: "A", baseUrl: "https://x" }],
+        false,
+        policy,
+      ),
     ).toThrow(/sites\[0\]\.id must be lowercase latin/u);
     expect(() =>
       resolveEndpointList(
@@ -134,14 +144,21 @@ describe("kernel address policy", () => {
     expect(() =>
       resolveEndpointList(rows, false, { ...policy, max: 2 }),
     ).toThrow(/sites accepts at most 2 entries/u);
-    expect(resolveEndpointList(rows, false, { ...policy, max: 3 })).toHaveLength(
-      3,
-    );
+    expect(
+      resolveEndpointList(rows, false, { ...policy, max: 3 }),
+    ).toHaveLength(3);
   });
 
   it("resolves provider row members after the shared ones", () => {
     const [row] = resolveEndpointList(
-      [{ id: "a", label: "A", baseUrl: "https://jira.example.corp", tier: "cloud" }],
+      [
+        {
+          id: "a",
+          label: "A",
+          baseUrl: "https://jira.example.corp",
+          tier: "cloud",
+        },
+      ],
       false,
       {
         ...policy,
