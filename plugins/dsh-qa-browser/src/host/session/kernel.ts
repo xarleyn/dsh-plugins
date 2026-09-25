@@ -64,13 +64,27 @@ export class SessionKernel {
         "Browser session has not been started.",
       );
     }
-    if (record.status === "crashed") {
+    if (this.isLost(record)) {
       throw new QaBrowserError(
-        "BROWSER_CRASHED",
-        "Browser page state was lost after a crash.",
+        record.status === "disconnected"
+          ? "BROWSER_CONNECTION_LOST"
+          : "BROWSER_CRASHED",
+        record.status === "disconnected"
+          ? "The Browser runtime lost its connection to the attached browser, so this session's page state is gone."
+          : "Browser page state was lost after a crash.",
       );
     }
     return record;
+  }
+
+  /**
+   * A session whose pages are gone for good: our own browser died, or the link
+   * to an attached one dropped. Both recover the same way — the next action
+   * refuses and the next `ensureSession` builds a fresh session — but they are
+   * different facts for the operator, so the status keeps them apart.
+   */
+  isLost(record: SessionRecord): boolean {
+    return record.status === "crashed" || record.status === "disconnected";
   }
 
   requireTab(record: SessionRecord, id: string): TabRecord {

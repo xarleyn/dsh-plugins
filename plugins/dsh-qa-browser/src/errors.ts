@@ -8,6 +8,13 @@ export const QA_BROWSER_ERROR_CODES = [
   "BROWSER_DISABLED",
   "BROWSER_START_FAILED",
   "BROWSER_CRASHED",
+  /**
+   * The browser behind an attached session is not necessarily dead — the
+   * debug link to it is. A person who is told the browser crashed will go
+   * looking for a crash log; a person told the link dropped looks at the
+   * process they started themselves.
+   */
+  "BROWSER_CONNECTION_LOST",
   "BROWSER_SESSION_NOT_FOUND",
   "BROWSER_CONTEXT_CLOSED",
   "BROWSER_TAB_NOT_FOUND",

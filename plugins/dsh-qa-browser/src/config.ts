@@ -2,12 +2,17 @@ import path from "node:path";
 
 import z from "@deepseek-ai/schemastery";
 
+import type { QaBrowserRuntimeMode } from "./types.js";
+
 export interface QaBrowserConfig {
   readonly enabled?: boolean;
   readonly runtime?: {
     readonly provider?: "playwright";
+    readonly mode?: QaBrowserRuntimeMode;
     readonly executablePath?: string | null;
     readonly browserChannel?: string;
+    readonly cdpEndpoint?: string | null;
+    readonly allowRemoteCdpEndpoint?: boolean;
     readonly headless?: boolean;
     readonly chromiumSandbox?: boolean;
     readonly actionTimeoutMs?: number;
@@ -66,8 +71,10 @@ export interface ResolvedQaBrowserConfig {
   readonly enabled: boolean;
   readonly runtime: {
     readonly provider: "playwright";
+    readonly mode: QaBrowserRuntimeMode;
     readonly executablePath: string | null;
     readonly browserChannel: string;
+    readonly cdpEndpoint: string | null;
     readonly headless: boolean;
     readonly chromiumSandbox: boolean;
     readonly actionTimeoutMs: number;
@@ -127,8 +134,10 @@ export const QA_BROWSER_DEFAULTS: ResolvedQaBrowserConfig = {
   enabled: true,
   runtime: {
     provider: "playwright",
+    mode: "launch",
     executablePath: null,
     browserChannel: "chromium",
+    cdpEndpoint: null,
     headless: true,
     chromiumSandbox: true,
     actionTimeoutMs: 15_000,
@@ -195,8 +204,21 @@ export const QaBrowserConfigSchema: z<QaBrowserConfig> = z
     runtime: z
       .object({
         provider: z.union(["playwright"] as const).default("playwright"),
+        mode: z
+          .union(["launch", "attach"] as const)
+          .default("launch")
+          .description(
+            "launch starts its own Chromium; attach joins a Chromium someone else started, over its DevTools endpoint.",
+          ),
         executablePath: nullableString.default(null),
         browserChannel: z.string().default("chromium"),
+        cdpEndpoint: nullableString.default(null),
+        allowRemoteCdpEndpoint: z
+          .boolean()
+          .default(false)
+          .description(
+            "Let runtime.cdpEndpoint name a host outside this machine. A DevTools endpoint is full control of the browser, so the default keeps it on loopback.",
+          ),
         headless: z.boolean().default(true),
         chromiumSandbox: z
           .boolean()
@@ -208,7 +230,9 @@ export const QaBrowserConfigSchema: z<QaBrowserConfig> = z
         navigationTimeoutMs: z.number().default(30_000),
         idleTimeoutMinutes: z.number().default(30),
       })
-      .description("Playwright process and timeout settings."),
+      .description(
+        "How Chromium is obtained — its own process, or an existing one over CDP — and the timeouts it runs under.",
+      ),
     session: z
       .object({
         contextScope: z.union(["session"] as const).default("session"),
@@ -294,15 +318,93 @@ function normalizedStrings(values: readonly string[] | undefined): string[] {
   ];
 }
 
+/** The endpoint forms Playwright will dial for us. */
+const CDP_ENDPOINT_PROTOCOLS = new Set(["http:", "https:", "ws:", "wss:"]);
+
+/** Whether a CDP endpoint names this machine rather than somewhere reachable. */
+function isLoopbackHost(hostname: string): boolean {
+  const host = hostname
+    .replace(/^\[/u, "")
+    .replace(/\]$/u, "")
+    .replace(/\.$/u, "")
+    .toLowerCase();
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host === "::1") return true;
+  return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/u.test(host);
+}
+
+/**
+ * The DevTools endpoint to attach to, or nothing in launch mode.
+ *
+ * A CDP endpoint is not a read-only handle: whoever holds it drives the browser
+ * and reads every page inside it, past this plugin's own network policy. So the
+ * default reaches only this machine, and a host beyond it needs the switch
+ * flipped on purpose — the same reason the browser's own pages are gated.
+ */
+function resolveCdpEndpoint(
+  raw: QaBrowserConfig,
+  mode: QaBrowserRuntimeMode,
+): string | null {
+  const endpoint = raw.runtime?.cdpEndpoint?.trim() || null;
+  if (mode === "launch") {
+    if (endpoint !== null) {
+      throw new TypeError(
+        "dsh-qa-browser: runtime.cdpEndpoint is only used when runtime.mode is attach",
+      );
+    }
+    return null;
+  }
+  if (endpoint === null) {
+    throw new TypeError(
+      "dsh-qa-browser: runtime.cdpEndpoint is required when runtime.mode is attach",
+    );
+  }
+  let url: URL | undefined;
+  try {
+    url = new URL(endpoint);
+  } catch {
+    // Nothing was parsed: the message below names the forms that work.
+  }
+  if (
+    url === undefined ||
+    !CDP_ENDPOINT_PROTOCOLS.has(url.protocol) ||
+    url.hostname === ""
+  ) {
+    throw new TypeError(
+      "dsh-qa-browser: runtime.cdpEndpoint must be an HTTP(S) or WS(S) URL, such as http://127.0.0.1:9222",
+    );
+  }
+  if (
+    !isLoopbackHost(url.hostname) &&
+    !(raw.runtime?.allowRemoteCdpEndpoint ?? false)
+  ) {
+    throw new TypeError(
+      "dsh-qa-browser: runtime.cdpEndpoint names a host outside this machine; set runtime.allowRemoteCdpEndpoint to true to attach to it",
+    );
+  }
+  return endpoint;
+}
+
 export function resolveQaBrowserConfig(
   raw: QaBrowserConfig = {},
 ): ResolvedQaBrowserConfig {
+  const mode: QaBrowserRuntimeMode = raw.runtime?.mode ?? "launch";
   const executable = raw.runtime?.executablePath?.trim() || null;
   if (executable !== null && !path.isAbsolute(executable)) {
     throw new TypeError(
       "dsh-qa-browser: runtime.executablePath must be absolute",
     );
   }
+  // Attach borrows a browser this plugin neither starts nor can see, so it has
+  // no window to show and must not claim one: `headless: false` in launch mode
+  // means "a person may watch and click in that window", and attach mode offers
+  // no such thing to the person running the browser.
+  if (mode === "attach" && (raw.runtime?.headless ?? true) === false) {
+    throw new TypeError(
+      "dsh-qa-browser: runtime.headless cannot be false when runtime.mode is attach",
+    );
+  }
+  const cdpEndpoint = resolveCdpEndpoint(raw, mode);
   const allowedSchemes = [
     ...new Set(
       normalizedStrings(raw.security?.network?.allowedSchemes).map((value) =>
@@ -314,8 +416,10 @@ export function resolveQaBrowserConfig(
     enabled: raw.enabled ?? QA_BROWSER_DEFAULTS.enabled,
     runtime: {
       provider: "playwright",
+      mode,
       executablePath: executable,
       browserChannel: raw.runtime?.browserChannel?.trim() || "chromium",
+      cdpEndpoint,
       headless: raw.runtime?.headless ?? true,
       chromiumSandbox: raw.runtime?.chromiumSandbox ?? true,
       actionTimeoutMs: clampInteger(

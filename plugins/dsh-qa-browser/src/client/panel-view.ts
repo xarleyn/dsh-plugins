@@ -165,9 +165,16 @@ export function statusLine(
   if (session === null) return "Browser ещё не запускался";
   switch (session.status) {
     case "starting":
-      return "Запуск Chromium…";
+      // Attach mode owns no process to start, so it must not promise one: what
+      // the operator is waiting for here is the link to a browser that already
+      // runs somewhere else.
+      return state?.runtimeMode === "attach"
+        ? "Подключение к браузеру…"
+        : "Запуск Chromium…";
     case "crashed":
       return "Chromium завершился с ошибкой";
+    case "disconnected":
+      return "Связь с браузером потеряна";
     case "idle":
       return "Browser неактивен";
     case "closed":

@@ -586,9 +586,14 @@ class PlaywrightContextHandle implements BrowserContextHandle {
   }
 }
 
-/** Lazy, shared Chromium process. No browser download is ever triggered here. */
+/**
+ * Lazy, shared Chromium. In launch mode this owns one process it started; in
+ * attach mode it holds a link to a process someone else started. Either way, no
+ * browser download is ever triggered here.
+ */
 export class PlaywrightBrowserProvider implements BrowserProvider {
   private browser: Browser | undefined;
+  private mode: BrowserProviderStartOptions["mode"] = "launch";
   private starting: Promise<void> | undefined;
   /**
    * A stop is a state rather than a moment. Without it a launch or a context
@@ -614,7 +619,8 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
       await this.stopping.catch(() => undefined);
     }
     if (this.browser?.isConnected()) return;
-    this.starting ??= this.launch(options);
+    this.starting ??=
+      options.mode === "attach" ? this.attach(options) : this.launch(options);
     try {
       await this.starting;
     } finally {
@@ -628,16 +634,8 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
     for (const candidate of launchCandidates(playwright.chromium, options)) {
       try {
         const browser = await playwright.chromium.launch(candidate);
-        browser.once("disconnected", () => {
-          if (this.browser !== browser) return;
-          this.browser = undefined;
-          this.contexts.clear();
-          const error = new QaBrowserError(
-            "BROWSER_CRASHED",
-            "Chromium disconnected.",
-          );
-          for (const listener of this.crashListeners) listener(error);
-        });
+        this.mode = "launch";
+        this.adopt(browser);
         this.browser = browser;
         return;
       } catch (error) {
@@ -648,6 +646,53 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
       "BROWSER_START_FAILED",
       `Chromium could not be started. ${failures.at(-1) ?? "No executable candidate was available."}`,
     );
+  }
+
+  private async attach(options: BrowserProviderStartOptions): Promise<void> {
+    const endpoint = options.cdpEndpoint;
+    if (endpoint === null) {
+      // The config layer refuses an attach runtime without an endpoint; this is
+      // the seam's own guard against a provider started by other code.
+      throw new QaBrowserError(
+        "BROWSER_START_FAILED",
+        "Attach mode needs a CDP endpoint.",
+      );
+    }
+    const playwright = await this.loadPlaywright();
+    let browser: Browser;
+    try {
+      browser = await playwright.chromium.connectOverCDP(endpoint);
+    } catch (error) {
+      throw new QaBrowserError(
+        "BROWSER_START_FAILED",
+        `Chromium could not be reached at its CDP endpoint. ${browserErrorMessage(error)}`,
+        { cause: error },
+      );
+    }
+    this.mode = "attach";
+    this.adopt(browser);
+    this.browser = browser;
+  }
+
+  /**
+   * Watch the link we just made. What a disconnect means depends on who owns
+   * the process: ours died, theirs is still running and only our view of it is
+   * gone — and an operator told about a crash will go looking for a crash log.
+   */
+  private adopt(browser: Browser): void {
+    const attached = this.mode === "attach";
+    browser.once("disconnected", () => {
+      if (this.browser !== browser) return;
+      this.browser = undefined;
+      this.contexts.clear();
+      const error = attached
+        ? new QaBrowserError(
+            "BROWSER_CONNECTION_LOST",
+            "CDP connection to Chromium was lost.",
+          )
+        : new QaBrowserError("BROWSER_CRASHED", "Chromium disconnected.");
+      for (const listener of this.crashListeners) listener(error);
+    });
   }
 
   async createContext(
@@ -661,7 +706,9 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
     ) {
       throw new QaBrowserError(
         "BROWSER_START_FAILED",
-        "Chromium is not running.",
+        this.mode === "attach"
+          ? "Chromium is not attached."
+          : "Chromium is not running.",
       );
     }
     const creation = this.buildContext(browser, options);
@@ -808,6 +855,9 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
     const contexts = [...this.contexts.values()];
     this.contexts.clear();
     await Promise.allSettled(contexts.map((context) => context.close()));
+    // On an attached browser Playwright's close() drops the link and the
+    // contexts this runtime created, and leaves the process alone — which is
+    // the whole point of attach mode: the browser belongs to whoever started it.
     if (browser !== undefined) await browser.close();
   }
 

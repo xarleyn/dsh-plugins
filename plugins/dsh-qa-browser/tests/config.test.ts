@@ -59,4 +59,88 @@ describe("resolveQaBrowserConfig", () => {
       }),
     ).toThrow(/must be absolute/u);
   });
+
+  it("starts its own browser unless the deployment names one to join", () => {
+    expect(resolveQaBrowserConfig().runtime).toMatchObject({
+      mode: "launch",
+      cdpEndpoint: null,
+    });
+    expect(() =>
+      resolveQaBrowserConfig({ runtime: { mode: "attach" } }),
+    ).toThrow(/cdpEndpoint is required when runtime.mode is attach/u);
+    // An endpoint the runtime never dials is a deployment that believes it is
+    // attaching while it is, in fact, starting its own browser.
+    expect(() =>
+      resolveQaBrowserConfig({
+        runtime: { cdpEndpoint: "http://127.0.0.1:9222" },
+      }),
+    ).toThrow(/only used when runtime.mode is attach/u);
+  });
+
+  it("accepts the endpoint forms Playwright dials", () => {
+    for (const cdpEndpoint of [
+      "http://127.0.0.1:9222",
+      "http://localhost:9222/json/version",
+      "http://[::1]:9222",
+      "https://chrome.localhost:9222",
+      "ws://127.0.0.1:9222/devtools/browser/6c1a2b3c",
+    ]) {
+      const config = resolveQaBrowserConfig({
+        runtime: { mode: "attach", cdpEndpoint },
+      });
+      expect(config.runtime).toMatchObject({ mode: "attach", cdpEndpoint });
+    }
+    for (const cdpEndpoint of [
+      "127.0.0.1:9222",
+      "devtools://browser",
+      "file:///run/chromium/devtools.sock",
+    ]) {
+      expect(() =>
+        resolveQaBrowserConfig({ runtime: { mode: "attach", cdpEndpoint } }),
+      ).toThrow(/must be an HTTP\(S\) or WS\(S\) URL/u);
+    }
+  });
+
+  it("keeps a debug endpoint on this machine until the deployment opens it", () => {
+    // A CDP endpoint is full control of a browser, so anything beyond loopback
+    // has to be a decision someone wrote down.
+    for (const cdpEndpoint of [
+      "http://build-host:9222",
+      "http://10.0.0.5:9222",
+      "ws://192.168.1.20:9222/devtools/browser/6c1a2b3c",
+    ]) {
+      expect(() =>
+        resolveQaBrowserConfig({ runtime: { mode: "attach", cdpEndpoint } }),
+      ).toThrow(/outside this machine/u);
+      expect(
+        resolveQaBrowserConfig({
+          runtime: {
+            mode: "attach",
+            cdpEndpoint,
+            allowRemoteCdpEndpoint: true,
+          },
+        }).runtime.cdpEndpoint,
+      ).toBe(cdpEndpoint);
+    }
+    expect(() =>
+      resolveQaBrowserConfig({
+        runtime: { cdpEndpoint: "http://build-host:9222" },
+      }),
+    ).toThrow(/only used when runtime.mode is attach/u);
+  });
+
+  it("does not let attach promise a window it cannot show", () => {
+    expect(() =>
+      resolveQaBrowserConfig({
+        runtime: {
+          mode: "attach",
+          cdpEndpoint: "http://127.0.0.1:9222",
+          headless: false,
+        },
+      }),
+    ).toThrow(/headless cannot be false when runtime.mode is attach/u);
+    expect(
+      resolveQaBrowserConfig({ runtime: { headless: false } }).runtime,
+    ).toMatchObject({ mode: "launch", headless: false });
+  });
 });

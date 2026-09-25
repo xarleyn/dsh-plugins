@@ -108,6 +108,45 @@ describe("QaBrowserSessionManager", () => {
     expect(manager.getSession("late")).toBeNull();
   });
 
+  it("passes the configured runtime mode down to the provider", async () => {
+    const { manager, provider } = createHarness({
+      runtime: { mode: "attach", cdpEndpoint: "http://127.0.0.1:9222" },
+    });
+
+    await manager.ensureSession("attached");
+
+    expect(provider.startOptions.at(-1)).toMatchObject({
+      mode: "attach",
+      cdpEndpoint: "http://127.0.0.1:9222",
+    });
+    await manager.dispose();
+  });
+
+  it("keeps a dropped CDP link apart from a crash and re-attaches on the next ensure", async () => {
+    const { manager, provider } = createHarness({
+      runtime: { mode: "attach", cdpEndpoint: "http://127.0.0.1:9222" },
+    });
+    const session = await manager.ensureSession("attached");
+    const tabId = session.selectedTabId!;
+
+    provider.crash("BROWSER_CONNECTION_LOST");
+
+    // The browser a person started is likely still running; only our link to it
+    // is gone, and the panel is told that rather than a crash it cannot verify.
+    expect(manager.getSession("attached")).toMatchObject({
+      status: "disconnected",
+      selectedTabId: null,
+      tabIds: [],
+    });
+    await expect(manager.snapshot("attached", tabId)).rejects.toMatchObject({
+      code: "BROWSER_CONNECTION_LOST",
+    });
+    await manager.ensureSession("attached");
+    expect(manager.getSession("attached")?.status).toBe("ready");
+    expect(provider.starts).toBe(2);
+    await manager.dispose();
+  });
+
   it("binds semantic refs to a revision and refuses stale actions", async () => {
     const { manager } = createHarness();
     const session = await manager.ensureSession("semantic");

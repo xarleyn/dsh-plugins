@@ -38,3 +38,24 @@ browser at plugin startup or during `postinstall`.
 Only when the surrounding container is independently hardened and Chromium
 cannot start with its sandbox may `runtime.chromiumSandbox` be set to `false`.
 That is an explicit security downgrade; do not make it a shared default.
+
+## Chromium in its own container
+
+`runtime.mode: attach` is the other shape: the Harness image carries no browser,
+and Chromium runs in a sidecar container that opens its DevTools endpoint on a
+network the Host can reach.
+
+```yaml
+runtime:
+  mode: attach
+  cdpEndpoint: http://chromium:9222
+  # The endpoint is off this machine, which the default refuses.
+  allowRemoteCdpEndpoint: true
+```
+
+Keep that endpoint on an internal network. Whoever can dial it controls that
+browser outright — this plugin's own network policy is enforced by the Host on
+the pages it drives, not by Chromium against whoever else connects. The sidecar
+is still the deployment's to install and harden: its seccomp profile, `/dev/shm`
+size and `--no-sandbox` choice are the same decisions as above, just moved one
+container over.
