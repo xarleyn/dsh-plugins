@@ -914,6 +914,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         () => () => {
           unsubscribeConfig();
           unsubscribeConnection();
+          // The boot whoami otherwise outlives this callback: its answer
+          // clears the token the *next* instance stored under the same key.
+          accounts.dispose();
           config.dispose();
           route.dispose();
         },
