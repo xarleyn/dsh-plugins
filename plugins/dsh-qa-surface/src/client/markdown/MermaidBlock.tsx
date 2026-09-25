@@ -56,6 +56,7 @@ function MermaidCanvas({
     <div
       ref={canvas}
       className="dsh-qa-mermaid__canvas"
+      data-testid="qa-md-mermaid-canvas"
       style={{ width: `${zoom * 100}%` }}
     />
   );
@@ -101,8 +102,11 @@ export const MermaidBlock = memo(function MermaidBlock({
 
   if (failed) {
     return (
-      <div className="dsh-qa-mermaid dsh-qa-mermaid--error">
-        <p role="status">
+      <div
+        className="dsh-qa-mermaid dsh-qa-mermaid--error"
+        data-testid="qa-md-mermaid-error"
+      >
+        <p role="status" data-testid="qa-md-mermaid-warning">
           Не удалось отобразить Mermaid-диаграмму. Показан исходный код.
         </p>
         <CodeBlock code={code} lang="mermaid" />
@@ -113,23 +117,36 @@ export const MermaidBlock = memo(function MermaidBlock({
   return (
     <section
       className={`dsh-qa-mermaid${expanded ? " dsh-qa-mermaid--expanded" : ""}`}
+      data-testid="qa-md-mermaid"
       aria-label="Диаграмма Mermaid"
     >
-      <header className="dsh-qa-mermaid__toolbar">
+      <header
+        className="dsh-qa-mermaid__toolbar"
+        data-testid="qa-md-mermaid-toolbar"
+      >
         <strong>Mermaid</strong>
-        <span className="dsh-qa-mermaid__actions">
+        <span
+          className="dsh-qa-mermaid__actions"
+          data-testid="qa-md-mermaid-actions"
+        >
           <button
             type="button"
+            data-testid="qa-md-mermaid-zoom-out"
             onClick={() => setZoom((value) => Math.max(0.5, value - 0.25))}
             aria-label="Уменьшить диаграмму"
           >
             −
           </button>
-          <button type="button" onClick={() => setZoom(1)}>
+          <button
+            type="button"
+            data-testid="qa-md-mermaid-fit"
+            onClick={() => setZoom(1)}
+          >
             По размеру
           </button>
           <button
             type="button"
+            data-testid="qa-md-mermaid-zoom-in"
             onClick={() => setZoom((value) => Math.min(2.5, value + 0.25))}
             aria-label="Увеличить диаграмму"
           >
@@ -137,6 +154,7 @@ export const MermaidBlock = memo(function MermaidBlock({
           </button>
           <button
             type="button"
+            data-testid="qa-md-mermaid-code-toggle"
             aria-pressed={showCode}
             onClick={() => setShowCode((value) => !value)}
           >
@@ -144,6 +162,7 @@ export const MermaidBlock = memo(function MermaidBlock({
           </button>
           <button
             type="button"
+            data-testid="qa-md-mermaid-expand-toggle"
             aria-expanded={expanded}
             onClick={() => setExpanded((value) => !value)}
           >
@@ -151,9 +170,16 @@ export const MermaidBlock = memo(function MermaidBlock({
           </button>
         </span>
       </header>
-      <div className="dsh-qa-mermaid__viewport">
+      <div
+        className="dsh-qa-mermaid__viewport"
+        data-testid="qa-md-mermaid-viewport"
+      >
         {diagram === undefined ? (
-          <span className="dsh-qa-mermaid__loading" role="status">
+          <span
+            className="dsh-qa-mermaid__loading"
+            data-testid="qa-md-mermaid-loading"
+            role="status"
+          >
             Строим диаграмму…
           </span>
         ) : (

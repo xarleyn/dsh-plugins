@@ -82,7 +82,11 @@ export function renderTexToReact(
       // KaTeX renders ParseErrors itself under throwOnError: false; only its
       // internal errors reach here, so mirror the manual error span.
       return (
-        <span className="katex-error" style={{ color: ERROR_COLOR }}>
+        <span
+          className="katex-error"
+          data-testid="qa-md-math-error"
+          style={{ color: ERROR_COLOR }}
+        >
           {value}
         </span>
       );

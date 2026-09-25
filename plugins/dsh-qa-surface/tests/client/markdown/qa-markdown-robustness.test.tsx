@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from "@testing-library/react";
+import { render, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Markdown } from "../../../src/client/components/Markdown.js";
 
@@ -40,7 +40,7 @@ describe("Markdown robustness", () => {
     const quote = container.querySelector("blockquote");
     expect(quote?.querySelector("h2")?.textContent).toBe("Цитата");
     expect(quote?.querySelector("li")?.textContent).toBe("пункт");
-    expect(quote?.querySelector(".dsh-qa-md-code code")?.textContent).toBe(
+    expect(within(quote!).getByTestId("qa-md-code-content").textContent).toBe(
       "echo hi",
     );
   });
@@ -52,7 +52,7 @@ describe("Markdown robustness", () => {
       />,
     );
     const item = container.querySelector("li");
-    expect(item?.querySelector(".dsh-qa-md-table")).toBeTruthy();
+    expect(within(item!).queryByTestId("qa-md-table")).toBeTruthy();
     expect(item?.querySelectorAll("td").length).toBe(2);
   });
 

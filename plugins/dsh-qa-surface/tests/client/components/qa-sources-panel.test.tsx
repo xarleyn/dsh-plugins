@@ -55,9 +55,11 @@ describe("sources panel", () => {
         filePreview={config.filePreview}
       />,
     );
-    expect(screen.getByText("Документы")).toBeTruthy();
-    expect(screen.getByText("Web")).toBeTruthy();
-    expect(screen.getByText(/делегированных запусков/u)).toBeTruthy();
+    expect(screen.getByTestId("qa-sources-group-file")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /Документы/u })).toBeTruthy();
+    expect(screen.getByTestId("qa-sources-group-web")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: /Web/u })).toBeTruthy();
+    expect(screen.getByTestId("qa-sources-incomplete")).toBeTruthy();
   });
 
   it("opens Markdown rendered, toggles to raw and highlights referenced lines", async () => {
@@ -104,7 +106,7 @@ describe("sources panel", () => {
     expect(document.querySelector("script")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Raw" }));
     expect(
-      document.querySelectorAll(".dsh-qa-preview__line--highlight"),
+      screen.getAllByTestId("qa-source-preview-line-highlight"),
     ).toHaveLength(2);
     expect(readSourceFile).toHaveBeenCalledWith("root", "docs/guide.md");
   });
@@ -128,10 +130,11 @@ describe("sources panel", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /guide\.md/u }));
-    await waitFor(() =>
-      expect(screen.getByText(/вне каталогов, доступных/u)).toBeTruthy(),
+    const failure = await waitFor(() =>
+      screen.getByTestId("qa-source-detail-error"),
     );
-    expect(screen.queryByText(/был перемещён/u)).toBeNull();
+    expect(failure.textContent).toMatch(/вне каталогов, доступных/u);
+    expect(failure.textContent).not.toMatch(/был перемещён/u);
   });
 
   it("still reports a moved file as moved", async () => {
@@ -153,9 +156,10 @@ describe("sources panel", () => {
       />,
     );
     fireEvent.click(screen.getByRole("button", { name: /guide\.md/u }));
-    await waitFor(() =>
-      expect(screen.getByText(/был перемещён/u)).toBeTruthy(),
+    const failure = await waitFor(() =>
+      screen.getByTestId("qa-source-detail-error"),
     );
+    expect(failure.textContent).toMatch(/был перемещён/u);
   });
 
   it("offers the way back to the whole-chat list only while pinned", () => {
