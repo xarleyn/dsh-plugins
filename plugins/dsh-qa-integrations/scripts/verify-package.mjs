@@ -13,6 +13,9 @@ assert(manifest.dependencies?.["@yadsh/dsh-qa-surface"]);
 
 for (const file of [
   "lib/index.js",
+  // The published names are listed in one module that the entry re-exports, so
+  // the composition root and the surface do not live in the same file.
+  "lib/public-api.js",
   "lib/tools.js",
   "lib/tool-kit.js",
   "lib/client.js",
@@ -1461,6 +1464,10 @@ for (const label of [
 const host = await readFile(new URL("lib/index.js", root), "utf8");
 assert.match(host, /principalForSession/u);
 assert.match(host, /DockerSecretKeyProvider/u);
+// The entry keeps carrying the published surface now that the list of names
+// lives in its own module: a consumer of `@yadsh/dsh-qa-integrations` resolves
+// through here and must still reach every provider, store and error type.
+assert.match(host, /export \* from "\.\/public-api\.js"/u);
 const secretStore = await readFile(
   new URL("lib/secrets/secret-store.js", root),
   "utf8",
