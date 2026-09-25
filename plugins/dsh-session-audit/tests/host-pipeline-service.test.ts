@@ -412,4 +412,121 @@ describe("AuditService refresh", () => {
     expect(audit?.report).toContain("# Trajectory Review");
     expect((audit?.raw as { verdict?: string }).verdict).toBe("good");
   });
+
+  it("keeps the detail view on the bytes its summary was built from", async () => {
+    const { service } = testService(root);
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: analysis(),
+      report: REPORT,
+    });
+    await service.refresh();
+    const before = await service.getSessionAudit(SESSION_ID);
+    expect(before?.analysis.kind).toBe("v1");
+
+    // A producer rewriting the analysis in place leaves an empty file behind.
+    await writeFile(join(root, AUDIT_DIRECTORY, "analysis.json"), "", "utf8");
+    await service.refresh();
+
+    // The summary is the last good one, and so is everything beside it: the
+    // detail must not go and re-read the file that just failed.
+    expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
+    const held = await service.getSessionAudit(SESSION_ID);
+    expect(held).not.toBeNull();
+    expect(held?.summary.auditId).toBe(AUDIT_DIRECTORY);
+    expect(held?.report).toBe(before?.report);
+    expect((held?.raw as { verdict?: string }).verdict).toBe("mixed");
+    expect(await service.readReport(AUDIT_DIRECTORY)).toContain(
+      "# Trajectory Review",
+    );
+
+    // A replacement that validates takes the view over — the held bytes are
+    // the last good version, not a frozen one.
+    await writeFile(
+      join(root, AUDIT_DIRECTORY, "analysis.json"),
+      JSON.stringify(analysis(SESSION_ID, { verdict: "poor" })),
+      "utf8",
+    );
+    await service.refresh();
+
+    const after = await service.getSessionAudit(SESSION_ID);
+    expect(after?.summary.verdict).toBe("poor");
+    expect((after?.raw as { verdict?: string }).verdict).toBe("poor");
+  });
+
+  it("binds an unresolved audit once the corpus grows to fit it", async () => {
+    const sessions: string[] = [];
+    const { service } = testService(root, {
+      listSessionIds: async () => sessions,
+    });
+    // A schema this build cannot read has no declared binding, so the directory
+    // name is what stands in for one.
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: { schemaVersion: 7, trajectory: {} },
+      report: REPORT,
+    });
+
+    await service.refresh();
+
+    expect(service.registry.counts().unresolved).toBe(1);
+    expect(await service.getSessionAuditSummary(SESSION_ID)).toBeNull();
+
+    // No byte of either artefact moves: the only fact that changed is which
+    // sessions the harness knows about.
+    sessions.push(SESSION_ID);
+    await service.refresh();
+
+    expect(service.registry.counts().unresolved).toBe(0);
+    expect(service.registry.get(AUDIT_DIRECTORY)?.status).toBe("ready");
+    expect(service.registry.get(AUDIT_DIRECTORY)?.sessionId).toBe(SESSION_ID);
+    expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
+    expect(await service.getSessionAudit(SESSION_ID)).not.toBeNull();
+    // And the gate closes again: a corpus that has stopped moving is no reason
+    // to read the artefacts on every pass.
+    expect((await service.refresh()).changed).toBe(0);
+  });
+
+  it("rebinds a prefix-less session id once the corpus spells it", async () => {
+    const bareSessionId = SESSION_ID.replace(/^session-/u, "");
+    const sessions: string[] = [bareSessionId];
+    const { service } = testService(root, {
+      listSessionIds: async () => sessions,
+    });
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: analysis(bareSessionId),
+      report: REPORT,
+    });
+
+    await service.refresh();
+
+    // A corpus that does not contain the prefixed id leaves the declared one
+    // alone, so the audit sits under a key no view asks with.
+    expect(await service.getSessionAuditSummary(bareSessionId)).not.toBeNull();
+    expect(await service.getSessionAuditSummary(SESSION_ID)).toBeNull();
+
+    sessions.push(SESSION_ID);
+    await service.refresh();
+
+    expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
+    expect(await service.getSessionAudit(SESSION_ID)).not.toBeNull();
+    expect(await service.getSessionAuditSummary(bareSessionId)).toBeNull();
+  });
+
+  it("leaves an audit already bound the harness' way alone as the corpus grows", async () => {
+    const sessions: string[] = [SESSION_ID];
+    const { service } = testService(root, {
+      listSessionIds: async () => sessions,
+    });
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: analysis(),
+      report: REPORT,
+    });
+    await service.refresh();
+
+    // Re-resolving is for the bindings a list could still improve. A session
+    // appearing elsewhere must not cost this audit a re-read on every pass.
+    sessions.push(OTHER_SESSION_ID);
+
+    expect((await service.refresh()).changed).toBe(0);
+    expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
+  });
 });
