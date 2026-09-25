@@ -226,9 +226,6 @@ export class TestitTransport {
                   "ProviderUnavailable",
                   "Test IT request failed",
                 ),
-        // A refused connection stays refused; a slow installation is more often
-        // busy than gone, so anything else earns another bounded attempt.
-        retriable: (error) => error.code !== "UpstreamTimeout",
         statusFailure: (response) => this.failure(response),
       },
       read,

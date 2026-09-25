@@ -179,7 +179,6 @@ export class GitlabTransport {
           accept: "application/json",
         },
         transportFailure,
-        retriable: (error) => error.code !== "UpstreamTimeout",
         statusFailure,
       },
       read,

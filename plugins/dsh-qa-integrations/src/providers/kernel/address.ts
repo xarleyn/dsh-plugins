@@ -7,10 +7,11 @@
  * against another.
  *
  * Canonicalization is the same question for every upstream — which id forms
- * are legal, whether an address may be plain HTTP, how `<origin><path>` is
- * folded — so one implementation answers it and a provider supplies only the
- * words its config error carries and, when it differs from the shared shape,
- * the extra row members it resolves itself.
+ * are legal, whether an address may be plain HTTP, which parts pasted onto a
+ * URL make it not an endpoint, how `<origin><path>` is folded — so one
+ * implementation answers it and a provider supplies only the words its config
+ * error carries and, when it differs from the shared shape, the extra row
+ * members it resolves itself.
  */
 
 /** The id shape every provider list shares. */
@@ -33,6 +34,14 @@ export interface EndpointListPolicy<T extends object = Record<never, never>> {
   readonly field: string;
   /** The noun a development exception is explained in. */
   readonly noun: string;
+  /**
+   * The phrase the HTTPS rule names what is being developed against, when a
+   * provider's own words differ from `a development <noun>`. An installation
+   * that legitimately has no certificate is often called internal rather than
+   * development, and the operator reading the refusal looks for the word their
+   * own product uses.
+   */
+  readonly insecureTarget?: string;
   /** How many endpoints one deployment may declare. */
   readonly max?: number;
   /**
@@ -87,13 +96,23 @@ export function resolveEndpointList<T extends object = Record<never, never>>(
       }
       if (url.protocol === "http:" && !allowInsecureHttp) {
         throw error(
-          `${field}[${index}].baseUrl needs HTTPS; set allowInsecureHttp for a development ${noun}`,
+          `${field}[${index}].baseUrl needs HTTPS; set allowInsecureHttp for ${
+            policy.insecureTarget ?? `a development ${noun}`
+          }`,
         );
       }
       if (url.username !== "" || url.password !== "" || url.search !== "") {
         throw error(
           `${field}[${index}].baseUrl must carry no credentials or query`,
         );
+      }
+      // A fragment never reaches the server, so `<origin><path>` would fold it
+      // away silently and leave the operator believing the row had said
+      // something it had not. What an operator pastes in its place is a browser
+      // URL, which is never an endpoint — the same reason a query is refused
+      // above, and refused by the same words.
+      if (url.hash !== "") {
+        throw error(`${field}[${index}].baseUrl must carry no fragment`);
       }
       // A trailing slash would double up when the API root is appended; the
       // WHATWG URL parser has already folded away any `..` segments.
