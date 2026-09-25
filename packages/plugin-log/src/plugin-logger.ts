@@ -10,6 +10,8 @@
  *   ({@link subscribePluginLogRecords}) for live consumers such as the log
  *   panel in `@yadsh/dsh-plugin-log-ui`, which the file destination cannot
  *   serve without parsing it back;
+ * - applies `redact` once to the record fields, before the file, console and
+ *   bus sinks branch, so a configured secret is cut from every destination;
  * - never throws at runtime: file-system failures degrade to console-only
  *   logging (fail-open), and closed loggers silently drop records;
  * - disables file output when `DSH_LOG_DISABLED=1`, and under `NODE_ENV=test`
@@ -26,6 +28,7 @@ import { mkdirSync } from "node:fs";
 import { readdir, unlink } from "node:fs/promises";
 import { join } from "node:path";
 import { Writable } from "node:stream";
+import redact from "@pinojs/redact";
 import pino from "pino";
 import type { DestinationStream, Logger as PinoLogger } from "pino";
 import { resolveDshHome } from "./dsh-home.js";
@@ -119,7 +122,10 @@ export interface PluginLoggerOptions {
   readonly retentionDays?: number;
   /** Master switch for file output. Default: auto (see the module docs). */
   readonly file?: boolean;
-  /** Record fields to redact (pino `redact` paths), e.g. `["apiKey"]`. */
+  /**
+   * Record fields to redact (pino `redact` paths), e.g. `["apiKey"]`. Applied
+   * once per record, before the file, console mirror and record bus split.
+   */
   readonly redact?: readonly string[];
   /** Clock for file naming, rollover and retention (tests). */
   readonly now?: () => number;
@@ -170,8 +176,10 @@ export type PluginLoggerRegistryListener = (
  * A consumer that wants to draw or forward live output subscribes with
  * {@link subscribePluginLogRecords} and keeps its own buffer: the bus holds no
  * history, so a subscriber sees exactly what is emitted while it is attached.
- * Records carry the caller's raw `fields`, because rendering is the consumer's
- * decision; a transport that serializes them owns the sanitizing.
+ * Fields carry the logger's own `redact` applied, so a secret a plugin
+ * configured away never reaches a consumer; what is left of them is the
+ * caller's data as recorded, because rendering stays the consumer's decision —
+ * a transport that serializes the fields owns the display sanitization.
  */
 export interface PluginLogRecord {
   /** Process-wide monotonic sequence; a consumer resumes from it instead of from time. */
@@ -186,7 +194,7 @@ export interface PluginLogRecord {
   readonly module: string | undefined;
   /** The stable event code (pino's `msg`). */
   readonly event: string;
-  /** The caller's fields, exactly as the logger received them. */
+  /** The caller's fields, redacted and frozen as a copy of what the logger received. */
   readonly fields: Readonly<Record<string, unknown>>;
 }
 
@@ -249,7 +257,9 @@ function publishPluginLogRecord(
     pluginId,
     module,
     event,
-    fields: Object.freeze(fields ?? {}),
+    // A copy: the record outlives the call, and freezing the caller's own
+    // object would make their next assignment throw.
+    fields: Object.freeze({ ...fields }),
   });
   bus.nextRecordSeq += 1;
   for (const listener of bus.recordListeners) {
@@ -404,6 +414,41 @@ function formatConsole(
     return `${key}=${rendered}`;
   });
   return parts.length === 0 ? event : `${event} ${parts.join(" ")}`;
+}
+
+/** What a redacted field is replaced with — the same text pino writes. */
+const REDACTION_CENSOR = "[Redacted]";
+
+/** Redacts one record's fields into a copy the caller keeps no reference to. */
+type FieldRedactor = (
+  fields: Record<string, unknown>,
+) => Record<string, unknown>;
+
+/**
+ * Build the redactor every sink of one logger reads through.
+ *
+ * `@pinojs/redact` is the package pino itself redacts the file sink with, so a
+ * path the `redact` option documents behaves here exactly as it does there. The
+ * fields travel under a holder key because, asked for an object rather than a
+ * string, the package also writes an enumerable `restore()` onto the object it
+ * returns; the holder absorbs that helper and is dropped.
+ */
+function buildFieldRedactor(
+  paths: readonly string[],
+): FieldRedactor | undefined {
+  if (paths.length === 0) return undefined;
+  const redactor = redact({
+    paths: paths.map((path) => `fields.${path}`),
+    censor: REDACTION_CENSOR,
+    serialize: false,
+    strict: false,
+  });
+  return (fields) => {
+    const holder = redactor({ fields }) as {
+      fields: Record<string, unknown>;
+    };
+    return holder.fields;
+  };
 }
 
 /** Local-calendar date stamp used in file names (sorts lexically). */
@@ -623,6 +668,7 @@ class LoggerCore {
   private readonly sink: PluginConsoleSink;
   private readonly retentionDays: number;
   private readonly redact: readonly string[];
+  private readonly redactor: FieldRedactor | undefined;
   private readonly clock: () => number;
   private fileEnabled: boolean;
   private closed = false;
@@ -651,6 +697,7 @@ class LoggerCore {
       Math.floor(options.retentionDays ?? DEFAULT_LOG_RETENTION_DAYS),
     );
     this.redact = options.redact ?? [];
+    this.redactor = buildFieldRedactor(this.redact);
     this.clock = options.now ?? Date.now;
     this.fileEnabled =
       (options.file ?? true) && !envFileDisabled(options.dir !== undefined);
@@ -712,8 +759,13 @@ class LoggerCore {
     fields?: Record<string, unknown>,
   ): void {
     if (this.closed || this.levelName === "silent") return;
+    // Redacted once, so no sink below can be handed a value the plugin asked
+    // away: the file and pino's own redaction, the mirror, and the bus record
+    // the log panel renders all read the same fields.
+    const redacted =
+      this.redactor === undefined ? fields : this.redactor(fields ?? {});
     if (weightOf(level) < weightOf(this.levelName)) {
-      this.mirror(moduleField, level, event, fields);
+      this.mirror(moduleField, level, event, redacted);
       return;
     }
     publishPluginLogRecord(
@@ -722,18 +774,18 @@ class LoggerCore {
       level,
       this.clock(),
       event,
-      fields,
+      redacted,
     );
     this.open();
     const target = this.targetFor(moduleField);
     if (target !== undefined) {
       try {
-        target[level](fields ?? {}, event);
+        target[level](redacted ?? {}, event);
       } catch {
         // Fail-open: serialization problems must never break the plugin.
       }
     }
-    this.mirror(moduleField, level, event, fields);
+    this.mirror(moduleField, level, event, redacted);
   }
 
   flush(): void {
@@ -843,15 +895,16 @@ class LoggerCore {
   }
 
   private scheduleRetentionSweep(): void {
-    if (this.retentionDays <= 0 || this.retention !== undefined) return;
-    this.retention = sweepOldLogFiles(
-      this.dir,
-      this.retentionDays,
-      this.clock(),
-    ).then(
-      () => undefined,
-      () => undefined,
-    );
+    if (this.retentionDays <= 0) return;
+    // Chained, not skipped: a sweep still running must not cost every later
+    // rollover its own pass, while a rollover never overlaps the pass before
+    // it. The tail is what `close()` waits for.
+    this.retention = (this.retention ?? Promise.resolve())
+      .then(() => sweepOldLogFiles(this.dir, this.retentionDays, this.clock()))
+      .then(
+        () => undefined,
+        () => undefined,
+      );
   }
 }
 

@@ -198,4 +198,35 @@ describe("plugin log UI integration", () => {
       { key: "list", value: "[1, 2]" },
     ]);
   });
+
+  it("keeps a redacted field out of the panel view the bus feeds", async () => {
+    const ctx = await configuredContext({
+      "plugin-log": { defaultLevel: "trace" },
+    });
+    const created = createPluginLogger({
+      pluginId: "dsh-redacted",
+      file: false,
+      console: "silent",
+      level: "trace",
+      redact: ["apiKey", "headers.*"],
+    });
+    loggers.push(created);
+
+    created.info("stream.secret", {
+      apiKey: "sk-synthetic-secret",
+      headers: { authorization: "sk-synthetic-secret" },
+      kept: "visible",
+    });
+
+    // The bus hands the panel what the logger recorded, redaction included, so
+    // a secret the plugin configured away is never rendered and never shipped.
+    const [record] = ctx.pluginLogUi
+      .tail(0, 10)
+      .records.filter((entry) => entry.pluginId === "dsh-redacted");
+    expect(record?.fields).toEqual([
+      { key: "apiKey", value: "[Redacted]" },
+      { key: "headers", value: "{authorization: [Redacted]}" },
+      { key: "kept", value: "visible" },
+    ]);
+  });
 });
