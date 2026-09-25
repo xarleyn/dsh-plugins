@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -173,12 +173,29 @@ export function changedFiles(repoRoot, from, to, directory) {
   ).map(toPosixPath);
 }
 
-/** True when `ancestor` is reachable from `descendant`. */
+/**
+ * Whether `ancestor` is reachable from `descendant`. `git merge-base
+ * --is-ancestor` answers 0 for yes and 1 for no, and any other outcome is not
+ * an answer at all: an unresolvable ref, a missing object, a truncated history.
+ * Reading that as "not an ancestor" would keep the older tag and reopen the
+ * released work the tag covers, which is the failure this clamp exists to stop.
+ */
 function isAncestorOf(repoRoot, ancestor, descendant) {
-  return (
-    git(repoRoot, ["merge-base", "--is-ancestor", ancestor, descendant], {
-      allowFailure: true,
-    }) !== undefined
+  const result = spawnSync(
+    "git",
+    ["merge-base", "--is-ancestor", ancestor, descendant],
+    { cwd: repoRoot, encoding: "utf8", windowsHide: true },
+  );
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  const reason =
+    result.stderr?.trim() ||
+    result.error?.message ||
+    (result.status === null
+      ? "the comparison was killed by a signal"
+      : `exit code ${result.status}`);
+  throw new Error(
+    `cannot tell whether ${ancestor} is reachable from ${descendant}: ${reason}`,
   );
 }
 
@@ -215,7 +232,7 @@ function planIgnoreMatchers(repoRoot) {
  * this meaning. A project without any reachable tag has never shipped, so its
  * whole change against the base is unreleased.
  *
- * A tag is only a starting point while the base does not already sit past it.
+ * A tag is only a starting point while the base has not already reached it.
  * A remote that never received a release's tag still has that release in its
  * default branch, and resolving the range back to the older tag reopens every
  * project the release already consumed: the gate then asks a pull request for
@@ -237,7 +254,7 @@ export function unreleasedProjects({ repoRoot, base, head = "HEAD" }) {
       tag,
       from,
       since: superseded
-        ? `since ${base} (release tag ${tag} predates the base)`
+        ? `since ${base} (release tag ${tag} is already in the base)`
         : `since ${tag ?? base}`,
       files,
     };
