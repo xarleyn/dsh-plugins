@@ -315,4 +315,108 @@ describe("QA session controller", () => {
     );
     controller.dispose();
   });
+
+  it("keeps the chat identity across the session a draft creates on first send", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
+    });
+    await controller.ensureSession();
+    await controller.startDraft();
+    const draftKey = controller.getSnapshot().chatKey;
+
+    let releaseAttestation!: (
+      value: Awaited<ReturnType<typeof world.secureSession>>,
+    ) => void;
+    world.secureSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseAttestation = resolve;
+        }),
+    );
+    const sending = controller.send("Первый вопрос");
+    // The draft's session is already bound while its proof is pending. This is
+    // the moment the surface used to hand the composer a new key, which
+    // discarded a question nothing had accepted yet.
+    await until(() => controller.getSnapshot().sessionId === "created-2");
+    expect(controller.getSnapshot()).toMatchObject({
+      chatKey: draftKey,
+      pendingMessage: { text: "Первый вопрос" },
+    });
+
+    releaseAttestation({
+      ok: true,
+      value: {
+        sessionId: "created-2",
+        enabled: true,
+        agentPresetMatches: true,
+        workspaceMatches: true,
+        modelMatches: true,
+        sandboxModeMatches: true,
+        approvalIsNever: true,
+        permissionPreset: "qa-read-only",
+        toolPolicyLoaded: true,
+        toolAllowList: [],
+      },
+    });
+    expect(await sending).toBe(true);
+    expect(world.faces.get("created-2")?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "Первый вопрос" }],
+      "queue",
+    );
+    expect(controller.getSnapshot().chatKey).toBe(draftKey);
+    // A real move to another chat does change the identity: that composer must
+    // not carry the previous conversation's text.
+    await controller.switchTo("created-1");
+    expect(controller.getSnapshot().chatKey).toBe(draftKey + 1);
+    controller.dispose();
+  });
+
+  it("reports a first send whose session cannot be created", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
+    });
+    await controller.ensureSession();
+    await controller.startDraft();
+    const draftKey = controller.getSnapshot().chatKey;
+    world.createSession.mockImplementationOnce(async () => ({
+      ok: false as const,
+      error: {
+        code: "qa.session_create_refused",
+        message: "preset unavailable",
+      },
+    }));
+
+    expect(await controller.send("Первый вопрос")).toBe(false);
+    // The bootstrap already spent one creation: this is the draft's own, and it
+    // brought no session back.
+    expect(world.createSession).toHaveBeenCalledTimes(2);
+    expect(world.faces.has("created-2")).toBe(false);
+    // The refusal is said out loud, and the chat identity holds still so the
+    // composer keeps the text the user can send again.
+    expect(controller.getSnapshot()).toMatchObject({
+      chatKey: draftKey,
+      sessionId: null,
+      error: expect.stringMatching(/Не удалось начать чат/u),
+      pendingMessage: null,
+    });
+    controller.dispose();
+  });
 });
+
+/** Let the controller's async chain run to its next waiting point. */
+async function until(predicate: () => boolean): Promise<void> {
+  for (let attempt = 0; attempt < 200 && !predicate(); attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+  if (!predicate()) throw new Error("the controller never reached that state");
+}

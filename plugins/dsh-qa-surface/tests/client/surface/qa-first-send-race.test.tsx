@@ -215,8 +215,10 @@ describe("first send from a new QA chat", () => {
     const newChat = await screen.findByRole("button", { name: "Новый чат" });
     await waitFor(() => expect(newChat).toHaveProperty("disabled", false));
     fireEvent.click(newChat);
-    const composer = screen.getByRole("combobox");
-    fireEvent.change(composer, { target: { value: "Первый вопрос" } });
+    // Re-read the field on every check: a remount replaces the element, and a
+    // detached one keeps its own value.
+    const promptField = () => screen.getByRole("combobox");
+    fireEvent.change(promptField(), { target: { value: "Первый вопрос" } });
     fireEvent.click(screen.getByRole("button", { name: "Отправить" }));
 
     await waitFor(() => expect(accounts.claimNewSession).toHaveBeenCalled());
@@ -232,8 +234,13 @@ describe("first send from a new QA chat", () => {
     // optimistic row vanished and the empty-chat welcome flashed back before
     // the replacement controller bound, which the runtime probe recorded as
     // QUESTION_TEXT_DISAPPEARED.
-    expect(screen.getByText("Первый вопрос")).toBeTruthy();
+    const pendingRow = document.querySelector('[data-status="pending"]');
+    expect(pendingRow?.textContent).toContain("Первый вопрос");
     expect(screen.queryByText("Чем могу помочь?")).toBeNull();
+    // Binding the new session used to remount the composer as well, which threw
+    // the text away while nothing had been admitted yet: the question survived
+    // only as an optimistic row, and the chat came up empty.
+    expect(promptField()).toHaveProperty("value", "Первый вопрос");
 
     await act(async () => {
       releaseFirstSend();
@@ -244,5 +251,7 @@ describe("first send from a new QA chat", () => {
         "queue",
       );
     });
+    // Only now, with the session holding the prompt, does the field clear.
+    await waitFor(() => expect(promptField()).toHaveProperty("value", ""));
   });
 });

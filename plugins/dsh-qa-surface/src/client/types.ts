@@ -652,6 +652,7 @@ export interface StorageLike {
 export const QA_SESSION_IDLE_STATE: QaSessionState = Object.freeze({
   phase: "idle",
   sessionId: null,
+  chatKey: 0,
   messages: Object.freeze([]),
   pendingMessage: null,
   error: null,

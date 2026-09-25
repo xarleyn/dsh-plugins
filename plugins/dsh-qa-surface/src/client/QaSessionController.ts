@@ -206,6 +206,13 @@ export class QaSessionController {
   private connectedOnce: boolean;
   private disposed = false;
   private generation = 0;
+  /**
+   * Chat identity handed to the surface (`QaSessionState.chatKey`). Bumped on
+   * every navigation between chats and never when the bound draft merely
+   * creates its session, so a component that keeps per-chat state in React
+   * survives the first prompt of a new chat.
+   */
+  private chatKey = 0;
   private chatsRevision = 0;
   private selectedSubrole: string | null;
   private adminPreview: boolean;
@@ -328,10 +335,21 @@ export class QaSessionController {
     if (this.session === undefined) {
       // A draft chat materializes its session only now: nothing was created
       // when the user pressed "New chat", so the first submission pays for it.
-      if (!this.drafting || this.materializing !== undefined) return undefined;
-      if (!(await this.materializeDraft()) || this.session === undefined) {
+      if (this.materializing !== undefined) {
+        // A first prompt is already paying for the session; this one would
+        // only race it. Say so, because the alternative is a silent drop.
+        this.refuseSend("Чат ещё создаётся. Отправьте сообщение ещё раз.");
         return undefined;
       }
+      if (!this.drafting) {
+        this.refuseSend("Не удалось отправить сообщение: чат не открыт.");
+        return undefined;
+      }
+      const created = await this.materializeDraft();
+      // A refusal reports itself inside materializeDraft, with the Host's
+      // reason, and a draft the user left while it was being created is
+      // attested by whichever chat took its place: neither answer here.
+      if (!created || this.session === undefined) return undefined;
     }
     const step = await this.attestPolicy();
     if (step.kind === "stale") {
@@ -802,6 +820,7 @@ export class QaSessionController {
       }
     }
     this.drafting = true;
+    this.chatKey += 1;
     this.pendingSubmission = undefined;
     this.unbind();
     this.operationError = null;
@@ -809,6 +828,7 @@ export class QaSessionController {
     this.policyReady = false;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
+      chatKey: this.chatKey,
       chatsRevision: this.chatsRevision,
     };
     this.publish();
@@ -874,6 +894,7 @@ export class QaSessionController {
       return;
     const operation = ++this.generation;
     this.drafting = false;
+    this.chatKey += 1;
     this.pendingSubmission = undefined;
     this.viewingSubagent = null;
     this.unbind();
@@ -882,6 +903,7 @@ export class QaSessionController {
     this.policyReady = false;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
+      chatKey: this.chatKey,
       chatsRevision: this.chatsRevision,
       phase: "creating",
     };
@@ -938,6 +960,7 @@ export class QaSessionController {
     }
     const operation = ++this.generation;
     this.drafting = false;
+    this.chatKey += 1;
     this.pendingSubmission = undefined;
     this.viewingSubagent = { id, title };
     this.unbind();
@@ -946,6 +969,7 @@ export class QaSessionController {
     this.policyReady = false;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
+      chatKey: this.chatKey,
       chatsRevision: this.chatsRevision,
       viewingSubagent: this.viewingSubagent,
       phase: "creating",
@@ -1071,6 +1095,7 @@ export class QaSessionController {
     this.drafting = false;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
+      chatKey: this.chatKey,
       chatsRevision: this.chatsRevision,
       phase: "creating",
     };
@@ -1383,6 +1408,7 @@ export class QaSessionController {
         this.pendingSubmission !== undefined;
       this.state = {
         ...QA_SESSION_IDLE_STATE,
+        chatKey: this.chatKey,
         phase: materializing
           ? "creating"
           : !connected && this.connectedOnce
@@ -1426,6 +1452,7 @@ export class QaSessionController {
     const projectionInput = {
       connected,
       sessionId,
+      chatKey: this.chatKey,
       sessionSnapshot: snapshot,
       conversationSnapshot,
       sourceBundles,
@@ -1535,6 +1562,15 @@ export class QaSessionController {
     return new Set(this.accounts.ownedIds());
   }
 
+  /**
+   * Tell the user that a submission they pressed did not go. The composer keeps
+   * its text through a refused send, so silence here would read as success.
+   */
+  private refuseSend(message: string): void {
+    this.operationError = message;
+    this.publish();
+  }
+
   private fail(message: string, error: unknown): void {
     // Policy attestation refusals already logged their precise reason; a
     // second stack trace for the wrapper error is only console noise.
@@ -1545,6 +1581,7 @@ export class QaSessionController {
     this.operationError = message;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
+      chatKey: this.chatKey,
       phase: "error",
       error: message,
       chatsRevision: this.chatsRevision,
