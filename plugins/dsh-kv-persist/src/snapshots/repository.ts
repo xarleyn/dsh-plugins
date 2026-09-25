@@ -95,6 +95,12 @@ export class SnapshotRepository {
           sessionSeq: input.sessionSeq,
           tokens: input.tokens ?? existing.tokens,
           bytes: input.bytes ?? existing.bytes,
+          // The binary behind this manifest was just rewritten for `identity`,
+          // so it is ready again for that runtime — even when an earlier
+          // restore failure or fingerprint change had invalidated it.
+          compatibilityVersion: input.identity.compatibilityVersion,
+          state: "ready",
+          invalidReason: null,
         }
       : {
           ...createManifest({

@@ -87,7 +87,8 @@ Numbered, verifiable guarantees for release `0.1.0` (acceptance criteria §74):
 
 Session state machine (§18): `none → cold → active-dirty → saving → saved`
 and `saved → restoring → active-clean → active-dirty` on resume; `invalid`
-on incompatibility or failed restore. Slot state machine (§19):
+on incompatibility or failed restore, and a manifest is `ready` again once a
+save rewrites the snapshot its identity names (§31). Slot state machine (§19):
 `unknown → idle → ready → inference → dirty → saving`, `restoring` while a
 restore is in flight, `broken` on unusable server state. Ownership is a
 single `(slot → session)` association; auxiliary requests leave the slot

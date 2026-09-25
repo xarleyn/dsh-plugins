@@ -517,6 +517,15 @@ export class SingleSlotCoordinator {
   /** Save every dirty session that still owns the slot (flush/shutdown). */
   async flushOwned(trigger: CheckpointTrigger): Promise<void> {
     if (this.#disposed) return;
+    await this.#flushOwned(trigger);
+  }
+
+  /**
+   * Flush body. Kept separate from the disposal gate so shutdown can still
+   * checkpoint after new work is refused; the lease places it behind whatever
+   * inference or save is already in flight, so it sees the final dirty state.
+   */
+  async #flushOwned(trigger: CheckpointTrigger): Promise<void> {
     await this.#mutex.runExclusive(async () => {
       const owner = this.#slot.ownerSessionId;
       if (owner === null) return;
@@ -660,7 +669,7 @@ export class SingleSlotCoordinator {
   async dispose(): Promise<void> {
     this.#disposed = true;
     this.#cancelIdleTimer();
-    await this.flushOwned("shutdown").catch(() => undefined);
+    await this.#flushOwned("shutdown").catch(() => undefined);
   }
 
   // ——— internals ———————————————————————————————————————————————————————
