@@ -1099,7 +1099,7 @@ export function createDocsReadTool(
       path: {
         type: "string",
         required: true,
-        description: `The documentation file, as docs_search reports it (\`${QA_DOCS_DIRECTORY}/<module>/<version>/<file>\`) or relative to ${QA_DOCS_DIRECTORY}/.`,
+        description: `The documentation file, as docs_search reports it (\`${QA_DOCS_DIRECTORY}/<module>/<version>/<file>\`), relative to ${QA_DOCS_DIRECTORY}/, or an absolute path inside the configured documentation root.`,
       },
       from: {
         type: "number",

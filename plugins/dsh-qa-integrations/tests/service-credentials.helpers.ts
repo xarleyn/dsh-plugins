@@ -230,10 +230,14 @@ export function buildHarness(
   const managed = resolveManagedServiceCredentials(input);
   const registry = new ServiceCredentialRegistry(
     managed,
-    (provider, instance) =>
-      provider === "acme" && instance === "acme-app"
-        ? "acme.example"
-        : undefined,
+    (provider, instance) => {
+      if (provider !== "acme") return undefined;
+      // A second instance exists so one suite can publish two profiles of one
+      // provider, the shape automatic binding refuses to guess over.
+      if (instance === "acme-app") return "acme.example";
+      if (instance === "acme-alt") return "acme-alt.example";
+      return undefined;
+    },
     { env: { ACME_SERVICE_TOKEN: options.secret ?? "service-token-value" } },
   );
   const rateLimits = new ServiceRateLimiter(managed.rateLimit, options.now);
@@ -245,7 +249,10 @@ export function buildHarness(
       fakeLogger(),
       {
         serviceCredentials: registry,
-        defaultForNewConnections: true,
+        // The deployment's own choice, the way the plugin hands it over: a
+        // suite that leaves `defaultForNewConnections` out keeps the resolved
+        // default rather than inheriting a literal from this helper.
+        defaultForNewConnections: managed.defaultForNewConnections,
         rateLimits,
       },
     ),
