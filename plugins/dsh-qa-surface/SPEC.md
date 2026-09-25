@@ -1746,7 +1746,19 @@ The plugin should automatically follow DSH's resolved theme.
 
 Do not independently implement another dark/light preference system in MVP.
 
-Optional future config may force a branded theme, but normal DSH semantic variables should remain the base.
+Optional future config may force a branded theme, but normal DSH semantic
+variables should remain the base.
+
+Amendment (`/qa`): the surface carries the Host's three preferences (light,
+dark, system) in its own header, because the overlay suppresses the settings
+that host the Appearance row. The choice is browser-local — this deployment's
+localStorage namespace, never the Host user-settings document — and a browser
+that never picked one makes the surface write nothing at all. What a pick
+writes is the Host's own two fields (`color-scheme` on the root, the dark
+palette attribute on the body), and they are handed back to the document when
+the surface stops being what the visitor sees; the font-size axis and a theme's
+token overrides stay the Host's. This is the Host's vocabulary on the Host's
+selectors, not a second palette: see `src/client/theme-preference.ts`.
 
 ---
 
