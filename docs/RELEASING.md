@@ -62,10 +62,14 @@ project against the newest release tag its history can reach — the
 `release/<date>` tag the workflow creates once per release run — and asks for a
 plan only when commits no tag covers have landed since. Comparing every project
 against the default branch instead would report an already-published release as
-unreleased and demand plans the release has consumed. A project that never
-shipped has no tag, so its whole change against the base counts. Uncommitted
-work is reported as pending rather than judged, because the release reads
-commits too. The check ignores the files Nx ignores for this decision, so a
+unreleased and demand plans the release has consumed. A tag is only a start
+while the base has not already reached it: a remote whose copy is missing a
+release tag its default branch already carries would otherwise walk the range
+back over the work that release consumed, so the check starts at the base and
+names the tag it set aside. A project that never shipped has no tag, so its
+whole change against the base counts. Uncommitted work is reported as pending
+rather than judged, because the release reads commits too. The check ignores
+the files Nx ignores for this decision, so a
 release commit that only rewrites versions and changelogs needs no further plan.
 
 ## Maintainer flow
