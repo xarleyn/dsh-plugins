@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_QA_SURFACE_CONFIG,
   resolveConfig,
-} from "../src/resolve-config.js";
+} from "../../src/resolve-config.js";
 
 describe("notifications config", () => {
   it("keeps both channels available on a stand that says nothing", () => {
