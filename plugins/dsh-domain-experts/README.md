@@ -149,7 +149,16 @@ reported with one of two levels:
 The resolved-scope inspector renders this per resource, and the degraded
 sections list what a domain asks for but the deployment cannot supply
 (`SCOPE_PROVIDER_MISSING`, `MEMORY_PROVIDER_MISSING`, `WORKER_UNAVAILABLE`,
-`TOOL_UNVERIFIED`, `DELEGATION_TARGET_MISSING`).
+`TOOL_UNVERIFIED`, `TOOL_UNFILTERABLE`, `DELEGATION_TARGET_MISSING`).
+
+A `N degraded` chip is not a broken expert, and the codes are not equally severe.
+`TOOL_UNVERIFIED` costs nothing: it is recorded for every allow-list name that is
+not a worker of this plugin — an ordinary tool such as `read` or `grep` — because
+the resolver cannot see the host's global tool registry, so it passes the name to
+the child unchanged and says it could not verify it. An expert that answers with
+`status="completed"` and this one code in the log had all the tools its policy
+asks for. `TOOL_UNFILTERABLE` is the code that can name a tool the expert did not
+get, and it names it.
 
 Path containment is implemented once, in `decidePath`/`resolveWithinRoot`:
 denial wins over any allow, a path that no rule classifies is refused, and

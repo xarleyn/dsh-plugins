@@ -109,6 +109,18 @@ domain_expert(domain, task, context, output, mode, background)
   alias keeps design-vocabulary configurations from being reported as degraded.
   Only real registered names reach the runtime's tool filter, which rejects
   unknown names loudly.
+- **A global tool name cannot be verified at resolve time.** `toolEntries` grades
+  an allow-list entry `worker` only when this plugin's `WorkerRegistry` knows it,
+  `infrastructure` when it is one of the plugin's own tools, and `tool` for
+  everything else — which is exactly the set that records `TOOL_UNVERIFIED`. The
+  host's global tool registry is not reachable from here, and `restrict()` at
+  child start is the only component that can settle a name, so the code annotates
+  the resolution rather than reporting a fault: the name still reaches
+  `toolFilter.allow` (`filterNamesOf` keeps every available entry). Dropping it
+  would quietly narrow the expert on a deployment that does mount the tool;
+  keeping it costs one audit code. Where the runtime does refuse a name, the run
+  is retried without it and records `TOOL_UNFILTERABLE`, which names what went
+  missing.
 - **Expert-only tools are globally registered.** `domain_delegate`'s sibling
   concern — a top-level agent seeing `domain_memory` — is handled by refusing
   with `EXPERT_NOT_CALLER`, because the runtime offers no seam to register a
