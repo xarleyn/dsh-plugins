@@ -103,7 +103,15 @@ DSH 的工具过滤是能力范围限定，而不是操作系统级沙箱，因�
 
 已解析范围检查器会按资源渲染这些信息，而降级部分则列出领域所要求、但部署无法
 提供的内容（`SCOPE_PROVIDER_MISSING`、`MEMORY_PROVIDER_MISSING`、
-`WORKER_UNAVAILABLE`、`TOOL_UNVERIFIED`、`DELEGATION_TARGET_MISSING`）。
+`WORKER_UNAVAILABLE`、`TOOL_UNVERIFIED`、`TOOL_UNFILTERABLE`、
+`DELEGATION_TARGET_MISSING`）。
+
+「N degraded」标记并不代表专家已经损坏，这些代码的严重程度也并不相同。
+`TOOL_UNVERIFIED` 不带来任何损失：它记录的是允许列表中不属于本插件 worker 的名称，
+也就是 `read`、`grep` 这类普通工具 —— 解析器看不到宿主的全局工具注册表，于是原样
+把名称交给子会话，只是声明自己无法校验它。若日志中只有这一个代码，而运行状态是
+`status="completed"`，那么专家实际拥有其策略所要求的全部工具。真正可能点出一个未
+能到达专家的工具的是 `TOOL_UNFILTERABLE`，而它确实会点出该工具。
 
 路径约束只实现一次，位于 `decidePath`/`resolveWithinRoot`：拒绝优先于任何允许；
 没有任何规则归类的路径会被拒绝；`..`、绝对路径、NUL 字节和符号链接逃逸都会在
