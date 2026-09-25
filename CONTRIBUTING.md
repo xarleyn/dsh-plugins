@@ -189,6 +189,10 @@ These are enforced automatically by CI, but know them before writing code:
 7. Do not rely on hoisting for undeclared dependencies — ⚠️
 8. Prefer public interfaces over deep source imports (`../other/src/...`) — ❌
 9. Workspace consumption must go through declared package exports — ✅
+10. A plugin must NOT depend on another plugin — ❌ unless that exact edge, with
+    the reason that justifies it, is listed in `plugin-dependency-allowlist.json`
+    (SPEC §27.11); the gate checks the list too, so a stale or unexplained entry
+    fails as well
 
 ---
 

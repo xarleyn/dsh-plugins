@@ -1,0 +1,25 @@
+{
+  "$comment": "SPEC §27.11 — the plugin→plugin edges this workspace deliberately ships. Any plugins/* → plugins/* dependency that is not listed here fails `pnpm deps:check`, in every dependency field. An edge belongs here only when the target publishes a stable extension API and the consumer imports it through that target's declared `exports`; anything else shared between plugins moves to packages/*.",
+  "edges": [
+    {
+      "from": "@yadsh/dsh-qa-browser",
+      "to": "@yadsh/dsh-qa-surface",
+      "reason": "dsh-qa-surface publishes the QA client extension points (./client/panels); the browser driver registers its panels through them."
+    },
+    {
+      "from": "@yadsh/dsh-qa-integrations",
+      "to": "@yadsh/dsh-qa-surface",
+      "reason": "dsh-qa-surface publishes the QA settings extension points (./client/settings) and the QaSurface host type; the integrations plugin contributes sections through them."
+    },
+    {
+      "from": "@yadsh/dsh-openviking-memory",
+      "to": "@yadsh/dsh-qa-surface",
+      "reason": "Type-only consumption of the QaUserSettingsSections contract published by dsh-qa-surface; declared in devDependencies, never imported at runtime."
+    },
+    {
+      "from": "@yadsh/dsh-qa-surface",
+      "to": "@yadsh/dsh-documents",
+      "reason": "The document pipeline moved out of this plugin into dsh-documents; the panel consumes the DocumentsFace type that dsh-documents publishes from its root export."
+    }
+  ]
+}

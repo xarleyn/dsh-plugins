@@ -85,9 +85,13 @@ scaffolding и запишите его в SPEC.md.
 (см. приложение A). Суть:
 
 1. **Плагины зависят от shared-пакетов, но не друг от друга.** Никаких
-   `@yadsh/dsh-<other-plugin>` в зависимостях плагина. Общая логика — в
-   `packages/plugin-kit`, тестовая — в `packages/test-kit`, конфиги — в
-   `packages/config`.
+   `@yadsh/dsh-<other-plugin>` в зависимостях плагина — ни в одном поле
+   манифеста, `devDependencies` тоже считается. Исключение оформляется явно:
+   конкретное ребро `from` → `to` с причиной в
+   `plugin-dependency-allowlist.json` (§27.11). Тот же гейт проверяет и сам
+   список: ребро без причины или с пакетом, которого нет среди `plugins/*`,
+   краснеет. Общая логика — в `packages/plugin-kit`, тестовая — в
+   `packages/test-kit`, конфиги — в `packages/config`.
 2. **Shared-пакеты не знают о плагинах.** `packages/*` не может импортировать
    ничего из `plugins/*`.
 3. **`@deepseek-ai/*` — только `peerDependencies`** + копия в `devDependencies`
@@ -709,7 +713,7 @@ docs: add plugin guidelines
 
 | ❌ Анти-паттерн | Почему плохо | Вместо |
 | --- | --- | --- |
-| Зависимость плагина от плагина | Связывает релизные циклы | Общий код в `packages/*` |
+| Зависимость плагина от плагина | Связывает релизные циклы | Общий код в `packages/*`; явно разрешённое ребро в `plugin-dependency-allowlist.json`, если цель публикует extension API |
 | `@deepseek-ai/*` в `dependencies` | Дублирует фреймворк в рантайме | `peerDependencies` + каталоги |
 | Deep-импорт `@yadsh/x/src/…` | Обходит публичный контракт | `exports`-вход пакета |
 | Молчаливый сброс повреждённых данных | Теряет пользовательские данные | Fail loudly + восстановление |
@@ -737,6 +741,7 @@ docs: add plugin guidelines
 | §27.8 | Нет deep-импортов `/src/` чужих пакетов | `pnpm deps:check` |
 | §27.9 | Нет кросс-пакетных относительных/абсолютных импортов | `pnpm deps:check` |
 | §27.10 | Workspace-пакеты потребляются через `exports` | `pnpm deps:check` |
+| §27.11 | Плагин не зависит от плагина, если ребро явно не разрешено | `pnpm deps:check` + `plugin-dependency-allowlist.json` |
 | Tarball 1–7 | lib есть; манифест корректен; патч объявлен и упакован; exports существуют; нет `workspace:`/`catalog:` утечек; чистая установка + smoke-импорт | `scripts/tarball-verify.sh` |
 | Release gates | Version plan обязателен; публикация через npm Trusted Publishing | `pnpm release:check`, `release.yml` |
 

@@ -1,7 +1,7 @@
 // check-dependencies.mjs — SPEC §27 dependency rule enforcement for the
 // dsh-plugins monorepo (the Node core of scripts/check-dependencies.sh).
 //
-// Enforced rules: §27.1–§27.10 — see the bash wrapper's header comment for
+// Enforced rules: §27.1–§27.11 — see the bash wrapper's header comment for
 // the full rule list; this module owns every manifest/source-level check.
 //
 // Exit: 0 = no violations, 1 = violations found, 2 = setup error.
@@ -39,6 +39,10 @@ const DEP_FIELDS = [
   "optionalDependencies",
 ];
 const DSH_RUNTIME_PREFIXES = ["@deepseek-ai/"];
+
+// §27.11: the exceptions themselves live in a reviewable file at the repo root
+// (absence = no plugin may depend on a plugin).
+const PLUGIN_EDGE_ALLOWLIST = "plugin-dependency-allowlist.json";
 
 // ---------------------------------------------------------------------------
 // Collect workspace members (publishable packages/plugins and private tooling)
@@ -110,6 +114,99 @@ for (const m of members) {
             `only depend on other shared packages`,
         );
       }
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// §27.11 — a plugin may depend on another plugin only through the allow-list
+//
+// §27.2's sibling: a plugin reaching for a sibling couples their release cycles
+// (PLUGIN_GUIDELINES §3.1, §11). Some of those edges are deliberate — a plugin
+// that publishes an extension API is consumed by its siblings — so the rule
+// does not ban them, it demands that each one is written down in
+// `plugin-dependency-allowlist.json` with the reason that justifies it. A
+// missing file is an empty allow-list: the default stays "no plugin knows
+// another plugin".
+// ---------------------------------------------------------------------------
+const edgeKey = (from, to) => `${from}\u0000${to}`;
+
+function readPluginEdgeAllowList(membersByName) {
+  const file = path.join(ROOT, PLUGIN_EDGE_ALLOWLIST);
+  if (!fs.existsSync(file)) return { allowed: new Set(), problems: [] };
+
+  let document;
+  try {
+    document = JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch (err) {
+    return {
+      allowed: new Set(),
+      problems: [`${PLUGIN_EDGE_ALLOWLIST}: invalid JSON (${err.message})`],
+    };
+  }
+
+  const allowed = new Set();
+  const problems = [];
+  const edges = document?.edges;
+  if (!Array.isArray(edges)) {
+    return {
+      allowed,
+      problems: [
+        `${PLUGIN_EDGE_ALLOWLIST}: expected an "edges" array of { from, to, reason }`,
+      ],
+    };
+  }
+
+  for (const [index, edge] of edges.entries()) {
+    const from = typeof edge?.from === "string" ? edge.from : "";
+    const to = typeof edge?.to === "string" ? edge.to : "";
+    const reason = typeof edge?.reason === "string" ? edge.reason.trim() : "";
+    const where = `${PLUGIN_EDGE_ALLOWLIST}: edges[${index}]`;
+    if (!from || !to) {
+      problems.push(`${where} must name both 'from' and 'to'`);
+      continue;
+    }
+    if (!reason) {
+      problems.push(
+        `${where} (${from} → ${to}) has no 'reason' — an exception nobody can justify is not a reviewable exception`,
+      );
+    }
+    for (const name of [from, to]) {
+      const member = membersByName.get(name);
+      if (!member) {
+        problems.push(
+          `${where} names '${name}', which is not a workspace member — drop the stale exception or fix the name`,
+        );
+      } else if (member.kind !== "plugin") {
+        problems.push(
+          `${where} names '${name}', which is ${member.relDir} and not a plugin — only plugins/* → plugins/* edges belong in the allow-list`,
+        );
+      }
+    }
+    allowed.add(edgeKey(from, to));
+  }
+  return { allowed, problems };
+}
+
+const pluginEdges = readPluginEdgeAllowList(byName);
+for (const problem of pluginEdges.problems) {
+  violation("§27.11", problem);
+}
+for (const m of members) {
+  if (m.kind !== "plugin") continue;
+  for (const field of DEP_FIELDS) {
+    for (const name of Object.keys(m.pkg[field] ?? {})) {
+      const target = byName.get(name);
+      if (!target || target.kind !== "plugin" || target === m) continue;
+      if (pluginEdges.allowed.has(edgeKey(m.name, name))) continue;
+      violation(
+        "§27.11",
+        `plugin '${m.name}' depends on plugin '${target.name}' ` +
+          `(${m.relDir}/package.json → ${field}.${name}), which ` +
+          `${PLUGIN_EDGE_ALLOWLIST} does not allow; move the shared code to a ` +
+          `packages/* member, or add this edge to ${PLUGIN_EDGE_ALLOWLIST} with ` +
+          `the reason that justifies it`,
+      );
     }
   }
 }
