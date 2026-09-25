@@ -176,6 +176,58 @@ describe("error mapping", () => {
     expect(error.message).toContain("cancelled");
   });
 
+  it("ends a body that never finishes inside the same budget", async () => {
+    // The fetch answered, so the header deadline alone left this read pending
+    // forever: the budget has to cover the body stream too.
+    let cancelled = false;
+    const stub = createFetchStub(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            cancel: () => {
+              cancelled = true;
+            },
+          }),
+        ),
+    );
+    const client = createLightRagClient(
+      { ...LIGHTRAG_DEFAULTS, timeoutMs: 20 },
+      { fetch: stub.fetch },
+    );
+    const startedAt = Date.now();
+    const error = await caught(() => client.health());
+    expect(error.code).toBe("timeout");
+    expect(error.message).toContain("20 ms");
+    expect(Date.now() - startedAt).toBeLessThan(500);
+    expect(cancelled).toBe(true);
+  });
+
+  it("folds a caller abort during the body read into timeout", async () => {
+    const caller = new AbortController();
+    const { client } = testClient(() => new Response(new ReadableStream()));
+    const pending = caught(() => client.health({ signal: caller.signal }));
+    setTimeout(() => caller.abort(), 10);
+    const error = await pending;
+    expect(error.code).toBe("timeout");
+    expect(error.message).toContain("cancelled while the body was arriving");
+  });
+
+  it("folds a body that breaks mid-transfer into a typed failure", async () => {
+    const { client } = testClient(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start: (controller) => {
+              controller.error(new Error("socket hang up"));
+            },
+          }),
+        ),
+    );
+    const error = await caught(() => client.health());
+    expect(error.code).toBe("unreachable");
+    expect(error.message).toContain("socket hang up");
+  });
+
   it("rejects a body that is not JSON", async () => {
     const { client } = testClient(() => textResponse("<html>nope</html>"));
     const error = await caught(() => client.health());
