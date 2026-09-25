@@ -65,6 +65,7 @@ export function skillDocument(
     extraFrontmatter: { license: "MIT" },
     sourcePath: "/workspace/.dsh/skills/api-testing/SKILL.md",
     preview: "",
+    truncated: false,
     ...overrides,
   };
 }

@@ -132,6 +132,12 @@ export interface QaStoredSkill {
   readonly contents: QaSkillFileContents | undefined;
   readonly diagnostics: readonly QaSkillDiagnostic[];
   readonly resourceCount: number;
+  /**
+   * True when `raw` is only the head of the file: an oversized `SKILL.md` is
+   * read up to the ceiling, and what follows it was never loaded. A write must
+   * not overwrite such a document without saying so out loud.
+   */
+  readonly truncated: boolean;
 }
 
 export interface QaPersonalSkillsOptions {
@@ -373,6 +379,15 @@ export class QaPersonalSkills {
       );
     }
     this.assertRevision(name, input.expectedRevision, current.revision);
+    if (current.truncated && input.confirmPartialOverwrite !== true) {
+      // The editor holds a head it could read, not the document. A save writes
+      // what it holds, so the tail nobody loaded would vanish with no trace:
+      // the client has to say it knows before that becomes a write.
+      throw new QaPersonalSkillError(
+        "skill-truncated",
+        `skill ${name} is larger than the read ceiling and was loaded only partly`,
+      );
+    }
     const text = serializeSkillFile({
       ...prepared.draft,
       // Foreign frontmatter is read from the file, not from the browser: the
@@ -588,6 +603,7 @@ export class QaPersonalSkills {
       contents: undefined,
       diagnostics: [],
       resourceCount: 0,
+      truncated: false,
     };
     let directory: string;
     try {
@@ -618,6 +634,7 @@ export class QaPersonalSkills {
         revision: "",
         updatedAt: null,
         contents: undefined,
+        truncated: false,
         diagnostics: [
           ...resources.diagnostics,
           {
@@ -632,6 +649,18 @@ export class QaPersonalSkills {
     const parsed = parseSkillFile(read.text);
     const diagnostics: QaSkillDiagnostic[] = [
       ...resources.diagnostics,
+      // Ahead of the parse findings: a body that stops mid-document explains
+      // why what follows it reads as broken.
+      ...(read.truncated
+        ? [
+            {
+              code: "skill-file-truncated" as const,
+              severity: "error" as const,
+              field: null,
+              detail: String(read.sizeBytes),
+            },
+          ]
+        : []),
       ...(parsed.ok ? parsed.value.warnings : []),
     ];
     if (!parsed.ok) {
@@ -650,7 +679,7 @@ export class QaPersonalSkills {
           modelInvocable: parsed.value.modelInvocable,
           userInvocable: parsed.value.userInvocable,
           allowedTools: parsed.value.allowedTools,
-          sizeBytes: skillFileBytes(read.text),
+          sizeBytes: read.sizeBytes,
           maxBytes,
           availableTools: [...this.availableTools()],
         }),
@@ -667,10 +696,13 @@ export class QaPersonalSkills {
     return {
       ...base,
       raw: read.text,
-      revision: hashText(read.text),
+      // The whole file, not the loaded prefix: an append behind the ceiling has
+      // to move the revision, or an update would overwrite bytes it never saw.
+      revision: hashFileBytes(filePath) ?? hashText(read.text),
       updatedAt: read.updatedAt,
       contents: parsed.ok ? parsed.value : undefined,
       diagnostics,
+      truncated: read.truncated,
     };
   }
 
@@ -919,6 +951,7 @@ export class QaPersonalSkills {
       body: contents?.body ?? skillFileBody(stored.raw),
       extraFrontmatter: contents?.extraFrontmatter ?? {},
       sourcePath: stored.filePath,
+      truncated: stored.truncated,
       preview:
         contents === undefined ? stored.raw : serializeSkillFile(contents),
     };
@@ -980,14 +1013,19 @@ export class QaPersonalSkills {
   private adminEdits(
     roots: QaSkillRoots,
   ): ReadonlyMap<string, QaAdminEditRecord> {
-    const read = readSkillText(
+    const sidecar = readSkillText(
       path.join(roots.skills, QA_SKILL_ADMIN_EDITS_FILE),
       ADMIN_EDITS_MAX_BYTES,
     );
-    if (read === undefined) return new Map();
+    if (sidecar === undefined) return new Map();
+    // Only the text is taken, and the truncation flag is left unread on
+    // purpose: a half-read sidecar fails to parse and answers "no marks",
+    // which is the right degradation for a badge — and, unlike a skill file,
+    // this read has no write behind it that could lose the rest.
+    const { text } = sidecar;
     let parsed: unknown;
     try {
-      parsed = JSON.parse(read.text);
+      parsed = JSON.parse(text);
     } catch {
       return new Map();
     }
@@ -1131,6 +1169,37 @@ function hashText(text: string): string {
   return createHash("sha256").update(Buffer.from(text, "utf8")).digest("hex");
 }
 
+/** One chunk of the streaming hash below. */
+const HASH_CHUNK_BYTES = 64 * 1024;
+
+/**
+ * sha256 of a whole file, read through a bounded buffer.
+ *
+ * The revision has to describe every byte a skill file holds, including the
+ * ones a size-capped read never loaded, and hashing must not put a huge file
+ * back into memory. Returns undefined when the file cannot be read: the caller
+ * falls back to the bytes it did see.
+ */
+function hashFileBytes(filePath: string): string | undefined {
+  const hash = createHash("sha256");
+  const buffer = Buffer.alloc(HASH_CHUNK_BYTES);
+  try {
+    const handle = openSync(filePath, "r");
+    try {
+      for (;;) {
+        const read = readSync(handle, buffer, 0, buffer.length, null);
+        if (read === 0) break;
+        hash.update(buffer.subarray(0, read));
+      }
+    } finally {
+      closeSync(handle);
+    }
+  } catch {
+    return undefined;
+  }
+  return hash.digest("hex");
+}
+
 function pathExists(input: string): boolean {
   try {
     statSync(input);
@@ -1143,12 +1212,19 @@ function pathExists(input: string): boolean {
 interface SkillRead {
   readonly text: string;
   readonly updatedAt: string | null;
+  /** The file's size on disk, whether or not all of it was read. */
+  readonly sizeBytes: number;
+  /** True when the ceiling cut the read short, so `text` is only a prefix. */
+  readonly truncated: boolean;
 }
 
 /**
  * Read one skill file, refusing to hold an unbounded file in memory: an
  * oversized `SKILL.md` is read only up to the ceiling and reported by the
  * validator, which keeps the editor usable instead of the Host unresponsive.
+ * The prefix is never presented as the document: the answer carries the real
+ * size and says plainly that the read stopped early, so a save can refuse to
+ * overwrite bytes nobody saw.
  * The file is lstat-ed, so a symlinked `SKILL.md` is treated as absent rather
  * than followed out of the account's directory.
  */
@@ -1168,7 +1244,12 @@ function readSkillText(
   }
   if (size <= maxBytes) {
     try {
-      return { text: readFileSync(filePath, "utf8"), updatedAt };
+      return {
+        text: readFileSync(filePath, "utf8"),
+        updatedAt,
+        sizeBytes: size,
+        truncated: false,
+      };
     } catch {
       return undefined;
     }
@@ -1178,7 +1259,12 @@ function readSkillText(
     try {
       const buffer = Buffer.alloc(maxBytes);
       const read = readSync(handle, buffer, 0, maxBytes, 0);
-      return { text: buffer.subarray(0, read).toString("utf8"), updatedAt };
+      return {
+        text: buffer.subarray(0, read).toString("utf8"),
+        updatedAt,
+        sizeBytes: size,
+        truncated: true,
+      };
     } finally {
       closeSync(handle);
     }

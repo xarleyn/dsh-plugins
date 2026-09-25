@@ -112,6 +112,59 @@ describe("skill editor", () => {
         expectedRevision: "rev-1",
       }),
     );
+    // A complete document needs no acknowledgement to save.
+    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty(
+      "confirmPartialOverwrite",
+    );
+  });
+
+  it("asks before saving over a file the Host only read partly", () => {
+    const onSave = vi.fn();
+    render(
+      <QaSkillEditor
+        mode="edit"
+        document={skillDocument({
+          truncated: true,
+          diagnostics: [
+            {
+              code: "skill-file-truncated",
+              severity: "error",
+              field: null,
+              detail: "307246",
+            },
+          ],
+        })}
+        validation={validation()}
+        onDraftChange={onDraftChange}
+        tools={TOOLS}
+        toolsError={null}
+        saving={false}
+        error={null}
+        conflict={false}
+        onBack={vi.fn()}
+        onSave={onSave}
+        onDelete={vi.fn()}
+        onReload={vi.fn()}
+      />,
+    );
+    // The user is told plainly that the copy in front of them is not the file.
+    expect(
+      screen.getByText(/редактор прочитал только его начало/u),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    // The first click only asks.
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Стереть непрочитанное и сохранить",
+      }),
+    );
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedRevision: "rev-1",
+        confirmPartialOverwrite: true,
+      }),
+    );
   });
 
   it("previews the file the serializer would write, preserving foreign fields", () => {

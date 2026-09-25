@@ -89,14 +89,20 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const [confirmPartial, setConfirmPartial] = useState(false);
   const [advancedOpen, setAdvancedOpen] = useState(false);
   // Re-seed whenever the stored skill changes: a reload after a conflict, or a
   // save whose canonical form differs from the draft.
   useEffect(() => {
     setDraft(document === null ? emptyDraft() : draftFromDocument(document));
     setConfirmDiscard(false);
+    setConfirmPartial(false);
   }, [document]);
   const extraFrontmatter = document?.extraFrontmatter ?? {};
+  // The Host read only the head of an oversized file: saving would erase the
+  // rest, so the button asks first and the Host still refuses an unconfirmed
+  // write.
+  const partial = document?.truncated === true;
   const storedDiagnostics = useMemo(
     () => document?.diagnostics ?? [],
     [document],
@@ -138,7 +144,15 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (props.saving || blocking.length > 0 || !draftIsSavable(draft)) return;
-    props.onSave(draftInput(draft, document?.revision ?? null));
+    if (partial && !confirmPartial) {
+      setConfirmPartial(true);
+      return;
+    }
+    props.onSave(
+      draftInput(draft, document?.revision ?? null, {
+        confirmPartialOverwrite: partial,
+      }),
+    );
   };
   const removeTool = (name: string) =>
     update({ allowedTools: withToolRemoved(draft.allowedTools, name) });
@@ -159,13 +173,32 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
           <QaSettingsButton
             type="submit"
             tone="primary"
-            label={props.saving ? "Сохранение…" : "Сохранить"}
+            label={
+              props.saving
+                ? "Сохранение…"
+                : partial && confirmPartial
+                  ? "Стереть непрочитанное и сохранить"
+                  : "Сохранить"
+            }
             disabled={
               props.saving || blocking.length > 0 || !draftIsSavable(draft)
             }
           />
         </div>
       </div>
+      {partial && confirmPartial ? (
+        <QaSettingsNotice tone="warn">
+          Файл больше предела чтения: редактор видит только его начало и
+          сохранит только его.{" "}
+          <button
+            type="button"
+            className="dsh-qa-settings__link"
+            onClick={() => setConfirmPartial(false)}
+          >
+            Отменить
+          </button>
+        </QaSettingsNotice>
+      ) : null}
       {confirmDiscard ? (
         <QaSettingsNotice tone="warn">
           Есть несохранённые изменения.{" "}
