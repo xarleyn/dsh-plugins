@@ -178,12 +178,12 @@ function PluginLogSettingsCard({ form, inspect }: CardProps) {
       bodyClassName="plu-body"
     >
       {error !== null ? (
-        <p className="plu-error" role="status">
+        <p className="plu-error" role="status" data-testid="log-card-error">
           {error}
         </p>
       ) : null}
       {!writable ? (
-        <p className="plu-status">
+        <p className="plu-status" data-testid="log-card-read-only">
           Settings are read-only for this connection.
         </p>
       ) : null}
@@ -197,6 +197,7 @@ function PluginLogSettingsCard({ form, inspect }: CardProps) {
               className="plu-select"
               value={defaultLevel}
               disabled={!writable || saving}
+              data-testid="log-card-default-level"
               onChange={(event) =>
                 void write("defaultLevel", event.currentTarget.value)
               }
@@ -210,6 +211,7 @@ function PluginLogSettingsCard({ form, inspect }: CardProps) {
               className="plu-select"
               value={format}
               disabled={!writable || saving}
+              data-testid="log-card-format"
               onChange={(event) =>
                 void write(
                   "format",
@@ -235,11 +237,17 @@ function PluginLogSettingsCard({ form, inspect }: CardProps) {
       <section className="plu-section">
         <h3>Registered plugins</h3>
         {snapshot.consumers.length === 0 ? (
-          <p className="plu-empty">No active plugin logger consumers yet.</p>
+          <p className="plu-empty" data-testid="log-card-empty">
+            No active plugin logger consumers yet.
+          </p>
         ) : (
           <div className="plu-list">
             {snapshot.consumers.map((consumer) => (
-              <div className="plu-row" key={consumer.pluginId}>
+              <div
+                className="plu-row"
+                key={consumer.pluginId}
+                data-testid="log-card-plugin-row"
+              >
                 <div className="plu-plugin">
                   <code>{consumer.pluginId}</code>
                   <span>
@@ -253,6 +261,7 @@ function PluginLogSettingsCard({ form, inspect }: CardProps) {
                   aria-label={`Log level for ${consumer.pluginId}`}
                   value={levels[consumer.pluginId] ?? ""}
                   disabled={!writable || saving}
+                  data-testid="log-card-plugin-level"
                   onChange={(event) =>
                     setOverride(consumer.pluginId, event.currentTarget.value)
                   }
