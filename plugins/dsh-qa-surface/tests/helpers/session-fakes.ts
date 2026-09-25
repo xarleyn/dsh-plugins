@@ -6,6 +6,7 @@ import type {
 } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { SessionId } from "@deepseek-ai/dsh-client-connection/client";
 import type { QaSessionControllerOptions } from "../../src/client/QaSessionController.js";
+import type { QaFileDraft } from "../../src/types.js";
 import type { StorageLike } from "../../src/client/types.js";
 
 export class Source<T> {
@@ -80,6 +81,42 @@ export interface QaSessionTestWorld {
   open: Mock;
   list: Source<SessionListState>;
   secureSession: Mock;
+}
+
+/**
+ * An upload service whose answer the test releases when it wants to.
+ *
+ * Staging an attachment is the one external round-trip a send makes *after* its
+ * target was chosen, so the moment its answer arrives is what a chat switch has
+ * to be proved against.
+ */
+export function deferredUpload() {
+  const outcome = {
+    ok: true as const,
+    value: {
+      receiptId: "receipt-late",
+      file: { attachmentId: "sha256:late", name: "note.txt", bytes: 5 },
+    },
+  };
+  let release: (value: typeof outcome) => void = () => {};
+  const pending = new Promise<typeof outcome>((resolve) => {
+    release = resolve;
+  });
+  return {
+    service: { upload: vi.fn(() => pending) },
+    settle: () => release(outcome),
+  };
+}
+
+/** One attached file, as the composer hands it to `send`. */
+export function fileDraft(name = "note.txt"): QaFileDraft {
+  return {
+    kind: "file",
+    id: `draft-${name}`,
+    name,
+    bytes: 5,
+    blob: new Blob(["hello"]),
+  };
 }
 
 export function harness(
