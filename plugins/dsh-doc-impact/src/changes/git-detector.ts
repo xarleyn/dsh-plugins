@@ -52,8 +52,10 @@ async function captureGitState(
     ordered.length = options.maxFiles;
   }
 
+  // The bounded set is what gets read: hashing every dirty path first would
+  // turn `maxFiles` into a report-only cap instead of an I/O budget.
   const files = new Map<string, FileSnapshot>();
-  for (const [path, entry] of dirty) {
+  for (const [path, entry] of ordered) {
     // Reading the path settles existence for free: deleted entries hash to
     // undefined and are recorded as absent, no status-letter parsing needed.
     const hash = await hashFile(absoluteWorkspacePath(cwd, path));
