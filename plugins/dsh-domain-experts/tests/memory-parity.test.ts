@@ -162,6 +162,38 @@ describe("memory parity: writes", () => {
     );
   });
 
+  it("corrects a stored record identically, and refuses a missing key in both", async () => {
+    const { builtin, sqlite } = pairOf();
+    const before = await builtin.inspect("domain/payments");
+    const corrected = await Promise.all([
+      builtin.replace(
+        "domain/payments",
+        "settlement-window",
+        "The window moved to 15:00.",
+        ["settlement", "corrected"],
+      ),
+      sqlite.replace(
+        "domain/payments",
+        "settlement-window",
+        "The window moved to 15:00.",
+        ["settlement", "corrected"],
+      ),
+    ]);
+    expect(corrected[1]).toEqual(corrected[0]);
+    expect(corrected[0]?.text).toBe("The window moved to 15:00.");
+    // The correction is a rewrite, not a replacement: the other records of the
+    // namespace, and the count, stay where they were.
+    expect((await sqlite.inspect("domain/payments")).length).toBe(
+      before.length,
+    );
+    expect(
+      await builtin.replace("domain/payments", "never-stored", "anything"),
+    ).toBeUndefined();
+    expect(
+      await sqlite.replace("domain/payments", "never-stored", "anything"),
+    ).toBeUndefined();
+  });
+
   it("truncates an over-long text the same way and imports no new truncation", async () => {
     const records = productionShapedRecords();
     const { builtin, sqlite } = pairOf(records);

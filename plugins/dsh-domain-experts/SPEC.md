@@ -125,6 +125,25 @@ Each numbered item is a verifiable guarantee, phrased as behaviour.
     transaction and compared field by field inside it; a mismatch rolls the copy
     back, leaves the source holding everything, and fails the open loudly rather
     than serving an expert from a partial store.
+31. A memory write that records nothing is refused. The `domain_memory` tool
+    answers `MEMORY_NOISE_REFUSED` and names the reason — an acknowledgement, a
+    placeholder, an echoed command, a note that nothing was found, punctuation,
+    or a text too short to carry a fact — because a remembered line is injected
+    verbatim into every later answer of that domain, and one stored sentence of
+    noise outlives the run that wrote it. Every rule matches the whole text, so a
+    finding that mentions an absence stays writable, and the gate is not applied
+    to a human correction: maintenance empties and shortens records on purpose.
+32. A memory record is addressable, never renamed. A correction rewrites the text
+    and the tags of the key it names and keeps `createdAt`; a key no record holds
+    is refused `MEMORY_RECORD_MISSING` rather than written fresh, so an edit made
+    over a row another writer deleted cannot leave a one-word record behind.
+33. Memory maintenance is a host-plane seam (`ctx.domainExperts.memoryAdmin`),
+    not a Remote. The agent-facing tool sees one expert's namespaces; maintenance
+    sees every enabled expert's, refuses anything no enabled expert declares
+    (`MEMORY_SCOPE_DENIED`), writes only a namespace some expert owns as
+    read-write, and deletes one record, a named set, or a whole namespace. It is
+    not reachable from a browser because a Remote would carry no token and check
+    no permission — the calling surface owns both.
 
 ## 2. Data model
 

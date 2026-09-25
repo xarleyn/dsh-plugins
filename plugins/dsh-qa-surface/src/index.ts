@@ -72,6 +72,7 @@ import {
 } from "./user-workspace.js";
 import type { DocumentsFace } from "@yadsh/dsh-documents";
 import type { QaAccountNotificationsInput } from "./types.js";
+import type { QaDomainExpertsFace } from "./integration/expert-memory.js";
 import type { QaTurnSources } from "./provenance/types.js";
 import type {
   QaAccountProfileInput,
@@ -94,6 +95,10 @@ import type {
   ResolvedQaSurfaceConfig,
   QaAdminSkillScope,
   QaAdminSkillsView,
+  QaExpertMemoryDraft,
+  QaExpertMemoryPage,
+  QaExpertMemoryRecord,
+  QaExpertMemoryScope,
   QaSkillDocument,
   QaSkillDraftInput,
   QaSkillRemoval,
@@ -287,6 +292,11 @@ export class QaSurface extends TypertRemoteService {
       // uses, so an administrator's save is path-checked, validated and
       // published to DSH by exactly the one code path that already does it.
       skills: () => this.personalSkills.service,
+      // Expert memory lives in another plugin, which a stand may not compose at
+      // all and which may install after this one — so it is resolved per call,
+      // exactly like the document service.
+      domainExperts: () =>
+        this.ctx.get("domainExperts") as QaDomainExpertsFace | undefined,
       logger: this.logger,
     });
     this.skillRemotes = createQaPersonalSkillRemotes({
@@ -1091,6 +1101,79 @@ export class QaSurface extends TypertRemoteService {
       this.admin.skillTools(token, scope),
     );
     return { tools };
+  }
+
+  // ---------------------------------------------------------------------------
+  // Expert memory
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Which experts hold memory, and how much.
+   *
+   * Reads the domain-experts service on the host plane rather than its remotes:
+   * those answer a trusted in-Harness caller and check no token, while this
+   * console answers a browser, so the permission check lives here.
+   */
+  @Remote("adminMemoryScopes")
+  adminMemoryScopes(token: string): Promise<readonly QaExpertMemoryScope[]> {
+    return this.accountRemotes.runAsync(() => this.admin.memoryScopes(token));
+  }
+
+  /** One page of one namespace, newest first, with the filter's match count. */
+  @Remote("adminMemoryRecords")
+  adminMemoryRecords(
+    token: string,
+    namespace: string,
+    query: string,
+    limit: number | null,
+    offset: number,
+  ): Promise<QaExpertMemoryPage> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.memoryRecords(token, namespace, query, limit, offset),
+    );
+  }
+
+  /** Rewrite one remembered line; the audit trail keeps both images. */
+  @Remote("adminMemoryCorrect")
+  adminMemoryCorrect(
+    token: string,
+    namespace: string,
+    key: string,
+    draft: QaExpertMemoryDraft,
+  ): Promise<QaExpertMemoryRecord> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.correctMemory(token, namespace, key, draft),
+    );
+  }
+
+  /** Drop one or several remembered lines of one namespace. */
+  @Remote("adminMemoryForget")
+  adminMemoryForget(
+    token: string,
+    namespace: string,
+    keys: readonly string[],
+  ): Promise<number> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.forgetMemory(token, namespace, keys),
+    );
+  }
+
+  /**
+   * Empty one namespace, confirming the count the operator was shown.
+   *
+   * The check is the console's, not the store's: what the operator clicked was
+   * a number on a screen, and memory an expert wrote in the meantime is not
+   * memory they agreed to erase.
+   */
+  @Remote("adminMemoryWipe")
+  adminMemoryWipe(
+    token: string,
+    namespace: string,
+    expectedRecords: number | null,
+  ): Promise<number> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.wipeMemory(token, namespace, expectedRecords),
+    );
   }
 
   /**

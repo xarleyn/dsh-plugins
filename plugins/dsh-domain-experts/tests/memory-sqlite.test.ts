@@ -89,6 +89,30 @@ describe("sqlite memory: writes", () => {
     expect(await sqlite.inspect("domain/payments")).toEqual([]);
   });
 
+  it("corrects a stored row without ever inserting a new one", async () => {
+    const sqlite = provider();
+    await sqlite.remember("domain/payments", "cutoff", "14:00", ["review"]);
+    const corrected = await sqlite.replace(
+      "domain/payments",
+      "cutoff",
+      "15:00",
+      ["review", "corrected"],
+    );
+    expect(corrected?.text).toBe("15:00");
+    expect(await sqlite.inspect("domain/payments")).toHaveLength(1);
+    expect(
+      await sqlite.retrieve({
+        namespaces: ["domain/payments"],
+        query: "corrected",
+        limit: 5,
+      }),
+    ).toHaveLength(1);
+    expect(
+      await sqlite.replace("domain/payments", "gone", "16:00"),
+    ).toBeUndefined();
+    expect(await sqlite.inspect("domain/payments")).toHaveLength(1);
+  });
+
   it("clears a namespace in one statement and leaves the neighbours alone", async () => {
     const sqlite = provider();
     sqlite.importFromUnit(fixtureMemoryTable(productionShapedRecords()));

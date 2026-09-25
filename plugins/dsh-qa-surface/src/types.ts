@@ -58,7 +58,15 @@ export type QaPermission =
   | "audit.read"
   | "settings.manage"
   /** Write access to skill files, personal and deployment-wide. */
-  | "skills.manage";
+  | "skills.manage"
+  /**
+   * What the domain experts wrote into their durable memory. Reading is split
+   * from correcting because a reviewer is the one who notices a remembered
+   * inaccuracy in an answer, and an answer the expert keeps getting wrong is
+   * the reviewer's business even though the fix is not.
+   */
+  | "memory.read"
+  | "memory.manage";
 
 /**
  * Tools split by how they become available. `always` is visible from the first
@@ -591,6 +599,44 @@ export interface QaAdminSkillsView {
   readonly skills: readonly QaSkillSummary[];
   /** Absolute directory this scope reads and writes, rendered read-only. */
   readonly rootPath: string;
+}
+
+/**
+ * One memory namespace as the console lists it: which expert it belongs to and
+ * whether it takes writes. `access` comes from the expert's own definition, so
+ * a shared carrier shows up as what its owner declared rather than as whatever
+ * the browser guessed.
+ */
+export interface QaExpertMemoryScope {
+  readonly domainId: string;
+  readonly domainName: string;
+  readonly namespace: string;
+  readonly access: "read-write" | "read-only";
+  readonly records: number;
+}
+
+/** One line an expert recorded. */
+export interface QaExpertMemoryRecord {
+  readonly namespace: string;
+  readonly key: string;
+  readonly text: string;
+  readonly tags: readonly string[];
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+/** One page of a namespace, with the count the filter matched. */
+export interface QaExpertMemoryPage {
+  readonly records: readonly QaExpertMemoryRecord[];
+  readonly total: number;
+  readonly offset: number;
+  readonly limit: number;
+}
+
+/** What an operator says a record should hold. The key never moves. */
+export interface QaExpertMemoryDraft {
+  readonly text: string;
+  readonly tags: readonly string[];
 }
 
 export interface QaSkillSummary {
@@ -2002,7 +2048,13 @@ export type QaAdminAuditAction =
   | "admin.settings.updated"
   | "skill.created"
   | "skill.updated"
-  | "skill.deleted";
+  | "skill.deleted"
+  /** An operator rewrote a line an expert had remembered. */
+  | "memory.corrected"
+  /** One or several remembered lines were deleted; the count is in the target. */
+  | "memory.deleted"
+  /** A whole namespace was emptied. */
+  | "memory.wiped";
 
 export interface QaAdminAuditEvent {
   readonly id: string;

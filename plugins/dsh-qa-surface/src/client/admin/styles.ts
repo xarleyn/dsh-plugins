@@ -72,6 +72,9 @@ export const QA_ADMIN_CONSOLE_STYLES = String.raw`
 .dsh-qa-admin__message>header strong{color:var(--dsw-alias-label-secondary);font-size:12px}
 .dsh-qa-admin__message-text{margin:0;font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
 .dsh-qa-admin__usage{color:var(--dsw-alias-label-tertiary)}
+.dsh-qa-admin__memory-text{margin:0;font-size:13px;line-height:1.6;white-space:pre-wrap;overflow-wrap:anywhere}
+.dsh-qa-admin__memory-editor{display:flex;flex-direction:column;gap:8px}
+.dsh-qa-admin__memory-editor textarea,.dsh-qa-admin__memory-editor input{width:100%;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;resize:vertical}
 .dsh-qa-admin__comment{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;font-style:italic}
 .dsh-qa-admin__tools>button{display:inline-flex;align-items:center;gap:5px;padding:2px 0;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font-size:12px}
 .dsh-qa-admin__disclosure{flex:none;transition:transform .16s}
