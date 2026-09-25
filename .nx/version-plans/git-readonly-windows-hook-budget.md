@@ -22,9 +22,16 @@ heaviest files reached 139s and 103s. The package now budgets 120s per test and
 90s per hook, and runs its suites on two Vitest workers rather than one per
 logical CPU. Every worker builds its repositories with real `git` children, so
 the suite was inflating the load it then failed to meet, and a `git` child that
-comes back non-zero without a word is not a thing any budget forgives. CI never
-sees either number, because #250 moved the pipeline to one project per job on
-Linux, where nothing competes for the runner.
+comes back non-zero without a word is not a thing any budget forgives.
+
+The ceiling therefore sits on the child rather than on the budget: each fixture
+`git` run is killed at twenty seconds and reports which command it was. A hang
+then costs one named command instead of a whole test budget, which is what makes
+the two numbers above headroom over a measured slow run rather than a place for
+a hang to idle. A loaded run is not a Windows-only case either — the per-project
+split the pipeline fans out with has collapsed into a single job running every
+project on one runner, and five other suites timed out inside it while this one
+finished.
 
 The throwaway repositories were also not hermetic. `GIT_AUTHOR_*` and
 `GIT_COMMITTER_*` outrank both the `user.name` the fixture writes into the
