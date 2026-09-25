@@ -25,24 +25,34 @@ describe("Mermaid markdown preview", () => {
       <Markdown text={"```mermaid\ngraph TD\n A --> B\n```"} />,
     );
 
-    await waitFor(() => expect(container.querySelector("svg")).not.toBeNull());
+    const canvas = await waitFor(() =>
+      screen.getByTestId("qa-md-mermaid-canvas"),
+    );
+    expect(canvas.querySelector("svg")).not.toBeNull();
     expect(container.innerHTML).not.toContain("script");
     expect(container.innerHTML).not.toContain("onload");
     expect(container.innerHTML).not.toContain("https://evil.example");
-    expect(screen.getByText("По размеру")).toBeTruthy();
-    fireEvent.click(screen.getByText("Код"));
-    expect(container.querySelector("code")?.textContent).toContain("graph TD");
-    fireEvent.click(screen.getByText("Во весь экран"));
-    expect(container.querySelector(".dsh-qa-mermaid--expanded")).not.toBeNull();
+    expect(screen.getByTestId("qa-md-mermaid-fit")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("qa-md-mermaid-code-toggle"));
+    expect(screen.getByTestId("qa-md-code-content").textContent).toContain(
+      "graph TD",
+    );
+    const expand = screen.getByTestId("qa-md-mermaid-expand-toggle");
+    fireEvent.click(expand);
+    expect(expand.getAttribute("aria-expanded")).toBe("true");
   });
 
   it("falls back to the raw code when syntax is invalid", async () => {
     mocks.render.mockRejectedValue(new Error("syntax error"));
     render(<Markdown text={"```mermaid\nnot a diagram\n```"} />);
 
-    expect(
-      await screen.findByText(/Не удалось отобразить Mermaid-диаграмму/u),
-    ).toBeTruthy();
-    expect(screen.getByText("not a diagram")).toBeTruthy();
+    const warning = await screen.findByTestId("qa-md-mermaid-warning");
+    expect(warning.textContent).toMatch(
+      /Не удалось отобразить Mermaid-диаграмму/u,
+    );
+    expect(screen.getByTestId("qa-md-mermaid-error")).toBeTruthy();
+    expect(screen.getByTestId("qa-md-code-content").textContent).toContain(
+      "not a diagram",
+    );
   });
 });

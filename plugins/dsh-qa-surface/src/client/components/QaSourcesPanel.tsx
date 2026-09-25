@@ -29,10 +29,16 @@ function OriginBadges({
   const truncated = source.metadata?.truncated === true;
   if (!delegated && !truncated && source.evidence !== "discovered") return null;
   return (
-    <span className="dsh-qa-sources__badges">
-      {delegated ? <span>Subagent</span> : null}
-      {truncated ? <span>Partial</span> : null}
-      {source.evidence === "discovered" ? <span>Discovered</span> : null}
+    <span className="dsh-qa-sources__badges" data-testid="qa-source-badges">
+      {delegated ? (
+        <span data-testid="qa-source-badge-subagent">Subagent</span>
+      ) : null}
+      {truncated ? (
+        <span data-testid="qa-source-badge-partial">Partial</span>
+      ) : null}
+      {source.evidence === "discovered" ? (
+        <span data-testid="qa-source-badge-discovered">Discovered</span>
+      ) : null}
     </span>
   );
 }
@@ -47,15 +53,36 @@ function QaSourceCard({
   readonly onOpen: () => void;
 }) {
   return (
-    <button type="button" className="dsh-qa-sources__item" onClick={onOpen}>
-      <span className="dsh-qa-sources__kind" data-kind={source.kind}>
+    <button
+      type="button"
+      className="dsh-qa-sources__item"
+      data-testid="qa-sources-item"
+      onClick={onOpen}
+    >
+      <span
+        className="dsh-qa-sources__kind"
+        data-kind={source.kind}
+        data-testid="qa-sources-item-icon"
+      >
         <SourceIcon kind={source.kind} />
       </span>
-      <span className="dsh-qa-sources__text">
-        <span className="dsh-qa-sources__title">{source.title}</span>
-        <span className="dsh-qa-sources__target">{sourceTarget(source)}</span>
+      <span className="dsh-qa-sources__text" data-testid="qa-sources-item-text">
+        <span
+          className="dsh-qa-sources__title"
+          data-testid="qa-sources-item-title"
+        >
+          {source.title}
+        </span>
+        <span
+          className="dsh-qa-sources__target"
+          data-testid="qa-sources-item-target"
+        >
+          {sourceTarget(source)}
+        </span>
         <OriginBadges source={source} showOrigin={showOriginBadges} />
-        {source.snippet === undefined ? null : <p>{source.snippet}</p>}
+        {source.snippet === undefined ? null : (
+          <p data-testid="qa-sources-item-snippet">{source.snippet}</p>
+        )}
       </span>
     </button>
   );
@@ -78,7 +105,7 @@ function RawFilePreview({
   }, [preview.path, lineStart]);
   const lines = preview.content.replace(/\r\n?/gu, "\n").split("\n");
   return (
-    <pre className="dsh-qa-preview__raw">
+    <pre className="dsh-qa-preview__raw" data-testid="qa-source-preview-raw">
       <code>
         {lines.map((line, index) => {
           const number = index + 1;
@@ -95,8 +122,18 @@ function RawFilePreview({
                   ? "dsh-qa-preview__line dsh-qa-preview__line--highlight"
                   : "dsh-qa-preview__line"
               }
+              data-testid={
+                highlighted
+                  ? "qa-source-preview-line-highlight"
+                  : "qa-source-preview-line"
+              }
             >
-              <span className="dsh-qa-preview__number">{number}</span>
+              <span
+                className="dsh-qa-preview__number"
+                data-testid="qa-source-preview-line-number"
+              >
+                {number}
+              </span>
               <span>{line || " "}</span>
             </span>
           );
@@ -177,11 +214,15 @@ function QaSourceDetail({
   ]);
 
   return (
-    <div className="dsh-qa-sourcedetail">
-      <div className="dsh-qa-sourcedetail__head">
+    <div className="dsh-qa-sourcedetail" data-testid="qa-source-detail">
+      <div
+        className="dsh-qa-sourcedetail__head"
+        data-testid="qa-source-detail-head"
+      >
         <button
           type="button"
           className="dsh-qa-sourcedetail__back"
+          data-testid="qa-source-detail-back"
           aria-label="Ко всем источникам"
           title="Ко всем источникам"
           onClick={onBack}
@@ -190,14 +231,26 @@ function QaSourceDetail({
             <path d="m8.75 3.5-3.5 3.5 3.5 3.5" />
           </svg>
         </button>
-        <span className="dsh-qa-sourcedetail__kind">
+        <span
+          className="dsh-qa-sourcedetail__kind"
+          data-testid="qa-source-detail-icon"
+        >
           <SourceIcon kind={source.kind} />
         </span>
-        <span className="dsh-qa-sourcedetail__title">{source.title}</span>
+        <span
+          className="dsh-qa-sourcedetail__title"
+          data-testid="qa-source-detail-title"
+        >
+          {source.title}
+        </span>
         {preview?.markdown && filePreviewConfig.allowRawToggle ? (
-          <span className="dsh-qa-preview__toggle">
+          <span
+            className="dsh-qa-preview__toggle"
+            data-testid="qa-source-preview-toggle"
+          >
             <button
               type="button"
+              data-testid="qa-source-preview-toggle-rendered"
               aria-pressed={mode === "rendered"}
               disabled={!preview.renderableMarkdown}
               onClick={() => setMode("rendered")}
@@ -206,6 +259,7 @@ function QaSourceDetail({
             </button>
             <button
               type="button"
+              data-testid="qa-source-preview-toggle-raw"
               aria-pressed={mode === "raw"}
               onClick={() => setMode("raw")}
             >
@@ -215,6 +269,7 @@ function QaSourceDetail({
         ) : external === undefined ? null : (
           <a
             className="dsh-qa-sourcedetail__open"
+            data-testid="qa-source-detail-open"
             href={external}
             target="_blank"
             rel="noopener noreferrer"
@@ -223,37 +278,68 @@ function QaSourceDetail({
           </a>
         )}
       </div>
-      <div className="dsh-qa-sourcedetail__target">{sourceTarget(source)}</div>
-      <div className="dsh-qa-sourcedetail__body">
+      <div
+        className="dsh-qa-sourcedetail__target"
+        data-testid="qa-source-detail-target"
+      >
+        {sourceTarget(source)}
+      </div>
+      <div
+        className="dsh-qa-sourcedetail__body"
+        data-testid="qa-source-detail-body"
+      >
         <OriginBadges source={source} showOrigin={showOriginBadges} />
         {source.path !== undefined && preview === null && !previewError ? (
-          <p className="dsh-qa-sourcedetail__empty">Открываю источник…</p>
+          <p
+            className="dsh-qa-sourcedetail__empty"
+            data-testid="qa-source-detail-loading"
+          >
+            Открываю источник…
+          </p>
         ) : null}
         {previewError !== null ? (
-          <p className="dsh-qa-sourcedetail__empty">{previewError}</p>
+          <p
+            className="dsh-qa-sourcedetail__empty"
+            data-testid="qa-source-detail-error"
+          >
+            {previewError}
+          </p>
         ) : null}
         {preview !== null ? (
           <>
             {preview.truncated ? (
-              <p className="dsh-qa-preview__notice">
+              <p
+                className="dsh-qa-preview__notice"
+                data-testid="qa-source-preview-truncated"
+              >
                 Показано начало файла: размер превышает лимит preview.
               </p>
             ) : null}
             {lineStart === undefined ? null : (
-              <p className="dsh-qa-preview__range">
+              <p
+                className="dsh-qa-preview__range"
+                data-testid="qa-source-preview-range"
+              >
                 Referenced lines: {lineStart}
                 {lineEnd !== undefined && lineEnd !== lineStart
                   ? `–${lineEnd}`
                   : ""}
                 {mode === "rendered" ? (
-                  <button type="button" onClick={() => setMode("raw")}>
+                  <button
+                    type="button"
+                    data-testid="qa-source-preview-show-raw"
+                    onClick={() => setMode("raw")}
+                  >
                     View raw
                   </button>
                 ) : null}
               </p>
             )}
             {mode === "rendered" && preview.renderableMarkdown ? (
-              <div className="dsh-qa-preview__markdown">
+              <div
+                className="dsh-qa-preview__markdown"
+                data-testid="qa-source-preview-markdown"
+              >
                 <Markdown text={preview.content} />
               </div>
             ) : (
@@ -266,14 +352,20 @@ function QaSourceDetail({
           </>
         ) : source.path === undefined ? (
           source.snippet === undefined ? (
-            <p className="dsh-qa-sourcedetail__empty">
+            <p
+              className="dsh-qa-sourcedetail__empty"
+              data-testid="qa-source-detail-missing"
+            >
               У источника нет текстового фрагмента.
             </p>
           ) : (
-            <p>{source.snippet}</p>
+            <p data-testid="qa-source-detail-snippet">{source.snippet}</p>
           )
         ) : null}
-        <p className="dsh-qa-sourcedetail__provenance">
+        <p
+          className="dsh-qa-sourcedetail__provenance"
+          data-testid="qa-source-detail-provenance"
+        >
           <span>Использован {source.origins.length} раз(а)</span>
           <span>{source.evidence}</span>
         </p>
@@ -335,20 +427,24 @@ export function QaSourcesPanel({
     }));
   }, [display.groupByKind, sources]);
   return (
-    <div className="dsh-qa-sourcespanel">
+    <div className="dsh-qa-sourcespanel" data-testid="qa-sources-panel">
       {detail === undefined && pinned && onShowAll !== undefined ? (
         <button
           type="button"
           className="dsh-qa-sourcespanel__all"
+          data-testid="qa-sources-show-all"
           onClick={onShowAll}
         >
           Все источники
         </button>
       ) : null}
       {detail === undefined ? (
-        <div className="dsh-qa-sources__list">
+        <div className="dsh-qa-sources__list" data-testid="qa-sources-list">
           {!complete ? (
-            <p className="dsh-qa-sources__incomplete">
+            <p
+              className="dsh-qa-sources__incomplete"
+              data-testid="qa-sources-incomplete"
+            >
               Некоторые источники делегированных запусков недоступны (
               {incompleteOrigins?.length ?? 1}).
             </p>
@@ -358,10 +454,16 @@ export function QaSourcesPanel({
               ? group.sources
               : group.sources.slice(0, display.maxInitiallyVisiblePerGroup);
             return (
-              <section key={group.key} className="dsh-qa-sources__group">
-                <h3>
+              <section
+                key={group.key}
+                className="dsh-qa-sources__group"
+                data-testid={`qa-sources-group-${group.key}`}
+              >
+                <h3 data-testid="qa-sources-group-heading">
                   {group.label}
-                  <span>{group.sources.length}</span>
+                  <span data-testid="qa-sources-group-count">
+                    {group.sources.length}
+                  </span>
                 </h3>
                 {visible.map((source) => (
                   <QaSourceCard
@@ -375,6 +477,7 @@ export function QaSourcesPanel({
                   <button
                     type="button"
                     className="dsh-qa-sources__more"
+                    data-testid="qa-sources-more"
                     onClick={() =>
                       setExpanded(new Set([...expanded, group.key]))
                     }
