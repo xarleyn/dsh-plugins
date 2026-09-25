@@ -137,8 +137,14 @@ export default class OpenVikingMemory extends TypertRemoteService {
   private configSource: () => Config;
   /** Set the first time a QA surface is actually reachable. */
   private surface: QaMemorySurface | undefined;
-  /** Sessions already reported as unattributed, so the log says it once. */
-  private readonly unattributed = new Set<string>();
+  /**
+   * Sessions asked about before any account claimed them, mapped to the moment
+   * they were first missing. One line per session, answered by
+   * `qa_memory_attributed` when the claim lands later — without that pair a
+   * reader cannot tell a chat that merely started before its browser half from
+   * one nobody is ever going to claim.
+   */
+  private readonly unattributed = new Map<string, number>();
 
   constructor(ctx: Context, config: Config = {}) {
     super(ctx, "openvikingMemory", { namespace: "openvikingMemory" });
@@ -196,6 +202,7 @@ export default class OpenVikingMemory extends TypertRemoteService {
           // dropped: callers await the disposer to know the session is gone.
           const disposed = this.runtime.dispose(agent.session);
           this.identity.forget(String(agent.session.id));
+          this.unattributed.delete(String(agent.session.id));
           return disposed;
         },
         "openvikingMemory.disposeSession()",
@@ -367,9 +374,7 @@ export default class OpenVikingMemory extends TypertRemoteService {
       return undefined;
     }
     const scoping = this.scopingFor(session);
-    if (scoping.allowed) return scoping;
-    this.noteUnattributed(session);
-    return undefined;
+    return scoping.allowed ? scoping : undefined;
   }
 
   /**
@@ -390,7 +395,11 @@ export default class OpenVikingMemory extends TypertRemoteService {
       return { allowed: true, plan };
     }
     const userId = this.identity.userIdFor(session);
-    if (userId === undefined) return { allowed: false, plan };
+    if (userId === undefined) {
+      this.noteUnattributed(session);
+      return { allowed: false, plan };
+    }
+    this.noteAttributed(session, userId);
     return {
       allowed: true,
       user: userId,
@@ -429,8 +438,27 @@ export default class OpenVikingMemory extends TypertRemoteService {
   private noteUnattributed(session: Session): void {
     const sessionId = String(session.id);
     if (this.unattributed.has(sessionId)) return;
-    this.unattributed.add(sessionId);
+    this.unattributed.set(sessionId, Date.now());
     this.logger.info("qa_memory_unattributed", { sessionId });
+  }
+
+  /**
+   * Say once, and with the delay it took, that a session which had been left
+   * alone is now claimed by an account. A chat is claimed when its browser half
+   * opens it, which regularly trails the moment the session starts, so without
+   * this line the two outcomes — late claim and never claimed — look identical
+   * in the log.
+   */
+  private noteAttributed(session: Session, userId: string): void {
+    const sessionId = String(session.id);
+    const since = this.unattributed.get(sessionId);
+    if (since === undefined) return;
+    this.unattributed.delete(sessionId);
+    this.logger.info("qa_memory_attributed", {
+      sessionId,
+      userId,
+      afterMs: Date.now() - since,
+    });
   }
 
   /** Whether this deployment is configured to keep one space per account. */

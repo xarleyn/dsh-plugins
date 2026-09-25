@@ -584,6 +584,38 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
             />
           </section>
 
+          <section className="ovm-section">
+            <div className="ovm-section-title">
+              <h3>Multi-user memory</h3>
+            </div>
+            <ToggleRow
+              label="qaUserScoping"
+              description="With a QA Surface mounted, keep one memory space per account: a chat reads and writes only the memory of the account that owns it."
+              checked={config?.qaUserScoping ?? true}
+              disabled={!writable}
+              overridden={overridden("qaUserScoping")}
+              onToggle={(checked) => {
+                write("qaUserScoping", checked);
+              }}
+            />
+            <p className="ovm-notice">
+              The account travels as{" "}
+              <span className="ovm-mono">X-OpenViking-User</span> on every
+              request this plugin makes for a session, and a session no account
+              has claimed is left alone entirely. Two things this switch does
+              not change: the bridged{" "}
+              <span className="ovm-mono">mcp__openviking__*</span> tools answer
+              as the <span className="ovm-mono">user</span> configured above,
+              not as the account that asked; and a store running in{" "}
+              <span className="ovm-mono">api_key</span> mode strips the header
+              and serves its own single space. Each account&apos;s{" "}
+              <span className="ovm-mono">Память</span> page in the QA settings
+              dialog reports which of the two it is showing. Switching this on
+              starts a fresh space — memory written under the deployment
+              identity before it stays there.
+            </p>
+          </section>
+
           <details className="ovm-advanced">
             <summary>Advanced</summary>
             <div className="ovm-advanced-content">

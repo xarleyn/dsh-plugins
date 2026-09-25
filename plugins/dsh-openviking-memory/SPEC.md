@@ -97,9 +97,9 @@ keeps running on its composition entry.
 The card is an editor over that namespace, nothing more:
 
 - Sections mirror the contract: automatic context presentation (the four
-  injection knobs), connection, peer identity, recall, capture and commit, and
-  an advanced group (`skipSubagentSessions`, the two timeouts, the deprecated
-  `captureMode`).
+  injection knobs), connection, peer identity, recall, capture and commit,
+  multi-user memory (`qaUserScoping`, §2.2), and an advanced group
+  (`skipSubagentSessions`, the two timeouts, the deprecated `captureMode`).
 - Writes are immediate scalar `set`s; a cleared field becomes an `unset`, which
   drops the user-layer override and re-inherits the composition layer. Every
   field shows an **override** marker while the user layer carries a value, and
@@ -130,8 +130,17 @@ and both depend on QA Surface (`@yadsh/dsh-qa-surface`), which is optional:
   the session issues, so recall, profile and capture all live in that account's
   space. A session that resolves to nothing is skipped entirely — no profile, no
   recall, no capture — which is what keeps a conversation out of a space it does
-  not belong to. Without a QA surface, or with `qaUserScoping: false`, the
-  deployment-wide identity of §2 is unchanged.
+  not belong to. Without a QA surface, or with `qaUserScoping` off, the
+  deployment-wide identity of §2 is unchanged. The switch is the card's
+  (`qaUserScoping`, §2.1) and a committed change follows the live re-apply of
+  §2.1, so it takes effect for sessions that are already open.
+  Attribution is asked for, never received: a chat is claimed when its browser
+  half opens it, which trails the moment the session starts. So the plugin logs
+  `qa_memory_unattributed` the first time it asks about a session nobody has
+  claimed, and `qa_memory_attributed` — with the delay it took — when that same
+  session resolves later. The pair is what separates a chat that merely started
+  early from one no account is ever going to claim, and only the second case
+  keeps a deployment's memory permanently out of every account space.
 - **The account-scoped page.** The card of §2.1 is discovered from the Host
   settings directory, which a browser reaching the deployment over the network
   never gets, and a QA overlay does not render the native settings tree at all.
@@ -163,6 +172,40 @@ and both depend on QA Surface (`@yadsh/dsh-qa-surface`), which is optional:
   that file: the switches that decide whether the assistant uses the memory at
   all belong to the deployment, configured on the card of §2.1 or in the
   profile patch.
+- **The scope is per request path, and the boundary is named.** The account
+  travels as one header on a per-account client, so separation is only real
+  where the plugin itself speaks for a session: profile reads, recall searches,
+  capture, commit, the replay of a queued turn (which refuses to send a turn
+  whose owner has not come back) and the account page's reader are all scoped,
+  and a test keeps two accounts' requests apart. The bridged
+  `mcp__openviking__*` tools and the skill prompts that name them are not: they
+  run in one stdio child mounted for the whole process, whose identity is fixed
+  in its environment (`OPENVIKING_USER`) before any session exists. A
+  model-initiated `remember`, `search` or `read` therefore works on the
+  deployment space, not the account's — so a fact the model stored through a
+  tool is shared by every account even on a scoped deployment, and the card's
+  multi-user section says so. Closing the gap needs a per-session identity in
+  DSH's MCP client or native tool implementations in this plugin; neither is a
+  change of header.
+- **What was written before scoping stays where it was.** The space is chosen by
+  the header, so memory filed under the deployment identity — `OPENVIKING_USER`,
+  or the store's own user when that is empty — appears in no account's space
+  after the switch is turned on. The migration path is:
+  1. read the identity the store answers with (`userMemoryOverview` →
+     `serverIdentity`, which the account page shows). With scoping off this is
+     the deployment space everything shares; with it on it is the account's.
+  2. confirm the store honours the header before moving anything: a store whose
+     `api_key` mode strips it answers `accountApplies: false`, and every write
+     lands in its single space whatever this plugin sends, so re-filing would
+     relocate nothing.
+  3. list what the shared space holds — the deployment's own page reads it, and
+     the bridged tools see it as their caller — then re-file what matters into
+     the owning account's space. This plugin exposes no move operation and the
+     QA page is read-only by design, so re-filing is an operator's act against
+     the memory API, not a button.
+  4. leave the remainder in place. Turning `qaUserScoping` off again returns
+     every chat to the deployment space, which makes the old memory reachable
+     as it was without merging two accounts' histories together.
 
 ## 3. Lifecycle
 
@@ -290,6 +333,35 @@ official plugin; any change to the MCP tool contracts.
     requests on the same step and logged with `connectionChanged`, while the
     bridged MCP tools keep the endpoint they were mounted with until the plugin
     reloads.
+14. **Master switch pulled live.** With a chat open and injecting, set
+    `autoInject: false` in the card's automatic-context section and start another
+    turn of that same session.
+    → `injection` is all-false and the step issues neither a profile read nor a
+    recall search; the turn is still captured under
+    `/api/v1/sessions/<id>/messages`, because the switch governs automatic
+    context and not the memory itself.
+15. **Chat claimed late.** Start a session the QA surface does not yet
+    attribute, let a turn pass, then have its account claim it.
+    → The first turn issues nothing and logs `qa_memory_unattributed`; after the
+    claim (past the window an unresolved answer is trusted for) the session's
+    requests carry that account's `X-OpenViking-User` and the log records
+    `qa_memory_attributed` with the delay.
+16. **A model-initiated write on a scoped deployment.** With a QA surface and
+    scoping on, have the model store a fact through `mcp__openviking__remember`.
+    → The bridge was mounted with the deployment identity, so the write is
+    filed in the deployment space and no account's page claims it as its own;
+    the plugin's own requests for that session keep using the account space.
+17. **Card on the operator face.** On the machine that serves the deployment,
+    open its loopback URL — with the QA kiosk overlay off, that port serves the
+    native UI — and look under **Settings → Plugins → Plugin configuration**.
+    → The OpenViking Memory card renders, including its multi-user section. A
+    browser reaching the same deployment over the network gets no card at all:
+    the Host serves its settings directory to a loopback page only, and the QA
+    overlay does not mount the native settings tree — which is why the switches
+    are the operator's and the account face stays read-only (§2.2). Recording
+    the card as "missing on a stand" is therefore a statement about which face
+    was opened, not about the registration: the registration is what §2.1
+    covers, and it is asserted by a test.
 
 ## 7. Implementation status
 
@@ -302,7 +374,7 @@ official plugin; any change to the MCP tool contracts.
 | Injection matrix / manual-only / capture / config / guard / runtime / queue / proxy tests | Implemented |
 | Settings card in the Web GUI | Implemented (the namespace is registered by `src/settings.ts`; a card without that registration renders nowhere) |
 | Live re-apply of a committed settings change | Implemented (the bridged MCP tool surface follows on reload) |
-| Per-account scoping and the account-scoped QA settings page (read-only overview) | Implemented (unit + request-level tests; no live multi-account run yet) |
+| Per-account scoping and the account-scoped QA settings page (read-only overview) | Implemented (unit + request-level tests; the `mcp__openviking__*` bridge keeps the deployment space by design, §2.2; no live multi-account run yet) |
 | Upstream-sync tooling | Deferred |
 | Live OpenViking E2E | Deferred |
 | Visual/browser verification of the settings card on a rig | Deferred (jsdom tests + bundle gates pass; no live click-through yet) |
