@@ -56,6 +56,9 @@ jobs:
       - name: Check formatting
         run: pnpm format
 
+      - name: Check file size budget
+        run: pnpm check:files
+
       - name: Verify plugin logging contract
         run: pnpm verify:logging
 

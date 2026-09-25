@@ -29,6 +29,15 @@
   blocker for the pull request: mark the pull request `ci-external` and say
   which run and job were examined. Do not "fix" such redness by weakening the
   workflow's checks on main.
+## File size budget
+
+- A source file under `plugins/*/src` or `packages/*/src` must stay within 1200
+  lines (800 warns) and a file under its `tests/` within 800 (400 warns); a
+  generated browser bundle is held to a runaway limit only.
+  `scripts/check-file-budget.mjs`, run as `pnpm check:files`, names the files
+  that were already over budget when the gate landed, and that list only
+  shrinks: split the oversized file instead of raising a threshold or adding a
+  path to it.
 
 ## QA surface release notes
 
