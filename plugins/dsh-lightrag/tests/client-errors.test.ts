@@ -202,6 +202,49 @@ describe("error mapping", () => {
     expect(cancelled).toBe(true);
   });
 
+  it("ends a body that keeps dripping chunks past the budget", async () => {
+    // A stalled stream is the easy half: no read ever settles, so anything
+    // racing one wins. Bytes that arrive every few ms settle each read in
+    // turn, so only a deadline measured from the start of the request — not
+    // one re-armed per chunk — ends this exchange.
+    let delivered = 0;
+    let cancelled = false;
+    let drip: ReturnType<typeof setInterval> | undefined;
+    const stub = createFetchStub(
+      () =>
+        new Response(
+          new ReadableStream<Uint8Array>({
+            start: (controller) => {
+              drip = setInterval(() => {
+                if (cancelled === true) return;
+                delivered += 1;
+                controller.enqueue(new Uint8Array([0x7b]));
+              }, 5);
+            },
+            cancel: () => {
+              cancelled = true;
+              clearInterval(drip);
+            },
+          }),
+        ),
+    );
+    const client = createLightRagClient(
+      { ...LIGHTRAG_DEFAULTS, timeoutMs: 150 },
+      { fetch: stub.fetch },
+    );
+    const startedAt = Date.now();
+    try {
+      const error = await caught(() => client.health());
+      expect(error.code).toBe("timeout");
+      expect(error.message).toContain("did not finish sending its body");
+      expect(error.message).toContain("150 ms");
+      expect(delivered).toBeGreaterThan(1);
+      expect(Date.now() - startedAt).toBeLessThan(1000);
+    } finally {
+      clearInterval(drip);
+    }
+  });
+
   it("folds a caller abort during the body read into timeout", async () => {
     const caller = new AbortController();
     const { client } = testClient(() => new Response(new ReadableStream()));
