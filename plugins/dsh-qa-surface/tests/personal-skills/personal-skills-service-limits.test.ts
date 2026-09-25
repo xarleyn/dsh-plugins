@@ -1,15 +1,54 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  appendFileSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaPersonalSkills } from "../../src/personal-skills/index.js";
+import { QA_SKILL_FILE_MAX_BYTES } from "../../src/personal-skills/skill-file.js";
 import {
   serviceFor,
   silentLogger,
   skillText,
   USER_A,
 } from "./personal-skills.helpers.js";
+
+/**
+ * One skill whose file is larger than the read ceiling, so the Host sees its
+ * head and the tail stays behind it. `TAIL` is what a save must not swallow in
+ * silence.
+ */
+const TAIL = "the tail no read ever loaded";
+
+function oversizedSkillOnDisk() {
+  const workspace = mkdtempSync(path.join(tmpdir(), "qa-skills-oversized-"));
+  const { service, context } = serviceFor({ workspace });
+  service.create(context, {
+    name: "long-tail",
+    description: "Carries a tail.",
+    whenToUse: null,
+    modelInvocable: true,
+    userInvocable: true,
+    allowedTools: [],
+    body: "",
+    expectedRevision: null,
+  });
+  const file = service.get(context, "long-tail").sourcePath;
+  writeFileSync(
+    file,
+    skillText(
+      ["name: long-tail", "description: Carries a tail."],
+      `${"y".repeat(QA_SKILL_FILE_MAX_BYTES)}${TAIL}`,
+    ),
+  );
+  return { service, context, file };
+}
 
 describe("personal skill service", () => {
   it("reports an oversized file and a name that disagrees with its directory", () => {
@@ -75,6 +114,62 @@ describe("personal skill service", () => {
         .discover(path.join(workspace, ".qa-users", USER_A))
         .map((entry) => entry.directoryName),
     ).not.toContain("declared-other");
+  });
+
+  it("reports a file the read ceiling only loaded partly, and refuses to overwrite it", () => {
+    const { service, context, file } = oversizedSkillOnDisk();
+    const document = service.get(context, "long-tail");
+    // The prefix is not the document: the editor is told so, and the size rule
+    // finally has the real file size to compare against.
+    expect(document.truncated).toBe(true);
+    expect(document.valid).toBe(false);
+    expect(document.body).not.toContain(TAIL);
+    const codes = document.diagnostics.map((entry) => entry.code);
+    expect(codes).toContain("skill-file-truncated");
+    expect(codes).toContain("file-too-large");
+
+    const trimmed = {
+      name: "long-tail",
+      description: "Shortened in the editor.",
+      whenToUse: null,
+      modelInvocable: true,
+      userInvocable: true,
+      allowedTools: [],
+      body: "Trimmed.",
+      expectedRevision: document.revision,
+    };
+    expect(() => service.update(context, "long-tail", trimmed)).toThrow(
+      /loaded only partly/u,
+    );
+    // A refused save leaves the file alone, tail included.
+    expect(readFileSync(file, "utf8")).toContain(TAIL);
+
+    // Only an explicit acknowledgement that the copy is partial lets the write
+    // through — and then the loss is stated, not silent.
+    const saved = service.update(context, "long-tail", {
+      ...trimmed,
+      confirmPartialOverwrite: true,
+    });
+    expect(saved.truncated).toBe(false);
+    expect(saved.valid).toBe(true);
+    expect(readFileSync(file, "utf8")).not.toContain(TAIL);
+  });
+
+  it("describes the whole file in the revision, the unread tail included", () => {
+    const { service, context, file } = oversizedSkillOnDisk();
+    const before = service.get(context, "long-tail");
+    appendFileSync(file, "more");
+    // sha256 of the file's bytes, not of the prefix the read happened to load.
+    const after = service.get(context, "long-tail");
+    expect(after.revision).not.toBe(before.revision);
+    // So an editor holding the older revision is refused on every write path,
+    // the removal included.
+    expect(() => service.remove(context, "long-tail", before.revision)).toThrow(
+      /changed after it was read/u,
+    );
+    expect(after.revision).toBe(
+      createHash("sha256").update(readFileSync(file)).digest("hex"),
+    );
   });
 
   it("reports a missing SKILL.md as a repairable document", () => {
