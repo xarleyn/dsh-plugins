@@ -78,7 +78,10 @@ Each numbered item is a verifiable guarantee, phrased as behaviour.
 21. Degraded configuration is surfaced, not hidden: a configured but
     unregistered scope provider, a missing memory provider, a worker without a
     tool binding, an unverifiable tool name and a missing delegation target each
-    appear as a named degradation with the references that caused it.
+    appear as a named degradation with the references that caused it. Each code
+    also says what the expert loses (§2, degradation codes); `TOOL_UNVERIFIED`
+    loses nothing, so a `degraded` chip or a `domain-expert/degraded` log line is
+    not by itself a failed run and never overrides `status`.
 22. Each run records one audit entry — domain, caller domain, caller session,
     child session, mode, status, duration, delegation path and degradation
     codes — mirrored to the plugin log. No task text, retrieved memory or
@@ -158,9 +161,39 @@ deletes it. See `README.md`, "Where memory lives".
 `PARALLELISM_EXCEEDED`, `EXPERT_NOT_CALLER`, `TASK_REJECTED`,
 `STORAGE_UNAVAILABLE`.
 
-Degradation codes (UI and audit): `SCOPE_PROVIDER_MISSING`,
-`MEMORY_PROVIDER_MISSING`, `WORKER_UNAVAILABLE`, `TOOL_UNVERIFIED`,
-`DELEGATION_TARGET_MISSING`.
+Degradation codes (`DomainDegradationCode`) appear in the resolved-scope
+inspector, in the domain list's `N degraded` chip, in the run audit and in the
+mirrored `domain-expert/degraded` warning. A code names what the deployment could
+not honour; it does not restate the run's outcome — `status` does. What each code
+costs the expert:
+
+| Code | Emitted when | What the expert loses |
+| --- | --- | --- |
+| `SCOPE_PROVIDER_MISSING` | A scope provider is configured but not registered, refuses its own configuration, or the built-in filesystem provider is absent. | That provider's resources and external scope; its configuration stays inert. |
+| `MEMORY_PROVIDER_MISSING` | The configured memory provider is not registered. | Recalled notes; the expert runs without them. |
+| `WORKER_UNAVAILABLE` | The allow-list names a registered worker that carries no tool binding, so it cannot be selected. | That worker; the entry is marked unavailable and stays out of the tool filter. |
+| `TOOL_UNVERIFIED` | The allow-list names something that is neither a plugin alias nor a worker this plugin knows — that is, a plain global tool (`read`, `grep`, `mcp__<server>__<tool>`). | Nothing. See below. |
+| `TOOL_UNFILTERABLE` | The runtime refused the tool filter at child start, naming entries it cannot resolve, and the run was retried without them. | At most the named tool, and only when nothing mounts it: a tool the expert's own preset provides stays available whatever the filter says. |
+| `DELEGATION_TARGET_MISSING` | A delegation target is unknown or disabled. | That peer as a delegation target. |
+
+`TOOL_UNVERIFIED` is informational by construction. Resolution consults this
+plugin's `WorkerRegistry` only; there is no seam to ask the host for its global
+tool registry before the child starts, so the resolver can neither confirm nor
+deny such a name and marks it `kind: "tool"`, leaving the harness to validate it.
+The name is passed through unchanged and stays in `toolFilter.allow`
+(`filterNamesOf` keeps every available entry). Dropping it instead would quietly
+narrow the expert on the deployments that do mount it, so it is not dropped: an
+allow-list is written in the vocabulary of the operator's kit, which means every
+healthy expert carrying ordinary tools records this code on every run. A
+`domain-expert/degraded codes="TOOL_UNVERIFIED"` line next to
+`status="completed"` is the expected record. A refusal the runtime issues that
+this plugin cannot attribute to a droppable filter entry is not a degradation at
+all — it stays a run failure, carrying `WORKER_UNAVAILABLE` when the refusal says
+the name is not registered in this deployment.
+
+This table is the grading a reader has to apply by hand: a degradation record
+carries no machine-readable severity, and giving it one changes the
+`DomainDegradation` contract and every surface that reads it (§4).
 
 ## 3. Lifecycle
 
@@ -222,6 +255,7 @@ audit ring mirrored to the plugin log.
 | Domain hierarchy (`parent`) | The record keeps a flat id space, which a future `parent` field can extend without a breaking change. |
 | Continuable-child delegation after a restart | A resumed durable child is no longer attributable to a domain, so delegation from it fails with `EXPERT_NOT_CALLER` rather than guessing. |
 | Enforcing an arbitrary global shell tool | A path restriction is only enforced by a worker that consumes the scope; the UI says `advisory` when none does. |
+| A severity field on the degradation record | `DomainDegradation` carries code, message and refs only; §2's table is the grading a reader applies by hand. Putting the tier in the record means changing the contract and every surface that reads it, so it is tracked as its own card rather than folded into documenting a code. |
 
 ## 5. Required end-to-end scenarios
 
