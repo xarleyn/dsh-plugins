@@ -266,6 +266,16 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
       const external = await startExternalChromium(externalChromium, debugPort);
 
       try {
+        // A page the deployment owns, opened in the browser's own context
+        // before this runtime ever dials in. Attach mode promises the person
+        // keeps it, so the test has to be able to lose it.
+        const personUrl = `http://127.0.0.1:${String(fixturePort)}/person-tab`;
+        const opened = await fetch(
+          `http://127.0.0.1:${String(debugPort)}/json/new?${encodeURIComponent(personUrl)}`,
+          { method: "PUT" },
+        );
+        expect(opened.ok).toBe(true);
+
         const config = resolveQaBrowserConfig({
           runtime: {
             mode: "attach",
@@ -322,6 +332,16 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
           `http://127.0.0.1:${String(debugPort)}/json/version`,
         );
         expect(endpoint.ok).toBe(true);
+        const targets = (await (
+          await fetch(`http://127.0.0.1:${String(debugPort)}/json/list`)
+        ).json()) as { type: string; url: string }[];
+        const pageUrls = targets
+          .filter((target) => target.type === "page")
+          .map((target) => target.url);
+        expect(pageUrls).toContain(personUrl);
+        expect(pageUrls).not.toContain(
+          `http://127.0.0.1:${String(fixturePort)}/`,
+        );
       } finally {
         await stopExternalChromium(external.child, debugPort);
         await rm(external.userDataDir, { recursive: true, force: true });
