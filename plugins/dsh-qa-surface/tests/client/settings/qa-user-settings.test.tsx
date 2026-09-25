@@ -15,6 +15,7 @@ import type {
   QaSkillSummary,
 } from "../../../src/types.js";
 import type { QaBoundSkillApi } from "../../../src/client/types.js";
+import { settle } from "../../helpers/act.js";
 
 const FIELDS: readonly QaAccountIdentityField[] = [
   { key: "jira", label: "Jira" },
@@ -178,7 +179,7 @@ describe("QA settings dialog", () => {
     );
   });
 
-  it("navigates between sections without leaving the dialog", () => {
+  it("navigates between sections without leaving the dialog", async () => {
     const skills = skillApi({ skills: [summary()] });
     dialog({ skills: skills.api });
     expect(screen.getByRole("tab", { name: "Профиль" })).toBeTruthy();
@@ -189,6 +190,9 @@ describe("QA settings dialog", () => {
     ).toContain("i.ivanov@example.com");
     fireEvent.click(screen.getByRole("tab", { name: "Навыки" }));
     expect(screen.getByRole("tabpanel", { name: "Навыки" })).toBeTruthy();
+    // The skills page loads its list on mount, so its own update lands after
+    // the click; let it settle before the dialog-wide assertions.
+    await settle();
     // One dialog the whole time: the sections are pages, not further modals.
     expect(screen.getAllByTestId("qa-surface-modal")).toHaveLength(1);
   });

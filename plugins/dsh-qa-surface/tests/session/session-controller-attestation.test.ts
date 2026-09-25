@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaSessionController } from "../../src/client/QaSessionController.js";
 import { harness } from "../helpers/session-fakes.js";
@@ -174,5 +174,98 @@ describe("QA session controller", () => {
     expect(world.create).toHaveBeenCalledOnce();
     expect(controller.getSnapshot().sessionId).toBe("created-1");
     controller.dispose();
+  });
+
+  describe("with lockdown off", () => {
+    const SESSION_KEY = "dsh-qa-surface.session:v1:/qa:session";
+
+    /** The proof a Host with nothing to pin answers with, after its account gate. */
+    const admitted = async (_token: string, sessionId: string) => ({
+      ok: true as const,
+      value: {
+        sessionId,
+        enabled: false,
+        agentPresetMatches: true,
+        workspaceMatches: true,
+        modelMatches: true,
+        sandboxModeMatches: false,
+        approvalIsNever: false,
+        permissionPreset: "",
+        toolPolicyLoaded: false,
+        toolAllowList: [],
+      },
+    });
+
+    const refused = async (reason: string) => ({
+      ok: false as const,
+      error: {
+        code: "internal",
+        message: `Assistant configuration is unavailable. (reason: ${reason})`,
+        details: {},
+      },
+    });
+
+    /** The accounts facade the controller reads identity from. */
+    function facade(ownedIds: readonly string[]) {
+      return {
+        token: () => "t-1",
+        ownedIds: () => ownedIds,
+        messageAuthorOf: () => undefined,
+        onSessionCreated: vi.fn(),
+        onAuthRequired: vi.fn(),
+      };
+    }
+
+    it("still asks the Host whose chat this is before it lets the account speak", async () => {
+      const world = harness(["saved"]);
+      world.stored.set(SESSION_KEY, "saved");
+      world.secureSession.mockImplementation(admitted);
+      const controller = new QaSessionController({
+        ...world,
+        config: resolveConfig({ lockdown: { enabled: false } }),
+        accounts: facade(["saved"]),
+      });
+      await controller.ensureSession();
+      expect(world.secureSession).toHaveBeenCalledWith("t-1", "saved");
+      expect(controller.getSnapshot()).toMatchObject({
+        phase: "ready",
+        sessionId: "saved",
+        canSend: true,
+      });
+      expect(await controller.send("hello")).toBe(true);
+      expect(world.faces.get("saved")?.prompt).toHaveBeenCalledWith(
+        [{ type: "text", text: "hello" }],
+        "queue",
+      );
+      controller.dispose();
+    });
+
+    it("gives up a restored chat the Host says belongs to another account", async () => {
+      const world = harness(["saved"]);
+      world.stored.set(SESSION_KEY, "saved");
+      world.secureSession.mockImplementation(async (_token, sessionId) =>
+        sessionId === "saved"
+          ? await refused("session-owned-elsewhere")
+          : await admitted(_token, sessionId),
+      );
+      const controller = new QaSessionController({
+        ...world,
+        config: resolveConfig({ lockdown: { enabled: false } }),
+        // The previous account's chat is still what this browser restores.
+        accounts: facade([]),
+      });
+      await controller.ensureSession();
+      expect(world.secureSession).toHaveBeenCalledWith("t-1", "saved");
+      const adopted = controller.getSnapshot().sessionId;
+      expect(adopted).not.toBe("saved");
+      expect(controller.getSnapshot()).toMatchObject({
+        phase: "ready",
+        canSend: true,
+      });
+      expect(await controller.send("hello")).toBe(true);
+      expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+      expect(world.faces.get(String(adopted))?.prompt).toHaveBeenCalled();
+      controller.dispose();
+    });
   });
 });

@@ -215,6 +215,37 @@ describe("end-to-end: Definition of Done scenario (SPEC §95)", () => {
     expect(status.text).toMatch(/pending: 0/);
   });
 
+  it("stops steering once the rule is switched off, and resumes on revert", async () => {
+    const harness = await makeHarness();
+    await harness.preStep();
+
+    await writeFile(
+      join(harness.cwd, "src", "auth", "session.ts"),
+      "export const session = 6;\n",
+    );
+    expect(await harness.stop()).toBeDefined();
+
+    // The operator switches the rule off while the turn is still running. The
+    // recorded impact can no longer be satisfied or resolved by any rule, so
+    // it must stop interrupting the turn instead of haunting it.
+    await writeFile(
+      join(harness.cwd, ".dsh", "doc-impact.yml"),
+      CONFIG_YAML.replace(
+        "    direction: code-to-docs",
+        "    enabled: false\n    direction: code-to-docs",
+      ),
+    );
+    expect(await harness.stop()).toBeUndefined();
+    expect((await harness.command("")).text).toMatch(/pending: 0/);
+
+    // Reverting the switch brings the same detection back: it is current
+    // again, so it steers once more rather than staying retired.
+    await writeFile(join(harness.cwd, ".dsh", "doc-impact.yml"), CONFIG_YAML);
+    const steered = await harness.stop();
+    expect(steered).toBeDefined();
+    expect(steered).toContain("docs/authentication.md");
+  });
+
   it("stays inert when the workspace has no config", async () => {
     const harness = await makeHarness();
     await rm(join(harness.cwd, ".dsh", "doc-impact.yml"));

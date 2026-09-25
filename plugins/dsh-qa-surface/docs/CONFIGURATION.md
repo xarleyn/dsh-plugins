@@ -130,7 +130,9 @@ Browser persistence stores only the DSH session id under
 enabled — a per-browser chat index under `<storageKey>:v1:<route>:chats`
 (session ids only, capped at 50). Transcript content, credentials and tool
 results remain in the Host-owned DSH Session and are never copied to browser
-storage.
+storage. The stored id is a hint about which chat to open, not a grant: it is
+scoped to the deployment and route, not to the account, so the Host ownership
+gate is what decides whether this browser may speak in that chat.
 
 When either work-detail flag is enabled, the QA transcript groups reasoning,
 intermediate assistant progress, and tool rows by DSH turn. Running work is
@@ -147,6 +149,11 @@ browser console additionally prints one line with a stable coarse reason code
 (`reason: unknown-tools`, `workspace-unavailable`, `composition-mismatch`, `permission-preset`,
 `adoption-refused`, `agent-unavailable`, `proof-mismatch` or `attestation-failed`) plus an operator
 hint, so a refused surface can be diagnosed without Host log access.
+`lockdown.enabled: false` drops the pins, not the request: with `accounts.enabled`
+on, the browser still asks, because account identity and ownership are checked
+in the Host whatever the lockdown state, and a deployment that turned policy
+pinning off keeps refusing a chat another account owns. Without accounts the
+surface has one principal and nothing to prove, so the call is skipped.
 
 An existing indexed chat rejected as `composition-mismatch`,
 `agent-unavailable` or `adoption-refused` is retained as a historical
