@@ -2,7 +2,10 @@ import type {
   ConnectionGenerationState,
   SessionId,
 } from "@deepseek-ai/dsh-client-connection/client";
-import type { SessionFace } from "@deepseek-ai/dsh-api-session-controller/client";
+import type {
+  SessionFace,
+  SubmissionHandle,
+} from "@deepseek-ai/dsh-api-session-controller/client";
 import type { ConversationBinding } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import { bytesToBase64 } from "./base64.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
@@ -10,6 +13,7 @@ import type {
   QaAttachmentDraft,
   QaFileDraft,
   QaPendingUserMessage,
+  QaQueueOperation,
   QaSessionState,
   QaSlashCatalog,
   QaSlashCatalogEntry,
@@ -157,6 +161,40 @@ interface PendingSubmission {
   accepted: boolean;
   /** Lets a completed Host turn retire the optimistic row even if Chat lagged. */
   sawRunning: boolean;
+}
+
+/** What the strip says when the Host refuses one queue operation. */
+const QUEUE_FAILURE_COPY: Record<QaQueueOperation, string> = {
+  edit: "Не удалось изменить сообщение в очереди. Возможно, оно уже отправлено.",
+  remove:
+    "Не удалось убрать сообщение из очереди. Возможно, оно уже отправлено.",
+  steer: "Не удалось отправить сообщение сразу. Попробуйте ещё раз.",
+};
+
+/**
+ * Image previews for the Host echo of a queued send. A data URL, not the
+ * composer's blob URL: the composer revokes the blob the moment the send is
+ * accepted, while the Host keeps the echo until its queue occurrence lands.
+ * Files are left out — the Host echo wants a durable attachment reference, and
+ * a staged receipt is a write handle, not one.
+ */
+function submissionImages(attachments: readonly QaAttachmentDraft[]): readonly {
+  readonly type: "image";
+  readonly value: { readonly previewUrl: string; readonly name?: string };
+}[] {
+  return attachments.flatMap((attachment) =>
+    attachment.kind === "image"
+      ? [
+          {
+            type: "image" as const,
+            value: {
+              previewUrl: `data:${attachment.mediaType};base64,${attachment.data}`,
+              name: attachment.name,
+            },
+          },
+        ]
+      : [],
+  );
 }
 
 /**
@@ -431,13 +469,18 @@ export class QaSessionController {
       return false;
     }
     this.operationError = null;
+    // A running turn has nowhere for a new question to land but its queue, and
+    // the queue is the Host's state, not the transcript's: echoing it into the
+    // transcript would show the same message twice — once waiting, once sent.
+    const queueing = this.session?.getSnapshot().running === true;
     // Regeneration rides a hidden marker and must never leak it into the UI.
     const submission =
-      prompt === QA_REGENERATE_MARKER
+      prompt === QA_REGENERATE_MARKER || queueing
         ? undefined
         : this.beginSubmission(prompt, attachments);
     let accepted = false;
     let target: SessionFace | undefined;
+    let echo: SubmissionHandle | undefined;
     try {
       target = await this.liveTarget();
       if (target === undefined) return false;
@@ -468,10 +511,23 @@ export class QaSessionController {
         // for the abandoned chat cannot land in it or in its replacement.
         if (this.disposed || this.session !== target) return false;
       }
+      const content = buildQaPromptContent(prompt, attachments, receipts);
+      // A queued send needs the Host's own echo, not the transcript one: the
+      // Host mints the identity the prompt carries, retires the echo when its
+      // queue occurrence arrives, and retires it again when an identified
+      // prompt fails, so the strip never keeps a row the server refused.
+      echo = queueing
+        ? target.beginSubmission({
+            mode: "queue",
+            text: prompt,
+            attachments: submissionImages(attachments),
+          })
+        : undefined;
       this.admissionPending = true;
       this.publish();
-      const content = buildQaPromptContent(prompt, attachments, receipts);
-      const result = await target.prompt(content, "queue");
+      const result = queueing
+        ? await target.prompt(content, "queue", undefined, echo?.requestId)
+        : await target.prompt(content, "queue");
       if (this.session !== target) return false;
       if (!result.ok) {
         this.admissionPending = false;
@@ -487,6 +543,9 @@ export class QaSessionController {
       return true;
     } catch (error) {
       this.admissionPending = false;
+      // The prompt call never completed, so nothing settled the echo; a queued
+      // row would otherwise sit in the strip claiming to be on its way.
+      echo?.abandon();
       console.error("dsh-qa-surface: prompt failed", error);
       if (this.session === target) {
         this.operationError = "Не удалось отправить сообщение.";
@@ -791,6 +850,46 @@ export class QaSessionController {
       this.operationError = "Не удалось остановить ответ.";
     }
     this.publish();
+  }
+
+  /**
+   * Edit, send now, or drop one message that still waits for its turn. Every
+   * operation addresses the occurrence id the Host's queue frame carried, so a
+   * row the agent claimed a moment ago is refused by the Host rather than
+   * quietly dropped here.
+   *
+   * The answer is the refusal text rather than a flag, and the strip beside the
+   * composer keeps showing it: a session frame follows a refusal within
+   * milliseconds, and the shared error line is cleared by exactly that frame.
+   */
+  async queueAction(
+    id: string,
+    action: QaQueueOperation,
+    text = "",
+  ): Promise<string | null> {
+    const target = this.session;
+    if (target === undefined || !this.state.canEditQueue) return null;
+    const wire =
+      action === "remove"
+        ? ({ kind: "remove" } as const)
+        : action === "steer"
+          ? ({ kind: "steer" } as const)
+          : ({ kind: "edit", content: [{ type: "text", text }] } as const);
+    try {
+      const result = await target.updateQueue(
+        // The strip holds the id as text; only the Host's brand knows it back.
+        id as Parameters<SessionFace["updateQueue"]>[0],
+        wire,
+      );
+      if (this.session !== target) return null;
+      if (!result.ok) return QUEUE_FAILURE_COPY[action];
+      this.publish();
+      return null;
+    } catch (error) {
+      console.error("dsh-qa-surface: queue operation failed", error);
+      if (this.session !== target) return null;
+      return QUEUE_FAILURE_COPY[action];
+    }
   }
 
   /**

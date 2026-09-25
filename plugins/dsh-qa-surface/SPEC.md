@@ -211,6 +211,15 @@ Example:
 
 No first-party DSH navigation or admin controls should be visible through the QA surface.
 
+A question asked while the agent is answering is not refused: it is admitted as
+the next turn, and the queue strip above the composer lists what waits. Each row
+carries the three operations the Host's queue offers — rewrite it, send it into
+the running turn, drop it — addressed by the occurrence id the Host's queue
+frame carried, so the strip never claims a row the server does not have. The
+queue is Host state read through the session snapshot: the stand keeps no queue
+of its own, and a message waiting in the queue is absent from the transcript
+until the agent claims it.
+
 ---
 
 ## 5. Scope

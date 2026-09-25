@@ -31,12 +31,27 @@ export function conversation(_id: string): ConversationSnapshot {
   };
 }
 
+/**
+ * The session snapshot a test drives. The queue half is the Host's own shape
+ * kept loose, so a test sets rows the way the Host frame delivers them.
+ */
+export interface FakeSessionSnapshot {
+  running: boolean;
+  openState: string;
+  blank: boolean;
+  removed: boolean;
+  queue: readonly Record<string, unknown>[];
+  pendingSubmissions: readonly Record<string, unknown>[];
+}
+
 export function sessionFace(id: string) {
-  const source = new Source({
+  const source = new Source<FakeSessionSnapshot>({
     running: false,
     openState: "open",
     blank: true,
     removed: false,
+    queue: [],
+    pendingSubmissions: [],
   });
   const prompt = vi.fn(async () => ({
     ok: true as const,
@@ -46,6 +61,22 @@ export function sessionFace(id: string) {
     ok: true as const,
     value: { accepted: true as const },
   }));
+  const updateQueue: Mock<(...args: unknown[]) => Promise<unknown>> = vi.fn(
+    async () => ({
+      ok: true as const,
+      value: { accepted: true as const },
+    }),
+  );
+  let submissions = 0;
+  const beginSubmission: Mock<
+    (input: Record<string, unknown>) => {
+      requestId: string;
+      abandon: () => void;
+    }
+  > = vi.fn(() => ({
+    requestId: `request-${++submissions}`,
+    abandon: vi.fn(),
+  }));
   const face = {
     sessionId: id as SessionId,
     projections: { faceOf: vi.fn() },
@@ -53,8 +84,10 @@ export function sessionFace(id: string) {
     subscribe: source.subscribe,
     prompt,
     cancel,
+    updateQueue,
+    beginSubmission,
   } as unknown as SessionFace;
-  return { face, source, prompt, cancel };
+  return { face, source, prompt, cancel, updateQueue, beginSubmission };
 }
 
 export function conversationBinding(id: string) {
