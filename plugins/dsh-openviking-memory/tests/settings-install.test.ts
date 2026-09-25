@@ -91,6 +91,17 @@ async function stepRecalls(
   return target.countRequests("/api/v1/search/search") - before;
 }
 
+/** Automatic context requests — profile reads and recall searches — issued from `start` on. */
+function automaticContextRequests(target: Harness, start = 0): number {
+  return target.requests
+    .slice(start)
+    .filter(
+      (request) =>
+        request.path === "/api/v1/search/search" ||
+        request.search.includes("profile.md"),
+    ).length;
+}
+
 describe("settings section", () => {
   it("registers the namespace the card is keyed by", async () => {
     const { installed, service } = settingsService();
@@ -142,6 +153,105 @@ describe("settings section", () => {
 
     expect(harness.plugin.injection.recall).toBe(false);
     expect(await stepRecalls(harness, "dsh-session-2")).toBe(0);
+  });
+
+  it("switches the master switch off for a session that is already running", async () => {
+    const { installed, service } = settingsService();
+    harness = await createHarness({}, { settings: service });
+    await vi.waitFor(() => {
+      expect(installed).toHaveLength(1);
+    });
+
+    const { agent } = createFakeAgent({ sessionId: "dsh-session-1" });
+    await emit(harness, "agent/session-start", { agent });
+    expect(automaticContextRequests(harness)).toBeGreaterThan(0);
+
+    // The operator pulls the master switch of the «Automatic context
+    // presentation» section; the settings service reports the new merged value.
+    installed[0]?.setSource(() => ({
+      autoInject: false,
+      qaUserSettingsPath: harness?.settingsPath,
+    }));
+    installed[0]?.onChange();
+    expect(harness.plugin.injection).toEqual({
+      startupProfile: false,
+      stepProfile: false,
+      recall: false,
+    });
+
+    // The next step of the session that was already open issues nothing.
+    const before = harness.requests.length;
+    const payload = preStepPayload(agent, [
+      userMessage("what did we decide about the release plan?"),
+    ]);
+    await emit(harness, "agent/pre-step", payload, () =>
+      Promise.resolve(enterDecision(payload.messages)),
+    );
+    expect(harness.requests.length).toBe(before);
+    expect(automaticContextRequests(harness, before)).toBe(0);
+
+    // Off means off for automatic context only: the conversation is still
+    // captured, so the switch does not quietly disable the memory itself.
+    await emit(harness, "session/event", agent.session, {
+      type: "user/message",
+      time: Date.now(),
+      data: userMessage("the release step is gated on the smoke suite"),
+    });
+    await emit(harness, "session/flush", agent.session);
+    const captured = harness.requests
+      .slice(before)
+      .filter((request) => request.path.startsWith("/api/v1/sessions/"));
+    expect(captured.length).toBeGreaterThan(0);
+  });
+
+  it("moves a session that is already open onto its account space", async () => {
+    const owners: Record<string, string> = { "dsh-session-1": "account-a" };
+    const { installed, service } = settingsService();
+    harness = await createHarness(
+      { qaUserScoping: false, user: "shared-account" },
+      {
+        settings: service,
+        qaSurface: {
+          principalForSession: (sessionId) => {
+            const userId = owners[sessionId];
+            return userId === undefined ? undefined : { userId };
+          },
+          principalForToken: () => undefined,
+        },
+      },
+    );
+    await vi.waitFor(() => {
+      expect(installed).toHaveLength(1);
+    });
+
+    const { agent } = createFakeAgent({ sessionId: "dsh-session-1" });
+    await emit(harness, "agent/session-start", { agent });
+    for (const request of harness.requests) {
+      expect(request.headers["X-OpenViking-User"]).toBe("shared-account");
+    }
+
+    // The operator flips the card's Multi-user memory switch.
+    installed[0]?.setSource(() => ({
+      qaUserScoping: true,
+      user: "shared-account",
+      qaUserSettingsPath: harness?.settingsPath,
+    }));
+    installed[0]?.onChange();
+
+    const payload = preStepPayload(agent, [
+      userMessage("what did we decide about the release plan?"),
+    ]);
+    await emit(harness, "agent/pre-step", payload, () =>
+      Promise.resolve(enterDecision(payload.messages)),
+    );
+
+    // The switch reaches the session that was open before it was flipped: the
+    // option is read per request, so no chat keeps the old space.
+    const recalls = harness.requestsFor("/api/v1/search/search");
+    expect(recalls.length).toBeGreaterThan(0);
+    for (const request of recalls) {
+      expect(request.headers["X-OpenViking-User"]).toBe("account-a");
+    }
   });
 
   it("re-reads the configuration of a session that is already running", async () => {
