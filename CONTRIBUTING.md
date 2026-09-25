@@ -103,10 +103,9 @@ pnpm nx g dsh-plugin <name> --client --description "My awesome plugin"
 
 | Flag | Description |
 |------|-------------|
-| `--client` | Include a client-side entrypoint (`src/client.ts`) |
+| `--client` | Include a client-side entrypoint (`src/client/index.tsx`) and its tsdown bundle |
 | `--description` | Short description for the plugin |
 | `--scope` | npm scope (default: `@yadsh`) |
-| `--with-ui` | Use an existing shared UI kit; fails clearly while no UI contract exists |
 | `--with-tests=false` | Omit starter tests and the Vitest target |
 
 ### What the Generator Creates
@@ -114,16 +113,21 @@ pnpm nx g dsh-plugin <name> --client --description "My awesome plugin"
 ```
 plugins/dsh-<name>/
 ├── src/
-│   ├── index.ts          # Server-side entrypoint
-│   └── client.ts         # Client-side (if --client)
+│   ├── index.ts              # Server-side entrypoint
+│   └── client/index.tsx      # Client-side (with --client)
+├── scripts/
+│   └── verify-package.mjs    # Package gates (+ verify-client-bundle.mjs with --client)
 ├── tests/
-│   └── index.test.ts     # Starter tests
-├── cordis.patch.yml      # DSH bundle metadata
-├── LICENSE               # Repository MIT license copy
-├── package.json          # Standardized metadata
-├── tsconfig.json         # Extends the shared config package
-├── vitest.config.ts      # Test configuration
-└── README.md             # Plugin documentation
+│   └── index.test.ts         # Starter tests (with --tests, the default)
+├── compatibility.json        # Machine-readable DSH/Node baseline
+├── cordis.patch.yml          # DSH bundle metadata
+├── LICENSE                   # Repository MIT license copy
+├── package.json              # Standardized metadata
+├── tsconfig.json             # Extends the shared config package
+├── tsconfig.build.json       # Declaration + lib build
+├── tsdown.config.ts          # Browser bundle (with --client)
+├── vitest.config.ts          # Test configuration (with --tests, the default)
+└── README.md                 # Plugin documentation
 ```
 
 ### Manual Plugin Creation
@@ -142,15 +146,18 @@ Shared packages live in `packages/` and are organized by capability:
 | Package | Purpose |
 |---------|---------|
 | `plugin-log` | Publishable runtime logging and consumer discovery |
-| `plugin-kit` | Private runtime helpers (config validation, version checks) |
-| `test-kit` | Testing utilities (mock contexts, fixtures) |
-| `config` | Shared TypeScript, Vitest, and build configs |
-| `ui-kit` | Shared UI primitives (when needed by multiple plugins) |
+| `plugin-kit` | Publishable runtime helpers: config validation, compatibility checks, the `./client` card scaffolding, `./sqlite` store plumbing |
+| `audit-core` | Publishable audit artifact domain layer: schema, parsing, validation, atomic publishing |
+| `audit-ui` | Publishable audit presentation components: sanitized report, findings, scorecard, JSON view |
+| `test-kit` | Private testing utilities (mock contexts, fixtures) |
+| `config` | Private shared TypeScript, Vitest, and build configs |
+| `plugin-scripts` | Private shared build/verify script runners |
+| `ui-kit` | Shared UI primitives — not created yet; [SPEC §26](./SPEC.md#26-ui-kit) gates it on genuine multi-plugin reuse |
 
 ### Guidelines
 
 1. **Name by capability**, not by function (`plugin-kit`, not `helpers`)
-2. **No plugin-to-plugin coupling** — shared packages must not depend on concrete plugins
+2. **Shared packages stay plugin-free** — nothing under `plugins/*` may appear in a `packages/*` manifest (SPEC §27.2). Coupling between two *plugins* is a separate rule: allowed only as a deliberate extension API (SPEC §5.3, decoded in [plugin guidelines §3.1](./docs/PLUGIN_GUIDELINES.md#31-границы-монорепо-и-зависимости))
 3. **Use `workspace:^`** for internal dependencies
 4. **Declare DSH runtime deps as `peerDependencies`** with `catalog:dsh`
 

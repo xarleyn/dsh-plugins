@@ -1,7 +1,7 @@
 /**
  * DSH Plugin Kit — shared runtime helpers for DeepSeek Harness plugins.
  *
- * This private package provides small, focused development utilities:
+ * This publishable package provides small, focused runtime helpers:
  * - configuration validation
  * - the `CredentialHelp` contract for credential help metadata
  * - `./client` scaffolding for browser bundles

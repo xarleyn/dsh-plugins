@@ -69,13 +69,15 @@ instance.
 | `@yadsh/dsh-audit-core` | none |
 | `@yadsh/dsh-audit-ui` | React |
 | `@yadsh/dsh-plugin-log` | none |
-| `@yadsh/dsh-plugin-kit` (private) | Cordis |
+| `@yadsh/dsh-plugin-kit` | Cordis |
 | `@yadsh/dsh-plugin-scripts` (private) | none |
 | `@yadsh/dsh-test-kit` (private) | Cordis, Vitest |
 | `@yadsh/dsh-config` (private) | none |
 
-`@yadsh/dsh-config`, `@yadsh/dsh-plugin-kit`, `@yadsh/dsh-plugin-scripts`, and
-`@yadsh/dsh-test-kit` are private workspace packages and are not published.
+`@yadsh/dsh-config`, `@yadsh/dsh-plugin-scripts`, and `@yadsh/dsh-test-kit` are
+private workspace packages and are not published. The publishable set is exactly
+the `release.projects` list in `nx.json`: `plugins/*` plus `plugin-log`,
+`plugin-kit`, `audit-core` and `audit-ui`.
 
 ## DSH 0.1.5 migration notes
 
