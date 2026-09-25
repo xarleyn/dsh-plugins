@@ -169,6 +169,11 @@ export function testService(
   root: string,
   options: {
     readonly sessions?: readonly string[];
+    /**
+     * A corpus the test can grow between passes, for the bindings that are
+     * settled by the session list rather than by the files.
+     */
+    readonly listSessionIds?: () => Promise<readonly string[]>;
     readonly config?: SessionAuditConfig;
   } = {},
 ): {
@@ -179,7 +184,7 @@ export function testService(
   const sessions = options.sessions ?? [SESSION_ID, OTHER_SESSION_ID];
   const service = new AuditService({
     config: testConfig(root, options.config ?? {}),
-    listSessionIds: async () => sessions,
+    listSessionIds: options.listSessionIds ?? (async () => sessions),
     logger,
   });
   return { service, logger };
