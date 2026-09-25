@@ -87,5 +87,6 @@ Three ways a green run lies, all of them observed here:
   hand, and the wave will treat it as adopted rather than its own.
 - An install check is the only thing that proves a wave is consumable:
   `node scripts/publish-release.mjs --verify-install --tsv=<rows>` runs a real
-  `npm install <name>@<version> --dry-run` per package and retries while the
-  registry catches up.
+  `npm install <name>@<version> --dry-run` per package and polls each version
+  the registry has not caught up with, doubling the wait up to a five-minute
+  ceiling before it reports the version as uninstallable.
