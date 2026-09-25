@@ -268,6 +268,35 @@ describe("createPluginLogger", () => {
     expect(entries).toContain("keep.txt");
   });
 
+  it("sweeps the retention window again on every later rollover", async () => {
+    const dir = await newDir();
+    // Two files the logger never opens: one dies in the first sweep, the other
+    // survives it and dies in the second, so a single-pass sweep cannot pass.
+    await writeFile(join(dir, "2026-01-01.log"), '{"msg":"first"}\n', "utf8");
+    await writeFile(join(dir, "2026-01-09.log"), '{"msg":"second"}\n', "utf8");
+    let now = new Date(2026, 0, 10, 12, 0, 0).getTime();
+    const logger = createPluginLogger({
+      pluginId: "dsh-retention",
+      dir,
+      level: "info",
+      console: "silent",
+      retentionDays: 5,
+      now: () => now,
+    });
+    logger.info("retention.day_ten");
+    expect(await readdir(dir)).toContain("2026-01-09.log");
+
+    now = new Date(2026, 0, 14, 12, 0, 0).getTime();
+    logger.info("retention.day_fourteen");
+    await logger.close();
+
+    const entries = await readdir(dir);
+    expect(entries).not.toContain("2026-01-01.log");
+    expect(entries).not.toContain("2026-01-09.log");
+    expect(entries).toContain("2026-01-10.log");
+    expect(entries).toContain("2026-01-14.log");
+  });
+
   it("degrades to console-only when the log dir cannot be created", async () => {
     const dir = await newDir();
     const blocker = join(dir, "not-a-dir");
@@ -354,6 +383,140 @@ describe("createPluginLogger", () => {
     expect(() =>
       createPluginLogger({ pluginId: "../escape", dir: "unused" }),
     ).toThrowError(/pluginId/);
+  });
+});
+
+const SECRET = "sk-synthetic-secret";
+
+/** Every path shape the `redact` option documents, on one record. */
+const REDACT_PATHS = [
+  "apiKey",
+  "profile.token",
+  "headers.*",
+  "items[*].secret",
+];
+
+const REDACTED_FIELDS = Object.freeze({
+  apiKey: "[Redacted]",
+  profile: { token: "[Redacted]", visible: "kept" },
+  headers: { authorization: "[Redacted]", accept: "[Redacted]" },
+  items: [{ secret: "[Redacted]" }, { secret: "[Redacted]" }],
+  count: 3,
+});
+
+function redactedInput(): Record<string, unknown> {
+  return {
+    apiKey: SECRET,
+    profile: { token: SECRET, visible: "kept" },
+    headers: { authorization: SECRET, accept: "application/json" },
+    items: [{ secret: SECRET }, { secret: "second" }],
+    count: 3,
+  };
+}
+
+describe("redaction", () => {
+  let directories: string[] = [];
+
+  afterEach(async () => {
+    const pending = directories;
+    directories = [];
+    await Promise.all(
+      pending.map((dir) => rm(dir, { recursive: true, force: true })),
+    );
+  });
+
+  async function newDir(): Promise<string> {
+    const dir = await makeLogDir("dsh-plugin-log-");
+    directories.push(dir);
+    return dir;
+  }
+
+  it("cuts a redacted field out of every sink it feeds", async () => {
+    const dir = await newDir();
+    const mirrored: string[] = [];
+    const published: PluginLogRecord[] = [];
+    const unsubscribe = subscribePluginLogRecords((record) => {
+      if (record.pluginId === "dsh-redact") published.push(record);
+    });
+    const logger = createPluginLogger({
+      pluginId: "dsh-redact",
+      dir,
+      level: "info",
+      console: "info",
+      consoleSink: (level, message) => mirrored.push(`${level}:${message}`),
+      redact: REDACT_PATHS,
+    });
+
+    logger.warn("redact.event", redactedInput());
+    await logger.close();
+    unsubscribe();
+
+    // One input, every sink: what the file cannot show, neither the mirror nor
+    // the panel that reads the bus can show it.
+    expect(published).toHaveLength(1);
+    expect(published[0]?.fields).toEqual(REDACTED_FIELDS);
+    const lines = await readLogLines(dir);
+    expect(lines).toHaveLength(1);
+    const fileRecord = lines[0]!;
+    expect(fileRecord["msg"]).toBe("redact.event");
+    const reserved = new Set(["level", "time", "plugin", "msg"]);
+    const fileFields = Object.fromEntries(
+      Object.entries(fileRecord).filter(([key]) => !reserved.has(key)),
+    );
+    expect(fileFields).toEqual(REDACTED_FIELDS);
+    expect(mirrored).toEqual([
+      "warn:[dsh-redact] redact.event apiKey=[Redacted] " +
+        'profile={"token":"[Redacted]","visible":"kept"} ' +
+        'headers={"authorization":"[Redacted]","accept":"[Redacted]"} ' +
+        'items=[{"secret":"[Redacted]"},{"secret":"[Redacted]"}] count=3',
+    ]);
+  });
+
+  it("keeps a redacted field out of the readable text file", async () => {
+    const dir = await newDir();
+    const logger = createPluginLogger({
+      pluginId: "dsh-redact-text",
+      dir,
+      level: "info",
+      format: "text",
+      console: "silent",
+      redact: REDACT_PATHS,
+    });
+
+    logger.warn("redact.text", redactedInput());
+    await logger.close();
+
+    const entries = await readdir(dir);
+    const text = await readFile(join(dir, entries[0]!), "utf8");
+    expect(text).not.toContain(SECRET);
+    expect(text).toContain('apiKey="[Redacted]"');
+  });
+
+  it("redacts a record the level keeps out of the file and the bus", async () => {
+    const dir = await newDir();
+    const mirrored: string[] = [];
+    const events: string[] = [];
+    const unsubscribe = subscribePluginLogRecords((record) => {
+      if (record.pluginId === "dsh-redact-mirror") events.push(record.event);
+    });
+    const logger = createPluginLogger({
+      pluginId: "dsh-redact-mirror",
+      dir,
+      level: "error",
+      console: "warn",
+      consoleSink: (level, message) => mirrored.push(`${level}:${message}`),
+      redact: ["apiKey"],
+    });
+
+    logger.warn("redact.mirror_only", { apiKey: SECRET });
+    unsubscribe();
+    await logger.close();
+
+    expect(events).toEqual([]);
+    expect(await readdir(dir)).toEqual([]);
+    expect(mirrored).toEqual([
+      "warn:[dsh-redact-mirror] redact.mirror_only apiKey=[Redacted]",
+    ]);
   });
 });
 
@@ -520,16 +683,52 @@ describe("plugin log record bus", () => {
   function create(
     pluginId: string,
     level: PluginLogLevel = "info",
+    redact?: readonly string[],
   ): PluginLogger {
     const logger = createPluginLogger({
       pluginId,
       level,
+      redact,
       file: false,
       console: "silent",
     });
     loggers.push(logger);
     return logger;
   }
+
+  it("publishes a frozen copy and leaves the caller's object usable", () => {
+    const plain = create("dsh-records-caller-copy");
+    const redacting = create("dsh-records-caller-redacted", "info", [
+      "nested.token",
+    ]);
+    const published: PluginLogRecord[] = [];
+    const unsubscribe = subscribePluginLogRecords((record) => {
+      if (record.pluginId.startsWith("dsh-records-caller")) {
+        published.push(record);
+      }
+    });
+
+    const fields = { apiKey: "raw", nested: { token: "raw" } };
+    plain.info("record.copy", fields);
+    redacting.info("record.copy.redacted", fields);
+    unsubscribe();
+
+    expect(published.map((record) => record.fields)).toEqual([
+      { apiKey: "raw", nested: { token: "raw" } },
+      { apiKey: "raw", nested: { token: "[Redacted]" } },
+    ]);
+    expect(published[0]?.fields).not.toBe(fields);
+    expect(Object.isFrozen(published[0]?.fields)).toBe(true);
+
+    // The record is the logger's own: freezing it must not reach back into the
+    // caller's object, and redaction must not rewrite the values it holds.
+    expect(() => {
+      fields.apiKey = "rewritten";
+      fields.nested.token = "rewritten";
+    }).not.toThrow();
+    expect(Object.isFrozen(fields)).toBe(false);
+    expect(Object.isFrozen(fields.nested)).toBe(false);
+  });
 
   it("delivers every recorded record with its module, fields and a rising sequence", () => {
     const logger = create("dsh-records-basic");
