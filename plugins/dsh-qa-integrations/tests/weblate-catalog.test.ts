@@ -230,11 +230,14 @@ describe("Weblate tool surface", () => {
     readonly parameters: unknown;
   }
 
-  function surface(): readonly Surface[] {
-    return tools().filter((tool) =>
-      tool.name.startsWith("weblate_"),
-    ) as unknown as readonly Surface[];
-  }
+  /**
+   * Built once, not once per query: the surface is static, and one of the tests
+   * below walks it a dozen times, so rebuilding it made that the slowest test
+   * in the file for no reason the assertions needed.
+   */
+  const surface: readonly Surface[] = tools().filter((tool) =>
+    tool.name.startsWith("weblate_"),
+  ) as unknown as readonly Surface[];
 
   it("registers the Weblate names after the other providers", () => {
     const names = tools().map((tool) => tool.name);
@@ -254,7 +257,7 @@ describe("Weblate tool surface", () => {
     // Only the argument schemas are checked: descriptions are prose and are
     // allowed to say the word "token".
     const schema = JSON.stringify(
-      surface().map((tool) => ({
+      surface.map((tool) => ({
         name: tool.name,
         parameters: tool.parameters,
       })),
@@ -278,7 +281,7 @@ describe("Weblate tool surface", () => {
   });
 
   it("says out loud that external content is untrusted data", () => {
-    for (const tool of surface()) {
+    for (const tool of surface) {
       expect(tool.description, tool.name).toMatch(/[Rr]ead-only/u);
     }
     // Every answer that carries upstream-authored text says where it came from,
@@ -294,12 +297,12 @@ describe("Weblate tool surface", () => {
     ];
     expect(unwrapped).toHaveLength(WEBLATE_UNTRUSTED_OPERATIONS.length);
     for (const name of unwrapped) {
-      const tool = surface().find((item) => item.name === name);
+      const tool = surface.find((item) => item.name === name);
       expect(tool?.description, name).toMatch(/untrusted external content/u);
     }
     // The metadata answers do not pretend to carry any.
     for (const name of ["weblate_projects_list", "weblate_connection_get"]) {
-      const tool = surface().find((item) => item.name === name);
+      const tool = surface.find((item) => item.name === name);
       expect(tool?.description, name).not.toMatch(
         /untrusted external content/u,
       );
