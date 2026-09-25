@@ -67,7 +67,10 @@ in the test wiring — fix it, never write it off as flaky.
   SERVICE of it is read — the service name in the client face's `inject`.
 - Shared code goes to `packages/*` (plugin-kit has client helpers like
   `injectCardStyles`, plus sqlite/retention helpers) — plugin-to-plugin
-  dependencies are an anti-pattern `pnpm deps:check` enforces.
+  dependencies are an anti-pattern `pnpm deps:check` enforces (SPEC §27.11).
+  The one way to keep one is to declare that exact edge, with the reason, in
+  `plugin-dependency-allowlist.json`; justify it by the target publishing a
+  real extension API, and expect the reviewer to ask.
 
 ## Version plans and releases
 
