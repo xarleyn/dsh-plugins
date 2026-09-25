@@ -44,7 +44,7 @@ import {
   ToolsSection,
   VerdictsSection,
   type ConfigProps,
-} from "./sections.js";
+} from "./sections/index.js";
 
 const REFRESH_INTERVAL_MS = 3_000;
 
