@@ -23,15 +23,20 @@
  *   dependency tree it was supposed to import. Both bands are line counts —
  *   bytes are a different measurement and a different card.
  *
- * Files already over their hard budget are listed in `fileBudgetAllowlist` and
- * stay silent: the gate exists to stop the next 400 lines, not to re-litigate
- * the last 2000, and a check that is red on the day it lands is a check that
- * gets switched off. Growing an allowlisted file is neither an error nor a
- * warning — the refactor cards own those paths, not the gate. An entry leaves
- * the list when its file is split or deleted, and every entry states the reason
- * it is exempt on its own line, so an exemption can be read without editing it.
- * The thresholds and the exemption classes are documented in
- * `docs/VERIFICATION.md`.
+ * Files already over their hard budget are listed in `fileBudgetAllowlist`, and
+ * the gate exists to stop the next 400 lines, not to re-litigate the last 2000:
+ * a check that is red on the day it lands is a check that gets switched off.
+ * Growing an allowlisted file is neither an error nor a warning — the refactor
+ * cards own those paths, not the gate. What the run does print is one
+ * `allowlisted: <path> — <reason>` line per entry, because an exemption nobody
+ * sees eventually reads like coverage. An entry leaves the list when its file is
+ * split or deleted, and every entry states the reason it is exempt on its own
+ * line, so an exemption can be read without editing it.
+ *
+ * The measured scope is a package's `src`, `tests` and `scripts` directories
+ * under `plugins/` and `packages/`; the repository's own `scripts/` is outside
+ * it (splitting it is a card of its own). The thresholds, the scope and the
+ * exemption classes are documented in `docs/VERIFICATION.md`.
  */
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -55,8 +60,9 @@ export const budgets = {
 
 /**
  * Directories inside a package that a budget of `kind` applies to. `scripts` is
- * repository infrastructure that grew under the same law as `src`, so it is
- * measured as source.
+ * the package's own tooling, which grew under the same law as `src`, so it is
+ * measured as source. The repository root's `scripts/` is not a package
+ * directory and stays out of the scope until its own card splits it.
  */
 const budgetedDirectories = [
   { directory: "src", kind: "source" },
@@ -65,10 +71,15 @@ const budgetedDirectories = [
 ];
 
 /**
- * Bundled browser artifacts a build writes under `lib/`. They exist only after
- * a build, so a run without one measures nothing here.
+ * Bundled artifacts a build writes under `lib/` — the browser bundle and both
+ * typert bridges. They exist only after a build, so a run without one measures
+ * nothing here and says so.
  */
-const generatedArtifacts = ["lib/client.js", "lib/typert.remote-client.js"];
+const generatedArtifacts = [
+  "lib/client.js",
+  "lib/typert.host.js",
+  "lib/typert.remote-client.js",
+];
 
 /**
  * Files the gate does not hold to their budget, each with the reason on the same
@@ -298,6 +309,15 @@ function describe(entry) {
   return `${entry.path}: ${entry.lines} lines (${label} budget ${entry.limit})`;
 }
 
+/**
+ * One line per exemption. An allowlist entry that prints nothing reads as
+ * coverage, so the path and its reason are both on the line, next to the size
+ * that keeps it there.
+ */
+function describeExemption(entry) {
+  return `allowlisted: ${entry.path} — ${entry.reason} (${entry.lines} lines)`;
+}
+
 /** One line per kind, so a green run does not spend 40 lines on warnings. */
 function summarize(warnings) {
   const lines = [];
@@ -333,14 +353,11 @@ export async function checkFileBudget(
 export async function main(
   argv = process.argv.slice(2),
   repoRoot = workspaceRoot,
+  options = undefined,
 ) {
-  const report = await auditFileBudget(repoRoot);
-  if (argv.includes("--list-exemptions")) {
-    for (const entry of report.exempt) {
-      console.log(
-        `file budget: exempt ${describe(entry)} (${entry.lines} lines)`,
-      );
-    }
+  const report = await auditFileBudget(repoRoot, options);
+  for (const entry of report.exempt) {
+    console.log(describeExemption(entry));
   }
   const listed = argv.includes("--list-warnings");
   for (const line of listed
@@ -357,8 +374,14 @@ export async function main(
     );
     return 1;
   }
+  const bundles = report.measured.filter((file) => file.kind === "bundle");
+  if (bundles.length === 0) {
+    console.log(
+      "file budget: 0 generated artifacts — the bundle band measures nothing before a build writes lib/",
+    );
+  }
   console.log(
-    `file budget verified for ${report.measured.length} files (${report.exempt.length} reasoned exemptions)`,
+    `file budget verified for ${report.measured.length} files (${bundles.length} generated, ${report.exempt.length} allowlisted)`,
   );
   return 0;
 }

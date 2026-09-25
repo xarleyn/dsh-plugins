@@ -31,7 +31,7 @@ runs, in order: `lint` (workspace tooling + per-project eslint) → `format` →
 | Packed package | per-plugin `verify:package` (`plugins/*/scripts/verify-package.mjs`) | Static asserts only: manifest fields, `files` allowlist, exports exist on disk, no `workspace:`/`catalog:` leakage. Packing and the clean-room import smoke live in `pnpm tarball:verify`, not here |
 | Tarball (repo level) | `pnpm tarball:verify` (`scripts/tarball-verify.sh`) | Installs every packed tarball into a clean consumer project and smoke-imports it; an install the registry or the network broke mid-flight is retried, so a fetch that fails for the moment is not reported as an uninstallable package |
 | Repo tooling tests | `pnpm test:release` (`scripts/*.test.mjs`) | The CI/release scripts themselves are regression-tested with `node --test` |
-| File size budget | `pnpm check:files` (`scripts/check-file-budget.mjs`) | No source file under `plugins/*/src`, `packages/*/src`, `plugins/*/scripts`, or `packages/*/scripts` is over its line budget, no test file under `plugins/*/tests` or `packages/*/tests` is over the tighter one, and no generated browser bundle ran away; the thresholds and the allowlist are [below](#file-size-budget) |
+| File size budget | `pnpm check:files` (`scripts/check-file-budget.mjs`) | No source file under `plugins/*/src`, `packages/*/src`, `plugins/*/scripts`, or `packages/*/scripts` is over its line budget, no test file under `plugins/*/tests` or `packages/*/tests` is over the tighter one, and no generated bundle under a package's `lib/` ran away; the repository's own root `scripts/` is outside the scope, and the thresholds and the allowlist are [below](#file-size-budget) |
 | Version plans | `pnpm release:check` (`scripts/check-release-plans.mjs`) | Every publishable release project whose commits no release tag covers yet is named by a committed version plan; a project a tag already covers is not asked for one (see below) |
 
 ### File size budget
@@ -45,22 +45,35 @@ holds each file to the budget of its kind:
 | --- | --- | --- | --- |
 | source | `plugins/*/{src,scripts}`, `packages/*/{src,scripts}` | 1200 | 1400 |
 | test | `plugins/*/tests`, `packages/*/tests` | 700 | 900 |
-| generated bundle | `lib/client.js` and `lib/typert.remote-client.js` in a package | 80000 | 100000 |
+| generated bundle | `lib/client.js`, `lib/typert.host.js` and `lib/typert.remote-client.js` in a package | 80000 | 100000 |
+
+**Scope boundary.** The gate walks package directories only, so the repository's
+own `scripts/` is not measured — even though `scripts/package-hygiene.test.mjs`
+(1138 lines) and `scripts/release-workflow.test.mjs` (1064) already sit past the
+test budget their counterparts under `plugins/*/tests` would be held to. Naming
+those files as debt is a separate card; until it lands, do not read this row as
+coverage of root `scripts/`.
 
 Every number is a line count, deliberately: bytes are a different measurement,
 and a bundle that swallowed a dependency tree looks the same in bytes as one that
 simply ships a wide surface. A byte budget is its own card, not an extra key here.
 
 The generated bundle band is a tripwire rather than a size goal — the largest
-artifact today is the qa-surface client at ~66k lines — and it only measures
-anything after a build, which is why `check` runs it after `build`. A warning
-costs a report line and never the run; one line per kind is printed, so a green
-run stays readable.
+artifact today is the qa-surface client at 65 770 lines, measured after
+`pnpm -r build` — and it only measures anything after a build, which is why
+`check` runs `check:files` after `build`. CI does not: `prepare` runs the gate on
+a checkout with no `lib/` in it, so there the bundle rows measure nothing and the
+run says so in its own output (`0 generated artifacts`), while CI still asserts
+the identity and self-containedness of each built bundle through that project's
+`verify` target. A warning costs a report line and never the run; one line per
+kind is printed, so a green run stays readable.
 
 **Allowlist.** `fileBudgetAllowlist` in the script names the files already over
-their hard budget, each with the reason for its exemption on the same line.
-Without it the gate would be red on the commit that introduces it, and a check
-that is red gets switched off. Two classes are in it:
+their hard budget, each with the reason for its exemption on the same line, and a
+green run prints one `allowlisted: <path> — <reason> (<lines> lines)` line per
+entry. Without the list the gate would be red on the commit that introduces it,
+and a check that is red gets switched off; without the printed line an exemption
+that nobody sees reads as coverage after half a year. Two classes are in it:
 
 - sources that were over 1400 lines before the gate landed — the qa-surface type,
   admin, account and client modules, the integrations operator card and index, the
@@ -73,12 +86,12 @@ that is red gets switched off. Two classes are in it:
 
 Growing an allowlisted file is neither an error nor a warning: the gate exists to
 stop the next 400 lines, not to re-litigate the last 2000, and those paths belong
-to the refactor cards. The list only shrinks — an entry whose file no longer
-exists fails the run, and one that came back within budget is reported so it can
-be dropped. No test file is exempted, because nothing is over 900 and a test that
-long is a missing helper, not a missing exemption. Adding a path, or raising a
-threshold to fit one, is the failure mode this section documents rather than the
-way out.
+to the refactor cards — but the file stays named in the output while it is on the
+list. The list only shrinks — an entry whose file no longer exists fails the run,
+and one that came back within budget is reported so it can be dropped. No test
+file is exempted, because nothing is over 900 and a test that long is a missing
+helper, not a missing exemption. Adding a path, or raising a threshold to fit one,
+is the failure mode this section documents rather than the way out.
 
 ## What gates cannot prove
 
@@ -108,6 +121,14 @@ tooling tests and lint, `check:files`, `verify:logging`, `verify:a11y`, and
 `deps:check` — it does not run `tarball:verify` or
 `release:check`; run those separately before pushing. `pnpm affected:check`
 mirrors the per-project CI targets locally.
+
+Because `check:files` runs in `prepare`, on a checkout with no build output, the
+generated bundle band is inert in CI: the step reports `0 generated artifacts`
+there instead of pretending to have measured them. What CI does enforce is the
+source and test budget of every file in the pull request, and each project's own
+`verify` target keeps asserting the identity of the bundle it just built; the
+size of a built bundle is caught by the local `pnpm check`, which runs the gate
+after `build`.
 
 The PR-only version-plan check compares each publishable release project
 against the newest release tag its history can reach — one `release/<date>` tag
