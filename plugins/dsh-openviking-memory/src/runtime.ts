@@ -112,6 +112,13 @@ export class OpenVikingRuntime {
   private readonly clients = new Map<string, OpenVikingClient>();
   /** Which account space a live session's pending writes belong to. */
   private readonly sessionOwners = new Map<string, string>();
+  /**
+   * Whether any session of this process has ever spoken as an account rather
+   * than as the deployment. What the replay may assume about a queued write
+   * that does not say whose it is: with more than one space in play there is no
+   * safe default to fall back to.
+   */
+  private accountScoped = false;
   private drainTimer: NodeJS.Timeout | null = null;
   private drainRunning = false;
   private drainHealth: boolean | null = null;
@@ -211,7 +218,10 @@ export class OpenVikingRuntime {
     state.client = this.clientFor(user);
     const owner = scoping.user;
     if (owner === undefined) this.sessionOwners.delete(state.ovSessionId);
-    else this.sessionOwners.set(state.ovSessionId, owner);
+    else {
+      this.sessionOwners.set(state.ovSessionId, owner);
+      this.accountScoped = true;
+    }
   }
 
   /**
@@ -247,21 +257,29 @@ export class OpenVikingRuntime {
   /**
    * The client a queued write must be replayed with.
    *
-   * A queue is a file on disk that outlives the process, and the identity is
-   * not part of what gets queued, so an entry is attributed through the session
-   * that wrote it. When that session is not known to this process — a restart
-   * that has not resumed it yet — the replay refuses to send rather than guess:
-   * a write sent as the wrong account is worse than one that waits for its
-   * session to come back. Deployments without per-account scoping keep the
-   * single deployment identity, where nothing can be misattributed.
+   * A queue is a file on disk that outlives the process, so an entry carries the
+   * identity it was queued as and the replay answers as exactly that — including
+   * after a restart, where the session that wrote it may not be back yet.
+   *
+   * An entry that names no identity predates that field, and is attributed
+   * through the session that queued it instead. When that session is not known
+   * to this process the replay refuses to send rather than guess: a write sent
+   * as the wrong account is worse than one that waits for its session to come
+   * back. A deployment that has never spoken as an account at all has one space
+   * for everybody, so there is nothing to misattribute and the deployment
+   * identity is the honest answer.
    */
-  private clientForQueued(path: string): OpenVikingClient | undefined {
+  private clientForQueued(
+    path: string,
+    user: string | undefined,
+  ): OpenVikingClient | undefined {
+    if (user !== undefined) return this.clientFor(user);
     if (this.scoping === undefined) return this.client;
     const sessionId = ovSessionIdFromPath(path);
     if (sessionId === undefined) return this.client;
-    const user = this.sessionOwners.get(sessionId);
-    if (user === undefined) return undefined;
-    return this.clientFor(user);
+    const owner = this.sessionOwners.get(sessionId);
+    if (owner !== undefined) return this.clientFor(owner);
+    return this.accountScoped ? undefined : this.client;
   }
 
   async initialize(agent: Agent): Promise<SessionState> {
@@ -312,6 +330,13 @@ export class OpenVikingRuntime {
           (path, init, options) => client.fetchJSON(path, init, options),
           state.config.profileTokenBudget,
           state.config.peerId,
+          // Taken from the client that answers, not from the session: the space
+          // the helper caches is the one this transport was resolved against.
+          {
+            endpoint: client.config.endpoint,
+            account: client.config.account,
+            user: client.config.user,
+          },
         )
       : null;
     state.profileBlock = profile?.block
@@ -519,6 +544,10 @@ export class OpenVikingRuntime {
     state.pendingCreatedAt = createdAt;
     const result = await enqueue(type, state.ovSessionId, payload, {
       createdAt,
+      // The identity this session's writes speak as, recorded with the entry so
+      // a later replay — possibly in a process that never saw the session —
+      // still sends it to its own account space.
+      user: state.config.user,
     });
     if (result.ok) {
       // Log the latch transition only: every message that follows while the
@@ -585,17 +614,17 @@ export class OpenVikingRuntime {
   }
 
   /**
-   * Replay the pending queue. Each entry is sent through the account space of
-   * the session that queued it ({@link clientForQueued}); the session-start
-   * path calls this without options and keeps consuming retries, while the
-   * drainer passes consumeRetries:false so transient failures stay retryable.
+   * Replay the pending queue. Each entry is sent through the account space it
+   * was queued in ({@link clientForQueued}); the session-start path calls this
+   * without options and keeps consuming retries, while the drainer passes
+   * consumeRetries:false so transient failures stay retryable.
    */
   async replayPendingQueue(
     options: { readonly consumeRetries?: boolean } = {},
   ): Promise<void> {
     await replayPending(
-      (path, init) => {
-        const client = this.clientForQueued(path);
+      (path, init, routing) => {
+        const client = this.clientForQueued(path, routing?.user);
         if (client !== undefined) return client.fetchJSON(path, init);
         // Nothing was sent: status 0 reads as a transient failure, so the
         // entry stays queued instead of landing in the wrong account space.
@@ -605,7 +634,7 @@ export class OpenVikingRuntime {
           status: 0,
           error: {
             message:
-              "the session that queued this write is not attached to an account space yet",
+              "this queued write names no account space and its session is not attributed yet",
           },
         });
       },

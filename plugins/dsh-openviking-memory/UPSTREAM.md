@@ -76,6 +76,18 @@ manual-only OpenViking operation:
   attachments, the product documentation, the domain expert, then memory).
   Upstream's trigger claimed the skill for any task that lacked context, which
   read as a reason to query the store whenever a document could not be read.
+- `src/openviking/profile-inject.ts` remembers a resolved `viking://user/<space>`
+  per identity (endpoint, account, user) rather than in one module-wide slot, and
+  `buildProfileBlock` takes that identity as its fourth argument. Upstream runs
+  one identity per process, where the slot cannot be wrong; this fork serves one
+  account space per QA account in the same process and re-points its endpoint
+  while running.
+- `src/openviking/pending-queue.ts` records the OpenViking user a queued write has
+  to be replayed as (`PendingEntry.user`) and hands it to the injected transport
+  as a third argument (`PendingRouting`). Upstream's queue stores no identity, so
+  a replay can only be attributed through a session that is live in this process.
+  A sync has to keep both, or per-account deployments stop replaying their
+  backlog.
 
 This document is the record of *what* changed; `docs/upstream-sync.md` describes
 how to bring later upstream revisions in.
