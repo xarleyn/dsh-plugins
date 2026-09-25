@@ -2,7 +2,7 @@
 
 [Русский гайд: настройка Jira и Confluence](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-web-fetch-authenticated/docs/JIRA-CONFLUENCE.ru.md)
 
-An authenticated, policy-gated [`WebFetchProvider`](../../docs/) for the
+An authenticated, policy-gated [`WebFetchProvider`](./SPEC.md) for the
 DeepSeek Harness web capability seam (`ctx.web`). It lets the existing
 model-facing `web_fetch(url)` tool retrieve content from approved
 authenticated resources — corporate Jira, Confluence, GitLab, internal wikis —
