@@ -13,11 +13,11 @@ export {
   DEFAULTS,
   JevCompactionConfigSchema,
   resolveJevCompactionConfig,
-} from "./config.js";
+} from "./config/index.js";
 export type {
   JevCompactionConfig,
   ResolvedJevCompactionConfig,
-} from "./config.js";
+} from "./config/index.js";
 export { JevCompactionService } from "./service.js";
 export type { JevRunMode, JevRunReport, JevSkipReason } from "./service.js";
 export { SurfaceChangedError } from "./mutation/apply.js";
@@ -40,7 +40,7 @@ export {
   SYSTEM_ONE_PROVIDERS,
   type SystemOneProvider,
   type SystemOneProviderOverride,
-} from "./config.js";
+} from "./config/index.js";
 export type {
   SystemOneBackend,
   JevAnswers,
@@ -72,4 +72,4 @@ declare module "@deepseek-ai/cordis" {
 
 /** The plugin's service class (the bundle default export). */
 export default JevCompactionService;
-export type { JevCompactionConfig as Config } from "./config.js";
+export type { JevCompactionConfig as Config } from "./config/index.js";

@@ -9,7 +9,7 @@ import {
   estimateSavings,
   meetsSavingsGate,
 } from "../../src/planner/savings.js";
-import { resolveJevCompactionConfig } from "../../src/config.js";
+import { resolveJevCompactionConfig } from "../../src/config/index.js";
 import type { ToolResultCandidate } from "../../src/planner/collect.js";
 import { SessionSeq } from "@deepseek-ai/dsh-session";
 

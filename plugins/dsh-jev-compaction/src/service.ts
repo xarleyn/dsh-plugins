@@ -19,7 +19,7 @@ import {
   type JevCompactionConfig,
   type JevCompactionLiveConfig,
   type ResolvedJevCompactionConfig,
-} from "./config.js";
+} from "./config/index.js";
 import { measurePressure, surfaceNodeTokens } from "./dsh/meter.js";
 import { captureSurfaceSnapshot } from "./dsh/surface.js";
 import type {

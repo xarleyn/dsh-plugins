@@ -5,7 +5,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { resolveJevCompactionConfig } from "../../src/config.js";
+import { resolveJevCompactionConfig } from "../../src/config/index.js";
 import {
   TurnShapeBudget,
   latestTurn,
@@ -240,7 +240,7 @@ describe("archive deadline", () => {
     const { ImmediateResultShaper } =
       await import("../../src/result-shaping/shaper.js");
     const { resolveJevCompactionConfig, DEFAULT_SHAPE_TOOLS } =
-      await import("../../src/config.js");
+      await import("../../src/config/index.js");
     const { ShapingMetrics } =
       await import("../../src/result-shaping/metrics.js");
     const config = resolveJevCompactionConfig({

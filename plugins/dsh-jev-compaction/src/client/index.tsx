@@ -17,7 +17,7 @@ import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {} from "@deepseek-ai/dsh-client-ui-slots";
 import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 
-import type { JevCompactionConfig } from "../config.js";
+import type { JevCompactionConfig } from "../config/index.js";
 import { JEV_COMPACTION_SETTINGS_NAMESPACE } from "../shared/settings.js";
 import { JevCompactionCard } from "./card.js";
 import { styles } from "./styles.js";

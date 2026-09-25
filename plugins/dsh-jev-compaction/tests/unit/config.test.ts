@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULTS, resolveJevCompactionConfig } from "../../src/config.js";
+import {
+  DEFAULTS,
+  resolveJevCompactionConfig,
+} from "../../src/config/index.js";
 
 describe("resolveJevCompactionConfig", () => {
   it("resolves detached defaults for an empty config", () => {

@@ -10,7 +10,7 @@
 
 import type { Session } from "@deepseek-ai/dsh-session";
 import type { ToolCallInfo } from "../dsh/surface.js";
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 import type { ToolResultCandidate } from "../planner/collect.js";
 import { formatFeatures, type CandidateFeatures } from "../planner/features.js";
 import {
