@@ -10,7 +10,7 @@
 import { lookup } from "node:dns";
 import type { LookupAddress } from "node:dns";
 import type { LookupFunction } from "node:net";
-import { evaluateAddresses, parseIp } from "./network.js";
+import { evaluateAddresses, isIpLiteral } from "./network.js";
 import type { NetworkPolicyVerdictInput } from "./network.js";
 import type { AddressView } from "../types.js";
 
@@ -55,8 +55,7 @@ export async function resolveApprovedAddresses(
 }> {
   // WHATWG URL keeps brackets on IPv6 literals; classify the bare address.
   const bare = hostname.replace(/^\[/u, "").replace(/\]$/u, "");
-  const literal = parseIp(bare);
-  if (literal !== undefined) {
+  if (isIpLiteral(bare)) {
     const { allowed, verdicts, firstDenied } = evaluateAddresses(
       [bare],
       policy,
@@ -67,8 +66,14 @@ export async function resolveApprovedAddresses(
         verdicts,
       );
     }
+    // The verdict carries the canonical destination it judged — the embedded
+    // IPv4 of a mapped literal — so the socket is pinned to the very bytes the
+    // policy approved, not to a second spelling of them.
     return {
-      approved: [{ address: bare, family: literal.family }],
+      approved: verdicts.map((verdict) => ({
+        address: verdict.address,
+        family: verdict.family,
+      })),
       verdicts,
     };
   }
