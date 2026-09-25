@@ -590,6 +590,15 @@ class PlaywrightContextHandle implements BrowserContextHandle {
 export class PlaywrightBrowserProvider implements BrowserProvider {
   private browser: Browser | undefined;
   private starting: Promise<void> | undefined;
+  /**
+   * A stop is a state rather than a moment. Without it a launch or a context
+   * still being built when the stop arrives publishes itself into a provider
+   * that has already finished closing, and nothing is left to close it — the
+   * Chromium process then outlives the disposal that was meant to end it.
+   */
+  private stopping: Promise<void> | undefined;
+  /** The context builds a stop has to wait for, settled once they are listed. */
+  private readonly creating = new Set<Promise<BrowserContextHandle>>();
   private readonly contexts = new Map<string, PlaywrightContextHandle>();
   private readonly crashListeners = new Set<(error: Error) => void>();
 
@@ -599,6 +608,11 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
   ) {}
 
   async start(options: BrowserProviderStartOptions): Promise<void> {
+    // Launching beside a stop would produce exactly the orphan the stop cannot
+    // close, so a start joins the stop in progress before dialing anything.
+    while (this.stopping !== undefined) {
+      await this.stopping.catch(() => undefined);
+    }
     if (this.browser?.isConnected()) return;
     this.starting ??= this.launch(options);
     try {
@@ -640,12 +654,32 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
     options: BrowserContextOptions,
   ): Promise<BrowserContextHandle> {
     const browser = this.browser;
-    if (browser === undefined || !browser.isConnected()) {
+    if (
+      browser === undefined ||
+      !browser.isConnected() ||
+      this.stopping !== undefined
+    ) {
       throw new QaBrowserError(
         "BROWSER_START_FAILED",
         "Chromium is not running.",
       );
     }
+    const creation = this.buildContext(browser, options);
+    this.creating.add(creation);
+    // The removal is queued before any stop's wait on this promise, so a
+    // teardown that drains the set sees it empty the moment the build settles —
+    // and the handle it registered is already listed for the close.
+    void creation.then(
+      () => this.creating.delete(creation),
+      () => this.creating.delete(creation),
+    );
+    return creation;
+  }
+
+  private async buildContext(
+    browser: Browser,
+    options: BrowserContextOptions,
+  ): Promise<BrowserContextHandle> {
     const context = await browser.newContext({
       viewport: {
         width: options.viewport.width,
@@ -653,6 +687,11 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
       },
       deviceScaleFactor: options.viewport.deviceScaleFactor,
       acceptDownloads: false,
+      // A worker dials from outside every page, and Playwright's routing covers
+      // pages: a registered service worker reaches the network with no gate in
+      // front of it and no tab to attribute the request to. Blocking them is
+      // what keeps the policy the only way out of this context.
+      serviceWorkers: "block",
     });
     context.setDefaultTimeout(options.actionTimeoutMs);
     context.setDefaultNavigationTimeout(options.navigationTimeoutMs);
@@ -701,6 +740,36 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
         await route.abort("blockedbyclient");
       }
     });
+    // A WebSocket is dialed outside the HTTP interception above: the handshake
+    // never reaches `route`, so the gate has to sit on the socket route itself.
+    // It is installed here, while the context still has no page, because only
+    // sockets created after the registration are routed — a page's first
+    // script would otherwise already be past it.
+    await context.routeWebSocket(
+      () => true,
+      async (socket) => {
+        let refusal: unknown;
+        try {
+          // A routed socket carries no frame, so there is no tab to blame: the
+          // refusal the gate records belongs to the session.
+          await options.validateRequest(socket.url(), { kind: "resource" });
+        } catch (error) {
+          refusal = error;
+        }
+        if (refusal === undefined) {
+          // Playwright owns the socket from here and relays it to the real
+          // destination; nothing reaches the network that the gate let through.
+          socket.connectToServer();
+          return;
+        }
+        // Closing without connecting is the denial: the destination never sees a
+        // handshake, and the page learns the socket is gone.
+        await socket.close({
+          code: 1008,
+          reason: "Blocked by the browser network policy.",
+        });
+      },
+    );
     const handle = new PlaywrightContextHandle(
       context,
       blockedRequests,
@@ -718,6 +787,22 @@ export class PlaywrightBrowserProvider implements BrowserProvider {
   }
 
   async stop(): Promise<void> {
+    this.stopping ??= this.drainAndClose();
+    try {
+      await this.stopping;
+    } finally {
+      this.stopping = undefined;
+    }
+  }
+
+  private async drainAndClose(): Promise<void> {
+    // What is still being built is waited for before anything is decided, so
+    // the process and the contexts a late resolve produces belong to this stop
+    // rather than surviving it: a creation that began earlier is in the set,
+    // and a new one refuses while the stop stands.
+    while (this.starting !== undefined || this.creating.size > 0) {
+      await Promise.allSettled([this.starting, ...this.creating]);
+    }
     const browser = this.browser;
     this.browser = undefined;
     const contexts = [...this.contexts.values()];

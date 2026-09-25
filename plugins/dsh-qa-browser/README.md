@@ -85,6 +85,14 @@ as `*.internal.example`. Explicitly allowed hosts may resolve to private
 addresses, but cannot bypass the metadata-endpoint deny. `denyHosts` always
 wins.
 
+Every destination the context dials passes this gate: the document, its
+redirects and subresources, and the WebSockets a page opens. A socket is not a
+request the HTTP route ever sees, so it is asked about at its handshake — and
+because the default `allowedSchemes` lists only `http` and `https`, a socket is
+refused until `ws` or `wss` is added there. Service workers are blocked in a
+Browser context for the same reason: a worker dials from outside every page, so
+its traffic would leave past the gate with no tab to attribute it to.
+
 A refusal is the operator's message, not only the model's. When the policy
 blocks a destination, the Browser panel lists it — whether the page itself or a
 request the page made, the host, how many requests were refused, and the
@@ -100,8 +108,9 @@ private range to whatever the model asks for.
 
 The notice belongs to a tab, because that is the page the operator is looking
 at: the banner explains the selected tab, the strip marks the other tabs the
-policy refused something for, and a refusal with no page behind it — a request
-a service worker dialled — is shown beside the selected tab's own entries. One
+policy refused something for, and a refusal with no page behind it — a WebSocket
+handshake, whose route carries no frame — is shown beside the selected tab's own
+entries. One
 entry per destination, at most eight of them, counted rather than repeated, and
 the next navigation of that tab starts it empty.
 
