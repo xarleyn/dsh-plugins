@@ -11,7 +11,8 @@
  *   are not a change: no reload, no `audit.updated`, no UI work (SPEC §26).
  * - **A transient failure never blanks a good audit.** A producer rewriting a
  *   file in place passes through an empty or half-written state; the record a
- *   user is reading stays until its replacement validates (SPEC §66).
+ *   user is reading stays until its replacement validates, and it stays
+ *   *readable* — the bytes it was built from are held with it (SPEC §66).
  */
 import {
   buildAuditSummary,
@@ -36,7 +37,7 @@ import { SessionResolver } from "./session-resolver.js";
 import { AUDIT_LOGGER_NOOP, type AuditLogger } from "./logging.js";
 import { AuditWatcher } from "./audit-watcher.js";
 
-/** What a previous pass recorded about one directory, for the gates. */
+/** What a previous pass recorded about one directory, for the content gate. */
 interface SeenState {
   readonly analysisSize: number | null;
   readonly analysisMtimeMs: number | null;
@@ -44,6 +45,26 @@ interface SeenState {
   readonly reportMtimeMs: number | null;
   /** Content identity, present only after a successful full read. */
   readonly fingerprint?: string;
+}
+
+/** The validated bytes one directory was registered from. */
+interface LastGood {
+  readonly analysis: string;
+  readonly report: string;
+}
+
+/**
+ * Where a directory's binding stands, kept apart from its content.
+ *
+ * Content that has not moved is no reason to read a file again — but a binding
+ * the session list settled can change while every byte stays put, so the
+ * binding needs its own record of what it was settled against.
+ */
+interface BindingState {
+  /** Whether another look at the session list could bind this directory better. */
+  readonly improvable: boolean;
+  /** The corpus generation the binding was last attempted against. */
+  readonly corpusGeneration: number;
 }
 
 export interface AuditServiceOptions {
@@ -67,6 +88,8 @@ export class AuditService implements SessionAuditProvider {
   readonly registry: AuditRegistry = new AuditRegistry();
 
   private readonly seen = new Map<string, SeenState>();
+  private readonly lastGood = new Map<string, LastGood>();
+  private readonly bindings = new Map<string, BindingState>();
   private readonly discovered = new Map<string, string>();
   private readonly resolver: SessionResolver;
   private readonly watcher: AuditWatcher;
@@ -121,6 +144,8 @@ export class AuditService implements SessionAuditProvider {
     await this.watcher.stop();
     this.registry.clear();
     this.seen.clear();
+    this.lastGood.clear();
+    this.bindings.clear();
     this.discovered.clear();
   }
 
@@ -155,6 +180,10 @@ export class AuditService implements SessionAuditProvider {
 
       const present = new Set<string>();
       let changed = 0;
+      // A binding the session list settled can change while no file does, so
+      // the list is looked at once more whenever such a binding is still
+      // unfinished. Content that has not moved still costs no read.
+      if (this.hasImprovableBindings()) await this.resolver.observeCorpus();
       for (const found of audits) {
         present.add(found.name);
         if (await this.process(found)) changed += 1;
@@ -164,6 +193,8 @@ export class AuditService implements SessionAuditProvider {
         if (present.has(auditId)) continue;
         this.registry.remove(auditId);
         this.seen.delete(auditId);
+        this.lastGood.delete(auditId);
+        this.bindings.delete(auditId);
         this.discovered.delete(auditId);
         this.logger.info("audit removed", { auditId });
       }
@@ -186,6 +217,7 @@ export class AuditService implements SessionAuditProvider {
    */
   private async process(found: DiscoveredAudit): Promise<boolean> {
     const previous = this.seen.get(found.name);
+    const rebind = this.needsRebind(found.name);
     const next: SeenState = {
       analysisSize: found.analysis?.size ?? null,
       analysisMtimeMs: found.analysis?.mtimeMs ?? null,
@@ -196,7 +228,11 @@ export class AuditService implements SessionAuditProvider {
         : { fingerprint: previous.fingerprint }),
     };
 
-    if (previous !== undefined && sameMetadata(previous, next)) return false;
+    // Unmoved metadata normally closes the pass. A pending rebind does not:
+    // the bytes are the same, and the session they belong to is what moved.
+    if (previous !== undefined && sameMetadata(previous, next) && !rebind) {
+      return false;
+    }
 
     // Only half the audit has arrived. Not registered, not shown, and — if a
     // valid record exists for this id — not unmade either (SPEC §25).
@@ -226,14 +262,27 @@ export class AuditService implements SessionAuditProvider {
 
     const fingerprint = computeFingerprint(analysisRead.text, reportRead.text);
     this.seen.set(found.name, { ...next, fingerprint });
-    if (previous?.fingerprint === fingerprint) return false;
+    if (previous?.fingerprint === fingerprint && !rebind) return false;
 
     const parsed = parseAuditAnalysis(analysisRead.text);
     if (!parsed.ok) return this.reject(found, next, parsed.errors);
 
+    // These are the bytes the record below describes, so they are what a reader
+    // gets back. A later version that cannot be read must not cost a reader the
+    // audit that was good, and a summary alone would leave the detail view
+    // reading a file that no longer matches it (SPEC §66).
+    this.lastGood.set(found.name, {
+      analysis: analysisRead.text,
+      report: reportRead.text,
+    });
+
     const errors: AuditError[] = [...parsed.errors];
     const declared = getAuditSessionId(parsed.analysis);
     const resolution = await this.resolver.resolve(declared, found.name);
+    this.bindings.set(found.name, {
+      improvable: SessionResolver.bindingCouldImprove(resolution),
+      corpusGeneration: this.resolver.corpusGeneration,
+    });
     // The directory is compared against the session the audit is actually bound
     // to. A producer that dropped the `session-` prefix disagrees with its own
     // directory only until the resolver puts the prefix back.
@@ -258,6 +307,7 @@ export class AuditService implements SessionAuditProvider {
       this.registry.get(found.name)?.discoveredAt ??
       new Date().toISOString();
     this.discovered.set(found.name, discoveredAt);
+    const before = this.registry.get(found.name);
 
     if (resolution.status === "unresolved") {
       this.registry.upsert({
@@ -277,7 +327,8 @@ export class AuditService implements SessionAuditProvider {
         auditId: found.name,
         reason: resolution.error.code,
       });
-      return true;
+      // A rebind that lands where the record already was showed nothing new.
+      return !rebind || before?.status !== "unresolved";
     }
 
     const summary = buildAuditSummary({
@@ -309,7 +360,36 @@ export class AuditService implements SessionAuditProvider {
         schemaVersion: summary.schemaVersion ?? 0,
       },
     );
-    return true;
+    // Same bytes and the same session: the rebind confirmed the record, it did
+    // not change it.
+    return (
+      !rebind ||
+      before?.status !== "ready" ||
+      before.sessionId !== resolution.sessionId ||
+      before.fingerprint !== fingerprint
+    );
+  }
+
+  /**
+   * Whether this directory's binding has to be attempted again.
+   *
+   * Only a binding the session list could still improve, and only once that
+   * list has actually moved since the binding was attempted.
+   */
+  private needsRebind(auditId: string): boolean {
+    const binding = this.bindings.get(auditId);
+    return (
+      binding?.improvable === true &&
+      binding.corpusGeneration !== this.resolver.corpusGeneration
+    );
+  }
+
+  /** Whether any recorded binding is still waiting on the session list. */
+  private hasImprovableBindings(): boolean {
+    for (const binding of this.bindings.values()) {
+      if (binding.improvable) return true;
+    }
+    return false;
   }
 
   /**
@@ -403,6 +483,13 @@ export class AuditService implements SessionAuditProvider {
     auditId: string,
     which: "analysis" | "report",
   ): Promise<string | null> {
+    // The bytes the record was registered from, when this pass still holds them.
+    // Reading the paths instead would follow whatever the producer put there
+    // next, and a detail view built from those would not match its summary.
+    const snapshot = this.lastGood.get(auditId);
+    if (snapshot !== undefined) {
+      return which === "analysis" ? snapshot.analysis : snapshot.report;
+    }
     const record = this.registry.get(auditId);
     if (record === undefined) return null;
     const path = which === "analysis" ? record.analysisPath : record.reportPath;

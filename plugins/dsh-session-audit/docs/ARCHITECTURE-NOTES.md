@@ -135,7 +135,10 @@ contract. It is realised as Remote methods on the `sessionAudit` namespace:
 
 Path containment (§63) is enforced against the registry entry's own recorded
 paths rather than against a caller-supplied path — stronger than the SPEC's
-formulation, because no filesystem path ever crosses the wire.
+formulation, because no filesystem path ever crosses the wire. It is also
+physical: every component between the root and the artefact is inspected and no
+link is followed, because a comparison of two path strings cannot see an audit
+directory that was replaced by a junction while the reader held its paths.
 
 ## 7. Config schema
 

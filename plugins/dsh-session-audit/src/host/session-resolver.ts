@@ -49,7 +49,36 @@ export interface SessionResolverOptions {
 }
 
 export class SessionResolver {
+  /** Identifies one shape of the session corpus to the callers that cache. */
+  private corpusToken: string | undefined;
+  private generation = 0;
+
   constructor(private readonly options: SessionResolverOptions) {}
+
+  /**
+   * Which listing the resolver last saw, counted in changes.
+   *
+   * A caller that caches a binding needs to know whether the corpus moved
+   * without paying for another listing: the number changes exactly when a
+   * listing differed from the one before it.
+   */
+  get corpusGeneration(): number {
+    return this.generation;
+  }
+
+  /**
+   * Look at the corpus again so {@link corpusGeneration} can move.
+   *
+   * A listing that fails is not a change: the generation stays where it was,
+   * and the caller's next pass tries again.
+   */
+  async observeCorpus(): Promise<void> {
+    try {
+      await this.listCorpus();
+    } catch {
+      // Nothing to record; the failure is the caller's to report.
+    }
+  }
 
   /**
    * Bind one audit.
@@ -70,7 +99,7 @@ export class SessionResolver {
 
     let sessionIds: readonly string[];
     try {
-      sessionIds = await this.options.listSessionIds();
+      sessionIds = await this.listCorpus();
     } catch (error) {
       return {
         status: "unresolved",
@@ -154,7 +183,7 @@ export class SessionResolver {
 
     let sessionIds: readonly string[];
     try {
-      sessionIds = await this.options.listSessionIds();
+      sessionIds = await this.listCorpus();
     } catch {
       // Repairing is a courtesy to a mis-spelled id, so a corpus that cannot be
       // listed must not cost an audit the binding it already had.
@@ -163,6 +192,36 @@ export class SessionResolver {
 
     const prefixed = `${SESSION_ID_PREFIX}${declaredSessionId}`;
     return sessionIds.includes(prefixed) ? prefixed : declaredSessionId;
+  }
+
+  /** The session ids, remembered as the corpus bindings were decided on. */
+  private async listCorpus(): Promise<readonly string[]> {
+    const sessionIds = await this.options.listSessionIds();
+    const token = [...sessionIds].sort().join("\n");
+    if (this.corpusToken !== token) {
+      this.corpusToken = token;
+      this.generation += 1;
+    }
+    return sessionIds;
+  }
+
+  /**
+   * Whether a second look at the corpus could bind this audit better.
+   *
+   * A binding that found no session is waiting for one, and a session id the
+   * harness would spell with its own prefix is waiting for the spelling — both
+   * were settled by a listing, so a listing that grows can settle them
+   * differently. A resolved id already spelled the harness' way named its
+   * session by itself and no corpus change improves it; re-checking those would
+   * cost a listing per audit on every pass for nothing.
+   *
+   * @param resolution - how this pass bound the audit.
+   */
+  static bindingCouldImprove(resolution: SessionResolution): boolean {
+    return (
+      resolution.status === "unresolved" ||
+      !resolution.sessionId.startsWith(SESSION_ID_PREFIX)
+    );
   }
 
   /**
