@@ -92,6 +92,14 @@ The same widening in the fork's own modules needs no note here: `src/api-client.
 (`FetchJSONOptions`, `OpenVikingResult.traceId`) and
 `src/openviking/mcp-proxy-config.ts` (`BuildMcpProxyConfigInput`).
 
+Edits inside generated files that do carry a runtime change are a different
+category and are listed in [../UPSTREAM.md](../UPSTREAM.md) ("Local
+modifications") — the identity-keyed user-space cache in
+`src/openviking/profile-inject.ts` and the routing identity in
+`src/openviking/pending-queue.ts`. Replacing one of those modules with upstream's
+copy silently drops a fork guarantee, so a sync re-applies them from that list
+and the `FORK LOCAL EDIT` marker at the site says which.
+
 ## What not to do
 
 - Do not copy the upstream `.mjs` tree over `src/`.
