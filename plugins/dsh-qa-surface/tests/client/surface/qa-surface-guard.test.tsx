@@ -38,14 +38,13 @@ describe("QaSurfaceGuard", () => {
 
   it("keeps covering the frame until the browser reloads", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const { container } = render(
-      <QaSurfaceGuard {...({} as QaSurfaceProps)} />,
-    );
-    // The failure card reuses the surface root class: fixed, fullscreen,
-    // opaque — the crash must not thin the overlay out into a partial page
-    // where host chrome shows around it.
-    const face = container.querySelector(".dsh-qa-crash.dsh-qa-surface");
-    expect(face).toBeTruthy();
+    render(<QaSurfaceGuard {...({} as QaSurfaceProps)} />);
+    // The failure card is the alert the operator cannot miss, and the sheet
+    // pins the surface root class it reuses to the whole viewport: the crash
+    // must not thin the overlay out into a partial page where host chrome
+    // shows around it.
+    const card = screen.getByTestId("qa-guard-crash");
+    expect(screen.getByRole("alert")).toBe(card);
   });
 
   it("masks the host frame off the body attribute, not off the overlay node", () => {

@@ -238,7 +238,7 @@ describe("first send from a new QA chat", () => {
     const pendingRow = screen.getByTestId("qa-message");
     expect(pendingRow.getAttribute("data-status")).toBe("pending");
     expect(pendingRow.textContent).toContain("Первый вопрос");
-    expect(screen.queryByText("Чем могу помочь?")).toBeNull();
+    expect(screen.queryByTestId("qa-surface-transcript-welcome")).toBeNull();
     // Binding the new session used to remount the composer as well, which threw
     // the text away while nothing had been admitted yet: the question survived
     // only as an optimistic row, and the chat came up empty.
