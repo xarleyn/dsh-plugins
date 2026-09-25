@@ -82,8 +82,9 @@ appears in the panel's error line already, and a banner repeating it would be
 noise.
 
 The entries travel with the tab, and the panel shows the ones belonging to the
-selected tab plus the residue that has no page behind it (a service worker's
-request). The strip marks a tab that carries entries, so a second page failing
+selected tab plus the residue that has no page behind it (a refused WebSocket
+handshake, whose route names no frame). The strip marks a tab that carries
+entries, so a second page failing
 is visible without the panel pretending it is the one on screen. Each list is
 one entry per refused destination, counted rather than repeated — a page
 retrying a blocked endpoint is one thing to fix. It is capped at eight

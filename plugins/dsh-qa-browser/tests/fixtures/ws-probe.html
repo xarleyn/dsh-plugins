@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>QA Browser socket fixture</title>
+  </head>
+  <body>
+    <p id="outcome">state: pending</p>
+    <script>
+      // The socket is dialed at the fixture's own host, so a run changes only
+      // what the policy lets through — the page never decides that.
+      const outcome = document.getElementById("outcome");
+      const states = [];
+      const note = (state) => {
+        states.push(state);
+        outcome.textContent = `state: ${states.join(" ")}`;
+      };
+      const socket = new WebSocket(
+        `ws://${location.hostname}:${location.port}/feed`,
+      );
+      socket.addEventListener("open", () => note("open"));
+      socket.addEventListener("message", (event) =>
+        note(`message:${String(event.data)}`),
+      );
+      socket.addEventListener("error", () => note("error"));
+      socket.addEventListener("close", () => note("closed"));
+    </script>
+  </body>
+</html>
