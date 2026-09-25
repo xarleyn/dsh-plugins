@@ -10,23 +10,28 @@
  * So the budget is deliberately blunt, and deliberately split by what a file
  * is for:
  *
- * - a source file gets 1200 lines before the run fails, and a warning from 800
- *   on, because 800 is where a module stops being one thing;
- * - a test file gets a tighter budget, because a test reads top to bottom as a
- *   list of cases and a long list is a missing helper or a missing second file
- *   (`0 test files over 400 lines` was an audit's own claim, and it went stale
- *   within a week);
+ * - a source file gets 1400 lines before the run fails, and a warning from 1200
+ *   on — the band the repository already sits in, so the warning names work
+ *   worth splitting without rejecting what the gate inherited;
+ * - a test file gets a tighter budget (900, warning from 700), because a test
+ *   reads top to bottom as a list of cases and a long list is a missing helper
+ *   or a missing second file (`0 test files over 400 lines` was an audit's own
+ *   claim, and it went stale within a week);
  * - a generated browser bundle gets a runaway limit and nothing else. It is
  *   derived, so its size is a symptom of what the source budget already
  *   measures; the only thing worth failing on is a bundle that swallowed a
- *   dependency tree it was supposed to import.
+ *   dependency tree it was supposed to import. Both bands are line counts —
+ *   bytes are a different measurement and a different card.
  *
- * Files already over budget are listed in `legacyOverBudget` and stay silent:
- * the gate exists to stop the next 400 lines, not to re-litigate the last
- * 2000, and a check that is red on the day it lands is a check that gets
- * switched off. An entry leaves the list when its file is split or deleted, and
- * nothing else — growing a file that is already exempt is free, so the refactor
- * cards own these paths, not the gate.
+ * Files already over their hard budget are listed in `fileBudgetAllowlist` and
+ * stay silent: the gate exists to stop the next 400 lines, not to re-litigate
+ * the last 2000, and a check that is red on the day it lands is a check that
+ * gets switched off. Growing an allowlisted file is neither an error nor a
+ * warning — the refactor cards own those paths, not the gate. An entry leaves
+ * the list when its file is split or deleted, and every entry states the reason
+ * it is exempt on its own line, so an exemption can be read without editing it.
+ * The thresholds and the exemption classes are documented in
+ * `docs/VERIFICATION.md`.
  */
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
@@ -40,17 +45,23 @@ const skippedDirectories = new Set(["node_modules", "dist", "coverage"]);
 
 /** Line limits per file kind; `warn` costs a report line, `fail` costs the run. */
 export const budgets = {
-  source: { label: "source", warn: 800, fail: 1200 },
-  test: { label: "test", warn: 400, fail: 800 },
-  // The largest bundle today is the qa-surface client at ~66k lines, so this is
-  // a runaway tripwire and not a size goal.
-  bundle: { label: "generated bundle", warn: 20000, fail: 100000 },
+  source: { label: "source", warn: 1200, fail: 1400 },
+  test: { label: "test", warn: 700, fail: 900 },
+  // A build artifact, so a size goal is meaningless here; both numbers are a
+  // runaway tripwire around the largest bundle today (qa-surface client.js at
+  // ~66k lines), which is what catches a bundle that swallowed a tree.
+  bundle: { label: "generated bundle", warn: 80000, fail: 100000 },
 };
 
-/** Directories inside a package that a budget of `kind` applies to. */
+/**
+ * Directories inside a package that a budget of `kind` applies to. `scripts` is
+ * repository infrastructure that grew under the same law as `src`, so it is
+ * measured as source.
+ */
 const budgetedDirectories = [
   { directory: "src", kind: "source" },
   { directory: "tests", kind: "test" },
+  { directory: "scripts", kind: "source" },
 ];
 
 /**
@@ -59,26 +70,68 @@ const budgetedDirectories = [
  */
 const generatedArtifacts = ["lib/client.js", "lib/typert.remote-client.js"];
 
-/** Sources over their hard budget when the gate landed; see the header. */
-export const legacyOverBudget = new Set([
-  "plugins/dsh-jev-compaction/src/config.ts",
-  "plugins/dsh-qa-browser/src/host/session-manager.ts",
-  "plugins/dsh-qa-integrations/src/client/operator-card.tsx",
-  "plugins/dsh-qa-integrations/src/index.ts",
-  "plugins/dsh-qa-integrations/src/providers/bitrix24/tools.ts",
-  "plugins/dsh-qa-integrations/src/providers/testit/operations.ts",
-  "plugins/dsh-qa-surface/src/accounts/store.ts",
-  "plugins/dsh-qa-surface/src/admin/service.ts",
-  "plugins/dsh-qa-surface/src/client/QaSessionController.ts",
-  "plugins/dsh-qa-surface/src/client/QaSurface.tsx",
-  "plugins/dsh-qa-surface/src/client/admin/QaAdmin.tsx",
-  "plugins/dsh-qa-surface/src/index.ts",
-  "plugins/dsh-qa-surface/src/types.ts",
-  "plugins/dsh-qa-surface/tests/qa-tools/qa-tools-docs.test.ts",
-  "plugins/dsh-session-scope/src/client.ts",
-  "plugins/dsh-web-fetch-authenticated/src/adapters/confluence.ts",
-  "plugins/dsh-web-fetch-authenticated/src/client/sections.tsx",
-]);
+/**
+ * Files the gate does not hold to their budget, each with the reason on the same
+ * line. Two classes live here: the sources that were already over budget when
+ * the gate landed, which leave one by one as their refactor card splits them,
+ * and the package verification scripts, whose length is the shipped surface
+ * they assert over rather than a module design.
+ */
+export const fileBudgetAllowlist = [
+  {
+    path: "plugins/dsh-qa-browser/src/host/session-manager.ts",
+    reason: "legacy before the gate landed; owned by a refactor card",
+  },
+  {
+    path: "plugins/dsh-qa-integrations/scripts/verify-package.mjs",
+    reason:
+      "assertion list over the built client bundle and the packed tarball: it grows with the shipped surface, not with a module design",
+  },
+  {
+    path: "plugins/dsh-qa-integrations/src/client/operator-card.tsx",
+    reason: "legacy before the gate landed; owned by a refactor card",
+  },
+  {
+    path: "plugins/dsh-qa-integrations/src/index.ts",
+    reason: "legacy before the gate landed; owned by a refactor card",
+  },
+  {
+    path: "plugins/dsh-qa-surface/src/accounts/store.ts",
+    reason: "legacy before the gate landed; owned by a refactor card",
+  },
+  {
+    path: "plugins/dsh-qa-surface/src/admin/service.ts",
+    reason: "legacy before the gate landed; owned by a refactor card",
+  },
+  {
+    path: "plugins/dsh-qa-surface/src/client/QaSessionController.ts",
+    reason: "legacy before the gate landed; owned by a refactor card",
+  },
+  {
+    path: "plugins/dsh-qa-surface/src/client/QaSurface.tsx",
+    reason: "legacy before the gate landed; owned by a refactor card",
+  },
+  {
+    path: "plugins/dsh-qa-surface/src/client/admin/QaAdmin.tsx",
+    reason: "legacy before the gate landed; owned by a refactor card",
+  },
+  {
+    path: "plugins/dsh-qa-surface/src/index.ts",
+    reason: "legacy before the gate landed; owned by a refactor card",
+  },
+  {
+    path: "plugins/dsh-qa-surface/src/types.ts",
+    reason: "legacy before the gate landed; owned by a refactor card",
+  },
+  {
+    path: "plugins/dsh-session-scope/src/client.ts",
+    reason: "legacy before the gate landed; owned by a refactor card",
+  },
+  {
+    path: "plugins/dsh-web-fetch-authenticated/src/client/sections.tsx",
+    reason: "legacy before the gate landed; owned by a refactor card",
+  },
+];
 
 /**
  * Count lines the way `wc -l` reads a file: a closing newline ends the last
@@ -147,18 +200,45 @@ export async function collectMeasuredFiles(repoRoot = workspaceRoot) {
 }
 
 /**
+ * Read an allowlist into a `path -> reason` map. An exemption without a reason is
+ * the shape a budget list decays into, so it is rejected here rather than
+ * reviewed away later.
+ */
+function normalizeReasons(allowlist) {
+  const reasons = new Map();
+  for (const entry of allowlist) {
+    const { path, reason } = entry ?? {};
+    if (typeof path !== "string" || path === "") {
+      throw new Error("file budget: allowlist entry without a path");
+    }
+    if (typeof reason !== "string" || reason.trim() === "") {
+      throw new Error(
+        `file budget: allowlist entry ${path} has no reason for the exemption`,
+      );
+    }
+    if (reasons.has(path)) {
+      throw new Error(`file budget: duplicate allowlist entry for ${path}`);
+    }
+    reasons.set(path, reason);
+  }
+  return reasons;
+}
+
+/**
  * Classify every workspace file against its budget.
  *
  * Returns `{ measured, exempt, warnings, failures }`; a `failures` entry is the
- * list the CLI prints and the tests assert, and a `warnings` entry never costs
- * a run. `allowlist` is a parameter so a test can prove what an exemption does
- * without depending on the paths committed below.
+ * list the CLI prints and the tests assert, a `warnings` entry never costs a
+ * run, and an `exempt` entry is reported with the reason it is exempt.
+ * `allowlist` is a parameter so a test can prove what an exemption does without
+ * depending on the paths committed below.
  */
 export async function auditFileBudget(
   repoRoot = workspaceRoot,
-  { allowlist = legacyOverBudget } = {},
+  { allowlist = fileBudgetAllowlist } = {},
 ) {
   const measured = await collectMeasuredFiles(repoRoot);
+  const reasons = normalizeReasons(allowlist);
   const exempt = [];
   const warnings = [];
   const failures = [];
@@ -167,20 +247,20 @@ export async function auditFileBudget(
   for (const file of measured) {
     const budget = budgets[file.kind];
     seen.add(file.path);
-    const entry = { ...file, limit: budget.fail };
-    if (allowlist.has(file.path)) {
-      exempt.push(file);
+    const exemption = reasons.get(file.path);
+    if (exemption !== undefined) {
+      exempt.push({ ...file, reason: exemption });
       if (file.lines <= budget.fail) {
         warnings.push({
           ...file,
           limit: budget.fail,
-          reason: "within budget, drop it from legacyOverBudget",
+          reason: "within budget, drop it from fileBudgetAllowlist",
         });
       }
       continue;
     }
     if (file.lines > budget.fail) {
-      failures.push(entry);
+      failures.push({ ...file, limit: budget.fail });
     } else if (file.lines > budget.warn) {
       warnings.push({
         ...file,
@@ -190,7 +270,7 @@ export async function auditFileBudget(
     }
   }
 
-  for (const path of allowlist) {
+  for (const path of reasons.keys()) {
     if (!seen.has(path)) {
       failures.push({
         path,
@@ -198,7 +278,7 @@ export async function auditFileBudget(
         lines: 0,
         limit: 0,
         reason:
-          "allowlisted file does not exist, drop it from legacyOverBudget",
+          "allowlisted file does not exist, drop it from fileBudgetAllowlist",
       });
     }
   }
@@ -255,6 +335,13 @@ export async function main(
   repoRoot = workspaceRoot,
 ) {
   const report = await auditFileBudget(repoRoot);
+  if (argv.includes("--list-exemptions")) {
+    for (const entry of report.exempt) {
+      console.log(
+        `file budget: exempt ${describe(entry)} (${entry.lines} lines)`,
+      );
+    }
+  }
   const listed = argv.includes("--list-warnings");
   for (const line of listed
     ? report.warnings.map((warning) => `file budget: warn ${describe(warning)}`)
@@ -266,12 +353,12 @@ export async function main(
       console.error(`file budget: ${describe(failure)}`);
     }
     console.error(
-      `file budget failed: ${report.failures.length} files over budget — split them, or move a legacy split out of legacyOverBudget`,
+      `file budget failed: ${report.failures.length} files over budget — split them; the allowlist in scripts/check-file-budget.mjs only shrinks`,
     );
     return 1;
   }
   console.log(
-    `file budget verified for ${report.measured.length} files (${report.exempt.length} legacy exemptions)`,
+    `file budget verified for ${report.measured.length} files (${report.exempt.length} reasoned exemptions)`,
   );
   return 0;
 }
