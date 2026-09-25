@@ -29,6 +29,22 @@
   blocker for the pull request: mark the pull request `ci-external` and say
   which run and job were examined. Do not "fix" such redness by weakening the
   workflow's checks on main.
+## File size budget
+
+- A source file under `plugins/*/src`, `packages/*/src`, `plugins/*/scripts` or
+  `packages/*/scripts` must stay within 1400 lines (1200 warns) and a file under
+  `plugins/*/tests` or `packages/*/tests` within 900 (700 warns); a generated
+  bundle under a package's `lib/` is held to a runaway line limit only, and no
+  budget is measured in bytes. The repository root's `scripts/` is outside the
+  measured scope until a card splits it. The thresholds, the scope and the
+  reason of every exemption are in `docs/VERIFICATION.md`.
+- `scripts/check-file-budget.mjs`, run as `pnpm check:files`, carries the files
+  that were already over budget when the gate landed, each with its reason on the
+  same line, and that list only shrinks: split the oversized file instead of
+  raising a threshold or adding a path to it. Growing an allowlisted file is
+  neither an error nor a warning — the refactor cards own those paths — but every
+  entry is printed as `allowlisted: <path> — <reason>` in each run, so an
+  exemption is never invisible.
 
 ## QA surface release notes
 

@@ -53,6 +53,7 @@ pnpm typecheck
 | `pnpm format` | Check formatting with the shared Prettier config |
 | `pnpm format:write` | Rewrite files that fail the formatting check |
 | `pnpm deps:check` | Enforce workspace dependency boundaries |
+| `pnpm check:files` | Report a package's `src`, `scripts`, and `tests` files that outgrew their line budget (the repository root's `scripts/` is not measured yet) |
 | `pnpm tarball:verify` | Pack, install, and smoke-test publishable packages |
 | `pnpm affected:check` | Run lint/typecheck/test/build/verify on affected packages only |
 | `pnpm release:plan` | Start version planning for next release |
