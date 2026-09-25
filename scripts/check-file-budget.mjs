@@ -90,10 +90,6 @@ const generatedArtifacts = [
  */
 export const fileBudgetAllowlist = [
   {
-    path: "plugins/dsh-qa-browser/src/host/session-manager.ts",
-    reason: "legacy before the gate landed; owned by a refactor card",
-  },
-  {
     path: "plugins/dsh-qa-integrations/scripts/verify-package.mjs",
     reason:
       "assertion list over the built client bundle and the packed tarball: it grows with the shipped surface, not with a module design",
