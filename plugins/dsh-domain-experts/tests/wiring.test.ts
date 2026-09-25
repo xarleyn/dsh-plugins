@@ -63,6 +63,9 @@ function harnessOf(
   options: {
     readonly storage?: () => Promise<DomainExpertsStorage>;
     readonly config?: Record<string, unknown>;
+    readonly qaSurface?: (
+      sessionId: string,
+    ) => { readonly userId: string } | undefined;
   } = {},
 ): Harness {
   const ctx = new Context();
@@ -84,6 +87,15 @@ function harnessOf(
   ctx.provide("storageDomain", {
     open: options.storage ?? (() => Promise.resolve(fakeStorage())),
   });
+  // Mounted only when the scenario asks for one: a deployment without the
+  // accounts surface owns a single memory space, and that has to stay the
+  // default rather than an accident of the fixture.
+  if (options.qaSurface !== undefined) {
+    ctx.provide("qaSurface", {
+      principalForSession: options.qaSurface,
+      principalForToken: () => undefined,
+    });
+  }
   const service = new DomainExpertsService(ctx, options.config ?? {});
   return { ctx, service, registered };
 }
@@ -499,5 +511,72 @@ describe("wiring: sqlite memory", () => {
     expect(listed.code).toBe("STORAGE_UNAVAILABLE");
     expect(listed.message).toMatch(/failed verification/u);
     expect([...table.entries()]).toHaveLength(1);
+  });
+});
+
+describe("wiring: per-account memory", () => {
+  function writableOf(
+    profile: Awaited<
+      ReturnType<DomainExpertsService["resolveScope"]>
+    >["profile"],
+  ) {
+    return profile?.memory.find((entry) => entry.access === "read-write");
+  }
+
+  const storage = () => Promise.resolve(storageWith(DEFINITION));
+
+  it("keeps one deployment-wide namespace without an accounts surface", async () => {
+    const harness = harnessOf({ storage });
+    const resolved = await harness.service.resolveScope("payments");
+    expect(writableOf(resolved.profile)?.namespace).toBe("domain/payments");
+    expect(writableOf(resolved.profile)?.note).not.toContain("/u/<account>");
+  });
+
+  it("names the account layout once the accounts surface is mounted", async () => {
+    const harness = harnessOf({
+      storage,
+      qaSurface: () => ({ userId: "user-a" }),
+    });
+    const resolved = await harness.service.resolveScope("payments");
+    // The settings page has no chat to attribute, so it still stands for the
+    // domain tier — and says so, instead of letting the operator believe that
+    // is where an expert's note lands.
+    expect(writableOf(resolved.profile)?.namespace).toBe("domain/payments");
+    expect(writableOf(resolved.profile)?.note).toContain(
+      "domain/payments/u/<account>",
+    );
+  });
+
+  it("stops scoping per account when the operator switches it off", async () => {
+    const harness = harnessOf({
+      storage,
+      config: { perUserMemory: false },
+      qaSurface: () => ({ userId: "user-a" }),
+    });
+    const resolved = await harness.service.resolveScope("payments");
+    expect(writableOf(resolved.profile)?.note).not.toContain("/u/<account>");
+  });
+
+  it("keeps an account's namespace out of the management page", async () => {
+    const harness = harnessOf({
+      storage,
+      qaSurface: () => ({ userId: "user-a" }),
+    });
+    // The page is not a chat, so it has no account to answer for — and it must
+    // not be able to name one either: per-account notes are reached by the
+    // account's own expert runs, not from the settings tab.
+    const inspected = await harness.service.inspectMemory(
+      "payments",
+      "domain/payments/u/user-b",
+      50,
+    );
+    expect(inspected.code).toBe("MEMORY_SCOPE_DENIED");
+
+    const cleared = await harness.service.clearMemory(
+      "payments",
+      "domain/payments/u/user-b",
+    );
+    expect(cleared.code).toBe("MEMORY_SCOPE_DENIED");
+    expect(cleared.message).toContain("not reachable here");
   });
 });

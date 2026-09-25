@@ -768,8 +768,17 @@ Recommended conceptual memory tiers:
 ```text
 shared
 domain
+domain/account
 session/task
 ```
+
+`domain/account` is what one account's expert of this domain learned
+(`domains/payments/u/<account>`). A deployment with more than one account keeps
+a note there rather than in `domains/payments`, because the latter is what every
+account of the domain reads. Anything recorded as a rule of the domain has to
+hold whoever asked — the absence of a tool, a source or a path is a property of
+the caller's access, and a note about it belongs to that caller's tier or to the
+answer, never below it.
 
 ---
 
