@@ -19,6 +19,9 @@
  */
 
 import { Context } from "@deepseek-ai/cordis";
+// Type anchor only: the loader owns the `loader/volatile-update` event this
+// plugin listens to, and ships no runtime value this entry would import.
+import type {} from "@deepseek-ai/cordis-plugin-loader";
 import type {} from "@deepseek-ai/dsh-settings";
 import type {} from "@deepseek-ai/dsh-tools";
 import {
@@ -26,8 +29,12 @@ import {
   getPluginLogger,
   type PluginLogger,
 } from "@yadsh/dsh-plugin-log";
-import { ConfigSchema } from "./schema.js";
-import { DOCUMENTS_SETTINGS_NAMESPACE } from "./shared/settings.js";
+import {
+  ConfigSchema,
+  snapshotDocumentsConfig,
+  type DocumentsConfigSource,
+  type DocumentsPluginConfig,
+} from "./schema.js";
 import { CONTRACT_REVIEW_SKILL, mountDocumentSkills } from "./skills.js";
 import {
   applyDocumentsEnvOverrides,
@@ -64,6 +71,7 @@ interface WebFetchSeam {
 }
 
 export { ConfigSchema } from "./schema.js";
+export type { DocumentsConfigSource, DocumentsPluginConfig } from "./schema.js";
 export { DOCUMENTS_SETTINGS_NAMESPACE } from "./shared/settings.js";
 export {
   buildDocumentSkillsConfig,
@@ -78,7 +86,8 @@ export * from "./documents/index.js";
 export const name = "documents";
 export const inject = ["tools"];
 
-export type Config = DocumentsConfig;
+/** The entry configuration as the Host holds it: every section a live reference. */
+export type Config = DocumentsPluginConfig;
 export const Config = ConfigSchema;
 
 /**
@@ -132,10 +141,13 @@ export class DocumentsPlugin {
   static Config = ConfigSchema;
 
   private readonly hostCtx: Context;
-  private readonly entryConfig: DocumentsConfig;
+  /**
+   * The configuration the entry was started with. A volatile write is committed
+   * into these very references, so the object stays correct for the life of the
+   * fiber and is read through {@link configSource} rather than copied.
+   */
+  private readonly entryConfig: DocumentsConfigSource;
   private readonly logger: PluginLogger;
-  /** Live configuration: the settings section once it is installed. */
-  private configSource: () => DocumentsConfig;
   private documents: DocumentSubsystem | undefined;
   /** Disposer of the face published to sibling Host plugins. */
   private documentsFace: (() => void) | undefined;
@@ -150,7 +162,7 @@ export class DocumentsPlugin {
   /** Resolved per call: a provider that arrives late is still picked up. */
   private web: WebFetchSeam | undefined;
 
-  constructor(ctx: Context, config: DocumentsConfig = {}) {
+  constructor(ctx: Context, config: DocumentsConfigSource = {}) {
     this.logger = getPluginLogger({
       pluginId: "dsh-documents",
       console: "trace",
@@ -158,25 +170,32 @@ export class DocumentsPlugin {
     });
     ctx.effect(() => async () => this.logger.close(), "dsh-documents.logger");
     this.hostCtx = ctx;
-    this.entryConfig = structuredClone(config);
-    this.configSource = () => this.entryConfig;
+    this.entryConfig = config;
 
+    /*
+     * There is no settings section to install any more: the namespace is the
+     * profile entry id and a field is editable live exactly when its schema node
+     * carries `.volatile()`, which every section of `ConfigSchema` does. What
+     * this plugin still decides is the page — its own card owns the namespace,
+     * so the Host is told not to generate a second editor over the same fields.
+     */
     ctx.inject(["settings"], (settingsCtx) => {
-      settingsCtx.settings.installSection(
-        ctx,
-        DOCUMENTS_SETTINGS_NAMESPACE,
-        ConfigSchema,
-        this.entryConfig,
-        {
-          setSource: (current) => {
-            this.configSource = current;
-          },
-          onChange: () => {
-            this.refresh();
-          },
-        },
+      settingsCtx.effect(
+        () => settingsCtx.settings.configure({ auto: false }, ctx.fiber),
+        "dsh-documents.settings-presentation",
       );
     });
+
+    /*
+     * A volatile change is committed into the running references and no fiber is
+     * remounted, so keeping the subsystem in step is this plugin's job. The
+     * event is dispatched to the owning fiber only, and `refresh` costs nothing
+     * while the resolved configuration has not moved.
+     */
+    ctx.effect(
+      () => ctx.on("loader/volatile-update", () => this.refresh()),
+      "dsh-documents.volatile-config",
+    );
 
     // Retrieval for `document_from_url` is the web layer's business: this plugin
     // never opens a socket of its own, so the deployment's rules, credentials,
@@ -211,6 +230,17 @@ export class DocumentsPlugin {
       },
       "dsh-documents.tools",
     );
+  }
+
+  /**
+   * One plain snapshot of the live configuration.
+   *
+   * Taken per operation rather than once: the references themselves never
+   * change, their values do, and a resolver that read them field by field
+   * mid-operation could mix two generations of the same document.
+   */
+  private configSource(): DocumentsConfig {
+    return snapshotDocumentsConfig(this.entryConfig);
   }
 
   /** The configuration the running subsystem resolves to. */
