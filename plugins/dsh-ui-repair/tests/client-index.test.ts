@@ -19,7 +19,7 @@ describe("client entrypoint", () => {
       writable: true,
     };
     let settingsListener: (() => void) | undefined;
-    const scope = {
+    const form = {
       getSnapshot: () => snapshot,
       subscribe: vi.fn((listener: () => void) => {
         settingsListener = listener;
@@ -32,7 +32,7 @@ describe("client entrypoint", () => {
     const removeRegistration = vi.fn();
     const ctx = {
       provide,
-      settingsScope: { bind: vi.fn(() => scope) },
+      configForms: { get: vi.fn(() => form) },
       slots: {
         inject: vi.fn((_slot: string, factory: () => unknown) => {
           factory();
@@ -53,23 +53,21 @@ describe("client entrypoint", () => {
       },
     });
 
-    expect(inject).toEqual(["slots", "settingsScope"]);
+    expect(inject).toEqual(["slots", "configForms"]);
     expect(provide).toHaveBeenCalledWith("uiRepair", expect.anything());
     const runtime = provide.mock.calls[0]?.[1] as {
       getMode(): string;
     };
     expect(runtime.getMode()).toBe("suggest");
-    expect(ctx.settingsScope.bind).toHaveBeenCalledWith({
-      namespace: "ui-repair",
-    });
+    expect(ctx.configForms.get).toHaveBeenCalledWith("dsh-ui-repair");
     expect(ctx.slots.inject).toHaveBeenCalledWith(
-      "settings.plugin.item",
+      "settings.plugins.tab",
       expect.any(Function),
     );
     expect(ctx.slots.register).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: "settings.plugin.item",
-        key: "ui-repair",
+        name: "settings.plugins.tab",
+        id: "dsh-ui-repair",
       }),
       expect.any(Function),
     );
