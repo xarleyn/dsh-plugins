@@ -40,8 +40,8 @@ await runVerifyPackage({
   clientBundle: {
     moduleLoaderId: true,
     includes: [
-      "settings.plugin.item",
-      "key: SETTINGS_NAMESPACE",
+      "settings.plugins.tab",
+      "configForms.get(SETTINGS_ENTRY_ID)",
       "pluginLogUi",
       "remote.pluginLogUi",
       "dsh-plugin-card__name",
