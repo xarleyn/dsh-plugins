@@ -6,7 +6,7 @@
  * affordances — the archive warning and the read-only state.
  */
 
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -21,8 +21,8 @@ interface Op {
   readonly value?: unknown;
 }
 
-/** A settings scope stub that applies writes onto a fake user layer. */
-function stubScope(
+/** A config form stub that records the writes the card issues. */
+function stubForm(
   options: {
     readonly value?: JevCompactionConfig;
     readonly user?: unknown;
@@ -42,7 +42,7 @@ function stubScope(
     writable: options.writable ?? true,
     mode: "host" as const,
   };
-  const scope = {
+  const form = {
     getSnapshot: () => snapshot,
     subscribe: () => () => {},
     mutate: async (issued: Op[]) => {
@@ -50,13 +50,13 @@ function stubScope(
     },
     set: async () => {},
     unset: async () => {},
-  } as unknown as SettingsScope<JevCompactionConfig>;
-  return { scope, ops };
+  } as unknown as ConfigForm<JevCompactionConfig>;
+  return { form, ops };
 }
 
-function renderCard(options: Parameters<typeof stubScope>[0] = {}) {
-  const { scope, ops } = stubScope(options);
-  const result = render(<JevCompactionCard scope={scope} />);
+function renderCard(options: Parameters<typeof stubForm>[0] = {}) {
+  const { form, ops } = stubForm(options);
+  const result = render(<JevCompactionCard form={form} />);
   return { ...result, ops };
 }
 
@@ -72,6 +72,9 @@ describe("JevCompactionCard shell", () => {
     const { container } = renderCard();
     const root = container.querySelector("li.dsh-plugin-card");
     expect(root).not.toBeNull();
+    // The tab panel supplies no list of its own, so the card owns the `<ul>`
+    // that keeps the shell's `<li>` a list item (AGENTS.md).
+    expect(root!.parentElement?.tagName).toBe("UL");
     expect(root!.querySelector(".dsh-plugin-card__header")).not.toBeNull();
     expect(root!.querySelector(".dsh-plugin-card__name")!.textContent).toBe(
       "Jev Compaction",

@@ -1,37 +1,42 @@
 // @vitest-environment jsdom
 
 /**
- * The client entry's wiring: one card, in the shared `settings.plugin.item`
- * slot, keyed by the plugin's settings namespace. A wrong key means the card
- * renders in a namespace the Host never installed, so the key is the whole
+ * The client entry's wiring: one card, in a Plugins tab of its own, bound to
+ * the Host settings section keyed by the plugin's profile entry id. A wrong key
+ * means the card edits a section the Host never serves, so the key is the whole
  * contract.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { CLIENT_PLUGIN_NAME, apply, inject } from "../../src/client/index.js";
+import {
+  CLIENT_PLUGIN_NAME,
+  SETTINGS_CARD_SLOT,
+  apply,
+  inject,
+} from "../../src/client/index.js";
+import { JEV_COMPACTION_SETTINGS_NAMESPACE } from "../../src/shared/settings.js";
 
 interface SlotRegistration {
   readonly name: string;
-  readonly key?: string;
-  readonly locale?: string;
+  readonly id?: string;
+  readonly order?: number;
   readonly inject?: () => unknown;
 }
 
-const boundNamespaces: string[] = [];
+const resolvedNamespaces: string[] = [];
 
 beforeEach(() => {
-  boundNamespaces.length = 0;
+  resolvedNamespaces.length = 0;
 });
 
-function stub(options: { withBinder?: boolean } = {}) {
+function stub(options: { withForms?: boolean } = {}) {
   const slots: SlotRegistration[] = [];
-  const styles: string[] = [];
   const face = {
-    settingsScope: {
-      bind: (spec: { namespace: string }) => {
-        boundNamespaces.push(spec.namespace);
+    configForms: {
+      get: (entryId: string) => {
+        resolvedNamespaces.push(entryId);
         return {
           getSnapshot: () => ({ status: "ready", value: {}, writable: true }),
           subscribe: () => () => {},
@@ -52,42 +57,43 @@ function stub(options: { withBinder?: boolean } = {}) {
       },
     },
   };
-  if (options.withBinder === false) {
-    return { ctx: { slots: face.slots } as unknown as Context, slots, styles };
+  if (options.withForms === false) {
+    return { ctx: { slots: face.slots } as unknown as Context, slots };
   }
-  return { ctx: face as unknown as Context, slots, styles };
+  return { ctx: face as unknown as Context, slots };
 }
 
 describe("client entry registration", () => {
   it("declares the client services the runtime must resolve", () => {
-    expect([...inject]).toEqual(["slots", "settingsScope"]);
+    expect([...inject]).toEqual(["slots", "configForms"]);
   });
 
-  it("registers one card in settings.plugin.item keyed by the namespace", () => {
+  it("registers one card as a Plugins tab", () => {
     const { ctx, slots } = stub();
     apply(ctx);
     expect(slots).toHaveLength(1);
-    expect(slots[0]!.name).toBe("settings.plugin.item");
-    expect(slots[0]!.key).toBe("jev-compaction");
+    expect(slots[0]!.name).toBe("settings.plugins.tab");
+    expect(SETTINGS_CARD_SLOT).toBe("settings.plugins.tab");
     expect(typeof slots[0]!.inject).toBe("function");
   });
 
-  it("binds the same namespace the Host section installs", () => {
-    const { ctx } = stub();
+  it("keys the tab by the entry id whose section it edits", () => {
+    const { ctx, slots } = stub();
     apply(ctx);
-    expect(boundNamespaces).toEqual(["jev-compaction"]);
+    expect(slots[0]!.id).toBe(JEV_COMPACTION_SETTINGS_NAMESPACE);
+    expect(resolvedNamespaces).toEqual([JEV_COMPACTION_SETTINGS_NAMESPACE]);
   });
 
-  it("hands the card the bound scope", () => {
+  it("hands the card the resolved form", () => {
     const { ctx, slots } = stub();
     apply(ctx);
     expect(slots[0]!.inject?.()).toEqual({
-      scope: expect.objectContaining({ getSnapshot: expect.any(Function) }),
+      form: expect.objectContaining({ getSnapshot: expect.any(Function) }),
     });
   });
 
-  it("renders no card when the page exposes no settings binder", () => {
-    const { ctx, slots } = stub({ withBinder: false });
+  it("renders no card when the page exposes no settings forms", () => {
+    const { ctx, slots } = stub({ withForms: false });
     const dispose = apply(ctx);
     expect(slots).toHaveLength(0);
     expect(typeof dispose).toBe("function");
