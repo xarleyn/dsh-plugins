@@ -89,9 +89,10 @@ degraded.
 
 ## Configuration
 
-Plugin settings live in the `domain-experts` namespace and are edited in
-`Settings → Plugins → Configurable` (or `Settings → Plugins → Domain Experts`
-for the domains themselves). Changes apply to subsequent operations.
+Plugin settings are live fields of this plugin's own profile configuration, and
+the Host serves their form under `Settings → Plugins` for the
+`dsh-domain-experts` entry. The `Domain Experts` tab there manages the domains
+themselves. Changes apply to subsequent operations.
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -189,7 +190,7 @@ match is attempted.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (tested against `0.1.5-rc.2`)
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (tested against `0.1.7-rc.2`)
 - Node `^22.19.0 || >=24.0.0`
 - Browser half requires the `settings.plugins.tab` slot
 

@@ -1,7 +1,7 @@
 # Compatibility policy
 
 The monorepo keeps tested DeepSeek Harness ranges in pnpm named catalogs. The
-current baseline is Cordis 4.0.2 and the DSH `0.1.5-rc.2` package family.
+current baseline is Cordis 4.0.4 and the DSH `0.1.7-rc.2` package family.
 
 Every publishable plugin carries `compatibility.json`. Its `node` value must
 exactly match `package.json#engines.node`, and the repository package-hygiene
@@ -20,7 +20,7 @@ and release decision.
 `pnpm-workspace.yaml` defines two DSH catalogs:
 
 - `catalog:dsh` contains the compatible peer ranges shipped in public package
-  manifests (`^4.0.2` for Cordis and `>=0.1.5-rc.2 <0.2.0` for DSH packages).
+  manifests (`^4.0.4` for Cordis and `>=0.1.7-rc.2 <0.2.0` for DSH packages).
 - `catalog:dsh-dev` contains exact versions used by local builds and CI.
 
 `catalog:runtime` is not a DSH catalog: it holds a third-party runtime range that
@@ -95,15 +95,29 @@ and `dsh-tools` renamed the `code` presentation family to `ptc`. The plugins
 no longer run on `0.1.1-rc.2` hosts. Note that the `SettingsProvider.installSection`
 contract recorded above is itself removed in `0.1.7-rc.1`, see below.
 
-## DSH 0.1.7-rc.1 migration
+## DSH 0.1.7-rc migration
 
-`0.1.7-rc.1` was investigated but **not adopted**: the repository stays on
-`0.1.5-rc.2`. The `dsh-settings` rewrite removes `SettingsProvider`,
-`installSection`, `ctx.settingsScope` and the `settings.plugin.item` slot, which
-is the surface 12 plugins register configuration UI on, so the cutover is a
-redesign rather than a version bump. See
-[DSH-0.1.7-MIGRATION.md](DSH-0.1.7-MIGRATION.md) for the measured breakage, the
-replacement recipe, and the open card-chrome decision.
+`0.1.7-rc.1` and `0.1.7-rc.2` were both investigated, and `0.1.7-rc.2` is the
+adopted baseline: the named catalogs moved onto it, and the plugin metadata —
+`compatibility.json` ranges and tested releases — follows in the same wave. The
+`dsh-settings` rewrite removes `SettingsProvider`, `installSection`,
+`ctx.settingsScope` and the `settings.plugin.item` slot, which is the surface 12
+plugins register configuration UI on, so the cutover is a redesign rather than a
+version bump.
+`0.1.7-rc.2` does not change that verdict: the settings subsystem, the slot
+registry, the module-loader bundle format, the agent/session event catalog and
+the framework tier are all byte-identical between the two release candidates. A
+trial bump measured 296 type errors across the same 18 packages at `rc.2`
+(288 at `rc.1`), against a green baseline control in the same worktree.
+
+`rc.2` adds three things the `rc.1` map did not foresee: the host now *emits*
+`tool-addition`/`tool-removal` content blocks (type-clean, runtime-visible), the
+Auto permission preset resolves to `approval: 'ask'` where `dsh-qa-surface`
+attests a pinned `'never'`, and durable preset authoring turned out to be deleted
+rather than relocated. See
+[DSH-0.1.7-MIGRATION.md](DSH-0.1.7-MIGRATION.md) — sections 8–13 — for the
+`rc.1 → rc.2` delta, the measured failures, the open owner decisions and the
+per-package work breakdown.
 
 ## Upgrade rules
 

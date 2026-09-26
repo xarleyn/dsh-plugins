@@ -124,10 +124,15 @@ export function QaWelcomeNotice(props: QaWelcomeNoticeProps) {
   if (isAcknowledged) return null;
 
   return createPortal(
-    <div className="dsh-qa-onboarding" onKeyDown={trapKeys}>
+    <div
+      className="dsh-qa-onboarding"
+      data-testid="qa-surface-welcome"
+      onKeyDown={trapKeys}
+    >
       <div
         ref={dialog}
         className="dsh-qa-onboarding__panel"
+        data-testid="qa-surface-welcome-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="dsh-qa-onboarding-title"
@@ -140,23 +145,35 @@ export function QaWelcomeNotice(props: QaWelcomeNoticeProps) {
             <path d="m8.75 12 2 2 4.5-4.5" />
           </svg>
         </div>
-        <div className="dsh-qa-onboarding__content">
-          <h1 id="dsh-qa-onboarding-title" className="dsh-qa-onboarding__title">
+        <div
+          className="dsh-qa-onboarding__content"
+          data-testid="qa-surface-welcome-content"
+        >
+          <h1
+            id="dsh-qa-onboarding-title"
+            className="dsh-qa-onboarding__title"
+            data-testid="qa-surface-welcome-title"
+          >
             {QA_WELCOME_NOTICE_COPY.title}
           </h1>
           <div
             id="dsh-qa-onboarding-description"
             className="dsh-qa-onboarding__description"
+            data-testid="qa-surface-welcome-description"
           >
             {QA_WELCOME_NOTICE_COPY.paragraphs.map((paragraph) => (
               <p key={paragraph}>{paragraph}</p>
             ))}
           </div>
-          <div className="dsh-qa-onboarding__actions">
+          <div
+            className="dsh-qa-onboarding__actions"
+            data-testid="qa-surface-welcome-actions"
+          >
             <button
               ref={continueButton}
               type="button"
               className="dsh-qa-onboarding__continue"
+              data-testid="qa-surface-welcome-continue"
               onClick={confirm}
             >
               {QA_WELCOME_NOTICE_COPY.continueLabel}

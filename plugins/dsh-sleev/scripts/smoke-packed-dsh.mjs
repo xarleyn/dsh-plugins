@@ -16,7 +16,17 @@ const repo = dirname(
   fileURLToPath(new URL("../package.json", import.meta.url)),
 );
 const manifest = JSON.parse(await readFile(join(repo, "package.json"), "utf8"));
-const dshVersion = process.env.DSH_VERSION ?? "0.1.1-rc.2";
+const compatibility = JSON.parse(
+  await readFile(new URL("../compatibility.json", import.meta.url), "utf8"),
+);
+const testedReleases = compatibility.deepseekHarness?.testedReleases;
+if (!Array.isArray(testedReleases) || testedReleases.length === 0) {
+  throw new Error("compatibility.json must declare testedReleases");
+}
+const dshVersion = process.env.DSH_VERSION ?? testedReleases.at(-1);
+if (!testedReleases.includes(dshVersion)) {
+  throw new Error(`DSH ${dshVersion} is not present in testedReleases`);
+}
 const temporaryRoot = await mkdtemp(join(tmpdir(), "dsh-sleev-packed-smoke-"));
 const toolDirectory = join(temporaryRoot, "tool");
 const packageDirectory = join(temporaryRoot, "package");

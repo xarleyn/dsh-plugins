@@ -29,17 +29,31 @@ export function QaFileAttachment({
   onRemove,
 }: QaFileAttachmentProps) {
   return (
-    <span className="dsh-qa-file" data-tone={tone} title={name}>
-      <span className="dsh-qa-file__badge" aria-hidden="true">
+    <span
+      className="dsh-qa-file"
+      data-testid="qa-file"
+      data-tone={tone}
+      title={name}
+    >
+      <span
+        className="dsh-qa-file__badge"
+        data-testid="qa-file-badge"
+        aria-hidden="true"
+      >
         {badgeText(name)}
       </span>
       <span className="dsh-qa-file__text">
-        <span className="dsh-qa-file__name">{name}</span>
-        <span className="dsh-qa-file__meta">{formatFileSize(bytes)}</span>
+        <span className="dsh-qa-file__name" data-testid="qa-file-name">
+          {name}
+        </span>
+        <span className="dsh-qa-file__meta" data-testid="qa-file-size">
+          {formatFileSize(bytes)}
+        </span>
       </span>
       {onRemove === undefined ? null : (
         <button
           type="button"
+          data-testid="qa-file-remove"
           aria-label={`Убрать ${name}`}
           title="Убрать"
           onClick={onRemove}

@@ -158,6 +158,8 @@ config:
     provider: null
     model: null
     reasoningEffort: null
+    # How many questions the stand answers at once; 0 sets no ceiling.
+    maxActiveRequests: 0
   ui:
     showHeader: true
     showReset: false
@@ -624,6 +626,29 @@ stays quiet until a message is actually sent, and the old session stays intact
 for operator inspection. The sidebar orders chats by the host's last update,
 so merely opening a chat never moves it.
 
+A stand whose model runs locally can also refuse to take questions it cannot
+answer at the same time: `session.maxActiveRequests` names that ceiling, and 0 —
+the default — names none. The count is the Host's, read from the agents that are
+answering right now, so a question that arrived through the HTTP API occupies a
+place too and a browser never has to guess about chats that are not its own.
+Before a send the browser asks that read; a question with no place left is never
+sent — no session is materialized, nothing enters the transcript, the composer
+keeps the text, and the visitor reads how many requests the stand is already
+working. That count includes this visitor's own turns, which is why the dialog
+names occupied places rather than people ahead: a refused question is not queued
+behind a number the stand cannot attribute.
+It is a ceiling rather than a lock: the prompt itself rides the native session
+RPC, so two questions pressed in the same instant can still overshoot by one.
+What the ceiling buys is the steady state, and an unreadable count sends the
+question anyway.
+It bounds questions, not every other send. A message typed while a chat is
+answering joins that chat's own queue and costs no second place, so it is admitted
+without the read; a human command from the palette goes to the Host's command
+runtime and is never held back, because that surface is how a visitor inspects or
+repairs a saturated stand and this plugin cannot tell which commands wake the
+model. A command that does wake it enters the same Host count, so the next
+question waits behind it like behind any other turn.
+
 Regeneration: the last committed answer offers a retry action. The session log
 is append-only, so "regenerate" sends a hidden instruction as an ordinary
 prompt and the answer arrives as a follow-up turn; the projection hides that
@@ -768,6 +793,14 @@ against the same policy before the native runtime is allowed near it. The slash
 interface changes nothing about tools, the sandbox, the permission preset or
 approvals: a skill invoked by hand carries exactly the permissions it carries
 when the model loads it.
+
+One part of that user list is not the role's to name. A skill the account keeps
+in its own skills root belongs to one person, and a role is shared by many, so
+the account's own user-invocable skills join its `/name` list directly: palette,
+typed gesture and the enforcement guard read the same field and cannot disagree,
+while the model's catalog stays the role's. The role ceiling still bounds the
+tools such a skill activates with, and an administrator's withdrawal of the name
+outright outranks the personal layer.
 
 The settings card carries the same policy under «Слеш-действия», with the
 allow lists as plain name lists — the config stores names, never ids.

@@ -163,7 +163,7 @@ describe("BrowserPanel", () => {
 
   it("drives the device row: preset, exact size and scale", async () => {
     const { remote, mocks } = host(panelState([tab()], "tab-a"));
-    const { container } = render(<BrowserPanel {...owner(remote)} />);
+    render(<BrowserPanel {...owner(remote)} />);
     await takeLease();
 
     fireEvent.click(screen.getByRole("button", { name: "Устройство" }));
@@ -200,9 +200,7 @@ describe("BrowserPanel", () => {
     });
     await waitFor(() =>
       expect(
-        container
-          .querySelector(".dsh-qa-browser-panel__canvas")
-          ?.getAttribute("style"),
+        screen.getByTestId("stage-canvas").getAttribute("style"),
       ).toContain("1440px"),
     );
   });
@@ -270,9 +268,9 @@ describe("BrowserPanel", () => {
     render(<BrowserPanel {...owner(remote)} />);
     await takeLease();
 
-    expect(
-      screen.getByText("Ввод мышью отключён в настройках стенда"),
-    ).toBeTruthy();
+    expect(screen.getByTestId("stage-chip").textContent).toBe(
+      "Ввод мышью отключён в настройках стенда",
+    );
     const image = (await screen.findByRole("img", {
       name: /Example App/u,
     })) as HTMLImageElement;

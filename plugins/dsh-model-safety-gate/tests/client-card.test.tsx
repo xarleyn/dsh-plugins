@@ -16,9 +16,16 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 
+import type {
+  ConfigForm,
+  ConfigFormSnapshot,
+} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type { ModelSafetyGateConfig } from "../src/config.js";
 import type { SafetyGateInspect } from "../src/types.js";
 import { SafetyGateCard } from "../src/client/card.js";
+
+/** The form's atomic write, as the card calls it. */
+type FormOps = ConfigForm<ModelSafetyGateConfig>["mutate"];
 
 const CONFIG: ModelSafetyGateConfig = {
   enabled: true,
@@ -68,6 +75,7 @@ const INSPECT: SafetyGateInspect = {
     reason: null,
     apiKeyConfigured: false,
   },
+  configRejected: null,
   metrics: {
     checks: { input: 4, text: 9, reasoning: 1, tool: 2, "tool-result": 1 },
     blocks: { input: 1, output: 0, reasoning: 0, tools: 1, "tool-results": 0 },
@@ -107,21 +115,14 @@ const INSPECT: SafetyGateInspect = {
   startedAt: Date.now() - 65_000,
 };
 
-type ScopeSnapshot = {
-  status: "loading" | "ready" | "unavailable";
-  value: ModelSafetyGateConfig | undefined;
-  base: unknown;
-  user: unknown;
-  revision: number | undefined;
-  writable: boolean;
-  mode: "host" | "memory";
-};
+type FormSnapshot = ConfigFormSnapshot<ModelSafetyGateConfig>;
 
-function makeScope(
-  snapshot: Partial<ScopeSnapshot> = {},
-  mutate: (ops: unknown) => Promise<void> = () => Promise.resolve(),
+/** The configuration form the slot injects as the card's write path. */
+function makeForm(
+  snapshot: Partial<FormSnapshot> = {},
+  mutate: FormOps = () => Promise.resolve(true),
 ) {
-  const current: ScopeSnapshot = {
+  const current: FormSnapshot = {
     status: "ready",
     value: CONFIG,
     base: undefined,
@@ -132,37 +133,37 @@ function makeScope(
     ...snapshot,
   };
   return {
-    scope: {
+    form: {
       getSnapshot: () => current,
       subscribe: () => () => undefined,
       mutate,
-      set: () => Promise.resolve(),
-      unset: () => Promise.resolve(),
+      set: () => Promise.resolve(true),
+      unset: () => Promise.resolve(true),
     },
   };
 }
 
 /** The slot runtime props do not exist outside the host; only the face does. */
 const Card = SafetyGateCard as unknown as (props: {
-  scope: unknown;
+  form: unknown;
   inspect: () => Promise<{ ok: true; value: SafetyGateInspect }>;
 }) => ReactElement;
 
 async function renderCard(
   options: {
-    snapshot?: Partial<ScopeSnapshot>;
-    mutate?: (ops: unknown) => Promise<void>;
+    snapshot?: Partial<FormSnapshot>;
+    mutate?: FormOps;
     inspect?: () => Promise<{ ok: true; value: SafetyGateInspect }>;
   } = {},
 ) {
-  const { scope } = makeScope(options.snapshot, options.mutate);
+  const { form } = makeForm(options.snapshot, options.mutate);
   const inspect =
     options.inspect ?? (async () => ({ ok: true, value: INSPECT }));
   let result: ReturnType<typeof render> | undefined;
   // The card polls once on mount; awaiting inside act keeps that first update
   // inside the test rather than after it.
   await act(async () => {
-    result = render(<Card scope={scope} inspect={inspect} />);
+    result = render(<Card form={form} inspect={inspect} />);
     await Promise.resolve();
   });
   return result as ReturnType<typeof render>;
@@ -188,6 +189,9 @@ describe("Safety Gate card", () => {
     const { container } = await renderCard();
     const card = container.querySelector("li.dsh-plugin-card");
     expect(card).not.toBeNull();
+    // A Plugins tab owns its page, so the shell's `li` keeps a list of ours.
+    expect(card?.parentElement?.tagName).toBe("UL");
+    expect(card?.parentElement?.className).toBe("msg-card-list");
     expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
     expect(screen.getByText("Model Safety Gate")).toBeTruthy();
     expect(
@@ -231,7 +235,7 @@ describe("Safety Gate card", () => {
   });
 
   it("writes a path-addressed mutation when a control changes", async () => {
-    const mutate = vi.fn(() => Promise.resolve());
+    const mutate = vi.fn(() => Promise.resolve(true));
     await renderCard({ mutate });
     openCard();
 
@@ -242,9 +246,28 @@ describe("Safety Gate card", () => {
       name: /Gate enabled/u,
     });
     fireEvent.click(enabled);
-    expect(mutate).toHaveBeenCalledWith([
-      { op: "set", path: ["enabled"], value: false },
-    ]);
+    // The revision the card read fences the write, so an edit that raced this
+    // surface is refused instead of silently overwritten.
+    expect(mutate).toHaveBeenCalledWith(
+      [{ op: "set", path: ["enabled"], value: false }],
+      1,
+    );
+  });
+
+  it("says which configuration the running gate refused to apply", async () => {
+    await renderCard({
+      inspect: async () => ({
+        ok: true,
+        value: {
+          ...INSPECT,
+          configRejected: `config "mode" is unknown`,
+        },
+      }),
+    });
+    openCard();
+    expect(
+      screen.getByText(/last workable configuration/u).textContent,
+    ).toContain("is unknown");
   });
 
   it("states that the classifier is remote, and where it sends content", async () => {
@@ -278,7 +301,7 @@ describe("Safety Gate card", () => {
   });
 
   it("offers a reset for the fields the user layer overrides", async () => {
-    const mutate = vi.fn(() => Promise.resolve());
+    const mutate = vi.fn(() => Promise.resolve(true));
     await renderCard({
       snapshot: { user: { mode: "enforce", output: { mode: "observe" } } },
       mutate,
@@ -287,10 +310,13 @@ describe("Safety Gate card", () => {
 
     expect(screen.getAllByText("modified").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: /Reset 2 overrides/u }));
-    expect(mutate).toHaveBeenCalledWith([
-      { op: "unset", path: ["mode"] },
-      { op: "unset", path: ["output"] },
-    ]);
+    expect(mutate).toHaveBeenCalledWith(
+      [
+        { op: "unset", path: ["mode"] },
+        { op: "unset", path: ["output"] },
+      ],
+      1,
+    );
   });
 
   it("disables the controls while a remote browser cannot write", async () => {

@@ -252,7 +252,9 @@ export interface QaEffectiveCapabilityPolicy {
   readonly skills: readonly string[];
   /**
    * Visible skills a person may invoke with `/name`, including skills that
-   * opted out of model invocation and therefore stay out of the catalog.
+   * opted out of model invocation and therefore stay out of the catalog. The
+   * skills this account owns are here for it without a role grant, unless an
+   * administrator has withdrawn the name outright.
    */
   readonly userSkills: readonly string[];
   readonly sources: {
@@ -844,6 +846,14 @@ export interface QaSurfaceConfig {
     readonly provider?: string | null;
     readonly model?: string | null;
     readonly reasoningEffort?: string | null;
+    /**
+     * How many chat turns the deployment answers at once. A ceiling is what a
+     * locally hosted model needs: the card runs out long before the queue does,
+     * and a third request makes every answer on the stand slower instead of
+     * adding capacity. 0 leaves the count unbounded, which is the default
+     * because a hosted model has no such ceiling.
+     */
+    readonly maxActiveRequests?: number;
   };
   readonly ui?: {
     readonly showHeader?: boolean;
@@ -1115,6 +1125,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly provider: string | null;
     readonly model: string | null;
     readonly reasoningEffort: string | null;
+    readonly maxActiveRequests: number;
   };
   readonly ui: {
     readonly showHeader: boolean;
@@ -1816,6 +1827,24 @@ export interface QaQueueRow {
 /** What the queue strip may ask the Host to do with one waiting message. */
 export type QaQueueOperation = "edit" | "remove" | "steer";
 
+/**
+ * What `qaSurface/queueStatus` answers: how much of the deployment's request
+ * ceiling is in use right now. The Host counts the chats whose agent is running
+ * a turn, so the load is read where the whole of it is visible rather than
+ * guessed from one browser's view of the stand.
+ */
+export interface QaQueueStatus {
+  /** The configured ceiling; 0 means the deployment sets none. */
+  readonly limit: number;
+  /**
+   * Turns answering at the moment of the read, this visitor's own included —
+   * the stand cannot tell a place it owes someone from one it owes you.
+   */
+  readonly active: number;
+  /** Whether one more turn fits; false while no ceiling is set. */
+  readonly full: boolean;
+}
+
 export interface QaSessionState {
   readonly phase: QaSessionPhase;
   readonly sessionId: string | null;
@@ -1862,6 +1891,14 @@ export interface QaSessionState {
   readonly approvals: readonly QaPendingApproval[];
   /** Question requests parked for the operator's answer, oldest first. */
   readonly questions: readonly QaPendingQuestion[];
+  /**
+   * Set when a send was held back because the stand is already answering as
+   * many questions as it allows. The question never left the browser, so this
+   * is the whole of what the visitor is told about it; the surface answers with
+   * the request-ceiling dialog and the composer keeps the draft. Named apart
+   * from `queue`, which is the same chat's list of waiting messages.
+   */
+  readonly requestQueue: QaQueueStatus | null;
   /** Slash palette state, keyed to the chat this snapshot describes. */
   readonly slash: QaSlashView;
 }

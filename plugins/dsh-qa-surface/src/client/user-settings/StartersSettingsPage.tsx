@@ -73,13 +73,27 @@ export function QaStartersSettingsPage(props: QaStartersSettingsPageProps) {
     });
   };
   return (
-    <form id={FORM_ID} className="dsh-qa-settings__page" onSubmit={submit}>
-      <h3 className="dsh-qa-settings__page-title">Быстрые сообщения</h3>
-      <p className="dsh-qa-settings__lead">
+    <form
+      id={FORM_ID}
+      className="dsh-qa-settings__page"
+      data-testid="qa-settings-starters"
+      onSubmit={submit}
+    >
+      <h3
+        className="dsh-qa-settings__page-title"
+        data-testid="qa-settings-starters-title"
+      >
+        Быстрые сообщения
+      </h3>
+      <p
+        className="dsh-qa-settings__lead"
+        data-testid="qa-settings-starters-lead"
+      >
         Быстрые сообщения — кнопки над строкой ввода в пустом чате. Нажатие
         сразу отправляет промпт, не заполняя поле.
       </p>
       <QaSettingsToggle
+        testId="qa-settings-starters-show-defaults"
         checked={!hideDefaults}
         label="Показывать стандартные подсказки"
         hint="Вопросы, заданные администратором стенда, остаются рядом с вашими кнопками."
@@ -89,17 +103,30 @@ export function QaStartersSettingsPage(props: QaStartersSettingsPageProps) {
         }}
       />
       {rows.length === 0 ? (
-        <p className="dsh-qa-settings__field-hint">
+        <p
+          className="dsh-qa-settings__field-hint"
+          data-testid="qa-settings-starters-empty"
+        >
           Своих подсказок нет: в пустом чате показываются стандартные вопросы.
         </p>
       ) : (
-        <div className="dsh-qa-starters__list">
+        <div
+          className="dsh-qa-starters__list"
+          data-testid="qa-settings-starters-list"
+        >
           {rows.map((row, index) => (
-            <div className="dsh-qa-starters__item" key={index}>
+            <div
+              className="dsh-qa-starters__item"
+              data-testid="qa-settings-starters-item"
+              key={index}
+            >
               {/* The remove control sits beside both fields rather than inside
                   the first one, so the label input and the prompt textarea end
                   on the same right edge. */}
-              <div className="dsh-qa-settings__field">
+              <div
+                className="dsh-qa-settings__field"
+                data-testid="qa-settings-starters-item-label"
+              >
                 <label className="dsh-qa-settings__field-label">
                   Название
                   <input
@@ -123,6 +150,7 @@ export function QaStartersSettingsPage(props: QaStartersSettingsPageProps) {
               <button
                 type="button"
                 className="dsh-qa-starters__remove"
+                data-testid="qa-settings-starters-item-remove"
                 aria-label={`Удалить «${row.label.trim() || "без названия"}»`}
                 title="Удалить"
                 onClick={() => {
@@ -134,7 +162,10 @@ export function QaStartersSettingsPage(props: QaStartersSettingsPageProps) {
                   <path d="m4 4 8 8m0-8-8 8" />
                 </svg>
               </button>
-              <div className="dsh-qa-settings__field">
+              <div
+                className="dsh-qa-settings__field"
+                data-testid="qa-settings-starters-item-prompt"
+              >
                 <label className="dsh-qa-settings__field-label">
                   Промпт
                   <textarea
@@ -161,7 +192,10 @@ export function QaStartersSettingsPage(props: QaStartersSettingsPageProps) {
         </div>
       )}
       {rows.length >= QA_STARTERS_MAX_ITEMS ? (
-        <p className="dsh-qa-settings__field-hint">
+        <p
+          className="dsh-qa-settings__field-hint"
+          data-testid="qa-settings-starters-limit"
+        >
           Больше {String(QA_STARTERS_MAX_ITEMS)} подсказок не поместится.
         </p>
       ) : (
@@ -169,6 +203,7 @@ export function QaStartersSettingsPage(props: QaStartersSettingsPageProps) {
         // its full width; the wrapper keeps the control at its natural size.
         <div>
           <QaSettingsButton
+            testId="qa-settings-starters-add"
             label="Добавить подсказку"
             onClick={() => {
               setRows((current) => [...current, { label: "", prompt: "" }]);
@@ -178,19 +213,24 @@ export function QaStartersSettingsPage(props: QaStartersSettingsPageProps) {
         </div>
       )}
       {incomplete ? (
-        <QaSettingsNotice tone="warn">
+        <QaSettingsNotice testId="qa-settings-starters-incomplete" tone="warn">
           В каждой подсказке нужны и название, и промпт — заполните или удалите
           пустые строки.
         </QaSettingsNotice>
       ) : null}
       {error === null ? null : (
-        <QaSettingsNotice tone="error">{error}</QaSettingsNotice>
+        <QaSettingsNotice testId="qa-settings-starters-error" tone="error">
+          {error}
+        </QaSettingsNotice>
       )}
       {saved && error === null ? (
-        <QaSettingsNotice tone="info">Подсказки сохранены.</QaSettingsNotice>
+        <QaSettingsNotice testId="qa-settings-starters-saved" tone="info">
+          Подсказки сохранены.
+        </QaSettingsNotice>
       ) : null}
       <QaSettingsActions>
         <QaSettingsButton
+          testId="qa-settings-starters-save"
           type="submit"
           tone="primary"
           disabled={busy || incomplete}

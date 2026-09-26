@@ -10,6 +10,7 @@ import {
   deferredUpload,
   fileDraft,
   harness,
+  landDurableUserRow,
 } from "../../helpers/session-fakes.js";
 import { slashEntry } from "../../helpers/slash.js";
 
@@ -103,15 +104,16 @@ async function ready(options: Parameters<typeof world>[0] = {}) {
 }
 
 /**
- * Retire the optimistic submission of the previous send. The composer stays
- * busy until the Host's own user row lands, and the harness only produces one
- * when the turn runs — which is exactly what this reproduces.
+ * Retire the optimistic submission of the previous send the way the Host does:
+ * one turn runs and ends, and then the Chat slice lands the durable user row
+ * that replaces the browser's copy of the question.
  */
-function settle(built: ReturnType<typeof world>): void {
+function settle(built: ReturnType<typeof world>, text = "hello"): void {
   const face = built.faces.get("saved");
   if (face === undefined) return;
   face.source.set({ ...face.source.getSnapshot(), running: true });
   face.source.set({ ...face.source.getSnapshot(), running: false });
+  landDurableUserRow(built.bindings.get("saved"), text);
 }
 
 describe("QA session controller slash routing", () => {

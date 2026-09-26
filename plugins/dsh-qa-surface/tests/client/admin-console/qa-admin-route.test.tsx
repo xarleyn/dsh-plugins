@@ -249,9 +249,10 @@ describe("the surface that hosts the admin console", () => {
     await waitFor(() =>
       expect(window.location.pathname).toBe("/qa/admin/users"),
     );
-    expect(document.querySelector(".dsh-qa-admin")).toBeTruthy();
+    expect(screen.getByTestId("qa-admin-root")).toBeTruthy();
     // The chat surface is what the console used to fall back to.
-    expect(document.querySelector(".dsh-qa-surface")).toBeNull();
+    expect(screen.queryByTestId("qa-surface-root")).toBeNull();
+    expect(screen.queryByTestId("qa-surface-loading")).toBeNull();
     expect(
       await screen.findByRole("heading", { name: "Пользователи" }),
     ).toBeTruthy();
@@ -268,13 +269,23 @@ describe("the surface that hosts the admin console", () => {
         .getByRole("button", { name: "Очередь разбора" })
         .getAttribute("aria-current"),
     ).toBe("page");
-    expect(document.querySelector(".dsh-qa-admin")).toBeTruthy();
-    expect(document.querySelector(".dsh-qa-surface")).toBeNull();
+    expect(screen.getByTestId("qa-admin-root")).toBeTruthy();
+    // The class matched either half of the chat surface, so both stay out.
+    expect(screen.queryByTestId("qa-surface-root")).toBeNull();
+    expect(screen.queryByTestId("qa-surface-loading")).toBeNull();
   });
 
   it("leaves the chat surface in charge outside the console", async () => {
     render(<QaSurface {...surfaceAt("/qa")} />);
-    expect(document.querySelector(".dsh-qa-admin")).toBeNull();
-    expect(document.querySelector(".dsh-qa-surface")).toBeTruthy();
+    expect(screen.queryByTestId("qa-admin-root")).toBeNull();
+    // Neither half of the console is mounted: not the administrator's own
+    // screen, not the refusal the surface paints for everyone else.
+    expect(screen.queryByTestId("qa-surface-admin-denied")).toBeNull();
+    expect(
+      screen.queryByRole("navigation", {
+        name: "Разделы администрирования",
+      }),
+    ).toBeNull();
+    expect(screen.getByTestId("qa-surface-root")).toBeTruthy();
   });
 });

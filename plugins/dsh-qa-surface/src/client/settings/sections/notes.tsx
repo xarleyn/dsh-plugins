@@ -44,7 +44,8 @@ export function NotesSection(props: ConfigProps) {
     <Section
       title="Заметки модели"
       modified={modified}
-      aside={resetAside(props, paths)}
+      testId="qa-settings-notes"
+      aside={resetAside(props, paths, "qa-settings-notes-reset")}
     >
       <p className="qa-card-muted">
         Служебные сообщения, которые плагин дописывает в начало диалога
@@ -56,6 +57,7 @@ export function NotesSection(props: ConfigProps) {
         hint="Профиль, хэндлы и личные инструкции автора чата уходят в контекст. Работает только при включённых профилях (accounts → profile → inject)."
         checked={identity?.enabled ?? true}
         disabled={disabled}
+        testId="qa-settings-notes-identity-enabled"
         onChange={(checked) => {
           props.write(["notes", "identity", "enabled"], checked);
         }}
@@ -67,6 +69,7 @@ export function NotesSection(props: ConfigProps) {
         multiline
         rows={4}
         hint="Плейсхолдеры: {identity} — имя, email и хэндлы; {instructions} — личные инструкции пользователя. Пусто — встроенный текст."
+        testId="qa-settings-notes-identity-template"
         onChange={(value) => {
           props.write(["notes", "identity", "template"], value);
         }}
@@ -76,6 +79,7 @@ export function NotesSection(props: ConfigProps) {
         hint="Напоминание, что источники собираются автоматически из вызовов тулов и ручной список «Источники» в ответе не нужен."
         checked={sources?.enabled ?? true}
         disabled={disabled}
+        testId="qa-settings-notes-sources-enabled"
         onChange={(checked) => {
           props.write(["notes", "sources", "enabled"], checked);
         }}
@@ -87,6 +91,7 @@ export function NotesSection(props: ConfigProps) {
         multiline
         rows={4}
         hint="Пусто — встроенный текст."
+        testId="qa-settings-notes-sources-template"
         onChange={(value) => {
           props.write(["notes", "sources", "template"], value);
         }}
@@ -98,6 +103,7 @@ export function NotesSection(props: ConfigProps) {
         multiline
         rows={3}
         hint="Дописывается, когда у субагентов включён фолбэк отчёта (sources → subagents → enableReportToolFallback). Плейсхолдер {reportTool} — имя тула; без него используется встроенный текст."
+        testId="qa-settings-notes-sources-fallback-template"
         onChange={(value) => {
           props.write(["notes", "sources", "fallbackTemplate"], value);
         }}
@@ -107,6 +113,7 @@ export function NotesSection(props: ConfigProps) {
         hint="Просить модель называть фоновые субагенты коротким осмысленным именем в поле description — оно становится подписью в панели оператора."
         checked={delegation?.enabled ?? true}
         disabled={disabled}
+        testId="qa-settings-notes-delegation-enabled"
         onChange={(checked) => {
           props.write(["notes", "delegation", "enabled"], checked);
         }}
@@ -118,6 +125,7 @@ export function NotesSection(props: ConfigProps) {
         multiline
         rows={4}
         hint="Пусто — встроенный текст."
+        testId="qa-settings-notes-delegation-template"
         onChange={(value) => {
           props.write(["notes", "delegation", "template"], value);
         }}
@@ -127,6 +135,7 @@ export function NotesSection(props: ConfigProps) {
         hint="Напоминание читать приложенный документ Word или PDF конвейером документов (document_inspect, document_to_markdown), а не универсальным чтением файла: оно отказывает таким форматам как бинарным, и отказ читается как «файла нет»."
         checked={documents?.enabled ?? true}
         disabled={disabled}
+        testId="qa-settings-notes-documents-enabled"
         onChange={(checked) => {
           props.write(["notes", "documents", "enabled"], checked);
         }}
@@ -138,6 +147,7 @@ export function NotesSection(props: ConfigProps) {
         multiline
         rows={4}
         hint="Пусто — встроенный текст. Выключите заметку, если на стенде нет конвейера документов."
+        testId="qa-settings-notes-documents-template"
         onChange={(value) => {
           props.write(["notes", "documents", "template"], value);
         }}
@@ -147,6 +157,7 @@ export function NotesSection(props: ConfigProps) {
         hint="Напоминание отвечать из того источника, который владеет вопросом: вложения и документация раньше памяти. Срабатывает там, где скилл плагина памяти не активировался."
         checked={sourcePriority?.enabled ?? true}
         disabled={disabled}
+        testId="qa-settings-notes-source-priority-enabled"
         onChange={(checked) => {
           props.write(["notes", "sourcePriority", "enabled"], checked);
         }}
@@ -158,6 +169,7 @@ export function NotesSection(props: ConfigProps) {
         multiline
         rows={4}
         hint="Пусто — встроенный текст."
+        testId="qa-settings-notes-source-priority-template"
         onChange={(value) => {
           props.write(["notes", "sourcePriority", "template"], value);
         }}
@@ -167,7 +179,7 @@ export function NotesSection(props: ConfigProps) {
       delegation?.enabled === false &&
       documents?.enabled === false &&
       sourcePriority?.enabled === false ? (
-        <Notice tone="warn">
+        <Notice tone="warn" testId="qa-settings-notes-notice-all-off">
           Все заметки выключены: новые чаты не получат ни контекста о
           пользователе, ни правил источников, ни имён делегаций, ни
           маршрутизации документов, ни напоминания о приоритете источников.

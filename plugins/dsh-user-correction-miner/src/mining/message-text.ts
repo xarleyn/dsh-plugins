@@ -2,7 +2,6 @@ import type { ContentBlock, Message, UserMessage } from "@deepseek-ai/dsh-llm";
 
 function blockText(block: ContentBlock): string[] {
   if (block.type === "text") return [block.text];
-  if (block.type === "tool-result") return block.content.flatMap(blockText);
   return [];
 }
 

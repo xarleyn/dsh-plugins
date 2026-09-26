@@ -10,7 +10,7 @@
 
 `dsh-plugin-log-ui` — клиентский плагин-настройщик для
 [`@yadsh/dsh-plugin-log`](../../packages/plugin-log). Добавляет карточку
-**Plugin logging** в *Settings → Plugins → Plugin Configuration* и через
+**Plugin logging** табом на страницу *Settings → Plugins* и через
 Typert-сервис применяет политику логирования к уже зарегистрированным и новым
 консьюмерам `@yadsh/dsh-plugin-log`, а также панель **Plugin logs** —
 page-тип таба правого сайдбара DSH, показывающий записи вживую.
@@ -18,7 +18,9 @@ page-тип таба правого сайдбара DSH, показывающи
 ## 2. Обязательства
 
 - Runtime id: `dsh-plugin-log-ui`; npm package: `@yadsh/dsh-plugin-log-ui`.
-- Settings namespace: `plugin-log` (схема `ConfigSchema` в `src/config.ts`).
+- Settings namespace: id записи профиля `dsh-plugin-log-ui`; поле становится
+  редактируемым из браузера, только его узел схемы помечен `.volatile()`
+  (`ConfigSchema` в `src/config.ts`).
 - Cordis-сервис: `ctx.pluginLogUi` (`TypertRemoteService`, namespace
   `pluginLogUi`).
 - Тип таба: `kind: plugin-log`, `id: @yadsh/dsh-plugin-log-ui/panel`,
@@ -32,8 +34,13 @@ page-тип таба правого сайдбара DSH, показывающи
    (`text | json`).
 2. Изменения применяются через `setPluginLogLevel` / `setPluginLogFormat`;
    приложение действует и на уже запущенные логгеры, и на новые регистрации.
-3. Состояние хранится в settings-провайдере DSH под namespace `plugin-log`;
-   источник истины для схемы — `ConfigSchema`, резолв — `resolveConfig`.
+   Сервис перечитывает каждое поле через его живую ссылку в момент вызова, а
+   `inspect()` (опрос карточки раз в 2 с) сперва применяет политику — поэтому
+   правка, сделанная в браузере, доходит до логгеров за один опрос.
+3. Состояние — обычный volatile-Config профиля: Host публикует его под id
+   записи `dsh-plugin-log-ui`, отдельную settings-секцию больше никто не
+   регистрирует; источник истины для схемы — `ConfigSchema`, резолв —
+   `resolveConfig`.
 4. Файловое логирование и форматы описаны в
    [docs/PLUGIN_LOGGING.md](../../docs/PLUGIN_LOGGING.md); этот плагин не
    пишет логи сам, кроме собственного диагностического логгера

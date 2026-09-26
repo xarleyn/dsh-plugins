@@ -1,15 +1,15 @@
 {
   "deepseekHarness": {
     "channel": "next",
-    "range": ">=0.1.5-rc.2 <0.2.0",
-    "testedReleases": ["0.1.5-rc.2"],
+    "range": ">=0.1.7-rc.2 <0.2.0",
+    "testedReleases": ["0.1.7-rc.2"],
     "requiredClientFeatures": [
       "shell.overlay",
       "remote.session.selectModel",
       "remote.agentPresets.select",
       "uiConversation.binding",
       "sessions.binding",
-      "settingsScope",
+      "configForms",
       "settings.onboarding list-slot shadowing",
       "keyed child slots with owner props",
       "webServer.register",

@@ -7,7 +7,7 @@ import {
   fakeSession,
   harness,
   readEvents,
-} from "../provenance-host.helpers.js";
+} from "./provenance-host.helpers.js";
 
 describe("Host provenance lifecycle", () => {
   it("replays a previously materialized qa/sources snapshot", () => {

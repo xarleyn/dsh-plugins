@@ -372,6 +372,8 @@ Shell isolation is not guaranteed.
 
 Кроме tool-level enforcement, процессы должны видеть только выбранные части session workspace.
 
+Гарантия относится и к соседним процессам того же UID: hidden roots должны оставаться недоступными и через альтернативные пути к той же файловой системе (см. section 34), а не только через прямой path lookup.
+
 Первоначальная реализация:
 
 ```text
@@ -1416,6 +1418,27 @@ Conceptually:
 
 Конкретный argv должен строиться с учётом существующего DSH bwrap wrapper, а не отдельным параллельным subprocess implementation.
 
+## 34.1 Procfs — второй путь к тому же workspace
+
+Mount view скрывает workspace только по исходному mount-путю. Пока confined process делит PID namespace с хостом, любой процесс того же UID остаётся адресуемым изнутри sandbox как `/proc/<pid>`, а `/proc/<pid>/root` — это корень mount namespace его владельца, то есть исходный, не скрытый workspace. Читается ли он фактически, решают Yama (`kernel.yama.ptrace_scope`), `hidepid=` и dumpability процесса-мишени: на одном хосте путь закрыт, на другом открыт.
+
+Поэтому isolation относится к самому sandbox, а не к политике хоста. В isolated profile backend обязан:
+
+```text
+--unshare-pid
+--proc /proc
+```
+
+то есть увести confined process в собственный PID namespace и примонтировать procfs этого namespace. Тогда `/proc/<pid>` внешнего процесса внутри sandbox не существует, и альтернативного пути к скрытому workspace нет ни при каких настройках LSM.
+
+Флаг добавляется в argv, который собирает plugin (см. section 34), а не в профиль backend: распознавание профиля DSH (`isSupportedBwrapInvocation`) по-прежнему сравнивает argv, который возвращает provider. Capability probe гоняет ровно этот расширенный argv, поэтому хост, где PID namespace недоступен, отвечает `isolatedBackend: null`, а не обещает изоляцию, которую не обеспечивает.
+
+Что backend по-прежнему не обещает:
+
+- confinement не скрывает содержимое вне selected roots от процессов, которые сами работают вне sandbox;
+- read-only permission mode по-прежнему отображает весь остальной host filesystem (сужение видно только внутри session workspace);
+- confinement не защищает от чтения памяти confined process тем, кто уже имеет на это право вне sandbox.
+
 ---
 
 # 35. Isolated + permission modes
@@ -2078,6 +2101,35 @@ Expected:
 ```text
 success
 ```
+
+## 56.1 Fixture: видимость через procfs
+
+Отдельный Linux fixture (при наличии bwrap и работающего PID namespace) проверяет section 34.1, а не повторяет mount-проверку выше. В sandbox запускается один и тот же shell-пробник, которому передаются pid и argv-маркер внешнего процесса того же UID, живущего в исходном mount namespace:
+
+```text
+pidns=$(stat -Lc %i /proc/self/ns/pid)
+addressable=<есть ли /proc/<pid>/cmdline с маркером>
+hidden=<cat /proc/<pid>/root/workspace/b/hidden.txt>
+selected=<cat /workspace/a/visible.txt>
+```
+
+Baseline — профиль backend без отдельного PID namespace:
+
+```text
+pidns       = pidns хоста
+addressable = yes
+```
+
+Изолированный профиль (`confineIsolatedBwrap`):
+
+```text
+pidns       != pidns хоста
+addressable = no
+hidden      = unreachable
+selected    = visible
+```
+
+Сравниваются именно namespace и адресуемость процесса, а не факт чтения `hidden=` в baseline: чтение `/proc/<pid>/root` тому же UID разрешают или запрещают Yama, `hidepid=` и dumpability, то есть хост, а не backend. Fixture обязан работать и там, где путь закрыт политикой LSM, и фиксировать, что после изоляции пути нет независимо от хоста. `selected = visible` держит проверку от ложного прохождения: confined shell должен оставаться способным читать то, что ему разрешено.
 
 ---
 

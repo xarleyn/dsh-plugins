@@ -1,6 +1,10 @@
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { statusErrorOf, transportFailureOf } from "../kernel/errors.js";
-import { fetchWithRetries, readBoundedJson } from "../kernel/read-policy.js";
+import {
+  fetchWithRetries,
+  readBoundedJson,
+  type ResponseRead,
+} from "../kernel/read-policy.js";
 import {
   decodeCredentialFields,
   requireConfiguredEndpoint,
@@ -100,11 +104,13 @@ export class JiraTransport {
     path: string,
     query: JiraQuery = {},
   ): Promise<T> {
-    const response = await this.request(site, credential, path, query);
-    return readBoundedJson<T>(
-      response,
-      this.config.maxResponseBytes,
-      "Provider",
+    return this.request(site, credential, path, query, (response, signal) =>
+      readBoundedJson<T>(
+        response,
+        this.config.maxResponseBytes,
+        "Provider",
+        signal,
+      ),
     );
   }
 
@@ -117,26 +123,32 @@ export class JiraTransport {
     return url.toString();
   }
 
-  private async request(
+  private async request<T>(
     site: JiraSite,
     credential: JiraCredential,
     path: string,
     query: JiraQuery,
-  ): Promise<Response> {
+    read: ResponseRead<T>,
+  ): Promise<T> {
     const dialect = dialectOf(site);
-    return fetchWithRetries(this.fetcher, this.url(site, path, query), {
-      timeoutMs: this.config.timeoutMs,
-      retries: this.flags.retries,
-      headers: {
-        authorization: authorizationFor(dialect, credential),
-        accept: "application/json",
+    return fetchWithRetries(
+      this.fetcher,
+      this.url(site, path, query),
+      {
+        timeoutMs: this.config.timeoutMs,
+        retries: this.flags.retries,
+        headers: {
+          authorization: authorizationFor(dialect, credential),
+          accept: "application/json",
+        },
+        transportFailure,
+        // A transport fault is the one failure Jira retries to the end: the
+        // deadline is this deployment's own, so a request it already gave up on
+        // is not sent again, but an aborted connection is worth another try.
+        retriable: () => true,
+        statusFailure,
       },
-      transportFailure,
-      // A transport fault is the one failure Jira retries to the end: the
-      // deadline is this deployment's own, so a request it already gave up on
-      // is not sent again, but an aborted connection is worth another try.
-      retriable: () => true,
-      statusFailure,
-    });
+      read,
+    );
   }
 }

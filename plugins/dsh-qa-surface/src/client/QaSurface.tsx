@@ -46,6 +46,7 @@ import type {
   QaConversation,
   QaCreateSession,
   QaFileUpload,
+  QaQueueStatusRemote,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -58,6 +59,7 @@ import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { QaAuthGate } from "./components/QaAuthGate.js";
 import { QaApproval } from "./components/QaApproval.js";
 import { QaQuestions } from "./components/QaQuestions.js";
+import { QaRequestQueue } from "./components/QaRequestQueue.js";
 import { QaComposer } from "./components/QaComposer.js";
 import { QaQueueDock } from "./components/QaQueueDock.js";
 import { QaHeader, QaSubagentBanner } from "./components/QaHeader.js";
@@ -164,6 +166,11 @@ export interface QaSurfaceFace {
    * untouched.
    */
   readonly slashApi?: QaSlashApi;
+  /**
+   * The Host's live read of the request ceiling. Absent on a Host build that
+   * predates it: a deployment with no ceiling never asks, so nothing changes.
+   */
+  readonly queueStatus?: QaQueueStatusRemote;
   /**
    * Browser file-upload service, when the page serves the upload plugin.
    * Resolved per send so a page that loads it later still gets file support.
@@ -382,6 +389,9 @@ export function QaSurface(props: QaSurfaceProps) {
         ? {}
         : { questionApi: props.questionApi }),
       ...(props.slashApi === undefined ? {} : { slashApi: props.slashApi }),
+      ...(props.queueStatus === undefined
+        ? {}
+        : { queueStatus: props.queueStatus }),
       config,
       initialSubrole: selectedSubrole,
       adminPreview: previewing,
@@ -408,6 +418,7 @@ export function QaSurface(props: QaSurfaceProps) {
     props.fileUpload,
     props.approvalApi,
     props.questionApi,
+    props.queueStatus,
     props.secureSession,
     props.sourceApi,
     props.sessions,
@@ -600,6 +611,13 @@ export function QaSurface(props: QaSurfaceProps) {
       attachments: readonly QaAttachmentDraft[],
       pick: string | null,
     ) => controller?.send(text, attachments, pick) ?? Promise.resolve(false),
+    [controller],
+  );
+  // Closing the queue notice only uncovers the composer: the question the stand
+  // had no room for is still the text in there, and asking it again is a
+  // keystroke the visitor takes when a place frees up.
+  const dismissRequestQueue = useCallback(
+    () => controller?.dismissRequestQueueNotice(),
     [controller],
   );
   // Cheap refresh on every palette opening: the skill registry has no browser
@@ -987,6 +1005,7 @@ export function QaSurface(props: QaSurfaceProps) {
           {welcomeNotice}
           <main
             className={QA_SURFACE_CLASS}
+            data-testid="qa-surface-loading"
             aria-busy="true"
             aria-label={config.branding.title}
             tabIndex={-1}
@@ -1084,11 +1103,16 @@ export function QaSurface(props: QaSurfaceProps) {
   }
   if (adminRoute) {
     return (
-      <main className="dsh-qa-admin" aria-label="Администрирование QA">
+      <main
+        className="dsh-qa-admin"
+        data-testid="qa-surface-admin-denied"
+        aria-label="Администрирование QA"
+      >
         <div className="dsh-qa-admin__loading">
           <p>Этот раздел доступен только администратору.</p>
           <button
             type="button"
+            data-testid="qa-surface-admin-return"
             onClick={() =>
               window.history.pushState(null, "", config.route.path)
             }
@@ -1153,6 +1177,7 @@ export function QaSurface(props: QaSurfaceProps) {
       )}
       <main
         className={QA_SURFACE_CLASS}
+        data-testid="qa-surface-root"
         data-phase={state.phase}
         aria-label={config.branding.title}
         tabIndex={-1}
@@ -1210,7 +1235,7 @@ export function QaSurface(props: QaSurfaceProps) {
           }
           onClose={closeAudit}
         />
-        <div className="dsh-qa-body">
+        <div className="dsh-qa-body" data-testid="qa-surface-body">
           {state.viewingSubagent !== null && !config.ui.showHeader ? (
             <QaSubagentBanner onClose={handleCloseSubagent} />
           ) : null}
@@ -1295,10 +1320,14 @@ export function QaSurface(props: QaSurfaceProps) {
             />
           ) : null}
 
-          <div className="dsh-qa-workspace">
+          <div
+            className="dsh-qa-workspace"
+            data-testid="qa-surface-workspace-split"
+          >
             <div
               ref={chat}
               className="dsh-qa-chat"
+              data-testid="qa-surface-chat"
               style={
                 {
                   "--dsh-qa-content-width": `${config.ui.minContentWidth}px`,
@@ -1308,6 +1337,7 @@ export function QaSurface(props: QaSurfaceProps) {
               <div
                 ref={transcript}
                 className="dsh-qa-transcript"
+                data-testid="qa-surface-transcript"
                 onScroll={(event) => {
                   const element = event.currentTarget;
                   nearBottom.current = isNearBottom(element);
@@ -1327,6 +1357,7 @@ export function QaSurface(props: QaSurfaceProps) {
                   {empty ? (
                     <section
                       className="dsh-qa-welcome"
+                      data-testid="qa-surface-transcript-welcome"
                       aria-labelledby="dsh-qa-welcome-title"
                     >
                       <h2 id="dsh-qa-welcome-title">
@@ -1406,18 +1437,27 @@ export function QaSurface(props: QaSurfaceProps) {
                     </div>
                   )}
                   {state.compatibilityReadOnly === true ? (
-                    <div className="dsh-qa-compatibility" role="status">
+                    <div
+                      className="dsh-qa-compatibility"
+                      data-testid="qa-surface-compatibility"
+                      role="status"
+                    >
                       Этот чат создан при другой конфигурации стенда и открыт
                       только для чтения. История сохранена; чтобы продолжить
                       работу с текущими настройками, создайте новый чат.
                     </div>
                   ) : null}
                   {state.error === null ? null : (
-                    <div className="dsh-qa-error" role="alert">
+                    <div
+                      className="dsh-qa-error"
+                      data-testid="qa-surface-error"
+                      role="alert"
+                    >
                       <span>{state.error}</span>
                       {state.phase === "error" ? (
                         <button
                           type="button"
+                          data-testid="qa-surface-error-retry"
                           onClick={() => void controller?.ensureSession()}
                         >
                           Повторить
@@ -1428,7 +1468,7 @@ export function QaSurface(props: QaSurfaceProps) {
                 </div>
               </div>
 
-              <footer className="dsh-qa-footer">
+              <footer className="dsh-qa-footer" data-testid="qa-surface-footer">
                 <div className="dsh-qa-footer__inner">
                   <QaApproval
                     approvals={state.approvals}
@@ -1448,6 +1488,7 @@ export function QaSurface(props: QaSurfaceProps) {
                   hidden rather than unmounted. */}
                   <div
                     className="dsh-qa-composer-slot"
+                    data-testid="qa-surface-composer-slot"
                     hidden={state.questions.length > 0}
                   >
                     {/* Queued messages are not in the transcript yet, so this is
@@ -1527,6 +1568,10 @@ export function QaSurface(props: QaSurfaceProps) {
             onClose={rail.close}
           />
         ) : null}
+        <QaRequestQueue
+          status={state.requestQueue}
+          onClose={dismissRequestQueue}
+        />
       </main>
     </>
   );

@@ -19,8 +19,46 @@ import {
   type CaptureConfig,
 } from "./openviking/capture-utils.js";
 
-/** Producer tag every message this plugin injects carries. */
+/**
+ * The producer kind every message this plugin injects attributes itself to.
+ *
+ * Kept as a named export because it is the marker the upstream plugin wrote
+ * into its injected blocks (`docs/specs/fork.md`); since 0.1.7 it is also the
+ * only place this plugin's own context can be recognised.
+ */
 export const OPENVIKING_PLUGIN_SOURCE = "openviking-memory";
+
+/**
+ * This plugin's own producer source kind, declared the way the harness declares
+ * its own: the `@deepseek-ai/dsh-llm` source map is merge-extensible and ships
+ * no catch-all `plugin` kind, so every producer names itself here.
+ *
+ * `kind` says *who produced this*, `form` says *what kind of thing it is* — and
+ * this plugin only ever injects the profile it was told to keep, or memories it
+ * lifted out of earlier sessions.
+ */
+export interface OpenVikingMemoryMessageSource {
+  readonly kind: typeof OPENVIKING_PLUGIN_SOURCE;
+  readonly form: "instructions" | "recall";
+}
+
+declare module "@deepseek-ai/dsh-llm" {
+  interface MessageSourceMap {
+    "openviking-memory": OpenVikingMemoryMessageSource;
+  }
+}
+
+/**
+ * Producer kinds whose text is conversation.
+ *
+ * A user turn, an assistant answer and a tool result are things that happened
+ * in this chat. Everything else the (merge-extensible) map can carry — this
+ * plugin's recall blocks, another producer's injected context, a host notice,
+ * the `tool-registry` churn a `developer/message` brings — is model *input*,
+ * and mirroring it would launder synthetic text into memory as if a person had
+ * said it. So the list admits, and an unknown kind never reaches memory.
+ */
+const CAPTURED_SOURCE_KINDS = new Set(["user", "model", "tool"]);
 
 /** The subset of a session event the capture path reads. */
 export interface CaptureSessionEvent {
@@ -86,11 +124,12 @@ function captureMessage(
   config: CaptureConfig,
   toolNames: Map<string, string>,
 ): CapturePayload | null {
-  // Whitelist by source: plugin-injected user messages (this plugin's recall
-  // blocks, time-context snapshots, any other plugin's context) are model
-  // input, not human input — mirroring them would launder synthetic text
-  // into memory as if a person said it.
-  if (message.source?.kind === "plugin") return null;
+  // Whitelist by producer, not by a deny-list of injected kinds: the source map
+  // grows one producer at a time, and a kind this plugin has never heard of is
+  // not conversation either.
+  if (!CAPTURED_SOURCE_KINDS.has(String(message.source?.kind ?? ""))) {
+    return null;
+  }
   if (message.role === "assistant" && config.captureAssistantTurns === false) {
     return null;
   }
@@ -137,13 +176,7 @@ export function promptText(
   messages: readonly UserMessage[] | null | undefined,
 ): string {
   return (messages || [])
-    .filter(
-      (message) =>
-        !(
-          message?.source?.kind === "plugin" &&
-          message.source.plugin === OPENVIKING_PLUGIN_SOURCE
-        ),
-    )
+    .filter((message) => message?.source?.kind !== OPENVIKING_PLUGIN_SOURCE)
     .map((message) => extractTextFromPayload(message))
     .filter(Boolean)
     .join("\n\n")

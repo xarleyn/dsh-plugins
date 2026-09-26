@@ -64,10 +64,15 @@ export interface ProviderSectionProps {
 
 export function ProviderSection(props: ProviderSectionProps): ReactElement {
   const { form, provider } = props;
+  // The provider is the test id zone: every hook of this section is named
+  // `qa-integrations-<provider>-<part>`, so a test reaches a knob without
+  // reading the Russian caption that describes it.
+  const zone = `qa-integrations-${provider}`;
   const record = rawObject(form.config[provider]);
   const httpPath = props.http?.path ?? [provider, "allowInsecureHttp"];
   return (
     <Section
+      testId={zone}
       title={props.title}
       state={providerState(record, {
         enabled: true,
@@ -78,7 +83,7 @@ export function ProviderSection(props: ProviderSectionProps): ReactElement {
         counts: props.counts,
       })}
     >
-      <Group title="Провайдер">
+      <Group testId={`${zone}-provider`} title="Провайдер">
         {form.toggle(
           "Провайдер включён",
           [provider, "enabled"],
@@ -96,11 +101,15 @@ export function ProviderSection(props: ProviderSectionProps): ReactElement {
         )}
       </Group>
       {props.connection === undefined || props.connection === null ? null : (
-        <Group title="Подключение" wide>
+        <Group testId={`${zone}-connection`} title="Подключение" wide>
           {props.connection}
         </Group>
       )}
-      <Group title="Что доступно агенту" kind="checks">
+      <Group
+        testId={`${zone}-capabilities`}
+        title="Что доступно агенту"
+        kind="checks"
+      >
         {props.capabilities.map((cap) =>
           form.toggle(
             cap.label,
@@ -111,7 +120,7 @@ export function ProviderSection(props: ProviderSectionProps): ReactElement {
         )}
       </Group>
       {props.limits === undefined ? null : (
-        <LimitsGroup hint={props.limits.hint}>
+        <LimitsGroup testId={`${zone}-limits`} hint={props.limits.hint}>
           {props.limits.fields.map((field) => (
             <NumberField
               key={field.key}

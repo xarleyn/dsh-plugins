@@ -86,8 +86,7 @@ describe("promptText builds the recall query", () => {
         { type: "text", text: "OpenViking recall: deployment uses blue" },
       ],
       source: {
-        kind: "plugin",
-        plugin: OPENVIKING_PLUGIN_SOURCE,
+        kind: OPENVIKING_PLUGIN_SOURCE,
         form: "recall",
       },
     });
@@ -103,25 +102,25 @@ describe("promptText builds the recall query", () => {
     ).toBe("first");
   });
 
-  it("keeps another plugin's context, which is not this plugin retrieving itself", () => {
+  it("keeps another producer's context, which is not this plugin retrieving itself", () => {
     const own = createUserMessage({
       content: [
         { type: "text", text: "OpenViking recall: deployment uses blue" },
       ],
       source: {
-        kind: "plugin",
-        plugin: OPENVIKING_PLUGIN_SOURCE,
+        kind: OPENVIKING_PLUGIN_SOURCE,
         form: "recall",
       },
     });
     const other = createUserMessage({
       content: [{ type: "text", text: "background job completed" }],
+      // A foreign producer names its own kind, and this plugin cannot enumerate
+      // a merge-extensible map — so the query drops only what it wrote itself.
       source: {
-        kind: "plugin",
-        plugin: "job-controller",
+        kind: "job-controller",
         form: "notice",
         summary: "done",
-      },
+      } as unknown as Parameters<typeof createUserMessage>[0]["source"],
     });
 
     expect(

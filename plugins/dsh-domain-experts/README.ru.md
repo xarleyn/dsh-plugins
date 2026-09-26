@@ -90,9 +90,10 @@ dsh plugin --profile web add @yadsh/dsh-domain-experts
 
 ## Конфигурация
 
-Настройки плагина находятся в пространстве имён `domain-experts` и редактируются в
-`Settings → Plugins → Configurable` (или в `Settings → Plugins → Domain Experts` для
-самих доменов). Изменения применяются к последующим операциям.
+Настройки плагина — живые поля его собственной конфигурации профиля: форму для них
+выдаёт хост в `Settings → Plugins` для записи `dsh-domain-experts`. Вкладка
+`Domain Experts` служит самим доменам. Изменения применяются к последующим
+операциям.
 
 | Параметр | Тип | По умолчанию | Описание |
 | --- | --- | --- | --- |
@@ -152,7 +153,7 @@ dsh plugin --profile web add @yadsh/dsh-domain-experts
 
 ## Совместимость
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (протестировано на `0.1.5-rc.2`)
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (протестировано на `0.1.7-rc.2`)
 - Node `^22.19.0 || >=24.0.0`
 - Браузерная часть требует слота `settings.plugins.tab`
 

@@ -8,6 +8,7 @@
 
 import { readFileSync } from "node:fs";
 
+import type { Volatile } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 
 import {
@@ -129,6 +130,11 @@ const DEFAULT_CONFIG = Object.freeze({
  * "this is just the fallback". Four knobs work that way on purpose — see
  * `recallLimit`, `recallQueryExpansion`, `recallMaxTokens` and
  * `recallCompressMaxBullets`.
+ *
+ * This is the *value* shape. What the plugin is constructed with is
+ * {@link LiveConfig}, one live reference per knob, because every knob of the
+ * schema below is `.volatile()`; {@link snapshotConfig} turns one into this
+ * shape at the start of an operation.
  */
 export interface Config {
   /**
@@ -252,67 +258,160 @@ export interface Config {
   readonly mcpToolCallTimeoutMs?: number;
 }
 
-export const Config: z<Config> = z.object({
-  autoInject: z.boolean().default(true),
-  injectStartupProfile: z.boolean().default(true),
-  injectStepProfile: z.boolean().default(true),
-  autoRecall: z.boolean().default(true),
+/**
+ * Every knob is a live reference: on 0.1.7 a field is a settings-form field
+ * exactly when its schema node is `.volatile()`, and the Host then hands the
+ * plugin a stable reference whose value follows the settings document.
+ */
+export type LiveConfig = {
+  readonly [K in keyof Config]-?: Volatile<Config[K]>;
+};
 
-  endpoint: z.string().default(""),
-  apiKey: z.string().default(""),
-  account: z.string().default(""),
-  user: z.string().default(""),
-  peerId: z.string().default(""),
-  workspacePeer: z.boolean().default(true),
-  peerSource: z.string().default(""),
+/**
+ * Take one plain snapshot of a live config, for a single operation.
+ *
+ * `resolveConfig()` and everything built on it read ordinary values, so the
+ * volatile layer stops at this boundary. A knob that resolved to nothing is
+ * left out of the result rather than carried as an `undefined` property, which
+ * is what keeps the "the user named this knob" probes inside `resolveConfig()`
+ * working over a snapshot.
+ */
+export function snapshotConfig(
+  config: Config | LiveConfig | undefined,
+): Config {
+  if (config === undefined) return {};
+  const snapshot: Record<string, unknown> = {};
+  for (const [key, member] of Object.entries(
+    config as Record<string, unknown>,
+  )) {
+    const value = isVolatileRef(member) ? member.get() : member;
+    if (value !== undefined) snapshot[key] = value;
+  }
+  return snapshot as Config;
+}
 
-  recallPeerScope: z.union(RECALL_PEER_SCOPES).default("all"),
+/** Whether a resolved config member is a live reference. */
+function isVolatileRef(value: unknown): value is Volatile<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { get?: unknown }).get === "function"
+  );
+}
+
+export const Config: z<Config, LiveConfig> = z.object({
+  autoInject: z.boolean().default(true).volatile(),
+  injectStartupProfile: z.boolean().default(true).volatile(),
+  injectStepProfile: z.boolean().default(true).volatile(),
+  autoRecall: z.boolean().default(true).volatile(),
+
+  endpoint: z.string().default("").volatile(),
+  apiKey: z.string().default("").volatile(),
+  account: z.string().default("").volatile(),
+  user: z.string().default("").volatile(),
+  peerId: z.string().default("").volatile(),
+  workspacePeer: z.boolean().default(true).volatile(),
+  peerSource: z.string().default("").volatile(),
+
+  recallPeerScope: z.union(RECALL_PEER_SCOPES).default("all").volatile(),
   // No `.default()`: the runtime only sends `query_expansion` when the user
   // named it, and a materialized default would send it on every deployment.
-  recallQueryExpansion: z.union(RECALL_QUERY_EXPANSIONS),
-  recallTokenBudget: z.number().step(1).min(200).max(50000).default(2000),
-  recallMaxContentChars: z.number().step(1).min(100).max(5000).default(500),
-  recallPreferAbstract: z.boolean().default(true),
+  recallQueryExpansion: z.union(RECALL_QUERY_EXPANSIONS).volatile(),
+  recallTokenBudget: z
+    .number()
+    .step(1)
+    .min(200)
+    .max(50000)
+    .default(2000)
+    .volatile(),
+  recallMaxContentChars: z
+    .number()
+    .step(1)
+    .min(100)
+    .max(5000)
+    .default(500)
+    .volatile(),
+  recallPreferAbstract: z.boolean().default(true).volatile(),
   // No `.default()`: an explicit `recallLimit` switches the request from the
   // server's own quota ratios to the client's coding quota table.
-  recallLimit: z.number().step(1).min(1).max(50),
-  scoreThreshold: z.number().min(0).max(1).default(0.35),
-  minQueryLength: z.number().step(1).min(1).max(64).default(3),
-  profileTokenBudget: z.number().step(1).min(500).max(50000).default(10000),
-  recallRewrite: z.union(RECALL_REWRITE_MODES).default("off"),
-  recallDedupTurns: z.number().step(1).min(0).max(1000).default(5),
-  recallContextTimeoutMs: z.number().step(1).min(0).max(600000).default(0),
-  recallMaxTokens: z.number().step(1).min(64).max(1000000),
-  recallCompressMaxBullets: z.number().step(1).min(1).max(50),
+  recallLimit: z.number().step(1).min(1).max(50).volatile(),
+  scoreThreshold: z.number().min(0).max(1).default(0.35).volatile(),
+  minQueryLength: z.number().step(1).min(1).max(64).default(3).volatile(),
+  profileTokenBudget: z
+    .number()
+    .step(1)
+    .min(500)
+    .max(50000)
+    .default(10000)
+    .volatile(),
+  recallRewrite: z.union(RECALL_REWRITE_MODES).default("off").volatile(),
+  recallDedupTurns: z.number().step(1).min(0).max(1000).default(5).volatile(),
+  recallContextTimeoutMs: z
+    .number()
+    .step(1)
+    .min(0)
+    .max(600000)
+    .default(0)
+    .volatile(),
+  recallMaxTokens: z.number().step(1).min(64).max(1000000).volatile(),
+  recallCompressMaxBullets: z.number().step(1).min(1).max(50).volatile(),
 
   commitTokenThreshold: z
     .number()
     .step(1)
     .min(1000)
     .max(1000000)
-    .default(20000),
-  commitKeepRecentCount: z.number().step(1).min(0).max(1000).default(10),
+    .default(20000)
+    .volatile(),
+  commitKeepRecentCount: z
+    .number()
+    .step(1)
+    .min(0)
+    .max(1000)
+    .default(10)
+    .volatile(),
 
-  syncTurns: z.boolean().default(true),
-  captureToolResults: z.boolean().default(false),
-  captureMode: z.union(CAPTURE_MODES).default("semantic"),
-  captureMaxLength: z.number().step(1).min(200).max(100000).default(24000),
+  syncTurns: z.boolean().default(true).volatile(),
+  captureToolResults: z.boolean().default(false).volatile(),
+  captureMode: z.union(CAPTURE_MODES).default("semantic").volatile(),
+  captureMaxLength: z
+    .number()
+    .step(1)
+    .min(200)
+    .max(100000)
+    .default(24000)
+    .volatile(),
   captureToolMaxChars: z
     .number()
     .step(1)
     .min(200)
     .max(1000000)
-    .default(1000000),
-  captureAssistantTurns: z.boolean().default(true),
-  captureFilters: z.array(z.string()).default([]),
+    .default(1000000)
+    .volatile(),
+  captureAssistantTurns: z.boolean().default(true).volatile(),
+  // The ARRAY carries the volatility: a volatile node inside array items is
+  // rejected when the schema resolves.
+  captureFilters: z.array(z.string()).default([]).volatile(),
 
-  skipSubagentSessions: z.boolean().default(false),
+  skipSubagentSessions: z.boolean().default(false).volatile(),
 
-  qaUserScoping: z.boolean().default(true),
-  qaUserSettingsPath: z.string().default(""),
+  qaUserScoping: z.boolean().default(true).volatile(),
+  qaUserSettingsPath: z.string().default("").volatile(),
 
-  requestTimeoutMs: z.number().step(1).min(1000).max(120000).default(10000),
-  mcpToolCallTimeoutMs: z.number().step(1).min(1000).max(600000).default(60000),
+  requestTimeoutMs: z
+    .number()
+    .step(1)
+    .min(1000)
+    .max(120000)
+    .default(10000)
+    .volatile(),
+  mcpToolCallTimeoutMs: z
+    .number()
+    .step(1)
+    .min(1000)
+    .max(600000)
+    .default(60000)
+    .volatile(),
 });
 
 /**
@@ -381,9 +480,10 @@ type MutableResolvedConfig = {
  * Merge user config over credential files and environment overrides, then
  * normalize every value the way the upstream plugin does.
  *
- * The `hasOwnProperty` probes run against the *raw* config Cordis handed over,
- * so a knob the user never set keeps its upstream "not configured" meaning even
- * though `DEFAULT_CONFIG` supplies a usable value here.
+ * The `hasOwnProperty` probes run against the *raw* config — the plain object
+ * the caller passed, or the {@link snapshotConfig} of a live one, which leaves
+ * an unset knob absent — so a knob the user never set keeps its upstream "not
+ * configured" meaning even though `DEFAULT_CONFIG` supplies a usable value here.
  */
 export function resolveConfig(
   input: Config = {},

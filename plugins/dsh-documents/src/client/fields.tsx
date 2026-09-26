@@ -13,10 +13,12 @@ export function Section(props: {
   readonly title: string;
   readonly hint?: string;
   readonly reset?: ReactNode;
+  /** The stable hook a test reaches this section by, whatever its title says. */
+  readonly testId?: string;
   readonly children: ReactNode;
 }): ReactElement {
   return (
-    <section className="dsh-docs-section">
+    <section className="dsh-docs-section" data-testid={props.testId}>
       <div className="dsh-docs-section-title">
         <h3>{props.title}</h3>
         {props.reset ?? null}
@@ -38,6 +40,8 @@ export function Toggle(props: {
   readonly hint?: string;
   readonly checked: boolean;
   readonly disabled?: boolean;
+  /** The stable hook a test reaches this switch by, whatever its label says. */
+  readonly testId?: string;
   readonly onChange: (value: boolean) => void;
 }): ReactElement {
   return (
@@ -49,6 +53,7 @@ export function Toggle(props: {
       <input
         type="checkbox"
         className="dsh-docs-toggle"
+        data-testid={props.testId}
         checked={props.checked}
         disabled={props.disabled ?? false}
         onChange={(event: ChangeEvent<HTMLInputElement>) => {
@@ -65,6 +70,8 @@ export function TextField(props: {
   readonly hint?: string;
   readonly placeholder?: string;
   readonly disabled?: boolean;
+  /** The stable hook a test reaches this control by, whatever its label says. */
+  readonly testId?: string;
   readonly onCommit: (value: string) => void;
 }): ReactElement {
   return (
@@ -73,6 +80,7 @@ export function TextField(props: {
       <input
         type="text"
         className="dsh-docs-control"
+        data-testid={props.testId}
         value={props.value}
         placeholder={props.placeholder ?? ""}
         disabled={props.disabled ?? false}
@@ -94,6 +102,8 @@ export function NumberField(props: {
   readonly max?: number;
   readonly hint?: string;
   readonly disabled?: boolean;
+  /** The stable hook a test reaches this control by, whatever its label says. */
+  readonly testId?: string;
   readonly onCommit: (value: number) => void;
 }): ReactElement {
   return (
@@ -102,6 +112,7 @@ export function NumberField(props: {
       <input
         type="number"
         className="dsh-docs-control"
+        data-testid={props.testId}
         value={String(props.value)}
         min={props.min}
         max={props.max}
@@ -124,6 +135,8 @@ export function SelectField<T extends string>(props: {
   readonly options: readonly { readonly value: T; readonly label: string }[];
   readonly hint?: string;
   readonly disabled?: boolean;
+  /** The stable hook a test reaches this control by, whatever its label says. */
+  readonly testId?: string;
   readonly onCommit: (value: T) => void;
 }): ReactElement {
   return (
@@ -131,6 +144,7 @@ export function SelectField<T extends string>(props: {
       <span>{props.label}</span>
       <select
         className="dsh-docs-control"
+        data-testid={props.testId}
         value={props.value}
         disabled={props.disabled ?? false}
         onChange={(event: ChangeEvent<HTMLSelectElement>) => {
@@ -152,6 +166,8 @@ export function SelectField<T extends string>(props: {
 
 export function Notice(props: {
   readonly tone?: "info" | "warn";
+  /** The stable hook a test reaches this note by, whatever it warns about. */
+  readonly testId?: string;
   readonly children: ReactNode;
 }): ReactElement {
   return (
@@ -159,6 +175,7 @@ export function Notice(props: {
       className={
         props.tone === "warn" ? "dsh-docs-notice warn" : "dsh-docs-notice"
       }
+      data-testid={props.testId}
     >
       {props.children}
     </div>

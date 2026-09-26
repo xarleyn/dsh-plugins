@@ -131,6 +131,14 @@ jobs:
           NX_PROJECT: ${{ matrix.project }}
         run: pnpm nx run-many -t lint typecheck test build verify --projects="$NX_PROJECT" --output-style=static
 
+      # The budget gate in `prepare` runs on a checkout with no build output, so
+      # there its generated-bundle band measures nothing. This project has just
+      # been built, so its bundles exist on disk and the runaway tripwire — the
+      # one that catches a client bundle that swallowed a dependency tree — has
+      # to be pulled here rather than trusted to whoever built locally.
+      - name: Check built bundle size budget
+        run: pnpm check:files
+
       - name: Verify project tarball
         if: matrix.publishable
         env:

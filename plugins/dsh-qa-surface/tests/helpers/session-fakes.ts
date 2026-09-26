@@ -1,5 +1,9 @@
 import { vi, type Mock } from "vitest";
-import type { ConversationSnapshot } from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type {
+  ConversationNode,
+  ConversationSnapshot,
+} from "@deepseek-ai/dsh-client-ui-conversation/client";
+import { legacy, snapshot as chatView } from "./conversation-fakes.js";
 import type {
   SessionFace,
   SessionListState,
@@ -26,22 +30,36 @@ export class Source<T> {
 export function conversation(_id: string): ConversationSnapshot {
   // No Chat view is registered in tests, so the transcript projects empty.
   return {
-    views: { get: () => undefined },
+    views: { get: () => undefined, grouped: () => undefined },
     activeTargets: new Set(),
   };
 }
 
 /**
- * The session snapshot a test drives. The queue half is the Host's own shape
- * kept loose, so a test sets rows the way the Host frame delivers them.
+ * The session snapshot a test drives. The queue rows are not part of it at
+ * `rc.2`: pending input rides the session's Inbox projection, which a test sets
+ * through {@link sessionFace}'s `inbox` source.
  */
 export interface FakeSessionSnapshot {
   running: boolean;
   openState: string;
   blank: boolean;
   removed: boolean;
-  queue: readonly Record<string, unknown>[];
   pendingSubmissions: readonly Record<string, unknown>[];
+}
+
+/** One queued message of the Inbox projection, as the Host publishes it. */
+export function queuedMessage(
+  id: string,
+  content: readonly Record<string, unknown>[],
+  rpcId?: string,
+): Record<string, unknown> {
+  return {
+    id,
+    role: "user",
+    content,
+    source: { kind: "user", ...(rpcId === undefined ? {} : { rpcId }) },
+  };
 }
 
 export function sessionFace(id: string) {
@@ -50,8 +68,11 @@ export function sessionFace(id: string) {
     openState: "open",
     blank: true,
     removed: false,
-    queue: [],
     pendingSubmissions: [],
+  });
+  // The Host's Inbox projection: the messages waiting for the next turn.
+  const inbox = new Source<Record<string, unknown> | undefined>({
+    "next-turn": [],
   });
   const prompt = vi.fn(async () => ({
     ok: true as const,
@@ -79,7 +100,10 @@ export function sessionFace(id: string) {
   }));
   const face = {
     sessionId: id as SessionId,
-    projections: { faceOf: vi.fn() },
+    projections: {
+      faceOf: (key: string) =>
+        key === "inbox" ? inbox : new Source(undefined),
+    },
     getSnapshot: source.getSnapshot,
     subscribe: source.subscribe,
     prompt,
@@ -87,7 +111,7 @@ export function sessionFace(id: string) {
     updateQueue,
     beginSubmission,
   } as unknown as SessionFace;
-  return { face, source, prompt, cancel, updateQueue, beginSubmission };
+  return { face, source, inbox, prompt, cancel, updateQueue, beginSubmission };
 }
 
 export function conversationBinding(id: string) {
@@ -96,6 +120,44 @@ export function conversationBinding(id: string) {
     // Subscribing the Chat target activates it; tests never register one.
     target: vi.fn(() => new Source(undefined)),
   };
+}
+
+/**
+ * Replace the Chat slice the bound surface projects and notify it, the way the
+ * Host publishes one assembled transcript frame.
+ */
+export function publishChatSlice(
+  binding: ReturnType<typeof conversationBinding> | undefined,
+  slice: ReturnType<typeof legacy>,
+): void {
+  if (binding === undefined) return;
+  binding.snapshot.set(chatView(slice));
+  binding.target.mock.results[0]?.value.set(undefined);
+}
+
+/**
+ * Land one durable user row in the Chat slice: the hand the Host makes when
+ * the prompt it admitted reaches the transcript, which is what replaces the
+ * browser's optimistic copy of the question.
+ */
+export function landDurableUserRow(
+  binding: ReturnType<typeof conversationBinding> | undefined,
+  text: string,
+): void {
+  publishChatSlice(
+    binding,
+    legacy({
+      nodes: [
+        {
+          kind: "user",
+          seq: 1,
+          time: 10,
+          source: {},
+          content: [{ type: "text", text }],
+        },
+      ] as ConversationNode[],
+    }),
+  );
 }
 
 /** One controller world: the fake injects plus the handles tests assert on. */
@@ -111,7 +173,7 @@ export interface QaSessionTestWorld {
   create: Mock;
   createSession: Mock;
   selectAgentPreset: Mock;
-  open: Mock;
+  retain: Mock;
   list: Source<SessionListState>;
   secureSession: Mock;
 }
@@ -177,16 +239,18 @@ export function harness(
     byId: Object.fromEntries(
       listed.map((id) => [id, summaryOf(id)]),
     ) as SessionListState["byId"],
-    current: undefined,
     phase: "ready",
-    subagentsByParent: {},
-    jobsBySession: {},
-    currentAddress: undefined,
+    projectionsBySession: {},
   });
-  const open = vi.fn();
+  // `rc.2` has no Host navigation: binding a chat means retaining it, and the
+  // reference is what a test proves the controller holds and releases.
+  const retain = vi.fn(() => ({
+    ready: Promise.resolve({}),
+    release: vi.fn(),
+  }));
   const sessions = {
     list,
-    open,
+    retain,
     binding: (id: never) => {
       const found = bindings.get(String(id));
       return found === undefined
@@ -267,7 +331,7 @@ export function harness(
     create,
     createSession,
     selectAgentPreset,
-    open,
+    retain,
     list,
     secureSession,
   };

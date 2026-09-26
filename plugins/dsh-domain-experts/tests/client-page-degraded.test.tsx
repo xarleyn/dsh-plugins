@@ -32,13 +32,25 @@ describe("client page: degraded configuration", () => {
           }),
         ),
     });
-    fireEvent.click(await screen.findByText("Payments"));
-    expect(await screen.findByText(/Degraded configuration/u)).toBeTruthy();
-    expect(screen.getByText("SCOPE_PROVIDER_MISSING")).toBeTruthy();
+    fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
     expect(
-      screen.getByText(/no provider with that id is registered/u),
-    ).toBeTruthy();
-    expect(screen.getByText("no")).toBeTruthy();
+      (await screen.findByTestId("domain-experts-inspector-degraded-title"))
+        .textContent,
+    ).toContain("Degraded configuration");
+    const degradation = screen.getByTestId(
+      "domain-experts-inspector-degradation",
+    );
+    expect(
+      screen.getByTestId("domain-experts-inspector-degradation-code")
+        .textContent,
+    ).toBe("SCOPE_PROVIDER_MISSING");
+    expect(degradation.textContent).toContain(
+      "no provider with that id is registered",
+    );
+    expect(
+      screen.getByTestId("domain-experts-inspector-provider-registered")
+        .textContent,
+    ).toBe("no");
   });
 
   it("surfaces a refused scope resolution instead of rendering an empty inspector", async () => {
@@ -50,9 +62,10 @@ describe("client page: degraded configuration", () => {
           message: "domain is disabled",
         }),
     });
-    fireEvent.click(await screen.findByText("Payments"));
+    fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
     expect(
-      await screen.findByText(/DOMAIN_DISABLED: domain is disabled/u),
-    ).toBeTruthy();
+      (await screen.findByTestId("domain-experts-editor-profile-error"))
+        .textContent,
+    ).toContain("DOMAIN_DISABLED: domain is disabled");
   });
 });

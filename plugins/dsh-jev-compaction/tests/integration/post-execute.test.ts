@@ -9,6 +9,7 @@
 
 import { describe, expect, it } from "vitest";
 
+import { createMessage } from "@deepseek-ai/dsh-llm";
 import type {
   ArchivedToolResult,
   OriginalResultArchive,
@@ -232,7 +233,11 @@ describe("tools/post-execute composition", () => {
   it("keeps additionalContexts the downstream decision carried", async () => {
     const { listener } = buildHarness();
     const context = [
-      { role: "user", content: [{ type: "text", text: "note" }] },
+      createMessage({
+        role: "user",
+        content: [{ type: "text", text: "note" }],
+        source: { kind: "user" },
+      }),
     ];
     const decision = (await listener(
       exec(),
@@ -241,7 +246,7 @@ describe("tools/post-execute composition", () => {
         Promise.resolve({
           kind: "accept",
           additionalContexts: context,
-        } as PostToolDecision),
+        } satisfies PostToolDecision),
     )) as { additionalContexts?: unknown };
     expect(decision.additionalContexts).toBe(context);
   });

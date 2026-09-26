@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { QaConversationReviewInput } from "../../../src/types.js";
 import {
@@ -13,40 +13,51 @@ describe("admin console", () => {
     renderConsole(adminApi());
     expect(await screen.findByRole("heading", { name: "Обзор" })).toBeTruthy();
     expect(
-      await screen.findByText((content) =>
-        content.includes("негативных оценок без разбора"),
-      ),
-    ).toBeTruthy();
+      (await screen.findByTestId("qa-admin-overview-alert")).textContent,
+    ).toContain("негативных оценок без разбора");
     // The positive-share metric is a plain percentage on its own row.
-    expect(screen.getByText("33%")).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-admin-metric-positive-value").textContent,
+    ).toBe("33%");
   });
 
   it("lists conversations and opens one on its own route", async () => {
     const api = adminApi();
     renderConsole(api, "/qa/admin/conversations");
-    expect(await screen.findByText("Отчёт по релизу")).toBeTruthy();
-    fireEvent.click(screen.getByText("Открыть"));
+    expect(
+      await screen.findByTestId("qa-admin-conversations-row"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-admin-conversations-cell-title").textContent,
+    ).toContain("Отчёт по релизу");
+    fireEvent.click(screen.getByTestId("qa-admin-conversations-open"));
     await waitFor(() =>
       expect(window.location.pathname).toBe(
         "/qa/admin/conversations/session-alice",
       ),
     );
-    expect(await screen.findByText("Сделай отчёт по релизу")).toBeTruthy();
-    expect(screen.getByText("Готово")).toBeTruthy();
+    const texts = await screen.findAllByTestId("qa-admin-message-text");
+    expect(texts[0]?.textContent).toBe("Сделай отчёт по релизу");
+    expect(texts[1]?.textContent).toBe("Готово");
     // The reviewer sees what the agent could use at the time: the frozen
     // capability snapshot, and the skills the model actually loaded.
-    expect(screen.getAllByText(/release-notes/u).length).toBeGreaterThan(0);
+    expect(
+      screen.getByTestId("qa-admin-conversation-loaded-skills").textContent,
+    ).toContain("release-notes");
     // Tool calls stay collapsed until asked for.
-    expect(screen.queryByText('{"repository":"api"}')).toBeNull();
-    fireEvent.click(screen.getByText(/вызовы инструментов/u));
-    expect(screen.getByText('{"repository":"api"}')).toBeTruthy();
+    const tools = within(screen.getByTestId("qa-admin-message-tools"));
+    expect(tools.queryByTestId("qa-admin-message-tool-args")).toBeNull();
+    fireEvent.click(screen.getByTestId("qa-admin-message-tools-toggle"));
+    expect(tools.getByTestId("qa-admin-message-tool-args").textContent).toBe(
+      '{"repository":"api"}',
+    );
   });
 
   it("keeps the section out of reach for a role that may not open it", async () => {
     renderConsole(adminApi(), "/qa/admin", "reviewer");
     expect(await screen.findByRole("heading", { name: "Обзор" })).toBeTruthy();
     // Access administration is not a reviewer's business.
-    expect(screen.queryByText("Общие возможности")).toBeNull();
+    expect(screen.queryByTestId("qa-admin-nav-common")).toBeNull();
   });
 
   it("classifies a conversation and sends it to the review queue", async () => {
@@ -63,8 +74,10 @@ describe("admin console", () => {
     );
     const api = adminApi({ saveReview });
     renderConsole(api, "/qa/admin/conversations/session-alice/3");
-    fireEvent.click(await screen.findByText("Неверный ответ"));
-    fireEvent.click(screen.getByText("Сохранить разбор"));
+    const issues = within(await screen.findByTestId("qa-admin-review-issues"));
+    // The option is still ticked through the name a screen reader reads.
+    fireEvent.click(issues.getByRole("checkbox", { name: "Неверный ответ" }));
+    fireEvent.click(screen.getByTestId("qa-admin-review-save"));
     await waitFor(() => expect(saveReview).toHaveBeenCalledTimes(1));
     expect(saveReview.mock.calls[0]?.[1]).toMatchObject({
       conversationId: "session-alice",
@@ -78,8 +91,15 @@ describe("admin console", () => {
     expect(
       await screen.findByRole("heading", { name: "Очередь разбора" }),
     ).toBeTruthy();
-    expect(screen.getByText("Высокий")).toBeTruthy();
-    expect(screen.getByText("Негативная оценка")).toBeTruthy();
+    expect(
+      await screen.findByTestId("qa-admin-review-queue-item"),
+    ).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-admin-review-queue-priority").textContent,
+    ).toBe("Высокий");
+    expect(screen.getByTestId("qa-admin-review-queue-reason").textContent).toBe(
+      "Негативная оценка",
+    );
   });
 
   it("renders an unreadable transcript as a stated reason", async () => {
@@ -98,7 +118,8 @@ describe("admin console", () => {
     });
     renderConsole(api, "/qa/admin/conversations/session-alice");
     expect(
-      await screen.findByText(/Журнал разговора не читается/u),
-    ).toBeTruthy();
+      (await screen.findByTestId("qa-admin-conversation-transcript-error"))
+        .textContent,
+    ).toContain("Журнал разговора не читается");
   });
 });

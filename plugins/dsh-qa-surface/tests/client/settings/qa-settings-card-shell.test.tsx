@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it } from "vitest";
-import { cleanup, screen, waitFor, within } from "@testing-library/react";
+import { cleanup, screen, waitFor } from "@testing-library/react";
 
 import { resolveConfig } from "../../../src/resolve-config.js";
 import {
   openCard,
   renderCard,
   section,
+  sectionHeading,
   settle,
 } from "./qa-settings-card.helpers.js";
 
@@ -41,20 +42,21 @@ describe("QA Surface card", () => {
   it("opens into every configuration section", async () => {
     await renderCard();
     openCard();
-    for (const title of [
-      "Состояние",
-      "Доступ и маршрут",
-      "Оформление",
-      "Сессия",
-      "Интерфейс",
-      "Блокировка",
-      "Слеш-действия",
-      "Аккаунты",
-      "Источники",
-      "Вложения",
-      "Встраивание",
-    ]) {
-      expect(section(title)).toBeTruthy();
+    const sections: ReadonlyArray<readonly [string, string]> = [
+      ["qa-settings-status", "Состояние"],
+      ["qa-settings-access", "Доступ и маршрут"],
+      ["qa-settings-branding", "Оформление"],
+      ["qa-settings-session", "Сессия"],
+      ["qa-settings-interface", "Интерфейс"],
+      ["qa-settings-lockdown", "Блокировка"],
+      ["qa-settings-slash", "Слеш-действия"],
+      ["qa-settings-accounts", "Аккаунты"],
+      ["qa-settings-sources", "Источники"],
+      ["qa-settings-attachments", "Вложения"],
+      ["qa-settings-embedding", "Встраивание"],
+    ];
+    for (const [testId, title] of sections) {
+      expect(sectionHeading(testId, title)).toBeTruthy();
     }
     expect(
       screen.getByRole("button", { name: /Скрыть настройки/u }),
@@ -65,12 +67,18 @@ describe("QA Surface card", () => {
     await renderCard();
     openCard();
     await waitFor(() => {
-      expect(within(section("Состояние")).getByText("/assistant")).toBeTruthy();
+      expect(
+        screen.getByTestId("qa-settings-status-route").textContent,
+      ).toContain("/assistant");
     });
-    const status = section("Состояние");
-    expect(within(status).getByText("включены")).toBeTruthy();
-    expect(within(status).getByText("только чтение")).toBeTruthy();
-    expect(within(status).queryByText("выключены")).toBeNull();
+    const status = section("qa-settings-status");
+    expect(
+      screen.getByTestId("qa-settings-status-accounts").textContent,
+    ).toContain("включены");
+    expect(
+      screen.getByTestId("qa-settings-status-lockdown").textContent,
+    ).toContain("только чтение");
+    expect(status.textContent).not.toContain("выключены");
   });
 
   it("says so when the Host has not answered yet", async () => {
@@ -79,9 +87,13 @@ describe("QA Surface card", () => {
     });
     openCard();
     await waitFor(() => {
-      expect(screen.getByText(/Хост ещё не ответил/u)).toBeTruthy();
+      expect(
+        screen.getByTestId("qa-settings-status-notice-host-silent").textContent,
+      ).toMatch(/Хост ещё не ответил/u);
     });
-    expect(screen.getByText("нет связи")).toBeTruthy();
+    expect(screen.getByTestId("qa-settings-host-error").textContent).toBe(
+      "нет связи",
+    );
   });
 
   it("shows the question seam and warns when its tool is not allowed", async () => {
@@ -98,16 +110,14 @@ describe("QA Surface card", () => {
     openCard();
     await waitFor(() => {
       expect(
-        within(section("Состояние")).getByText("формой в чате"),
-      ).toBeTruthy();
+        screen.getByTestId("qa-settings-status-questions").textContent,
+      ).toContain("формой в чате");
     });
     // The seam is on, and nothing can ever ask: the status view names the half
     // that is missing instead of leaving a toggle that does nothing.
     expect(
-      within(section("Состояние")).getByText(
-        /не входит в список\s+разрешённых/u,
-      ),
-    ).toBeTruthy();
+      screen.getByTestId("qa-settings-status-notice-tool-missing").textContent,
+    ).toMatch(/не входит в список\s+разрешённых/u);
   });
 
   it("warns when the question tool is allowed but questions are refused", async () => {
@@ -124,12 +134,12 @@ describe("QA Surface card", () => {
     openCard();
     await waitFor(() => {
       expect(
-        within(section("Состояние")).getByText("отклоняются"),
-      ).toBeTruthy();
+        screen.getByTestId("qa-settings-status-questions").textContent,
+      ).toContain("отклоняются");
     });
     expect(
-      within(section("Состояние")).getByText(/каждый\s+запрос модели/u),
-    ).toBeTruthy();
+      screen.getByTestId("qa-settings-status-notice-tool-refused").textContent,
+    ).toMatch(/каждый\s+запрос модели/u);
   });
 
   it("stays quiet while the question seam and the tool policy agree", async () => {
@@ -146,11 +156,11 @@ describe("QA Surface card", () => {
     openCard();
     await waitFor(() => {
       expect(
-        within(section("Состояние")).getByText("формой в чате"),
-      ).toBeTruthy();
+        screen.getByTestId("qa-settings-status-questions").textContent,
+      ).toContain("формой в чате");
     });
-    expect(
-      within(section("Состояние")).queryByText(/ask_user_question/u),
-    ).toBeNull();
+    expect(section("qa-settings-status").textContent).not.toContain(
+      "ask_user_question",
+    );
   });
 });

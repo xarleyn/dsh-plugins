@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { promisify } from "node:util";
 import { DocImpactEngine } from "../src/engine/runtime.js";
 import { createWorkspaceConfigSource } from "../src/dsh/config-source.js";
-import { resolvePluginConfig } from "../src/dsh/plugin-config.js";
+import { readLiveConfig } from "../src/dsh/plugin-config.js";
 import { registerLifecycle } from "../src/dsh/lifecycle.js";
 import { createDocImpactCommand } from "../src/dsh/commands.js";
 import type { ImpactRule } from "../src/index.js";
@@ -66,9 +66,7 @@ async function makeRepo(): Promise<string> {
 
 async function makeHarness(userDirtyDoc = false): Promise<Harness> {
   const cwd = await makeRepo();
-  const source = createWorkspaceConfigSource(() =>
-    resolvePluginConfig(undefined),
-  );
+  const source = createWorkspaceConfigSource(() => readLiveConfig());
 
   const engine = new DocImpactEngine({
     configProvider: (path) => source(path),

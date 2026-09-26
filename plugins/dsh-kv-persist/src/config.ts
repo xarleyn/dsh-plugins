@@ -52,6 +52,12 @@ export interface KvPersistConfig {
     readonly onSessionFlush?: boolean;
     /** Save dirty state after this many idle milliseconds; 0 disables. Default: 30000. */
     readonly idleMs?: number;
+    /**
+     * How long disposal waits for the final checkpoint before unloading
+     * anyway; the checkpoint itself is never aborted (SPEC §58, §59).
+     * Default: 5000.
+     */
+    readonly shutdownGraceMs?: number;
     /** Checkpoint after every completed user turn. Default: false. */
     readonly onTurnEnd?: boolean;
     /** Reserved for future per-step checkpoints. Default: false. */
@@ -105,6 +111,7 @@ export interface ResolvedKvPersistConfig {
     readonly onShutdown: boolean;
     readonly onSessionFlush: boolean;
     readonly idleMs: number;
+    readonly shutdownGraceMs: number;
     readonly onTurnEnd: boolean;
     readonly onStepEnd: boolean;
   };
@@ -131,6 +138,7 @@ export const KV_PERSIST_DEFAULTS = {
   onShutdown: true,
   onSessionFlush: true,
   idleMs: 30_000,
+  shutdownGraceMs: 5_000,
   onTurnEnd: false,
   onStepEnd: false,
   restoreEnabled: true,
@@ -243,6 +251,11 @@ export function resolveKvPersistConfig(
         KV_PERSIST_DEFAULTS.idleMs,
         0,
       ),
+      shutdownGraceMs: requirePositiveMs(
+        "checkpoint.shutdownGraceMs",
+        input.checkpoint?.shutdownGraceMs,
+        KV_PERSIST_DEFAULTS.shutdownGraceMs,
+      ),
       onTurnEnd: input.checkpoint?.onTurnEnd ?? KV_PERSIST_DEFAULTS.onTurnEnd,
       onStepEnd: input.checkpoint?.onStepEnd ?? KV_PERSIST_DEFAULTS.onStepEnd,
     },
@@ -313,6 +326,7 @@ export const KvPersistConfigSchema = z.object({
       onShutdown: z.boolean().default(KV_PERSIST_DEFAULTS.onShutdown),
       onSessionFlush: z.boolean().default(KV_PERSIST_DEFAULTS.onSessionFlush),
       idleMs: z.number().default(KV_PERSIST_DEFAULTS.idleMs),
+      shutdownGraceMs: z.number().default(KV_PERSIST_DEFAULTS.shutdownGraceMs),
       onTurnEnd: z.boolean().default(KV_PERSIST_DEFAULTS.onTurnEnd),
       onStepEnd: z.boolean().default(KV_PERSIST_DEFAULTS.onStepEnd),
     })
@@ -321,6 +335,7 @@ export const KvPersistConfigSchema = z.object({
       onShutdown: KV_PERSIST_DEFAULTS.onShutdown,
       onSessionFlush: KV_PERSIST_DEFAULTS.onSessionFlush,
       idleMs: KV_PERSIST_DEFAULTS.idleMs,
+      shutdownGraceMs: KV_PERSIST_DEFAULTS.shutdownGraceMs,
       onTurnEnd: KV_PERSIST_DEFAULTS.onTurnEnd,
       onStepEnd: KV_PERSIST_DEFAULTS.onStepEnd,
     }),
