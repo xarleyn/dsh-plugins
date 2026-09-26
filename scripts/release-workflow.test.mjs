@@ -46,7 +46,25 @@ const npmCli = path.join(
   "bin",
   "npm-cli.js",
 );
-const pnpmCli = process.env.npm_execpath;
+// `npm_execpath` называет точку входа pnpm, когда скрипт запущен через corepack.
+// Standalone-сборка pnpm на Windows подставляет туда свой `pnpm.exe`, и
+// `node <exe>` отвечает «SyntaxError: Invalid or unexpected token» — тогда точка
+// входа берётся из corepack рядом с node, как это выше сделано для npm.
+const pnpmEntryFromEnv = /\.(?:js|cjs|mjs)$/u.test(
+  process.env.npm_execpath ?? "",
+)
+  ? process.env.npm_execpath
+  : null;
+const pnpmCorepackEntry = path.join(
+  path.dirname(process.execPath),
+  "node_modules",
+  "corepack",
+  "dist",
+  "pnpm.js",
+);
+const pnpmCli =
+  pnpmEntryFromEnv ??
+  (existsSync(pnpmCorepackEntry) ? pnpmCorepackEntry : null);
 
 function run(command, args, cwd, options = {}) {
   const env = {
@@ -479,7 +497,7 @@ describe("Nx release commands", () => {
     const tarballs = path.join(root, "tarballs");
     mkdirSync(tarballs);
     const packageRoot = path.join(root, "packages", "release-package");
-    assert.ok(pnpmCli, "npm_execpath must identify the pnpm CLI");
+    assert.ok(pnpmCli, "the pnpm CLI entry point must be resolvable");
     const pack = run(
       process.execPath,
       [pnpmCli, "--dir", packageRoot, "pack", "--pack-destination", tarballs],
