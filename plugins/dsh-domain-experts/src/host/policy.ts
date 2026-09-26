@@ -8,6 +8,20 @@ import type { DelegationVerdict, ParallelBudget } from "./tools/shared.js";
  * a host context, and so the tool layer and the UI can never disagree about
  * whether a delegation is allowed.
  */
+/**
+ * The verdict of a service whose durable store is not open.
+ *
+ * There is no caller definition to read, so no mode can be evaluated: the
+ * answer is the most restrictive one, and it says which fact is missing.
+ */
+export const STORE_CLOSED_VERDICT: DelegationVerdict = {
+  allowed: false,
+  mode: "disabled",
+  targets: [],
+  message:
+    "Domain storage is not open, so cross-domain policy cannot be evaluated.",
+};
+
 export function delegationVerdictOf(
   caller: DomainDefinition | undefined,
   callerDomainId: string,
