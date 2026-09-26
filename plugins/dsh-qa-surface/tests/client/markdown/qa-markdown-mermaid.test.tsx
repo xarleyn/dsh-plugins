@@ -17,9 +17,9 @@ describe("Mermaid fence rendering", () => {
       <Markdown text={"```mermaid\ngraph TD\n  A --> B\n```"} />,
     );
 
-    expect(within(container).getByTestId("qa-md-code-content").textContent).toContain(
-      "graph TD",
-    );
+    expect(
+      within(container).getByTestId("qa-md-code-content").textContent,
+    ).toContain("graph TD");
     expect(container.querySelector("svg")).toBeNull();
   });
 
@@ -31,8 +31,8 @@ describe("Mermaid fence rendering", () => {
     expect(within(container).getByTestId("qa-md-code-lang").textContent).toBe(
       "mermaid",
     );
-    expect(within(container).getByTestId("qa-md-code-content").textContent).toContain(
-      "sequenceDiagram",
-    );
+    expect(
+      within(container).getByTestId("qa-md-code-content").textContent,
+    ).toContain("sequenceDiagram");
   });
 });
