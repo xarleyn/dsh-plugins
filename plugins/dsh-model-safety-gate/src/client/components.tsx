@@ -249,7 +249,7 @@ export function Stats(props: {
 }
 
 /**
- * Write-only credential control. The settings scope never returns a secret, so
+ * Write-only credential control. The configuration form never returns a secret, so
  * the field starts blank on every render and a save writes the typed literal;
  * a blank draft writes nothing, which is what keeps a page open on the card
  * from clearing a key it never saw.

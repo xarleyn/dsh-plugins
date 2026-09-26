@@ -194,7 +194,7 @@ Per package:
 | `dsh-jev-compaction` | 27 | card, `installSection`, LLM message shapes |
 | `dsh-qa-browser` | 24 | card surface, client slots |
 | `dsh-openviking-memory` | ✔ **done in #516** (D1 took option 2) | volatile Config replaced the settings-section registration; the card moved to `settings.plugins.tab` with our shell; `agent/session-start` → `agent/created` under a non-throwing listener; the plugin declares its own producer kind; the `tool-addition`/`tool-removal` taxonomy is pinned at runtime | landed: `src/config.ts:302` every knob `.volatile()` (`z<Config, LiveConfig>`), `:266` `LiveConfig`, `:279` `snapshotConfig`; `src/index.ts:208` the `agent/created` listener, `:337` `refreshConfig()`, `:402` its call from `activeScoping()`; `src/settings.ts` **deleted** (82 lines; `installSection` is gone from the Host); `src/capture.ts:45` the `openviking-memory` source-kind augmentation, `:61` the captured-kind whitelist (`user`/`model`/`tool`), which is also the default branch §5 demands of a non-exhaustive `switch (source.kind)`; `src/runtime.ts:793` the own kind on injected messages, `:828` `isStartupProfile` matching **both** kinds for one release; `src/client/index.tsx:49` `inject = ["slots", "configForms"]`, `:90` `ctx.configForms.get(ns)`, `:97-103` the tab registration; `src/client/card.tsx:46` `PropsRuntime<"settings.plugins.tab">` over `ConfigForm<Config>`, `:155` the `<li>` inside a plugin-owned `<ul>`; `compatibility.json:9,16`; `scripts/verify-package.mjs:64,76-88`. Checked and kept: `package.json:49-52` — the `dsh.client.inject` list already names every client module the bundle reads, no edit; `src/openviking/capture-utils.ts:151,327,350,457` — **no edit**: a generated fork file whose loose extractor already drops both blocks (`normalizeType("tool-addition")` matches no set, `blockToText` returns `""`, `.filter(Boolean)` discards it), so the rule is pinned by `tests/block-taxonomy.test.ts` rather than by editing the vendored code; `src/capture.ts:93,143` became the whitelist and the own-kind filter; `scripts/smoke-packed-dsh.mjs` **does not exist in this package** — the stale `"0.1.1-rc.2"` default of §6 is `dsh-sleev`'s | ~230 | `tests/settings-live.test.ts` (replaces `settings-install.test.ts`: the schema-volatile namespace pin, and a committed change reaching a session that is already open), `tests/block-taxonomy.test.ts`, `tests/config.test.ts:44-53` (`requireValue` snapshots the live refs), `tests/helpers/harness.ts:82,115` (`createLiveConfig`, `writeConfig`), `tests/runtime-context.test.ts:192,200,277` (both profile attributions), `tests/client-card.test.tsx`, `tests/client-index.test.ts:193-241`, plus the 15 renamed `agent/created` emit sites. Measured on this tree: 31 files / 283 tests pass |
-| `dsh-model-safety-gate` | 14 | card + `installSection` in `src/service.ts` |
+| `dsh-model-safety-gate` | ✔ **done in #517** (D1 option 2) | volatile Config; card; own `"tool-result"` **label** channel is ours, kept verbatim | landed: `src/config.ts` — twelve top-level nodes `.volatile()` (**nothing volatile may sit under a volatile node**, so each group is one live field), `SAFETY_GATE_LIVE_NODES` + `snapshotSafetyGateConfig`, schema cast retargeted to the live view — the row named no config file, and the migration is mostly there; `src/service.ts` — `installSection`/`SettingsInstallFace`/`configSource` deleted, one `loader/volatile-update` listener re-snapshots per reload (the old `structuredClone(config)` would have cloned the references, not the values); `src/shared/settings.ts` — the namespace is the profile entry id now, `model-safety-gate` is gone, and `scripts/verify-package.mjs` pins the pair against `cordis.patch.yml`; `src/client/index.tsx` — `settingsScope` → `configForms`, registered on `settings.plugins.tab` with `{id, order, label}` (the kit's `registerSettingsCard` still defaults to the deleted keyed seat and passes `key`, not `id`/`label`, so a tab cannot route through it yet); `src/client/card.tsx` — `ConfigForm`, `mutate(ops, revision)`, `<li>` inside a plugin-owned `<ul>`; `src/types.ts` — `configRejected` on the Remote, because the Host enforces only the schema and a `validate` hook no longer exists | 55 estimated, **≈340 landed** | `tests/integration/settings.test.ts` rewritten (the `MemorySettings` fake cannot survive — §11's promote-to-`test-kit` item now has one fewer copy), `tests/integration/service.test.ts` (live-commit tests replace the install-face ones), `tests/client-card.test.tsx`, `tests/client-index.test.ts`, `tests/unit/config.test.ts` |
 | `dsh-plugin-log-ui` | 13 | card + `installSection` |
 | `dsh-draft-sessions` | 13 | client conversation/controller types |
 | `dsh-sleev` | 12 | card + `installSection` |
@@ -1082,16 +1082,20 @@ cascade), `qaSurfacePanels does not exist on type 'Context'` ×5,
    `rc.2` work — it was hidden inside the `qa-browser: 24 / draft-sessions: 13`
    totals both times. Do not add it to the `rc.2` delta column.
 2. **`MemorySettings` test fakes no longer conform to `SettingsForms`** —
-   `dsh-model-safety-gate/tests/integration/settings.test.ts:19,21,26,30`,
    `dsh-plugin-log-ui/tests/integration.test.ts:14,21,25`,
-   `dsh-prompt-firewall/tests/settings.test.ts:14,21,25`:
+   `dsh-prompt-firewall/tests/settings.test.ts:14,21,25`
+   (and `dsh-model-safety-gate/tests/integration/settings.test.ts:19,21,26,30`
+   until #517 deleted that one):
    `TS2610 'writable' is defined as an accessor in class 'SettingsForms', but is
    overridden here in 'MemorySettings' as an instance property` and
    `TS4113 This member cannot have an 'override' modifier because it is not
    declared in the base class 'SettingsForms'`. Each of the three plugins declares
    its own fake, so the fix is 3 files — or one shared fake promoted into
    `@yadsh/dsh-test-kit`, which is the better call and is why `test-kit` appears
-   in §11 despite having no error of its own.
+   in §11 despite having no error of its own. **[verified #517]** the
+   `dsh-model-safety-gate` copy is gone rather than repaired: at `rc.2` a plugin
+   installs no namespace of its own, so the fake had nothing left to stand in
+   for. Two copies remain for the promotion.
 3. **`rc.2`-new session-state and preset reads inside `dsh-qa-surface`** — this is
    where the `+7` lives: `src/client/QaSessionController.ts:1644`
    `subagentsByParent` gone from `SessionListState`;

@@ -107,6 +107,19 @@ await runVerifyPackage({
       );
     }
 
+    // Since 0.1.7 the settings namespace of a configuration form is the profile
+    // entry id, so the key the card binds and the row the patch declares are one
+    // fact. A drift shows up as a card that renders no form, never as a compile
+    // error. The `patch.id` option above pins the row to the literal below.
+    const namespace = /SAFETY_GATE_SETTINGS_NAMESPACE\s*=\s*"([^"]+)"/u.exec(
+      await readFile("src/shared/settings.ts"),
+    )?.[1];
+    assert.equal(
+      namespace,
+      "dsh-model-safety-gate",
+      "the card's settings namespace must be the profile entry id",
+    );
+
     // Attribution contract of the plugin (design SPEC §2).
     const readme = await readFile("README.md");
     assert.match(readme, /NOTICE\.md/);

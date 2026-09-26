@@ -1,37 +1,47 @@
 /**
  * Client activation: the entry mounts the generated Remote contribution and
- * registers the card into the shared settings-plugins slot through the
- * injected `remote.safetyGate` namespace.
+ * registers the card as one tab of the Plugins settings section, bound to the
+ * configuration form the settings domain serves for this profile entry.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { apply } from "../src/client/index.js";
+import { apply, inject } from "../src/client/index.js";
 
 describe("client activation", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
   });
 
+  it("declares the services the browser runtime has to resolve", () => {
+    // `configForms` replaced the deleted `settingsScope`; the manifest in
+    // package.json mirrors this list, so a drift here is a drift there.
+    expect(inject).toEqual(["slots", "configForms", "remote"]);
+  });
+
   it("mounts the Remote and registers the card against the injected namespace", async () => {
     const inspect = vi.fn(async () => ({ ok: true as const, value: {} }));
     const safetyGate = { inspect };
-    const scope = {};
+    const form = {};
     let cardFace: (() => unknown) | undefined;
+    let tabOptions: { label?(): string } | undefined;
 
     const disposeSlot = vi.fn();
     const readyCtx = {
       remote: { safetyGate },
-      settingsScope: { bind: vi.fn(() => scope) },
+      configForms: { get: vi.fn(() => form) },
       slots: {
         inject: vi.fn((_name: string, callback: () => unknown) => callback()),
-        register: vi.fn((options: { inject: () => unknown }) => {
-          cardFace = options.inject;
-          return disposeSlot;
-        }),
+        register: vi.fn(
+          (options: { inject: () => unknown; label?(): string }) => {
+            cardFace = options.inject;
+            tabOptions = options;
+            return disposeSlot;
+          },
+        ),
       },
     };
-    const inject = vi.fn(
+    const injectServices = vi.fn(
       async (
         dependencies: string[],
         callback: (ctx: typeof readyCtx) => unknown,
@@ -62,27 +72,38 @@ describe("client activation", () => {
       querySelector: vi.fn(() => null),
     });
 
-    const dispose = await apply({ remote, inject } as never);
-    const face = cardFace?.() as {
-      scope: unknown;
-      inspect(): Promise<unknown>;
-    };
+    // Only `remote` and `inject` are read on the entry context: the slot
+    // registry and the form arrive on the injected one.
+    const dispose = await apply({ remote, inject: injectServices } as never);
+    const face = cardFace?.() as { form: unknown };
 
-    await expect(face.inspect()).resolves.toEqual({ ok: true, value: {} });
+    await expect(inspect()).resolves.toEqual({ ok: true, value: {} });
     expect(inspect).toHaveBeenCalledOnce();
-    expect(face.scope).toBe(scope);
+    expect(face).toMatchObject({ form });
     expect(mount).toHaveBeenCalledOnce();
-    expect(inject).toHaveBeenCalledOnce();
-    expect(readyCtx.settingsScope.bind).toHaveBeenCalledWith({
-      namespace: "model-safety-gate",
-    });
+    expect(injectServices).toHaveBeenCalledOnce();
+    // The settings namespace of a plugin is its profile entry id.
+    expect(readyCtx.configForms.get).toHaveBeenCalledWith(
+      "dsh-model-safety-gate",
+    );
+    expect(readyCtx.slots.inject).toHaveBeenCalledWith(
+      "settings.plugins.tab",
+      expect.any(Function),
+    );
     expect(readyCtx.slots.register).toHaveBeenCalledWith(
-      expect.objectContaining({ key: "model-safety-gate" }),
+      expect.objectContaining({
+        name: "settings.plugins.tab",
+        id: "model-safety-gate",
+      }),
       expect.anything(),
     );
+    expect(tabOptions?.label?.()).toBe("Model Safety Gate");
     expect(style.textContent).toContain(".dsh-plugin-card{");
+    expect(style.dataset.plugin).toBe("@yadsh/dsh-model-safety-gate");
 
     await dispose();
+    expect(disposeSlot).toHaveBeenCalledOnce();
+    expect(style.remove).toHaveBeenCalledOnce();
     expect(disposeRemote).toHaveBeenCalledOnce();
   });
 });
