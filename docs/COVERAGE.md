@@ -102,12 +102,13 @@ which rows carry it: `dsh-openviking-memory` (13 files), `dsh-qa-surface` (3),
 
 Twenty-four of the twenty-seven are not test failures at all: they are collection
 errors carrying `SyntaxError: Invalid or unexpected token`, the same defect the
-base carries without this card's changes, and they fail identically with and
-without `--coverage`. The remaining three went red under the parallel `run-many`
-and passed when re-run one file at a time in the same tree
-(`personal-skills-service-limits` and `coordinator-idle-checkpoint`), or with it
-(`qa-settings-card-sections`, red on the base). None of the three is a
-measurement artifact.
+base carries without this card's changes. The measurement is not what puts them
+in the column: `nx run-many -t test` on the same tree names the same thirteen
+projects red, with and without `--coverage`. Of the three assertion failures
+left, two (`personal-skills-service-limits`, `coordinator-idle-checkpoint`) went
+red only under the parallel `run-many` and passed when re-run file by file in the
+same tree, and the third (`qa-settings-card-sections`) fails either way on a
+product assertion no part of this measurement touches.
 
 A failing suite measures its own file as unexecuted, so these percentages are a
 floor. `@yadsh/dsh-session-scope` (53.2 / 42.2 branches) and
