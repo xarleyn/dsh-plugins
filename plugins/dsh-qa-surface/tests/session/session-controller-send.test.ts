@@ -10,7 +10,10 @@ import {
   deferredUpload,
   fileDraft,
   harness,
+  landDurableUserRow,
+  publishChatSlice,
 } from "../helpers/session-fakes.js";
+import { legacy } from "../helpers/conversation-fakes.js";
 
 describe("QA session controller", () => {
   it("sends plain text, rejects slash commands, and stops generation", async () => {
@@ -27,6 +30,9 @@ describe("QA session controller", () => {
       "queue",
     );
     const saved = world.faces.get("saved");
+    // The composer frees up when the Host's own row replaces the optimistic
+    // one, not when the running bit happens to read false.
+    landDurableUserRow(world.bindings.get("saved"), "hello");
     saved?.source.set({ ...saved.source.getSnapshot(), running: true });
     saved?.source.set({ ...saved.source.getSnapshot(), running: false });
     expect(await controller.send("/settings")).toBe(false);
@@ -102,7 +108,68 @@ describe("QA session controller", () => {
     const saved = world.faces.get("saved");
     saved?.source.set({ ...saved.source.getSnapshot(), running: true });
     expect(controller.getSnapshot().pendingMessage).not.toBeNull();
+    // A stale running bit relayed from the Session list used to retire the
+    // optimistic row while the Chat slice had not landed the node yet, and the
+    // question blinked out for the frames in between.
     saved?.source.set({ ...saved.source.getSnapshot(), running: false });
+    expect(controller.getSnapshot().pendingMessage).not.toBeNull();
+
+    landDurableUserRow(world.bindings.get("saved"), "Долгий вопрос");
+    expect(controller.getSnapshot().pendingMessage).toBeNull();
+    expect(
+      controller
+        .getSnapshot()
+        .messages.filter((message) => message.role === "user"),
+    ).toHaveLength(1);
+    controller.dispose();
+  });
+
+  it("keeps the question on screen across the handoff to the durable row", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    const frames: boolean[] = [];
+    const unsubscribe = controller.subscribe(() => {
+      const state = controller.getSnapshot();
+      frames.push(
+        state.pendingMessage?.text === "вопрос" ||
+          state.messages.some(
+            (message) => message.role === "user" && message.text === "вопрос",
+          ),
+      );
+    });
+
+    expect(await controller.send("вопрос")).toBe(true);
+    const saved = world.faces.get("saved");
+    saved?.source.set({ ...saved.source.getSnapshot(), running: true });
+    saved?.source.set({ ...saved.source.getSnapshot(), running: false });
+    landDurableUserRow(world.bindings.get("saved"), "вопрос");
+    unsubscribe();
+
+    expect(frames.length).toBeGreaterThan(2);
+    expect(frames).toEqual(frames.map(() => true));
+    controller.dispose();
+  });
+
+  it("retires the optimistic row when a turn ends without the Chat node", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    expect(await controller.send("вопрос")).toBe(true);
+    expect(controller.getSnapshot().pendingMessage).not.toBeNull();
+
+    publishChatSlice(
+      world.bindings.get("saved"),
+      legacy({ turnEnds: new Map([[1, 21]]) }),
+    );
     expect(controller.getSnapshot().pendingMessage).toBeNull();
     controller.dispose();
   });
