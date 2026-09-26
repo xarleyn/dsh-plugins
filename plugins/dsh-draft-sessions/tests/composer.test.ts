@@ -70,8 +70,14 @@ function bridgeOptions(
     },
     drafts: { update } as never,
     sessions: {
-      open: ((sessionId: string) => {
-        events.push(`open:${sessionId}`);
+      retain: ((sessionId: string) => {
+        events.push(`retain:${sessionId}`);
+        return {
+          ready: Promise.resolve({}),
+          release: () => {
+            events.push(`release:${sessionId}`);
+          },
+        };
       }) as never,
       scope: (() => new Context()) as never,
     },
@@ -89,7 +95,7 @@ afterEach(() => {
 });
 
 describe("DraftComposerBridge", () => {
-  it("opens the backing Session and restores exact text through InputHub", async () => {
+  it("retains the backing Session and restores exact text through InputHub", async () => {
     const composer = input();
     const events: string[] = [];
     const bridge = new DraftComposerBridge(
@@ -100,7 +106,7 @@ describe("DraftComposerBridge", () => {
     const ready = draft("draft-a", "session-a", "  exact\ntext  ");
     await expect(bridge.open(ready)).resolves.toBe(ready);
 
-    expect(events).toEqual(["open:session-a"]);
+    expect(events).toEqual(["retain:session-a"]);
     expect(composer.setDraft).toHaveBeenCalledWith("  exact\ntext  ");
   });
 
@@ -186,9 +192,10 @@ describe("DraftComposerBridge", () => {
     await bridge.open(second);
 
     expect(events).toEqual([
-      "open:session-a",
+      "retain:session-a",
       "save:draft-a:AAA saved",
-      "open:session-b",
+      "release:session-a",
+      "retain:session-b",
     ]);
     expect(secondInput.setDraft).toHaveBeenCalledWith("BBB");
   });
@@ -326,9 +333,10 @@ describe("DraftComposerBridge", () => {
     await expect(openingSecond).resolves.toBe(second);
     expect(events).toEqual([
       "shell:draft-a",
-      "open:session-a",
+      "retain:session-a",
+      "release:session-a",
       "shell:draft-b",
-      "open:session-b",
+      "retain:session-b",
     ]);
     expect(firstInput.setDraft).toHaveBeenCalledWith("AAA");
     expect(secondInput.setDraft).toHaveBeenCalledWith("BBB");
@@ -365,7 +373,7 @@ describe("DraftComposerBridge", () => {
       "error",
       expect.stringContaining("draft changed in another browser"),
     );
-    expect(events).toEqual(["open:session-a"]);
+    expect(events).toEqual(["retain:session-a"]);
     expect(secondInput.setDraft).not.toHaveBeenCalled();
   });
 });
