@@ -16,3 +16,8 @@ Only an attribute was added: the markup, the shell contract and the rendered tex
 are unchanged. The comparison section is left untouched (its configuration is led
 by #422), and the tools inventory keeps being asserted by the text it shows — the
 tool names are the thing under test there, not a label to hang a hook on.
+
+The card test that clicked the pipeline switch through its Russian caption now
+reaches it through `docs-pipeline-enabled`: what that test asserts is the revision
+each write is fenced with, not the wording of the label. The comparison assertions
+stay as they were, since #422 owns that section.
