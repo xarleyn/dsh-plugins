@@ -15,15 +15,15 @@
  * real event key unions are scoped to runtime sub-contexts).
  *
  * Two operator-facing seams hang off the same service:
- *  - the `model-safety-gate` settings namespace, installed as the base layer
- *    so a card edit re-resolves the running configuration without a restart;
+ *  - the entry's live configuration nodes, committed into the running plugin by
+ *    the Host settings form, so a card edit re-resolves the gate without a
+ *    restart;
  *  - the `safetyGate` Typert Remote, whose single `inspect` method returns the
  *    effective configuration, the counters, the recent sanitized verdicts, and
  *    the classifier wiring state.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
-import type {} from "@deepseek-ai/dsh-settings";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import {
   createHostLoggerSink,
@@ -46,7 +46,8 @@ import { SafetyMetrics } from "./audit/metrics.js";
 import {
   ModelSafetyGateConfigSchema,
   resolveSafetyGateConfig,
-  type ModelSafetyGateConfig,
+  snapshotSafetyGateConfig,
+  type ModelSafetyGateEntryConfig,
   type ResolvedSafetyGateConfig,
 } from "./config.js";
 import {
@@ -61,7 +62,6 @@ import type { ApprovalFace } from "./guards/approval-seam.js";
 import { createPreExecuteGuard } from "./guards/tools.js";
 import { CheckPipeline } from "./pipeline.js";
 import { SafetyScanner } from "./rules/scanner.js";
-import { SAFETY_GATE_SETTINGS_NAMESPACE } from "./shared/settings.js";
 import { cancelTurn, type CancellableAgent } from "./stream/cancellation.js";
 import type { StreamChunk } from "./stream/chunks.js";
 import type {
@@ -139,16 +139,26 @@ export class ModelSafetyGate extends TypertRemoteService {
   readonly auditRing: AuditRing = new AuditRing();
   readonly risk: TurnRiskTracker = new TurnRiskTracker();
 
-  private readonly owner: Context;
   private readonly host: SafetyGateHostContext;
   private readonly deps: SafetyGateServiceDeps;
   private readonly logger: PluginLogger;
-  private readonly entryConfig: ModelSafetyGateConfig;
+  /**
+   * The entry configuration as the Host resolved it: every live node is a
+   * stable reference, so a committed form edit is visible here before the
+   * `loader/volatile-update` that announces it.
+   */
+  private readonly liveConfig: ModelSafetyGateEntryConfig;
   private readonly startedAt = Date.now();
   private readonly disposers: Array<() => void> = [];
   private readonly agentsBySession = new Map<string, CancellableAgent>();
-  private configSource: () => ModelSafetyGateConfig;
   private resolved: ResolvedSafetyGateConfig;
+  /**
+   * Why the latest committed configuration is not the one the gate runs, or
+   * `null` while they agree. The form stores what the operator asked for and
+   * the resolver refuses what it cannot act on, so without this the card would
+   * show a policy the running gate had already rejected.
+   */
+  private configRejection: string | null = null;
   private scanner: SafetyScanner;
   private classifier: SafetyClassifierService | null;
   private pipeline: CheckPipeline;
@@ -168,19 +178,19 @@ export class ModelSafetyGate extends TypertRemoteService {
 
   constructor(
     ctx: Context,
-    config: ModelSafetyGateConfig = {},
+    config: ModelSafetyGateEntryConfig = {},
     deps: SafetyGateServiceDeps = {},
   ) {
     // The Typert generator reads these as literals: the Cordis service key and
     // the wire namespace must be spelled here, not aliased through a constant.
     super(ctx, "safetyGate", { namespace: "safetyGate" });
     const host = ctx as unknown as SafetyGateHostContext;
-    this.owner = ctx;
     this.host = host;
     this.deps = deps;
-    this.entryConfig = structuredClone(config);
-    this.configSource = () => this.entryConfig;
-    this.resolved = resolveSafetyGateConfig(config);
+    // Keep the references, never their values: every later read takes a fresh
+    // snapshot, which is what makes a committed form edit visible.
+    this.liveConfig = config;
+    this.resolved = resolveSafetyGateConfig(snapshotSafetyGateConfig(config));
     this.logger =
       deps.logger ??
       (getPluginLogger({
@@ -207,7 +217,7 @@ export class ModelSafetyGate extends TypertRemoteService {
 
     this.registerGuards();
     host.effect(() => () => this.dispose(), "dsh-model-safety-gate.lifecycle");
-    this.installSettings();
+    this.watchLiveConfig();
     this.logger.info("safety.plugin_ready", {
       enabled: this.resolved.enabled,
       mode: this.resolved.mode,
@@ -216,7 +226,7 @@ export class ModelSafetyGate extends TypertRemoteService {
     });
   }
 
-  /** Effective running configuration; the base layer until a settings layer attaches. */
+  /** Effective running configuration; the last one the gate could honour. */
   get config(): ResolvedSafetyGateConfig {
     return this.resolved;
   }
@@ -234,6 +244,8 @@ export class ModelSafetyGate extends TypertRemoteService {
         classifier: { ...this.resolved.classifier, apiKey: "" },
       },
       classifier: this.describeClassifier(),
+      /** Why the stored configuration is not the running one, when it differs. */
+      configRejected: this.configRejection,
       metrics: this.metrics.snapshot(),
       audit: this.recentAudit(),
       startedAt: this.startedAt,
@@ -257,53 +269,23 @@ export class ModelSafetyGate extends TypertRemoteService {
   // --------------------------------------------------------------- internals
 
   /**
-   * Attach the settings namespace. The installed section becomes the gate's
-   * configuration source, so a card edit re-resolves the running gate instead
-   * of waiting for a restart; without a settings provider the composition entry
-   * stays authoritative.
+   * Follow the entry's live configuration. The Host commits a form edit into
+   * this fiber's references and then announces the changed paths, so one
+   * listener keeps the running gate on whatever the operator last committed.
    */
-  private installSettings(): void {
-    this.owner.inject(["settings"], (settingsCtx) => {
-      // A settings provider that appears after disposal must not adopt this
-      // namespace: the card would edit a gate that no longer exists, and the
-      // section would outlive the plugin that owns it.
-      if (this.disposed) return;
-      // Structural seam, like the rest of this file: the injected face is read
-      // defensively so a host without a mounted settings provider keeps the
-      // composition entry as the configuration source.
-      const settings = (
-        settingsCtx as unknown as { settings?: SettingsInstallFace }
-      ).settings;
-      if (settings === undefined) return;
-      settings.installSection(
-        this.owner,
-        SAFETY_GATE_SETTINGS_NAMESPACE,
-        ModelSafetyGateConfigSchema,
-        this.entryConfig,
-        {
-          setSource: (current) => {
-            this.configSource = current as () => ModelSafetyGateConfig;
-          },
-          onChange: () => {
-            this.reapply();
-          },
-          // Constraints the schema cannot express (backend requires an
-          // endpoint, custom patterns must compile) are refused at write time
-          // so the card reports them instead of storing a config the gate
-          // would silently keep ignoring.
-          validate: (value) => {
-            resolveSafetyGateConfig(value as ModelSafetyGateConfig);
-          },
-        },
-      );
-    });
+  private watchLiveConfig(): void {
+    this.disposers.push(
+      this.host.on("loader/volatile-update", () => {
+        this.reapply();
+      }),
+    );
   }
 
   /**
-   * Re-resolve the source after a committed settings change and rebuild
-   * everything derived from it. The guard listeners stay registered: they read
-   * configuration and pipeline through {@link guardDeps}, so swapping those
-   * fields is enough for the next check to run on the new policy.
+   * Re-read the live configuration and rebuild everything derived from it. The
+   * guard listeners stay registered: they read configuration and pipeline
+   * through {@link guardDeps}, so publishing those fields is what makes the
+   * next check run on the new policy.
    */
   private reapply(): void {
     // A committed settings change can land while the plugin is being disposed;
@@ -312,15 +294,18 @@ export class ModelSafetyGate extends TypertRemoteService {
     if (this.disposed) return;
     let next: ResolvedSafetyGateConfig;
     try {
-      next = resolveSafetyGateConfig(this.configSource());
+      next = resolveSafetyGateConfig(snapshotSafetyGateConfig(this.liveConfig));
     } catch (error) {
-      // The settings provider validates on write; this keeps a source that
-      // turned invalid through another path from taking the running gate down.
-      this.logger.warn("safety.config.rejected", {
-        message: String((error as Error).message),
-      });
+      // The Host persists what the form sends and only the schema constrains
+      // it, so a combination the resolver cannot act on arrives here. Keep
+      // running the last configuration the gate could honour and say so on
+      // the operator surface, rather than taking the guard down with it.
+      const message = String((error as Error).message);
+      this.configRejection = message;
+      this.logger.warn("safety.config.rejected", { message });
       return;
     }
+    this.configRejection = null;
     this.resolved = next;
     this.classifier = this.createClassifier();
     this.scanner = this.createScanner();
@@ -617,21 +602,6 @@ interface PreStepAgentPayload extends PreStepPayload {
 interface StreamGuardOptions {
   readonly sessionId?: string | null;
   readonly purpose?: string;
-}
-
-/** Structural view of the settings provider seam (typed in @deepseek-ai/dsh-settings). */
-interface SettingsInstallFace {
-  installSection(
-    owner: Context,
-    namespace: string,
-    schema: unknown,
-    entry: unknown,
-    hooks: {
-      setSource(current: () => unknown): void;
-      onChange(): void;
-      validate?(value: unknown): void;
-    },
-  ): void;
 }
 
 export { ModelSafetyGate as SafetyGateService };

@@ -1,3 +1,4 @@
+import type { Volatile } from "@deepseek-ai/cordis";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -5,6 +6,8 @@ import {
   ModelSafetyGateConfigSchema,
   resolveSafetyGateConfig,
   SAFETY_GATE_DEFAULTS,
+  snapshotSafetyGateConfig,
+  type GateMode,
 } from "../../src/config.js";
 import { SafetyGateError } from "../../src/types.js";
 
@@ -26,9 +29,12 @@ describe("resolveSafetyGateConfig", () => {
     expect(config.allowSessionOverride).toBe(true);
   });
 
-  it("accepts the schema object shape", () => {
+  it("resolves a live node into a reference the snapshot reads", () => {
     const parsed = ModelSafetyGateConfigSchema({ mode: "enforce" });
-    expect(parsed.mode).toBe("enforce");
+    // `mode` is declared volatile, so the schema hands back a reference and the
+    // value is only visible through it.
+    expect(typeof (parsed.mode as Volatile<GateMode>).get).toBe("function");
+    expect(snapshotSafetyGateConfig(parsed).mode).toBe("enforce");
   });
 
   it("rejects unknown mode values", () => {
