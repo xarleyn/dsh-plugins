@@ -187,7 +187,14 @@ export function QaSkillsSettingsPage(props: QaSkillsSettingsPageProps) {
     );
   }
   if (view.kind === "edit" && documentLoading) {
-    return <p className="dsh-qa-settings__field-hint">Загрузка навыка…</p>;
+    return (
+      <p
+        className="dsh-qa-settings__field-hint"
+        data-testid="qa-settings-skill-document-loading"
+      >
+        Загрузка навыка…
+      </p>
+    );
   }
   return (
     <QaSkillEditor

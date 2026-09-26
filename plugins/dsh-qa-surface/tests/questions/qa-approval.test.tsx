@@ -29,9 +29,16 @@ describe("QA approval card", () => {
         onAnswer={vi.fn(async () => undefined)}
       />,
     );
-    expect(screen.getByText("Ожидает одобрения")).toBeDefined();
-    expect(screen.getByText("Safety gate requests approval")).toBeDefined();
-    expect(screen.getByText("glob")).toBeDefined();
+    expect(screen.getByTestId("qa-approval-state").textContent).toBe(
+      "Ожидает одобрения",
+    );
+    expect(screen.getByTestId("qa-approval-reason").textContent).toBe(
+      "Safety gate requests approval",
+    );
+    expect(screen.getByTestId("qa-approval-tool").textContent).toBe("glob");
+    expect(
+      screen.getByRole("button", { name: "Разрешить один раз" }),
+    ).toBeTruthy();
   });
 
   it("answers once and disables the row while the Host works", async () => {
@@ -43,12 +50,18 @@ describe("QA approval card", () => {
         }),
     );
     render(<QaApproval approvals={[REQUEST]} onAnswer={onAnswer} />);
-    fireEvent.click(screen.getByText("Разрешить один раз"));
+    fireEvent.click(screen.getByTestId("qa-approval-allow"));
     expect(onAnswer).toHaveBeenCalledWith("request-1", "allowed-once");
-    expect(screen.getByText("Отклонить")).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Отклонить" })).toHaveProperty(
+      "disabled",
+      true,
+    );
     release();
     await waitFor(() => {
-      expect(screen.getByText("Отклонить")).toHaveProperty("disabled", false);
+      expect(screen.getByTestId("qa-approval-reject")).toHaveProperty(
+        "disabled",
+        false,
+      );
     });
   });
 
@@ -59,30 +72,32 @@ describe("QA approval card", () => {
         onAnswer={vi.fn(async () => undefined)}
       />,
     );
-    const mark = screen.getByText("запросил субагент");
-    // The mark is its own span, not a dot-glued suffix of the tool name.
-    expect(mark.className).toBe("dsh-qa-approval__delegated");
+    const mark = screen.getByTestId("qa-approval-delegated");
+    // The mark is its own node, not a dot-glued suffix of the tool name.
+    expect(mark.textContent).toBe("запросил субагент");
     expect(container.textContent).not.toContain("·");
   });
 
   it("leaves the delegation mark off a plain request", () => {
-    const { container } = render(
+    render(
       <QaApproval
         approvals={[REQUEST]}
         onAnswer={vi.fn(async () => undefined)}
       />,
     );
-    expect(screen.queryByText("запросил субагент")).toBeNull();
-    expect(container.querySelector(".dsh-qa-approval__delegated")).toBeNull();
+    expect(screen.queryByTestId("qa-approval-delegated")).toBeNull();
   });
 
   it("answers the refusal from the other button", async () => {
     const onAnswer = vi.fn(async () => undefined);
     render(<QaApproval approvals={[REQUEST]} onAnswer={onAnswer} />);
-    fireEvent.click(screen.getByText("Отклонить"));
+    fireEvent.click(screen.getByTestId("qa-approval-reject"));
     expect(onAnswer).toHaveBeenCalledWith("request-1", "rejected");
     await waitFor(() => {
-      expect(screen.getByText("Отклонить")).toHaveProperty("disabled", false);
+      expect(screen.getByTestId("qa-approval-reject")).toHaveProperty(
+        "disabled",
+        false,
+      );
     });
   });
 });

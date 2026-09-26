@@ -171,14 +171,20 @@ browser. The `safetyGate` Remote projection redacts it as well.
 
 ## Settings card
 
-`Settings → Plugins → Plugin configuration → Model Safety Gate` edits this
-plugin's configuration through the `model-safety-gate` settings namespace. The
-namespace is installed as the gate's configuration source, so every change
-re-resolves the running gate on the spot: turning the gate off stops the next
-check, and switching the mode to `enforce` blocks the next matching prompt.
-Values the schema cannot express (a `dsh` backend without a provider, an
-uncompilable `customBlockPatterns` entry) are refused at write time instead of
-being stored and ignored.
+`Settings → Plugins → Model Safety Gate` edits this plugin's configuration
+through the live fields of its own profile entry — the settings namespace of a
+plugin is its entry id, `dsh-model-safety-gate`. Every field the card writes is
+declared `.volatile()` in the config schema, so a committed change re-resolves
+the running gate on the spot: turning the gate off stops the next check, and
+switching the mode to `enforce` blocks the next matching prompt.
+
+The Host validates a write against the schema and nothing more, so a
+combination the schema cannot express (a `dsh` backend without a provider, an
+uncompilable `customBlockPatterns` entry) is stored, then refused when the gate
+re-resolves it. The gate keeps running its last workable configuration and the
+card says so — the refusal is reported by the `safetyGate` Remote as
+`configRejected`, never swallowed. An operator who wants the change applied has
+to correct the field.
 
 The card also reports what the running gate is doing through the `safetyGate`
 Typert Remote — effective mode, whether the classifier is actually wired, the
@@ -201,7 +207,7 @@ stable plugin-log categories (`safety-gate/check|block|warn|classifier-error`).
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (channel `next`), extension points:
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (channel `next`), extension points:
   `agent/pre-step`, `llm/stream`, `tools/pre-execute`, `tools/post-execute`.
 - Node.js `^22.19.0 || >=24.0.0`.
 - See [compatibility.json](./compatibility.json) for the machine-readable

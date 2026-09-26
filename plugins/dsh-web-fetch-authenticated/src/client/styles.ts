@@ -1,6 +1,7 @@
 import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
 
 export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
+.wfa-cards{list-style:none;margin:0;padding:0;display:grid;gap:12px}
 .wfa-body,.wfa-body *{box-sizing:border-box}
 .wfa-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .wfa-section{display:grid;gap:12px}

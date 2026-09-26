@@ -137,10 +137,16 @@ export function Section(props: {
    */
   state?: string;
   open?: boolean;
+  /** The stable hook a test reaches this section by, whatever its caption says. */
+  testId?: string;
   children: ReactNode;
 }): ReactElement {
   return (
-    <details className="qai-op__section" open={props.open}>
+    <details
+      className="qai-op__section"
+      data-testid={props.testId}
+      open={props.open}
+    >
       <summary className="qai-op__section-summary">
         <span className="qai-op__section-title">{props.title}</span>
         {props.state === undefined || props.state === "" ? null : (
@@ -168,6 +174,8 @@ export function Group(props: {
   kind?: "checks";
   /** Connection editors own the full width: instance and site rows are wide. */
   wide?: boolean;
+  /** The stable hook a test reaches this group by, whatever its caption says. */
+  testId?: string;
   children: ReactNode;
 }): ReactElement {
   const className = [
@@ -178,7 +186,7 @@ export function Group(props: {
     .filter((part) => part !== "")
     .join(" ");
   return (
-    <section className={className}>
+    <section className={className} data-testid={props.testId}>
       <h4 className="qai-op__group-title">{props.title}</h4>
       {props.hint === undefined ? null : (
         <p className="qai-op__group-hint">{props.hint}</p>
@@ -191,10 +199,15 @@ export function Group(props: {
 /** The tuning knobs of one provider, folded away until someone needs them. */
 export function LimitsGroup(props: {
   hint?: string;
+  /** The stable hook a test reaches this drawer by, whatever its caption says. */
+  testId?: string;
   children: ReactNode;
 }): ReactElement {
   return (
-    <details className="qai-op__group qai-op__group--limits">
+    <details
+      className="qai-op__group qai-op__group--limits"
+      data-testid={props.testId}
+    >
       <summary className="qai-op__group-summary">
         <span className="qai-op__group-title">Ограничения и повторы</span>
         <span className="qai-op__group-hint">

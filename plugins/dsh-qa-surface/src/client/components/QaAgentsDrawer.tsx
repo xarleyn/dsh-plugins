@@ -29,7 +29,9 @@ export function collectSubagents(
       id: summary.id,
       title: summary.blank ? "Субагент" : summary.displayTitle,
       running: summary.running,
-      completed: summary.completed === true,
+      // The Host reports one lifecycle flag per row; anything not running is
+      // presented as finished.
+      completed: !summary.running,
       meta: [relativeTime(summary.updatedAt, now)],
     });
   }
@@ -54,11 +56,16 @@ export function QaAgentsDrawer({
   onClose,
 }: QaAgentsDrawerProps) {
   return (
-    <aside className="dsh-qa-agents" aria-label="Субагенты чата">
-      <div className="dsh-qa-agents__head">
+    <aside
+      className="dsh-qa-agents"
+      data-testid="qa-surface-agents"
+      aria-label="Субагенты чата"
+    >
+      <div className="dsh-qa-agents__head" data-testid="qa-surface-agents-head">
         <span>Субагенты ({agents.length})</span>
         <button
           type="button"
+          data-testid="qa-surface-agents-close"
           aria-label="Закрыть список субагентов"
           title="Закрыть"
           onClick={onClose}
@@ -68,7 +75,7 @@ export function QaAgentsDrawer({
           </svg>
         </button>
       </div>
-      <div className="dsh-qa-agents__list">
+      <div className="dsh-qa-agents__list" data-testid="qa-surface-agents-list">
         {agents.map((agent) => {
           const active = activeId === agent.id;
           const status = agent.running
@@ -85,6 +92,7 @@ export function QaAgentsDrawer({
                   ? "dsh-qa-agents__item dsh-qa-agents__item--active"
                   : "dsh-qa-agents__item"
               }
+              data-testid="qa-surface-agents-item"
               onClick={() => onView(agent.id, agent.title)}
             >
               <span
@@ -93,23 +101,36 @@ export function QaAgentsDrawer({
                     ? "dsh-qa-agents__dot dsh-qa-agents__dot--running"
                     : "dsh-qa-agents__dot"
                 }
+                data-testid="qa-surface-agents-dot"
                 aria-hidden="true"
               />
-              <span className="dsh-qa-agents__text">
-                <span className="dsh-qa-agents__title">{agent.title}</span>
+              <span
+                className="dsh-qa-agents__text"
+                data-testid="qa-surface-agents-item-text"
+              >
+                <span
+                  className="dsh-qa-agents__title"
+                  data-testid="qa-surface-agents-item-title"
+                >
+                  {agent.title}
+                </span>
                 <span
                   className={
                     status.length > 1
                       ? "dsh-qa-agents__meta dsh-qa-agents__meta-list"
                       : "dsh-qa-agents__meta"
                   }
+                  data-testid="qa-surface-agents-item-meta"
                 >
                   {status.map((part, index) => (
                     <span key={index}>{part}</span>
                   ))}
                 </span>
               </span>
-              <span className="dsh-qa-agents__open">
+              <span
+                className="dsh-qa-agents__open"
+                data-testid="qa-surface-agents-item-state"
+              >
                 {active ? "открыт" : "смотреть"}
               </span>
             </button>

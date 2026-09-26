@@ -7,6 +7,7 @@ import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
  * QA page's own palette stays out of the settings page.
  */
 export const QA_SETTINGS_STYLES: string = `${PLUGIN_CARD_SHELL_CSS}
+.qa-settings-cards{list-style:none;margin:0;padding:16px 0;display:grid;gap:12px}
 .qa-card-body,.qa-card-body *{box-sizing:border-box}
 .qa-card-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .qa-card-section{display:grid;gap:12px}

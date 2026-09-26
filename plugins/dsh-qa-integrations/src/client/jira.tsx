@@ -103,6 +103,7 @@ interface JiraExtra {
 
 export function createJiraCard(remote: JiraRemote) {
   return createProviderCard<JiraExtra>({
+    provider: "jira",
     title: "Jira",
     portalFallback: "Задачи, комментарии и вложения вашей Jira",
     accountFallback: "Пользователь Jira",
@@ -188,6 +189,7 @@ export function createJiraCard(remote: JiraRemote) {
         : false;
     },
     credentialSection: (state, help) => {
+      const zone = state.testIdZone;
       const { sites, siteId, email } = state.extra;
       const configured = sites.length > 0;
       if (!configured) return null;
@@ -206,10 +208,14 @@ export function createJiraCard(remote: JiraRemote) {
           : sites.find((site) => site.id === siteId);
       const server = selected?.deploymentType === "server";
       const sitePicker = needsChoice ? (
-        <label className="dsh-qa-integrations__field">
+        <label
+          className="dsh-qa-integrations__field"
+          data-testid={`${zone}-instance-picker`}
+        >
           Сайт Jira
           <select
             className="dsh-qa-integrations__input"
+            data-testid={`${zone}-instance`}
             value={siteId}
             disabled={state.busy}
             onChange={(event) =>
@@ -225,12 +231,18 @@ export function createJiraCard(remote: JiraRemote) {
           </select>
         </label>
       ) : (
-        <span className="dsh-qa-integrations__muted">
+        <span
+          className="dsh-qa-integrations__muted"
+          data-testid={`${zone}-instance-static`}
+        >
           Сайт: {sites[0]?.label ?? ""} — задан оператором стенда
         </span>
       );
       const deployment = (
-        <span className="dsh-qa-integrations__muted">
+        <span
+          className="dsh-qa-integrations__muted"
+          data-testid={`${zone}-deployment`}
+        >
           Развёртывание: {server ? "Server / Data Center" : "Atlassian Cloud"}
         </span>
       );
@@ -239,7 +251,10 @@ export function createJiraCard(remote: JiraRemote) {
       // and drops the e-mail and secret fields entirely.
       if (state.useService) {
         return (
-          <div className="dsh-qa-integrations__section">
+          <div
+            className="dsh-qa-integrations__section"
+            data-testid={`${zone}-credential`}
+          >
             {sitePicker}
             {deployment}
             {service}
@@ -247,6 +262,7 @@ export function createJiraCard(remote: JiraRemote) {
               <button
                 className="dsh-qa-integrations__button dsh-qa-integrations__button--primary"
                 type="button"
+                data-testid={`${zone}-connect`}
                 disabled={state.busy || (needsChoice && siteId === "")}
                 onClick={state.save}
               >
@@ -256,6 +272,7 @@ export function createJiraCard(remote: JiraRemote) {
                 <button
                   className="dsh-qa-integrations__button"
                   type="button"
+                  data-testid={`${zone}-credential-cancel`}
                   disabled={state.busy}
                   onClick={state.cancelCredential}
                 >
@@ -267,15 +284,22 @@ export function createJiraCard(remote: JiraRemote) {
         );
       }
       return (
-        <div className="dsh-qa-integrations__section">
+        <div
+          className="dsh-qa-integrations__section"
+          data-testid={`${zone}-credential`}
+        >
           {service}
           {sitePicker}
           {deployment}
           {server ? null : (
-            <label className="dsh-qa-integrations__field">
+            <label
+              className="dsh-qa-integrations__field"
+              data-testid={`${zone}-account-field`}
+            >
               Аккаунт Atlassian (e-mail)
               <input
                 className="dsh-qa-integrations__input"
+                data-testid={`${zone}-account`}
                 type="email"
                 autoComplete="off"
                 value={email}
@@ -287,10 +311,14 @@ export function createJiraCard(remote: JiraRemote) {
               />
             </label>
           )}
-          <label className="dsh-qa-integrations__field">
+          <label
+            className="dsh-qa-integrations__field"
+            data-testid={`${zone}-credential-field`}
+          >
             {server ? "Личный токен доступа (PAT)" : "API-токен Jira"}
             <input
               className="dsh-qa-integrations__input"
+              data-testid={`${zone}-credential-input`}
               type="password"
               autoComplete="new-password"
               value={state.credential}
@@ -302,7 +330,10 @@ export function createJiraCard(remote: JiraRemote) {
             />
           </label>
           <CredentialHelpNote help={help} />
-          <p className="dsh-qa-integrations__hint">
+          <p
+            className="dsh-qa-integrations__hint"
+            data-testid={`${zone}-credential-hint`}
+          >
             {server
               ? "Токен хранится в зашифрованном виде и после сохранения не отображается."
               : "Токен и e-mail хранятся в зашифрованном виде и после сохранения не отображаются."}
@@ -311,6 +342,7 @@ export function createJiraCard(remote: JiraRemote) {
             <button
               className="dsh-qa-integrations__button dsh-qa-integrations__button--primary"
               type="button"
+              data-testid={`${zone}-connect`}
               disabled={
                 state.busy ||
                 state.credential.trim() === "" ||
@@ -325,6 +357,7 @@ export function createJiraCard(remote: JiraRemote) {
               <button
                 className="dsh-qa-integrations__button"
                 type="button"
+                data-testid={`${zone}-credential-cancel`}
                 disabled={state.busy}
                 onClick={state.cancelCredential}
               >
@@ -337,7 +370,10 @@ export function createJiraCard(remote: JiraRemote) {
     },
     notConfiguredHint: (state) =>
       state.extra.sites.length === 0 ? (
-        <p className="dsh-qa-integrations__hint">
+        <p
+          className="dsh-qa-integrations__hint"
+          data-testid={`${state.testIdZone}-not-configured`}
+        >
           Оператор не настроил ни одного сайта Jira, подключать нечего. Адреса
           сайтов задаются в конфигурации развёртывания.
         </p>

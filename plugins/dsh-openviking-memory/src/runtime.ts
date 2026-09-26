@@ -790,8 +790,7 @@ function pluginMessage(
   return createUserMessage({
     content: [{ type: "text", text: content }],
     source: {
-      kind: "plugin",
-      plugin: OPENVIKING_PLUGIN_SOURCE,
+      kind: OPENVIKING_PLUGIN_SOURCE,
       form,
     },
   });
@@ -817,15 +816,24 @@ function hasStartupProfile(agent: Agent): boolean {
   );
 }
 
+/**
+ * Whether one message is a startup profile this plugin injected.
+ *
+ * Two kinds are recognised on purpose. `openviking-memory` is what the plugin
+ * writes since 0.1.7; the retired catch-all `plugin` kind is still matched,
+ * because this predicate reads *logged history* — a session that started before
+ * the cutover carries the old attribution, and losing sight of it would inject
+ * a second profile into a chat that already has one.
+ */
 function isStartupProfile(message: unknown): boolean {
   const source = (
     message as {
       source?: { kind?: unknown; plugin?: unknown; form?: unknown };
     } | null
   )?.source;
+  if (source?.form !== "instructions") return false;
   return (
-    source?.kind === "plugin" &&
-    source.plugin === OPENVIKING_PLUGIN_SOURCE &&
-    source.form === "instructions"
+    source.kind === OPENVIKING_PLUGIN_SOURCE ||
+    (source.kind === "plugin" && source.plugin === OPENVIKING_PLUGIN_SOURCE)
   );
 }

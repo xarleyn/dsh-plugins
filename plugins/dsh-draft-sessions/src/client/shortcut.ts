@@ -11,6 +11,7 @@ import type {
 import type { DraftSession } from "../shared/types.js";
 import type { DraftComposerBridge } from "./composer.js";
 import type { DraftSessionLifecycle } from "./lifecycle.js";
+import { retainedDraftSessionId } from "./session-source.js";
 
 interface ShortcutEvent {
   readonly key: string;
@@ -47,14 +48,16 @@ function browserShortcuts(): ShortcutSource | undefined {
 
 /**
  * Resolve the same current/recent Workspace axis used by New Session: the
- * current Session's Workspace first, then the most recently active Workspace
- * in Host order (activity mirrors ui-workspace's own fallback).
+ * Session this plugin is composing first, then the most recently active
+ * Workspace in Host order (activity mirrors ui-workspace's own fallback).
+ * `rc.2` deleted the Host-wide current Session, so "current" is the row this
+ * plugin retains rather than whatever the shell is displaying.
  */
 export function resolveDraftWorkspace(
-  sessions: Pick<SessionListState, "current" | "byId" | "phase">,
+  sessions: Pick<SessionListState, "byId" | "phase">,
   workspaces: Pick<WorkspaceSnapshot, "items" | "phase">,
 ): string | undefined {
-  const currentId = sessions.current;
+  const currentId = retainedDraftSessionId(sessions);
   if (currentId !== undefined) {
     const current = workspaces.items.find((workspace) =>
       workspace.sessionIds.includes(currentId),

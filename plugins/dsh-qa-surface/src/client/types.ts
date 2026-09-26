@@ -4,7 +4,7 @@ import type {
   SessionFace,
 } from "@deepseek-ai/dsh-api-session-controller/client";
 import type {} from "@deepseek-ai/dsh-api-session-controller/remote";
-import type {} from "@deepseek-ai/dsh-agent-presets/remote";
+import type {} from "@deepseek-ai/dsh-agent-preset-registry/remote";
 import type { UiConversation } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {
   QaAccountNotificationsInput,
@@ -22,6 +22,7 @@ import type {
   QaPendingApproval,
   QaPendingQuestion,
   QaQuestionAnswerItem,
+  QaQueueStatus,
   QaIssuedServiceToken,
   QaServiceTokenCreateInput,
   QaServiceTokenSummary,
@@ -114,6 +115,13 @@ export type QaCreateSession = (
   subroleId: string | null,
   adminPreview: boolean,
 ) => Promise<RemoteResult<string>>;
+
+/**
+ * The Host's live read of the request ceiling (`qaSurface/queueStatus`), asked
+ * per send: how many questions the stand is answering and whether one more
+ * fits.
+ */
+export type QaQueueStatusRemote = () => Promise<RemoteResult<QaQueueStatus>>;
 
 /** Role selector plus administrator mutation channel. */
 export interface QaAccessApi {
@@ -715,6 +723,9 @@ export const QA_SESSION_IDLE_STATE: QaSessionState = Object.freeze({
   viewingSubagent: null,
   approvals: Object.freeze([]),
   questions: Object.freeze([]),
+  // No send was held back: the ceiling only speaks when a question reaches for
+  // a place that is already taken.
+  requestQueue: null,
   // Idle means no chat, so there is nothing for a slash line to act on; the
   // controller fills this in once a session binds.
   slash: Object.freeze({

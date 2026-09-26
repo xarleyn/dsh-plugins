@@ -34,7 +34,8 @@ export function AccountsSection(props: ConfigProps) {
     <Section
       title="Аккаунты"
       modified={modified}
-      aside={resetAside(props, paths)}
+      testId="qa-settings-accounts"
+      aside={resetAside(props, paths, "qa-settings-accounts-reset")}
     >
       <div className="qa-card-grid">
         <Toggle
@@ -42,6 +43,7 @@ export function AccountsSection(props: ConfigProps) {
           disabled={disabled}
           label="Вход по аккаунтам"
           hint="Пока выключено, страница открыта всякому, кто до неё дошёл."
+          testId="qa-settings-accounts-enabled"
           onChange={(value) => {
             props.write(["accounts", "enabled"], value);
           }}
@@ -51,6 +53,7 @@ export function AccountsSection(props: ConfigProps) {
           disabled={disabled || !enabled}
           label="Самостоятельная регистрация"
           hint="Посетитель может завести аккаунт сам. Первый зарегистрированный становится администратором."
+          testId="qa-settings-accounts-allow-registration"
           onChange={(value) => {
             props.write(["accounts", "allowRegistration"], value);
           }}
@@ -62,6 +65,7 @@ export function AccountsSection(props: ConfigProps) {
           max={365}
           disabled={disabled || !enabled}
           hint="Через сколько дней браузеру придётся войти заново."
+          testId="qa-settings-accounts-session-ttl-days"
           onChange={(value) => {
             props.write(["accounts", "sessionTtlDays"], value);
           }}
@@ -71,25 +75,29 @@ export function AccountsSection(props: ConfigProps) {
           disabled={disabled || !enabled}
           label="Администраторам видны чужие чаты"
           hint="Обычный аккаунт видит только свои чаты; эта настройка открывает администраторам список всех."
+          testId="qa-settings-accounts-show-other-users-chats"
           onChange={(value) => {
             props.write(["accounts", "showOtherUsersChats"], value);
           }}
         />
       </div>
       {enabled ? (
-        <Notice tone="info">
+        <Notice tone="info" testId="qa-settings-accounts-notice-gate">
           Аккаунты называют пользователя и закрепляют за ним чаты. Они не
           отгораживают харнесс: сессия помощника всё равно живёт в правах
           процесса хоста.
         </Notice>
       ) : (
-        <Notice tone="info">
+        <Notice tone="info" testId="qa-settings-accounts-notice-gate">
           Аккаунты выключены: все посетители анонимны, чаты не закрепляются за
           человеком, а общая история страницы доступна каждому.
         </Notice>
       )}
       {enabled && (accounts?.showOtherUsersChats ?? false) ? (
-        <Notice tone="warn">
+        <Notice
+          tone="warn"
+          testId="qa-settings-accounts-notice-admin-sees-chats"
+        >
           Администраторы видят чаты других пользователей. Это осознанное решение
           стенда: содержимое чужих диалогов попадает на экран тому, кто их не
           вёл.
@@ -101,6 +109,7 @@ export function AccountsSection(props: ConfigProps) {
           disabled={disabled || !enabled}
           label="Отдельное рабочее пространство каждому"
           hint="Сессии расходятся по каталогам пользователей внутри выбранного рабочего пространства. Сохраняется вместе с режимом песочницы «запись», иначе хост отвергает конфигурацию."
+          testId="qa-settings-accounts-per-user-workspace"
           onChange={(value) => {
             props.writeMany([
               { path: ["accounts", "perUserWorkspace"], value },
@@ -113,7 +122,7 @@ export function AccountsSection(props: ConfigProps) {
         />
       </div>
       {!perUser && gaps.length > 0 ? (
-        <Notice tone="info">
+        <Notice tone="info" testId="qa-settings-accounts-notice-per-user-gaps">
           Для персональных рабочих пространств нужно ещё: {gaps.join("; ")}.
         </Notice>
       ) : null}
@@ -123,6 +132,7 @@ export function AccountsSection(props: ConfigProps) {
           disabled={disabled || !enabled}
           label="Профиль пользователя"
           hint="Форма «о себе» в интерфейсе помощника; без аккаунтов её некому заполнять."
+          testId="qa-settings-accounts-profile-enabled"
           onChange={(value) => {
             props.write(["accounts", "profile", "enabled"], value);
           }}
@@ -132,6 +142,7 @@ export function AccountsSection(props: ConfigProps) {
           disabled={disabled || !enabled || !(profile?.enabled ?? true)}
           label="Передавать профиль помощнику"
           hint="Имя, почта и заполненные поля профиля уходят в системную подсказку, чтобы помощник знал, с кем говорит."
+          testId="qa-settings-accounts-profile-inject"
           onChange={(value) => {
             props.write(["accounts", "profile", "inject"], value);
           }}
@@ -143,6 +154,7 @@ export function AccountsSection(props: ConfigProps) {
           max={20_000}
           disabled={disabled || !enabled || !(profile?.enabled ?? true)}
           hint="Сколько свободного текста пользователь может написать о том, как ему отвечать."
+          testId="qa-settings-accounts-profile-instructions-max-length"
           onChange={(value) => {
             props.write(
               ["accounts", "profile", "instructionsMaxLength"],
@@ -154,6 +166,7 @@ export function AccountsSection(props: ConfigProps) {
       <IdentitiesField
         value={profile?.identities ?? []}
         disabled={disabled || !enabled || !(profile?.enabled ?? true)}
+        testId="qa-settings-accounts-profile-identities"
         onCommit={(fields) => {
           props.write(["accounts", "profile", "identities"], fields);
         }}
@@ -164,6 +177,7 @@ export function AccountsSection(props: ConfigProps) {
           disabled={disabled || !enabled}
           label="Свои быстрые сообщения"
           hint="Пользователь задаёт свои кнопки-подсказки над строкой ввода — название и отправляемый промпт — и может скрыть стандартные вопросы."
+          testId="qa-settings-accounts-starters-enabled"
           onChange={(value) => {
             props.write(["accounts", "starters", "enabled"], value);
           }}

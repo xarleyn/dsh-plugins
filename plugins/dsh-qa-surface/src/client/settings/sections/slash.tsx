@@ -54,19 +54,21 @@ export function SlashSection(props: ConfigProps) {
     <Section
       title="Слеш-действия"
       modified={modified}
-      aside={resetAside(props, paths)}
+      testId="qa-settings-slash"
+      aside={resetAside(props, paths, "qa-settings-slash-reset")}
     >
       <Toggle
         checked={allow}
         disabled={disabled}
         label="Разрешить слэш-действия"
         hint="Открывает палитру по «/» в поле ввода. Сама по себе ничего не разрешает: навыки и команды перечисляются отдельно ниже."
+        testId="qa-settings-slash-allow-commands"
         onChange={(value) => {
           props.write(["lockdown", "allowSlashCommands"], value);
         }}
       />
       {allow ? null : (
-        <Notice tone="info">
+        <Notice tone="info" testId="qa-settings-slash-notice-disabled">
           Слэш-действия выключены: «/» в начале сообщения по-прежнему
           отвергается с подсказкой, палитра не открывается.
         </Notice>
@@ -77,6 +79,7 @@ export function SlashSection(props: ConfigProps) {
         disabled={disabled}
         options={POLICY_MODES}
         hint="«Все доступные» — это user-invocable навыки текущего чата, а не весь реестр."
+        testId="qa-settings-slash-skills-mode"
         onChange={(value) => {
           props.write(["slashCommands", "skills", "mode"], value);
         }}
@@ -88,6 +91,7 @@ export function SlashSection(props: ConfigProps) {
         placeholder="generate-tkp, generate-tz, gap-analysis"
         hint="Точные имена без слеша, через запятую или по одному в строке. Действует при режиме «Только из списка»."
         parse={parseCommaList}
+        testId="qa-settings-slash-skills-allow"
         onCommit={(values) => {
           props.write(["slashCommands", "skills", "allow"], values);
         }}
@@ -98,6 +102,7 @@ export function SlashSection(props: ConfigProps) {
         disabled={disabled}
         options={POLICY_MODES}
         hint="Команды — это управляющий слой: они выполняются хостом напрямую и не становятся сообщением модели."
+        testId="qa-settings-slash-commands-mode"
         onChange={(value) => {
           props.write(["slashCommands", "commands", "mode"], value);
         }}
@@ -109,6 +114,7 @@ export function SlashSection(props: ConfigProps) {
         placeholder="compact, export"
         hint="Точные имена без слеша. По умолчанию не разрешена ни одна команда: новая команда установленного плагина не должна появляться в палитре сама."
         parse={parseCommaList}
+        testId="qa-settings-slash-commands-allow"
         onCommit={(values) => {
           props.write(["slashCommands", "commands", "allow"], values);
         }}
@@ -119,6 +125,7 @@ export function SlashSection(props: ConfigProps) {
           disabled={disabled}
           label="Показывать палитру"
           hint="Список действий над полем ввода. Выключение не запрещает уже разрешённые действия — их можно набрать вручную."
+          testId="qa-settings-slash-palette-enabled"
           onChange={(value) => {
             props.write(["slashCommands", "palette", "enabled"], value);
           }}
@@ -128,6 +135,7 @@ export function SlashSection(props: ConfigProps) {
           disabled={disabled}
           label="Нечёткий поиск"
           hint="Дополнительно ищет по подстроке и по порядку букв. Выключенный — только совпадение, начало имени и граница слова."
+          testId="qa-settings-slash-palette-fuzzy-search"
           onChange={(value) => {
             props.write(["slashCommands", "palette", "fuzzySearch"], value);
           }}
@@ -139,13 +147,14 @@ export function SlashSection(props: ConfigProps) {
           max={100}
           disabled={disabled}
           hint="Сколько совпадений показывать; остальные отсекаются по релевантности."
+          testId="qa-settings-slash-palette-max-visible"
           onChange={(value) => {
             props.write(["slashCommands", "palette", "maxVisible"], value);
           }}
         />
       </div>
       {effective?.legacyDefaults === true ? (
-        <Notice tone="warn">
+        <Notice tone="warn" testId="qa-settings-slash-notice-legacy-defaults">
           Включён устаревший режим совместимости: развёртывание включает
           слэш-действия, но не описывает их политику. Разрешены все
           user-invocable навыки чата, команды запрещены — перечислите команды

@@ -33,8 +33,11 @@ export type ReviewerConfig = ResolvedAnswerReviewGateConfig["reviewer"];
  * `ctx.get("domainExperts")` result; absence is a reviewer failure handled
  * by the failure policy, never a load-time dependency.
  *
- * Known Phase 1 bound: the domain-experts test entry owns its lifecycle, so
- * the run is not bound to the gate's abort signal (bounded single run).
+ * Lifecycle bound: the domain-experts `testExpert` entry owns its run and its
+ * face exposes no abort-signal parameter, so a started review cannot be
+ * cancelled from here. The most the gate can honour is the signal's state at
+ * the boundary: a turn already aborted at entry does not launch a doomed
+ * reviewer run.
  */
 export function createDomainExpertBackend(deps: {
   readonly face: DomainExpertsFace | undefined;
@@ -44,6 +47,12 @@ export function createDomainExpertBackend(deps: {
     name: "domain-expert",
     reviewer: deps.config.domain,
     async review(input: ReviewInput) {
+      if (input.signal.aborted) {
+        throw new ReviewerFailure(
+          "reviewer-aborted",
+          "the reviewed turn was cancelled before the reviewer started",
+        );
+      }
       if (deps.face === undefined) {
         throw new ReviewerFailure(
           "domain-experts-unavailable",
@@ -121,9 +130,11 @@ export function createSubagentBackend(deps: {
           ...(deps.config.persona === ""
             ? {}
             : { persona: deps.config.persona }),
-          ...(deps.config.allowedTools.length > 0
-            ? { toolFilter: { allow: deps.config.allowedTools } }
-            : {}),
+          // Always send the allow-list, empty included: the host only calls
+          // `tools.restrict()` when a `toolFilter` is present, so omitting it
+          // for an empty list handed the reviewer the parent's whole tool
+          // surface — the opposite of the config's "empty means no tools".
+          toolFilter: { allow: deps.config.allowedTools },
           ...(Object.keys(agentOptions).length > 0 ? { agentOptions } : {}),
           outputSchema: REVIEWER_OUTPUT_SCHEMA,
         });
@@ -147,7 +158,15 @@ export function createSubagentBackend(deps: {
         }
         return parseReviewerVerdict(textOfBlocks(result.output));
       } finally {
-        run.dispose();
+        // Await the child teardown: `dispose()` is asynchronous on the host
+        // (the domain-experts runner awaits it too), so a fire-and-forget call
+        // left the child fiber running past the review. Disposal is
+        // best-effort — it must never mask the review outcome.
+        try {
+          await run.dispose();
+        } catch {
+          /* disposal failure must not override the verdict or the failure */
+        }
       }
     },
   };

@@ -1,6 +1,7 @@
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
+import type { ContextSnapshotSection } from "@deepseek-ai/dsh-llm";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import type { QaAccounts } from "./accounts/store.js";
 import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
@@ -11,11 +12,25 @@ import type {
 } from "./types.js";
 
 /**
- * Plugin marker on every injected message. The chat projection turns a
- * plugin-sourced user message into injected context rather than a chat
- * bubble, and the QA transcript keeps exactly those hidden.
+ * This plugin's own producer source kind. The `@deepseek-ai/dsh-llm` source map
+ * is merge-extensible and ships no catch-all `plugin` kind, so a producer names
+ * itself here. The chat projection turns a `qa-notes`-sourced user message into
+ * injected context rather than a chat bubble, and the QA transcript keeps
+ * exactly those hidden.
  */
-export const QA_NOTES_PLUGIN = "qa-surface";
+export interface QaNotesMessageSource {
+  readonly kind: "qa-notes";
+  /** Every note is superseded by the next one this plugin injects. */
+  readonly form: "snapshot";
+  readonly sections: readonly ContextSnapshotSection[];
+}
+
+declare module "@deepseek-ai/dsh-llm" {
+  interface MessageSourceMap {
+    "qa-notes": QaNotesMessageSource;
+  }
+}
+
 /** Note name carrying who the assistant is talking to. */
 export const QA_IDENTITY_NOTE = "dsh-qa-surface:user-identity";
 /** Note name carrying the deployment's rule about source provenance. */
@@ -215,8 +230,7 @@ export class QaPromptNotes {
           return createUserMessage({
             content: [{ type: "text", text: note.text }],
             source: {
-              kind: "plugin",
-              plugin: QA_NOTES_PLUGIN,
+              kind: "qa-notes",
               form: "snapshot",
               sections: [{ name: note.name, text: note.text }],
             },
@@ -375,9 +389,7 @@ export class QaPromptNotes {
       const event = agent.session.eventAt(seq);
       if (event?.type !== "user/message") continue;
       const source = event.data.source;
-      if (source.kind !== "plugin" || source.plugin !== QA_NOTES_PLUGIN) {
-        continue;
-      }
+      if (source.kind !== "qa-notes") continue;
       const sections = source.form === "snapshot" ? source.sections : [];
       if (!sections.some((section) => section.name === noteName)) continue;
       const text = event.data.content

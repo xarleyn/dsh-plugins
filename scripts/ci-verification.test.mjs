@@ -67,9 +67,14 @@ test("the CI workflow fans the projects it verifies out into a bounded matrix", 
     /- name: Check file size budget\s+run: pnpm check:files/u,
     "a file that outgrew its budget has to fail a run, not only a review",
   );
+  // Позиция внутри `prepare` — а не относительно имени соседнего шага: шаг
+  // переименовывали (#407), и проверка по строке умерла бы на ровном месте.
+  const prepareJob = workflow.slice(
+    workflow.indexOf("  prepare:"),
+    workflow.indexOf("  projects:"),
+  );
   assert.ok(
-    workflow.indexOf("- name: Check file size budget") <
-      workflow.indexOf("- name: Select affected projects"),
+    prepareJob.includes("- name: Check file size budget"),
     "the budget gate belongs to the prepare job, so the size of a pull request is reported without building every project",
   );
   assert.match(

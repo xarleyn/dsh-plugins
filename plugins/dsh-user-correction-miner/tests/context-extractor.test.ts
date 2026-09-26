@@ -70,7 +70,7 @@ describe("extractCorrectionEvidence", () => {
   it("does not treat injected plugin context as a human instruction", () => {
     const events = [
       userEvent(0, "Исходная просьба"),
-      userEvent(1, "Injected instructions", "plugin"),
+      userEvent(1, "Injected instructions", "injected"),
       assistantEvent(2, "Сделаю."),
       userEvent(3, "Не делай так."),
     ];

@@ -2,7 +2,7 @@
 
 /**
  * The operator card: it renders the deployment configuration from the bound
- * settings scope, writes every edit as one path-addressed mutation, and
+ * settings form, writes every edit as one path-addressed mutation, and
  * clears an override back to the composition layer. The namespace is the
  * plugin's configuration source, so a committed write is the deployment
  * change — the card adds no persistence of its own.
@@ -15,7 +15,7 @@ import { OperatorCard } from "../src/client/operator-card.js";
 
 /** The slot props the Host supplies are outside this test's concern. */
 const Card = OperatorCard as unknown as (props: {
-  scope: unknown;
+  form: unknown;
 }) => ReactElement;
 
 interface ScopeOp {
@@ -34,7 +34,7 @@ function scopeStub(initial: {
   user?: unknown;
   writable?: boolean;
   status?: "ready" | "unavailable";
-}): { scope: never; stub: ScopeStub } {
+}): { form: never; stub: ScopeStub } {
   let snapshot = {
     status: (initial.status ?? "ready") as "ready" | "unavailable",
     value: initial.value,
@@ -81,7 +81,7 @@ function scopeStub(initial: {
     unset: async () => {},
   };
   return {
-    scope: scope as never,
+    form: scope as never,
     stub: {
       writes,
       setStatus(status) {
@@ -98,8 +98,8 @@ function renderCard(initial: {
   writable?: boolean;
   status?: "ready" | "unavailable";
 }): ScopeStub {
-  const { scope, stub } = scopeStub(initial);
-  render(<Card scope={scope} />);
+  const { form, stub } = scopeStub(initial);
+  render(<Card form={form} />);
   return stub;
 }
 
@@ -116,20 +116,17 @@ function captionOf(node: Element): string {
 }
 
 /**
- * The `<details>` block one provider owns, found by its section title — one
- * pass over the eight sections instead of a name lookup over the thousand nodes
- * of the whole card. Every knob belongs to one provider anyway.
+ * The section one zone owns, found by its test id. The zones are `general`,
+ * `service-access` and one per provider, so a knob is reached through the
+ * provider that owns it whatever its caption happens to say in Russian.
  */
-function sectionOf(title: string): HTMLElement {
-  const sections = [
-    ...document.querySelectorAll<HTMLElement>(".qai-op__section"),
-  ].filter(
-    (section) =>
-      captionOf(section.querySelector(".qai-op__section-title") ?? section) ===
-      title,
-  );
-  expect(sections, `sections titled ${title}`).toHaveLength(1);
-  return sections[0] as HTMLElement;
+function sectionOf(zone: string): HTMLElement {
+  return screen.getByTestId(`qa-integrations-${zone}`);
+}
+
+/** Opens a collapsed section the way a reader does: by its own summary. */
+function openSection(zone: string): void {
+  fireEvent.click(sectionOf(zone).querySelector("summary") as HTMLElement);
 }
 
 /**
@@ -159,21 +156,6 @@ function labelledControl(
   );
   expect(bound, `controls bound to ${caption}`).toHaveLength(1);
   return bound[0] as HTMLElement;
-}
-
-/**
- * The `<button>` captioned `caption`. `getByRole("button", {name})` computes the
- * accessible name of every button of the mounted card before it answers, which
- * costs a quarter of a second here. A button that carries no `aria-label` is
- * named by its contents, so comparing contents says the same thing; the shell's
- * header button is named by `aria-label` and stays a role query in `expand`.
- */
-function buttonWithCaption(caption: string): HTMLElement {
-  const hits = [...document.querySelectorAll("button")].filter(
-    (button) => captionOf(button) === caption,
-  );
-  expect(hits, `buttons captioned ${caption}`).toHaveLength(1);
-  return hits[0] as HTMLElement;
 }
 
 const RESOLVED = {
@@ -206,27 +188,27 @@ const RESOLVED = {
 describe("integrations operator card", () => {
   it("stays hidden when the namespace is not exposed to this browser", () => {
     const { container } = render(
-      <Card scope={scopeStub({ status: "unavailable" }).scope} />,
+      <Card form={scopeStub({ status: "unavailable" }).form} />,
     );
-    // The card renders null while the scope reports the namespace absent.
+    // The card renders null while the form reports the namespace absent.
     expect(container.childElementCount).toBe(0);
   });
 
   it("renders the deployment configuration sections", () => {
     renderCard({ value: RESOLVED });
     expand();
-    expect(screen.getByText("Общие")).toBeDefined();
-    expect(screen.getByText("Bitrix24")).toBeDefined();
-    expect(screen.getByText("GitLab")).toBeDefined();
-    expect(screen.getByText("TeamCity")).toBeDefined();
-    expect(screen.getByText("Сервисные доступы")).toBeDefined();
+    expect(screen.getByTestId("qa-integrations-general")).toBeDefined();
+    expect(screen.getByTestId("qa-integrations-bitrix24")).toBeDefined();
+    expect(screen.getByTestId("qa-integrations-gitlab")).toBeDefined();
+    expect(screen.getByTestId("qa-integrations-teamcity")).toBeDefined();
+    expect(screen.getByTestId("qa-integrations-service-access")).toBeDefined();
     // The badge names the layer state: nothing overridden yet.
     expect(screen.getByText("по умолчанию")).toBeDefined();
     // The general section mounts open and the disabled plugin shows it.
     expect(
       (
         labelledControl(
-          sectionOf("Общие"),
+          sectionOf("general"),
           /Плагин включён/u,
         ) as HTMLInputElement
       ).checked,
@@ -247,10 +229,8 @@ describe("integrations operator card", () => {
   it("groups a provider into labelled blocks with the knobs folded away", () => {
     renderCard({ value: RESOLVED });
     expand();
-    fireEvent.click(screen.getByText("GitLab"));
-    const section = screen
-      .getByText("Инстансы GitLab")
-      .closest(".qai-op__section") as HTMLElement;
+    openSection("gitlab");
+    const section = sectionOf("gitlab");
     const titles = [...section.querySelectorAll(".qai-op__group-title")].map(
       (title) => title.textContent,
     );
@@ -261,11 +241,19 @@ describe("integrations operator card", () => {
       "Ограничения и повторы",
     ]);
     // Capabilities sit in their own checklist, connection editors own the row.
-    expect(section.querySelector(".qai-op__group--checks")).toBeTruthy();
-    expect(section.querySelector(".qai-op__group--wide")).toBeTruthy();
+    expect(
+      screen
+        .getByTestId("qa-integrations-gitlab-capabilities")
+        .classList.contains("qai-op__group--checks"),
+    ).toBe(true);
+    expect(
+      screen
+        .getByTestId("qa-integrations-gitlab-connection")
+        .classList.contains("qai-op__group--wide"),
+    ).toBe(true);
     // The numeric knobs stay folded until someone asks for them.
-    const limits = section.querySelector(
-      ".qai-op__group--limits",
+    const limits = screen.getByTestId(
+      "qa-integrations-gitlab-limits",
     ) as HTMLDetailsElement;
     expect(limits.open).toBe(false);
     fireEvent.click(limits.querySelector("summary") as HTMLElement);
@@ -279,19 +267,15 @@ describe("integrations operator card", () => {
   it("keeps every deployment knob reachable after the regrouping", () => {
     renderCard({ value: RESOLVED });
     expand();
-    for (const provider of [
-      "Confluence",
-      "GitLab",
-      "TeamCity",
-      "Jira",
-      "Test IT",
-      "Weblate",
+    for (const zone of [
+      "confluence",
+      "gitlab",
+      "teamcity",
+      "jira",
+      "testit",
+      "weblate",
     ]) {
-      fireEvent.click(
-        sectionOf(provider).querySelector(
-          ".qai-op__section-title",
-        ) as HTMLElement,
-      );
+      openSection(zone);
     }
     // One representative of each kind, in each provider that has it. The
     // captions are read in one pass: six name lookups over the whole card were
@@ -312,18 +296,20 @@ describe("integrations operator card", () => {
     }
     // A capability of each provider, read through the checklist that owns it —
     // which is what "its deployment knobs" means here.
-    for (const [provider, capability] of [
-      ["Confluence", "Версии: чтение"],
-      ["GitLab", "CI: чтение"],
-      ["TeamCity", "Агенты: чтение"],
-      ["Jira", "Переходы: чтение"],
-      ["Test IT", "Автотесты: чтение"],
-      ["Weblate", "Скриншоты: чтение"],
+    for (const [zone, capability] of [
+      ["confluence", "Версии: чтение"],
+      ["gitlab", "CI: чтение"],
+      ["teamcity", "Агенты: чтение"],
+      ["jira", "Переходы: чтение"],
+      ["testit", "Автотесты: чтение"],
+      ["weblate", "Скриншоты: чтение"],
     ] as const) {
-      const checks = sectionOf(provider).querySelector(
-        ".qai-op__group--checks",
-      ) as HTMLElement;
-      expect(labelledControl(checks, capability)).toBeDefined();
+      expect(
+        labelledControl(
+          screen.getByTestId(`qa-integrations-${zone}-capabilities`),
+          capability,
+        ),
+      ).toBeDefined();
     }
   });
 
@@ -331,9 +317,9 @@ describe("integrations operator card", () => {
     const stub = renderCard({ value: RESOLVED });
     expand();
     // The Bitrix24 section is collapsed until opened.
-    fireEvent.click(screen.getByText("Bitrix24"));
+    openSection("bitrix24");
     const crm = labelledControl(
-      sectionOf("Bitrix24"),
+      sectionOf("bitrix24"),
       "CRM: чтение",
     ) as HTMLInputElement;
     expect(crm.checked).toBe(true);
@@ -346,7 +332,7 @@ describe("integrations operator card", () => {
   it("enables the plugin from the always-open general section", () => {
     const stub = renderCard({ value: RESOLVED });
     expand();
-    fireEvent.click(labelledControl(sectionOf("Общие"), /Плагин включён/u));
+    fireEvent.click(labelledControl(sectionOf("general"), /Плагин включён/u));
     expect(stub.writes).toEqual([
       { op: "set", path: ["enabled"], value: true },
     ]);
@@ -372,7 +358,7 @@ describe("integrations operator card", () => {
       screen.getByText(/^Хост не принимает правки из этого браузера/u),
     ).toBeDefined();
     const toggle = labelledControl(
-      sectionOf("Общие"),
+      sectionOf("general"),
       /Плагин включён/u,
     ) as HTMLInputElement;
     expect(toggle.disabled).toBe(true);
@@ -391,9 +377,7 @@ describe("integrations operator card", () => {
       },
     });
     expand();
-    const section = screen
-      .getByText("Сайты Jira Cloud")
-      .closest(".qai-op__section") as HTMLElement;
+    const section = sectionOf("jira");
     const select = section.querySelector("select") as HTMLSelectElement;
     // A site that names no product reads as the Host resolver's own default.
     expect(select.value).toBe("cloud");
@@ -434,9 +418,7 @@ describe("integrations operator card", () => {
       },
     });
     expand();
-    const section = screen
-      .getByText("Сайты Confluence")
-      .closest(".qai-op__section") as HTMLElement;
+    const section = sectionOf("confluence");
     const select = section.querySelector("select") as HTMLSelectElement;
     expect(select.value).toBe("server");
     const row = section.querySelector(".qai-op__instance") as HTMLElement;
@@ -483,20 +465,14 @@ describe("integrations operator card", () => {
       },
     });
     expand();
-    for (const provider of ["Confluence", "GitLab", "Jira", "Test IT"]) {
-      fireEvent.click(screen.getByText(provider));
+    for (const zone of ["confluence", "jira", "gitlab"]) {
+      openSection(zone);
     }
-    const selectsIn = (label: string): number => {
-      const section = screen
-        .getByText(label)
-        .closest(".qai-op__section") as HTMLElement;
-      return section.querySelectorAll("select").length;
-    };
     // One control per row of the two providers that distinguish a deployment…
-    expect(selectsIn("Сайты Confluence")).toBe(1);
-    expect(selectsIn("Сайты Jira Cloud")).toBe(1);
+    expect(sectionOf("confluence").querySelectorAll("select")).toHaveLength(1);
+    expect(sectionOf("jira").querySelectorAll("select")).toHaveLength(1);
     // …and none at all for a provider that has no such distinction.
-    expect(selectsIn("Инстансы GitLab")).toBe(0);
+    expect(sectionOf("gitlab").querySelectorAll("select")).toHaveLength(0);
   });
 
   it("starts a row the operator adds on the Cloud default", () => {
@@ -504,9 +480,7 @@ describe("integrations operator card", () => {
       value: { ...RESOLVED, jira: { enabled: true, sites: [] } },
     });
     expand();
-    const section = screen
-      .getByText("Сайты Jira Cloud")
-      .closest(".qai-op__section") as HTMLElement;
+    const section = sectionOf("jira");
     // The add button sits in the span next to the row list; the field-alias
     // record editor further down carries one of its own.
     const add = section.querySelector(
@@ -522,9 +496,7 @@ describe("integrations operator card", () => {
   it("keeps an unfinished instance draft local when the stored row is removed", () => {
     const stub = renderCard({ value: RESOLVED });
     expand();
-    const section = screen
-      .getByText("Инстансы GitLab")
-      .closest(".qai-op__section") as HTMLElement;
+    const section = sectionOf("gitlab");
     const add = section.querySelector(
       ".qai-op__instances ~ span button",
     ) as HTMLButtonElement;
@@ -555,10 +527,14 @@ describe("integrations operator card", () => {
       },
     });
     expand();
-    fireEvent.click(screen.getByText("Сервисные доступы"));
-    fireEvent.click(buttonWithCaption("добавить профиль"));
+    openSection("service-access");
+    fireEvent.click(
+      screen.getByTestId("qa-integrations-service-access-add-profile"),
+    );
 
-    expect(document.querySelectorAll(".qai-op__profile")).toHaveLength(1);
+    expect(
+      screen.queryAllByTestId(/^qa-integrations-service-access-profile-\d+$/u),
+    ).toHaveLength(1);
     expect(screen.getByText(/не сохранено — нужно: id/u)).toBeDefined();
     expect(stub.writes).toEqual([]);
   });
@@ -584,18 +560,21 @@ describe("integrations operator card", () => {
       },
     });
     expand();
-    fireEvent.click(screen.getByText("Сервисные доступы"));
-    const id = document.querySelector(
-      ".qai-op__profile input[type='text']",
-    ) as HTMLInputElement;
+    openSection("service-access");
+    const id = screen
+      .getByTestId("qa-integrations-service-access-profile-0")
+      .querySelector("input[type='text']") as HTMLInputElement;
 
     fireEvent.change(id, { target: { value: "qa-gitlab-audit" } });
     expect(id.value).toBe("qa-gitlab-audit");
     expect(stub.writes).toEqual([]);
+    // The row is keyed by its own id, so renaming it re-mounts it: the controls
+    // are read from the row that stands after the commit, not from the node the
+    // edit started on.
     fireEvent.click(
-      document.querySelector(
-        ".qai-op__profile input[type='checkbox']",
-      ) as HTMLInputElement,
+      screen
+        .getByTestId("qa-integrations-service-access-profile-0")
+        .querySelector("input[type='checkbox']") as HTMLInputElement,
     );
 
     expect(stub.writes).toEqual([

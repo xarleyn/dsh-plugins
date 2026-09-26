@@ -17,6 +17,7 @@ import { WebFetchAuthenticated } from "../src/index.js";
 import {
   configWith,
   fixtureRule,
+  liveConfig,
   startFixture,
   type FixtureServer,
 } from "./helpers.js";
@@ -107,7 +108,7 @@ describe("plugin credential wiring", () => {
     ]);
     // Constructed while no credential provider is mounted: the provider only
     // appears afterwards, exactly as it does during a Host boot.
-    const plugin = new WebFetchAuthenticated(ctx, config);
+    const plugin = new WebFetchAuthenticated(ctx, liveConfig(config));
     ctx.provide("credentials", providerFake({ TEST_TOKEN: SECRET }));
 
     const status = await plugin.status();

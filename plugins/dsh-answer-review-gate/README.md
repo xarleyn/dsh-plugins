@@ -144,7 +144,7 @@ audit:
 
 ## Requirements
 
-- DeepSeek Harness >=0.1.5-rc.2 <0.2.0
+- DeepSeek Harness >=0.1.7-rc.2 <0.2.0
 - Node.js ^22.19.0 or >=24.0.0
 
 ## Installation
@@ -157,7 +157,7 @@ The `--profile` flag is required.
 
 ## Compatibility
 
-- DeepSeek Harness >=0.1.5-rc.2 <0.2.0 (see `compatibility.json`).
+- DeepSeek Harness >=0.1.7-rc.2 <0.2.0 (see `compatibility.json`).
 - Uses the `commands` host service plus the `agent/turn-stopping`,
   `tools/result` and `agent/inbox/inserted` lifecycle seams — no DSH core
   changes.

@@ -44,7 +44,9 @@ describe("QA welcome notice", () => {
     expect(dialog).toBeTruthy();
     expect(document.getElementById("root")?.inert).toBe(true);
     for (const paragraph of QA_WELCOME_NOTICE_COPY.paragraphs) {
-      expect(screen.getByText(paragraph)).toBeTruthy();
+      expect(
+        screen.getByTestId("qa-surface-welcome-description").textContent,
+      ).toContain(paragraph);
     }
 
     fireEvent.click(
@@ -71,9 +73,7 @@ describe("QA welcome notice", () => {
 
   it("does not dismiss the mandatory disclosure on Escape or backdrop clicks", () => {
     const complete = mount();
-    const backdrop = document.querySelector(
-      ".dsh-qa-onboarding",
-    ) as HTMLElement;
+    const backdrop = screen.getByTestId("qa-surface-welcome");
 
     fireEvent.keyDown(backdrop, { key: "Escape" });
     fireEvent.click(backdrop);

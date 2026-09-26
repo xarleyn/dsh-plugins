@@ -101,6 +101,9 @@ const serviceConnected: IntegrationSummary = {
   service: serviceSummary,
 };
 
+/** The test id zone this card owns; every hook below is named from it. */
+const Z = "qa-integrations-provider-card-bitrix24";
+
 describe("Integrations Bitrix24 card", () => {
   it("keeps manual credentials write-only", async () => {
     const writes: {
@@ -215,7 +218,10 @@ describe("Integrations Bitrix24 card", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Подключить сервисный токен" }),
     );
-    await screen.findByText("Сервисный аккаунт · управляется администратором");
+    const source = await screen.findByTestId(`${Z}-credential-source`);
+    expect(source.textContent).toContain(
+      "Сервисный аккаунт · управляется администратором",
+    );
     expect(writes).toEqual([
       {
         instanceId: "corp",

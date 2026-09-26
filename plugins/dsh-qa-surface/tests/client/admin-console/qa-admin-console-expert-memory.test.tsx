@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type {
   QaExpertMemoryDraft,
@@ -112,8 +112,16 @@ describe("admin console expert memory", () => {
     expect(
       await screen.findByRole("heading", { name: "Память экспертов" }),
     ).toBeTruthy();
-    expect(await screen.findByText("cutoff", {}, MOUNT_TIMEOUT)).toBeTruthy();
-    expect(screen.getByText("The settlement cutoff is 14:00.")).toBeTruthy();
+    const rows = await screen.findAllByTestId(
+      "qa-admin-memory-row",
+      {},
+      MOUNT_TIMEOUT,
+    );
+    const first = within(rows[0] as HTMLElement);
+    expect(first.getByTestId("qa-admin-memory-key").textContent).toBe("cutoff");
+    expect(first.getByTestId("qa-admin-memory-text").textContent).toBe(
+      "The settlement cutoff is 14:00.",
+    );
     expect(memoryRecords).toHaveBeenCalledWith(
       TOKEN,
       "domain/payments",
@@ -126,7 +134,13 @@ describe("admin console expert memory", () => {
   it("switches namespace from the picker instead of guessing one", async () => {
     const { api, memoryRecords } = rig();
     renderConsole(api, "/qa/admin/memory");
-    const picker = await screen.findByLabelText("Эксперт", {}, MOUNT_TIMEOUT);
+    const filter = await screen.findByTestId(
+      "qa-admin-memory-filter-expert",
+      {},
+      MOUNT_TIMEOUT,
+    );
+    // The control is still a combobox carrying the label the operator reads.
+    const picker = within(filter).getByRole("combobox");
     fireEvent.change(picker, { target: { value: "shared/product" } });
     await waitFor(() => {
       expect(memoryRecords).toHaveBeenLastCalledWith(
@@ -144,11 +158,14 @@ describe("admin console expert memory", () => {
     renderConsole(api, "/qa/admin/memory");
     const editors = await screen.findAllByRole("button", { name: "Править" });
     fireEvent.click(editors[0] as HTMLElement);
-    const field = await screen.findByLabelText(
-      "Текст записи cutoff",
+    const editor = await screen.findByTestId(
+      "qa-admin-memory-editor",
       {},
       MOUNT_TIMEOUT,
     );
+    const field = within(editor).getByRole("textbox", {
+      name: "Текст записи cutoff",
+    });
     fireEvent.change(field, {
       target: { value: "The settlement cutoff is 15:00." },
     });
@@ -161,7 +178,10 @@ describe("admin console expert memory", () => {
         { text: "The settlement cutoff is 15:00.", tags: ["batch"] },
       );
     }, MOUNT_TIMEOUT);
-    expect(await screen.findByText("Запись cutoff исправлена.")).toBeTruthy();
+    expect(
+      (await screen.findByTestId("qa-admin-memory-notice", {}, MOUNT_TIMEOUT))
+        .textContent,
+    ).toBe("Запись cutoff исправлена.");
     // The list is read back from the store rather than patched in place: an
     // expert may have written to the same namespace while the editor was open.
     expect(memoryRecords.mock.calls.length).toBeGreaterThan(1);
@@ -174,9 +194,11 @@ describe("admin console expert memory", () => {
     fireEvent.click(editors[0] as HTMLElement);
     const save = screen.getByRole("button", { name: "Сохранить" });
     expect(save.hasAttribute("disabled")).toBe(true);
-    fireEvent.change(screen.getByLabelText("Текст записи cutoff"), {
-      target: { value: "   " },
-    });
+    const editor = screen.getByTestId("qa-admin-memory-editor");
+    fireEvent.change(
+      within(editor).getByRole("textbox", { name: "Текст записи cutoff" }),
+      { target: { value: "   " } },
+    );
     expect(save.hasAttribute("disabled")).toBe(true);
     expect(correctMemory).not.toHaveBeenCalled();
   });
@@ -222,7 +244,10 @@ describe("admin console expert memory", () => {
   it("offers the bulk control only once something is ticked", async () => {
     const { api } = rig();
     renderConsole(api, "/qa/admin/memory");
-    expect(await screen.findByText("cutoff", {}, MOUNT_TIMEOUT)).toBeTruthy();
+    expect(
+      (await screen.findAllByTestId("qa-admin-memory-row", {}, MOUNT_TIMEOUT))
+        .length,
+    ).toBe(2);
     expect(
       screen.queryByRole("button", { name: /Удалить выбранное/ }),
     ).toBeNull();
@@ -233,7 +258,7 @@ describe("admin console expert memory", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
     renderConsole(api, "/qa/admin/memory");
     fireEvent.click(
-      await screen.findByRole("button", { name: "Очистить пространство" }),
+      await screen.findByTestId("qa-admin-memory-wipe", {}, MOUNT_TIMEOUT),
     );
     await waitFor(() => {
       expect(wipeMemory).toHaveBeenCalledWith(TOKEN, "domain/payments", 2);
@@ -250,7 +275,10 @@ describe("admin console expert memory", () => {
     expect(
       await screen.findByRole("button", { name: "Память экспертов" }),
     ).toBeTruthy();
-    expect(await screen.findByText("cutoff", {}, MOUNT_TIMEOUT)).toBeTruthy();
+    expect(
+      (await screen.findAllByTestId("qa-admin-memory-row", {}, MOUNT_TIMEOUT))
+        .length,
+    ).toBe(2);
     expect(screen.queryByRole("button", { name: "Править" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Удалить" })).toBeNull();
     expect(screen.queryByRole("checkbox")).toBeNull();
@@ -260,12 +288,18 @@ describe("admin console expert memory", () => {
   it("will not write a namespace an expert only reads from", async () => {
     const { api } = rig();
     renderConsole(api, "/qa/admin/memory");
-    const picker = await screen.findByLabelText("Эксперт", {}, MOUNT_TIMEOUT);
-    fireEvent.change(picker, { target: { value: "shared/product" } });
+    const filter = await screen.findByTestId(
+      "qa-admin-memory-filter-expert",
+      {},
+      MOUNT_TIMEOUT,
+    );
+    fireEvent.change(within(filter).getByRole("combobox"), {
+      target: { value: "shared/product" },
+    });
     await waitFor(() => {
-      expect(
-        screen.getByText("В этом пространстве пока ничего не записано."),
-      ).toBeTruthy();
+      expect(screen.getByTestId("qa-admin-empty").textContent).toContain(
+        "В этом пространстве пока ничего не записано.",
+      );
     }, MOUNT_TIMEOUT);
     expect(
       screen.queryByRole("button", { name: "Очистить пространство" }),
@@ -276,12 +310,9 @@ describe("admin console expert memory", () => {
     const { api } = rig([], []);
     renderConsole(api, "/qa/admin/memory");
     expect(
-      await screen.findByText(
-        /На этом стенде нет экспертов с памятью/u,
-        undefined,
-        MOUNT_TIMEOUT,
-      ),
-    ).toBeTruthy();
+      (await screen.findByTestId("qa-admin-empty", {}, MOUNT_TIMEOUT))
+        .textContent,
+    ).toContain("На этом стенде нет экспертов с памятью");
   });
 
   it("answers a memory-unavailable refusal with the console's own copy", async () => {

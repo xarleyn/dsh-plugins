@@ -90,8 +90,9 @@ export interface AnswerReviewGateDeps {
   readonly domainExperts: () => DomainExpertsFace | undefined;
   readonly subagents: () => SubagentsFace | undefined;
   /**
-   * Deliver one plugin-sourced steer message to the agent (production:
-   * `createUserMessage` with the plugin source; injectable for tests).
+   * Deliver one `answer-review`-sourced steer message to the agent
+   * (production: `createUserMessage` with the gate's own source kind;
+   * injectable for tests).
    */
   readonly steerMessage: (
     agent: GateAgent,

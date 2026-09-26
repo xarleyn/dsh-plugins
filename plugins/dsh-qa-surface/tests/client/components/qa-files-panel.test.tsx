@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { QaChatFileGroup } from "../../../src/client/chat-files.js";
 import { QaFilesPanel } from "../../../src/client/components/QaFilesPanel.js";
@@ -25,9 +31,11 @@ describe("files panel", () => {
     render(<QaFilesPanel groups={groups} onJumpToMessage={vi.fn()} />);
     const badges = document.querySelectorAll(".dsh-qa-files__group");
     expect(badges).toHaveLength(2);
-    const card = screen.getByText("notes.md");
-    expect(card).toBeTruthy();
-    expect(screen.getByText("2 КБ")).toBeTruthy();
+    const chip = screen.getByTestId("qa-file");
+    expect(within(chip).getByTestId("qa-file-name").textContent).toBe(
+      "notes.md",
+    );
+    expect(within(chip).getByTestId("qa-file-size").textContent).toBe("2 КБ");
   });
 
   it("resolves image thumbnails through the asset repository", async () => {

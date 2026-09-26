@@ -22,10 +22,11 @@ describeProviderConformance({
     [500, "ProviderUnavailable"],
   ],
   transient: { status: 429, attempts: 3, code: "RateLimited" },
-  build: ({ fetcher, retries, maxResponseBytes }) => {
+  build: ({ fetcher, retries, maxResponseBytes, timeoutMs }) => {
     const provider = new WeblateProvider(
       resolveConfig({
         maxResponseBytes,
+        timeoutMs,
         weblate: { instances: INSTANCES, retries },
       }),
       fetcher,

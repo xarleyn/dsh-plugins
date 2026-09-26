@@ -75,7 +75,11 @@ export function AdminReviewQueue(props: {
   const items = resource.data?.items ?? rows;
 
   return (
-    <section className="dsh-qa-admin__page" aria-label="Очередь разбора">
+    <section
+      className="dsh-qa-admin__page"
+      data-testid="qa-admin-review-queue"
+      aria-label="Очередь разбора"
+    >
       <div className="dsh-qa-admin__title-row">
         <div>
           <h1>Очередь разбора</h1>
@@ -86,28 +90,45 @@ export function AdminReviewQueue(props: {
         </div>
       </div>
       {resource.error === undefined ? null : (
-        <p className="dsh-qa-admin__error" role="alert">
+        <p
+          className="dsh-qa-admin__error"
+          data-testid="qa-admin-review-queue-error"
+          role="alert"
+        >
           {adminErrorMessage(resource.error)}
         </p>
       )}
       {items.length === 0 ? (
-        <p className="dsh-qa-admin__empty">
+        <p
+          className="dsh-qa-admin__empty"
+          data-testid="qa-admin-review-queue-empty"
+        >
           {resource.loading ? "Загружаю…" : "Очередь пуста."}
         </p>
       ) : (
-        <ul className="dsh-qa-admin__queue">
+        <ul
+          className="dsh-qa-admin__queue"
+          data-testid="qa-admin-review-queue-list"
+        >
           {items.map((row, index) => (
             <li
               key={`${row.conversationId}:${row.messageId ?? ""}:${index}`}
+              data-testid="qa-admin-review-queue-item"
               className={`dsh-qa-admin__queue-item dsh-qa-admin__queue-item--${row.priority}`}
             >
               <div className="dsh-qa-admin__queue-head">
-                <span className="dsh-qa-admin__queue-priority">
+                <span
+                  className="dsh-qa-admin__queue-priority"
+                  data-testid="qa-admin-review-queue-priority"
+                >
                   {REVIEW_PRIORITY_LABELS[row.priority]}
                 </span>
-                <span>{REVIEW_REASON_LABELS[row.reason]}</span>
+                <span data-testid="qa-admin-review-queue-reason">
+                  {REVIEW_REASON_LABELS[row.reason]}
+                </span>
                 <Badge
                   tone={row.status === "reviewed" ? "positive" : "neutral"}
+                  testId="qa-admin-review-queue-status"
                 >
                   {row.status === "reviewed"
                     ? "Разобрано"
@@ -119,18 +140,25 @@ export function AdminReviewQueue(props: {
               </div>
               <button
                 type="button"
+                data-testid="qa-admin-review-queue-open"
                 onClick={() =>
                   props.onOpenConversation(row.conversationId, row.messageId)
                 }
               >
                 {row.title ?? row.conversationId}
               </button>
-              <span className="dsh-qa-admin__queue-owner">
+              <span
+                className="dsh-qa-admin__queue-owner"
+                data-testid="qa-admin-review-queue-owner"
+              >
                 {row.displayName}
                 {row.subroleId === "" ? "" : ` · ${row.subroleId}`}
               </span>
               {row.issueSummary === undefined ? null : (
-                <p className="dsh-qa-admin__queue-issues">
+                <p
+                  className="dsh-qa-admin__queue-issues"
+                  data-testid="qa-admin-review-queue-issues"
+                >
                   {row.issueSummary
                     .map((issue) => ISSUE_LABELS[issue])
                     .join(", ")}
@@ -223,38 +251,56 @@ export function ReviewPanel(props: {
   };
 
   return (
-    <aside className="dsh-qa-admin__review" aria-label="Разбор разговора">
+    <aside
+      className="dsh-qa-admin__review"
+      data-testid="qa-admin-review-panel"
+      aria-label="Разбор разговора"
+    >
       <h2>Разбор</h2>
       {error === undefined ? null : (
-        <p className="dsh-qa-admin__error" role="alert">
+        <p
+          className="dsh-qa-admin__error"
+          data-testid="qa-admin-review-error"
+          role="alert"
+        >
           {error}
         </p>
       )}
       {props.detail.reviews.length === 0 ? null : (
-        <ul className="dsh-qa-admin__reviews">
+        <ul
+          className="dsh-qa-admin__reviews"
+          data-testid="qa-admin-review-history"
+        >
           {props.detail.reviews.map((review) => (
-            <li key={review.id}>
+            <li key={review.id} data-testid="qa-admin-review-history-item">
               <div>
                 <Badge
                   tone={review.status === "reviewed" ? "positive" : "negative"}
+                  testId="qa-admin-review-history-status"
                 >
                   {review.status === "reviewed"
                     ? "Разобрано"
                     : "Нужно вернуться"}
                 </Badge>
-                <span>{SEVERITY_LABELS[review.severity]}</span>
+                <span data-testid="qa-admin-review-history-severity">
+                  {SEVERITY_LABELS[review.severity]}
+                </span>
                 <time title={review.createdAt}>
                   {formatStamp(review.createdAt)}
                 </time>
               </div>
               {review.issues.length === 0 ? null : (
-                <p>
+                <p data-testid="qa-admin-review-history-issues">
                   {review.issues.map((issue) => ISSUE_LABELS[issue]).join(", ")}
                 </p>
               )}
-              {review.notes === undefined ? null : <p>{review.notes}</p>}
+              {review.notes === undefined ? null : (
+                <p data-testid="qa-admin-review-history-notes">
+                  {review.notes}
+                </p>
+              )}
               {review.target === undefined ? null : (
-                <p>
+                <p data-testid="qa-admin-review-history-target">
                   Причина: {TARGET_LABELS[review.target]}
                   {review.suggestedAction === undefined
                     ? ""
@@ -267,8 +313,9 @@ export function ReviewPanel(props: {
       )}
       {props.canReview ? (
         <>
-          <FilterField label="Статус">
+          <FilterField label="Статус" testId="qa-admin-review-field-status">
             <select
+              data-testid="qa-admin-review-status"
               value={status}
               onChange={(event) =>
                 setStatus(
@@ -280,13 +327,16 @@ export function ReviewPanel(props: {
               <option value="needs_followup">Нужно вернуться</option>
             </select>
           </FilterField>
-          <fieldset className="dsh-qa-admin__issues">
+          <fieldset
+            className="dsh-qa-admin__issues"
+            data-testid="qa-admin-review-issues"
+          >
             <legend>Проблемы</legend>
             {ISSUE_GROUPS.map((group) => (
-              <div key={group.title}>
+              <div key={group.title} data-testid="qa-admin-review-issue-group">
                 <h4>{group.title}</h4>
                 {group.issues.map((issue) => (
-                  <label key={issue}>
+                  <label key={issue} data-testid="qa-admin-review-issue">
                     <input
                       type="checkbox"
                       checked={issues.includes(issue)}
@@ -298,8 +348,9 @@ export function ReviewPanel(props: {
               </div>
             ))}
           </fieldset>
-          <FilterField label="Важность">
+          <FilterField label="Важность" testId="qa-admin-review-field-severity">
             <select
+              data-testid="qa-admin-review-severity"
               value={severity}
               onChange={(event) =>
                 setSeverity(event.currentTarget.value as QaQualitySeverity)
@@ -312,8 +363,12 @@ export function ReviewPanel(props: {
               ))}
             </select>
           </FilterField>
-          <FilterField label="Куда направить исправление">
+          <FilterField
+            label="Куда направить исправление"
+            testId="qa-admin-review-field-target"
+          >
             <select
+              data-testid="qa-admin-review-target"
               value={target}
               onChange={(event) =>
                 setTarget(event.currentTarget.value as QaRemediationTarget | "")
@@ -329,9 +384,13 @@ export function ReviewPanel(props: {
               )}
             </select>
           </FilterField>
-          <FilterField label="Что сделать">
+          <FilterField
+            label="Что сделать"
+            testId="qa-admin-review-field-action"
+          >
             <input
               type="text"
+              data-testid="qa-admin-review-action"
               value={suggestedAction}
               onChange={(event) =>
                 setSuggestedAction(event.currentTarget.value)
@@ -339,16 +398,21 @@ export function ReviewPanel(props: {
               placeholder="Например: добавить регламент в базу знаний"
             />
           </FilterField>
-          <FilterField label="Заметки">
+          <FilterField label="Заметки" testId="qa-admin-review-field-notes">
             <textarea
+              data-testid="qa-admin-review-notes"
               value={notes}
               rows={4}
               onChange={(event) => setNotes(event.currentTarget.value)}
             />
           </FilterField>
-          <div className="dsh-qa-admin__actions">
+          <div
+            className="dsh-qa-admin__actions"
+            data-testid="qa-admin-review-actions"
+          >
             <button
               type="button"
+              data-testid="qa-admin-review-save"
               className="dsh-qa-admin__primary"
               disabled={busy}
               onClick={() => void save()}
@@ -357,6 +421,7 @@ export function ReviewPanel(props: {
             </button>
             <button
               type="button"
+              data-testid="qa-admin-review-queue-add"
               disabled={busy || queued}
               onClick={() => void queueIt()}
             >
@@ -365,7 +430,7 @@ export function ReviewPanel(props: {
           </div>
         </>
       ) : (
-        <p className="dsh-qa-admin__empty">
+        <p className="dsh-qa-admin__empty" data-testid="qa-admin-review-locked">
           Классифицировать разговоры может только ревьюер или администратор.
         </p>
       )}

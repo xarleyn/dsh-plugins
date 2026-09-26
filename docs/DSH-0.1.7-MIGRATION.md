@@ -1,20 +1,26 @@
 # DSH 0.1.7-rc migration map
 
-Status: **investigation complete for both `rc.1` and `rc.2`; cutover not
-performed.** The repository stays on the `0.1.5-rc.2` baseline (see
-[COMPATIBILITY.md](COMPATIBILITY.md)). Sections 1–7 are the `rc.1` pass; sections
+Status: **investigation complete for both `rc.1` and `rc.2`; the cutover is under
+way.** The repository has moved onto the `0.1.7-rc.2` baseline — the named
+catalogs first (§1 step 1), then the mechanical metadata wave (§6); see
+[COMPATIBILITY.md](COMPATIBILITY.md). Sections 1–7 are the `rc.1` pass; sections
 8–13 are the `rc.1 → rc.2` delta, a fresh trial bump measured at `rc.2`, and the
 per-package work breakdown. Read 8–13 as the current truth: everywhere the two
 disagree, `rc.2` wins, and §1–§7 carry `[rc.2 fix]` markers on the items this
 pass disproved.
 
-The `rc.2` catalog bump is **deliberately not committed**: §9 measures it, and it
-leaves 14 build targets and 18 typecheck projects red against a green baseline
-control in the same worktree. A red branch on `dsh-v0.1.7-rc` would block every
-other card on the line, and §10's D1 still has no answer — D1 gates the card
-rewrite in 12 of the 24 affected packages, so the cutover cannot start end-to-end
-until it does. Ship the bump only as the first commit of §12's sequence, with the
-§6 metadata wave last.
+The `rc.2` catalog bump **is committed** (§7 step 2, §12 item 1): the tree still
+carries the build and typecheck redness §9 measured — #509 re-measured it at 13
+failed build targets and 293 typecheck errors across 17 projects, against a green
+baseline control in the same worktree — and §10's D1 still has no answer, which
+gates the card rewrite in 12 of the 24 affected packages. The §6 metadata wave was
+then run **ahead of** the per-package content migration, against §7 step 8's
+ordering, on the epic's decision: one card edits the version metadata of every
+package once, instead of every package card editing the same files again.
+Consequence to keep in view: `testedReleases` and the "tested against" lines in
+plugin READMEs are an evidence claim, and for the packages still red in §9 that
+claim is currently asserted rather than measured — the content cards owe it a real
+run.
 
 Method, pass 1: five parallel investigations over the harness sources at the
 `dsh-v0.1.7-rc.1` tag (a local checkout of the DeepSeek Harness repository), then
@@ -183,23 +189,23 @@ Per package:
 
 | Package | errors | Dominant cause |
 | --- | --- | --- |
-| `dsh-qa-integrations` | 76 | mostly cascade from unbuilt `@yadsh/dsh-qa-surface/client/*`; real work is the card + `SettingsScope` |
-| `dsh-qa-surface` | 38 | card + `installSection` + own `qaSurfacePanels` merge |
+| `dsh-qa-integrations` | **[#514 landed]** decision + code — `SettingsScope`→`ConfigForm` swaps (77 errors, 66 of them the `@yadsh/dsh-qa-surface` cascade) and the card, on **D1 option 2**: the shell, `AGENTS.md` and the shared gate are untouched, the card moved off the deleted slot instead. Host: `installSettings`/`SettingsInstallFace` deleted, `ConfigSchema` marks every card-editable node `.volatile()` (`dataPath` among them — the card writes it and the restart caveat stays), the service takes one `snapshotConfig` per operation, re-applies on `loader/volatile-update` and declines the generated page with `settings.configure({ auto: false }, fiber)`; write-time `validate` has no rc.2 counterpart, so a value the resolvers refuse now persists and the service keeps its state plus a `config.rejected` log. Client: the operator card is a `settings.plugins.tab` page (`qa-integrations-config`, order 30) whose `ConfigForm` comes from `configForms.get` behind `whileServed`, wrapped in the plugin-owned `<ul>` the shell contract already requires. | `src/index.ts` `installSettings` was at `:403-431`, the face at `:1522-1525` (map said `:409,1523`); `src/config.ts` schema + `LiveQaIntegrationsConfig`/`snapshotConfig`/`QaIntegrationsSnapshot` — **the map missed this file**, it is where the volatility lives; `src/client/index.tsx` `:3,40-55,93-114` (was `:3,44-53,75,93-98`); `src/client/operator-card.tsx` `:16,56-64,80-110` plus the new `OperatorCardTab` (was `:5,16,57,60,64,141`); `scripts/verify-package.mjs:206-207` — **not `:215-216`** — now asserts `doesNotMatch` on `settings.plugin.item`. `src/client/card.tsx` (map `:5,46`) and `compatibility.json` needed no edit: its 4 errors and its metadata line were cascade and #511. | 120 | `tests/client-registration.test.ts`, `tests/client-bundle.test.tsx`, `tests/operator-card.test.tsx` (prop `scope`→`form`), `tests/plugin.test.ts` (install stub → `configure` capture + `commit()`), `tests/card.test.tsx` unchanged. Measured on this card: `pnpm -r --no-bail typecheck` reports **0** errors for the package once `@yadsh/dsh-qa-surface` ships `lib/types`, 6 `TS2307` while #513 has not landed; `nx build` and `verify:package` green; `vitest run` 110 files / 810 tests green, and the 2 red files (`plugin`, `credential-help`) are **not** this migration — the rc.2 lockfile's vite 8 SSR transform leaves `@Remote`'s standard decorators in `src/index.ts` for Node to reject, reproducible on untouched `HEAD` of this card and in `dsh-domain-experts` |
+| `dsh-qa-surface` | **decision + code, biggest** | volatile `Config`; card path; `SettingsScopeBinder` gone; **4 new `rc.2` reads**; provenance→producer; `dsh-agent-presets` rename; own `qaSurfacePanels` merge | `src/index.ts:487,561`; `src/client/index.tsx:11,528,834-859`; `src/client/QaConfigController.ts:1,35`; `src/client/settings/card.tsx:13,69,73,77,242`; `src/client/QaTranscriptAdapter.ts:476,248`; `src/client/turn-sources.ts:82`; `src/client/QaSessionController.ts:1644`; `src/client/project-session-state.ts:75`; `src/client/panels/contract.ts:70`; `src/access/{capability-catalog.ts:33,207,218,model.ts:533}`; `src/qa-tools/lifecycle.ts:40` already `agent/created` ✔; deprecated reads `prompt-notes.ts:375`, `secure-session.ts:547`, `admin/session-log.ts:130,231`, `provenance/host-store.ts:83,236`, `qa-tools/durable-marker.ts:97,101`; `compatibility.json:4-5,12`; `scripts/verify-package.mjs:501-517`; `package.json:61-70`; `QaChangelog.tsx` (§6) | 130 | ≈14 files: `tests/wiring/index-wiring.test.ts:81-82`, `tests/config/config-controller.test.ts`, `tests/provenance/*`, `tests/transcript/*`, `tests/qa-tools/*`, `tests/admin/*` |
 | `dsh-jev-compaction` | 27 | card, `installSection`, LLM message shapes |
 | `dsh-qa-browser` | 24 | card surface, client slots |
-| `dsh-openviking-memory` | 22 | card surface, `settings` unknown, session writes |
-| `dsh-model-safety-gate` | 14 | card + `installSection` in `src/service.ts` |
-| `dsh-plugin-log-ui` | 13 | card + `installSection` |
+| `dsh-openviking-memory` | ✔ **done in #516** (D1 took option 2) | volatile Config replaced the settings-section registration; the card moved to `settings.plugins.tab` with our shell; `agent/session-start` → `agent/created` under a non-throwing listener; the plugin declares its own producer kind; the `tool-addition`/`tool-removal` taxonomy is pinned at runtime | landed: `src/config.ts:302` every knob `.volatile()` (`z<Config, LiveConfig>`), `:266` `LiveConfig`, `:279` `snapshotConfig`; `src/index.ts:208` the `agent/created` listener, `:337` `refreshConfig()`, `:402` its call from `activeScoping()`; `src/settings.ts` **deleted** (82 lines; `installSection` is gone from the Host); `src/capture.ts:45` the `openviking-memory` source-kind augmentation, `:61` the captured-kind whitelist (`user`/`model`/`tool`), which is also the default branch §5 demands of a non-exhaustive `switch (source.kind)`; `src/runtime.ts:793` the own kind on injected messages, `:828` `isStartupProfile` matching **both** kinds for one release; `src/client/index.tsx:49` `inject = ["slots", "configForms"]`, `:90` `ctx.configForms.get(ns)`, `:97-103` the tab registration; `src/client/card.tsx:46` `PropsRuntime<"settings.plugins.tab">` over `ConfigForm<Config>`, `:155` the `<li>` inside a plugin-owned `<ul>`; `compatibility.json:9,16`; `scripts/verify-package.mjs:64,76-88`. Checked and kept: `package.json:49-52` — the `dsh.client.inject` list already names every client module the bundle reads, no edit; `src/openviking/capture-utils.ts:151,327,350,457` — **no edit**: a generated fork file whose loose extractor already drops both blocks (`normalizeType("tool-addition")` matches no set, `blockToText` returns `""`, `.filter(Boolean)` discards it), so the rule is pinned by `tests/block-taxonomy.test.ts` rather than by editing the vendored code; `src/capture.ts:93,143` became the whitelist and the own-kind filter; `scripts/smoke-packed-dsh.mjs` **does not exist in this package** — the stale `"0.1.1-rc.2"` default of §6 is `dsh-sleev`'s | ~230 | `tests/settings-live.test.ts` (replaces `settings-install.test.ts`: the schema-volatile namespace pin, and a committed change reaching a session that is already open), `tests/block-taxonomy.test.ts`, `tests/config.test.ts:44-53` (`requireValue` snapshots the live refs), `tests/helpers/harness.ts:82,115` (`createLiveConfig`, `writeConfig`), `tests/runtime-context.test.ts:192,200,277` (both profile attributions), `tests/client-card.test.tsx`, `tests/client-index.test.ts:193-241`, plus the 15 renamed `agent/created` emit sites. Measured on this tree: 31 files / 283 tests pass |
+| `dsh-model-safety-gate` | ✔ **done in #517** (D1 option 2) | volatile Config; card; own `"tool-result"` **label** channel is ours, kept verbatim | landed: `src/config.ts` — twelve top-level nodes `.volatile()` (**nothing volatile may sit under a volatile node**, so each group is one live field), `SAFETY_GATE_LIVE_NODES` + `snapshotSafetyGateConfig`, schema cast retargeted to the live view — the row named no config file, and the migration is mostly there; `src/service.ts` — `installSection`/`SettingsInstallFace`/`configSource` deleted, one `loader/volatile-update` listener re-snapshots per reload (the old `structuredClone(config)` would have cloned the references, not the values); `src/shared/settings.ts` — the namespace is the profile entry id now, `model-safety-gate` is gone, and `scripts/verify-package.mjs` pins the pair against `cordis.patch.yml`; `src/client/index.tsx` — `settingsScope` → `configForms`, registered on `settings.plugins.tab` with `{id, order, label}` (the kit's `registerSettingsCard` still defaults to the deleted keyed seat and passes `key`, not `id`/`label`, so a tab cannot route through it yet); `src/client/card.tsx` — `ConfigForm`, `mutate(ops, revision)`, `<li>` inside a plugin-owned `<ul>`; `src/types.ts` — `configRejected` on the Remote, because the Host enforces only the schema and a `validate` hook no longer exists | 55 estimated, **≈340 landed** | `tests/integration/settings.test.ts` rewritten (the `MemorySettings` fake cannot survive — §11's promote-to-`test-kit` item now has one fewer copy), `tests/integration/service.test.ts` (live-commit tests replace the install-face ones), `tests/client-card.test.tsx`, `tests/client-index.test.ts`, `tests/unit/config.test.ts` |
+| `dsh-plugin-log-ui` | decision + code | ✔ **done in #521** under D1 option 2 (shell kept, card moved to `settings.plugins.tab`). volatile Config; card; typert-driven panel. **No `MemorySettings` fake left to share**: with `installSection` gone the plugin touches no settings service at all, so this package contributes nothing to `dsh-test-kit`. **`scripts/verify-client-bundle.mjs` does not exist here** — the gate is `scripts/verify-package.mjs:43` (the slot literal), `:47-48` (`dsh-plugin-card__name`, chevron path), `:50-56` (`notMatches`, `cardContract.legacyPatterns`) | landed: `src/config.ts:33-52` all three fields `.volatile()`; `src/types.ts:1-25` `VolatilePluginLogUiConfig`; `src/index.ts:26-33` `PLUGIN_LOG_ENTRY_ID`, `:50-95` `installSection` + `configSource` gone, `getConfig()` reads each `.get()` at call time; `src/client/index.tsx:4,44-47,67-71,115-155,268-287,309,345-360`; `src/client/panel/definition.tsx:63-66` guide `id` (`SidebarRightGuideEntry` gained a required `id`, un-itemised in §8.2); `src/client/styles.ts:4-5` the `<ul>` the shell's `<li>` needs on a tab seat; `compatibility.json:7`; `scripts/verify-package.mjs:43-44` | 60 | `tests/client-panel.test.ts:229-243`, `tests/client-settings-store.test.ts`, `tests/integration.test.ts` — 7 files / 41 tests, but see §13.1: the integration file cannot load under the repo's current `vite` |
 | `dsh-draft-sessions` | 13 | client conversation/controller types |
-| `dsh-sleev` | 12 | card + `installSection` |
-| `dsh-prompt-firewall` | 12 | card + `installSection` |
+| `dsh-sleev` | ✔ **done in #520** | volatile Config; card on `settings.plugins.tab` under our own shell (D1 option 2, so `registerSettingsSlot` is dropped and the slot call is direct); the smoke-script bug folded in | landed: `src/shared/config.ts:7,33,50` (`Config` fields are `Volatile<T>`, `.volatile()` on every editable node, one `snapshotConfig` per operation) and `:75` (`resolveConfig` stays pure over a raw `ConfigSnapshot`, so `tests/config.test.ts` needed no edit); `src/shared/settings.ts:6,9` (the namespace is the profile entry id `dsh-sleev`, the tab id stays `sleev`); `src/index.ts:47,72,103` (`installSection` gone, `configure({ auto: false })`, and the logger level re-applied by the read that first sees a new value — `loader/volatile-update` is not nameable here: its `Events` merge lives in `@deepseek-ai/cordis-plugin-loader`, which we do not depend on); `src/client/index.tsx:12,146,326,334,356,359` (the kit supplies the shell only; the form comes from `ctx.configForms`; the `<li>` sits in a plugin-owned `<ul>`); `src/client/settings-controller.ts:5,95` (`ConfigForm<SleevSettings>`, `set`/`unset` answer `boolean`); `compatibility.json:7`; `scripts/verify-package.mjs:39,40`; `scripts/smoke-packed-dsh.mjs:20-29`; `scripts/smoke-neuraldeep.ts:38,55,226-231` (user source kind, assistant source without a restated `kind`, `tool`-role result message); `tests/settings-controller.test.ts:1-5,35-59` (`FakeScope implements SettingsScope` → `FakeForm implements ConfigForm`) | 45 estimated, 184+/118− | `tests/settings-controller.test.ts`, `tests/config.test.ts`, and `tests/llm-integration.test.ts`, which loads the volatile schema for real |
+| `dsh-prompt-firewall` | ✔ **done in #522** (D1 = option 2: our shell stays ours, the card moves to `settings.plugins.tab`) | volatile Config; card; settings fake rewritten in place | landed: `src/config.ts:49-80` every editable field `.volatile()` (`audit`/`metrics` as whole containers, which is what the card writes), new `readVolatileConfig` `src/config.ts:88`; `src/types.ts:26-64` `PromptFirewallVolatileConfig` beside the flat view, list fields `readonly … \| undefined` — the `\| undefined` is forced, not stylistic, because the typert generator compiles the package with `exactOptionalPropertyTypes` (`packages/plugin-scripts/generate-typert.mjs:112`); `src/index.ts:52` namespace = the **entry id** `dsh-prompt-firewall` (was the Cordis plugin id), `:54` `Config` = the volatile view, `installSection` (was `:89-104`) deleted, one `snapshot()` per operation `:119`, and `reloadRules()` gone from the class and from `PromptFirewallService`; client `src/client/index.tsx:4,64,69,157,199,206,221`. Checked and kept: `compatibility.json:4-5` (#511), `:7` → `settings.plugins.tab`; `scripts/verify-package.mjs` needed no edit and **the row's `scripts/verify-client-bundle.mjs:34` never existed in this package**; the only shell CSS change is the plugin-owned `<ul>` (`src/client/styles.ts:4`). The settings fake: `tests/settings.test.ts` no longer subclasses `SettingsForms` — its constructor reaches `ctx.root.loader` and its `static inject` is `['configEditor','profileContext']`, neither of which a bare cordis context has — so the test provides a structural stand-in under the `settings` name and asserts the write; the shared promotion §11 wanted (one `MemorySettings` in `@yadsh/dsh-test-kit` for three plugins) is **still owed**, the other two copies are untouched. 40 estimated / ≈120 actual, of which ≈60 is the test file | `tests/settings.test.ts` (8), `tests/client-index.test.ts`, `tests/client-settings-store.test.ts` — 8 files / 36 tests green, but only through a `tsc`-emitted build: see §13.1 |
 | `dsh-documents` | 11 (+build) | card + `installSection` |
 | `dsh-web-fetch-authenticated` | 9 | card + `installSection` |
-| `dsh-ui-repair` | 9 | card + `installSection` |
-| `dsh-user-correction-miner` | 3 | LLM `tool-result` block removal |
+| `dsh-ui-repair` | ✔ **done in #523** (D1 option 2) | volatile Config; card; **a DOM selector that is functional, not cosmetic**; the join key this plugin already exemplifies §4.2 | landed: `src/config.ts:15-24` every node `.volatile()` (the ARRAY for `ignore`), `src/shared/config.ts` gains `UIRepairVolatileConfig` + `resolveVolatileConfig` and owns `UI_REPAIR_SETTINGS_NAMESPACE`, `src/index.ts` installSection block deleted and `Config = ReturnType<typeof ConfigSchema>`, `src/client/index.ts` `inject = ["slots", "configForms"]` + `ctx.configForms.get(ns)` + a `settings.plugins.tab` seat, `src/client/card.tsx` `ConfigForm` face and `form.set`, **`src/client/dom.ts:11`** `[data-slot='settings.plugin.item'] > *` → `li.dsh-plugin-card`, `scripts/verify-client-bundle.mjs:39-42`. **Checked and kept: `package.json:39-41`** — under option 2 the client still reads faces from `dsh-client-ui-settings` (`configForms`) and `dsh-client-ui-settings-plugins` (the section rendering the tab), so the `@yadsh/dsh-ui-repair#dsh-ui-repair` join key of §4.2 is not reached: the namespace is the bare `cordis.patch.yml:4` row id `dsh-ui-repair`. `settings.configure({ auto: false })` (§4.1) was **not** added, so the Host may still render its own page for the namespace next to this tab — one live stand decides whether that duplication needs the lever | 40 | `tests/config.test.ts`, `tests/client-index.test.ts`, `tests/dom.test.ts`, `tests/client-bundle.test.ts`, `tests/build-wiring.test.ts` |
+| `dsh-user-correction-miner` | code | ✔ **done in #528** (10 insertions, 18 deletions across three files — not the 25 estimated). `tool-result` block gone; `SessionHeader` fixture; `SESSION_QUERY_CORRUPT_SESSION` needed no code — the historical scan's per-session `catch` already counts it as one failed session | landed: `src/mining/message-text.ts:5` **[verified]** (dead branch dropped, so `blockText` stops recursing); `tests/fixtures/sessions.ts:9-10` (header from `SESSION_FORMAT_VERSION` + `SessionId`, cast gone), `:20,30` (`plugin` source kind is absent from both axes → `system-prompt`; the fixture's own label became `injected`, which also moved `tests/context-extractor.test.ts:73` — a site this map missed), `:77-81` (`tool`-role result message, `toolCallId` beside it). Checked and kept: `src/mining/context-extractor.ts:39,92`, `src/types.ts:34`, `src/dsh/storage.ts:44` (the map named it `src/storage.ts`, which never existed — own `tool-result` **label**, not the block), `src/mining/engine.ts:127` (`snapshotEvents()` alive); `compatibility.json` → #511 | 25 | `tests/{context-extractor,engine,storage,sessions}.test.ts` — 65 pass |
 | `dsh-domain-experts` | 2 | `installSection` |
 | `dsh-preset-persona-editor` | 1 | `AgentPresetRegistry` lost `authorable`/`copy` |
-| `dsh-doc-impact` | 1 | card surface |
+| `dsh-doc-impact` | ✔ **done in #530** (347 insertions, 277 deletions over `src` + `scripts`; the 35 the row promised was the card half alone — the host half it did not name is the volume) | volatile entry `Config`; card is a Plugins tab under our own shell (D1 option 2); own message source kind | landed: `src/dsh/plugin-config.ts:71` `ConfigSchema` (every card node `.volatile()`, nested groups marked at the container) with `plainEntryConfig` `:310` and `readLiveConfig` `:364` replacing `declaredSettingsBase`/`fromSettingsSection`; **`src/dsh/settings.ts` deleted** (133 lines of `settings.register`/`settings.get` that rc.2 answers to nothing — it typed itself through a self-declared `SettingsService`, which is why it cost zero compile errors); `src/dsh/plugin.ts:26` `export const Config`, `:107` `settings.configure({ auto: false })` (§4.1 taken, not deferred — this plugin owns its page); `src/client/index.ts:33,55` tab seat `settings.plugins.tab` keyed by the namespace, form through `ctx.configForms.get`; `src/client/settings-form.ts` writes `mutate([{op,path,value}], revision)` against the **nested** document (`defaults.mode`, `safety.*`, `changeDetection.maxSnapshotFiles`); `src/client/card.ts:264` `<ul>` around the shell (AGENTS.md `settings.plugins.tab`), shell and badge unchanged; `src/dsh/lifecycle.ts:13,94` kind `doc-impact` via a `MessageSourceMap` augmentation; `scripts/verify-client-bundle.mjs:43-55`. **The namespace moved `doc-impact` → `dsh-doc-impact`** — it is the profile entry id now (§4.2), so values saved through the old card do not carry over while the profile patch line does. Checked and kept: `src/dsh/{commands.ts:14,67,tools.ts:47,lifecycle.ts:39}` `snapshotEvents` folds (§5/#531: no replacement for a whole-log fold); `compatibility.json:4-5` → #511 | 35 → **≈350** | `tests/client-bundle.test.ts` 8 (nested fake `ConfigForm`, seat↔namespace pair), `tests/settings.test.ts` 10 (schema↔card path pairing pinned: every card field is under exactly one volatile node), `tests/e2e.test.ts` 4 — 87 pass |
 | `dsh-answer-review-gate` | 1 | message role `'plugin'` removed |
 
 Error-class frequency (top): `'settings' is of type 'unknown'` ×57, `ProviderCardProps`
@@ -578,8 +584,23 @@ Also **[source]**, no compile error but runtime-relevant:
   the whole `rc.1..rc.2` range the harness added **zero** `@deprecated` markers and
   hardened **zero** existing ones, so no call site silently became an error and
   there is no new deprecation debt to plan against. The `rc.2` compiler output
-  agrees: no error mentions these three. This stays deferred debt
-  (`dsh-session-scope` alone makes 8 `snapshotEvents()` calls).
+  agrees: no error mentions these three.
+
+  **[verified] #531 audit — at `rc.2` the debt is not takeable: these readers have
+  no replacement.** Read from the *published* `@deepseek-ai/dsh-session@0.1.7-rc.2`
+  rather than the harness checkout: all three carry `@deprecated Existing logic may
+  remain unmigrated for now, but new calls are prohibited`
+  (`lib/types/index.d.ts:177,187,196`), and the shipped `README.md:62` names the one
+  sanctioned substitution — "Callers that only need a length use `seq`"
+  (`get seq()` at `:208`, documented as "always the log length"). Everything else
+  left on the non-deprecated surface is a fold over a fixed taxonomy
+  (`requestHeader` `:259`, `requestContext` `:268`, `toolHistory` `:278`,
+  `deriveMessages` `:303`) or the message-oriented `registerMessageProjection`
+  `:347`; none of them folds a plugin-owned event type, so a whole-log fold like
+  `effectiveSessionScope(session.snapshotEvents())` has nowhere to move. Paying the
+  debt means retargeting scope resolution onto incremental projection state, which is
+  a design card, not a cutover edit. Only the two length-only sites
+  (`dsh-session-scope`'s `scope-fs.ts:121,140` → `session.seq`) are payable today.
 - **`Fiber.update()` no longer returns the waterfall promise** (now `void`), and
   the `internal/update` event's `next` is sync-only. Any `await ctx.fiber.update(...)`
   silently resolves to `undefined`. **[verified]** same at `rc.2`
@@ -668,6 +689,17 @@ Also **[source]**, no compile error but runtime-relevant:
 
 ## 6. Mechanical version-metadata wave
 
+[wave #511] **Executed.** Everything this section owns moved to `0.1.7-rc.2`: the
+26 `compatibility.json` pairs, both `deepEqual` verify scripts, the openviking
+bundle assert, the generator defaults and their test, the three root gate
+fixtures, and the Requirement/Compatibility lines in plugin docs. What stayed on
+`0.1.5-rc.2` records an observation rather than a claim: Phase 0 and spike findings
+documents, `SPEC` baseline tags and `blob/dsh-v0.1.5-rc.2` permalinks, dated plan
+notes, the `QaChangelog.tsx` entry of a released version (the file is listed here,
+but rewriting a published entry is the CHANGELOG rule), the two
+`@deepseek-ai/dsh-agent-presets` catalog keys (§1: that name does not exist at
+`0.1.7-rc.2`), and the measurements in this document.
+
 97 files carry the literal `0.1.5-rc.2` (excluding `node_modules` /
 `pnpm-lock.yaml`). `pnpm check` does **not** cross-check the catalog against the
 plugin ranges — `scripts/check-dependencies.sh` has no version assertion at all —
@@ -723,9 +755,10 @@ branch: the generator's own lines are `tooling/generators/dsh-plugin/src/index.t
 - `plugins/dsh-session-scope/scripts/verify-compatibility.mjs:17` regex
   `/^0\.1\.\d+-rc\.\d+$/` — `0.1.7-rc.1` satisfies it, so no edit (it only bit
   the abandoned alpha plan).
-- Pre-existing bug to fold in: `plugins/dsh-sleev/scripts/smoke-packed-dsh.mjs:19`
-  defaults to a stale `"0.1.1-rc.2"` instead of `testedReleases.at(-1)` like the
-  sibling smoke scripts.
+- Folded in by #520: `plugins/dsh-sleev/scripts/smoke-packed-dsh.mjs` defaulted
+  to a stale `"0.1.1-rc.2"` instead of `testedReleases.at(-1)` like the sibling
+  smoke scripts; it now reads `compatibility.json` and refuses an override
+  outside that list.
 
 Release mechanics: `.nx/version-plans/` is empty on this branch, so any commit
 under `plugins/*` or the four release `packages/*` needs a plan file
@@ -1002,6 +1035,17 @@ occurrences under `nx build` (declaration emit), **zero** under
 annotation. Fix is either the catalog completeness work in §1 or a `: Schema<…>`
 annotation on those three consts.
 
+**[verified on `63fea21`, #515] the `dsh-jev-compaction` pair of those three is
+gone, and by the first of the two remedies.** After #509 closed the catalog and
+#511 moved the manifests, `npx nx build dsh-jev-compaction --skip-nx-cache`
+emits no `TS2742` — and none appears once the schema's editable leaves carry
+`.volatile()`, which is the change that would have surfaced a
+`Volatile<…>` reference in the inferred type. A declaration-emit probe of the
+pre-migration `src/config.ts` on this tree (`tsc --declaration
+--emitDeclarationOnly`) exits 0 as well, so the site stopped reproducing before
+any source was touched. No annotation was added, and none is needed: the const
+stays inferred. Do not re-open this as missing work when reading the §11 row.
+
 ### 9.4 `pnpm -r typecheck` — red, and under-reports
 
 **[verified]** the literal command the card asked for **stops at the first failing
@@ -1016,24 +1060,6 @@ source fixes):
 
 | Package | rc.1 | rc.2 | Δ | dominant cause at rc.2 |
 | --- | --- | --- | --- | --- |
-| `dsh-qa-integrations` | 76 | 77 | +1 | card + `SettingsScope` + unbuilt qa-surface client cascade |
-| `dsh-qa-surface` | 38 | 45 | **+7** | card, `SettingsScopeBinder`, own `qaSurfacePanels`, **new** session-state reads |
-| `dsh-jev-compaction` | 27 | 27 | 0 | card, `installSection`, LLM message shapes |
-| `dsh-qa-browser` | 24 | 24 | 0 | card surface, client slots, **typert `schema`** ×8 |
-| `dsh-openviking-memory` | 22 | 22 | 0 | card surface, `settings` unknown, session writes |
-| `dsh-model-safety-gate` | 14 | 14 | 0 | card, `installSection`, **`MemorySettings` fake** |
-| `dsh-plugin-log-ui` | 13 | 13 | 0 | card, `installSection`, `MemorySettings` fake |
-| `dsh-draft-sessions` | 13 | 13 | 0 | client conversation/controller types, **`ISessions.open`**, typert `schema` |
-| `dsh-sleev` | 12 | 12 | 0 | card, `installSection` |
-| `dsh-prompt-firewall` | 12 | 12 | 0 | card, `installSection`, `MemorySettings` fake |
-| `dsh-documents` | 11 | 11 | 0 | card, `installSection`, `'snapshot' is unknown` ×6 |
-| `dsh-web-fetch-authenticated` | 9 | 9 | 0 | card, `installSection` |
-| `dsh-ui-repair` | 9 | 9 | 0 | card, `installSection` |
-| `dsh-user-correction-miner` | 3 | 3 | 0 | LLM `tool-result` block removal |
-| `dsh-domain-experts` | 2 | 2 | 0 | `installSection` |
-| `dsh-preset-persona-editor` | 1 | 1 | 0 | `AgentPresetRegistry` missing `authorable`, `copy` |
-| `dsh-doc-impact` | 1 | 1 | 0 | card surface |
-| `dsh-answer-review-gate` | 1 | 1 | 0 | message source kind `'plugin'` |
 
 Error-class frequency at `rc.2`, counted on `error TS` lines only:
 `'settings' is of type 'unknown'` ×57, `Property 'X' does not exist on type 'Y'`
@@ -1057,16 +1083,20 @@ cascade), `qaSurfacePanels does not exist on type 'Context'` ×5,
    `rc.2` work — it was hidden inside the `qa-browser: 24 / draft-sessions: 13`
    totals both times. Do not add it to the `rc.2` delta column.
 2. **`MemorySettings` test fakes no longer conform to `SettingsForms`** —
-   `dsh-model-safety-gate/tests/integration/settings.test.ts:19,21,26,30`,
    `dsh-plugin-log-ui/tests/integration.test.ts:14,21,25`,
-   `dsh-prompt-firewall/tests/settings.test.ts:14,21,25`:
+   `dsh-prompt-firewall/tests/settings.test.ts:14,21,25`
+   (and `dsh-model-safety-gate/tests/integration/settings.test.ts:19,21,26,30`
+   until #517 deleted that one):
    `TS2610 'writable' is defined as an accessor in class 'SettingsForms', but is
    overridden here in 'MemorySettings' as an instance property` and
    `TS4113 This member cannot have an 'override' modifier because it is not
    declared in the base class 'SettingsForms'`. Each of the three plugins declares
    its own fake, so the fix is 3 files — or one shared fake promoted into
    `@yadsh/dsh-test-kit`, which is the better call and is why `test-kit` appears
-   in §11 despite having no error of its own.
+   in §11 despite having no error of its own. **[verified #517]** the
+   `dsh-model-safety-gate` copy is gone rather than repaired: at `rc.2` a plugin
+   installs no namespace of its own, so the fake had nothing left to stand in
+   for. Two copies remain for the promotion.
 3. **`rc.2`-new session-state and preset reads inside `dsh-qa-surface`** — this is
    where the `+7` lives: `src/client/QaSessionController.ts:1644`
    `subagentsByParent` gone from `SessionListState`;
@@ -1075,6 +1105,17 @@ cascade), `qaSurfacePanels does not exist on type 'Context'` ×5,
    `src/client/QaTranscriptAdapter.ts:476` `node.provenance` → `node.producer`.
    **[verified]** these are the only genuinely *new* compile errors attributable
    to `rc.2` itself in the whole repository.
+
+**[verified] re-measured on `bot/531` (post-#509 `dsh-v0.1.7-rc`), and the larger
+number is an artifact, not new breakage.** The same
+`pnpm -r --no-bail typecheck` on a freshly installed worktree reads **418 errors
+across 20 projects**. All 116 `Cannot find module` errors name `@yadsh/*` workspace
+packages and **none** names `@deepseek-ai/*` — the unbuilt-`lib/` cascade §9.6
+warns about, not a host API change. The two projects beyond the 18 above,
+`dsh-session-audit` (18 × TS2307 + 4 × TS7006) and `packages/audit-ui`
+(4 × TS2307 + 2 × TS7006), are *entirely* that cascade. Compare against 296/18 only
+on a tree where `nx run-many -t build` has populated `lib/`; §9.4's own numbers
+stand. `dsh-session-scope` reports zero errors under both readings.
 
 ### 9.5 `npx nx run-many -t test` — 14 projects green, 18 never ran
 
@@ -1095,6 +1136,18 @@ suites are exactly the 18 type-broken packages. The runtime hazards in §5
 tool-change blocks) are **not** covered by any failure this run produced — they
 need the stands in §12 step 6, not `nx test`.
 
+**[#514 fix] that sentence is about the measured run, not about the cutover.**
+Once a package's own types compile, its suite still cannot load if its host entry
+uses a `@Remote(...)` decorator: the `rc.2` lockfile's vite 8 SSR transform
+lowers nothing and Node 24 rejects the leftover `@(...)` syntax, so
+`SyntaxError: Invalid or unexpected token` is thrown at import with no frame.
+Observed in `dsh-qa-integrations` (`tests/plugin.test.ts`,
+`tests/credential-help.test.ts`) on untouched `HEAD`, and again in
+`dsh-domain-experts` (`tests/wiring.test.ts`), i.e. it is a toolchain cost of the
+relock rather than a migration item in any §11 row. `dsh-qa-integrations` passes
+810 of 810 tests with those two files pointed at the compiled `lib/` entry, which
+is how this card verified its host half.
+
 ### 9.6 Baseline control
 
 **[verified]** the same four commands on the untouched `0.1.5-rc.2` tree in this
@@ -1109,7 +1162,8 @@ as baseline breakage.
 
 ## 10. Open owner decisions
 
-**D1 — the settings card shell (§4.3, §4.3a) — still open, and now costed.**
+**D1 — the settings card shell (§4.3, §4.3a) — settled 26.09 in #508, option 2.**
+**D1 — the settings card shell (§4.3, §4.3a) — CLOSED as of 26.09, option 2.**
 Option 1 (accept host chrome): delete `CardShell` from the `plugins.row.config`
 path, rewrite `AGENTS.md`'s canonical shell CSS block and the shared gate
 `packages/plugin-scripts/verify-plugin-card-contract.mjs:4-15,39,44-45`, and lose
@@ -1117,11 +1171,40 @@ path, rewrite `AGENTS.md`'s canonical shell CSS block and the shared gate
 smallest diff, every gate survives verbatim, but as of `rc.2` our 12px/1px/2px
 shell sits next to host cards that are 20px/0.5px/`--dsw-focus-ring-*`, and the
 new `focus.css` modality rule can silence our focus ring (§4.3a item 3).
+**The owner chose option 2: the shell stays ours, neither `settings.plugins.tab`
+nor `plugins.row.config` is restyled to the host chrome, `AGENTS.md`'s canonical
+CSS and the card-contract gate are not edited, and the cutover carries only
+broken types and APIs.**
 **New fact for either branch:** `scripts/verify-package-hygiene.mjs:49,816-835`
 keys the *entire* card-contract enforcement off a source file containing the
 literal `settings.plugin.item`; once plugins register `plugins.row.config`, that
 gate stops firing and the shell contract becomes unenforced unless the constant is
-retargeted. **[verified]** line 49 and the block at 816-835.
+retargeted. **[verified]** line 49 and the block at 816-835. **Retargeted by #510:**
+the gate now fires on `settings.plugin.item`, `plugins.row.config`, and
+`settings.plugins.tab` combined with the shell, so enforcement survives whichever
+way D1 goes.
+**[decided 2026-09-26, #508] Option 2.** The card shell stays ours, the
+canonical `AGENTS.md` CSS and `verify-plugin-card-contract.mjs` are not edited,
+and neither `settings.plugins.tab` nor `plugins.row.config` is rewritten onto the
+host chrome; the migration is "only broken types and broken APIs". First landing:
+`dsh-qa-surface` (#513), which registers its card as a `settings.plugins.tab`
+entry and keeps the `<li>` root inside a plugin-owned `<ul>`, as `AGENTS.md`
+already requires of a tab.
+way D1 goes. **Resolved by the owner on 26.09 (from #508): option 2.** The card
+shell stays ours, `settings.plugins.tab` and `plugins.row.config` are not
+re-styled to the host chrome, and neither the `AGENTS.md` canonical CSS nor
+`verify-plugin-card-contract.mjs` moves — so for the 12 rows above this is a
+migration of broken types and APIs only. Item 3 below (the `focus.css` ring) stays
+unaddressed by that choice and is now a separate card.
+**Resolved 26.09 in #508 as option 2**, and #521 is the first card landed on that
+reading: the shell stays ours, `AGENTS.md`'s canonical CSS and
+`verify-plugin-card-contract.mjs` are untouched, and a card whose old seat was
+`settings.plugin.item` registers on `settings.plugins.tab` instead — a *list* slot
+that hands its registrant no props, so the card resolves its own `ConfigForm`
+through `ctx.configForms.get<T>(ns)` and wraps its `<li>` in a plugin-owned `<ul>`
+(the `AGENTS.md` rule for this slot, already what `dsh-domain-experts` and
+`dsh-qa-integrations` do). `plugins.row.config` is therefore **not** used by this
+wave; §4.2's recipe stands as the record of where the platform is going.
 
 **D2 — preset authoring (`dsh-preset-persona-editor`) — newly open.** §8.6:
 the copy-to-writable-root capability does not exist at `rc.2`, and neither does
@@ -1138,6 +1221,14 @@ compatibility implications. This is a feature decision, not a migration step.
 accepts `ask` for `auto`, or lockdown documents that `auto` is not a valid
 lockdown preset and rejects it earlier with a clear error. Needs one stand to
 confirm the failure mode first (§12 step 6).
+**[decided 2026-09-26, #508] `auto` stays an invalid lockdown preset:** refuse it
+earlier and clearly, keep the `approvalPolicy: "never"` pin unweakened, and cover
+the refusal path with a test. Landed in #513 — `resolveLockdown`
+(`plugins/dsh-qa-surface/src/config-resolvers/lockdown.ts`) rejects
+`permissionPreset: "auto"` while lockdown is enabled, so a deployment fails at
+configuration instead of failing attestation one chat at a time. The failure mode
+was read from the sources cited above; the physical lockdown stand of §12 step 6c
+has still not been run.
 
 **D4 — catalog completeness / the dual framework tier (§1, §9.2) — mechanical
 with one judgement call.** Adding the 17 uncovered DSH names to both catalogs is
@@ -1161,33 +1252,15 @@ excluding the shared 2-line `compatibility.json` wave each row also carries.
 
 | Package | class | what changes | our files (line refs) | ~lines | covering tests |
 | --- | --- | --- | --- | --- | --- |
-| `@yadsh/dsh-plugin-kit` | **decision → do first** | `SETTINGS_PLUGIN_ITEM_SLOT` → `plugins.row.config` helper; `ConfigForm`-shaped binding (`ctx.configForms.get<T>(ns)`); `card-shell.tsx`/`chevron.tsx`/`plugin-card-css.ts` die only under D1 option 1 | `src/client/register-settings-card.tsx:56,93,116` **[verified]**, `src/client/settings-store.ts:3` (survives — structural over `subscribe`/`getSnapshot`), `src/client/card-shell.tsx:34-57`, `src/client/chevron.tsx:13`, `src/client/index.ts:17,19-21` | 60 | none of its own (4 files pass today); exercised by every plugin client test |
+| `@yadsh/dsh-plugin-kit` | **decision → do first** | `SETTINGS_PLUGIN_ITEM_SLOT` → `plugins.row.config` helper; `ConfigForm`-shaped binding (`ctx.configForms.get<T>(ns)`); `card-shell.tsx`/`chevron.tsx`/`plugin-card-css.ts` die only under D1 option 1 | `src/client/register-settings-card.tsx:56,93,116` **[verified]**, `src/client/settings-store.ts:3` (survives — structural over `subscribe`/`getSnapshot`), `src/client/card-shell.tsx:34-57`, `src/client/chevron.tsx:13`, `src/client/index.ts:17,19-21` — **note from #513:** under D1 option 2 a tab registration takes `id`/`order`/`label` and no `key`, which `SettingsCardOptions` does not carry, so `dsh-qa-surface` calls `ctx.slots.inject/register` directly and uses only `injectCardStyles` + `bindSettingsExternalStore` from this kit; the shell CSS and `CardShell` survive untouched | 60 | none of its own (4 files pass today); exercised by every plugin client test |
 | `@yadsh/dsh-plugin-scripts` | **decision** | canonical shell CSS + chevron assertions; `deepEqual` capability | `verify-plugin-card-contract.mjs:4-15,39,44-45` **[verified]**, `run-verify-package.mjs:45,169-174`, `run-verify-package.test.mjs:58-59` (version literal) | 25 | `run-verify-package.test.mjs` |
 | repo root `scripts/` | **decision** | `SETTINGS_CARD_SLOT` constant must follow D1 or the gate goes blind (§4.3a) | `verify-package-hygiene.mjs:49,816-835` **[verified]**; `package-hygiene.test.mjs:41-42`; `check-dependencies.test.mjs:67,69,131` | 15 | `package-hygiene.test.mjs` |
 | `@yadsh/dsh-test-kit` | code | host **one** `MemorySettings` conforming to `SettingsForms` (accessor `writable`, no stray `override`) so 3 plugins share it — no error of its own today | new/changed fake in `packages/test-kit/src/**`; current copies at `dsh-model-safety-gate/tests/integration/settings.test.ts:19-30`, `dsh-plugin-log-ui/tests/integration.test.ts:14-25`, `dsh-prompt-firewall/tests/settings.test.ts:14-25` **[verified]** | 30 | `dsh-test-kit` 3 files pass today |
-| `dsh-qa-surface` | **decision + code, biggest** | volatile `Config`; card path; `SettingsScopeBinder` gone; **4 new `rc.2` reads**; provenance→producer; `dsh-agent-presets` rename; own `qaSurfacePanels` merge | `src/index.ts:487,561`; `src/client/index.tsx:11,528,834-859`; `src/client/QaConfigController.ts:1,35`; `src/client/settings/card.tsx:13,69,73,77,242`; `src/client/QaTranscriptAdapter.ts:476,248`; `src/client/turn-sources.ts:82`; `src/client/QaSessionController.ts:1644`; `src/client/project-session-state.ts:75`; `src/client/panels/contract.ts:70`; `src/access/{capability-catalog.ts:33,207,218,model.ts:533}`; `src/qa-tools/lifecycle.ts:40` already `agent/created` ✔; deprecated reads `prompt-notes.ts:375`, `secure-session.ts:547`, `admin/session-log.ts:130,231`, `provenance/host-store.ts:83,236`, `qa-tools/durable-marker.ts:97,101`; `compatibility.json:4-5,12`; `scripts/verify-package.mjs:501-517`; `package.json:61-70`; `QaChangelog.tsx` (§6) | 130 | ≈14 files: `tests/wiring/index-wiring.test.ts:81-82`, `tests/config/config-controller.test.ts`, `tests/provenance/*`, `tests/transcript/*`, `tests/qa-tools/*`, `tests/admin/*` |
-| `dsh-qa-integrations` | decision + code | `SettingsScope`→`ConfigForm` type swaps (77 errors, mostly cascade); card | `src/index.ts:409,1523`; `src/client/index.tsx:3,44-53,75,93-98,123-126`; `src/client/operator-card.tsx:5,16,57,60,64,141`; `src/client/card.tsx:5,46`; `compatibility.json:4-5,7`; `scripts/verify-package.mjs:215-216` | 120 | `tests/client-registration.test.ts:138,161`, `tests/client-bundle.test.tsx`, `tests/card.test.tsx`, `tests/plugin.test.ts` |
-| `dsh-jev-compaction` | decision + code | settings install + card; **largest non-settings cluster**; `TS2742` at `config.ts:854` | `src/settings/install.ts:21,66`; `src/client/index.tsx:32,42-65`; `src/client/card.tsx:15,48,51,55,164`; `src/dsh/surface.ts:11,16,75,82,130,137,142,145`; `src/planner/collect.ts:23,50,72,158,200-202`; `src/jev/state.ts:73,101`; `src/mutation/apply.ts:63`; `src/result-shaping/budget.ts:28`; `compatibility.json:4-5,7`; **`scripts/verify-package.mjs:56` deepEqual — must edit** | 90 | `tests/client/{client-bundle,registration,settings-card}.test.tsx`, `tests/unit/settings.test.ts`, `tests/integration/{post-execute.test.ts:241,surface,engine,service,persistence}.test.ts`, `tests/eval/evaluation.test.ts` |
-| `dsh-openviking-memory` | decision + code, riskiest | volatile Config; card; **`agent/session-start` → `agent/created`, handler must not throw**; block taxonomy at runtime | `src/index.ts:194` **[verified]**; `src/settings.ts:26,67`; `src/client/index.tsx:46,82-97`; `src/client/card.tsx:14,38,41,45,150`; `src/runtime.ts:793,807-810,827`; `src/capture.ts:93,143`; `src/openviking/capture-utils.ts:151,327,350,457`; `compatibility.json:4-5,9,16`; **`scripts/verify-package.mjs:63` deepEqual**, `:64,73,190`; `package.json:49-52`; `scripts/smoke-packed-dsh.mjs` stale default | 85 | **`tests/bundle.test.ts:173-176` hard assert**, `tests/injection.test.ts:78,196,259,304`, `tests/qa-scoping.test.ts:72`, `tests/runtime-context.test.ts:215-258`, `tests/runtime-drain.test.ts:134`, `tests/runtime-lifecycle.test.ts:142,231`, `tests/settings-install.test.ts:83,166,228,266`, `tests/profile-space.test.ts:89`, `tests/helpers/harness.ts:312,337-338,380` |
-| `dsh-model-safety-gate` | decision + code | volatile Config; card; shared fake; own `"tool-result"` **label** channel is ours, keep it | `src/service.ts:278,624`; `src/client/index.tsx:43,52,60`; `src/client/card.tsx:12,54,58,62,181`; `src/client/sections.tsx:196`; `src/guards/tool-results.ts:83`; `src/pipeline.ts:282`; `src/types.ts:96`; `src/classifier/prompt.ts:50`; `src/audit/metrics.ts:15,38,40`; `compatibility.json:4-5`; `scripts/verify-client-bundle.mjs:85` | 55 | `tests/integration/settings.test.ts:8,17,52,72,103`, `tests/client-card.test.tsx`, `tests/client-index.test.ts`, `tests/unit/pipeline.test.ts` |
-| `dsh-preset-persona-editor` | **decision (D2)** | registry rename; roster face has **no** replacement; `standingKeyFor` gone; `modeSelectionEnabled` gone | `src/host/preset-reader.ts:67,297`; `src/host/service.ts:114` (**error site: `TS2739 … missing: authorable, copy`**); `src/client/{store.ts:84,96,255,PersonaPage.tsx:71-94,PersonaEditor.tsx:509}`; `src/client/index.tsx` injects `settings.section` → survives, **no D1 dependency**; `compatibility.json`; `package.json:102,114` | 30 | `tests/preset-files-reading.test.ts:58`, `tests/service.test.ts:62,134`, `tests/helpers/preset-roster.ts:38`, `tests/client-bundle.test.ts:68-69`, `tests/client-index.test.ts:95` |
-| `dsh-documents` | decision + code | volatile Config; card; `'snapshot' is unknown` ×6; workspace `list` now follows symlinks | `src/index.ts:165`; `src/client/index.tsx:29,36-41`; `src/client/card.tsx:16,78,81,91,92,110,111,138,142,149`; `compatibility.json:7`; `package.json:120-124`; `scripts/verify-client-bundle.mjs:48,55` | 45 | `tests/documents-card.test.tsx` |
-| `dsh-sleev` | decision + code | volatile Config; card; **direct** `ctx.slots.inject("settings.plugin.item")`; **fold the pre-existing smoke-script bug** | `src/index.ts:68`; `src/client/index.tsx:13,142,210,322,338,340`; `src/client/settings-controller.ts:5,95`; `compatibility.json:4-5,7`; `scripts/verify-package.mjs:39,41`; **`scripts/smoke-packed-dsh.mjs:19` hard-codes `"0.1.1-rc.2"`**; `scripts/smoke-neuraldeep.ts:37,225,236,241` | 45 | `tests/settings-controller.test.ts`, `tests/config.test.ts` |
-| `dsh-plugin-log-ui` | decision + code | volatile Config; card; shared fake; typert-driven panel | `src/index.ts:70`; `src/client/index.tsx:4,67,71,166,268,299,329`; `compatibility.json:4-5,7`; `scripts/verify-client-bundle.mjs:43,47` | 40 | `tests/client-panel.test.ts:232`, `tests/client-settings-store.test.ts`, `tests/integration.test.ts:2,12,14,21,25,76,125` |
-| `dsh-prompt-firewall` | decision + code | volatile Config; card; shared fake | `src/index.ts:90`; `src/client/index.tsx:4,62,67,153,193,202,216`; `compatibility.json:4-5,7`; `scripts/verify-client-bundle.mjs:34` | 40 | `tests/settings.test.ts:2,12,14,21,25,45`, `tests/client-index.test.ts`, `tests/client-settings-store.test.ts` |
-| `dsh-ui-repair` | decision + code | volatile Config; card; **a DOM selector that is functional, not cosmetic**; the join key this plugin already exemplifies §4.2 | `src/index.ts:28`; `src/client/index.ts:5,27,41,67`; `src/client/card.tsx:1,25,29,148,400`; **`src/client/dom.ts:11`** `[data-slot='settings.plugin.item'] > *` **[verified]**; `package.json:39-41`; `cordis.patch.yml:4` row id → `@yadsh/dsh-ui-repair#dsh-ui-repair`; `scripts/verify-client-bundle.mjs:41` | 40 | `tests/client-index.test.ts:66,71`, `tests/dom.test.ts:46`, `tests/client-bundle.test.ts`, `tests/build-wiring.test.ts` |
-| `dsh-web-fetch-authenticated` | decision + code | volatile Config; card; web tool API untouched (§8.5) so no tool work | `src/index.ts:138`; `src/client/index.tsx:15,17,61,153,185,198,210`; `src/client/sections.tsx:12,51`; `compatibility.json:4-5,7`; `scripts/verify-client-bundle.mjs:52` | 45 | `tests/client-content-types.test.ts`, `tests/client-format.test.ts` |
-| `dsh-draft-sessions` | code (no settings surface) | client conversation/controller types; **`ISessions.open`/`.clear`, `SessionListState.current`**; typert `schema` | `src/client/composer.ts:32,68,80,118`; `src/client/index.ts:59`; `src/client/shortcut.ts:54,60,125`; `src/client/workspace-contribution.ts:163,215`; `src/remote.ts:80,84`; `compatibility.json:4-5`; `package.json` client deps | 25 | `tests/remote.test.ts:30`, `tests/{client-index,types,sidebar,composer}.test.ts` |
-| `dsh-qa-browser` | code (no settings surface) | client slot/renderer typing; typert `schema` ×8 | `src/client/*` `PropsRuntime<…>` (`:60`); `src/remote*` schema sites; `compatibility.json:4-5`; `package.json:50,52,55` | 25 | `tests/{browser-panel-render,browser-panel-interactions,panel-view,client-*}.test.tsx` |
-| `dsh-answer-review-gate` | code | `'plugin'` source kind (**not a role**, §5); `form: "notice"` vocabulary; deprecated reads | `src/index.ts:146` **[verified error site]** (map said `:128`); `src/candidate.ts:26,72,115`; `src/waiver.ts:30,103,202,209`; `compatibility.json:4-5`; `scripts/verify-package.mjs:31` | 20 | `tests/{candidate:24-25,gate:92-93,225-226,280-281,gate-budget-boundaries:170-171,326-333,integration:115-116,208,waiver-command:44}.test.ts` |
-| `dsh-user-correction-miner` | code | `tool-result` block gone; `SessionHeader` fixture; new `SESSION_QUERY_CORRUPT_SESSION` | `src/mining/message-text.ts:5` **[verified]**; `src/mining/context-extractor.ts:39,92`; `src/mining/engine.ts:127`; `src/types.ts:34`; `src/storage.ts:44` (own enum — keep); `tests/fixtures/sessions.ts:7-8,19,32,84`; `compatibility.json` | 25 | `tests/{context-extractor,engine,storage,sessions}.test.ts` |
-| `dsh-domain-experts` | code, **no card decision** | already on `settings.plugins.tab`, which survives → D1 does not gate it | `src/index.ts:231` installSection → volatile Config; `compatibility.json:13` `"settings.installSection"` | 20 | `tests/config.test.ts`, `tests/client-page-*.test.tsx` |
-| `dsh-doc-impact` | decision + code | card surface (1 error); deprecated session reads | `src/client/index.ts:36,50-55`; `src/client/card.ts:4,57,67`; `src/dsh/lifecycle.ts:73` `kind:"plugin"`; `src/dsh/{commands.ts:14,67,tools.ts:47}`; `compatibility.json:4-5`; `scripts/verify-client-bundle.mjs:44,61` | 35 | `tests/client-bundle.test.ts:152,154`, `tests/e2e.test.ts:85` |
-| `dsh-session-scope` | **mechanical** + debt | 8 `snapshotEvents()` calls, alive and still merely deprecated (§5) | `src/{host-api.ts:24,57,index.ts:141,497,scope-delegation.ts:22,49,57,84,scope-fs.ts:121,140}`; `compatibility.json:4-5`; `scripts/verify-compatibility.mjs:17` regex accepts `0.1.7-rc.2` ✔ | 4 now (≈40 if the debt is taken) | `tests/{host-api,scope-delegation,scope-fs,scope-remote,tool-guard-*}.test.ts` (17 pass today) |
+| `dsh-session-scope` | **mechanical**, debt blocked | **[verified] no mandatory edit** — clean at `rc.2`: build, typecheck, lint and 17 test files (98 pass / 1 skip) green, no `TS2742`, and `src`+`tests` have zero hits for any removed identifier (`settings.plugin.item`, `SettingsScope`, `installSection`, `standingKeyFor`, `agent/session-start`, …). It registers no settings card (so D1 does not gate it), reads no `block.type` (so §5's emitted `tool-addition`/`tool-removal` cannot reach it) and never touches `approvalPolicy`/`permissionPreset` (so D3 does not either) | The 10 `src` refs the row already listed are **8 calls + 2 declarations in our own structures** (`host-api.ts:24`, `scope-delegation.ts:22`) — the old prose "8 calls" counted the calls only; `tests/` adds **18** more (§13.2). All 10 line refs verified exact. Blocked as a unit by §5's "no replacement at `rc.2`" finding: `src/{host-api.ts:24,57,index.ts:141,497,scope-delegation.ts:22,49,57,84,scope-fs.ts:121,140}` | 0 mandatory; 2 if only the `seq` slice is taken | `tests/{host-api,scope-delegation,scope-fs,scope-remote,tool-guard-*}.test.ts` (17 pass today) |
 | `dsh-tool-offload` | **mechanical** | shell/sandbox untouched §8.5; one fixture source kind | `compatibility.json:4-5`; `tests/unit/parent-context.test.ts:29` `kind:"plugin"` | 5 | `tests/unit/parent-context.test.ts` (14 files pass today) |
 | `dsh-kv-persist` | **mechanical** | metadata only | `compatibility.json:4-5` | 2 | 11 test files pass today, unchanged |
 | `dsh-cas-results`, `dsh-git-readonly`, `dsh-lightrag`, `dsh-l10n-overrides` | **mechanical** | metadata only | `compatibility.json:4-5` each | 2 each | 15 / 12 / 9 / 17 files pass today, unchanged |
-| `dsh-session-audit` | **mechanical** | client slots all survive (§8.2); watch `ApprovalRequestEvent.displayReason` — must not be persisted | `compatibility.json:4-5`; README/SPEC lines | 4 | 8 test files pass today, unchanged |
+| `dsh-session-audit` | **mechanical** | client slots all survive (§8.2); `ApprovalRequestEvent.displayReason` is moot here — the package reads audit artifacts off disk and ingests no session events (`approval` over `src`/`tests`: zero hits), so it has nothing to persist | **none of our own**: `compatibility.json:4-5` and `README.md:110` both belong to #511's wave; `SPEC.md:261` and `docs/ARCHITECTURE-NOTES.md:4-5,10,42` record the `0.1.5-rc.2` verification pass and stay historical | 0 | measured on the `rc.2` catalogs at `05d8235`: `pnpm --filter @yadsh/dsh-session-audit check` green — 8 files / 88 tests, typecheck exit 0, `verify-package: all gates passed`; repo-wide `pnpm -r --no-bail typecheck` fails 17 projects and this is not one of them, `TS2742` 0 |
 | `@yadsh/dsh-audit-core`, `@yadsh/dsh-audit-ui`, `@yadsh/dsh-plugin-log`, `@yadsh/dsh-config` | **nothing** | typert unchanged §8.5; grep for every migrating identifier returns zero (`audit-core/src/types.ts:113` `provenance` is its own schema field) | — | 0 | 5 / 3 / 1 / — pass today |
 | `@yadsh/dsh-plugin-generator` (`tooling/`) | **mechanical** | generator defaults + its test literal | `tooling/generators/dsh-plugin/src/index.ts:364,365,395,428,473` **[verified]**, `tests/index.test.ts:100-101` **[verified]** | 7 | `tests/index.test.ts` (2 files pass today) |
 
@@ -1199,6 +1272,10 @@ than estimated — `grep -rl "settings.plugin.item" plugins/*/src` names
 `dsh-web-fetch-authenticated`. That is §4.3's "~12 card components lose their
 outer shell", now as a list, and it is the set the shared gate
 `scripts/verify-package-hygiene.mjs:816-835` currently keys enforcement off.
+**[re-measured after #520]** the same grep names **11**: `dsh-sleev` left the set
+by taking D1 option 2 — it registers on `settings.plugins.tab` and kept the
+shell, so the literal left its sources while the gate still guards it (the tab
+counts when the shell markers are present alongside it).
 Not gated by D1: `domain-experts` (already `settings.plugins.tab`),
 `preset-persona-editor` (`settings.section`), `draft-sessions`, `qa-browser`,
 `answer-review-gate`, `user-correction-miner`, and all six mechanical rows.
@@ -1227,6 +1304,10 @@ whose version-plan arithmetic can silently drift.
    facts (§4.3a) and, whichever way it goes, retarget
    `scripts/verify-package-hygiene.mjs:49` — otherwise the shell contract quietly
    stops being enforced the moment the slot string disappears from our sources.
+   The retarget half is **done** (#510); D1 is **settled** (option 2, §10), so the
+   12 card cards migrate onto `settings.plugins.tab` with the shell they have.
+   The retarget half is **done** (#510); the D1 settle is **done too** — option 2,
+   decided in #508 and first executed by #521.
 3. §7 step 8's release half must **read the 39 existing plans first** and pair a
    new qa-surface plan with `0.14.1`/`0.15.0`, not `0.12.x` (§6).
 4. New step 6 stands, none of which `nx test` covers: (a) one `plugins.row.config`
@@ -1295,9 +1376,55 @@ value and the 39 pending version plans — were re-read directly
 `AGENTS.md`-relevant ones (`ui-plugin-manager` `.card` radius re-tokening,
 `focus.css`, `scripts/verify-package-hygiene.mjs:49`).
 
-### 13.1 Two repository gates are red on `dsh-v0.1.7-rc` independently of any of the above
+### 13.1 Repository gates that are red on `dsh-v0.1.7-rc` independently of the cutover
 
 Anyone running `pnpm check` on this branch while doing the cutover will meet
+these first, and none is caused by the version work. Re-measured on `bot/513`
+after #509/#510/#511/#566 landed: two of the three original findings are fixed,
+and the wave has a new, larger one.
+
+- **Fixed:** the dangling `plugins/dsh-session-scope/src/client.ts` exemption
+  (`check-file-budget.mjs:138`) was dropped by `6a9056f`, and
+  `scripts/ci-verification.test.mjs` — the assertion that the budget gate belongs
+  to the prepare job — was pinned by `aed74f6` and now runs 5/5 green.
+- `scripts/check-file-budget.test.mjs:370` ("the workspace must be green with the
+  committed list") still fails, but only **on a built tree**, and the single
+  over-budget file is the generated `plugins/dsh-qa-surface/lib/client.js`:
+  **238 404** lines after a clean `nx run @yadsh/dsh-qa-surface:build` when §13
+  was first written, **239 025** after #513's client changes, against the
+  generated-bundle runaway limit of 100 000 (unminified, ~37 chars/line). A fresh
+  clone that has not built does not show it. Worth knowing before someone reads a
+  red `check:files` as cutover damage. For the same reason
+  `pnpm -r typecheck` and the budget gate must be measured on a **built** tree:
+  the first control pass in §9.6 read 77 baseline errors purely because an earlier
+  failed build's `clean` step had deleted `lib/`, which §9.6's final numbers
+  therefore exclude by cache-busting first. The other budget findings named here
+  are gone: `dsh-qa-surface/tests/qa-tools/qa-tools-docs.test.ts` was split to 702
+  lines by `057a63e`; `packages/plugin-log/tests/plugin-logger.test.ts` at 801
+  stays in the warning band.
+- **New, and it blocks the whole wave, found by #513: vitest cannot load a module
+  that carries a standard method decorator.** After the lockfile rebuild (`a843f19`)
+  the stack is vite 8.3.1 / vitest 4.1.11 / esbuild 0.28.2, and the SSR transform
+  Vite runs for `.ts` keeps ES decorators verbatim (esbuild only lowers them below
+  `target: esnext`; `node_modules/.bin/esbuild <file> --target=es2022` does lower
+  them, the pipeline does not). Node 26 does not parse them, so every such file
+  dies at collection with a bare `SyntaxError: Invalid or unexpected token` — no
+  file name, no line, and the failure is per *file*, so a package reports
+  "N test files failed" with zero failed cases. Reproduced with a 25-line probe
+  that imports nothing from this repository: a class with one
+  `(value, context) => void` method decorator, `npx vitest run` on it, same error
+  under `--pool=forks`, `--pool=threads` and `--pool=vmThreads`. It is not a
+  per-package problem: 10 packages declare `@Remote(`
+  (`dsh-{domain-experts,model-safety-gate,openviking-memory,plugin-log-ui,preset-persona-editor,prompt-firewall,qa-integrations,qa-surface,session-audit,web-fetch-authenticated}`),
+  and every test file that imports one of their decorated modules cannot run —
+  for `dsh-qa-surface` that is `tests/wiring/index-wiring.test.ts`, which fails
+  identically when checked out from `HEAD` untouched. Nobody has hit it yet
+  because §9.5's suites are the *un*decorated packages and the decorated ones were
+  blocked behind a red build. The fix belongs to the shared preset
+  (`packages/config/vitest/vitest.config.ts`), not to a plugin: the transform has
+  to lower decorators (or `@Remote` has to stop being a decorator). Until then a
+  cutover card must report its suite as "N-1 files green, the decorated wiring
+  file cannot be collected" rather than chase it through its own source.
 these first, and neither is caused by the version work:
 
 - `pnpm check:files` exits 1 with
@@ -1318,6 +1445,51 @@ these first, and neither is caused by the version work:
   job, so the size of a pull request is reported without building every
   project"), which asserts on `.github/workflows/*` — no plugin or docs file is
   involved.
+- **[verified] #522 — `npx nx test <pkg>` cannot run any suite that imports a
+  `@Remote`-decorated class, and this is not the migration's doing.** The
+  lockfile rebuild (`a843f19`) resolved the toolchain to
+  `vite@8.3.1` + `rolldown@1.2.11`, whose `oxc` transform is the TS transformer
+  now; oxc lowers only *legacy* decorators (`DecoratorOptions.legacy`,
+  `rolldown/dist/shared/binding-*.d.mts:840-860`) and emits standard TS
+  decorators verbatim for any target, while node 24's V8 (13.6) does not parse
+  them — every such module fails at load with
+  `SyntaxError: Invalid or unexpected token` on the `@…` line, with no frame.
+  `packages/config/tsconfig/*.json` sets no `experimentalDecorators`, so the
+  typert `@Remote`/`@Command` pattern (a `ClassMethodDecoratorContext` decorator,
+  `@deepseek-ai/dsh-typert-protocol/lib/types/index.d.ts:82`) is exactly the
+  affected shape. Measured on `card-522` at `bot/522` before any edit:
+  `tests/integration.test.ts` of `dsh-prompt-firewall` fails the same way from
+  `HEAD`'s sources, and a three-line class with a local standard decorator
+  reproduces it. Workaround used by #522 to verify its own migration: emit with
+  `tsc` first (which lowers standard decorators correctly, and is what
+  `pnpm build` already does) and run vitest over the emitted
+  `.scratch-build/tests/*.test.js` — 8 files / 36 tests green that way. The real
+  fix is toolchain-level, not per package: either the shared
+  `@yadsh/dsh-config/vitest` preset transforms TS through `tsc`/esbuild, or the
+  runtime is raised to a node whose V8 parses decorators. It belongs to the
+  lane, not to a cutover card — 12 of the 24 rows of §11 import a decorated
+  class in their own tests, so every one of them will meet this.
+- **Any test file that imports a `@Remote`-decorated class cannot load**, and this
+  is not the version work: it is `a843f19` ("пересобрать lockfile с нуля на rc.2"),
+  which moved `vite` `7.3.6 → 8.3.1`. Vite 8 replaced esbuild's transform with
+  oxc's, and **oxc lowers standard decorators at no target** — probed directly on
+  `rolldown@1.2.11`'s `transform`: `{lang:'ts'}`, `{target:'es2022'}` and
+  `{target:'es2015'}` all emit `@Remote("tail") tail(…)` unchanged, which Node
+  then rejects with `SyntaxError: Invalid or unexpected token`. Only
+  `{decorator:{legacy:true}}` lowers, and `Remote`'s first overload takes a
+  `ClassMethodDecoratorContext`, so legacy output is the wrong semantics.
+  esbuild *did* lower it (`esbuild@0.28.2` with `target: es2022` emits
+  `__esDecorate` helpers), so every one of these suites passed right up to that
+  commit. `tsc` still lowers, which is why `build`, `typecheck` and the shipped
+  bundle are unaffected — the gap is only under `vitest`.
+  Census: `@Remote` appears in ten `plugins/*/src` files, but
+  `dsh-plugin-log-ui/tests/integration.test.ts` is the **only** committed test
+  that imports one, so this first surfaced on card #521. It is verified there by a
+  scratch `vitest` config that pre-transpiles decorated sources with the root
+  `typescript@5.9.3` (7/7 files, 41 tests) — the committed tree still fails, and
+  the fix belongs in `packages/config/vitest/vitest.config.ts`, where one pre
+  plugin serves all ten packages. Do not read this as #521 damage, and do not
+  "fix" it by moving a test off `src/`.
 
 `plugins/dsh-qa-surface/lib/client.js` also trips the generated-bundle runaway
 limit at **238 404 lines** after a clean `nx run @yadsh/dsh-qa-surface:build`
@@ -1327,3 +1499,67 @@ For the same reason, `pnpm -r typecheck` and the budget gate must be measured on
 a **built** tree: the first control pass in §9.6 read 77 baseline errors purely
 because an earlier failed build's `clean` step had deleted `lib/`, which §9.6's
 final numbers therefore exclude by cache-busting first.
+
+### 13.2 The `dsh-session-scope` reader census behind §11
+
+Counted from inside the plugin directory, because both `git grep` and `git ls-files`
+resolve a bare pathspec against the **current** directory — run from the repo root,
+`git grep … -- tests` searches a `tests/` that only exists per-package, and returns
+nothing without saying so. Filesystem `grep` has no such trap and is what these
+numbers came from:
+
+```bash
+cd plugins/dsh-session-scope
+grep -rcn "snapshotEvents" src            | awk -F: '{s+=$2} END {print "src:", s}'     # 10
+grep -rcn "snapshotEvents" tests          | awk -F: '{s+=$2} END {print "tests:", s}'   # 18
+grep -rn  "snapshotEvents" src | sort     # the 10, per file:
+#   host-api.ts:24 (declaration)  host-api.ts:57 (call)
+#   index.ts:141, 497 (calls)
+#   scope-delegation.ts:22 (declaration)  :49, :57, :84 (calls)
+#   scope-fs.ts:121, 140 (calls — length-only, the §5 `seq` slice)
+```
+
+so `src` is 8 calls over 2 declared members and `tests` holds 18 more (12 fake
+sessions and 6 calls; the fakes are what any migration would have to grow a member
+for). The 10 `src` line refs in §11's row were re-verified against the tree and none
+had moved.
+
+### 13.3 Vitest cannot load any module that carries a decorator (since `a843f19`)
+
+Measured while landing #524, and it is not cutover damage: the lockfile rebuild
+`a843f19` ("пересобрать lockfile с нуля") moved **vite `7.3.6` → `8.3.1`** with
+vitest unchanged at `4.1.11`, and a suite that imports a source file containing a
+TypeScript standard decorator now fails at load with
+
+```
+SyntaxError: Invalid or unexpected token
+  <pkg>/src/index.ts:144
+    @(0,__vite_ssr_import_1__.Remote)("status") async status() {
+```
+
+— the transform pipeline leaves the decorator in the emitted module, and no Node
+release parses decorator syntax. Minimal repro, inside any package:
+
+```ts
+// src/zz/dec-probe.ts
+function dec(_target: unknown, _ctx: unknown): void {}
+export class Probe {
+  @dec method(): string { return "ok"; }
+}
+```
+imported by `await import()` in one test: same `SyntaxError`. `@Remote` from
+`@deepseek-ai/dsh-typert-protocol` is not special, and neither package is at
+fault.
+
+Six packages import their decorated host entry from a test, so all six will read
+this as "my suite is red": `dsh-domain-experts`, `dsh-openviking-memory`,
+`dsh-plugin-log-ui`, `dsh-prompt-firewall`, `dsh-qa-integrations`,
+`dsh-web-fetch-authenticated`. None of them was visible before, because each also
+fails §9.3/§9.4 and so its suite never ran.
+
+It is not fixable per package. vite's `OxcOptions` omits `tsconfig` from the
+transform options, and passing `target` explicitly changes nothing — `es2021`,
+`es2022` and `esnext` all reproduce the same failure (measured with a scratch
+`vitest.config.ts` in `dsh-web-fetch-authenticated`, since removed). The fix
+belongs to the shared tooling (`packages/config/vitest/vitest.config.ts`, or the
+vite major it was pulled in under), not to a migration card.

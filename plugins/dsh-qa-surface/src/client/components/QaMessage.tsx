@@ -52,15 +52,28 @@ function QaAttachedImage({
     };
   }, [image.attachmentId, image.previewUrl, resolve]);
   if (url === null) {
-    return <span className="dsh-qa-message__image" data-state="loading" />;
+    return (
+      <span
+        className="dsh-qa-message__image"
+        data-testid="qa-message-image"
+        data-state="loading"
+      />
+    );
   }
   if (url === "") {
-    return <span className="dsh-qa-message__image" data-state="broken" />;
+    return (
+      <span
+        className="dsh-qa-message__image"
+        data-testid="qa-message-image"
+        data-state="broken"
+      />
+    );
   }
   return (
     <a href={url} target="_blank" rel="noreferrer">
       <img
         className="dsh-qa-message__image"
+        data-testid="qa-message-image"
         src={url}
         alt="Прикреплённое изображение"
       />
@@ -242,13 +255,17 @@ function FeedbackReasonForm(props: {
   return (
     <form
       className="dsh-qa-feedback"
+      data-testid="qa-message-feedback"
       onSubmit={(event) => {
         event.preventDefault();
         props.onSubmit(reasons, comment);
       }}
     >
       <strong>Что пошло не так?</strong>
-      <div className="dsh-qa-feedback__reasons">
+      <div
+        className="dsh-qa-feedback__reasons"
+        data-testid="qa-message-feedback-reasons"
+      >
         {REASONS.map((reason) => (
           <label key={reason}>
             <input
@@ -267,14 +284,21 @@ function FeedbackReasonForm(props: {
         ))}
       </div>
       <textarea
+        data-testid="qa-message-feedback-comment"
         value={comment}
         rows={2}
         placeholder="Комментарий (необязательно)"
         onChange={(event) => setComment(event.currentTarget.value)}
       />
       <div className="dsh-qa-feedback__actions">
-        <button type="submit">Отправить</button>
-        <button type="button" onClick={props.onSkip}>
+        <button type="submit" data-testid="qa-message-feedback-submit">
+          Отправить
+        </button>
+        <button
+          type="button"
+          data-testid="qa-message-feedback-skip"
+          onClick={props.onSkip}
+        >
           Пропустить
         </button>
       </div>
@@ -381,6 +405,7 @@ export const QaMessage = memo(
       return (
         <article
           className="dsh-qa-command"
+          data-testid="qa-message-command"
           data-state={activity.state}
           aria-label="Команда"
         >
@@ -409,7 +434,7 @@ export const QaMessage = memo(
     }
     if (message.role === "system" && message.notice !== undefined) {
       return (
-        <details className="dsh-qa-notice">
+        <details className="dsh-qa-notice" data-testid="qa-message-notice">
           <summary className="dsh-qa-notice__summary">
             <svg
               className="dsh-qa-notice__icon"
@@ -447,6 +472,7 @@ export const QaMessage = memo(
       return (
         <article
           className="dsh-qa-message dsh-qa-message--work"
+          data-testid="qa-message-work"
           data-status={message.status}
           aria-label="Работа помощника"
         >
@@ -520,7 +546,7 @@ export const QaMessage = memo(
     const persistentMeta = showTimestamp && message.timestamp !== undefined;
     const meta =
       message.role === "system" || message.timestamp === undefined ? null : (
-        <span className="dsh-qa-message__meta">
+        <span className="dsh-qa-message__meta" data-testid="qa-message-meta">
           <time dateTime={new Date(message.timestamp).toISOString()}>
             {formatDayTime(message.timestamp)}
           </time>
@@ -540,16 +566,26 @@ export const QaMessage = memo(
     return (
       <article
         className={`dsh-qa-message dsh-qa-message--${message.role}`}
+        data-testid="qa-message"
         data-status={message.status}
         aria-label={`Сообщение: ${label}`}
       >
-        <div className="dsh-qa-message__content">
+        <div
+          className="dsh-qa-message__content"
+          data-testid="qa-message-content"
+        >
           {message.role === "user" && message.author !== undefined ? (
-            <span className="dsh-qa-message__byline">{message.author}</span>
+            <span
+              className="dsh-qa-message__byline"
+              data-testid="qa-message-author"
+            >
+              {message.author}
+            </span>
           ) : null}
           {message.role === "user" && message.files !== undefined ? (
             <div
               className="dsh-qa-message__files"
+              data-testid="qa-message-files"
               aria-label="Прикреплённые файлы"
             >
               {message.files.map((file) => (
@@ -563,7 +599,10 @@ export const QaMessage = memo(
             </div>
           ) : null}
           {message.role === "user" && message.images !== undefined ? (
-            <div className="dsh-qa-message__images">
+            <div
+              className="dsh-qa-message__images"
+              data-testid="qa-message-images"
+            >
               {message.images.map((image) => (
                 <QaAttachedImage
                   key={image.attachmentId}
@@ -588,7 +627,11 @@ export const QaMessage = memo(
           ) : null}
         </div>
         {message.role === "user" && message.status === "pending" ? (
-          <span className="dsh-qa-message__pending" role="status">
+          <span
+            className="dsh-qa-message__pending"
+            data-testid="qa-message-pending"
+            role="status"
+          >
             <span
               className="dsh-qa-message__pending-spinner"
               aria-hidden="true"
@@ -603,6 +646,7 @@ export const QaMessage = memo(
           <button
             type="button"
             className="dsh-qa-message__sources"
+            data-testid="qa-message-sources"
             onClick={() =>
               onOpenSources(
                 message.sources ?? [],
@@ -617,11 +661,13 @@ export const QaMessage = memo(
         {showActions ? (
           <div
             className="dsh-qa-message__actions"
+            data-testid="qa-message-actions"
             data-persistent={persistentMeta || undefined}
           >
             {message.role === "user" ? meta : null}
             <button
               type="button"
+              data-testid="qa-message-copy"
               aria-label={copied ? "Скопировано" : "Скопировать сообщение"}
               title={copied ? "Скопировано" : "Копировать"}
               onClick={() => void copy()}
@@ -641,6 +687,7 @@ export const QaMessage = memo(
               <>
                 <button
                   type="button"
+                  data-testid="qa-message-rate-up"
                   aria-label="Нравится"
                   title="Нравится"
                   aria-pressed={rating === "up"}
@@ -653,6 +700,7 @@ export const QaMessage = memo(
                 </button>
                 <button
                   type="button"
+                  data-testid="qa-message-rate-down"
                   aria-label="Не нравится"
                   title="Не нравится"
                   aria-pressed={rating === "down"}
@@ -666,6 +714,7 @@ export const QaMessage = memo(
                 {onRegenerate === undefined ? null : (
                   <button
                     type="button"
+                    data-testid="qa-message-regenerate"
                     aria-label="Перегенерировать"
                     title="Перегенерировать"
                     onClick={onRegenerate}
