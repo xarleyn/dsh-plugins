@@ -6,5 +6,12 @@
  * page just to learn the namespace name.
  */
 
-/** Settings namespace the QA surface owns and its card binds to. */
-export const QA_SURFACE_SETTINGS_NAMESPACE = "qa-surface";
+/**
+ * Settings namespace the QA surface owns and its card binds to.
+ *
+ * The namespace is the profile entry id the bundle declares in
+ * `cordis.patch.yml`, not a name this plugin picks: the Host derives the
+ * configuration form of every entry from its volatile `Config` fields and serves
+ * it under that id.
+ */
+export const QA_SURFACE_SETTINGS_NAMESPACE = "dsh-qa-surface";

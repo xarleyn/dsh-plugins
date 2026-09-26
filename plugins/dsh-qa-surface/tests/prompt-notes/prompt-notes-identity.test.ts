@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { QA_IDENTITY_NOTE, QA_NOTES_PLUGIN } from "../../src/prompt-notes.js";
+import { QA_IDENTITY_NOTE } from "../../src/prompt-notes.js";
 import { resolveConfig } from "../../src/resolve-config.js";
 import {
   config,
@@ -34,12 +34,10 @@ describe("identity note", () => {
     expect(noteNames(appended[0])).toEqual([QA_IDENTITY_NOTE]);
     const source = appended[0]?.source as {
       readonly kind: string;
-      readonly plugin: string;
       readonly form: string;
     };
     expect(source).toMatchObject({
-      kind: "plugin",
-      plugin: QA_NOTES_PLUGIN,
+      kind: "qa-notes",
       form: "snapshot",
     });
     // The note is written once: the next step finds it in the conversation.

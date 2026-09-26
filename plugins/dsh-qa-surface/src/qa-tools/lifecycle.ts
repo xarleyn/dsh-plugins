@@ -37,9 +37,16 @@ export class QaToolActivationLifecycle {
     private readonly options: QaToolActivationLifecycleOptions,
   ) {
     this.disposers.push(
-      ctx.on("agent/created", ({ agent }) => this.onAgentCreated(agent), {
-        global: true,
-      }),
+      ctx.on(
+        "agent/created",
+        ({ agent }) => {
+          this.onAgentCreated(agent);
+          // `agent/created` is a serial event: its listener type is awaited and
+          // answers `undefined`, so a plain `void` handler does not satisfy it.
+          return undefined;
+        },
+        { global: true },
+      ),
       ctx.on("agent/disposed", ({ agent }) => this.onAgentDisposed(agent), {
         global: true,
       }),

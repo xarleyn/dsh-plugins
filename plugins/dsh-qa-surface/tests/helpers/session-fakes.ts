@@ -26,22 +26,36 @@ export class Source<T> {
 export function conversation(_id: string): ConversationSnapshot {
   // No Chat view is registered in tests, so the transcript projects empty.
   return {
-    views: { get: () => undefined },
+    views: { get: () => undefined, grouped: () => undefined },
     activeTargets: new Set(),
   };
 }
 
 /**
- * The session snapshot a test drives. The queue half is the Host's own shape
- * kept loose, so a test sets rows the way the Host frame delivers them.
+ * The session snapshot a test drives. The queue rows are not part of it at
+ * `rc.2`: pending input rides the session's Inbox projection, which a test sets
+ * through {@link sessionFace}'s `inbox` source.
  */
 export interface FakeSessionSnapshot {
   running: boolean;
   openState: string;
   blank: boolean;
   removed: boolean;
-  queue: readonly Record<string, unknown>[];
   pendingSubmissions: readonly Record<string, unknown>[];
+}
+
+/** One queued message of the Inbox projection, as the Host publishes it. */
+export function queuedMessage(
+  id: string,
+  content: readonly Record<string, unknown>[],
+  rpcId?: string,
+): Record<string, unknown> {
+  return {
+    id,
+    role: "user",
+    content,
+    source: { kind: "user", ...(rpcId === undefined ? {} : { rpcId }) },
+  };
 }
 
 export function sessionFace(id: string) {
@@ -50,8 +64,11 @@ export function sessionFace(id: string) {
     openState: "open",
     blank: true,
     removed: false,
-    queue: [],
     pendingSubmissions: [],
+  });
+  // The Host's Inbox projection: the messages waiting for the next turn.
+  const inbox = new Source<Record<string, unknown> | undefined>({
+    "next-turn": [],
   });
   const prompt = vi.fn(async () => ({
     ok: true as const,
@@ -79,7 +96,10 @@ export function sessionFace(id: string) {
   }));
   const face = {
     sessionId: id as SessionId,
-    projections: { faceOf: vi.fn() },
+    projections: {
+      faceOf: (key: string) =>
+        key === "inbox" ? inbox : new Source(undefined),
+    },
     getSnapshot: source.getSnapshot,
     subscribe: source.subscribe,
     prompt,
@@ -87,7 +107,7 @@ export function sessionFace(id: string) {
     updateQueue,
     beginSubmission,
   } as unknown as SessionFace;
-  return { face, source, prompt, cancel, updateQueue, beginSubmission };
+  return { face, source, inbox, prompt, cancel, updateQueue, beginSubmission };
 }
 
 export function conversationBinding(id: string) {
@@ -111,7 +131,7 @@ export interface QaSessionTestWorld {
   create: Mock;
   createSession: Mock;
   selectAgentPreset: Mock;
-  open: Mock;
+  retain: Mock;
   list: Source<SessionListState>;
   secureSession: Mock;
 }
@@ -177,16 +197,18 @@ export function harness(
     byId: Object.fromEntries(
       listed.map((id) => [id, summaryOf(id)]),
     ) as SessionListState["byId"],
-    current: undefined,
     phase: "ready",
-    subagentsByParent: {},
-    jobsBySession: {},
-    currentAddress: undefined,
+    projectionsBySession: {},
   });
-  const open = vi.fn();
+  // `rc.2` has no Host navigation: binding a chat means retaining it, and the
+  // reference is what a test proves the controller holds and releases.
+  const retain = vi.fn(() => ({
+    ready: Promise.resolve({}),
+    release: vi.fn(),
+  }));
   const sessions = {
     list,
-    open,
+    retain,
     binding: (id: never) => {
       const found = bindings.get(String(id));
       return found === undefined
@@ -267,7 +289,7 @@ export function harness(
     create,
     createSession,
     selectAgentPreset,
-    open,
+    retain,
     list,
     secureSession,
   };

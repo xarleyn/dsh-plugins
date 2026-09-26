@@ -23,7 +23,9 @@ describe("QA session controller", () => {
       canSend: true,
     });
     expect(world.create).not.toHaveBeenCalled();
-    expect(world.open).toHaveBeenCalledWith("saved");
+    expect(world.retain).toHaveBeenCalledWith("saved", {
+      source: "qaSurface",
+    });
     controller.dispose();
   });
 
