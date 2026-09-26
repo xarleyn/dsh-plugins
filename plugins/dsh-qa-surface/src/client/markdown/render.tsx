@@ -8,7 +8,6 @@ import type {
 import { parseMarkdown } from "./blocks.js";
 import { parseInline, type MarkdownInline } from "./inline.js";
 import { CodeBlock, LinkGlyph } from "./CodeBlock.js";
-import { MermaidBlock } from "./MermaidBlock.js";
 import { renderTexToReact } from "./math.js";
 import {
   codeChip,
@@ -108,11 +107,6 @@ function renderBlock(
       if (block.lang === "math" && block.text.trim() !== "") {
         // A ```math fence renders as display TeX, the way the Host does.
         return renderDisplayMath(block.text, key, block.pending === true);
-      }
-      if (block.lang?.toLowerCase() === "mermaid" && !block.pending) {
-        // An open fence is still being typed, and mermaid answers half a
-        // diagram with a syntax error: the source stands until its closer.
-        return <MermaidBlock key={key} code={block.text} />;
       }
       return (
         <CodeBlock
