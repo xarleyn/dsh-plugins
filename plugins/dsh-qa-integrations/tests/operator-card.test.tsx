@@ -2,7 +2,7 @@
 
 /**
  * The operator card: it renders the deployment configuration from the bound
- * settings scope, writes every edit as one path-addressed mutation, and
+ * settings form, writes every edit as one path-addressed mutation, and
  * clears an override back to the composition layer. The namespace is the
  * plugin's configuration source, so a committed write is the deployment
  * change — the card adds no persistence of its own.
@@ -15,7 +15,7 @@ import { OperatorCard } from "../src/client/operator-card.js";
 
 /** The slot props the Host supplies are outside this test's concern. */
 const Card = OperatorCard as unknown as (props: {
-  scope: unknown;
+  form: unknown;
 }) => ReactElement;
 
 interface ScopeOp {
@@ -34,7 +34,7 @@ function scopeStub(initial: {
   user?: unknown;
   writable?: boolean;
   status?: "ready" | "unavailable";
-}): { scope: never; stub: ScopeStub } {
+}): { form: never; stub: ScopeStub } {
   let snapshot = {
     status: (initial.status ?? "ready") as "ready" | "unavailable",
     value: initial.value,
@@ -81,7 +81,7 @@ function scopeStub(initial: {
     unset: async () => {},
   };
   return {
-    scope: scope as never,
+    form: scope as never,
     stub: {
       writes,
       setStatus(status) {
@@ -98,8 +98,8 @@ function renderCard(initial: {
   writable?: boolean;
   status?: "ready" | "unavailable";
 }): ScopeStub {
-  const { scope, stub } = scopeStub(initial);
-  render(<Card scope={scope} />);
+  const { form, stub } = scopeStub(initial);
+  render(<Card form={form} />);
   return stub;
 }
 
@@ -206,9 +206,9 @@ const RESOLVED = {
 describe("integrations operator card", () => {
   it("stays hidden when the namespace is not exposed to this browser", () => {
     const { container } = render(
-      <Card scope={scopeStub({ status: "unavailable" }).scope} />,
+      <Card form={scopeStub({ status: "unavailable" }).form} />,
     );
-    // The card renders null while the scope reports the namespace absent.
+    // The card renders null while the form reports the namespace absent.
     expect(container.childElementCount).toBe(0);
   });
 
