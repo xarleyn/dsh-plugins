@@ -84,6 +84,9 @@ function remote(overrides: Partial<ConfluenceRemote> = {}): ConfluenceRemote {
   };
 }
 
+/** The test id zone this card owns; every hook below is named from it. */
+const Z = "qa-integrations-provider-card-confluence";
+
 describe("Integrations Confluence card", () => {
   it("keeps the account e-mail and the API token write-only", async () => {
     const writes: { instanceId: string; email?: string; token: string }[] = [];
@@ -140,9 +143,10 @@ describe("Integrations Confluence card", () => {
       }),
     );
     render(<Card token="qa-account-token" />);
-    expect(await screen.findByText("Сайт: Sandbox")).toBeDefined();
+    const line = await screen.findByTestId(`${Z}-instance-static`);
+    expect(line.textContent).toContain("Sandbox");
     expect(screen.queryByLabelText("Сайт Confluence")).toBeNull();
-    expect(screen.queryByText(/подключать нечего/u)).toBeNull();
+    expect(screen.queryByTestId(`${Z}-not-configured`)).toBeNull();
     fireEvent.change(screen.getByLabelText("Почта аккаунта Atlassian"), {
       target: { value: "alice@example.com" },
     });
@@ -205,9 +209,12 @@ describe("Integrations Confluence card", () => {
       }),
     );
     render(<Card token="qa-account-token" />);
-    await screen.findByText("Alice Example");
+    await screen.findByTestId(`${Z}-summary`);
     fireEvent.click(screen.getByRole("button", { name: "Проверить" }));
-    await screen.findByText(/вне списка, разрешённого оператором стенда/u);
+    const error = await screen.findByTestId(`${Z}-error`);
+    expect(error.textContent).toContain(
+      "вне списка, разрешённого оператором стенда",
+    );
   });
 
   it("tells the user when the operator configured no site", async () => {
@@ -215,7 +222,10 @@ describe("Integrations Confluence card", () => {
       remote({ confluenceSites: async () => ({ ok: true, value: [] }) }),
     );
     const { container } = render(<Card token="qa-account-token" />);
-    await screen.findByText(/Оператор не настроил ни одного сайта Confluence/u);
+    const hint = await screen.findByTestId(`${Z}-not-configured`);
+    expect(hint.textContent).toContain(
+      "Оператор не настроил ни одного сайта Confluence",
+    );
     expect(container.textContent).not.toContain("Atlassian API token");
   });
 
@@ -236,15 +246,17 @@ describe("Integrations Confluence card", () => {
     fireEvent.change(select, { target: { value: "sandbox" } });
     expect(screen.getByLabelText("Почта аккаунта Atlassian")).toBeDefined();
     expect(screen.getByLabelText("Atlassian API token")).toBeDefined();
-    expect(screen.getByText("Развёртывание: Atlassian Cloud")).toBeDefined();
+    expect(screen.getByTestId(`${Z}-deployment`).textContent).toBe(
+      "Развёртывание: Atlassian Cloud",
+    );
     // The self-hosted instance asks for a personal access token and no account.
     fireEvent.change(select, { target: { value: "wiki" } });
     expect(screen.queryByLabelText("Почта аккаунта Atlassian")).toBeNull();
     expect(screen.queryByLabelText("Atlassian API token")).toBeNull();
     expect(screen.getByLabelText("Личный токен доступа (PAT)")).toBeDefined();
-    expect(
-      screen.getByText("Развёртывание: Server / Data Center"),
-    ).toBeDefined();
+    expect(screen.getByTestId(`${Z}-deployment`).textContent).toBe(
+      "Развёртывание: Server / Data Center",
+    );
     const connect = screen.getByRole("button", {
       name: "Сохранить и проверить",
     });

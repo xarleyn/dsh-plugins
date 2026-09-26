@@ -90,6 +90,7 @@ interface WeblateExtra {
 
 export function createWeblateCard(remote: WeblateRemote) {
   return createProviderCard<WeblateExtra>({
+    provider: "weblate",
     title: "Weblate",
     portalFallback: "Переводы ваших проектов: языки, строки и проверки",
     accountFallback: "Пользователь Weblate",
@@ -155,16 +156,21 @@ export function createWeblateCard(remote: WeblateRemote) {
         : false;
     },
     credentialSection: (state, help) => {
+      const zone = state.testIdZone;
       const { instances, instanceId } = state.extra;
       const configured = instances.length > 0;
       if (!configured) return null;
       const needsChoice = instances.length > 1;
       const service = serviceConnectOption(state);
       const instancePicker = needsChoice ? (
-        <label className="dsh-qa-integrations__field">
+        <label
+          className="dsh-qa-integrations__field"
+          data-testid={`${zone}-instance-picker`}
+        >
           Инстанс Weblate
           <select
             className="dsh-qa-integrations__input"
+            data-testid={`${zone}-instance`}
             value={instanceId}
             disabled={state.busy}
             onChange={(event) =>
@@ -180,7 +186,10 @@ export function createWeblateCard(remote: WeblateRemote) {
           </select>
         </label>
       ) : (
-        <span className="dsh-qa-integrations__muted">
+        <span
+          className="dsh-qa-integrations__muted"
+          data-testid={`${zone}-instance-static`}
+        >
           Инстанс: {instances[0]?.label ?? ""}
         </span>
       );
@@ -189,7 +198,10 @@ export function createWeblateCard(remote: WeblateRemote) {
       // checkbox and drops the secret field entirely.
       if (state.useService) {
         return (
-          <div className="dsh-qa-integrations__section">
+          <div
+            className="dsh-qa-integrations__section"
+            data-testid={`${zone}-credential`}
+          >
             {instancePicker}
             {service}
             <div className="dsh-qa-integrations__actions">
@@ -197,6 +209,7 @@ export function createWeblateCard(remote: WeblateRemote) {
                 className="dsh-qa-integrations__button dsh-qa-integrations__button--primary"
                 type="button"
                 disabled={state.busy || (needsChoice && instanceId === "")}
+                data-testid={`${zone}-connect`}
                 onClick={state.save}
               >
                 Подключить сервисный токен
@@ -206,6 +219,7 @@ export function createWeblateCard(remote: WeblateRemote) {
                   className="dsh-qa-integrations__button"
                   type="button"
                   disabled={state.busy}
+                  data-testid={`${zone}-credential-cancel`}
                   onClick={state.cancelCredential}
                 >
                   Отмена
@@ -216,13 +230,20 @@ export function createWeblateCard(remote: WeblateRemote) {
         );
       }
       return (
-        <div className="dsh-qa-integrations__section">
+        <div
+          className="dsh-qa-integrations__section"
+          data-testid={`${zone}-credential`}
+        >
           {service}
           {instancePicker}
-          <label className="dsh-qa-integrations__field">
+          <label
+            className="dsh-qa-integrations__field"
+            data-testid={`${zone}-credential-field`}
+          >
             API-токен Weblate
             <input
               className="dsh-qa-integrations__input"
+              data-testid={`${zone}-credential-input`}
               type="password"
               autoComplete="new-password"
               value={state.credential}
@@ -234,7 +255,10 @@ export function createWeblateCard(remote: WeblateRemote) {
             />
           </label>
           <CredentialHelpNote help={help} />
-          <p className="dsh-qa-integrations__hint">
+          <p
+            className="dsh-qa-integrations__hint"
+            data-testid={`${zone}-credential-hint`}
+          >
             Токен хранится в зашифрованном виде и после сохранения больше не
             отображается.
           </p>
@@ -247,6 +271,7 @@ export function createWeblateCard(remote: WeblateRemote) {
                 state.credential.trim() === "" ||
                 (needsChoice && instanceId === "")
               }
+              data-testid={`${zone}-connect`}
               onClick={state.save}
             >
               Сохранить и проверить
@@ -256,6 +281,7 @@ export function createWeblateCard(remote: WeblateRemote) {
                 className="dsh-qa-integrations__button"
                 type="button"
                 disabled={state.busy}
+                data-testid={`${zone}-credential-cancel`}
                 onClick={state.cancelCredential}
               >
                 Отмена
@@ -267,7 +293,10 @@ export function createWeblateCard(remote: WeblateRemote) {
     },
     notConfiguredHint: (state) =>
       state.extra.instances.length === 0 ? (
-        <p className="dsh-qa-integrations__hint">
+        <p
+          className="dsh-qa-integrations__hint"
+          data-testid={`${state.testIdZone}-not-configured`}
+        >
           Оператор не настроил ни одного инстанса Weblate, подключать нечего.
         </p>
       ) : null,
