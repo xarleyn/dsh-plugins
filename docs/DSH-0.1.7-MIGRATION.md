@@ -1138,7 +1138,10 @@ new `focus.css` modality rule can silence our focus ring (§4.3a item 3).
 keys the *entire* card-contract enforcement off a source file containing the
 literal `settings.plugin.item`; once plugins register `plugins.row.config`, that
 gate stops firing and the shell contract becomes unenforced unless the constant is
-retargeted. **[verified]** line 49 and the block at 816-835.
+retargeted. **[verified]** line 49 and the block at 816-835. **Retargeted by #510:**
+the gate now fires on `settings.plugin.item`, `plugins.row.config`, and
+`settings.plugins.tab` combined with the shell, so enforcement survives whichever
+way D1 goes.
 
 **D2 — preset authoring (`dsh-preset-persona-editor`) — newly open.** §8.6:
 the copy-to-writable-root capability does not exist at `rc.2`, and neither does
@@ -1244,6 +1247,7 @@ whose version-plan arithmetic can silently drift.
    facts (§4.3a) and, whichever way it goes, retarget
    `scripts/verify-package-hygiene.mjs:49` — otherwise the shell contract quietly
    stops being enforced the moment the slot string disappears from our sources.
+   The retarget half is **done** (#510); the D1 settle is still open.
 3. §7 step 8's release half must **read the 39 existing plans first** and pair a
    new qa-surface plan with `0.14.1`/`0.15.0`, not `0.12.x` (§6).
 4. New step 6 stands, none of which `nx test` covers: (a) one `plugins.row.config`

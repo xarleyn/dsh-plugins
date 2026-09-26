@@ -44,9 +44,22 @@ const QA_CHANGELOG_SOURCE = path.join(
   "components",
   "QaChangelog.tsx",
 );
-// A plugin registers its configuration card under this client slot, and the
-// registration must stay guarded by the shared verification contract.
-const SETTINGS_CARD_SLOT = "settings.plugin.item";
+// A plugin registers its configuration card under one of these client slots,
+// and the registration must stay guarded by the shared verification contract.
+// The Host renamed the card slot to `plugins.row.config` in `0.1.7`, so the
+// gate reads every name a card registration can arrive under — keying it on
+// one literal made enforcement quietly disappear the moment that literal left
+// the sources. `settings.plugins.tab` is also the slot of feature-owned pages
+// that render no card at all, so it only counts with the shell the contract
+// asserts (see `findSettingsCardSlot`).
+const CARD_SHELL_SLOTS = ["settings.plugin.item", "plugins.row.config"];
+const CARD_TAB_SLOT = "settings.plugins.tab";
+const CARD_SHELL_MARKERS = [
+  "dsh-plugin-card",
+  "CardShell",
+  "PLUGIN_CARD_SHELL_CSS",
+  "registerSettingsCard",
+];
 const CARD_CONTRACT_MODULE = "verify-plugin-card-contract";
 const RELEASE_TYPES = new Set([
   "major",
@@ -777,6 +790,23 @@ export function validateQaChangelogCoverage(repoRoot, plans) {
 }
 
 /**
+ * The client slot a package mounts its configuration card under, or `null` when
+ * its sources register no card. A slot the Host only ever renders as a shell
+ * card fires on its own; `settings.plugins.tab` fires only together with the
+ * shell, because that slot also carries feature-owned pages that render no card
+ * and would be asked to assert a shell they never claim.
+ */
+function findSettingsCardSlot(sources) {
+  const texts = walkFiles(sources).map((file) => readFileSync(file, "utf8"));
+  const mentions = (needle) => texts.some((text) => text.includes(needle));
+  const cardSlot = CARD_SHELL_SLOTS.find(mentions);
+  if (cardSlot !== undefined) return cardSlot;
+  return mentions(CARD_TAB_SLOT) && CARD_SHELL_MARKERS.some(mentions)
+    ? CARD_TAB_SLOT
+    : null;
+}
+
+/**
  * A plugin that ships a browser bundle must keep a verification script that
  * asserts the bundle registration id equals the full package name, and a
  * plugin registering a configuration card must route its client through the
@@ -813,11 +843,8 @@ export function validateClientContractGates(directory, manifest) {
     }
   }
 
-  if (
-    walkFiles(sources).some((file) =>
-      readFileSync(file, "utf8").includes(SETTINGS_CARD_SLOT),
-    )
-  ) {
+  const cardSlot = findSettingsCardSlot(sources);
+  if (cardSlot !== null) {
     // The shared runner takes the contract as an option, so a manifest that
     // passes `clientBundle.cardContract` runs the same gate without importing
     // the module by path.
@@ -829,7 +856,7 @@ export function validateClientContractGates(directory, manifest) {
         .some(runnerUsesCardContract);
     if (!routed) {
       errors.push(
-        `src registers a "${SETTINGS_CARD_SLOT}" card, but no script in scripts/ runs ${CARD_CONTRACT_MODULE}.mjs; call it from verify-package.mjs or verify-client-bundle.mjs, or pass clientBundle.cardContract to runVerifyPackage`,
+        `src registers a "${cardSlot}" card, but no script in scripts/ runs ${CARD_CONTRACT_MODULE}.mjs; call it from verify-package.mjs or verify-client-bundle.mjs, or pass clientBundle.cardContract to runVerifyPackage`,
       );
     }
   }
