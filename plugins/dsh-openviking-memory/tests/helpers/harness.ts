@@ -14,11 +14,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { Context } from "@deepseek-ai/cordis";
+import type { Volatile } from "@deepseek-ai/cordis";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import { createUserMessage, type UserMessage } from "@deepseek-ai/dsh-llm";
 import type { Session } from "@deepseek-ai/dsh-session";
 
-import OpenVikingMemory, { type Config } from "../../src/index.js";
+import OpenVikingMemory, {
+  type Config,
+  type LiveConfig,
+} from "../../src/index.js";
 
 /** A recorded listener; the plugin registers one per event name. */
 export type RecordedListener = (...args: never[]) => unknown;
@@ -58,21 +62,53 @@ export interface HarnessOptions {
   /** Directory the per-account settings file lives in; a temp one by default. */
   readonly qaSettingsDir?: string;
   /**
-   * Mount a host settings service under `settings`. The plugin registers its
-   * namespace there, which is what makes its card discoverable; a test supplies
-   * the service to observe that registration and to drive committed changes.
+   * Mount a host settings service under `settings`. The plugin no longer
+   * registers a namespace through it — a volatile Config publishes itself — but
+   * it does ask the service to keep the Host's generated page off, because the
+   * plugin ships its own card. A test supplies the service to observe that ask.
    */
   readonly settings?: {
-    installSection(
-      owner: unknown,
-      namespace: string,
-      schema: unknown,
-      entry: unknown,
-      hooks: {
-        setSource(current: () => unknown): void;
-        onChange(): void;
-      },
-    ): void;
+    configure(presentation: { auto?: boolean }, owner: unknown): () => void;
+  };
+}
+
+/**
+ * A config object built the way the Host builds one: one live reference per
+ * knob, whose value a test can move.
+ *
+ * Since 0.1.7 every knob of `static Config` is volatile, so the plugin is
+ * constructed with references rather than values and reads them per operation.
+ * `write()` is what a committed settings change looks like from here: the
+ * document moves, the plugin notices it on the next operation it takes.
+ */
+export interface LiveConfigHandle {
+  /** The object to hand the plugin. */
+  readonly live: LiveConfig;
+  /** Move one or more knobs, as a Host settings write would. */
+  write(patch: Record<string, unknown>): void;
+}
+
+export function createLiveConfig(initial: Config = {}): LiveConfigHandle {
+  const composition = new Map<string, unknown>(Object.entries(initial));
+  const values = new Map<string, unknown>(composition);
+  const live: Record<string, unknown> = {};
+  const attach = (key: string): void => {
+    live[key] = { get: () => values.get(key) } satisfies Volatile<unknown>;
+  };
+  for (const key of values.keys()) attach(key);
+
+  return {
+    live: live as unknown as LiveConfig,
+    write: (patch) => {
+      for (const [key, value] of Object.entries(patch)) {
+        // `undefined` is a cleared user-layer override: the knob falls back to
+        // what the composition entry carried, exactly as it does on the Host.
+        const next = value === undefined ? composition.get(key) : value;
+        if (next === undefined) values.delete(key);
+        else values.set(key, next);
+        if (!Object.hasOwn(live, key)) attach(key);
+      }
+    },
   };
 }
 
@@ -81,6 +117,11 @@ export interface Harness {
   readonly plugin: OpenVikingMemory;
   /** The isolated per-account settings file this instance reads and writes. */
   readonly settingsPath: string;
+  /**
+   * Move one or more config knobs, which is what a committed change in the
+   * Host's settings document looks like to a plugin reading volatile refs.
+   */
+  readonly writeConfig: (patch: Record<string, unknown>) => void;
   readonly listeners: Map<string, RecordedListener>;
   /** Registration options captured for each event listener. */
   readonly listenerOptions: Map<string, unknown>;
@@ -268,15 +309,17 @@ export async function createHarness(
     options.qaSettingsDir === undefined
       ? join(stateDir, "qa-users.json")
       : join(options.qaSettingsDir, "qa-users.json");
-  const plugin = new OpenVikingMemory(ctx, {
+  const handle = createLiveConfig({
     qaUserSettingsPath: settingsPath,
     ...config,
   });
+  const plugin = new OpenVikingMemory(ctx, handle.live);
 
   return {
     ctx,
     plugin,
     settingsPath,
+    writeConfig: handle.write,
     listeners,
     listenerOptions,
     disposers,

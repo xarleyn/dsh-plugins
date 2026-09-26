@@ -5,7 +5,7 @@
 Nothing the settings card does changed; what changed is how its source is cut,
 and which REST hops now have a test.
 
-`src/client/sections.tsx` was 1625 lines — the one file of this package above
+`src/client/sections.tsx` was 1632 lines — the one file of this package above
 the fail threshold the repository is settling on, and the whole card body in a
 single module: the provider overview, the global limits, the rule table, the
 editor, the credential control, the tester and the diagnostics view. Each of

@@ -11,7 +11,7 @@ import {
   type PluginLogger,
 } from "@yadsh/dsh-plugin-log";
 import { AuditStore } from "./audit.js";
-import { ConfigSchema, resolveConfig } from "./config.js";
+import { ConfigSchema, readVolatileConfig, resolveConfig } from "./config.js";
 import { applyFirewall } from "./firewall.js";
 import { FirewallMetrics } from "./metrics.js";
 import { compileRules, evaluateSection } from "./rules.js";
@@ -19,10 +19,10 @@ import type {
   FirewallDecision,
   KnownSection,
   PromptAuditResult,
-  PromptFirewallConfig,
   PromptFirewallInspectorSnapshot,
   PromptFirewallMetricsSnapshot,
   PromptFirewallService,
+  PromptFirewallVolatileConfig,
   ResolvedPromptFirewallConfig,
   SectionPolicy,
 } from "./types.js";
@@ -45,9 +45,13 @@ declare module "@deepseek-ai/cordis" {
 /** Cordis plugin ID. */
 export const name = "prompt-firewall";
 export const inject = ["systemPrompt"];
-export const PROMPT_FIREWALL_SETTINGS_NAMESPACE = "prompt-firewall";
+/**
+ * The Host settings namespace is the profile entry id declared in
+ * `cordis.patch.yml`, not the Cordis plugin id.
+ */
+export const PROMPT_FIREWALL_SETTINGS_NAMESPACE = "dsh-prompt-firewall";
 
-export type Config = PromptFirewallConfig;
+export type Config = PromptFirewallVolatileConfig;
 export const Config = ConfigSchema;
 
 /** DSH Host plugin, public firewall service, and browser Remote owner. */
@@ -58,15 +62,12 @@ export class PromptFirewall
   static inject = inject;
   static Config = ConfigSchema;
 
-  private readonly entryConfig: PromptFirewallConfig;
-  private configSource: () => PromptFirewallConfig;
-  private resolvedConfig: ResolvedPromptFirewallConfig;
-  private compiledRules;
+  private readonly config: PromptFirewallVolatileConfig;
   private readonly audits: AuditStore;
   private readonly metrics = new FirewallMetrics();
   private readonly logger: PluginLogger;
 
-  constructor(ctx: Context, config: PromptFirewallConfig = {}) {
+  constructor(ctx: Context, config: PromptFirewallVolatileConfig = {}) {
     super(ctx, "promptFirewall", { namespace: "promptFirewall" });
     this.logger = getPluginLogger({
       pluginId: "dsh-prompt-firewall",
@@ -77,31 +78,12 @@ export class PromptFirewall
       () => async () => this.logger.close(),
       "dsh-prompt-firewall.logger",
     );
-    this.entryConfig = structuredClone(config);
-    this.configSource = () => this.entryConfig;
-    this.resolvedConfig = resolveConfig(config);
-    this.compiledRules = compileRules(this.resolvedConfig);
+    this.config = config;
+    const ready = this.snapshot();
     this.audits = new AuditStore(
-      this.resolvedConfig.audit.historySize,
-      this.resolvedConfig.audit.highlightNewSections,
+      ready.audit.historySize,
+      ready.audit.highlightNewSections,
     );
-
-    ctx.inject(["settings"], (settingsCtx) => {
-      settingsCtx.settings.installSection(
-        ctx,
-        PROMPT_FIREWALL_SETTINGS_NAMESPACE,
-        ConfigSchema,
-        this.entryConfig,
-        {
-          setSource: (current) => {
-            this.configSource = current;
-          },
-          onChange: () => {
-            this.reloadRules();
-          },
-        },
-      );
-    });
 
     // Cordis has registration order plus `prepend`, not numeric priorities.
     // Prepending makes this wrapper call downstream contributors first and
@@ -109,22 +91,33 @@ export class PromptFirewall
     ctx.on(
       "system-prompt/assemble",
       async (_assembly, _context, next): Promise<PromptAssembly> => {
+        const resolved = this.snapshot();
+        const rules = compileRules(resolved);
+        this.audits.configure(
+          resolved.audit.historySize,
+          resolved.audit.highlightNewSections,
+        );
         const result = await next();
         return applyFirewall(result, {
-          config: this.resolvedConfig,
+          config: resolved,
           auditStore: this.audits,
           metrics: this.metrics,
           logger: this.logger,
-          evaluate: (section) => evaluateSection(section, this.compiledRules),
+          evaluate: (section) => evaluateSection(section, rules),
         });
       },
       { prepend: true },
     );
 
     this.logger.info("plugin.ready", {
-      enabled: this.resolvedConfig.enabled,
-      mode: this.resolvedConfig.mode,
+      enabled: ready.enabled,
+      mode: ready.mode,
     });
+  }
+
+  /** One config snapshot, read from the live references this entry owns. */
+  private snapshot(): ResolvedPromptFirewallConfig {
+    return resolveConfig(readVolatileConfig(this.config));
   }
 
   inspectLast(): PromptAuditResult | null {
@@ -144,7 +137,7 @@ export class PromptFirewall
   }
 
   getConfig(): ResolvedPromptFirewallConfig {
-    return structuredClone(this.resolvedConfig);
+    return structuredClone(this.snapshot());
   }
 
   /** Return one consistent, content-safe browser inspector projection. */
@@ -159,7 +152,7 @@ export class PromptFirewall
   }
 
   evaluateSection(section: AssembledSection): FirewallDecision {
-    return evaluateSection(section, this.compiledRules);
+    return evaluateSection(section, compileRules(this.snapshot()));
   }
 
   @Remote("setSectionPolicy")
@@ -177,7 +170,7 @@ export class PromptFirewall
       );
     }
 
-    const current = this.configSource();
+    const current = readVolatileConfig(this.config);
     const without = (values: readonly string[] | undefined): string[] =>
       (values ?? []).filter((value) => value !== name);
     const allowedSections = without(current.allowedSections);
@@ -187,6 +180,8 @@ export class PromptFirewall
     else if (policy === "block") blockedSections.push(name);
     else if (policy === "protect") protectedSections.push(name);
 
+    // The Host commits the written section into this entry's live references,
+    // so the reads below need no local reload step of their own.
     await settings.update(
       PROMPT_FIREWALL_SETTINGS_NAMESPACE,
       {
@@ -196,22 +191,6 @@ export class PromptFirewall
       },
       expectedRevision,
     );
-    // The settings scope has committed synchronously by this point; refresh
-    // before the asynchronous watch callback so Remote callers observe their write.
-    this.reloadRules();
-  }
-
-  reloadRules(): void {
-    this.resolvedConfig = resolveConfig(this.configSource());
-    this.compiledRules = compileRules(this.resolvedConfig);
-    this.audits.configure(
-      this.resolvedConfig.audit.historySize,
-      this.resolvedConfig.audit.highlightNewSections,
-    );
-    this.logger.info("firewall.rules.reloaded", {
-      enabled: this.resolvedConfig.enabled,
-      mode: this.resolvedConfig.mode,
-    });
   }
 }
 

@@ -20,6 +20,12 @@
  * prefix names a session the host has never heard of, and rule 1 would bind the
  * audit to a key no view ever asks with. See
  * {@link SessionResolver.repairDeclaredSessionId}.
+ *
+ * A binding that came from the *list* rather than from the analysis is only as
+ * good as the listing that produced it: the list can grow and turn a unique
+ * prefix into an ambiguous one. So {@link listCorpus} answers from one observed
+ * listing per pass — every audit in a pass is decided against the same corpus,
+ * and a pass that has unfinished bindings looks at the list exactly once.
  */
 import type { AuditError } from "@yadsh/dsh-audit-core";
 
@@ -34,6 +40,10 @@ export type SessionResolution =
       readonly sessionId: null;
       readonly error: AuditError;
     };
+
+/** What one look at the session corpus produced. */
+export type CorpusObservation =
+  { readonly ok: true } | { readonly ok: false; readonly error: AuditError };
 
 export interface SessionResolverOptions {
   /**
@@ -51,6 +61,8 @@ export interface SessionResolverOptions {
 export class SessionResolver {
   /** Identifies one shape of the session corpus to the callers that cache. */
   private corpusToken: string | undefined;
+  /** The listing the current decisions are made against. */
+  private corpus: readonly string[] | undefined;
   private generation = 0;
 
   constructor(private readonly options: SessionResolverOptions) {}
@@ -70,13 +82,16 @@ export class SessionResolver {
    * Look at the corpus again so {@link corpusGeneration} can move.
    *
    * A listing that fails is not a change: the generation stays where it was,
-   * and the caller's next pass tries again.
+   * the bindings it left unfinished stay parked, and this method hands the
+   * failure back — the resolver has no logger, so reporting it belongs to the
+   * caller that does.
    */
-  async observeCorpus(): Promise<void> {
+  async observeCorpus(): Promise<CorpusObservation> {
     try {
-      await this.listCorpus();
-    } catch {
-      // Nothing to record; the failure is the caller's to report.
+      this.remember(await this.options.listSessionIds());
+      return { ok: true };
+    } catch (error) {
+      return { ok: false, error: listingFailed(error) };
     }
   }
 
@@ -104,13 +119,7 @@ export class SessionResolver {
       return {
         status: "unresolved",
         sessionId: null,
-        error: {
-          code: "SESSION_NOT_FOUND",
-          message: `cannot list sessions to resolve ${JSON.stringify(directoryName)}: ${
-            error instanceof Error ? error.message : String(error)
-          }`,
-          severity: "error",
-        },
+        error: listingFailed(error, directoryName),
       };
     }
 
@@ -194,34 +203,54 @@ export class SessionResolver {
     return sessionIds.includes(prefixed) ? prefixed : declaredSessionId;
   }
 
-  /** The session ids, remembered as the corpus bindings were decided on. */
+  /**
+   * The corpus the current pass decides against.
+   *
+   * One listing serves the whole pass: re-deciding a binding audit by audit
+   * must not walk the session store audit by audit, and a pass that mixed two
+   * listings would compare its own results against nothing. A pass that starts
+   * without one — nobody asked the resolver to look — takes the first listing
+   * it gets and remembers it.
+   */
   private async listCorpus(): Promise<readonly string[]> {
-    const sessionIds = await this.options.listSessionIds();
+    if (this.corpus !== undefined) return this.corpus;
+    return this.remember(await this.options.listSessionIds());
+  }
+
+  /** Record a listing, and count it as a change when it is one. */
+  private remember(sessionIds: readonly string[]): readonly string[] {
     const token = [...sessionIds].sort().join("\n");
     if (this.corpusToken !== token) {
       this.corpusToken = token;
       this.generation += 1;
     }
+    this.corpus = sessionIds;
     return sessionIds;
   }
 
   /**
    * Whether a second look at the corpus could bind this audit better.
    *
-   * A binding that found no session is waiting for one, and a session id the
-   * harness would spell with its own prefix is waiting for the spelling — both
-   * were settled by a listing, so a listing that grows can settle them
-   * differently. A resolved id already spelled the harness' way named its
-   * session by itself and no corpus change improves it; re-checking those would
-   * cost a listing per audit on every pass for nothing.
+   * Two kinds of binding are provisional. A binding that found no session is
+   * waiting for one, and a binding the *list* made — by directory name, or by
+   * the unique prefix of it — is only as good as the listing that made it: a
+   * session appearing later can make that prefix ambiguous, which SPEC §4 says
+   * binds to none. A declared id the harness would spell with its own prefix is
+   * the analysis naming its own session, and no corpus change improves it;
+   * re-checking those would cost a pass over the list per audit for nothing.
    *
    * @param resolution - how this pass bound the audit.
+   * @param declaredSessionId - `trajectory.sessionId`, when the analysis could
+   *   read one. It is what says who chose the session: the producer, or the
+   *   list standing in for a producer that could not name one.
    */
-  static bindingCouldImprove(resolution: SessionResolution): boolean {
-    return (
-      resolution.status === "unresolved" ||
-      !resolution.sessionId.startsWith(SESSION_ID_PREFIX)
-    );
+  static bindingCouldImprove(
+    resolution: SessionResolution,
+    declaredSessionId: string | null,
+  ): boolean {
+    if (resolution.status === "unresolved") return true;
+    if (declaredSessionId === null) return true;
+    return !resolution.sessionId.startsWith(SESSION_ID_PREFIX);
   }
 
   /**
@@ -238,4 +267,17 @@ export class SessionResolver {
   ): boolean {
     return sessionId === directoryName || sessionId.startsWith(directoryName);
   }
+}
+
+/** What a session listing that did not answer looks like as a diagnostic. */
+function listingFailed(error: unknown, forDirectory?: string): AuditError {
+  return {
+    code: "SESSION_NOT_FOUND",
+    message: `cannot list sessions${
+      forDirectory === undefined
+        ? ""
+        : ` to resolve ${JSON.stringify(forDirectory)}`
+    }: ${error instanceof Error ? error.message : String(error)}`,
+    severity: "error",
+  };
 }

@@ -118,14 +118,18 @@ describe("classic browser bundle", () => {
         getSnapshot: () => ({ stage: "authed", token: "qa-account-token" }),
         subscribe: () => () => {},
       },
-      settingsScope: {
-        bind: () => ({
+      configForms: {
+        get: () => ({
           getSnapshot: () => ({ status: "unavailable" }),
           subscribe: () => () => {},
           mutate: async () => {},
           set: async () => {},
           unset: async () => {},
         }),
+        whileServed: (
+          namespaces: readonly string[],
+          register: (served: ReadonlySet<string>) => () => void,
+        ) => register(new Set(namespaces)),
       },
       slots: {
         inject: (_name: string, factory: () => unknown) => {
@@ -162,13 +166,14 @@ describe("classic browser bundle", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(sections.map((section) => section.id)).toEqual(["integrations"]);
-    // Two slot mounts leave the bundle: the operator card on the plugin's
-    // settings namespace (first — it does not wait for `describe()`) and the
-    // feature-owned plugins tab.
+    // Two tabs leave the bundle: the operator card over the plugin's own entry
+    // (first — it does not wait for `describe()`) and the account tab.
     expect(slots).toHaveLength(2);
     expect(slots[0]).toMatchObject({
-      name: "settings.plugin.item",
-      key: "qa-integrations",
+      name: "settings.plugins.tab",
+      id: "qa-integrations-config",
+      order: 30,
+      label: "Интеграции — конфигурация",
     });
     expect(slots[0]?.component).toBeDefined();
     expect(slots[1]).toMatchObject({
@@ -186,13 +191,19 @@ describe("classic browser bundle", () => {
     );
     // One configured site means no selector: the card names it, says which
     // product answers there, and asks for the credential alone.
+    const card = "qa-integrations-provider-card-confluence";
     expect(await screen.findByLabelText("Atlassian API token")).toBeDefined();
-    expect(screen.getByText("Сайт: Company")).toBeDefined();
-    expect(screen.getByText("Развёртывание: Atlassian Cloud")).toBeDefined();
-    expect(screen.getByText("Confluence")).toBeDefined();
+    expect(screen.getByTestId(`${card}-instance-static`).textContent).toContain(
+      "Сайт: Company",
+    );
+    expect(screen.getByTestId(`${card}-deployment`).textContent).toBe(
+      "Развёртывание: Atlassian Cloud",
+    );
+    expect(screen.getByTestId(`${card}-title`).textContent).toBe("Confluence");
     // A refused read is answered with the taxonomy the card renders, so a
     // deployment whose site cannot be reached still explains itself.
-    await screen.findByText(/Confluence не нашёл страницу/u);
+    const error = await screen.findByTestId(`${card}-error`);
+    expect(error.textContent).toContain("Confluence не нашёл страницу");
     expect(screen.queryByText("Показать токен")).toBeNull();
     rendered.unmount();
   });

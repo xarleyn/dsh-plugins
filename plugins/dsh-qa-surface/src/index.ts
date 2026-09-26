@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
-import type {} from "@deepseek-ai/dsh-agent-presets";
+import type {} from "@deepseek-ai/dsh-agent-preset-registry";
 import type {} from "@deepseek-ai/dsh-permission-presets";
 import type {} from "@deepseek-ai/dsh-settings";
 import type {} from "@deepseek-ai/dsh-tools";
@@ -16,7 +16,13 @@ import {
   getPluginLogger,
   type PluginLogger,
 } from "@yadsh/dsh-plugin-log";
-import { ConfigSchema, qaSurfaceVersion, resolveConfig } from "./config.js";
+import {
+  ConfigSchema,
+  qaSurfaceVersion,
+  readConfigRefs,
+  resolveConfig,
+} from "./config.js";
+import type { QaSurfaceConfigRefs } from "./config.js";
 import { createQaAccountRemotes } from "./account-remotes.js";
 import type { QaAccountRemotes } from "./account-remotes.js";
 import { QaAdminService } from "./admin/service.js";
@@ -48,9 +54,11 @@ import { createQaIntegrationRunner } from "./integration/host-runner.js";
 import { QaIntegrationService } from "./integration/service.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaAccessService } from "./access/service.js";
+import type { QaPresetScopeLease } from "./access/capability-catalog.js";
 import { createQaSlashRemotes } from "./slash/remotes.js";
 import type { QaSlashRemotes } from "./slash/remotes.js";
 import { QaPromptNotes } from "./prompt-notes.js";
+import { qaActiveRequests, qaQueueStatus } from "./request-queue.js";
 import { QaTools } from "./qa-tools/index.js";
 import { docsDefaultVersionOf } from "./config-resolvers/tools.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
@@ -89,6 +97,7 @@ import type {
   QaPendingApproval,
   QaPendingQuestion,
   QaQuestionAnswerItem,
+  QaQueueStatus,
   QaServiceTokenCreateInput,
   QaServiceTokenSummary,
   QaSurfaceConfig,
@@ -188,12 +197,27 @@ function sourcePreviewRefusal(reason: QaSourcePreviewRefusal): Error {
   return new Error(`QA source preview refused the request (reason: ${reason})`);
 }
 
+/**
+ * Key of the preset-registry scope lease's disposer. The registry implements it
+ * as `Symbol.asyncDispose`; this project compiles against the ES2022 lib, which
+ * does not name that well-known symbol, and a well-known symbol is reachable
+ * through the global registry under the same key.
+ */
+const ASYNC_DISPOSE = Symbol.for("Symbol.asyncDispose");
+
+function releaseScopeLease(lease: unknown): Promise<void> {
+  const dispose = (lease as Record<symbol, (() => Promise<void>) | undefined>)[
+    ASYNC_DISPOSE
+  ];
+  return dispose?.call(lease) ?? Promise.resolve();
+}
+
 /** Host companion: validates config, owns the admission boundary and the route. */
 export class QaSurface extends TypertRemoteService {
   static inject = inject;
   static Config = ConfigSchema;
 
-  private source: () => QaSurfaceConfig;
+  private readonly source: () => QaSurfaceConfig;
   private readonly logger: PluginLogger;
   private readonly admission: QaPolicyAdmission;
   private readonly approvals: QaApprovalGate;
@@ -243,10 +267,12 @@ export class QaSurface extends TypertRemoteService {
    */
   private qualityStore: QaQualityStore | undefined;
 
-  constructor(ctx: Context, entry: QaSurfaceConfig = {}) {
+  constructor(ctx: Context, entry: Partial<QaSurfaceConfigRefs> = {}) {
     super(ctx, "qaSurface", { namespace: "qaSurface" });
-    const resolvedEntry = resolveConfig(entry);
-    this.source = () => resolvedEntry;
+    // Every Config field is volatile, so the reference the Host hands here is
+    // the one live source: each read folds its current snapshots, and a settings
+    // write is visible on the next read without reloading the plugin.
+    this.source = () => readConfigRefs(entry);
     this.logger = getPluginLogger({
       pluginId: "dsh-qa-surface",
       consoleSink: createHostLoggerSink(ctx.logger),
@@ -483,34 +509,35 @@ export class QaSurface extends TypertRemoteService {
         if (row !== undefined) table.push(row);
       });
     }
-    ctx.inject(["settings"], (settingsCtx) => {
-      settingsCtx.settings.installSection(
-        ctx,
-        QA_SURFACE_SETTINGS_NAMESPACE,
-        ConfigSchema,
-        entry,
-        {
-          setSource: (source) => {
-            this.source = source;
-          },
-          onChange: () => {
-            const config = this.getConfig();
-            this.refreshRoute();
-            this.refreshIntegrationRoutes();
-            this.warnDocumentsMoved();
-            this.warnLegacySlashDefaults();
-            this.logger.info("config.updated", {
-              enabled: config.enabled,
-              route: config.route.path,
-              sessionPolicy: config.session.policy,
-            });
-          },
-          validate: (value) => {
-            resolveConfig(value);
-          },
-        },
-      );
-    });
+    // The settings namespace is this profile entry itself, and every Config
+    // field is volatile: there is no section left to install. The browser half
+    // registers the card that edits this entry, so the Host's generated page is
+    // switched off here — one page for these settings, drawn by the card.
+    ctx.inject(["settings"], (settingsCtx) =>
+      settingsCtx.effect(() =>
+        settingsCtx.settings.configure({ auto: false }, ctx.fiber),
+      ),
+    );
+    // A write to the namespace lands in the volatile references; this is the
+    // signal that the parts of the plugin which are not read-per-operation (the
+    // registered routes, the one-time configuration warnings) need re-running.
+    ctx.effect(
+      () =>
+        ctx.on("settings/document-updated", (namespace) => {
+          if (String(namespace) !== QA_SURFACE_SETTINGS_NAMESPACE) return;
+          const config = this.getConfig();
+          this.refreshRoute();
+          this.refreshIntegrationRoutes();
+          this.warnDocumentsMoved();
+          this.warnLegacySlashDefaults();
+          this.logger.info("config.updated", {
+            enabled: config.enabled,
+            route: config.route.path,
+            sessionPolicy: config.session.policy,
+          });
+        }),
+      "dsh-qa-surface.config-changed",
+    );
     ctx.inject(["webServer"], (webContext) => {
       this.webServer = webContext.webServer;
       this.refreshRoute();
@@ -528,15 +555,16 @@ export class QaSurface extends TypertRemoteService {
         "dsh-qa-surface.navigation-route",
       );
     });
+    const ready = this.getConfig();
     this.logger.info("plugin.ready", {
-      enabled: resolvedEntry.enabled,
-      route: resolvedEntry.route.path,
-      sessionPolicy: resolvedEntry.session.policy,
+      enabled: ready.enabled,
+      route: ready.route.path,
+      sessionPolicy: ready.session.policy,
       // What the two parked-interaction seams resolve to on this deployment:
       // the attestation path warns per session when the question seam and the
       // tool policy disagree, and this is the config they are read against.
-      approvals: resolvedEntry.interaction.approvals,
-      questions: resolvedEntry.interaction.questions,
+      approvals: ready.interaction.approvals,
+      questions: ready.interaction.questions,
     });
   }
 
@@ -554,11 +582,16 @@ export class QaSurface extends TypertRemoteService {
    * the preset composes it but starts no agent, no session and no turn;
    * without a pinned preset there is nothing to borrow, and the read stays
    * global.
+   *
+   * The registry answers with a lease on one preset revision, so the scope is
+   * handed to the caller that reads with it and released when that read ends.
    */
-  private async qaPresetScope(): Promise<ScopeKey | undefined> {
+  private async qaPresetScope(): Promise<QaPresetScopeLease | undefined> {
     const preset = this.getConfig().session.agentPreset;
     if (preset === null || preset === undefined) return undefined;
-    return await this.ctx.agentPresets.standingKeyFor(preset);
+    const lease: { key: ScopeKey } =
+      await this.ctx.agentPresets.acquireScope(preset);
+    return { key: lease.key, release: () => releaseScopeLease(lease) };
   }
 
   /**
@@ -817,6 +850,27 @@ export class QaSurface extends TypertRemoteService {
   @Remote("describe")
   describe(): ResolvedQaSurfaceConfig {
     return this.getConfig();
+  }
+
+  /**
+   * Report how much of the deployment's request ceiling the stand is using, so
+   * a browser holds its question back instead of opening another turn on a
+   * model that is busy answering the ones it allows.
+   *
+   * The count is the Host's, not the browser's: a visitor cannot see another
+   * account's chats, and the HTTP API's questions are invisible to every chat
+   * view. Read-only, and a ceiling rather than a lock — a prompt rides the
+   * native session RPC this plugin does not own, so the boundary is the
+   * browser's own courtesy, and two questions sent in the same instant can
+   * still overshoot by one. What the ceiling buys is that steady state, not a
+   * strict bound.
+   */
+  @Remote("queueStatus")
+  queueStatus(): QaQueueStatus {
+    return qaQueueStatus(
+      this.getConfig().session.maxActiveRequests,
+      qaActiveRequests(this.ctx.agents.roots()),
+    );
   }
 
   /**

@@ -1,10 +1,10 @@
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { IntegrationError } from "../../errors.js";
+import { statusErrorOf, transportFailureOf } from "../kernel/errors.js";
 import {
-  backoff,
+  fetchWithRetries,
   readBoundedJson,
-  retryDelay,
-  sleep,
+  type ResponseRead,
 } from "../kernel/read-policy.js";
 import {
   confluenceInstance,
@@ -144,6 +144,24 @@ function cursorFrom(links: unknown): string | undefined {
 }
 
 /**
+ * The provider error model of Confluence, folded by the shared policy.
+ * Confluence answers a page the account may not see with the same 404 as a page
+ * that does not exist, and the provider keeps that ambiguity: the model must not
+ * learn from an error whether someone else's page is there. A retired endpoint
+ * is the one status this product answers unlike the others: it is a provider
+ * bug, so it says so instead of blaming the caller's arguments.
+ */
+const statusFailure = statusErrorOf({
+  label: "Confluence",
+  rejectedCredential: "Confluence rejected the stored e-mail or API token",
+  overrides: {
+    410: ["ProviderUnavailable", "Confluence no longer serves this endpoint"],
+  },
+});
+
+const transportFailure = transportFailureOf({ label: "Confluence" });
+
+/**
  * HTTP boundary of the provider: one documented Confluence REST read, bounded
  * in time and size, with upstream failures folded into safe domain errors and
  * bounded retries for the transient ones.
@@ -161,17 +179,27 @@ export class ConfluenceTransport {
     path: string,
     query: ConfluenceQuery = {},
   ): Promise<ConfluenceJsonResponse<T>> {
-    const response = await this.request(instance, credential, path, query);
-    const data = await readBoundedJson<T>(
-      response,
-      this.config.maxResponseBytes,
-      "Confluence",
+    return this.request(
+      instance,
+      credential,
+      path,
+      query,
+      async (response, signal) => {
+        const data = await readBoundedJson<T>(
+          response,
+          this.config.maxResponseBytes,
+          "Confluence",
+          signal,
+        );
+        const nextCursor =
+          typeof data === "object" && data !== null
+            ? cursorFrom((data as Record<string, unknown>)["_links"])
+            : undefined;
+        return nextCursor === undefined
+          ? { data }
+          : { data, page: { nextCursor } };
+      },
     );
-    const nextCursor =
-      typeof data === "object" && data !== null
-        ? cursorFrom((data as Record<string, unknown>)["_links"])
-        : undefined;
-    return nextCursor === undefined ? { data } : { data, page: { nextCursor } };
   }
 
   private url(
@@ -187,105 +215,35 @@ export class ConfluenceTransport {
     return url.toString();
   }
 
-  private async request(
+  private async request<T>(
     instance: ConfluenceInstance,
     credential: ConfluenceCredential,
     path: string,
     query: ConfluenceQuery,
-  ): Promise<Response> {
-    const target = this.url(instance, path, query);
+    read: ResponseRead<T>,
+  ): Promise<T> {
     // The one place the secret is spent. Which scheme carries it is the
     // instance's declared deployment type: Basic over `email:token` on Cloud,
     // a bearer token on a Server / Data Center installation.
     const authorization = authorizationFor(dialectOf(instance), credential);
-    let lastError: IntegrationError | undefined;
-    for (let attempt = 0; ; attempt += 1) {
-      let response: Response;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
-      try {
-        response = await this.fetcher(target, {
-          method: "GET",
-          // A Confluence that answers with a redirect is never followed: the
-          // credential must not travel to another origin.
-          redirect: "error",
-          headers: {
-            authorization,
-            accept: "application/json",
-          },
-          signal: controller.signal,
-        });
-      } catch {
-        // Aborts, DNS failures and refused connections: a transient network
-        // fault is worth one more attempt, a permanent one keeps failing.
-        lastError = new IntegrationError(
-          "ProviderUnavailable",
-          "Confluence request failed",
-        );
-        if (attempt >= this.flags.retries) throw lastError;
-        await sleep(retryDelay(attempt));
-        continue;
-      } finally {
-        clearTimeout(timer);
-      }
-      if (response.ok) return response;
-      lastError = this.failure(response);
-      // Only throttling and upstream faults are retried; an authorization or
-      // not-found answer will not change by asking again.
-      const transient = response.status === 429 || response.status >= 500;
-      if (!transient || attempt >= this.flags.retries) throw lastError;
-      await sleep(backoff(response, attempt));
-    }
-  }
-
-  /**
-   * Confluence answers a page the account may not see with the same 404 as a
-   * page that does not exist, and the provider keeps that ambiguity: the model
-   * must not learn from an error whether someone else's page is there.
-   */
-  private failure(response: Response): IntegrationError {
-    const status = response.status;
-    if (status === 401) {
-      return new IntegrationError(
-        "CredentialRevoked",
-        "Confluence rejected the stored e-mail or API token",
-      );
-    }
-    if (status === 403) {
-      return new IntegrationError(
-        "ProviderPermissionDenied",
-        "Confluence denied this operation",
-      );
-    }
-    if (status === 404) {
-      return new IntegrationError(
-        "ResourceNotFound",
-        "Confluence resource not found",
-      );
-    }
-    if (status === 429) {
-      return new IntegrationError(
-        "RateLimited",
-        "Confluence rate limit reached",
-      );
-    }
-    if (status === 400 || status === 422) {
-      return new IntegrationError(
-        "InvalidRequest",
-        "Confluence rejected the request",
-      );
-    }
-    if (status === 410) {
-      // A retired endpoint is a provider bug, not a user mistake: the message
-      // says so instead of blaming the caller's arguments.
-      return new IntegrationError(
-        "ProviderUnavailable",
-        "Confluence no longer serves this endpoint",
-      );
-    }
-    return new IntegrationError(
-      "ProviderUnavailable",
-      "Confluence request failed",
+    return fetchWithRetries(
+      this.fetcher,
+      this.url(instance, path, query),
+      {
+        timeoutMs: this.config.timeoutMs,
+        retries: this.flags.retries,
+        headers: {
+          authorization,
+          accept: "application/json",
+        },
+        transportFailure,
+        // A transport fault is the one failure Confluence retries to the end:
+        // an aborted connection is worth another try, however long each of them
+        // is held to its own deadline.
+        retriable: () => true,
+        statusFailure,
+      },
+      read,
     );
   }
 }

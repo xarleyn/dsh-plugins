@@ -75,9 +75,15 @@ export { hashFile, hashString } from "./utils/hashing.js";
 
 // DSH adapter — the installable plugin entry point. The pure engine above has
 // no harness dependencies; only this block imports @deepseek-ai packages.
-export { apply, name, inject } from "./dsh/plugin.js";
-export { resolvePluginConfig } from "./dsh/plugin-config.js";
-export type { DocImpactPluginConfig } from "./dsh/plugin-config.js";
+export { apply, name, inject, Config } from "./dsh/plugin.js";
+export {
+  ConfigSchema,
+  plainEntryConfig,
+  readLiveConfig,
+  resolvePluginConfig,
+  type DocImpactEntryConfig,
+  type DocImpactPluginConfig,
+} from "./dsh/plugin-config.js";
 export { createWorkspaceConfigSource } from "./dsh/config-source.js";
 export { currentTurnNumber, registerLifecycle } from "./dsh/lifecycle.js";
 export { createResolveTool, createStatusTool } from "./dsh/tools.js";

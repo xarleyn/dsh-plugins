@@ -9,6 +9,8 @@ import type { ReactNode } from "react";
  */
 
 export interface QaSettingsFieldProps {
+  /** Handle this instance is addressed by from a browser run. */
+  readonly testId: string;
   readonly label: string;
   /** Secondary line under the control; not part of the field's name. */
   readonly hint?: string;
@@ -17,27 +19,38 @@ export interface QaSettingsFieldProps {
 
 export function QaSettingsField(props: QaSettingsFieldProps) {
   return (
-    <div className="dsh-qa-settings__field">
+    <div className="dsh-qa-settings__field" data-testid={props.testId}>
       <label className="dsh-qa-settings__field-label">
         {props.label}
         {props.children}
       </label>
       {props.hint === undefined ? null : (
-        <span className="dsh-qa-settings__field-hint">{props.hint}</span>
+        <span
+          className="dsh-qa-settings__field-hint"
+          data-testid={`${props.testId}-hint`}
+        >
+          {props.hint}
+        </span>
       )}
     </div>
   );
 }
 
 export function QaSettingsSection(props: {
+  readonly testId: string;
   readonly title: string;
   readonly aside?: ReactNode;
   readonly children: ReactNode;
 }) {
   return (
-    <section className="dsh-qa-settings__section">
+    <section className="dsh-qa-settings__section" data-testid={props.testId}>
       <header className="dsh-qa-settings__section-head">
-        <h3 className="dsh-qa-settings__section-title">{props.title}</h3>
+        <h3
+          className="dsh-qa-settings__section-title"
+          data-testid={`${props.testId}-title`}
+        >
+          {props.title}
+        </h3>
         {props.aside}
       </header>
       {props.children}
@@ -46,6 +59,7 @@ export function QaSettingsSection(props: {
 }
 
 export function QaSettingsToggle(props: {
+  readonly testId: string;
   readonly label: string;
   readonly checked: boolean;
   readonly disabled?: boolean;
@@ -53,30 +67,43 @@ export function QaSettingsToggle(props: {
   readonly onChange: (checked: boolean) => void;
 }) {
   return (
-    <div className="dsh-qa-settings__toggle-row">
+    <div className="dsh-qa-settings__toggle-row" data-testid={props.testId}>
       <label className="dsh-qa-settings__toggle">
         <input
           type="checkbox"
+          data-testid={`${props.testId}-input`}
           checked={props.checked}
           disabled={props.disabled === true}
           onChange={(event) => props.onChange(event.currentTarget.checked)}
         />
-        <span className="dsh-qa-settings__toggle-label">{props.label}</span>
+        <span
+          className="dsh-qa-settings__toggle-label"
+          data-testid={`${props.testId}-label`}
+        >
+          {props.label}
+        </span>
       </label>
       {props.hint === undefined ? null : (
-        <span className="dsh-qa-settings__field-hint">{props.hint}</span>
+        <span
+          className="dsh-qa-settings__field-hint"
+          data-testid={`${props.testId}-hint`}
+        >
+          {props.hint}
+        </span>
       )}
     </div>
   );
 }
 
 export function QaSettingsNotice(props: {
+  readonly testId: string;
   readonly tone: "info" | "warn" | "error";
   readonly children: ReactNode;
 }) {
   return (
     <p
       className={`dsh-qa-settings__notice dsh-qa-settings__notice--${props.tone}`}
+      data-testid={props.testId}
       role={props.tone === "error" ? "alert" : "status"}
     >
       {props.children}
@@ -89,6 +116,8 @@ export function QaSettingsActions(props: { readonly children: ReactNode }) {
 }
 
 export function QaSettingsButton(props: {
+  /** Omitted for a button the settings dialog does not own, such as the sidebar's. */
+  readonly testId?: string;
   readonly label: string;
   readonly tone?: "primary" | "plain" | "danger";
   readonly type?: "button" | "submit";
@@ -103,6 +132,7 @@ export function QaSettingsButton(props: {
       // every other control is an explicit action.
       type={props.type ?? "button"}
       className={`dsh-qa-settings__button dsh-qa-settings__button--${tone}`}
+      data-testid={props.testId}
       disabled={props.disabled === true}
       {...(props.title === undefined ? {} : { title: props.title })}
       {...(props.onClick === undefined ? {} : { onClick: props.onClick })}

@@ -1455,6 +1455,9 @@ kv-persist:
 
     idleMs: 30000
 
+    # Bounded dispose wait for the shutdown checkpoint (§58, §59)
+    shutdownGraceMs: 5000
+
     onTurnEnd: false
     onStepEnd: false
 
@@ -1505,6 +1508,7 @@ interface Config {
     onSessionFlush?: boolean
 
     idleMs?: number
+    shutdownGraceMs?: number
 
     onTurnEnd?: boolean
     onStepEnd?: boolean
@@ -1539,6 +1543,7 @@ onSwitch = true
 onShutdown = true
 onSessionFlush = true
 idleMs = 30000
+shutdownGraceMs = 5000
 
 onTurnEnd = false
 onStepEnd = false
@@ -2294,6 +2299,12 @@ checkpoint active dirty slot if configured
         ↓
 dispose service
 ```
+
+The wait for that final checkpoint is bounded by `checkpoint.shutdownGraceMs`:
+the checkpoint queues behind the slot lease, and a lease held by a stream that
+never closes must not stall the Cordis disposer. Only the *wait* is given up —
+the queued checkpoint keeps running and writes once the lease frees. The
+abandoned wait is logged as `kv.session.shutdown_flush_abandoned` (§59).
 
 ---
 

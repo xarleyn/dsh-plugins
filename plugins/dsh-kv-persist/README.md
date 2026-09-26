@@ -74,6 +74,7 @@ providers listed under `providers` are ever coordinated.
 | `checkpoint.onShutdown` | boolean | `true` | Final checkpoint on plugin disposal. |
 | `checkpoint.onSessionFlush` | boolean | `true` | Checkpoint on the session flush event. |
 | `checkpoint.idleMs` | number | `30000` | Idle checkpoint delay; `0` disables. |
+| `checkpoint.shutdownGraceMs` | number | `5000` | How long disposal waits for the final checkpoint before unloading anyway; the checkpoint itself is never aborted. |
 | `checkpoint.onTurnEnd` | boolean | `false` | Checkpoint after every user turn. |
 | `checkpoint.onStepEnd` | boolean | `false` | Reserved for per-step checkpoints. |
 | `restore.enabled` | boolean | `true` | Restore compatible snapshots lazily. |

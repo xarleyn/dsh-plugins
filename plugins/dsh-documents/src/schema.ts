@@ -3,11 +3,18 @@
  * loader and the settings card share, so a value the card writes is a value the
  * runtime resolves.
  *
+ * Every section carries `.volatile()`, which on this host is what makes a field
+ * editable while the plugin runs: the settings namespace is the profile entry
+ * id, a field is a form field iff its schema node is volatile, and the loader
+ * then hands each volatile section to this plugin as a stable reference rather
+ * than as a plain value. {@link snapshotDocumentsConfig} is the one hop back.
+ *
  * Node-free on purpose: this module is bundled into the browser card, so a Node
  * builtin here would break the bundle rather than the test suite.
  * @module schema
  */
 
+import type { Volatile } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 import { DEFAULT_DOCUMENTS_CONFIG } from "./documents/defaults.js";
 import type { DocumentsConfig } from "./documents/config.js";
@@ -29,7 +36,7 @@ const comparisonDefaults = {
 
 const configSchema = z
   .object({
-    enabled: z.boolean().default(DD.enabled),
+    enabled: z.boolean().default(DD.enabled).volatile(),
     comparison: z
       .object({
         enabled: z.boolean().default(DD.comparison.enabled),
@@ -101,7 +108,8 @@ const configSchema = z
           .boolean()
           .default(DD.comparison.retainNormalizedDocuments),
       })
-      .default(comparisonDefaults),
+      .default(comparisonDefaults)
+      .volatile(),
     storage: z
       .object({
         root: nullableString.default(DD.storage.root),
@@ -114,7 +122,8 @@ const configSchema = z
       .default({
         ...DD.storage,
         allowedInputRoots: [...DD.storage.allowedInputRoots],
-      }),
+      })
+      .volatile(),
     cache: z
       .object({
         enabled: z.boolean().default(DD.cache.enabled),
@@ -137,13 +146,15 @@ const configSchema = z
           .max(1_099_511_627_776)
           .default(DD.cache.maxBytes),
       })
-      .default({ ...DD.cache }),
+      .default({ ...DD.cache })
+      .volatile(),
     templates: z
       .object({
         root: nullableString.default(DD.templates.root),
         default: z.string().default(DD.templates.default),
       })
-      .default({ ...DD.templates }),
+      .default({ ...DD.templates })
+      .volatile(),
     create: z
       .object({
         defaultPdfMode: z
@@ -158,7 +169,8 @@ const configSchema = z
       .default({
         ...DD.create,
         allowFormats: [...DD.create.allowFormats],
-      }),
+      })
+      .volatile(),
     extraction: z
       .object({
         defaultMode: z
@@ -186,7 +198,8 @@ const configSchema = z
       .default({
         ...DD.extraction,
         ocrLanguages: [...DD.extraction.ocrLanguages],
-      }),
+      })
+      .volatile(),
     docling: z
       .object({
         enabled: z.boolean().default(DD.docling.enabled),
@@ -198,7 +211,8 @@ const configSchema = z
           .max(600_000)
           .default(DD.docling.timeoutMs),
       })
-      .default({ ...DD.docling }),
+      .default({ ...DD.docling })
+      .volatile(),
     pandoc: z
       .object({
         executable: z.string().default(DD.pandoc.executable),
@@ -209,7 +223,8 @@ const configSchema = z
           .max(600_000)
           .default(DD.pandoc.timeoutMs),
       })
-      .default({ ...DD.pandoc }),
+      .default({ ...DD.pandoc })
+      .volatile(),
     libreoffice: z
       .object({
         executable: z.string().default(DD.libreoffice.executable),
@@ -220,7 +235,8 @@ const configSchema = z
           .max(600_000)
           .default(DD.libreoffice.timeoutMs),
       })
-      .default({ ...DD.libreoffice }),
+      .default({ ...DD.libreoffice })
+      .volatile(),
     typst: z
       .object({
         enabled: z.boolean().default(DD.typst.enabled),
@@ -232,7 +248,8 @@ const configSchema = z
           .max(600_000)
           .default(DD.typst.timeoutMs),
       })
-      .default({ ...DD.typst }),
+      .default({ ...DD.typst })
+      .volatile(),
     markitdown: z
       .object({
         enabled: z.boolean().default(DD.markitdown.enabled),
@@ -244,7 +261,8 @@ const configSchema = z
           .max(600_000)
           .default(DD.markitdown.timeoutMs),
       })
-      .default({ ...DD.markitdown }),
+      .default({ ...DD.markitdown })
+      .volatile(),
     workers: z
       .object({
         renderConcurrency: z
@@ -266,7 +284,8 @@ const configSchema = z
           .max(16)
           .default(DD.workers.ocrConcurrency),
       })
-      .default({ ...DD.workers }),
+      .default({ ...DD.workers })
+      .volatile(),
     retention: z
       .object({
         enabled: z.boolean().default(DD.retention.enabled),
@@ -283,7 +302,8 @@ const configSchema = z
           .max(168)
           .default(DD.retention.cleanupIntervalHours),
       })
-      .default({ ...DD.retention }),
+      .default({ ...DD.retention })
+      .volatile(),
     limits: z
       .object({
         maxInputBytes: z
@@ -335,7 +355,8 @@ const configSchema = z
       .default({
         ...DD.limits,
         allowedAssetMimeTypes: [...DD.limits.allowedAssetMimeTypes],
-      }),
+      })
+      .volatile(),
   })
   .default({
     ...DD,
@@ -367,4 +388,81 @@ const configSchema = z
     },
   });
 
-export const ConfigSchema = configSchema as unknown as z<DocumentsConfig>;
+/**
+ * The `Config` of the plugin entry: every section of {@link DocumentsConfig}
+ * held as a live reference, because this schema marks each of them volatile.
+ *
+ * Derived from the plain shape section by section, so the two cannot drift and
+ * the resolver keeps reading plain data.
+ */
+export interface DocumentsPluginConfig {
+  readonly enabled: Volatile<boolean>;
+  readonly comparison: Volatile<NonNullable<DocumentsConfig["comparison"]>>;
+  readonly storage: Volatile<NonNullable<DocumentsConfig["storage"]>>;
+  readonly cache: Volatile<NonNullable<DocumentsConfig["cache"]>>;
+  readonly templates: Volatile<NonNullable<DocumentsConfig["templates"]>>;
+  readonly create: Volatile<NonNullable<DocumentsConfig["create"]>>;
+  readonly extraction: Volatile<NonNullable<DocumentsConfig["extraction"]>>;
+  readonly docling: Volatile<NonNullable<DocumentsConfig["docling"]>>;
+  readonly pandoc: Volatile<NonNullable<DocumentsConfig["pandoc"]>>;
+  readonly libreoffice: Volatile<NonNullable<DocumentsConfig["libreoffice"]>>;
+  readonly typst: Volatile<NonNullable<DocumentsConfig["typst"]>>;
+  readonly markitdown: Volatile<NonNullable<DocumentsConfig["markitdown"]>>;
+  readonly workers: Volatile<NonNullable<DocumentsConfig["workers"]>>;
+  readonly retention: Volatile<NonNullable<DocumentsConfig["retention"]>>;
+  readonly limits: Volatile<NonNullable<DocumentsConfig["limits"]>>;
+}
+
+/**
+ * A configuration the plugin accepts: the live references the Cordis loader
+ * hands a volatile `Config`, or — for a caller that builds the plugin in
+ * process rather than through a profile entry — the plain sections themselves.
+ */
+export type DocumentsConfigSource = DocumentsPluginConfig | DocumentsConfig;
+
+/** The value one volatile section carries right now. */
+function current<T>(section: Volatile<T> | T | undefined): T | undefined {
+  if (typeof section === "object" && section !== null && "get" in section) {
+    return (section as Volatile<T>).get() as T;
+  }
+  return section as T | undefined;
+}
+
+/**
+ * One plain snapshot of the live configuration, for a single operation.
+ *
+ * A reference is stable while its value is not, so reading it once per
+ * operation is what keeps a long `refresh()` from resolving half old and half
+ * new values; destructuring the config at startup would freeze it instead.
+ */
+export function snapshotDocumentsConfig(
+  config: DocumentsConfigSource,
+): DocumentsConfig {
+  return {
+    enabled: current(config.enabled),
+    comparison: current(config.comparison),
+    storage: current(config.storage),
+    cache: current(config.cache),
+    templates: current(config.templates),
+    create: current(config.create),
+    extraction: current(config.extraction),
+    docling: current(config.docling),
+    pandoc: current(config.pandoc),
+    libreoffice: current(config.libreoffice),
+    typst: current(config.typst),
+    markitdown: current(config.markitdown),
+    workers: current(config.workers),
+    retention: current(config.retention),
+    limits: current(config.limits),
+  };
+}
+
+/**
+ * The entry schema. Its input is the plain profile shape an operator writes;
+ * what it yields is {@link DocumentsPluginConfig}, because every section is
+ * marked volatile and parsing turns each into a live reference.
+ */
+export const ConfigSchema = configSchema as unknown as z<
+  DocumentsConfig,
+  DocumentsPluginConfig
+>;

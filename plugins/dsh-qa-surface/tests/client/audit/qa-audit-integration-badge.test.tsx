@@ -7,7 +7,7 @@ import { summary } from "./qa-audit-integration.helpers.js";
 
 describe("QaAuditRowBadge", () => {
   it("separates 'an audit exists' from 'what it found'", () => {
-    const { container } = render(
+    render(
       <QaAuditRowBadge
         mark={{
           verdict: "poor",
@@ -24,12 +24,11 @@ describe("QaAuditRowBadge", () => {
 
     // The check mark is existence; the verdict carries the quality, and for a
     // poor audit it must not read as approval.
-    expect(container.querySelector("svg path")).not.toBeNull();
-    const verdict = container.querySelector(
-      ".dsh-qa-sidebar__item-audit-verdict",
-    );
-    expect(verdict?.textContent).toBe("Poor");
-    expect(verdict?.className).toContain("--bad");
+    const check = screen.getByTestId("qa-audit-badge-check");
+    expect(check.querySelector("path")).not.toBeNull();
+    const verdict = screen.getByTestId("qa-audit-badge-verdict");
+    expect(verdict.textContent).toBe("Poor");
+    expect(verdict.className).toContain("--bad");
   });
 
   it("describes itself for assistive technology and on hover", () => {
@@ -76,7 +75,7 @@ describe("QaAuditRowBadge", () => {
   });
 
   it("leaves room for a delete control when the row has one", () => {
-    const { container } = render(
+    render(
       <QaAuditRowBadge
         mark={{
           verdict: "good",
@@ -91,9 +90,9 @@ describe("QaAuditRowBadge", () => {
       />,
     );
 
-    expect(
-      container.querySelector(".dsh-qa-sidebar__item-audit--with-delete"),
-    ).not.toBeNull();
+    expect(screen.getByTestId("qa-audit-badge").className).toContain(
+      "dsh-qa-sidebar__item-audit--with-delete",
+    );
   });
 });
 

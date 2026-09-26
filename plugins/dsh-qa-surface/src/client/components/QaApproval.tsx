@@ -26,25 +26,36 @@ export const QaApproval = memo(function QaApproval(props: QaApprovalProps) {
     });
   };
   return (
-    <div className="dsh-qa-approvals" aria-label="Запросы на одобрение">
+    <div
+      className="dsh-qa-approvals"
+      data-testid="qa-approvals"
+      aria-label="Запросы на одобрение"
+    >
       {approvals.map((approval) => (
         <section
           key={approval.id}
           className="dsh-qa-approval"
+          data-testid="qa-approval"
           aria-live="polite"
         >
-          <p className="dsh-qa-approval__strip">
+          <p className="dsh-qa-approval__strip" data-testid="qa-approval-state">
             <span className="dsh-qa-approval__dot" aria-hidden="true" />
             Ожидает одобрения
           </p>
-          <p className="dsh-qa-approval__reason">
+          <p
+            className="dsh-qa-approval__reason"
+            data-testid="qa-approval-reason"
+          >
             {approval.reason ??
               `Инструмент «${approval.toolName}» запрашивает разрешение.`}
           </p>
-          <p className="dsh-qa-approval__tool">
+          <p className="dsh-qa-approval__tool" data-testid="qa-approval-tool">
             <code>{approval.toolName}</code>
             {approval.delegated ? (
-              <span className="dsh-qa-approval__delegated">
+              <span
+                className="dsh-qa-approval__delegated"
+                data-testid="qa-approval-delegated"
+              >
                 запросил субагент
               </span>
             ) : null}
@@ -53,6 +64,7 @@ export const QaApproval = memo(function QaApproval(props: QaApprovalProps) {
             <button
               type="button"
               className="dsh-qa-approval__button"
+              data-testid="qa-approval-reject"
               disabled={answering === approval.id}
               onClick={() => answer(approval.id, "rejected")}
             >
@@ -61,6 +73,7 @@ export const QaApproval = memo(function QaApproval(props: QaApprovalProps) {
             <button
               type="button"
               className="dsh-qa-approval__button dsh-qa-approval__button--primary"
+              data-testid="qa-approval-allow"
               disabled={answering === approval.id}
               onClick={() => answer(approval.id, "allowed-once")}
             >

@@ -35,12 +35,14 @@ export function QaAuditRowBadge(props: QaAuditRowBadgeProps): ReactNode {
           ? "dsh-qa-sidebar__item-audit dsh-qa-sidebar__item-audit--with-delete"
           : "dsh-qa-sidebar__item-audit"
       }
+      data-testid="qa-audit-badge"
       aria-label={`Открыть аудит чата. ${counts}`}
       title={counts}
       onClick={props.onOpen}
     >
       <svg
         className="dsh-qa-sidebar__item-audit-check"
+        data-testid="qa-audit-badge-check"
         viewBox="0 0 14 14"
         aria-hidden="true"
         focusable="false"
@@ -56,6 +58,7 @@ export function QaAuditRowBadge(props: QaAuditRowBadgeProps): ReactNode {
       </svg>
       <span
         className={`dsh-qa-sidebar__item-audit-verdict dsh-qa-sidebar__item-audit-verdict--${tone}`}
+        data-testid="qa-audit-badge-verdict"
       >
         {verdictLabel(mark.verdict)}
       </span>

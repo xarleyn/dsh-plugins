@@ -21,6 +21,16 @@ export interface CapabilityCatalogSnapshot {
   readonly skillMetadata: ReadonlyMap<string, QaSkillDescriptor>;
 }
 
+/**
+ * The viewing scope of one preset read, plus the release of the revision lease
+ * the preset registry hands it out with. The caller owns the lease for exactly
+ * as long as the read it borrowed the scope for.
+ */
+export interface QaPresetScopeLease {
+  readonly key: ScopeKey;
+  release(): Promise<void>;
+}
+
 function toolSource(name: string): {
   readonly kind: QaCapabilitySourceKind;
   readonly name?: string;
@@ -61,13 +71,28 @@ export class QaCapabilityCatalog {
      * Resolving the scope may compose the preset; a failure degrades to the
      * global view instead of failing the page.
      */
-    private readonly presetScope: () => Promise<ScopeKey | undefined> = () =>
-      Promise.resolve(undefined),
+    private readonly presetScope: () => Promise<
+      QaPresetScopeLease | undefined
+    > = () => Promise.resolve(undefined),
   ) {}
 
   async snapshot(agent?: Agent): Promise<CapabilityCatalogSnapshot> {
-    const scope: ScopeKey | undefined =
-      agent ?? (await this.resolvePresetScope());
+    if (agent !== undefined) return await this.readCatalog(agent, undefined);
+    // An administrator's page has no agent of its own: the catalog is read in
+    // the pinned preset's scope, and the lease that scope came with is held for
+    // exactly this read.
+    const lease = await this.resolvePresetScope();
+    try {
+      return await this.readCatalog(undefined, lease?.key);
+    } finally {
+      await lease?.release();
+    }
+  }
+
+  private async readCatalog(
+    agent: Agent | undefined,
+    scope: ScopeKey | undefined,
+  ): Promise<CapabilityCatalogSnapshot> {
     const toolDescriptors: QaCapabilityDescriptor[] = this.ctx.tools
       .schemas(scope)
       .map((schema) => ({
@@ -141,11 +166,11 @@ export class QaCapabilityCatalog {
   }
 
   /**
-   * The scope an administrator's catalog is read with. A deployment that pins
-   * QA chats to an agent preset gets that preset's standing scope; without a
-   * pinned preset there is no scope to borrow, and the read stays global.
+   * The scope lease an administrator's catalog is read with. A deployment that
+   * pins QA chats to an agent preset gets that preset's standing scope; without
+   * a pinned preset there is no scope to borrow, and the read stays global.
    */
-  private async resolvePresetScope(): Promise<ScopeKey | undefined> {
+  private async resolvePresetScope(): Promise<QaPresetScopeLease | undefined> {
     try {
       return await this.presetScope();
     } catch (error: unknown) {

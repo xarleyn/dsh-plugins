@@ -1,14 +1,23 @@
+import type { Volatile } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 
 /** Loader configuration for the host-side Sleev observer. */
 export interface Config {
   /** Exact DSH provider route names known to pass through Sleev. */
-  readonly routes?: string[];
+  routes: Volatile<string[]>;
   /** Provider-name prefixes known to pass through Sleev (default `sleev-`). */
-  readonly routePrefixes?: string[];
+  routePrefixes: Volatile<string[]>;
   /** Maximum number of completed calls retained in process memory (default 100). */
-  readonly maxRecentCalls?: number;
+  maxRecentCalls: Volatile<number>;
   /** Telemetry logging verbosity (default `info`). */
+  logLevel: Volatile<"off" | "info" | "debug">;
+}
+
+/** One plain read of the live fields; every editable field is volatile. */
+export interface ConfigSnapshot {
+  readonly routes?: readonly string[];
+  readonly routePrefixes?: readonly string[];
+  readonly maxRecentCalls?: number;
   readonly logLevel?: "off" | "info" | "debug";
 }
 
@@ -21,12 +30,31 @@ export interface ResolvedConfig {
 }
 
 /** Cordis loader schema. Semantic validation remains in {@link resolveConfig}. */
-export const ConfigSchema: z<Config> = z.object({
-  routes: z.array(z.string()).default([]),
-  routePrefixes: z.array(z.string()).default(["sleev-"]),
-  maxRecentCalls: z.number().step(1).min(1).default(100),
-  logLevel: z.union(["off", "info", "debug"] as const).default("info"),
+export const ConfigSchema = z.object({
+  routes: z.array(z.string()).default([]).volatile(),
+  routePrefixes: z.array(z.string()).default(["sleev-"]).volatile(),
+  maxRecentCalls: z.number().step(1).min(1).default(100).volatile(),
+  logLevel: z
+    .union(["off", "info", "debug"] as const)
+    .default("info")
+    .volatile(),
 });
+
+/**
+ * Take one snapshot of a live Config.
+ *
+ * The volatile references are stable, so a caller that destructured once at
+ * service construction would freeze the values; every operation reads through
+ * this function instead.
+ */
+export function snapshotConfig(config: Config): ConfigSnapshot {
+  return {
+    routes: config.routes.get(),
+    routePrefixes: config.routePrefixes.get(),
+    maxRecentCalls: config.maxRecentCalls.get(),
+    logLevel: config.logLevel.get(),
+  };
+}
 
 function uniqueNonEmpty(values: readonly string[], field: string): string[] {
   const seen = new Set<string>();
@@ -44,7 +72,7 @@ function uniqueNonEmpty(values: readonly string[], field: string): string[] {
 }
 
 /** Apply runtime defaults and reject ambiguous route matchers. */
-export function resolveConfig(config: Config = {}): ResolvedConfig {
+export function resolveConfig(config: ConfigSnapshot = {}): ResolvedConfig {
   const maxRecentCalls = config.maxRecentCalls ?? 100;
   if (!Number.isSafeInteger(maxRecentCalls) || maxRecentCalls < 1) {
     throw new Error(

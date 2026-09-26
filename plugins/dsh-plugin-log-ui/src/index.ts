@@ -1,5 +1,4 @@
 import { Context } from "@deepseek-ai/cordis";
-import type {} from "@deepseek-ai/dsh-settings";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import {
   createHostLoggerSink,
@@ -20,11 +19,17 @@ import type {
   PluginLogUiService,
   PluginLogUiSnapshot,
   ResolvedPluginLogUiConfig,
+  VolatilePluginLogUiConfig,
 } from "./types.js";
 
 export const name = "plugin-log-ui";
 export const inject: readonly string[] = [];
-export const PLUGIN_LOG_SETTINGS_NAMESPACE = "plugin-log";
+/**
+ * The Cordis profile entry this plugin is loaded under. Since `0.1.7` the
+ * settings namespace of a live Config *is* that id, so the browser card resolves
+ * its form by this string rather than by a namespace the plugin invented.
+ */
+export const PLUGIN_LOG_ENTRY_ID = "dsh-plugin-log-ui";
 export type Config = PluginLogUiConfig;
 export const Config = ConfigSchema;
 
@@ -41,18 +46,19 @@ export class PluginLogUi
   static inject = inject;
   static Config = ConfigSchema;
 
-  private configSource: () => PluginLogUiConfig;
+  private readonly config: VolatilePluginLogUiConfig;
   private applying = false;
   private readonly logger: PluginLogger;
   /** Live output for the right-Sidebar panel; the file destination cannot serve it. */
   private readonly buffer = new PluginLogBuffer();
 
-  constructor(ctx: Context, input: PluginLogUiConfig = {}) {
+  constructor(ctx: Context, input: VolatilePluginLogUiConfig) {
     super(ctx, "pluginLogUi", { namespace: "pluginLogUi" });
     this.logger = getPluginLogger({
       pluginId: "dsh-plugin-log-ui",
       consoleSink: createHostLoggerSink(ctx.logger),
     });
+    this.config = input;
     ctx.effect(
       () => async () => this.logger.close(),
       "dsh-plugin-log-ui.logger",
@@ -63,23 +69,6 @@ export class PluginLogUi
       () => subscribePluginLogRecords((record) => this.buffer.append(record)),
       "dsh-plugin-log-ui.record-bus",
     );
-    const entry = resolveConfig(input);
-    this.configSource = () => entry;
-
-    ctx.inject(["settings"], (settingsCtx) => {
-      settingsCtx.settings.installSection(
-        ctx,
-        PLUGIN_LOG_SETTINGS_NAMESPACE,
-        ConfigSchema,
-        entry,
-        {
-          setSource: (current) => {
-            this.configSource = current;
-          },
-          onChange: () => this.applyPolicy(),
-        },
-      );
-    });
 
     ctx.effect(
       () => subscribePluginLoggerRegistry(() => this.applyPolicy()),
@@ -89,8 +78,17 @@ export class PluginLogUi
     this.logger.info("plugin.ready");
   }
 
+  /**
+   * The Config as it stands right now. Each field is read through its live
+   * reference, so an edit the Host made since the last call is in this answer;
+   * a snapshot taken once and held would freeze the policy at boot.
+   */
   getConfig(): ResolvedPluginLogUiConfig {
-    return resolveConfig(this.configSource());
+    return resolveConfig({
+      defaultLevel: this.config.defaultLevel.get(),
+      format: this.config.format.get(),
+      levels: this.config.levels.get(),
+    });
   }
 
   @Remote("tail")

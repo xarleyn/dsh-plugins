@@ -36,8 +36,11 @@ assert.match(client, /data-dsh-ui-repair-text-wrap/u);
 assert.match(client, /data-dsh-ui-repair-contain/u);
 assert.match(client, /Applying\.\.\./u);
 assert.match(client, /ResizeObserver/u);
-assert.match(client, /"settings\.plugin\.item"/u);
-assert.match(client, /key:\s*"ui-repair"/u);
+assert.match(client, /"settings\.plugins\.tab"/u);
+// The seat id and the `ctx.configForms` namespace are one string, and the Host
+// derives both from the `cordis.patch.yml` row id.
+assert.match(client, /id:\s*UI_REPAIR_SETTINGS_NAMESPACE/u);
+assert.match(client, /UI_REPAIR_SETTINGS_NAMESPACE\s*=\s*"dsh-ui-repair"/u);
 assert.match(client, /dsh-plugin-card__name/u);
 assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u);
 verifyPluginCardContract(client, { legacyPatterns: [/uir-card/u] });

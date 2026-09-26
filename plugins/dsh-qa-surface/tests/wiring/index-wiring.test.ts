@@ -1,4 +1,4 @@
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
@@ -8,7 +8,7 @@ import {
   isTypertRemoteSegment,
   remoteMethods,
 } from "@deepseek-ai/dsh-typert-protocol";
-import { QaSurface } from "../../src/index.js";
+import { QA_SURFACE_SETTINGS_NAMESPACE, QaSurface } from "../../src/index.js";
 
 /**
  * Wiring under a real Cordis context.
@@ -47,6 +47,13 @@ interface Route {
 async function world(entry: Record<string, unknown> = {}) {
   const ctx = new Context();
   const agents = new Map<string, Record<string, unknown>>();
+  /**
+   * The chats the harness holds live right now, split the way the Host splits
+   * them: `liveRoots` are the top-level turns a request ceiling counts, and
+   * `liveChildren` are the delegated experts riding underneath one of them.
+   */
+  const liveRoots: Record<string, unknown>[] = [];
+  const liveChildren: Record<string, unknown>[] = [];
   const routes: Route[] = [];
   const registeredTools: string[] = [];
   const created: Record<string, unknown>[] = [];
@@ -56,13 +63,8 @@ async function world(entry: Record<string, unknown> = {}) {
   /** The chats this Host actually has a durable session for. */
   const hostSessions = new Set<string>();
   let resumable = true;
-  let section:
-    | {
-        readonly namespace: string;
-        readonly setSource: (source: () => unknown) => void;
-        readonly onChange: () => void;
-      }
-    | undefined;
+  /** The page policy the plugin registered for its own profile entry. */
+  let presentation: { readonly auto?: boolean } | undefined;
 
   /** Materialize the live agent the Host would have built for this chat. */
   const chat = (sessionId: string, cwd?: string): Record<string, unknown> => {
@@ -88,7 +90,8 @@ async function world(entry: Record<string, unknown> = {}) {
 
   ctx.provide("agents", {
     get: (id: unknown) => agents.get(String(id)),
-    list: () => [...agents.values()],
+    list: () => [...agents.values(), ...liveRoots, ...liveChildren],
+    roots: () => liveRoots,
   } as never);
   ctx.provide("sessions", {
     get: (id: unknown) => agents.get(String(id))?.session,
@@ -147,21 +150,11 @@ async function world(entry: Record<string, unknown> = {}) {
     },
   } as never);
   ctx.provide("settings", {
-    installSection(
-      _owner: unknown,
-      namespace: string,
-      _schema: unknown,
-      _entry: unknown,
-      hooks: {
-        setSource(source: () => unknown): void;
-        onChange(): void;
-      },
-    ) {
-      section = {
-        namespace,
-        setSource: hooks.setSource,
-        onChange: hooks.onChange,
-      };
+    // `rc.2` derives the settings namespace from the entry's volatile Config
+    // fields; a plugin only declares whether the generated page may appear.
+    configure(options: { auto?: boolean }) {
+      presentation = options;
+      return () => {};
     },
   } as never);
   ctx.provide("webServer", {
@@ -184,8 +177,12 @@ async function world(entry: Record<string, unknown> = {}) {
     modelChoices,
     registeredTools,
     routes,
-    section,
+    presentation: () => presentation,
     surface: started,
+    /** Put a top-level turn on the stand, answering or not. */
+    liveRoots,
+    /** Put a delegated expert underneath one, which shares its place. */
+    liveChildren,
     /** Make every chat look like one the Host can no longer wake up. */
     stopResuming: () => {
       resumable = false;
@@ -251,35 +248,90 @@ describe("wiring: the host entry point", () => {
     await dispose();
   });
 
-  it("installs its settings section under the namespace the card binds to", async () => {
-    const { section, dispose } = await world();
-    expect(section?.namespace).toBe("qa-surface");
+  it("keeps the generated settings page off for the entry its card binds to", async () => {
+    const { presentation, dispose } = await world();
+    // The card draws this entry's page itself, so the Host must not add a second
+    // one beside it.
+    expect(presentation()).toEqual({ auto: false });
+    await dispose();
+  });
+
+  it("binds its card to the profile entry id the bundle declares", async () => {
+    // The settings namespace IS the entry id at `rc.2`, so the browser card's
+    // join key and `cordis.patch.yml` have to name the same entry: a drift shows
+    // up as a card that simply never finds a form to edit.
+    const patch = readFileSync(
+      new URL("../../cordis.patch.yml", import.meta.url),
+      "utf8",
+    );
+    expect(QA_SURFACE_SETTINGS_NAMESPACE).toBe("dsh-qa-surface");
+    expect(patch).toContain(`id: ${QA_SURFACE_SETTINGS_NAMESPACE}`);
+  });
+});
+
+describe("wiring: the request ceiling is counted on the Host", () => {
+  it("counts the top-level turns the harness reports, and only those", async () => {
+    const { surface, liveRoots, liveChildren, dispose } = await world({
+      session: { maxActiveRequests: 2 },
+    });
+    // Nothing was ever sent through this plugin, so every place the answer
+    // counts arrived by another road: the HTTP API, another account, another
+    // surface. That is why the read lives here and not in the browser.
+    liveRoots.push({ status: "idle" }, { status: "running" });
+    // A delegated expert is a live agent and not a root: it rides the turn that
+    // delegated it, and counting it would bill one conversation twice.
+    liveChildren.push({ status: "running" }, { status: "running" });
+    expect(surface.queueStatus()).toEqual({ limit: 2, active: 1, full: false });
+    liveRoots.push({ status: "running" });
+    expect(surface.queueStatus()).toMatchObject({ active: 2, full: true });
+    await dispose();
+  });
+
+  it("reports a stand without a ceiling as never full", async () => {
+    const { surface, liveRoots, dispose } = await world();
+    for (let index = 0; index < 9; index += 1)
+      liveRoots.push({ status: "running" });
+    // The default config sets no ceiling, so the browser is told the truth
+    // rather than a full stand it would have to refuse a visitor over.
+    expect(surface.queueStatus()).toEqual({ limit: 0, active: 9, full: false });
     await dispose();
   });
 });
 
 describe("wiring: the config reaches the host", () => {
-  it("serves the boot entry as the resolved config, then follows the settings source", async () => {
-    const { surface, section, dispose } = await world({
+  it("serves the entry the Host resolved as the config every remote reads", async () => {
+    const { surface, dispose } = await world({
       route: { path: "/help" },
     });
     expect(surface.describe()).toMatchObject({
       enabled: true,
       route: { path: "/help" },
     });
-    // The browser's config channel reads the live source, not the snapshot the
-    // plugin booted with.
-    section?.setSource(() => ({ route: { path: "/ask" } }));
-    expect(surface.describe().route.path).toBe("/ask");
     await dispose();
   });
 
-  it("moves the navigation route with the config and drops it on unload", async () => {
-    const { routes, section, dispose } = await world();
-    expect(routes.map((route) => route.path)).toEqual(["/qa"]);
-    section?.setSource(() => ({ route: { path: "/ask" } }));
-    section?.onChange();
+  it("registers the route the entry names and drops it on unload", async () => {
+    const { routes, dispose } = await world({ route: { path: "/ask" } });
     expect(routes.map((route) => route.path)).toEqual(["/ask"]);
+    await dispose();
+    expect(routes).toEqual([]);
+  });
+
+  it("survives a configuration change the Host reports, for its own and for another entry", async () => {
+    const { ctx, routes, dispose } = await world();
+    // Every Config field is a volatile reference, so a committed change is
+    // already visible to the next read; what the notification drives is the
+    // re-sync of the parts that are not read per operation. A listener that
+    // tripped over its own read would surface here as a throw out of `emit`.
+    // The bus is driven directly because the namespace is a branded Host type
+    // this package does not depend on.
+    ctx.events.emit("settings/document-updated", "another-entry", 1);
+    ctx.events.emit(
+      "settings/document-updated",
+      QA_SURFACE_SETTINGS_NAMESPACE,
+      1,
+    );
+    expect(routes.map((route) => route.path)).toEqual(["/qa"]);
     await dispose();
     expect(routes).toEqual([]);
   });

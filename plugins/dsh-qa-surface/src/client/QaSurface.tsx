@@ -46,6 +46,7 @@ import type {
   QaConversation,
   QaCreateSession,
   QaFileUpload,
+  QaQueueStatusRemote,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -58,6 +59,7 @@ import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { QaAuthGate } from "./components/QaAuthGate.js";
 import { QaApproval } from "./components/QaApproval.js";
 import { QaQuestions } from "./components/QaQuestions.js";
+import { QaRequestQueue } from "./components/QaRequestQueue.js";
 import { QaComposer } from "./components/QaComposer.js";
 import { QaQueueDock } from "./components/QaQueueDock.js";
 import { QaHeader, QaSubagentBanner } from "./components/QaHeader.js";
@@ -164,6 +166,11 @@ export interface QaSurfaceFace {
    * untouched.
    */
   readonly slashApi?: QaSlashApi;
+  /**
+   * The Host's live read of the request ceiling. Absent on a Host build that
+   * predates it: a deployment with no ceiling never asks, so nothing changes.
+   */
+  readonly queueStatus?: QaQueueStatusRemote;
   /**
    * Browser file-upload service, when the page serves the upload plugin.
    * Resolved per send so a page that loads it later still gets file support.
@@ -382,6 +389,9 @@ export function QaSurface(props: QaSurfaceProps) {
         ? {}
         : { questionApi: props.questionApi }),
       ...(props.slashApi === undefined ? {} : { slashApi: props.slashApi }),
+      ...(props.queueStatus === undefined
+        ? {}
+        : { queueStatus: props.queueStatus }),
       config,
       initialSubrole: selectedSubrole,
       adminPreview: previewing,
@@ -408,6 +418,7 @@ export function QaSurface(props: QaSurfaceProps) {
     props.fileUpload,
     props.approvalApi,
     props.questionApi,
+    props.queueStatus,
     props.secureSession,
     props.sourceApi,
     props.sessions,
@@ -600,6 +611,13 @@ export function QaSurface(props: QaSurfaceProps) {
       attachments: readonly QaAttachmentDraft[],
       pick: string | null,
     ) => controller?.send(text, attachments, pick) ?? Promise.resolve(false),
+    [controller],
+  );
+  // Closing the queue notice only uncovers the composer: the question the stand
+  // had no room for is still the text in there, and asking it again is a
+  // keystroke the visitor takes when a place frees up.
+  const dismissRequestQueue = useCallback(
+    () => controller?.dismissRequestQueueNotice(),
     [controller],
   );
   // Cheap refresh on every palette opening: the skill registry has no browser
@@ -1525,6 +1543,10 @@ export function QaSurface(props: QaSurfaceProps) {
             onClose={rail.close}
           />
         ) : null}
+        <QaRequestQueue
+          status={state.requestQueue}
+          onClose={dismissRequestQueue}
+        />
       </main>
     </>
   );

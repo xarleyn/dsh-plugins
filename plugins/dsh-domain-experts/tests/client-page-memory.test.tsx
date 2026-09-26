@@ -6,12 +6,13 @@ import { ok, renderPage } from "./client-page.helpers.js";
 describe("client page: memory and test", () => {
   it("inspects memory from the editor", async () => {
     renderPage();
-    fireEvent.click(await screen.findByText("Payments"));
+    fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
     fireEvent.click(await screen.findByRole("tab", { name: "Memory" }));
-    fireEvent.click(screen.getByText("Inspect memory"));
+    fireEvent.click(screen.getByTestId("domain-experts-editor-inspect-memory"));
     expect(
-      await screen.findByText(/Settlement closes at 14:00./u),
-    ).toBeTruthy();
+      (await screen.findByTestId("domain-experts-editor-memory-log"))
+        .textContent,
+    ).toContain("Settlement closes at 14:00.");
   });
 
   it("runs a test and shows the answer", async () => {
@@ -27,9 +28,9 @@ describe("client page: memory and test", () => {
       ),
     );
     renderPage({ testExpert });
-    fireEvent.click(await screen.findByText("Payments"));
+    fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
     fireEvent.click(await screen.findByRole("tab", { name: "Test" }));
-    fireEvent.click(screen.getByText("Run test"));
+    fireEvent.click(screen.getByTestId("domain-experts-editor-test-run"));
     await waitFor(() => {
       expect(testExpert).toHaveBeenCalledWith(
         "payments",
@@ -37,7 +38,10 @@ describe("client page: memory and test", () => {
         "session-1",
       );
     });
-    expect(await screen.findByText(/The batch aborts./u)).toBeTruthy();
+    expect(
+      (await screen.findByTestId("domain-experts-editor-test-summary"))
+        .textContent,
+    ).toContain("The batch aborts.");
   });
 
   it("surfaces a refused test run", async () => {
@@ -49,11 +53,12 @@ describe("client page: memory and test", () => {
           message: "no live session",
         }),
     });
-    fireEvent.click(await screen.findByText("Payments"));
+    fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
     fireEvent.click(await screen.findByRole("tab", { name: "Test" }));
-    fireEvent.click(screen.getByText("Run test"));
+    fireEvent.click(screen.getByTestId("domain-experts-editor-test-run"));
     expect(
-      await screen.findByText(/TASK_REJECTED: no live session/u),
-    ).toBeTruthy();
+      (await screen.findByTestId("domain-experts-editor-test-error"))
+        .textContent,
+    ).toContain("TASK_REJECTED: no live session");
   });
 });

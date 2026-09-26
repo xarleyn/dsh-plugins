@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { QaComposer } from "../../../src/client/components/QaComposer.js";
 import type { QaAttachmentDraft } from "../../../src/types.js";
@@ -96,7 +102,9 @@ describe("QA composer", () => {
       running: true,
       status: "Скребу по сусекам…",
     });
-    expect(screen.getByText("Скребу по сусекам…")).toBeTruthy();
+    expect(screen.getByTestId("qa-composer-hint").textContent).toBe(
+      "Скребу по сусекам…",
+    );
   });
 
   it("sends a quick question from the empty-chat shortcuts", async () => {
@@ -196,9 +204,16 @@ describe("QA composer", () => {
         onStop={vi.fn()}
       />,
     );
-    expect(screen.getByText("spec.md")).toBeTruthy();
-    expect(screen.getByText("19 КБ")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Убрать spec.md" }));
+    const chip = within(screen.getByTestId("qa-composer-files")).getByTestId(
+      "qa-file",
+    );
+    expect(within(chip).getByTestId("qa-file-name").textContent).toBe(
+      "spec.md",
+    );
+    expect(within(chip).getByTestId("qa-file-size").textContent).toBe("19 КБ");
+    fireEvent.click(
+      within(chip).getByRole("button", { name: "Убрать spec.md" }),
+    );
     expect(onAttachmentsChange).toHaveBeenCalledWith([]);
   });
 
@@ -215,8 +230,8 @@ describe("QA composer", () => {
         },
       ],
     });
-    const input = document.querySelector(
-      "input[type='file']",
+    const input = screen.getByTestId(
+      "qa-composer-file-input",
     ) as HTMLInputElement;
     Object.defineProperty(input, "files", {
       value: [new File(["hello"], "note.txt", { type: "text/plain" })],
@@ -234,8 +249,8 @@ describe("QA composer", () => {
     const { onAttachmentsChange } = mount({
       limits: { ...DEFAULT_ATTACHMENT_LIMITS, textFiles: false },
     });
-    const input = document.querySelector(
-      "input[type='file']",
+    const input = screen.getByTestId(
+      "qa-composer-file-input",
     ) as HTMLInputElement;
     Object.defineProperty(input, "files", {
       value: [new File(["hello"], "note.txt", { type: "text/plain" })],

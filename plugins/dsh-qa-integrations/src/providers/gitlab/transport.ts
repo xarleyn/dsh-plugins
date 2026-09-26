@@ -6,6 +6,7 @@ import {
   readBoundedJson,
   readBoundedText,
   type BoundedText,
+  type ResponseRead,
 } from "../kernel/read-policy.js";
 import {
   decodeCredentialFields,
@@ -111,14 +112,22 @@ export class GitlabTransport {
     path: string,
     query: GitlabQuery = {},
   ): Promise<GitlabJsonResponse<T>> {
-    const response = await this.request(instance, token, path, query);
-    const data = await readBoundedJson<T>(
-      response,
-      this.config.maxResponseBytes,
-      "Provider",
+    return this.request(
+      instance,
+      token,
+      path,
+      query,
+      async (response, signal) => {
+        const data = await readBoundedJson<T>(
+          response,
+          this.config.maxResponseBytes,
+          "Provider",
+          signal,
+        );
+        const page = pageFrom(response.headers);
+        return page === undefined ? { data } : { data, page };
+      },
     );
-    const page = pageFrom(response.headers);
-    return page === undefined ? { data } : { data, page };
   }
 
   /** Plain-text read: the CI job trace, and anything we never parse as JSON. */
@@ -129,10 +138,13 @@ export class GitlabTransport {
     query: GitlabQuery = {},
     maxBytes = this.config.maxResponseBytes,
   ): Promise<GitlabTextResponse> {
-    const response = await this.request(instance, token, path, query);
-    return readBoundedText(
-      response,
-      Math.min(maxBytes, this.config.maxResponseBytes),
+    return this.request(instance, token, path, query, (response, signal) =>
+      readBoundedText(
+        response,
+        Math.min(maxBytes, this.config.maxResponseBytes),
+        "Provider",
+        signal,
+      ),
     );
   }
 
@@ -149,22 +161,28 @@ export class GitlabTransport {
     return url.toString();
   }
 
-  private async request(
+  private async request<T>(
     instance: GitlabInstance,
     token: string,
     path: string,
     query: GitlabQuery,
-  ): Promise<Response> {
-    return fetchWithRetries(this.fetcher, this.url(instance, path, query), {
-      timeoutMs: this.config.timeoutMs,
-      retries: this.flags.retries,
-      headers: {
-        "private-token": token,
-        accept: "application/json",
+    read: ResponseRead<T>,
+  ): Promise<T> {
+    return fetchWithRetries(
+      this.fetcher,
+      this.url(instance, path, query),
+      {
+        timeoutMs: this.config.timeoutMs,
+        retries: this.flags.retries,
+        headers: {
+          "private-token": token,
+          accept: "application/json",
+        },
+        transportFailure,
+        retriable: (error) => error.code !== "UpstreamTimeout",
+        statusFailure,
       },
-      transportFailure,
-      retriable: (error) => error.code !== "UpstreamTimeout",
-      statusFailure,
-    });
+      read,
+    );
   }
 }

@@ -1,14 +1,16 @@
 /**
  * The boundary every integration provider shares, asserted once instead of
- * seven times: the deployment's byte cap, a refused redirect, the retry policy,
- * the shape of a folded failure, and the one place a secret may travel.
+ * seven times: the deployment's byte cap, the deadline that holds the body
+ * stream as well as the headers, a refused redirect, the retry policy, the
+ * shape of a folded failure, and the one place a secret may travel.
  *
  * A provider passes by describing one of its own reads — see
  * `tests/<provider>/conformance.test.ts`. The suite is behaviour-only: it never
  * reads a provider's source, so it survives refactors and fails the moment a
- * provider stops refusing a redirect, carries its secret somewhere new, or
- * loses the byte cap. A provider whose read genuinely differs declares the
- * difference in its target instead of dropping the check.
+ * provider stops refusing a redirect, carries its secret somewhere new, loses
+ * the byte cap, or lets its deadline end where the headers end. A provider
+ * whose read genuinely differs declares the difference in its target instead of
+ * dropping the check.
  */
 import { describe, expect, it } from "vitest";
 
@@ -66,12 +68,14 @@ export interface ConformanceTarget {
   };
   /**
    * Build the provider around this fetcher and configuration and answer a
-   * function that performs the declared read once.
+   * function that performs the declared read once. `timeoutMs` is the budget the
+   * read is held to, headers and body alike.
    */
   build(options: {
     readonly fetcher: typeof fetch;
     readonly retries: number;
     readonly maxResponseBytes: number;
+    readonly timeoutMs: number;
   }): () => Promise<unknown>;
 }
 
@@ -80,6 +84,12 @@ const UPSTREAM_DETAIL = "upstream-detail";
 
 /** A cap no answer in these suites reaches. */
 const ROOMY = 1_000_000;
+
+/** The deployment default, so a case that names no budget is not racing one. */
+const DEFAULT_TIMEOUT_MS = 15_000;
+
+/** How long a stalled body may take to be refused before the read is a hang. */
+const STALLED_BODY_BUDGET_MS = 1_000;
 
 function upstreamResponse(answer: ConformanceAnswer): Response {
   const headers = new Headers(answer.headers ?? {});
@@ -102,12 +112,29 @@ function recordingFetch(respond: (attempt: number) => Response) {
   return { calls, fetcher };
 }
 
+/**
+ * An upstream that answers with the headers and then stops delivering chunks.
+ * Nothing in the read itself observes the request deadline once the fetch has
+ * succeeded, so this is the body a budget has to reach.
+ */
+function stalledUpstream(onCancel: () => void): Response {
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      cancel: () => {
+        onCancel();
+      },
+    }),
+    { status: 200, headers: { "content-type": "application/json" } },
+  );
+}
+
 export function describeProviderConformance(target: ConformanceTarget): void {
   const run = (
     respond: (attempt: number) => Response,
     options: {
       readonly retries?: number;
       readonly maxResponseBytes?: number;
+      readonly timeoutMs?: number;
     } = {},
   ) => {
     const { calls, fetcher } = recordingFetch(respond);
@@ -115,6 +142,7 @@ export function describeProviderConformance(target: ConformanceTarget): void {
       fetcher,
       retries: options.retries ?? 0,
       maxResponseBytes: options.maxResponseBytes ?? ROOMY,
+      timeoutMs: options.timeoutMs ?? DEFAULT_TIMEOUT_MS,
     });
     return { calls, read };
   };
@@ -256,6 +284,35 @@ export function describeProviderConformance(target: ConformanceTarget): void {
       const denied = await failure(refused.read);
       expect(denied.code).toBe("ProviderPermissionDenied");
       expect(refused.calls, "a refusal is not retried").toHaveLength(1);
+    });
+
+    it("holds its deadline over a body that never finishes arriving", async () => {
+      // The upstream answered, so a budget that ends with the headers leaves
+      // this read pending forever: the deadline has to reach the body stream.
+      let cancelled = false;
+      const { calls, read } = run(
+        () =>
+          stalledUpstream(() => {
+            cancelled = true;
+          }),
+        { retries: 2, timeoutMs: 20 },
+      );
+      const startedAt = Date.now();
+      const error = await failure(read);
+      expect(error.code).toBe("UpstreamTimeout");
+      expect(
+        Date.now() - startedAt,
+        "a stalled body is refused inside its own budget",
+      ).toBeLessThan(STALLED_BODY_BUDGET_MS);
+      expect(cancelled, "the stalled stream is released").toBe(true);
+      // A fetch that answered is not re-sent by this loop, so the budget of one
+      // attempt is the whole cost of the read.
+      expect(calls, "a stalled body is not re-requested").toHaveLength(1);
+      const message = String(error.message);
+      expect(message).not.toContain(target.secret);
+      expect(message, "an error names no upstream address").not.toMatch(
+        /https?:\/\//u,
+      );
     });
   });
 }

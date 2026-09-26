@@ -6,13 +6,18 @@ import { DEFINITION, ok, renderPage } from "./client-page.helpers.js";
 describe("client page: list", () => {
   it("renders the loaded domains with their counts", async () => {
     renderPage();
-    expect(await screen.findByText("Payments")).toBeTruthy();
-    expect(screen.getByText(/1 primary paths/)).toBeTruthy();
+    expect(await screen.findByTestId("domain-experts-page-open")).toBeTruthy();
+    expect(
+      screen.getByTestId("domain-experts-page-name").textContent,
+    ).toContain("Payments");
+    expect(
+      screen.getByTestId("domain-experts-page-meta").textContent,
+    ).toContain("1 primary paths");
   });
 
   it("shows an explicit empty state", async () => {
     renderPage({ listDomains: () => Promise.resolve(ok({ domains: [] })) });
-    expect(await screen.findByText(/No domains yet/u)).toBeTruthy();
+    expect(await screen.findByTestId("domain-experts-page-empty")).toBeTruthy();
   });
 
   it("surfaces a refused list request with its code", async () => {
@@ -25,8 +30,8 @@ describe("client page: list", () => {
         }),
     });
     expect(
-      await screen.findByText(/STORAGE_UNAVAILABLE: storage is closed/u),
-    ).toBeTruthy();
+      (await screen.findByTestId("domain-experts-page-load-error")).textContent,
+    ).toContain("STORAGE_UNAVAILABLE: storage is closed");
   });
 
   it("toggles a domain through the list action", async () => {
@@ -34,7 +39,7 @@ describe("client page: list", () => {
       Promise.resolve(ok({ domain: DEFINITION })),
     );
     renderPage({ setDomainEnabled });
-    const toggle = await screen.findByText("Disable");
+    const toggle = await screen.findByTestId("domain-experts-page-toggle");
     fireEvent.click(toggle);
     await waitFor(() => {
       expect(setDomainEnabled).toHaveBeenCalledWith("payments", false);

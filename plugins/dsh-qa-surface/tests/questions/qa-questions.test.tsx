@@ -61,10 +61,16 @@ function mount(pending: QaPendingQuestion) {
 describe("QA question form", () => {
   it("renders the question, its options and its detail", () => {
     mount(SINGLE);
-    expect(screen.getByText("Требуется ответ")).toBeDefined();
-    expect(screen.getByText("Куда писать отчёт?")).toBeDefined();
-    expect(screen.getByText("Отчёт за квартал")).toBeDefined();
-    expect(screen.getByText("В Confluence")).toBeDefined();
+    expect(screen.getByTestId("qa-question-state").textContent).toBe(
+      "Требуется ответ",
+    );
+    expect(screen.getByTestId("qa-question-text").textContent).toBe(
+      "Куда писать отчёт?",
+    );
+    expect(screen.getByTestId("qa-question-detail").textContent).toBe(
+      "Отчёт за квартал",
+    );
+    expect(screen.getByRole("radio", { name: /В Confluence/ })).toBeTruthy();
   });
 
   it("hides punctuation-only junk a model put into details and descriptions", () => {
@@ -82,39 +88,41 @@ describe("QA question form", () => {
         ],
       },
     ]);
-    const { container } = mount(junk);
-    expect(screen.getByText("С перечнем разделов")).toBeDefined();
-    expect(screen.queryByText("?")).toBeNull();
-    expect(screen.queryByText("...")).toBeNull();
+    mount(junk);
     expect(
-      container.querySelectorAll(".dsh-qa-question__option-description"),
+      screen.getAllByTestId("qa-question-option-description"),
     ).toHaveLength(1);
-    expect(container.querySelector(".dsh-qa-question__detail")).toBeNull();
+    expect(
+      screen.getByTestId("qa-question-option-description").textContent,
+    ).toBe("С перечнем разделов");
+    expect(screen.queryByTestId("qa-question-detail")).toBeNull();
   });
 
   it("splits the strip into a status text and a right-aligned pager", () => {
-    const { container } = mount(DOUBLE);
-    expect(screen.getByText("Требуется ответ")).toBeDefined();
-    expect(screen.getByText("вопрос 1 из 2")).toBeDefined();
-    const count = container.querySelector(".dsh-qa-question__count");
-    expect(count).not.toBeNull();
-    expect(count?.textContent).toBe("вопрос 1 из 2");
-    expect(
-      container.querySelector(".dsh-qa-question__strip")?.textContent ?? "",
-    ).not.toContain("·");
+    mount(DOUBLE);
+    expect(screen.getByTestId("qa-question-state").textContent).toBe(
+      "Требуется ответ",
+    );
+    const count = screen.getByTestId("qa-question-count");
+    expect(count.textContent).toBe("вопрос 1 из 2");
+    expect(screen.getByTestId("qa-question").textContent ?? "").not.toContain(
+      "·",
+    );
   });
 
   it("keeps the pager out of a single-question strip", () => {
-    const { container } = mount(SINGLE);
-    expect(container.querySelector(".dsh-qa-question__count")).toBeNull();
-    expect(screen.getByText("Требуется ответ")).toBeDefined();
+    mount(SINGLE);
+    expect(screen.queryByTestId("qa-question-count")).toBeNull();
+    expect(screen.getByTestId("qa-question-state").textContent).toBe(
+      "Требуется ответ",
+    );
   });
 
   it("sends the chosen option and refuses to submit a blank answer", async () => {
     const { onAnswer } = mount(SINGLE);
-    const submit = screen.getByText("Отправить");
+    const submit = screen.getByTestId("qa-question-submit");
     expect(submit).toHaveProperty("disabled", true);
-    fireEvent.click(screen.getByText("В Confluence"));
+    fireEvent.click(screen.getByRole("radio", { name: /В Confluence/ }));
     expect(submit).toHaveProperty("disabled", false);
     fireEvent.click(submit);
     await waitFor(() => {
@@ -126,11 +134,11 @@ describe("QA question form", () => {
 
   it("lets free text override a single-select choice", async () => {
     const { onAnswer } = mount(SINGLE);
-    fireEvent.click(screen.getByText("В чат"));
-    fireEvent.change(screen.getByPlaceholderText("Напечатайте ответ…"), {
+    fireEvent.click(screen.getByRole("radio", { name: "В чат" }));
+    fireEvent.change(screen.getByTestId("qa-question-custom"), {
       target: { value: "В письмо руководителю" },
     });
-    fireEvent.click(screen.getByText("Отправить"));
+    fireEvent.click(screen.getByTestId("qa-question-submit"));
     await waitFor(() => {
       expect(onAnswer).toHaveBeenCalledWith("request-1", [
         { id: "target", selected: [], custom: "В письмо руководителю" },
@@ -140,8 +148,8 @@ describe("QA question form", () => {
 
   it("reports a skipped question as skipped", async () => {
     const { onAnswer } = mount(SINGLE);
-    fireEvent.click(screen.getByText("Пропустить"));
-    fireEvent.click(screen.getByText("Отправить"));
+    fireEvent.click(screen.getByTestId("qa-question-skip"));
+    fireEvent.click(screen.getByTestId("qa-question-submit"));
     await waitFor(() => {
       expect(onAnswer).toHaveBeenCalledWith("request-1", [
         { id: "target", selected: [] },
@@ -150,16 +158,21 @@ describe("QA question form", () => {
   });
 
   it("pages through questions and sends one answer per question", async () => {
-    const { onAnswer, container } = mount(DOUBLE);
-    expect(screen.getByText("Требуется ответ")).toBeDefined();
-    expect(screen.getByText("вопрос 1 из 2")).toBeDefined();
-    expect(container.querySelector(".dsh-qa-question__count")).not.toBeNull();
-    fireEvent.click(screen.getByText("В Confluence"));
+    const { onAnswer } = mount(DOUBLE);
+    expect(screen.getByTestId("qa-question-state").textContent).toBe(
+      "Требуется ответ",
+    );
+    expect(screen.getByTestId("qa-question-count").textContent).toBe(
+      "вопрос 1 из 2",
+    );
+    fireEvent.click(screen.getByRole("radio", { name: "В Confluence" }));
     // A single-select choice advances by itself.
-    expect(screen.getByText("Какие разделы включить?")).toBeDefined();
-    fireEvent.click(screen.getByText("Итоги"));
-    fireEvent.click(screen.getByText("Риски"));
-    fireEvent.click(screen.getByText("Отправить"));
+    expect(screen.getByTestId("qa-question-text").textContent).toBe(
+      "Какие разделы включить?",
+    );
+    fireEvent.click(screen.getByRole("checkbox", { name: "Итоги" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Риски" }));
+    fireEvent.click(screen.getByTestId("qa-question-submit"));
     await waitFor(() => {
       expect(onAnswer).toHaveBeenCalledWith("request-1", [
         { id: "target", selected: ["В Confluence"] },
@@ -170,10 +183,13 @@ describe("QA question form", () => {
 
   it("closes the request without answering it", async () => {
     const { onCancel } = mount(SINGLE);
-    fireEvent.click(screen.getByText("Отмена"));
+    fireEvent.click(screen.getByTestId("qa-question-cancel"));
     expect(onCancel).toHaveBeenCalledWith("request-1");
     await waitFor(() => {
-      expect(screen.getByText("Отмена")).toHaveProperty("disabled", false);
+      expect(screen.getByTestId("qa-question-cancel")).toHaveProperty(
+        "disabled",
+        false,
+      );
     });
   });
 
@@ -188,10 +204,12 @@ describe("QA question form", () => {
         onCancel={vi.fn(async () => undefined)}
       />,
     );
-    fireEvent.click(screen.getByText("В чат"));
-    fireEvent.click(screen.getByText("Отправить"));
+    fireEvent.click(screen.getByRole("radio", { name: "В чат" }));
+    fireEvent.click(screen.getByTestId("qa-question-submit"));
     expect(await screen.findByRole("alert")).toBeDefined();
-    expect(screen.getByText("Куда писать отчёт?")).toBeDefined();
+    expect(screen.getByTestId("qa-question-text").textContent).toBe(
+      "Куда писать отчёт?",
+    );
   });
 
   it("sends one answer however often the operator presses the button", async () => {
@@ -209,8 +227,8 @@ describe("QA question form", () => {
         onCancel={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByText("В чат"));
-    const submit = screen.getByText("Отправить");
+    fireEvent.click(screen.getByRole("radio", { name: "В чат" }));
+    const submit = screen.getByTestId("qa-question-submit");
     fireEvent.click(submit);
     fireEvent.click(submit);
     fireEvent.click(submit);
@@ -232,7 +250,7 @@ describe("QA question form", () => {
         canStop
       />,
     );
-    fireEvent.click(screen.getByText("Остановить"));
+    fireEvent.click(screen.getByTestId("qa-questions-stop"));
     await waitFor(() => {
       expect(onStop).toHaveBeenCalledTimes(1);
     });
@@ -248,11 +266,14 @@ describe("QA question form", () => {
         canStop={false}
       />,
     );
-    expect(screen.getByText("Остановить")).toHaveProperty("disabled", true);
+    expect(screen.getByRole("button", { name: "Остановить" })).toHaveProperty(
+      "disabled",
+      true,
+    );
   });
 
   it("leaves the stop action out where the surface has none", () => {
     mount(SINGLE);
-    expect(screen.queryByText("Остановить")).toBeNull();
+    expect(screen.queryByTestId("qa-questions-stop")).toBeNull();
   });
 });

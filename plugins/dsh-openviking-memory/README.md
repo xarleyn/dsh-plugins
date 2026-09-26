@@ -210,17 +210,20 @@ config:
   qaUserScoping: false
 ```
 
-> **Where the settings live.** The Host's own "Plugin configuration" card is
-> discovered from the Host settings directory, which a browser reaching the
-> deployment over the network never gets (and a QA overlay does not render the
-> native settings tree at all). That card stays the operator's surface on a
-> local installation — it is where the memory is configured; the QA page above
-> only reports what the memory holds.
+> **Where the settings live.** The configuration card is a tab of the Host's
+> Plugins settings section, and it edits the settings document of the profile
+> that mounts this plugin. A browser reaching the deployment over the network
+> gets a process-local copy of that document instead — `memory` mode, which never
+> writes the Host's file — so the operator configures on the machine that serves
+> the installation, and a QA overlay does not render the native settings tree at
+> all. That card stays the operator's surface: it is where the memory is
+> configured; the QA page above only reports what the memory holds.
 >
-> The card needs its namespace registered in that directory to be served at
-> all — which is what `src/settings.ts` does. A plugin that only declares its
-> configuration schema publishes no namespace, and its card renders nowhere,
-> loopback included.
+> There is no namespace for the card to register. Since 0.1.7 a field is an
+> editable form field exactly when its schema node is volatile, and the profile
+> entry id *is* the namespace; `ctx.configForms.get('dsh-openviking-memory')` is
+> how the card reaches it. A configuration that declares no volatile knob has no
+> form to edit, and its card renders nothing.
 
 > **Switching scoping on moves the memory — and nothing moves it back.** The
 > space is chosen by the `X-OpenViking-User` header, so memories written before
@@ -307,13 +310,15 @@ The package ships a browser bundle, so the plugin gets a card under
 - **The badge is configuration, not status.** It shows `Auto-inject` or
   `Manual recall` from the master switch. Runtime diagnostics live in the
   plugin log under `<$DSH_HOME>/logs/dsh-openviking-memory/`.
-- **The card is served to a loopback browser.** The Host lists the settings
-  cards it serves only to a page that can read its settings directory, so the
-  operator reaches this card on the machine that serves the installation —
-  including a stand, through its loopback port. A browser reaching the same
-  deployment over the network gets the read-only account page described in
-  §Per-account memory instead, and a QA overlay does not mount the native
-  settings tree at all. That split is deliberate: the switches below change one
+- **The card edits the Host's document from loopback.** The settings document a
+  card writes is the profile the Host serves, and a page that reaches the
+  deployment over the network is handed a process-local `memory` copy instead —
+  one nothing outside that browser tab reads. So the operator sets these switches
+  on the machine that serves the installation, including a stand through its
+  loopback port; a browser reaching the same deployment over the network gets the
+  read-only account page described in §Per-account memory, and a QA overlay does
+  not mount the native settings tree at all. That split is deliberate: the
+  switches below change one
   shared deployment (endpoint, credentials, which memory is injected), so they
   belong to the operator, not to whoever opens a chat.
 

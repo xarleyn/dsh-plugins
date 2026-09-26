@@ -145,6 +145,7 @@ describe("turn sources projection", () => {
             {
               callId: "c5",
               name: "web_fetch",
+              phase: "start",
               argsRaw: '{"url":"https://example.com"}',
               turn: 1,
               step: 1,

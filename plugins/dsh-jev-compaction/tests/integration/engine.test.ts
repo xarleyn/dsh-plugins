@@ -6,7 +6,11 @@ import { JevCompactionEngine } from "../../src/backend/engine.js";
 import { resolveJevEngineConfig } from "../../src/backend/config.js";
 import type { JevEngineConfig } from "../../src/backend/config.js";
 import type { TokenMeterLike } from "../../src/dsh/types.js";
-import { FakeDecisionBackend, appendToolStep } from "../helpers/session.js";
+import {
+  FakeDecisionBackend,
+  appendToolStep,
+  resultText,
+} from "../helpers/session.js";
 
 /** A meter that prices each surface node from its actual payload size. */
 function contentTokenMeter(): TokenMeterLike {
@@ -104,6 +108,9 @@ const BASE_CONFIG: JevEngineConfig = {
   preserve: { recentMessages: 2, recentTokens: 0, errors: true },
   pruning: { minSavingsChars: 0, minSavingsRatio: 0 },
   summaryRatio: 0.82,
+  // The fake adapter reports a 10k window, far under the headroom basic
+  // defaults to, and 0.1.7's basic engine refuses that combination.
+  headroomTokens: 1024,
 };
 
 function buildEngine(
@@ -141,10 +148,7 @@ function stubbedResultCount(session: DshSession): number {
   for (const seq of session.surface.nodes) {
     const event = session.eventAt(seq);
     if (event === undefined || event.type !== "tool/result") continue;
-    const block = (
-      event.data as { message: { content: [{ content: { text: string }[] }] } }
-    ).message.content[0];
-    if (block.content[0]?.text.includes("[dsh-jev-compaction]") === true) {
+    if (resultText(event).includes("[dsh-jev-compaction]")) {
       count += 1;
     }
   }

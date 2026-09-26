@@ -1,4 +1,4 @@
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import { DEFAULT_QA_SURFACE_CONFIG, resolveConfig } from "../resolve-config.js";
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 
@@ -32,7 +32,7 @@ export class QaConfigController {
   private disposed = false;
 
   constructor(
-    private readonly scope: SettingsScope<QaSurfaceConfig>,
+    private readonly scope: ConfigForm<QaSurfaceConfig>,
     fallback?: QaConfigFallback,
   ) {
     this.fallback = fallback;

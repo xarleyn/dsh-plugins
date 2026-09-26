@@ -6,22 +6,43 @@ import { DEFINITION, ok, renderPage } from "./client-page.helpers.js";
 describe("client page: editor", () => {
   it("opens a domain and shows the resolved scope with enforcement labels", async () => {
     renderPage();
-    fireEvent.click(await screen.findByText("Payments"));
-    expect(await screen.findByText(/Resolved scope — Payments/u)).toBeTruthy();
-    expect(screen.getAllByText("enforced").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("advisory").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("code_worker").length).toBeGreaterThan(0);
+    fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
+    expect(
+      (await screen.findByTestId("domain-experts-inspector-title")).textContent,
+    ).toContain("Resolved scope — Payments");
+    const enforcement = screen.getAllByTestId(
+      "domain-experts-inspector-resource-enforcement",
+    );
+    expect(enforcement.map((chip) => chip.textContent)).toEqual([
+      "enforced",
+      "advisory",
+    ]);
+    expect(
+      screen
+        .getAllByTestId("domain-experts-inspector-resource-applied-by")
+        .map((cell) => cell.textContent),
+    ).toEqual(["code_worker", "—"]);
   });
 
   it("moves through the editor tabs", async () => {
     renderPage();
-    fireEvent.click(await screen.findByText("Payments"));
+    fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
     fireEvent.click(await screen.findByRole("tab", { name: "Persona" }));
-    expect(await screen.findByText(/Composed persona/u)).toBeTruthy();
+    expect(
+      (
+        await screen.findByTestId(
+          "domain-experts-editor-composed-persona-label",
+        )
+      ).textContent,
+    ).toContain("Composed persona");
     fireEvent.click(screen.getByRole("tab", { name: "Delegation" }));
-    expect(screen.getByText(/Cross-domain policy/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("domain-experts-editor-delegation-title").textContent,
+    ).toContain("Cross-domain policy");
     fireEvent.click(screen.getByRole("tab", { name: "Test" }));
-    expect(screen.getByText(/Run test/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("domain-experts-editor-test-run").textContent,
+    ).toBe("Run test");
   });
 
   it("renders a validation issue reported by the host", async () => {
@@ -44,15 +65,17 @@ describe("client page: editor", () => {
           }),
         ),
     });
-    fireEvent.click(await screen.findByText("Payments"));
+    fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
     fireEvent.click(await screen.findByRole("tab", { name: "Resources" }));
-    const input = await screen.findByPlaceholderText("services/payments/**");
+    const input = await screen.findByTestId(
+      "domain-experts-editor-primary-paths-input",
+    );
     fireEvent.change(input, { target: { value: "/etc/passwd" } });
     fireEvent.keyDown(input, { key: "Enter" });
     await waitFor(() => {
       expect(
-        screen.getByText(/absolute paths are outside the workspace/u),
-      ).toBeTruthy();
+        screen.getByTestId("domain-experts-editor-issue").textContent,
+      ).toContain("absolute paths are outside the workspace");
     });
   });
 
@@ -61,14 +84,16 @@ describe("client page: editor", () => {
       Promise.resolve(ok({ domain: DEFINITION })),
     );
     renderPage({ draftDomain });
-    fireEvent.change(await screen.findByPlaceholderText("new-domain-id"), {
+    fireEvent.change(await screen.findByTestId("domain-experts-page-new-id"), {
       target: { value: "payments" },
     });
-    fireEvent.click(screen.getByText("Add domain"));
+    fireEvent.click(screen.getByTestId("domain-experts-page-add-domain"));
     await waitFor(() => {
       expect(draftDomain).toHaveBeenCalledWith("payments");
     });
-    expect(await screen.findByText("New domain")).toBeTruthy();
+    expect(
+      (await screen.findByTestId("domain-experts-editor-title")).textContent,
+    ).toBe("New domain");
   });
 
   it("saves an edited domain and reports success", async () => {
@@ -76,16 +101,20 @@ describe("client page: editor", () => {
       Promise.resolve(ok({ domain: DEFINITION })),
     );
     renderPage({ updateDomain });
-    fireEvent.click(await screen.findByText("Payments"));
+    fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
     fireEvent.click(await screen.findByRole("tab", { name: "General" }));
-    fireEvent.change(screen.getByDisplayValue("Payments"), {
-      target: { value: "Payments v2" },
-    });
-    fireEvent.click(screen.getByText("Save"));
+    const name = (await screen.findByTestId(
+      "domain-experts-editor-name-input",
+    )) as HTMLInputElement;
+    expect(name.value).toBe("Payments");
+    fireEvent.change(name, { target: { value: "Payments v2" } });
+    fireEvent.click(screen.getByTestId("domain-experts-editor-save"));
     await waitFor(() => {
       expect(updateDomain).toHaveBeenCalledTimes(1);
     });
-    expect(await screen.findByText("Changes saved.")).toBeTruthy();
+    expect(
+      (await screen.findByTestId("domain-experts-editor-status")).textContent,
+    ).toContain("Changes saved.");
   });
 
   it("reports a refused write instead of pretending it saved", async () => {
@@ -97,10 +126,10 @@ describe("client page: editor", () => {
           message: "id is reserved",
         }),
     });
-    fireEvent.click(await screen.findByText("Payments"));
-    fireEvent.click(await screen.findByText("Save"));
+    fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
+    fireEvent.click(await screen.findByTestId("domain-experts-editor-save"));
     expect(
-      await screen.findByText(/DOMAIN_INVALID: id is reserved/u),
-    ).toBeTruthy();
+      (await screen.findByTestId("domain-experts-editor-status")).textContent,
+    ).toContain("DOMAIN_INVALID: id is reserved");
   });
 });

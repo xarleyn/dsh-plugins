@@ -161,22 +161,32 @@ export function createIntegrationsPage(
     return (
       <section
         className="dsh-qa-integrations"
+        data-testid="qa-integrations-page"
         aria-labelledby="qa-integrations-title"
       >
         <div>
           <h2
             id="qa-integrations-title"
             className="dsh-qa-integrations__heading"
+            data-testid="qa-integrations-page-title"
           >
             Интеграции
           </h2>
-          <p className="dsh-qa-integrations__lead">
+          <p
+            className="dsh-qa-integrations__lead"
+            data-testid="qa-integrations-page-lead"
+          >
             Подключите свои рабочие сервисы. Каждое подключение доступно только
             вашему аккаунту.
           </p>
         </div>
         <ProviderCards token={token} providers={providers} />
-        <p className="dsh-qa-integrations__notice">{INTEGRATIONS_DISCLOSURE}</p>
+        <p
+          className="dsh-qa-integrations__notice"
+          data-testid="qa-integrations-page-disclosure"
+        >
+          {INTEGRATIONS_DISCLOSURE}
+        </p>
       </section>
     );
   };

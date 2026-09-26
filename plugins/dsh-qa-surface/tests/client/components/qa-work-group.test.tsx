@@ -39,11 +39,15 @@ describe("QA work group", () => {
       name: "Готово за 1 мин 40 с",
     });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByText("Inspect the repository first.")).toBeNull();
+    expect(screen.queryByTestId("qa-surface-work-text-body")).toBeNull();
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText("Inspect the repository first.")).toBeTruthy();
-    expect(screen.getByText("Find TODOs")).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-surface-work-text-body").textContent,
+    ).toContain("Inspect the repository first.");
+    expect(screen.getByTestId("qa-surface-work-tool-detail").textContent).toBe(
+      "Find TODOs",
+    );
   });
 
   it("collapses automatically when a running turn completes", async () => {
@@ -117,7 +121,9 @@ describe("QA work group", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText("Reading the tree.")).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-surface-work-text-body").textContent,
+    ).toContain("Reading the tree.");
   });
 
   it("collapses automatically when a running turn fails", async () => {
