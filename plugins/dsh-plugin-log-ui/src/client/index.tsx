@@ -288,7 +288,7 @@ export const inject = ["slots", "configForms", "remote", "sidebarRightTabs"];
  */
 function PluginLogSettingsTab(props: CardProps) {
   return (
-    <ul className="plu-tab">
+    <ul className="plu-tab" data-testid="log-tab">
       <PluginLogSettingsCard {...props} />
     </ul>
   );

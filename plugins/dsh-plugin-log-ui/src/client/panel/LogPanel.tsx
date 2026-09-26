@@ -170,7 +170,12 @@ export function LogPanel({
   return (
     <div className="plu-log" data-plu-log-tab={tab.id} data-testid="log-panel">
       <div className="plu-log-bar">
-        <div className="plu-log-levels" role="group" aria-label="Log levels">
+        <div
+          className="plu-log-levels"
+          role="group"
+          aria-label="Log levels"
+          data-testid="log-panel-levels"
+        >
           {LOG_PANEL_LEVELS.map((level) => (
             <button
               key={level}
