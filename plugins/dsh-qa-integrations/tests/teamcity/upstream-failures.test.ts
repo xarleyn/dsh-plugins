@@ -166,11 +166,9 @@ describe("teamcity upstream failures", () => {
       refusing,
     );
     await expect(
-      provider.execute(
-        { credential: credentialFor(refusing) },
-        "builds.get",
-        { buildId: 1 },
-      ),
+      provider.execute({ credential: credentialFor(refusing) }, "builds.get", {
+        buildId: 1,
+      }),
     ).rejects.toMatchObject({ code: "ProviderUnavailable" });
     expect(attempts).toBe(3);
   });
