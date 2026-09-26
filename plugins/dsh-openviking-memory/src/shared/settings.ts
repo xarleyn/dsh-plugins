@@ -10,12 +10,11 @@
 
 /**
  * Settings namespace the plugin owns and its card binds to. It equals the
- * Cordis plugin id (`name` in `src/index.ts`).
- *
- * `static Config` alone does not publish it: the Host's settings directory
- * lists only the namespaces a live plugin registered through the settings
- * service, and a card is rendered for a namespace in that directory. The
- * registration is `installOpenVikingMemorySettings` in `src/settings.ts`.
+ * Cordis plugin id (`name` in `src/index.ts`), and on 0.1.7 that identity is
+ * the whole contract: the Host serves a settings namespace for every profile
+ * entry whose `static Config` carries a volatile knob, and a card reaches that
+ * namespace through `ctx.configForms.get(namespace)`. No registration call
+ * publishes it — declaring the knobs is the registration.
  */
 export const OPENVIKING_MEMORY_SETTINGS_NAMESPACE = "dsh-openviking-memory";
 

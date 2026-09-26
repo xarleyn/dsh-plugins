@@ -6,6 +6,7 @@ import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
  * `--dsw-alias-*` tokens so light, dark, and system themes stay coherent.
  */
 export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
+.ovm-list{list-style:none;margin:0;padding:0;display:grid;gap:10px}
 .ovm-body,.ovm-body *{box-sizing:border-box}
 .ovm-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .ovm-section{display:grid;gap:12px}

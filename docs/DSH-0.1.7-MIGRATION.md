@@ -193,7 +193,7 @@ Per package:
 | `dsh-qa-surface` | **decision + code, biggest** | volatile `Config`; card path; `SettingsScopeBinder` gone; **4 new `rc.2` reads**; provenance→producer; `dsh-agent-presets` rename; own `qaSurfacePanels` merge | `src/index.ts:487,561`; `src/client/index.tsx:11,528,834-859`; `src/client/QaConfigController.ts:1,35`; `src/client/settings/card.tsx:13,69,73,77,242`; `src/client/QaTranscriptAdapter.ts:476,248`; `src/client/turn-sources.ts:82`; `src/client/QaSessionController.ts:1644`; `src/client/project-session-state.ts:75`; `src/client/panels/contract.ts:70`; `src/access/{capability-catalog.ts:33,207,218,model.ts:533}`; `src/qa-tools/lifecycle.ts:40` already `agent/created` ✔; deprecated reads `prompt-notes.ts:375`, `secure-session.ts:547`, `admin/session-log.ts:130,231`, `provenance/host-store.ts:83,236`, `qa-tools/durable-marker.ts:97,101`; `compatibility.json:4-5,12`; `scripts/verify-package.mjs:501-517`; `package.json:61-70`; `QaChangelog.tsx` (§6) | 130 | ≈14 files: `tests/wiring/index-wiring.test.ts:81-82`, `tests/config/config-controller.test.ts`, `tests/provenance/*`, `tests/transcript/*`, `tests/qa-tools/*`, `tests/admin/*` |
 | `dsh-jev-compaction` | 27 | card, `installSection`, LLM message shapes |
 | `dsh-qa-browser` | 24 | card surface, client slots |
-| `dsh-openviking-memory` | 22 | card surface, `settings` unknown, session writes |
+| `dsh-openviking-memory` | ✔ **done in #516** (D1 took option 2) | volatile Config replaced the settings-section registration; the card moved to `settings.plugins.tab` with our shell; `agent/session-start` → `agent/created` under a non-throwing listener; the plugin declares its own producer kind; the `tool-addition`/`tool-removal` taxonomy is pinned at runtime | landed: `src/config.ts:302` every knob `.volatile()` (`z<Config, LiveConfig>`), `:266` `LiveConfig`, `:279` `snapshotConfig`; `src/index.ts:208` the `agent/created` listener, `:337` `refreshConfig()`, `:402` its call from `activeScoping()`; `src/settings.ts` **deleted** (82 lines; `installSection` is gone from the Host); `src/capture.ts:45` the `openviking-memory` source-kind augmentation, `:61` the captured-kind whitelist (`user`/`model`/`tool`), which is also the default branch §5 demands of a non-exhaustive `switch (source.kind)`; `src/runtime.ts:793` the own kind on injected messages, `:828` `isStartupProfile` matching **both** kinds for one release; `src/client/index.tsx:49` `inject = ["slots", "configForms"]`, `:90` `ctx.configForms.get(ns)`, `:97-103` the tab registration; `src/client/card.tsx:46` `PropsRuntime<"settings.plugins.tab">` over `ConfigForm<Config>`, `:155` the `<li>` inside a plugin-owned `<ul>`; `compatibility.json:9,16`; `scripts/verify-package.mjs:64,76-88`. Checked and kept: `package.json:49-52` — the `dsh.client.inject` list already names every client module the bundle reads, no edit; `src/openviking/capture-utils.ts:151,327,350,457` — **no edit**: a generated fork file whose loose extractor already drops both blocks (`normalizeType("tool-addition")` matches no set, `blockToText` returns `""`, `.filter(Boolean)` discards it), so the rule is pinned by `tests/block-taxonomy.test.ts` rather than by editing the vendored code; `src/capture.ts:93,143` became the whitelist and the own-kind filter; `scripts/smoke-packed-dsh.mjs` **does not exist in this package** — the stale `"0.1.1-rc.2"` default of §6 is `dsh-sleev`'s | ~230 | `tests/settings-live.test.ts` (replaces `settings-install.test.ts`: the schema-volatile namespace pin, and a committed change reaching a session that is already open), `tests/block-taxonomy.test.ts`, `tests/config.test.ts:44-53` (`requireValue` snapshots the live refs), `tests/helpers/harness.ts:82,115` (`createLiveConfig`, `writeConfig`), `tests/runtime-context.test.ts:192,200,277` (both profile attributions), `tests/client-card.test.tsx`, `tests/client-index.test.ts:193-241`, plus the 15 renamed `agent/created` emit sites. Measured on this tree: 31 files / 283 tests pass |
 | `dsh-model-safety-gate` | 14 | card + `installSection` in `src/service.ts` |
 | `dsh-plugin-log-ui` | 13 | card + `installSection` |
 | `dsh-draft-sessions` | 13 | client conversation/controller types |
@@ -1145,7 +1145,7 @@ as baseline breakage.
 
 ## 10. Open owner decisions
 
-**D1 — the settings card shell (§4.3, §4.3a) — still open, and now costed.**
+**D1 — the settings card shell (§4.3, §4.3a) — settled 26.09 in #508, option 2.**
 Option 1 (accept host chrome): delete `CardShell` from the `plugins.row.config`
 path, rewrite `AGENTS.md`'s canonical shell CSS block and the shared gate
 `packages/plugin-scripts/verify-plugin-card-contract.mjs:4-15,39,44-45`, and lose
@@ -1153,6 +1153,10 @@ path, rewrite `AGENTS.md`'s canonical shell CSS block and the shared gate
 smallest diff, every gate survives verbatim, but as of `rc.2` our 12px/1px/2px
 shell sits next to host cards that are 20px/0.5px/`--dsw-focus-ring-*`, and the
 new `focus.css` modality rule can silence our focus ring (§4.3a item 3).
+**The owner chose option 2: the shell stays ours, neither `settings.plugins.tab`
+nor `plugins.row.config` is restyled to the host chrome, `AGENTS.md`'s canonical
+CSS and the card-contract gate are not edited, and the cutover carries only
+broken types and APIs.**
 **New fact for either branch:** `scripts/verify-package-hygiene.mjs:49,816-835`
 keys the *entire* card-contract enforcement off a source file containing the
 literal `settings.plugin.item`; once plugins register `plugins.row.config`, that
@@ -1269,7 +1273,8 @@ whose version-plan arithmetic can silently drift.
    facts (§4.3a) and, whichever way it goes, retarget
    `scripts/verify-package-hygiene.mjs:49` — otherwise the shell contract quietly
    stops being enforced the moment the slot string disappears from our sources.
-   The retarget half is **done** (#510); the D1 settle is still open.
+   The retarget half is **done** (#510); D1 is **settled** (option 2, §10), so the
+   12 card cards migrate onto `settings.plugins.tab` with the shell they have.
 3. §7 step 8's release half must **read the 39 existing plans first** and pair a
    new qa-surface plan with `0.14.1`/`0.15.0`, not `0.12.x` (§6).
 4. New step 6 stands, none of which `nx test` covers: (a) one `plugins.row.config`

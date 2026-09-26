@@ -19,14 +19,16 @@ import {
   Config,
   resolveConfig,
   resolveInjectionPlan,
+  snapshotConfig,
   type CaptureMode,
   type InjectionPlan,
+  type LiveConfig,
   type ResolvedConfig,
 } from "../src/config.js";
 
 /** One `~standard.validate` result, narrowed to what these tests assert. */
 interface SchemaResult {
-  readonly value?: Config;
+  readonly value?: Config | LiveConfig;
   readonly issues?: readonly {
     readonly message: string;
     readonly path?: readonly unknown[];
@@ -45,9 +47,16 @@ async function validate(input: unknown): Promise<SchemaResult> {
   return await schema["~standard"].validate(input);
 }
 
+/**
+ * The resolved config as the plugin sees it: every knob is a volatile
+ * reference, so a test reads values through the same per-operation snapshot
+ * {@link resolveConfig} is fed at runtime.
+ */
 function requireValue(result: SchemaResult): Config {
-  if (!result.value) throw new Error("expected the schema to resolve a value");
-  return result.value;
+  if (result.value === undefined) {
+    throw new Error("expected the schema to resolve a value");
+  }
+  return snapshotConfig(result.value);
 }
 
 /** The state dir and credential paths every resolution in this file uses. */
@@ -238,8 +247,9 @@ describe("materialized defaults vs. configured markers", () => {
     expect(value.captureFilters).toEqual([]);
 
     // `resolveConfig` distinguishes "the user asked for it" from "a default
-    // filled it" with `Object.hasOwn` on the raw input, so these two must stay
-    // absent after a default-valued validate().
+    // filled it" with `Object.hasOwn` on the raw input. A knob the schema left
+    // unset resolves to a reference holding nothing, and the snapshot drops it —
+    // so these two stay absent after a default-valued validate().
     expect(Object.hasOwn(value, "recallLimit")).toBe(false);
     expect(Object.hasOwn(value, "recallQueryExpansion")).toBe(false);
   });
