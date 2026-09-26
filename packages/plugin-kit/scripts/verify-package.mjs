@@ -22,6 +22,7 @@ await runVerifyPackage({
   mainTypesMatchRootExport: true,
   publishedDependenciesResolve: true,
   files: ["lib", "README.md", "LICENSE"],
+  requiredFiles: ["README.md", "LICENSE"],
   extra: async ({ readFile }) => {
     // The three modules that make one card: the sheet, the chevron and the
     // shell that renders them. Checked together because the contract reads a

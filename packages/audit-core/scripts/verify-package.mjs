@@ -29,6 +29,7 @@ await runVerifyPackage({
   mainTypesMatchRootExport: true,
   publishedDependenciesResolve: true,
   files: ["lib", "README.md", "LICENSE"],
+  requiredFiles: ["README.md", "LICENSE"],
   extra: () => {
     // Writer and readers are one contract: `dsh-model-safety-gate` publishes
     // through `publishAudit`, and `dsh-session-audit` / `dsh-qa-surface` read the
