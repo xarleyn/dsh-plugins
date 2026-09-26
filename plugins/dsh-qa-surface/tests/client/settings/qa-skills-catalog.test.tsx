@@ -1,10 +1,28 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { QaSkillCatalog } from "../../../src/client/user-settings/SkillCatalog.js";
 import { QaSkillToolPicker } from "../../../src/client/user-settings/SkillToolPicker.js";
 import { summary, TOOLS } from "./qa-skills.helpers.js";
+
+/** The catalog row at one place of the list, addressed by its handle. */
+function row(at: number): HTMLElement {
+  const found = screen.getAllByTestId("qa-settings-skills-row")[at];
+  if (found === undefined) throw new Error(`no catalog row at ${String(at)}`);
+  return found;
+}
+
+/** One line of one row, read through the handle of the row rather than the copy. */
+function lineOf(
+  target: HTMLElement,
+  part: "title" | "meta" | "warning" | "error",
+): string {
+  return (
+    within(target).getByTestId(`qa-settings-skills-row-${part}`).textContent ??
+    ""
+  );
+}
 
 describe("skill catalog", () => {
   it("renders rows with their invocation, command and tool count", () => {
@@ -28,10 +46,12 @@ describe("skill catalog", () => {
         onReload={vi.fn()}
       />,
     );
-    expect(screen.getByText("api-testing")).toBeTruthy();
-    expect(screen.getByText("Авто · /api-testing · 1 инструмент")).toBeTruthy();
-    expect(screen.getByText("Только вручную · 3 инструмента")).toBeTruthy();
-    expect(screen.getByText("1 инструмент недоступен сейчас")).toBeTruthy();
+    expect(lineOf(row(0), "title")).toBe("api-testing");
+    expect(lineOf(row(0), "meta")).toBe("Авто · /api-testing · 1 инструмент");
+    expect(lineOf(row(1), "meta")).toBe("Только вручную · 3 инструмента");
+    expect(lineOf(row(1), "warning")).toBe("1 инструмент недоступен сейчас");
+    // Every row is opened as a button, which is what a run presses.
+    expect(within(row(0)).getAllByRole("button")).toHaveLength(1);
   });
 
   it("offers the empty state and the first-skill action", () => {
@@ -46,10 +66,14 @@ describe("skill catalog", () => {
         onReload={vi.fn()}
       />,
     );
-    expect(screen.getByText("У вас пока нет навыков.")).toBeTruthy();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Создать первый навык" }),
+    expect(
+      screen.getByTestId("qa-settings-skills-empty-title").textContent,
+    ).toBe("У вас пока нет навыков.");
+    const create = screen.getByTestId("qa-settings-skills-empty-create");
+    expect(screen.getByRole("button", { name: "Создать первый навык" })).toBe(
+      create,
     );
+    fireEvent.click(create);
     expect(onCreate).toHaveBeenCalled();
   });
 
@@ -67,12 +91,17 @@ describe("skill catalog", () => {
     fireEvent.change(screen.getByLabelText("Поиск навыков"), {
       target: { value: "jira" },
     });
-    expect(screen.queryByText("api-testing")).toBeNull();
-    expect(screen.getByText("jira-investigation")).toBeTruthy();
+    expect(
+      screen
+        .getAllByTestId("qa-settings-skills-row")
+        .map((candidate) => lineOf(candidate, "title")),
+    ).toEqual(["jira-investigation"]);
     fireEvent.change(screen.getByLabelText("Поиск навыков"), {
       target: { value: "nothing" },
     });
-    expect(screen.getByText(/Ничего не найдено/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-skills-no-match").textContent,
+    ).toContain("Ничего не найдено");
   });
 
   it("marks a skill the Host could not parse", () => {
@@ -98,7 +127,7 @@ describe("skill catalog", () => {
         onReload={vi.fn()}
       />,
     );
-    expect(screen.getByText(/нет блока frontmatter/u)).toBeTruthy();
+    expect(lineOf(row(0), "error")).toContain("нет блока frontmatter");
   });
 
   it("shows a load failure with a way to retry", () => {
@@ -116,7 +145,9 @@ describe("skill catalog", () => {
     expect(screen.getByRole("alert").textContent).toContain(
       "Хранилище навыков недоступно.",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Обновить" }));
+    const retry = screen.getByTestId("qa-settings-skills-list-reload");
+    expect(screen.getByRole("button", { name: "Обновить" })).toBe(retry);
+    fireEvent.click(retry);
     expect(onReload).toHaveBeenCalled();
   });
 });
@@ -134,15 +165,24 @@ describe("skill tool picker", () => {
         onClose={vi.fn()}
       />,
     );
-    expect(screen.getByText("Доступные сейчас")).toBeTruthy();
-    expect(screen.getByText("Недоступные в этой конфигурации")).toBeTruthy();
-    expect(screen.getByText("Выбрано: 1")).toBeTruthy();
+    expect(
+      screen
+        .getAllByTestId("qa-settings-toolpicker-group")
+        .map((group) => group.textContent),
+    ).toEqual(["Доступные сейчас", "Недоступные в этой конфигурации"]);
+    expect(
+      screen.getByTestId("qa-settings-toolpicker-selected").textContent,
+    ).toBe("Выбрано: 1");
     fireEvent.change(screen.getByLabelText("Поиск инструментов"), {
       target: { value: "jira" },
     });
     fireEvent.click(screen.getByRole("checkbox", { name: /jira_transition/u }));
-    expect(screen.getByText("Выбрано: 2")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Применить" }));
+    expect(
+      screen.getByTestId("qa-settings-toolpicker-selected").textContent,
+    ).toBe("Выбрано: 2");
+    const apply = screen.getByTestId("qa-settings-toolpicker-apply");
+    expect(screen.getByRole("button", { name: "Применить" })).toBe(apply);
+    fireEvent.click(apply);
     expect(onApply).toHaveBeenCalledWith(["read", "jira_transition"]);
   });
 
@@ -159,7 +199,9 @@ describe("skill tool picker", () => {
       />,
     );
     fireEvent.click(screen.getByRole("checkbox", { name: /^read/u }));
-    fireEvent.click(screen.getByRole("button", { name: "Применить" }));
+    const apply = screen.getByTestId("qa-settings-toolpicker-apply");
+    expect(screen.getByRole("button", { name: "Применить" })).toBe(apply);
+    fireEvent.click(apply);
     expect(onApply).toHaveBeenCalledWith(["grep"]);
   });
 });

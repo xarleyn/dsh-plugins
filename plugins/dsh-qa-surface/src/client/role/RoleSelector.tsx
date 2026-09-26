@@ -26,16 +26,21 @@ export function QaRoleSelector(props: QaRoleSelectorProps) {
   };
   return (
     <>
-      <label className="dsh-qa-role-selector">
+      <label className="dsh-qa-role-selector" data-testid="qa-role-selector">
         <span className="dsh-qa-sr-only">Роль ассистента</span>
         <select
+          data-testid="qa-role-selector-input"
           value={props.selected}
           disabled={props.disabled}
           aria-label="Роль ассистента"
           onChange={(event) => select(event.currentTarget.value)}
         >
           {props.roles.map((role) => (
-            <option key={role.id} value={role.id}>
+            <option
+              key={role.id}
+              value={role.id}
+              data-testid="qa-role-selector-option"
+            >
               {role.name}
             </option>
           ))}
@@ -48,12 +53,17 @@ export function QaRoleSelector(props: QaRoleSelectorProps) {
         onClose={() => setPending(undefined)}
         footer={
           <>
-            <button type="button" onClick={() => setPending(undefined)}>
+            <button
+              type="button"
+              data-testid="qa-role-change-cancel"
+              onClick={() => setPending(undefined)}
+            >
               Отмена
             </button>
             <button
               type="button"
               className="dsh-qa-modal__primary"
+              data-testid="qa-role-change-confirm"
               onClick={() => {
                 if (pending !== undefined) props.onSelect(pending.id);
                 setPending(undefined);
@@ -64,7 +74,10 @@ export function QaRoleSelector(props: QaRoleSelectorProps) {
           </>
         }
       >
-        <p className="dsh-qa-role-selector__notice">
+        <p
+          className="dsh-qa-role-selector__notice"
+          data-testid="qa-role-change-notice"
+        >
           Смена роли начинает новый разговор: доступные ассистенту инструменты и
           навыки изменятся. Текущий чат останется в истории без изменений.
         </p>
@@ -87,12 +100,19 @@ export function QaAdminPreviewBanner(props: {
   readonly onExit?: () => void;
 }) {
   return (
-    <div className="dsh-qa-admin-preview" role="status">
-      <span>ПРОСМОТР АДМИНИСТРАТОРА: {props.role}</span>
+    <div
+      className="dsh-qa-admin-preview"
+      data-testid="qa-admin-preview"
+      role="status"
+    >
+      <span data-testid="qa-admin-preview-role">
+        ПРОСМОТР АДМИНИСТРАТОРА: {props.role}
+      </span>
       {props.onExit === undefined ? null : (
         <button
           type="button"
           className="dsh-qa-admin-preview__exit"
+          data-testid="qa-admin-preview-exit"
           onClick={props.onExit}
           title="Вернуться к своему профилю по умолчанию: просмотр закончится, следующий чат начнётся заново"
         >

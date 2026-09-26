@@ -80,12 +80,16 @@ describe("documentation settings section", () => {
       ["tools", "docsDefaultVersionEnabled"],
       true,
     );
-    expect(screen.queryByText(/по-прежнему идёт по всем/u)).toBeNull();
+    expect(
+      screen.queryByTestId("qa-settings-docs-notice-version-missing"),
+    ).toBeNull();
   });
 
   it("says the default is doing nothing when the switch is on and the version is empty", () => {
     section({ tools: { docsDefaultVersionEnabled: true } });
-    expect(screen.getByText(/по-прежнему идёт по всем/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-docs-notice-version-missing").textContent,
+    ).toMatch(/по-прежнему идёт по всем/u);
   });
 
   it("shows the corpus root the running Host reports", async () => {
@@ -96,13 +100,17 @@ describe("documentation settings section", () => {
       },
     );
     await waitFor(() => {
-      expect(screen.getByText("/srv/stand/docs")).toBeTruthy();
+      expect(screen.getByTestId("qa-settings-docs-root").textContent).toContain(
+        "/srv/stand/docs",
+      );
     });
   });
 
   it("names the per-chat layout when the deployment publishes no shared corpus", () => {
     section({}, { effective: resolveConfig({}) });
-    expect(screen.getByText(/docs\/ рабочего каталога чата/u)).toBeTruthy();
+    expect(screen.getByTestId("qa-settings-docs-root").textContent).toMatch(
+      /docs\/ рабочего каталога чата/u,
+    );
   });
 
   it("disables both controls with the rest of the card", () => {

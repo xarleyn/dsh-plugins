@@ -23,7 +23,15 @@ interface Mutation {
   readonly value?: unknown;
 }
 
-function makeScope(mutations: Mutation[], writable = true) {
+/**
+ * A stand for the Host-owned `ConfigForm` the settings tab hands the card.
+ * `fences`, when given, collects the revision each write arrived fenced with.
+ */
+function makeForm(
+  mutations: Mutation[],
+  writable = true,
+  fences?: (number | undefined)[],
+) {
   const snapshot = {
     status: "ready" as const,
     value: CONFIG,
@@ -36,12 +44,13 @@ function makeScope(mutations: Mutation[], writable = true) {
   return {
     getSnapshot: () => snapshot,
     subscribe: () => () => undefined,
-    mutate: (ops: readonly Mutation[]) => {
+    mutate: (ops: readonly Mutation[], expectedRevision?: number) => {
       mutations.push(...ops);
-      return Promise.resolve();
+      fences?.push(expectedRevision);
+      return Promise.resolve(true);
     },
-    set: () => Promise.resolve(),
-    unset: () => Promise.resolve(),
+    set: () => Promise.resolve(true),
+    unset: () => Promise.resolve(true),
   };
 }
 
@@ -49,11 +58,15 @@ function makeScope(mutations: Mutation[], writable = true) {
  * Render the card and open it. The shell renders its body only while open, so
  * every assertion about a control happens after this.
  */
-function renderCard(mutations: Mutation[], writable = true) {
+function renderCard(
+  mutations: Mutation[],
+  writable = true,
+  fences?: (number | undefined)[],
+) {
   const rendered = render(
     <DocumentsCard
       {...({} as never)}
-      scope={makeScope(mutations, writable) as never}
+      form={makeForm(mutations, writable, fences) as never}
     />,
   );
   fireEvent.click(screen.getByRole("button", { expanded: false }));
@@ -121,5 +134,29 @@ describe("the comparison section", () => {
     expect(
       screen.getByText(/Числа, проценты, валюты, даты и отрицания/u),
     ).toBeDefined();
+  });
+});
+
+describe("the Plugins tab surface", () => {
+  it("stacks its shell inside a list the plugin owns", () => {
+    renderCard([]);
+    const card = screen
+      .getByRole("button", { expanded: true })
+      .closest("li") as HTMLLIElement | null;
+    expect(card?.className).toContain("dsh-plugin-card");
+    // The tab renders no list of its own, and AGENTS.md keeps the `<li>` shell
+    // root inside a list the plugin declares.
+    expect(card?.parentElement?.tagName).toBe("UL");
+  });
+
+  it("fences every write with the revision the form reports", () => {
+    const fences: (number | undefined)[] = [];
+    renderCard([], true, fences);
+    // The switch is reached by its hook: what this asserts is the fence on the
+    // write, so a reworded caption must not blind the test.
+    fireEvent.click(screen.getByTestId("docs-pipeline-enabled"));
+    // Every write carries the revision the form reports, read at write time: a
+    // document another browser moved in between is refused instead of overwritten.
+    expect(fences).toEqual([1]);
   });
 });

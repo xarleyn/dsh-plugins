@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
+import { readConfigRefs } from "../../src/config.js";
 import {
   DEFAULT_QA_SURFACE_CONFIG,
   resolveConfig,
 } from "../../src/resolve-config.js";
-import { schemaParse } from "./config.helpers.js";
+import { schemaParse, schemaRefs } from "./config.helpers.js";
 
 describe("ConfigSchema defaults", () => {
   // The host materializes schema defaults before resolveConfig sees the
@@ -50,5 +51,24 @@ describe("ConfigSchema defaults", () => {
         }),
       ).ui.showReset,
     ).toBe(true);
+  });
+
+  it("leaves the card no field it cannot write", () => {
+    // The Host derives the configuration form, and refuses a write to a path
+    // whose nearest volatile ancestor is missing, so every field the card edits
+    // has to arrive from the schema as a reference.
+    for (const [key, value] of Object.entries(schemaRefs(undefined))) {
+      expect(typeof (value as { get?: unknown })?.get, key).toBe("function");
+    }
+  });
+
+  it("reads the value the Host holds now, not the one the entry booted with", () => {
+    let path = "/ask";
+    const refs = {
+      route: { get: () => ({ path, matchChildren: true }) },
+    } as never;
+    expect(resolveConfig(readConfigRefs(refs)).route.path).toBe("/ask");
+    path = "/help";
+    expect(resolveConfig(readConfigRefs(refs)).route.path).toBe("/help");
   });
 });

@@ -24,7 +24,7 @@ import { QA_WELCOME_NOTICE_VERSION } from "../../../src/client/components/QaWelc
 import { QaSurfacePanelRegistry } from "../../../src/client/panels/registry.js";
 import type { QaAccessApi } from "../../../src/client/types.js";
 import { qaStorageNamespace } from "../../../src/shared/session-key.js";
-import { harness } from "../../helpers/session-fakes.js";
+import { harness, landDurableUserRow } from "../../helpers/session-fakes.js";
 
 globalThis.ResizeObserver ??= class {
   observe() {}
@@ -235,9 +235,10 @@ describe("first send from a new QA chat", () => {
     // optimistic row vanished and the empty-chat welcome flashed back before
     // the replacement controller bound, which the runtime probe recorded as
     // QUESTION_TEXT_DISAPPEARED.
-    const pendingRow = document.querySelector('[data-status="pending"]');
-    expect(pendingRow?.textContent).toContain("Первый вопрос");
-    expect(screen.queryByText("Чем могу помочь?")).toBeNull();
+    const pendingRow = screen.getByTestId("qa-message");
+    expect(pendingRow.getAttribute("data-status")).toBe("pending");
+    expect(pendingRow.textContent).toContain("Первый вопрос");
+    expect(screen.queryByTestId("qa-surface-transcript-welcome")).toBeNull();
     // Binding the new session used to remount the composer as well, which threw
     // the text away while nothing had been admitted yet: the question survived
     // only as an optimistic row, and the chat came up empty.
@@ -254,5 +255,30 @@ describe("first send from a new QA chat", () => {
     });
     // Only now, with the session holding the prompt, does the field clear.
     await waitFor(() => expect(promptField()).toHaveProperty("value", ""));
+
+    // The handoff from the optimistic row to the Host's own row: a running bit
+    // relayed stale from the Session list used to retire the copy the surface
+    // was holding, and the question blinked out until its durable node
+    // assembled in the Chat slice. Exactly one copy must be rendered all the
+    // way through — never zero (the blink), never two (the overlap).
+    const renderedQuestion = (): number =>
+      Array.from(
+        document.querySelectorAll(".dsh-qa-transcript .dsh-qa-message--user"),
+      ).filter((node) => node.textContent?.includes("Первый вопрос")).length;
+    const created = world.faces.get("created-2");
+    expect(created).toBeDefined();
+    expect(renderedQuestion()).toBe(1);
+    await act(async () => {
+      created?.source.set({ ...created.source.getSnapshot(), running: true });
+    });
+    expect(renderedQuestion()).toBe(1);
+    await act(async () => {
+      created?.source.set({ ...created.source.getSnapshot(), running: false });
+    });
+    expect(renderedQuestion()).toBe(1);
+    await act(async () => {
+      landDurableUserRow(world.bindings.get("created-2"), "Первый вопрос");
+    });
+    expect(renderedQuestion()).toBe(1);
   });
 });

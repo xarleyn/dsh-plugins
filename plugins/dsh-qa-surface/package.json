@@ -61,7 +61,7 @@
       "inject": [
         "@deepseek-ai/dsh-api-gateway",
         "@deepseek-ai/dsh-api-session-controller",
-        "@deepseek-ai/dsh-agent-presets",
+        "@deepseek-ai/dsh-agent-preset-registry",
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-file-upload",
         "@deepseek-ai/dsh-client-ui-layout",
@@ -118,7 +118,7 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/dsh-agent": "catalog:dsh",
-    "@deepseek-ai/dsh-agent-presets": "catalog:dsh",
+    "@deepseek-ai/dsh-agent-preset-registry": "catalog:dsh",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh",
     "@deepseek-ai/dsh-api-session-controller": "catalog:dsh",
     "@deepseek-ai/dsh-api-workspace-controller": "catalog:dsh",
@@ -151,14 +151,13 @@
     "@yadsh/dsh-documents": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^",
-    "mermaid": "^11.12.2",
     "yaml": "^2.9.0",
     "zod": "catalog:runtime"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-agent": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-agent-presets": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-agent-preset-registry": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-session-controller": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-workspace-controller": "catalog:dsh-dev",

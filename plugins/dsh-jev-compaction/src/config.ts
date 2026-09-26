@@ -8,6 +8,7 @@
  * fields or unsafe limits. Field semantics follow the plugin SPEC §22.
  */
 
+import type { Volatile } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 
 /** Endpoint presets shipped with the plugin (SPEC §18, §26.3). */
@@ -850,16 +851,70 @@ export function resolveJevCompactionConfig(
   };
 }
 
+/**
+ * Config exactly as the Cordis loader hands it to the service: the fields the
+ * settings card edits are `.volatile()`, so the loader passes a stable
+ * reference there instead of a value, and a reference is only current until the
+ * next `loader/volatile-update`. Read it through
+ * {@link plainJevCompactionConfig}, never field by field.
+ */
+export type JevCompactionLiveConfig = LiveNodes<JevCompactionConfig>;
+
+/**
+ * A config shape where every node is either the plain value or the reference
+ * the loader keeps in its place. The schema decides which node is which, so a
+ * consumer that detaches the whole object (below) does not have to track that
+ * choice as the editable set grows.
+ */
+type LiveNodes<T> = {
+  readonly [K in keyof T]-?:
+    | Volatile<NonNullable<T[K]>>
+    | (NonNullable<T[K]> extends readonly unknown[]
+        ? NonNullable<T[K]>
+        : NonNullable<T[K]> extends object
+          ? LiveNodes<NonNullable<T[K]>>
+          : NonNullable<T[K]>)
+    | undefined;
+};
+
+/** Replace one reference by the snapshot it points at, recursively. */
+function detach(value: unknown): unknown {
+  if (value === null || typeof value !== "object") return value;
+  // A `Volatile` is a frozen `{ get }`; no JSON-shaped config value has a
+  // function among its own properties, so this check cannot catch one by accident.
+  const ref = value as { get?: unknown };
+  if (typeof ref.get === "function") {
+    return detach((ref.get as () => unknown)());
+  }
+  if (Array.isArray(value)) return value.map(detach);
+  return Object.fromEntries(
+    Object.entries(value).map(([key, child]) => [key, detach(child)]),
+  );
+}
+
+/**
+ * Take one plain snapshot of the live configuration. Called at the start of
+ * every operation, which is what keeps a settings change live without a
+ * restart while no run ever sees the configuration move underneath it.
+ */
+export function plainJevCompactionConfig(
+  config: JevCompactionConfig | JevCompactionLiveConfig,
+): JevCompactionConfig {
+  return detach(config) as JevCompactionConfig;
+}
+
 /** Schemastery schema exposed through the service's static `Config`. */
 export const JevCompactionConfigSchema = z.object({
   enabled: z
     .boolean()
     .default(DEFAULTS.enabled)
+    .volatile()
     .description("Enable Jev compaction."),
   decision: z.object({
     provider: z
       .string()
       .default(DEFAULTS.decision.provider)
+      .volatile()
       .description(
         "System One-compatible decision backend: typesafe (hosted Jev), jeff (self-hosted), or custom.",
       ),
@@ -917,16 +972,19 @@ export const JevCompactionConfigSchema = z.object({
     model: z
       .string()
       .default(DEFAULTS.jev.model)
+      .volatile()
       .description("Jev decision model (legacy override; prefer decision)."),
     apiKeyEnv: z
       .string()
       .default(DEFAULTS.jev.apiKeyEnv)
+      .volatile()
       .description(
         "Environment variable that holds the API key (legacy override; prefer decision).",
       ),
     baseUrl: z
       .string()
       .default(DEFAULTS.jev.baseUrl)
+      .volatile()
       .description("Jev endpoint (legacy override; prefer decision)."),
     timeoutMs: z
       .number()
@@ -934,6 +992,7 @@ export const JevCompactionConfigSchema = z.object({
       .max(60_000)
       .step(1)
       .default(DEFAULTS.jev.timeoutMs)
+      .volatile()
       .description("Per-request timeout in ms."),
     maxConcurrency: z
       .number()
@@ -941,6 +1000,7 @@ export const JevCompactionConfigSchema = z.object({
       .max(8)
       .step(1)
       .default(DEFAULTS.jev.maxConcurrency)
+      .volatile()
       .description("Concurrent Jev request cap."),
     retries: z
       .number()
@@ -956,12 +1016,14 @@ export const JevCompactionConfigSchema = z.object({
       .min(0)
       .max(1)
       .default(DEFAULTS.trigger.contextRatio)
+      .volatile()
       .description("Context-window fraction that arms automatic pruning."),
     minSurfaceTokens: z
       .number()
       .min(1)
       .step(1)
       .default(DEFAULTS.trigger.minSurfaceTokens)
+      .volatile()
       .description("Minimum estimated surface tokens for automatic pruning."),
     minCandidates: z
       .number()
@@ -988,12 +1050,14 @@ export const JevCompactionConfigSchema = z.object({
       .min(0)
       .step(1)
       .default(DEFAULTS.preserve.recentMessages)
+      .volatile()
       .description("Newest surface positions never touched."),
     recentTokens: z
       .number()
       .min(0)
       .step(1)
       .default(DEFAULTS.preserve.recentTokens)
+      .volatile()
       .description("Newest token budget never touched."),
     errors: z
       .boolean()
@@ -1006,12 +1070,14 @@ export const JevCompactionConfigSchema = z.object({
       .min(0)
       .max(1)
       .default(DEFAULTS.decisions.fullThreshold)
+      .volatile()
       .description("needContents at or above this keeps the result full."),
     truncateThreshold: z
       .number()
       .min(0)
       .max(1)
       .default(DEFAULTS.decisions.truncateThreshold)
+      .volatile()
       .description(
         "needContents at or above this keeps a truncated head/tail.",
       ),
@@ -1022,6 +1088,7 @@ export const JevCompactionConfigSchema = z.object({
       .min(1000)
       .step(1)
       .default(DEFAULTS.state.maxStateTokens)
+      .volatile()
       .description("Estimated token ceiling for the Jev state."),
     maxRequestTokens: z
       .number()
@@ -1077,16 +1144,19 @@ export const JevCompactionConfigSchema = z.object({
       enabled: z
         .boolean()
         .default(DEFAULTS.resultShaping.enabled)
+        .volatile()
         .description(
           "Immediate semantic shaping of large tool outputs before they are persisted.",
         ),
       includeTools: z
         .array(z.string())
         .default([...DEFAULTS.resultShaping.includeTools])
+        .volatile()
         .description("Tools whose results may be shaped."),
       excludeTools: z
         .array(z.string())
         .default([...DEFAULTS.resultShaping.excludeTools])
+        .volatile()
         .description(
           "Tools whose results are never shaped; wins over the allowlist.",
         ),
@@ -1095,6 +1165,7 @@ export const JevCompactionConfigSchema = z.object({
         .min(0)
         .step(1)
         .default(DEFAULTS.resultShaping.thresholdChars)
+        .volatile()
         .description("Minimum text length before shaping is considered."),
       hardLengthTriggerChars: z
         .number()
@@ -1121,6 +1192,7 @@ export const JevCompactionConfigSchema = z.object({
         .min(0)
         .step(1)
         .default(DEFAULTS.resultShaping.maxPerTurn)
+        .volatile()
         .description("Shaping requests allowed per turn."),
       maxConcurrent: z
         .number()
@@ -1132,6 +1204,7 @@ export const JevCompactionConfigSchema = z.object({
       preserveErrors: z
         .boolean()
         .default(DEFAULTS.resultShaping.preserveErrors)
+        .volatile()
         .description("Leave failed tool results untouched."),
       minRunLines: z
         .number()
@@ -1144,30 +1217,35 @@ export const JevCompactionConfigSchema = z.object({
         .min(0)
         .step(1)
         .default(DEFAULTS.resultShaping.keepHeadLines)
+        .volatile()
         .description("Head lines pinned from collapsing."),
       keepTailLines: z
         .number()
         .min(0)
         .step(1)
         .default(DEFAULTS.resultShaping.keepTailLines)
+        .volatile()
         .description("Tail lines pinned from collapsing."),
       minClassificationConfidence: z
         .number()
         .min(0)
         .max(1)
         .default(DEFAULTS.resultShaping.minClassificationConfidence)
+        .volatile()
         .description("Minimum confidence to act on a classification."),
       minSavingsChars: z
         .number()
         .min(0)
         .step(1)
         .default(DEFAULTS.resultShaping.minSavingsChars)
+        .volatile()
         .description("Skip shaping below this many saved characters."),
       minSavingsRatio: z
         .number()
         .min(0)
         .max(1)
         .default(DEFAULTS.resultShaping.minSavingsRatio)
+        .volatile()
         .description(
           "Skip shaping below this fraction of the original characters.",
         ),
@@ -1191,10 +1269,12 @@ export const JevCompactionConfigSchema = z.object({
       enabled: z
         .boolean()
         .default(DEFAULTS.archive.enabled)
+        .volatile()
         .description("Archive the original rendered result before shaping it."),
       rootPath: z
         .string()
         .default(DEFAULTS.archive.rootPath)
+        .volatile()
         .description(
           "Archive root; empty resolves under the harness home data directory.",
         ),
@@ -1203,12 +1283,14 @@ export const JevCompactionConfigSchema = z.object({
         .min(0)
         .step(1)
         .default(DEFAULTS.archive.retentionDays)
+        .volatile()
         .description("Retention window in days; 0 keeps entries forever."),
       maxBytes: z
         .number()
         .min(0)
         .step(1)
         .default(DEFAULTS.archive.maxBytes)
+        .volatile()
         .description("Retention ceiling in bytes; 0 disables the size cap."),
       deduplicate: z
         .boolean()
@@ -1217,6 +1299,7 @@ export const JevCompactionConfigSchema = z.object({
       onFailure: z
         .union([...ARCHIVE_FAILURE_POLICIES])
         .default(DEFAULTS.archive.onFailure)
+        .volatile()
         .description(
           "Archive failure policy: keep-original (recommended) or shape-anyway.",
         ),
@@ -1252,6 +1335,7 @@ export const JevCompactionConfigSchema = z.object({
     logLevel: z
       .string()
       .default(DEFAULTS.diagnostics.logLevel)
+      .volatile()
       .description("Structured log level for plugin events."),
     includeCandidateScores: z
       .boolean()

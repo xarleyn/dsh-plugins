@@ -31,7 +31,7 @@ No Browser code or Playwright dependency is added to `dsh-qa-surface`.
 
 ## Requirements
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`
 - Node.js `^22.19.0 || >=24.0.0`
 - a compatible Chromium executable
 

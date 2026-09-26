@@ -14,6 +14,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, test } from "node:test";
+import { resolveCliInvocation } from "./cli-invocation.mjs";
 import {
   adoptedVersionsMessage,
   findAdoptedVersions,
@@ -39,14 +40,6 @@ const nxCli = path.join(
   "nx.js",
 );
 const fixtures = [];
-const npmCli = path.join(
-  path.dirname(process.execPath),
-  "node_modules",
-  "npm",
-  "bin",
-  "npm-cli.js",
-);
-const pnpmCli = process.env.npm_execpath;
 
 function run(command, args, cwd, options = {}) {
   const env = {
@@ -77,6 +70,36 @@ function assertSucceeded(result, description) {
     0,
     `${description} failed.\nerror:\n${result.error?.message ?? ""}\nstdout:\n${result.stdout}\nstderr:\n${result.stderr}`,
   );
+}
+
+/** A wrapper a package-manager install leaves next to this node executable. */
+function installedBesideNode(...segments) {
+  return path.join(path.dirname(process.execPath), ...segments);
+}
+
+/**
+ * The managers the release job drives, resolved by the shared helper: what
+ * `npm_execpath` and PATH name are locations, not scripts, so a standalone
+ * `pnpm.exe` is spawned as itself rather than handed to node as source. The
+ * beside-node wrappers cover a run no manager started.
+ */
+function pnpmInvocation() {
+  return resolveCliInvocation({
+    name: "pnpm",
+    entryCandidates: [
+      installedBesideNode("node_modules", "corepack", "dist", "pnpm.js"),
+      installedBesideNode("node_modules", "pnpm", "bin", "pnpm.cjs"),
+    ],
+  });
+}
+
+function npmInvocation() {
+  return resolveCliInvocation({
+    name: "npm",
+    entryCandidates: [
+      installedBesideNode("node_modules", "npm", "bin", "npm-cli.js"),
+    ],
+  });
 }
 
 function writeJson(file, value) {
@@ -479,11 +502,24 @@ describe("Nx release commands", () => {
     const tarballs = path.join(root, "tarballs");
     mkdirSync(tarballs);
     const packageRoot = path.join(root, "packages", "release-package");
-    assert.ok(pnpmCli, "npm_execpath must identify the pnpm CLI");
+    const pnpm = pnpmInvocation();
+    assert.ok(
+      pnpm,
+      "no pnpm to pack with: install pnpm (npm-global, corepack, self-managed " +
+        "or standalone) and keep it reachable through npm_execpath or PATH",
+    );
     const pack = run(
-      process.execPath,
-      [pnpmCli, "--dir", packageRoot, "pack", "--pack-destination", tarballs],
+      pnpm.command,
+      [
+        ...pnpm.prefix,
+        "--dir",
+        packageRoot,
+        "pack",
+        "--pack-destination",
+        tarballs,
+      ],
       root,
+      { shell: pnpm.shell },
     );
     assertSucceeded(pack, "pnpm pack");
 
@@ -498,10 +534,15 @@ describe("Nx release commands", () => {
       "public",
       "--dry-run",
     ];
-    const publish =
-      process.platform === "win32"
-        ? run(process.execPath, [npmCli, ...publishArgs], root)
-        : run("npm", publishArgs, root);
+    const npm = npmInvocation();
+    assert.ok(
+      npm,
+      "no npm to publish with: keep npm reachable through npm_execpath, the " +
+        "install beside this node, or PATH",
+    );
+    const publish = run(npm.command, [...npm.prefix, ...publishArgs], root, {
+      shell: npm.shell,
+    });
 
     assertSucceeded(publish, "npm publish <tarball> --dry-run");
     assert.match(`${publish.stdout}\n${publish.stderr}`, /dry.?run/iu);
@@ -1060,5 +1101,87 @@ describe("version plan gate", () => {
       `${rejected.stdout}\n${rejected.stderr}`,
       /at least one version plan file is required/u,
     );
+  });
+});
+
+describe("package manager invocation", () => {
+  const windows = { platform: "win32", execPath: "C:\\node\\node.exe" };
+  const posix = { platform: "linux", execPath: "/usr/bin/node" };
+
+  test("a standalone pnpm executable runs itself rather than being read as node source", () => {
+    const standalone = "C:\\pnpm\\.tools\\pnpm-exe\\10.27.0\\pnpm.exe";
+    const invocation = resolveCliInvocation({
+      ...windows,
+      name: "pnpm",
+      env: { npm_execpath: standalone, PATH: "" },
+      isFile: (entry) => entry === standalone,
+    });
+
+    assert.deepEqual(invocation, {
+      command: standalone,
+      prefix: [],
+      shell: false,
+    });
+  });
+
+  test("a corepack wrapper runs through node", () => {
+    const wrapper = "/usr/local/lib/node_modules/pnpm/bin/pnpm.cjs";
+    const invocation = resolveCliInvocation({
+      ...posix,
+      name: "pnpm",
+      env: { npm_execpath: wrapper, PATH: "" },
+      isFile: (entry) => entry === wrapper,
+    });
+
+    assert.deepEqual(invocation, {
+      command: posix.execPath,
+      prefix: [wrapper],
+      shell: false,
+    });
+  });
+
+  test("the entry of the manager that started the run is only that manager's", () => {
+    // `npm run` sets npm_execpath to npm's own CLI, and `npm pack` knows no
+    // `--dir`: falling back is what keeps the job's own manager under test.
+    const npmEntry = "/usr/local/lib/node_modules/npm/bin/npm-cli.js";
+    const invocation = resolveCliInvocation({
+      ...posix,
+      name: "pnpm",
+      env: { npm_execpath: npmEntry, PATH: "" },
+      isFile: () => true,
+    });
+
+    assert.equal(invocation, undefined);
+  });
+
+  test("PATH discovery takes the hit a Windows shell would run", () => {
+    // The extensionless POSIX script beside `pnpm.CMD` is outside PATHEXT, so
+    // Windows never runs it; the shim it does run needs a shell.
+    const shim = "C:\\pnpm\\pnpm.CMD";
+    const invocation = resolveCliInvocation({
+      ...windows,
+      name: "pnpm",
+      env: { PATH: "C:\\pnpm", PATHEXT: ".EXE;.CMD;.BAT;.COM" },
+      isFile: (entry) => entry === "C:\\pnpm\\pnpm" || entry === shim,
+    });
+
+    assert.deepEqual(invocation, { command: shim, prefix: [], shell: true });
+  });
+
+  test("a hint whose file is gone falls back to the install beside node", () => {
+    const wrapper = "C:\\node\\node_modules\\pnpm\\bin\\pnpm.cjs";
+    const invocation = resolveCliInvocation({
+      ...windows,
+      name: "pnpm",
+      env: { npm_execpath: "C:\\gone\\pnpm.exe", PATH: "" },
+      entryCandidates: [wrapper],
+      isFile: (entry) => entry === wrapper,
+    });
+
+    assert.deepEqual(invocation, {
+      command: windows.execPath,
+      prefix: [wrapper],
+      shell: false,
+    });
   });
 });

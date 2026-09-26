@@ -43,9 +43,11 @@ describe("plugin root discovery", () => {
 
   it("excludes the repair card shell even while its body is closed", () => {
     document.body.innerHTML = `
-      <ul data-slot="settings.plugin.item">
-        <li id="repair-card"><span data-dsh-ui-repair-ui></span></li>
-        <li id="other-card"></li>
+      <ul>
+        <li id="repair-card" class="dsh-plugin-card">
+          <span data-dsh-ui-repair-ui></span>
+        </li>
+        <li id="other-card" class="dsh-plugin-card"></li>
       </ul>
     `;
 

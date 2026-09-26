@@ -5,7 +5,7 @@
  * the state the `qaSurface/describe` Remote feeds the status view.
  */
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { vi } from "vitest";
 import type { ReactElement } from "react";
 
@@ -30,7 +30,7 @@ export type ScopeSnapshot = {
   mode: "host" | "memory";
 };
 
-/** One operation as the card sends it over the scope. */
+/** One operation as the card sends it over the configuration form. */
 interface PathOp {
   readonly op: "set" | "unset";
   readonly path: readonly string[];
@@ -76,10 +76,10 @@ function unsetPath(
  * the revision alone, and a refused write (`refuse`) does neither — while the
  * promise still settles, which is exactly what the card has to survive.
  */
-function makeScope(
+function makeForm(
   snapshot: Partial<ScopeSnapshot> = {},
   refuse = false,
-): { scope: unknown; mutate: ReturnType<typeof vi.fn> } {
+): { form: unknown; mutate: ReturnType<typeof vi.fn> } {
   const listeners = new Set<() => void>();
   const current: ScopeSnapshot = {
     status: "ready",
@@ -112,7 +112,7 @@ function makeScope(
   });
   return {
     mutate,
-    scope: {
+    form: {
       getSnapshot: () => current,
       subscribe: (listener: () => void) => {
         listeners.add(listener);
@@ -130,7 +130,7 @@ export type DescribeResult =
 
 /** The slot runtime props do not exist outside the host; only the face does. */
 const Card = QaSettingsCard as unknown as (props: {
-  scope: unknown;
+  form: unknown;
   describe: () => Promise<DescribeResult>;
 }) => ReactElement;
 
@@ -144,17 +144,14 @@ export async function renderCard(
   container: ReturnType<typeof render>["container"];
   mutate: ReturnType<typeof vi.fn>;
 }> {
-  const { scope, mutate } = makeScope(
-    options.snapshot,
-    options.refuse ?? false,
-  );
+  const { form, mutate } = makeForm(options.snapshot, options.refuse ?? false);
   const describe =
     options.describe ?? (async () => ({ ok: true as const, value: EFFECTIVE }));
   let result: ReturnType<typeof render> | undefined;
   // The card polls once on mount; awaiting inside act keeps that first update
   // inside the test rather than after it.
   await act(async () => {
-    result = render(<Card scope={scope} describe={describe} />);
+    result = render(<Card form={form} describe={describe} />);
     await Promise.resolve();
   });
   return {
@@ -169,16 +166,27 @@ export function openCard(): void {
   );
 }
 
-export function section(title: string): HTMLElement {
-  const heading = screen.getByRole("heading", {
+/**
+ * One section of the card body. Tests reach it through the hook the section
+ * carries rather than through the Russian title it paints.
+ */
+export function section(testId: string): HTMLElement {
+  return screen.getByTestId(testId);
+}
+
+/** The heading a section answers to, by the name the operator reads. */
+export function sectionHeading(testId: string, title: string): HTMLElement {
+  return within(screen.getByTestId(testId)).getByRole("heading", {
     name: new RegExp(`^${title}`, "u"),
   });
-  return heading.closest("section") as HTMLElement;
 }
 
 /** The plate a refused or failed write raises, when there is one. */
 export function errorPlate(): HTMLElement | null {
-  return document.querySelector(".qa-card-error");
+  return (
+    screen.queryByTestId("qa-settings-write-error") ??
+    screen.queryByTestId("qa-settings-host-error")
+  );
 }
 
 /** Settle a queued mutation and the render it triggers. */

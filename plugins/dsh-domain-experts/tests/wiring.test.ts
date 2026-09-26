@@ -129,6 +129,30 @@ describe("wiring: host contract", () => {
     const harness = harnessOf({ config: { enabled: false } });
     expect(harness.registered).toEqual([]);
   });
+
+  it("re-applies the tool surface when a live `enabled` is committed", () => {
+    let enabled = true;
+    const harness = harnessOf({ config: { enabled: { get: () => enabled } } });
+    expect(harness.registered).toHaveLength(3);
+
+    // The loader commits into the running references and remounts no fiber, so
+    // the event is the only notice this plugin gets that a knob moved.
+    enabled = false;
+    harness.ctx.emit("loader/volatile-update", []);
+    expect(harness.registered).toEqual([]);
+
+    enabled = true;
+    harness.ctx.emit("loader/volatile-update", []);
+    expect(harness.registered.join(",")).toBe(
+      "domain_expert,domain_experts_list,domain_memory",
+    );
+  });
+
+  it("leaves the tool surface alone when an unrelated knob moves", () => {
+    const harness = harnessOf();
+    harness.ctx.emit("loader/volatile-update", [["recallLimit"]]);
+    expect(harness.registered).toHaveLength(3);
+  });
 });
 
 describe("wiring: remote contract", () => {

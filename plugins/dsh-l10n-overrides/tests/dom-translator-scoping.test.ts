@@ -2,7 +2,7 @@
 
 import { describe, expect, it } from "vitest";
 import type { DomTranslationRule } from "../src/types.js";
-import { createTranslator } from "./dom-translator.helpers.js";
+import { createTranslator, getByTestId } from "./dom-translator.helpers.js";
 
 describe("DomTranslator", () => {
   it("translates only exact scoped text while preserving surrounding whitespace", () => {
@@ -46,7 +46,13 @@ describe("DomTranslator", () => {
         <div id="terminal" class="terminal-output">Enviar</div>
         <div id="prompt" data-testid="prompt-input">Enviar</div>
         <div id="composer" data-testid="chat-composer">Enviar</div>
+        <div data-testid="qa-md-table">Enviar</div>
+        <div data-testid="qa-source-detail-snippet">Enviar</div>
+        <div data-testid="qa-source-chip-card-snippet">Enviar</div>
+        <div data-testid="log-panel-line">Enviar</div>
+        <span data-testid="qa-md-code">Enviar</span>
         <div data-no-translate><span id="protected-child">Enviar</span></div>
+        <span data-testid="l10n-md-hint">Enviar</span>
         <span id="allowed">Enviar</span>
       </main>
       <div data-testid="conversation-panel">
@@ -82,6 +88,21 @@ describe("DomTranslator", () => {
     ]) {
       expect(document.querySelector(`#${id}`)?.textContent, id).toBe("Enviar");
     }
+    // The surfaces epic #453 named with a stable test id, none of which a
+    // keyword above reads: a rendered table or code block, a quoted source
+    // snippet, a line of the log buffer.
+    for (const testId of [
+      "qa-md-table",
+      "qa-md-code",
+      "qa-source-detail-snippet",
+      "qa-source-chip-card-snippet",
+      "log-panel-line",
+    ]) {
+      expect(getByTestId(document, testId).textContent, testId).toBe("Enviar");
+    }
+    // A name that only looks alike stays translatable: the id is a prefix match,
+    // not a substring one.
+    expect(getByTestId(document, "l10n-md-hint").textContent).toBe("Send");
     expect((document.querySelector("#input") as HTMLInputElement).value).toBe(
       "Enviar",
     );
@@ -100,6 +121,7 @@ describe("DomTranslator", () => {
         <div id="unlisted" title="Solo"></div>
         <input id="protected-input" data-no-translate placeholder="Escribe">
         <div data-testid="monaco-editor"><span id="protected-title" title="Escribe"></span></div>
+        <div data-testid="qa-md-table"><span data-testid="l10n-md-cell" title="Escribe"></span></div>
       </section>
     `;
     const translator = createTranslator([
@@ -172,6 +194,9 @@ describe("DomTranslator", () => {
     expect(
       document.querySelector("#protected-title")?.getAttribute("title"),
     ).toBe("Escribe");
+    expect(getByTestId(document, "l10n-md-cell").getAttribute("title")).toBe(
+      "Escribe",
+    );
   });
 
   it("rejects forbidden attributes from malformed runtime rules", () => {

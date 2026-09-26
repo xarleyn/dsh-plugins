@@ -13,7 +13,8 @@
  * - applies `redact` once to the record fields, before the file, console and
  *   bus sinks branch, so a configured secret is cut from every destination;
  * - never throws at runtime: file-system failures degrade to console-only
- *   logging (fail-open), and closed loggers silently drop records;
+ *   logging (fail-open), closed loggers silently drop records, and fields that
+ *   cannot be read are dropped with the record rather than handed out raw;
  * - disables file output when `DSH_LOG_DISABLED=1`, and under `NODE_ENV=test`
  *   unless `dir` is set explicitly (unit tests never touch a real home).
  *
@@ -123,8 +124,12 @@ export interface PluginLoggerOptions {
   /** Master switch for file output. Default: auto (see the module docs). */
   readonly file?: boolean;
   /**
-   * Record fields to redact (pino `redact` paths), e.g. `["apiKey"]`. Applied
-   * once per record, before the file, console mirror and record bus split.
+   * Record fields to redact, e.g. `["apiKey"]` — the path syntax pino's `redact`
+   * option documents, addressed against the fields object. Applied once per
+   * record, before the file, console mirror and record bus split, so every
+   * destination cuts the same value. A path that instead addresses the root of
+   * pino's own line (`msg`, `plugin`, `module`) is honored by the file only,
+   * because those keys exist only there.
    */
   readonly redact?: readonly string[];
   /** Clock for file naming, rollover and retention (tests). */
@@ -194,7 +199,11 @@ export interface PluginLogRecord {
   readonly module: string | undefined;
   /** The stable event code (pino's `msg`). */
   readonly event: string;
-  /** The caller's fields, redacted and frozen as a copy of what the logger received. */
+  /**
+   * The caller's fields after the logger's `redact` paths, as a frozen top-level
+   * copy: the caller keeps writing to the object it passed, but nested values
+   * are still the very objects the caller owns, so this is not a deep snapshot.
+   */
   readonly fields: Readonly<Record<string, unknown>>;
 }
 
@@ -210,10 +219,11 @@ interface RecordBusState {
 /**
  * The record bus, lazily completed on the shared registry symbol.
  *
- * Only a level threshold decides what reaches the bus: a record below its
- * logger's level is not emitted at all, exactly as it is not written to the
- * file, so a consumer never sees output the logger considered suppressed.
- * Emission is fail-open — a throwing listener cannot affect the logger.
+ * What reaches the bus is decided by the level threshold and by the record's own
+ * fields: a record below its logger's level is not emitted at all, exactly as it
+ * is not written to the file, and neither is one whose fields cannot be read
+ * through the logger's `redact` paths. Emission is fail-open — a throwing
+ * listener cannot affect the logger.
  */
 function recordBus(): Required<RecordBusState> {
   const state = registryState() as GlobalRegistryState & RecordBusState;
@@ -240,14 +250,18 @@ export function subscribePluginLogRecords(
   };
 }
 
-/** Publish one record to the attached consumers. */
+/**
+ * Publish one record to the attached consumers.
+ * @param fields - the copy `write` took for this record: the bus freezes what it
+ * is handed, so it must never be the object the caller still owns.
+ */
 function publishPluginLogRecord(
   pluginId: string,
   module: string | undefined,
   level: ConsoleLevel,
   time: number,
   event: string,
-  fields: Record<string, unknown> | undefined,
+  fields: Record<string, unknown>,
 ): void {
   const bus = recordBus();
   const record: PluginLogRecord = Object.freeze({
@@ -257,9 +271,9 @@ function publishPluginLogRecord(
     pluginId,
     module,
     event,
-    // A copy: the record outlives the call, and freezing the caller's own
-    // object would make their next assignment throw.
-    fields: Object.freeze({ ...fields }),
+    // Shallow: the nested values stay the ones the caller logged, so the record
+    // is a copy of what was handed in, not a snapshot of what is in it.
+    fields: Object.freeze(fields),
   });
   bus.nextRecordSeq += 1;
   for (const listener of bus.recordListeners) {
@@ -419,7 +433,12 @@ function formatConsole(
 /** What a redacted field is replaced with — the same text pino writes. */
 const REDACTION_CENSOR = "[Redacted]";
 
-/** Redacts one record's fields into a copy the caller keeps no reference to. */
+/**
+ * Redacts one record's fields into a copy the logger owns, and throws when a
+ * property the walk reaches is a getter that throws. Only the objects along a
+ * redaction path are cloned, so a value the paths never address stays shared
+ * with the caller.
+ */
 type FieldRedactor = (
   fields: Record<string, unknown>,
 ) => Record<string, unknown>;
@@ -428,10 +447,14 @@ type FieldRedactor = (
  * Build the redactor every sink of one logger reads through.
  *
  * `@pinojs/redact` is the package pino itself redacts the file sink with, so a
- * path the `redact` option documents behaves here exactly as it does there. The
- * fields travel under a holder key because, asked for an object rather than a
- * string, the package also writes an enumerable `restore()` onto the object it
- * returns; the holder absorbs that helper and is dropped.
+ * path addressed inside the fields object cuts the same value here as it cuts
+ * there. Paths are prefixed to make the fields object the root: what pino
+ * additionally redacts at the root of its own line — its `plugin` and `module`
+ * bindings and `msg` (this wrapper's `event`) — is not part of the fields and is
+ * therefore cut in the file only. The fields travel under a holder key because,
+ * asked for an object rather than a string, the package also writes an
+ * enumerable `restore()` onto the object it returns; the holder absorbs that
+ * helper and is dropped.
  */
 function buildFieldRedactor(
   paths: readonly string[],
@@ -759,12 +782,27 @@ class LoggerCore {
     fields?: Record<string, unknown>,
   ): void {
     if (this.closed || this.levelName === "silent") return;
+    const suppressed = weightOf(level) < weightOf(this.levelName);
+    // A record no sink reads must not touch the caller's object at all: the copy
+    // below walks every property, and a getter or a Proxy is free to throw.
+    if (suppressed && !this.mirrors(level)) return;
     // Redacted once, so no sink below can be handed a value the plugin asked
-    // away: the file and pino's own redaction, the mirror, and the bus record
-    // the log panel renders all read the same fields.
-    const redacted =
-      this.redactor === undefined ? fields : this.redactor(fields ?? {});
-    if (weightOf(level) < weightOf(this.levelName)) {
+    // away: the file (pino's own pass stays as a second boundary), the mirror,
+    // and the bus record the log panel renders all read the same copy. Taking
+    // that copy runs the caller's own code — a getter or a Proxy can throw — so
+    // it is guarded: the logger never surfaces it to the plugin, and the record
+    // is dropped rather than its fields coming out unredacted.
+    let redacted: Record<string, unknown>;
+    try {
+      redacted =
+        this.redactor === undefined
+          ? { ...fields }
+          : this.redactor(fields ?? {});
+    } catch {
+      this.mirror(undefined, "warn", "logging.fields_unreadable");
+      return;
+    }
+    if (suppressed) {
       this.mirror(moduleField, level, event, redacted);
       return;
     }
@@ -780,7 +818,7 @@ class LoggerCore {
     const target = this.targetFor(moduleField);
     if (target !== undefined) {
       try {
-        target[level](redacted ?? {}, event);
+        target[level](redacted, event);
       } catch {
         // Fail-open: serialization problems must never break the plugin.
       }
@@ -875,14 +913,18 @@ class LoggerCore {
     return created;
   }
 
+  /** Whether the console mirror prints a record at `level`. */
+  private mirrors(level: ConsoleLevel): boolean {
+    return weightOf(level) >= weightOf(this.consoleLevel);
+  }
+
   private mirror(
     moduleField: string | undefined,
     level: ConsoleLevel,
     event: string,
     fields?: Record<string, unknown>,
   ): void {
-    if (this.consoleLevel === "silent") return;
-    if (weightOf(level) < weightOf(this.consoleLevel)) return;
+    if (!this.mirrors(level)) return;
     const scope = moduleField === undefined ? "" : `/${moduleField}`;
     try {
       this.sink(

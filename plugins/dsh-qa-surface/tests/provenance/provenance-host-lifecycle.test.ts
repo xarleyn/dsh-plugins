@@ -6,7 +6,7 @@ import {
   fakeSession,
   harness,
   readEvents,
-} from "../provenance-host.helpers.js";
+} from "./provenance-host.helpers.js";
 
 describe("Host provenance lifecycle", () => {
   it("serves materialized turns from the durable snapshot after the collector is dropped", () => {

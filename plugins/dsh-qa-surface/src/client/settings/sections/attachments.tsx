@@ -43,7 +43,8 @@ export function AttachmentsSection(props: ConfigProps) {
     <Section
       title="Вложения"
       modified={modified}
-      aside={resetAside(props, paths)}
+      testId="qa-settings-attachments"
+      aside={resetAside(props, paths, "qa-settings-attachments-reset")}
     >
       <div className="qa-card-grid">
         <Toggle
@@ -51,6 +52,7 @@ export function AttachmentsSection(props: ConfigProps) {
           disabled={disabled}
           label="Файловые вложения"
           hint="К изображениям можно прикладывать файлы из списка расширений ниже — текстовые и документы. Выключено — только изображения."
+          testId="qa-settings-attachments-text-files"
           onChange={(value) => {
             props.write(["attachments", "textFiles"], value);
           }}
@@ -62,6 +64,7 @@ export function AttachmentsSection(props: ConfigProps) {
           max={10_000}
           disabled={disabled || !textFiles}
           hint="Вставленный текст длиннее этого числа строк становится вложением. 0 отключает перенос."
+          testId="qa-settings-attachments-pasted-text-lines"
           onChange={(value) => {
             props.write(["attachments", "pastedTextLines"], value);
           }}
@@ -73,6 +76,7 @@ export function AttachmentsSection(props: ConfigProps) {
           max={52_428_800}
           disabled={disabled || !textFiles}
           hint="Предельный размер одного прикладываемого файла."
+          testId="qa-settings-attachments-max-file-bytes"
           onChange={(value) => {
             props.write(["attachments", "maxFileBytes"], value);
           }}
@@ -84,6 +88,7 @@ export function AttachmentsSection(props: ConfigProps) {
           max={40}
           disabled={disabled}
           hint="Изображения и файлы считаются вместе."
+          testId="qa-settings-attachments-max-pending"
           onChange={(value) => {
             props.write(["attachments", "maxPending"], value);
           }}
@@ -96,11 +101,12 @@ export function AttachmentsSection(props: ConfigProps) {
         placeholder="md\ntxt\ndocx"
         hint="По одному расширению на строку, без точки: текстовые файлы и документы, которые стенд умеет читать (docx, pdf). Дополнительно принимается всё, что браузер помечает как text/*."
         parse={parseCommaList}
+        testId="qa-settings-attachments-extensions"
         onCommit={(values) => {
           props.write(["attachments", "extensions"], values);
         }}
       />
-      <Notice tone="info">
+      <Notice tone="info" testId="qa-settings-attachments-notice-stored-file">
         Файл сохраняется на сервере как есть, а в подсказке модели указывается
         путь к копии: текст читает инструмент чтения, документ — инструменты
         конвейера документов. Держите «read» (а для документов — инструменты

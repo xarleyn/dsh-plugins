@@ -67,10 +67,31 @@ test("the CI workflow fans the projects it verifies out into a bounded matrix", 
     /- name: Check file size budget\s+run: pnpm check:files/u,
     "a file that outgrew its budget has to fail a run, not only a review",
   );
+  // Позиция внутри `prepare` — а не относительно имени соседнего шага: шаг
+  // переименовывали (#407), и проверка по строке умерла бы на ровном месте.
+  const prepareJob = workflow.slice(
+    workflow.indexOf("  prepare:"),
+    workflow.indexOf("  projects:"),
+  );
   assert.ok(
-    workflow.indexOf("- name: Check file size budget") <
-      workflow.indexOf("- name: Select affected projects"),
+    prepareJob.includes("- name: Check file size budget"),
     "the budget gate belongs to the prepare job, so the size of a pull request is reported without building every project",
+  );
+  // Bands are only as good as what they can see: `prepare` has no build output,
+  // so a generated bundle is measured where a build has just written lib/.
+  assert.match(
+    workflow,
+    /- name: Check built bundle size budget\s+run: pnpm check:files/u,
+    "the generated-bundle band has to run after a build, or it reports nothing and reads as coverage",
+  );
+  const projectsJob = workflow.slice(
+    workflow.indexOf("  projects:"),
+    workflow.indexOf("  verify:"),
+  );
+  assert.ok(
+    projectsJob.indexOf("- name: Verify project\n") <
+      projectsJob.indexOf("- name: Check built bundle size budget"),
+    "the bundle band runs in the project job, after that project has been built",
   );
   assert.match(
     workflow,

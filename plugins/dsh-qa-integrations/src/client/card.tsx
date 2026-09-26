@@ -56,12 +56,18 @@ export function createIntegrationsCard(
         {snapshot.stage === "authed" ? (
           <>
             <ProviderCards token={snapshot.token} providers={providers} />
-            <p className="dsh-qa-integrations__notice">
+            <p
+              className="dsh-qa-integrations__notice"
+              data-testid="qa-integrations-settings-card-disclosure"
+            >
               {INTEGRATIONS_DISCLOSURE}
             </p>
           </>
         ) : (
-          <p className="dsh-qa-integrations__hint">
+          <p
+            className="dsh-qa-integrations__hint"
+            data-testid="qa-integrations-settings-card-gate"
+          >
             {gateCopy(snapshot.stage)}
           </p>
         )}
@@ -79,7 +85,10 @@ export function createIntegrationsHostTab(
   const IntegrationsCard = createIntegrationsCard(remote, providers, session);
   return function IntegrationsHostTab(): ReactElement {
     return (
-      <ul className="dsh-qa-integrations__host-tab">
+      <ul
+        className="dsh-qa-integrations__host-tab"
+        data-testid="qa-integrations-host-tab"
+      >
         <IntegrationsCard />
       </ul>
     );

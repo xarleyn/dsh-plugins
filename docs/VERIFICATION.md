@@ -16,12 +16,39 @@ runs, in order: `lint` (workspace tooling + per-project eslint) → `format` →
 `verify` (per-project `verify` targets + the two root contract gates) →
 `deps:check`. CI runs the same targets per affected project.
 
+### The Nx cache in a worktree
+
+A cached task stores its verdict *and* the files its target declares as
+`outputs`; `inputs` alone keys the verdict on the source and saves nothing else.
+`targetDefaults.build` therefore declares `{projectRoot}/lib` — the directory
+every `tsc`/`tsdown`/Typert build in this workspace emits into, and the one the
+26 plugins resolve `@yadsh/*` type declarations through. Without it a replayed
+`build` reports `Successfully ran target build for 31 projects` over a tree with
+no `lib/`, and the next `typecheck` fails on `TS2307` in code the lane never
+touched; `scripts/repo-config.test.mjs` replays a build in a throwaway workspace
+so that regression cannot come back quietly. `test`, `typecheck`, `lint` and
+`verify` stay without `outputs` on purpose — they emit nothing a later task
+reads, and declaring an output for them would have the cache overwrite files it
+does not own.
+
+The cache directory is shared across git worktrees by design: Nx resolves it to
+the main clone's `.nx/cache` for every worktree (`getMainWorktreeRoot` in
+`node_modules/nx/dist/src/utils/cache-directory.js`), so a lane can replay
+another lane's run — the recorded terminal output of a foreign worktree is what
+`pnpm build` prints on such a hit. Three consequences for a lane: read the
+per-task lines rather than the run summary, because `.nx/cache/run.json` is one
+file for all worktrees and a concurrent `run-many` overwrites it; `nx reset`
+clears the cache for every worktree, not just yours; and `cache.directory` stays
+out of `nx.json`, because Nx reads that property from the *main clone's*
+checkout, so pinning it here would silently follow whichever branch that
+checkout happens to hold.
+
 ## Gate map
 
 | Gate | Command | Asserts |
 | --- | --- | --- |
 | Dependency boundaries | `pnpm deps:check` (`scripts/check-dependencies.sh`) | Plugins may depend on shared packages, never the reverse; DSH runtime packages are peers, not dependencies; no cross-package relative imports; a plugin→plugin edge only if `plugin-dependency-allowlist.json` declares it with a reason (§27.11); a range a named catalog holds is declared through the catalog, peers excepted, and the remaining literal ranges are listed as advice so a shared range staying literal is a seen decision (§27.12) |
-| Package hygiene | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | Every plugin exposes the canonical `check`/`verify`/`prepack` contract, uses pnpm, and only calls declared local scripts; every publishable package declares `compatibility.json`, `cordis.patch.yml`, `LICENSE`, `README.md`; `types` points at a standard `lib/` layout; every `.nx/version-plans/*.md` file parses the way Nx reads it (front-matter fence, known package, valid bump, changelog message); a version plan naming the qa-surface project requires a newer curated entry in `QaChangelog.tsx`; a plugin declaring `dsh.client` keeps a script that asserts its full package name, and a plugin registering a `settings.plugin.item` card keeps a script that runs the card contract |
+| Package hygiene | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | Every plugin exposes the canonical `check`/`verify`/`prepack` contract, uses pnpm, and only calls declared local scripts; every publishable package declares `compatibility.json`, `cordis.patch.yml`, `LICENSE`, `README.md`; `types` points at a standard `lib/` layout; every `.nx/version-plans/*.md` file parses the way Nx reads it (front-matter fence, known package, valid bump, changelog message); a version plan naming the qa-surface project requires a newer curated entry in `QaChangelog.tsx`; a plugin declaring `dsh.client` keeps a script that asserts its full package name, and a plugin registering a configuration card (`settings.plugin.item` or, after the `0.1.7` slot rename, `plugins.row.config`; a card that stays on `settings.plugins.tab` counts when its sources carry the shell) keeps a script that runs the card contract |
 | Discoverability | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | Every publishable manifest carries canonical monorepo metadata (`repository.directory`, `homepage`, `bugs.url`), a description naming DeepSeek Harness/DSH, and the canonical keyword set plus feature words; the root `plugins.json` catalog and the README package table match the workspace manifests — the manifest lists published packages, the README table also documents private build tooling (`pnpm plugins:manifest` regenerates both); `plugins.json` additionally validates against `docs/plugins.schema.json`, and unknown schema keywords fail the gate instead of silently skipping the check |
 | Published content | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | A tarball carries the runtime, the bundle patch, compatibility data, legal notices, the README, and the images it embeds — never specs, changelogs, roadmaps, design docs, integration notes, or README translations; every relative link in a published README resolves inside the tarball, so the package page shows no dead links |
 | Logging contract | `pnpm verify:logging` (`scripts/verify-plugin-logging.mjs`) | Plugins write logs through `@yadsh/dsh-plugin-log` conventions (see [PLUGIN_LOGGING.md](PLUGIN_LOGGING.md)) |
@@ -30,7 +57,7 @@ runs, in order: `lint` (workspace tooling + per-project eslint) → `format` →
 | Configuration card | per-plugin `verify` chain (`clientBundle.cardContract`, or a direct call to `scripts/verify-plugin-card-contract.mjs`) | Every bundle that renders the settings-card shell — the 12 plugins registering a `settings.plugin.item` card and the two `settings.section` pages that reuse the shell — carries the canonical shell CSS, the inline chevron SVG, the rendered open-state class pair and the header's `aria-expanded`; font-glyph chevrons, non-canonical shell tokens and the plugin's own legacy shell classes fail the gate. A plugin without a card owes nothing here |
 | Packed package | per-plugin `verify:package` (`plugins/*/scripts/verify-package.mjs`) | Static asserts only: manifest fields, `files` allowlist, exports exist on disk, no `workspace:`/`catalog:` leakage. Packing and the clean-room import smoke live in `pnpm tarball:verify`, not here |
 | Tarball (repo level) | `pnpm tarball:verify` (`scripts/tarball-verify.sh`) | Installs every packed tarball into a clean consumer project and smoke-imports it; an install the registry or the network broke mid-flight is retried, so a fetch that fails for the moment is not reported as an uninstallable package |
-| Repo tooling tests | `pnpm test:release` (`scripts/*.test.mjs`) | The CI/release scripts themselves are regression-tested with `node --test` |
+| Repo tooling tests | `pnpm test:release` (`scripts/*.test.mjs`) | The CI/release scripts themselves are regression-tested with `node --test`, and so are the repository's own config files — the blame list, the `lint` cache key and the `build` cache outputs, the last two proven by running `nx` in a throwaway workspace built from `nx.json` |
 | File size budget | `pnpm check:files` (`scripts/check-file-budget.mjs`) | No source file under `plugins/*/src`, `packages/*/src`, `plugins/*/scripts`, or `packages/*/scripts` is over its line budget, no test file under `plugins/*/tests` or `packages/*/tests` is over the tighter one, and no generated bundle under a package's `lib/` ran away; the repository's own root `scripts/` is outside the scope, and the thresholds and the allowlist are [below](#file-size-budget) |
 | Version plans | `pnpm release:check` (`scripts/check-release-plans.mjs`) | Every publishable release project whose commits no release tag covers yet is named by a committed version plan; a project a tag already covers is not asked for one (see below) |
 
@@ -59,14 +86,16 @@ and a bundle that swallowed a dependency tree looks the same in bytes as one tha
 simply ships a wide surface. A byte budget is its own card, not an extra key here.
 
 The generated bundle band is a tripwire rather than a size goal — the largest
-artifact today is the qa-surface client at 65 770 lines, measured after
+artifact today is the qa-surface client at 66 745 lines, measured after
 `pnpm -r build` — and it only measures anything after a build, which is why
-`check` runs `check:files` after `build`. CI does not: `prepare` runs the gate on
-a checkout with no `lib/` in it, so there the bundle rows measure nothing and the
-run says so in its own output (`0 generated artifacts`), while CI still asserts
-the identity and self-containedness of each built bundle through that project's
-`verify` target. A warning costs a report line and never the run; one line per
-kind is printed, so a green run stays readable.
+`check` runs `check:files` after `build`. CI runs it in both places: `prepare`
+checks the source and test bands on a checkout that has no `lib/` in it, where
+the bundle rows measure nothing and the run says so in its own output
+(`0 generated artifacts`), and the project job runs the same gate right after it
+has built that project, which is where a bundle that swallowed a dependency tree
+costs the run. `verify` still asserts the identity and self-containedness of each
+built bundle. A warning costs a report line and never the run; one line per kind
+is printed, so a green run stays readable.
 
 **Allowlist.** `fileBudgetAllowlist` in the script names the files already over
 their hard budget, each with the reason for its exemption on the same line, and a
@@ -122,13 +151,16 @@ tooling tests and lint, `check:files`, `verify:logging`, `verify:a11y`, and
 `release:check`; run those separately before pushing. `pnpm affected:check`
 mirrors the per-project CI targets locally.
 
-Because `check:files` runs in `prepare`, on a checkout with no build output, the
-generated bundle band is inert in CI: the step reports `0 generated artifacts`
-there instead of pretending to have measured them. What CI does enforce is the
-source and test budget of every file in the pull request, and each project's own
-`verify` target keeps asserting the identity of the bundle it just built; the
-size of a built bundle is caught by the local `pnpm check`, which runs the gate
-after `build`.
+`check:files` runs twice, for two different reasons. In `prepare`, on a checkout
+with no build output, it holds the source and test budget of every file in the
+pull request to its line limit; the generated bundle band is inert there, and the
+step reports `0 generated artifacts` instead of pretending to have measured them.
+In the project job, right after that project has been built, it measures the
+bundles that build just wrote — the runaway tripwire that a client bundle
+swallowed a dependency tree is pulled there rather than left to whoever happens
+to rebuild locally. Each project's own `verify` target still asserts the identity
+and self-containedness of the bundle it built, and `pnpm check` reaches the same
+bundle band after `build`.
 
 The PR-only version-plan check compares each publishable release project
 against the newest release tag its history can reach — one `release/<date>` tag

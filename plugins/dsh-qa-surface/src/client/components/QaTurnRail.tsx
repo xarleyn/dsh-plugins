@@ -315,9 +315,10 @@ function QaTurnRailView({
     ladderClasses.push("dsh-qa-rail__scroll--fade-bottom");
   }
   return (
-    <div ref={slotRef} className="dsh-qa-rail">
+    <div ref={slotRef} className="dsh-qa-rail" data-testid="qa-turn-rail">
       <nav
         className="dsh-qa-rail__frame"
+        data-testid="qa-turn-rail-nav"
         style={
           {
             "--dsh-qa-rail-natural": `${
@@ -368,6 +369,7 @@ function QaTurnRailView({
                   <button
                     type="button"
                     className={classes.join(" ")}
+                    data-testid="qa-turn-rail-mark"
                     aria-label={`К вопросу ${item.turn}`}
                     aria-current={active ? "true" : undefined}
                     aria-busy={item.turn === busyTurn ? "true" : undefined}
@@ -393,6 +395,7 @@ function QaTurnRailView({
             id={previewId}
             role="tooltip"
             className="dsh-qa-rail__preview"
+            data-testid="qa-turn-rail-preview"
             style={
               {
                 "--dsh-qa-rail-pos": `${previewPosition}px`,

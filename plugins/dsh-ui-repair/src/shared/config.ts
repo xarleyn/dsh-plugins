@@ -1,3 +1,12 @@
+import type { Volatile } from "@deepseek-ai/cordis";
+
+/**
+ * Settings namespace of the browser card. In `0.1.7` the Host derives the
+ * namespace from the profile entry id in `cordis.patch.yml`, so this constant is
+ * both the `ctx.configForms.get()` key and the `settings.plugins.tab` seat id.
+ */
+export const UI_REPAIR_SETTINGS_NAMESPACE = "dsh-ui-repair";
+
 export const REPAIR_MODES = ["observe", "suggest", "auto"] as const;
 export type RepairMode = (typeof REPAIR_MODES)[number];
 
@@ -32,7 +41,23 @@ export interface UIRepairPluginConfig {
   readonly scanOnStartup?: boolean;
   readonly scanAfterMutation?: boolean;
   readonly scanAfterResize?: boolean;
-  readonly ignore?: UIRepairIgnoreRule[];
+  readonly ignore?: readonly UIRepairIgnoreRule[];
+}
+
+/**
+ * The profile as the Host hands it to `apply()`: `0.1.7` wraps every `.volatile()`
+ * schema node in a live reference, so a field is read with `.get()` per operation
+ * instead of once at entry time.
+ */
+export interface UIRepairVolatileConfig {
+  readonly enabled: Volatile<boolean>;
+  readonly mode: Volatile<RepairMode>;
+  readonly autoConfidence: Volatile<number>;
+  readonly dangerousConfidence: Volatile<number>;
+  readonly scanOnStartup: Volatile<boolean>;
+  readonly scanAfterMutation: Volatile<boolean>;
+  readonly scanAfterResize: Volatile<boolean>;
+  readonly ignore: Volatile<readonly UIRepairIgnoreRule[]>;
 }
 
 export interface ResolvedUIRepairPluginConfig {
@@ -83,6 +108,25 @@ function normalizedIgnore(
         ? {}
         : { selector: rule.selector.trim() }),
     }));
+}
+
+/**
+ * One operation's worth of the live profile: reads every volatile reference once,
+ * so a caller that keeps the result is not surprised by a later Host update.
+ */
+export function resolveVolatileConfig(
+  config: UIRepairVolatileConfig,
+): ResolvedUIRepairPluginConfig {
+  return resolvePluginConfig({
+    enabled: config.enabled.get(),
+    mode: config.mode.get(),
+    autoConfidence: config.autoConfidence.get(),
+    dangerousConfidence: config.dangerousConfidence.get(),
+    scanOnStartup: config.scanOnStartup.get(),
+    scanAfterMutation: config.scanAfterMutation.get(),
+    scanAfterResize: config.scanAfterResize.get(),
+    ignore: config.ignore.get(),
+  });
 }
 
 export function resolvePluginConfig(

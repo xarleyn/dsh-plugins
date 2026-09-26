@@ -76,7 +76,7 @@ function registerFixtures(panels: QaSurfacePanelRegistry) {
 describe("QA panel extension shell", () => {
   it("adds launchers dynamically and programmatic open reserves side width", () => {
     const panels = new QaSurfacePanelRegistry();
-    const view = render(
+    render(
       <div>
         <QaPanelLauncher panels={panels} />
         <div>
@@ -99,9 +99,7 @@ describe("QA panel extension shell", () => {
     expect(aside.dataset.presentation).toBe("side");
     expect(aside.style.width).toMatch(/px$/u);
     expect(screen.getByText(/session-a.*"tab":2/u)).toBeTruthy();
-    expect(
-      view.container.querySelector(".dsh-qa-extension-panel__resizer"),
-    ).toBeTruthy();
+    expect(screen.getByTestId("qa-panel-resizer")).toBeTruthy();
   });
 
   it("passes the ephemeral QA credential to an extension body", () => {
@@ -186,11 +184,10 @@ describe("QA panel extension shell", () => {
       target: { value: "kept" },
     });
     act(() => void panels.open("beta", { focus: false }));
-    expect(
-      screen
-        .getByDisplayValue("kept")
-        .closest<HTMLElement>(".dsh-qa-extension-panel__body")?.hidden,
-    ).toBe(true);
+    const retainedBody = screen
+      .getAllByTestId("qa-panel-body")
+      .find((body) => body.contains(screen.getByDisplayValue("kept")));
+    expect(retainedBody?.hidden).toBe(true);
     fireEvent.change(screen.getByLabelText("beta state"), {
       target: { value: "released" },
     });

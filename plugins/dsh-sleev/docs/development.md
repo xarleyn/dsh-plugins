@@ -4,7 +4,7 @@
 
 - Node.js 22.19+ or 24+
 - pnpm 10.4.1
-- DeepSeek Harness 0.1.5-rc.2
+- DeepSeek Harness 0.1.7-rc.2
 - Sleev CLI 1.7.7 for a real gateway test
 
 Install and verify Sleev without starting an account flow:
@@ -41,8 +41,8 @@ therefore require a host restart, especially after adding or changing the
 package's `dsh.client` manifest. Changes under the `llm-pi-ai` section of
 `$DSH_HOME/settings.yaml` are independently hot-reloaded by DSH settings.
 
-After restarting, open **Settings → Plugins → Plugin configuration → Sleev**.
-The card edits the `sleev` namespace in `$DSH_HOME/settings.yaml`: exact routes,
+After restarting, open **Settings → Plugins → Sleev**. The card edits the
+`dsh-sleev` namespace in `$DSH_HOME/settings.yaml`: exact routes,
 route prefixes, recent-call retention, and logging level. Values are staged
 until Save and then read through by the Host on the next matching request. The
 card does not edit `llm-pi-ai` provider endpoints or Sleev routing headers.

@@ -109,7 +109,7 @@ describe("collectCandidate", () => {
 
   it("reports no request seq when no real user message was found", () => {
     const session = makeSession([
-      userMessage("injected context", "plugin"),
+      userMessage("injected context", "answer-review"),
       assistantMessage("A candidate answer of sufficient length."),
     ]);
     expect(collectCandidate(session)).toMatchObject({
@@ -121,7 +121,7 @@ describe("collectCandidate", () => {
 
   it("skips non-user message sources when locating the request", () => {
     const session = makeSession([
-      userMessage("injected context", "plugin"),
+      userMessage("injected context", "answer-review"),
       userMessage("the real question"),
       assistantMessage("A candidate answer of sufficient length."),
     ]);

@@ -119,8 +119,7 @@ describe("injected context is never mirrored into memory", () => {
             },
           ],
           source: {
-            kind: "plugin",
-            plugin: OPENVIKING_PLUGIN_SOURCE,
+            kind: OPENVIKING_PLUGIN_SOURCE,
             form: "recall",
           },
         },
@@ -131,7 +130,7 @@ describe("injected context is never mirrored into memory", () => {
     expect(payload).toBeNull();
   });
 
-  it("drops another plugin's injected context too", () => {
+  it("drops another producer's injected context too", () => {
     const payload = captureEvent(
       {
         type: "user/message",
@@ -139,6 +138,26 @@ describe("injected context is never mirrored into memory", () => {
           role: "user",
           content: [
             { type: "text", text: "Time sampled while preparing turn 3" },
+          ],
+          // The source map is merge-extensible: a producer this plugin has never
+          // heard of is admitted by nothing, so its text is not conversation.
+          source: { kind: "time-context", form: "snapshot" },
+        },
+      },
+      CONFIG,
+    );
+
+    expect(payload).toBeNull();
+  });
+
+  it("still drops the catch-all `plugin` kind a pre-0.1.7 session carries", () => {
+    const payload = captureEvent(
+      {
+        type: "user/message",
+        data: {
+          role: "user",
+          content: [
+            { type: "text", text: "Injected by an older integration." },
           ],
           source: { kind: "plugin", plugin: "time-context", form: "snapshot" },
         },

@@ -1,3 +1,4 @@
+import type { Volatile } from "@deepseek-ai/cordis";
 import type {
   AssembledSection,
   PromptAssembly,
@@ -21,22 +22,49 @@ export interface MetricsConfig {
   enabled: boolean;
 }
 
-/** User-facing configuration. Every field is optional at the Cordis boundary. */
+/**
+ * User-facing configuration. A volatile reference holds `undefined` for a field
+ * the deployment never set, so an absent value and an absent key mean the same
+ * thing here.
+ */
 export interface PromptFirewallConfig {
-  enabled?: boolean;
-  mode?: FirewallMode;
-  preset?: FirewallPreset;
-  blockedSections?: string[];
-  allowedSections?: string[];
-  blockedPrefixes?: string[];
-  allowedPrefixes?: string[];
-  blockedPatterns?: string[];
-  allowedPatterns?: string[];
-  protectedSections?: string[];
-  protectCoreSections?: boolean;
-  unknownPluginPolicy?: UnknownPluginPolicy;
-  audit?: Partial<AuditConfig>;
-  metrics?: Partial<MetricsConfig>;
+  enabled?: boolean | undefined;
+  mode?: FirewallMode | undefined;
+  preset?: FirewallPreset | undefined;
+  blockedSections?: readonly string[] | undefined;
+  allowedSections?: readonly string[] | undefined;
+  blockedPrefixes?: readonly string[] | undefined;
+  allowedPrefixes?: readonly string[] | undefined;
+  blockedPatterns?: readonly string[] | undefined;
+  allowedPatterns?: readonly string[] | undefined;
+  protectedSections?: readonly string[] | undefined;
+  protectCoreSections?: boolean | undefined;
+  unknownPluginPolicy?: UnknownPluginPolicy | undefined;
+  audit?: Partial<AuditConfig> | undefined;
+  metrics?: Partial<MetricsConfig> | undefined;
+}
+
+/**
+ * Cordis entry config. Every field the Host can edit while the plugin runs is
+ * a volatile reference, so a value is read from it per operation rather than
+ * captured once at startup.
+ */
+export interface PromptFirewallVolatileConfig {
+  enabled?: Volatile<boolean>;
+  /** Preset-owned fields carry no schema default, so their snapshot may be absent. */
+  mode?: Volatile<FirewallMode | undefined>;
+  preset?: Volatile<FirewallPreset | undefined>;
+  blockedSections?: Volatile<string[]>;
+  allowedSections?: Volatile<string[]>;
+  blockedPrefixes?: Volatile<string[]>;
+  allowedPrefixes?: Volatile<string[]>;
+  blockedPatterns?: Volatile<string[]>;
+  allowedPatterns?: Volatile<string[]>;
+  protectedSections?: Volatile<string[]>;
+  protectCoreSections?: Volatile<boolean>;
+  unknownPluginPolicy?: Volatile<UnknownPluginPolicy | undefined>;
+  audit?: Volatile<Partial<AuditConfig>>;
+  metrics?: Volatile<Partial<MetricsConfig>>;
 }
 
 /** Fully materialized, immutable runtime configuration. */
@@ -113,7 +141,6 @@ export interface PromptFirewallService {
     policy: SectionPolicy,
     expectedRevision?: number,
   ): Promise<void>;
-  reloadRules(): void;
 }
 
 /** JSON-safe state exposed to the browser Prompt Inspector. */

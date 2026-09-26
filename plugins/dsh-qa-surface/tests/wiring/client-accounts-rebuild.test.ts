@@ -71,10 +71,11 @@ function harness(accounts: QaAccountsApi) {
       subscribe: () => () => undefined,
     },
   });
-  ctx.provide("settingsScope", {
-    bind: () => ({
+  ctx.provide("configForms", {
+    get: () => ({
       getSnapshot: () => ({ status: "unavailable" }),
       subscribe: () => () => undefined,
+      mutate: async () => true,
     }),
   });
   ctx.provide("slots", {

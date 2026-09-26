@@ -5,6 +5,7 @@
 
 import http from "node:http";
 import type { AddressInfo } from "node:net";
+import type { WebFetchAuthVolatileConfig } from "../src/config.js";
 import type {
   AuthenticatedFetchRule,
   WebFetchAuthConfig,
@@ -142,4 +143,26 @@ export function configWith(
     audit: { enabled: false },
     ...overrides,
   };
+}
+
+/**
+ * The same profile in the shape `apply()` receives since `0.1.7`: the editable
+ * fields as live references. A test that needs a mid-operation edit replaces what
+ * a reference reads instead of rebuilding the plugin.
+ */
+export function liveConfig(
+  config: WebFetchAuthConfig,
+): WebFetchAuthVolatileConfig {
+  const ref = (value: unknown) => ({ get: () => value });
+  return {
+    configVersion: config.configVersion ?? 1,
+    enabled: ref(config.enabled ?? true),
+    rules: ref(config.rules ?? []),
+    defaultPolicy: ref(config.defaultPolicy),
+    limits: ref(config.limits),
+    documents: ref(config.documents),
+    audit: ref(config.audit),
+    // The fixture hands over plain objects, so the snapshot deep-freeze the Host
+    // would apply is not something this test can observe.
+  } as WebFetchAuthVolatileConfig;
 }

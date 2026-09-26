@@ -8,6 +8,7 @@ import {
   readBoundedJson,
   readBoundedText,
   type BoundedText,
+  type ResponseRead,
 } from "../kernel/read-policy.js";
 import {
   testitInstance,
@@ -136,20 +137,23 @@ export class TestitTransport {
     path: string,
     query: TestitQuery = {},
   ): Promise<TestitJsonResponse<T>> {
-    const response = await this.request(
+    return this.request(
       instance,
       token,
       path,
       query,
       this.config.timeoutMs,
+      async (response, signal) => {
+        const data = await readBoundedJson<T>(
+          response,
+          this.config.maxResponseBytes,
+          "Test IT",
+          signal,
+        );
+        const page = pageFrom(response.headers);
+        return page === undefined ? { data } : { data, page };
+      },
     );
-    const data = await readBoundedJson<T>(
-      response,
-      this.config.maxResponseBytes,
-      "Test IT",
-    );
-    const page = pageFrom(response.headers);
-    return page === undefined ? { data } : { data, page };
   }
 
   /**
@@ -163,16 +167,19 @@ export class TestitTransport {
     maxBytes: number,
     query: TestitQuery = {},
   ): Promise<TestitTextResponse> {
-    const response = await this.request(
+    return this.request(
       instance,
       token,
       path,
       query,
       this.flags.attachmentTimeoutMs,
-    );
-    return readBoundedText(
-      response,
-      Math.min(maxBytes, this.config.maxResponseBytes),
+      (response, signal) =>
+        readBoundedText(
+          response,
+          Math.min(maxBytes, this.config.maxResponseBytes),
+          "Test IT",
+          signal,
+        ),
     );
   }
 
@@ -189,34 +196,43 @@ export class TestitTransport {
     return url.toString();
   }
 
-  private async request(
+  private async request<T>(
     instance: TestitInstance,
     token: string,
     path: string,
     query: TestitQuery,
     timeoutMs: number,
-  ): Promise<Response> {
-    return fetchWithRetries(this.fetcher, this.url(instance, path, query), {
-      timeoutMs,
-      retries: this.flags.retries,
-      headers: {
-        authorization: `PrivateToken ${token}`,
-        accept: "application/json",
+    read: ResponseRead<T>,
+  ): Promise<T> {
+    return fetchWithRetries(
+      this.fetcher,
+      this.url(instance, path, query),
+      {
+        timeoutMs,
+        retries: this.flags.retries,
+        headers: {
+          authorization: `PrivateToken ${token}`,
+          accept: "application/json",
+        },
+        transportFailure: (error, timedOut) =>
+          timedOut
+            ? new IntegrationError("UpstreamTimeout", "Test IT did not answer")
+            : TLS_FAILURE.test(causeCode(error))
+              ? new IntegrationError(
+                  "TlsFailure",
+                  "Test IT TLS handshake failed",
+                )
+              : new IntegrationError(
+                  "ProviderUnavailable",
+                  "Test IT request failed",
+                ),
+        // A refused connection stays refused; a slow installation is more often
+        // busy than gone, so anything else earns another bounded attempt.
+        retriable: (error) => error.code !== "UpstreamTimeout",
+        statusFailure: (response) => this.failure(response),
       },
-      transportFailure: (error, timedOut) =>
-        timedOut
-          ? new IntegrationError("UpstreamTimeout", "Test IT did not answer")
-          : TLS_FAILURE.test(causeCode(error))
-            ? new IntegrationError("TlsFailure", "Test IT TLS handshake failed")
-            : new IntegrationError(
-                "ProviderUnavailable",
-                "Test IT request failed",
-              ),
-      // A refused connection stays refused; a slow installation is more often
-      // busy than gone, so anything else earns another bounded attempt.
-      retriable: (error) => error.code !== "UpstreamTimeout",
-      statusFailure: (response) => this.failure(response),
-    });
+      read,
+    );
   }
 
   /**

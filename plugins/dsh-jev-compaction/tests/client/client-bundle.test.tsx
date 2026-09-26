@@ -83,21 +83,23 @@ describe("classic browser bundle", () => {
 
   it("declares exactly the client services it reads", async () => {
     const { exports } = await loadBundle();
-    expect([...exports.inject]).toEqual(["slots", "settingsScope"]);
+    expect([...exports.inject]).toEqual(["slots", "configForms"]);
   });
 
-  it("mounts the card into settings.plugin.item and renders the shell", async () => {
+  it("mounts the card into a Plugins tab and renders the shell", async () => {
     const { exports } = await loadBundle();
     const registrations: {
       name: string;
-      key?: string;
+      id?: string;
       inject?: () => unknown;
       component?: (props: never) => unknown;
     }[] = [];
     const face = {
-      settingsScope: {
-        bind: (spec: { namespace: string }) => {
-          expect(spec.namespace).toBe("jev-compaction");
+      configForms: {
+        get: (entryId: string) => {
+          // The profile entry id from cordis.patch.yml is the settings
+          // namespace on 0.1.7; a different string edits nothing.
+          expect(entryId).toBe("dsh-jev-compaction");
           // One stable snapshot object: a fresh one per call would make
           // useSyncExternalStore re-render forever.
           const snapshot = {
@@ -134,11 +136,11 @@ describe("classic browser bundle", () => {
     };
     exports.apply(face);
     expect(registrations).toHaveLength(1);
-    expect(registrations[0]!.name).toBe("settings.plugin.item");
-    expect(registrations[0]!.key).toBe("jev-compaction");
+    expect(registrations[0]!.name).toBe("settings.plugins.tab");
+    expect(registrations[0]!.id).toBe("dsh-jev-compaction");
 
-    const scope = registrations[0]!.inject?.();
-    expect(scope).toEqual({ scope: expect.anything() });
+    const form = registrations[0]!.inject?.();
+    expect(form).toEqual({ form: expect.anything() });
 
     const Component = registrations[0]!.component;
     expect(Component).toBeDefined();
@@ -147,7 +149,7 @@ describe("classic browser bundle", () => {
     render(
       React.createElement(
         Component as unknown as React.ComponentType<Record<string, unknown>>,
-        scope as Record<string, unknown>,
+        form as Record<string, unknown>,
       ),
     );
     expect(screen.getByText("Jev Compaction")).toBeTruthy();
@@ -159,9 +161,9 @@ describe("classic browser bundle", () => {
   it("injects its stylesheet once, tagged with the package name", async () => {
     const { exports } = await loadBundle();
     exports.apply({
-      settingsScope: {
-        bind: () => ({
-          getSnapshot: () => ({ status: "unavailable" }),
+      configForms: {
+        get: () => ({
+          getSnapshot: () => ({ status: "unavailable", value: undefined }),
           subscribe: () => () => {},
           mutate: async () => {},
           set: async () => {},
