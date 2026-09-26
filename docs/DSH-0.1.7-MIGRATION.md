@@ -584,8 +584,23 @@ Also **[source]**, no compile error but runtime-relevant:
   the whole `rc.1..rc.2` range the harness added **zero** `@deprecated` markers and
   hardened **zero** existing ones, so no call site silently became an error and
   there is no new deprecation debt to plan against. The `rc.2` compiler output
-  agrees: no error mentions these three. This stays deferred debt
-  (`dsh-session-scope` alone makes 8 `snapshotEvents()` calls).
+  agrees: no error mentions these three.
+
+  **[verified] #531 audit — at `rc.2` the debt is not takeable: these readers have
+  no replacement.** Read from the *published* `@deepseek-ai/dsh-session@0.1.7-rc.2`
+  rather than the harness checkout: all three carry `@deprecated Existing logic may
+  remain unmigrated for now, but new calls are prohibited`
+  (`lib/types/index.d.ts:177,187,196`), and the shipped `README.md:62` names the one
+  sanctioned substitution — "Callers that only need a length use `seq`"
+  (`get seq()` at `:208`, documented as "always the log length"). Everything else
+  left on the non-deprecated surface is a fold over a fixed taxonomy
+  (`requestHeader` `:259`, `requestContext` `:268`, `toolHistory` `:278`,
+  `deriveMessages` `:303`) or the message-oriented `registerMessageProjection`
+  `:347`; none of them folds a plugin-owned event type, so a whole-log fold like
+  `effectiveSessionScope(session.snapshotEvents())` has nowhere to move. Paying the
+  debt means retargeting scope resolution onto incremental projection state, which is
+  a design card, not a cutover edit. Only the two length-only sites
+  (`dsh-session-scope`'s `scope-fs.ts:121,140` → `session.seq`) are payable today.
 - **`Fiber.update()` no longer returns the waterfall promise** (now `void`), and
   the `internal/update` event's `next` is sync-only. Any `await ctx.fiber.update(...)`
   silently resolves to `undefined`. **[verified]** same at `rc.2`
@@ -1093,6 +1108,17 @@ cascade), `qaSurfacePanels does not exist on type 'Context'` ×5,
    **[verified]** these are the only genuinely *new* compile errors attributable
    to `rc.2` itself in the whole repository.
 
+**[verified] re-measured on `bot/531` (post-#509 `dsh-v0.1.7-rc`), and the larger
+number is an artifact, not new breakage.** The same
+`pnpm -r --no-bail typecheck` on a freshly installed worktree reads **418 errors
+across 20 projects**. All 116 `Cannot find module` errors name `@yadsh/*` workspace
+packages and **none** names `@deepseek-ai/*` — the unbuilt-`lib/` cascade §9.6
+warns about, not a host API change. The two projects beyond the 18 above,
+`dsh-session-audit` (18 × TS2307 + 4 × TS7006) and `packages/audit-ui`
+(4 × TS2307 + 2 × TS7006), are *entirely* that cascade. Compare against 296/18 only
+on a tree where `nx run-many -t build` has populated `lib/`; §9.4's own numbers
+stand. `dsh-session-scope` reports zero errors under both readings.
+
 ### 9.5 `npx nx run-many -t test` — 14 projects green, 18 never ran
 
 **[verified]** the suite is gated behind the build: **18 `test` targets were not
@@ -1203,7 +1229,7 @@ excluding the shared 2-line `compatibility.json` wave each row also carries.
 | `dsh-user-correction-miner` | code | ✔ **done in #528** (10 insertions, 18 deletions across three files — not the 25 estimated). `tool-result` block gone; `SessionHeader` fixture; `SESSION_QUERY_CORRUPT_SESSION` needed no code — the historical scan's per-session `catch` already counts it as one failed session | landed: `src/mining/message-text.ts:5` **[verified]** (dead branch dropped, so `blockText` stops recursing); `tests/fixtures/sessions.ts:9-10` (header from `SESSION_FORMAT_VERSION` + `SessionId`, cast gone), `:20,30` (`plugin` source kind is absent from both axes → `system-prompt`; the fixture's own label became `injected`, which also moved `tests/context-extractor.test.ts:73` — a site this map missed), `:77-81` (`tool`-role result message, `toolCallId` beside it). Checked and kept: `src/mining/context-extractor.ts:39,92`, `src/types.ts:34`, `src/dsh/storage.ts:44` (the map named it `src/storage.ts`, which never existed — own `tool-result` **label**, not the block), `src/mining/engine.ts:127` (`snapshotEvents()` alive); `compatibility.json` → #511 | 25 | `tests/{context-extractor,engine,storage,sessions}.test.ts` — 65 pass |
 | `dsh-domain-experts` | code, **no card decision** | already on `settings.plugins.tab`, which survives → D1 does not gate it | `src/index.ts:231` installSection → volatile Config; `compatibility.json:13` `"settings.installSection"` | 20 | `tests/config.test.ts`, `tests/client-page-*.test.tsx` |
 | `dsh-doc-impact` | decision + code | card surface (1 error); deprecated session reads | `src/client/index.ts:36,50-55`; `src/client/card.ts:4,57,67`; `src/dsh/lifecycle.ts:73` `kind:"plugin"`; `src/dsh/{commands.ts:14,67,tools.ts:47}`; `compatibility.json:4-5`; `scripts/verify-client-bundle.mjs:44,61` | 35 | `tests/client-bundle.test.ts:152,154`, `tests/e2e.test.ts:85` |
-| `dsh-session-scope` | **mechanical** + debt | 8 `snapshotEvents()` calls, alive and still merely deprecated (§5) | `src/{host-api.ts:24,57,index.ts:141,497,scope-delegation.ts:22,49,57,84,scope-fs.ts:121,140}`; `compatibility.json:4-5`; `scripts/verify-compatibility.mjs:17` regex accepts `0.1.7-rc.2` ✔ | 4 now (≈40 if the debt is taken) | `tests/{host-api,scope-delegation,scope-fs,scope-remote,tool-guard-*}.test.ts` (17 pass today) |
+| `dsh-session-scope` | **mechanical**, debt blocked | **[verified] no mandatory edit** — clean at `rc.2`: build, typecheck, lint and 17 test files (98 pass / 1 skip) green, no `TS2742`, and `src`+`tests` have zero hits for any removed identifier (`settings.plugin.item`, `SettingsScope`, `installSection`, `standingKeyFor`, `agent/session-start`, …). It registers no settings card (so D1 does not gate it), reads no `block.type` (so §5's emitted `tool-addition`/`tool-removal` cannot reach it) and never touches `approvalPolicy`/`permissionPreset` (so D3 does not either) | The 10 `src` refs the row already listed are **8 calls + 2 declarations in our own structures** (`host-api.ts:24`, `scope-delegation.ts:22`) — the old prose "8 calls" counted the calls only; `tests/` adds **18** more (§13.2). All 10 line refs verified exact. Blocked as a unit by §5's "no replacement at `rc.2`" finding: `src/{host-api.ts:24,57,index.ts:141,497,scope-delegation.ts:22,49,57,84,scope-fs.ts:121,140}` | 0 mandatory; 2 if only the `seq` slice is taken | `tests/{host-api,scope-delegation,scope-fs,scope-remote,tool-guard-*}.test.ts` (17 pass today) |
 | `dsh-tool-offload` | **mechanical** | shell/sandbox untouched §8.5; one fixture source kind | `compatibility.json:4-5`; `tests/unit/parent-context.test.ts:29` `kind:"plugin"` | 5 | `tests/unit/parent-context.test.ts` (14 files pass today) |
 | `dsh-kv-persist` | **mechanical** | metadata only | `compatibility.json:4-5` | 2 | 11 test files pass today, unchanged |
 | `dsh-cas-results`, `dsh-git-readonly`, `dsh-lightrag`, `dsh-l10n-overrides` | **mechanical** | metadata only | `compatibility.json:4-5` each | 2 each | 15 / 12 / 9 / 17 files pass today, unchanged |
@@ -1348,3 +1374,27 @@ For the same reason, `pnpm -r typecheck` and the budget gate must be measured on
 a **built** tree: the first control pass in §9.6 read 77 baseline errors purely
 because an earlier failed build's `clean` step had deleted `lib/`, which §9.6's
 final numbers therefore exclude by cache-busting first.
+
+### 13.2 The `dsh-session-scope` reader census behind §11
+
+Counted from inside the plugin directory, because both `git grep` and `git ls-files`
+resolve a bare pathspec against the **current** directory — run from the repo root,
+`git grep … -- tests` searches a `tests/` that only exists per-package, and returns
+nothing without saying so. Filesystem `grep` has no such trap and is what these
+numbers came from:
+
+```bash
+cd plugins/dsh-session-scope
+grep -rcn "snapshotEvents" src            | awk -F: '{s+=$2} END {print "src:", s}'     # 10
+grep -rcn "snapshotEvents" tests          | awk -F: '{s+=$2} END {print "tests:", s}'   # 18
+grep -rn  "snapshotEvents" src | sort     # the 10, per file:
+#   host-api.ts:24 (declaration)  host-api.ts:57 (call)
+#   index.ts:141, 497 (calls)
+#   scope-delegation.ts:22 (declaration)  :49, :57, :84 (calls)
+#   scope-fs.ts:121, 140 (calls — length-only, the §5 `seq` slice)
+```
+
+so `src` is 8 calls over 2 declared members and `tests` holds 18 more (12 fake
+sessions and 6 calls; the fakes are what any migration would have to grow a member
+for). The 10 `src` line refs in §11's row were re-verified against the tree and none
+had moved.
