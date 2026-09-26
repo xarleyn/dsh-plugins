@@ -311,6 +311,14 @@ export function LogPanel({
           </p>
         ) : (
           visible.map((record) => (
+            /*
+             * `log-panel-line` is on the DOM translator's protected-surface table
+             * (plugins/dsh-l10n-overrides/src/runtime/protected-surfaces.ts): a
+             * logged line is another plugin's text, so machine translation must
+             * never rewrite it. Renaming this id lifts that protection silently —
+             * the translator's own test carries its own copy of the id — so the
+             * id is pinned in scripts/verify-package.mjs.
+             */
             <div
               className="plu-log-line"
               key={record.seq}
