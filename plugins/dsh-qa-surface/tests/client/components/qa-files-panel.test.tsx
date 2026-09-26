@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { QaChatFileGroup } from "../../../src/client/chat-files.js";
 import { QaFilesPanel } from "../../../src/client/components/QaFilesPanel.js";
@@ -23,10 +29,13 @@ const groups: readonly QaChatFileGroup[] = [
 describe("files panel", () => {
   it("renders one section per message with the sent file handle", () => {
     render(<QaFilesPanel groups={groups} onJumpToMessage={vi.fn()} />);
-    expect(screen.getAllByTestId("qa-files-group")).toHaveLength(2);
-    const card = screen.getByText("notes.md");
-    expect(card).toBeTruthy();
-    expect(screen.getByText("2 КБ")).toBeTruthy();
+    const badges = document.querySelectorAll(".dsh-qa-files__group");
+    expect(badges).toHaveLength(2);
+    const chip = screen.getByTestId("qa-file");
+    expect(within(chip).getByTestId("qa-file-name").textContent).toBe(
+      "notes.md",
+    );
+    expect(within(chip).getByTestId("qa-file-size").textContent).toBe("2 КБ");
   });
 
   it("resolves image thumbnails through the asset repository", async () => {
@@ -39,10 +48,12 @@ describe("files panel", () => {
       />,
     );
     await waitFor(() =>
-      expect(screen.getByTestId("qa-files-thumb")).toBeTruthy(),
+      expect(document.querySelector("img.dsh-qa-files__thumb")).toBeTruthy(),
     );
     expect(resolveImage).toHaveBeenCalledWith("img-1");
-    const thumb = screen.getByTestId("qa-files-thumb") as HTMLImageElement;
+    const thumb = document.querySelector(
+      "img.dsh-qa-files__thumb",
+    ) as HTMLImageElement;
     expect(thumb.src).toBe("blob:resolved");
   });
 
@@ -57,6 +68,6 @@ describe("files panel", () => {
 
   it("shows the empty state for attachment-free chats", () => {
     render(<QaFilesPanel groups={[]} onJumpToMessage={vi.fn()} />);
-    expect(screen.getByTestId("qa-files-empty")).toBeTruthy();
+    expect(screen.getByText("В этом чате нет вложений.")).toBeTruthy();
   });
 });

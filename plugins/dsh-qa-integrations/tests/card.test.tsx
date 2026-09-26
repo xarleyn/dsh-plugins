@@ -77,12 +77,11 @@ describe("Integrations plugin card", () => {
       ["gitlab"],
       session(ANONYMOUS),
     );
-    const { container } = render(<HostTab />);
-    expect(
-      container.querySelector(
-        "ul.dsh-qa-integrations__host-tab > li.dsh-plugin-card",
-      ),
-    ).not.toBeNull();
+    render(<HostTab />);
+    const list = screen.getByTestId("qa-integrations-host-tab");
+    const shell = list.firstElementChild as HTMLElement;
+    expect(shell.tagName).toBe("LI");
+    expect(shell.classList.contains("dsh-plugin-card")).toBe(true);
   });
 
   it("mounts the shared card shell with a closed body", () => {
@@ -145,10 +144,26 @@ describe("Integrations plugin card", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Развернуть настройки интеграций" }),
     );
-    expect(await screen.findByText("GitLab")).not.toBeNull();
-    expect(await screen.findByText("TeamCity")).not.toBeNull();
+    expect(
+      await screen.findByTestId("qa-integrations-provider-card-gitlab"),
+    ).not.toBeNull();
+    expect(
+      await screen.findByTestId("qa-integrations-provider-card-teamcity"),
+    ).not.toBeNull();
     // A provider the deployment did not mount stays absent.
-    expect(screen.queryByText("Bitrix24")).toBeNull();
+    expect(
+      screen.queryByTestId("qa-integrations-provider-card-bitrix24"),
+    ).toBeNull();
+    // Two cards mount together: each owns its zone, so no hook repeats and every
+    // id stays an ASCII kebab-case selector.
+    const ids = [...document.querySelectorAll("[data-testid]")].map((node) =>
+      String(node.getAttribute("data-testid")),
+    );
+    expect(ids.length).toBeGreaterThan(0);
+    expect(new Set(ids).size).toBe(ids.length);
+    for (const id of ids) {
+      expect(id, id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/u);
+    }
   });
 
   it("drops a provider the service stopped offering", async () => {
@@ -179,9 +194,13 @@ describe("Integrations plugin card", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Развернуть настройки интеграций" }),
     );
-    expect(await screen.findByText("GitLab")).not.toBeNull();
+    expect(
+      await screen.findByTestId("qa-integrations-provider-card-gitlab"),
+    ).not.toBeNull();
     await waitFor(() => {
-      expect(screen.queryByText("TeamCity")).toBeNull();
+      expect(
+        screen.queryByTestId("qa-integrations-provider-card-teamcity"),
+      ).toBeNull();
     });
   });
 
@@ -191,11 +210,16 @@ describe("Integrations plugin card", () => {
       ["gitlab"],
       session(ANONYMOUS),
     );
-    const { container } = render(<Card />);
+    render(<Card />);
     fireEvent.click(
       screen.getByRole("button", { name: "Развернуть настройки интеграций" }),
     );
-    expect(screen.getByText(/Войдите в QA Surface/u)).not.toBeNull();
-    expect(container.querySelector(".dsh-qa-integrations__card")).toBeNull();
+    expect(
+      screen.getByTestId("qa-integrations-settings-card-gate").textContent,
+    ).toContain("Войдите в QA Surface");
+    // The gate is the whole body: no provider card is mounted to fail.
+    expect(
+      screen.queryByTestId("qa-integrations-provider-card-gitlab"),
+    ).toBeNull();
   });
 });

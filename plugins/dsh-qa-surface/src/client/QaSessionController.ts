@@ -3,10 +3,14 @@ import type {
   SessionId,
 } from "@deepseek-ai/dsh-client-connection/client";
 import type {
+  SessionBinding,
   SessionFace,
+  SessionReference,
+  SessionReferenceSource,
   SubmissionHandle,
 } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { ConversationBinding } from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type { UserMessage } from "@deepseek-ai/dsh-llm";
 import { bytesToBase64 } from "./base64.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
 import type {
@@ -14,6 +18,7 @@ import type {
   QaFileDraft,
   QaPendingUserMessage,
   QaQueueOperation,
+  QaQueueStatus,
   QaSessionState,
   QaSlashCatalog,
   QaSlashCatalogEntry,
@@ -36,11 +41,7 @@ import {
   QaPolicyAttestationError,
 } from "./attestation.js";
 import { QaChatIndex } from "./chat-index.js";
-import {
-  isDelegatedSession,
-  visibleSubagentCandidates,
-  type SubagentCatalogs,
-} from "./lineage.js";
+import { isDelegatedSession, visibleSubagentCandidates } from "./lineage.js";
 import { SessionAssetRepository } from "./session-assets.js";
 import { createQaSession } from "./create-session.js";
 import {
@@ -58,6 +59,7 @@ import type {
   QaConversation,
   QaCreateSession,
   QaFileUpload,
+  QaQueueStatusRemote,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -72,6 +74,20 @@ import { waitFor } from "./wait-for.js";
 import { QA_REGENERATE_MARKER } from "./QaTranscriptAdapter.js";
 import { readableSubagentName } from "./settlement.js";
 import { projectBoundSessionState } from "./project-session-state.js";
+
+declare module "@deepseek-ai/dsh-api-session-controller/client" {
+  interface SessionReferenceSourceMap {
+    /** The QA surface holds the Session of the chat it is showing. */
+    qaSurface: unknown;
+  }
+}
+
+/**
+ * `rc.2` deleted the Host-wide navigation: a Session lives while the view that
+ * retained it holds the reference, so binding a chat means retaining it for as
+ * long as this controller projects it.
+ */
+const QA_SURFACE_SESSION_SOURCE = "qaSurface" satisfies SessionReferenceSource;
 import { projectTurnSources, sourceAnchorRoot } from "./turn-sources.js";
 
 export interface QaAccountsFacade {
@@ -117,6 +133,14 @@ export interface QaSessionControllerOptions {
    * working, which is exactly the pre-feature behaviour.
    */
   readonly slashApi?: QaSlashApi;
+  /**
+   * The Host's live read of the request ceiling. Absent on a Host build that
+   * predates it — and unanswered, or answered by a deployment that sets no
+   * ceiling — the surface sends the way it always did: the ceiling is an
+   * arrangement between browsers about how much this stand can take, never a
+   * reason a question cannot be asked.
+   */
+  readonly queueStatus?: QaQueueStatusRemote;
   readonly storage?: StorageLike;
   /**
    * Browser file-upload service, resolved lazily: the page may not serve the
@@ -224,8 +248,11 @@ export class QaSessionController {
   private readonly streamPublisher: StreamPublisher;
   private state: QaSessionState = QA_SESSION_IDLE_STATE;
   private session: SessionFace | undefined;
+  /** The reference that keeps {@link session} alive; released with the binding. */
+  private sessionReference: SessionReference | undefined;
   private conversationBinding: ConversationBinding | undefined;
   private unsubscribeSession: (() => void) | undefined;
+  private unsubscribeInbox: (() => void) | undefined;
   private unsubscribeChat: (() => void) | undefined;
   private readonly unsubscribeConnection: () => void;
   private ensuring: Promise<void> | undefined;
@@ -260,6 +287,9 @@ export class QaSessionController {
   private readonly hostApprovals: QaHostApprovalBridge;
   /** Host-side question requests of the bound chat waiting for the operator. */
   private readonly hostQuestions: QaHostQuestionBridge;
+  private readonly queueRemote: QaQueueStatusRemote | undefined;
+  /** Last send the stand had no room for; drives the request-ceiling dialog. */
+  private requestQueueNotice: QaQueueStatus | null = null;
   /** Set while a running turn is polled for parked requests. */
   private pendingTimer: ReturnType<typeof setInterval> | undefined;
   /**
@@ -325,6 +355,7 @@ export class QaSessionController {
     );
     this.hostApprovals = new QaHostApprovalBridge(options.approvalApi);
     this.hostQuestions = new QaHostQuestionBridge(options.questionApi);
+    this.queueRemote = options.queueStatus;
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.streamPublisher = new StreamPublisher(options.streamIntervalMs ?? 66);
     this.connectedOnce = this.connection.getSnapshot() !== undefined;
@@ -468,7 +499,32 @@ export class QaSessionController {
       this.publish();
       return false;
     }
+    // A message that joins the queue of a chat which is already answering costs
+    // the stand no second place — the turn is running anyway — so the ceiling
+    // has nothing to say about it. Read before the round-trip below: asking a
+    // busy Host how busy it is, in order to refuse the very queue that keeps
+    // the busy chat from stalling, would be the wrong answer twice over.
+    const joiningQueue = this.session?.getSnapshot().running === true;
+    if (this.config.session.maxActiveRequests > 0 && !joiningQueue) {
+      // The ceiling is read before anything is spent. A draft chat has no
+      // session yet, so a question this stand has no room for must not
+      // materialize one, must not enter the transcript, and must not leave the
+      // composer — which is what a refusal ahead of `beginSubmission` buys.
+      const bound = this.session;
+      const ceiling = await this.readQueueStatus();
+      // A chat that went away during the read answers for its own sends. One
+      // that merely arrived is this draft's session landing underneath, which
+      // the submission rides exactly the way it always did.
+      if (this.disposed || (bound !== undefined && this.session !== bound))
+        return false;
+      if (ceiling !== null && ceiling.full) {
+        this.requestQueueNotice = ceiling;
+        this.publish();
+        return false;
+      }
+    }
     this.operationError = null;
+    this.requestQueueNotice = null;
     // A running turn has nowhere for a new question to land but its queue, and
     // the queue is the Host's state, not the transcript's: echoing it into the
     // transcript would show the same message twice — once waiting, once sent.
@@ -562,6 +618,36 @@ export class QaSessionController {
         this.publish();
       }
     }
+  }
+
+  /**
+   * What the stand answers about its load, or null when it does not answer.
+   *
+   * Every failure here sends the question anyway. The ceiling exists to keep a
+   * weak model from drowning, not to be a door a browser cannot open: an
+   * unreadable count says nothing about the load, and refusing a visitor on
+   * that would be a worse answer than the one they would have got.
+   */
+  private async readQueueStatus(): Promise<QaQueueStatus | null> {
+    if (this.queueRemote === undefined) return null;
+    try {
+      const result = await this.queueRemote();
+      return result.ok ? result.value : null;
+    } catch (error) {
+      console.error("dsh-qa-surface: queue status unavailable", error);
+      return null;
+    }
+  }
+
+  /**
+   * Close the request-ceiling dialog. Nothing is retried and nothing is
+   * dropped: the held-back question is still the composer's own text, so asking
+   * it again is the visitor's keystroke, taken once the stand has a place free.
+   */
+  dismissRequestQueueNotice(): void {
+    if (this.requestQueueNotice === null) return;
+    this.requestQueueNotice = null;
+    this.publish();
   }
 
   /**
@@ -1377,19 +1463,34 @@ export class QaSessionController {
       track = true,
       allowCompatibilityReadOnly = false,
     } = options;
-    this.sessions.open(id as SessionId);
-    let binding = this.sessions.binding(id as SessionId);
-    if (binding === undefined) {
-      await waitFor(
-        this.sessions.list,
-        (snapshot) => Object.hasOwn(snapshot.byId, id),
-        this.timeoutMs,
-      );
-      binding = this.sessions.binding(id as SessionId);
+    const reference = this.sessions.retain(id as SessionId, {
+      source: QA_SURFACE_SESSION_SOURCE,
+    });
+    let binding: SessionBinding | undefined = this.sessions.binding(
+      id as SessionId,
+    );
+    try {
+      if (binding === undefined) {
+        await reference.ready;
+        binding = this.sessions.binding(id as SessionId);
+      }
+      if (binding === undefined) {
+        await waitFor(
+          this.sessions.list,
+          (snapshot) => Object.hasOwn(snapshot.byId, id),
+          this.timeoutMs,
+        );
+        binding = this.sessions.binding(id as SessionId);
+      }
+    } finally {
+      // A binding this controller never got to hold must not leave a reference
+      // counting against the Session it could not show.
+      if (binding === undefined) reference.release();
     }
     if (binding === undefined)
       throw new Error("Session binding is unavailable.");
     this.unbind();
+    this.sessionReference = reference;
     this.session = binding.session;
     this.conversationBinding = this.conversation.binding(id as SessionId);
     this.policyReady = false;
@@ -1399,6 +1500,12 @@ export class QaSessionController {
       this.operationError = null;
       this.publishSessionUpdate();
     });
+    // The queue strip reads the Inbox projection, which the Host publishes on
+    // its own channel: a claim or a splice changes no session snapshot, so the
+    // strip would otherwise keep the rows the agent has already taken.
+    this.unsubscribeInbox = binding.session.projections
+      .faceOf("inbox")
+      .subscribe(() => this.publishSessionUpdate());
     // Subscribing the Chat target activates it, so the assembled transcript
     // (nodes, partials, running calls) materializes for the projection.
     this.unsubscribeChat = this.conversationBinding
@@ -1446,9 +1553,13 @@ export class QaSessionController {
   }
 
   private unbind(): void {
+    this.sessionReference?.release();
+    this.sessionReference = undefined;
     this.streamPublisher.clear();
     this.unsubscribeSession?.();
     this.unsubscribeSession = undefined;
+    this.unsubscribeInbox?.();
+    this.unsubscribeInbox = undefined;
     this.unsubscribeChat?.();
     this.unsubscribeChat = undefined;
     this.conversationBinding = undefined;
@@ -1465,6 +1576,9 @@ export class QaSessionController {
     // The next binding probes the Host again even for the same chat.
     this.pendingProbeKey = "";
     this.admissionPending = false;
+    // A held-back question belongs to the chat that asked it; another binding
+    // answers for its own sends.
+    this.requestQueueNotice = null;
     this.policyReady = false;
     this.compatibilityReadOnly = false;
     // The catalog belongs to the chat that produced it: another chat has a
@@ -1514,6 +1628,7 @@ export class QaSessionController {
             ? "reconnecting"
             : "idle",
         error: this.operationError,
+        requestQueue: this.requestQueueNotice,
         canSend: connected && !materializing,
         pendingMessage: this.pendingSubmission?.message ?? null,
         chatsRevision: this.chatsRevision,
@@ -1527,6 +1642,7 @@ export class QaSessionController {
         phase:
           !connected && this.connectedOnce ? "reconnecting" : this.state.phase,
         error: this.operationError ?? this.state.error,
+        requestQueue: this.requestQueueNotice,
       };
       this.emit();
       return;
@@ -1561,12 +1677,14 @@ export class QaSessionController {
       // carries its owner's name when an admin reads it.
       author: this.accounts?.messageAuthorOf(sessionId),
       operationError: this.operationError,
+      requestQueue: this.requestQueueNotice,
       policyReady: this.policyReady,
       compatibilityReadOnly: this.compatibilityReadOnly,
       admissionPending:
         this.admissionPending || this.pendingSubmission !== undefined,
       chatsRevision: this.chatsRevision,
       viewingSubagent: this.viewingSubagent,
+      queuedMessages: this.queuedMessages(),
       slash: this.slashView(),
       config: this.config,
       subagentNames: this.subagentNames(),
@@ -1597,6 +1715,18 @@ export class QaSessionController {
       pendingMessage: this.pendingSubmission?.message ?? null,
     };
     this.emit();
+  }
+
+  /**
+   * The messages the Host has accepted for the agent's next turn. They arrive
+   * through the session's Inbox projection rather than the snapshot the queue
+   * strip used to read: `rc.2` moved pending input onto the projection surface,
+   * and a key the Host never published reads as no queued work.
+   */
+  private queuedMessages(): readonly UserMessage[] {
+    const inbox = this.session?.projections.faceOf("inbox").getSnapshot() as
+      { readonly "next-turn"?: readonly UserMessage[] } | undefined;
+    return inbox?.["next-turn"] ?? [];
   }
 
   /**
@@ -1639,11 +1769,7 @@ export class QaSessionController {
     const names: Record<string, string> = {};
     const list = this.sessions.list.getSnapshot();
     const chats = this.visibleChatIds();
-    const candidates = visibleSubagentCandidates(
-      list.byId ?? {},
-      (list.subagentsByParent ?? {}) as SubagentCatalogs,
-      chats,
-    );
+    const candidates = visibleSubagentCandidates(list.byId ?? {}, chats);
     for (const candidate of candidates) {
       const name = readableSubagentName(candidate.label, candidate.id);
       if (name !== undefined) names[candidate.id] = name;

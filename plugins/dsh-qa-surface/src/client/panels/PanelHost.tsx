@@ -61,7 +61,11 @@ class PanelErrorBoundary extends Component<
   render(): ReactNode {
     if (this.state.failed) {
       return (
-        <div className="dsh-qa-extension-panel__fallback" role="alert">
+        <div
+          className="dsh-qa-extension-panel__fallback"
+          data-testid="qa-panel-error"
+          role="alert"
+        >
           Панель «{this.props.definition.kind}» недоступна (id:{" "}
           {this.props.definition.id}).
         </div>
@@ -77,7 +81,11 @@ function MissingPanel({
   readonly definition: QaSurfacePanelDefinition;
 }) {
   return (
-    <div className="dsh-qa-extension-panel__fallback" role="status">
+    <div
+      className="dsh-qa-extension-panel__fallback"
+      data-testid="qa-panel-missing"
+      role="status"
+    >
       Панель «{definition.kind}» недоступна (id: {definition.id}).
     </div>
   );
@@ -278,6 +286,7 @@ export function QaPanelHost({
       {presentation === "side" ? (
         <div
           className="dsh-qa-extension-panel__resizer"
+          data-testid="qa-panel-resizer"
           role="separator"
           aria-label="Изменить ширину панели"
           aria-orientation="vertical"
@@ -295,6 +304,7 @@ export function QaPanelHost({
       <aside
         ref={root}
         className={`dsh-qa-extension-panel dsh-qa-extension-panel--${presentation}`}
+        data-testid="qa-panel"
         data-presentation={presentation}
         aria-label={`Панель: ${panelTitle(active)}`}
         tabIndex={-1}
@@ -314,11 +324,15 @@ export function QaPanelHost({
           }
         }}
       >
-        <header className="dsh-qa-extension-panel__header">
-          <h2>{panelTitle(active)}</h2>
+        <header
+          className="dsh-qa-extension-panel__header"
+          data-testid="qa-panel-header"
+        >
+          <h2 data-testid="qa-panel-title">{panelTitle(active)}</h2>
           <button
             type="button"
             className="dsh-qa-extension-panel__close"
+            data-testid="qa-panel-close"
             aria-label={`Закрыть панель: ${panelTitle(active)}`}
             onClick={() => panels.close({ reason: "user" })}
           >
@@ -360,6 +374,7 @@ export function QaPanelHost({
               <div
                 key={definition.id}
                 className="dsh-qa-extension-panel__body"
+                data-testid="qa-panel-body"
                 hidden={!visible}
                 aria-hidden={!visible}
               >

@@ -9,7 +9,7 @@ import {
 import { QaSidebar } from "../../../src/client/components/QaSidebar.js";
 describe("sidebar version and changelog", () => {
   it("opens the changelog dialog from the footer version button", () => {
-    const { container } = render(
+    render(
       <QaSidebar
         rows={[]}
         title="DeepSeek QA"
@@ -21,14 +21,14 @@ describe("sidebar version and changelog", () => {
         onNewChat={vi.fn()}
       />,
     );
-    expect(container.querySelector(".dsh-qa-modal")).toBeNull();
+    expect(screen.queryByTestId("qa-surface-modal")).toBeNull();
     const version = screen.getByRole("button", { name: /Версия / });
     expect(version.textContent).toBe(`Версия ${QA_VERSION}`);
     fireEvent.click(version);
-    const dialog = document.querySelector(".dsh-qa-modal") as HTMLElement;
+    const dialog = screen.getByTestId("qa-surface-modal");
     expect(dialog.getAttribute("role")).toBe("dialog");
     expect(dialog.getAttribute("aria-modal")).toBe("true");
-    expect(screen.getByText("История версий")).toBeTruthy();
+    expect(screen.getByRole("dialog", { name: "История версий" })).toBeTruthy();
     expect(document.querySelectorAll(".dsh-qa-changelog__entry").length).toBe(
       QA_CHANGELOG.length,
     );
@@ -37,9 +37,11 @@ describe("sidebar version and changelog", () => {
     );
     // The changelog asks for the same wider panel the profile dialog uses;
     // its entries are full sentences and strand words at the default width.
-    expect(document.querySelector(".dsh-qa-modal__panel--wide")).toBeTruthy();
-    fireEvent.click(screen.getByLabelText("Закрыть историю версий"));
-    expect(document.querySelector(".dsh-qa-modal")).toBeNull();
+    expect(screen.getByTestId("qa-surface-modal-panel").className).toContain(
+      "dsh-qa-modal__panel--wide",
+    );
+    fireEvent.click(screen.getByTestId("qa-surface-modal-close"));
+    expect(screen.queryByTestId("qa-surface-modal")).toBeNull();
   });
 
   it("closes the changelog dialog on Escape and backdrop clicks", () => {
@@ -57,16 +59,14 @@ describe("sidebar version and changelog", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: /Версия / }));
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(document.querySelector(".dsh-qa-modal")).toBeNull();
+    expect(screen.queryByTestId("qa-surface-modal")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: /Версия / }));
-    fireEvent.click(document.querySelector(".dsh-qa-modal") as HTMLElement);
-    expect(document.querySelector(".dsh-qa-modal")).toBeNull();
+    fireEvent.click(screen.getByTestId("qa-surface-modal"));
+    expect(screen.queryByTestId("qa-surface-modal")).toBeNull();
     // A click inside the panel does not close the dialog.
     fireEvent.click(screen.getByRole("button", { name: /Версия / }));
-    fireEvent.click(
-      document.querySelector(".dsh-qa-modal__panel") as HTMLElement,
-    );
-    expect(document.querySelector(".dsh-qa-modal")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("qa-surface-modal-panel"));
+    expect(screen.getByTestId("qa-surface-modal")).toBeTruthy();
   });
 
   it("keeps the bundled version in sync with the package and changelog", async () => {

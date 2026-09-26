@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import {
   collectSubagents,
@@ -82,11 +82,9 @@ describe("subagent panel", () => {
         onClose={() => undefined}
       />,
     );
-    const meta = container.querySelector(".dsh-qa-agents__meta");
-    expect(meta?.className).toBe(
-      "dsh-qa-agents__meta dsh-qa-agents__meta-list",
-    );
-    expect(meta?.children).toHaveLength(2);
+    const meta = screen.getByTestId("qa-surface-agents-item-meta");
+    expect(meta.className).toBe("dsh-qa-agents__meta dsh-qa-agents__meta-list");
+    expect(meta.children).toHaveLength(2);
     expect(container.textContent).not.toContain("·");
   });
 

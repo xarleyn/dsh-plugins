@@ -12,8 +12,7 @@ import {
   retentionIntervalMs,
 } from "../src/documents/config.js";
 import { DocumentError } from "../src/documents/errors.js";
-import { ConfigSchema } from "../src/schema.js";
-import type { DocumentsConfig } from "../src/documents/config.js";
+import { ConfigSchema, snapshotDocumentsConfig } from "../src/schema.js";
 
 describe("documents config", () => {
   test("resolves the documented defaults", () => {
@@ -147,8 +146,10 @@ describe("documents config", () => {
 
   test("the schema defaults never reach the resolver as explicit values", () => {
     // `ConfigSchema.parse({})` must produce a config the resolver accepts
-    // unchanged, which is the invariant the settings layer depends on.
-    const parsed = ConfigSchema({}) as DocumentsConfig;
+    // unchanged, which is the invariant the settings layer depends on. What the
+    // schema yields now is the live shape, so the invariant is checked on the
+    // snapshot the plugin takes from it.
+    const parsed = snapshotDocumentsConfig(ConfigSchema({}));
     expect(resolveDocumentsConfig(parsed)).toEqual(DEFAULT_DOCUMENTS_CONFIG);
   });
 });

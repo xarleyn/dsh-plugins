@@ -2,11 +2,11 @@
 
 /**
  * The client entry's wiring: the operator card, the QA page and the
- * feature-owned Host tab. The operator card edits the plugin's settings
- * namespace and mounts without waiting for the Remote to describe the
- * deployment — an operator's first act may be enabling the plugin; the two
- * user surfaces mount only for an enabled one, independently of the
- * loopback-only settings namespace directory.
+ * feature-owned Host tab. The operator card edits the plugin's own profile
+ * entry through the settings form the Host serves for it, and mounts without
+ * waiting for the Remote to describe the deployment — an operator's first act
+ * may be enabling the plugin; the two user surfaces mount only for an enabled
+ * one. All three sit in surfaces a non-loopback browser can reach.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
@@ -28,7 +28,7 @@ interface Stub {
   readonly effects: string[];
 }
 
-/** The namespace the operator card binds, captured to pin the identity. */
+/** The namespaces the operator card asked a form for, to pin the identity. */
 const boundNamespaces: string[] = [];
 
 function stub(enabled: boolean): Stub {
@@ -44,6 +44,21 @@ function stub(enabled: boolean): Stub {
       }),
     },
   };
+  const form = {
+    getSnapshot: () => ({
+      status: "unavailable",
+      value: undefined,
+      base: undefined,
+      user: undefined,
+      revision: undefined,
+      writable: false,
+      mode: "memory",
+    }),
+    subscribe: () => () => {},
+    mutate: async () => {},
+    set: async () => {},
+    unset: async () => {},
+  };
   const face = {
     remote,
     qaUserSettingsSections: {
@@ -56,25 +71,15 @@ function stub(enabled: boolean): Stub {
       getSnapshot: () => ({ stage: "anonymous", token: null }),
       subscribe: () => () => {},
     },
-    settingsScope: {
-      bind: (spec: { namespace: string }) => {
-        boundNamespaces.push(spec.namespace);
-        return {
-          getSnapshot: () => ({
-            status: "unavailable",
-            value: undefined,
-            base: undefined,
-            user: undefined,
-            revision: undefined,
-            writable: false,
-            mode: "memory",
-          }),
-          subscribe: () => () => {},
-          mutate: async () => {},
-          set: async () => {},
-          unset: async () => {},
-        };
+    configForms: {
+      get: (namespace: string) => {
+        boundNamespaces.push(namespace);
+        return form;
       },
+      whileServed: (
+        namespaces: readonly string[],
+        register: (served: ReadonlySet<string>) => () => void,
+      ) => register(new Set(namespaces)),
     },
     slots: {
       inject: (_name: string, factory: () => unknown) => {
@@ -91,7 +96,7 @@ function stub(enabled: boolean): Stub {
       }) => {
         slots.push({ ...options, label: options.label?.() });
         // The host calls the slot's inject factory when it dispatches a card;
-        // calling it here is what binds the settings scope.
+        // calling it here is what resolves the entry's settings form.
         options.inject?.();
         return () => {};
       },
@@ -130,13 +135,14 @@ describe("integrations client entry", () => {
       title: "Интеграции",
       order: 40,
     });
-    // The operator card keyed on the plugin's settings namespace, then the
-    // feature-owned tab. The card mounts first: it does not wait for
-    // `describe()`.
+    // The operator card tab first — it does not wait for `describe()` — then
+    // the account tab the deployment answer mounts.
     expect(slots).toEqual([
       {
-        name: "settings.plugin.item",
-        key: "qa-integrations",
+        name: "settings.plugins.tab",
+        id: "qa-integrations-config",
+        order: 30,
+        label: "Интеграции — конфигурация",
         inject: expect.any(Function),
       },
       {
@@ -158,8 +164,10 @@ describe("integrations client entry", () => {
     // regardless of the deployment's answer; the user surfaces do not.
     expect(slots).toEqual([
       {
-        name: "settings.plugin.item",
-        key: "qa-integrations",
+        name: "settings.plugins.tab",
+        id: "qa-integrations-config",
+        order: 30,
+        label: "Интеграции — конфигурация",
         inject: expect.any(Function),
       },
     ]);

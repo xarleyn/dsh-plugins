@@ -86,7 +86,7 @@ function spaceServer(
 /** Start one agent, which is what reads its account's profile. */
 async function startSession(target: Harness, sessionId: string): Promise<void> {
   const { agent } = createFakeAgent({ sessionId });
-  await emit(target, "agent/session-start", { agent });
+  await emit(target, "agent/created", { agent });
 }
 
 /** Every profile read issued: the account it was sent as and the URI it asked for. */

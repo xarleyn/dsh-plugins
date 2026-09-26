@@ -39,8 +39,13 @@ function props() {
   return {
     wide: true,
     useSessions: <Selected>(
-      selector: (state: { current: string }) => Selected,
-    ) => selector({ current: "shell-a" }),
+      selector: (state: {
+        byId: Record<string, { retainedBy: Record<string, number> }>;
+      }) => Selected,
+    ) =>
+      selector({
+        byId: { "shell-a": { retainedBy: { draftComposer: 1 } } },
+      }),
     useWorkspaces: <Selected>(
       selector: (state: {
         items: Array<{

@@ -5,6 +5,7 @@ import {
   createDiagnostics,
   createTranslator,
   flushMutations,
+  getByTestId,
 } from "./dom-translator.helpers.js";
 
 describe("DomTranslator", () => {
@@ -85,7 +86,8 @@ describe("DomTranslator", () => {
   });
 
   it("queries each declared scope once initially and never rescans document or body on mutations", async () => {
-    document.body.innerHTML = '<section class="scope"></section>';
+    document.body.innerHTML =
+      '<section class="scope" data-testid="l10n-scope-host"></section>';
     const documentQuery = vi.spyOn(document, "querySelectorAll");
     const translator = createTranslator([
       { source: "Enviar", target: "Send", scope: ".scope" },
@@ -101,7 +103,7 @@ describe("DomTranslator", () => {
     const bodyQuery = vi.spyOn(document.body, "querySelectorAll");
     const added = document.createElement("span");
     added.textContent = "Enviar";
-    document.querySelector(".scope")?.append(added);
+    getByTestId(document, "l10n-scope-host").append(added);
     await flushMutations();
 
     expect(added.textContent).toBe("Send");
@@ -184,6 +186,31 @@ describe("DomTranslator", () => {
     await flushMutations();
 
     expect(document.querySelector("#global-label")?.textContent).toBe("Send");
+    expect(
+      createTreeWalker.mock.calls.every(([root]) => root === protectedRoot),
+    ).toBe(true);
+  });
+
+  it("reapplies global rules when a protected test id of the surface table clears", async () => {
+    document.body.innerHTML = `
+      <div data-testid="qa-md-code-banner">
+        <span data-testid="l10n-testid-label">Enviar</span>
+      </div>
+    `;
+    const translator = createTranslator([
+      { source: "Enviar", target: "Send", scope: "global" },
+    ]);
+    translator.setLocale("en");
+    const createTreeWalker = vi.spyOn(document, "createTreeWalker");
+    expect(getByTestId(document, "l10n-testid-label").textContent).toBe(
+      "Enviar",
+    );
+
+    const protectedRoot = getByTestId(document, "qa-md-code-banner");
+    protectedRoot.setAttribute("data-testid", "l10n-plain-shell");
+    await flushMutations();
+
+    expect(getByTestId(document, "l10n-testid-label").textContent).toBe("Send");
     expect(
       createTreeWalker.mock.calls.every(([root]) => root === protectedRoot),
     ).toBe(true);

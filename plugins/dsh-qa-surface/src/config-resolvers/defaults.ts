@@ -32,6 +32,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       provider: null,
       model: null,
       reasoningEffort: null,
+      maxActiveRequests: 0,
     }),
     ui: Object.freeze({
       showHeader: true,

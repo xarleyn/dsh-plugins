@@ -130,14 +130,26 @@ export function QaNotificationSettingsPage(
     !switches.enabled || !switches.allowOs || permission === "unsupported";
 
   return (
-    <form id={FORM_ID} className="dsh-qa-settings__page" onSubmit={submit}>
-      <h3 className="dsh-qa-settings__page-title">
+    <form
+      id={FORM_ID}
+      className="dsh-qa-settings__page"
+      data-testid="qa-settings-notifications"
+      onSubmit={submit}
+    >
+      <h3
+        className="dsh-qa-settings__page-title"
+        data-testid="qa-settings-notifications-title"
+      >
         {QA_NOTIFICATION_SETTINGS_COPY.title}
       </h3>
-      <p className="dsh-qa-settings__lead">
+      <p
+        className="dsh-qa-settings__lead"
+        data-testid="qa-settings-notifications-lead"
+      >
         {QA_NOTIFICATION_SETTINGS_COPY.lead}
       </p>
       <QaSettingsToggle
+        testId="qa-settings-notifications-in-app"
         checked={choices.inApp}
         disabled={!switches.enabled}
         label={QA_NOTIFICATION_SETTINGS_COPY.inApp}
@@ -148,6 +160,7 @@ export function QaNotificationSettingsPage(
         }}
       />
       <QaSettingsToggle
+        testId="qa-settings-notifications-desktop"
         checked={choices.desktop}
         disabled={desktopLocked}
         label={QA_NOTIFICATION_SETTINGS_COPY.desktop}
@@ -163,6 +176,7 @@ export function QaNotificationSettingsPage(
         // every finished turn asks a question the reader already answered.
         <div>
           <QaSettingsButton
+            testId="qa-settings-notifications-ask"
             label={QA_NOTIFICATION_SETTINGS_COPY.askAction}
             onClick={() => {
               void requestNotificationPermission().then((answer) => {
@@ -177,20 +191,26 @@ export function QaNotificationSettingsPage(
         </div>
       ) : null}
       {!switches.enabled ? (
-        <QaSettingsNotice tone="warn">
+        <QaSettingsNotice
+          testId="qa-settings-notifications-off-on-stand"
+          tone="warn"
+        >
           {QA_NOTIFICATION_SETTINGS_COPY.offOnStand}
         </QaSettingsNotice>
       ) : null}
       {error === null ? null : (
-        <QaSettingsNotice tone="error">{error}</QaSettingsNotice>
+        <QaSettingsNotice testId="qa-settings-notifications-error" tone="error">
+          {error}
+        </QaSettingsNotice>
       )}
       {saved && error === null ? (
-        <QaSettingsNotice tone="info">
+        <QaSettingsNotice testId="qa-settings-notifications-saved" tone="info">
           {QA_NOTIFICATION_SETTINGS_COPY.saved}
         </QaSettingsNotice>
       ) : null}
       <QaSettingsActions>
         <QaSettingsButton
+          testId="qa-settings-notifications-save"
           type="submit"
           tone="primary"
           disabled={busy || !switches.enabled}

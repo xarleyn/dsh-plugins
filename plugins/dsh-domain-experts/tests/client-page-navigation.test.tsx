@@ -14,8 +14,10 @@ describe("client page: list and editor navigation", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Edit Payments" }),
     );
-    expect(await screen.findByText("Edit Payments")).toBeTruthy();
-    expect(screen.queryByText(/1 primary paths/u)).toBeNull();
+    expect(
+      (await screen.findByTestId("domain-experts-editor-title")).textContent,
+    ).toBe("Edit Payments");
+    expect(screen.queryByTestId("domain-experts-page-meta")).toBeNull();
     expect(screen.getByRole("button", { name: /All domains/u })).toBeTruthy();
   });
 
@@ -27,7 +29,7 @@ describe("client page: list and editor navigation", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: /All domains/u }),
     );
-    expect(await screen.findByText(/1 primary paths/u)).toBeTruthy();
+    expect(await screen.findByTestId("domain-experts-page-meta")).toBeTruthy();
   });
 
   it("keeps the editor open when the discard is refused", async () => {
@@ -38,9 +40,12 @@ describe("client page: list and editor navigation", () => {
         await screen.findByRole("button", { name: "Edit Payments" }),
       );
       fireEvent.click(await screen.findByRole("tab", { name: "General" }));
-      fireEvent.change(screen.getByDisplayValue("Payments"), {
-        target: { value: "Payments v2" },
-      });
+      fireEvent.change(
+        (await screen.findByTestId(
+          "domain-experts-editor-name-input",
+        )) as HTMLInputElement,
+        { target: { value: "Payments v2" } },
+      );
       fireEvent.click(
         await screen.findByRole("button", { name: /All domains/u }),
       );
@@ -49,8 +54,10 @@ describe("client page: list and editor navigation", () => {
           expect.stringContaining("Discard unsaved changes"),
         );
       });
-      expect(screen.queryByText(/1 primary paths/u)).toBeNull();
-      expect(screen.getByText("Edit Payments v2")).toBeTruthy();
+      expect(screen.queryByTestId("domain-experts-page-meta")).toBeNull();
+      expect(
+        screen.getByTestId("domain-experts-editor-title").textContent,
+      ).toBe("Edit Payments v2");
     } finally {
       confirm.mockRestore();
     }
@@ -67,7 +74,9 @@ describe("client page: list and editor navigation", () => {
         await screen.findByRole("button", { name: /All domains/u }),
       );
       expect(confirm).not.toHaveBeenCalled();
-      expect(await screen.findByText(/1 primary paths/u)).toBeTruthy();
+      expect(
+        await screen.findByTestId("domain-experts-page-meta"),
+      ).toBeTruthy();
     } finally {
       confirm.mockRestore();
     }
@@ -79,9 +88,9 @@ describe("client page: list and editor navigation", () => {
       await screen.findByRole("button", { name: "Edit Payments" }),
     );
     expect(
-      await screen.findByText("The domain no longer exists."),
-    ).toBeTruthy();
-    expect(screen.getByText(/1 primary paths/u)).toBeTruthy();
+      (await screen.findByTestId("domain-experts-page-status")).textContent,
+    ).toContain("The domain no longer exists.");
+    expect(screen.getByTestId("domain-experts-page-meta")).toBeTruthy();
   });
 });
 

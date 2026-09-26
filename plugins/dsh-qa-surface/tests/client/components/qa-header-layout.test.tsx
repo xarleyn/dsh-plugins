@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import {
@@ -44,7 +44,7 @@ function labels(cluster: Element): readonly (string | null)[] {
  */
 describe("header action cluster", () => {
   it("keeps the files control with the tabs it belongs to", () => {
-    const { container } = render(
+    render(
       <QaHeader
         {...BASE}
         administration={{ onOpen: () => undefined }}
@@ -53,11 +53,10 @@ describe("header action cluster", () => {
       />,
     );
 
-    const clusters = container.querySelectorAll(".dsh-qa-header__actions");
+    const clusters = screen.getAllByTestId("qa-surface-header-actions");
     expect(clusters).toHaveLength(1);
     const cluster = clusters[0]!;
-    const files = container.querySelector(".dsh-qa-header__files");
-    if (files === null) throw new Error("the files control is missing");
+    const files = screen.getByTestId("qa-surface-header-files");
 
     expect(files.className).toBe("dsh-qa-header__files");
     expect(cluster.contains(files)).toBe(false);
@@ -72,7 +71,7 @@ describe("header action cluster", () => {
   });
 
   it("carries the new-chat action in the same cluster when shown", () => {
-    const { container } = render(
+    render(
       <QaHeader
         {...BASE}
         showReset
@@ -81,7 +80,7 @@ describe("header action cluster", () => {
       />,
     );
 
-    const clusters = container.querySelectorAll(".dsh-qa-header__actions");
+    const clusters = screen.getAllByTestId("qa-surface-header-actions");
     expect(clusters).toHaveLength(1);
     expect(labels(clusters[0]!)).toEqual([
       "Новый чат",
@@ -95,6 +94,6 @@ describe("header action cluster", () => {
   it("keeps the service mode badge out of the title row", () => {
     const { container } = render(<QaHeader {...BASE} />);
     expect(container.querySelector(".dsh-qa-header__mode")).toBeNull();
-    expect(container.querySelector(".dsh-qa-header__viewing")).toBeNull();
+    expect(screen.queryByTestId("qa-surface-header-viewing")).toBeNull();
   });
 });

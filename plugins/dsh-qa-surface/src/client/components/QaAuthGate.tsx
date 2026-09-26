@@ -14,10 +14,22 @@ export interface QaAuthGateProps {
 
 function Logo({ logoUrl }: { readonly logoUrl: string | null }) {
   if (logoUrl !== null) {
-    return <img className="dsh-qa-auth__logo" src={logoUrl} alt="" />;
+    return (
+      <img
+        className="dsh-qa-auth__logo"
+        data-testid="qa-surface-auth-logo"
+        src={logoUrl}
+        alt=""
+      />
+    );
   }
   return (
-    <svg className="dsh-qa-auth__logo" viewBox="0 0 20 20" aria-hidden="true">
+    <svg
+      className="dsh-qa-auth__logo"
+      data-testid="qa-surface-auth-logo"
+      viewBox="0 0 20 20"
+      aria-hidden="true"
+    >
       <path d="M10 2.75a6.4 6.4 0 0 0-4.9 10.52c.2.24.28.5.24.79l-.2 1.44 1.9-.7c.24-.09.5-.06.74.05A6.4 6.4 0 1 0 10 2.75Z" />
       <path d="M7.4 8.1h5.2M7.4 11h3.2" />
     </svg>
@@ -52,14 +64,22 @@ export function QaAuthGate(props: QaAuthGateProps) {
     void operation;
   };
   return (
-    <main className="dsh-qa-surface dsh-qa-auth" aria-label="Вход в помощник">
-      <form className="dsh-qa-auth__card" onSubmit={submit}>
-        <div className="dsh-qa-auth__brand">
+    <main
+      className="dsh-qa-surface dsh-qa-auth"
+      data-testid="qa-surface-auth"
+      aria-label="Вход в помощник"
+    >
+      <form
+        className="dsh-qa-auth__card"
+        data-testid="qa-surface-auth-card"
+        onSubmit={submit}
+      >
+        <div className="dsh-qa-auth__brand" data-testid="qa-surface-auth-brand">
           <Logo logoUrl={props.logoUrl} />
-          <h1>{props.title}</h1>
+          <h1 data-testid="qa-surface-auth-title">{props.title}</h1>
         </div>
         {reset ? (
-          <p className="dsh-qa-auth__lead">
+          <p className="dsh-qa-auth__lead" data-testid="qa-surface-auth-lead">
             Укажите email: заявку увидит оператор и сбросит пароль. Почта с
             ссылкой на этом стенде не настроена.
           </p>
@@ -67,12 +87,14 @@ export function QaAuthGate(props: QaAuthGateProps) {
         {showRegister && !reset ? (
           <div
             className="dsh-qa-auth__tabs"
+            data-testid="qa-surface-auth-tabs"
             role="tablist"
             aria-label="Вход или регистрация"
           >
             <button
               type="button"
               role="tab"
+              data-testid="qa-surface-auth-tab-login"
               aria-selected={mode === "login"}
               className={
                 mode === "login"
@@ -86,6 +108,7 @@ export function QaAuthGate(props: QaAuthGateProps) {
             <button
               type="button"
               role="tab"
+              data-testid="qa-surface-auth-tab-register"
               aria-selected={mode === "register"}
               className={
                 mode === "register"
@@ -98,11 +121,15 @@ export function QaAuthGate(props: QaAuthGateProps) {
             </button>
           </div>
         ) : null}
-        <label className="dsh-qa-auth__field">
+        <label
+          className="dsh-qa-auth__field"
+          data-testid="qa-surface-auth-email-field"
+        >
           <span>Email</span>
           <input
             type="email"
             name="email"
+            data-testid="qa-surface-auth-email"
             autoComplete="email"
             required
             disabled={busy}
@@ -111,11 +138,15 @@ export function QaAuthGate(props: QaAuthGateProps) {
           />
         </label>
         {reset ? null : (
-          <label className="dsh-qa-auth__field">
+          <label
+            className="dsh-qa-auth__field"
+            data-testid="qa-surface-auth-password-field"
+          >
             <span>Пароль</span>
             <input
               type="password"
               name="password"
+              data-testid="qa-surface-auth-password"
               autoComplete={
                 mode === "register" ? "new-password" : "current-password"
               }
@@ -128,16 +159,29 @@ export function QaAuthGate(props: QaAuthGateProps) {
           </label>
         )}
         {gate !== undefined && gate.error !== null ? (
-          <p className="dsh-qa-auth__error" role="alert">
+          <p
+            className="dsh-qa-auth__error"
+            data-testid="qa-surface-auth-error"
+            role="alert"
+          >
             {gate.error}
           </p>
         ) : null}
         {notice === null ? null : (
-          <p className="dsh-qa-auth__notice" role="status">
+          <p
+            className="dsh-qa-auth__notice"
+            data-testid="qa-surface-auth-notice"
+            role="status"
+          >
             {notice}
           </p>
         )}
-        <button type="submit" className="dsh-qa-auth__submit" disabled={busy}>
+        <button
+          type="submit"
+          className="dsh-qa-auth__submit"
+          data-testid="qa-surface-auth-submit"
+          disabled={busy}
+        >
           {busy
             ? "Подождите…"
             : reset
@@ -149,6 +193,7 @@ export function QaAuthGate(props: QaAuthGateProps) {
         <button
           type="button"
           className="dsh-qa-auth__link"
+          data-testid="qa-surface-auth-forgot"
           disabled={busy}
           onClick={() => accounts.setMode(reset ? "login" : "reset")}
         >

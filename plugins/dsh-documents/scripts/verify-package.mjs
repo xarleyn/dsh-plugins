@@ -43,9 +43,9 @@ await runVerifyPackage({
   },
   clientBundle: {
     moduleLoaderId: true,
-    // A card registers into the shared slot through the declared client
-    // services.
-    matches: [/const inject = \[[^\]]*"settingsScope"[^\]]*\]/u],
+    // A card registers its tab through the declared client services, and the
+    // settings form it edits is one of them.
+    matches: [/const inject = \[[^\]]*"configForms"[^\]]*\]/u],
     // The browser has no module table for Node builtins: one `require("node:…")`
     // left in the bundle is a card that never mounts.
     notMatches: [

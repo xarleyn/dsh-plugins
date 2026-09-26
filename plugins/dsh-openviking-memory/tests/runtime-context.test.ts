@@ -150,8 +150,7 @@ describe("recall injection", () => {
     expect(appended).toHaveLength(1);
     const recall = appended[0]!;
     expect(recall.source).toMatchObject({
-      kind: "plugin",
-      plugin: "openviking-memory",
+      kind: "openviking-memory",
       form: "recall",
     });
     const text = messageText(recall);
@@ -193,11 +192,19 @@ describe("startup profile injection", () => {
   function priorStartupProfile(): unknown {
     return createUserMessage({
       content: [{ type: "text", text: "stored profile" }],
+      source: { kind: "openviking-memory", form: "instructions" },
+    });
+  }
+
+  /** The same profile as a pre-0.1.7 session logged it, under the retired kind. */
+  function legacyStartupProfile(): unknown {
+    return createUserMessage({
+      content: [{ type: "text", text: "stored profile" }],
       source: {
         kind: "plugin",
         plugin: "openviking-memory",
         form: "instructions",
-      },
+      } as unknown as Parameters<typeof createUserMessage>[0]["source"],
     });
   }
 
@@ -214,14 +221,13 @@ describe("startup profile injection", () => {
       cwd: "/workspace/project",
       ownEvents: [],
     });
-    await emit(harness, "agent/session-start", {
+    await emit(harness, "agent/created", {
       agent: idle.agent,
       source: "startup",
     });
     expect(idle.injected).toHaveLength(1);
     expect(idle.injected[0]!.source).toMatchObject({
-      kind: "plugin",
-      plugin: "openviking-memory",
+      kind: "openviking-memory",
       form: "instructions",
     });
 
@@ -244,7 +250,7 @@ describe("startup profile injection", () => {
       status: "running",
       ownEvents: [],
     });
-    await emit(harness, "agent/session-start", {
+    await emit(harness, "agent/created", {
       agent: running.agent,
       source: "startup",
     });
@@ -255,10 +261,25 @@ describe("startup profile injection", () => {
       cwd: "/workspace/project",
       ownEvents: [{ type: "user/message", data: priorStartupProfile() }],
     });
-    await emit(harness, "agent/session-start", {
+    await emit(harness, "agent/created", {
       agent: resumed.agent,
       source: "startup",
     });
     expect(resumed.injected).toEqual([]);
+
+    // A chat that started before the cutover logged its profile under the
+    // catch-all `plugin` kind this plugin no longer writes. Recognising only the
+    // new attribution would inject a second profile into a session that already
+    // has one, so the retired shape still counts.
+    const resumedLegacy = createFakeAgent({
+      sessionId: "profile-resumed-legacy",
+      cwd: "/workspace/project",
+      ownEvents: [{ type: "user/message", data: legacyStartupProfile() }],
+    });
+    await emit(harness, "agent/created", {
+      agent: resumedLegacy.agent,
+      source: "resume",
+    });
+    expect(resumedLegacy.injected).toEqual([]);
   });
 });

@@ -244,20 +244,19 @@ describe("sidebar chat deletion", () => {
   });
 
   it("returns the keyboard to the row when the backdrop closes the dialog", () => {
-    const { container } = render(tree([chatRow("s-1", "Демо-чат")], vi.fn()));
+    render(tree([chatRow("s-1", "Демо-чат")], vi.fn()));
     const trigger = deleteControl("Демо-чат");
 
     fireEvent.click(trigger);
     // The backdrop, not the panel standing inside it.
-    const backdrop = container.querySelector(".dsh-qa-modal") as Element;
-    fireEvent.click(backdrop);
+    fireEvent.click(screen.getByTestId("qa-surface-modal"));
 
     expect(document.activeElement).toBe(trigger);
   });
 
   it("keeps the keyboard inside the list after a confirmed deletion", () => {
-    const { container } = render(tree([chatRow("s-1", "Демо-чат")], vi.fn()));
-    const list = container.querySelector(".dsh-qa-sidebar__list");
+    render(tree([chatRow("s-1", "Демо-чат")], vi.fn()));
+    const list = screen.getByTestId("qa-surface-sidebar-list");
 
     fireEvent.click(deleteControl("Демо-чат"));
     fireEvent.click(screen.getByRole("button", { name: "Удалить из истории" }));
@@ -268,7 +267,7 @@ describe("sidebar chat deletion", () => {
   });
 
   it("hides the delete control when the deployment omits it", () => {
-    const { container } = render(tree([chatRow("s-1", "Демо-чат")]));
-    expect(container.querySelector(".dsh-qa-sidebar__item-delete")).toBeNull();
+    render(tree([chatRow("s-1", "Демо-чат")]));
+    expect(screen.queryByTestId("qa-surface-sidebar-item-delete")).toBeNull();
   });
 });

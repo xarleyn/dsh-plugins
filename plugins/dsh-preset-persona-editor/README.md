@@ -125,7 +125,7 @@ list only.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (tested against `0.1.5-rc.2`).
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (tested against `0.1.7-rc.2`).
 - Requires the deployment to mount `@deepseek-ai/dsh-agent-presets` (the
   `agentPresets` service) and `@deepseek-ai/dsh-system-prompt`.
 - Client surface: `settings.section` and the Typert Remote namespace

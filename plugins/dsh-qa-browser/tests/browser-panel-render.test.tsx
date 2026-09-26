@@ -68,7 +68,7 @@ describe("BrowserPanel", () => {
     expect(
       screen.getByRole("textbox", { name: "Адрес Browser" }),
     ).toHaveProperty("value", "https://example.test/app");
-    expect(screen.getByText("1440×900")).toBeTruthy();
+    expect(screen.getByTestId("status-viewport").textContent).toBe("1440×900");
     expect(screen.getByRole("tab", { name: /Example App/u })).toBeTruthy();
     expect(mocks.panelState).toHaveBeenCalledWith(TOKEN, SESSION);
     expect(mocks.panelFrame).toHaveBeenCalledWith(TOKEN, SESSION, "tab-a");
@@ -244,7 +244,7 @@ describe("BrowserPanel", () => {
     await screen.findByRole("img", { name: /Second/u });
     expect(screen.queryByRole("alert")).toBeNull();
     // The strip still says which tab is the broken one.
-    expect(screen.getByTitle(/Заблокировано запросов/u)).toBeTruthy();
+    expect(screen.getByTestId("tabs-tab-blocked")).toBeTruthy();
   });
 
   it("heads a mixed notice with the page's own refusal", async () => {
@@ -283,6 +283,6 @@ describe("BrowserPanel", () => {
     await screen.findByRole("img", { name: /Example App/u });
 
     expect(screen.queryByRole("alert")).toBeNull();
-    expect(screen.queryByTitle(/Заблокировано запросов/u)).toBeNull();
+    expect(screen.queryByTestId("tabs-tab-blocked")).toBeNull();
   });
 });

@@ -27,10 +27,11 @@ describeProviderConformance({
     [500, "ProviderUnavailable"],
   ],
   transient: { status: 429, attempts: 3, code: "RateLimited" },
-  build: ({ fetcher, retries, maxResponseBytes }) => {
+  build: ({ fetcher, retries, maxResponseBytes, timeoutMs }) => {
     const provider = new ConfluenceProvider(
       resolveConfig({
         maxResponseBytes,
+        timeoutMs,
         confluence: { instances: SITES, retries },
       }),
       fetcher,

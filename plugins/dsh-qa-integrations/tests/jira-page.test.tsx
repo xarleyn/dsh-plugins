@@ -31,6 +31,9 @@ const ON_PREM = {
 };
 const SITES = [COMPANY, SANDBOX];
 
+/** The test id zone this card owns; every hook below is named from it. */
+const Z = "qa-integrations-provider-card-jira";
+
 const disconnected: IntegrationSummary = {
   provider: "jira",
   displayName: "Jira",
@@ -124,13 +127,10 @@ describe("Integrations Jira card", () => {
       }),
     );
     render(<Card token="qa-account-token" />);
-    expect(
-      await screen.findByText(
-        "Сайт: company.atlassian.net — задан оператором стенда",
-      ),
-    ).toBeDefined();
+    const line = await screen.findByTestId(`${Z}-instance-static`);
+    expect(line.textContent).toContain("company.atlassian.net");
     expect(screen.queryByLabelText("Сайт Jira")).toBeNull();
-    expect(screen.queryByText(/подключать нечего/u)).toBeNull();
+    expect(screen.queryByTestId(`${Z}-not-configured`)).toBeNull();
     fireEvent.change(screen.getByLabelText("Аккаунт Atlassian (e-mail)"), {
       target: { value: "alice@example.com" },
     });
@@ -184,7 +184,10 @@ describe("Integrations Jira card", () => {
       remote({ jiraSites: async () => ({ ok: true, value: [] }) }),
     );
     const { container } = render(<Card token="qa-account-token" />);
-    await screen.findByText(/Оператор не настроил ни одного сайта Jira/u);
+    const hint = await screen.findByTestId(`${Z}-not-configured`);
+    expect(hint.textContent).toContain(
+      "Оператор не настроил ни одного сайта Jira",
+    );
     expect(container.textContent).not.toContain("API-токен Jira");
   });
 
@@ -205,15 +208,17 @@ describe("Integrations Jira card", () => {
     fireEvent.change(select, { target: { value: "company" } });
     expect(screen.getByLabelText("Аккаунт Atlassian (e-mail)")).toBeDefined();
     expect(screen.getByLabelText("API-токен Jira")).toBeDefined();
-    expect(screen.getByText("Развёртывание: Atlassian Cloud")).toBeDefined();
+    expect(screen.getByTestId(`${Z}-deployment`).textContent).toBe(
+      "Развёртывание: Atlassian Cloud",
+    );
     // The self-hosted site asks for a personal access token and no account.
     fireEvent.change(select, { target: { value: "onprem" } });
     expect(screen.queryByLabelText("Аккаунт Atlassian (e-mail)")).toBeNull();
     expect(screen.queryByLabelText("API-токен Jira")).toBeNull();
     expect(screen.getByLabelText("Личный токен доступа (PAT)")).toBeDefined();
-    expect(
-      screen.getByText("Развёртывание: Server / Data Center"),
-    ).toBeDefined();
+    expect(screen.getByTestId(`${Z}-deployment`).textContent).toBe(
+      "Развёртывание: Server / Data Center",
+    );
     const connect = screen.getByRole("button", {
       name: "Сохранить и проверить",
     });
@@ -243,11 +248,8 @@ describe("Integrations Jira card", () => {
       }),
     );
     render(<Card token="qa-account-token" />);
-    expect(
-      await screen.findByText(
-        "Сайт: Корпоративная Jira — задан оператором стенда",
-      ),
-    ).toBeDefined();
+    const line = await screen.findByTestId(`${Z}-instance-static`);
+    expect(line.textContent).toContain("Корпоративная Jira");
     expect(screen.queryByLabelText("Сайт Jira")).toBeNull();
     expect(screen.queryByLabelText("Аккаунт Atlassian (e-mail)")).toBeNull();
     const pat = "Mzc4OTk0NDg3MTkwOnN5bnRoZXRpYy1wYXQ";
