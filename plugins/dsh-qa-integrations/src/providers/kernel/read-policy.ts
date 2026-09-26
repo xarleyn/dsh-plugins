@@ -229,9 +229,11 @@ export const DEADLINE_IS_THE_BUDGET: TransportRetriable = (error) =>
   error.code !== "UpstreamTimeout";
 
 /**
- * The rule for an upstream more often busy than gone: every transport fault
- * earns another attempt, and the worst case of one read is `retries ×
- * timeoutMs` — a longer wait, paid for by the answers it still gets.
+ * The rule for an upstream more often busy than gone: every fault that left no
+ * answer earns another attempt, and the worst case of one read is `retries ×
+ * timeoutMs` — a longer wait, paid for by the answers it still gets. A body this
+ * deployment stopped reading is not among them: that request answered, and what
+ * the read made of it is a verdict, not a fault that may be gone on a later try.
  */
 export const RESEND_AFTER_EVERY_FAULT: TransportRetriable = () => true;
 
