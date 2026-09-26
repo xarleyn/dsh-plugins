@@ -1,6 +1,6 @@
 import type {
-  SettingsScope,
-  SettingsScopeSnapshot,
+  ConfigForm,
+  ConfigFormSnapshot,
 } from "@deepseek-ai/dsh-client-ui-settings/client";
 import { describe, expect, it, vi } from "vitest";
 import {
@@ -28,15 +28,15 @@ vi.mock("@deepseek-ai/dsh-client-store", () => ({
 }));
 
 /** Structural stand-in for the wire `SettingsPathOpView` union. */
-type ScopePathOp =
-  | { op: "set"; path: readonly string[]; value: unknown }
-  | { op: "unset"; path: readonly string[] };
+type FormPathOp =
+  | { op: "set"; path: string[]; value: unknown }
+  | { op: "unset"; path: string[] };
 
-class FakeScope implements SettingsScope<SleevSettings> {
+class FakeForm implements ConfigForm<SleevSettings> {
   readonly listeners = new Set<() => void>();
   readonly writes: Array<["set" | "unset", string, unknown?]> = [];
   rejectWrites = false;
-  snapshot: SettingsScopeSnapshot<SleevSettings> = {
+  snapshot: ConfigFormSnapshot<SleevSettings> = {
     status: "ready",
     value: {
       routes: [],
@@ -56,7 +56,7 @@ class FakeScope implements SettingsScope<SleevSettings> {
     mode: "host",
   };
 
-  getSnapshot(): SettingsScopeSnapshot<SleevSettings> {
+  getSnapshot(): ConfigFormSnapshot<SleevSettings> {
     return this.snapshot;
   }
 
@@ -65,15 +65,15 @@ class FakeScope implements SettingsScope<SleevSettings> {
     return () => this.listeners.delete(listener);
   }
 
-  set(field: string, value: unknown): Promise<void> {
+  set(field: string, value: unknown): Promise<boolean> {
     return this.mutate([{ op: "set", path: [field], value }]);
   }
 
-  unset(field: string): Promise<void> {
+  unset(field: string): Promise<boolean> {
     return this.mutate([{ op: "unset", path: [field] }]);
   }
 
-  async mutate(ops: readonly ScopePathOp[]): Promise<void> {
+  async mutate(ops: readonly FormPathOp[]): Promise<boolean> {
     for (const op of ops) {
       const field = op.path[0];
       if (field !== undefined) {
@@ -82,7 +82,7 @@ class FakeScope implements SettingsScope<SleevSettings> {
         );
       }
     }
-    if (this.rejectWrites) return;
+    if (this.rejectWrites) return false;
     const user = { ...(this.snapshot.user as Record<string, unknown>) };
     const base = this.snapshot.base as Record<string, unknown>;
     const value: Record<string, unknown> = { ...this.snapshot.value };
@@ -104,13 +104,14 @@ class FakeScope implements SettingsScope<SleevSettings> {
       revision: (this.snapshot.revision ?? 0) + 1,
     };
     for (const listener of this.listeners) listener();
+    return true;
   }
 }
 
 describe("Sleev settings card controller", () => {
   it("stages validation and discards without writing", () => {
-    const scope = new FakeScope();
-    const controller = new SleevSettingsController(scope);
+    const form = new FakeForm();
+    const controller = new SleevSettingsController(form);
     const face = controller.inject();
 
     expect(face.hooks.sleevSettings.getSnapshot()).toMatchObject({
@@ -131,13 +132,13 @@ describe("Sleev settings card controller", () => {
       invalid: false,
       maxRecentCalls: { text: "100", overridden: false, invalid: false },
     });
-    expect(scope.writes).toEqual([]);
+    expect(form.writes).toEqual([]);
     controller.dispose();
   });
 
   it("writes normalized values and can reset user overrides", async () => {
-    const scope = new FakeScope();
-    const controller = new SleevSettingsController(scope);
+    const form = new FakeForm();
+    const controller = new SleevSettingsController(form);
     const face = controller.inject();
 
     face.edit("routes", "sleev-a\nsleev-a\n sleev-b ");
@@ -155,7 +156,7 @@ describe("Sleev settings card controller", () => {
         logLevel: { text: "debug", overridden: true, invalid: false },
       });
     });
-    expect(scope.writes).toContainEqual([
+    expect(form.writes).toContainEqual([
       "set",
       "routes",
       ["sleev-a", "sleev-b"],
@@ -176,15 +177,15 @@ describe("Sleev settings card controller", () => {
         logLevel: { overridden: false },
       });
     });
-    expect(scope.writes).toContainEqual(["unset", "routes"]);
-    expect(scope.writes).toContainEqual(["unset", "logLevel"]);
+    expect(form.writes).toContainEqual(["unset", "routes"]);
+    expect(form.writes).toContainEqual(["unset", "logLevel"]);
     controller.dispose();
   });
 
   it("keeps drafts when the Host does not accept a write", async () => {
-    const scope = new FakeScope();
-    scope.rejectWrites = true;
-    const controller = new SleevSettingsController(scope);
+    const form = new FakeForm();
+    form.rejectWrites = true;
+    const controller = new SleevSettingsController(form);
     const face = controller.inject();
 
     face.edit("logLevel", "debug");
@@ -200,8 +201,8 @@ describe("Sleev settings card controller", () => {
   });
 
   it("does not enable saving for an edit equivalent to the current value", () => {
-    const scope = new FakeScope();
-    const controller = new SleevSettingsController(scope);
+    const form = new FakeForm();
+    const controller = new SleevSettingsController(form);
     const face = controller.inject();
 
     face.edit("routePrefixes", " sleev- \nsleev-");
@@ -210,7 +211,7 @@ describe("Sleev settings card controller", () => {
       invalid: false,
       routePrefixes: { text: "sleev-", overridden: false },
     });
-    expect(scope.writes).toEqual([]);
+    expect(form.writes).toEqual([]);
     controller.dispose();
   });
 });
