@@ -359,6 +359,21 @@ function resolveVisibleSkills(
 }
 
 /**
+ * Names an administrator withdrew outright, which is every account at once,
+ * its owner included.
+ * @param config - the role configuration the withdrawal was recorded in.
+ */
+export function withdrawnSkillNames(
+  config: QaCapabilityConfig,
+): ReadonlySet<string> {
+  return new Set(
+    config.skillOverrides
+      .filter(({ disabled }) => disabled)
+      .map(({ skillName }) => skillName),
+  );
+}
+
+/**
  * The personal layer of one session's user-invoke list.
  *
  * Only an outright administrator withdrawal reaches a skill the account owns:
@@ -373,11 +388,7 @@ export function personalUserSkillNames(
   ownSkills: ReadonlySet<string> | undefined,
 ): readonly string[] {
   if (ownSkills === undefined) return Object.freeze([]);
-  const withdrawn = new Set(
-    config.skillOverrides
-      .filter(({ disabled }) => disabled)
-      .map(({ skillName }) => skillName),
-  );
+  const withdrawn = withdrawnSkillNames(config);
   return Object.freeze(
     [...ownSkills]
       .filter((name) => !withdrawn.has(name))

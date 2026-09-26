@@ -17,6 +17,7 @@ typed gesture and the enforcement guard read the one policy field, so they canno
 disagree. It stays out of the model's catalog, which is the role's to decide.
 The role's ceiling still bounds the tools the skill activates with: what the role
 cannot hand out, a personal skill does not get either. An administrator's
-outright withdrawal of the same name wins over the personal layer for every chat
-started after it, while a chat that already froze the name keeps that snapshot,
-as it keeps any other role edit.
+outright withdrawal of the same name wins over the personal layer, and it wins at
+once: a chat that froze the name loses it when the withdrawal lands, because the
+personal half of a frozen snapshot is the live half. The role's half keeps
+freezing, as it does for every other role edit.
