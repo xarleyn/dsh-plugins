@@ -111,7 +111,9 @@ assert(
   ),
   "the settings card needs the plugin-cards tab in the client inject manifest",
 );
-assert(manifest.dsh.client.inject.includes("@deepseek-ai/dsh-agent-presets"));
+assert(
+  manifest.dsh.client.inject.includes("@deepseek-ai/dsh-agent-preset-registry"),
+);
 assert(
   manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-file-upload"),
   "attached files stage through the upload service, so its bundle must arrive first",
@@ -498,12 +500,12 @@ for (const builtin of ["process", "buffer", "node:fs", "node:path"]) {
 assert.doesNotMatch(client, /node_modules\/yaml/u, "yaml stays on the Host");
 
 // The settings card (AGENTS.md shell contract): the canonical shell rules and
-// chevron path, the keyed `settings.plugin.item` registration under the
-// namespace the Host serves, and the plugin's own body classes.
+// chevron path, the tab this plugin owns in the Plugins settings section, and
+// the plugin's own body classes.
 verifyPluginCardContract(client, {
   legacyPatterns: [/dsh-plugin-card\s*\*/u, /\.qa-panel\b/u],
 });
-assert.match(client, /settings\.plugin\.item/u);
+assert.match(client, /settings\.plugins\.tab/u);
 assert.match(client, /Помощник QA/u);
 // The toggle's accessible label is assembled from the open state and the card
 // name, so the bundle carries the two halves rather than one sentence.

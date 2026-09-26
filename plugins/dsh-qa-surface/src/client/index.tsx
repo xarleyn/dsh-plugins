@@ -3,18 +3,17 @@ import type {
   ConnectionHandle,
   SessionId,
 } from "@deepseek-ai/dsh-client-connection/client";
-import type { SettingsScopeBinder } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import qaSurfaceRemote from "@yadsh/dsh-qa-surface/remote";
 import type { ClientRemote } from "@deepseek-ai/dsh-api-gateway/client";
 import type {} from "@deepseek-ai/dsh-api-session-controller/remote";
-import type {} from "@deepseek-ai/dsh-agent-presets/remote";
+import type {} from "@deepseek-ai/dsh-agent-preset-registry/remote";
 import type {} from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
-import { registerSettingsCard } from "@yadsh/dsh-plugin-kit/client";
+import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 import { QaConfigController } from "./QaConfigController.js";
 import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
 import { QaAccountsController } from "./QaAccountsController.js";
@@ -102,7 +101,7 @@ import type {
 } from "../types.js";
 import { QA_SURFACE_SETTINGS_NAMESPACE } from "../shared/settings.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
-import { QaSettingsCard, type QaSettingsCardFace } from "./settings/card.js";
+import { QaSettingsTab, type QaSettingsCardFace } from "./settings/card.js";
 import { QA_SETTINGS_STYLES } from "./settings/styles.js";
 import { QaSurfacePanelRegistry } from "./panels/registry.js";
 import { QaUserSettingsSectionRegistry } from "./settings-extensions/index.js";
@@ -525,7 +524,7 @@ export const inject = [
   "sessions",
   "uiConversation",
   "connection",
-  "settingsScope",
+  "configForms",
   "remote",
 ];
 
@@ -829,14 +828,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       // a card mounted outside the overlay sees the same session the pages do.
       userSession.attach(accounts);
       const route = new QaRouteController();
-      // One binding for both readers: the surface projects it into the page's
+      // One form for both readers: the surface projects it into the page's
       // configuration, the settings card edits the same namespace through it.
-      const settingsScope = (
-        ctx.settingsScope as SettingsScopeBinder
-      ).bind<QaSurfaceConfig>({
-        namespace: QA_SURFACE_SETTINGS_NAMESPACE,
-      });
-      const config = new QaConfigController(settingsScope, async () => {
+      // The namespace is this bundle's profile entry id.
+      const configForm = ctx.configForms.get<QaSurfaceConfig>(
+        QA_SURFACE_SETTINGS_NAMESPACE,
+      );
+      const config = new QaConfigController(configForm, async () => {
         // Settings RPCs are loopback-pinned by the gateway, so a browser the
         // Host serves over the LAN reads the effective configuration here.
         const described = await policyRemote.describe();
@@ -847,22 +845,35 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         // declarations during an incremental source typecheck.
         return described.value as unknown as ResolvedQaSurfaceConfig;
       });
-      // The operator edits this deployment through the shared plugin-cards
-      // tab: the same namespace the page reads, plus the Host's own answer
-      // about what it resolved. Its stylesheet is the card shell, not the QA
-      // page's palette.
+      // The operator edits this deployment from its own tab in the Plugins
+      // settings section: the same namespace the page reads, plus the Host's own
+      // answer about what it resolved. Its stylesheet is the card shell, not the
+      // QA page's palette, and the card keeps drawing its own shell.
       ctx.effect(() => {
         const cardFace: QaSettingsCardFace = {
-          scope: settingsScope,
+          form: configForm,
           describe: () => policyRemote.describe(),
         };
-        return registerSettingsCard(remoteContext, {
-          key: QA_SURFACE_SETTINGS_NAMESPACE,
-          pluginName: "@yadsh/dsh-qa-surface",
-          styles: QA_SETTINGS_STYLES,
-          component: QaSettingsCard,
-          inject: () => cardFace,
-        });
+        const removeStyles = injectCardStyles(
+          "@yadsh/dsh-qa-surface",
+          QA_SETTINGS_STYLES,
+        );
+        const removeTab = ctx.slots.inject("settings.plugins.tab", () =>
+          ctx.slots.register(
+            {
+              name: "settings.plugins.tab",
+              id: QA_SURFACE_SETTINGS_NAMESPACE,
+              order: 30,
+              label: () => "Помощник QA",
+              inject: () => cardFace,
+            },
+            QaSettingsTab,
+          ),
+        );
+        return () => {
+          removeTab();
+          removeStyles();
+        };
       }, "dsh-qa-surface: settings-card");
       const syncRoute = () => {
         const snapshot = config.getSnapshot();
