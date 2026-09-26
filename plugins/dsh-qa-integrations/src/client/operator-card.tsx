@@ -13,7 +13,7 @@
  * a new provider adds one of those instead of copying this card's form.
  */
 
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
   InjectFace,
@@ -54,17 +54,31 @@ import { ServiceAccessSection } from "./operator-sections/service-profiles.js";
 
 /** The face the slot entry injects into this card. */
 export interface OperatorCardFace {
-  readonly scope: SettingsScope<QaIntegrationsConfig>;
+  readonly form: ConfigForm<QaIntegrationsConfig>;
 }
 
-type CardProps = PropsRuntime<"settings.plugin.item"> &
+type CardProps = PropsRuntime<"settings.plugins.tab"> &
   InjectFace<OperatorCardFace>;
 
-/** Mutation operations as the bound scope declares them. */
-type ScopeOps = Parameters<SettingsScope<QaIntegrationsConfig>["mutate"]>[0];
+/** Mutation operations as the bound form declares them. */
+type ScopeOps = Parameters<ConfigForm<QaIntegrationsConfig>["mutate"]>[0];
 
-export function OperatorCard({ scope }: CardProps): ReactElement | null {
-  const store = useMemo(() => bindSettingsExternalStore(scope), [scope]);
+/**
+ * The card as the Host's Plugins settings render it: one entry of
+ * `settings.plugins.tab`, whose `<li>` shell therefore sits in a list this
+ * plugin owns. The panel supplies no list of its own, and a bare `<li>` under
+ * a `<div>` is what the shell contract on the account tab already avoids.
+ */
+export function OperatorCardTab(props: CardProps): ReactElement | null {
+  return (
+    <ul className="dsh-qa-integrations__host-tab">
+      <OperatorCard {...props} />
+    </ul>
+  );
+}
+
+export function OperatorCard({ form }: CardProps): ReactElement | null {
+  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
   const settings = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -79,20 +93,20 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
       const ops = [
         { op: "set", path: [...path], value },
       ] as unknown as ScopeOps;
-      scope.mutate(ops).catch((cause: unknown) => {
+      form.mutate(ops).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [scope],
+    [form],
   );
   const unset = useCallback(
     (path: readonly string[]) => {
       const ops = [{ op: "unset", path: [...path] }] as unknown as ScopeOps;
-      scope.mutate(ops).catch((cause: unknown) => {
+      form.mutate(ops).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [scope],
+    [form],
   );
   const overridden = useCallback(
     (path: readonly string[]) => isOverridden(settings.user, path),
@@ -104,10 +118,10 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
       op: "unset",
       path: [key],
     })) as unknown as ScopeOps;
-    scope.mutate(ops).catch((cause: unknown) => {
+    form.mutate(ops).catch((cause: unknown) => {
       setError(displayError(cause));
     });
-  }, [keys, scope]);
+  }, [form, keys]);
 
   if (settings.status === "unavailable") return null;
 
@@ -135,7 +149,7 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
       overridden={overridden(path)}
     />
   );
-  const form: OperatorForm = { config, control, toggle };
+  const sections: OperatorForm = { config, control, toggle };
 
   return (
     <CardShell
@@ -181,15 +195,15 @@ export function OperatorCard({ scope }: CardProps): ReactElement | null {
             </button>
           </div>
 
-          <GeneralSection form={form} />
-          <Bitrix24Section form={form} />
-          <ConfluenceSection form={form} />
-          <GitlabSection form={form} />
-          <TeamcitySection form={form} />
-          <JiraSection form={form} />
-          <TestitSection form={form} />
-          <WeblateSection form={form} />
-          <ServiceAccessSection form={form} />
+          <GeneralSection form={sections} />
+          <Bitrix24Section form={sections} />
+          <ConfluenceSection form={sections} />
+          <GitlabSection form={sections} />
+          <TeamcitySection form={sections} />
+          <JiraSection form={sections} />
+          <TestitSection form={sections} />
+          <WeblateSection form={sections} />
+          <ServiceAccessSection form={sections} />
 
           <Section
             title="Подсказки получения доступа"
