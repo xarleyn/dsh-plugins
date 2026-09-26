@@ -51,12 +51,17 @@ export const QaSlashPalette = memo(function QaSlashPalette(
   return (
     <div
       className="dsh-qa-slash"
+      data-testid="qa-slash"
       role="listbox"
       id={`${props.idPrefix}-list`}
       aria-label="Навыки и команды"
     >
       {message === null ? null : (
-        <p className="dsh-qa-slash__empty" role="presentation">
+        <p
+          className="dsh-qa-slash__empty"
+          data-testid="qa-slash-message"
+          role="presentation"
+        >
           {message}
         </p>
       )}
@@ -66,8 +71,13 @@ export const QaSlashPalette = memo(function QaSlashPalette(
           role="group"
           aria-label={KIND_GROUP[group.kind]}
           className="dsh-qa-slash__group"
+          data-testid="qa-slash-group"
         >
-          <p className="dsh-qa-slash__group-title" role="presentation">
+          <p
+            className="dsh-qa-slash__group-title"
+            data-testid="qa-slash-group-title"
+            role="presentation"
+          >
             {KIND_GROUP[group.kind]}
           </p>
           {group.rows.map(({ entry, index }) => {
@@ -83,6 +93,7 @@ export const QaSlashPalette = memo(function QaSlashPalette(
                     ? "dsh-qa-slash__row dsh-qa-slash__row--active"
                     : "dsh-qa-slash__row"
                 }
+                data-testid="qa-slash-row"
                 onMouseEnter={() => {
                   props.onHover(index);
                 }}
@@ -93,18 +104,28 @@ export const QaSlashPalette = memo(function QaSlashPalette(
                   props.onPick(entry);
                 }}
               >
-                <span className="dsh-qa-slash__head">
-                  <span className="dsh-qa-slash__name">{`/${entry.name}`}</span>
+                <span
+                  className="dsh-qa-slash__head"
+                  data-testid="qa-slash-row-head"
+                >
+                  <span
+                    className="dsh-qa-slash__name"
+                    data-testid="qa-slash-row-name"
+                  >{`/${entry.name}`}</span>
                   {props.showKindBadge ? (
                     <span
                       className={`dsh-qa-slash__kind dsh-qa-slash__kind--${entry.kind}`}
+                      data-testid="qa-slash-row-kind"
                     >
                       {KIND_LABEL[entry.kind]}
                     </span>
                   ) : null}
                 </span>
                 {props.showDescriptions && entry.description !== "" ? (
-                  <span className="dsh-qa-slash__description">
+                  <span
+                    className="dsh-qa-slash__description"
+                    data-testid="qa-slash-row-description"
+                  >
                     {entry.description}
                   </span>
                 ) : null}
@@ -114,7 +135,11 @@ export const QaSlashPalette = memo(function QaSlashPalette(
         </div>
       ))}
       {props.commandSurface === "inactive" && props.rows.length > 0 ? (
-        <p className="dsh-qa-slash__hint" role="presentation">
+        <p
+          className="dsh-qa-slash__hint"
+          data-testid="qa-slash-inactive-hint"
+          role="presentation"
+        >
           Команды появятся, когда у чата будет активная сессия.
         </p>
       ) : null}

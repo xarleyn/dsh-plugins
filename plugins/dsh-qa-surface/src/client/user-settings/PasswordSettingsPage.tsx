@@ -61,13 +61,28 @@ export function QaPasswordSettingsPage(props: QaPasswordSettingsPageProps) {
     });
   };
   return (
-    <form className="dsh-qa-settings__page" onSubmit={submit}>
-      <h3 className="dsh-qa-settings__page-title">Пароль</h3>
-      <p className="dsh-qa-settings__lead">
+    <form
+      className="dsh-qa-settings__page"
+      data-testid="qa-settings-password"
+      onSubmit={submit}
+    >
+      <h3
+        className="dsh-qa-settings__page-title"
+        data-testid="qa-settings-password-title"
+      >
+        Пароль
+      </h3>
+      <p
+        className="dsh-qa-settings__lead"
+        data-testid="qa-settings-password-lead"
+      >
         Смена пароля закрывает ваши сессии в других браузерах — там придётся
         войти заново. Текущая сессия сохранится.
       </p>
-      <QaSettingsField label="Текущий пароль">
+      <QaSettingsField
+        testId="qa-settings-password-current"
+        label="Текущий пароль"
+      >
         <input
           type="password"
           name="current-password"
@@ -78,7 +93,7 @@ export function QaPasswordSettingsPage(props: QaPasswordSettingsPageProps) {
           onChange={(event) => setCurrent(event.currentTarget.value)}
         />
       </QaSettingsField>
-      <QaSettingsField label="Новый пароль">
+      <QaSettingsField testId="qa-settings-password-new" label="Новый пароль">
         <input
           type="password"
           name="new-password"
@@ -90,7 +105,10 @@ export function QaPasswordSettingsPage(props: QaPasswordSettingsPageProps) {
           onChange={(event) => setNext(event.currentTarget.value)}
         />
       </QaSettingsField>
-      <QaSettingsField label="Новый пароль ещё раз">
+      <QaSettingsField
+        testId="qa-settings-password-repeat"
+        label="Новый пароль ещё раз"
+      >
         <input
           type="password"
           name="repeat-password"
@@ -103,23 +121,34 @@ export function QaPasswordSettingsPage(props: QaPasswordSettingsPageProps) {
         />
       </QaSettingsField>
       {tooShort ? (
-        <p className="dsh-qa-settings__field-hint">
+        <p
+          className="dsh-qa-settings__field-hint"
+          data-testid="qa-settings-password-too-short"
+        >
           Пароль должен быть не короче {MIN_PASSWORD_LENGTH} символов.
         </p>
       ) : null}
       {mismatch ? (
-        <p className="dsh-qa-settings__field-hint">Пароли не совпадают.</p>
+        <p
+          className="dsh-qa-settings__field-hint"
+          data-testid="qa-settings-password-mismatch"
+        >
+          Пароли не совпадают.
+        </p>
       ) : null}
       {error === null ? null : (
-        <QaSettingsNotice tone="error">{error}</QaSettingsNotice>
+        <QaSettingsNotice testId="qa-settings-password-error" tone="error">
+          {error}
+        </QaSettingsNotice>
       )}
       {saved && error === null ? (
-        <QaSettingsNotice tone="info">
+        <QaSettingsNotice testId="qa-settings-password-saved" tone="info">
           Пароль изменён. Другие сессии закрыты.
         </QaSettingsNotice>
       ) : null}
       <QaSettingsActions>
         <QaSettingsButton
+          testId="qa-settings-password-change"
           type="submit"
           tone="primary"
           disabled={busy || incomplete || mismatch || tooShort}

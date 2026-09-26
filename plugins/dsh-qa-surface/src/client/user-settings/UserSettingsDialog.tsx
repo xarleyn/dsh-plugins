@@ -160,9 +160,10 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
       size="settings"
       onClose={props.onClose}
     >
-      <div className="dsh-qa-settings">
+      <div className="dsh-qa-settings" data-testid="qa-settings">
         <nav
           className="dsh-qa-settings__nav"
+          data-testid="qa-settings-nav"
           role="tablist"
           aria-label="Разделы настроек"
         >
@@ -171,6 +172,7 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
               key={entry.id}
               type="button"
               role="tab"
+              data-testid="qa-settings-tab"
               aria-selected={entry.id === active}
               className={
                 entry.id === active
@@ -185,6 +187,7 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
         </nav>
         <div
           className="dsh-qa-settings__content"
+          data-testid="qa-settings-content"
           role="tabpanel"
           aria-label={
             sections.find((entry) => entry.id === active)?.title ?? "Настройки"
