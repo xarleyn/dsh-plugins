@@ -1,11 +1,13 @@
 /**
  * Shutdown checkpoint (SPEC §58, §59): disposal must still write the final
  * snapshot of the dirty session that owns the slot, must wait for the slot
- * lease rather than race it, and must not hold the host unload open forever.
+ * lease rather than race it, must not hold the host unload open forever, and
+ * must stop accepting any work that would start new persistence.
  */
 
 import { describe, expect, it, vi } from "vitest";
 import type { StreamChunk } from "@deepseek-ai/dsh-llm";
+import { KvCoordinatorDisposedError } from "../../src/errors.js";
 import {
   buildIdentity,
   createHarness,
@@ -168,6 +170,89 @@ describe("single-slot coordinator: shutdown flush (SPEC §58)", () => {
       await harness.coordinator.handleSessionDisposed("session-a");
       expect(harness.backend.saveCount).toBe(1);
     } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("refuses a request that arrives after dispose, without starting work", async () => {
+    const harness = await createHarness();
+    try {
+      await run(harness, "session-a");
+      await harness.coordinator.dispose();
+
+      const counters = harness.metrics.snapshot();
+      const events = [...harness.backend.events];
+      const saves = harness.backend.saveCount;
+
+      const refusal = await harness.coordinator
+        .runSessionRequest(makeRequest({ sessionId: "session-b" }))
+        .catch((error: unknown) => error);
+      expect(refusal).toBeInstanceOf(KvCoordinatorDisposedError);
+      expect((refusal as KvCoordinatorDisposedError).code).toBe(
+        "KV_COORDINATOR_DISPOSED",
+      );
+      // The auxiliary branch is refused the same way.
+      await expect(
+        harness.coordinator.runSessionRequest(
+          makeRequest({ sessionId: "session-a", purpose: "session-title" }),
+        ),
+      ).rejects.toBeInstanceOf(KvCoordinatorDisposedError);
+
+      expect(harness.metrics.snapshot()).toEqual(counters);
+      expect(harness.backend.saveCount).toBe(saves);
+      expect(harness.backend.events).toEqual(events);
+      // No runtime was created and no lease was taken: a mutex-guarded call
+      // still gets through promptly.
+      expect(harness.coordinator.getSessionState("session-b")).toBeUndefined();
+      await expect(
+        harness.coordinator.restoreNow("session-b"),
+      ).resolves.toMatchObject({ kind: "cold" });
+    } finally {
+      await harness.cleanup();
+    }
+  });
+
+  it("refuses a queued request once it obtains the lease after dispose", async () => {
+    const harness = await createHarness();
+    const finishA = deferred();
+    try {
+      const streamA = await harness.coordinator.runSessionRequest({
+        ...makeRequest({ sessionId: "session-a" }),
+        next: async function* (): AsyncIterable<StreamChunk> {
+          yield { type: "text-delta", index: 0, text: "a" };
+          await finishA.promise;
+          yield { type: "finish", reason: { kind: "stop" } };
+        },
+      });
+      const iteratorA = streamA[Symbol.asyncIterator]();
+      await iteratorA.next();
+
+      // B queues behind the lease A still holds.
+      const queued = harness.coordinator.runSessionRequest(
+        makeRequest({ sessionId: "session-b" }),
+      );
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(harness.coordinator.slot.ownerSessionId).toBe("session-a");
+
+      const shutdown = harness.coordinator.dispose();
+      finishA.resolve();
+      await iteratorA.next();
+      await iteratorA.next();
+
+      await expect(queued).rejects.toBeInstanceOf(KvCoordinatorDisposedError);
+      await shutdown;
+
+      // B never reached the backend; the only save is A's final checkpoint.
+      expect(harness.backend.saveCount).toBe(1);
+      expect(harness.backend.restoreCount).toBe(0);
+      expect(harness.backend.eraseCount).toBe(1);
+      // The refused lease was released, so the mutex is free again.
+      await expect(
+        harness.coordinator.restoreNow("session-b"),
+      ).resolves.toMatchObject({ kind: "cold" });
+    } finally {
+      finishA.resolve();
       await harness.cleanup();
     }
   });
