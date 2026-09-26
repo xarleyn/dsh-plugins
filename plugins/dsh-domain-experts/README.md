@@ -89,9 +89,10 @@ degraded.
 
 ## Configuration
 
-Plugin settings live in the `domain-experts` namespace and are edited in
-`Settings → Plugins → Configurable` (or `Settings → Plugins → Domain Experts`
-for the domains themselves). Changes apply to subsequent operations.
+Plugin settings are live fields of this plugin's own profile configuration, and
+the Host serves their form under `Settings → Plugins` for the
+`dsh-domain-experts` entry. The `Domain Experts` tab there manages the domains
+themselves. Changes apply to subsequent operations.
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
