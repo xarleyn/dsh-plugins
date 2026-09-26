@@ -1168,6 +1168,13 @@ retargeted. **[verified]** line 49 and the block at 816-835. **Retargeted by #51
 the gate now fires on `settings.plugin.item`, `plugins.row.config`, and
 `settings.plugins.tab` combined with the shell, so enforcement survives whichever
 way D1 goes.
+**[decided 2026-09-26, #508] Option 2.** The card shell stays ours, the
+canonical `AGENTS.md` CSS and `verify-plugin-card-contract.mjs` are not edited,
+and neither `settings.plugins.tab` nor `plugins.row.config` is rewritten onto the
+host chrome; the migration is "only broken types and broken APIs". First landing:
+`dsh-qa-surface` (#513), which registers its card as a `settings.plugins.tab`
+entry and keeps the `<li>` root inside a plugin-owned `<ul>`, as `AGENTS.md`
+already requires of a tab.
 
 **D2 — preset authoring (`dsh-preset-persona-editor`) — newly open.** §8.6:
 the copy-to-writable-root capability does not exist at `rc.2`, and neither does
@@ -1184,6 +1191,14 @@ compatibility implications. This is a feature decision, not a migration step.
 accepts `ask` for `auto`, or lockdown documents that `auto` is not a valid
 lockdown preset and rejects it earlier with a clear error. Needs one stand to
 confirm the failure mode first (§12 step 6).
+**[decided 2026-09-26, #508] `auto` stays an invalid lockdown preset:** refuse it
+earlier and clearly, keep the `approvalPolicy: "never"` pin unweakened, and cover
+the refusal path with a test. Landed in #513 — `resolveLockdown`
+(`plugins/dsh-qa-surface/src/config-resolvers/lockdown.ts`) rejects
+`permissionPreset: "auto"` while lockdown is enabled, so a deployment fails at
+configuration instead of failing attestation one chat at a time. The failure mode
+was read from the sources cited above; the physical lockdown stand of §12 step 6c
+has still not been run.
 
 **D4 — catalog completeness / the dual framework tier (§1, §9.2) — mechanical
 with one judgement call.** Adding the 17 uncovered DSH names to both catalogs is
@@ -1207,11 +1222,11 @@ excluding the shared 2-line `compatibility.json` wave each row also carries.
 
 | Package | class | what changes | our files (line refs) | ~lines | covering tests |
 | --- | --- | --- | --- | --- | --- |
-| `@yadsh/dsh-plugin-kit` | **decision → do first** | `SETTINGS_PLUGIN_ITEM_SLOT` → `plugins.row.config` helper; `ConfigForm`-shaped binding (`ctx.configForms.get<T>(ns)`); `card-shell.tsx`/`chevron.tsx`/`plugin-card-css.ts` die only under D1 option 1 | `src/client/register-settings-card.tsx:56,93,116` **[verified]**, `src/client/settings-store.ts:3` (survives — structural over `subscribe`/`getSnapshot`), `src/client/card-shell.tsx:34-57`, `src/client/chevron.tsx:13`, `src/client/index.ts:17,19-21` | 60 | none of its own (4 files pass today); exercised by every plugin client test |
+| `@yadsh/dsh-plugin-kit` | **decision → do first** | `SETTINGS_PLUGIN_ITEM_SLOT` → `plugins.row.config` helper; `ConfigForm`-shaped binding (`ctx.configForms.get<T>(ns)`); `card-shell.tsx`/`chevron.tsx`/`plugin-card-css.ts` die only under D1 option 1 | `src/client/register-settings-card.tsx:56,93,116` **[verified]**, `src/client/settings-store.ts:3` (survives — structural over `subscribe`/`getSnapshot`), `src/client/card-shell.tsx:34-57`, `src/client/chevron.tsx:13`, `src/client/index.ts:17,19-21` — **note from #513:** under D1 option 2 a tab registration takes `id`/`order`/`label` and no `key`, which `SettingsCardOptions` does not carry, so `dsh-qa-surface` calls `ctx.slots.inject/register` directly and uses only `injectCardStyles` + `bindSettingsExternalStore` from this kit; the shell CSS and `CardShell` survive untouched | 60 | none of its own (4 files pass today); exercised by every plugin client test |
 | `@yadsh/dsh-plugin-scripts` | **decision** | canonical shell CSS + chevron assertions; `deepEqual` capability | `verify-plugin-card-contract.mjs:4-15,39,44-45` **[verified]**, `run-verify-package.mjs:45,169-174`, `run-verify-package.test.mjs:58-59` (version literal) | 25 | `run-verify-package.test.mjs` |
 | repo root `scripts/` | **decision** | `SETTINGS_CARD_SLOT` constant must follow D1 or the gate goes blind (§4.3a) | `verify-package-hygiene.mjs:49,816-835` **[verified]**; `package-hygiene.test.mjs:41-42`; `check-dependencies.test.mjs:67,69,131` | 15 | `package-hygiene.test.mjs` |
 | `@yadsh/dsh-test-kit` | code | host **one** `MemorySettings` conforming to `SettingsForms` (accessor `writable`, no stray `override`) so 3 plugins share it — no error of its own today | new/changed fake in `packages/test-kit/src/**`; current copies at `dsh-model-safety-gate/tests/integration/settings.test.ts:19-30`, `dsh-plugin-log-ui/tests/integration.test.ts:14-25`, `dsh-prompt-firewall/tests/settings.test.ts:14-25` **[verified]** | 30 | `dsh-test-kit` 3 files pass today |
-| `dsh-qa-surface` | **decision + code, biggest** | volatile `Config`; card path; `SettingsScopeBinder` gone; **4 new `rc.2` reads**; provenance→producer; `dsh-agent-presets` rename; own `qaSurfacePanels` merge | `src/index.ts:487,561`; `src/client/index.tsx:11,528,834-859`; `src/client/QaConfigController.ts:1,35`; `src/client/settings/card.tsx:13,69,73,77,242`; `src/client/QaTranscriptAdapter.ts:476,248`; `src/client/turn-sources.ts:82`; `src/client/QaSessionController.ts:1644`; `src/client/project-session-state.ts:75`; `src/client/panels/contract.ts:70`; `src/access/{capability-catalog.ts:33,207,218,model.ts:533}`; `src/qa-tools/lifecycle.ts:40` already `agent/created` ✔; deprecated reads `prompt-notes.ts:375`, `secure-session.ts:547`, `admin/session-log.ts:130,231`, `provenance/host-store.ts:83,236`, `qa-tools/durable-marker.ts:97,101`; `compatibility.json:4-5,12`; `scripts/verify-package.mjs:501-517`; `package.json:61-70`; `QaChangelog.tsx` (§6) | 130 | ≈14 files: `tests/wiring/index-wiring.test.ts:81-82`, `tests/config/config-controller.test.ts`, `tests/provenance/*`, `tests/transcript/*`, `tests/qa-tools/*`, `tests/admin/*` |
+| `dsh-qa-surface` | ✔ **done in #513** (decision D1 option 2 + D3) | volatile `Config`; card path; `SettingsScopeBinder` gone; **4 new `rc.2` reads**; provenance→producer; `dsh-agent-presets` rename; own `qaSurfacePanels` merge | landed: `src/config.ts` (every top-level field `.volatile()`, `QaSurfaceConfigRefs`, `readConfigRefs`), `src/index.ts:486-513` (`installSection` → `configure({auto:false})` + `settings/document-updated` re-sync), `:558-562`→`acquireScope` lease, `src/shared/settings.ts` (namespace = profile entry id `dsh-qa-surface`), `src/client/index.tsx:523-530,834-864`, `src/client/QaConfigController.ts:1,35`, `src/client/settings/card.tsx` (+ `QaSettingsTab` `<ul>` wrapper), `src/client/QaTranscriptAdapter.ts:282,476`, `src/client/QaSessionController.ts:1379,1644`, `src/client/project-session-state.ts:72-107`, `src/client/components/QaAgentsDrawer.tsx:32`, `src/client/lineage.ts:56-111`, `src/prompt-notes.ts` (own `qa-notes` source kind), `src/qa-tools/lifecycle.ts:40`, `src/access/capability-catalog.ts` (lease-typed `presetScope`), `compatibility.json:12`, `scripts/verify-package.mjs:114,506`, `package.json:64,121,161`, `QaChangelog.tsx` (0.14.0 item, no new section). **Corrections to this row:** the compiler found three sites the map did not name — `ISessions.open` is gone (`QaSessionController.ts:1379` → `retain(id,{source:'qaSurface'})` + release on unbind, the #525 pattern), `SessionSummary.completed` is gone (`QaAgentsDrawer.tsx:32`), and `RunningToolCall.argsRaw` exists only on its `StartedToolCall` arm (`QaTranscriptAdapter.ts:282`); `src/client/turn-sources.ts:82`, `src/client/panels/contract.ts:70`, `src/access/{capability-catalog.ts:33,207,218,model.ts:533}` and every deprecated read (`secure-session.ts:547`, `admin/session-log.ts:130,231`, `provenance/host-store.ts:83,236`, `qa-tools/durable-marker.ts:97,101`) needed no edit — the `access` ones are our own taxonomy and the deprecated ones are still alive with no replacement (§5). The preset rename also grew two `catalog:dsh`/`catalog:dsh-dev` keys in `pnpm-workspace.yaml`; `@deepseek-ai/dsh-agent-presets` stays listed for `dsh-preset-persona-editor`, whose own card moves it | 619 src/scripts + 425 tests | 26 test files touched, 235 files / 1727 tests green — except `tests/wiring/index-wiring.test.ts`, which cannot be collected on this branch (§13.1) |
 | `dsh-qa-integrations` | decision + code | `SettingsScope`→`ConfigForm` type swaps (77 errors, mostly cascade); card | `src/index.ts:409,1523`; `src/client/index.tsx:3,44-53,75,93-98,123-126`; `src/client/operator-card.tsx:5,16,57,60,64,141`; `src/client/card.tsx:5,46`; `compatibility.json:4-5,7`; `scripts/verify-package.mjs:215-216` | 120 | `tests/client-registration.test.ts:138,161`, `tests/client-bundle.test.tsx`, `tests/card.test.tsx`, `tests/plugin.test.ts` |
 | `dsh-jev-compaction` | decision + code | settings install + card; **largest non-settings cluster**; `TS2742` at `config.ts:854` | `src/settings/install.ts:21,66`; `src/client/index.tsx:32,42-65`; `src/client/card.tsx:15,48,51,55,164`; `src/dsh/surface.ts:11,16,75,82,130,137,142,145`; `src/planner/collect.ts:23,50,72,158,200-202`; `src/jev/state.ts:73,101`; `src/mutation/apply.ts:63`; `src/result-shaping/budget.ts:28`; `compatibility.json:4-5,7`; **`scripts/verify-package.mjs:56` deepEqual — must edit** | 90 | `tests/client/{client-bundle,registration,settings-card}.test.tsx`, `tests/unit/settings.test.ts`, `tests/integration/{post-execute.test.ts:241,surface,engine,service,persistence}.test.ts`, `tests/eval/evaluation.test.ts` |
 | `dsh-openviking-memory` | decision + code, riskiest | volatile Config; card; **`agent/session-start` → `agent/created`, handler must not throw**; block taxonomy at runtime | `src/index.ts:194` **[verified]**; `src/settings.ts:26,67`; `src/client/index.tsx:46,82-97`; `src/client/card.tsx:14,38,41,45,150`; `src/runtime.ts:793,807-810,827`; `src/capture.ts:93,143`; `src/openviking/capture-utils.ts:151,327,350,457`; `compatibility.json:4-5,9,16`; **`scripts/verify-package.mjs:63` deepEqual**, `:64,73,190`; `package.json:49-52`; `scripts/smoke-packed-dsh.mjs` stale default | 85 | **`tests/bundle.test.ts:173-176` hard assert**, `tests/injection.test.ts:78,196,259,304`, `tests/qa-scoping.test.ts:72`, `tests/runtime-context.test.ts:215-258`, `tests/runtime-drain.test.ts:134`, `tests/runtime-lifecycle.test.ts:142,231`, `tests/settings-install.test.ts:83,166,228,266`, `tests/profile-space.test.ts:89`, `tests/helpers/harness.ts:312,337-338,380` |
@@ -1342,38 +1357,55 @@ value and the 39 pending version plans — were re-read directly
 `AGENTS.md`-relevant ones (`ui-plugin-manager` `.card` radius re-tokening,
 `focus.css`, `scripts/verify-package-hygiene.mjs:49`).
 
-### 13.1 Two repository gates are red on `dsh-v0.1.7-rc` independently of any of the above
+### 13.1 Repository gates that are red on `dsh-v0.1.7-rc` independently of the cutover
 
 Anyone running `pnpm check` on this branch while doing the cutover will meet
-these first, and neither is caused by the version work:
+these first, and none is caused by the version work. Re-measured on `bot/513`
+after #509/#510/#511/#566 landed: two of the three original findings are fixed,
+and the wave has a new, larger one.
 
-- `pnpm check:files` exits 1 with
-  `plugins/dsh-session-scope/src/client.ts: allowlisted file does not exist, drop
-  it from fileBudgetAllowlist`. The entry is at
-  `scripts/check-file-budget.mjs:138` and the file is absent **at `HEAD`**
-  (`git cat-file -e HEAD:plugins/dsh-session-scope/src/client.ts` fails), so the
-  dangling exemption was committed by whatever card removed the file. It also
-  makes `scripts/check-file-budget.test.mjs:370`
-  ("the workspace must be green with the committed list") fail, and through it
-  `pnpm test:release`. One-line remedy, and it belongs to that refactor card, not
-  to a migration card. Two further budget findings are pre-existing on the
-  tracked tree: `plugins/dsh-qa-surface/tests/qa-tools/qa-tools-docs.test.ts` at
-  902 lines (test budget 900) and
-  `packages/plugin-log/tests/plugin-logger.test.ts` at 801 (warning band).
-- `pnpm test:release` additionally fails
-  `scripts/ci-verification.test.mjs:70` ("the budget gate belongs to the prepare
-  job, so the size of a pull request is reported without building every
-  project"), which asserts on `.github/workflows/*` — no plugin or docs file is
-  involved.
-
-`plugins/dsh-qa-surface/lib/client.js` also trips the generated-bundle runaway
-limit at **238 404 lines** after a clean `nx run @yadsh/dsh-qa-surface:build`
-(unminified, ~37 chars/line, so a fresh clone that has not built does not show
-it). Worth knowing before someone reads a red `check:files` as cutover damage.
-For the same reason, `pnpm -r typecheck` and the budget gate must be measured on
-a **built** tree: the first control pass in §9.6 read 77 baseline errors purely
-because an earlier failed build's `clean` step had deleted `lib/`, which §9.6's
-final numbers therefore exclude by cache-busting first.
+- **Fixed:** the dangling `plugins/dsh-session-scope/src/client.ts` exemption
+  (`check-file-budget.mjs:138`) was dropped by `6a9056f`, and
+  `scripts/ci-verification.test.mjs` — the assertion that the budget gate belongs
+  to the prepare job — was pinned by `aed74f6` and now runs 5/5 green.
+- `scripts/check-file-budget.test.mjs:370` ("the workspace must be green with the
+  committed list") still fails, but only **on a built tree**, and the single
+  over-budget file is the generated `plugins/dsh-qa-surface/lib/client.js`:
+  **238 404** lines after a clean `nx run @yadsh/dsh-qa-surface:build` when §13
+  was first written, **239 025** after #513's client changes, against the
+  generated-bundle runaway limit of 100 000 (unminified, ~37 chars/line). A fresh
+  clone that has not built does not show it. Worth knowing before someone reads a
+  red `check:files` as cutover damage. For the same reason
+  `pnpm -r typecheck` and the budget gate must be measured on a **built** tree:
+  the first control pass in §9.6 read 77 baseline errors purely because an earlier
+  failed build's `clean` step had deleted `lib/`, which §9.6's final numbers
+  therefore exclude by cache-busting first. The other budget findings named here
+  are gone: `dsh-qa-surface/tests/qa-tools/qa-tools-docs.test.ts` was split to 702
+  lines by `057a63e`; `packages/plugin-log/tests/plugin-logger.test.ts` at 801
+  stays in the warning band.
+- **New, and it blocks the whole wave, found by #513: vitest cannot load a module
+  that carries a standard method decorator.** After the lockfile rebuild (`a843f19`)
+  the stack is vite 8.3.1 / vitest 4.1.11 / esbuild 0.28.2, and the SSR transform
+  Vite runs for `.ts` keeps ES decorators verbatim (esbuild only lowers them below
+  `target: esnext`; `node_modules/.bin/esbuild <file> --target=es2022` does lower
+  them, the pipeline does not). Node 26 does not parse them, so every such file
+  dies at collection with a bare `SyntaxError: Invalid or unexpected token` — no
+  file name, no line, and the failure is per *file*, so a package reports
+  "N test files failed" with zero failed cases. Reproduced with a 25-line probe
+  that imports nothing from this repository: a class with one
+  `(value, context) => void` method decorator, `npx vitest run` on it, same error
+  under `--pool=forks`, `--pool=threads` and `--pool=vmThreads`. It is not a
+  per-package problem: 10 packages declare `@Remote(`
+  (`dsh-{domain-experts,model-safety-gate,openviking-memory,plugin-log-ui,preset-persona-editor,prompt-firewall,qa-integrations,qa-surface,session-audit,web-fetch-authenticated}`),
+  and every test file that imports one of their decorated modules cannot run —
+  for `dsh-qa-surface` that is `tests/wiring/index-wiring.test.ts`, which fails
+  identically when checked out from `HEAD` untouched. Nobody has hit it yet
+  because §9.5's suites are the *un*decorated packages and the decorated ones were
+  blocked behind a red build. The fix belongs to the shared preset
+  (`packages/config/vitest/vitest.config.ts`), not to a plugin: the transform has
+  to lower decorators (or `@Remote` has to stop being a decorator). Until then a
+  cutover card must report its suite as "N-1 files green, the decorated wiring
+  file cannot be collected" rather than chase it through its own source.
 
 ### 13.2 The `dsh-session-scope` reader census behind §11
 
