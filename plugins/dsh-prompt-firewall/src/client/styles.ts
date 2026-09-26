@@ -1,6 +1,7 @@
 import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
 
 export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
+.pf-settings{margin:0;padding:0;list-style:none;display:grid;gap:12px}
 .pf-body,.pf-body *{box-sizing:border-box}
 .pf-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .pf-section{display:grid;gap:12px}.pf-section-title{display:flex;justify-content:space-between;align-items:center;gap:12px}.pf-section-title h3{font-size:13px;margin:0}.pf-muted{color:var(--dsw-alias-label-tertiary);font-size:12px;margin:0;line-height:1.5}
