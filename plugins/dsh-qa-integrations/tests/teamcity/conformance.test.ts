@@ -19,10 +19,11 @@ describeProviderConformance({
     [500, "ProviderUnavailable"],
   ],
   transient: { status: 429, attempts: 3, code: "RateLimited" },
-  build: ({ fetcher, retries, maxResponseBytes }) => {
+  build: ({ fetcher, retries, maxResponseBytes, timeoutMs }) => {
     const provider = new TeamcityProvider(
       resolveConfig({
         maxResponseBytes,
+        timeoutMs,
         teamcity: { network: NETWORK, serverUrl: SERVER, retries },
       }),
       fetcher,

@@ -11,6 +11,9 @@ import type { QaAdminUserDetail } from "../../../src/types.js";
  * not pay for a second read of anything.
  */
 
+/** The console mounts against a shared CI container; see the other page tests. */
+const MOUNT_TIMEOUT = { timeout: 15_000 } as const;
+
 function detail(overrides: Partial<QaAdminUserDetail> = {}): QaAdminUserDetail {
   return {
     user: {
@@ -48,10 +51,17 @@ describe("admin user detail card", () => {
     const user = vi.fn(async () => ({ ok: true as const, value: detail() }));
     renderConsole(adminApi({ user }), "/qa/admin/users/u1");
 
-    expect(await screen.findByText(/alice@example.com/u)).toBeTruthy();
+    expect(
+      await screen.findByTestId("qa-admin-user-card", {}, MOUNT_TIMEOUT),
+    ).toBeTruthy();
+    expect(
+      screen.getByRole("heading", {
+        name: "alice",
+        level: 1,
+      }),
+    ).toBeTruthy();
     expect(user).toHaveBeenCalledTimes(1);
-    const messages = screen.getByText("Сообщения").nextElementSibling;
-    expect(messages?.textContent).toBe("—");
+    expect(screen.getByTestId("qa-admin-user-messages").textContent).toBe("—");
   });
 
   it("applies the update response directly, without a second read", async () => {
@@ -72,7 +82,7 @@ describe("admin user detail card", () => {
     );
     renderConsole(adminApi({ user, updateUser }), "/qa/admin/users/u1");
 
-    await screen.findByText(/alice@example.com/u);
+    await screen.findByTestId("qa-admin-user-card", {}, MOUNT_TIMEOUT);
     expect(checkbox().checked).toBe(false);
 
     fireEvent.click(checkbox());
@@ -98,12 +108,13 @@ describe("admin user detail card", () => {
     }));
     renderConsole(adminApi({ user, updateUser }), "/qa/admin/users/u1");
 
-    await screen.findByText(/alice@example.com/u);
+    await screen.findByTestId("qa-admin-user-card", {}, MOUNT_TIMEOUT);
     fireEvent.click(checkbox());
 
     expect(
-      await screen.findByText(/У вашей роли нет прав на это действие\./u),
-    ).toBeTruthy();
+      (await screen.findByTestId("qa-admin-user-error", {}, MOUNT_TIMEOUT))
+        .textContent,
+    ).toContain("У вашей роли нет прав на это действие.");
     expect(checkbox().checked).toBe(false);
     expect(user).toHaveBeenCalledTimes(1);
   });

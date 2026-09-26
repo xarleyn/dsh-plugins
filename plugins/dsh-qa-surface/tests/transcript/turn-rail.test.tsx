@@ -233,10 +233,10 @@ function renderRail(
 
 describe("QA turn rail component", () => {
   it("renders nothing for a single turn", () => {
-    const { container } = renderRail({
+    renderRail({
       items: [{ turn: 1, id: "u1", prompt: "Первый", response: "" }],
     });
-    expect(container.querySelector(".dsh-qa-rail")).toBeNull();
+    expect(screen.queryByTestId("qa-turn-rail")).toBeNull();
   });
 
   it("renders the fixed-pitch ladder with active and busy marks", () => {

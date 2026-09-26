@@ -71,6 +71,9 @@ function remote(overrides: Partial<GitlabRemote> = {}): GitlabRemote {
   };
 }
 
+/** The test id zone this card owns; every hook below is named from it. */
+const Z = "qa-integrations-provider-card-gitlab";
+
 describe("Integrations GitLab card", () => {
   it("keeps the personal access token write-only", async () => {
     const writes: {
@@ -125,7 +128,8 @@ describe("Integrations GitLab card", () => {
       }),
     );
     render(<Card token="qa-account-token" />);
-    expect(await screen.findByText("Инстанс: Corporate GitLab")).toBeDefined();
+    const line = await screen.findByTestId(`${Z}-instance-static`);
+    expect(line.textContent).toContain("Corporate GitLab");
     expect(screen.queryByLabelText("Инстанс GitLab")).toBeNull();
     fireEvent.change(screen.getByLabelText("Personal access token GitLab"), {
       target: { value: "glpat-abcdefghij0123456789" },
@@ -177,7 +181,10 @@ describe("Integrations GitLab card", () => {
       remote({ gitlabInstances: async () => ({ ok: true, value: [] }) }),
     );
     const { container } = render(<Card token="qa-account-token" />);
-    await screen.findByText(/Оператор не настроил ни одного инстанса/u);
+    const hint = await screen.findByTestId(`${Z}-not-configured`);
+    expect(hint.textContent).toContain(
+      "Оператор не настроил ни одного инстанса",
+    );
     expect(container.textContent).not.toContain("Personal access token");
   });
 });

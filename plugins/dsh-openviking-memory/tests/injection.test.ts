@@ -48,7 +48,7 @@ function ovSessionId(dshSessionId: string): string {
 }
 
 interface PhaseReport {
-  /** Profile reads issued by `agent/session-start`. */
+  /** Profile reads issued by `agent/created`. */
   readonly startupProfile: number;
   /** Recall searches issued by `agent/pre-step`. */
   readonly stepRecall: number;
@@ -57,7 +57,7 @@ interface PhaseReport {
 }
 
 /**
- * Drive one session through `agent/session-start` and a single `pre-step`,
+ * Drive one session through `agent/created` and a single `pre-step`,
  * reporting what each phase issued.
  *
  * The profile is built once per session, during runtime initialization, so the
@@ -75,7 +75,7 @@ async function runSession(
     cwd: options.cwd ?? "/workspace/project",
   });
 
-  await emit(target, "agent/session-start", {
+  await emit(target, "agent/created", {
     agent: fake.agent,
     source: "startup",
   });
@@ -193,7 +193,7 @@ describe("manual-only mode (SPEC §11, §22.3)", () => {
       cwd: "/workspace/project",
     });
 
-    await emit(harness, "agent/session-start", {
+    await emit(harness, "agent/created", {
       agent: fake.agent,
       source: "startup",
     });
@@ -256,7 +256,7 @@ describe("manual-only mode (SPEC §11, §22.3)", () => {
     harness = await createHarness({ autoInject: false, syncTurns: false });
     const fake = createFakeAgent({ sessionId: "dsh-silent" });
 
-    await emit(harness, "agent/session-start", {
+    await emit(harness, "agent/created", {
       agent: fake.agent,
       source: "startup",
     });
@@ -301,7 +301,7 @@ describe("injection controls never reach into capture", () => {
       origin: "subagent",
     });
 
-    await emit(harness, "agent/session-start", {
+    await emit(harness, "agent/created", {
       agent: fake.agent,
       source: "startup",
     });

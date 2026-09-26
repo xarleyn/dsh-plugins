@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { QaComposer } from "../../../src/client/components/QaComposer.js";
 import { DEFAULT_ATTACHMENT_LIMITS } from "../../helpers/attachments.js";
@@ -57,11 +63,26 @@ function type(text: string): void {
   fireEvent.change(input(), { target: { value: text } });
 }
 
+/**
+ * The names of the rows, read from the handle of each rather than from the
+ * copy of the whole row: the kind badge the palette paints beside a name used
+ * to be chopped off the text here.
+ */
 function optionNames(): string[] {
   return screen
     .getAllByRole("option")
-    .map((node) => node.textContent ?? "")
-    .map((text) => text.split("Навык")[0]?.split("Команда")[0]?.trim() ?? "");
+    .map(
+      (row) => within(row).getByTestId("qa-slash-row-name").textContent ?? "",
+    );
+}
+
+/** The row of one name, found by its handle rather than by the copy it paints. */
+function rowOf(name: string): HTMLElement {
+  const rows = screen.getAllByTestId("qa-slash-row");
+  const row = rows[optionNames().indexOf(name)];
+  if (row === undefined) throw new Error(`no palette row for ${name}`);
+  expect(row.getAttribute("role")).toBe("option");
+  return row;
 }
 
 describe("slash palette in the composer", () => {
@@ -77,7 +98,7 @@ describe("slash palette in the composer", () => {
     type("/");
     expect(screen.getByRole("listbox")).toBeTruthy();
     expect(screen.queryAllByRole("option")).toHaveLength(4);
-    expect(screen.getByText("/generate-tkp")).toBeTruthy();
+    expect(optionNames()).toContain("/generate-tkp");
     // The caller is told, once, so it can revalidate a possibly stale catalog.
     expect(onSlashOpen).toHaveBeenCalledTimes(1);
   });
@@ -107,8 +128,11 @@ describe("slash palette in the composer", () => {
       ]),
     });
     type("/");
-    expect(screen.getAllByText("Навыки")).toHaveLength(1);
-    expect(screen.getAllByText("Команды")).toHaveLength(1);
+    expect(
+      screen
+        .getAllByTestId("qa-slash-group-title")
+        .map((title) => title.textContent),
+    ).toEqual(["Навыки", "Команды"]);
     // The group of the best-ranked row leads, and its rows keep their order.
     expect(optionNames()).toEqual(["/a-one", "/c-three", "/b-two"]);
   });
@@ -250,10 +274,9 @@ describe("slash palette in the composer", () => {
     mount({ slash: readySlash(SKILLS) });
     type("/");
     input().focus();
-    const option = screen.getByText("/gap-analysis").closest("[role='option']");
-    expect(option).not.toBeNull();
-    fireEvent.mouseDown(option as Element);
-    fireEvent.click(option as Element);
+    const option = rowOf("/gap-analysis");
+    fireEvent.mouseDown(option);
+    fireEvent.click(option);
     expect((input() as HTMLTextAreaElement).value).toBe("/gap-analysis ");
     expect(document.activeElement).toBe(input());
   });
@@ -263,7 +286,9 @@ describe("slash palette in the composer", () => {
       slash: slashView({ enabled: true, state: "error", error: null }),
     });
     type("/");
-    expect(screen.getByText("Не удалось загрузить команды")).toBeTruthy();
+    expect(screen.getByTestId("qa-slash-message").textContent).toBe(
+      "Не удалось загрузить команды",
+    );
   });
 
   it("keeps an empty-chat quick question an ordinary prompt", async () => {

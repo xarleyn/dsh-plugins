@@ -180,7 +180,11 @@ function ServiceProfilesField(props: {
       </span>
       <ul className="qai-op__profiles">
         {drafts.map((row, index) => (
-          <li key={`${index}:${row.id}`} className="qai-op__profile">
+          <li
+            key={`${index}:${row.id}`}
+            className="qai-op__profile"
+            data-testid={`qa-integrations-service-access-profile-${index}`}
+          >
             <div className="qai-op__profile-head">
               <strong>{row.label || row.id || "новый профиль"}</strong>
               <label className="qai-op__toggle-row qai-op__toggle-row--inline">
@@ -402,6 +406,7 @@ function ServiceProfilesField(props: {
         <button
           type="button"
           className="qai-op__button"
+          data-testid="qa-integrations-service-access-add-profile"
           disabled={props.disabled}
           onClick={() => {
             commit([
@@ -435,10 +440,11 @@ export function ServiceAccessSection({
   const msc = rawObject(form.config.managedServiceCredentials);
   return (
     <Section
+      testId="qa-integrations-service-access"
       title="Сервисные доступы"
       hint="общие read-only креденшалы, которыми владеет развёртывание"
     >
-      <Group title="Режим">
+      <Group testId="qa-integrations-service-access-mode" title="Режим">
         {form.toggle(
           "Сервисные доступы включены",
           ["managedServiceCredentials", "enabled"],
@@ -451,6 +457,7 @@ export function ServiceAccessSection({
         )}
       </Group>
       <Group
+        testId="qa-integrations-service-access-profiles"
         title="Профили доступа"
         wide
         hint="read-only аккаунт, которым развёртывание подключается вместо гостя"

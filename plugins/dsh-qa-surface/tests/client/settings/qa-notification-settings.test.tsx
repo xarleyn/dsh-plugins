@@ -75,6 +75,20 @@ function checkbox(label: string): HTMLInputElement {
   return screen.getByLabelText(label) as HTMLInputElement;
 }
 
+/** What the desktop switch says about the browser and the stand. */
+function desktopHint(): string | undefined {
+  return screen.queryByTestId("qa-settings-notifications-desktop-hint")
+    ?.textContent;
+}
+
+function saveButton(): HTMLButtonElement {
+  const save = screen.getByTestId(
+    "qa-settings-notifications-save",
+  ) as HTMLButtonElement;
+  expect(screen.getByRole("button", { name: "Сохранить" })).toBe(save);
+  return save;
+}
+
 describe("QA settings notifications page", () => {
   it("seeds both switches from the account's own record", () => {
     page({ notifications: { inApp: false, desktop: true } });
@@ -87,18 +101,17 @@ describe("QA settings notifications page", () => {
     page({ onSave });
     fireEvent.click(checkbox(QA_NOTIFICATION_SETTINGS_COPY.inApp));
     fireEvent.click(checkbox(QA_NOTIFICATION_SETTINGS_COPY.desktop));
-    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    fireEvent.click(saveButton());
     await waitFor(() =>
       expect(onSave).toHaveBeenCalledWith({ inApp: false, desktop: true }),
     );
-    expect(
-      await screen.findByText(QA_NOTIFICATION_SETTINGS_COPY.saved),
-    ).toBeTruthy();
+    const saved = await screen.findByTestId("qa-settings-notifications-saved");
+    expect(saved.textContent).toBe(QA_NOTIFICATION_SETTINGS_COPY.saved);
   });
 
   it("keeps the page open and shows the refusal copy", async () => {
     page({ onSave: async () => "Не удалось сохранить настройки." });
-    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    fireEvent.click(saveButton());
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Не удалось сохранить настройки.",
     );
@@ -122,9 +135,7 @@ describe("QA settings notifications page", () => {
   it("hands the desktop channel to the stand when it closed it", () => {
     page({ switches: { enabled: true, allowOs: false } });
     expect(checkbox(QA_NOTIFICATION_SETTINGS_COPY.desktop).disabled).toBe(true);
-    expect(
-      screen.getByText(QA_NOTIFICATION_SETTINGS_COPY.desktopOffOnStand),
-    ).toBeTruthy();
+    expect(desktopHint()).toBe(QA_NOTIFICATION_SETTINGS_COPY.desktopOffOnStand);
     // The in-page line is still the reader's own decision.
     expect(checkbox(QA_NOTIFICATION_SETTINGS_COPY.inApp).disabled).toBe(false);
   });
@@ -134,21 +145,16 @@ describe("QA settings notifications page", () => {
     expect(checkbox(QA_NOTIFICATION_SETTINGS_COPY.desktop).disabled).toBe(true);
     expect(checkbox(QA_NOTIFICATION_SETTINGS_COPY.inApp).disabled).toBe(true);
     expect(
-      screen.getByText(QA_NOTIFICATION_SETTINGS_COPY.offOnStand),
-    ).toBeTruthy();
-    expect(
-      (screen.getByRole("button", { name: "Сохранить" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(true);
+      screen.getByTestId("qa-settings-notifications-off-on-stand").textContent,
+    ).toBe(QA_NOTIFICATION_SETTINGS_COPY.offOnStand);
+    expect(saveButton().disabled).toBe(true);
   });
 
   it("explains a browser that cannot raise a desktop notice at all", () => {
     vi.stubGlobal("Notification", undefined);
     page();
     expect(checkbox(QA_NOTIFICATION_SETTINGS_COPY.desktop).disabled).toBe(true);
-    expect(
-      screen.getByText(QA_NOTIFICATION_SETTINGS_COPY.unsupported),
-    ).toBeTruthy();
+    expect(desktopHint()).toBe(QA_NOTIFICATION_SETTINGS_COPY.unsupported);
   });
 
   it("lets a denied browser keep the choice for the next one", () => {
@@ -157,7 +163,7 @@ describe("QA settings notifications page", () => {
     expect(checkbox(QA_NOTIFICATION_SETTINGS_COPY.desktop).disabled).toBe(
       false,
     );
-    expect(screen.getByText(QA_NOTIFICATION_SETTINGS_COPY.denied)).toBeTruthy();
+    expect(desktopHint()).toBe(QA_NOTIFICATION_SETTINGS_COPY.denied);
   });
 
   it("asks the browser for permission only when the reader presses it", async () => {
@@ -165,42 +171,34 @@ describe("QA settings notifications page", () => {
     page();
     // Nothing was asked while the page only rendered.
     expect(FakeNotification.asked).toBe(0);
-    expect(
-      screen.getByText(QA_NOTIFICATION_SETTINGS_COPY.askHint),
-    ).toBeTruthy();
+    expect(desktopHint()).toBe(QA_NOTIFICATION_SETTINGS_COPY.askHint);
 
-    fireEvent.click(
+    const ask = screen.getByTestId("qa-settings-notifications-ask");
+    expect(
       screen.getByRole("button", {
         name: QA_NOTIFICATION_SETTINGS_COPY.askAction,
       }),
-    );
+    ).toBe(ask);
+    fireEvent.click(ask);
     await waitFor(() => expect(FakeNotification.asked).toBe(1));
     // The reader did not answer the prompt: the switch stays where it was and
     // the question stays on screen for another try.
     expect(checkbox(QA_NOTIFICATION_SETTINGS_COPY.desktop).checked).toBe(false);
-    expect(
-      screen.getByRole("button", {
-        name: QA_NOTIFICATION_SETTINGS_COPY.askAction,
-      }),
-    ).toBeTruthy();
+    expect(screen.getByTestId("qa-settings-notifications-ask")).toBeTruthy();
   });
 
   it("records a granted permission as the reader's own desktop choice", async () => {
     FakeNotification.permission = "default";
     FakeNotification.grantsOnAsk = true;
     page();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: QA_NOTIFICATION_SETTINGS_COPY.askAction,
-      }),
-    );
+    fireEvent.click(screen.getByTestId("qa-settings-notifications-ask"));
     await waitFor(() =>
       expect(checkbox(QA_NOTIFICATION_SETTINGS_COPY.desktop).checked).toBe(
         true,
       ),
     );
     // The answer is the reader's, so it still takes a save to reach the account.
-    expect(screen.queryByText(QA_NOTIFICATION_SETTINGS_COPY.saved)).toBeNull();
+    expect(screen.queryByTestId("qa-settings-notifications-saved")).toBeNull();
   });
 });
 
@@ -235,9 +233,11 @@ describe("notifications inside the settings dialog", () => {
       />,
     );
     // The placeholder named this work; the work now has its own tab.
-    expect(screen.queryByText("Настройки уведомлений")).toBeNull();
-    expect(screen.queryByText(QA_NOTIFICATION_SETTINGS_COPY.title)).toBeNull();
+    const upcoming =
+      screen.getByTestId("qa-settings-general-upcoming-list").textContent ?? "";
+    expect(upcoming).not.toContain("Настройки уведомлений");
+    expect(upcoming).not.toContain(QA_NOTIFICATION_SETTINGS_COPY.title);
     // What really is still missing keeps its place on the list.
-    expect(screen.getByText("Приватность и хранение данных")).toBeTruthy();
+    expect(upcoming).toContain("Приватность и хранение данных");
   });
 });

@@ -34,8 +34,9 @@ those helpers does not look like a regression.
    - **DSH compatibility fixes** — must be checked against the pinned DSH
      release in `compatibility.json`; upstream supports a wider range and may
      fix a version this fork does not target;
-   - **OpenViking API changes** — land in `src/client.ts` and
-     `src/openviking/recall-core.ts` and usually need a request/response review;
+   - **OpenViking API changes** — land in `src/client.ts` and the modules under
+     `src/openviking/recall/` (the vendored recall module, split by the reason
+     each part changes) and usually need a request/response review;
    - **behaviour changes** — decide deliberately whether the fork follows;
    - **generated/shared changes** — compare `examples/memory-plugin-shared/lib`
      with the vendored copy, do not assume the plugin directory is the source of
@@ -85,7 +86,7 @@ replacing a whole module with upstream's copy silently reintroduces them:
 | File | What was widened |
 | --- | --- |
 | `src/openviking/capture-utils.ts` | `CaptureExtractOptions` (the alias every extractor takes) and `CapturedToolPart.tool_id` / `.tool_name` |
-| `src/openviking/recall-core.ts` | `FetchJSONResult.traceId`, plus both override fields of the injected `FetchJSON` |
+| `src/openviking/recall/types.ts` | `FetchJSONResult.traceId`, plus both override fields of the injected `FetchJSON` |
 | `src/openviking/pending-queue.ts` | `traceId` of `PendingFetchJSON` |
 
 The same widening in the fork's own modules needs no note here: `src/api-client.ts`

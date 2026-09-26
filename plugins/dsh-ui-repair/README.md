@@ -51,8 +51,9 @@ This first implementation slice includes:
 - bounded initial scans and mutation/resize-triggered targeted rescans;
 - automatic restoration of every owned DOM attribute and style tag on unload.
 
-The default mode is `observe`. Configuration is persisted by the DSH settings
-section under the `ui-repair` namespace. Generic overflow is reported but not mutated.
+The default mode is `observe`. Configuration is persisted by the Host under the
+`dsh-ui-repair` namespace, which is the profile entry id the browser card reads
+through `ctx.configForms`. Generic overflow is reported but not mutated.
 An overflow target must opt in with `data-dsh-ui-repair-scroll` before the
 current auto mode can treat it as a safe scroll owner.
 
@@ -64,7 +65,7 @@ The scanner recognizes these stable boundaries:
 [data-dsh-ui-repair-root]
 [data-dsh-plugin-root]
 [data-plugin-root]
-[data-slot="settings.plugin.item"] > *
+li.dsh-plugin-card
 [role="dialog"][aria-modal="true"]
 ```
 

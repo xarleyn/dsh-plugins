@@ -55,7 +55,7 @@ const audited = (entries: readonly ExpertAuditEntry[]) => () =>
   Promise.resolve(ok({ ok: true, code: "", message: "", entries }));
 
 async function openRuns(): Promise<void> {
-  fireEvent.click(await screen.findByText("Payments"));
+  fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
   fireEvent.click(await screen.findByRole("tab", { name: "Runs" }));
 }
 
@@ -64,19 +64,44 @@ describe("client page: run history", () => {
     renderPage({ recentAudits: audited(RUNS) });
     await openRuns();
     // The caller session is the handle this page shares with the chat side.
-    expect(await screen.findByTitle("chat-42")).toBeTruthy();
-    expect(screen.getByText("4.2 s")).toBeTruthy();
+    const callers = await screen.findAllByTestId(
+      "domain-experts-editor-run-caller",
+    );
+    expect(callers.map((node) => node.textContent)).toEqual([
+      "chat-42",
+      "chat-43",
+    ]);
+    expect(
+      screen
+        .getAllByTestId("domain-experts-editor-run-duration")
+        .map((cell) => cell.textContent),
+    ).toEqual(["4.2 s", "120 ms"]);
     // A background run says so, and a delegated one names the path it came by.
-    expect(screen.getByText("background")).toBeTruthy();
-    expect(screen.getByText("inventory > payments")).toBeTruthy();
-    expect(screen.getByText("1 degraded")).toBeTruthy();
+    expect(
+      screen.getAllByTestId("domain-experts-editor-run-background"),
+    ).toHaveLength(1);
+    expect(
+      screen
+        .getAllByTestId("domain-experts-editor-run-path")
+        .map((chip) => chip.textContent),
+    ).toEqual(["inventory > payments"]);
+    expect(
+      screen
+        .getAllByTestId("domain-experts-editor-run-degraded")
+        .map((chip) => chip.textContent),
+    ).toEqual(["1 degraded"]);
   });
 
   it("keeps another domain's runs out of the list", async () => {
     renderPage({ recentAudits: audited(RUNS) });
     await openRuns();
-    expect(await screen.findByTitle("chat-42")).toBeTruthy();
-    expect(screen.queryByTitle("chat-99")).toBeNull();
+    const rows = await screen.findAllByTestId("domain-experts-editor-run");
+    expect(rows).toHaveLength(2);
+    expect(
+      screen
+        .getAllByTestId("domain-experts-editor-run-caller")
+        .map((node) => node.textContent),
+    ).toEqual(["chat-42", "chat-43"]);
   });
 
   it("re-reads the history when Refresh is asked for", async () => {
@@ -90,17 +115,23 @@ describe("client page: run history", () => {
     renderPage({ recentAudits });
     await openRuns();
     expect(
-      await screen.findByText(/No runs recorded for this domain/u),
+      await screen.findByTestId("domain-experts-editor-runs-empty"),
     ).toBeTruthy();
-    fireEvent.click(screen.getByText("Refresh"));
-    expect(await screen.findByTitle("chat-42")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("domain-experts-editor-runs-refresh"));
+    const callers = await screen.findAllByTestId(
+      "domain-experts-editor-run-caller",
+    );
+    expect(callers.map((node) => node.textContent)).toEqual([
+      "chat-42",
+      "chat-43",
+    ]);
   });
 
   it("explains an empty history instead of leaving the tab blank", async () => {
     renderPage();
     await openRuns();
     expect(
-      await screen.findByText(/No runs recorded for this domain/u),
+      await screen.findByTestId("domain-experts-editor-runs-empty"),
     ).toBeTruthy();
   });
 
@@ -115,9 +146,8 @@ describe("client page: run history", () => {
     });
     await openRuns();
     expect(
-      await screen.findByText(
-        /STORAGE_UNAVAILABLE: domain storage is not open/u,
-      ),
-    ).toBeTruthy();
+      (await screen.findByTestId("domain-experts-editor-runs-error"))
+        .textContent,
+    ).toContain("STORAGE_UNAVAILABLE: domain storage is not open");
   });
 });

@@ -235,8 +235,9 @@ describe("first send from a new QA chat", () => {
     // optimistic row vanished and the empty-chat welcome flashed back before
     // the replacement controller bound, which the runtime probe recorded as
     // QUESTION_TEXT_DISAPPEARED.
-    const pendingRow = document.querySelector('[data-status="pending"]');
-    expect(pendingRow?.textContent).toContain("Первый вопрос");
+    const pendingRow = screen.getByTestId("qa-message");
+    expect(pendingRow.getAttribute("data-status")).toBe("pending");
+    expect(pendingRow.textContent).toContain("Первый вопрос");
     expect(screen.queryByText("Чем могу помочь?")).toBeNull();
     // Binding the new session used to remount the composer as well, which threw
     // the text away while nothing had been admitted yet: the question survived

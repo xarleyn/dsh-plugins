@@ -74,6 +74,9 @@ function remote(overrides: Partial<TeamcityRemote> = {}): TeamcityRemote {
   };
 }
 
+/** The test id zone this card owns; every hook below is named from it. */
+const Z = "qa-integrations-provider-card-teamcity";
+
 describe("Integrations TeamCity card", () => {
   it("keeps the access token write-only and the address out of the form", async () => {
     const writes: { token: string; useServiceCredential?: boolean }[] = [];
@@ -90,9 +93,9 @@ describe("Integrations TeamCity card", () => {
     expect(input).toHaveProperty("type", "password");
     // The server is stand-wide configuration: the card shows it and never asks.
     expect(screen.queryByLabelText("Адрес TeamCity")).toBeNull();
-    expect(
-      screen.getByText(/Адрес TeamCity: teamcity.example.com/u),
-    ).not.toBeNull();
+    expect(screen.getByTestId(`${Z}-instance-static`).textContent).toContain(
+      "Адрес TeamCity: teamcity.example.com",
+    );
     const connect = screen.getByRole("button", {
       name: "Сохранить и проверить",
     });
@@ -189,7 +192,8 @@ describe("Integrations TeamCity card", () => {
       }),
     );
     const { container } = render(<Card token="qa-account-token" />);
-    await screen.findByText(/Оператор не настроил адрес TeamCity/u);
+    const hint = await screen.findByTestId(`${Z}-not-configured`);
+    expect(hint.textContent).toContain("Оператор не настроил адрес TeamCity");
     expect(screen.queryByLabelText("Access token TeamCity")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Сохранить и проверить" }),

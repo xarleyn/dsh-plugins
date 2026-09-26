@@ -10,7 +10,11 @@ import {
   ruleMatchesUrl,
 } from "../src/policy/match.js";
 import { validateFetchUrl } from "../src/policy/url.js";
-import { ConfigSchema, resolveConfig } from "../src/config.js";
+import {
+  ConfigSchema,
+  readVolatileConfig,
+  resolveConfig,
+} from "../src/config.js";
 import { validateRule } from "../src/rule-validation.js";
 import { configWith, fixtureRule } from "./helpers.js";
 
@@ -150,19 +154,21 @@ describe("config resolution", () => {
   });
 
   test("schemastery-normalized empty arrays read as absent (round-trip through settings)", () => {
-    // What the settings section actually stores after schemastery resolves a
-    // rule written with only the required fields.
-    const normalized = ConfigSchema({
-      rules: [
-        {
-          id: "r1",
-          name: "R1",
-          enabled: true,
-          match: { hosts: ["jira.example.corp"] },
-          auth: { type: "bearer", credential: "JIRA_TOKEN" },
-        },
-      ],
-    });
+    // What the Host hands the plugin after schemastery resolves a rule written
+    // with only the required fields: live references, read once per operation.
+    const normalized = readVolatileConfig(
+      ConfigSchema({
+        rules: [
+          {
+            id: "r1",
+            name: "R1",
+            enabled: true,
+            match: { hosts: ["jira.example.corp"] },
+            auth: { type: "bearer", credential: "JIRA_TOKEN" },
+          },
+        ],
+      }),
+    );
     expect(validateRule(normalized.rules![0]!, 0)).toEqual([]);
     const resolved = resolveConfig(normalized);
     expect(resolved.rules).toHaveLength(1);

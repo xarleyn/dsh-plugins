@@ -3,13 +3,20 @@
  * design SPEC §21, §27).
  *
  * `ModelSafetyGateConfigSchema` is the user-facing Schemastery contract
- * exposed through the Cordis `static Config`; `resolveSafetyGateConfig`
- * normalizes raw config into fully defaulted, validated values so guards and
- * the classifier service never deal with optional fields. Structurally
- * impossible config throws `SafetyGateError("SAFETY_INVALID_ARGUMENT")` at
- * load time.
+ * exposed through the Cordis `static Config`; every node the operator card
+ * edits is declared `.volatile()`, so the Host serves it as a live
+ * configuration form and commits an edit into the running plugin without a
+ * remount. A live node reaches the plugin as a {@link Volatile} reference,
+ * which `snapshotSafetyGateConfig` reads into the plain shape
+ * `resolveSafetyGateConfig` consumes.
+ *
+ * `resolveSafetyGateConfig` normalizes raw config into fully defaulted,
+ * validated values so guards and the classifier service never deal with
+ * optional fields. Structurally impossible config throws
+ * `SafetyGateError("SAFETY_INVALID_ARGUMENT")` at load time.
  */
 
+import type { Volatile } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 
 import { SafetyGateError } from "./types.js";
@@ -130,6 +137,67 @@ export interface ModelSafetyGateConfig {
 
   /** Additional regex sources scanned as hard-block rules (L0). */
   readonly customBlockPatterns?: readonly string[];
+}
+
+/**
+ * Every node the operator card edits, and therefore every node the schema
+ * declares `.volatile()`. The list is the contract between the schema and
+ * {@link snapshotSafetyGateConfig}; a unit test refuses a schema that drifts
+ * away from it, because a node the Host does not serve as live cannot be
+ * written from the card at all.
+ */
+export const SAFETY_GATE_LIVE_NODES = [
+  "enabled",
+  "mode",
+  "classifier",
+  "input",
+  "output",
+  "tools",
+  "toolResults",
+  "audit",
+  "ui",
+  "allowSessionOverride",
+  "maxScanChars",
+  "customBlockPatterns",
+] as const satisfies readonly (keyof ModelSafetyGateConfig)[];
+
+/** One live configuration node: the Host reference, or plain data behind it. */
+export type VolatileField<T> = Volatile<T> | T;
+
+/**
+ * The entry configuration as the Host hands it to the running plugin: each
+ * volatile node carries a stable reference whose snapshot changes when the
+ * operator commits a form edit. A caller that composes the gate by hand may
+ * pass the plain values instead, and {@link snapshotSafetyGateConfig} reads
+ * either shape.
+ */
+export type ModelSafetyGateEntryConfig = {
+  readonly [K in keyof ModelSafetyGateConfig]?: VolatileField<
+    NonNullable<ModelSafetyGateConfig[K]>
+  >;
+};
+
+function liveValue<T>(field: VolatileField<T> | undefined): T | undefined {
+  if (field === undefined) return undefined;
+  const reference = field as Partial<Volatile<T>>;
+  if (typeof reference.get !== "function") return field as T;
+  // A volatile snapshot is deep-readonly; the plain config shape is the same
+  // data, and the resolver copies what it keeps.
+  return reference.get() as T;
+}
+
+/**
+ * Read the live entry configuration once, as the plain value the resolver and
+ * the guards consume. Take a snapshot per operation: keeping a reference's
+ * value across operations is how a committed edit goes unnoticed.
+ */
+export function snapshotSafetyGateConfig(
+  config: ModelSafetyGateEntryConfig,
+): ModelSafetyGateConfig {
+  const snapshot: Record<string, unknown> = {};
+  for (const node of SAFETY_GATE_LIVE_NODES)
+    snapshot[node] = liveValue(config[node]);
+  return snapshot as ModelSafetyGateConfig;
 }
 
 /** Fully resolved configuration consumed by the runtime. */
@@ -296,10 +364,11 @@ function requireRange(
 }
 
 export const ModelSafetyGateConfigSchema = z.object({
-  enabled: z.boolean().default(SAFETY_GATE_DEFAULTS.enabled),
+  enabled: z.boolean().default(SAFETY_GATE_DEFAULTS.enabled).volatile(),
   mode: z
     .union([...GATE_MODES.map((value) => z.const(value))])
-    .default(SAFETY_GATE_DEFAULTS.mode),
+    .default(SAFETY_GATE_DEFAULTS.mode)
+    .volatile(),
   classifier: z
     .object({
       backend: z
@@ -331,7 +400,8 @@ export const ModelSafetyGateConfigSchema = z.object({
       temperature: SAFETY_GATE_DEFAULTS.temperature,
       failureMode: SAFETY_GATE_DEFAULTS.failureMode,
       requireLocal: SAFETY_GATE_DEFAULTS.requireLocal,
-    }),
+    })
+    .volatile(),
   input: z
     .object({
       enabled: z.boolean().default(SAFETY_GATE_DEFAULTS.inputEnabled),
@@ -346,7 +416,8 @@ export const ModelSafetyGateConfigSchema = z.object({
       enabled: SAFETY_GATE_DEFAULTS.inputEnabled,
       safetyAction: SAFETY_GATE_DEFAULTS.safetyAction,
       qualityAction: SAFETY_GATE_DEFAULTS.qualityAction,
-    }),
+    })
+    .volatile(),
   output: z
     .object({
       enabled: z.boolean().default(SAFETY_GATE_DEFAULTS.outputEnabled),
@@ -375,7 +446,8 @@ export const ModelSafetyGateConfigSchema = z.object({
       lookbehindChars: SAFETY_GATE_DEFAULTS.lookbehindChars,
       minCheckIntervalMs: SAFETY_GATE_DEFAULTS.minCheckIntervalMs,
       maxBufferedChars: SAFETY_GATE_DEFAULTS.maxBufferedChars,
-    }),
+    })
+    .volatile(),
   tools: z
     .object({
       enabled: z.boolean().default(SAFETY_GATE_DEFAULTS.toolsEnabled),
@@ -394,7 +466,8 @@ export const ModelSafetyGateConfigSchema = z.object({
       semanticClassifier: SAFETY_GATE_DEFAULTS.semanticClassifier,
       sensitiveTools: [...SAFETY_GATE_DEFAULTS.sensitiveTools],
       unanswerableAsk: SAFETY_GATE_DEFAULTS.unanswerableAsk,
-    }),
+    })
+    .volatile(),
   toolResults: z
     .object({
       enabled: z.boolean().default(SAFETY_GATE_DEFAULTS.toolResultsEnabled),
@@ -405,7 +478,8 @@ export const ModelSafetyGateConfigSchema = z.object({
     .default({
       enabled: SAFETY_GATE_DEFAULTS.toolResultsEnabled,
       classifyUntrustedSources: SAFETY_GATE_DEFAULTS.classifyUntrustedSources,
-    }),
+    })
+    .volatile(),
   audit: z
     .object({
       enabled: z.boolean().default(SAFETY_GATE_DEFAULTS.auditEnabled),
@@ -416,7 +490,8 @@ export const ModelSafetyGateConfigSchema = z.object({
     .default({
       enabled: SAFETY_GATE_DEFAULTS.auditEnabled,
       includeRawContent: SAFETY_GATE_DEFAULTS.includeRawContent,
-    }),
+    })
+    .volatile(),
   ui: z
     .object({
       enabled: z.boolean().default(SAFETY_GATE_DEFAULTS.uiEnabled),
@@ -425,13 +500,18 @@ export const ModelSafetyGateConfigSchema = z.object({
     .default({
       enabled: SAFETY_GATE_DEFAULTS.uiEnabled,
       showWarnings: SAFETY_GATE_DEFAULTS.showWarnings,
-    }),
+    })
+    .volatile(),
   allowSessionOverride: z
     .boolean()
-    .default(SAFETY_GATE_DEFAULTS.allowSessionOverride),
-  maxScanChars: z.number().default(SAFETY_GATE_DEFAULTS.maxScanChars),
-  customBlockPatterns: z.array(z.string()).default([]),
-}) as unknown as z<ModelSafetyGateConfig>;
+    .default(SAFETY_GATE_DEFAULTS.allowSessionOverride)
+    .volatile(),
+  maxScanChars: z
+    .number()
+    .default(SAFETY_GATE_DEFAULTS.maxScanChars)
+    .volatile(),
+  customBlockPatterns: z.array(z.string()).default([]).volatile(),
+}) as unknown as z<ModelSafetyGateEntryConfig>;
 
 /**
  * Resolve raw config into validated values. Throws

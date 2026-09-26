@@ -48,17 +48,24 @@ export interface SectionProps {
 export function Section(props: {
   title: string;
   modified: boolean;
+  /** The stable hook a test reaches this section by, whatever its title says. */
+  testId: string;
   hint?: ReactNode;
   aside?: ReactNode;
   children: ReactNode;
 }) {
   return (
-    <section className="qa-card-section">
+    <section className="qa-card-section" data-testid={props.testId}>
       <div className="qa-card-section__title">
         <h3>
           {props.title}
           {props.modified ? (
-            <span className="qa-card-modified">изменено</span>
+            <span
+              className="qa-card-modified"
+              data-testid={`${props.testId}-modified`}
+            >
+              изменено
+            </span>
           ) : null}
         </h3>
         {props.aside ??
@@ -76,11 +83,14 @@ export function ResetButton(props: {
   disabled: boolean;
   label: string;
   onClick: () => void;
+  /** The stable hook a test reaches this control by. */
+  testId?: string;
 }) {
   return (
     <button
       type="button"
       className="qa-card-btn link"
+      data-testid={props.testId}
       disabled={props.disabled}
       onClick={props.onClick}
     >
@@ -96,6 +106,8 @@ export function Toggle(props: {
   label: string;
   hint: string;
   onChange: (checked: boolean) => void;
+  /** The stable hook a test reaches this switch by, whatever its label says. */
+  testId?: string;
 }) {
   return (
     <label className="qa-card-toggle-row">
@@ -106,6 +118,7 @@ export function Toggle(props: {
       <input
         className="qa-card-toggle"
         type="checkbox"
+        data-testid={props.testId}
         checked={props.checked}
         disabled={props.disabled}
         onChange={(event) => {
@@ -124,12 +137,15 @@ export function SelectField(props: {
   options: ReadonlyArray<{ value: string; label: string }>;
   hint?: string;
   onChange: (value: string) => void;
+  /** The stable hook a test reaches this control by, whatever its label says. */
+  testId?: string;
 }) {
   return (
     <label className="qa-card-field">
       <span>{props.label}</span>
       <select
         className="qa-card-control"
+        data-testid={props.testId}
         value={props.value}
         disabled={props.disabled}
         onChange={(event) => {
@@ -159,6 +175,8 @@ export function TextField(props: {
   multiline?: boolean;
   rows?: number;
   onChange: (value: string) => void;
+  /** The stable hook a test reaches this control by, whatever its label says. */
+  testId?: string;
 }) {
   const [draft, setDraft] = useState(props.value);
   useEffect(() => {
@@ -171,6 +189,7 @@ export function TextField(props: {
 
   const shared = {
     className: "qa-card-control",
+    "data-testid": props.testId,
     value: draft,
     placeholder: props.placeholder ?? "",
     disabled: props.disabled,
@@ -214,6 +233,8 @@ export function NumberField(props: {
   disabled: boolean;
   hint?: string;
   onChange: (value: number) => void;
+  /** The stable hook a test reaches this control by, whatever its label says. */
+  testId?: string;
 }) {
   const [draft, setDraft] = useState(String(props.value));
   useEffect(() => {
@@ -241,6 +262,7 @@ export function NumberField(props: {
       <input
         className="qa-card-control"
         type="number"
+        data-testid={props.testId}
         inputMode="numeric"
         min={props.min}
         max={props.max}
@@ -274,6 +296,8 @@ export function ListField(props: {
   rows?: number;
   parse: (text: string) => string[];
   onCommit: (values: string[]) => void;
+  /** The stable hook a test reaches this control by, whatever its label says. */
+  testId?: string;
 }) {
   // The draft follows the stored text, not the array identity: a caller that
   // passes an equal but fresh list (an unset field, whose default is written
@@ -297,6 +321,7 @@ export function ListField(props: {
       <span>{props.label}</span>
       <textarea
         className="qa-card-control"
+        data-testid={props.testId}
         rows={props.rows ?? 4}
         value={draft}
         placeholder={props.placeholder ?? ""}
@@ -325,6 +350,8 @@ export function IdentitiesField(props: {
   }>;
   disabled: boolean;
   onCommit: (fields: IdentityFieldDraft[]) => void;
+  /** The stable hook a test reaches this control by, whatever its label says. */
+  testId?: string;
 }) {
   const value = formatIdentityFields(
     props.value.flatMap((field) =>
@@ -348,6 +375,7 @@ export function IdentitiesField(props: {
       <span>Поля профиля пользователя</span>
       <textarea
         className="qa-card-control"
+        data-testid={props.testId}
         rows={4}
         value={draft}
         placeholder={"jira = Jira\nconfluence = Confluence"}
@@ -367,12 +395,19 @@ export function IdentitiesField(props: {
 }
 
 /** Status chip pair: label and value with the mode's tone. */
-export function Chip(props: { label: string; value: string; tone?: string }) {
+export function Chip(props: {
+  label: string;
+  value: string;
+  tone?: string;
+  /** The stable hook a test reads this chip through, whatever it shows. */
+  testId?: string;
+}) {
   return (
     <span
       className={
         props.tone === undefined ? "qa-card-chip" : `qa-card-chip ${props.tone}`
       }
+      data-testid={props.testId}
     >
       {props.label} <b>{props.value}</b>
     </span>
@@ -380,9 +415,18 @@ export function Chip(props: { label: string; value: string; tone?: string }) {
 }
 
 /** Prose notice: informational or warning, never a control. */
-export function Notice(props: { tone: "info" | "warn"; children: ReactNode }) {
+export function Notice(props: {
+  tone: "info" | "warn";
+  /** The stable hook a test reaches this notice by, whatever it warns about. */
+  testId?: string;
+  children: ReactNode;
+}) {
   return (
-    <div className={`qa-card-notice ${props.tone}`} role="status">
+    <div
+      className={`qa-card-notice ${props.tone}`}
+      data-testid={props.testId}
+      role="status"
+    >
       {props.children}
     </div>
   );
@@ -390,12 +434,20 @@ export function Notice(props: { tone: "info" | "warn"; children: ReactNode }) {
 
 /** Fixed facts of the composed policy, shown as label/value rows. */
 export function Facts(props: {
-  items: ReadonlyArray<{ label: string; value: string; note?: string }>;
+  items: ReadonlyArray<{
+    label: string;
+    value: string;
+    note?: string;
+    /** The stable hook a test reads this row through, whatever it reports. */
+    testId?: string;
+  }>;
+  /** The stable hook a test reaches this block of rows by. */
+  testId?: string;
 }) {
   return (
-    <div className="qa-card-rows">
+    <div className="qa-card-rows" data-testid={props.testId}>
       {props.items.map((item) => (
-        <div className="qa-card-row" key={item.label}>
+        <div className="qa-card-row" key={item.label} data-testid={item.testId}>
           <span>
             <b>{item.label}</b>
             {item.note === undefined ? null : (

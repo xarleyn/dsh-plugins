@@ -125,12 +125,19 @@ function QaQuestionForm({
       .finally(() => setBusy(null));
   };
   return (
-    <section className="dsh-qa-question" aria-live="polite">
+    <section
+      className="dsh-qa-question"
+      data-testid="qa-question"
+      aria-live="polite"
+    >
       <p className="dsh-qa-question__strip">
         <span className="dsh-qa-question__dot" aria-hidden="true" />
-        <span>Требуется ответ</span>
+        <span data-testid="qa-question-state">Требуется ответ</span>
         {questions.length > 1 ? (
-          <span className="dsh-qa-question__count">
+          <span
+            className="dsh-qa-question__count"
+            data-testid="qa-question-count"
+          >
             вопрос {index + 1} из {questions.length}
           </span>
         ) : null}
@@ -138,14 +145,29 @@ function QaQuestionForm({
       {question.header === null ? null : (
         <p className="dsh-qa-question__header">{question.header}</p>
       )}
-      <fieldset className="dsh-qa-question__fieldset" disabled={busy !== null}>
-        <legend className="dsh-qa-question__text">{question.question}</legend>
+      <fieldset
+        className="dsh-qa-question__fieldset"
+        data-testid="qa-question-fieldset"
+        disabled={busy !== null}
+      >
+        <legend
+          className="dsh-qa-question__text"
+          data-testid="qa-question-text"
+        >
+          {question.question}
+        </legend>
         {isMeaningful(question.detail) ? (
-          <p className="dsh-qa-question__detail">{question.detail}</p>
+          <p
+            className="dsh-qa-question__detail"
+            data-testid="qa-question-detail"
+          >
+            {question.detail}
+          </p>
         ) : null}
         {question.options.length === 0 ? null : (
           <div
             className="dsh-qa-question__options"
+            data-testid="qa-question-options"
             role={question.multiSelect ? "group" : "radiogroup"}
             aria-label={question.question}
           >
@@ -155,6 +177,7 @@ function QaQuestionForm({
                 <label
                   key={option.label}
                   className="dsh-qa-question__option"
+                  data-testid="qa-question-option"
                   data-checked={checked ? "true" : "false"}
                 >
                   <input
@@ -168,7 +191,10 @@ function QaQuestionForm({
                       {option.label}
                     </span>
                     {isMeaningful(option.description) ? (
-                      <span className="dsh-qa-question__option-description">
+                      <span
+                        className="dsh-qa-question__option-description"
+                        data-testid="qa-question-option-description"
+                      >
                         {option.description}
                       </span>
                     ) : null}
@@ -181,6 +207,7 @@ function QaQuestionForm({
         <label className="dsh-qa-question__custom">
           <span>Свой ответ</span>
           <textarea
+            data-testid="qa-question-custom"
             rows={2}
             value={draft.custom}
             placeholder="Напечатайте ответ…"
@@ -191,7 +218,11 @@ function QaQuestionForm({
         </label>
       </fieldset>
       {failure === null ? null : (
-        <p className="dsh-qa-question__error" role="alert">
+        <p
+          className="dsh-qa-question__error"
+          data-testid="qa-question-error"
+          role="alert"
+        >
           {failure}
         </p>
       )}
@@ -199,6 +230,7 @@ function QaQuestionForm({
         <button
           type="button"
           className="dsh-qa-question__button"
+          data-testid="qa-question-cancel"
           disabled={busy !== null}
           onClick={cancel}
         >
@@ -207,6 +239,7 @@ function QaQuestionForm({
         <button
           type="button"
           className="dsh-qa-question__button"
+          data-testid="qa-question-skip"
           disabled={busy !== null || draft.skipped}
           onClick={skip}
         >
@@ -216,6 +249,7 @@ function QaQuestionForm({
           <button
             type="button"
             className="dsh-qa-question__button"
+            data-testid="qa-question-back"
             disabled={busy !== null}
             onClick={() => setIndex((current) => Math.max(current - 1, 0))}
           >
@@ -226,6 +260,7 @@ function QaQuestionForm({
           <button
             type="button"
             className="dsh-qa-question__button dsh-qa-question__button--primary"
+            data-testid="qa-question-submit"
             disabled={busy !== null || !complete}
             onClick={submit}
           >
@@ -235,6 +270,7 @@ function QaQuestionForm({
           <button
             type="button"
             className="dsh-qa-question__button dsh-qa-question__button--primary"
+            data-testid="qa-question-next"
             disabled={busy !== null || !isAnswered(draft)}
             onClick={advance}
           >
@@ -254,7 +290,11 @@ function QaQuestionForm({
 export const QaQuestions = memo(function QaQuestions(props: QaQuestionsProps) {
   if (props.questions.length === 0) return null;
   return (
-    <div className="dsh-qa-questions" aria-label="Вопросы помощника">
+    <div
+      className="dsh-qa-questions"
+      data-testid="qa-questions"
+      aria-label="Вопросы помощника"
+    >
       {props.onStop === undefined ? null : (
         <div className="dsh-qa-questions__bar">
           <span className="dsh-qa-questions__note">
@@ -263,6 +303,7 @@ export const QaQuestions = memo(function QaQuestions(props: QaQuestionsProps) {
           <button
             type="button"
             className="dsh-qa-question__button dsh-qa-question__button--stop"
+            data-testid="qa-questions-stop"
             disabled={props.canStop !== true}
             onClick={() => void props.onStop?.()}
           >

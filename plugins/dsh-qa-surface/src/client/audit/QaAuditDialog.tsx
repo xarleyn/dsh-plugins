@@ -70,7 +70,7 @@ export function QaAuditDialog(props: QaAuditDialogProps): ReactNode {
       size="wide"
       onClose={props.onClose}
     >
-      <div className="dsh-qa-audit-dialog">
+      <div className="dsh-qa-audit-dialog" data-testid="qa-audit-dialog">
         {props.summary === undefined ? null : (
           <AuditStatusBar
             compact
@@ -98,7 +98,12 @@ export function QaAuditDialog(props: QaAuditDialogProps): ReactNode {
           ariaLabel="Аудит"
         />
 
-        <div className="dsh-qa-audit-dialog__body">{renderBody()}</div>
+        <div
+          className="dsh-qa-audit-dialog__body"
+          data-testid="qa-audit-dialog-body"
+        >
+          {renderBody()}
+        </div>
       </div>
     </QaModal>
   );

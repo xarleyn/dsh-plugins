@@ -27,8 +27,10 @@ src/
       token.ts         decodeCredentialFields/requireConfiguredEndpoint: разбор
                        зашифрованного credential и fail-closed резолв инстанса
       read-policy.ts   fetchWithRetries (GET, `redirect: "error"`, таймаут на попытку,
-                       backoff с `Retry-After`), readBoundedText, readBoundedJson,
-                       withinCap, looksBinary, causeCode, numberFrom, sleep, retryDelay, backoff
+                       распространяется и на чтение тела, backoff с `Retry-After`,
+                       ответ читается переданным колбэком `read`), readBoundedText,
+                       readBoundedJson, withinCap, looksBinary, causeCode, numberFrom,
+                       sleep, retryDelay, backoff
       errors.ts        statusErrorOf/transportFailureOf: общая карта статусов апстрима
                        в доменные ошибки; провайдер даёт только своё имя и отступления
     shared/            общий слой ответов: механика, одинаковая для всех провайдеров
@@ -130,13 +132,20 @@ src/
   чтение потока тела (`body.getReader()`) или заголовка `content-length` вне
   `kernel/read-policy.ts` — падение `verify:package`.
 - Ограниченное чтение тела и его последствия — тоже одна политика:
-  `readBoundedText` (потолок, префикс вместо пустоты, бинарная классификация)
-  и `readBoundedJson` (превышение потолка → `ResultTooLarge`, неразбираемое
-  тело → `ProviderUnavailable`) живут в `kernel/read-policy.ts`. Транспорт
-  передаёт только то слово, которым называет себя в сообщении, — ровно так же,
-  как `FetchRetryPolicy` передаёт формулировки отказов, — поэтому один и тот же
-  потолок не может означать «сузь запрос» у одного провайдера и «повтори
-  позже» у другого.
+  `readBoundedText` (потолок, префикс вместо пустоты, бинарная классификация,
+  обрыв по `signal` → `UpstreamTimeout`) и `readBoundedJson` (превышение потолка
+  → `ResultTooLarge`, неразбираемое тело → `ProviderUnavailable`) живут в
+  `kernel/read-policy.ts`. Транспорт передаёт только то слово, которым называет
+  себя в сообщении, — ровно так же, как `FetchRetryPolicy` передаёт формулировки
+  отказов, — поэтому один и тот же потолок не может означать «сузь запрос» у
+  одного провайдера и «повтори позже» у другого.
+- Бюджет `timeoutMs` покрывает весь обмен, а не только заголовки. Петля снимает
+  таймер в своём внешнем `finally`, уже после чтения, и передаёт читателю
+  `signal` попытки: `Response`, возвращённый непрочитанным, переживал бюджет, и
+  апстрим, который ответил заголовками и замолчал на теле, оставлял вызов
+  висящим. Читатель обязан отпустить поток на любом выходе (`reader.cancel()`
+  без `await` — источник, который ничего не отдаёт, не дождёт и отмену), а
+  отказ тела сворачивается в `UpstreamTimeout`, а не в `ProviderUnavailable`.
 - Одно имя — одна семантика. Читатель поля (`stringOf(source, key)`) и
   читатель значения (`fileText(value)`, `asArray(value)`) называются по-разному
   уже потому, что по-разному отвечают на пустое значение: первый считает поле

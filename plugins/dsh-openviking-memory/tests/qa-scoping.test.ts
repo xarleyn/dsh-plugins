@@ -69,7 +69,7 @@ async function runTurn(
   text = "what did we decide about the release plan?",
 ): Promise<void> {
   const { agent } = createFakeAgent({ sessionId });
-  await emit(target, "agent/session-start", { agent });
+  await emit(target, "agent/created", { agent });
   const payload = preStepPayload(agent, [userMessage(text)]);
   await emit(target, "agent/pre-step", payload, () =>
     Promise.resolve(enterDecision(payload.messages)),

@@ -66,7 +66,7 @@ settings provider.
 
 ## Compatibility
 
-The log panel needs the right Sidebar of DSH `0.1.5-rc.2` or newer: the
+The log panel needs the right Sidebar of DSH `0.1.7-rc.2` or newer: the
 `sidebarRightTabs` service and the `sidebar.right.pane.tab` seat. Both are
 declared in `compatibility.json` as required client features.
 

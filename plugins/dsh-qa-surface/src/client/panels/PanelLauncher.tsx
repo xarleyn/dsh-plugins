@@ -45,7 +45,11 @@ export function QaPanelLauncher({
   );
   if (visible.length === 0) return null;
   return (
-    <nav className="dsh-qa-panel-launcher" aria-label="Панели QA">
+    <nav
+      className="dsh-qa-panel-launcher"
+      data-testid="qa-panel-launcher"
+      aria-label="Панели QA"
+    >
       {visible.map((definition) => {
         const label = title(definition);
         const active = snapshot.activeKind === definition.kind;
@@ -54,6 +58,7 @@ export function QaPanelLauncher({
             key={definition.id}
             type="button"
             className="dsh-qa-panel-launcher__button"
+            data-testid="qa-panel-launcher-button"
             aria-label={`${active ? "Закрыть" : "Открыть"} панель: ${label}`}
             aria-pressed={active}
             title={label}

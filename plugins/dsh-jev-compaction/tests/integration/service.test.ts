@@ -7,6 +7,7 @@ import {
   buildFixtureSession,
   fakeAgent,
   fakeTokenMeter,
+  resultText,
 } from "../helpers/session.js";
 
 function buildService(
@@ -59,12 +60,7 @@ describe("JevCompactionService pipeline", () => {
     const stubbed = session.surface.nodes.some((seq) => {
       const event = session.eventAt(seq);
       if (event === undefined || event.type !== "tool/result") return false;
-      const block = (
-        event.data as {
-          message: { content: [{ content: { text: string }[] }] };
-        }
-      ).message.content[0];
-      return block.content[0]?.text.includes("[dsh-jev-compaction]") === true;
+      return resultText(event).includes("[dsh-jev-compaction]");
     });
     expect(stubbed).toBe(true);
     service.dispose();
@@ -182,13 +178,7 @@ describe("JevCompactionService pipeline", () => {
       return (
         (event.data as { message: { source: { callId: string } } }).message
           .source.callId === "old-call" &&
-        (
-          event.data as {
-            message: { content: [{ content: { text: string }[] }] };
-          }
-        ).message.content[0]?.content[0]?.text.includes(
-          "[dsh-jev-compaction]",
-        ) === true
+        resultText(event).includes("[dsh-jev-compaction]")
       );
     });
     expect(stubbedSeq).toBeDefined();

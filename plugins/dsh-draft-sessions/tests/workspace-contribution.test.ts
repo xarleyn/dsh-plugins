@@ -32,7 +32,11 @@ function renderContribution(ctx: unknown, source: unknown) {
       selector: (value: readonly DraftSession[]) => Selected,
     ) => selector([draft]),
     useSessions: <Selected>(selector: (value: SessionListState) => Selected) =>
-      selector({ current: "shell-a" } as never),
+      selector({
+        byId: {
+          "shell-a": { id: "shell-a", retainedBy: { draftComposer: 1 } },
+        },
+      } as never),
     useWorkspaces: <Selected>(
       selector: (value: WorkspaceSnapshot) => Selected,
     ) =>
@@ -181,7 +185,7 @@ describe("workspace draft contribution", () => {
     vi.useRealTimers();
   });
 
-  it("flushes and clears the active composer before deleting its draft", async () => {
+  it("flushes the active composer before deleting its draft", async () => {
     const events: string[] = [];
     const saved = { ...draft, text: "Autosaved", revision: 2 };
     const remove = vi.fn();
@@ -198,7 +202,6 @@ describe("workspace draft contribution", () => {
         open: vi.fn(),
       },
       remote: { draftSessions: { delete: deleteDraft } },
-      sessions: { clear: vi.fn(() => events.push("clear")) },
     };
     const source = { remove, accept: vi.fn() };
     const element = renderContribution(ctx, source);
@@ -207,7 +210,7 @@ describe("workspace draft contribution", () => {
       draft,
     );
 
-    expect(events).toEqual(["close", "delete", "clear"]);
+    expect(events).toEqual(["close", "delete"]);
     expect(deleteDraft).toHaveBeenCalledWith({
       id: "draft-a",
       expectedRevision: 2,
@@ -229,7 +232,6 @@ describe("workspace draft contribution", () => {
 
   it("restores the active composer when draft deletion is rejected", async () => {
     const open = vi.fn(async () => draft);
-    const clear = vi.fn();
     const remove = vi.fn();
     const ctx = {
       draftComposerBridge: { close: vi.fn(async () => draft), open },
@@ -241,7 +243,6 @@ describe("workspace draft contribution", () => {
           })),
         },
       },
-      sessions: { clear },
     };
     const element = renderContribution(ctx, { remove, accept: vi.fn() });
 
@@ -249,7 +250,6 @@ describe("workspace draft contribution", () => {
       (element.props.onDelete as (value: DraftSession) => Promise<void>)(draft),
     ).rejects.toThrow("stale revision");
     expect(open).toHaveBeenCalledWith(draft);
-    expect(clear).not.toHaveBeenCalled();
     expect(remove).not.toHaveBeenCalled();
   });
 });

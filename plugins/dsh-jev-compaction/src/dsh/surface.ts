@@ -8,7 +8,7 @@
  */
 
 import { freezeMessage } from "@deepseek-ai/dsh-llm";
-import type { ContentBlock, ToolResultMessage } from "@deepseek-ai/dsh-llm";
+import type { ContentBlock } from "@deepseek-ai/dsh-llm";
 import type {
   Session,
   SessionEvent,
@@ -72,14 +72,17 @@ export function buildCallIndex(session: Session): Map<string, ToolCallInfo> {
 
 /** True when the result carries only text blocks (v1 mutation domain). */
 export function hasOnlyTextBlocks(event: SessionEvent<"tool/result">): boolean {
-  return event.data.message.content[0].content.every(
-    (block) => block.type === "text",
-  );
+  // 0.1.7 folds the tool-result wrapper away: the blocks sit directly on the
+  // message. An empty block list is not a text result we may replace, and the
+  // `tool-addition` / `tool-removal` blocks the Host now emits fail the
+  // predicate, which pins such a node out of the mutation domain.
+  const blocks = event.data.message.content;
+  return blocks.length > 0 && blocks.every((block) => block.type === "text");
 }
 
 /** Joined text of the result's text blocks, separated by newlines. */
 export function extractResultText(event: SessionEvent<"tool/result">): string {
-  return event.data.message.content[0].content
+  return event.data.message.content
     .filter(
       (block): block is ContentBlock & { type: "text"; text: string } =>
         block.type === "text",
@@ -121,9 +124,9 @@ export function isSnapshotFresh(
 /**
  * Append one replay-safe replacement for a single `tool/result` node. The
  * caller must have validated `isSnapshotFresh` immediately before. Only the
- * textual content of the first tool-result block changes; every other field
- * of the original event data is carried over verbatim, which is exactly what
- * the session's `tool/result` rewrite invariant admits.
+ * message's text content changes; the call identity, the outcome flag and
+ * every other field of the original event data are carried over verbatim,
+ * which is exactly what the session's `tool/result` rewrite invariant admits.
  *
  * @returns the replacement event's seq.
  */
@@ -132,17 +135,13 @@ export function appendToolResultReplacement(
   original: SessionEvent<"tool/result">,
   replacementText: string,
 ): SessionSeq {
-  const result = original.data.message.content[0];
-  const content: ContentBlock[] = [{ type: "text", text: replacementText }];
+  const content: readonly ContentBlock[] = [
+    { type: "text", text: replacementText },
+  ];
   const message = freezeMessage<SessionToolResultMessage>({
     ...original.data.message,
-    content: [
-      {
-        ...result,
-        content,
-      },
-    ],
-  } as ToolResultMessage);
+    content,
+  });
   const replacement = session.append(
     "tool/result",
     {

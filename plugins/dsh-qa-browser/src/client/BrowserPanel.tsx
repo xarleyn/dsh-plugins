@@ -621,7 +621,11 @@ export function BrowserPanel(props: BrowserPanelProps) {
 
   if (owner.sessionId === null) {
     return (
-      <div className="dsh-qa-browser-panel__empty" role="status">
+      <div
+        className="dsh-qa-browser-panel__empty"
+        data-testid="panel-empty"
+        role="status"
+      >
         Откройте или создайте чат, чтобы связать Browser с QA-сессией.
       </div>
     );
@@ -636,7 +640,11 @@ export function BrowserPanel(props: BrowserPanelProps) {
         };
 
   return (
-    <section className="dsh-qa-browser-panel" aria-label="Browser">
+    <section
+      className="dsh-qa-browser-panel"
+      data-testid="panel-root"
+      aria-label="Browser"
+    >
       <BrowserTabStrip
         tabs={state?.tabs ?? []}
         selectedId={session?.selectedTabId ?? null}
@@ -645,7 +653,7 @@ export function BrowserPanel(props: BrowserPanelProps) {
         onClose={closeTab}
         onNewTab={openTab}
       />
-      <div className="dsh-qa-browser-panel__bar">
+      <div className="dsh-qa-browser-panel__bar" data-testid="panel-bar">
         <BrowserToolbar
           address={view.address}
           editable={interactive && selected !== undefined}
@@ -708,26 +716,46 @@ export function BrowserPanel(props: BrowserPanelProps) {
         onWheel={wheel}
       />
       {view.refusalHeadline === null ? null : (
-        <div className="dsh-qa-browser-panel__refusal" role="alert">
-          <p className="dsh-qa-browser-panel__refusal-title">
+        <div
+          className="dsh-qa-browser-panel__refusal"
+          data-testid="panel-refusal"
+          role="alert"
+        >
+          <p
+            className="dsh-qa-browser-panel__refusal-title"
+            data-testid="panel-refusal-title"
+          >
             {view.refusalHeadline}
           </p>
-          <ul className="dsh-qa-browser-panel__refusal-list">
+          <ul
+            className="dsh-qa-browser-panel__refusal-list"
+            data-testid="panel-refusal-list"
+          >
             {refusals.map((entry, index) => (
               <li
                 className="dsh-qa-browser-panel__refusal-item"
+                data-testid="panel-refusal-item"
                 key={`${String(index)}:${entry.kind}:${entry.code}:${entry.host}`}
               >
-                <span className="dsh-qa-browser-panel__refusal-host">
+                <span
+                  className="dsh-qa-browser-panel__refusal-host"
+                  data-testid="panel-refusal-host"
+                >
                   {entry.host}
                 </span>
-                <span className="dsh-qa-browser-panel__refusal-kind">
+                <span
+                  className="dsh-qa-browser-panel__refusal-kind"
+                  data-testid="panel-refusal-kind"
+                >
                   {refusalKindLabel(entry)}
                 </span>
               </li>
             ))}
           </ul>
-          <p className="dsh-qa-browser-panel__refusal-text">
+          <p
+            className="dsh-qa-browser-panel__refusal-text"
+            data-testid="panel-refusal-message"
+          >
             {view.leadRefusal?.message}
           </p>
           {/*
@@ -735,7 +763,10 @@ export function BrowserPanel(props: BrowserPanelProps) {
             two ways to open the deployment is the sane one, and that is the
             operator's decision to make here rather than in the chat.
           */}
-          <p className="dsh-qa-browser-panel__refusal-hint">
+          <p
+            className="dsh-qa-browser-panel__refusal-hint"
+            data-testid="panel-refusal-hint"
+          >
             Это настройка контура, а не чата: точечно — добавить узел в
             security.network.allowHosts, широко — включить
             security.network.allowPrivateNetworks для всей приватной сети.
@@ -760,7 +791,11 @@ export function BrowserPanel(props: BrowserPanelProps) {
         }
       />
       {error === null ? null : (
-        <div className="dsh-qa-browser-panel__error" role="alert">
+        <div
+          className="dsh-qa-browser-panel__error"
+          data-testid="panel-error"
+          role="alert"
+        >
           {error}
         </div>
       )}

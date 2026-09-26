@@ -1,109 +1,164 @@
 import { Context } from "@deepseek-ai/cordis";
-import SettingsProvider, {
+import type SettingsForms from "@deepseek-ai/dsh-settings";
+import {
   SettingsConflictError,
   type SettingsNamespace,
 } from "@deepseek-ai/dsh-settings";
 import SystemPrompt from "@deepseek-ai/dsh-system-prompt";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
+import { readVolatileConfig } from "../src/config.js";
 import PromptFirewall, {
   PROMPT_FIREWALL_SETTINGS_NAMESPACE,
 } from "../src/index.js";
+import type { PromptFirewallVolatileConfig } from "../src/types.js";
 
-class MemorySettings extends SettingsProvider {
-  private readonly storageDocument: Record<string, unknown>;
-  override readonly writable = true;
+interface RecordedWrite {
+  ns: string;
+  patch: Record<string, unknown>;
+  expectedRevision: number | undefined;
+}
 
-  constructor(ctx: Context, document: Record<string, unknown> = {}) {
-    super(ctx);
-    this.storageDocument = structuredClone(document);
-  }
+/**
+ * Stands in for the part of `SettingsForms` this plugin writes through: the
+ * profile document, its revision fence, and the record of what was sent. The
+ * real service keeps its own state behind the Host loader and config editor,
+ * so the fake is provided under the `settings` name rather than subclassed.
+ */
+class MemorySettings {
+  private readonly revisions = new Map<string, number>();
+  readonly writes: RecordedWrite[] = [];
 
-  protected override load(): Promise<Record<string, unknown>> {
-    return Promise.resolve(structuredClone(this.storageDocument));
-  }
-
-  protected override persist(
-    ns: SettingsNamespace,
-    section: Record<string, unknown>,
+  async update(
+    ns: string,
+    patch: object,
+    expectedRevision?: number,
   ): Promise<void> {
-    this.storageDocument[ns] = structuredClone(section);
-    return Promise.resolve();
+    const revision = this.revisions.get(ns) ?? 0;
+    if (expectedRevision !== undefined && expectedRevision !== revision) {
+      throw new SettingsConflictError(
+        ns as SettingsNamespace,
+        expectedRevision,
+        revision,
+      );
+    }
+    this.writes.push({
+      ns,
+      patch: structuredClone(patch) as Record<string, unknown>,
+      expectedRevision,
+    });
+    this.revisions.set(ns, revision + 1);
   }
 }
 
-async function configuredContext(base: Record<string, unknown> = {}) {
+async function mountedContext(config: Record<string, unknown> = {}) {
   const ctx = new Context();
+  const settings = new MemorySettings();
   await ctx.plugin(SystemPrompt);
-  await ctx.plugin(MemorySettings, base);
-  await ctx.plugin(PromptFirewall);
-  return ctx;
+  await ctx.plugin((host: Context) => {
+    host.provide("settings", settings as unknown as SettingsForms);
+  });
+  await ctx.plugin(PromptFirewall, config);
+  return { ctx, settings };
 }
 
-describe("live settings integration", () => {
-  it("registers a live settings namespace", async () => {
-    const ctx = await configuredContext();
-    const descriptor = ctx.settings
-      .describe()
-      .find((item) => item.ns === PROMPT_FIREWALL_SETTINGS_NAMESPACE);
-    expect(descriptor).toMatchObject({
-      ns: "prompt-firewall",
-      applies: "live",
-      revision: 0,
+describe("entry config as the live settings namespace", () => {
+  it("reads every volatile field once per snapshot", () => {
+    let enabled = true;
+    const config: PromptFirewallVolatileConfig = {
+      enabled: { get: () => enabled },
+      blockedSections: { get: () => ["plugin:one"] },
+    };
+    expect(readVolatileConfig(config)).toMatchObject({
+      enabled: true,
+      blockedSections: ["plugin:one"],
     });
+
+    enabled = false;
+    expect(readVolatileConfig(config).enabled).toBe(false);
   });
 
-  it("persists section actions and reloads rules without restarting", async () => {
-    const ctx = await configuredContext();
+  it("applies the mounted entry config to prompt assembly", async () => {
+    const { ctx } = await mountedContext({
+      blockedSections: ["plugin:dynamic"],
+    });
     ctx.systemPrompt.section({
       name: "plugin:dynamic",
       order: 10,
       text: "dynamic",
     });
-    expect(
-      (await ctx.systemPrompt.assemble()).sections.map(
-        (section) => section.name,
-      ),
-    ).toContain("plugin:dynamic");
-
-    await ctx.promptFirewall.setSectionPolicy("plugin:dynamic", "block");
-    await vi.waitFor(() => {
-      expect(ctx.promptFirewall.getConfig().blockedSections).toContain(
-        "plugin:dynamic",
-      );
+    ctx.systemPrompt.section({
+      name: "plugin:kept",
+      order: 20,
+      text: "kept",
     });
-    expect(
-      (await ctx.systemPrompt.assemble()).sections.map(
-        (section) => section.name,
-      ),
-    ).not.toContain("plugin:dynamic");
 
-    await ctx.promptFirewall.setSectionPolicy("plugin:dynamic", "allow");
-    await vi.waitFor(() => {
-      expect(
-        ctx.promptFirewall.evaluateSection({ name: "plugin:dynamic", text: "" })
-          .action,
-      ).toBe("allow");
-    });
-    expect(ctx.promptFirewall.getConfig().blockedSections).not.toContain(
+    expect(ctx.promptFirewall.getConfig().blockedSections).toContain(
       "plugin:dynamic",
     );
-
-    await ctx.promptFirewall.setSectionPolicy("plugin:dynamic", "clear");
-    await vi.waitFor(() => {
-      expect(
-        ctx.promptFirewall.evaluateSection({
-          name: "plugin:dynamic",
-          text: "",
-        }),
-      ).toMatchObject({ action: "allow", reason: "blocklist-default" });
-    });
-    expect(ctx.promptFirewall.getConfig().allowedSections).not.toContain(
-      "plugin:dynamic",
+    const names = (await ctx.systemPrompt.assemble()).sections.map(
+      (section) => section.name,
     );
+    expect(names).not.toContain("plugin:dynamic");
+    expect(names).toContain("plugin:kept");
   });
 
-  it("supports revision fencing for UI actions", async () => {
-    const ctx = await configuredContext();
+  it.each([
+    {
+      action: "block" as const,
+      section: "plugin:third",
+      patch: {
+        blockedSections: ["plugin:first", "plugin:third"],
+        allowedSections: ["plugin:second"],
+        protectedSections: [],
+      },
+    },
+    {
+      action: "protect" as const,
+      section: "plugin:first",
+      patch: {
+        blockedSections: [],
+        allowedSections: ["plugin:second"],
+        protectedSections: ["plugin:first"],
+      },
+    },
+    {
+      action: "allow" as const,
+      section: "plugin:first",
+      patch: {
+        blockedSections: [],
+        allowedSections: ["plugin:second", "plugin:first"],
+        protectedSections: [],
+      },
+    },
+    {
+      action: "clear" as const,
+      section: "plugin:first",
+      patch: {
+        blockedSections: [],
+        allowedSections: ["plugin:second"],
+        protectedSections: [],
+      },
+    },
+  ])(
+    "writes a $action patch into the profile entry namespace",
+    async ({ action, section, patch }) => {
+      const { ctx, settings } = await mountedContext({
+        blockedSections: ["plugin:first"],
+        allowedSections: ["plugin:second"],
+      });
+      await ctx.promptFirewall.setSectionPolicy(section, action);
+      expect(settings.writes).toEqual([
+        {
+          ns: PROMPT_FIREWALL_SETTINGS_NAMESPACE,
+          patch,
+          expectedRevision: undefined,
+        },
+      ]);
+    },
+  );
+
+  it("forwards the revision fence to a conflicting write", async () => {
+    const { ctx } = await mountedContext();
     await ctx.promptFirewall.setSectionPolicy("plugin:first", "block", 0);
     await expect(
       ctx.promptFirewall.setSectionPolicy("plugin:second", "block", 0),

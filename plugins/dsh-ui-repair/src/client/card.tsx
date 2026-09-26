@@ -1,4 +1,4 @@
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {
   InjectFace,
   PropsRuntime,
@@ -22,11 +22,11 @@ import type { UIRepairRuntime } from "./runtime.js";
 import type { RepairIssue } from "./types.js";
 
 export interface CardFace {
-  readonly scope: SettingsScope<UIRepairPluginConfig>;
+  readonly form: ConfigForm<UIRepairPluginConfig>;
   readonly runtime: UIRepairRuntime;
 }
 
-type CardProps = PropsRuntime<"settings.plugin.item"> & InjectFace<CardFace>;
+type CardProps = PropsRuntime<"settings.plugins.tab"> & InjectFace<CardFace>;
 
 interface ToggleProps {
   readonly title: string;
@@ -63,15 +63,15 @@ function validSelector(selector: string): boolean {
   }
 }
 
-export function UIRepairCard({ scope, runtime }: CardProps) {
-  const store = useMemo(() => bindSettingsExternalStore(scope), [scope]);
-  const settings = useSyncExternalStore(
+export function UIRepairCard({ form, runtime }: CardProps) {
+  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
+  const snapshot = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
     store.getSnapshot,
   );
-  const config = resolvePluginConfig(settings.value ?? {});
-  const writable = settings.status === "ready" && settings.writable;
+  const config = resolvePluginConfig(snapshot.value ?? {});
+  const writable = snapshot.status === "ready" && snapshot.writable;
   useSyncExternalStore(
     (listener) => runtime.subscribe(listener),
     () => runtime.getRevision(),
@@ -84,14 +84,14 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
   const [pendingRepair, setPendingRepair] = useState<string | undefined>();
   const [repairError, setRepairError] = useState<string | undefined>();
 
-  if (settings.status === "unavailable") return null;
+  if (snapshot.status === "unavailable") return null;
 
   const setConfidence = (
     field: "autoConfidence" | "dangerousConfidence",
     event: ChangeEvent<HTMLInputElement>,
   ) => {
     const percent = Number(event.currentTarget.value);
-    if (Number.isFinite(percent)) void scope.set(field, percent / 100);
+    if (Number.isFinite(percent)) void form.set(field, percent / 100);
   };
   const scan = async () => {
     setScanning(true);
@@ -108,11 +108,11 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
       return;
     }
     setSelectorError(undefined);
-    void scope.set("ignore", [...config.ignore, { selector: value }]);
+    void form.set("ignore", [...config.ignore, { selector: value }]);
     setSelector("");
   };
   const removeIgnore = (index: number) => {
-    void scope.set(
+    void form.set(
       "ignore",
       config.ignore.filter((_rule, ruleIndex) => ruleIndex !== index),
     );
@@ -134,7 +134,7 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
   };
   const ignoreIssue = (issue: RepairIssue) => {
     const target = validSelector(issue.target) ? issue.target : undefined;
-    void scope.set("ignore", [
+    void form.set("ignore", [
       ...config.ignore,
       {
         ...(issue.plugin === undefined ? {} : { plugin: issue.plugin }),
@@ -164,7 +164,7 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
             description="Disabling restores all temporary repairs and stops observation."
             checked={config.enabled}
             disabled={!writable}
-            onChange={(checked) => void scope.set("enabled", checked)}
+            onChange={(checked) => void form.set("enabled", checked)}
           />
           <div className="uir-grid">
             <label className="uir-field">
@@ -174,7 +174,7 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
                 value={config.mode}
                 disabled={!writable}
                 onChange={(event) =>
-                  void scope.set(
+                  void form.set(
                     "mode",
                     event.currentTarget.value as UIRepairPluginConfig["mode"],
                   )
@@ -221,21 +221,21 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
             description="Run one bounded scan after the browser plugin mounts."
             checked={config.scanOnStartup}
             disabled={!writable}
-            onChange={(checked) => void scope.set("scanOnStartup", checked)}
+            onChange={(checked) => void form.set("scanOnStartup", checked)}
           />
           <Toggle
             title="Scan after DOM changes"
             description="Batch affected roots through MutationObserver and animation frames."
             checked={config.scanAfterMutation}
             disabled={!writable}
-            onChange={(checked) => void scope.set("scanAfterMutation", checked)}
+            onChange={(checked) => void form.set("scanAfterMutation", checked)}
           />
           <Toggle
             title="Scan after layout resize"
             description="Observe bounded repair roots for geometry changes."
             checked={config.scanAfterResize}
             disabled={!writable}
-            onChange={(checked) => void scope.set("scanAfterResize", checked)}
+            onChange={(checked) => void form.set("scanAfterResize", checked)}
           />
         </section>
 

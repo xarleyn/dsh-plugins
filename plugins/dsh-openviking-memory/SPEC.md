@@ -75,24 +75,27 @@ Two mechanisms worth stating:
 
 ### 2.1 Settings namespace and the Web GUI card
 
-The schema registers under the settings namespace `dsh-openviking-memory` — the
-Cordis plugin id. The package ships a browser client bundle that registers as
-`@yadsh/dsh-openviking-memory` and mounts a card into the shared
-`settings.plugin.item` slot, so the plugin appears in **Settings → Plugins**
-like every first-party plugin.
+The settings namespace is `dsh-openviking-memory` — the Cordis plugin id. The
+package ships a browser client bundle that registers as
+`@yadsh/dsh-openviking-memory` and mounts the card as a tab of the **Settings →
+Plugins** section (`settings.plugins.tab`); the card keeps the canonical
+`dsh-plugin-card` shell, and because that slot hands a registrant an empty
+column, the card owns the `<ul>` its `<li>` root sits in.
 
-Two halves have to meet for that card to be rendered, and only one of them is
-the bundle: the Host serves a card only for a namespace that a *live* plugin
-registered in its settings directory, so `src/settings.ts` calls
-`installSection` for this namespace (a `static Config` declaration does not
-register anything). The section is also the plugin's configuration source: the
-service hands over a reader over the merged layers and reports every committed
-change, and `reapplySettings()` re-resolves the configuration and hands it to
-the running runtime. Everything the plugin decides per request follows
-immediately; the bridged MCP tools are a child process with a transport fixed at
-start and follow on the next reload, which is logged as
-`settings_applied.connectionChanged`. A profile without a settings provider
-keeps running on its composition entry.
+Since the 0.1.7 settings rewrite nothing registers a namespace: a field is a
+settings-form field exactly when its schema node is `.volatile()`, every knob of
+`static Config` carries it, and the namespace is the profile entry. The card
+reaches that namespace through `ctx.configForms.get(namespace)`, and the same
+references are the plugin's configuration source — the Host keeps them current
+as the document changes. Because a volatile namespace would otherwise also get a
+generated form page, the plugin registers `configure({ auto: false })` on its
+entry: the card is the one editor of that document.
+`refreshConfig()` re-reads the references at the start of an
+operation, and when a value actually moved `reapplySettings()` re-resolves the
+configuration and hands it to the running runtime. Everything the plugin decides
+per request follows immediately; the bridged MCP tools are a child process with a
+transport fixed at start and follow on the next reload, which is logged as
+`settings_applied.connectionChanged`.
 
 The card is an editor over that namespace, nothing more:
 
@@ -221,7 +224,7 @@ install → plugin row created
         → register listeners (agent/*, session/*, tools/pre-execute)
         → start the pending-queue drainer (one per process)
 
-agent/session-start (not a subagent session)
+agent/created (not a subagent session)
         → register per-session disposal
         → [autoInject && injectStartupProfile] initialize + deliver profile
 

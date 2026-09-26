@@ -99,7 +99,7 @@ export function collectCandidate(
   return null;
 }
 
-/** Latest real user message at or before `beforeSeq` (tool and plugin sources excluded). */
+/** Latest real user message at or before `beforeSeq` (every other producer source excluded). */
 function collectUserRequest(
   session: CandidateSession,
   beforeSeq: number,
