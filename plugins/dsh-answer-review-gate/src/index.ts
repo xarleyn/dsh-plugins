@@ -143,7 +143,7 @@ export function apply(
       agent.steer(
         createUserMessage({
           content: [{ type: "text", text }],
-          source: { kind: "plugin", plugin: name, form: "notice", summary },
+          source: { kind: "answer-review", form: "notice", summary },
         }),
       );
     },

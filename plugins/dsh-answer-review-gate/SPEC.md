@@ -222,8 +222,9 @@ ctx.on('agent/turn-stopping', async ({ agent, turn, signal }) => {
   if (verdict.kind === 'revise') {
     agent.steer({
       source: {
-        kind: 'plugin',
-        plugin: 'dsh-answer-review-gate',
+        kind: 'answer-review',
+        form: 'notice',
+        summary: steerSummary(...),
       },
       content: [{
         type: 'text',

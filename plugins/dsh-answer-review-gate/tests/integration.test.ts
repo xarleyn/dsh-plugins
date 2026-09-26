@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { apply, name as pluginName } from "../src/index.js";
+import { apply } from "../src/index.js";
 import type { GateHostContext } from "../src/index.js";
 import type { GateAgent } from "../src/gate.js";
 import type {
@@ -18,8 +18,8 @@ interface CapturedEvent {
 interface SteerRecord {
   readonly source: {
     readonly kind: string;
-    readonly plugin: string;
     readonly form: string;
+    readonly summary: string;
   };
   readonly text: string;
 }
@@ -186,7 +186,7 @@ describe("plugin wiring", () => {
     expect(steers).toHaveLength(0);
   });
 
-  it("steers a plugin-sourced notice on REVISE findings", async () => {
+  it("steers a notice-sourced answer-review message on REVISE findings", async () => {
     const { steers } = await runWiredGate({
       domainExperts: domainFace({
         ok: true,
@@ -205,8 +205,7 @@ describe("plugin wiring", () => {
     expect(steers).toHaveLength(1);
     const steer = steers[0]!;
     expect(steer.source).toMatchObject({
-      kind: "plugin",
-      plugin: pluginName,
+      kind: "answer-review",
       form: "notice",
     });
     expect(steer.text).toContain("Default is 512");
