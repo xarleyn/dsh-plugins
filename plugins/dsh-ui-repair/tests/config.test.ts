@@ -4,13 +4,16 @@ import {
   DEFAULT_PLUGIN_CONFIG,
   REPAIR_RULE_IDS,
   resolvePluginConfig,
+  resolveVolatileConfig,
 } from "../src/shared/config.js";
 
 describe("UI Repair config", () => {
   it("applies conservative defaults through both schema and resolver", () => {
-    expect(ConfigSchema({})).toMatchObject(DEFAULT_PLUGIN_CONFIG);
+    expect(resolveVolatileConfig(ConfigSchema({}))).toEqual(
+      DEFAULT_PLUGIN_CONFIG,
+    );
     expect(
-      ConfigSchema({ ignore: [{ selector: ".intentional" }] }).ignore,
+      ConfigSchema({ ignore: [{ selector: ".intentional" }] }).ignore.get(),
     ).toEqual([{ selector: ".intentional" }]);
     expect(resolvePluginConfig()).toEqual(DEFAULT_PLUGIN_CONFIG);
   });
@@ -59,8 +62,9 @@ describe("UI Repair config", () => {
       "R013",
     ]);
     expect(
-      ConfigSchema({ ignore: REPAIR_RULE_IDS.map((rule) => ({ rule })) })
-        .ignore,
+      ConfigSchema({
+        ignore: REPAIR_RULE_IDS.map((rule) => ({ rule })),
+      }).ignore.get(),
     ).toHaveLength(REPAIR_RULE_IDS.length);
   });
 });
