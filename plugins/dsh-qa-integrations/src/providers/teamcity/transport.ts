@@ -7,6 +7,7 @@ import {
   readBoundedJson,
   readBoundedText,
   type BoundedText,
+  type ResponseRead,
 } from "../kernel/read-policy.js";
 import type { TeamCityFlags } from "./config.js";
 import { canonicalServerUrl, serverUrlProblem } from "./network.js";
@@ -97,7 +98,7 @@ export class TeamCityTransport {
     query: Readonly<Record<string, string | undefined>>,
     root: TeamCityRequestRoot = "rest",
   ): Promise<T> {
-    const response = await this.request(
+    return this.request(
       baseUrl,
       token,
       path,
@@ -105,11 +106,13 @@ export class TeamCityTransport {
       root,
       this.config.timeoutMs,
       "application/json",
-    );
-    return readBoundedJson<T>(
-      response,
-      this.config.maxResponseBytes,
-      "TeamCity",
+      (response, signal) =>
+        readBoundedJson<T>(
+          response,
+          this.config.maxResponseBytes,
+          "TeamCity",
+          signal,
+        ),
     );
   }
 
@@ -123,7 +126,7 @@ export class TeamCityTransport {
     maxBytes: number,
     timeoutMs = this.flags.streamTimeoutMs,
   ): Promise<TeamCityTextResponse> {
-    const response = await this.request(
+    return this.request(
       baseUrl,
       token,
       path,
@@ -131,10 +134,13 @@ export class TeamCityTransport {
       root,
       timeoutMs,
       "text/plain",
-    );
-    return readBoundedText(
-      response,
-      Math.min(maxBytes, this.config.maxResponseBytes),
+      (response, signal) =>
+        readBoundedText(
+          response,
+          Math.min(maxBytes, this.config.maxResponseBytes),
+          "TeamCity",
+          signal,
+        ),
     );
   }
 
@@ -153,7 +159,7 @@ export class TeamCityTransport {
     return url.toString();
   }
 
-  private async request(
+  private async request<T>(
     baseUrl: string,
     token: string,
     path: string,
@@ -161,7 +167,8 @@ export class TeamCityTransport {
     root: TeamCityRequestRoot,
     timeoutMs: number,
     accept: string,
-  ): Promise<Response> {
+    read: ResponseRead<T>,
+  ): Promise<T> {
     return fetchWithRetries(
       this.fetcher,
       this.url(baseUrl, path, query, root),
@@ -189,6 +196,7 @@ export class TeamCityTransport {
         retriable: () => true,
         statusFailure: (response) => this.failure(response),
       },
+      read,
     );
   }
 
