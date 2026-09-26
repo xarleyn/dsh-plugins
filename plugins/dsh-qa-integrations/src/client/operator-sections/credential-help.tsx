@@ -31,7 +31,10 @@ export function CredentialHelpSection(props: {
     overridden: props.overridden,
   };
   return (
-    <details className="qai-op__subsection">
+    <details
+      className="qai-op__subsection"
+      data-testid={`qa-integrations-${props.provider}-credential-help`}
+    >
       <summary className="qai-op__section-summary">
         <span className="qai-op__section-title">{props.provider}</span>
         {Object.keys(props.override).length === 0 ? (
