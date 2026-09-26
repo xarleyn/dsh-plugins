@@ -54,7 +54,7 @@ await runVerifyPackage({
   compatibility: {
     node: "matchesEngines",
     testedReleases: ["0.1.7-rc.2"],
-    clientFeatures: ["settings.plugin.item"],
+    clientFeatures: ["settings.plugins.tab"],
   },
   clientBundle: {
     moduleLoaderId: true,
@@ -66,7 +66,7 @@ await runVerifyPackage({
         /dsh-plugin-card\s*\*/u,
       ],
     },
-    includes: ["settings.plugin.item", "jev-compaction"],
+    includes: ["settings.plugins.tab", "dsh-jev-compaction"],
     notMatches: [
       // The bundle is browser-only: a Node built-in import here would break
       // the host page's module table (client-bundle purity).
@@ -103,17 +103,29 @@ await runVerifyPackage({
     );
 
     // Host and client must agree on the settings namespace, and the Host must
-    // expose both seams the SPEC depends on.
+    // expose both seams the SPEC depends on. Since 0.1.7 the namespace is not
+    // free-floating: it is the profile entry id the loader keys the volatile
+    // section by, so the patch manifest is the third party to that agreement.
     const settingsModule = await read("lib/shared/settings.js");
     assert.match(
       settingsModule,
-      /JEV_COMPACTION_SETTINGS_NAMESPACE\s*=\s*"jev-compaction"/u,
+      /JEV_COMPACTION_SETTINGS_NAMESPACE\s*=\s*"dsh-jev-compaction"/u,
       "the settings namespace constant is the join key with the card",
     );
     assert.match(
+      await read("cordis.patch.yml"),
+      /id:\s*dsh-jev-compaction\b/u,
+      "the profile entry id the namespace is derived from",
+    );
+    assert.match(
       client ?? "",
-      /"jev-compaction"/u,
-      "the card binds the same settings namespace as the Host section",
+      /"dsh-jev-compaction"/u,
+      "the card resolves the same entry section the Host serves",
+    );
+    assert.match(
+      client ?? "",
+      /configForms/u,
+      "the card reads the Host settings form, not a plugin-owned namespace",
     );
 
     const serviceModule = await read("lib/service.js");
@@ -125,7 +137,12 @@ await runVerifyPackage({
     assert.match(
       serviceModule,
       /installJevCompactionSettings/u,
-      "the service installs the settings section the card writes to",
+      "the service declines the generated page for the section the card writes to",
+    );
+    assert.match(
+      serviceModule,
+      /loader\/volatile-update/u,
+      "the service re-resolves when the loader moves a volatile field",
     );
     assert.match(
       serviceModule,
@@ -143,8 +160,9 @@ await runVerifyPackage({
   },
 });
 
-// The settings card registers under `settings.plugin.item`, so the compiled
-// browser bundle has to satisfy the shared card shell contract.
+// The settings card registers under `settings.plugins.tab` and keeps our own
+// shell (decision D1 of the 0.1.7 cutover), so the compiled browser bundle has
+// to satisfy the shared card shell contract.
 verifyPluginCardContract(
   await readFile(
     new URL("lib/client.js", new URL("../", import.meta.url)),
