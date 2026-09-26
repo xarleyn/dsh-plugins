@@ -82,10 +82,11 @@ without a `changeId` does not exist.
 
 ### 4.3 Settings card
 
-A self-contained browser bundle registering a card into `settings.plugin.item`,
-keyed by the namespace. It edits configuration only — no document operation is
-reachable from the UI. Its controls use the shared card shell and the
-`--dsw-alias-*` design tokens (AGENTS.md).
+A self-contained browser bundle registering a card as a tab of the Plugins
+settings page (`settings.plugins.tab`), keyed by the namespace. It edits
+configuration only — no document operation is reachable from the UI. Its
+controls use the shared card shell and the `--dsw-alias-*` design tokens
+(AGENTS.md).
 
 ## 5. Session scope
 
@@ -125,7 +126,7 @@ kept: renaming it would orphan existing artifacts for no functional gain.
 
 `compatibility.json` states the supported harness range and the host features
 the plugin relies on (`tools/register`, `settings`, `skills/provider`), plus the
-client feature (`settings.plugin.item`). Nothing here needs a Remote service, so
+client feature (`settings.plugins.tab`). Nothing here needs a Remote service, so
 the package ships no generated Typert face.
 
 ### 7.1 The host service sibling plugins convert through
