@@ -540,7 +540,16 @@ test("a range a catalog holds is declared through that catalog (§27.12)", async
       assert.equal(result.status, 0);
       // The exempt peer is named as exempt, not simply missing from the report.
       assert.match(result.stdout, /peerDependencies stay literal on purpose/u);
-      assert.match(result.stdout, /@deepseek-ai\/dsh-llm \^0\.1\.5-rc\.2/u);
+      // Тот же литерал, что подставляет фикстура: bump каталога больше не
+      // требует править это утверждение (оно пережило 0.1.5 → 0.1.7 само).
+      const peerRange = dshRuntime()["@deepseek-ai/dsh-llm"].replace(
+        /[.^]/gu,
+        "\\$&",
+      );
+      assert.match(
+        result.stdout,
+        new RegExp(`@deepseek-ai/dsh-llm ${peerRange}`, "u"),
+      );
     },
   );
 
