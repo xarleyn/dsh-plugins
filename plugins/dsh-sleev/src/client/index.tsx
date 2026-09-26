@@ -355,7 +355,7 @@ export const inject = ["slots", "configForms", "locale"];
  */
 export function SleevSettingsTab(props: SleevSettingsCardProps): ReactElement {
   return (
-    <ul className="dsh-sleev-tab">
+    <ul className="dsh-sleev-tab" data-testid="sleev-tab">
       <SleevSettingsCard {...props} />
     </ul>
   );
