@@ -23,3 +23,11 @@ cold no matter how many snapshots it had written. A successful save now returns
 its manifest to the ready state and drops the reason, including after the runtime
 fingerprint changed, where the saved bytes belong to the new runtime and the
 manifest said otherwise.
+
+Unloading the plugin now finishes even when it cannot finish saving. The final
+checkpoint waits its turn behind an inference stream that still holds the slot,
+so a stream that never closes used to hold the unload with it. Disposal waits
+for the checkpoint up to the new `checkpoint.shutdownGraceMs` option (five
+seconds by default) and then releases the host, logging
+`kv.session.shutdown_flush_abandoned`; the checkpoint is not cancelled and still
+writes as soon as the slot is free.
