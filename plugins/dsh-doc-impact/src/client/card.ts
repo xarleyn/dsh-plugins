@@ -17,6 +17,7 @@ import {
 
 const CSS = [
   PLUGIN_CARD_SHELL_CSS.trim(),
+  ".ddi_list{list-style:none;margin:0;padding:0;display:grid;gap:12px}",
   ".ddi_readOnly{color:var(--dsw-alias-label-tertiary);margin:12px 0 0;font-size:12px;line-height:1.5}",
   ".ddi_footer{border-top:1px solid var(--dsw-alias-border-l2);justify-content:flex-end;align-items:center;gap:8px;padding:12px 0 4px;display:flex}",
   ".ddi_failed{min-width:0;color:var(--dsw-alias-label-error);flex:1;margin:0;font-size:12px;line-height:1.5}",
@@ -53,7 +54,7 @@ export function ConfigCard(props: any) {
   const blocked = !state.dirty || state.invalid || state.saving;
   const disabled = !state.writable || state.saving;
   const fields = state.fields;
-  return createElement(
+  const card = createElement(
     CardShell,
     {
       title: t("cardTitle"),
@@ -257,4 +258,8 @@ export function ConfigCard(props: any) {
       ),
     ),
   );
+  // The tab supplies no list of its own, so the shell's `<li>` root sits in a
+  // plugin-owned `<ul>` (AGENTS.md: a `settings.plugins.tab` page keeps its own
+  // list element around the standard card shell).
+  return createElement("ul", { className: "ddi_list" }, card);
 }

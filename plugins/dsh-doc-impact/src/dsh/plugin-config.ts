@@ -1,3 +1,4 @@
+import z from "@deepseek-ai/schemastery";
 import type { ResolutionMode } from "../config/types.js";
 import { ConfigError } from "../config/errors.js";
 import {
@@ -23,11 +24,11 @@ export interface DocImpactPluginConfig {
 }
 
 /**
- * The flat settings-namespace section behind the Plugin Configuration card.
- * The nested plugin-config shapes (defaults.mode, safety.*) are flattened so
- * every field is a scalar the client scope can `set`/`unset` (SPEC §37).
+ * The schema default of every field the settings card edits. The nested groups
+ * (`defaults.mode`, `safety.*`, `changeDetection.maxSnapshotFiles`) are listed
+ * flat here because that is how the card addresses them.
  */
-export interface DocImpactSettingsSection {
+export const SETTINGS_DEFAULTS: {
   enabled: boolean;
   configFile: string;
   mode: ResolutionMode;
@@ -38,9 +39,7 @@ export interface DocImpactSettingsSection {
   steer: boolean;
   reminderTemplate: string;
   limitTemplate: string;
-}
-
-export const SETTINGS_DEFAULTS: DocImpactSettingsSection = {
+} = {
   enabled: true,
   configFile: ".dsh/doc-impact.yml",
   mode: "remind",
@@ -60,6 +59,66 @@ const MODES = [
   "require-update",
 ] as const;
 const ON_LIMIT = ["allow", "warn", "error"] as const;
+
+/**
+ * The `Config` of the plugin entry. On `0.1.7` a field is a live form field
+ * exactly when its schema node carries `.volatile()`, and the namespace the
+ * card edits is the profile entry id rather than a section the plugin installs,
+ * so this one schema is both the profile contract (SPEC §37) and the card's
+ * document. The three nested groups are marked at the container: volatility
+ * inside a nested member is rejected when the schema resolves.
+ */
+export const ConfigSchema = z.object({
+  enabled: z.boolean().default(SETTINGS_DEFAULTS.enabled).volatile(),
+  configFile: z
+    .string()
+    .min(1)
+    .default(SETTINGS_DEFAULTS.configFile)
+    .volatile(),
+  steer: z.boolean().default(SETTINGS_DEFAULTS.steer).volatile(),
+  debug: z.boolean().default(SETTINGS_DEFAULTS.debug).volatile(),
+  reminderTemplate: z
+    .string()
+    .min(1)
+    .default(SETTINGS_DEFAULTS.reminderTemplate)
+    .volatile(),
+  limitTemplate: z
+    .string()
+    .min(1)
+    .default(SETTINGS_DEFAULTS.limitTemplate)
+    .volatile(),
+  defaults: z
+    .object({ mode: z.union(MODES).default(SETTINGS_DEFAULTS.mode) })
+    .default({ mode: SETTINGS_DEFAULTS.mode })
+    .volatile(),
+  safety: z
+    .object({
+      maxReminderRounds: z
+        .number()
+        .min(1)
+        .step(1)
+        .default(SETTINGS_DEFAULTS.maxReminderRounds),
+      onLimit: z.union(ON_LIMIT).default(SETTINGS_DEFAULTS.onLimit),
+    })
+    .default({
+      maxReminderRounds: SETTINGS_DEFAULTS.maxReminderRounds,
+      onLimit: SETTINGS_DEFAULTS.onLimit,
+    })
+    .volatile(),
+  changeDetection: z
+    .object({
+      maxSnapshotFiles: z
+        .number()
+        .min(1)
+        .step(1)
+        .default(SETTINGS_DEFAULTS.maxSnapshotFiles),
+    })
+    .default({ maxSnapshotFiles: SETTINGS_DEFAULTS.maxSnapshotFiles })
+    .volatile(),
+});
+
+/** The `Config` as the Host hands it to `apply()`: each editable node a live reference. */
+export type DocImpactEntryConfig = ReturnType<typeof ConfigSchema>;
 /** The placeholder a steering template must keep to stay usable (SPEC §37). */
 const TEMPLATE_REQUIREMENTS: Record<
   "reminderTemplate" | "limitTemplate",
@@ -217,41 +276,64 @@ export function resolvePluginConfig(raw: unknown): DocImpactPluginConfig {
   };
 }
 
+/** One config node read through its live reference, or as it stands. */
+function deref(node: unknown): unknown {
+  if (node === null || typeof node !== "object") return node;
+  const candidate = node as { get?: unknown };
+  return typeof candidate.get === "function"
+    ? (candidate as { get: () => unknown }).get()
+    : node;
+}
+
+function recordOf(value: unknown): Record<string, unknown> {
+  return isRecord(value) ? value : {};
+}
+
+function boolOr(value: unknown, fallback: boolean): boolean {
+  return value === undefined ? fallback : value === true;
+}
+
+function textOr(value: unknown, fallback: string): string {
+  return typeof value === "string" && value !== "" ? value : fallback;
+}
+
 /**
- * The entry-config subset declared by a profile patch row, flattened to the
- * settings section shape. Only explicitly declared fields are carried, so the
- * composition `base` never masks schema defaults for the rest.
+ * The entry config as plain nested data, in the shape a profile patch row
+ * declares (SPEC §37). A volatile node is a stable reference whose value moves,
+ * so every read goes through here first and the validators below keep seeing
+ * plain data.
+ *
+ * Keys this plugin does not know are carried across untouched rather than
+ * dropped: {@link resolvePluginConfig} is what makes a typo fail at activation
+ * instead of being ignored silently, and it can only name a key it can see.
  */
-export function declaredSettingsBase(
-  raw: unknown,
-): Partial<DocImpactSettingsSection> {
-  if (raw === undefined) return {};
-  resolvePluginConfig(raw); // Validate loudly; the mapping below stays silent.
-  if (!isRecord(raw)) return {};
-  const base: Partial<DocImpactSettingsSection> = {};
-  if (raw.enabled !== undefined) base.enabled = raw.enabled === true;
-  if (raw.steer !== undefined) base.steer = raw.steer === true;
-  if (raw.configFile !== undefined) base.configFile = String(raw.configFile);
-  if (raw.debug !== undefined) base.debug = raw.debug === true;
-  if (raw.reminderTemplate !== undefined)
-    base.reminderTemplate = String(raw.reminderTemplate);
-  if (raw.limitTemplate !== undefined)
-    base.limitTemplate = String(raw.limitTemplate);
-  const defaults = expectRecord(raw.defaults, "defaults");
-  if (defaults.mode !== undefined)
-    base.mode = String(defaults.mode) as DocImpactSettingsSection["mode"];
-  const safety = expectRecord(raw.safety, "safety");
-  if (safety.maxReminderRounds !== undefined)
-    base.maxReminderRounds = Number(safety.maxReminderRounds);
-  if (safety.onLimit !== undefined)
-    base.onLimit = String(
-      safety.onLimit,
-    ) as DocImpactSettingsSection["onLimit"];
-  const changeDetection = expectRecord(raw.changeDetection, "changeDetection");
-  if (changeDetection.maxSnapshotFiles !== undefined) {
-    base.maxSnapshotFiles = Number(changeDetection.maxSnapshotFiles);
+export function plainEntryConfig(
+  config?: DocImpactEntryConfig | Record<string, unknown>,
+): Record<string, unknown> {
+  const root = recordOf(deref(config));
+  const defaults = recordOf(deref(root.defaults));
+  const safety = recordOf(deref(root.safety));
+  const changeDetection = recordOf(deref(root.changeDetection));
+  const plain: Record<string, unknown> = {
+    enabled: deref(root.enabled),
+    configFile: deref(root.configFile),
+    steer: deref(root.steer),
+    debug: deref(root.debug),
+    reminderTemplate: deref(root.reminderTemplate),
+    limitTemplate: deref(root.limitTemplate),
+    defaults: { mode: deref(defaults.mode) },
+    safety: {
+      maxReminderRounds: deref(safety.maxReminderRounds),
+      onLimit: deref(safety.onLimit),
+    },
+    changeDetection: {
+      maxSnapshotFiles: deref(changeDetection.maxSnapshotFiles),
+    },
+  };
+  for (const key of Object.keys(root)) {
+    if (!(key in plain)) plain[key] = root[key];
   }
-  return base;
+  return plain;
 }
 
 function enumOf<T extends string>(
@@ -272,33 +354,37 @@ function positiveInt(value: unknown, fallback: number): number {
 }
 
 /**
- * Resolve the effective plugin config from a settings section (schema
- * defaults → composition base → user layer). Every field is validated
- * defensively: a section written by an older schema degrades, never crashes.
+ * One plain snapshot of the live entry config (schema defaults → composition
+ * base → user layer, already folded by the Host). Taken per operation rather
+ * than once at startup: the references are stable while their values move, so a
+ * resolver that captured them at apply() time would freeze the document. Every
+ * field degrades rather than crashes — a value an older schema wrote must not
+ * break an agent turn.
  */
-export function fromSettingsSection(section: unknown): DocImpactPluginConfig {
-  const s = isRecord(section) ? section : {};
+export function readLiveConfig(
+  config?: DocImpactEntryConfig | Record<string, unknown>,
+): DocImpactPluginConfig {
+  const s = plainEntryConfig(config);
+  const defaults = recordOf(s.defaults);
+  const safety = recordOf(s.safety);
+  const changeDetection = recordOf(s.changeDetection);
   return {
-    enabled:
-      s.enabled === undefined ? SETTINGS_DEFAULTS.enabled : s.enabled === true,
-    configFile:
-      typeof s.configFile === "string" && s.configFile !== ""
-        ? s.configFile
-        : SETTINGS_DEFAULTS.configFile,
-    defaultsMode: enumOf(s.mode, MODES, SETTINGS_DEFAULTS.mode),
+    enabled: boolOr(s.enabled, SETTINGS_DEFAULTS.enabled),
+    configFile: textOr(s.configFile, SETTINGS_DEFAULTS.configFile),
+    defaultsMode: enumOf(defaults.mode, MODES, SETTINGS_DEFAULTS.mode),
     safety: {
       maxReminderRounds: positiveInt(
-        s.maxReminderRounds,
+        safety.maxReminderRounds,
         SETTINGS_DEFAULTS.maxReminderRounds,
       ),
-      onLimit: enumOf(s.onLimit, ON_LIMIT, SETTINGS_DEFAULTS.onLimit),
+      onLimit: enumOf(safety.onLimit, ON_LIMIT, SETTINGS_DEFAULTS.onLimit),
     },
     maxSnapshotFiles: positiveInt(
-      s.maxSnapshotFiles,
+      changeDetection.maxSnapshotFiles,
       SETTINGS_DEFAULTS.maxSnapshotFiles,
     ),
-    debug: s.debug === undefined ? SETTINGS_DEFAULTS.debug : s.debug === true,
-    steer: s.steer === undefined ? SETTINGS_DEFAULTS.steer : s.steer === true,
+    debug: boolOr(s.debug, SETTINGS_DEFAULTS.debug),
+    steer: boolOr(s.steer, SETTINGS_DEFAULTS.steer),
     reminderTemplate: templateOr(s.reminderTemplate, "reminderTemplate"),
     limitTemplate: templateOr(s.limitTemplate, "limitTemplate"),
   };

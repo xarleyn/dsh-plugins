@@ -3,8 +3,9 @@
 // without a browser:
 //   - the ModuleLoader id must stay "@yadsh/dsh-doc-impact" (the served bundle URL
 //     and the plugin inventory both key on the package name);
-//   - the card must claim the settings.plugin.item slot under the doc-impact
-//     settings namespace (that pairing is what the Plugin Configuration tab
+//   - the card must claim the `settings.plugins.tab` seat under the profile
+//     entry id, which on this host is also the settings namespace it reads
+//     through `ctx.configForms` (that pairing is what the Plugins page
 //     dispatches on);
 //   - the bundle must stay pure browser code: react only, no host packages;
 //   - no secrets or telemetry may creep into the settings form.
@@ -41,16 +42,16 @@ expectPresent(
   "the ModuleLoader factory id keys the served bundle",
 );
 expectPresent(
-  '"settings.plugin.item"',
-  "the card must register into the shared Plugin Configuration slot",
+  '"settings.plugins.tab"',
+  "the card must register as a tab of the Plugins settings page",
 );
 expectPresent(
-  "key: SETTINGS_NS",
-  "the card must claim the doc-impact settings namespace",
+  "id: SETTINGS_NS",
+  "the tab seat must be keyed by the settings namespace",
 );
 expectPresent(
-  "namespace: SETTINGS_NS",
-  "the form must bind the doc-impact settings scope",
+  "configForms.get(SETTINGS_NS)",
+  "the form must read the doc-impact settings namespace through the host form",
 );
 expectPresent(
   "resetField",
@@ -89,7 +90,7 @@ expectAbsent(
 );
 
 // Settings content must stay local: no network calls, no storage beyond the
-// settings scope contract.
+// settings form contract.
 expectAbsent("fetch(", "the settings card must not perform network requests");
 expectAbsent(
   "localStorage",

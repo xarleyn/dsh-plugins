@@ -124,7 +124,7 @@ The bundle inserts the `dsh-doc-impact` Cordis row. Override its defaults in the
 
 ## Settings UI
 
-The browser half adds a **Doc Impact** card under **Settings → Plugins → Plugin Configuration**. It provides staged edits, Save and Discard actions, an unsaved-state badge, validation, and per-field reset to composition defaults.
+The browser half adds a **Doc Impact** tab under **Settings → Plugins**, holding the card described there. It provides staged edits, Save and Discard actions, an unsaved-state badge, validation, and per-field reset to composition defaults.
 
 Editable fields include `enabled`, `steer` (send reminder messages, or detect silently), `configFile`, default `mode`, `maxReminderRounds`, `onLimit`, the `reminderTemplate` and `limitTemplate` message texts with their placeholders documented inline, `maxSnapshotFiles`, and `debug`. A template that loses its required `{body}` / `{impacts}` placeholder is rejected by the form, and the host falls back to the built-in wording. Saved settings apply to the merged runtime configuration without a host restart.
 
