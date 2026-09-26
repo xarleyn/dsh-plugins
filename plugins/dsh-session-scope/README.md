@@ -38,7 +38,7 @@ The package includes its Host and Web client entry points plus the `cordis.patch
 | ---------- | -------------------------------------------------------------------------------------------------------------------- |
 | `full`     | The ordinary complete workspace view                                                                                 |
 | `focused`  | Selected roots across DSH filesystem services and known path-aware tools; arbitrary shell processes are not confined |
-| `isolated` | Selected roots plus Linux process confinement through a fully enforcing, recognized bubblewrap profile               |
+| `isolated` | Selected roots plus Linux process confinement through a fully enforcing, recognized bubblewrap profile, in a private PID namespace |
 
 `isolated` is unavailable on unsupported backends and cannot currently be combined with `danger-full-access`. Unsupported or partially enforced combinations fail closed instead of silently degrading to `focused`.
 
@@ -68,6 +68,7 @@ Version `0.6.0` implements the specification through Phase 4:
 - `read-only`, `workspace-write`, and `danger-full-access` remain DSH permission modes; they are not scope modes.
 - Focused scope constrains supported DSH services and tools, not arbitrary child processes.
 - Isolated scope requires the supported Linux sandbox path and a recognized bubblewrap profile.
+- Isolated confinement takes its own PID namespace, so the masked workspace stays masked even against a same-UID process outside the sandbox: the hiding is not left to the host's ptrace or `hidepid=` policy. A host where that namespace cannot be created reports `isolated` as unavailable instead of degrading.
 - Unknown runner profiles, partial enforcement, and unsupported platforms fail closed.
 - Scope changes are blocked while foreground jobs, background jobs, or persistent terminals retain the previous mount view.
 - Opening or refreshing the Scope editor is read-only: it uses projections and `sessionScope/list`, so it does not add command rows to session history. Applying an unchanged scope is a no-op.
