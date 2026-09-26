@@ -41,12 +41,14 @@ export function StatusSection(props: StatusProps) {
 
   return (
     <Section
+      testId="safety-section-status"
       title="Status"
       modified={false}
       aside={
         <button
           type="button"
           className="msg-btn"
+          data-testid="safety-status-refresh"
           disabled={props.refreshing}
           onClick={props.onRefresh}
         >
@@ -57,6 +59,7 @@ export function StatusSection(props: StatusProps) {
       <div className="msg-status">
         {" "}
         <Chip
+          testId="safety-status-mode"
           label="Mode"
           value={
             inspect === null
@@ -66,6 +69,7 @@ export function StatusSection(props: StatusProps) {
           tone={inspect === null || !inspect.enabled ? "off" : mode.tone}
         />
         <Chip
+          testId="safety-status-classifier"
           label="Classifier"
           value={
             classifier === undefined
@@ -78,15 +82,26 @@ export function StatusSection(props: StatusProps) {
           }
         />
         <Chip
+          testId="safety-status-uptime"
           label="Uptime"
           value={formatUptime(inspect?.startedAt, props.now)}
         />
-        <Chip label="Refresh" value="every 3s" />
+        <Chip
+          testId="safety-status-poll-interval"
+          label="Refresh"
+          value="every 3s"
+        />
       </div>
       {classifier !== undefined && classifier.reason !== null ? (
-        <div className="msg-notice warn">{classifier.reason}</div>
+        <div
+          className="msg-notice warn"
+          data-testid="safety-status-classifier-reason"
+        >
+          {classifier.reason}
+        </div>
       ) : null}
       <Stats
+        testId="safety-status-counters"
         items={[
           { value: formatCount(checks), label: "checks" },
           { value: formatCount(blocks), label: "blocks" },
@@ -102,10 +117,11 @@ export function StatusSection(props: StatusProps) {
           Counters appear once the card reaches the running gate.
         </p>
       ) : (
-        <details className="msg-advanced">
+        <details className="msg-advanced" data-testid="safety-status-details">
           <summary>All counters</summary>
           <div className="msg-advanced-content">
             <Stats
+              testId="safety-status-detail-counters"
               items={[
                 {
                   value: formatCount(metrics.checks.input),

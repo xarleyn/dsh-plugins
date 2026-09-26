@@ -22,11 +22,13 @@ export function GateSection(props: ConfigProps) {
   const disabled = !props.writable;
   return (
     <Section
+      testId="safety-section-gate"
       title="Gate"
       modified={props.overridden(["enabled"]) || props.overridden(["mode"])}
       aside={
         props.overridden(["enabled"]) || props.overridden(["mode"]) ? (
           <ResetButton
+            testId="safety-gate-reset"
             disabled={disabled}
             label="Reset"
             onClick={() => {
@@ -39,6 +41,7 @@ export function GateSection(props: ConfigProps) {
     >
       <div className="msg-grid">
         <Toggle
+          testId="safety-gate-enabled"
           checked={config?.enabled ?? true}
           disabled={disabled}
           label="Gate enabled"
@@ -48,6 +51,7 @@ export function GateSection(props: ConfigProps) {
           }}
         />
         <SelectField
+          testId="safety-gate-mode"
           label="Mode"
           value={config?.mode ?? "warn"}
           disabled={disabled}
@@ -57,6 +61,7 @@ export function GateSection(props: ConfigProps) {
           }}
         />
         <Toggle
+          testId="safety-gate-session-override"
           checked={config?.allowSessionOverride ?? true}
           disabled={disabled}
           label="Allow per-session override"
@@ -66,6 +71,7 @@ export function GateSection(props: ConfigProps) {
           }}
         />
         <NumberField
+          testId="safety-gate-max-scan-chars"
           label="Scan budget (characters)"
           value={config?.maxScanChars ?? 65_536}
           disabled={disabled}

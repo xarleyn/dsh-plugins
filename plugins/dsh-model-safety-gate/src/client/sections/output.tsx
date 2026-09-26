@@ -26,11 +26,13 @@ export function OutputSection(props: ConfigProps) {
   const output = config?.output;
   return (
     <Section
+      testId="safety-section-output"
       title="Output stream"
       modified={props.overridden(["output"])}
       aside={
         props.overridden(["output"]) ? (
           <ResetButton
+            testId="safety-output-reset"
             disabled={disabled}
             label="Reset"
             onClick={() => {
@@ -42,6 +44,7 @@ export function OutputSection(props: ConfigProps) {
     >
       <div className="msg-grid">
         <Toggle
+          testId="safety-output-enabled"
           checked={output?.enabled ?? true}
           disabled={disabled}
           label="Scan model output"
@@ -51,6 +54,7 @@ export function OutputSection(props: ConfigProps) {
           }}
         />
         <SelectField
+          testId="safety-output-stream-mode"
           label="Streaming mode"
           value={output?.mode ?? "buffered"}
           disabled={disabled}
@@ -60,6 +64,7 @@ export function OutputSection(props: ConfigProps) {
           }}
         />
         <Toggle
+          testId="safety-output-text-channel"
           checked={output?.text ?? true}
           disabled={disabled}
           label="Text channel"
@@ -69,6 +74,7 @@ export function OutputSection(props: ConfigProps) {
           }}
         />
         <Toggle
+          testId="safety-output-reasoning-channel"
           checked={output?.reasoning ?? true}
           disabled={disabled}
           label="Reasoning channel"
@@ -78,10 +84,11 @@ export function OutputSection(props: ConfigProps) {
           }}
         />
       </div>
-      <details className="msg-advanced">
+      <details className="msg-advanced" data-testid="safety-output-window">
         <summary>Rolling window</summary>
         <div className="msg-advanced-content msg-grid">
           <NumberField
+            testId="safety-output-check-every-chars"
             label="Check every (characters)"
             value={output?.checkEveryChars ?? 512}
             disabled={disabled}
@@ -90,6 +97,7 @@ export function OutputSection(props: ConfigProps) {
             }}
           />
           <NumberField
+            testId="safety-output-window-chars"
             label="Window (characters)"
             value={output?.windowChars ?? 1_536}
             disabled={disabled}
@@ -98,6 +106,7 @@ export function OutputSection(props: ConfigProps) {
             }}
           />
           <NumberField
+            testId="safety-output-lookbehind-chars"
             label="Look-behind (characters)"
             value={output?.lookbehindChars ?? 768}
             disabled={disabled}
@@ -106,6 +115,7 @@ export function OutputSection(props: ConfigProps) {
             }}
           />
           <NumberField
+            testId="safety-output-min-check-interval"
             label="Minimum interval (ms)"
             value={output?.minCheckIntervalMs ?? 250}
             disabled={disabled}
@@ -114,6 +124,7 @@ export function OutputSection(props: ConfigProps) {
             }}
           />
           <NumberField
+            testId="safety-output-max-buffered-chars"
             label="Maximum buffered (characters)"
             value={output?.maxBufferedChars ?? 8_192}
             disabled={disabled}
