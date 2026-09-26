@@ -16,6 +16,33 @@ runs, in order: `lint` (workspace tooling + per-project eslint) → `format` →
 `verify` (per-project `verify` targets + the two root contract gates) →
 `deps:check`. CI runs the same targets per affected project.
 
+### The Nx cache in a worktree
+
+A cached task stores its verdict *and* the files its target declares as
+`outputs`; `inputs` alone keys the verdict on the source and saves nothing else.
+`targetDefaults.build` therefore declares `{projectRoot}/lib` — the directory
+every `tsc`/`tsdown`/Typert build in this workspace emits into, and the one the
+26 plugins resolve `@yadsh/*` type declarations through. Without it a replayed
+`build` reports `Successfully ran target build for 31 projects` over a tree with
+no `lib/`, and the next `typecheck` fails on `TS2307` in code the lane never
+touched; `scripts/repo-config.test.mjs` replays a build in a throwaway workspace
+so that regression cannot come back quietly. `test`, `typecheck`, `lint` and
+`verify` stay without `outputs` on purpose — they emit nothing a later task
+reads, and declaring an output for them would have the cache overwrite files it
+does not own.
+
+The cache directory is shared across git worktrees by design: Nx resolves it to
+the main clone's `.nx/cache` for every worktree (`getMainWorktreeRoot` in
+`node_modules/nx/dist/src/utils/cache-directory.js`), so a lane can replay
+another lane's run — the recorded terminal output of a foreign worktree is what
+`pnpm build` prints on such a hit. Three consequences for a lane: read the
+per-task lines rather than the run summary, because `.nx/cache/run.json` is one
+file for all worktrees and a concurrent `run-many` overwrites it; `nx reset`
+clears the cache for every worktree, not just yours; and `cache.directory` stays
+out of `nx.json`, because Nx reads that property from the *main clone's*
+checkout, so pinning it here would silently follow whichever branch that
+checkout happens to hold.
+
 ## Gate map
 
 | Gate | Command | Asserts |
@@ -30,7 +57,7 @@ runs, in order: `lint` (workspace tooling + per-project eslint) → `format` →
 | Configuration card | per-plugin `verify` chain (`clientBundle.cardContract`, or a direct call to `scripts/verify-plugin-card-contract.mjs`) | Every bundle that renders the settings-card shell — the 12 plugins registering a `settings.plugin.item` card and the two `settings.section` pages that reuse the shell — carries the canonical shell CSS, the inline chevron SVG, the rendered open-state class pair and the header's `aria-expanded`; font-glyph chevrons, non-canonical shell tokens and the plugin's own legacy shell classes fail the gate. A plugin without a card owes nothing here |
 | Packed package | per-plugin `verify:package` (`plugins/*/scripts/verify-package.mjs`) | Static asserts only: manifest fields, `files` allowlist, exports exist on disk, no `workspace:`/`catalog:` leakage. Packing and the clean-room import smoke live in `pnpm tarball:verify`, not here |
 | Tarball (repo level) | `pnpm tarball:verify` (`scripts/tarball-verify.sh`) | Installs every packed tarball into a clean consumer project and smoke-imports it; an install the registry or the network broke mid-flight is retried, so a fetch that fails for the moment is not reported as an uninstallable package |
-| Repo tooling tests | `pnpm test:release` (`scripts/*.test.mjs`) | The CI/release scripts themselves are regression-tested with `node --test` |
+| Repo tooling tests | `pnpm test:release` (`scripts/*.test.mjs`) | The CI/release scripts themselves are regression-tested with `node --test`, and so are the repository's own config files — the blame list, the `lint` cache key and the `build` cache outputs, the last two proven by running `nx` in a throwaway workspace built from `nx.json` |
 | File size budget | `pnpm check:files` (`scripts/check-file-budget.mjs`) | No source file under `plugins/*/src`, `packages/*/src`, `plugins/*/scripts`, or `packages/*/scripts` is over its line budget, no test file under `plugins/*/tests` or `packages/*/tests` is over the tighter one, and no generated bundle under a package's `lib/` ran away; the repository's own root `scripts/` is outside the scope, and the thresholds and the allowlist are [below](#file-size-budget) |
 | Version plans | `pnpm release:check` (`scripts/check-release-plans.mjs`) | Every publishable release project whose commits no release tag covers yet is named by a committed version plan; a project a tag already covers is not asked for one (see below) |
 
