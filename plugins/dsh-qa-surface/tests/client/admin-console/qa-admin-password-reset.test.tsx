@@ -25,7 +25,7 @@ describe("admin password reset queue", () => {
   it("stays out of the page while nobody is waiting", async () => {
     renderConsole(adminApi(), "/qa/admin/users");
     await screen.findByRole("heading", { name: "Пользователи" });
-    expect(screen.queryByText("Заявки на сброс пароля")).toBeNull();
+    expect(screen.queryByTestId("qa-admin-password-resets")).toBeNull();
   });
 
   it("lists a waiting account and answers it with the typed password", async () => {
@@ -68,21 +68,25 @@ describe("admin password reset queue", () => {
       }),
     });
     renderConsole(api, "/qa/admin/users");
-    await screen.findByText("Заявки на сброс пароля");
-    expect(screen.getByText("alice@example.com")).toBeTruthy();
+    await screen.findByTestId("qa-admin-password-resets");
+    expect(
+      screen.getByTestId("qa-admin-password-reset-user").textContent,
+    ).toContain("alice@example.com");
     // A repeated request is visible as a count, not as a second identical row.
-    expect(screen.getByText("2")).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-admin-password-reset-requests").textContent,
+    ).toBe("2");
 
     // A password shorter than the Host's floor is refused before any call.
-    fireEvent.click(screen.getByText("Сбросить"));
+    fireEvent.click(screen.getByTestId("qa-admin-password-reset-submit"));
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toContain("8 символов");
     });
     expect(api.resetPassword).not.toHaveBeenCalled();
 
-    const field = screen.getByPlaceholderText("не короче 8 символов");
+    const field = screen.getByTestId("qa-admin-password-reset-input");
     fireEvent.change(field, { target: { value: "password-2" } });
-    fireEvent.click(screen.getByText("Сбросить"));
+    fireEvent.click(screen.getByTestId("qa-admin-password-reset-submit"));
     await waitFor(() => {
       expect(api.resetPassword).toHaveBeenCalledWith(
         "token",
@@ -92,7 +96,7 @@ describe("admin password reset queue", () => {
     });
     // The queue is re-read after the answer, and the answered row is gone.
     await waitFor(() => {
-      expect(screen.queryByText("Заявки на сброс пароля")).toBeNull();
+      expect(screen.queryByTestId("qa-admin-password-resets")).toBeNull();
     });
   });
 });
