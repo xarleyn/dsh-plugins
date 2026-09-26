@@ -119,6 +119,15 @@ describe("QA surface stylesheet", () => {
     ]);
   });
 
+  it("keeps the surface frame over the whole viewport", () => {
+    // The chat surface and the guard's failure card share this root class, and
+    // it is the fixed, inset-zero frame that keeps a crashed overlay covering
+    // the host chrome instead of thinning into a partial page beside it.
+    const surface = /\.dsh-qa-surface\{[^}]*\}/u.exec(QA_SURFACE_STYLES)?.[0];
+    expect(surface).toContain("position:fixed");
+    expect(surface).toContain("inset:0");
+  });
+
   it("hides the composer slot a parked question takes over", () => {
     // The takeover marks the composer's slot with the `hidden` attribute and
     // keeps the component mounted behind it, so the sheet has to make that

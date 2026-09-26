@@ -95,7 +95,11 @@ export function QaSurfaceGuard(props: QaSurfaceProps): ReactNode {
   if (!active) {
     if (!qaKioskMode()) return null;
     return (
-      <main className="dsh-qa-surface dsh-qa-surface--root" role="alert">
+      <main
+        className="dsh-qa-surface dsh-qa-surface--root"
+        data-testid="qa-guard-off"
+        role="alert"
+      >
         <section className="dsh-qa-crash__card">
           <h1>QA-интерфейс недоступен</h1>
           <p>
@@ -125,7 +129,11 @@ class QaSurfaceBoundary extends Component<QaSurfaceProps, { error: unknown }> {
       return <QaSurface {...this.props} />;
     }
     return (
-      <main className="dsh-qa-surface dsh-qa-crash" role="alert">
+      <main
+        className="dsh-qa-surface dsh-qa-crash"
+        data-testid="qa-guard-crash"
+        role="alert"
+      >
         <section className="dsh-qa-crash__card">
           <h1>Интерфейс не смог открыться</h1>
           <p>
@@ -135,6 +143,7 @@ class QaSurfaceBoundary extends Component<QaSurfaceProps, { error: unknown }> {
           <button
             type="button"
             className="dsh-qa-crash__reload"
+            data-testid="qa-guard-reload"
             onClick={() => {
               window.location.reload();
             }}

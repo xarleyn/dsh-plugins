@@ -194,8 +194,8 @@ describe("the composer while a question is parked", () => {
 
     // The form appears in the composer's place.
     expect(await screen.findByText("Куда писать отчёт?")).toBeDefined();
-    const slot = document.querySelector(".dsh-qa-composer-slot");
-    expect(slot?.hasAttribute("hidden")).toBe(true);
+    const slot = screen.getByTestId("qa-surface-composer-slot");
+    expect(slot.hidden).toBe(true);
     // The run's own stop action stays reachable while the form owns the slot.
     fireEvent.click(screen.getByText("Остановить"));
     await waitFor(() => {
