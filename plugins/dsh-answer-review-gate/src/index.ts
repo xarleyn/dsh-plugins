@@ -86,7 +86,9 @@ export const Config = AnswerReviewGateConfigSchema;
 /**
  * Structural view of the host surface the plugin subscribes through.
  * Listeners registered through the plugin's own context live on the plugin
- * fiber and are disposed with it — that is the cleanup path.
+ * fiber and are disposed with it — that is the listener cleanup path. The
+ * shared logger is the one resource outside the fiber, so `apply` returns a
+ * disposer that closes it.
  */
 export interface GateHostContext {
   on(
@@ -111,18 +113,25 @@ export interface GateHostContext {
  * `agent/disposed`). The reviewer backend services are read per call, so the
  * gate loads even when its backend plugin is absent — the failure policy
  * then handles the reviewer failures honestly.
+ *
+ * @returns the unload disposer. The listeners live on the plugin fiber and are
+ * disposed with it; this closes the one resource the fiber does not own — the
+ * shared plugin logger — so a hot-reload cycle does not leak a live handle.
  */
 export function apply(
   ctx: GateHostContext,
   rawConfig?: AnswerReviewGateConfig,
-): void {
+): () => Promise<void> {
   const configSource = (): ResolvedAnswerReviewGateConfig =>
     resolveAnswerReviewGateConfig(rawConfig);
   const logger = getPluginLogger({ pluginId: name });
+  const dispose = async (): Promise<void> => {
+    await logger.close();
+  };
   const config = configSource();
   if (!config.enabled) {
     logger.info("plugin.disabled");
-    return;
+    return dispose;
   }
 
   const audit = new ReviewAudit(config.audit.maxEntries);
@@ -229,4 +238,5 @@ export function apply(
     reviewWaiver: config.waiver.enabled,
     waiverAllowedInClosedMode: config.waiver.allowedInClosedMode,
   });
+  return dispose;
 }

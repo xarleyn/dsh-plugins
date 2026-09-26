@@ -232,7 +232,8 @@ export interface SubagentStartSpec {
 /** Structural view of one started subagent run. */
 export interface SubagentRunHandle {
   readonly result: Promise<SubagentRunResult>;
-  dispose(): void;
+  /** Tear the child down; asynchronous on the host, so callers await it. */
+  dispose(): void | Promise<void>;
 }
 
 /** The subset of `SubagentResult` the verdict path reads. */
