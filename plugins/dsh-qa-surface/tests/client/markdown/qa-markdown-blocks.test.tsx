@@ -150,9 +150,9 @@ describe("assistant Markdown blocks", () => {
     expect(
       first?.querySelector(":scope > li")?.querySelector(":scope > p"),
     ).toBeNull();
-    const boxes = [
-      ...container.querySelectorAll<HTMLInputElement>("input[type=checkbox]"),
-    ];
+    const boxes = within(container).getAllByTestId<HTMLInputElement>(
+      "qa-md-task-checkbox",
+    );
     expect(boxes.map((box) => box.checked)).toEqual([true, false]);
     const ordered = container.querySelector("ol");
     expect(ordered?.querySelector(":scope > li > ol > li")?.textContent).toBe(
@@ -221,10 +221,10 @@ describe("assistant Markdown blocks", () => {
         }
       />,
     );
-    expect(container.querySelector("img")?.getAttribute("src")).toBe(
-      "https://example.com/a.png",
-    );
-    expect(container.querySelectorAll("img").length).toBe(1);
+    expect(
+      within(container).getByTestId("qa-md-image").getAttribute("src"),
+    ).toBe("https://example.com/a.png");
+    expect(within(container).getAllByTestId("qa-md-image")).toHaveLength(1);
     expect(within(container).getByTestId("qa-md-image-alt").textContent).toBe(
       "локальная",
     );

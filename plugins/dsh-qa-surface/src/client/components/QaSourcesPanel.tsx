@@ -459,7 +459,7 @@ export function QaSourcesPanel({
                 className="dsh-qa-sources__group"
                 data-testid={`qa-sources-group-${group.key}`}
               >
-                <h3 data-testid="qa-sources-group-heading">
+                <h3>
                   {group.label}
                   <span data-testid="qa-sources-group-count">
                     {group.sources.length}

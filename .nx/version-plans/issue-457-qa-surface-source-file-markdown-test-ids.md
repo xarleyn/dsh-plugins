@@ -6,13 +6,16 @@ The sources panel, the files panel and the markdown renderer now name every part
 of themselves, so a test can point at the node it means instead of guessing it
 from the Russian caption beside it or the BEM class under it.
 
-Every node those files give a `dsh-qa-*` class, and every control they draw,
-carries a `data-testid`: `qa-sources-*` for the grouped list, `qa-source-detail-*`
+Every control those files draw, and every node whose state the sheet carries as
+a class modifier, takes a `data-testid`: `qa-sources-*` for the grouped list,
+`qa-source-detail-*`
 and `qa-source-preview-*` for the detail view and its file preview,
 `qa-source-badges*` for the origin badges the list and the detail share,
 `qa-files-*` for the attachment roster, `qa-md-*` for the rendered document, and
-`qa-source-chip-*`, `qa-source-icon` for the source faces the markdown shares with
-the panel. A group takes the id of the kind key it already declares
+`qa-source-chip-*` for the source faces the markdown shares with
+the panel. A group heading stays unnamed — its caption is the handle a run reads
+— while the count and the time beside it take one.
+A group takes the id of the kind key it already declares
 (`qa-sources-group-web`, `qa-sources-group-file`), so a new kind inherits its hook
 rather than naming one, and a state the class carried as a modifier carries the
 same fact in the id — `qa-source-preview-line-highlight`, `qa-md-math-pending`,
