@@ -19,13 +19,16 @@ the next open of the file replaced the list with the smaller database.
 The cut now ranks instead of measuring: a family keeps the newest `cap` rows by
 `seq` and gives up what falls below that rank, so re-judging what the store
 already holds costs nothing, while a genuine overflow still costs exactly its
-oldest entry. Finding that rank is an index walk rather than a scan and a sort:
-the cut runs on every write, and the feedback family grows to 20 000 rows.
-Schema version 2 adds the `(kind, seq)` index that the cap and every
-newest-first list are defined by.
+oldest entry. The cut runs on every write and the feedback family grows to
+20 000 rows, so finding the rank reads through an index instead of scanning and
+sorting: schema version 2 adds the `(kind, seq)` index that the cap and every
+newest-first list are defined by. What that removes is the sort, not the
+traversal — the read walks as many index entries as the cap, so a family of its
+own size still costs a full walk of the covering index, bounded by the cap
+rather than by a seek.
 
-The tests fill the feedback family to its cap and re-judge one record, fill the
-queue and drop one entry from its middle, and let the ownership sweep forget
-three conversations of a full queue before refilling it to the cap — asserting
-the row count and which record gave up its place, both in the open store and
-after a reopen.
+The tests fill the feedback family to its cap and re-judge one record, do the
+same to the review family, fill the queue and drop one entry from its middle,
+and let the ownership sweep forget three conversations of a full queue before
+refilling it to the cap — asserting the row count and which record gave up its
+place, both in the open store and after a reopen.

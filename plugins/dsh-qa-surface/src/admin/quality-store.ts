@@ -722,6 +722,10 @@ export class QaQualityStore {
    * a real record, so a family at its cap loses one every time a record it
    * already holds is re-rated — feedback disappears without anything new
    * arriving to displace it.
+   *
+   * Reading that rank costs a walk over `cap` entries of the (kind, seq)
+   * index on every write — linear in the cap, not a seek — so the cap, not the
+   * family, bounds the cost; sorting the family would have cost a temp B-tree.
    */
   private applyCap(kind: QualityRowKind): void {
     this.storage.db
