@@ -30,7 +30,8 @@ export function SourcesSection(props: ConfigProps) {
     <Section
       title="Источники"
       modified={modified}
-      aside={resetAside(props, paths)}
+      testId="qa-settings-sources"
+      aside={resetAside(props, paths, "qa-settings-sources-reset")}
     >
       <div className="qa-card-grid">
         <Toggle
@@ -38,6 +39,7 @@ export function SourcesSection(props: ConfigProps) {
           disabled={disabled}
           label="Собирать источники"
           hint="Ссылки, файлы и результаты поиска, на которые опирался ответ, показываются под сообщением."
+          testId="qa-settings-sources-enabled"
           onChange={(value) => {
             props.write(["sources", "enabled"], value);
           }}
@@ -47,6 +49,7 @@ export function SourcesSection(props: ConfigProps) {
           disabled={blocked}
           label="Источники основного агента"
           hint="Собираются с хода самого помощника."
+          testId="qa-settings-sources-collect-parent-agent"
           onChange={(value) => {
             props.write(["sources", "collect", "parentAgent"], value);
           }}
@@ -56,6 +59,7 @@ export function SourcesSection(props: ConfigProps) {
           disabled={blocked}
           label="Источники субагентов"
           hint="Собираются и с делегированных экспертов."
+          testId="qa-settings-sources-collect-subagents"
           onChange={(value) => {
             props.write(["sources", "collect", "subagents"], value);
           }}
@@ -65,12 +69,16 @@ export function SourcesSection(props: ConfigProps) {
           disabled={blocked}
           label="Писать источники в журнал"
           hint="Позволяет восстановить список источников при перезагрузке страницы."
+          testId="qa-settings-sources-collect-persist-turn-event"
           onChange={(value) => {
             props.write(["sources", "collect", "persistTurnEvent"], value);
           }}
         />
       </div>
-      <details className="qa-card-advanced">
+      <details
+        className="qa-card-advanced"
+        data-testid="qa-settings-sources-display"
+      >
         <summary>Отображение</summary>
         <div className="qa-card-advanced-content qa-card-grid">
           <Toggle
@@ -78,6 +86,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Панель источников"
             hint="Боковая панель со списком источников хода."
+            testId="qa-settings-sources-display-sidebar"
             onChange={(value) => {
               props.write(["sources", "display", "sidebar"], value);
             }}
@@ -87,6 +96,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Строка источников под ответом"
             hint="Короткая сводка под сообщением."
+            testId="qa-settings-sources-display-footer"
             onChange={(value) => {
               props.write(["sources", "display", "footer"], value);
             }}
@@ -96,6 +106,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Группировать по типу"
             hint="Файлы, ссылки и поиск идут отдельными группами."
+            testId="qa-settings-sources-display-group-by-kind"
             onChange={(value) => {
               props.write(["sources", "display", "groupByKind"], value);
             }}
@@ -105,6 +116,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Показывать найденное попутно"
             hint="Источники, которые агент не подтвердил как использованные."
+            testId="qa-settings-sources-display-show-discovered"
             onChange={(value) => {
               props.write(["sources", "display", "showDiscovered"], value);
             }}
@@ -114,6 +126,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Пометки происхождения"
             hint="Откуда взялся источник: файл, поиск, инструмент."
+            testId="qa-settings-sources-display-show-origin-badges"
             onChange={(value) => {
               props.write(["sources", "display", "showOriginBadges"], value);
             }}
@@ -125,6 +138,7 @@ export function SourcesSection(props: ConfigProps) {
             max={100}
             disabled={blocked}
             hint="Остальные скрыты под «показать все»."
+            testId="qa-settings-sources-display-max-initially-visible-per-group"
             onChange={(value) => {
               props.write(
                 ["sources", "display", "maxInitiallyVisiblePerGroup"],
@@ -134,7 +148,10 @@ export function SourcesSection(props: ConfigProps) {
           />
         </div>
       </details>
-      <details className="qa-card-advanced">
+      <details
+        className="qa-card-advanced"
+        data-testid="qa-settings-sources-web-search"
+      >
         <summary>Поиск в сети</summary>
         <div className="qa-card-advanced-content qa-card-grid">
           <Toggle
@@ -144,6 +161,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Ссылки из поиска — тоже источники"
             hint="Результат поиска засчитывается как источник, даже если страницу не открывали."
+            testId="qa-settings-sources-web-search-promote-without-fetch"
             onChange={(value) => {
               props.write(
                 ["sources", "webSearch", "promoteSearchResultsWithoutFetch"],
@@ -158,6 +176,7 @@ export function SourcesSection(props: ConfigProps) {
             max={50}
             disabled={blocked}
             hint="0 отключает зачисление ссылок из выдачи."
+            testId="qa-settings-sources-web-search-max-promoted-per-search"
             onChange={(value) => {
               props.write(
                 ["sources", "webSearch", "maxPromotedPerSearch"],
@@ -167,7 +186,10 @@ export function SourcesSection(props: ConfigProps) {
           />
         </div>
       </details>
-      <details className="qa-card-advanced">
+      <details
+        className="qa-card-advanced"
+        data-testid="qa-settings-sources-dedupe"
+      >
         <summary>Склейка дублей</summary>
         <div className="qa-card-advanced-content qa-card-grid">
           <Toggle
@@ -175,6 +197,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Приводить адреса к общему виду"
             hint="Одинаковые страницы не дублируются."
+            testId="qa-settings-sources-dedupe-normalize-urls"
             onChange={(value) => {
               props.write(["sources", "dedupe", "normalizeUrls"], value);
             }}
@@ -184,6 +207,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Отбрасывать метки переходов"
             hint="utm-метки и подобные параметры не делают ссылку новой."
+            testId="qa-settings-sources-dedupe-strip-tracking-params"
             onChange={(value) => {
               props.write(["sources", "dedupe", "stripTrackingParams"], value);
             }}
@@ -193,13 +217,17 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Объединять фрагменты файла"
             hint="Соседние диапазоны одного файла показываются одной записью."
+            testId="qa-settings-sources-dedupe-merge-file-ranges"
             onChange={(value) => {
               props.write(["sources", "dedupe", "mergeFileRanges"], value);
             }}
           />
         </div>
       </details>
-      <details className="qa-card-advanced">
+      <details
+        className="qa-card-advanced"
+        data-testid="qa-settings-sources-file-preview"
+      >
         <summary>Предпросмотр файлов</summary>
         <div className="qa-card-advanced-content">
           <div className="qa-card-grid">
@@ -208,6 +236,7 @@ export function SourcesSection(props: ConfigProps) {
               disabled={blocked}
               label="Открывать файлы в панели"
               hint="Источник — только уже попавшие в источники ответа; рабочий каталог чата читается целиком, силами того же предела."
+              testId="qa-settings-sources-file-preview-enabled"
               onChange={(value) => {
                 props.write(["sources", "filePreview", "enabled"], value);
               }}
@@ -217,6 +246,7 @@ export function SourcesSection(props: ConfigProps) {
               disabled={blocked || !(filePreview?.enabled ?? true)}
               label="Markdown сразу размечен"
               hint="Иначе файл открывается как обычный текст."
+              testId="qa-settings-sources-file-preview-markdown-rendered-by-default"
               onChange={(value) => {
                 props.write(
                   ["sources", "filePreview", "markdownRenderedByDefault"],
@@ -229,6 +259,7 @@ export function SourcesSection(props: ConfigProps) {
               disabled={blocked || !(filePreview?.enabled ?? true)}
               label="Переключатель «исходный текст»"
               hint="Позволяет читателю увидеть файл без разметки."
+              testId="qa-settings-sources-file-preview-allow-raw-toggle"
               onChange={(value) => {
                 props.write(
                   ["sources", "filePreview", "allowRawToggle"],
@@ -243,6 +274,7 @@ export function SourcesSection(props: ConfigProps) {
               max={20_000_000}
               disabled={blocked}
               hint={`≈ ${formatCount(Math.round(maxBytes / 1024))} КиБ.`}
+              testId="qa-settings-sources-file-preview-max-bytes"
               onChange={(value) => {
                 props.write(["sources", "filePreview", "maxBytes"], value);
               }}
@@ -254,6 +286,7 @@ export function SourcesSection(props: ConfigProps) {
               max={5_000}
               disabled={blocked || !(filePreview?.enabled ?? true)}
               hint="Дольше список — с пометкой, что показаны не все файлы."
+              testId="qa-settings-sources-file-preview-max-listing-entries"
               onChange={(value) => {
                 props.write(
                   ["sources", "filePreview", "maxListingEntries"],
@@ -268,6 +301,7 @@ export function SourcesSection(props: ConfigProps) {
               max={10_000_000}
               disabled={blocked}
               hint="Больший файл откроется текстом; не может превышать предел размера файла."
+              testId="qa-settings-sources-file-preview-max-markdown-render-bytes"
               onChange={(value) => {
                 props.write(
                   ["sources", "filePreview", "maxMarkdownRenderBytes"],
@@ -277,14 +311,20 @@ export function SourcesSection(props: ConfigProps) {
             />
           </div>
           {maxRender > maxBytes ? (
-            <Notice tone="warn">
+            <Notice
+              tone="warn"
+              testId="qa-settings-sources-notice-render-over-max-bytes"
+            >
               Предел разметки выше предела размера файла — хост отвергнет такую
               конфигурацию.
             </Notice>
           ) : null}
         </div>
       </details>
-      <details className="qa-card-advanced">
+      <details
+        className="qa-card-advanced"
+        data-testid="qa-settings-sources-subagents"
+      >
         <summary>Субагенты</summary>
         <div className="qa-card-advanced-content qa-card-grid">
           <Toggle
@@ -292,6 +332,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Наследовать источники"
             hint="Ответ эксперта несёт источник, из которого он работал."
+            testId="qa-settings-sources-subagents-inherit-sources"
             onChange={(value) => {
               props.write(["sources", "subagents", "inheritSources"], value);
             }}
@@ -301,6 +342,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Запасной канал отчёта"
             hint="Если эксперт не вернул источники сам, они берутся из отчёта."
+            testId="qa-settings-sources-subagents-enable-report-tool-fallback"
             onChange={(value) => {
               props.write(
                 ["sources", "subagents", "enableReportToolFallback"],
@@ -313,6 +355,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Помечать неполные прогоны"
             hint="Ход, чьи источники собраны не полностью, честно помечается."
+            testId="qa-settings-sources-subagents-mark-incomplete-opaque-runs"
             onChange={(value) => {
               props.write(
                 ["sources", "subagents", "markIncompleteOpaqueRuns"],
@@ -325,6 +368,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Проверять источники из отчёта"
             hint="С проверкой принимается только источник с путём или адресом из делегированного прогона. Без неё записывается и «факт» без адреса, и отчёт самого помощника."
+            testId="qa-settings-sources-subagents-validate-reported-sources"
             onChange={(value) => {
               props.write(
                 ["sources", "subagents", "validateReportedSources"],
@@ -334,7 +378,10 @@ export function SourcesSection(props: ConfigProps) {
           />
         </div>
       </details>
-      <details className="qa-card-advanced">
+      <details
+        className="qa-card-advanced"
+        data-testid="qa-settings-sources-legacy"
+      >
         <summary>Совместимость</summary>
         <div className="qa-card-advanced-content">
           <Toggle
@@ -342,6 +389,7 @@ export function SourcesSection(props: ConfigProps) {
             disabled={blocked}
             label="Разбирать старый блок источников"
             hint="Совместимость с ответами прежних версий, где список источников приходил текстом."
+            testId="qa-settings-sources-legacy-parse-assistant-sources-block"
             onChange={(value) => {
               props.write(
                 ["sources", "legacy", "parseAssistantSourcesBlock"],
