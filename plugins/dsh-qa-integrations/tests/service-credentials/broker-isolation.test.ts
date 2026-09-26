@@ -11,6 +11,7 @@ import { MemoryKeyProvider } from "../../src/secrets/key-provider.js";
 import { SecretStore } from "../../src/secrets/secret-store.js";
 import { DEFAULT_SERVICE_RATE_LIMIT } from "../../src/service-credentials/config.js";
 import type {
+  EncryptedSecretRecord,
   IntegrationCapability,
   ProviderValidation,
 } from "../../src/types.js";
@@ -130,10 +131,25 @@ function deferrableProvider(options: {
 /** Every repository a test built, so the handles are released on cleanup. */
 const repositories: IntegrationRepository[] = [];
 
+/**
+ * A store that counts its own decrypt calls: a policy refusal has to land before
+ * the credential is unlocked, and only a counter can tell that apart from a
+ * refusal that unlocked the secret first and then changed its mind.
+ */
+class CountingSecretStore extends SecretStore {
+  public decryptCount = 0;
+
+  override async decrypt(record: EncryptedSecretRecord): Promise<string> {
+    this.decryptCount += 1;
+    return await super.decrypt(record);
+  }
+}
+
 function buildBroker(
   filePath: string,
   provider: IntegrationProvider,
   warns: string[] = [],
+  secrets?: SecretStore,
 ): IntegrationBroker {
   const providers = new IntegrationProviderRegistry();
   providers.register(provider);
@@ -141,7 +157,10 @@ function buildBroker(
   repositories.push(repository);
   return new IntegrationBroker(
     repository,
-    new SecretStore(new MemoryKeyProvider(new Map([[1, randomBytes(32)]]), 1)),
+    secrets ??
+      new SecretStore(
+        new MemoryKeyProvider(new Map([[1, randomBytes(32)]]), 1),
+      ),
     providers,
     fakeLogger(warns),
   );
@@ -316,6 +335,9 @@ describe("IntegrationBroker user isolation", () => {
 
   it("refuses a capability the deployment withdrew after the connection", async () => {
     const executed: string[] = [];
+    const secrets = new CountingSecretStore(
+      new MemoryKeyProvider(new Map([[1, randomBytes(32)]]), 1),
+    );
     const broker = buildBroker(
       path.join(root, "withdrawn.json"),
       fakeProvider({
@@ -324,6 +346,8 @@ describe("IntegrationBroker user isolation", () => {
           executed.push("upstream");
         },
       }),
+      [],
+      secrets,
     );
     const principal = { userId: "erin" };
     await broker.connect(principal, "acme", {
@@ -338,6 +362,9 @@ describe("IntegrationBroker user isolation", () => {
       }),
     ).resolves.toMatchObject({ data: { operation: "crm.get" } });
     expect(executed).toEqual(["upstream"]);
+    // The counter is live: serving this read did unlock the credential.
+    expect(secrets.decryptCount).toBeGreaterThan(0);
+    const decrypted = secrets.decryptCount;
 
     // The operator switches the capability off. The stored grant and its policy
     // are untouched — that is what a reconnect-free withdrawal leaves behind.
@@ -364,6 +391,8 @@ describe("IntegrationBroker user isolation", () => {
       }),
     ).rejects.toMatchObject({ code: "OperationDeniedByPolicy" });
     expect(executed).toEqual(["upstream"]);
+    // Denied on the deployment's own withdrawal, ahead of any decryption.
+    expect(secrets.decryptCount).toBe(decrypted);
   });
 
   it("drops a validation verdict that lands after the account reconnected", async () => {
