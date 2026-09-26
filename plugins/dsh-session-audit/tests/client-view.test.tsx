@@ -229,7 +229,7 @@ describe("AuditPage", () => {
       <AuditPage sessionId={SESSION} api={api} />,
     );
 
-    await findByTestId("audit-page--empty");
+    await findByTestId("audit-page-empty");
     expect(queryByTestId("audit-unattached")).toBeNull();
   });
 
