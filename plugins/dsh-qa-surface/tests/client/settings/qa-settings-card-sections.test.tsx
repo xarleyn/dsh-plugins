@@ -37,7 +37,10 @@ describe("QA Surface card", () => {
       },
     });
     openCard();
-    expect(screen.getByText(/Плашка о данных скрыта/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-branding-notice-disclaimer-hidden")
+        .textContent,
+    ).toMatch(/Плашка о данных скрыта/u);
   });
 
   it("shows the phrases the Host runs when the namespace carries none", async () => {
@@ -50,9 +53,15 @@ describe("QA Surface card", () => {
       }),
     });
     openCard();
-    const field = within(section("Интерфейс")).getByLabelText(
-      /Фразы ожидания/u,
+    const field = screen.getByTestId(
+      "qa-settings-interface-thinking-phrases",
     ) as HTMLTextAreaElement;
+    // The hook and the label the operator reads name the same control.
+    expect(
+      within(section("qa-settings-interface")).getByLabelText(
+        /Фразы ожидания/u,
+      ),
+    ).toBe(field);
     await waitFor(() => {
       expect(field.value).toBe("Точу\nПолирую");
     });
@@ -65,8 +74,8 @@ describe("QA Surface card", () => {
       describe: async () => ({ ok: false as const, error: new Error("нет") }),
     });
     openCard();
-    const field = within(section("Интерфейс")).getByLabelText(
-      /Фразы ожидания/u,
+    const field = screen.getByTestId(
+      "qa-settings-interface-thinking-phrases",
     ) as HTMLTextAreaElement;
     expect(field.value.split("\n").length).toBeGreaterThan(1);
     expect(field.value).toContain("Скребу по сусекам…");
@@ -86,8 +95,8 @@ describe("QA Surface card", () => {
       }),
     });
     openCard();
-    const field = within(section("Интерфейс")).getByLabelText(
-      /Фразы ожидания/u,
+    const field = screen.getByTestId(
+      "qa-settings-interface-thinking-phrases",
     ) as HTMLTextAreaElement;
     expect(field.value).toBe("Своя фраза");
   });
@@ -102,7 +111,10 @@ describe("QA Surface card", () => {
       },
     });
     openCard();
-    expect(screen.getByText(/становятся видны конечным/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-interface-notice-internals-visible")
+        .textContent,
+    ).toMatch(/становятся видны конечным/u);
   });
 
   it("warns when embedding is open to a foreign origin", async () => {
@@ -115,7 +127,9 @@ describe("QA Surface card", () => {
       },
     });
     openCard();
-    expect(screen.getByText(/Встраивание разрешено/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-embedding-notice-open").textContent,
+    ).toMatch(/Встраивание разрешено/u);
   });
 
   it("marks the overridden fields and clears them all", async () => {
@@ -124,9 +138,9 @@ describe("QA Surface card", () => {
     });
     openCard();
 
-    expect(
-      within(section("Доступ и маршрут")).getByText("изменено"),
-    ).toBeTruthy();
+    expect(screen.getByTestId("qa-settings-access-modified").textContent).toBe(
+      "изменено",
+    );
     fireEvent.click(
       screen.getByRole("button", { name: /Сбросить 2 переопределения/u }),
     );
@@ -140,7 +154,7 @@ describe("QA Surface card", () => {
   it("disables the controls while a remote browser cannot write", async () => {
     await renderCard({ snapshot: { writable: false } });
     openCard();
-    const access = section("Доступ и маршрут");
+    const access = section("qa-settings-access");
     expect(
       (
         within(access).getByRole("checkbox", {
@@ -153,7 +167,9 @@ describe("QA Surface card", () => {
   it("shows a loading note until the first section arrives", async () => {
     await renderCard({ snapshot: { status: "loading", value: undefined } });
     openCard();
-    expect(screen.getByText(/Загружаю настройки помощника/u)).toBeTruthy();
+    expect(screen.getByTestId("qa-settings-loading").textContent).toMatch(
+      /Загружаю настройки помощника/u,
+    );
     expect(screen.queryByRole("heading", { name: /^Аккаунты/u })).toBeNull();
   });
 
@@ -161,8 +177,9 @@ describe("QA Surface card", () => {
     const { mutate } = await renderCard();
     openCard();
 
-    const accounts = section("Аккаунты");
-    const fields = within(accounts).getByLabelText(/Поля профиля/u);
+    const fields = screen.getByTestId(
+      "qa-settings-accounts-profile-identities",
+    );
     fireEvent.change(fields, { target: { value: "jira = Jira\nconfluence" } });
     fireEvent.blur(fields);
     await settle();
@@ -182,8 +199,8 @@ describe("QA Surface card", () => {
     const { mutate } = await renderCard();
     openCard();
 
-    const attachments = section("Вложения");
-    fireEvent.click(within(attachments).getByLabelText(/Файловые вложения/u));
+    const attachments = section("qa-settings-attachments");
+    fireEvent.click(screen.getByTestId("qa-settings-attachments-text-files"));
     await settle();
     expect(mutate).toHaveBeenCalledWith([
       { op: "set", path: ["attachments", "textFiles"], value: false },
@@ -203,8 +220,8 @@ describe("QA Surface card", () => {
     const { mutate } = await renderCard();
     openCard();
 
-    const field = within(section("Вложения")).getByLabelText(
-      /Разрешённые расширения файлов/u,
+    const field = screen.getByTestId(
+      "qa-settings-attachments-extensions",
     ) as HTMLTextAreaElement;
     // What matters is that the field shows the resolved list, not an empty
     // box for a setting that is doing something.

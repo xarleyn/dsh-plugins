@@ -5,7 +5,7 @@
  * the state the `qaSurface/describe` Remote feeds the status view.
  */
 
-import { act, fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { vi } from "vitest";
 import type { ReactElement } from "react";
 
@@ -166,16 +166,27 @@ export function openCard(): void {
   );
 }
 
-export function section(title: string): HTMLElement {
-  const heading = screen.getByRole("heading", {
+/**
+ * One section of the card body. Tests reach it through the hook the section
+ * carries rather than through the Russian title it paints.
+ */
+export function section(testId: string): HTMLElement {
+  return screen.getByTestId(testId);
+}
+
+/** The heading a section answers to, by the name the operator reads. */
+export function sectionHeading(testId: string, title: string): HTMLElement {
+  return within(screen.getByTestId(testId)).getByRole("heading", {
     name: new RegExp(`^${title}`, "u"),
   });
-  return heading.closest("section") as HTMLElement;
 }
 
 /** The plate a refused or failed write raises, when there is one. */
 export function errorPlate(): HTMLElement | null {
-  return document.querySelector(".qa-card-error");
+  return (
+    screen.queryByTestId("qa-settings-write-error") ??
+    screen.queryByTestId("qa-settings-host-error")
+  );
 }
 
 /** Settle a queued mutation and the render it triggers. */
