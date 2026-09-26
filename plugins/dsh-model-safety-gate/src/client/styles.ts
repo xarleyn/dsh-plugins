@@ -6,6 +6,7 @@ import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
  * `--dsw-alias-*` tokens so light, dark, and system themes stay coherent.
  */
 export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
+.msg-card-list{display:grid;gap:12px;margin:0;padding:0;list-style:none}
 .msg-body,.msg-body *{box-sizing:border-box}
 .msg-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .msg-section{display:grid;gap:12px}

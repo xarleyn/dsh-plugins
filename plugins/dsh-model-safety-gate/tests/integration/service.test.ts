@@ -13,7 +13,11 @@ import {
   type AgentRegistryFace,
   type ToolHostContext,
 } from "../../src/service.js";
-import { SafetyGateError } from "../../src/types.js";
+import { liveNode } from "../helpers/live-node.js";
+import type { GateMode, ModelSafetyGateEntryConfig } from "../../src/config.js";
+
+/** The classifier node as the entry configuration declares it. */
+type LiveClassifier = NonNullable<ModelSafetyGateEntryConfig["classifier"]>;
 import { runIsolated } from "../../src/classifier/isolation.js";
 import type { StreamChunk } from "../../src/stream/chunks.js";
 
@@ -25,18 +29,8 @@ interface CapturedHost {
   pendingInjects: Array<() => void>;
   appended: Array<{ type: string; data: unknown }>;
   auditLogs: Array<{ message: string; fields: unknown }>;
-  /** The settings seam the service installs, when it reaches one. */
-  settings: CapturedSettings | null;
-}
-
-/** The settings face a real host injects, captured for the liveness tests. */
-interface CapturedSettings {
-  namespace: string;
-  entry: unknown;
-  source(): unknown;
-  setSource(next: () => unknown): void;
-  onChange(): void;
-  validate(value: unknown): void;
+  /** Warning messages the service logged, in order. */
+  warnings: string[];
 }
 
 function wire(
@@ -46,7 +40,11 @@ function wire(
     approval?: unknown;
     deferInject?: boolean;
   },
-): { captured: CapturedHost; gate: ModelSafetyGate } {
+): {
+  captured: CapturedHost;
+  gate: ModelSafetyGate;
+  commit(): void;
+} {
   const ctx = new Context();
   const shadow = ctx as unknown as Record<string, unknown>;
   const captured: CapturedHost = {
@@ -56,7 +54,7 @@ function wire(
     pendingInjects: [],
     appended: [],
     auditLogs: [],
-    settings: null,
+    warnings: [],
   };
   shadow.on = (
     event: string,
@@ -91,44 +89,10 @@ function wire(
     },
   };
   shadow.inject = (services: readonly string[], fn: (c: unknown) => void) => {
-    // A settings provider hands the consumer an install face; the tool runtime
-    // hands a listener context. The service asks for both.
+    // The tool runtime hands the service a listener context, which is all the
+    // service injects now: its configuration is live on its own entry.
     const resolve = () => {
-      if (services.includes("settings")) {
-        fn({
-          settings: {
-            installSection: (
-              _owner: unknown,
-              namespace: string,
-              _schema: unknown,
-              entry: unknown,
-              hooks: {
-                setSource(current: () => unknown): void;
-                onChange(): void;
-                validate?(value: unknown): void;
-              },
-            ) => {
-              let source: () => unknown = () => entry;
-              captured.settings = {
-                namespace,
-                entry,
-                source: () => source(),
-                setSource: (next) => {
-                  source = next;
-                },
-                onChange: () => {
-                  hooks.onChange();
-                },
-                validate: (value) => {
-                  hooks.validate?.(value);
-                },
-              };
-              hooks.setSource(() => source());
-            },
-          },
-        });
-        return;
-      }
+      expect(services).toEqual(["tools"]);
       fn(toolCtx);
     };
     // `deferInject` models the host resolving the service during teardown: the
@@ -159,12 +123,24 @@ function wire(
     info: (message: string, fields: unknown) => {
       captured.auditLogs.push({ message, fields });
     },
-    warn: () => undefined,
+    warn: (message: string) => {
+      captured.warnings.push(message);
+    },
     error: () => undefined,
     close: async () => undefined,
   } as unknown as PluginLogger;
   const gate = new ModelSafetyGate(ctx as never, config as never, { logger });
-  return { captured, gate };
+  return {
+    captured,
+    gate,
+    /** Announce a committed change the way the Host announces one to this fiber. */
+    commit: () => {
+      for (const listener of captured.listeners.get("loader/volatile-update") ??
+        []) {
+        (listener as () => void)();
+      }
+    },
+  };
 }
 
 describe("ModelSafetyGate service wiring", () => {
@@ -298,14 +274,16 @@ describe("ModelSafetyGate service wiring", () => {
     );
   });
 
-  it("installs a live settings namespace over the composition entry", () => {
-    const { captured } = wire({ mode: "warn" });
-    expect(captured.settings?.namespace).toBe("model-safety-gate");
-    expect(captured.settings?.source()).toMatchObject({ mode: "warn" });
+  it("follows the entry configuration through one live-update listener", () => {
+    const { captured } = wire({ mode: liveNode<GateMode>("warn") });
+    // The gate installs no settings section of its own: the nodes it edits are
+    // its entry configuration, and the Host announces a commit to this fiber.
+    expect(captured.listeners.get("loader/volatile-update")).toHaveLength(1);
   });
 
-  it("applies a committed settings change to the running guards", async () => {
-    const { captured, gate } = wire({ mode: "warn" });
+  it("applies a committed change to the running guards", async () => {
+    const mode = liveNode<GateMode>("warn");
+    const { captured, gate, commit } = wire({ mode });
     const preStep = captured.listeners.get("agent/pre-step")?.[0] as PreStep;
     const enter = async (): Promise<unknown> => ({
       kind: "enter",
@@ -317,8 +295,8 @@ describe("ModelSafetyGate service wiring", () => {
       messages: [],
     });
 
-    captured.settings?.setSource(() => ({ mode: "enforce" }));
-    captured.settings?.onChange();
+    mode.commit("enforce");
+    commit();
 
     expect(gate.config.mode).toBe("enforce");
     // The listener the host already holds must enforce the new mode: a reload
@@ -327,29 +305,30 @@ describe("ModelSafetyGate service wiring", () => {
     expect(captured.listeners.get("agent/pre-step")).toHaveLength(1);
   });
 
-  it("keeps the last good configuration when the source turns invalid", async () => {
-    const { captured, gate } = wire({ mode: "enforce" });
+  it("keeps the last workable configuration when a commit cannot be honoured", async () => {
+    // The form stores what the operator chose and the Host enforces only schema
+    // constraints, so a combination the resolver cannot act on arrives as a
+    // committed change instead of a refused write.
+    const classifier = liveNode<LiveClassifier>({ backend: "none" });
+    const { captured, gate, commit } = wire({ classifier, mode: "enforce" });
     const preStep = captured.listeners.get("agent/pre-step")?.[0] as PreStep;
 
-    captured.settings?.setSource(() => ({ mode: "yolo" }));
-    expect(() => captured.settings?.onChange()).not.toThrow();
-    expect(gate.config.mode).toBe("enforce");
+    classifier.commit({ backend: "dsh" });
+    expect(() => commit()).not.toThrow();
+
+    expect(gate.config.classifier.backend).toBe("none");
+    expect(gate.inspect().configRejected).toMatch(/provider/u);
+    expect(captured.warnings).toContain("safety.config.rejected");
+    // The gate keeps enforcing the policy it could honour.
     expect(
       await preStep(JAILBREAK, async () => ({ kind: "enter", messages: [] })),
     ).toEqual({ kind: "reject" });
-  });
 
-  it("refuses a structurally impossible configuration at write time", () => {
-    const { captured } = wire();
-    const validate = captured.settings?.validate;
-    expect(validate).toBeTypeOf("function");
-    expect(() => validate?.({ mode: "audit" })).not.toThrow();
-    expect(() => validate?.({ classifier: { backend: "dsh" } })).toThrow(
-      SafetyGateError,
-    );
-    expect(() => validate?.({ customBlockPatterns: ["("] })).toThrow(
-      SafetyGateError,
-    );
+    classifier.commit({ backend: "dsh", provider: "local", model: "small" });
+    commit();
+
+    expect(gate.config.classifier.backend).toBe("dsh");
+    expect(gate.inspect().configRejected).toBeNull();
   });
 
   it("redacts the classifier key and reports the wiring in the inspect projection", () => {
@@ -441,7 +420,8 @@ describe("ModelSafetyGate service wiring", () => {
   });
 
   it("stops gating the moment the profile turns off, without re-registering", async () => {
-    const { captured, gate } = wire({ mode: "enforce" });
+    const mode = liveNode<GateMode>("enforce");
+    const { captured, gate, commit } = wire({ mode });
     const preStep = captured.listeners.get("agent/pre-step")?.[0] as PreStep;
     const enter = async (): Promise<unknown> => ({
       kind: "enter",
@@ -449,8 +429,8 @@ describe("ModelSafetyGate service wiring", () => {
     });
     expect(await preStep(JAILBREAK, enter)).toEqual({ kind: "reject" });
 
-    captured.settings?.setSource(() => ({ mode: "off" }));
-    captured.settings?.onChange();
+    mode.commit("off");
+    commit();
 
     expect(gate.config.mode).toBe("off");
     // The listener the host already holds has to honor the new profile: an off
@@ -475,25 +455,20 @@ describe("ModelSafetyGate service wiring", () => {
     expect(captured.toolListeners.size).toBe(0);
   });
 
-  it("installs no settings section when the settings service arrives after dispose", () => {
-    const { captured } = wire({}, { deferInject: true });
-    expect(captured.settings).toBeNull();
+  it("stops following the entry configuration once disposed", () => {
+    const mode = liveNode<GateMode>("enforce");
+    const { captured, gate, commit } = wire({ mode });
+    expect(captured.listeners.get("loader/volatile-update")).toHaveLength(1);
 
     for (const dispose of captured.effects) dispose();
-    for (const resolve of captured.pendingInjects) resolve();
 
-    expect(captured.settings).toBeNull();
-  });
-
-  it("ignores a settings change that arrives after dispose", () => {
-    const { captured, gate } = wire({ mode: "enforce" });
-    for (const dispose of captured.effects) dispose();
-
-    captured.settings?.setSource(() => ({ mode: "audit" }));
-    captured.settings?.onChange();
-
-    // The rebuild belongs to a live gate; a disposed one keeps the policy it
-    // last ran on instead of re-resolving behind the host's back.
+    expect(captured.listeners.get("loader/volatile-update") ?? []).toHaveLength(
+      0,
+    );
+    // An announcement that still reaches the service must not rebuild a
+    // pipeline for a gate that is gone.
+    mode.commit("audit");
+    commit();
     expect(gate.config.mode).toBe("enforce");
   });
 
