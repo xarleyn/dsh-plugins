@@ -1,8 +1,8 @@
 /**
- * Configuration and report vocabulary of `dsh-web-fetch-authenticated`.
- * Pure types only: this module is imported by the Host, by the browser client
- * bundle, and by the generated Typert face, so it must stay free of Node or
- * DOM dependencies.
+ * Configuration and report vocabulary of `dsh-web-fetch-authenticated`. Data
+ * shapes and plain constants only: this module is imported by the Host, by the
+ * browser client bundle, and by the generated Typert face, so it must stay free
+ * of Node or DOM dependencies.
  * @module types
  */
 
@@ -40,9 +40,9 @@ export interface NetworkPolicy {
    * (except always-denied classes). Narrow CIDRs are preferred over
    * `allowPrivate`.
    */
-  allowedCidrs?: string[];
+  allowedCidrs?: readonly string[];
   /** Addresses inside these CIDRs are denied even when `allowedCidrs` matches. */
-  deniedCidrs?: string[];
+  deniedCidrs?: readonly string[];
 }
 
 /** How redirects are followed (SPEC §10.5). */
@@ -54,7 +54,7 @@ export interface RedirectPolicy {
   /** Default `3`. `0` follows no redirects. */
   maxRedirects?: number;
   /** Extra origins `mode: 'allowlist'` may redirect to. */
-  allowedOrigins?: string[];
+  allowedOrigins?: readonly string[];
 }
 
 /** Response limits; rule values override the global defaults. */
@@ -169,15 +169,15 @@ export interface ResolvedDocuments {
 /** Match section of a rule (SPEC §7/§9): exact hosts, glob paths. */
 export interface RuleMatch {
   /** Default `['https']`. */
-  schemes?: Array<"https" | "http">;
+  schemes?: readonly ("https" | "http")[];
   /** Exact hostnames (lowercase; wildcards are rejected in v1). */
-  hosts: string[];
+  hosts: readonly string[];
   /** Allowed ports; omitted = any port (default ports included). */
-  ports?: number[];
+  ports?: readonly number[];
   /** Glob path patterns; omitted = every path on the matched origin. */
-  allowPaths?: string[];
+  allowPaths?: readonly string[];
   /** Glob path patterns subtracted from the allow set. */
-  denyPaths?: string[];
+  denyPaths?: readonly string[];
 }
 
 /** One authenticated-origin rule (SPEC §7). */
@@ -212,17 +212,31 @@ export interface AuditConfig {
   enabled?: boolean;
 }
 
-/** Plugin configuration (SPEC §7/§23). */
+/**
+ * Settings namespace of this plugin's profile, shared by the Host entry and the
+ * browser card. Since `0.1.7` the Host derives it from the profile entry id in
+ * `cordis.patch.yml`, so it is not a name either half invents: the card looks up
+ * its form under it, and the entry's Config is served as it.
+ */
+export const WEB_FETCH_AUTH_SETTINGS_NAMESPACE = "web-fetch-authenticated";
+
+/**
+ * Plugin configuration (SPEC §7/§23) as a plain document: what the browser card
+ * reads and writes, and what `resolveConfig` consumes. The Host hands the
+ * profile to `apply()` in the live-reference shape instead, where every field
+ * the card edits is a `Volatile` wrapper, and a wrapper whose node has no schema
+ * default legitimately holds `undefined`.
+ */
 export interface WebFetchAuthConfig {
-  configVersion?: number;
-  enabled?: boolean;
-  rules?: AuthenticatedFetchRule[];
-  defaultPolicy?: DefaultPolicy;
+  configVersion?: number | undefined;
+  enabled?: boolean | undefined;
+  rules?: readonly AuthenticatedFetchRule[] | undefined;
+  defaultPolicy?: DefaultPolicy | undefined;
   /** Global limit defaults applied to every rule. */
-  limits?: FetchLimits;
+  limits?: FetchLimits | undefined;
   /** Global extraction caps applied to every rule that does not override them. */
-  documents?: DocumentsConfig;
-  audit?: AuditConfig;
+  documents?: DocumentsConfig | undefined;
+  audit?: AuditConfig | undefined;
 }
 
 /** Fully resolved configuration after defaults are applied. */
