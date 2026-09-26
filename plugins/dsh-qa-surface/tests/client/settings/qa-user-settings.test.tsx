@@ -162,11 +162,11 @@ function dialog(props: {
 
 describe("QA settings dialog", () => {
   it("opens on the profile with the stored values, inside one shell", () => {
-    const { container } = dialog({});
+    dialog({});
     expect(screen.getByRole("dialog", { name: "Настройки" })).toBeTruthy();
-    expect(
-      container.querySelector(".dsh-qa-modal__panel--settings"),
-    ).toBeTruthy();
+    expect(screen.getByTestId("qa-surface-modal-panel").className).toContain(
+      "dsh-qa-modal__panel--settings",
+    );
     expect((screen.getByLabelText("ФИО") as HTMLInputElement).value).toBe(
       "Иван Иванов",
     );
@@ -188,7 +188,7 @@ describe("QA settings dialog", () => {
     fireEvent.click(screen.getByRole("tab", { name: "Навыки" }));
     expect(screen.getByRole("tabpanel", { name: "Навыки" })).toBeTruthy();
     // One dialog the whole time: the sections are pages, not further modals.
-    expect(document.querySelectorAll(".dsh-qa-modal").length).toBe(1);
+    expect(screen.getAllByTestId("qa-surface-modal")).toHaveLength(1);
   });
 
   it("hides the sections a deployment withheld", () => {
@@ -226,10 +226,10 @@ describe("QA settings dialog", () => {
 
   it("closes on Escape and on a backdrop click", () => {
     const onClose = vi.fn();
-    const { container } = dialog({ onClose });
+    dialog({ onClose });
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
-    fireEvent.click(container.querySelector(".dsh-qa-modal") as HTMLElement);
+    fireEvent.click(screen.getByTestId("qa-surface-modal"));
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
