@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   settleTurnCompletions,
   type QaChatActivity,
-} from "../src/client/notifications/turn-completion-source.js";
+} from "../../../src/client/notifications/turn-completion-source.js";
 
 function chat(
   id: string,

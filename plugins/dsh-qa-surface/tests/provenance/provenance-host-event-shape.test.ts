@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { QaProvenanceHost } from "../src/provenance/host-store.js";
-import { resolveConfig } from "../src/resolve-config.js";
+import { QaProvenanceHost } from "../../src/provenance/host-store.js";
+import { resolveConfig } from "../../src/resolve-config.js";
 import { fakeSession, harness, readEvents } from "./provenance-host.helpers.js";
 
 describe("Host provenance event shape", () => {

@@ -25,11 +25,7 @@ import {
 import { QaProvenanceHost } from "../../src/provenance/host-store.js";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { legacy, snapshot } from "../helpers/conversation-fakes.js";
-import {
-  fakeSession,
-  harness,
-  readEvents,
-} from "../provenance-host.helpers.js";
+import { fakeSession, harness, readEvents } from "./provenance-host.helpers.js";
 
 const temporary: string[] = [];
 

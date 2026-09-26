@@ -12,14 +12,14 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   QA_TURN_NOTICE_COPY,
   QaTurnNotice,
-} from "../src/client/components/QaTurnNotice.js";
-import { buildChatRows } from "../src/client/components/QaSidebar.js";
-import { useQaTurnNotifications } from "../src/client/notifications/use-turn-notifications.js";
+} from "../../../src/client/components/QaTurnNotice.js";
+import { buildChatRows } from "../../../src/client/components/QaSidebar.js";
+import { useQaTurnNotifications } from "../../../src/client/notifications/use-turn-notifications.js";
 import type {
   QaAccountNotifications,
   QaAccountNotificationsInput,
   ResolvedQaSurfaceConfig,
-} from "../src/types.js";
+} from "../../../src/types.js";
 
 type Switches = ResolvedQaSurfaceConfig["notifications"];
 

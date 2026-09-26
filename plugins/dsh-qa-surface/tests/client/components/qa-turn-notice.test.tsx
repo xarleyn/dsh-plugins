@@ -5,8 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   QA_TURN_NOTICE_COPY,
   QaTurnNotice,
-} from "../src/client/components/QaTurnNotice.js";
-import type { QaTurnNoticeItem } from "../src/client/notifications/notification-dispatcher.js";
+} from "../../../src/client/components/QaTurnNotice.js";
+import type { QaTurnNoticeItem } from "../../../src/client/notifications/notification-dispatcher.js";
 
 const items: readonly QaTurnNoticeItem[] = [
   { key: "b:2", sessionId: "b", title: "Подбор оборудования" },
