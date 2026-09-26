@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 
 import type { QaSurfaceConfig } from "../../../src/types.js";
+import { QA_MAX_ACTIVE_REQUESTS_MAX } from "../../../src/config-resolvers/session.js";
 import { resolveConfig } from "../../../src/resolve-config.js";
 import {
   BASE,
@@ -214,6 +215,21 @@ describe("QA Surface card", () => {
     expect(mutate).toHaveBeenCalledWith([
       { op: "set", path: ["attachments", "pastedTextLines"], value: 80 },
     ]);
+  });
+
+  it("bounds the request ceiling by the number the Host validator enforces", async () => {
+    // Every field in this card states its limits as a literal rather than
+    // importing the resolver's constant, so the browser bundle stays free of the
+    // Host's config surface. That is a deal, and this is its half: raise the
+    // validator without raising the field, and the card silently refuses a value
+    // the deployment would have honoured.
+    await renderCard();
+    openCard();
+    const field = within(section("Сессия")).getByLabelText(
+      /Максимум одновременных вопросов/u,
+    ) as HTMLInputElement;
+    expect(field.min).toBe("0");
+    expect(field.max).toBe(String(QA_MAX_ACTIVE_REQUESTS_MAX));
   });
 
   it("shows the extension list in effect and stores the parsed one", async () => {

@@ -241,6 +241,9 @@ assert.doesNotMatch(admission, /\.tools\.presentAs\("native"\)/u);
 assert.match(admission, /existing non-QA session cannot be adopted/u);
 assert.match(remote, /qaSurface\/secureSession/u);
 assert.match(remote, /qaSurface\/describe/u);
+// The queue read the browser takes before a send, so a browser cannot be the
+// one deciding how busy the stand is.
+assert.match(remote, /qaSurface\/queueStatus/u);
 for (const method of [
   "accessCurrent",
   "accessSession",
@@ -378,6 +381,21 @@ assert.match(client, /settings\.onboarding/u);
 assert.match(client, /"welcome-notice"/u);
 assert.match(client, /priority:\s*-1e3|priority:\s*-1000/u);
 assert.match(client, /Перед началом тестирования/u);
+// A question the stand has no room for is answered with the queue dialog, and
+// the dialog has to say where the question is: a visitor who cannot tell asks
+// it twice, which is the load the ceiling exists to prevent.
+assert.match(client, /Подождите в очереди/u);
+assert.match(client, /не отправлен и остался в поле ввода/u);
+// The dialog counts occupied places, never a queue of people ahead: the load it
+// reads includes this visitor's own turns, so "перед вами" would invent a
+// position the stand cannot attribute.
+assert.match(client, /все его места заняты: в работе/u);
+assert.doesNotMatch(client, /заняты: перед вами/u);
+// Own BEM block: `dsh-qa-queue*` belongs to the strip of messages waiting inside
+// one chat, and these two features must not share a block name in the bundle.
+assert.match(client, /\.dsh-qa-request-queue__notice\{/u);
+assert.doesNotMatch(client, /\.dsh-qa-queue__notice\{/u);
+assert.match(client, /maxActiveRequests/u);
 assert.match(client, /2026-09-12\.1/u);
 assert.match(client, /dsh-qa-onboarding/u);
 assert.match(client, /require\("react-dom"\)/u);

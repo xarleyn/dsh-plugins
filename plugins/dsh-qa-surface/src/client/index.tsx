@@ -30,6 +30,7 @@ import type {
   QaApprovalApi,
   QaFileUpload,
   QaQuestionApi,
+  QaQueueStatusRemote,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -45,6 +46,7 @@ import type {
   QaAccountSession,
   QaApprovalDecision,
   QaQuestionAnswerItem,
+  QaQueueStatus,
   QaClaimResult,
   QaLockdownProof,
   QaOwnershipEntry,
@@ -280,6 +282,7 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
     sessionId: string,
   ): Promise<RemoteResult<QaLockdownProof>>;
   describe(): Promise<RemoteResult<ResolvedQaSurfaceConfig>>;
+  queueStatus(): Promise<RemoteResult<QaQueueStatus>>;
   sources(
     token: string,
     sessionId: string,
@@ -597,6 +600,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           token,
           sessionId,
         ) as unknown as ReturnType<QaSecureSession>;
+      // The stand's live load, asked once per send. Only the Host can say it:
+      // a browser sees its own chats and never the HTTP API's questions.
+      const queueStatus: QaQueueStatusRemote = () => policyRemote.queueStatus();
       const qaApi: QaSessionsApi = {
         selectModel: (request) => injectedRemote.session.selectModel(request),
         selectAgentPreset: (agentId, agentPreset) =>
@@ -999,6 +1005,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               subroleId: string | null,
               adminPreview: boolean,
             ) => policyRemote.createSession(token, subroleId, adminPreview),
+            queueStatus,
             accessApi,
             adminApi,
             sourceApi,
