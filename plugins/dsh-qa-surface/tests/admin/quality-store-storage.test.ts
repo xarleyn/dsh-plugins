@@ -2,7 +2,7 @@ import { mkdtempSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   QaQualityStore,
   QA_ROW_CAPS,
@@ -106,9 +106,25 @@ function seedQueue(file: string, count: number): void {
   }));
 }
 
+/** One reviewer's verdict per conversation, keyed by the review's own id. */
+function seedReviews(file: string, count: number): void {
+  seedRows(file, "review", count, (index) => ({
+    key: `review-${index}`,
+    json: {
+      id: `review-${index}`,
+      conversationId: `c${index}`,
+      reviewerId: "r1",
+      status: "reviewed",
+      issues: [],
+      severity: "minor",
+      createdAt: "2026-09-15T00:00:00.000Z",
+    },
+  }));
+}
+
 /** Open a store once to apply the schema, then leave the file to the test. */
 function createSchema(file: string): void {
-  openStore(file).close();
+  new QaQualityStore(file).close();
 }
 
 /** A `qa-quality.json` as a pre-0.8.0 release wrote it. */
@@ -166,13 +182,17 @@ function writeLegacy(dir: string): string {
 }
 
 /**
- * These tests walk a family up to its real cap — two thousand parked chats,
- * twenty thousand ratings — and reopen the file to read what survived. Locally
- * the whole file runs in about a second; the release runner is one shared
- * container serving twenty jobs, where that walk is the difference between a
- * pass and a timeout that reads as a broken store.
+ * These tests walk a family up to its real cap — twenty thousand ratings, five
+ * thousand verdicts, two thousand parked chats — and reopen the file to read
+ * what survived. Locally the whole file runs in about a second; the release
+ * runner is one shared container serving twenty jobs, where that walk is the
+ * difference between a pass and a timeout that reads as a broken store.
  */
 const CAP_TIMEOUT = { timeout: 30_000 } as const;
+
+// A handle left open by a failing expectation keeps `qa-quality.db` locked for
+// the rest of the run, and on Windows its temp directory cannot be removed.
+afterEach(closeAll);
 
 describe("QaQualityStore storage", () => {
   it("writes one row per record and reads it back in a second instance", () => {
@@ -201,7 +221,6 @@ describe("QaQualityStore storage", () => {
     expect(reopened.allReviews()).toHaveLength(1);
     expect(reopened.manualQueue()).toHaveLength(1);
     expect(reopened.auditEvents()).toHaveLength(1);
-    closeAll();
   });
 
   it("keeps every record of one conversation apart", () => {
@@ -227,7 +246,6 @@ describe("QaQualityStore storage", () => {
         "SELECT COUNT(*) FROM quality_rows WHERE kind = 'feedback'",
       ),
     ).toEqual([3]);
-    closeAll();
   });
 
   it("drops a queue entry rather than rewriting the list", () => {
@@ -242,7 +260,6 @@ describe("QaQualityStore storage", () => {
     expect(
       column<string>(file, "SELECT key FROM quality_rows WHERE kind = 'queue'"),
     ).toEqual(["c3\u001f"]);
-    closeAll();
   });
 
   it(
@@ -271,10 +288,51 @@ describe("QaQualityStore storage", () => {
       const reopened = openStore(file);
       expect(reopened.allFeedback()).toHaveLength(cap);
       expect(reopened.feedbackOf("c1", "m1", "u1")?.rating).toBe("positive");
-      expect(reopened.feedbackOf(`c${cap}`, `m${cap}`, "u1")?.rating).toBe(
-        "negative",
-      );
+      const rejudged = reopened.feedbackOf(`c${cap}`, `m${cap}`, "u1");
+      expect(rejudged?.rating).toBe("negative");
+      // The planted key is the one `rateFeedback` computes, so this write found
+      // the row instead of adding a rival: identity and first-seen time stayed.
+      // Should the key format ever move, the family would still hold `cap` rows
+      // — one arrived and the oldest gave up its place — and only this would say
+      // that the record was replaced rather than updated in place.
+      expect(rejudged?.id).toBe(`feedback-${cap}`);
+      expect(rejudged?.createdAt).toBe("2026-09-15T00:00:00.000Z");
+    },
+  );
+
+  it(
+    "keeps a full review family whole when one verdict is re-saved",
+    CAP_TIMEOUT,
+    () => {
+      const { file } = rig();
+      createSchema(file);
+      const cap = QA_ROW_CAPS.review;
+      seedReviews(file, cap);
+      const store = openStore(file);
+
+      // The second family whose writer relocates a row, with a cap of its own:
+      // a reviewer overwriting their verdict must cost nobody their review.
+      const { created } = store.saveReview("r1", {
+        conversationId: `c${cap}`,
+        status: "reviewed",
+        issues: [],
+        severity: "critical",
+      });
+      expect(created).toBe(false);
+
+      expect(store.allReviews()).toHaveLength(cap);
+      expect(rowCount(file, "review")).toBe(cap);
       closeAll();
+
+      const reopened = openStore(file);
+      const reviews = reopened.allReviews();
+      expect(reviews).toHaveLength(cap);
+      expect(reviews.find((row) => row.id === "review-1")?.severity).toBe(
+        "minor",
+      );
+      const rejudged = reviews.find((row) => row.id === `review-${cap}`);
+      expect(rejudged?.severity).toBe("critical");
+      expect(rejudged?.createdAt).toBe("2026-09-15T00:00:00.000Z");
     },
   );
 
@@ -308,7 +366,6 @@ describe("QaQualityStore storage", () => {
       expect(
         store.manualQueue().some((row) => row.conversationId === "c2"),
       ).toBe(true);
-      closeAll();
     },
   );
 
@@ -348,7 +405,6 @@ describe("QaQualityStore storage", () => {
 
       const reopened = openStore(file);
       expect(reopened.manualQueue()).toHaveLength(cap);
-      closeAll();
     },
   );
 
@@ -393,7 +449,6 @@ describe("QaQualityStore storage", () => {
       true,
     );
     expect(() => readFileSync(legacy, "utf8")).toThrow();
-    closeAll();
   });
 
   it("never overwrites a verdict the database already holds", () => {
@@ -412,7 +467,6 @@ describe("QaQualityStore storage", () => {
     expect(reopened.allFeedback()[0]?.rating).toBe("positive");
     // The leftover file stays where it is: dropping it is the operator's call.
     expect(readFileSync(legacy, "utf8")).toContain("missing_information");
-    closeAll();
   });
 
   it("refuses a file it cannot recognize and leaves it in place", () => {
