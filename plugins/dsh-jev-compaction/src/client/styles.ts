@@ -9,6 +9,7 @@
 import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
 
 export const styles = `${PLUGIN_CARD_SHELL_CSS}${String.raw`
+.jevc-stack{flex-direction:column;gap:12px;list-style:none;margin:0;padding:12px 0;display:flex}
 .jevc-body{display:flex;flex-direction:column;gap:14px;padding-top:12px}
 .jevc-section{display:flex;flex-direction:column;gap:8px}
 .jevc-section-title{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:1.4}
