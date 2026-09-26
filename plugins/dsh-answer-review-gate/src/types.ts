@@ -11,6 +11,30 @@
 
 import type { ContentBlock } from "@deepseek-ai/dsh-llm";
 
+// ------------------------------------------------------------- message source
+
+/**
+ * The gate's own producer source kind, declared the way the harness declares
+ * its own: the `@deepseek-ai/dsh-llm` source map is merge-extensible and ships
+ * no catch-all `plugin` kind, so a producer names itself here.
+ *
+ * `kind` says *who produced this*, `form` says *what kind of thing it is*; the
+ * gate only ever steers a one-off account of what a review found, so it pins
+ * the `notice` form rather than admitting the whole context-form union.
+ */
+export interface AnswerReviewMessageSource {
+  readonly kind: "answer-review";
+  readonly form: "notice";
+  /** One-line account of the review outcome, already bounded for the log. */
+  readonly summary: string;
+}
+
+declare module "@deepseek-ai/dsh-llm" {
+  interface MessageSourceMap {
+    "answer-review": AnswerReviewMessageSource;
+  }
+}
+
 // ------------------------------------------------------------------ verdict
 
 /** Severity of one review finding. */
