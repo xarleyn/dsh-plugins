@@ -6,7 +6,6 @@ import {
   fetchWithRetries,
   readBoundedJson,
   readBoundedText,
-  RESEND_AFTER_EVERY_FAULT,
   type BoundedText,
   type ResponseRead,
 } from "../kernel/read-policy.js";
@@ -192,9 +191,6 @@ export class TeamCityTransport {
                   "ProviderUnavailable",
                   "TeamCity request failed",
                 ),
-        // Every transport failure earns another attempt: a slow on-prem server
-        // is more often busy than gone.
-        retriable: RESEND_AFTER_EVERY_FAULT,
         statusFailure: (response) => this.failure(response),
       },
       read,

@@ -118,6 +118,63 @@ describe("teamcity upstream failures", () => {
     ).rejects.toMatchObject({ code: "TlsFailure" });
   });
 
+  it("spends one deadline on a request that never answers", async () => {
+    let attempts = 0;
+    const hanging: typeof fetch = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        attempts += 1;
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("This operation was aborted", "AbortError")),
+        );
+      });
+    const provider = new TeamcityProvider(
+      resolveConfig({
+        timeoutMs: 30,
+        teamcity: { network: NETWORK, serverUrl: SERVER, retries: 2 },
+      }),
+      hanging,
+    );
+    await expect(
+      provider.execute({ credential: credentialFor(hanging) }, "builds.get", {
+        buildId: 1,
+      }),
+    ).rejects.toMatchObject({ code: "UpstreamTimeout" });
+    // The deadline is this deployment's own verdict, so asking again cannot make
+    // the answer arrive sooner — two further attempts only triple how long a
+    // caller waits to be told the server is not replying.
+    expect(attempts).toBe(1);
+  });
+
+  it("still spends the whole budget on a connection the server refused", async () => {
+    // The bound above is only this deployment's own deadline. A refused
+    // connection is the upstream's answer, and a busy on-prem server is more
+    // often momentarily refusing than gone, so it keeps earning its retries.
+    let attempts = 0;
+    const refusing: typeof fetch = async () => {
+      attempts += 1;
+      throw new TypeError("fetch failed", {
+        cause: Object.assign(new Error("connect ECONNREFUSED"), {
+          code: "ECONNREFUSED",
+        }),
+      });
+    };
+    const provider = new TeamcityProvider(
+      resolveConfig({
+        timeoutMs: 30,
+        teamcity: { network: NETWORK, serverUrl: SERVER, retries: 2 },
+      }),
+      refusing,
+    );
+    await expect(
+      provider.execute(
+        { credential: credentialFor(refusing) },
+        "builds.get",
+        { buildId: 1 },
+      ),
+    ).rejects.toMatchObject({ code: "ProviderUnavailable" });
+    expect(attempts).toBe(3);
+  });
+
   it("refuses any operation the catalog does not declare", async () => {
     const { calls, fetcher } = stub(() => ({ json: {} }));
     const provider = new TeamcityProvider(config(), fetcher);

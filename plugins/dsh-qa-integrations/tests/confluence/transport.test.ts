@@ -1,11 +1,15 @@
+import { resolveConfig } from "../../src/config.js";
 import { IntegrationError } from "../../src/errors.js";
 import { ConfluenceProvider } from "../../src/providers/confluence/index.js";
 import {
   bodyOf,
   call,
+  COMPANY,
   config,
   credentialFor,
+  EMAIL,
   PAGE,
+  SITES,
   siteStub,
   TOKEN,
 } from "./shared.js";
@@ -132,5 +136,36 @@ describe("confluence cross-account isolation", () => {
       ).rejects.toBeInstanceOf(IntegrationError);
     }
     expect(calls).toHaveLength(0);
+  });
+});
+
+describe("confluence retry budget", () => {
+  it("spends one deadline on a request that never answers", async () => {
+    let attempts = 0;
+    const hanging: typeof fetch = (_input, init) =>
+      new Promise((_resolve, reject) => {
+        attempts += 1;
+        init?.signal?.addEventListener("abort", () =>
+          reject(new DOMException("This operation was aborted", "AbortError")),
+        );
+      });
+    const provider = new ConfluenceProvider(
+      resolveConfig({
+        timeoutMs: 30,
+        confluence: { instances: SITES, retries: 2 },
+      }),
+      hanging,
+    );
+    const credential = provider.parseCredential(TOKEN, {
+      instanceId: COMPANY.id,
+      email: EMAIL,
+    }).credential;
+    await expect(
+      provider.execute({ credential }, "connection.get", {}),
+    ).rejects.toMatchObject({ code: "UpstreamTimeout" });
+    // The deadline is this deployment's own verdict, so asking again cannot make
+    // the answer arrive sooner — two further attempts only triple how long a
+    // caller waits to be told the instance is not replying.
+    expect(attempts).toBe(1);
   });
 });
