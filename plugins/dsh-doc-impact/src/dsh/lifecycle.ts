@@ -1,5 +1,26 @@
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 
+/**
+ * The plugin's own producer source kind, declared the way the harness declares
+ * its own: the `@deepseek-ai/dsh-llm` source map is merge-extensible and ships
+ * no catch-all `plugin` kind, so a producer names itself here.
+ *
+ * `kind` says *who produced this*, `form` says *what kind of thing it is*; the
+ * reminder loop only ever steers a one-off account of what it found, so it pins
+ * the `notice` form rather than admitting the whole context-form union.
+ */
+export interface DocImpactMessageSource {
+  readonly kind: "doc-impact";
+  readonly form: "notice";
+  readonly summary: string;
+}
+
+declare module "@deepseek-ai/dsh-llm" {
+  interface MessageSourceMap {
+    "doc-impact": DocImpactMessageSource;
+  }
+}
+
 /** Structural view of the host context — no cordis import needed by tests. */
 export interface LifecycleContext {
   on(event: string, listener: (...args: never[]) => unknown): unknown;
@@ -70,8 +91,7 @@ function steerMessage(text: string): unknown {
   return createUserMessage({
     content: [{ type: "text", text }],
     source: {
-      kind: "plugin",
-      plugin: "doc-impact",
+      kind: "doc-impact",
       form: "notice",
       summary: "Documentation impact check",
     },
