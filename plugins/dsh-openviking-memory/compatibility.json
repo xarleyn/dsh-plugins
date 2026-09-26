@@ -6,14 +6,14 @@
     "requiredHostFeatures": [
       "settings",
       "skills/provider",
-      "agent/session-start",
+      "agent/created",
       "agent/pre-step",
       "session/created",
       "session/event",
       "session/flush",
       "tools/pre-execute"
     ],
-    "requiredClientFeatures": ["settings.plugin.item"]
+    "requiredClientFeatures": ["settings.plugins.tab"]
   },
   "node": "^22.19.0 || >=24.0.0"
 }
