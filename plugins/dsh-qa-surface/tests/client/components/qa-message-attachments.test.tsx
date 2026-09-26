@@ -36,8 +36,8 @@ describe("QA message", () => {
         onStop={vi.fn()}
       />,
     );
-    const input = document.querySelector(
-      "input[type='file']",
+    const input = screen.getByTestId(
+      "qa-composer-file-input",
     ) as HTMLInputElement;
     Object.defineProperty(input, "files", { value: [png], configurable: true });
     fireEvent.change(input);
@@ -99,8 +99,8 @@ describe("QA message", () => {
       />,
     );
     const note = new File(["hello"], "note.txt", { type: "text/plain" });
-    const input = document.querySelector(
-      "input[type='file']",
+    const input = screen.getByTestId(
+      "qa-composer-file-input",
     ) as HTMLInputElement;
     Object.defineProperty(input, "files", {
       value: [note],

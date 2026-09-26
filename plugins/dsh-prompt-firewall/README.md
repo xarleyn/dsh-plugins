@@ -123,7 +123,7 @@ dsh_prompt_firewall_chars_removed_total
 dsh_prompt_firewall_estimated_tokens_removed_total
 ```
 
-When the DSH settings provider is mounted, configuration is registered under `prompt-firewall` and changes apply live. `setSectionPolicy()` accepts `allow`, `block`, `protect`, or `clear`; callers can supply a settings revision to reject stale writes. Without a settings provider, inspection and filtering still work, while mutation fails explicitly.
+The plugin's own configuration is the live settings namespace, keyed by its profile entry id `dsh-prompt-firewall`: a field the card edits is declared `.volatile()` in the config schema, and the Host commits a write into the running plugin without a restart. `setSectionPolicy()` accepts `allow`, `block`, `protect`, or `clear`; callers can supply a settings revision to reject stale writes. Without a settings service, inspection and filtering still work, while mutation fails explicitly.
 
 ## Design boundaries
 
@@ -136,7 +136,7 @@ When the DSH settings provider is mounted, configuration is registered under `pr
 
 - Node.js 20 or newer
 - pnpm 10.4.1 for development
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`
 - Cordis `^4.0.1`
 
 ## Development

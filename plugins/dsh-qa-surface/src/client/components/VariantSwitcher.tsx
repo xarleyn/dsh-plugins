@@ -46,9 +46,14 @@ export function VariantSwitcher({
   readonly onStep: (offset: number) => void;
 }) {
   return (
-    <div className="dsh-qa-variants" aria-label="Варианты ответа">
+    <div
+      className="dsh-qa-variants"
+      data-testid="qa-variants"
+      aria-label="Варианты ответа"
+    >
       <button
         type="button"
+        data-testid="qa-variants-prev"
         aria-label="Предыдущий вариант"
         disabled={offset >= count - 1}
         onClick={() => onStep(offset + 1)}
@@ -62,6 +67,7 @@ export function VariantSwitcher({
       </span>
       <button
         type="button"
+        data-testid="qa-variants-next"
         aria-label="Следующий вариант"
         disabled={offset <= 0}
         onClick={() => onStep(offset - 1)}

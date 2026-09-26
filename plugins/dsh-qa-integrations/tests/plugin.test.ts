@@ -1,8 +1,8 @@
 /**
  * The plugin entry: its identity, server-side registration behavior, and the
- * live apply of operator card edits. The settings namespace is attached when a
- * settings provider is present and skipped without one, so the Host half must
- * not require a settings provider merely to serve the browser UI.
+ * live apply of operator card edits. The plugin declines the Host's generated
+ * settings page for its own entry only when a settings service is mounted, so
+ * the Host half must not require one merely to serve the browser UI.
  */
 
 import { Context } from "@deepseek-ai/cordis";
@@ -13,14 +13,25 @@ import { describe, expect, it, vi } from "vitest";
 import QaIntegrations, { name as pluginName } from "../src/index.js";
 import { IntegrationRepository } from "../src/repository.js";
 
-interface InstallCapture {
-  namespace: string;
-  entry: unknown;
-  hooks: {
-    setSource(current: () => unknown): void;
-    onChange(): void;
-    validate(value: unknown): void;
-  };
+/** What the plugin asked the mounted settings service to do for its entry. */
+interface ConfigureCapture {
+  presentation: { auto?: boolean };
+  owner: unknown;
+}
+
+/** The Loader's commit signal, dispatched to the owning fiber alone. */
+interface VolatileUpdateEmitFace {
+  emit(
+    name: "loader/volatile-update",
+    paths: readonly (readonly string[])[],
+  ): void;
+}
+
+/** The plugin's own fiber, read the way the Loader reads it. */
+interface FiberFace {
+  readonly config: unknown;
+  readonly ctx: Context;
+  dispose(): Promise<void>;
 }
 
 /** The host services the plugin waits for; no settings provider by default. */
@@ -31,15 +42,17 @@ async function host(
   ctx: Context;
   tools: string[];
   removed: string[];
-  install: InstallCapture | undefined;
-  setSource(source: unknown): void;
-  /** The plugin's own fiber: disposing it is what a reload does. */
-  fiber: { dispose(): Promise<void> };
+  configured: ConfigureCapture[];
+  /**
+   * Commit an operator edit the way the Loader does: replace the entry's
+   * volatile references, then tell the owning fiber they moved.
+   */
+  commit(patch: Record<string, unknown>): void;
+  fiber: FiberFace;
 }> {
   const tools: string[] = [];
   const removed: string[] = [];
-  let install: InstallCapture | undefined;
-  let source: unknown = { enabled: false, ...config };
+  const configured: ConfigureCapture[] = [];
   const ctx = new Context();
   ctx.provide("qaSurface", {
     registerPrincipalScopedTools: () => () => {},
@@ -58,31 +71,32 @@ async function host(
   } as never);
   if (options.withSettings === true) {
     ctx.provide("settings", {
-      installSection: (
-        _owner: unknown,
-        namespace: string,
-        _schema: unknown,
-        entry: unknown,
-        hooks: InstallCapture["hooks"],
-      ) => {
-        install = { namespace, entry, hooks };
-        hooks.setSource(() => source);
+      configure: (presentation: { auto?: boolean }, owner: unknown) => {
+        configured.push({ presentation, owner });
+        return () => {};
       },
     } as never);
   }
   const fiber = (await ctx.plugin(QaIntegrations, {
     enabled: false,
     ...config,
-  })) as unknown as { dispose(): Promise<void> };
+  })) as unknown as FiberFace;
   return {
     ctx,
     tools,
     removed,
-    install,
-    setSource(next: unknown) {
-      source = next;
-    },
+    configured,
     fiber,
+    commit(patch: Record<string, unknown>) {
+      const live = fiber.config as Record<string, unknown>;
+      for (const [key, value] of Object.entries(patch)) {
+        live[key] = { get: () => value };
+      }
+      (fiber.ctx as unknown as VolatileUpdateEmitFace).emit(
+        "loader/volatile-update",
+        [Object.keys(patch)],
+      );
+    },
   };
 }
 
@@ -102,49 +116,55 @@ describe("integrations plugin entry", () => {
     expect(tools).toEqual([]);
   });
 
-  it("attaches the qa-integrations namespace when a settings provider exists", async () => {
-    const { install } = await host({ enabled: false }, { withSettings: true });
-    await settle();
-    expect(install?.namespace).toBe("qa-integrations");
-    // The composition row stays the base of the section.
-    expect(install?.entry).toMatchObject({ enabled: false });
-  });
-
-  it("applies a committed card edit to the running service", async () => {
-    const { tools, install, setSource } = await host(
+  it("declines the generated settings page for its own entry", async () => {
+    const { configured, fiber } = await host(
       { enabled: false },
       { withSettings: true },
     );
     await settle();
-    expect(install).toBeDefined();
+    // The entry *is* the namespace on a 0.1.7 host, so the only thing the
+    // plugin says to the settings service is that it ships its own card.
+    expect(configured).toHaveLength(1);
+    expect(configured[0]!.presentation).toEqual({ auto: false });
+    // …and it says it about its own fiber, not about whoever asked.
+    expect(configured[0]!.owner).toBe(fiber.ctx.fiber);
+  });
+
+  it("registers no settings presentation without a settings service", async () => {
+    const { configured } = await host({ enabled: false });
+    await settle();
+    expect(configured).toEqual([]);
+  });
+
+  it("applies a committed card edit to the running service", async () => {
+    const { tools, commit } = await host(
+      { enabled: false },
+      { withSettings: true },
+    );
+    await settle();
     expect(tools).toEqual([]);
-    // The operator enabled the plugin from the card; the namespace source now
-    // carries the edit, and the change applies without a Host restart.
-    setSource({ enabled: true });
-    install?.hooks.onChange();
+    // The operator enabled the plugin from the card; the committed reference
+    // now carries the edit, and the change applies without a Host restart.
+    commit({ enabled: true });
     expect(tools.length).toBeGreaterThan(0);
     // Disabling again unmounts the same set instead of stacking a second one.
-    setSource({ enabled: false });
-    install?.hooks.onChange();
+    commit({ enabled: false });
     expect(tools).toEqual([]);
   });
 
   it("takes one provider's tools away without touching the others", async () => {
-    const { tools, install, setSource } = await host(
+    const { tools, commit } = await host(
       { enabled: true },
       { withSettings: true },
     );
     await settle();
-    setSource({ enabled: true });
-    install?.hooks.onChange();
     const of = (provider: string) =>
       tools.filter((name) => name.startsWith(`${provider}_`));
     expect(of("teamcity").length).toBeGreaterThan(0);
     expect(of("gitlab").length).toBeGreaterThan(0);
     // The operator's switch means the model loses this provider's tools too:
     // a mounted tool whose provider is gone could only ever refuse a call.
-    setSource({ enabled: true, teamcity: { enabled: false } });
-    install?.hooks.onChange();
+    commit({ teamcity: { enabled: false } });
     expect(of("teamcity")).toEqual([]);
     expect(of("gitlab").length).toBeGreaterThan(0);
   });
@@ -172,19 +192,20 @@ describe("integrations plugin entry", () => {
     }
   });
 
-  it("refuses an invalid write at validation time and keeps the running state", async () => {
-    const { tools, install, setSource } = await host(
+  it("keeps the running state when a committed value cannot be resolved", async () => {
+    const { tools, commit } = await host(
       { enabled: false },
       { withSettings: true },
     );
     await settle();
-    expect(install).toBeDefined();
-    // A valid deployment passes validation silently.
-    expect(() => install?.hooks.validate({ enabled: true })).not.toThrow();
-    // An http-only Confluence site without the escape hatch is refused here,
-    // so the card reports it instead of storing a configuration the resolvers
-    // would throw away at the next boot.
-    const broken = {
+    expect(tools).toEqual([]);
+    // An http-only Confluence site without the escape hatch is a constraint
+    // `ConfigSchema` cannot express, so the Host persists it and the resolvers
+    // are the last word. Half-applying the edit would mount the providers that
+    // did resolve and lose the ones that did not, so the service keeps its
+    // state instead, and a later valid commit still reaches it.
+    commit({
+      enabled: true,
       confluence: {
         instances: [
           {
@@ -194,12 +215,10 @@ describe("integrations plugin entry", () => {
           },
         ],
       },
-    };
-    expect(() => install?.hooks.validate(broken)).toThrow();
-    // Even if such a value arrived through another path, the running service
-    // keeps its state instead of dying on it.
-    setSource(broken);
-    expect(() => install?.hooks.onChange()).not.toThrow();
+    });
     expect(tools).toEqual([]);
+
+    commit({ confluence: { instances: [] } });
+    expect(tools.length).toBeGreaterThan(0);
   });
 });

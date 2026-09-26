@@ -27,10 +27,11 @@ describeProviderConformance({
     [503, "ProviderUnavailable"],
   ],
   transient: { status: 429, attempts: 3, code: "RateLimited" },
-  build: ({ fetcher, retries, maxResponseBytes }) => {
+  build: ({ fetcher, retries, maxResponseBytes, timeoutMs }) => {
     const provider = new TestitProvider(
       resolveConfig({
         maxResponseBytes,
+        timeoutMs,
         testit: { instances: [{ ...INSTANCE }], retries },
       }),
       fetcher,

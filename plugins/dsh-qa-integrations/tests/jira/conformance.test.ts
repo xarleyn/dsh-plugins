@@ -25,9 +25,13 @@ describeProviderConformance({
     [500, "ProviderUnavailable"],
   ],
   transient: { status: 429, attempts: 3, code: "RateLimited" },
-  build: ({ fetcher, retries, maxResponseBytes }) => {
+  build: ({ fetcher, retries, maxResponseBytes, timeoutMs }) => {
     const provider = new JiraProvider(
-      resolveConfig({ maxResponseBytes, jira: { sites: SITES, retries } }),
+      resolveConfig({
+        maxResponseBytes,
+        timeoutMs,
+        jira: { sites: SITES, retries },
+      }),
       fetcher,
     );
     const credential = provider.parseCredential(TOKEN, {

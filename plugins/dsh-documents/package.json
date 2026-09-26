@@ -60,6 +60,7 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/cordis-plugin-loader": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
@@ -71,6 +72,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/cordis-plugin-loader": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",

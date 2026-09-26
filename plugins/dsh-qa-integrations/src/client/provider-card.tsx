@@ -40,6 +40,11 @@ export interface ProviderCardState<Extra> {
   readonly extra: Extra;
   /** Managed credential offered by the selected instance, or null. */
   readonly service: { readonly label: string } | null;
+  /**
+   * The zone every test hook of this card is named from, so a provider section
+   * labels its own knobs the same way the skeleton labels theirs.
+   */
+  readonly testIdZone: string;
   /** Whether the connect form asks for that credential instead of a token. */
   readonly useService: boolean;
   setUseService(value: boolean): void;
@@ -93,6 +98,11 @@ export interface ProviderCardCalls<Extra> {
 }
 
 export interface ProviderCardSpec<Extra> {
+  /**
+   * The provider key the Host declares. It names the test hooks of this card,
+   * so a new provider inherits them instead of naming them again.
+   */
+  readonly provider: string;
   readonly title: string;
   /** Portal line while nothing is connected. */
   readonly portalFallback: string;
@@ -131,6 +141,11 @@ const SERVICE_REASON: Readonly<Record<CapabilityServiceState, string>> =
     unavailable: "Недоступно с сервисным токеном",
   });
 
+/** A provider-vocabulary key as a test id segment: `issues.read` is `issues-read`. */
+function testIdSegment(key: string): string {
+  return key.replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "");
+}
+
 /**
  * The managed-credential block of a connect form: one checkbox, what the mode
  * does and does not give, and — while the mode is on — the action that names
@@ -141,18 +156,26 @@ export function serviceConnectOption<Extra>(
   state: ProviderCardState<Extra>,
 ): ReactNode {
   if (state.service === null) return null;
+  const zone = state.testIdZone;
   return (
-    <div className="dsh-qa-integrations__section">
+    <div
+      className="dsh-qa-integrations__section"
+      data-testid={`${zone}-service-option`}
+    >
       <label className="dsh-qa-integrations__check">
         <input
           type="checkbox"
+          data-testid={`${zone}-service-option-toggle`}
           checked={state.useService}
           disabled={state.busy}
           onChange={(event) => state.setUseService(event.currentTarget.checked)}
         />
         Использовать сервисный токен
       </label>
-      <p className="dsh-qa-integrations__hint">
+      <p
+        className="dsh-qa-integrations__hint"
+        data-testid={`${zone}-service-option-hint`}
+      >
         {state.useService
           ? `Сервисный аккаунт: ${state.service.label}. Токен создавать не нужно; сервисный режим даёт только безопасное чтение — изменения, секреты и чувствительные данные недоступны.`
           : "Подключение под вашим личным аккаунтом: доступны все возможности, которые разрешает ваш токен."}
@@ -165,6 +188,7 @@ export function serviceConnectOption<Extra>(
           <button
             className="dsh-qa-integrations__button"
             type="button"
+            data-testid={`${zone}-service-option-personal`}
             disabled={state.busy}
             onClick={() => state.setUseService(false)}
           >
@@ -177,6 +201,12 @@ export function serviceConnectOption<Extra>(
 }
 
 export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
+  // The provider key is the test id zone: one zone per card, the blocks inside
+  // it named by what they hold, so a test reaches a knob without reading the
+  // Russian caption that describes it. The `provider-card-` segment keeps these
+  // hooks apart from the operator card's sections, which own
+  // `qa-integrations-<provider>`.
+  const zone = `qa-integrations-provider-card-${spec.provider}`;
   return function ProviderCard({ token, help }: ProviderCardProps) {
     const [summary, setSummary] = useState<IntegrationSummary>();
     const [credential, setCredential] = useState("");
@@ -362,6 +392,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
       credential,
       extra,
       service,
+      testIdZone: zone,
       useService: wantsService,
       setUseService: (value: boolean) => setServiceChoice(value),
       setCredential,
@@ -402,21 +433,37 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
       serviceState?.capabilities[capability] === undefined;
 
     return (
-      <article className="dsh-qa-integrations__card">
+      <article className="dsh-qa-integrations__card" data-testid={zone}>
         {error === null ? null : (
-          <div className="dsh-qa-integrations__error" role="alert">
+          <div
+            className="dsh-qa-integrations__error"
+            data-testid={`${zone}-error`}
+            role="alert"
+          >
             {error}
           </div>
         )}
-        <div className="dsh-qa-integrations__card-head">
+        <div
+          className="dsh-qa-integrations__card-head"
+          data-testid={`${zone}-head`}
+        >
           <div>
-            <h3 className="dsh-qa-integrations__provider">{spec.title}</h3>
-            <p className="dsh-qa-integrations__portal">
+            <h3
+              className="dsh-qa-integrations__provider"
+              data-testid={`${zone}-title`}
+            >
+              {spec.title}
+            </h3>
+            <p
+              className="dsh-qa-integrations__portal"
+              data-testid={`${zone}-portal`}
+            >
               {summary?.portal ?? spec.portalFallback}
             </p>
           </div>
           <span
             className={`dsh-qa-integrations__status${summary?.status === "connected" ? " dsh-qa-integrations__status--ok" : ""}`}
+            data-testid={`${zone}-status`}
           >
             {summary?.status === "connected"
               ? "Подключено"
@@ -427,20 +474,29 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
         </div>
 
         {connected ? (
-          <div className="dsh-qa-integrations__section">
+          <div
+            className="dsh-qa-integrations__section"
+            data-testid={`${zone}-summary`}
+          >
             <strong>
               {summary.externalAccountName ?? spec.accountFallback}
             </strong>
             <span className="dsh-qa-integrations__muted">
               Последняя успешная проверка: {dateTime(summary.lastValidatedAt)}
             </span>
-            <span className="dsh-qa-integrations__muted">
+            <span
+              className="dsh-qa-integrations__muted"
+              data-testid={`${zone}-credential-source`}
+            >
               {serviceMode
                 ? "Сервисный аккаунт · управляется администратором"
                 : `Токен настроен · обновлён ${dateTime(summary.credentialUpdatedAt)}`}
             </span>
             {summary.errorCode === "ServiceCredentialUnsafeScope" ? (
-              <span className="dsh-qa-integrations__muted">
+              <span
+                className="dsh-qa-integrations__muted"
+                data-testid={`${zone}-unsafe-scope`}
+              >
                 Сервисный токен шире, чем read-only: доступ всё равно ограничен
                 потолком режима, но токен стоит сузить.
               </span>
@@ -455,20 +511,28 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
         {connected && !showCredential ? (
           <>
             {serviceMode ? (
-              <div className="dsh-qa-integrations__section">
+              <div
+                className="dsh-qa-integrations__section"
+                data-testid={`${zone}-service-mode`}
+              >
                 <h4>Режим доступа</h4>
-                <span className="dsh-qa-integrations__muted">
+                <span
+                  className="dsh-qa-integrations__muted"
+                  data-testid={`${zone}-service-mode-hint`}
+                >
                   Только безопасное чтение: изменения, управление правами и
                   секреты недоступны, даже если сервисный токен их позволяет.
                 </span>
                 {serviceState?.resources == null ? null : (
                   <BoundarySummary
+                    testIdZone={zone}
                     resources={serviceState.resources}
                     selection={serviceState.selection}
                   />
                 )}
                 {editingBoundary === null ? null : (
                   <BoundaryEditor
+                    testIdZone={zone}
                     resources={serviceState?.resources ?? {}}
                     selection={
                       editingBoundary ?? serviceState?.selection ?? null
@@ -485,6 +549,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
                     <button
                       className="dsh-qa-integrations__button"
                       type="button"
+                      data-testid={`${zone}-boundary-edit`}
                       disabled={busy}
                       onClick={() =>
                         setEditingBoundary(
@@ -499,6 +564,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
                     <button
                       className="dsh-qa-integrations__button"
                       type="button"
+                      data-testid={`${zone}-switch-personal`}
                       disabled={busy}
                       onClick={() => void switchSource("personal")}
                     >
@@ -509,8 +575,14 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
               </div>
             ) : serviceState?.available === true &&
               spec.calls.setSource !== undefined ? (
-              <div className="dsh-qa-integrations__section">
-                <span className="dsh-qa-integrations__muted">
+              <div
+                className="dsh-qa-integrations__section"
+                data-testid={`${zone}-service-offer`}
+              >
+                <span
+                  className="dsh-qa-integrations__muted"
+                  data-testid={`${zone}-service-offer-hint`}
+                >
                   Этому подключению доступен сервисный токен организации —{" "}
                   {serviceState.label ?? "сервисный аккаунт"}.
                 </span>
@@ -518,6 +590,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
                   <button
                     className="dsh-qa-integrations__button"
                     type="button"
+                    data-testid={`${zone}-switch-service`}
                     disabled={busy}
                     onClick={() => void switchSource("service")}
                   >
@@ -527,7 +600,10 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
               </div>
             ) : null}
 
-            <div className="dsh-qa-integrations__section">
+            <div
+              className="dsh-qa-integrations__section"
+              data-testid={`${zone}-capabilities`}
+            >
               <h4>Доступ агента</h4>
               {Object.entries(summary.capabilityInfo).map(
                 ([capability, info]) => {
@@ -538,6 +614,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
                   return (
                     <div
                       className="dsh-qa-integrations__permission"
+                      data-testid={`${zone}-capability-${testIdSegment(capability)}`}
                       key={capability}
                     >
                       <label>
@@ -566,8 +643,12 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
                   );
                 },
               )}
-              {spec.futurePermissions.map((label) => (
-                <div className="dsh-qa-integrations__permission" key={label}>
+              {spec.futurePermissions.map((label, index) => (
+                <div
+                  className="dsh-qa-integrations__permission"
+                  data-testid={`${zone}-future-capability-${index}`}
+                  key={label}
+                >
                   <label>
                     <input type="checkbox" disabled /> {label}
                   </label>
@@ -577,10 +658,14 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
                 </div>
               ))}
             </div>
-            <div className="dsh-qa-integrations__actions">
+            <div
+              className="dsh-qa-integrations__actions"
+              data-testid={`${zone}-actions`}
+            >
               <button
                 className="dsh-qa-integrations__button"
                 type="button"
+                data-testid={`${zone}-test`}
                 disabled={busy}
                 onClick={state.test}
               >
@@ -589,6 +674,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
               <button
                 className="dsh-qa-integrations__button"
                 type="button"
+                data-testid={`${zone}-replace`}
                 disabled={busy}
                 onClick={() => setReplace(true)}
               >
@@ -597,6 +683,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
               <button
                 className="dsh-qa-integrations__button dsh-qa-integrations__button--danger"
                 type="button"
+                data-testid={`${zone}-disconnect`}
                 disabled={busy}
                 onClick={() => setConfirmDisconnect(true)}
               >
@@ -606,6 +693,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
             {confirmDisconnect ? (
               <div
                 className="dsh-qa-integrations__notice"
+                data-testid={`${zone}-disconnect-confirm`}
                 role="alertdialog"
                 aria-label={`Подтверждение отключения ${spec.title}`}
               >
@@ -614,6 +702,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
                   <button
                     className="dsh-qa-integrations__button dsh-qa-integrations__button--danger"
                     type="button"
+                    data-testid={`${zone}-disconnect-confirm-yes`}
                     disabled={busy}
                     onClick={state.disconnect}
                   >
@@ -622,6 +711,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
                   <button
                     className="dsh-qa-integrations__button"
                     type="button"
+                    data-testid={`${zone}-disconnect-confirm-cancel`}
                     disabled={busy}
                     onClick={() => setConfirmDisconnect(false)}
                   >
@@ -639,18 +729,27 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
 
 /** How many resources of each kind this connection may read. */
 function BoundarySummary({
+  testIdZone,
   resources,
   selection,
 }: {
+  readonly testIdZone: string;
   readonly resources: IntegrationServiceBoundary;
   readonly selection: IntegrationServiceBoundary | null;
 }) {
   return (
-    <div className="dsh-qa-integrations__section">
+    <div
+      className="dsh-qa-integrations__section"
+      data-testid={`${testIdZone}-boundary-summary`}
+    >
       {Object.entries(resources).map(([kind, allowed]) => {
         const chosen = selection?.[kind] ?? allowed;
         return (
-          <span className="dsh-qa-integrations__muted" key={kind}>
+          <span
+            className="dsh-qa-integrations__muted"
+            data-testid={`${testIdZone}-boundary-${testIdSegment(kind)}`}
+            key={kind}
+          >
             {kind}: {chosen.length} из {allowed.length} доступно этому рабочему
             пространству
           </span>
@@ -666,6 +765,7 @@ function BoundarySummary({
  * the host refuses anything that would grow.
  */
 function BoundaryEditor({
+  testIdZone,
   resources,
   selection,
   busy,
@@ -673,6 +773,7 @@ function BoundaryEditor({
   onCancel,
   onSave,
 }: {
+  readonly testIdZone: string;
   readonly resources: IntegrationServiceBoundary;
   readonly selection: IntegrationServiceBoundary | null;
   readonly busy: boolean;
@@ -681,14 +782,21 @@ function BoundaryEditor({
   onSave(): void;
 }) {
   return (
-    <div className="dsh-qa-integrations__notice">
+    <div
+      className="dsh-qa-integrations__notice"
+      data-testid={`${testIdZone}-boundary-editor`}
+    >
       {Object.entries(resources).map(([kind, allowed]) => {
         const chosen = new Set(selection?.[kind] ?? allowed);
         return (
           <div key={kind}>
             <h4>{kind}</h4>
-            {allowed.map((ref) => (
-              <label className="dsh-qa-integrations__check" key={ref}>
+            {allowed.map((ref, index) => (
+              <label
+                className="dsh-qa-integrations__check"
+                data-testid={`${testIdZone}-boundary-${testIdSegment(kind)}-entry-${index}`}
+                key={ref}
+              >
                 <input
                   type="checkbox"
                   checked={chosen.has(ref)}
@@ -713,6 +821,7 @@ function BoundaryEditor({
         <button
           className="dsh-qa-integrations__button dsh-qa-integrations__button--primary"
           type="button"
+          data-testid={`${testIdZone}-boundary-save`}
           disabled={busy}
           onClick={onSave}
         >
@@ -721,6 +830,7 @@ function BoundaryEditor({
         <button
           className="dsh-qa-integrations__button"
           type="button"
+          data-testid={`${testIdZone}-boundary-cancel`}
           disabled={busy}
           onClick={onCancel}
         >

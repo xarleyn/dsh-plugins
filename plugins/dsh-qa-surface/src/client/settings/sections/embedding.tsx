@@ -22,7 +22,8 @@ export function EmbeddingSection(props: ConfigProps) {
     <Section
       title="Встраивание"
       modified={modified}
-      aside={resetAside(props, paths)}
+      testId="qa-settings-embedding"
+      aside={resetAside(props, paths, "qa-settings-embedding-reset")}
     >
       <TextField
         label="Источники для iframe"
@@ -30,12 +31,13 @@ export function EmbeddingSection(props: ConfigProps) {
         disabled={disabled}
         placeholder="https://portal.example"
         hint="Значение заголовка Content-Security-Policy: frame-ancestors. Пусто — страницу нельзя встроить в чужой фрейм."
+        testId="qa-settings-embedding-frame-ancestors"
         onChange={(value) => {
           props.write(["embedding", "frameAncestors"], value);
         }}
       />
       {frameAncestors !== "" ? (
-        <Notice tone="warn">
+        <Notice tone="warn" testId="qa-settings-embedding-notice-open">
           Встраивание разрешено для «{frameAncestors}». Эти сайты смогут
           показать страницу помощника в своём фрейме; убедитесь, что список
           узкий.

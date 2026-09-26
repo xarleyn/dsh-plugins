@@ -1,7 +1,11 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaSessionController } from "../../src/client/QaSessionController.js";
-import type { QaFileDraft, QaImageDraft } from "../../src/types.js";
+import type {
+  QaFileDraft,
+  QaImageDraft,
+  QaQueueStatus,
+} from "../../src/types.js";
 import {
   deferredUpload,
   fileDraft,
@@ -293,6 +297,197 @@ describe("QA session controller", () => {
       [{ type: "text", text: "hello draft" }],
       "queue",
     );
+    controller.dispose();
+  });
+
+  it("holds a question back when the stand is answering all it allows", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const queueStatus = vi.fn(async () => ({
+      ok: true as const,
+      value: { limit: 2, active: 2, full: true },
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ session: { maxActiveRequests: 2 } }),
+      queueStatus,
+    });
+    await controller.ensureSession();
+    expect(await controller.send("третий вопрос")).toBe(false);
+    // The refusal is the whole of what the Host ever saw of the question.
+    expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    expect(controller.getSnapshot()).toMatchObject({
+      pendingMessage: null,
+      requestQueue: { limit: 2, active: 2, full: true },
+    });
+    // A place being taken is not a failure: the transcript says nothing and the
+    // queue dialog is what the visitor reads.
+    expect(controller.getSnapshot().error).toBeNull();
+    expect(queueStatus).toHaveBeenCalledOnce();
+    controller.dispose();
+  });
+
+  it("lets a message join the queue of a chat that is already answering", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const queueStatus = vi.fn(async () => ({
+      ok: true as const,
+      value: { limit: 1, active: 1, full: true },
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ session: { maxActiveRequests: 1 } }),
+      queueStatus,
+    });
+    await controller.ensureSession();
+    const saved = world.faces.get("saved");
+    // This chat holds the only place the stand allows, and it is the visitor's
+    // own: a second question rides this chat's queue instead of waking a second
+    // driver, so it costs no power and the ceiling must not speak to it —
+    // otherwise a stand with a ceiling of one could never be talked to again.
+    saved?.source.set({ ...saved.source.getSnapshot(), running: true });
+    expect(await controller.send("вопрос в очередь своего чата")).toBe(true);
+    expect(queueStatus).not.toHaveBeenCalled();
+    expect(saved?.beginSubmission).toHaveBeenCalledWith(
+      expect.objectContaining({
+        mode: "queue",
+        text: "вопрос в очередь своего чата",
+      }),
+    );
+    expect(controller.getSnapshot().requestQueue).toBeNull();
+    controller.dispose();
+  });
+
+  it("spends no session on a draft question the stand has no room for", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        session: { maxActiveRequests: 2 },
+        lockdown: { allowSessionReset: true },
+      }),
+      queueStatus: async () => ({
+        ok: true as const,
+        value: { limit: 2, active: 3, full: true },
+      }),
+    });
+    await controller.ensureSession();
+    await controller.startDraft();
+    // The session the browser already had is the only one that will ever exist:
+    // a draft chat materializes its own inside the first send, and a send held
+    // back ahead of that leaves the chat uncreated.
+    const createdBefore = world.createSession.mock.calls.length;
+    expect(await controller.send("вопрос в очередь")).toBe(false);
+    expect(world.createSession).toHaveBeenCalledTimes(createdBefore);
+    expect(controller.getSnapshot().sessionId).toBeNull();
+    expect(controller.getSnapshot().requestQueue).toMatchObject({
+      active: 3,
+      full: true,
+    });
+    controller.dispose();
+  });
+
+  it("sends as soon as the stand has a place free", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ session: { maxActiveRequests: 2 } }),
+      queueStatus: async () => ({
+        ok: true as const,
+        value: { limit: 2, active: 1, full: false },
+      }),
+    });
+    await controller.ensureSession();
+    expect(await controller.send("вопрос в свободное место")).toBe(true);
+    expect(world.faces.get("saved")?.prompt).toHaveBeenCalledOnce();
+    expect(controller.getSnapshot().requestQueue).toBeNull();
+    controller.dispose();
+  });
+
+  it("sends rather than silences the visitor when the load cannot be read", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ session: { maxActiveRequests: 2 } }),
+      queueStatus: async () => ({ ok: false as const, error: "unavailable" }),
+    });
+    await controller.ensureSession();
+    expect(await controller.send("вопрос без данных о загрузке")).toBe(true);
+    expect(controller.getSnapshot().requestQueue).toBeNull();
+    controller.dispose();
+  });
+
+  it("asks about the ceiling only where the deployment set one", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const queueStatus = vi.fn(async () => ({
+      ok: true as const,
+      value: { limit: 0, active: 7, full: false },
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+      queueStatus,
+    });
+    await controller.ensureSession();
+    expect(await controller.send("без лимита")).toBe(true);
+    // No ceiling configured means no extra round-trip in front of a send.
+    expect(queueStatus).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+
+  it("closes the queue dialog without moving the question anywhere", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({ session: { maxActiveRequests: 1 } }),
+      queueStatus: async () => ({
+        ok: true as const,
+        value: { limit: 1, active: 1, full: true },
+      }),
+    });
+    await controller.ensureSession();
+    expect(await controller.send("вопрос")).toBe(false);
+    expect(controller.getSnapshot().requestQueue).not.toBeNull();
+    controller.dismissRequestQueueNotice();
+    expect(controller.getSnapshot().requestQueue).toBeNull();
+    expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+
+  it("drops the held-back verdict when its chat goes away mid-read", async () => {
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+    let release!: (result: {
+      readonly ok: true;
+      readonly value: QaQueueStatus;
+    }) => void;
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        session: { maxActiveRequests: 2 },
+        lockdown: { allowSessionReset: true },
+      }),
+      queueStatus: () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    });
+    await controller.ensureSession();
+    const sending = controller.send("вопрос в уходящий чат");
+    await controller.startDraft();
+    release({
+      ok: true,
+      value: { limit: 2, active: 2, full: true },
+    });
+    expect(await sending).toBe(false);
+    // The verdict belonged to the chat that asked, and that chat is gone: the
+    // draft the visitor now holds gets no dialog and no refusal of its own.
+    expect(controller.getSnapshot().requestQueue).toBeNull();
+    expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
     controller.dispose();
   });
 

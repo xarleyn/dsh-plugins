@@ -21,7 +21,8 @@ export function BrandingSection(props: ConfigProps) {
     <Section
       title="Оформление"
       modified={modified}
-      aside={resetAside(props, paths)}
+      testId="qa-settings-branding"
+      aside={resetAside(props, paths, "qa-settings-branding-reset")}
     >
       <div className="qa-card-grid">
         <TextField
@@ -30,6 +31,7 @@ export function BrandingSection(props: ConfigProps) {
           disabled={disabled}
           placeholder="Помощник"
           hint="Заголовок на странице и в истории браузера."
+          testId="qa-settings-branding-title"
           onChange={(value) => {
             props.write(["branding", "title"], value);
           }}
@@ -39,6 +41,7 @@ export function BrandingSection(props: ConfigProps) {
           value={config?.branding?.subtitle ?? ""}
           disabled={disabled}
           hint="Строка под названием; пусто — без подзаголовка."
+          testId="qa-settings-branding-subtitle"
           onChange={(value) => {
             props.write(["branding", "subtitle"], value);
           }}
@@ -48,6 +51,7 @@ export function BrandingSection(props: ConfigProps) {
           value={config?.branding?.welcomeMessage ?? ""}
           disabled={disabled}
           hint="Первое сообщение в пустом чате."
+          testId="qa-settings-branding-welcome-message"
           onChange={(value) => {
             props.write(["branding", "welcomeMessage"], value);
           }}
@@ -57,6 +61,7 @@ export function BrandingSection(props: ConfigProps) {
           value={config?.branding?.placeholder ?? ""}
           disabled={disabled}
           hint="Текст-заглушка в строке вопроса."
+          testId="qa-settings-branding-placeholder"
           onChange={(value) => {
             props.write(["branding", "placeholder"], value);
           }}
@@ -67,6 +72,7 @@ export function BrandingSection(props: ConfigProps) {
           disabled={disabled}
           placeholder="https://…/logo.svg"
           hint="Пусто — без логотипа. Картинка грузится браузером посетителя, поэтому внешний адрес виден ему и его сети."
+          testId="qa-settings-branding-logo-url"
           onChange={(value) => {
             props.write(["branding", "logoUrl"], value);
           }}
@@ -79,12 +85,16 @@ export function BrandingSection(props: ConfigProps) {
         multiline
         rows={3}
         hint="Показывается под строкой ввода. Пустое поле скрывает плашку: тогда о видимости диалогов и их использовании сообщать нечем."
+        testId="qa-settings-branding-disclaimer"
         onChange={(value) => {
           props.write(["branding", "disclaimer"], value);
         }}
       />
       {(config?.branding?.disclaimer ?? "") === "" ? (
-        <Notice tone="warn">
+        <Notice
+          tone="warn"
+          testId="qa-settings-branding-notice-disclaimer-hidden"
+        >
           Плашка о данных скрыта. Диалоги могут быть видны другим пользователям
           сервера и использоваться для улучшения ответов — предупредите об этом
           сами.

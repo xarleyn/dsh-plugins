@@ -31,9 +31,14 @@ export function QaRightRail({
   const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
   if (active === undefined) return null;
   return (
-    <aside className="dsh-qa-panel" aria-label="Сведения о чате">
+    <aside
+      className="dsh-qa-panel"
+      data-testid="qa-surface-rail"
+      aria-label="Сведения о чате"
+    >
       <div
         className="dsh-qa-panel__strip"
+        data-testid="qa-surface-rail-tabs"
         role="tablist"
         aria-label="Вкладки панели"
       >
@@ -42,6 +47,7 @@ export function QaRightRail({
             key={tab.id}
             type="button"
             role="tab"
+            data-testid={`qa-surface-rail-tab-${tab.id}`}
             aria-selected={tab.id === active.id}
             className={
               tab.id === active.id
@@ -51,12 +57,17 @@ export function QaRightRail({
             onClick={() => onTabSelect(tab.id)}
           >
             {tab.title}
-            {tab.count > 0 ? <span>{tab.count}</span> : null}
+            {tab.count > 0 ? (
+              <span data-testid={`qa-surface-rail-tab-${tab.id}-count`}>
+                {tab.count}
+              </span>
+            ) : null}
           </button>
         ))}
         <button
           type="button"
           className="dsh-qa-panel__close"
+          data-testid="qa-surface-rail-close"
           aria-label="Закрыть панель"
           title="Закрыть"
           onClick={onClose}
@@ -68,6 +79,7 @@ export function QaRightRail({
       </div>
       <div
         className="dsh-qa-panel__body"
+        data-testid="qa-surface-rail-body"
         role="tabpanel"
         aria-label={active.title}
       >

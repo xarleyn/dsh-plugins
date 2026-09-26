@@ -139,7 +139,7 @@ describe("dispose", () => {
       cwd: "/workspace/dispose",
     });
 
-    await emit(harness, "agent/session-start", {
+    await emit(harness, "agent/created", {
       agent: fake.agent,
       source: "startup",
     });
@@ -228,7 +228,7 @@ describe("syncTurns: false", () => {
       sessionId: "dsh-sync-off",
       cwd: "/workspace/off",
     });
-    await emit(harness, "agent/session-start", {
+    await emit(harness, "agent/created", {
       agent: fake.agent,
       source: "startup",
     });

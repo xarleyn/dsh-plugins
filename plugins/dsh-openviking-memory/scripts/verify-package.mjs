@@ -60,8 +60,8 @@ await runVerifyPackage({
   patch: { id: "dsh-openviking-memory" },
   compatibility: {
     node: "matchesEngines",
-    testedReleases: ["0.1.5-rc.2"],
-    clientFeatures: ["settings.plugin.item"],
+    testedReleases: ["0.1.7-rc.2"],
+    clientFeatures: ["settings.plugins.tab"],
   },
   clientBundle: {
     moduleLoaderId: true,
@@ -73,11 +73,19 @@ await runVerifyPackage({
         /dsh-plugin-card\s*\*/u,
       ],
     },
+    matches: [
+      // The card registers in the Plugins settings tab; `settings.plugin.item`
+      // was deleted with the 0.1.7 settings rewrite.
+      /settings\.plugins\.tab/u,
+    ],
     notMatches: [
       // The bundle is browser-only: a Node built-in import here would break
       // the host page's module table (client-bundle purity).
       /require\("node:/u,
       /from\s*"node:/u,
+      // A bundle still naming the deleted slot loads, registers nothing, and
+      // shows no card at all.
+      /settings\.plugin\.item/u,
     ],
   },
   extra: async ({ manifest, readFile }) => {
@@ -187,7 +195,7 @@ await runVerifyPackage({
   },
 });
 
-// The settings card registers under `settings.plugin.item`, so the compiled
+// The settings card registers under `settings.plugins.tab`, so the compiled
 // browser bundle has to satisfy the shared card shell contract.
 verifyPluginCardContract(
   await readFile(

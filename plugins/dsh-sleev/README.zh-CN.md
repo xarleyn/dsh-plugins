@@ -42,7 +42,7 @@ dsh plugin --profile web remove @yadsh/dsh-sleev
 
 ## 设置界面
 
-打开 **设置 → 插件 → 插件配置 → Sleev**，可以编辑：
+打开 **设置 → 插件 → Sleev**，可以编辑：
 
 - 精确观测的提供商别名；
 - 观测的提供商名称前缀；
@@ -87,7 +87,7 @@ Sleev 目前没有记录原生 DeepSeek Harness 标识符。示例中的 `sleev-
 
 - Node.js `^22.19.0` 或 `>=24.0.0`
 - pnpm 10.4.1（开发环境）
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`
 - Cordis `^4.0.1`
 - 进行路由模型调用时，需要已配置并运行的 Sleev 网关
 

@@ -1,7 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-api-gateway/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
@@ -16,7 +16,7 @@ import promptFirewallRemote from "@yadsh/dsh-prompt-firewall/remote";
 import {
   CardShell,
   bindSettingsExternalStore,
-  registerSettingsCard,
+  injectCardStyles,
   startVisibilityAwarePolling,
 } from "@yadsh/dsh-plugin-kit/client";
 import {
@@ -41,7 +41,8 @@ import {
   RulesSection,
 } from "./sections.js";
 
-const SETTINGS_NAMESPACE = "prompt-firewall";
+/** The settings namespace is the Host profile entry id. */
+const SETTINGS_NAMESPACE = "dsh-prompt-firewall";
 const REFRESH_INTERVAL_MS = 3_000;
 
 interface InspectorRemote {
@@ -59,12 +60,12 @@ interface ClientRemote {
 }
 
 interface CardFace {
-  scope: SettingsScope<PromptFirewallConfig>;
+  form: ConfigForm<PromptFirewallConfig>;
   inspect: InspectorRemote["inspect"];
   setSectionPolicy: InspectorRemote["setSectionPolicy"];
 }
 
-type CardProps = PropsRuntime<"settings.plugin.item"> & InjectFace<CardFace>;
+type CardProps = PropsRuntime<"settings.plugins.tab"> & InjectFace<CardFace>;
 
 function displayError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -72,11 +73,8 @@ function displayError(error: unknown): string {
   return "Could not load Prompt Inspector data.";
 }
 
-function PromptFirewallCard({ scope, inspect, setSectionPolicy }: CardProps) {
-  const settingsStore = useMemo(
-    () => bindSettingsExternalStore(scope),
-    [scope],
-  );
+function PromptFirewallCard({ form, inspect, setSectionPolicy }: CardProps) {
+  const settingsStore = useMemo(() => bindSettingsExternalStore(form), [form]);
   const settings = useSyncExternalStore(
     settingsStore.subscribe,
     settingsStore.getSnapshot,
@@ -125,24 +123,24 @@ function PromptFirewallCard({ scope, inspect, setSectionPolicy }: CardProps) {
       const [field, nested] = path;
       if (field === undefined) return;
       if (nested === undefined) {
-        void scope.set(field, value);
+        void form.set(field, value);
         return;
       }
-      const current = scope.getSnapshot().value;
+      const current = form.getSnapshot().value;
       const parent = field === "audit" ? current?.audit : current?.metrics;
-      void scope.set(field, { ...parent, [nested]: value });
+      void form.set(field, { ...parent, [nested]: value });
     },
-    [scope],
+    [form],
   );
 
   const setPolicy = useCallback(
     async (name: string, policy: SectionPolicy) => {
-      const current = scope.getSnapshot();
+      const current = form.getSnapshot();
       const result = await setSectionPolicy(name, policy, current.revision);
       if (!result.ok) setError(displayError(result.error));
       await refresh();
     },
-    [refresh, scope, setSectionPolicy],
+    [form, refresh, setSectionPolicy],
   );
 
   const enabled = config?.enabled ?? true;
@@ -150,64 +148,63 @@ function PromptFirewallCard({ scope, inspect, setSectionPolicy }: CardProps) {
   if (settings.status === "unavailable") return null;
 
   return (
-    <CardShell
-      title="Prompt Firewall"
-      description="Prompt hygiene, section policy, and request-level observability."
-      badge={
-        <span className="dsh-plugin-card__badge">
-          {enabled ? "Enabled" : "Disabled"}
-        </span>
-      }
-      label={(open) => `${open ? "Hide" : "Show"} settings: Prompt Firewall`}
-      bodyClassName="pf-body"
-    >
-      {error !== null && (
-        <div className="pf-error" data-testid="pf-error">
-          {error}
-        </div>
-      )}
+    // The tab surface renders no host list of its own, so the shell's `<li>`
+    // root keeps a plugin-owned `<ul>` (AGENTS.md card contract).
+    <ul className="pf-settings">
+      <CardShell
+        title="Prompt Firewall"
+        description="Prompt hygiene, section policy, and request-level observability."
+        badge={
+          <span className="dsh-plugin-card__badge">
+            {enabled ? "Enabled" : "Disabled"}
+          </span>
+        }
+        label={(open) => `${open ? "Hide" : "Show"} settings: Prompt Firewall`}
+        bodyClassName="pf-body"
+      >
+        {error !== null && <div className="pf-error">{error}</div>}
 
-      <PolicySection
-        config={config}
-        writable={writable}
-        setPath={setPath}
-        unsetPreset={() => {
-          void scope.unset("preset");
-        }}
-      />
-      <LastRequestSection
-        config={config}
-        inspector={inspector}
-        refreshing={refreshing}
-        onRefresh={() => {
-          void refresh();
-        }}
-      />
-      <RulesSection config={config} writable={writable} setPath={setPath} />
-      <AuditSection config={config} writable={writable} setPath={setPath} />
-      <InspectorSection
-        inspector={inspector}
-        writable={writable}
-        setPolicy={setPolicy}
-      />
-    </CardShell>
+        <PolicySection
+          config={config}
+          writable={writable}
+          setPath={setPath}
+          unsetPreset={() => {
+            void form.unset("preset");
+          }}
+        />
+        <LastRequestSection
+          config={config}
+          inspector={inspector}
+          refreshing={refreshing}
+          onRefresh={() => {
+            void refresh();
+          }}
+        />
+        <RulesSection config={config} writable={writable} setPath={setPath} />
+        <AuditSection config={config} writable={writable} setPath={setPath} />
+        <InspectorSection
+          inspector={inspector}
+          writable={writable}
+          setPolicy={setPolicy}
+        />
+      </CardShell>
+    </ul>
   );
 }
 
-export const inject = ["slots", "settingsScope", "remote"];
+export const inject = ["slots", "remote", "configForms"];
 
-/** Mount the generated Remote contribution and register the native Settings card. */
+/** Mount the generated Remote contribution and register the Prompt Firewall card. */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const remote = ctx.remote as unknown as ClientRemote;
   const disposeRemote = await remote.$mount(promptFirewallRemote);
+  const removeStyles = injectCardStyles("dsh-prompt-firewall", styles);
+  const form = ctx.configForms.get<PromptFirewallConfig>(SETTINGS_NAMESPACE);
   try {
     await ctx.inject(["remote.promptFirewall"], (remoteCtx) => {
       const injectedRemote = remoteCtx.remote as unknown as ClientRemote;
-      const scope = remoteCtx.settingsScope.bind<PromptFirewallConfig>({
-        namespace: SETTINGS_NAMESPACE,
-      });
       const face: CardFace = {
-        scope,
+        form,
         inspect: () => injectedRemote.promptFirewall.inspect(),
         setSectionPolicy: (section, policy, revision) =>
           injectedRemote.promptFirewall.setSectionPolicy(
@@ -217,18 +214,27 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           ),
       };
 
-      return registerSettingsCard(remoteCtx, {
-        key: SETTINGS_NAMESPACE,
-        pluginName: "dsh-prompt-firewall",
-        styles,
-        component: PromptFirewallCard,
-        inject: () => face,
-      });
+      return ctx.slots.inject("settings.plugins.tab", () =>
+        ctx.slots.register(
+          {
+            name: "settings.plugins.tab",
+            id: SETTINGS_NAMESPACE,
+            order: 30,
+            label: () => "Prompt Firewall",
+            inject: () => face,
+          },
+          PromptFirewallCard,
+        ),
+      );
     });
   } catch (cause) {
+    removeStyles();
     await disposeRemote();
     throw cause;
   }
 
-  return disposeRemote;
+  return async () => {
+    removeStyles();
+    await disposeRemote();
+  };
 }

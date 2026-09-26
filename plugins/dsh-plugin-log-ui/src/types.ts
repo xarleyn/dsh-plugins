@@ -1,3 +1,5 @@
+import type { Volatile } from "@deepseek-ai/cordis";
+
 export type ManagedPluginLogLevel =
   "trace" | "debug" | "info" | "warn" | "error" | "fatal" | "silent";
 
@@ -7,6 +9,17 @@ export interface PluginLogUiConfig {
   readonly defaultLevel?: ManagedPluginLogLevel;
   readonly format?: ManagedPluginLogFormat;
   readonly levels?: Readonly<Record<string, ManagedPluginLogLevel>>;
+}
+
+/**
+ * The same Config after the Host has resolved it: every field of a `0.1.7`
+ * Config is a live reference, because volatility is what makes a field editable
+ * from the browser and `resolveConfig` must read it at the moment of use.
+ */
+export interface VolatilePluginLogUiConfig {
+  readonly defaultLevel: Volatile<ManagedPluginLogLevel>;
+  readonly format: Volatile<ManagedPluginLogFormat>;
+  readonly levels: Volatile<Readonly<Record<string, ManagedPluginLogLevel>>>;
 }
 
 export interface ResolvedPluginLogUiConfig {

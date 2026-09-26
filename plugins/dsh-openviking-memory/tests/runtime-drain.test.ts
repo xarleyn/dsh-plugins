@@ -131,7 +131,7 @@ describe("the drainer's replay", () => {
 
     // Per-account spaces are in play: this process does speak as an account.
     const { agent } = createFakeAgent({ sessionId: "dsh-live" });
-    await emit(harness, "agent/session-start", { agent });
+    await emit(harness, "agent/created", { agent });
 
     // An entry written before the queue recorded an identity, for a session
     // this process has never seen. Either account could be the wrong one.

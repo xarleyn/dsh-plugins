@@ -17,6 +17,9 @@ describe("resolveKvPersistConfig", () => {
     expect(config.checkpoint.onShutdown).toBe(true);
     expect(config.checkpoint.onSessionFlush).toBe(true);
     expect(config.checkpoint.idleMs).toBe(KV_PERSIST_DEFAULTS.idleMs);
+    expect(config.checkpoint.shutdownGraceMs).toBe(
+      KV_PERSIST_DEFAULTS.shutdownGraceMs,
+    );
     expect(config.checkpoint.onTurnEnd).toBe(false);
     expect(config.checkpoint.onStepEnd).toBe(false);
     expect(config.restore.enabled).toBe(true);

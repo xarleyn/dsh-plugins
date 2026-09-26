@@ -18,10 +18,11 @@ describeProviderConformance({
     [500, "ProviderUnavailable"],
   ],
   transient: { status: 429, attempts: 3, code: "RateLimited" },
-  build: ({ fetcher, retries, maxResponseBytes }) => {
+  build: ({ fetcher, retries, maxResponseBytes, timeoutMs }) => {
     const provider = new GitlabProvider(
       resolveConfig({
         maxResponseBytes,
+        timeoutMs,
         gitlab: { instances: INSTANCES, retries },
       }),
       fetcher,

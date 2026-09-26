@@ -471,24 +471,27 @@ export function DomainExpertsPage({
   );
 
   return (
-    <div className="dx-page">
-      <header className="dx-header">
+    <div className="dx-page" data-testid="domain-experts-page-root">
+      <header className="dx-header" data-testid="domain-experts-page-header">
         <div>
-          <h2 className="dx-title">Domain Experts</h2>
-          <p className="dx-subtitle">
+          <h2 className="dx-title" data-testid="domain-experts-page-title">
+            Domain Experts
+          </h2>
+          <p className="dx-subtitle" data-testid="domain-experts-page-subtitle">
             A domain expert is a persona bound to a scope, a memory namespace
             and a tool policy. The expert runs as an ordinary subagent of the
             caller.
           </p>
         </div>
-        <div className="dx-actions">
-          <span className="dx-count">
+        <div className="dx-actions" data-testid="domain-experts-page-actions">
+          <span className="dx-count" data-testid="domain-experts-page-count">
             {String(sorted.length)} domain{sorted.length === 1 ? "" : "s"}
           </span>
           <input
             className="dx-input"
             style={{ width: "160px" }}
             placeholder="new-domain-id"
+            data-testid="domain-experts-page-new-id"
             value={newId}
             onChange={(event) => {
               setNewId(event.target.value);
@@ -503,6 +506,7 @@ export function DomainExpertsPage({
             type="button"
             className="dx-button dx-button--primary"
             disabled={newId.trim() === ""}
+            data-testid="domain-experts-page-add-domain"
             onClick={() => {
               void startNew();
             }}
@@ -513,22 +517,30 @@ export function DomainExpertsPage({
       </header>
 
       {loadError === "" ? null : (
-        <StatusLine tone="error">{loadError}</StatusLine>
+        <StatusLine tone="error" testId="domain-experts-page-load-error">
+          {loadError}
+        </StatusLine>
       )}
       {pageStatus.text === "" ? null : (
-        <StatusLine tone={pageStatus.tone}>{pageStatus.text}</StatusLine>
+        <StatusLine tone={pageStatus.tone} testId="domain-experts-page-status">
+          {pageStatus.text}
+        </StatusLine>
       )}
 
       {editing ? null : (
-        <ul className="dx-list">
+        <ul className="dx-list" data-testid="domain-experts-page-list">
           {sorted.length === 0 ? (
-            <li className="dx-empty">
+            <li className="dx-empty" data-testid="domain-experts-page-empty">
               No domains yet. Create one to give a part of the product its own
               expert.
             </li>
           ) : (
             sorted.map((domain) => (
-              <li className="dx-list-card" key={domain.id}>
+              <li
+                className="dx-list-card"
+                key={domain.id}
+                data-testid="domain-experts-page-card"
+              >
                 {/*
                  * Selecting and enabling are two different actions, so they
                  * are two sibling controls: nesting a toggle inside the card
@@ -538,11 +550,15 @@ export function DomainExpertsPage({
                 <button
                   type="button"
                   className="dx-list-item"
+                  data-testid="domain-experts-page-open"
                   onClick={() => {
                     void openDomain(domain.id);
                   }}
                 >
-                  <span className="dx-list-name">
+                  <span
+                    className="dx-list-name"
+                    data-testid="domain-experts-page-name"
+                  >
                     {domain.icon === "" ? null : (
                       <span aria-hidden="true">{domain.icon}</span>
                     )}
@@ -551,26 +567,39 @@ export function DomainExpertsPage({
                       className={
                         domain.enabled ? "dx-chip" : "dx-chip dx-chip--advisory"
                       }
+                      data-testid="domain-experts-page-enabled"
                     >
                       {domain.enabled ? "enabled" : "disabled"}
                     </span>
                     {domain.degradations > 0 ? (
-                      <span className="dx-chip dx-chip--warning">
+                      <span
+                        className="dx-chip dx-chip--warning"
+                        data-testid="domain-experts-page-degraded"
+                      >
                         {String(domain.degradations)} degraded
                       </span>
                     ) : null}
                   </span>
-                  <span className="dx-list-desc">
+                  <span
+                    className="dx-list-desc"
+                    data-testid="domain-experts-page-desc"
+                  >
                     {domain.description || "No description."}
                   </span>
-                  <span className="dx-list-meta">
+                  <span
+                    className="dx-list-meta"
+                    data-testid="domain-experts-page-meta"
+                  >
                     {String(domain.primaryPaths)} primary paths ·{" "}
                     {String(domain.sharedPaths)} shared ·{" "}
                     {String(domain.memoryNamespaces)} memory namespaces ·{" "}
                     {String(domain.tools)} tools
                   </span>
                 </button>
-                <div className="dx-list-actions">
+                <div
+                  className="dx-list-actions"
+                  data-testid="domain-experts-page-row-actions"
+                >
                   {/*
                    * The card body opens the editor too, but nothing on screen
                    * says so. The label is what makes editing discoverable at
@@ -581,6 +610,7 @@ export function DomainExpertsPage({
                     type="button"
                     className="dx-button dx-button--small"
                     aria-label={`Edit ${domain.name}`}
+                    data-testid="domain-experts-page-edit"
                     onClick={() => {
                       void openDomain(domain.id);
                     }}
@@ -591,6 +621,7 @@ export function DomainExpertsPage({
                     type="button"
                     className="dx-button dx-button--small"
                     aria-pressed={!domain.enabled}
+                    data-testid="domain-experts-page-toggle"
                     onClick={() => {
                       void toggleEnabled(domain.id, !domain.enabled);
                     }}
@@ -605,7 +636,12 @@ export function DomainExpertsPage({
       )}
 
       {editing ? (
-        <div className="dx-detail" ref={detailRef} tabIndex={-1}>
+        <div
+          className="dx-detail"
+          ref={detailRef}
+          tabIndex={-1}
+          data-testid="domain-experts-page-detail"
+        >
           {/*
            * The way back sits above the form rather than at its foot: the
            * editor runs to nine tabs, so a control that only exists next to
@@ -614,6 +650,7 @@ export function DomainExpertsPage({
           <button
             type="button"
             className="dx-button dx-button--small dx-back"
+            data-testid="domain-experts-page-back"
             onClick={backToList}
           >
             <svg

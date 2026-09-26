@@ -3,10 +3,11 @@
  *
  * The ModuleLoader registration (`window.__ModuleLoader__.load({ id, factory })`
  * with the full package name) is produced by the tsdown banner; this module
- * binds the plugin's settings namespace, registers the native settings card
- * (the operator's configuration), and — where a QA surface is mounted — the
- * account-scoped page that a browser reaching the deployment over the network
- * can actually open, which shows what the memory holds about the account.
+ * registers the configuration page the operator edits (a card in the Plugins
+ * settings tab, bound to this entry's own settings namespace), and — where a QA
+ * surface is mounted — the account-scoped page that a browser reaching the
+ * deployment over the network can actually open, which shows what the memory
+ * holds about the account.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
@@ -15,7 +16,7 @@ import type {} from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type { TypertRemoteContribution } from "@deepseek-ai/dsh-typert-protocol";
-import { registerSettingsCard } from "@yadsh/dsh-plugin-kit/client";
+import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 import type { QaUserSettingsSections } from "@yadsh/dsh-qa-surface/client/settings";
 import openvikingMemoryRemote from "@yadsh/dsh-openviking-memory/remote";
 
@@ -32,18 +33,20 @@ import {
 import { styles } from "./styles.js";
 
 /**
- * Client services this module reads. The 0.1.5 client runtime resolves only
- * declared dependencies, so they must be listed here as well as in the
+ * Client services this module reads. The client runtime resolves only declared
+ * dependencies, so they must be listed here as well as in the
  * `dsh.client.inject` manifest.
  *
- * The Remote gateway and the QA services are deliberately *not* declared: a
+ * `configForms` is the settings domain's base service: it turns a Host profile
+ * entry's volatile configuration into the form this plugin's card edits. The
+ * Remote gateway and the QA services are deliberately *not* declared: a
  * declaration is a hard dependency, and this bundle has to keep registering the
  * native card in a host page that provides neither. They are *waited for*
  * instead — `ctx.inject` runs a body on a context that owns the service — and
  * never read off this context, where a property read of an undeclared service
  * throws instead of answering `undefined`.
  */
-export const inject = ["slots", "settingsScope"] as const;
+export const inject = ["slots", "configForms"] as const;
 
 /**
  * The Remote gateway service, and the namespace a mount adds to it.
@@ -60,6 +63,13 @@ export const inject = ["slots", "settingsScope"] as const;
 const REMOTE_GATEWAY = "remote";
 const REMOTE_NAMESPACE = "remote.openvikingMemory";
 
+/** Where this plugin's page sits among the other Plugins-section tabs. */
+const PLUGIN_TAB = {
+  id: "openviking-memory",
+  label: "OpenViking Memory",
+  order: 30,
+} as const;
+
 /** The QA service the account-scoped page mounts into, when it is there. */
 const QA_SERVICES = ["qaUserSettingsSections"] as const;
 
@@ -75,32 +85,27 @@ interface ClientFace {
   effect(execute: () => () => void, name?: string): () => void;
 }
 
-function noop(): void {}
-
-/** Bind the settings namespace and register the native settings card. */
+/** Register the configuration page and the account-scoped Remote page. */
 export function apply(ctx: Context): () => void {
-  const settingsScope = ctx.settingsScope;
-  // Headless probes and older profiles may lack the binder; rendering no card
-  // beats crashing the page during module load.
-  if (
-    settingsScope === undefined ||
-    typeof settingsScope.bind !== "function" ||
-    ctx.slots === undefined
-  ) {
-    return noop;
-  }
+  const form = ctx.configForms.get<Config>(
+    OPENVIKING_MEMORY_SETTINGS_NAMESPACE,
+  );
 
-  const scope = settingsScope.bind<Config>({
-    namespace: OPENVIKING_MEMORY_SETTINGS_NAMESPACE,
-  });
-
-  const removeCard = registerSettingsCard(ctx, {
-    key: OPENVIKING_MEMORY_SETTINGS_NAMESPACE,
-    pluginName: "@yadsh/dsh-openviking-memory",
-    styles,
-    component: OpenVikingMemoryCard,
-    inject: () => ({ scope }),
-  });
+  // The Plugins section hands a tab an empty column, so the card keeps its own
+  // shell (the AGENTS.md contract) and the stylesheet that styles it.
+  const removeStyles = injectCardStyles("@yadsh/dsh-openviking-memory", styles);
+  const removeCard = ctx.slots.inject("settings.plugins.tab", () =>
+    ctx.slots.register(
+      {
+        name: "settings.plugins.tab",
+        id: PLUGIN_TAB.id,
+        order: PLUGIN_TAB.order,
+        label: () => PLUGIN_TAB.label,
+        inject: () => ({ form }),
+      },
+      OpenVikingMemoryCard,
+    ),
+  );
 
   // The remote artifact registers the `openvikingMemory` namespace on the
   // gateway; the QA page is the only caller, so a deployment without a gateway
@@ -110,6 +115,7 @@ export function apply(ctx: Context): () => void {
   return () => {
     stopRemote();
     removeCard();
+    removeStyles();
   };
 }
 

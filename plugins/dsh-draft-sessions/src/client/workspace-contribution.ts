@@ -16,6 +16,7 @@ import { createPortal } from "react-dom";
 import type { DraftSession } from "../shared/types.js";
 import { DraftSidebarView } from "./draft-sidebar-view.js";
 import { planDraftReorder, type DraftSidebarSource } from "./sidebar.js";
+import { retainedDraftSessionId } from "./session-source.js";
 
 type SelectorHook<State> = <Selected>(
   selector: (state: State) => Selected,
@@ -160,7 +161,7 @@ export function createDraftWorkspaceContribution(
     useWorkspaces,
   }) {
     const drafts = useDrafts((value) => value);
-    const currentSessionId = useSessions((state) => state.current);
+    const currentSessionId = useSessions(retainedDraftSessionId);
     const workspaceNames = Object.fromEntries(
       useWorkspaces((state) => state.items).map((workspace) => [
         String(workspace.workspaceId),
@@ -212,7 +213,6 @@ export function createDraftWorkspaceContribution(
         throw new Error(result.error.message);
       }
       source.remove(draft.id);
-      if (isCurrent) ctx.sessions.clear();
     };
     const reorder = async (
       workspaceId: string,

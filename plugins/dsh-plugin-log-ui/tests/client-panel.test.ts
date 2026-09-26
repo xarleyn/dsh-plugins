@@ -81,6 +81,7 @@ interface TabType {
   /** Read at open time: the chip's text is the registry's capture, not a prop. */
   readonly title: (address: string) => string;
   readonly guide: readonly {
+    readonly id: string;
     readonly order: number;
     readonly title: () => string;
   }[];
@@ -89,6 +90,7 @@ interface TabType {
 interface Registration {
   readonly name: string;
   readonly key: string | undefined;
+  readonly id: string | undefined;
   readonly locale: string | undefined;
   readonly props: Record<string, unknown>;
 }
@@ -143,14 +145,15 @@ function harnessOf(): Harness {
     },
   });
   ctx.provide("remote.pluginLogUi", namespace);
-  ctx.provide("settingsScope", {
-    bind: () => ({
-      set: () => Promise.resolve(),
+  ctx.provide("configForms", {
+    get: () => ({
+      set: () => Promise.resolve(true),
       subscribe: () => () => undefined,
       getSnapshot: () => ({
         status: "unavailable",
         value: undefined,
         writable: false,
+        mode: "host",
       }),
     }),
   });
@@ -167,6 +170,7 @@ function harnessOf(): Harness {
       registrations.push({
         name,
         key: undefined,
+        id: undefined,
         locale: undefined,
         props: {},
       });
@@ -179,12 +183,14 @@ function harnessOf(): Harness {
     register: (options: {
       name: string;
       key?: string;
+      id?: string;
       locale?: string;
       inject?: () => Record<string, unknown>;
     }) => {
       registrations.push({
         name: options.name,
         key: options.key,
+        id: options.id,
         locale: options.locale,
         props: options.inject?.() ?? {},
       });
@@ -226,12 +232,17 @@ describe("client apply()", () => {
     expect(typeof body?.props["read"]).toBe("function");
     expect(typeof body?.props["sources"]).toBe("function");
 
-    // The settings card still mounts beside the panel.
-    expect(
-      harness.registrations.some(
-        (registration) => registration.name === "settings.plugin.item",
-      ),
-    ).toBe(true);
+    // The settings card still mounts beside the panel, on the host Plugins page.
+    const card = harness.registrations.find(
+      (registration) =>
+        registration.name === "settings.plugins.tab" &&
+        registration.id !== undefined,
+    );
+    expect(card?.id).toBe("plugin-log");
+    // The tab seat hands a registrant no props of its own, so the live form the
+    // card edits has to arrive through the injected face.
+    expect(typeof card?.props["form"]).toBe("object");
+    expect(typeof card?.props["inspect"]).toBe("function");
 
     await dispose();
     expect(harness.disposed.remote).toBe(1);
@@ -268,11 +279,13 @@ describe("client apply()", () => {
     // `injectCardStyles` is idempotent per key, so one key for two sheets means
     // the second is treated as already injected and never reaches the document —
     // which is exactly how the settings card lost its own rules to the panel's.
+    // The card sheet is injected first now that its registration no longer waits
+    // on the Remote namespace; the pair, not their order, is the contract.
     expect(dom.tags.map((tag) => tag.dataset["plugin"])).toEqual([
-      "dsh-plugin-log-ui/panel",
       "dsh-plugin-log-ui",
+      "dsh-plugin-log-ui/panel",
     ]);
-    const [panel, card] = dom.tags;
+    const [card, panel] = dom.tags;
     expect(panel?.textContent).toContain(".plu-log{");
     expect(card?.textContent).toContain(".plu-grid{");
   });

@@ -69,4 +69,34 @@ describe("bitrix24 transport", () => {
       code: "ProviderPermissionDenied",
     });
   });
+
+  it("tells its own stalled body apart from a refused operation", async () => {
+    // This transport keeps its own timer because a webhook call is a POST and
+    // carries the one write the plugin offers. The deadline it sets covers the
+    // body as well as the answer, and a body that stopped arriving is still not
+    // the denial the status above answers with.
+    let cancelled = false;
+    const fetcher: typeof fetch = async () =>
+      new Response(
+        new ReadableStream<Uint8Array>({
+          cancel: () => {
+            cancelled = true;
+          },
+        }),
+        { status: 200, headers: JSON_HEADERS },
+      );
+    const provider = new Bitrix24Provider(
+      resolveConfig({ timeoutMs: 20 }),
+      fetcher,
+    );
+    const startedAt = Date.now();
+    await expect(readProfile(provider)).rejects.toMatchObject({
+      code: "UpstreamTimeout",
+    });
+    expect(
+      Date.now() - startedAt,
+      "a stalled body is refused inside its own budget",
+    ).toBeLessThan(1_000);
+    expect(cancelled, "the stalled stream is released").toBe(true);
+  });
 });

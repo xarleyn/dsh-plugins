@@ -71,6 +71,19 @@ export function appendToolStep(
   return result.seq;
 }
 
+/** Joined text of one `tool/result` event, as the surface currently holds it. */
+export function resultText(event: { data: unknown }): string {
+  const blocks = (
+    event.data as {
+      message: { content: readonly { type: string; text?: string }[] };
+    }
+  ).message.content;
+  return blocks
+    .filter((block) => block.type === "text")
+    .map((block) => block.text ?? "")
+    .join("\n");
+}
+
 /** Four closed steps (old, fresh, error, rich) plus open turn 5. */
 export function buildFixtureSession(id: string): DshSession {
   const session = Session.create(SessionId(id));

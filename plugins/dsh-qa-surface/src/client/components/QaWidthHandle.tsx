@@ -167,6 +167,7 @@ export function QaWidthHandle(props: QaWidthHandleProps) {
       className="dsh-qa-width-handle"
       data-side={props.side}
       data-width-handle={props.side}
+      data-testid={`qa-surface-width-handle-${props.side}`}
       data-dragging={dragging || undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
@@ -357,6 +358,7 @@ export function QaSidebarHandle(props: QaSidebarHandleProps) {
     <div
       className="dsh-qa-sidebar__resize"
       data-sidebar-resize=""
+      data-testid="qa-surface-sidebar-resize"
       data-dragging={dragging || undefined}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}

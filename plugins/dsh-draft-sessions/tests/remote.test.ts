@@ -27,7 +27,7 @@ describe("draftSessions Remote contribution", () => {
     if (codec?.mode !== "strict")
       throw new Error("create request codec is not strict");
     expect(() =>
-      codec.schema.parse({ workspaceId: "w", unexpected: true }),
+      codec.create().parse({ workspaceId: "w", unexpected: true }),
     ).toThrow();
   });
 });

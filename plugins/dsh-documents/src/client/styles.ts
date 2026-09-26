@@ -6,6 +6,7 @@ import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
  * shell comes from the kit (AGENTS.md).
  */
 export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
+.dsh-docs-list{list-style:none;margin:0;padding:0;display:grid;gap:12px}
 .dsh-docs-body,.dsh-docs-body *{box-sizing:border-box}
 .dsh-docs-body{padding-top:14px;display:grid;gap:16px;color:var(--dsw-alias-label-primary)}
 .dsh-docs-section{display:grid;gap:10px}

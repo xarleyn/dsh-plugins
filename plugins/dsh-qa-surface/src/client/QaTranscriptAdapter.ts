@@ -279,7 +279,8 @@ function collectRunningTool(
     item: workTool(
       call.callId,
       call.name,
-      call.argsRaw,
+      // A preparing call has no complete arguments yet.
+      call.phase === "start" ? call.argsRaw : "",
       "running",
       call.time,
       undefined,
@@ -473,7 +474,7 @@ export function projectTranscript(
       // Subagent settlement notices (the host injects them when a background
       // child finishes) read as status rows; other context injections stay
       // hidden — they are operator plumbing, not QA-facing content.
-      const label = node.provenance.label ?? "";
+      const label = node.producer.label ?? "";
       if (!label.toLowerCase().startsWith("subagent")) continue;
       const text = visibleContentText(node.content);
       if (text.trim() === "") continue;
