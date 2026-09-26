@@ -794,6 +794,14 @@ interface changes nothing about tools, the sandbox, the permission preset or
 approvals: a skill invoked by hand carries exactly the permissions it carries
 when the model loads it.
 
+One part of that user list is not the role's to name. A skill the account keeps
+in its own skills root belongs to one person, and a role is shared by many, so
+the account's own user-invocable skills join its `/name` list directly: palette,
+typed gesture and the enforcement guard read the same field and cannot disagree,
+while the model's catalog stays the role's. The role ceiling still bounds the
+tools such a skill activates with, and an administrator's withdrawal of the name
+outright outranks the personal layer.
+
 The settings card carries the same policy under «Слеш-действия», with the
 allow lists as plain name lists — the config stores names, never ids.
 

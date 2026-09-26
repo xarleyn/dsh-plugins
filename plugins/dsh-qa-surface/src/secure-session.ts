@@ -641,6 +641,10 @@ export class QaPolicyAdmission {
       policy.allow,
       capability?.policy.skills ?? [],
       capability?.policy.grantableTools ?? [],
+      // The account's own skills are the one part of the user list that moves
+      // while a chat stays open, and the installed gesture must not lag the
+      // palette that already offers them.
+      [...(capability?.policy.userSkills ?? [])].sort(),
     ]);
     const prior = this.appliedPolicies.get(agent);
     if (prior?.fingerprint !== fingerprint) {
@@ -693,8 +697,9 @@ export class QaPolicyAdmission {
                 ]),
           ]),
         );
-        // A role snapshot cannot change for this session, but a restarted Host
-        // materializes a new Agent and therefore a fresh scoped loader.
+        // What the administrator configured cannot change for this session, but
+        // the account's own skills can, and a restarted Host materializes a new
+        // Agent and therefore a fresh scoped loader.
         prior?.disposeSkillPolicy();
         if (capability !== undefined && grants !== undefined) {
           disposeSkillPolicy = installQaSkillPolicy({
