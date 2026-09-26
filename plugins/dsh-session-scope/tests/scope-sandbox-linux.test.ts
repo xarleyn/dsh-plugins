@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -21,22 +21,28 @@ import {
 } from "../src/session-scope.js";
 
 const workspace = "/workspace";
+const bwrapProfile = [
+  "bwrap",
+  "--ro-bind",
+  "/",
+  "/",
+  "--dev",
+  "/dev",
+  "--proc",
+  "/proc",
+  "--die-with-parent",
+] as const;
 const bwrapWorks =
   process.platform === "linux" &&
+  spawnSync(bwrapProfile[0]!, [...bwrapProfile.slice(1), "--", "true"], {
+    encoding: "utf8",
+  }).status === 0;
+/** Whether this kernel lets bwrap take a private PID namespace at all. */
+const pidNamespaceWorks =
+  bwrapWorks &&
   spawnSync(
-    "bwrap",
-    [
-      "--ro-bind",
-      "/",
-      "/",
-      "--dev",
-      "/dev",
-      "--proc",
-      "/proc",
-      "--die-with-parent",
-      "--",
-      "true",
-    ],
+    bwrapProfile[0]!,
+    ["--unshare-pid", ...bwrapProfile.slice(1), "--", "true"],
     { encoding: "utf8" },
   ).status === 0;
 const policy = (
@@ -59,15 +65,7 @@ function wrap(
 ): ScopeConfinedArgv {
   return {
     argv: [
-      "bwrap",
-      "--ro-bind",
-      "/",
-      "/",
-      "--dev",
-      "/dev",
-      "--proc",
-      "/proc",
-      "--die-with-parent",
+      ...bwrapProfile,
       ...(mode === "workspace-write"
         ? ["--tmpfs", "/tmp", "--bind", workspace, workspace]
         : []),
@@ -152,6 +150,7 @@ describe("Linux isolated bwrap profile", () => {
         .argv,
     ).toEqual([
       "bwrap",
+      "--unshare-pid",
       "--ro-bind",
       "/",
       "/",
@@ -253,6 +252,39 @@ describe("Linux isolated bwrap profile", () => {
     ]);
   });
 
+  test("confines every isolated profile to its own PID namespace", () => {
+    const profiles = [
+      confineIsolatedBwrap(wrap(), policy(), scope()).argv,
+      confineIsolatedBwrap(
+        wrap("workspace-write"),
+        policy("workspace-write"),
+        scope(),
+      ).argv,
+      confineIsolatedBwrap(wrap(), policy(), scope([workspace]), workspace)
+        .argv,
+    ];
+    for (const argv of profiles) {
+      expect(argv.filter((arg) => arg === "--unshare-pid")).toHaveLength(1);
+      // The private pid namespace is only airtight behind a procfs mounted for
+      // it, so the provider's mount has to survive the rewrite.
+      expect(
+        argv.slice(argv.indexOf("--proc"), argv.indexOf("--proc") + 2),
+      ).toEqual(["--proc", "/proc"]);
+    }
+    // The flag joins the head of the profile, not the tail the writable mode
+    // trims: dropping the whole-workspace bind must still leave `/tmp` tmpfs.
+    const writable = profiles[1]!;
+    expect(writable.join("\0")).not.toContain(
+      ["--bind", workspace, workspace].join("\0"),
+    );
+    expect(
+      writable.slice(
+        writable.indexOf("--tmpfs"),
+        writable.indexOf("--tmpfs") + 2,
+      ),
+    ).toEqual(["--tmpfs", "/tmp"]);
+  });
+
   test.each([
     [{ ...wrap(), enforcement: "partial" }, policy(), scope(), undefined],
     [
@@ -312,15 +344,7 @@ describe("Linux isolated bwrap profile", () => {
         const base: ScopeConfinedArgv = {
           ...wrap(),
           argv: [
-            "bwrap",
-            "--ro-bind",
-            "/",
-            "/",
-            "--dev",
-            "/dev",
-            "--proc",
-            "/proc",
-            "--die-with-parent",
+            ...bwrapProfile,
             "--",
             "bash",
             "-c",
@@ -345,6 +369,96 @@ describe("Linux isolated bwrap profile", () => {
         expect(result.stdout).not.toContain(`${actualWorkspace}/b`);
         expect(result.stdout).not.toContain("hidden");
       } finally {
+        rmSync(actualWorkspace, { recursive: true, force: true });
+      }
+    },
+  );
+
+  test.skipIf(!pidNamespaceWorks)(
+    "closes the procfs route an unconfined same-UID process would open",
+    () => {
+      // Every process the confined one can name in /proc carries that process's
+      // own `/proc/<pid>/root`, which is a second path to the workspace these
+      // mounts just masked — and it stays nameable exactly as long as the
+      // sandbox shares a PID namespace with it. Whether the kernel then lets a
+      // same-UID reader resolve the link is Yama, `hidepid=` and dumpability, so
+      // on a permissive host the escape is real and on a strict one the kernel,
+      // not the sandbox, is what saved the promise. This fixture therefore
+      // compares what the sandbox owns: the PID namespace the confined process
+      // sees, and whether an unconfined bystander of the same UID is still
+      // identifiable in it. `/proc/<pid>/cmdline` is world-readable, so the
+      // bystander is recognised by its own argv rather than by the mere presence
+      // of its pid — a fresh namespace reuses small pids for its own processes.
+      const actualWorkspace = mkdtempSync(
+        join(tmpdir(), "dsh-session-scope-proc-"),
+      );
+      const selected = join(actualWorkspace, "a");
+      const hidden = join(actualWorkspace, "b");
+      mkdirSync(selected);
+      mkdirSync(hidden);
+      writeFileSync(join(selected, "visible.txt"), "visible");
+      writeFileSync(join(hidden, "hidden.txt"), "hidden");
+      const marker = "dsh-session-scope-bystander";
+      const probe = [
+        'printf "pidns=%s\\n" "$(stat -Lc %i /proc/self/ns/pid)"',
+        'if grep -q "$3" "/proc/$2/cmdline" 2>/dev/null',
+        'then printf "addressable=yes\\n"; else printf "addressable=no\\n"; fi',
+        'printf "hidden=%s\\n" "$(cat "/proc/$2/root$1/b/hidden.txt" 2>/dev/null || echo unreachable)"',
+        'printf "selected=%s\\n" "$(cat "$1/a/visible.txt" 2>/dev/null || echo unreachable)"',
+      ].join("; ");
+      const run = (argv: readonly string[]) => {
+        const result = spawnSync(argv[0]!, argv.slice(1), {
+          cwd: actualWorkspace,
+          encoding: "utf8",
+        });
+        expect(result.status, result.stderr).toBe(0);
+        return result.stdout;
+      };
+      const pidNamespaceOf = (stdout: string) =>
+        /^pidns=(\d+)$/m.exec(stdout)?.[1];
+      // `exec -a` keeps the marker in the bystander's own argv and leaves one
+      // killable process behind, so nothing is orphaned when the fixture ends.
+      const bystander = spawn("bash", ["-c", 'exec -a "$0" sleep 300', marker]);
+      try {
+        const confinedCommand = (scriptArgv: readonly string[]): string[] => [
+          ...scriptArgv,
+          "--",
+          "bash",
+          "-c",
+          probe,
+          "scope-probe",
+          actualWorkspace,
+          String(bystander.pid),
+          marker,
+        ];
+        const hostPidNs = spawnSync(
+          "stat",
+          ["-Lc", "%i", "/proc/self/ns/pid"],
+          { encoding: "utf8" },
+        ).stdout.trim();
+        expect(hostPidNs).toMatch(/^\d+$/);
+
+        const shared = run(confinedCommand(bwrapProfile));
+        expect(pidNamespaceOf(shared)).toBe(hostPidNs);
+        expect(shared).toContain("addressable=yes");
+
+        const isolated = confineIsolatedBwrap(
+          { ...wrap(), argv: confinedCommand(bwrapProfile) },
+          { mode: "read-only", workspaceRoot: actualWorkspace },
+          {
+            mode: "isolated",
+            workspaceRoot: actualWorkspace,
+            roots: [selected],
+            navigationRoots: [actualWorkspace],
+          },
+        );
+        const output = run(isolated.argv);
+        expect(pidNamespaceOf(output)).not.toBe(hostPidNs);
+        expect(output).toContain("addressable=no");
+        expect(output).toContain("hidden=unreachable");
+        expect(output).toContain("selected=visible");
+      } finally {
+        bystander.kill();
         rmSync(actualWorkspace, { recursive: true, force: true });
       }
     },
