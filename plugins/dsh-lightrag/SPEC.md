@@ -150,8 +150,8 @@ inserts answer `413`.
 {
   "deepseekHarness": {
     "channel": "next",
-    "range": ">=0.1.5-rc.2 <0.2.0",
-    "testedReleases": ["0.1.5-rc.2"],
+    "range": ">=0.1.7-rc.2 <0.2.0",
+    "testedReleases": ["0.1.7-rc.2"],
     "requiredHostFeatures": ["tools/register"]
   },
   "node": "^22.19.0 || >=24.0.0"

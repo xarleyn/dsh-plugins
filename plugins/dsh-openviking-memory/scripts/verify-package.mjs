@@ -60,7 +60,7 @@ await runVerifyPackage({
   patch: { id: "dsh-openviking-memory" },
   compatibility: {
     node: "matchesEngines",
-    testedReleases: ["0.1.5-rc.2"],
+    testedReleases: ["0.1.7-rc.2"],
     clientFeatures: ["settings.plugin.item"],
   },
   clientBundle: {

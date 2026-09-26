@@ -87,7 +87,7 @@ This establishes transport compatibility, not token savings. The small validatio
 
 - Node.js `^22.19.0` or `>=24.0.0`
 - pnpm 10.4.1 for development
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`
 - Cordis `^4.0.1`
 - a configured and running Sleev gateway for routed model calls
 
