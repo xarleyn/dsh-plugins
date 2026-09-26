@@ -162,7 +162,11 @@ function PromptFirewallCard({ form, inspect, setSectionPolicy }: CardProps) {
         label={(open) => `${open ? "Hide" : "Show"} settings: Prompt Firewall`}
         bodyClassName="pf-body"
       >
-        {error !== null && <div className="pf-error">{error}</div>}
+        {error !== null && (
+          <div className="pf-error" data-testid="pf-error">
+            {error}
+          </div>
+        )}
 
         <PolicySection
           config={config}
