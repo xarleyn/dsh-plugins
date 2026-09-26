@@ -20,8 +20,10 @@ what the QA page downloads before it paints anything.
 Neither way out that the size of a bundle usually has is open here. The engine is
 not something the shell could provide: none of the `@deepseek-ai/*` client bundles
 in the tested matrix contains it, so declaring it external would leave the page
-with a `require` nobody answers — which is the 0.13.1 incident, and the tarball
-gate rejects that artifact shape now. And a deferred chunk is the same unavailable
+with a `require` nobody answers — which is the 0.13.1 incident. The tarball gate
+catches a relative `require("./x")` that resolves to nothing, not a bare one, so
+the size band in `check-file-budget.mjs` is what holds this line. And a deferred
+chunk is the same unavailable
 second file seen from the other end: `codeSplitting: false` is what made the QA
 page open again. So the diagram engine leaves the client. A `mermaid` fence
 renders as the code block it was before 0.13.0 — an open fence shows what has been
