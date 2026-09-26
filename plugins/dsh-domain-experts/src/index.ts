@@ -1,5 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
-import type {} from "@deepseek-ai/dsh-settings";
+// Type anchor only: the loader owns the `loader/volatile-update` event this
+// plugin listens to, and ships no runtime value this entry would import.
+import type {} from "@deepseek-ai/cordis-plugin-loader";
 import type {} from "@deepseek-ai/dsh-storage-domain";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
@@ -10,9 +12,10 @@ import {
 } from "@yadsh/dsh-plugin-log";
 import {
   ConfigSchema,
-  SETTINGS_NAMESPACE,
   resolveConfig,
+  snapshotConfig,
   type Config as PluginConfig,
+  type LiveConfig,
   type ResolvedConfig,
 } from "./config.js";
 import {
@@ -109,15 +112,14 @@ declare module "@deepseek-ai/cordis" {
  * What it serves — the store, the tools and the projections of the expert
  * catalog — is `catalog.ts`; the verdicts on one of its entries are
  * `validate.ts`. This file is the wiring: the service, its registries, the
- * settings seam it answers to and the Remote contract the client calls.
+ * live configuration it answers to and the Remote contract the client calls.
  */
 export class DomainExpertsService extends TypertRemoteService {
   static inject = inject;
   static Config = ConfigSchema;
 
   private readonly logger: PluginLogger;
-  private readonly entry: PluginConfig;
-  private source: () => PluginConfig;
+  private readonly entry: PluginConfig | LiveConfig;
   private readonly scopeProviders = new ScopeProviderRegistry();
   private readonly memoryProviders = new MemoryProviderRegistry();
   private readonly workers = new WorkerRegistry();
@@ -145,10 +147,9 @@ export class DomainExpertsService extends TypertRemoteService {
    */
   readonly memoryAdmin: MemoryAdmin;
 
-  constructor(ctx: Context, entry: PluginConfig = {}) {
+  constructor(ctx: Context, entry: PluginConfig | LiveConfig = {}) {
     super(ctx, "domainExperts", { namespace: "domainExperts" });
     this.entry = entry;
-    this.source = () => entry;
     this.logger = getPluginLogger({
       pluginId: `dsh-${name}`,
       consoleSink: createHostLoggerSink(ctx.logger),
@@ -187,24 +188,24 @@ export class DomainExpertsService extends TypertRemoteService {
     this.tools = expertToolDefinitions(this.toolDependencies());
     this.applyEnabled();
 
-    // Settings are an optional seam: without a settings service the plugin
-    // runs on its composition entry exactly as composed.
-    ctx.inject(["settings"], (settingsCtx) => {
-      settingsCtx.settings.installSection(
-        ctx,
-        SETTINGS_NAMESPACE,
-        ConfigSchema,
-        entry,
-        {
-          setSource: (source) => {
-            this.source = source;
-          },
-          onChange: () => {
-            this.applyEnabled();
-          },
-        },
-      );
-    });
+    /*
+     * There is no settings section to install any more: a field is editable live
+     * exactly when its schema node carries `.volatile()`, which all ten do, and
+     * the namespace is the profile entry id. The Host therefore serves the form
+     * this plugin used to install, and `settings.configure({ auto: false })` is
+     * deliberately not called: the browser half here is the domain catalog, not
+     * a card over these ten fields, so the generated page is their only editor.
+     *
+     * A committed write moves the values inside the references this plugin was
+     * handed and no fiber is remounted, so `enabled` — the one knob with an
+     * effect beyond the next read — is re-applied here. Every other knob is read
+     * through `config()`, i.e. from a fresh snapshot, so it follows the document
+     * on its own.
+     */
+    ctx.effect(
+      () => ctx.on("loader/volatile-update", () => this.applyEnabled()),
+      "domain-experts.volatile-config",
+    );
 
     ctx.effect(
       () => () => {
@@ -218,8 +219,15 @@ export class DomainExpertsService extends TypertRemoteService {
     });
   }
 
+  /**
+   * The configuration as one operation sees it.
+   *
+   * The references the Host hands this plugin are stable and always current, so
+   * one snapshot per call is what keeps a committed settings write from being
+   * frozen into a value captured at startup.
+   */
   private config(): ResolvedConfig {
-    return resolveConfig(this.source());
+    return resolveConfig(snapshotConfig(this.entry));
   }
 
   // ------------------------------------------------------------------- tools
@@ -513,13 +521,14 @@ export class DomainExpertsService extends TypertRemoteService {
 
 export {
   ConfigSchema,
-  SETTINGS_NAMESPACE,
   resolveConfig,
+  snapshotConfig,
   DEFAULT_MEMORY_PROVIDER,
   DEFAULT_SUBAGENT_PROVIDER,
 } from "./config.js";
 export type {
   Config as DomainExpertsConfig,
+  LiveConfig,
   ResolvedConfig,
 } from "./config.js";
 export { DomainExpertsError, isDomainExpertsError } from "./host/errors.js";

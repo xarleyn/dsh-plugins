@@ -243,7 +243,7 @@ carries no machine-readable severity, and giving it one changes the
 plugin load
   │  constructor: config, logger, built-in scope provider, tool objects
   │  applyEnabled(): register the agent tools when enabled
-  │  ctx.inject(['settings']): publish the settings namespace (optional seam)
+  │  ctx.on('loader/volatile-update'): re-apply the tool surface (config is live)
   ▼
 first domain operation
   │  storageDomain.open(domain_experts)        ── failure ⇒ STORAGE_UNAVAILABLE

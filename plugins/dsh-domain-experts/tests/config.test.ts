@@ -4,9 +4,10 @@ import {
   DEFAULT_MEMORY_DB_FILE,
   DEFAULT_MEMORY_PROVIDER,
   DEFAULT_SUBAGENT_PROVIDER,
-  SETTINGS_NAMESPACE,
   domainDraftDefaults,
   resolveConfig,
+  snapshotConfig,
+  type LiveConfig,
 } from "../src/config.js";
 import { ConfigSchema } from "../src/config.js";
 
@@ -33,9 +34,17 @@ describe("config: defaults", () => {
     });
   });
 
-  it("exposes a settings namespace that DSH accepts", () => {
-    expect(SETTINGS_NAMESPACE).toBe("domain-experts");
-    expect(SETTINGS_NAMESPACE).toMatch(/^[a-z][a-z0-9-]*$/u);
+  it("hands every knob to the Host as a live reference", () => {
+    const live = ConfigSchema({});
+    for (const [key, member] of Object.entries(live)) {
+      expect(typeof member.get, `${key} is not volatile`).toBe("function");
+    }
+  });
+
+  it("resolves a snapshot of the live schema to the documented defaults", () => {
+    expect(resolveConfig(snapshotConfig(ConfigSchema({})))).toEqual(
+      resolveConfig(),
+    );
   });
 
   it("declares every field with a default in the schema", () => {
@@ -118,6 +127,30 @@ describe("config: overrides", () => {
 
   it("keeps the audit ring non-empty", () => {
     expect(resolveConfig({ auditLimit: 0 }).auditLimit).toBe(1);
+  });
+
+  it("follows a value committed into a live reference", () => {
+    let recallLimit = 5;
+    const live = {
+      recallLimit: { get: () => recallLimit },
+    } as unknown as LiveConfig;
+    expect(resolveConfig(snapshotConfig(live)).recallLimit).toBe(5);
+    recallLimit = 9;
+    expect(resolveConfig(snapshotConfig(live)).recallLimit).toBe(9);
+  });
+
+  it("leaves a knob whose reference resolves to nothing out of the snapshot", () => {
+    const live = {
+      enabled: { get: () => undefined },
+    } as unknown as LiveConfig;
+    expect(snapshotConfig(live)).toEqual({});
+  });
+
+  it("passes a plain composition entry through the snapshot untouched", () => {
+    expect(snapshotConfig({ subagentProvider: "fork" })).toEqual({
+      subagentProvider: "fork",
+    });
+    expect(snapshotConfig({})).toEqual({});
   });
 
   it("falls back for a blank provider name", () => {
