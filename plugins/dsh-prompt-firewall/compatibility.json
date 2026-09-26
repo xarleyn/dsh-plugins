@@ -4,7 +4,7 @@
     "range": ">=0.1.7-rc.2 <0.2.0",
     "testedReleases": ["0.1.7-rc.2"],
     "requiredHostFeatures": ["system-prompt"],
-    "requiredClientFeatures": ["settings.plugin.item"]
+    "requiredClientFeatures": ["settings.plugins.tab"]
   },
   "node": ">=20"
 }

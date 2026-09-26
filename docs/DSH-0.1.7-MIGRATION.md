@@ -198,7 +198,7 @@ Per package:
 | `dsh-plugin-log-ui` | 13 | card + `installSection` |
 | `dsh-draft-sessions` | 13 | client conversation/controller types |
 | `dsh-sleev` | 12 | card + `installSection` |
-| `dsh-prompt-firewall` | 12 | card + `installSection` |
+| `dsh-prompt-firewall` | ✔ **done in #522** (D1 = option 2: our shell stays ours, the card moves to `settings.plugins.tab`) | volatile Config; card; settings fake rewritten in place | landed: `src/config.ts:49-80` every editable field `.volatile()` (`audit`/`metrics` as whole containers, which is what the card writes), new `readVolatileConfig` `src/config.ts:88`; `src/types.ts:26-64` `PromptFirewallVolatileConfig` beside the flat view, list fields `readonly … \| undefined` — the `\| undefined` is forced, not stylistic, because the typert generator compiles the package with `exactOptionalPropertyTypes` (`packages/plugin-scripts/generate-typert.mjs:112`); `src/index.ts:52` namespace = the **entry id** `dsh-prompt-firewall` (was the Cordis plugin id), `:54` `Config` = the volatile view, `installSection` (was `:89-104`) deleted, one `snapshot()` per operation `:119`, and `reloadRules()` gone from the class and from `PromptFirewallService`; client `src/client/index.tsx:4,64,69,157,199,206,221`. Checked and kept: `compatibility.json:4-5` (#511), `:7` → `settings.plugins.tab`; `scripts/verify-package.mjs` needed no edit and **the row's `scripts/verify-client-bundle.mjs:34` never existed in this package**; the only shell CSS change is the plugin-owned `<ul>` (`src/client/styles.ts:4`). The settings fake: `tests/settings.test.ts` no longer subclasses `SettingsForms` — its constructor reaches `ctx.root.loader` and its `static inject` is `['configEditor','profileContext']`, neither of which a bare cordis context has — so the test provides a structural stand-in under the `settings` name and asserts the write; the shared promotion §11 wanted (one `MemorySettings` in `@yadsh/dsh-test-kit` for three plugins) is **still owed**, the other two copies are untouched. 40 estimated / ≈120 actual, of which ≈60 is the test file | `tests/settings.test.ts` (8), `tests/client-index.test.ts`, `tests/client-settings-store.test.ts` — 8 files / 36 tests green, but only through a `tsc`-emitted build: see §13.1 |
 | `dsh-documents` | 11 (+build) | card + `installSection` |
 | `dsh-web-fetch-authenticated` | 9 | card + `installSection` |
 | `dsh-ui-repair` | ✔ **done in #523** (D1 option 2) | volatile Config; card; **a DOM selector that is functional, not cosmetic**; the join key this plugin already exemplifies §4.2 | landed: `src/config.ts:15-24` every node `.volatile()` (the ARRAY for `ignore`), `src/shared/config.ts` gains `UIRepairVolatileConfig` + `resolveVolatileConfig` and owns `UI_REPAIR_SETTINGS_NAMESPACE`, `src/index.ts` installSection block deleted and `Config = ReturnType<typeof ConfigSchema>`, `src/client/index.ts` `inject = ["slots", "configForms"]` + `ctx.configForms.get(ns)` + a `settings.plugins.tab` seat, `src/client/card.tsx` `ConfigForm` face and `form.set`, **`src/client/dom.ts:11`** `[data-slot='settings.plugin.item'] > *` → `li.dsh-plugin-card`, `scripts/verify-client-bundle.mjs:39-42`. **Checked and kept: `package.json:39-41`** — under option 2 the client still reads faces from `dsh-client-ui-settings` (`configForms`) and `dsh-client-ui-settings-plugins` (the section rendering the tab), so the `@yadsh/dsh-ui-repair#dsh-ui-repair` join key of §4.2 is not reached: the namespace is the bare `cordis.patch.yml:4` row id `dsh-ui-repair`. `settings.configure({ auto: false })` (§4.1) was **not** added, so the Host may still render its own page for the namespace next to this tab — one live stand decides whether that duplication needs the lever | 40 | `tests/config.test.ts`, `tests/client-index.test.ts`, `tests/dom.test.ts`, `tests/client-bundle.test.ts`, `tests/build-wiring.test.ts` |
@@ -1408,6 +1408,59 @@ and the wave has a new, larger one.
   to lower decorators (or `@Remote` has to stop being a decorator). Until then a
   cutover card must report its suite as "N-1 files green, the decorated wiring
   file cannot be collected" rather than chase it through its own source.
+these first, and neither is caused by the version work:
+
+- `pnpm check:files` exits 1 with
+  `plugins/dsh-session-scope/src/client.ts: allowlisted file does not exist, drop
+  it from fileBudgetAllowlist`. The entry is at
+  `scripts/check-file-budget.mjs:138` and the file is absent **at `HEAD`**
+  (`git cat-file -e HEAD:plugins/dsh-session-scope/src/client.ts` fails), so the
+  dangling exemption was committed by whatever card removed the file. It also
+  makes `scripts/check-file-budget.test.mjs:370`
+  ("the workspace must be green with the committed list") fail, and through it
+  `pnpm test:release`. One-line remedy, and it belongs to that refactor card, not
+  to a migration card. Two further budget findings are pre-existing on the
+  tracked tree: `plugins/dsh-qa-surface/tests/qa-tools/qa-tools-docs.test.ts` at
+  902 lines (test budget 900) and
+  `packages/plugin-log/tests/plugin-logger.test.ts` at 801 (warning band).
+- `pnpm test:release` additionally fails
+  `scripts/ci-verification.test.mjs:70` ("the budget gate belongs to the prepare
+  job, so the size of a pull request is reported without building every
+  project"), which asserts on `.github/workflows/*` — no plugin or docs file is
+  involved.
+- **[verified] #522 — `npx nx test <pkg>` cannot run any suite that imports a
+  `@Remote`-decorated class, and this is not the migration's doing.** The
+  lockfile rebuild (`a843f19`) resolved the toolchain to
+  `vite@8.3.1` + `rolldown@1.2.11`, whose `oxc` transform is the TS transformer
+  now; oxc lowers only *legacy* decorators (`DecoratorOptions.legacy`,
+  `rolldown/dist/shared/binding-*.d.mts:840-860`) and emits standard TS
+  decorators verbatim for any target, while node 24's V8 (13.6) does not parse
+  them — every such module fails at load with
+  `SyntaxError: Invalid or unexpected token` on the `@…` line, with no frame.
+  `packages/config/tsconfig/*.json` sets no `experimentalDecorators`, so the
+  typert `@Remote`/`@Command` pattern (a `ClassMethodDecoratorContext` decorator,
+  `@deepseek-ai/dsh-typert-protocol/lib/types/index.d.ts:82`) is exactly the
+  affected shape. Measured on `card-522` at `bot/522` before any edit:
+  `tests/integration.test.ts` of `dsh-prompt-firewall` fails the same way from
+  `HEAD`'s sources, and a three-line class with a local standard decorator
+  reproduces it. Workaround used by #522 to verify its own migration: emit with
+  `tsc` first (which lowers standard decorators correctly, and is what
+  `pnpm build` already does) and run vitest over the emitted
+  `.scratch-build/tests/*.test.js` — 8 files / 36 tests green that way. The real
+  fix is toolchain-level, not per package: either the shared
+  `@yadsh/dsh-config/vitest` preset transforms TS through `tsc`/esbuild, or the
+  runtime is raised to a node whose V8 parses decorators. It belongs to the
+  lane, not to a cutover card — 12 of the 24 rows of §11 import a decorated
+  class in their own tests, so every one of them will meet this.
+
+`plugins/dsh-qa-surface/lib/client.js` also trips the generated-bundle runaway
+limit at **238 404 lines** after a clean `nx run @yadsh/dsh-qa-surface:build`
+(unminified, ~37 chars/line, so a fresh clone that has not built does not show
+it). Worth knowing before someone reads a red `check:files` as cutover damage.
+For the same reason, `pnpm -r typecheck` and the budget gate must be measured on
+a **built** tree: the first control pass in §9.6 read 77 baseline errors purely
+because an earlier failed build's `clean` step had deleted `lib/`, which §9.6's
+final numbers therefore exclude by cache-busting first.
 
 ### 13.2 The `dsh-session-scope` reader census behind §11
 
