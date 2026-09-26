@@ -88,6 +88,7 @@ describe("transcript projection", () => {
               {
                 callId: "running-1",
                 name: "bash",
+                phase: "start",
                 argsRaw: '{"command":"pwd"}',
                 turn: 2,
                 step: 1,
@@ -222,6 +223,7 @@ describe("transcript projection", () => {
             {
               callId: "call-1",
               name: "bash",
+              phase: "start",
               argsRaw: '{"command":"pwd"}',
               turn: 1,
               step: 1,

@@ -4,6 +4,7 @@ import { QaSessionController } from "../src/client/QaSessionController.js";
 import type { QaImageDraft } from "../src/types.js";
 import {
   harness,
+  queuedMessage,
   type FakeSessionSnapshot,
   type QaSessionTestWorld,
 } from "./helpers/session-fakes.js";
@@ -30,6 +31,20 @@ function setSnapshot(
   const saved = world.faces.get("saved");
   if (saved === undefined) return;
   saved.source.set({ ...saved.source.getSnapshot(), ...snapshot });
+}
+
+/**
+ * Drive the Host's Inbox projection: `next-turn` is the queue strip, and
+ * `next-step` is steering input the strip must not list.
+ */
+function setInbox(
+  world: QueueWorld,
+  nextTurn: readonly Record<string, unknown>[],
+  nextStep: readonly Record<string, unknown>[] = [],
+): void {
+  world.faces
+    .get("saved")
+    ?.inbox.set({ "next-turn": nextTurn, "next-step": nextStep });
 }
 
 describe("QA message queue", () => {
@@ -94,38 +109,27 @@ describe("QA message queue", () => {
   it("projects the Host queue rows with the echo still in flight folded in", async () => {
     const world = await ready();
     const { controller } = world;
+    setInbox(
+      world,
+      [
+        queuedMessage(
+          "message-1",
+          [{ type: "text", text: "первый в очереди" }],
+          "request-1",
+        ),
+        queuedMessage("message-2", [
+          { type: "text", text: "с картинкой" },
+          { type: "image", attachment: { attachmentId: "a-1" } },
+        ]),
+      ],
+      [
+        queuedMessage("message-3", [
+          { type: "text", text: "напоминание навыка" },
+        ]),
+      ],
+    );
     setSnapshot(world, {
       running: true,
-      queue: [
-        {
-          id: "item-1",
-          messageId: "message-1",
-          placement: "queued",
-          rpcId: "request-1",
-          content: [{ type: "text", text: "первый в очереди" }],
-          preview: "первый в очереди",
-          text: "первый в очереди",
-        },
-        {
-          id: "item-2",
-          messageId: "message-2",
-          placement: "queued",
-          content: [
-            { type: "text", text: "с картинкой" },
-            { type: "image", attachment: { attachmentId: "a-1" } },
-          ],
-          preview: "с картинкой",
-          text: null,
-        },
-        {
-          id: "item-3",
-          messageId: "message-3",
-          placement: "context",
-          content: [{ type: "text", text: "напоминание навыка" }],
-          preview: "напоминание навыка",
-          text: "напоминание навыка",
-        },
-      ],
       pendingSubmissions: [
         // Already admitted: the queue row above carries the same identity.
         {
@@ -154,14 +158,14 @@ describe("QA message queue", () => {
     });
     expect(controller.getSnapshot().queue).toEqual([
       {
-        id: "item-1",
+        id: "message-1",
         preview: "первый в очереди",
         text: "первый в очереди",
         attachments: 0,
         sending: false,
       },
       {
-        id: "item-2",
+        id: "message-2",
         preview: "с картинкой",
         text: null,
         attachments: 1,
@@ -231,23 +235,14 @@ describe("QA message queue", () => {
   it("edits and drops a waiting row after the turn has already ended", async () => {
     const world = await ready();
     const { controller } = world;
-    setSnapshot(world, {
-      running: false,
-      queue: [
-        {
-          id: "item-1",
-          messageId: "message-1",
-          placement: "queued",
-          content: [{ type: "text", text: "вопрос" }],
-          preview: "вопрос",
-          text: "вопрос",
-        },
-      ],
-    });
+    setInbox(world, [
+      queuedMessage("message-1", [{ type: "text", text: "вопрос" }]),
+    ]);
+    setSnapshot(world, { running: false });
     // Nothing is interrupting, so only "send now" is unavailable — and that is
     // the strip's decision, not the binding's.
     expect(controller.getSnapshot().canEditQueue).toBe(true);
-    expect(await controller.queueAction("item-1", "remove")).toBeNull();
+    expect(await controller.queueAction("message-1", "remove")).toBeNull();
     controller.dispose();
   });
 });

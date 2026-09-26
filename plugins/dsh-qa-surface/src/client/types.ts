@@ -4,7 +4,7 @@ import type {
   SessionFace,
 } from "@deepseek-ai/dsh-api-session-controller/client";
 import type {} from "@deepseek-ai/dsh-api-session-controller/remote";
-import type {} from "@deepseek-ai/dsh-agent-presets/remote";
+import type {} from "@deepseek-ai/dsh-agent-preset-registry/remote";
 import type { UiConversation } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {
   QaAccountNotificationsInput,

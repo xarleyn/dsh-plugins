@@ -1,4 +1,5 @@
 import type { SessionFace } from "@deepseek-ai/dsh-api-session-controller/client";
+import type { UserMessage } from "@deepseek-ai/dsh-llm";
 import type { ConversationSnapshot } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {
   QaPendingApproval,
@@ -19,6 +20,12 @@ export interface QaBoundProjectionInput {
   /** Chat identity from the controller; see `QaSessionState.chatKey`. */
   readonly chatKey: number;
   readonly sessionSnapshot: ReturnType<SessionFace["getSnapshot"]>;
+  /**
+   * The Host's Inbox projection for this session: the messages waiting for the
+   * agent's next turn. A projection key the Host has not published reads as an
+   * empty list, which is what a session with no queued work shows anyway.
+   */
+  readonly queuedMessages: readonly UserMessage[];
   readonly conversationSnapshot: ConversationSnapshot | undefined;
   /** Turn bundles with the Host provenance already merged in (Host wins). */
   readonly sourceBundles: readonly QaTurnSources[];
@@ -64,19 +71,20 @@ function queuePreview(text: string): string {
 
 /**
  * Messages waiting for the agent's next turn, in the order the Host will claim
- * them. An admitted row comes from the Host's queue frame; a row still crossing
- * the transport comes from the echo the Host registered for it, which the Host
- * retires the moment its occurrence appears — so one queued send reads as one
- * row at every moment, and the transcript never shows it twice.
+ * them. An admitted row comes from the Host's Inbox projection; a row still
+ * crossing the transport comes from the echo the Host registered for it, which
+ * the Host retires the moment its occurrence appears — so one queued send reads
+ * as one row at every moment, and the transcript never shows it twice.
  */
 function projectQueue(
   snapshot: QaBoundProjectionInput["sessionSnapshot"],
+  queued: QaBoundProjectionInput["queuedMessages"],
 ): readonly QaQueueRow[] {
-  const admitted = snapshot.queue.filter((row) => row.placement === "queued");
   const echoed = new Set(
-    admitted.flatMap((row) =>
-      row.rpcId === undefined ? [] : [String(row.rpcId)],
-    ),
+    queued.flatMap((message) => {
+      const rpcId = (message.source as { readonly rpcId?: unknown }).rpcId;
+      return rpcId === undefined ? [] : [String(rpcId)];
+    }),
   );
   const sending = snapshot.pendingSubmissions
     .filter(
@@ -91,17 +99,25 @@ function projectQueue(
       sending: true,
     }));
   return [
-    ...admitted.map((row) => ({
-      id: String(row.id),
-      preview: row.preview,
-      // A row that mixes in non-text content cannot be re-sent as plain text,
-      // so it is previewed but not editable, exactly as the Host docks it.
-      text: row.text,
-      attachments: row.content.filter(
-        (block) => block.type === "image" || block.type === "file",
-      ).length,
-      sending: false,
-    })),
+    ...queued.map((message) => {
+      const texts = message.content.flatMap((block) =>
+        block.type === "text" ? [block.text] : [],
+      );
+      const plainText = texts.join("\n\n");
+      return {
+        id: String(message.id),
+        preview: queuePreview(plainText),
+        // A row that mixes in non-text content cannot be re-sent as plain text,
+        // so it is previewed but not editable, exactly as the Host docks it.
+        text: message.content.every((block) => block.type === "text")
+          ? plainText
+          : null,
+        attachments: message.content.filter(
+          (block) => block.type === "image" || block.type === "file",
+        ).length,
+        sending: false,
+      };
+    }),
     ...sending,
   ];
 }
@@ -203,7 +219,7 @@ export function projectBoundSessionState(
       snapshot.running &&
       config.ui.showStop &&
       input.compatibilityReadOnly !== true,
-    queue: projectQueue(snapshot),
+    queue: projectQueue(snapshot, input.queuedMessages),
     canEditQueue: canOperate,
     chatsRevision: input.chatsRevision,
     sources:

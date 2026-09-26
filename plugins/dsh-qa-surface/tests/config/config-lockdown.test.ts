@@ -104,6 +104,21 @@ describe("qa surface config", () => {
     ).toThrow(/permissionPreset/u);
   });
 
+  it("refuses the Auto preset, which answers with approval ask", () => {
+    // Lockdown pins `approval: never` and refuses any other value; the Host's
+    // `auto` preset resolves to `ask`, so a deployment that names it cannot run
+    // a lockdown chat at all. The answer has to come from the configuration,
+    // not from a per-session attestation that fails one chat at a time.
+    expect(() =>
+      resolveConfig({ lockdown: { permissionPreset: "auto" } }),
+    ).toThrow(/must not be auto/u);
+    expect(() =>
+      resolveConfig({
+        lockdown: { enabled: false, permissionPreset: "auto" },
+      }),
+    ).not.toThrow();
+  });
+
   it("blocks interactions until the deployment opts into the QA view", () => {
     expect(resolveConfig().interaction).toEqual({
       approvals: "blocked",

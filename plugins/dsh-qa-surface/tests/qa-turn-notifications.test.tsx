@@ -49,11 +49,8 @@ function hostList(
         },
       ]),
     ) as SessionListState["byId"],
-    current: undefined,
     phase: "ready",
-    subagentsByParent: {},
-    jobsBySession: {},
-    currentAddress: undefined,
+    projectionsBySession: {},
   };
 }
 
