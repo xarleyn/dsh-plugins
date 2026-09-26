@@ -118,7 +118,11 @@ export function AdminConversations(props: {
   }, [load]);
 
   return (
-    <section className="dsh-qa-admin__page" aria-label="Разговоры">
+    <section
+      className="dsh-qa-admin__page"
+      data-testid="qa-admin-conversations"
+      aria-label="Разговоры"
+    >
       <div className="dsh-qa-admin__title-row">
         <div>
           <h1>Разговоры</h1>
@@ -129,17 +133,28 @@ export function AdminConversations(props: {
           </p>
         </div>
       </div>
-      <div className="dsh-qa-admin__filters">
-        <FilterField label="Поиск">
+      <div
+        className="dsh-qa-admin__filters"
+        data-testid="qa-admin-conversations-filters"
+      >
+        <FilterField
+          label="Поиск"
+          testId="qa-admin-conversations-filter-search"
+        >
           <input
             type="search"
+            data-testid="qa-admin-conversations-search"
             value={search}
             placeholder="Заголовок, имя или адрес"
             onChange={(event) => setSearch(event.currentTarget.value)}
           />
         </FilterField>
-        <FilterField label="Оценка">
+        <FilterField
+          label="Оценка"
+          testId="qa-admin-conversations-filter-rating"
+        >
           <select
+            data-testid="qa-admin-conversations-rating"
             value={rating}
             onChange={(event) =>
               setRating(event.currentTarget.value as QaFeedbackRating | "")
@@ -150,8 +165,12 @@ export function AdminConversations(props: {
             <option value="negative">Есть 👎</option>
           </select>
         </FilterField>
-        <FilterField label="Разбор">
+        <FilterField
+          label="Разбор"
+          testId="qa-admin-conversations-filter-review"
+        >
           <select
+            data-testid="qa-admin-conversations-review-status"
             value={reviewStatus}
             onChange={(event) =>
               setReviewStatus(event.currentTarget.value as QaReviewStatus | "")
@@ -163,32 +182,44 @@ export function AdminConversations(props: {
             <option value="needs_followup">Нужно вернуться</option>
           </select>
         </FilterField>
-        <FilterField label="С даты">
+        <FilterField label="С даты" testId="qa-admin-conversations-filter-from">
           <input
             type="date"
+            data-testid="qa-admin-conversations-from"
             value={from}
             onChange={(event) => setFrom(event.currentTarget.value)}
           />
         </FilterField>
-        <FilterField label="По дату">
+        <FilterField label="По дату" testId="qa-admin-conversations-filter-to">
           <input
             type="date"
+            data-testid="qa-admin-conversations-to"
             value={to}
             onChange={(event) => setTo(event.currentTarget.value)}
           />
         </FilterField>
       </div>
       {error === undefined ? null : (
-        <p className="dsh-qa-admin__error" role="alert">
+        <p
+          className="dsh-qa-admin__error"
+          data-testid="qa-admin-conversations-error"
+          role="alert"
+        >
           {error}
         </p>
       )}
       {rows.length === 0 ? (
-        <p className="dsh-qa-admin__empty">
+        <p
+          className="dsh-qa-admin__empty"
+          data-testid="qa-admin-conversations-empty"
+        >
           {loading ? "Загружаю…" : "Ничего не нашлось."}
         </p>
       ) : (
-        <table className="dsh-qa-admin__table">
+        <table
+          className="dsh-qa-admin__table"
+          data-testid="qa-admin-conversations-table"
+        >
           <thead>
             <tr>
               <th>Разговор</th>
@@ -204,8 +235,11 @@ export function AdminConversations(props: {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.conversationId}>
-                <td>
+              <tr
+                key={row.conversationId}
+                data-testid="qa-admin-conversations-row"
+              >
+                <td data-testid="qa-admin-conversations-cell-title">
                   <strong>{row.title ?? "Без заголовка"}</strong>
                   <small>{row.conversationId}</small>
                 </td>
@@ -220,7 +254,7 @@ export function AdminConversations(props: {
                   👍 {formatCount(row.positiveFeedback)} · 👎{" "}
                   {formatCount(row.negativeFeedback)}
                 </td>
-                <td>
+                <td data-testid="qa-admin-conversations-cell-review">
                   <Badge tone={statusTone(row.reviewStatus)}>
                     {REVIEW_STATUS_LABELS[row.reviewStatus]}
                   </Badge>
@@ -228,6 +262,7 @@ export function AdminConversations(props: {
                 <td>
                   <button
                     type="button"
+                    data-testid="qa-admin-conversations-open"
                     onClick={() => props.onOpenConversation(row.conversationId)}
                   >
                     Открыть
@@ -304,11 +339,22 @@ export function AdminConversation(props: {
 
   if (resource.error !== undefined) {
     return (
-      <section className="dsh-qa-admin__page">
-        <p className="dsh-qa-admin__error" role="alert">
+      <section
+        className="dsh-qa-admin__page"
+        data-testid="qa-admin-conversation"
+      >
+        <p
+          className="dsh-qa-admin__error"
+          data-testid="qa-admin-conversation-error"
+          role="alert"
+        >
           {adminErrorMessage(resource.error)}
         </p>
-        <button type="button" onClick={props.onBack}>
+        <button
+          type="button"
+          data-testid="qa-admin-conversation-back"
+          onClick={props.onBack}
+        >
           К списку
         </button>
       </section>
@@ -316,16 +362,32 @@ export function AdminConversation(props: {
   }
   if (detail === undefined) {
     return (
-      <section className="dsh-qa-admin__page">
-        <p className="dsh-qa-admin__empty">Загружаю разговор…</p>
+      <section
+        className="dsh-qa-admin__page"
+        data-testid="qa-admin-conversation"
+      >
+        <p
+          className="dsh-qa-admin__empty"
+          data-testid="qa-admin-conversation-loading"
+        >
+          Загружаю разговор…
+        </p>
       </section>
     );
   }
   return (
-    <section className="dsh-qa-admin__page" aria-label="Разговор">
+    <section
+      className="dsh-qa-admin__page"
+      data-testid="qa-admin-conversation"
+      aria-label="Разговор"
+    >
       <div className="dsh-qa-admin__title-row">
         <div>
-          <button type="button" onClick={props.onBack}>
+          <button
+            type="button"
+            data-testid="qa-admin-conversation-back"
+            onClick={props.onBack}
+          >
             ← Разговоры
           </button>
           <h1>{detail.summary.title ?? "Без заголовка"}</h1>
@@ -348,6 +410,7 @@ export function AdminConversation(props: {
           <div className="dsh-qa-admin__title-actions">
             <button
               type="button"
+              data-testid="qa-admin-conversation-delete"
               className="dsh-qa-admin__danger"
               disabled={deleting}
               onClick={() => void remove()}
@@ -355,7 +418,11 @@ export function AdminConversation(props: {
               {deleting ? "Удаляю…" : "Удалить разговор"}
             </button>
             {deleteError === undefined ? null : (
-              <p className="dsh-qa-admin__error" role="alert">
+              <p
+                className="dsh-qa-admin__error"
+                data-testid="qa-admin-conversation-delete-error"
+                role="alert"
+              >
                 {deleteError}
               </p>
             )}
@@ -363,9 +430,16 @@ export function AdminConversation(props: {
         ) : null}
       </div>
       <div className="dsh-qa-admin__conversation">
-        <div className="dsh-qa-admin__transcript">
+        <div
+          className="dsh-qa-admin__transcript"
+          data-testid="qa-admin-conversation-transcript"
+        >
           {detail.runtime.transcriptUnavailable === undefined ? null : (
-            <p className="dsh-qa-admin__error" role="alert">
+            <p
+              className="dsh-qa-admin__error"
+              data-testid="qa-admin-conversation-transcript-error"
+              role="alert"
+            >
               {
                 TRANSCRIPT_UNAVAILABLE_LABELS[
                   detail.runtime.transcriptUnavailable
@@ -375,7 +449,9 @@ export function AdminConversation(props: {
           )}
           <RuntimeFacts detail={detail} />
           {detail.messages.length === 0 ? (
-            <Empty>Сообщений нет — разговор мог быть создан и не начат.</Empty>
+            <Empty testId="qa-admin-conversation-transcript-empty">
+              Сообщений нет — разговор мог быть создан и не начат.
+            </Empty>
           ) : (
             detail.messages.map((message) => (
               <MessageRow
@@ -404,38 +480,56 @@ function RuntimeFacts(props: { readonly detail: QaConversationDetail }) {
   const skills = runtime.effectiveSkills ?? [];
   const loaded = runtime.loadedSkills ?? [];
   return (
-    <section className="dsh-qa-admin__runtime">
+    <section
+      className="dsh-qa-admin__runtime"
+      data-testid="qa-admin-conversation-runtime"
+    >
       <h2>Что было доступно тогда</h2>
-      <dl className="dsh-qa-admin__facts">
+      <dl
+        className="dsh-qa-admin__facts"
+        data-testid="qa-admin-conversation-facts"
+      >
         <dt>Отправлено</dt>
         <dd>{formatStamp(summary.createdAt)}</dd>
         <dt>Последняя активность</dt>
         <dd>{formatStamp(summary.updatedAt)}</dd>
         <dt>Инструменты</dt>
-        <dd>
+        <dd data-testid="qa-admin-conversation-tool-count">
           {tools.length === 0
             ? "снимок не сохранён"
             : `${formatCount(tools.length)}`}
         </dd>
         <dt>Навыки</dt>
-        <dd>
+        <dd data-testid="qa-admin-conversation-skill-count">
           {skills.length === 0
             ? "снимок не сохранён"
             : formatCount(skills.length)}
         </dd>
         <dt>Загруженные навыки</dt>
-        <dd>{loaded.length === 0 ? "—" : loaded.join(", ")}</dd>
+        <dd data-testid="qa-admin-conversation-loaded-skills">
+          {loaded.length === 0 ? "—" : loaded.join(", ")}
+        </dd>
       </dl>
       {tools.length === 0 ? null : (
-        <details>
+        <details data-testid="qa-admin-conversation-tools">
           <summary>Инструменты разговора ({tools.length})</summary>
-          <p className="dsh-qa-admin__mono">{tools.join(", ")}</p>
+          <p
+            className="dsh-qa-admin__mono"
+            data-testid="qa-admin-conversation-tools-list"
+          >
+            {tools.join(", ")}
+          </p>
         </details>
       )}
       {skills.length === 0 ? null : (
-        <details>
+        <details data-testid="qa-admin-conversation-skills">
           <summary>Навыки разговора ({skills.length})</summary>
-          <p className="dsh-qa-admin__mono">{skills.join(", ")}</p>
+          <p
+            className="dsh-qa-admin__mono"
+            data-testid="qa-admin-conversation-skills-list"
+          >
+            {skills.join(", ")}
+          </p>
         </details>
       )}
     </section>
@@ -455,10 +549,11 @@ function MessageRow(props: {
       className={`dsh-qa-admin__message dsh-qa-admin__message--${message.role}${
         props.highlighted ? " dsh-qa-admin__message--highlighted" : ""
       }`}
+      data-testid="qa-admin-message"
       id={`message-${message.id}`}
     >
-      <header>
-        <strong>
+      <header data-testid="qa-admin-message-head">
+        <strong data-testid="qa-admin-message-role">
           {message.role === "user"
             ? "Пользователь"
             : message.role === "assistant"
@@ -469,13 +564,23 @@ function MessageRow(props: {
           {formatStamp(new Date(message.time).toISOString())}
         </time>
         {message.model === undefined ? null : (
-          <span className="dsh-qa-admin__mono">{message.model}</span>
+          <span
+            className="dsh-qa-admin__mono"
+            data-testid="qa-admin-message-model"
+          >
+            {message.model}
+          </span>
         )}
         {message.interrupted === true ? (
-          <Badge tone="warning">Прерван</Badge>
+          <Badge tone="warning" testId="qa-admin-message-interrupted">
+            Прерван
+          </Badge>
         ) : null}
         {message.usage === undefined ? null : (
-          <span className="dsh-qa-admin__usage">
+          <span
+            className="dsh-qa-admin__usage"
+            data-testid="qa-admin-message-usage"
+          >
             {formatCount(message.usage.inputTokens)} →{" "}
             {formatCount(message.usage.outputTokens)} токенов
           </span>
@@ -483,6 +588,7 @@ function MessageRow(props: {
         {feedback.map((row) => (
           <Badge
             key={row.id}
+            testId="qa-admin-message-feedback"
             tone={row.rating === "positive" ? "positive" : "negative"}
           >
             {row.rating === "positive" ? "👍" : "👎"}
@@ -492,23 +598,36 @@ function MessageRow(props: {
           </Badge>
         ))}
         {reviews.length === 0 ? null : (
-          <Badge tone="neutral">разобрано: {reviews[0]?.severity}</Badge>
+          <Badge tone="neutral" testId="qa-admin-message-review">
+            разобрано: {reviews[0]?.severity}
+          </Badge>
         )}
       </header>
-      <p className="dsh-qa-admin__message-text">
+      <p
+        className="dsh-qa-admin__message-text"
+        data-testid="qa-admin-message-text"
+      >
         {message.text === "" ? "(пустой текст)" : message.text}
       </p>
       {feedback.map((row) =>
         row.comment === undefined ? null : (
-          <p key={`${row.id}:comment`} className="dsh-qa-admin__comment">
+          <p
+            key={`${row.id}:comment`}
+            className="dsh-qa-admin__comment"
+            data-testid="qa-admin-message-comment"
+          >
             Комментарий: {row.comment}
           </p>
         ),
       )}
       {(message.toolCalls ?? []).length === 0 ? null : (
-        <div className="dsh-qa-admin__tools">
+        <div
+          className="dsh-qa-admin__tools"
+          data-testid="qa-admin-message-tools"
+        >
           <button
             type="button"
+            data-testid="qa-admin-message-tools-toggle"
             aria-expanded={open}
             onClick={() => setOpen((value) => !value)}
           >
@@ -535,18 +654,31 @@ function MessageRow(props: {
             вызовы инструментов ({(message.toolCalls ?? []).length})
           </button>
           {open ? (
-            <ol>
+            <ol data-testid="qa-admin-message-tool-list">
               {(message.toolCalls ?? []).map((call) => (
-                <li key={call.callId}>
-                  <strong className="dsh-qa-admin__mono">{call.name}</strong>
+                <li key={call.callId} data-testid="qa-admin-message-tool">
+                  <strong
+                    className="dsh-qa-admin__mono"
+                    data-testid="qa-admin-message-tool-name"
+                  >
+                    {call.name}
+                  </strong>
                   {call.error === undefined ? null : (
-                    <Badge tone="negative">сбой: {call.error}</Badge>
+                    <Badge tone="negative" testId="qa-admin-message-tool-error">
+                      сбой: {call.error}
+                    </Badge>
                   )}
                   {call.durationMs === undefined ? null : (
                     <span>{formatDuration(call.durationMs)}</span>
                   )}
-                  <pre>{call.arguments}</pre>
-                  {call.result === undefined ? null : <pre>{call.result}</pre>}
+                  <pre data-testid="qa-admin-message-tool-args">
+                    {call.arguments}
+                  </pre>
+                  {call.result === undefined ? null : (
+                    <pre data-testid="qa-admin-message-tool-result">
+                      {call.result}
+                    </pre>
+                  )}
                 </li>
               ))}
             </ol>
