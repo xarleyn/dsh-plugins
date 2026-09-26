@@ -59,14 +59,16 @@ and a bundle that swallowed a dependency tree looks the same in bytes as one tha
 simply ships a wide surface. A byte budget is its own card, not an extra key here.
 
 The generated bundle band is a tripwire rather than a size goal — the largest
-artifact today is the qa-surface client at 65 770 lines, measured after
+artifact today is the qa-surface client at 66 745 lines, measured after
 `pnpm -r build` — and it only measures anything after a build, which is why
-`check` runs `check:files` after `build`. CI does not: `prepare` runs the gate on
-a checkout with no `lib/` in it, so there the bundle rows measure nothing and the
-run says so in its own output (`0 generated artifacts`), while CI still asserts
-the identity and self-containedness of each built bundle through that project's
-`verify` target. A warning costs a report line and never the run; one line per
-kind is printed, so a green run stays readable.
+`check` runs `check:files` after `build`. CI runs it in both places: `prepare`
+checks the source and test bands on a checkout that has no `lib/` in it, where
+the bundle rows measure nothing and the run says so in its own output
+(`0 generated artifacts`), and the project job runs the same gate right after it
+has built that project, which is where a bundle that swallowed a dependency tree
+costs the run. `verify` still asserts the identity and self-containedness of each
+built bundle. A warning costs a report line and never the run; one line per kind
+is printed, so a green run stays readable.
 
 **Allowlist.** `fileBudgetAllowlist` in the script names the files already over
 their hard budget, each with the reason for its exemption on the same line, and a
@@ -122,13 +124,16 @@ tooling tests and lint, `check:files`, `verify:logging`, `verify:a11y`, and
 `release:check`; run those separately before pushing. `pnpm affected:check`
 mirrors the per-project CI targets locally.
 
-Because `check:files` runs in `prepare`, on a checkout with no build output, the
-generated bundle band is inert in CI: the step reports `0 generated artifacts`
-there instead of pretending to have measured them. What CI does enforce is the
-source and test budget of every file in the pull request, and each project's own
-`verify` target keeps asserting the identity of the bundle it just built; the
-size of a built bundle is caught by the local `pnpm check`, which runs the gate
-after `build`.
+`check:files` runs twice, for two different reasons. In `prepare`, on a checkout
+with no build output, it holds the source and test budget of every file in the
+pull request to its line limit; the generated bundle band is inert there, and the
+step reports `0 generated artifacts` instead of pretending to have measured them.
+In the project job, right after that project has been built, it measures the
+bundles that build just wrote — the runaway tripwire that a client bundle
+swallowed a dependency tree is pulled there rather than left to whoever happens
+to rebuild locally. Each project's own `verify` target still asserts the identity
+and self-containedness of the bundle it built, and `pnpm check` reaches the same
+bundle band after `build`.
 
 The PR-only version-plan check compares each publishable release project
 against the newest release tag its history can reach — one `release/<date>` tag

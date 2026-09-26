@@ -32,9 +32,11 @@ const client: UserConfig = {
       specifier !== "react/jsx-runtime",
   },
   outputOptions: {
-    // DSH fetches and evaluates only this classic ModuleLoader entrypoint.
-    // Relative chunks are not materialized as independent loader modules, so
-    // keep dynamic Mermaid dependencies inside the one registered factory.
+    // DSH fetches and evaluates only this classic ModuleLoader entrypoint, and
+    // relative chunks are not materialized as independent loader modules, so
+    // every runtime chunk has to stay inside the one registered factory. This
+    // is also why the client cannot carry a diagram engine: a dependency tree
+    // it must inline is a tree the QA page downloads on first paint.
     codeSplitting: false,
     entryFileNames: "client.js",
     sourcemapExcludeSources: false,
