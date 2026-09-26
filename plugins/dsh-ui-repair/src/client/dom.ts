@@ -8,7 +8,10 @@ export const DEFAULT_ROOT_SELECTOR = [
   "[data-plugin]",
   "[data-plugin-id]",
   "[data-plugin-package]",
-  "[data-slot='settings.plugin.item'] > *",
+  // The keyed settings-card slot this entry pointed at was deleted in 0.1.7, and
+  // the Host emits no `data-slot` marker, so the plugin cards this scanner means
+  // to inspect are found through the shell class AGENTS.md pins them on.
+  "li.dsh-plugin-card",
   "[role='dialog'][aria-modal='true']",
 ].join(",");
 

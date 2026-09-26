@@ -2,9 +2,10 @@ import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
-import { registerSettingsCard } from "@yadsh/dsh-plugin-kit/client";
+import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 import {
   resolvePluginConfig,
+  UI_REPAIR_SETTINGS_NAMESPACE,
   type UIRepairPluginConfig,
 } from "../shared/config.js";
 import { UIRepairCard, type CardFace } from "./card.js";
@@ -24,7 +25,7 @@ declare module "@deepseek-ai/cordis" {
 }
 
 export const name = "dsh-ui-repair";
-export const inject = ["slots", "settingsScope"];
+export const inject = ["slots", "configForms"];
 
 export function apply(ctx: Context, options: ClientOptions = {}): () => void {
   const candidateDocument =
@@ -38,12 +39,12 @@ export function apply(ctx: Context, options: ClientOptions = {}): () => void {
   }
   const { document: _document, logger, ...config } = options;
   const runtime = new UIRepairRuntime(candidateDocument, config, logger);
-  const scope = ctx.settingsScope.bind<UIRepairPluginConfig>({
-    namespace: "ui-repair",
-  });
+  const form = ctx.configForms.get<UIRepairPluginConfig>(
+    UI_REPAIR_SETTINGS_NAMESPACE,
+  );
   let started = false;
   const syncConfig = () => {
-    const resolved = resolvePluginConfig(scope.getSnapshot().value ?? {});
+    const resolved = resolvePluginConfig(form.getSnapshot().value ?? {});
     runtime.configure({
       enabled: resolved.enabled,
       mode: resolved.mode,
@@ -59,23 +60,29 @@ export function apply(ctx: Context, options: ClientOptions = {}): () => void {
     }
   };
   syncConfig();
-  const unsubscribe = scope.subscribe(syncConfig);
+  const unsubscribe = form.subscribe(syncConfig);
   const removeService = ctx.provide("uiRepair", runtime);
   runtime.start();
   started = true;
-  const face: CardFace = { scope, runtime };
-  const removeCard = registerSettingsCard(ctx, {
-    key: "ui-repair",
-    pluginName: "dsh-ui-repair",
-    styles,
-    component: UIRepairCard,
-    inject: () => face,
-  });
+  const face: CardFace = { form, runtime };
+  const removeStyles = injectCardStyles(name, styles);
+  const removeCard = ctx.slots.inject("settings.plugins.tab", () =>
+    ctx.slots.register(
+      {
+        name: "settings.plugins.tab",
+        id: UI_REPAIR_SETTINGS_NAMESPACE,
+        label: () => "UI Repair",
+        inject: () => face,
+      },
+      UIRepairCard,
+    ),
+  );
   let disposed = false;
   return () => {
     if (disposed) return;
     disposed = true;
     removeCard();
+    removeStyles();
     unsubscribe();
     runtime.dispose();
     void removeService();
