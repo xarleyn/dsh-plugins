@@ -197,14 +197,21 @@ for (const address of [
   );
 }
 
-// The feature-owned Plugins tab stays available without the loopback-only Host
-// settings directory. It may reuse the standard card shell inside its own list.
-// Beside it, the operator card edits the plugin's real settings namespace from
-// "Plugin configuration" — the namespace the Host plugin installs as its
-// configuration source, so the card's write re-applies the running service.
+// Both cards are pages of the Plugins settings tab strip, so neither depends on
+// the loopback-only Host settings directory, and each reuses the standard card
+// shell inside a list it owns. The operator card edits the plugin's own profile
+// entry — on a 0.1.7 host the entry id *is* the settings namespace, and the
+// card reads the form the settings provider serves for it — while the account
+// tab reaches the same QA session through `qaUserSession`.
 verifyPluginCardContract(client);
 assert.match(client, /"settings\.plugins\.tab"/u);
-assert.match(client, /"settings\.plugin\.item"/u);
+assert.doesNotMatch(
+  client,
+  /settings\.plugin\.item/u,
+  "the bundle must not register the settings slot the 0.1.7 host deleted",
+);
+assert.match(client, /"qa-integrations-config"/u);
+assert.match(client, /"configForms"/u);
 assert.match(client, /"qa-integrations"/u);
 assert.match(client, /dsh-qa-integrations__host-tab/u);
 assert.match(client, /Развернуть настройки интеграций/u);
@@ -476,6 +483,11 @@ const gitlabTransport = await readFile(
 );
 assert.match(readPolicy, /method: "GET"/u);
 assert.match(readPolicy, /redirect: "error"/u);
+// The budget covers the whole exchange: a chunk is read against the attempt's
+// own signal, and the stream is released on every exit from the read — a body
+// that stops arriving is refused by the deadline, not waited on forever.
+assert.match(readPolicy, /withinDeadline\(reader\.read\(\), signal\)/u);
+assert.match(readPolicy, /void reader\.cancel\(\)/u);
 assert.match(gitlabTransport, /"private-token": token/u);
 
 // One directory per integration: the shared engine must not know any provider.
@@ -569,7 +581,7 @@ const READS_RESPONSE_STREAM =
 assert.match("response.body.getReader();", READS_RESPONSE_STREAM);
 assert.match('response.headers.get("content-length");', READS_RESPONSE_STREAM);
 assert.doesNotMatch(
-  "await readBoundedText(response, this.config.maxResponseBytes);",
+  'await readBoundedText(response, cap, "Provider", signal);',
   READS_RESPONSE_STREAM,
 );
 
@@ -989,7 +1001,7 @@ const jiraTransport = await readFile(
 // The request goes through the kernel loop — GET-only, `redirect: "error"` and
 // the bounded retries are asserted on `kernel/read-policy.ts` above, where the
 // single implementation lives; the provider supplies its own foldings only.
-assert.match(jiraTransport, /fetchWithRetries\(this\.fetcher/u);
+assert.match(jiraTransport, /fetchWithRetries\(\s*this\.fetcher/u);
 // The HTTP boundary builds no scheme of its own: which product answers decides
 // whether the secret is an HTTP Basic pair over `email:token` or a bearer
 // token, and that decision lives in one place.
@@ -1255,8 +1267,14 @@ const confluenceTransport = await readFile(
   new URL("src/providers/confluence/transport.ts", root),
   "utf8",
 );
-assert.match(confluenceTransport, /method: "GET"/u);
-assert.match(confluenceTransport, /redirect: "error"/u);
+// The request goes through the kernel loop, like every other provider's: the
+// bounded GET and the refused redirect are asserted on `kernel/read-policy.ts`
+// above, where the single implementation lives. A second copy of that loop in a
+// transport is the defect `providers/README.md` names — two copies of one rule
+// drift, and this one had already lost the timeout flag its siblings keep.
+assert.match(confluenceTransport, /fetchWithRetries\(\s*this\.fetcher/u);
+assert.doesNotMatch(confluenceTransport, /\bsetTimeout\(/u);
+assert.doesNotMatch(confluenceTransport, /\bnew AbortController\(/u);
 // The credential reaches the service through the dialect's one scheme and
 // nowhere else: no query parameter is ever built out of a token.
 assert.match(confluenceTransport, /authorizationFor\(dialectOf\(instance\)/u);

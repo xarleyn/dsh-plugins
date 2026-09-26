@@ -8,24 +8,27 @@ import type {} from "@deepseek-ai/dsh-client-locale/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
-import type { ChangeEvent, ReactNode } from "react";
-import {
-  CardShell,
-  PLUGIN_CARD_SHELL_CSS,
-  registerSettingsSlot,
-} from "@yadsh/dsh-plugin-kit/client";
+import type { ChangeEvent, ReactElement, ReactNode } from "react";
+import { CardShell, PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
 import {
   SleevSettingsController,
+  type SleevSettings,
   type SleevSettingsCardFace,
   type SleevSettingsField,
   type SleevSettingsFieldState,
 } from "./settings-controller.js";
-import { SLEEV_SETTINGS_NAMESPACE_ID } from "../shared/settings.js";
+import {
+  SLEEV_SETTINGS_NAMESPACE_ID,
+  SLEEV_SETTINGS_TAB_ID,
+} from "../shared/settings.js";
 
 export * from "./settings-controller.js";
 
 const LOCALE_NAMESPACE = "dsh-sleev";
 const SETTINGS_NAMESPACE = SLEEV_SETTINGS_NAMESPACE_ID;
+const SETTINGS_TAB = SLEEV_SETTINGS_TAB_ID;
+/** Tab position among the plugin pages of the Host Plugins settings section. */
+const SETTINGS_TAB_ORDER = 30;
 
 type SleevLocaleKey =
   | "title"
@@ -114,6 +117,7 @@ const zh: Record<SleevLocaleKey, string> = {
 };
 
 const CARD_STYLES = `${PLUGIN_CARD_SHELL_CSS}
+.dsh-sleev-tab{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
 .dsh-sleev-button:focus-visible,.dsh-sleev-reset:focus-visible,.dsh-sleev-input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .dsh-sleev-read-only{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .dsh-sleev-pill{border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px;font-weight:500;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);white-space:nowrap}
@@ -139,7 +143,7 @@ textarea.dsh-sleev-input{height:64px;min-height:48px;padding:8px 12px;resize:ver
 .dsh-sleev-button:disabled{opacity:.4;cursor:default}
 `;
 
-type SleevSettingsCardProps = PropsRuntime<"settings.plugin.item"> &
+type SleevSettingsCardProps = PropsRuntime<"settings.plugins.tab"> &
   PropsLocale<"dsh-sleev"> &
   InjectFace<SleevSettingsCardFace>;
 
@@ -319,9 +323,23 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
   );
 }
 
-export const inject = ["slots", "settingsScope", "locale"];
+export const inject = ["slots", "configForms", "locale"];
 
-/** Register Sleev's localized settings card in the official keyed plugin slot. */
+/**
+ * Page seat of the Host Plugins settings section.
+ *
+ * The section mounts a tab contribution directly, so the card's `<li>` shell
+ * needs the list parent the card contract assumes; the plugin owns that `<ul>`.
+ */
+export function SleevSettingsTab(props: SleevSettingsCardProps): ReactElement {
+  return (
+    <ul className="dsh-sleev-tab">
+      <SleevSettingsCard {...props} />
+    </ul>
+  );
+}
+
+/** Register Sleev's localized settings card as a tab of the Host Plugins section. */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     const style = document.createElement("style");
@@ -335,17 +353,19 @@ export function apply(ctx: ClientContext): void {
     "dsh-sleev: settings dictionaries",
   );
   const controller = new SleevSettingsController(
-    ctx.settingsScope.bind({ namespace: SETTINGS_NAMESPACE }),
+    ctx.configForms.get<SleevSettings>(SETTINGS_NAMESPACE),
   );
-  ctx.slots.inject("settings.plugin.item", () => {
-    const unregister = registerSettingsSlot(
-      { slots: ctx.slots },
+  ctx.slots.inject("settings.plugins.tab", () => {
+    const unregister = ctx.slots.register(
       {
-        key: SETTINGS_NAMESPACE,
+        name: "settings.plugins.tab",
+        id: SETTINGS_TAB,
+        order: SETTINGS_TAB_ORDER,
+        label: () => "Sleev",
         locale: LOCALE_NAMESPACE,
-        component: SleevSettingsCard,
         inject: () => controller.inject(),
       },
+      SleevSettingsTab,
     );
     return () => {
       controller.dispose();

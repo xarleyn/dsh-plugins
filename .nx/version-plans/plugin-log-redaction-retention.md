@@ -16,15 +16,18 @@ bus was documented as raw, and the panel was documented as the place where
 sanitizing happens, but the panel only bounds what it renders: depth, cycles,
 length. Nothing between the logger and the screen was ever asked to cut a secret.
 The paths now run once in `write`, through the same `@pinojs/redact` pino uses,
-before the sinks branch; the file keeps pino's own pass as well, so a path the
-option documents behaves identically everywhere, and a record the level keeps out
-of the file is redacted on its way to the mirror too.
+before the sinks branch: a record the level keeps out of the file is redacted on
+its way to the mirror too, and a record whose fields throw when read — a getter, a
+Proxy — is dropped rather than handed out unredacted, since reading them is the
+caller's own code. The paths address the fields object; pino keeps its own pass,
+which is what additionally covers the `msg`, `plugin` and `module` keys of its line.
 
 A published record also used to freeze the object it was handed, so a plugin that
-logged a field object it still owned got a `TypeError` on its next assignment.
-The record is now a frozen copy of the caller's fields, which additionally makes
-it a snapshot: mutating the object after the call no longer rewrites what a
-subscriber already saw.
+logged a field object it still owned got a `TypeError` on its next assignment. The
+record now carries a frozen top-level copy instead, so the caller keeps writing to
+its own object while the keys a subscriber was given stay put. Nested values remain
+the caller's objects: a record is not a deep snapshot, and only a value a `redact`
+path cloned is cut off from the caller for good.
 
 Retention ran only once for the life of a logger: the sweep promise was kept
 forever as the guard against overlapping passes, and every later rollover saw it

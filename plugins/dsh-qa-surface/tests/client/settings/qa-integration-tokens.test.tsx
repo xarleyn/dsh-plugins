@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { QaIntegrationTokensPage } from "../../../src/client/user-settings/IntegrationTokensPage.js";
 import { QaUserSettingsDialog } from "../../../src/client/user-settings/UserSettingsDialog.js";
@@ -114,10 +120,10 @@ describe("integration tokens page", () => {
   it("explains what the token is and starts from an empty list", async () => {
     const { api } = tokenApi({});
     render(<QaIntegrationTokensPage api={api} />);
-    expect(screen.getByText(/не открывая браузер/u)).toBeTruthy();
-    expect(
-      await screen.findByText("У вас пока нет интеграционных токенов."),
-    ).toBeTruthy();
+    expect(screen.getByTestId("qa-settings-tokens-lead").textContent).toContain(
+      "не открывая браузер",
+    );
+    expect(await screen.findByTestId("qa-settings-tokens-empty")).toBeTruthy();
   });
 
   it("shows the secret once and keeps it out of the list", async () => {
@@ -126,33 +132,39 @@ describe("integration tokens page", () => {
     fireEvent.change(await screen.findByLabelText(/Название/u), {
       target: { value: "мост заявок" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Создать токен" }));
-    const secret = await screen.findByDisplayValue(
+    const mint = screen.getByTestId("qa-settings-tokens-create");
+    expect(screen.getByRole("button", { name: "Создать токен" })).toBe(mint);
+    fireEvent.click(mint);
+    const secret = within(
+      await screen.findByTestId("qa-settings-tokens-secret"),
+    ).getByRole("textbox") as HTMLInputElement;
+    expect(secret.value).toBe(
       "qsat.00000000-0000-4000-8000-000000000000.secret-value",
     );
-    expect((secret as HTMLInputElement).readOnly).toBe(true);
+    expect(secret.readOnly).toBe(true);
     expect(created).toEqual([
       { label: "мост заявок", scopes: ["ask"], ttlDays: 90 },
     ]);
-    expect(screen.getByText(/Показать его повторно нельзя/u)).toBeTruthy();
-    // The row that appears below carries no secret in any state.
-    expect(screen.getByText(/использований: 0/u)).toBeTruthy();
-    expect(document.body.textContent).not.toContain("qsat.");
-    fireEvent.click(screen.getByRole("button", { name: "Я сохранил токен" }));
-    // Dismissing drops the one place the plaintext ever existed.
-    expect(screen.queryByText(/Показать его повторно нельзя/u)).toBeNull();
     expect(
-      screen.queryByDisplayValue(
-        "qsat.00000000-0000-4000-8000-000000000000.secret-value",
-      ),
-    ).toBeNull();
+      screen.getByTestId("qa-settings-tokens-issued-notice").textContent,
+    ).toContain("Показать его повторно нельзя");
+    // The row that appears below carries no secret in any state.
+    const meta = await screen.findByTestId("qa-settings-tokens-row-meta");
+    expect(meta.textContent).toContain("использований: 0");
+    expect(document.body.textContent).not.toContain("qsat.");
+    fireEvent.click(screen.getByTestId("qa-settings-tokens-ack"));
+    // Dismissing drops the one place the plaintext ever existed.
+    expect(screen.queryByTestId("qa-settings-tokens-issued")).toBeNull();
+    expect(screen.queryByTestId("qa-settings-tokens-secret")).toBeNull();
   });
 
   it("copies the secret on request", async () => {
     const { api } = tokenApi({});
     render(<QaIntegrationTokensPage api={api} />);
-    fireEvent.click(screen.getByRole("button", { name: "Создать токен" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Скопировать" }));
+    fireEvent.click(screen.getByTestId("qa-settings-tokens-create"));
+    const copy = await screen.findByTestId("qa-settings-tokens-copy");
+    expect(screen.getByRole("button", { name: "Скопировать" })).toBe(copy);
+    fireEvent.click(copy);
     await waitFor(() => {
       expect(writeText).toHaveBeenCalledWith(
         "qsat.00000000-0000-4000-8000-000000000000.secret-value",
@@ -166,22 +178,22 @@ describe("integration tokens page", () => {
   it("asks twice before revoking, and reports the state it leaves behind", async () => {
     const { api, revoked } = tokenApi({ tokens: [summary()] });
     render(<QaIntegrationTokensPage api={api} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Отозвать" }));
+    fireEvent.click(await screen.findByTestId("qa-settings-tokens-revoke"));
     expect(revoked).toEqual([]);
-    fireEvent.click(screen.getByRole("button", { name: "Отмена" }));
+    fireEvent.click(screen.getByTestId("qa-settings-tokens-revoke-cancel"));
     expect(
-      screen.queryByRole("button", { name: "Отзыв окончательный" }),
+      screen.queryByTestId("qa-settings-tokens-revoke-confirm"),
     ).toBeNull();
     expect(revoked).toEqual([]);
-    fireEvent.click(screen.getByRole("button", { name: "Отозвать" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Отозвать окончательно" }),
-    );
+    fireEvent.click(screen.getByTestId("qa-settings-tokens-revoke"));
+    fireEvent.click(screen.getByTestId("qa-settings-tokens-revoke-confirm"));
     await waitFor(() => {
       expect(revoked).toEqual(["token-1"]);
     });
     // A revoked token stays in the list as a record, with no revoke button.
-    expect(await screen.findByText("отозван")).toBeTruthy();
+    expect(screen.getByTestId("qa-settings-tokens-row-state").textContent).toBe(
+      "отозван",
+    );
     expect(screen.queryByRole("button", { name: "Отозвать" })).toBeNull();
   });
 
@@ -190,7 +202,11 @@ describe("integration tokens page", () => {
       tokens: [summary({ expiresAt: "2020-01-01T00:00:00.000Z" })],
     });
     render(<QaIntegrationTokensPage api={api} />);
-    expect(await screen.findByText(/истёк/u)).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("qa-settings-tokens-row-state").textContent,
+      ).toContain("истёк"),
+    );
     expect(screen.queryByRole("button", { name: "Отозвать" })).toBeNull();
   });
 
@@ -200,7 +216,9 @@ describe("integration tokens page", () => {
       tokens: [summary()],
     });
     render(<QaIntegrationTokensPage api={api} />);
-    expect(screen.getByText(/Интеграционный API выключен/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-tokens-api-off").textContent,
+    ).toContain("Интеграционный API выключен");
     expect(screen.queryByRole("button", { name: "Создать токен" })).toBeNull();
     // A credential that already exists has to stay revocable.
     expect(
@@ -215,10 +233,8 @@ describe("integration tokens page", () => {
         "Этот токен принадлежит другой учётной записи или уже удалён.",
     });
     render(<QaIntegrationTokensPage api={api} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Отозвать" }));
-    fireEvent.click(
-      screen.getByRole("button", { name: "Отозвать окончательно" }),
-    );
+    fireEvent.click(await screen.findByTestId("qa-settings-tokens-revoke"));
+    fireEvent.click(screen.getByTestId("qa-settings-tokens-revoke-confirm"));
     expect((await screen.findByRole("alert")).textContent).toContain(
       "принадлежит другой учётной записи",
     );
@@ -253,7 +269,9 @@ describe("integration tokens dialog section", () => {
     expect(
       screen.getByRole("tab", { name: "Интеграционные токены" }),
     ).toBeTruthy();
-    expect(await screen.findByText("мост заявок")).toBeTruthy();
+    expect(
+      (await screen.findByTestId("qa-settings-tokens-row-title")).textContent,
+    ).toBe("мост заявок");
     unmount();
     render(
       <QaUserSettingsDialog

@@ -95,6 +95,15 @@ export function resolveLockdown(
       "dsh-qa-surface: lockdown.permissionPreset is required when lockdown is enabled",
     );
   }
+  // The Host's `auto` preset answers with `approval: ask`, so a lockdown chat
+  // pinned to `never` could only fail its attestation, one session at a time.
+  // Refusing it here names the same mismatch at the configuration that caused
+  // it; `auto` is not a lockdown preset and no deployment can opt into it.
+  if (lockdownEnabled && permissionPreset === "auto") {
+    throw new TypeError(
+      "dsh-qa-surface: lockdown.permissionPreset must not be auto, which resolves to approval ask while lockdown pins never",
+    );
+  }
   const allowSessionReset =
     input.lockdown?.allowSessionReset ??
     DEFAULT_QA_SURFACE_CONFIG.lockdown.allowSessionReset;

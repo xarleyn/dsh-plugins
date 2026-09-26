@@ -218,7 +218,11 @@ export function AdminExpertMemory(props: {
     actionError;
 
   return (
-    <section className="dsh-qa-admin__page" aria-label="Память экспертов">
+    <section
+      className="dsh-qa-admin__page"
+      data-testid="qa-admin-memory"
+      aria-label="Память экспертов"
+    >
       <div className="dsh-qa-admin__title-row">
         <div>
           <h1>Память экспертов</h1>
@@ -235,6 +239,7 @@ export function AdminExpertMemory(props: {
           <div className="dsh-qa-admin__title-actions">
             <button
               type="button"
+              data-testid="qa-admin-memory-wipe"
               className="dsh-qa-admin__danger"
               disabled={busy || !writable}
               onClick={() => {
@@ -258,9 +263,14 @@ export function AdminExpertMemory(props: {
           </div>
         ) : null}
       </div>
-      <ErrorLine message={failure} />
+      <ErrorLine message={failure} testId="qa-admin-memory-error" />
       {notice === undefined ? null : (
-        <p className="dsh-qa-admin__notice">{notice}</p>
+        <p
+          className="dsh-qa-admin__notice"
+          data-testid="qa-admin-memory-notice"
+        >
+          {notice}
+        </p>
       )}
       {available.length === 0 ? (
         failure === undefined ? (
@@ -272,9 +282,13 @@ export function AdminExpertMemory(props: {
         ) : null
       ) : (
         <>
-          <div className="dsh-qa-admin__filters">
-            <FilterField label="Эксперт">
+          <div
+            className="dsh-qa-admin__filters"
+            data-testid="qa-admin-memory-filters"
+          >
+            <FilterField label="Эксперт" testId="qa-admin-memory-filter-expert">
               <select
+                data-testid="qa-admin-memory-expert"
                 value={active}
                 onChange={(event) => setNamespace(event.currentTarget.value)}
               >
@@ -289,9 +303,10 @@ export function AdminExpertMemory(props: {
                 ))}
               </select>
             </FilterField>
-            <FilterField label="Поиск">
+            <FilterField label="Поиск" testId="qa-admin-memory-filter-search">
               <input
                 type="search"
+                data-testid="qa-admin-memory-search"
                 value={query}
                 placeholder="Текст, ключ или тег"
                 onChange={(event) => setQuery(event.currentTarget.value)}
@@ -299,9 +314,13 @@ export function AdminExpertMemory(props: {
             </FilterField>
           </div>
           {selected.size > 0 && writable ? (
-            <div className="dsh-qa-admin__actions">
+            <div
+              className="dsh-qa-admin__actions"
+              data-testid="qa-admin-memory-bulk-actions"
+            >
               <button
                 type="button"
+                data-testid="qa-admin-memory-delete-selected"
                 className="dsh-qa-admin__danger"
                 disabled={busy}
                 onClick={() => {
@@ -319,6 +338,7 @@ export function AdminExpertMemory(props: {
               </button>
               <button
                 type="button"
+                data-testid="qa-admin-memory-clear-selection"
                 onClick={() => setSelected(new Set<string>())}
               >
                 Снять выделение
@@ -334,7 +354,10 @@ export function AdminExpertMemory(props: {
                   : "Ничего не нашлось по этому запросу."}
             </Empty>
           ) : (
-            <table className="dsh-qa-admin__table">
+            <table
+              className="dsh-qa-admin__table"
+              data-testid="qa-admin-memory-table"
+            >
               <thead>
                 <tr>
                   {writable ? (
@@ -342,6 +365,7 @@ export function AdminExpertMemory(props: {
                       <input
                         type="checkbox"
                         aria-label="Выбрать все записи на странице"
+                        data-testid="qa-admin-memory-select-all"
                         checked={selected.size === rows.length}
                         onChange={(event) =>
                           setSelected(
@@ -444,32 +468,39 @@ function MemoryRow(props: {
     text === record.text && tags.trim() === record.tags.join(", ").trim();
 
   return (
-    <tr>
+    <tr data-testid="qa-admin-memory-row">
       {props.writable ? (
         <td>
           <input
             type="checkbox"
             aria-label={`Выбрать запись ${record.key}`}
+            data-testid="qa-admin-memory-select"
             checked={props.selected}
             disabled={props.editing}
             onChange={(event) => props.onSelect(event.currentTarget.checked)}
           />
         </td>
       ) : null}
-      <td>
-        <strong>{record.key}</strong>
+      <td data-testid="qa-admin-memory-key-cell">
+        <strong data-testid="qa-admin-memory-key">{record.key}</strong>
         <small>
           изменена <Stamp value={new Date(record.updatedAt).toISOString()} />
         </small>
         {record.tags.length === 0 ? null : (
-          <small>{record.tags.join(", ")}</small>
+          <small data-testid="qa-admin-memory-tags">
+            {record.tags.join(", ")}
+          </small>
         )}
       </td>
       <td>
         {props.editing ? (
-          <div className="dsh-qa-admin__memory-editor">
+          <div
+            className="dsh-qa-admin__memory-editor"
+            data-testid="qa-admin-memory-editor"
+          >
             <textarea
               aria-label={`Текст записи ${record.key}`}
+              data-testid="qa-admin-memory-text-input"
               rows={5}
               value={text}
               onChange={(event) => setText(event.currentTarget.value)}
@@ -477,13 +508,18 @@ function MemoryRow(props: {
             <input
               type="text"
               aria-label={`Теги записи ${record.key}`}
+              data-testid="qa-admin-memory-tag-input"
               placeholder="теги, через запятую"
               value={tags}
               onChange={(event) => setTags(event.currentTarget.value)}
             />
-            <div className="dsh-qa-admin__actions">
+            <div
+              className="dsh-qa-admin__actions"
+              data-testid="qa-admin-memory-editor-actions"
+            >
               <button
                 type="button"
+                data-testid="qa-admin-memory-save"
                 disabled={props.busy || unchanged || text.trim() === ""}
                 onClick={() => props.onSave(text, parseTags(tags))}
               >
@@ -491,6 +527,7 @@ function MemoryRow(props: {
               </button>
               <button
                 type="button"
+                data-testid="qa-admin-memory-cancel"
                 disabled={props.busy}
                 onClick={() => {
                   setText(record.text);
@@ -503,15 +540,24 @@ function MemoryRow(props: {
             </div>
           </div>
         ) : (
-          <p className="dsh-qa-admin__memory-text">{record.text}</p>
+          <p
+            className="dsh-qa-admin__memory-text"
+            data-testid="qa-admin-memory-text"
+          >
+            {record.text}
+          </p>
         )}
       </td>
       <td>
         {props.writable ? (
-          <div className="dsh-qa-admin__actions">
+          <div
+            className="dsh-qa-admin__actions"
+            data-testid="qa-admin-memory-row-actions"
+          >
             {props.editing ? null : (
               <button
                 type="button"
+                data-testid="qa-admin-memory-edit"
                 disabled={props.busy}
                 onClick={props.onEdit}
               >
@@ -520,6 +566,7 @@ function MemoryRow(props: {
             )}
             <button
               type="button"
+              data-testid="qa-admin-memory-delete"
               className="dsh-qa-admin__danger"
               disabled={props.busy || props.editing}
               onClick={props.onDelete}
@@ -528,7 +575,9 @@ function MemoryRow(props: {
             </button>
           </div>
         ) : (
-          <Badge tone="warning">только чтение</Badge>
+          <Badge tone="warning" testId="qa-admin-memory-readonly">
+            только чтение
+          </Badge>
         )}
       </td>
     </tr>

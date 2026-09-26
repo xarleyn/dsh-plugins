@@ -1,7 +1,8 @@
 /**
  * `@yadsh/dsh-web-fetch-authenticated`: registers an authenticated,
  * policy-gated `WebFetchProvider` with `ctx.web` (SPEC §4). A service plugin:
- * it owns the live configuration source (the settings section), the provider
+ * it owns the live configuration source (the volatile fields of this entry's
+ * profile), the provider
  * registration, credential resolution, and the sanitized browser Remote
  * (`status` / `testRule` / `diagnose`) backing the settings card.
  *
@@ -10,7 +11,6 @@
 
 import { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-credentials";
-import type {} from "@deepseek-ai/dsh-settings";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import type {} from "@deepseek-ai/dsh-web";
 import {
@@ -20,7 +20,12 @@ import {
 } from "@yadsh/dsh-plugin-log";
 import { createCredentialResolver } from "./credentials/resolver.js";
 import type { CredentialResolver } from "./credentials/resolver.js";
-import { resolveConfig, ConfigSchema } from "./config.js";
+import {
+  resolveConfig,
+  readVolatileConfig,
+  ConfigSchema,
+  type WebFetchAuthVolatileConfig,
+} from "./config.js";
 import { AuthenticatedFetchProvider } from "./provider.js";
 import { createFetchImageTool } from "./tools/fetch-image.js";
 import { createFetchFileTool } from "./tools/fetch-file.js";
@@ -62,12 +67,14 @@ export {
 } from "./images.js";
 export {
   ConfigSchema,
+  readVolatileConfig,
   resolveConfig,
   DEFAULT_LIMITS,
   DEFAULT_MAX_REDIRECTS,
   DEFAULT_MAX_URL_LENGTH,
   DEFAULT_USER_AGENT,
 } from "./config.js";
+export type { WebFetchAuthVolatileConfig } from "./config.js";
 export { createCredentialResolver } from "./credentials/resolver.js";
 export { validateConfig } from "./rule-validation.js";
 export { testRule, diagnose } from "./testing.js";
@@ -83,9 +90,13 @@ declare module "@deepseek-ai/cordis" {
 /** Cordis plugin ID. */
 export const name = "web-fetch-authenticated";
 export const inject = ["web"];
-export const WEB_FETCH_AUTH_SETTINGS_NAMESPACE = "web-fetch-authenticated";
 
-export type Config = WebFetchAuthConfig;
+/**
+ * The live profile, in reference form: the Host serves the fields the card edits
+ * as `Volatile` refs and replaces their values without remounting this entry, so
+ * `Config` is what `apply()` receives rather than the plain document.
+ */
+export type Config = WebFetchAuthVolatileConfig;
 export const Config = ConfigSchema;
 
 /** The host-side Remote face the browser card calls. */
@@ -103,12 +114,11 @@ export class WebFetchAuthenticated
   static inject = inject;
   static Config = ConfigSchema;
 
-  private readonly entryConfig: WebFetchAuthConfig;
-  private configSource: () => WebFetchAuthConfig;
+  private readonly liveConfig: WebFetchAuthVolatileConfig;
   private readonly logger: PluginLogger;
   private readonly credentials: CredentialResolver;
 
-  constructor(ctx: Context, config: WebFetchAuthConfig = {}) {
+  constructor(ctx: Context, config: WebFetchAuthVolatileConfig) {
     super(ctx, "webFetchAuth", { namespace: "webFetchAuth" });
     this.logger = getPluginLogger({
       pluginId: "dsh-web-fetch-authenticated",
@@ -119,8 +129,9 @@ export class WebFetchAuthenticated
       () => async () => this.logger.close(),
       "dsh-web-fetch-authenticated.logger",
     );
-    this.entryConfig = structuredClone(config);
-    this.configSource = () => this.entryConfig;
+    // The references are stable and their values are not: one read per
+    // operation, so an edit made in the card is seen by the next request.
+    this.liveConfig = config;
     // Read per operation, never captured: this bundle applies while the
     // credentials provider's fiber is still loading, and cordis' strict
     // `ctx.get` reports a not-yet-active service as absent.
@@ -129,26 +140,9 @@ export class WebFetchAuthenticated
     );
 
     const provider = new AuthenticatedFetchProvider({
-      configSource: () => this.configSource(),
+      configSource: () => this.currentConfig(),
       credentials: this.credentials,
       logger: this.logger,
-    });
-
-    ctx.inject(["settings"], (settingsCtx) => {
-      settingsCtx.settings.installSection(
-        ctx,
-        WEB_FETCH_AUTH_SETTINGS_NAMESPACE,
-        ConfigSchema,
-        this.entryConfig,
-        {
-          setSource: (current) => {
-            this.configSource = current;
-          },
-          onChange: () => {
-            this.logConfigIssues();
-          },
-        },
-      );
     });
 
     ctx.web.registerFetchProvider(provider);
@@ -184,13 +178,16 @@ export class WebFetchAuthenticated
       enabled: ready.enabled,
       rules: ready.rules.length,
     });
+    // Used to ride the settings installation's change callback; the live path
+    // now runs through the card, which shows the same reasons in its own status.
+    this.logConfigIssues();
   }
 
   /** Sanitized provider status for the settings card (SPEC §6.1). */
   @Remote("status")
   async status(): Promise<ProviderStatusReport> {
     const config = this.resolved();
-    const validation = validateConfig(this.configSource());
+    const validation = validateConfig(this.currentConfig());
     const credentialStates = await this.credentialStates();
     const fetchProviderId = observedFetchProviderId(this.ctx.web);
     return {
@@ -217,7 +214,7 @@ export class WebFetchAuthenticated
       throw new TypeError("url must be a string when present");
     const report = await runTest(
       {
-        configSource: () => this.configSource(),
+        configSource: () => this.currentConfig(),
         credentials: this.credentials,
       },
       ruleId,
@@ -234,7 +231,7 @@ export class WebFetchAuthenticated
       throw new TypeError("url must be a non-empty string");
     return await runDiagnose(
       {
-        configSource: () => this.configSource(),
+        configSource: () => this.currentConfig(),
         credentials: this.credentials,
       },
       url,
@@ -287,8 +284,17 @@ export class WebFetchAuthenticated
     }
   }
 
+  /**
+   * The profile as one plain snapshot: every live reference read exactly once,
+   * so nothing downstream can observe a value change halfway through an
+   * operation.
+   */
+  private currentConfig(): WebFetchAuthConfig {
+    return readVolatileConfig(this.liveConfig);
+  }
+
   private resolved(): ResolvedConfig {
-    return resolveConfig(this.configSource());
+    return resolveConfig(this.currentConfig());
   }
 }
 

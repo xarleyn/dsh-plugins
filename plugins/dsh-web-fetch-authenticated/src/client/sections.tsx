@@ -7,6 +7,7 @@
  * One file per section lives in `sections/`, with the shared controls and the
  * client face in `sections/common.tsx`; this module is the barrel the card
  * imports.
+ * @module client/sections
  */
 
 export type { CardFace, CredentialsRemote } from "./sections/common.js";

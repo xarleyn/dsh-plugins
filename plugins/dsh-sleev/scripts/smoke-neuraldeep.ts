@@ -1,6 +1,7 @@
 import { Context } from "@deepseek-ai/cordis";
 import {
   BlockAssembler,
+  createToolResultMessage,
   createUserMessage,
   LlmRuntime,
   ToolCallId,
@@ -34,7 +35,7 @@ interface AssembledResult {
 function user(text: string): Message {
   return createUserMessage({
     content: [{ type: "text", text }],
-    source: { kind: "plugin", plugin: "dsh-sleev-smoke" },
+    source: { kind: "user" },
   });
 }
 
@@ -52,7 +53,6 @@ async function assemble(
   }
   return {
     message: assembler.message({
-      kind: "model",
       provider,
       model: options.model,
       ...(assembler.replayState === undefined
@@ -230,15 +230,10 @@ async function main(): Promise<void> {
           messages: [
             user(toolPrompt),
             first.message,
-            createUserMessage({
-              content: [
-                {
-                  type: "tool-result",
-                  toolCallId: ToolCallId(call.id),
-                  content: [{ type: "text", text: `${TOOL_MARKER}: accepted` }],
-                },
-              ],
-              source: { kind: "plugin", plugin: "dsh-sleev-smoke" },
+            createToolResultMessage({
+              callId: ToolCallId(call.id),
+              content: [{ type: "text", text: `${TOOL_MARKER}: accepted` }],
+              isError: false,
             }),
           ],
           tools: [markerTool],

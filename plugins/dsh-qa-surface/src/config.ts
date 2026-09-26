@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import type { Volatile } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 import {
   QA_MAX_FILE_BYTES_MAX,
@@ -19,6 +20,7 @@ import {
   QA_SKILL_MAX_BYTES_MAX,
   QA_SKILL_MAX_BYTES_MIN,
 } from "./personal-skills/skill-format.js";
+import { QA_MAX_ACTIVE_REQUESTS_MAX } from "./config-resolvers/session.js";
 import {
   QA_SLASH_MAX_VISIBLE_MAX,
   QA_SLASH_MAX_VISIBLE_MIN,
@@ -65,13 +67,14 @@ function readManifestVersion(): string | undefined {
 const nullableString = z.union([z.string(), z.const(null)]);
 
 const configSchema = z.object({
-  enabled: z.boolean().default(D.enabled),
+  enabled: z.boolean().default(D.enabled).volatile(),
   route: z
     .object({
       path: z.string().default(D.route.path),
       matchChildren: z.boolean().default(D.route.matchChildren),
     })
-    .default({ ...D.route }),
+    .default({ ...D.route })
+    .volatile(),
   branding: z
     .object({
       title: z.string().default(D.branding.title),
@@ -81,7 +84,8 @@ const configSchema = z.object({
       logoUrl: nullableString.default(D.branding.logoUrl),
       disclaimer: nullableString.default(D.branding.disclaimer),
     })
-    .default({ ...D.branding }),
+    .default({ ...D.branding })
+    .volatile(),
   session: z
     .object({
       policy: z
@@ -95,8 +99,15 @@ const configSchema = z.object({
       provider: nullableString.default(D.session.provider),
       model: nullableString.default(D.session.model),
       reasoningEffort: nullableString.default(D.session.reasoningEffort),
+      maxActiveRequests: z
+        .number()
+        .step(1)
+        .min(0)
+        .max(QA_MAX_ACTIVE_REQUESTS_MAX)
+        .default(D.session.maxActiveRequests),
     })
-    .default({ ...D.session }),
+    .default({ ...D.session })
+    .volatile(),
   ui: z
     .object({
       showHeader: z.boolean().default(D.ui.showHeader),
@@ -115,9 +126,16 @@ const configSchema = z.object({
       showSessionList: z.boolean().default(D.ui.showSessionList),
       subagentCodenames: z.boolean().default(D.ui.subagentCodenames),
     })
-    .default({ ...D.ui }),
-  suggestedQuestions: z.array(z.string()).default([...D.suggestedQuestions]),
-  thinkingPhrases: z.array(z.string()).default([...D.thinkingPhrases]),
+    .default({ ...D.ui })
+    .volatile(),
+  suggestedQuestions: z
+    .array(z.string())
+    .default([...D.suggestedQuestions])
+    .volatile(),
+  thinkingPhrases: z
+    .array(z.string())
+    .default([...D.thinkingPhrases])
+    .volatile(),
   interaction: z
     .object({
       approvals: z
@@ -129,7 +147,8 @@ const configSchema = z.object({
         .union(["unsupported", "interactive", "enabled"] as const)
         .default(D.interaction.questions),
     })
-    .default({ ...D.interaction }),
+    .default({ ...D.interaction })
+    .volatile(),
   lockdown: z
     .object({
       enabled: z.boolean().default(D.lockdown.enabled),
@@ -182,7 +201,8 @@ const configSchema = z.object({
         allow: [...D.lockdown.toolPolicy.allow],
       },
       sharedReadOnlyRoots: [...D.lockdown.sharedReadOnlyRoots],
-    }),
+    })
+    .volatile(),
   slashCommands: z
     .object({
       skills: z
@@ -238,12 +258,14 @@ const configSchema = z.object({
         allow: [...D.slashCommands.commands.allow],
       },
       palette: { ...D.slashCommands.palette },
-    }),
+    })
+    .volatile(),
   embedding: z
     .object({
       frameAncestors: nullableString.default(D.embedding.frameAncestors),
     })
-    .default({ ...D.embedding }),
+    .default({ ...D.embedding })
+    .volatile(),
   accounts: z
     .object({
       enabled: z.boolean().default(D.accounts.enabled),
@@ -338,19 +360,22 @@ const configSchema = z.object({
       },
       starters: { ...D.accounts.starters },
       skills: { ...D.accounts.skills, enabled: QA_SKILL_ENABLED_BY_DEFAULT },
-    }),
+    })
+    .volatile(),
   entry: z
     .object({
       redirectNonLoopback: z.boolean().default(D.entry.redirectNonLoopback),
       cookieBootstrap: z.boolean().default(D.entry.cookieBootstrap),
     })
-    .default({ ...D.entry }),
+    .default({ ...D.entry })
+    .volatile(),
   notifications: z
     .object({
       enabled: z.boolean().default(D.notifications.enabled),
       allowOs: z.boolean().default(D.notifications.allowOs),
     })
-    .default({ ...D.notifications }),
+    .default({ ...D.notifications })
+    .volatile(),
   tools: z
     .object({
       dynamicActivation: z.boolean().default(D.tools.dynamicActivation),
@@ -381,7 +406,8 @@ const configSchema = z.object({
         .boolean()
         .default(D.tools.docsDefaultVersionEnabled),
     })
-    .default({ ...D.tools, activationPresets: [...D.tools.activationPresets] }),
+    .default({ ...D.tools, activationPresets: [...D.tools.activationPresets] })
+    .volatile(),
   sources: z
     .object({
       enabled: z.boolean().default(D.sources.enabled),
@@ -526,7 +552,8 @@ const configSchema = z.object({
       filePreview: { ...D.sources.filePreview },
       subagents: { ...D.sources.subagents },
       legacy: { ...D.sources.legacy },
-    }),
+    })
+    .volatile(),
   attachments: z
     .object({
       textFiles: z.boolean().default(D.attachments.textFiles),
@@ -556,7 +583,8 @@ const configSchema = z.object({
     .default({
       ...D.attachments,
       extensions: [...D.attachments.extensions],
-    }),
+    })
+    .volatile(),
   notes: z
     .object({
       identity: z
@@ -599,7 +627,8 @@ const configSchema = z.object({
       delegation: { ...D.notes.delegation },
       documents: { ...D.notes.documents },
       sourcePriority: { ...D.notes.sourcePriority },
-    }),
+    })
+    .volatile(),
   // The numeric fields are declared without schema-level bounds on purpose:
   // the resolver owns the range checks and their error messages, and a second
   // copy here would report a different one for the same mistake.
@@ -630,10 +659,43 @@ const configSchema = z.object({
         .step(1)
         .default(D.integration.maxAnswerCharacters),
     })
-    .default({ ...D.integration }),
+    .default({ ...D.integration })
+    .volatile(),
 });
 
-export const ConfigSchema = configSchema as unknown as z<QaSurfaceConfig>;
+/**
+ * Every top-level field of {@link QaSurfaceConfig}, as the Host delivers it.
+ *
+ * A field whose schema node carries `.volatile()` arrives as a stable reference
+ * whose snapshot the Host swaps in place, so a plugin keeps one reference for
+ * its whole lifetime and reads the current value through it.
+ */
+export type QaSurfaceConfigRefs = {
+  readonly [K in keyof Required<QaSurfaceConfig>]: Volatile<
+    NonNullable<QaSurfaceConfig[K]>
+  >;
+};
+
+/**
+ * Fold one Host-delivered Config into the plain data `resolveConfig` reads.
+ *
+ * The schema mints a volatile reference for every field it declares volatile, so
+ * the object the plugin is constructed with carries references and each read
+ * here answers with the value the Host currently holds.
+ */
+export function readConfigRefs(
+  config: Partial<QaSurfaceConfigRefs>,
+): QaSurfaceConfig {
+  const plain: Record<string, unknown> = {};
+  for (const [key, ref] of Object.entries(
+    config as Record<string, Volatile<unknown>>,
+  )) {
+    plain[key] = ref.get();
+  }
+  return plain as QaSurfaceConfig;
+}
+
+export const ConfigSchema = configSchema as unknown as z<QaSurfaceConfigRefs>;
 export {
   DEFAULT_QA_SURFACE_CONFIG,
   normalizeRoutePath,

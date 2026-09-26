@@ -14,7 +14,7 @@ import webFetchAuthRemote from "@yadsh/dsh-web-fetch-authenticated/remote";
 import {
   CardShell,
   bindSettingsExternalStore,
-  registerSettingsCard,
+  injectCardStyles,
   startVisibilityAwarePolling,
 } from "@yadsh/dsh-plugin-kit/client";
 import {
@@ -33,6 +33,7 @@ import type {
   RuleTestReport,
   WebFetchAuthConfig,
 } from "../types.js";
+import { WEB_FETCH_AUTH_SETTINGS_NAMESPACE } from "../types.js";
 import { styles } from "./styles.js";
 import {
   DiagnosticsSection,
@@ -43,7 +44,6 @@ import {
   type CredentialsRemote,
 } from "./sections.js";
 
-const SETTINGS_NAMESPACE = "web-fetch-authenticated";
 const REFRESH_INTERVAL_MS = 5_000;
 
 interface RemoteService {
@@ -58,7 +58,7 @@ interface ClientRemote {
   credentials: CredentialsRemote;
 }
 
-type CardProps = PropsRuntime<"settings.plugin.item"> & InjectFace<CardFace>;
+type CardProps = PropsRuntime<"settings.plugins.tab"> & InjectFace<CardFace>;
 
 function displayError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -67,16 +67,13 @@ function displayError(error: unknown): string {
 }
 
 function WebFetchAuthCard({
-  scope,
+  form,
   status,
   testRule,
   diagnose,
   credentials,
 }: CardProps) {
-  const settingsStore = useMemo(
-    () => bindSettingsExternalStore(scope),
-    [scope],
-  );
+  const settingsStore = useMemo(() => bindSettingsExternalStore(form), [form]);
   const settings = useSyncExternalStore(
     settingsStore.subscribe,
     settingsStore.getSnapshot,
@@ -120,26 +117,26 @@ function WebFetchAuthCard({
       const [field, nested] = path;
       if (field === undefined) return;
       if (nested === undefined) {
-        void scope.set(field, value);
+        void form.set(field, value);
         return;
       }
-      const current = scope.getSnapshot().value;
+      const current = form.getSnapshot().value;
       if (field === "audit") {
-        void scope.set(field, { ...current?.audit, [nested]: value });
+        void form.set(field, { ...current?.audit, [nested]: value });
       } else if (field === "limits") {
-        void scope.set(field, { ...current?.limits, [nested]: value });
+        void form.set(field, { ...current?.limits, [nested]: value });
       } else if (field === "defaultPolicy") {
-        void scope.set(field, { ...current?.defaultPolicy, [nested]: value });
+        void form.set(field, { ...current?.defaultPolicy, [nested]: value });
       }
     },
-    [scope],
+    [form],
   );
 
   const setRules = useCallback(
     (rules: AuthenticatedFetchRule[]) => {
-      void scope.set("rules", rules);
+      void form.set("rules", rules);
     },
-    [scope],
+    [form],
   );
 
   const warnings = useMemo(
@@ -149,57 +146,60 @@ function WebFetchAuthCard({
 
   if (settings.status === "unavailable") return null;
 
+  // The tab panel mounts this contribution as its own content, so the list the
+  // shell's `<li>` root belongs to is ours (AGENTS.md card contract).
   return (
-    <CardShell
-      title="Authenticated Web Fetch"
-      description="Per-origin authenticated rules for web_fetch: credentials, SSRF policy, and diagnostics."
-      badge={
-        <span className="dsh-plugin-card__badge">
-          {(config?.enabled ?? true) ? "Enabled" : "Disabled"}
-        </span>
-      }
-      label={(open) =>
-        `${open ? "Hide" : "Show"} settings: Authenticated Web Fetch`
-      }
-      bodyClassName="wfa-body"
-    >
-      {error !== null && <div className="wfa-error">{error}</div>}
-      <StatusSection status={report} warnings={warnings} />
-      <RulesSection
-        config={config}
-        writable={writable}
-        setRules={setRules}
-        face={{ scope, status, testRule, diagnose, credentials }}
-      />
-      <GlobalSection config={config} writable={writable} setPath={setPath} />
-      <DiagnosticsSection diagnose={diagnose} />
-    </CardShell>
+    <ul className="wfa-cards">
+      <CardShell
+        title="Authenticated Web Fetch"
+        description="Per-origin authenticated rules for web_fetch: credentials, SSRF policy, and diagnostics."
+        badge={
+          <span className="dsh-plugin-card__badge">
+            {(config?.enabled ?? true) ? "Enabled" : "Disabled"}
+          </span>
+        }
+        label={(open) =>
+          `${open ? "Hide" : "Show"} settings: Authenticated Web Fetch`
+        }
+        bodyClassName="wfa-body"
+      >
+        {error !== null && <div className="wfa-error">{error}</div>}
+        <StatusSection status={report} warnings={warnings} />
+        <RulesSection
+          config={config}
+          writable={writable}
+          setRules={setRules}
+          face={{ form, status, testRule, diagnose, credentials }}
+        />
+        <GlobalSection config={config} writable={writable} setPath={setPath} />
+        <DiagnosticsSection diagnose={diagnose} />
+      </CardShell>
+    </ul>
   );
 }
 
 // `remote.credentials` is its own service key (owned by dsh-api-settings-controller),
 // not a plain field of `remote`: reading it without this entry throws and the whole
 // browser-side plugin fails to apply.
-export const inject = [
-  "slots",
-  "settingsScope",
-  "remote",
-  "remote.credentials",
-];
+export const inject = ["slots", "configForms", "remote", "remote.credentials"];
 
-/** Mount the generated Remote contribution and register the native Settings card. */
+/** Mount the generated Remote contribution and register the Plugins settings tab. */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const remote = (ctx as unknown as { remote: ClientRemote }).remote;
   const disposeRemote = await remote.$mount(webFetchAuthRemote);
+  // The form and the slot belong to this plugin's own context; only the mounted
+  // `remote.webFetchAuth` namespace is reached through a child scope, because
+  // that key resolves once the Remote contribution is mounted.
+  const form = ctx.configForms.get<WebFetchAuthConfig>(
+    WEB_FETCH_AUTH_SETTINGS_NAMESPACE,
+  );
+  const removeStyles = injectCardStyles("dsh-web-fetch-authenticated", styles);
   try {
     await ctx.inject(["remote.webFetchAuth"], (remoteCtx) => {
       const injectedRemote = (remoteCtx as unknown as { remote: ClientRemote })
         .remote;
-      const scope = remoteCtx.settingsScope.bind<WebFetchAuthConfig>({
-        namespace: SETTINGS_NAMESPACE,
-      });
       const face: CardFace = {
-        scope,
+        form,
         status: () => injectedRemote.webFetchAuth.status(),
         testRule: (ruleId, url) =>
           injectedRemote.webFetchAuth.testRule(ruleId, url),
@@ -207,18 +207,26 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         credentials: injectedRemote.credentials,
       };
 
-      return registerSettingsCard(remoteCtx, {
-        key: SETTINGS_NAMESPACE,
-        pluginName: "dsh-web-fetch-authenticated",
-        styles,
-        component: WebFetchAuthCard,
-        inject: () => face,
-      });
+      return ctx.slots.inject("settings.plugins.tab", () =>
+        ctx.slots.register(
+          {
+            name: "settings.plugins.tab",
+            id: WEB_FETCH_AUTH_SETTINGS_NAMESPACE,
+            label: () => "Authenticated Web Fetch",
+            inject: () => face,
+          },
+          WebFetchAuthCard,
+        ),
+      );
     });
   } catch (cause) {
+    removeStyles();
     await disposeRemote();
     throw cause;
   }
 
-  return disposeRemote;
+  return async () => {
+    removeStyles();
+    await disposeRemote();
+  };
 }

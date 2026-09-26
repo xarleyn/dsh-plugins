@@ -36,8 +36,8 @@ await runVerifyPackage({
   clientBundle: {
     moduleLoaderId: true,
     includes: [
-      "settings.plugin.item",
-      "key: SETTINGS_NAMESPACE",
+      "settings.plugins.tab",
+      "id: SETTINGS_TAB",
       "dsh-plugin-card__name",
       "m3.5 5.25 3.5 3.5 3.5-3.5",
     ],

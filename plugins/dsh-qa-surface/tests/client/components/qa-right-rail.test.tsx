@@ -84,7 +84,7 @@ describe("right rail", () => {
     // `.dsh-qa-rail*` belongs to the transcript's turn ladder; one shared
     // class made the panel height:0 + pointer-events:none and dragged the
     // ladder around. The rename guard keeps the two apart.
-    const { container } = render(
+    render(
       <QaRightRail
         tabs={tabs}
         activeTab="sources"
@@ -92,7 +92,7 @@ describe("right rail", () => {
         onClose={vi.fn()}
       />,
     );
-    const panel = container.querySelector("aside");
-    expect(panel?.className).toBe("dsh-qa-panel");
+    const panel = screen.getByTestId("qa-surface-rail");
+    expect(panel.className).toBe("dsh-qa-panel");
   });
 });

@@ -11,7 +11,7 @@
 
 import type { ReactNode } from "react";
 import type { CredentialInfo } from "@deepseek-ai/dsh-credentials/types";
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type {
   DiagnoseReport,
@@ -29,9 +29,16 @@ export interface CredentialsRemote {
   unset(ref: string): Promise<RemoteResult<void>>;
 }
 
-/** Client face injected into the card. */
+/**
+ * Client face injected into the card.
+ *
+ * `form` is the Host's live configuration form for this entry's namespace. Its
+ * snapshot mirrors the profile, and a write through it is what the Host accepts:
+ * only whole top-level nodes are editable, because volatility is marked on those
+ * and not inside a rule.
+ */
 export interface CardFace {
-  scope: SettingsScope<WebFetchAuthConfig>;
+  form: ConfigForm<WebFetchAuthConfig>;
   status: () => Promise<RemoteResult<ProviderStatusReport>>;
   testRule: (
     ruleId: string,

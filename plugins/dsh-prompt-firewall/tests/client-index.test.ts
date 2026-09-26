@@ -13,17 +13,21 @@ describe("client activation", () => {
       value: undefined,
     }));
     const promptFirewall = { inspect, setSectionPolicy };
-    const scope = {};
+    const form = {
+      getSnapshot: () => ({ status: "ready", value: {}, revision: 0 }),
+      subscribe: () => () => undefined,
+    };
     let cardFace: (() => unknown) | undefined;
+    let cardOptions: Record<string, unknown> | undefined;
 
     const disposeSlot = vi.fn();
     const readyCtx = {
       remote: { promptFirewall },
-      settingsScope: { bind: vi.fn(() => scope) },
       slots: {
         inject: vi.fn((_name: string, callback: () => unknown) => callback()),
-        register: vi.fn((options: { inject: () => unknown }) => {
-          cardFace = options.inject;
+        register: vi.fn((options: Record<string, unknown>) => {
+          cardOptions = options;
+          cardFace = options["inject"] as () => unknown;
           return disposeSlot;
         }),
       },
@@ -58,8 +62,14 @@ describe("client activation", () => {
       head: { appendChild: vi.fn() },
     });
 
-    const dispose = await apply({ remote, inject } as never);
+    const dispose = await apply({
+      remote,
+      inject,
+      configForms: { get: vi.fn(() => form) },
+      slots: readyCtx.slots,
+    } as never);
     const face = cardFace?.() as {
+      form: unknown;
       inspect(): Promise<unknown>;
       setSectionPolicy(
         name: string,
@@ -68,6 +78,11 @@ describe("client activation", () => {
       ): Promise<unknown>;
     };
 
+    expect(cardOptions).toMatchObject({
+      name: "settings.plugins.tab",
+      id: "dsh-prompt-firewall",
+    });
+    expect(face.form).toBe(form);
     await expect(face.inspect()).resolves.toEqual({ ok: true, value: {} });
     await expect(
       face.setSectionPolicy("plugin:test", "block", 2),
@@ -79,5 +94,6 @@ describe("client activation", () => {
 
     await dispose();
     expect(disposeRemote).toHaveBeenCalledOnce();
+    expect(style.remove).toHaveBeenCalledOnce();
   });
 });

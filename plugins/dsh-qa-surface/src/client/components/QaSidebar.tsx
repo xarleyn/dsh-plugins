@@ -304,11 +304,13 @@ export const QaSidebar = memo(
       return (
         <nav
           className="dsh-qa-sidebar dsh-qa-sidebar--collapsed"
+          data-testid="qa-surface-sidebar-collapsed"
           aria-label="История чатов"
         >
           <button
             type="button"
             className="dsh-qa-sidebar__expand"
+            data-testid="qa-surface-sidebar-expand"
             aria-label="Развернуть историю чатов"
             title="Развернуть историю чатов"
             onClick={toggleCollapsed}
@@ -342,18 +344,29 @@ export const QaSidebar = memo(
               ? "dsh-qa-sidebar__item dsh-qa-sidebar__item--active"
               : "dsh-qa-sidebar__item"
           }
+          data-testid="qa-surface-sidebar-item"
         >
           <button
             type="button"
             className="dsh-qa-sidebar__item-main"
+            data-testid="qa-surface-sidebar-item-open"
             aria-current={row.active ? "true" : undefined}
             onClick={() => props.onSwitch(row.id)}
           >
-            <span className="dsh-qa-sidebar__item-title">{row.title}</span>
-            <span className="dsh-qa-sidebar__item-meta">
+            <span
+              className="dsh-qa-sidebar__item-title"
+              data-testid="qa-surface-sidebar-item-title"
+            >
+              {row.title}
+            </span>
+            <span
+              className="dsh-qa-sidebar__item-meta"
+              data-testid="qa-surface-sidebar-item-meta"
+            >
               {row.running ? (
                 <span
                   className="dsh-qa-sidebar__dot"
+                  data-testid="qa-surface-sidebar-item-running"
                   role="img"
                   aria-label="Выполняется"
                 />
@@ -378,6 +391,7 @@ export const QaSidebar = memo(
             <button
               type="button"
               className="dsh-qa-sidebar__item-delete"
+              data-testid="qa-surface-sidebar-item-delete"
               aria-label={`Удалить чат ${name}`}
               title={`Удалить чат ${name}`}
               onClick={(event) => {
@@ -400,15 +414,38 @@ export const QaSidebar = memo(
         <img src={props.logoUrl} alt="" />
       );
     return (
-      <nav ref={nav} className="dsh-qa-sidebar" aria-label="История чатов">
-        <div className="dsh-qa-sidebar__head">
-          <span className="dsh-qa-sidebar__brand" title={props.title}>
-            <span className="dsh-qa-sidebar__logo">{brand}</span>
-            <span className="dsh-qa-sidebar__name">{props.title}</span>
+      <nav
+        ref={nav}
+        className="dsh-qa-sidebar"
+        data-testid="qa-surface-sidebar"
+        aria-label="История чатов"
+      >
+        <div
+          className="dsh-qa-sidebar__head"
+          data-testid="qa-surface-sidebar-head"
+        >
+          <span
+            className="dsh-qa-sidebar__brand"
+            data-testid="qa-surface-sidebar-brand"
+            title={props.title}
+          >
+            <span
+              className="dsh-qa-sidebar__logo"
+              data-testid="qa-surface-sidebar-logo"
+            >
+              {brand}
+            </span>
+            <span
+              className="dsh-qa-sidebar__name"
+              data-testid="qa-surface-sidebar-name"
+            >
+              {props.title}
+            </span>
           </span>
           <button
             type="button"
             className="dsh-qa-sidebar__collapse"
+            data-testid="qa-surface-sidebar-collapse"
             aria-label="Свернуть историю чатов"
             title="Свернуть историю чатов"
             onClick={toggleCollapsed}
@@ -417,10 +454,14 @@ export const QaSidebar = memo(
           </button>
         </div>
         {props.showNewChat ? (
-          <div className="dsh-qa-sidebar__newbar">
+          <div
+            className="dsh-qa-sidebar__newbar"
+            data-testid="qa-surface-sidebar-newbar"
+          >
             <button
               type="button"
               className="dsh-qa-sidebar__new"
+              data-testid="qa-surface-sidebar-new"
               disabled={props.busy}
               onClick={props.onNewChat}
             >
@@ -429,11 +470,15 @@ export const QaSidebar = memo(
             </button>
           </div>
         ) : null}
-        <div className="dsh-qa-sidebar__search">
+        <div
+          className="dsh-qa-sidebar__search"
+          data-testid="qa-surface-sidebar-search"
+        >
           <SearchIcon />
           <input
             type="search"
             value={query}
+            data-testid="qa-surface-sidebar-search-input"
             placeholder="Поиск по чатам"
             aria-label="Поиск по чатам"
             onChange={(event) => setQuery(event.currentTarget.value)}
@@ -442,6 +487,7 @@ export const QaSidebar = memo(
             <button
               type="button"
               className="dsh-qa-sidebar__search-clear"
+              data-testid="qa-surface-sidebar-search-clear"
               aria-label="Очистить поиск"
               title="Очистить поиск"
               onClick={() => setQuery("")}
@@ -452,6 +498,7 @@ export const QaSidebar = memo(
         </div>
         <div
           className="dsh-qa-sidebar__list"
+          data-testid="qa-surface-sidebar-list"
           ref={chatList}
           // A confirmed deletion removes the focused control, so focus goes to
           // the list itself: the next Tab continues among the chats instead of
@@ -459,17 +506,31 @@ export const QaSidebar = memo(
           tabIndex={-1}
         >
           {props.rows.length === 0 ? (
-            <p className="dsh-qa-sidebar__empty">Здесь пока пусто</p>
+            <p
+              className="dsh-qa-sidebar__empty"
+              data-testid="qa-surface-sidebar-empty"
+            >
+              Здесь пока пусто
+            </p>
           ) : visibleRows.length === 0 ? (
-            <p className="dsh-qa-sidebar__empty">Ничего не найдено</p>
+            <p
+              className="dsh-qa-sidebar__empty"
+              data-testid="qa-surface-sidebar-empty"
+            >
+              Ничего не найдено
+            </p>
           ) : (
             sections.map((section) => (
               <div
                 key={section.name || "__all"}
                 className="dsh-qa-sidebar__group"
+                data-testid="qa-surface-sidebar-group"
               >
                 {section.name === "" ? null : (
-                  <div className="dsh-qa-sidebar__group-name">
+                  <div
+                    className="dsh-qa-sidebar__group-name"
+                    data-testid="qa-surface-sidebar-group-name"
+                  >
                     {section.name} ({section.rows.length})
                   </div>
                 )}
@@ -478,20 +539,28 @@ export const QaSidebar = memo(
             ))
           )}
         </div>
-        <div className="dsh-qa-sidebar__footer">
+        <div
+          className="dsh-qa-sidebar__footer"
+          data-testid="qa-surface-sidebar-footer"
+        >
           {props.account === undefined ? null : (
             <div
               className="dsh-qa-sidebar__account"
+              data-testid="qa-surface-sidebar-account"
               title={`${props.account.email} (${props.account.role})`}
             >
               {props.account.settings === undefined ? (
-                <span className="dsh-qa-sidebar__account-name">
+                <span
+                  className="dsh-qa-sidebar__account-name"
+                  data-testid="qa-surface-sidebar-account-name"
+                >
                   {props.account.email}
                 </span>
               ) : (
                 <button
                   type="button"
                   className="dsh-qa-sidebar__account-name"
+                  data-testid="qa-surface-sidebar-account-name"
                   aria-haspopup="dialog"
                   title="Открыть настройки"
                   onClick={props.account.settings.onOpen}
@@ -500,11 +569,17 @@ export const QaSidebar = memo(
                 </button>
               )}
               {props.account.role === "admin" ? (
-                <span className="dsh-qa-sidebar__account-role">admin</span>
+                <span
+                  className="dsh-qa-sidebar__account-role"
+                  data-testid="qa-surface-sidebar-account-role"
+                >
+                  admin
+                </span>
               ) : null}
               <button
                 type="button"
                 className="dsh-qa-sidebar__account-exit"
+                data-testid="qa-surface-sidebar-account-logout"
                 title="Выйти из аккаунта"
                 aria-label="Выйти из аккаунта"
                 onClick={props.account.onLogout}
@@ -518,6 +593,7 @@ export const QaSidebar = memo(
           <button
             type="button"
             className="dsh-qa-sidebar__version"
+            data-testid="qa-surface-sidebar-version"
             aria-haspopup="dialog"
             title="История версий"
             onClick={() => setChangelogOpen(true)}

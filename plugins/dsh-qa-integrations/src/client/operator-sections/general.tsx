@@ -28,8 +28,8 @@ export function GeneralSection({
 }): ReactElement {
   const { config, control } = form;
   return (
-    <Section title="Общие" open>
-      <Group title="Плагин">
+    <Section testId="qa-integrations-general" title="Общие" open>
+      <Group testId="qa-integrations-general-plugin" title="Плагин">
         {form.toggle(
           "Плагин включён",
           ["enabled"],
@@ -38,6 +38,7 @@ export function GeneralSection({
         )}
       </Group>
       <Group
+        testId="qa-integrations-general-storage"
         title="Хранилище и ключи"
         wide
         hint="пути читаются хостом при старте: правка действует со следующего рестарта"
@@ -63,7 +64,10 @@ export function GeneralSection({
           {...control}
         />
       </Group>
-      <Group title="Домены подключений">
+      <Group
+        testId="qa-integrations-general-domains"
+        title="Домены подключений"
+      >
         <StringListField
           label="Суффиксы порталов Bitrix24"
           hint="хосты, на которые может указывать вебхук; каждый с точки"
@@ -73,7 +77,10 @@ export function GeneralSection({
           {...control}
         />
       </Group>
-      <LimitsGroup hint="потолки ответов провайдеров и срок хранения аудита">
+      <LimitsGroup
+        testId="qa-integrations-general-limits"
+        hint="потолки ответов провайдеров и срок хранения аудита"
+      >
         <NumberField
           label="Таймаут запроса, мс"
           path={["timeoutMs"]}

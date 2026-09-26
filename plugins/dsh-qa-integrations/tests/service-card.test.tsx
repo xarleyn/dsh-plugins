@@ -137,6 +137,9 @@ function recorded(): Recorded {
   return { saves: [], sources: [], boundaries: [] };
 }
 
+/** The test id zone the GitLab card owns; every hook below is named from it. */
+const Z = "qa-integrations-provider-card-gitlab";
+
 describe("GitLab card: managed service credential", () => {
   it("offers the service token checked by default and drops the secret field", async () => {
     const seen = recorded();
@@ -148,7 +151,9 @@ describe("GitLab card: managed service credential", () => {
     );
     expect(checkbox).toHaveProperty("checked", true);
     expect(screen.queryByLabelText("Personal access token GitLab")).toBeNull();
-    expect(screen.getByText(/QA GitLab Read-only/u)).not.toBeNull();
+    expect(
+      screen.getByTestId(`${Z}-service-option-hint`).textContent,
+    ).toContain("QA GitLab Read-only");
 
     fireEvent.click(
       screen.getByRole("button", { name: "Подключить сервисный токен" }),
@@ -247,14 +252,17 @@ describe("GitLab card: managed service credential", () => {
     );
     const { container } = render(<Card token="qa-account-token" />);
 
-    expect(await screen.findByText(/QA GitLab Read-only/u)).not.toBeNull();
-    expect(
-      screen.getByText(/Сервисный аккаунт · управляется администратором/u),
-    ).not.toBeNull();
-    expect(
-      screen.getByText(/Только безопасное чтение: изменения/u),
-    ).not.toBeNull();
-    expect(screen.getByText(/projects: 2 из 2/u)).not.toBeNull();
+    const summary = await screen.findByTestId(`${Z}-summary`);
+    expect(summary.textContent).toContain("QA GitLab Read-only");
+    expect(screen.getByTestId(`${Z}-credential-source`).textContent).toContain(
+      "Сервисный аккаунт · управляется администратором",
+    );
+    expect(screen.getByTestId(`${Z}-service-mode-hint`).textContent).toContain(
+      "Только безопасное чтение: изменения",
+    );
+    expect(screen.getByTestId(`${Z}-boundary-summary`).textContent).toContain(
+      "projects: 2 из 2",
+    );
 
     // A capability the service credential can never reach is a locked row with
     // a reason, not a silent absence.

@@ -80,6 +80,9 @@ function remote(overrides: Partial<WeblateRemote> = {}): WeblateRemote {
   };
 }
 
+/** The test id zone this card owns; every hook below is named from it. */
+const Z = "qa-integrations-provider-card-weblate";
+
 describe("Integrations Weblate card", () => {
   /**
    * The classes the shared skeleton and the plugin body rules define. A card
@@ -122,9 +125,7 @@ describe("Integrations Weblate card", () => {
       expect(SHARED_CLASSES.has(className), className).toBe(true);
     }
     // The root is the same article every provider card renders.
-    expect(
-      container.querySelector("article.dsh-qa-integrations__card"),
-    ).not.toBeNull();
+    expect(screen.getByTestId(Z).tagName).toBe("ARTICLE");
   });
 
   it("keeps the API token write-only and the instance a choice", async () => {
@@ -178,9 +179,10 @@ describe("Integrations Weblate card", () => {
       }),
     );
     render(<Card token="qa-account-token" />);
-    expect(await screen.findByText("Инстанс: Corporate Weblate")).toBeDefined();
+    const line = await screen.findByTestId(`${Z}-instance-static`);
+    expect(line.textContent).toContain("Corporate Weblate");
     expect(screen.queryByLabelText("Инстанс Weblate")).toBeNull();
-    expect(screen.queryByText(/подключать нечего/u)).toBeNull();
+    expect(screen.queryByTestId(`${Z}-not-configured`)).toBeNull();
     fireEvent.change(screen.getByLabelText("API-токен Weblate"), {
       target: { value: "wlu_abcdefghijklmnopqrstuvwxyz0123456789" },
     });
@@ -306,7 +308,10 @@ describe("Integrations Weblate card", () => {
       }),
     );
     const { container } = render(<Card token="qa-account-token" />);
-    await screen.findByText(/Оператор не настроил ни одного инстанса Weblate/u);
+    const hint = await screen.findByTestId(`${Z}-not-configured`);
+    expect(hint.textContent).toContain(
+      "Оператор не настроил ни одного инстанса Weblate",
+    );
     expect(screen.queryByLabelText("API-токен Weblate")).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Сохранить и проверить" }),

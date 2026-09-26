@@ -5,6 +5,7 @@ import {
   resolveConfig,
 } from "../../src/resolve-config.js";
 import { DEFAULT_THINKING_PHRASES } from "../../src/thinking-phrases.js";
+import { QA_MAX_ACTIVE_REQUESTS_MAX } from "../../src/config-resolvers/session.js";
 import { schemaParse } from "./config.helpers.js";
 
 describe("qa surface config", () => {
@@ -128,6 +129,24 @@ describe("qa surface config", () => {
     expect(() => resolveConfig({ session: { provider: "openai" } })).toThrow(
       /set together/u,
     );
+  });
+
+  it("bounds the ceiling on simultaneously answered questions", () => {
+    // Zero is a value of its own: it means the deployment sets no limit, which
+    // is the default because a hosted model has no ceiling to name.
+    expect(resolveConfig().session.maxActiveRequests).toBe(0);
+    expect(
+      resolveConfig({ session: { maxActiveRequests: 2 } }).session
+        .maxActiveRequests,
+    ).toBe(2);
+    expect(() => resolveConfig({ session: { maxActiveRequests: -1 } })).toThrow(
+      /session\.maxActiveRequests/u,
+    );
+    expect(() =>
+      resolveConfig({
+        session: { maxActiveRequests: QA_MAX_ACTIVE_REQUESTS_MAX + 1 },
+      }),
+    ).toThrow(/session\.maxActiveRequests/u);
   });
 
   it("keeps the session list hidden by default and allows opting in", () => {

@@ -37,12 +37,18 @@ export function overriddenAny(
  * one button clearing every path of the section, disabled while the settings
  * namespace itself is read-only.
  */
-export function resetAside(props: ConfigProps, paths: SectionPaths): ReactNode {
+export function resetAside(
+  props: ConfigProps,
+  paths: SectionPaths,
+  /** The stable hook a test reaches this control by. */
+  testId: string,
+): ReactNode {
   if (!overriddenAny(props, paths)) return undefined;
   return (
     <ResetButton
       disabled={!props.writable}
       label="Сбросить"
+      testId={testId}
       onClick={() => {
         for (const path of paths) props.unset(path);
       }}

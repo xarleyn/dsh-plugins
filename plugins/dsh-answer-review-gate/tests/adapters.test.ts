@@ -136,6 +136,38 @@ describe("domain-expert backend", () => {
       reason: "expert-not-completed",
     } satisfies Partial<ReviewerFailure>);
   });
+
+  it("does not launch a reviewer run for a turn already aborted at the boundary", async () => {
+    // The domain-experts `testExpert` face owns its run and exposes no abort
+    // signal, so the most the gate can honour is the signal's state at entry:
+    // an already-cancelled turn must not start a doomed reviewer.
+    let calls = 0;
+    const face: DomainExpertsFace = {
+      async testExpert() {
+        calls += 1;
+        return {
+          ok: true,
+          code: "",
+          message: "",
+          result: {
+            status: "completed",
+            summary: "No objections.",
+            findings: [],
+            conflicts: [],
+          },
+        } satisfies ExpertRunOutcome;
+      },
+    };
+    const controller = new AbortController();
+    controller.abort();
+    const backend = createDomainExpertBackend({ face, config: EXPERT_CONFIG });
+    await expect(
+      backend.review({ ...reviewInput(), signal: controller.signal }),
+    ).rejects.toMatchObject({
+      reason: "reviewer-aborted",
+    } satisfies Partial<ReviewerFailure>);
+    expect(calls).toBe(0);
+  });
 });
 
 describe("subagent backend", () => {
@@ -184,6 +216,63 @@ describe("subagent backend", () => {
     const prompt = (request["prompt"] as { text: string }[])[0]!.text;
     expect(prompt).toContain("adversarial reviewer");
     expect(prompt).toContain("file locks");
+  });
+
+  it("sends an explicit empty allow-list so the reviewer is not left unrestricted", async () => {
+    // Regression for F04: an empty `allowedTools` must still compose a
+    // `toolFilter` (the host only restricts when the filter is present), so
+    // the child gets zero tools instead of inheriting the parent's surface.
+    const started: Record<string, unknown>[] = [];
+    const face: SubagentsFace = {
+      async start(_provider, request) {
+        started.push(request as unknown as Record<string, unknown>);
+        return {
+          result: Promise.resolve({
+            stopReason: "completed",
+            output: [],
+            structured: { verdict: "pass", summary: "ok", issues: [] },
+          } satisfies SubagentRunResult),
+          dispose: () => {},
+        };
+      },
+    };
+    const backend = createSubagentBackend({
+      face,
+      config: { ...SUBAGENT_CONFIG, allowedTools: [] },
+      parent: "p",
+    });
+    await backend.review(reviewInput());
+    expect(started).toHaveLength(1);
+    expect(started[0]).toHaveProperty("toolFilter");
+    expect(started[0]!["toolFilter"]).toEqual({ allow: [] });
+  });
+
+  it("awaits the asynchronous child disposal before the review settles", async () => {
+    // Regression for S08: `dispose()` is a promise on the host, so a
+    // fire-and-forget call would resolve the review with the child still up.
+    let disposed = false;
+    const face: SubagentsFace = {
+      async start() {
+        return {
+          result: Promise.resolve({
+            stopReason: "completed",
+            output: [],
+            structured: { verdict: "pass", summary: "ok", issues: [] },
+          } satisfies SubagentRunResult),
+          dispose: async () => {
+            await new Promise((resolve) => setTimeout(resolve, 0));
+            disposed = true;
+          },
+        };
+      },
+    };
+    const backend = createSubagentBackend({
+      face,
+      config: SUBAGENT_CONFIG,
+      parent: "p",
+    });
+    await backend.review(reviewInput());
+    expect(disposed).toBe(true);
   });
 
   it("falls back to parsing the fenced verdict from the output text", async () => {

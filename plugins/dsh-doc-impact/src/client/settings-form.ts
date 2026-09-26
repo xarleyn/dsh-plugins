@@ -1,6 +1,6 @@
-// Staged settings form over the `doc-impact` settings namespace — a port of
+// Staged settings form over the `dsh-doc-impact` settings namespace — a port of
 // the first-party CardForm semantics: staged drafts never write; Save commits
-// field-granular set/unset calls in staging order (SPEC §37).
+// field-granular path operations in staging order (SPEC §37).
 import {
   DEFAULT_LIMIT_TEMPLATE,
   DEFAULT_REMINDER_TEMPLATE,
@@ -16,22 +16,42 @@ export const ON_LIMIT_OPTIONS = ["allow", "warn", "error"];
 
 /** Field specs: kind text/number render as inputs, choice/bool as selects.
  *  Multiline text renders as a textarea; `requires` pins the placeholder that
- *  keeps the steering message usable. */
+ *  keeps the steering message usable. `path` addresses the field inside the
+ *  namespace document, which keeps the nested profile shape (SPEC §37) while the
+ *  card stays a flat list of fields. */
 export const FIELDS = [
-  { field: "enabled", kind: "bool", fallback: true },
-  { field: "steer", kind: "bool", fallback: true },
-  { field: "configFile", kind: "text", fallback: ".dsh/doc-impact.yml" },
-  { field: "mode", kind: "choice", options: MODE_OPTIONS, fallback: "remind" },
-  { field: "maxReminderRounds", kind: "number", fallback: 2 },
+  { field: "enabled", kind: "bool", path: ["enabled"], fallback: true },
+  { field: "steer", kind: "bool", path: ["steer"], fallback: true },
+  {
+    field: "configFile",
+    kind: "text",
+    path: ["configFile"],
+    fallback: ".dsh/doc-impact.yml",
+  },
+  {
+    field: "mode",
+    kind: "choice",
+    path: ["defaults", "mode"],
+    options: MODE_OPTIONS,
+    fallback: "remind",
+  },
+  {
+    field: "maxReminderRounds",
+    kind: "number",
+    path: ["safety", "maxReminderRounds"],
+    fallback: 2,
+  },
   {
     field: "onLimit",
     kind: "choice",
+    path: ["safety", "onLimit"],
     options: ON_LIMIT_OPTIONS,
     fallback: "allow",
   },
   {
     field: "reminderTemplate",
     kind: "text",
+    path: ["reminderTemplate"],
     multiline: true,
     requires: "{body}",
     fallback: DEFAULT_REMINDER_TEMPLATE,
@@ -39,13 +59,40 @@ export const FIELDS = [
   {
     field: "limitTemplate",
     kind: "text",
+    path: ["limitTemplate"],
     multiline: true,
     requires: "{impacts}",
     fallback: DEFAULT_LIMIT_TEMPLATE,
   },
-  { field: "maxSnapshotFiles", kind: "number", fallback: 10000 },
-  { field: "debug", kind: "bool", fallback: false },
+  {
+    field: "maxSnapshotFiles",
+    kind: "number",
+    path: ["changeDetection", "maxSnapshotFiles"],
+    fallback: 10000,
+  },
+  { field: "debug", kind: "bool", path: ["debug"], fallback: false },
 ];
+
+/** One value inside the namespace document. */
+function pick(source: any, path: readonly string[]): any {
+  let node = source;
+  for (let i = 0; i < path.length; i++) {
+    if (node === null || typeof node !== "object") return undefined;
+    node = node[path[i]!];
+  }
+  return node;
+}
+
+/** Whether one path stands in a layer — presence, not value, marks an override. */
+function holds(source: any, path: readonly string[]): boolean {
+  let node = source;
+  for (let i = 0; i < path.length; i++) {
+    if (node === null || typeof node !== "object") return false;
+    if (!Object.hasOwn(node, path[i]!)) return false;
+    node = node[path[i]!];
+  }
+  return true;
+}
 
 function formatText(value: unknown): string {
   return typeof value === "string" ? value : "";
@@ -81,19 +128,19 @@ export function specOf(field: string): any {
 }
 
 /**
- * Staged form over the `doc-impact` settings namespace — a port of the
+ * Staged form over the `dsh-doc-impact` settings namespace — a port of the
  * first-party CardForm semantics: staged drafts never write; Save commits
- * field-granular set/unset calls in staging order; a save that did not
- * land keeps its drafts.
+ * field-granular path operations in staging order; a save that did not land
+ * keeps its drafts.
  */
-export const SettingsForm: any = function SettingsForm(this: any, scope: any) {
-  this.scope = scope;
+export const SettingsForm: any = function SettingsForm(this: any, form: any) {
+  this.form = form;
   this.staged = new Map();
   this.listeners = new Set();
   this.saving = false;
   this.failed = false;
   this.snapshotCache = undefined;
-  scope.subscribe(() => {
+  form.subscribe(() => {
     this.publish();
   });
 };
@@ -118,21 +165,17 @@ SettingsForm.prototype.publish = function () {
 };
 
 SettingsForm.prototype.snapshotOf = function () {
-  return this.scope.getSnapshot();
+  return this.form.getSnapshot();
 };
 
 SettingsForm.prototype.sectionValue = function (field: string) {
-  const value = this.snapshotOf().value;
-  return value !== undefined && value !== null && Object.hasOwn(value, field)
-    ? value[field]
-    : undefined;
+  const spec = specOf(field);
+  return pick(this.snapshotOf().value, spec.path);
 };
 
 SettingsForm.prototype.baseValue = function (field: string) {
-  const base = this.snapshotOf().base;
-  return base !== undefined && base !== null && Object.hasOwn(base, field)
-    ? base[field]
-    : undefined;
+  const spec = specOf(field);
+  return pick(this.snapshotOf().base, spec.path);
 };
 
 SettingsForm.prototype.userLayer = function () {
@@ -140,8 +183,7 @@ SettingsForm.prototype.userLayer = function () {
 };
 
 SettingsForm.prototype.stored = function (field: string) {
-  const user = this.userLayer();
-  return user !== undefined && user !== null && Object.hasOwn(user, field);
+  return holds(this.userLayer(), specOf(field).path);
 };
 
 /** The value a staged clear would reveal: composition base over schema default. */
@@ -209,15 +251,23 @@ SettingsForm.prototype.plan = function () {
   return plan;
 };
 
+/**
+ * One field-granular write. The revision fence is read at the moment of the
+ * write, not when the draft was staged, so a stale view cannot overwrite a
+ * newer one; the Host answers whether the write landed.
+ */
 SettingsForm.prototype.runClear = async function (field: string) {
-  await this.scope.unset(field);
-  return !this.stored(field);
+  return await this.form.mutate(
+    [{ op: "unset", path: specOf(field).path }],
+    this.snapshotOf().revision,
+  );
 };
 
 SettingsForm.prototype.runSet = async function (field: string, value: unknown) {
-  await this.scope.set(field, value);
-  const user = this.userLayer();
-  return user !== undefined && user !== null && user[field] === value;
+  return await this.form.mutate(
+    [{ op: "set", path: specOf(field).path, value: value }],
+    this.snapshotOf().revision,
+  );
 };
 
 SettingsForm.prototype.shell = function () {

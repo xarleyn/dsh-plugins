@@ -5,6 +5,7 @@ import {
   causeCode,
   fetchWithRetries,
   readBoundedJson,
+  type ResponseRead,
 } from "../kernel/read-policy.js";
 import {
   weblateInstance,
@@ -159,24 +160,32 @@ export class WeblateTransport {
     query: WeblateQuery = {},
     requested?: { readonly page: number; readonly perPage: number },
   ): Promise<WeblateJsonResponse<T>> {
-    const response = await this.request(instance, token, path, query);
-    const data = await readBoundedJson<T>(
-      response,
-      this.config.maxResponseBytes,
-      "Provider",
-    );
-    if (requested === undefined) return { data };
-    const nextPage = nextPageOf(data, instance, requested.page);
-    const total = countOf(data);
-    return {
-      data,
-      page: {
-        page: requested.page,
-        perPage: requested.perPage,
-        ...(nextPage === undefined ? {} : { nextPage }),
-        ...(total === undefined ? {} : { total }),
+    return this.request(
+      instance,
+      token,
+      path,
+      query,
+      async (response, signal) => {
+        const data = await readBoundedJson<T>(
+          response,
+          this.config.maxResponseBytes,
+          "Provider",
+          signal,
+        );
+        if (requested === undefined) return { data };
+        const nextPage = nextPageOf(data, instance, requested.page);
+        const total = countOf(data);
+        return {
+          data,
+          page: {
+            page: requested.page,
+            perPage: requested.perPage,
+            ...(nextPage === undefined ? {} : { nextPage }),
+            ...(total === undefined ? {} : { total }),
+          },
+        };
       },
-    };
+    );
   }
 
   private url(
@@ -192,38 +201,47 @@ export class WeblateTransport {
     return url.toString();
   }
 
-  private async request(
+  private async request<T>(
     instance: WeblateInstance,
     token: string,
     path: string,
     query: WeblateQuery,
-  ): Promise<Response> {
-    return fetchWithRetries(this.fetcher, this.url(instance, path, query), {
-      timeoutMs: this.config.timeoutMs,
-      retries: this.flags.retries,
-      headers: {
-        // The long-standing scheme Weblate documents; `Bearer` is accepted
-        // upstream as well, but a token that only works with one of the two
-        // should not depend on which one this provider happened to pick.
-        authorization: `Token ${token}`,
-        accept: "application/json",
+    read: ResponseRead<T>,
+  ): Promise<T> {
+    return fetchWithRetries(
+      this.fetcher,
+      this.url(instance, path, query),
+      {
+        timeoutMs: this.config.timeoutMs,
+        retries: this.flags.retries,
+        headers: {
+          // The long-standing scheme Weblate documents; `Bearer` is accepted
+          // upstream as well, but a token that only works with one of the two
+          // should not depend on which one this provider happened to pick.
+          authorization: `Token ${token}`,
+          accept: "application/json",
+        },
+        // Aborts, DNS failures and refused connections: a transient network
+        // fault is worth one more attempt, a permanent one keeps failing. The
+        // deadline is this deployment's own, so a request it already gave up on
+        // is not sent again.
+        transportFailure: (error, timedOut) =>
+          timedOut
+            ? new IntegrationError("UpstreamTimeout", "Weblate did not answer")
+            : TLS_FAILURE.test(causeCode(error))
+              ? new IntegrationError(
+                  "TlsFailure",
+                  "Weblate TLS handshake failed",
+                )
+              : new IntegrationError(
+                  "ProviderUnavailable",
+                  "Provider request failed",
+                ),
+        retriable: (error) => error.code !== "UpstreamTimeout",
+        statusFailure: (response) => this.failure(response),
       },
-      // Aborts, DNS failures and refused connections: a transient network
-      // fault is worth one more attempt, a permanent one keeps failing. The
-      // deadline is this deployment's own, so a request it already gave up on
-      // is not sent again.
-      transportFailure: (error, timedOut) =>
-        timedOut
-          ? new IntegrationError("UpstreamTimeout", "Weblate did not answer")
-          : TLS_FAILURE.test(causeCode(error))
-            ? new IntegrationError("TlsFailure", "Weblate TLS handshake failed")
-            : new IntegrationError(
-                "ProviderUnavailable",
-                "Provider request failed",
-              ),
-      retriable: (error) => error.code !== "UpstreamTimeout",
-      statusFailure: (response) => this.failure(response),
-    });
+      read,
+    );
   }
 
   private failure(response: Response): IntegrationError {

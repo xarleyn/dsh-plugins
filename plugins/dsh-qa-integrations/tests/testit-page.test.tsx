@@ -80,6 +80,9 @@ function remote(overrides: Partial<TestitRemote> = {}): TestitRemote {
   };
 }
 
+/** The test id zone this card owns; every hook below is named from it. */
+const Z = "qa-integrations-provider-card-testit";
+
 describe("Integrations Test IT card", () => {
   it("keeps the API token write-only and the installation a choice, not a host", async () => {
     const writes: {
@@ -127,8 +130,9 @@ describe("Integrations Test IT card", () => {
     render(<Card token="qa-account-token" />);
     await screen.findByLabelText("API-токен Test IT");
     expect(screen.queryByLabelText("Инсталляция Test IT")).toBeNull();
-    expect(screen.getByText(/Инсталляция: Test IT Cloud/u)).not.toBeNull();
-    expect(screen.queryByText(/подключать нечего/u)).toBeNull();
+    const line = screen.getByTestId(`${Z}-instance-static`);
+    expect(line.textContent).toContain("Test IT Cloud");
+    expect(screen.queryByTestId(`${Z}-not-configured`)).toBeNull();
   });
 
   it("keeps the capability rows honest and patchable", async () => {
@@ -211,8 +215,9 @@ describe("Integrations Test IT card", () => {
       }),
     );
     const { container } = render(<Card token="qa-account-token" />);
-    await screen.findByText(
-      /Оператор не настроил ни одной инсталляции Test IT/u,
+    const hint = await screen.findByTestId(`${Z}-not-configured`);
+    expect(hint.textContent).toContain(
+      "Оператор не настроил ни одной инсталляции Test IT",
     );
     expect(screen.queryByLabelText("API-токен Test IT")).toBeNull();
     expect(

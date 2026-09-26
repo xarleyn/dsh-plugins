@@ -1,7 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-api-gateway/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {} from "@deepseek-ai/dsh-client-ui-sidebar-right/client";
@@ -18,7 +18,6 @@ import {
   CardShell,
   bindSettingsExternalStore,
   injectCardStyles,
-  registerSettingsCard,
   startVisibilityAwarePolling,
 } from "@yadsh/dsh-plugin-kit/client";
 import {
@@ -41,7 +40,10 @@ import { createLogTailReader } from "./panel/log-view.js";
 import { PANEL_STYLES } from "./panel/styles.js";
 import { styles } from "./styles.js";
 
-const SETTINGS_NAMESPACE = "plugin-log";
+/** The profile entry id the Host files this plugin's live Config under. */
+const SETTINGS_ENTRY_ID = "dsh-plugin-log-ui";
+/** The seat this card takes on the host Plugins settings page. */
+const SETTINGS_TAB_ID = "plugin-log";
 const REFRESH_INTERVAL_MS = 2_000;
 const LEVELS: readonly ManagedPluginLogLevel[] = [
   "trace",
@@ -64,11 +66,11 @@ interface ClientRemote {
 }
 
 interface CardFace {
-  readonly scope: SettingsScope<PluginLogUiConfig>;
+  readonly form: ConfigForm<PluginLogUiConfig>;
   readonly inspect: InspectorRemote["inspect"];
 }
 
-type CardProps = PropsRuntime<"settings.plugin.item"> & InjectFace<CardFace>;
+type CardProps = PropsRuntime<"settings.plugins.tab"> & InjectFace<CardFace>;
 
 function errorText(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -95,11 +97,8 @@ function LevelOptions({
   );
 }
 
-function PluginLogSettingsCard({ scope, inspect }: CardProps) {
-  const settingsStore = useMemo(
-    () => bindSettingsExternalStore(scope),
-    [scope],
-  );
+function PluginLogSettingsCard({ form, inspect }: CardProps) {
+  const settingsStore = useMemo(() => bindSettingsExternalStore(form), [form]);
   const settings = useSyncExternalStore(
     settingsStore.subscribe,
     settingsStore.getSnapshot,
@@ -139,7 +138,11 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
       setSaving(true);
       setError(null);
       try {
-        await scope.set(field, value);
+        // `set` settles false when the Host refuses or supersedes the write;
+        // only a transport failure rejects, so the refusal needs saying here.
+        if (!(await form.set(field, value))) {
+          throw new TypeError("The Host refused the settings write.");
+        }
         await refresh();
       } catch (cause) {
         setError(errorText(cause));
@@ -147,7 +150,7 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
         setSaving(false);
       }
     },
-    [refresh, scope],
+    [form, refresh],
   );
 
   const setOverride = useCallback(
@@ -265,7 +268,22 @@ function PluginLogSettingsCard({ scope, inspect }: CardProps) {
   );
 }
 
-export const inject = ["slots", "settingsScope", "remote", "sidebarRightTabs"];
+export const inject = ["slots", "configForms", "remote", "sidebarRightTabs"];
+
+/**
+ * The seat on the host Plugins page.
+ *
+ * The shell's root is an `<li>`, and the tab pane supplies no list of its own,
+ * so the card is mounted inside a plugin-owned `<ul>` — AGENTS.md keeps the
+ * `ul > li` pair that the shell's own styling is written against.
+ */
+function PluginLogSettingsTab(props: CardProps) {
+  return (
+    <ul className="plu-tab">
+      <PluginLogSettingsCard {...props} />
+    </ul>
+  );
+}
 
 /**
  * The settings card's stylesheet key.
@@ -283,11 +301,17 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   // The panel is a page tab on the host's right Sidebar. Its type registers
   // through the public two-stage path, so the column dispatches the body below
   // by this plugin's own id rather than by anything hard-coded there.
+  const removeCardStyles = injectCardStyles(CARD_STYLE_KEY, styles);
   const removePanelStyles = injectCardStyles(PANEL_STYLE_KEY, PANEL_STYLES);
   ctx.effect(
     () => ctx.sidebarRightTabs.register(logPanelDefinition()),
     "dsh-plugin-log-ui: log panel type",
   );
+
+  // The live form of this plugin's Config, keyed by the profile entry id the
+  // Host resolved the volatile schema under. `settings.plugins.tab` hands a
+  // registrant no form of its own, so the card resolves it here.
+  const form = ctx.configForms.get<PluginLogUiConfig>(SETTINGS_ENTRY_ID);
 
   const remote = ctx.remote as unknown as ClientRemote;
   const disposeRemote = await remote.$mount(pluginLogUiRemote);
@@ -296,9 +320,6 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     await ctx.inject(["remote.pluginLogUi"], (remoteCtx) => {
       const mountedRemote = remoteCtx.remote as unknown as ClientRemote;
       const inspector = mountedRemote.pluginLogUi;
-      const scope = remoteCtx.settingsScope.bind<PluginLogUiConfig>({
-        namespace: SETTINGS_NAMESPACE,
-      });
       // The column may not have declared its seat yet when this plugin loads, so
       // the body waits for the declaration instead of assuming boot order. The
       // callback is re-entered if the namespace is withdrawn and re-provided, so
@@ -326,16 +347,22 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           LogPanel,
         ),
       );
-      return registerSettingsCard(remoteCtx, {
-        key: SETTINGS_NAMESPACE,
-        pluginName: CARD_STYLE_KEY,
-        styles,
-        component: PluginLogSettingsCard,
-        inject: () => ({ scope, inspect: () => inspector.inspect() }),
-      });
+      return remoteCtx.slots.inject("settings.plugins.tab", () =>
+        remoteCtx.slots.register(
+          {
+            name: "settings.plugins.tab",
+            id: SETTINGS_TAB_ID,
+            order: 30,
+            label: () => "Plugin logging",
+            inject: () => ({ form, inspect: () => inspector.inspect() }),
+          },
+          PluginLogSettingsTab,
+        ),
+      );
     });
   } catch (error) {
     disposePanel?.();
+    removeCardStyles();
     removePanelStyles();
     await disposeRemote();
     throw error;
@@ -343,6 +370,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 
   return async () => {
     disposePanel?.();
+    removeCardStyles();
     removePanelStyles();
     return disposeRemote();
   };

@@ -53,24 +53,9 @@ export interface SubagentNameCandidate {
   readonly label: string;
 }
 
-/** One durable delegation catalog entry, as the Host lists it. */
-export interface SubagentCatalogEntry {
-  readonly kind?: string;
-  readonly id?: string;
-  readonly label?: string;
-}
-
-/** Direct delegation catalogs keyed by their parent chat. */
-export type SubagentCatalogs = Readonly<
-  Record<
-    string,
-    { readonly entries?: readonly SubagentCatalogEntry[] } | undefined
-  >
->;
-
 /**
- * Delegated sessions whose names a page may sign its notices with: the
- * children of the chats it lists, catalog labels first and list titles after.
+ * Delegated sessions whose names a page may sign its notices with: the children
+ * of the chats it lists, named by the row title the Host's session list carries.
  *
  * `chats` is the visible chat set — the account's own chats while accounts are
  * on, and `undefined` for a deployment without accounts, where every chat on
@@ -82,23 +67,12 @@ export type SubagentCatalogs = Readonly<
  */
 export function visibleSubagentCandidates(
   byId: Readonly<Record<string, SessionSummary>>,
-  catalogs: SubagentCatalogs,
   chats: ReadonlySet<string> | undefined,
 ): readonly SubagentNameCandidate[] {
   const visible = (chatId: string): boolean =>
     chats === undefined || chats.has(chatId);
   const candidates: SubagentNameCandidate[] = [];
   const seen = new Set<string>();
-  for (const [parentId, catalog] of Object.entries(catalogs)) {
-    if (!visible(parentId)) continue;
-    for (const entry of catalog?.entries ?? []) {
-      if (entry.kind !== "child") continue;
-      const id = entry.id;
-      if (id === undefined || seen.has(id)) continue;
-      seen.add(id);
-      candidates.push({ id, label: entry.label ?? "" });
-    }
-  }
   for (const [key, summary] of Object.entries(byId)) {
     if (summary.origin !== "subagent") continue;
     const id = String(summary.id ?? key);

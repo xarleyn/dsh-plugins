@@ -41,8 +41,8 @@ therefore require a host restart, especially after adding or changing the
 package's `dsh.client` manifest. Changes under the `llm-pi-ai` section of
 `$DSH_HOME/settings.yaml` are independently hot-reloaded by DSH settings.
 
-After restarting, open **Settings → Plugins → Plugin configuration → Sleev**.
-The card edits the `sleev` namespace in `$DSH_HOME/settings.yaml`: exact routes,
+After restarting, open **Settings → Plugins → Sleev**. The card edits the
+`dsh-sleev` namespace in `$DSH_HOME/settings.yaml`: exact routes,
 route prefixes, recent-call retention, and logging level. Values are staged
 until Save and then read through by the Host on the next matching request. The
 card does not edit `llm-pi-ai` provider endpoints or Sleev routing headers.

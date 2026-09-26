@@ -107,7 +107,7 @@ describe("QA chat index and switching", () => {
     });
     await controller.ensureSession();
     await controller.switchTo("not-in-the-list");
-    expect(world.open).toHaveBeenCalledTimes(1);
+    expect(world.retain).toHaveBeenCalledTimes(1);
     expect(controller.getSnapshot().sessionId).toBe("saved");
     controller.dispose();
   });

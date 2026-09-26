@@ -42,7 +42,7 @@ The observer never stores prompts, request headers, credentials, or secret value
 
 ## Settings UI
 
-Open **Settings → Plugins → Plugin Configuration → Sleev** to edit:
+Open **Settings → Plugins → Sleev** to edit:
 
 - exact observed provider aliases;
 - observed provider-name prefixes;
