@@ -102,7 +102,7 @@ export function QaFilesPanel({
         data-testid="qa-files-workspace"
       >
         <h3>
-          <span data-testid="qa-files-workspace-title">Рабочий каталог</span>
+          <span>Рабочий каталог</span>
         </h3>
         <QaWorkspaceBrowser sessionId={sessionId} api={api} />
       </section>
@@ -131,7 +131,7 @@ export function QaFilesPanel({
             className="dsh-qa-files__group"
             data-testid="qa-files-group"
           >
-            <h3 data-testid="qa-files-group-heading">
+            <h3>
               <span data-testid="qa-files-group-time">{time}</span>
               <button
                 type="button"
