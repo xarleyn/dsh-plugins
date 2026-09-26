@@ -121,7 +121,11 @@ export class BitrixTransport {
     params: Readonly<Record<string, unknown>> | readonly unknown[],
   ): Promise<BitrixResponse> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.config.timeoutMs);
     try {
       const response = await this.fetcher(
         `${credential.webhookBaseUrl}/${method}.json`,
@@ -146,12 +150,13 @@ export class BitrixTransport {
         );
       }
       // One bounded read for every provider: the deployment's byte cap decides
-      // how much is read, and a capped body is `ResultTooLarge`, not a
-      // transport failure.
+      // how much is read, the deadline above decides for how long, and a capped
+      // body is `ResultTooLarge` rather than a transport failure.
       const envelope = await readBoundedJson<BitrixEnvelope | null>(
         response,
         this.config.maxResponseBytes,
         "Provider",
+        controller.signal,
       );
       if (envelope?.error !== undefined) {
         throw new IntegrationError(
@@ -165,12 +170,18 @@ export class BitrixTransport {
         next: count(envelope?.next),
       };
     } catch (error) {
+      // A refusal the read already named — a denied operation, a body over the
+      // cap, a body that stopped arriving — stays what it was named as.
       if (error instanceof IntegrationError) throw error;
-      throw new IntegrationError(
-        "ProviderUnavailable",
-        "Provider request failed",
-      );
+      throw timedOut
+        ? new IntegrationError("UpstreamTimeout", "Provider did not answer")
+        : new IntegrationError(
+            "ProviderUnavailable",
+            "Provider request failed",
+          );
     } finally {
+      // The budget covers the whole exchange, so the timer outlives the body
+      // read rather than ending where the headers ended.
       clearTimeout(timer);
     }
   }
