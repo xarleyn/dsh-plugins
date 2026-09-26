@@ -1222,7 +1222,7 @@ excluding the shared 2-line `compatibility.json` wave each row also carries.
 | `dsh-plugin-log-ui` | decision + code | volatile Config; card; shared fake; typert-driven panel | `src/index.ts:70`; `src/client/index.tsx:4,67,71,166,268,299,329`; `compatibility.json:4-5,7`; `scripts/verify-client-bundle.mjs:43,47` | 40 | `tests/client-panel.test.ts:232`, `tests/client-settings-store.test.ts`, `tests/integration.test.ts:2,12,14,21,25,76,125` |
 | `dsh-prompt-firewall` | decision + code | volatile Config; card; shared fake | `src/index.ts:90`; `src/client/index.tsx:4,62,67,153,193,202,216`; `compatibility.json:4-5,7`; `scripts/verify-client-bundle.mjs:34` | 40 | `tests/settings.test.ts:2,12,14,21,25,45`, `tests/client-index.test.ts`, `tests/client-settings-store.test.ts` |
 | `dsh-ui-repair` | decision + code | volatile Config; card; **a DOM selector that is functional, not cosmetic**; the join key this plugin already exemplifies §4.2 | `src/index.ts:28`; `src/client/index.ts:5,27,41,67`; `src/client/card.tsx:1,25,29,148,400`; **`src/client/dom.ts:11`** `[data-slot='settings.plugin.item'] > *` **[verified]**; `package.json:39-41`; `cordis.patch.yml:4` row id → `@yadsh/dsh-ui-repair#dsh-ui-repair`; `scripts/verify-client-bundle.mjs:41` | 40 | `tests/client-index.test.ts:66,71`, `tests/dom.test.ts:46`, `tests/client-bundle.test.ts`, `tests/build-wiring.test.ts` |
-| `dsh-web-fetch-authenticated` | decision + code | volatile Config; card; web tool API untouched (§8.5) so no tool work | `src/index.ts:138`; `src/client/index.tsx:15,17,61,153,185,198,210`; `src/client/sections.tsx:12,51`; `compatibility.json:4-5,7`; `scripts/verify-client-bundle.mjs:52` | 45 | `tests/client-content-types.test.ts`, `tests/client-format.test.ts` |
+| `dsh-web-fetch-authenticated` | ✔ **done in #524** (D1 option 2 — the shell stays ours) | volatile Config; card onto `settings.plugins.tab` reading `ctx.configForms`; web tool API untouched (§8.5) so no tool work | landed: `src/config.ts:155-174` (six top-level `.volatile()` nodes) and `:177-198` (`WebFetchAuthVolatileConfig`, `readVolatileConfig`); `src/index.ts:99` (`Config` is now the reference shape) and `:117-141` (the `installSection` block deleted, `configSource` reads the refs per operation); `src/client/index.tsx:61,184,194,210-217`; `src/client/sections.tsx:12,49-57` (`SettingsScope` → `ConfigForm`); `src/types.ts` — the config arrays went `readonly` (`:43-57,172-180`) because a volatile snapshot is a deep read-only view, and `WEB_FETCH_AUTH_SETTINGS_NAMESPACE` (`:221`) moved here so both halves read one value; `compatibility.json:7`; fallout: `src/policy/match.ts:72`, `src/rule-validation.ts:464`. **The map's `scripts/verify-client-bundle.mjs:52` never existed in this package** — such a script exists in five packages only; the gate is `scripts/verify-package.mjs:51-53` (`cardContract.legacyPatterns`) and the new slot ↔ namespace asserts went into that file's `clientBundle.matches` | 262 insertions / 146 deletions over 13 files | `tests/config.test.ts` (new: the live-node set is exactly the six, and nothing nested is live), `tests/matching.test.ts:152`, `tests/helpers.ts:135-158`; the two the map named — `client-content-types`, `client-format` — needed no change. `tests/credentials.test.ts` cannot load at all: see §13.3 |
 | `dsh-draft-sessions` | code (no settings surface) | client conversation/controller types; **`ISessions.open`/`.clear`, `SessionListState.current`**; typert `schema` | `src/client/composer.ts:32,68,80,118`; `src/client/index.ts:59`; `src/client/shortcut.ts:54,60,125`; `src/client/workspace-contribution.ts:163,215`; `src/remote.ts:80,84`; `compatibility.json:4-5`; `package.json` client deps | 25 | `tests/remote.test.ts:30`, `tests/{client-index,types,sidebar,composer}.test.ts` |
 | `dsh-qa-browser` | code (no settings surface) | client slot/renderer typing; typert `schema` ×8 | `src/client/*` `PropsRuntime<…>` (`:60`); `src/remote*` schema sites; `compatibility.json:4-5`; `package.json:50,52,55` | 25 | `tests/{browser-panel-render,browser-panel-interactions,panel-view,client-*}.test.tsx` |
 | `dsh-answer-review-gate` | code | `'plugin'` source kind (**not a role**, §5); `form: "notice"` vocabulary; deprecated reads | `src/index.ts:146` **[verified error site]** (map said `:128`); `src/candidate.ts:26,72,115`; `src/waiver.ts:30,103,202,209`; `compatibility.json:4-5`; `scripts/verify-package.mjs:31` | 20 | `tests/{candidate:24-25,gate:92-93,225-226,280-281,gate-budget-boundaries:170-171,326-333,integration:115-116,208,waiver-command:44}.test.ts` |
@@ -1398,3 +1398,43 @@ so `src` is 8 calls over 2 declared members and `tests` holds 18 more (12 fake
 sessions and 6 calls; the fakes are what any migration would have to grow a member
 for). The 10 `src` line refs in §11's row were re-verified against the tree and none
 had moved.
+
+### 13.3 Vitest cannot load any module that carries a decorator (since `a843f19`)
+
+Measured while landing #524, and it is not cutover damage: the lockfile rebuild
+`a843f19` ("пересобрать lockfile с нуля") moved **vite `7.3.6` → `8.3.1`** with
+vitest unchanged at `4.1.11`, and a suite that imports a source file containing a
+TypeScript standard decorator now fails at load with
+
+```
+SyntaxError: Invalid or unexpected token
+  <pkg>/src/index.ts:144
+    @(0,__vite_ssr_import_1__.Remote)("status") async status() {
+```
+
+— the transform pipeline leaves the decorator in the emitted module, and no Node
+release parses decorator syntax. Minimal repro, inside any package:
+
+```ts
+// src/zz/dec-probe.ts
+function dec(_target: unknown, _ctx: unknown): void {}
+export class Probe {
+  @dec method(): string { return "ok"; }
+}
+```
+imported by `await import()` in one test: same `SyntaxError`. `@Remote` from
+`@deepseek-ai/dsh-typert-protocol` is not special, and neither package is at
+fault.
+
+Six packages import their decorated host entry from a test, so all six will read
+this as "my suite is red": `dsh-domain-experts`, `dsh-openviking-memory`,
+`dsh-plugin-log-ui`, `dsh-prompt-firewall`, `dsh-qa-integrations`,
+`dsh-web-fetch-authenticated`. None of them was visible before, because each also
+fails §9.3/§9.4 and so its suite never ran.
+
+It is not fixable per package. vite's `OxcOptions` omits `tsconfig` from the
+transform options, and passing `target` explicitly changes nothing — `es2021`,
+`es2022` and `esnext` all reproduce the same failure (measured with a scratch
+`vitest.config.ts` in `dsh-web-fetch-authenticated`, since removed). The fix
+belongs to the shared tooling (`packages/config/vitest/vitest.config.ts`, or the
+vite major it was pulled in under), not to a migration card.
