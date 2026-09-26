@@ -80,12 +80,19 @@ export function AuditPage(props: AuditPageProps): ReactNode {
     // "no audit for this session" is exactly the reader who needs to hear that
     // audits exist elsewhere in the root.
     return (
+      /*
+       * The root keeps `audit-page`: the id names the container, not the branch,
+       * so a test reaches the page the same way whether or not it has an audit,
+       * exactly as `log-panel` stays put while `log-panel-empty` names its note.
+       * The two branches are the same element, so only one of them is ever
+       * mounted and the id stays unique in the document.
+       */
       <div
         className="dsh-audit-page dsh-audit-page--empty"
-        data-testid="audit-page-empty"
+        data-testid="audit-page"
       >
         <UnattachedAudits items={unattached} />
-        <div className="dsh-audit-page__state">
+        <div className="dsh-audit-page__state" data-testid="audit-page-empty">
           <AuditEmptyState hint="An audit appears here after an auditor writes its analysis and report into the audit root." />
         </div>
       </div>
