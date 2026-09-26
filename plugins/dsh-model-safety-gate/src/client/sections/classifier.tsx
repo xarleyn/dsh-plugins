@@ -40,11 +40,13 @@ export function ClassifierSection(props: ConfigProps) {
   const endpoint = describeEndpoint(backend, classifier?.baseURL);
   return (
     <Section
+      testId="safety-section-classifier"
       title="Classifier"
       modified={props.overridden(["classifier"])}
       aside={
         props.overridden(["classifier"]) ? (
           <ResetButton
+            testId="safety-classifier-reset"
             disabled={disabled}
             label="Reset"
             onClick={() => {
@@ -55,7 +57,10 @@ export function ClassifierSection(props: ConfigProps) {
       }
     >
       {remote ? (
-        <div className="msg-notice warn">
+        <div
+          className="msg-notice warn"
+          data-testid="safety-classifier-notice-remote"
+        >
           <strong>Safety classifier is remote.</strong> Prompts, model output,
           and reasoning are sent to {endpoint} for classification. Turn on
           “Require a local classifier” to forbid remote endpoints, or keep the
@@ -64,6 +69,7 @@ export function ClassifierSection(props: ConfigProps) {
       ) : null}
       <div className="msg-grid">
         <SelectField
+          testId="safety-classifier-backend"
           label="Backend"
           value={backend}
           disabled={disabled}
@@ -73,6 +79,7 @@ export function ClassifierSection(props: ConfigProps) {
           }}
         />
         <SelectField
+          testId="safety-classifier-failure-mode"
           label="On classifier failure"
           value={classifier?.failureMode ?? "rules-only"}
           disabled={disabled}
@@ -84,6 +91,7 @@ export function ClassifierSection(props: ConfigProps) {
         {backend === "dsh" ? (
           <>
             <TextField
+              testId="safety-classifier-provider"
               label="Provider id"
               value={classifier?.provider ?? ""}
               disabled={disabled}
@@ -93,6 +101,7 @@ export function ClassifierSection(props: ConfigProps) {
               }}
             />
             <TextField
+              testId="safety-classifier-model"
               label="Model id"
               value={classifier?.model ?? ""}
               disabled={disabled}
@@ -106,6 +115,7 @@ export function ClassifierSection(props: ConfigProps) {
         {remote ? (
           <>
             <TextField
+              testId="safety-classifier-base-url"
               label="Endpoint base URL"
               value={classifier?.baseURL ?? ""}
               disabled={disabled}
@@ -115,6 +125,7 @@ export function ClassifierSection(props: ConfigProps) {
               }}
             />
             <TextField
+              testId="safety-classifier-remote-model"
               label="Model id"
               value={classifier?.model ?? ""}
               disabled={disabled}
@@ -126,6 +137,7 @@ export function ClassifierSection(props: ConfigProps) {
           </>
         ) : null}
         <NumberField
+          testId="safety-classifier-timeout"
           label="Timeout (ms)"
           value={classifier?.timeoutMs ?? 3_000}
           disabled={disabled}
@@ -134,6 +146,7 @@ export function ClassifierSection(props: ConfigProps) {
           }}
         />
         <NumberField
+          testId="safety-classifier-max-tokens"
           label="Maximum reply tokens"
           value={classifier?.maxTokens ?? 128}
           disabled={disabled}
@@ -142,6 +155,7 @@ export function ClassifierSection(props: ConfigProps) {
           }}
         />
         <NumberField
+          testId="safety-classifier-temperature"
           label="Temperature"
           value={classifier?.temperature ?? 0}
           disabled={disabled}
@@ -150,6 +164,7 @@ export function ClassifierSection(props: ConfigProps) {
           }}
         />
         <Toggle
+          testId="safety-classifier-require-local"
           checked={classifier?.requireLocal ?? false}
           disabled={disabled}
           label="Require a local classifier"
@@ -160,6 +175,7 @@ export function ClassifierSection(props: ConfigProps) {
         />
       </div>
       <SecretField
+        testId="safety-classifier-api-key"
         label="Endpoint bearer key"
         configured={props.classifierState?.apiKeyConfigured ?? null}
         disabled={disabled}
@@ -169,7 +185,10 @@ export function ClassifierSection(props: ConfigProps) {
         }}
       />
       {props.classifierState?.active === false && backend !== "none" ? (
-        <div className="msg-notice warn">
+        <div
+          className="msg-notice warn"
+          data-testid="safety-classifier-notice-inactive"
+        >
           This backend is configured but not running:{" "}
           {props.classifierState.reason ?? "no transport is attached."} Until it
           is, every check stops at the deterministic layer.

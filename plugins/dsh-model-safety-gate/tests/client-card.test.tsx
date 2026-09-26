@@ -194,9 +194,10 @@ describe("Safety Gate card", () => {
     expect(card?.parentElement?.className).toBe("msg-card-list");
     expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
     expect(screen.getByText("Model Safety Gate")).toBeTruthy();
-    expect(
-      container.querySelector(".dsh-plugin-card__badge")?.textContent,
-    ).toBe("Warn");
+    const badge = screen.getByTestId("safety-card-badge");
+    // The shell contract still holds: the badge is the host's own element.
+    expect(container.querySelector(".dsh-plugin-card__badge")).toBe(badge);
+    expect(badge.textContent).toBe("Warn");
     expect(container.querySelector(".dsh-plugin-card__chevron")).not.toBeNull();
   });
 
@@ -210,20 +211,20 @@ describe("Safety Gate card", () => {
   it("opens into the configuration and status sections", async () => {
     await renderCard();
     openCard();
-    for (const title of [
-      "Status",
-      "Gate",
-      "Input guard",
-      "Output stream",
-      "Tools and results",
-      "Classifier",
-      "Audit",
-      "Recent verdicts",
-      "Advanced",
+    for (const plane of [
+      "status",
+      "gate",
+      "input",
+      "output",
+      "tools",
+      "classifier",
+      "audit",
+      "verdicts",
+      "advanced",
     ]) {
-      expect(
-        screen.getByRole("heading", { name: new RegExp(title, "u") }),
-      ).toBeTruthy();
+      const section = screen.getByTestId(`safety-section-${plane}`);
+      // Every frame keeps its own heading, so the plane stays reachable by role.
+      expect(within(section).getByRole("heading", { level: 3 })).toBeTruthy();
     }
     await waitFor(() => {
       // The status projection arrives from the Remote after the first poll.
@@ -239,12 +240,12 @@ describe("Safety Gate card", () => {
     await renderCard({ mutate });
     openCard();
 
-    const gate = screen
-      .getByRole("heading", { name: /^Gate/u })
-      .closest("section");
-    const enabled = within(gate as HTMLElement).getByRole("checkbox", {
-      name: /Gate enabled/u,
-    });
+    const gate = screen.getByTestId("safety-section-gate");
+    const enabled = within(gate).getByTestId("safety-gate-enabled");
+    // The switch is still a checkbox reachable by its accessible name.
+    expect(within(gate).getByRole("checkbox", { name: /Gate enabled/u })).toBe(
+      enabled,
+    );
     fireEvent.click(enabled);
     // The revision the card read fences the write, so an edit that raced this
     // surface is refused instead of silently overwritten.
@@ -266,7 +267,7 @@ describe("Safety Gate card", () => {
     });
     openCard();
     expect(
-      screen.getByText(/last workable configuration/u).textContent,
+      screen.getByTestId("safety-card-config-rejected").textContent,
     ).toContain("is unknown");
   });
 
@@ -284,10 +285,8 @@ describe("Safety Gate card", () => {
       },
     });
     openCard();
-    const notice = screen
-      .getByText(/Safety classifier is remote/u)
-      .closest(".msg-notice");
-    expect(notice?.textContent).toContain("https://moderator.example/v1");
+    const notice = screen.getByTestId("safety-classifier-notice-remote");
+    expect(notice.textContent).toContain("https://moderator.example/v1");
   });
 
   it("warns when raw content logging is switched on", async () => {
@@ -297,7 +296,9 @@ describe("Safety Gate card", () => {
       },
     });
     openCard();
-    expect(screen.getByText(/Raw content is on/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("safety-audit-notice-raw-content").textContent,
+    ).toContain("Raw content is on.");
   });
 
   it("offers a reset for the fields the user layer overrides", async () => {
@@ -308,8 +309,14 @@ describe("Safety Gate card", () => {
     });
     openCard();
 
-    expect(screen.getAllByText("modified").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: /Reset 2 overrides/u }));
+    expect(screen.getByTestId("safety-section-gate-modified")).toBeTruthy();
+    expect(screen.getByTestId("safety-section-output-modified")).toBeTruthy();
+    const reset = screen.getByTestId("safety-card-reset-overrides");
+    // The button still announces the number of overrides it clears.
+    expect(screen.getByRole("button", { name: "Reset 2 overrides" })).toBe(
+      reset,
+    );
+    fireEvent.click(reset);
     expect(mutate).toHaveBeenCalledWith(
       [
         { op: "unset", path: ["mode"] },
@@ -322,33 +329,40 @@ describe("Safety Gate card", () => {
   it("disables the controls while a remote browser cannot write", async () => {
     await renderCard({ snapshot: { writable: false } });
     openCard();
-    const gate = screen
-      .getByRole("heading", { name: /^Gate/u })
-      .closest("section");
-    const enabled = within(gate as HTMLElement).getByRole("checkbox", {
-      name: /Gate enabled/u,
-    });
+    const gate = screen.getByTestId("safety-section-gate");
+    const enabled = within(gate).getByTestId("safety-gate-enabled");
+    expect(within(gate).getByRole("checkbox", { name: /Gate enabled/u })).toBe(
+      enabled,
+    );
     expect((enabled as HTMLInputElement).disabled).toBe(true);
   });
 
   it("shows a loading note until the first section arrives", async () => {
     await renderCard({ snapshot: { status: "loading", value: undefined } });
     openCard();
-    expect(
-      screen.getByText(/Loading the Safety Gate configuration/u),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("heading", { name: /Recent verdicts/u }),
-    ).toBeNull();
+    expect(screen.getByTestId("safety-card-loading")).toBeTruthy();
+    expect(screen.queryByTestId("safety-section-verdicts")).toBeNull();
+    expect(screen.queryAllByRole("heading", { level: 3 })).toHaveLength(0);
   });
 
   it("surfaces recent verdicts with their decision and channel", async () => {
     await renderCard();
     openCard();
     await waitFor(() => {
-      expect(screen.getByText("prompt_injection")).toBeTruthy();
+      expect(screen.queryByTestId("safety-verdicts-table")).not.toBeNull();
     });
-    expect(screen.getByText("block")).toBeTruthy();
-    expect(screen.getByText("input")).toBeTruthy();
+    const table = screen.getByTestId("safety-verdicts-table");
+    const row = within(table).getByTestId("safety-verdicts-row");
+    // The projection is still a table, so assistive tech reads the verdicts.
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    expect(
+      within(row).getByTestId("safety-verdicts-decision").textContent,
+    ).toContain("block");
+    expect(within(row).getByTestId("safety-verdicts-channel").textContent).toBe(
+      "input",
+    );
+    expect(
+      within(row).getByTestId("safety-verdicts-categories").textContent,
+    ).toBe("prompt_injection");
   });
 });

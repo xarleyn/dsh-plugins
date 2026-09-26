@@ -23,11 +23,13 @@ export function InputSection(props: ConfigProps) {
   const disabled = !props.writable;
   return (
     <Section
+      testId="safety-section-input"
       title="Input guard"
       modified={props.overridden(["input"])}
       aside={
         props.overridden(["input"]) ? (
           <ResetButton
+            testId="safety-input-reset"
             disabled={disabled}
             label="Reset"
             onClick={() => {
@@ -39,6 +41,7 @@ export function InputSection(props: ConfigProps) {
     >
       <div className="msg-grid">
         <Toggle
+          testId="safety-input-enabled"
           checked={config?.input?.enabled ?? true}
           disabled={disabled}
           label="Scan prompts"
@@ -48,6 +51,7 @@ export function InputSection(props: ConfigProps) {
           }}
         />
         <SelectField
+          testId="safety-input-safety-action"
           label="Safety findings"
           value={config?.input?.safetyAction ?? "block"}
           disabled={disabled}
@@ -57,6 +61,7 @@ export function InputSection(props: ConfigProps) {
           }}
         />
         <SelectField
+          testId="safety-input-quality-action"
           label="Quality findings"
           value={config?.input?.qualityAction ?? "warn"}
           disabled={disabled}

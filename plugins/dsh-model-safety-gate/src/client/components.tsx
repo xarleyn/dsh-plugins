@@ -27,8 +27,15 @@ export interface SectionProps {
   readonly overridden: OverrideCheck;
 }
 
-/** Section frame: title, optional modified marker, optional trailing control. */
+/**
+ * Section frame: title, optional modified marker, optional trailing control.
+ *
+ * The `testId` names the frame, and the override marker hangs its own id off it
+ * (`<section>-modified`) so a test reads "this plane is overridden" off a node
+ * rather than off the word `modified`.
+ */
 export function Section(props: {
+  testId: string;
   title: string;
   modified: boolean;
   hint?: ReactNode;
@@ -36,12 +43,17 @@ export function Section(props: {
   children: ReactNode;
 }) {
   return (
-    <section className="msg-section">
+    <section className="msg-section" data-testid={props.testId}>
       <div className="msg-section-title">
         <h3>
           {props.title}
           {props.modified ? (
-            <span className="msg-modified">modified</span>
+            <span
+              className="msg-modified"
+              data-testid={`${props.testId}-modified`}
+            >
+              modified
+            </span>
           ) : null}
         </h3>
         {props.aside ??
@@ -56,6 +68,7 @@ export function Section(props: {
 
 /** Two-state control with a label and an explanatory hint. */
 export function Toggle(props: {
+  testId: string;
   checked: boolean;
   disabled: boolean;
   label: string;
@@ -71,6 +84,7 @@ export function Toggle(props: {
       <input
         className="msg-toggle"
         type="checkbox"
+        data-testid={props.testId}
         checked={props.checked}
         disabled={props.disabled}
         onChange={(event) => {
@@ -83,6 +97,7 @@ export function Toggle(props: {
 
 /** Fixed-option control for the schema's string unions. */
 export function SelectField(props: {
+  testId: string;
   label: string;
   value: string;
   disabled: boolean;
@@ -94,6 +109,7 @@ export function SelectField(props: {
       <span>{props.label}</span>
       <select
         className="msg-control"
+        data-testid={props.testId}
         value={props.value}
         disabled={props.disabled}
         onChange={(event) => {
@@ -112,6 +128,7 @@ export function SelectField(props: {
 
 /** Whole-number control; the draft commits on blur and on Enter. */
 export function NumberField(props: {
+  testId: string;
   label: string;
   value: number;
   disabled: boolean;
@@ -138,6 +155,7 @@ export function NumberField(props: {
         className="msg-control"
         type="number"
         inputMode="numeric"
+        data-testid={props.testId}
         value={draft}
         disabled={props.disabled}
         onChange={(event) => {
@@ -154,6 +172,7 @@ export function NumberField(props: {
 
 /** Text control; the draft commits on blur and on Enter. */
 export function TextField(props: {
+  testId: string;
   label: string;
   value: string;
   disabled: boolean;
@@ -175,6 +194,7 @@ export function TextField(props: {
       <input
         className="msg-control"
         type="text"
+        data-testid={props.testId}
         value={draft}
         placeholder={props.placeholder ?? ""}
         disabled={props.disabled}
@@ -195,6 +215,7 @@ export function TextField(props: {
  * separator the user is still typing never becomes a stored entry.
  */
 export function ListField(props: {
+  testId: string;
   label: string;
   hint: string;
   value: readonly string[];
@@ -219,6 +240,7 @@ export function ListField(props: {
       <textarea
         className="msg-control"
         rows={3}
+        data-testid={props.testId}
         value={draft}
         placeholder={props.placeholder ?? ""}
         disabled={props.disabled}
@@ -234,10 +256,11 @@ export function ListField(props: {
 
 /** Grouped counters rendered as one row of tiles. */
 export function Stats(props: {
+  testId: string;
   items: ReadonlyArray<{ value: string; label: string }>;
 }) {
   return (
-    <div className="msg-stats">
+    <div className="msg-stats" data-testid={props.testId}>
       {props.items.map((item) => (
         <div className="msg-stat" key={item.label}>
           <b>{item.value}</b>
@@ -255,6 +278,7 @@ export function Stats(props: {
  * from clearing a key it never saw.
  */
 export function SecretField(props: {
+  testId: string;
   label: string;
   configured: boolean | null;
   disabled: boolean;
@@ -264,7 +288,7 @@ export function SecretField(props: {
   const [draft, setDraft] = useState("");
 
   return (
-    <div className="msg-field">
+    <div className="msg-field" data-testid={props.testId}>
       <span>
         {props.label}
         {props.configured === true ? " — configured" : ""}
@@ -274,6 +298,7 @@ export function SecretField(props: {
           className="msg-control"
           type="password"
           autoComplete="off"
+          data-testid={`${props.testId}-input`}
           value={draft}
           disabled={props.disabled}
           placeholder={
@@ -288,6 +313,7 @@ export function SecretField(props: {
         <button
           type="button"
           className="msg-btn"
+          data-testid={`${props.testId}-save`}
           disabled={props.disabled || draft.length === 0}
           onClick={() => {
             props.onSave(draft);
@@ -302,12 +328,18 @@ export function SecretField(props: {
 }
 
 /** Status chip pair: label and value with the mode's tone. */
-export function Chip(props: { label: string; value: string; tone?: string }) {
+export function Chip(props: {
+  testId: string;
+  label: string;
+  value: string;
+  tone?: string;
+}) {
   return (
     <span
       className={
         props.tone === undefined ? "msg-chip" : `msg-chip ${props.tone}`
       }
+      data-testid={props.testId}
     >
       {props.label} <b>{props.value}</b>
     </span>
