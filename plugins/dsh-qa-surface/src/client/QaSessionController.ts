@@ -88,7 +88,11 @@ declare module "@deepseek-ai/dsh-api-session-controller/client" {
  * long as this controller projects it.
  */
 const QA_SURFACE_SESSION_SOURCE = "qaSurface" satisfies SessionReferenceSource;
-import { projectTurnSources, sourceAnchorRoot } from "./turn-sources.js";
+import {
+  chatLegacyOf,
+  projectTurnSources,
+  sourceAnchorRoot,
+} from "./turn-sources.js";
 
 export interface QaAccountsFacade {
   /** The account bearer token, or null while anonymous. */
@@ -182,9 +186,13 @@ interface PendingSubmission {
   readonly message: QaPendingUserMessage;
   /** Number of durable user rows present before this send started. */
   baselineUserCount: number;
+  /**
+   * Number of turns the Chat slice had recorded as finished when this send
+   * started. A turn that has since closed is the last chance the transcript
+   * gets for this question, so it is the fallback that retires the row.
+   */
+  baselineTurnEnds: number;
   accepted: boolean;
-  /** Lets a completed Host turn retire the optimistic row even if Chat lagged. */
-  sawRunning: boolean;
 }
 
 /** What the strip says when the Host refuses one queue operation. */
@@ -546,6 +554,7 @@ export class QaSessionController {
         submission.baselineUserCount = this.state.messages.filter(
           (message) => message.role === "user",
         ).length;
+        submission.baselineTurnEnds = this.durableTurnEndCount();
       }
       let receipts = new Map<string, string>();
       if (files.length > 0) {
@@ -864,6 +873,17 @@ export class QaSessionController {
     return view;
   }
 
+  /**
+   * Turns the loaded Chat window has recorded as durably finished. The Host
+   * writes one per `turn/end`, so the count only moves on a fact the
+   * transcript itself carries — unlike the session's running bit, which the
+   * list relay can also deliver stale.
+   */
+  private durableTurnEndCount(): number {
+    return chatLegacyOf(this.conversationBinding?.snapshot.getSnapshot())
+      .turnEnds.size;
+  }
+
   /** Publish a browser-only copy before any network or Host admission awaits. */
   private beginSubmission(
     text: string,
@@ -904,8 +924,8 @@ export class QaSessionController {
       baselineUserCount: this.state.messages.filter(
         (message) => message.role === "user",
       ).length,
+      baselineTurnEnds: this.durableTurnEndCount(),
       accepted: false,
-      sawRunning: false,
     };
     this.pendingSubmission = submission;
     this.publish();
@@ -1692,13 +1712,19 @@ export class QaSessionController {
     let projected = projectBoundSessionState(projectionInput);
     const pending = this.pendingSubmission;
     if (pending !== undefined) {
-      if (snapshot.running) pending.sawRunning = true;
+      // The optimistic copy retires on a fact the transcript itself carries —
+      // its own row arriving, or a turn closing — and not on the session's
+      // running bit: the Session list relays that one too, and a stale false
+      // at the start of a turn retired the copy before the Chat slice had
+      // assembled the node, which is the frame the question vanished in.
       const committedUserCount = projected.messages.filter(
         (message) => message.role === "user",
       ).length;
       if (
         committedUserCount > pending.baselineUserCount ||
-        (pending.accepted && pending.sawRunning && !snapshot.running)
+        (pending.accepted &&
+          chatLegacyOf(conversationSnapshot).turnEnds.size >
+            pending.baselineTurnEnds)
       ) {
         this.pendingSubmission = undefined;
         // The first projection was intentionally busy while the optimistic

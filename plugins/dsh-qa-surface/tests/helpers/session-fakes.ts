@@ -1,5 +1,9 @@
 import { vi, type Mock } from "vitest";
-import type { ConversationSnapshot } from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type {
+  ConversationNode,
+  ConversationSnapshot,
+} from "@deepseek-ai/dsh-client-ui-conversation/client";
+import { legacy, snapshot as chatView } from "./conversation-fakes.js";
 import type {
   SessionFace,
   SessionListState,
@@ -116,6 +120,44 @@ export function conversationBinding(id: string) {
     // Subscribing the Chat target activates it; tests never register one.
     target: vi.fn(() => new Source(undefined)),
   };
+}
+
+/**
+ * Replace the Chat slice the bound surface projects and notify it, the way the
+ * Host publishes one assembled transcript frame.
+ */
+export function publishChatSlice(
+  binding: ReturnType<typeof conversationBinding> | undefined,
+  slice: ReturnType<typeof legacy>,
+): void {
+  if (binding === undefined) return;
+  binding.snapshot.set(chatView(slice));
+  binding.target.mock.results[0]?.value.set(undefined);
+}
+
+/**
+ * Land one durable user row in the Chat slice: the hand the Host makes when
+ * the prompt it admitted reaches the transcript, which is what replaces the
+ * browser's optimistic copy of the question.
+ */
+export function landDurableUserRow(
+  binding: ReturnType<typeof conversationBinding> | undefined,
+  text: string,
+): void {
+  publishChatSlice(
+    binding,
+    legacy({
+      nodes: [
+        {
+          kind: "user",
+          seq: 1,
+          time: 10,
+          source: {},
+          content: [{ type: "text", text }],
+        },
+      ] as ConversationNode[],
+    }),
+  );
 }
 
 /** One controller world: the fake injects plus the handles tests assert on. */
