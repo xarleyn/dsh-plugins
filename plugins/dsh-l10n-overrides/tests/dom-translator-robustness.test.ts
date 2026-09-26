@@ -6,6 +6,7 @@ import {
   createDiagnostics,
   createTranslator,
   flushMutations,
+  getByTestId,
   translators,
 } from "./dom-translator.helpers.js";
 
@@ -120,7 +121,8 @@ describe("DomTranslator", () => {
   });
 
   it("contains hostile tree walking without throwing into the host", () => {
-    document.body.innerHTML = '<section class="scope">Enviar</section>';
+    document.body.innerHTML =
+      '<section class="scope" data-testid="l10n-scope-host">Enviar</section>';
     const diagnostics = createDiagnostics();
     vi.spyOn(document, "createTreeWalker").mockImplementation(() => {
       throw new Error("tree walker unavailable");
@@ -131,7 +133,7 @@ describe("DomTranslator", () => {
     );
 
     expect(() => translator.setLocale("en")).not.toThrow();
-    expect(document.querySelector(".scope")?.textContent).toBe("Enviar");
+    expect(getByTestId(document, "l10n-scope-host").textContent).toBe("Enviar");
     expect(
       diagnostics
         .snapshot()
@@ -146,7 +148,7 @@ describe("DomTranslator", () => {
     if (foreignDocument === null)
       throw new Error("iframe document unavailable");
     foreignDocument.body.innerHTML = `
-      <section class="scope"><span id="initial">Enviar</span></section>
+      <section class="scope" data-testid="l10n-scope-host"><span id="initial">Enviar</span></section>
     `;
     const translator = new DomTranslator(
       foreignDocument,
@@ -166,7 +168,7 @@ describe("DomTranslator", () => {
     dynamic.textContent = "Enviar";
     dynamic.setAttribute("title", "Enviar");
 
-    foreignDocument.querySelector(".scope")?.append(dynamic);
+    getByTestId(foreignDocument, "l10n-scope-host").append(dynamic);
     await flushMutations();
 
     expect(foreignDocument.querySelector("#initial")?.textContent).toBe("Send");
@@ -175,7 +177,8 @@ describe("DomTranslator", () => {
   });
 
   it("isolates a hostile mutation and continues the same observer batch", async () => {
-    document.body.innerHTML = '<section class="scope"></section>';
+    document.body.innerHTML =
+      '<section class="scope" data-testid="l10n-scope-host"></section>';
     const diagnostics = createDiagnostics();
     const translator = createTranslator(
       [{ source: "Enviar", target: "Send", scope: ".scope" }],
@@ -190,7 +193,7 @@ describe("DomTranslator", () => {
     const valid = document.createElement("span");
     valid.textContent = "Enviar";
 
-    document.querySelector(".scope")?.append(hostile, valid);
+    getByTestId(document, "l10n-scope-host").append(hostile, valid);
     await flushMutations();
 
     expect(valid.textContent).toBe("Send");
