@@ -275,6 +275,18 @@ function policyKey(integrationId: string, operation: string): string {
 }
 
 /**
+ * The identity a binding had when a probe started against it. A verdict is only
+ * worth storing while the row still carries all three: a reconnect swaps the
+ * secret, a mode switch bumps the revision and names another profile, and either
+ * makes the older answer about a credential that is no longer in use.
+ */
+export interface IntegrationBindingGeneration {
+  readonly bindingRevision: number;
+  readonly secretRef: string | null;
+  readonly serviceProfileId: string | null;
+}
+
+/**
  * Durable plugin-owned store, as tables. Every lookup starts from principal +
  * provider, which is the pair the unique index covers, so a lookup reads the
  * one row it needs instead of parsing the whole store — including the audit
@@ -521,23 +533,32 @@ export class IntegrationRepository {
     });
   }
 
+  /**
+   * Record one validation verdict, optionally with the capabilities the probe
+   * found. `expected` is the binding the probe was started against: a verdict
+   * that lands after a reconnect or a mode switch describes the credential that
+   * used to be there, so the write is compare-and-swapped on that identity and
+   * the answer says whether it arrived.
+   */
   updateValidation(
     principal: IntegrationPrincipal,
     provider: IntegrationProviderId,
     success: boolean,
     errorCode: string | null,
-    capabilities?: readonly IntegrationCapability[],
-  ): void {
-    this.storage.transaction(() => {
+    capabilities: readonly IntegrationCapability[] | undefined,
+    expected: IntegrationBindingGeneration,
+  ): boolean {
+    return this.storage.transaction(() => {
       const existing = this.find(principal, provider);
-      if (existing === undefined) return;
+      if (existing === undefined) return false;
       const now = new Date().toISOString();
-      this.storage.db
+      const written = this.storage.db
         .prepare(
           `UPDATE integrations
               SET status = ?, updated_at = ?, last_validated_at = ?,
                   last_error_code = ?, capabilities_json = ?
-            WHERE id = ?`,
+            WHERE id = ? AND binding_revision = ?
+              AND secret_ref IS ? AND service_profile_id IS ?`,
         )
         .run(
           success ? "connected" : "error",
@@ -550,7 +571,11 @@ export class IntegrationRepository {
               : existing.capabilities,
           ),
           existing.id,
+          expected.bindingRevision,
+          expected.secretRef,
+          expected.serviceProfileId,
         );
+      return written.changes > 0;
     });
   }
 
