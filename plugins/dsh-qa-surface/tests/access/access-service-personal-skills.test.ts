@@ -49,7 +49,7 @@ describe("the personal layer of a session policy", () => {
     expect(removed?.policy.userSkills).toEqual(["my-drafts"]);
   });
 
-  it("stays behind an administrator's withdrawal of the same name", async () => {
+  it("reaches a chat that already froze the personal name", async () => {
     const { service, admin, user, skills } = harness();
     personal(skills, "my-notes");
     service.reserveSession(user.token, "session-a", null, false);
@@ -68,14 +68,14 @@ describe("the personal layer of a session policy", () => {
       fakeAgent(),
     );
     expect(next?.policy.userSkills).toEqual([]);
-    // ...while a chat that froze it keeps that snapshot, exactly as it keeps a
-    // role grant the administrator later rewrites.
+    // ...and it does not have to wait for the next chat either: the frozen list
+    // carries the account's own names, and the withdrawn one is dropped from it.
     const frozen = await service.policyForSession(
       user.token,
       "session-a",
       fakeAgent(),
     );
-    expect(frozen?.policy.userSkills).toEqual(["my-notes"]);
+    expect(frozen?.policy.userSkills).toEqual([]);
   });
 
   it("keeps a role-granted skill frozen while the personal layer moves", async () => {
@@ -126,5 +126,46 @@ describe("the personal layer of a session policy", () => {
       "my-drafts",
       "my-notes",
     ]);
+  });
+
+  it("leaves a withdrawn role grant to the frozen snapshot", async () => {
+    const { service, admin, user, skills } = harness();
+    personal(skills, "my-notes");
+    service.createSubrole(admin.token, {
+      id: "analyst",
+      name: "Analyst",
+      enabled: true,
+      capabilities: {
+        tools: { always: ["analytics"], skillGrantable: [] },
+        skills: ["company"],
+      },
+    });
+    service.updateAssignment(admin.token, user.user.id, {
+      allowedSubroles: ["analyst"],
+      defaultSubrole: "analyst",
+    });
+    service.reserveSession(user.token, "session-a", "analyst", false);
+    await service.policyForSession(user.token, "session-a", fakeAgent());
+    service.updateSkillOverride(admin.token, {
+      skillName: "company",
+      disabled: true,
+    });
+
+    const frozen = await service.policyForSession(
+      user.token,
+      "session-a",
+      fakeAgent(),
+    );
+    // The account's own name leaves with the withdrawal; the role's half of the
+    // list is the snapshot the chat started with, and it stays that way.
+    expect(frozen?.policy.userSkills).toEqual(["company", "my-notes"]);
+    service.reserveSession(user.token, "session-b", "analyst", false);
+    const next = await service.policyForSession(
+      user.token,
+      "session-b",
+      fakeAgent(),
+    );
+    // A chat started after the withdrawal resolves the role list without it.
+    expect(next?.policy.userSkills).toEqual(["my-notes"]);
   });
 });
