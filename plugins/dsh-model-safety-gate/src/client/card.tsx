@@ -1,16 +1,15 @@
 /**
  * The Safety Gate settings card.
  *
- * Two sources meet here: the `model-safety-gate` settings namespace, which is
- * the gate's configuration source on the Host, and the `safetyGate` Remote,
- * which reports what the running gate is actually doing. Everything the user
- * changes is written immediately as a path-addressed mutation; the status and
- * verdict views poll the Remote while the card is visible.
+ * Two sources meet here: the gate's live configuration form, which is the
+ * operator's write path, and the `safetyGate` Remote, which reports what the
+ * running gate is actually doing. Everything the user changes is committed
+ * immediately as a path-addressed mutation fenced by the revision the card
+ * read; the status and verdict views poll the Remote while the card is open.
  */
 
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
   InjectFace,
@@ -51,15 +50,15 @@ const REFRESH_INTERVAL_MS = 3_000;
 
 /** The face the slot entry injects into this card. */
 export interface SafetyGateCardFace {
-  readonly scope: SettingsScope<ModelSafetyGateConfig>;
+  readonly form: ConfigForm<ModelSafetyGateConfig>;
   inspect(): Promise<RemoteResult<SafetyGateInspect>>;
 }
 
-type CardProps = PropsRuntime<"settings.plugin.item"> &
+type CardProps = PropsRuntime<"settings.plugins.tab"> &
   InjectFace<SafetyGateCardFace>;
 
-/** Mutation operations as the bound scope declares them. */
-type ScopeOps = Parameters<SettingsScope<ModelSafetyGateConfig>["mutate"]>[0];
+/** Mutation operations as the configuration form declares them. */
+type FormOps = Parameters<ConfigForm<ModelSafetyGateConfig>["mutate"]>[0];
 
 function displayError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -71,8 +70,8 @@ function displayError(error: unknown): string {
   return "The Safety Gate could not complete that request.";
 }
 
-export function SafetyGateCard({ scope, inspect }: CardProps) {
-  const store = useMemo(() => bindSettingsExternalStore(scope), [scope]);
+export function SafetyGateCard({ form, inspect }: CardProps) {
+  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
   const settings = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -80,6 +79,7 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
   );
   const config = settings.value;
   const writable = settings.status === "ready" && settings.writable;
+  const revision = settings.revision;
 
   const [snapshot, setSnapshot] = useState<SafetyGateInspect | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -121,30 +121,30 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
   }, [refresh]);
 
   /**
-   * Path-addressed write into the namespace. The scope's mutation operations
-   * are typed for the wire's JSON values, which a control's value satisfies by
-   * construction; the cast keeps that boundary in one place.
+   * Path-addressed write into the live configuration. The form's operations are
+   * typed for the wire's JSON values, which a control's value satisfies by
+   * construction; the cast keeps that boundary in one place. The revision the
+   * card read fences the write, so an edit that raced this surface is refused
+   * rather than silently overwritten.
    */
   const write = useCallback(
     (path: readonly string[], value: unknown) => {
-      const ops = [
-        { op: "set", path: [...path], value },
-      ] as unknown as ScopeOps;
-      scope.mutate(ops).catch((cause: unknown) => {
+      const ops = [{ op: "set", path: [...path], value }] as unknown as FormOps;
+      form.mutate(ops, revision).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [scope],
+    [form, revision],
   );
 
   const unset = useCallback(
     (path: readonly string[]) => {
-      const ops = [{ op: "unset", path: [...path] }] as unknown as ScopeOps;
-      scope.mutate(ops).catch((cause: unknown) => {
+      const ops = [{ op: "unset", path: [...path] }] as unknown as FormOps;
+      form.mutate(ops, revision).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [scope],
+    [form, revision],
   );
 
   const overridden = useCallback(
@@ -157,11 +157,11 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
     const ops = overrides.map((key) => ({
       op: "unset",
       path: [key],
-    })) as unknown as ScopeOps;
-    scope.mutate(ops).catch((cause: unknown) => {
+    })) as unknown as FormOps;
+    form.mutate(ops, revision).catch((cause: unknown) => {
       setError(displayError(cause));
     });
-  }, [overrides, scope]);
+  }, [form, overrides, revision]);
 
   if (settings.status === "unavailable") return null;
 
@@ -178,64 +178,76 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
   };
 
   return (
-    <CardShell
-      title="Model Safety Gate"
-      description="Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results."
-      badge={
-        <span className="dsh-plugin-card__badge">
-          {badgeText(enabled, mode)}
-        </span>
-      }
-      label={(open) => `${open ? "Hide" : "Show"} settings: Model Safety Gate`}
-      bodyClassName="msg-body"
-    >
-      {settings.status === "loading" ? (
-        <p className="msg-muted">Loading the Safety Gate configuration…</p>
-      ) : (
-        <>
-          {error !== null ? <div className="msg-error">{error}</div> : null}
-          <StatusSection
-            inspect={snapshot}
-            refreshing={refreshing}
-            now={now}
-            onRefresh={() => {
-              void refresh();
-            }}
-          />
-          <GateSection {...sectionProps} />
-          <InputSection {...sectionProps} />
-          <OutputSection {...sectionProps} />
-          <ToolsSection {...sectionProps} />
-          <ClassifierSection {...sectionProps} />
-          <AuditSection {...sectionProps} />
-          <VerdictsSection inspect={snapshot} />
-          <AdvancedSection {...sectionProps} />
-          <div className="msg-footer">
-            <p className="msg-footer-note">
-              Changes apply to the running gate immediately. Chat moderation
-              banners and the per-session override control are not built yet
-              (design SPEC Phase 6), so the{" "}
-              <span className="msg-mono">ui.*</span> keys and{" "}
-              <span className="msg-mono">allowSessionOverride</span> are
-              accepted but have no effect today. The gate is a decision layer,
-              not a sandbox: it does not replace the permission system.
-            </p>
-            {overrides.length > 0 ? (
-              <button
-                type="button"
-                className="msg-btn"
-                disabled={!writable}
-                onClick={resetAll}
-              >
-                Reset{" "}
-                {overrides.length === 1
-                  ? "1 override"
-                  : `${String(overrides.length)} overrides`}
-              </button>
+    // This surface is a page the plugin owns, not a seat the host lists, so the
+    // shell keeps its `ul > li` contract inside a list of our own.
+    <ul className="msg-card-list">
+      <CardShell
+        title="Model Safety Gate"
+        description="Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results."
+        badge={
+          <span className="dsh-plugin-card__badge">
+            {badgeText(enabled, mode)}
+          </span>
+        }
+        label={(open) =>
+          `${open ? "Hide" : "Show"} settings: Model Safety Gate`
+        }
+        bodyClassName="msg-body"
+      >
+        {settings.status === "loading" ? (
+          <p className="msg-muted">Loading the Safety Gate configuration…</p>
+        ) : (
+          <>
+            {error !== null ? <div className="msg-error">{error}</div> : null}
+            {snapshot?.configRejected ? (
+              <div className="msg-error">
+                The gate is still running its last workable configuration:{" "}
+                {snapshot.configRejected}
+              </div>
             ) : null}
-          </div>
-        </>
-      )}
-    </CardShell>
+            <StatusSection
+              inspect={snapshot}
+              refreshing={refreshing}
+              now={now}
+              onRefresh={() => {
+                void refresh();
+              }}
+            />
+            <GateSection {...sectionProps} />
+            <InputSection {...sectionProps} />
+            <OutputSection {...sectionProps} />
+            <ToolsSection {...sectionProps} />
+            <ClassifierSection {...sectionProps} />
+            <AuditSection {...sectionProps} />
+            <VerdictsSection inspect={snapshot} />
+            <AdvancedSection {...sectionProps} />
+            <div className="msg-footer">
+              <p className="msg-footer-note">
+                Changes apply to the running gate immediately. Chat moderation
+                banners and the per-session override control are not built yet
+                (design SPEC Phase 6), so the{" "}
+                <span className="msg-mono">ui.*</span> keys and{" "}
+                <span className="msg-mono">allowSessionOverride</span> are
+                accepted but have no effect today. The gate is a decision layer,
+                not a sandbox: it does not replace the permission system.
+              </p>
+              {overrides.length > 0 ? (
+                <button
+                  type="button"
+                  className="msg-btn"
+                  disabled={!writable}
+                  onClick={resetAll}
+                >
+                  Reset{" "}
+                  {overrides.length === 1
+                    ? "1 override"
+                    : `${String(overrides.length)} overrides`}
+                </button>
+              ) : null}
+            </div>
+          </>
+        )}
+      </CardShell>
+    </ul>
   );
 }
