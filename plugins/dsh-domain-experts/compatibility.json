@@ -9,8 +9,7 @@
       "agents.get",
       "subagents.start",
       "subagents.provider-capabilities",
-      "storageDomain.open",
-      "settings.installSection"
+      "storageDomain.open"
     ],
     "requiredClientFeatures": ["settings.plugins.tab", "typert.remote"]
   },

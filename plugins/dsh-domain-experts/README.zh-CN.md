@@ -74,9 +74,9 @@ dsh plugin --profile web add @yadsh/dsh-domain-experts
 
 ## 配置
 
-插件设置位于 `domain-experts` 命名空间中，在
-`Settings → Plugins → Configurable` 中编辑（领域本身则在
-`Settings → Plugins → Domain Experts` 中编辑）。改动会应用到后续操作。
+插件设置是该插件自身 profile 配置里的实时字段，宿主在 `Settings → Plugins` 下为
+`dsh-domain-experts` 条目渲染其表单。`Domain Experts` 选项卡管理的是领域本身。
+改动会应用到后续操作。
 
 | 选项 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |

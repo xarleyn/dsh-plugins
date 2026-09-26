@@ -1,11 +1,8 @@
 import path from "node:path";
+import type { Volatile } from "@deepseek-ai/cordis";
 import z from "@deepseek-ai/schemastery";
 import { CROSS_DOMAIN_MODES, type CrossDomainMode } from "./types.js";
 
-/** Settings namespace of the plugin's own (non-domain) configuration. */
-export const SETTINGS_NAMESPACE = "domain-experts";
-
-/** Settings namespace keys are restricted to this grammar by DSH. */
 export const DEFAULT_SUBAGENT_PROVIDER = "spawn";
 export const DEFAULT_MEMORY_PROVIDER = "builtin";
 
@@ -54,6 +51,49 @@ export interface Config {
   readonly auditLimit?: number;
 }
 
+/**
+ * Every knob is a live reference: on 0.1.7 a field belongs to the settings form
+ * exactly when its schema node carries `.volatile()`, and the Host then hands
+ * the plugin a stable reference whose value follows the settings document — no
+ * section installed, no source swapped in behind the plugin's back.
+ */
+export type LiveConfig = {
+  readonly [K in keyof Config]-?: Volatile<Config[K]>;
+};
+
+/**
+ * Take one plain snapshot of a live config, for a single operation.
+ *
+ * `resolveConfig()` and everything built on it read ordinary values, so the
+ * volatile layer stops at this boundary. A knob that resolved to nothing is left
+ * out of the result rather than carried as an `undefined` property, which is
+ * what keeps the "the operator named this knob" probes inside `resolveConfig()`
+ * working over a snapshot. A plain entry — a composition without the settings
+ * service, or a test — passes through untouched.
+ */
+export function snapshotConfig(
+  config: Config | LiveConfig | undefined,
+): Config {
+  if (config === undefined) return {};
+  const snapshot: Record<string, unknown> = {};
+  for (const [key, member] of Object.entries(
+    config as Record<string, unknown>,
+  )) {
+    const value = isVolatileRef(member) ? member.get() : member;
+    if (value !== undefined) snapshot[key] = value;
+  }
+  return snapshot as Config;
+}
+
+/** Whether a config member is a live reference rather than a plain value. */
+function isVolatileRef(value: unknown): value is Volatile<unknown> {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as { get?: unknown }).get === "function"
+  );
+}
+
 export interface ResolvedConfig {
   readonly enabled: boolean;
   readonly subagentProvider: string;
@@ -68,61 +108,69 @@ export interface ResolvedConfig {
   readonly auditLimit: number;
 }
 
-export const ConfigSchema: z<Config> = z.object({
+export const ConfigSchema: z<Config, LiveConfig> = z.object({
   enabled: z
     .boolean()
     .default(true)
-    .description(
-      "Register the agent-facing tools and serve the management UI.",
-    ),
+    .description("Register the agent-facing tools and serve the management UI.")
+    .volatile(),
   subagentProvider: z
     .string()
     .default(DEFAULT_SUBAGENT_PROVIDER)
-    .description("ctx.subagents provider used to spawn expert children."),
+    .description("ctx.subagents provider used to spawn expert children.")
+    .volatile(),
   defaultMaxDepth: z
     .natural()
     .default(3)
-    .description("Delegation depth cap pre-filled on new domains."),
+    .description("Delegation depth cap pre-filled on new domains.")
+    .volatile(),
   defaultMaxParallel: z
     .natural()
     .default(3)
     .description(
       "Parallel experts allowed per calling session when the caller is not itself an expert.",
-    ),
+    )
+    .volatile(),
   defaultCrossDomainMode: z
     .string()
     .default("expert-only")
     .description(
       "Cross-domain mode pre-filled on new domains: disabled, expert-only or direct-read.",
-    ),
+    )
+    .volatile(),
   defaultMemoryProvider: z
     .string()
     .default(DEFAULT_MEMORY_PROVIDER)
     .description(
       "Memory provider id every expert uses. Providers are registered when the plugin loads, so naming one the deployment did not start with takes a restart.",
-    ),
+    )
+    .volatile(),
   memoryDbPath: z
     .string()
     .default("")
     .description(
       `Database file of the sqlite memory provider. Empty selects <DSH_HOME>/${DEFAULT_MEMORY_DB_FILE}.`,
-    ),
+    )
+    .volatile(),
   perUserMemory: z
     .boolean()
     .default(true)
     .description(
       "Keep a separate memory namespace per account, where the deployment has accounts. An account's notes stay its own; the domain's and the shared namespaces stay readable.",
-    ),
+    )
+    .volatile(),
   recallLimit: z
     .natural()
     .default(5)
-    .description("Memory records recalled into an expert's persona."),
+    .description("Memory records recalled into an expert's persona.")
+    .volatile(),
   auditLimit: z
     .natural()
     .default(200)
     .description(
       "Execution audit entries kept in memory and mirrored to the log.",
-    ),
+    )
+    .volatile(),
 });
 
 /**

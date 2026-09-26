@@ -8,7 +8,7 @@ Module map for `@yadsh/dsh-domain-experts`. The product contract is
 ```text
 src/
 ├── index.ts            host entry: Config, DomainExpertsService, Typert Remote,
-│                       settings namespace, tool registration, extension APIs
+│                       volatile config, tool registration, extension APIs
 ├── config.ts           Schemastery Config + resolveConfig
 ├── types.ts            the domain model, shared verbatim with the browser
 ├── host/
