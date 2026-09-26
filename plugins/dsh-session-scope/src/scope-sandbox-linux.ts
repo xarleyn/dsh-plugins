@@ -46,6 +46,18 @@ const BWRAP_READ_ONLY_PROFILE = [
 ] as const;
 const BWRAP_STAGING_ROOT = "/dev/.dsh-session-scope";
 
+/**
+ * Make the masked view the only view. The provider confines in a shared PID
+ * namespace, so an unconfined process of the same UID stays addressable as
+ * `/proc/<pid>/root` — a second route to the workspace these mounts hide, open
+ * whenever the kernel lets a same-UID reader resolve that link. Owning the PID
+ * namespace leaves no such pid to meet, so the guarantee rests on the sandbox
+ * and not on Yama, `hidepid=` or the dumpability of whatever host it runs on.
+ */
+function withPrivatePidNamespace(profile: readonly string[]): string[] {
+  return [profile[0]!, "--unshare-pid", ...profile.slice(1)];
+}
+
 function unavailable(detail: string): never {
   throw new SessionScopeError(
     SESSION_SCOPE_ERROR.ISOLATION_UNAVAILABLE,
@@ -246,7 +258,7 @@ export function confineIsolatedBwrap(
     return {
       ...confined,
       argv: [
-        ...confined.argv.slice(0, separator),
+        ...withPrivatePidNamespace(confined.argv.slice(0, separator)),
         "--chdir",
         workdir,
         "--",
@@ -255,7 +267,7 @@ export function confineIsolatedBwrap(
     };
   }
 
-  const profile = confined.argv.slice(0, separator);
+  const profile = withPrivatePidNamespace(confined.argv.slice(0, separator));
   if (policy.mode === "workspace-write") profile.splice(profile.length - 3, 3);
   const bindFlag = policy.mode === "workspace-write" ? "--bind" : "--ro-bind";
   const mounts: string[] = [
