@@ -323,7 +323,10 @@ assert.match(patch, /id: dsh-${pluginName}\\b/u);
 assert.match(patch, new RegExp(\`name: ['"]\${manifest.name}['"]\`, "u"));
 
 // A subpath no build step produces is a promise the published package cannot
-// keep, so every path the public surface names must exist after a build.
+// keep, so every path the public surface names must both exist after a build
+// and sit inside the \`files\` allowlist: npm publishes that list literally
+// (package.json, README and LICENSE it always adds) and skips an entry nothing
+// wrote without a word, so either half alone lets an uninstallable package out.
 const exportTargets = (target) => {
   if (typeof target === "string") return [target];
   if (Array.isArray(target)) return target.flatMap(exportTargets);
@@ -331,14 +334,40 @@ const exportTargets = (target) => {
   return Object.values(target).flatMap(exportTargets);
 };
 
+const published = (manifest.files ?? []).map((entry) =>
+  entry.replace(/\\/+$/u, ""),
+);
+const ships = (file) =>
+  file === "package.json" ||
+  published.some((entry) => file === entry || file.startsWith(entry + "/"));
+const promised = (spec) => spec.replace(/^\\.\\//u, "");
+
+for (const spec of [manifest.main, manifest.types].filter(Boolean)) {
+  const file = promised(spec);
+  await access(new URL(file, packageRoot));
+  assert.ok(ships(file), \`files does not publish the promised \${file}\`);
+}
+
 for (const [subpath, target] of Object.entries(manifest.exports)) {
-  if (subpath === "./package.json") continue;
-  for (const path of exportTargets(target)) {
-    await access(new URL(path, packageRoot));
+  for (const spec of exportTargets(target)) {
+    const file = promised(spec);
+    await access(new URL(file, packageRoot));
+    assert.ok(
+      ships(file),
+      \`files does not publish exports["\${subpath}"] = \${file}\`,
+    );
   }
 }
 
-for (const path of ["lib/index.js", "lib/index.d.ts", "README.md", "LICENSE"]) {
+for (const entry of published) {
+  assert.ok(
+    entry !== "." && !/^(?:src|tests?)(?:\\/|$)/u.test(entry),
+    \`files must not publish sources: \${entry}\`,
+  );
+  await access(new URL(entry, packageRoot));
+}
+
+for (const path of ["README.md", "LICENSE"]) {
   await access(new URL(path, packageRoot));
 }
 
