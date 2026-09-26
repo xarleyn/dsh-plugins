@@ -20,6 +20,7 @@ import {
   QA_SKILL_MAX_BYTES_MAX,
   QA_SKILL_MAX_BYTES_MIN,
 } from "./personal-skills/skill-format.js";
+import { QA_MAX_ACTIVE_REQUESTS_MAX } from "./config-resolvers/session.js";
 import {
   QA_SLASH_MAX_VISIBLE_MAX,
   QA_SLASH_MAX_VISIBLE_MIN,
@@ -98,6 +99,12 @@ const configSchema = z.object({
       provider: nullableString.default(D.session.provider),
       model: nullableString.default(D.session.model),
       reasoningEffort: nullableString.default(D.session.reasoningEffort),
+      maxActiveRequests: z
+        .number()
+        .step(1)
+        .min(0)
+        .max(QA_MAX_ACTIVE_REQUESTS_MAX)
+        .default(D.session.maxActiveRequests),
     })
     .default({ ...D.session })
     .volatile(),

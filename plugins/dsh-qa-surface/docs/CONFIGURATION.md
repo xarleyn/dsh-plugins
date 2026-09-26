@@ -11,6 +11,10 @@ rules are:
   user-resizable transcript/composer width; the page is the only ceiling (the
   content grows until its drag handles reach the edge budget), and each QA
   route persists its chosen width in browser storage;
+- `session.maxActiveRequests` is an integer from 0 through 50 and bounds how
+  many chat turns the stand answers at once; 0 sets no ceiling. A question that
+  finds no place left is held back in the browser rather than refused by the
+  Host — nothing is created, and the composer keeps the text;
 - the transcript's gutter is shared: fenced code blocks alone may break up to
   32px per side out of the text column, never further than the live gutter and
   never into the drag handles' lane, while markdown tables stay in the column,
@@ -176,6 +180,48 @@ When adding tools, update the deployment's reviewed capability inventory as
 part of the same change. The package's
 [default inventory](../capability-policy.json) is intentionally empty, matching
 the default `toolPolicy.allow`.
+
+## Answering a bounded number of questions at once
+
+`session.maxActiveRequests` (integer 0 through 50, default 0 = no ceiling) caps
+how many chat turns the stand answers simultaneously. A deployment hosting its
+model on a single card needs it: the third question does not add capacity, it
+slows the two already running.
+
+The count is read from the Host, because only the Host can see it. It is the
+harness's own `running` on the top-level agents, so a question that arrived
+through the HTTP API occupies a place, a chat another account is reading does,
+and nothing has to be reported back by a browser that closed mid-answer. A
+delegated expert's requests belong to the turn that delegated it, so they do not
+cost a second place.
+
+Before a send the browser asks `qaSurface/queueStatus`. When the stand is full,
+the question is not sent at all: it arrives neither at the Host nor in the
+transcript, the chat of a first question is never created, the composer keeps
+the text, and the visitor reads how many requests the stand already has in work.
+That number is the whole load, this visitor's own turns included, so the notice
+names occupied places rather than a queue ahead of the question it refused to
+send. Closing that notice uncovers the same text, and asking again is the
+visitor's own keystroke.
+
+The ceiling bounds questions, not every send the composer can make. A message
+typed while its own chat is answering joins that chat's queue — the Host takes it
+as the next turn of a driver that is busy either way — so it is admitted without
+the read, and a stand capped at one still lets a visitor add to the conversation
+it is holding. A human command, the slash palette, goes to the Host's command
+runtime and is not held back either: that surface is how a visitor inspects or
+repairs a saturated deployment, and a plugin cannot tell which commands wake the
+model. A command that does wake it is counted by the same Host read, so the next
+question waits behind it as behind any other turn.
+
+Two properties are deliberate, and both come from the same fact — a prompt rides
+the native session RPC, which this plugin does not own:
+
+- the ceiling is a ceiling, not a lock. Two questions pressed in the same
+  instant can overshoot by one; the next read sees both and the stand settles
+  back. What the setting buys is the steady state.
+- an unreadable count sends the question. A deployment that cannot say how busy
+  it is has not earned the right to refuse a visitor.
 
 ## Attachments
 

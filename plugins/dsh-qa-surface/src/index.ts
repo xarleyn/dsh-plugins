@@ -58,6 +58,7 @@ import type { QaPresetScopeLease } from "./access/capability-catalog.js";
 import { createQaSlashRemotes } from "./slash/remotes.js";
 import type { QaSlashRemotes } from "./slash/remotes.js";
 import { QaPromptNotes } from "./prompt-notes.js";
+import { qaActiveRequests, qaQueueStatus } from "./request-queue.js";
 import { QaTools } from "./qa-tools/index.js";
 import { docsDefaultVersionOf } from "./config-resolvers/tools.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
@@ -96,6 +97,7 @@ import type {
   QaPendingApproval,
   QaPendingQuestion,
   QaQuestionAnswerItem,
+  QaQueueStatus,
   QaServiceTokenCreateInput,
   QaServiceTokenSummary,
   QaSurfaceConfig,
@@ -848,6 +850,27 @@ export class QaSurface extends TypertRemoteService {
   @Remote("describe")
   describe(): ResolvedQaSurfaceConfig {
     return this.getConfig();
+  }
+
+  /**
+   * Report how much of the deployment's request ceiling the stand is using, so
+   * a browser holds its question back instead of opening another turn on a
+   * model that is busy answering the ones it allows.
+   *
+   * The count is the Host's, not the browser's: a visitor cannot see another
+   * account's chats, and the HTTP API's questions are invisible to every chat
+   * view. Read-only, and a ceiling rather than a lock — a prompt rides the
+   * native session RPC this plugin does not own, so the boundary is the
+   * browser's own courtesy, and two questions sent in the same instant can
+   * still overshoot by one. What the ceiling buys is that steady state, not a
+   * strict bound.
+   */
+  @Remote("queueStatus")
+  queueStatus(): QaQueueStatus {
+    return qaQueueStatus(
+      this.getConfig().session.maxActiveRequests,
+      qaActiveRequests(this.ctx.agents.roots()),
+    );
   }
 
   /**
