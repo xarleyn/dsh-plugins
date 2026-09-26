@@ -20,6 +20,7 @@ await runVerifyPackage({
   mainTypesMatchRootExport: true,
   publishedDependenciesResolve: true,
   files: ["lib", "README.md", "LICENSE"],
+  requiredFiles: ["README.md", "LICENSE"],
   extra: () => {
     assert.equal(typeof renderReport, "function");
     // A report is model-written markdown, so the sanitizer is part of the
