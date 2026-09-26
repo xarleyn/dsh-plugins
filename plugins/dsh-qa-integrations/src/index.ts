@@ -1,4 +1,4 @@
-import type { Context } from "@deepseek-ai/cordis";
+import type { Context, Fiber } from "@deepseek-ai/cordis";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import {
   createHostLoggerSink,
@@ -10,10 +10,10 @@ import { IntegrationBroker } from "./broker.js";
 import {
   ConfigSchema,
   resolveConfig,
-  type QaIntegrationsConfig,
+  snapshotConfig,
+  type LiveQaIntegrationsConfig,
   type ResolvedQaIntegrationsConfig,
 } from "./config.js";
-import { QA_INTEGRATIONS_SETTINGS_NAMESPACE } from "./shared/settings.js";
 import { IntegrationError, publicIntegrationError } from "./errors.js";
 import Bitrix24Provider from "./providers/bitrix24/index.js";
 import ConfluenceProvider from "./providers/confluence/index.js";
@@ -110,13 +110,13 @@ export class QaIntegrations extends TypertRemoteService {
   /** The Bitrix24 portals this deployment allows, in config order. */
   private configuredBitrix24Portals: readonly IntegrationInstanceSummary[] = [];
   /**
-   * The composition row the Host resolved at load. It stays the base of the
-   * settings section, and the configuration source until the namespace takes
-   * over, so a deployment without a settings provider keeps booting on it.
+   * The configuration source is the plugin's own profile entry: on a 0.1.7
+   * host the entry id *is* the settings namespace, and a field the operator
+   * card may edit is a volatile node in `ConfigSchema` rather than a section
+   * installed beside it. A composition without a settings surface keeps the
+   * same source, so nothing here depends on the surface being reachable.
    */
-  private readonly entryConfig: QaIntegrationsConfig;
-  /** Where the live configuration is read from; the settings namespace swaps this. */
-  private configSource: () => QaIntegrationsConfig;
+  private readonly liveConfig: LiveQaIntegrationsConfig;
   /**
    * The connection store and its key live for the whole process: connections
    * and wrapped secrets belong to the boot path, and only derivations of the
@@ -132,16 +132,15 @@ export class QaIntegrations extends TypertRemoteService {
   /** The mounted tool-name list; an unchanged signature never re-registers. */
   private toolsKey = "";
 
-  constructor(ctx: IntegrationsContext, rawConfig: QaIntegrationsConfig = {}) {
+  constructor(ctx: IntegrationsContext, rawConfig: LiveQaIntegrationsConfig) {
     super(ctx, "qaIntegrations", { namespace: "qaIntegrations" });
     this.owner = ctx;
     this.logger = getPluginLogger({
       pluginId: "dsh-qa-integrations",
       consoleSink: createHostLoggerSink(ctx.logger),
     });
-    this.entryConfig = structuredClone(rawConfig);
-    this.configSource = () => this.entryConfig;
-    const boot = resolveConfig(rawConfig);
+    this.liveConfig = rawConfig;
+    const boot = resolveConfig(snapshotConfig(rawConfig));
     const repository = new IntegrationRepository(boot.dataPath, {
       auditRetentionDays: boot.auditRetentionDays,
     });
@@ -169,7 +168,7 @@ export class QaIntegrations extends TypertRemoteService {
       {},
     );
     this.applyConfig(boot);
-    this.installSettings();
+    this.watchSettings();
     ctx.effect(
       () => () => {
         for (const remove of this.toolRemovers) remove();
@@ -394,52 +393,50 @@ export class QaIntegrations extends TypertRemoteService {
   }
 
   /**
-   * Attach the settings namespace. The installed section becomes the plugin's
-   * configuration source, so an operator card edit re-applies the running
-   * service instead of waiting for a restart; without a settings provider the
-   * composition entry stays authoritative. The read is structural and optional:
-   * a Host without a mounted settings provider keeps this plugin fully working.
+   * Keep the running service in step with the settings namespace this entry
+   * owns. There is nothing to install: the namespace *is* the profile entry,
+   * and the Host serves whatever `ConfigSchema` marks `.volatile()`. Two things
+   * are left to do — decline the generated page the Host would otherwise draw
+   * for it, because this plugin ships its own operator card, and re-apply when
+   * a committed edit lands on the live references. The read is structural and
+   * optional: a Host without a mounted settings provider keeps this plugin
+   * fully working.
    */
-  private installSettings(): void {
+  private watchSettings(): void {
     this.owner.inject(["settings"], (settingsCtx) => {
       const settings = (
-        settingsCtx as unknown as { settings?: SettingsInstallFace }
+        settingsCtx as unknown as { settings?: SettingsSurface }
       ).settings;
       if (settings === undefined) return;
-      settings.installSection(
-        this.owner,
-        QA_INTEGRATIONS_SETTINGS_NAMESPACE,
-        ConfigSchema,
-        this.entryConfig,
-        {
-          setSource: (current) => {
-            this.configSource = current as () => QaIntegrationsConfig;
-          },
-          onChange: () => {
-            this.reapply();
-          },
-          // Constraints the schema alone cannot carry (a TeamCity host pattern
-          // that matches nothing, an instance list with a duplicate id) are
-          // refused at write time, so the card reports them instead of storing
-          // a configuration the resolvers would throw away at the next boot.
-          validate: (value) => {
-            resolveConfig(value as QaIntegrationsConfig);
-          },
-        },
+      settingsCtx.effect(() =>
+        settings.configure({ auto: false }, this.owner.fiber),
       );
     });
+    // The Loader commits a card edit into this entry's volatile references and
+    // tells the owning fiber, and only the owning fiber, that they moved. The
+    // event belongs to the Loader's own types, which this package does not
+    // depend on, so it is reached through the same structural face as the
+    // optional settings service above.
+    (this.owner as unknown as VolatileUpdateFace).on(
+      "loader/volatile-update",
+      () => {
+        this.reapply();
+      },
+    );
   }
 
   /**
    * Re-resolve the source after a committed settings change and rebuild what
-   * derives from it. A source the resolvers refuse keeps the running state:
-   * the settings provider validates on write, so this only covers a value
-   * that arrived through another path.
+   * derives from it. The Host validates an edit against `ConfigSchema` before
+   * it persists, so the resolvers here only refuse what a schema node cannot
+   * express — a TeamCity host pattern that matches nothing, an instance list
+   * with a duplicate id. Such a value keeps the running state and is logged
+   * rather than half-applied.
    */
   private reapply(): void {
     let next: ResolvedQaIntegrationsConfig;
     try {
-      next = resolveConfig(this.configSource());
+      next = resolveConfig(snapshotConfig(this.liveConfig));
     } catch (error) {
       this.logger.warn("config.rejected", {
         message: String((error as Error).message),
@@ -1062,7 +1059,10 @@ export { IntegrationBroker } from "./broker.js";
 export {
   ConfigSchema,
   resolveConfig,
+  snapshotConfig,
+  type LiveQaIntegrationsConfig,
   type QaIntegrationsConfig,
+  type QaIntegrationsSnapshot,
   type ResolvedQaIntegrationsConfig,
 } from "./config.js";
 export {
@@ -1518,17 +1518,20 @@ export {
 } from "./providers/bitrix24/transport.js";
 export default QaIntegrations;
 
-/** Structural face of the Host settings provider, read defensively at runtime. */
-interface SettingsInstallFace {
-  installSection(
-    owner: Context,
-    namespace: string,
-    schema: unknown,
-    entry: unknown,
-    hooks: {
-      setSource(current: () => unknown): void;
-      onChange(): void;
-      validate?(value: unknown): void;
-    },
-  ): void;
+/** Structural face of the optional Host settings service, read defensively. */
+interface SettingsSurface {
+  configure(presentation: { auto?: boolean }, owner?: Fiber): () => void;
+}
+
+/**
+ * Structural face of the Loader event that announces a volatile config commit.
+ * The declaration lives in the Loader's own package, which this plugin does not
+ * depend on; the listener is owned by this fiber either way, so it leaves with
+ * the fiber and needs no disposer of its own.
+ */
+interface VolatileUpdateFace {
+  on(
+    name: "loader/volatile-update",
+    listener: (paths: readonly (readonly string[])[]) => void,
+  ): unknown;
 }
