@@ -118,12 +118,14 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
 
   const reset = (
     paths: readonly (readonly string[])[],
+    testId?: string,
   ): ReactElement | null => {
     const dirty = overridden(paths);
     return (
       <button
         type="button"
         className="dsh-docs-btn link"
+        data-testid={testId}
         disabled={disabled || !dirty}
         onClick={() => {
           void form.mutate(
@@ -156,7 +158,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
         bodyClassName="dsh-docs-body"
       >
         {snapshot.status === "unavailable" ? (
-          <Notice tone="warn">
+          <Notice tone="warn" testId="docs-settings-unavailable">
             Раздел настроек недоступен этому браузеру: значения ниже не читаются
             и не записываются.
           </Notice>
@@ -164,13 +166,18 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
 
         <Section
           title="Конвейер"
-          reset={reset([["enabled"], ["create", "defaultPdfMode"]])}
+          testId="docs-pipeline"
+          reset={reset(
+            [["enabled"], ["create", "defaultPdfMode"]],
+            "docs-pipeline-reset",
+          )}
         >
           <Toggle
             label="Конвейер документов"
             hint="Пять инструментов: создание DOCX/PDF из Markdown, извлечение Markdown, документ по ссылке, конвертация и просмотр структуры. Пока выключено, инструменты не регистрируются."
             checked={enabled}
             disabled={disabled}
+            testId="docs-pipeline-enabled"
             onChange={(value) => {
               write(["enabled"], value);
             }}
@@ -183,6 +190,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
             }
             disabled={fieldDisabled}
             options={PDF_MODES}
+            testId="docs-pipeline-pdf-mode"
             hint="«Как в Word» рендерит DOCX и экспортирует его в PDF — оформление совпадает с файлом Word."
             onCommit={(value) => {
               write(["create", "defaultPdfMode"], value);
@@ -192,13 +200,17 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
 
         <Section
           title="Извлечение"
-          reset={reset([
-            ["extraction", "defaultMode"],
-            ["extraction", "ocr"],
-            ["extraction", "extractImages"],
-            ["extraction", "extractTables"],
-            ["extraction", "maxInlineChars"],
-          ])}
+          testId="docs-extraction"
+          reset={reset(
+            [
+              ["extraction", "defaultMode"],
+              ["extraction", "ocr"],
+              ["extraction", "extractImages"],
+              ["extraction", "extractTables"],
+              ["extraction", "maxInlineChars"],
+            ],
+            "docs-extraction-reset",
+          )}
         >
           <Grid>
             <SelectField
@@ -209,6 +221,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               }
               disabled={fieldDisabled}
               options={EXTRACTION_MODES}
+              testId="docs-extraction-mode"
               hint="Точный использует структурный разборщик; быстрый — облегчённый, если он включён."
               onCommit={(value) => {
                 write(["extraction", "defaultMode"], value);
@@ -222,6 +235,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               }
               disabled={fieldDisabled}
               options={OCR_MODES}
+              testId="docs-extraction-ocr"
               hint="Политика распознавания для документов без текстового слоя."
               onCommit={(value) => {
                 write(["extraction", "ocr"], value);
@@ -236,6 +250,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               DEFAULT_DOCUMENTS_CONFIG.extraction.extractImages
             }
             disabled={fieldDisabled}
+            testId="docs-extraction-images"
             onChange={(value) => {
               write(["extraction", "extractImages"], value);
             }}
@@ -248,6 +263,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               DEFAULT_DOCUMENTS_CONFIG.extraction.extractTables
             }
             disabled={fieldDisabled}
+            testId="docs-extraction-tables"
             onChange={(value) => {
               write(["extraction", "extractTables"], value);
             }}
@@ -261,6 +277,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
             min={1_000}
             max={5_000_000}
             disabled={fieldDisabled}
+            testId="docs-extraction-max-chars"
             hint="Сколько извлечённого Markdown возвращается модели. Артефакт всегда хранит весь текст."
             onCommit={(value) => {
               write(["extraction", "maxInlineChars"], value);
@@ -271,14 +288,18 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
         <Section
           title="Разборщики"
           hint="Основной разбор — Docling; pandoc и LibreOffice рендерят документы. Отсутствие программы видно в логе при старте."
-          reset={reset([
-            ["docling", "enabled"],
-            ["docling", "baseUrl"],
-            ["pandoc", "executable"],
-            ["libreoffice", "executable"],
-            ["markitdown", "enabled"],
-            ["markitdown", "executable"],
-          ])}
+          testId="docs-parsers"
+          reset={reset(
+            [
+              ["docling", "enabled"],
+              ["docling", "baseUrl"],
+              ["pandoc", "executable"],
+              ["libreoffice", "executable"],
+              ["markitdown", "enabled"],
+              ["markitdown", "executable"],
+            ],
+            "docs-parsers-reset",
+          )}
         >
           <Toggle
             label="Разборщик Docling"
@@ -288,6 +309,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               DEFAULT_DOCUMENTS_CONFIG.docling.enabled
             }
             disabled={fieldDisabled}
+            testId="docs-parsers-docling"
             onChange={(value) => {
               write(["docling", "enabled"], value);
             }}
@@ -296,6 +318,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
             label="Адрес Docling"
             value={config?.docling?.baseUrl ?? ""}
             placeholder={DEFAULT_DOCUMENTS_CONFIG.docling.baseUrl}
+            testId="docs-parsers-docling-url"
             disabled={
               fieldDisabled ||
               !(
@@ -314,6 +337,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               value={config?.pandoc?.executable ?? ""}
               placeholder={DEFAULT_DOCUMENTS_CONFIG.pandoc.executable}
               disabled={fieldDisabled}
+              testId="docs-parsers-pandoc"
               onCommit={(value) => {
                 write(["pandoc", "executable"], value.trim());
               }}
@@ -323,6 +347,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               value={config?.libreoffice?.executable ?? ""}
               placeholder={DEFAULT_DOCUMENTS_CONFIG.libreoffice.executable}
               disabled={fieldDisabled}
+              testId="docs-parsers-libreoffice"
               onCommit={(value) => {
                 write(["libreoffice", "executable"], value.trim());
               }}
@@ -336,6 +361,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               DEFAULT_DOCUMENTS_CONFIG.markitdown.enabled
             }
             disabled={fieldDisabled}
+            testId="docs-parsers-markitdown"
             onChange={(value) => {
               write(["markitdown", "enabled"], value);
             }}
@@ -345,19 +371,24 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
         <Section
           title="Артефакты"
           hint="Каждая операция складывает исходник, результат, вложения и manifest.json в один каталог."
-          reset={reset([
-            ["storage", "root"],
-            ["storage", "retainSource"],
-            ["storage", "retainInputs"],
-            ["retention", "enabled"],
-            ["retention", "maxAgeDays"],
-          ])}
+          testId="docs-artifacts"
+          reset={reset(
+            [
+              ["storage", "root"],
+              ["storage", "retainSource"],
+              ["storage", "retainInputs"],
+              ["retention", "enabled"],
+              ["retention", "maxAgeDays"],
+            ],
+            "docs-artifacts-reset",
+          )}
         >
           <TextField
             label="Каталог артефактов"
             value={config?.storage?.root ?? ""}
             placeholder="<рабочая папка сессии>/.qa/artifacts/documents"
             disabled={fieldDisabled}
+            testId="docs-artifacts-root"
             hint="Абсолютный путь для общего тома. Пусто — каждая сессия хранит документы в своей рабочей папке."
             onCommit={(value) => {
               write(
@@ -374,6 +405,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               DEFAULT_DOCUMENTS_CONFIG.storage.retainSource
             }
             disabled={fieldDisabled}
+            testId="docs-artifacts-retain-source"
             onChange={(value) => {
               write(["storage", "retainSource"], value);
             }}
@@ -386,6 +418,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               DEFAULT_DOCUMENTS_CONFIG.storage.retainInputs
             }
             disabled={fieldDisabled}
+            testId="docs-artifacts-retain-inputs"
             onChange={(value) => {
               write(["storage", "retainInputs"], value);
             }}
@@ -398,6 +431,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               DEFAULT_DOCUMENTS_CONFIG.retention.enabled
             }
             disabled={fieldDisabled || (config?.storage?.root ?? "") === ""}
+            testId="docs-artifacts-retention"
             onChange={(value) => {
               write(["retention", "enabled"], value);
             }}
@@ -410,6 +444,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
             }
             min={1}
             max={3_650}
+            testId="docs-artifacts-max-age-days"
             disabled={
               fieldDisabled ||
               (config?.storage?.root ?? "") === "" ||
@@ -426,14 +461,18 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
 
         <Section
           title="Шаблоны и лимиты"
-          reset={reset([
-            ["templates", "root"],
-            ["templates", "default"],
-            ["limits", "maxInputBytes"],
-            ["limits", "maxMarkdownChars"],
-            ["limits", "maxPages"],
-            ["limits", "maxExtractedImages"],
-          ])}
+          testId="docs-templates"
+          reset={reset(
+            [
+              ["templates", "root"],
+              ["templates", "default"],
+              ["limits", "maxInputBytes"],
+              ["limits", "maxMarkdownChars"],
+              ["limits", "maxPages"],
+              ["limits", "maxExtractedImages"],
+            ],
+            "docs-templates-reset",
+          )}
         >
           <Grid>
             <TextField
@@ -441,6 +480,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               value={config?.templates?.root ?? ""}
               placeholder="<рабочая папка сессии>/document-templates"
               disabled={fieldDisabled}
+              testId="docs-templates-root"
               hint="Абсолютный путь; внутри должен лежать manifest.yml со списком шаблонов."
               onCommit={(value) => {
                 write(
@@ -456,6 +496,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
                 DEFAULT_DOCUMENTS_CONFIG.templates.default
               }
               disabled={fieldDisabled}
+              testId="docs-templates-default"
               hint="Имя шаблона, который применяется, когда агент не назвал свой."
               onCommit={(value) => {
                 write(["templates", "default"], value.trim());
@@ -472,6 +513,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               min={1_024}
               max={4_294_967_296}
               disabled={fieldDisabled}
+              testId="docs-templates-max-input-bytes"
               onCommit={(value) => {
                 write(["limits", "maxInputBytes"], value);
               }}
@@ -485,6 +527,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               min={1_000}
               max={50_000_000}
               disabled={fieldDisabled}
+              testId="docs-templates-max-markdown-chars"
               onCommit={(value) => {
                 write(["limits", "maxMarkdownChars"], value);
               }}
@@ -500,6 +543,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               min={1}
               max={100_000}
               disabled={fieldDisabled}
+              testId="docs-templates-max-pages"
               onCommit={(value) => {
                 write(["limits", "maxPages"], value);
               }}
@@ -513,6 +557,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
               min={0}
               max={10_000}
               disabled={fieldDisabled}
+              testId="docs-templates-max-images"
               onCommit={(value) => {
                 write(["limits", "maxExtractedImages"], value);
               }}

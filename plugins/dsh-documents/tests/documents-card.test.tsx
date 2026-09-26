@@ -152,7 +152,9 @@ describe("the Plugins tab surface", () => {
   it("fences every write with the revision the form reports", () => {
     const fences: (number | undefined)[] = [];
     renderCard([], true, fences);
-    fireEvent.click(screen.getByLabelText(/Конвейер документов/u));
+    // The switch is reached by its hook: what this asserts is the fence on the
+    // write, so a reworded caption must not blind the test.
+    fireEvent.click(screen.getByTestId("docs-pipeline-enabled"));
     // Every write carries the revision the form reports, read at write time: a
     // document another browser moved in between is refused instead of overwritten.
     expect(fences).toEqual([1]);
