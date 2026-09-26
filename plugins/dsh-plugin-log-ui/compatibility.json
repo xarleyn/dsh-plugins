@@ -4,7 +4,7 @@
     "range": ">=0.1.7-rc.2 <0.2.0",
     "testedReleases": ["0.1.7-rc.2"],
     "requiredClientFeatures": [
-      "settings.plugin.item",
+      "settings.plugins.tab",
       "sidebar.right.pane.tab",
       "sidebarRightTabs"
     ]

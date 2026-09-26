@@ -61,6 +61,9 @@ export function logPanelDefinition(): SidebarRightTabDefinition {
     title: () => "Plugin logs",
     guide: [
       {
+        // The capsule's own stable id, distinct from the provider id the
+        // registry pairs it with when it renders the guide.
+        id: LOG_PANEL_ID,
         // After the workspace files capsule, which opens the column's default tab.
         order: 20,
         title: () => "Plugin logs",
