@@ -189,7 +189,7 @@ Per package:
 
 | Package | errors | Dominant cause |
 | --- | --- | --- |
-| `dsh-qa-integrations` | 76 | mostly cascade from unbuilt `@yadsh/dsh-qa-surface/client/*`; real work is the card + `SettingsScope` |
+| `dsh-qa-integrations` | **[#514 landed]** decision + code — `SettingsScope`→`ConfigForm` swaps (77 errors, 66 of them the `@yadsh/dsh-qa-surface` cascade) and the card, on **D1 option 2**: the shell, `AGENTS.md` and the shared gate are untouched, the card moved off the deleted slot instead. Host: `installSettings`/`SettingsInstallFace` deleted, `ConfigSchema` marks every card-editable node `.volatile()` (`dataPath` among them — the card writes it and the restart caveat stays), the service takes one `snapshotConfig` per operation, re-applies on `loader/volatile-update` and declines the generated page with `settings.configure({ auto: false }, fiber)`; write-time `validate` has no rc.2 counterpart, so a value the resolvers refuse now persists and the service keeps its state plus a `config.rejected` log. Client: the operator card is a `settings.plugins.tab` page (`qa-integrations-config`, order 30) whose `ConfigForm` comes from `configForms.get` behind `whileServed`, wrapped in the plugin-owned `<ul>` the shell contract already requires. | `src/index.ts` `installSettings` was at `:403-431`, the face at `:1522-1525` (map said `:409,1523`); `src/config.ts` schema + `LiveQaIntegrationsConfig`/`snapshotConfig`/`QaIntegrationsSnapshot` — **the map missed this file**, it is where the volatility lives; `src/client/index.tsx` `:3,40-55,93-114` (was `:3,44-53,75,93-98`); `src/client/operator-card.tsx` `:16,56-64,80-110` plus the new `OperatorCardTab` (was `:5,16,57,60,64,141`); `scripts/verify-package.mjs:206-207` — **not `:215-216`** — now asserts `doesNotMatch` on `settings.plugin.item`. `src/client/card.tsx` (map `:5,46`) and `compatibility.json` needed no edit: its 4 errors and its metadata line were cascade and #511. | 120 | `tests/client-registration.test.ts`, `tests/client-bundle.test.tsx`, `tests/operator-card.test.tsx` (prop `scope`→`form`), `tests/plugin.test.ts` (install stub → `configure` capture + `commit()`), `tests/card.test.tsx` unchanged. Measured on this card: `pnpm -r --no-bail typecheck` reports **0** errors for the package once `@yadsh/dsh-qa-surface` ships `lib/types`, 6 `TS2307` while #513 has not landed; `nx build` and `verify:package` green; `vitest run` 110 files / 810 tests green, and the 2 red files (`plugin`, `credential-help`) are **not** this migration — the rc.2 lockfile's vite 8 SSR transform leaves `@Remote`'s standard decorators in `src/index.ts` for Node to reject, reproducible on untouched `HEAD` of this card and in `dsh-domain-experts` |
 | `dsh-qa-surface` | **decision + code, biggest** | volatile `Config`; card path; `SettingsScopeBinder` gone; **4 new `rc.2` reads**; provenance→producer; `dsh-agent-presets` rename; own `qaSurfacePanels` merge | `src/index.ts:487,561`; `src/client/index.tsx:11,528,834-859`; `src/client/QaConfigController.ts:1,35`; `src/client/settings/card.tsx:13,69,73,77,242`; `src/client/QaTranscriptAdapter.ts:476,248`; `src/client/turn-sources.ts:82`; `src/client/QaSessionController.ts:1644`; `src/client/project-session-state.ts:75`; `src/client/panels/contract.ts:70`; `src/access/{capability-catalog.ts:33,207,218,model.ts:533}`; `src/qa-tools/lifecycle.ts:40` already `agent/created` ✔; deprecated reads `prompt-notes.ts:375`, `secure-session.ts:547`, `admin/session-log.ts:130,231`, `provenance/host-store.ts:83,236`, `qa-tools/durable-marker.ts:97,101`; `compatibility.json:4-5,12`; `scripts/verify-package.mjs:501-517`; `package.json:61-70`; `QaChangelog.tsx` (§6) | 130 | ≈14 files: `tests/wiring/index-wiring.test.ts:81-82`, `tests/config/config-controller.test.ts`, `tests/provenance/*`, `tests/transcript/*`, `tests/qa-tools/*`, `tests/admin/*` |
 | `dsh-jev-compaction` | 27 | card, `installSection`, LLM message shapes |
 | `dsh-qa-browser` | 24 | card surface, client slots |
@@ -1134,6 +1134,18 @@ suites are exactly the 18 type-broken packages. The runtime hazards in §5
 (`agent/created` `@mode serial`, the `auto`-preset attestation, emitted
 tool-change blocks) are **not** covered by any failure this run produced — they
 need the stands in §12 step 6, not `nx test`.
+
+**[#514 fix] that sentence is about the measured run, not about the cutover.**
+Once a package's own types compile, its suite still cannot load if its host entry
+uses a `@Remote(...)` decorator: the `rc.2` lockfile's vite 8 SSR transform
+lowers nothing and Node 24 rejects the leftover `@(...)` syntax, so
+`SyntaxError: Invalid or unexpected token` is thrown at import with no frame.
+Observed in `dsh-qa-integrations` (`tests/plugin.test.ts`,
+`tests/credential-help.test.ts`) on untouched `HEAD`, and again in
+`dsh-domain-experts` (`tests/wiring.test.ts`), i.e. it is a toolchain cost of the
+relock rather than a migration item in any §11 row. `dsh-qa-integrations` passes
+810 of 810 tests with those two files pointed at the compiled `lib/` entry, which
+is how this card verified its host half.
 
 ### 9.6 Baseline control
 

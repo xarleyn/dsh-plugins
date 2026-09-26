@@ -118,14 +118,18 @@ describe("classic browser bundle", () => {
         getSnapshot: () => ({ stage: "authed", token: "qa-account-token" }),
         subscribe: () => () => {},
       },
-      settingsScope: {
-        bind: () => ({
+      configForms: {
+        get: () => ({
           getSnapshot: () => ({ status: "unavailable" }),
           subscribe: () => () => {},
           mutate: async () => {},
           set: async () => {},
           unset: async () => {},
         }),
+        whileServed: (
+          namespaces: readonly string[],
+          register: (served: ReadonlySet<string>) => () => void,
+        ) => register(new Set(namespaces)),
       },
       slots: {
         inject: (_name: string, factory: () => unknown) => {
@@ -162,13 +166,14 @@ describe("classic browser bundle", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(sections.map((section) => section.id)).toEqual(["integrations"]);
-    // Two slot mounts leave the bundle: the operator card on the plugin's
-    // settings namespace (first — it does not wait for `describe()`) and the
-    // feature-owned plugins tab.
+    // Two tabs leave the bundle: the operator card over the plugin's own entry
+    // (first — it does not wait for `describe()`) and the account tab.
     expect(slots).toHaveLength(2);
     expect(slots[0]).toMatchObject({
-      name: "settings.plugin.item",
-      key: "qa-integrations",
+      name: "settings.plugins.tab",
+      id: "qa-integrations-config",
+      order: 30,
+      label: "Интеграции — конфигурация",
     });
     expect(slots[0]?.component).toBeDefined();
     expect(slots[1]).toMatchObject({
