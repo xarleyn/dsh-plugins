@@ -49,8 +49,10 @@ function readSessionEvents(agent: ParentAgent): readonly unknown[] {
 
 /**
  * Recognize a user/message event carrying a human-authored message. The
- * `source.kind === "user"` check separates real task messages from
- * plugin-injected user-role context.
+ * `source.kind === "user"` check is the only human producer in the
+ * merge-extensible source map, so injected user-role context — a host package
+ * answering under its own kind — falls through here instead of matching an
+ * allowlist the host keeps growing.
  */
 function readHumanMessageText(event: unknown): string | null {
   const record = event as { type?: unknown; data?: unknown } | undefined;
