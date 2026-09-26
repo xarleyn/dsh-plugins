@@ -1,20 +1,26 @@
 # DSH 0.1.7-rc migration map
 
-Status: **investigation complete for both `rc.1` and `rc.2`; cutover not
-performed.** The repository stays on the `0.1.5-rc.2` baseline (see
-[COMPATIBILITY.md](COMPATIBILITY.md)). Sections 1–7 are the `rc.1` pass; sections
+Status: **investigation complete for both `rc.1` and `rc.2`; the cutover is under
+way.** The repository has moved onto the `0.1.7-rc.2` baseline — the named
+catalogs first (§1 step 1), then the mechanical metadata wave (§6); see
+[COMPATIBILITY.md](COMPATIBILITY.md). Sections 1–7 are the `rc.1` pass; sections
 8–13 are the `rc.1 → rc.2` delta, a fresh trial bump measured at `rc.2`, and the
 per-package work breakdown. Read 8–13 as the current truth: everywhere the two
 disagree, `rc.2` wins, and §1–§7 carry `[rc.2 fix]` markers on the items this
 pass disproved.
 
-The `rc.2` catalog bump is **deliberately not committed**: §9 measures it, and it
-leaves 14 build targets and 18 typecheck projects red against a green baseline
-control in the same worktree. A red branch on `dsh-v0.1.7-rc` would block every
-other card on the line, and §10's D1 still has no answer — D1 gates the card
-rewrite in 12 of the 24 affected packages, so the cutover cannot start end-to-end
-until it does. Ship the bump only as the first commit of §12's sequence, with the
-§6 metadata wave last.
+The `rc.2` catalog bump **is committed** (§7 step 2, §12 item 1): the tree still
+carries the build and typecheck redness §9 measured — #509 re-measured it at 13
+failed build targets and 293 typecheck errors across 17 projects, against a green
+baseline control in the same worktree — and §10's D1 still has no answer, which
+gates the card rewrite in 12 of the 24 affected packages. The §6 metadata wave was
+then run **ahead of** the per-package content migration, against §7 step 8's
+ordering, on the epic's decision: one card edits the version metadata of every
+package once, instead of every package card editing the same files again.
+Consequence to keep in view: `testedReleases` and the "tested against" lines in
+plugin READMEs are an evidence claim, and for the packages still red in §9 that
+claim is currently asserted rather than measured — the content cards owe it a real
+run.
 
 Method, pass 1: five parallel investigations over the harness sources at the
 `dsh-v0.1.7-rc.1` tag (a local checkout of the DeepSeek Harness repository), then
@@ -667,6 +673,17 @@ Also **[source]**, no compile error but runtime-relevant:
   (`llm/src/content.ts:368-375`).
 
 ## 6. Mechanical version-metadata wave
+
+[wave #511] **Executed.** Everything this section owns moved to `0.1.7-rc.2`: the
+26 `compatibility.json` pairs, both `deepEqual` verify scripts, the openviking
+bundle assert, the generator defaults and their test, the three root gate
+fixtures, and the Requirement/Compatibility lines in plugin docs. What stayed on
+`0.1.5-rc.2` records an observation rather than a claim: Phase 0 and spike findings
+documents, `SPEC` baseline tags and `blob/dsh-v0.1.5-rc.2` permalinks, dated plan
+notes, the `QaChangelog.tsx` entry of a released version (the file is listed here,
+but rewriting a published entry is the CHANGELOG rule), the two
+`@deepseek-ai/dsh-agent-presets` catalog keys (§1: that name does not exist at
+`0.1.7-rc.2`), and the measurements in this document.
 
 97 files carry the literal `0.1.5-rc.2` (excluding `node_modules` /
 `pnpm-lock.yaml`). `pnpm check` does **not** cross-check the catalog against the

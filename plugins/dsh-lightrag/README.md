@@ -132,7 +132,7 @@ by name.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (channel `next`), host feature
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (channel `next`), host feature
   `tools/register`.
 - Node `^22.19.0 || >=24.0.0`.
 

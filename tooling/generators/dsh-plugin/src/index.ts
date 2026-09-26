@@ -361,8 +361,8 @@ console.log("verify-package: all gates passed");
       {
         deepseekHarness: {
           channel: "next",
-          range: ">=0.1.5-rc.2 <0.2.0",
-          testedReleases: ["0.1.5-rc.2"],
+          range: ">=0.1.7-rc.2 <0.2.0",
+          testedReleases: ["0.1.7-rc.2"],
         },
         node: "^22.19.0 || >=24.0.0",
       },
@@ -392,7 +392,7 @@ ${features.map((feature) => `- ${feature}`).join("\n")}
 
 ## Requirements
 
-- DeepSeek Harness >=0.1.5-rc.2 <0.2.0
+- DeepSeek Harness >=0.1.7-rc.2 <0.2.0
 - Node.js ^22.19.0 or >=24.0.0
 
 ## Installation
@@ -425,7 +425,7 @@ See [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/${projectRoot}/SP
 
 ## Compatibility
 
-- DeepSeek Harness >=0.1.5-rc.2 <0.2.0 (see \`compatibility.json\`)
+- DeepSeek Harness >=0.1.7-rc.2 <0.2.0 (see \`compatibility.json\`)
 
 ## Development
 
@@ -470,9 +470,9 @@ ${options.description ?? `DSH plugin: ${pluginName}.`}
 
 ## 2. Requirements
 
-- DeepSeek Harness \`>=0.1.5-rc.2 <0.2.0\`
+- DeepSeek Harness \`>=0.1.7-rc.2 <0.2.0\`
 - Node.js \`^22.19.0 || >=24.0.0\`
-- Cordis \`^4.0.2\`${specExtraRequirements}
+- Cordis \`^4.0.4\`${specExtraRequirements}
 
 ## 3. Entrypoints
 
