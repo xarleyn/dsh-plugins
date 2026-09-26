@@ -4,7 +4,7 @@ import {
   readNotificationPrefs,
   resolveNoticeChannels,
   writeNotificationPrefs,
-} from "../src/client/notifications/preferences.js";
+} from "../../../src/client/notifications/preferences.js";
 
 const KEY = "dsh-qa-surface.session:v1:/qa:notifications";
 

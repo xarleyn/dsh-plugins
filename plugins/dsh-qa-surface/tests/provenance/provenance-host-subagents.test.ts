@@ -9,7 +9,7 @@ import {
   fakeSession,
   harness,
   readEvents,
-} from "../provenance-host.helpers.js";
+} from "./provenance-host.helpers.js";
 
 describe("Host provenance lifecycle", () => {
   it("bubbles nested observable child sources to the root turn", () => {

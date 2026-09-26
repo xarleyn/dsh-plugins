@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { QaTurnCompletion } from "../src/client/notifications/turn-completion-source.js";
+import type { QaTurnCompletion } from "../../../src/client/notifications/turn-completion-source.js";
 import {
   QA_TURN_NOTICE_BODY,
   isPageFocused,
@@ -10,7 +10,7 @@ import {
   readNotificationPermission,
   requestNotificationPermission,
   type QaNoticeContext,
-} from "../src/client/notifications/notification-dispatcher.js";
+} from "../../../src/client/notifications/notification-dispatcher.js";
 
 const completion: QaTurnCompletion = {
   sessionId: "session-42",

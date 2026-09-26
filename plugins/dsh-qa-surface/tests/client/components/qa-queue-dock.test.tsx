@@ -5,8 +5,8 @@ import { describe, expect, it, vi } from "vitest";
 import {
   QaQueueDock,
   type QaQueueDockProps,
-} from "../src/client/components/QaQueueDock.js";
-import type { QaQueueRow } from "../src/types.js";
+} from "../../../src/client/components/QaQueueDock.js";
+import type { QaQueueRow } from "../../../src/types.js";
 
 function row(overrides: Partial<QaQueueRow> = {}): QaQueueRow {
   return {
