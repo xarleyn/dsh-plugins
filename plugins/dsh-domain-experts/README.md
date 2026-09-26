@@ -189,7 +189,7 @@ match is attempted.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (tested against `0.1.5-rc.2`)
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (tested against `0.1.7-rc.2`)
 - Node `^22.19.0 || >=24.0.0`
 - Browser half requires the `settings.plugins.tab` slot
 

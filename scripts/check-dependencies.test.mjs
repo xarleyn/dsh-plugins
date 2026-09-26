@@ -64,9 +64,9 @@ const WORKSPACE_WITH_CATALOGS = [
   "",
   "catalogs:",
   "  dsh:",
-  "    '@deepseek-ai/dsh-llm': '^0.1.5-rc.2'",
+  "    '@deepseek-ai/dsh-llm': '^0.1.7-rc.2'",
   "  dsh-dev:",
-  "    '@deepseek-ai/dsh-llm': '0.1.5-rc.2'",
+  "    '@deepseek-ai/dsh-llm': '0.1.7-rc.2'",
   "  runtime:",
   "    zod: '^4.4.3'",
   "",
@@ -128,7 +128,7 @@ function runChecker(root, { dedupe = "skipped" } = {}) {
   });
 }
 
-function dshRuntime(version = "^0.1.5-rc.2") {
+function dshRuntime(version = "^0.1.7-rc.2") {
   return { "@deepseek-ai/dsh-llm": version };
 }
 

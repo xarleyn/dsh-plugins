@@ -115,6 +115,6 @@ our prepended listener the effective composition is
 
 ## 9. Supported versions
 
-- Tested: DSH 0.1.5-rc.2 (`>=0.1.5-rc.2 <0.2.0` declared).
+- Tested: DSH 0.1.5-rc.2 (`>=0.1.7-rc.2 <0.2.0` declared).
 - All DSH-version-specific code is isolated in `src/dsh/`; everything outside
   operates on normalized internal types.

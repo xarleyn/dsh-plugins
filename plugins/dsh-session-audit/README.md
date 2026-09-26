@@ -107,7 +107,7 @@ kept.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`, tested against `0.1.5-rc.2`.
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`, tested against `0.1.7-rc.2`.
 - Node.js `^22.19.0` or `>=24.0.0`.
 - See [`compatibility.json`](./compatibility.json).
 
