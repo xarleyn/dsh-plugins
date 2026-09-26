@@ -8,6 +8,7 @@ import {
 import type { IntegrationBroker } from "../../broker.js";
 import type { IntegrationPrincipal } from "../../types.js";
 import { createToolKit } from "../../tool-kit.js";
+import { CONFLUENCE_OPERATIONS } from "./catalog.js";
 import {
   COMMENT_KINDS,
   SPACE_TYPES,
@@ -74,7 +75,11 @@ export function createConfluenceTools(options: {
     sessionId: string,
   ) => IntegrationPrincipal | undefined;
 }): readonly ToolDefinition[] {
-  const kit = createToolKit({ ...options, provider: "confluence" });
+  const kit = createToolKit({
+    ...options,
+    provider: "confluence",
+    operations: CONFLUENCE_OPERATIONS,
+  });
   const tool = kit.tool;
 
   return [

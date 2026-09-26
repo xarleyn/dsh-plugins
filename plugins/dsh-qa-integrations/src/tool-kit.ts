@@ -6,6 +6,11 @@ import {
 } from "@deepseek-ai/dsh-tools";
 import type { IntegrationBroker } from "./broker.js";
 import { IntegrationError } from "./errors.js";
+import {
+  SERVICE_CEILING_NOTICE,
+  serviceCeilingRefusedReading,
+} from "./providers/shared/service-boundary.js";
+import type { OperationSecurityMetadata } from "./service-credentials/types.js";
 import type { IntegrationPrincipal, IntegrationProviderId } from "./types.js";
 
 type ToolExecution = Pick<ToolRunContext, "agent">;
@@ -36,6 +41,16 @@ export interface ToolKitOptions {
     sessionId: string,
   ) => IntegrationPrincipal | undefined;
   readonly provider: IntegrationProviderId;
+  /**
+   * The provider's own catalog. A tool reads its operation's classification from
+   * it and warns in its description when the managed service credential will
+   * refuse that reading, so the condition the ceiling enforces is what the model
+   * is told before it tries — and a reclassified operation cannot leave the
+   * description behind.
+   */
+  readonly operations: Readonly<
+    Record<string, { readonly security: OperationSecurityMetadata }>
+  >;
 }
 
 /**
@@ -82,10 +97,13 @@ export function createToolKit(options: ToolKitOptions) {
     readonly parameters: S;
     readonly operation: string;
     readonly input: (args: Record<string, unknown>) => Record<string, unknown>;
-  }): ToolDefinition =>
-    defineTool({
+  }): ToolDefinition => {
+    const security = options.operations[definition.operation]?.security;
+    return defineTool({
       name: definition.name,
-      description: definition.description,
+      description: serviceCeilingRefusedReading(security)
+        ? `${definition.description} ${SERVICE_CEILING_NOTICE}`
+        : definition.description,
       parameters: definition.parameters,
       output: OUTPUT,
       execute: (args, exec) =>
@@ -95,6 +113,7 @@ export function createToolKit(options: ToolKitOptions) {
           definition.input(args as Record<string, unknown>),
         ),
     });
+  };
 
   return { tool, run };
 }

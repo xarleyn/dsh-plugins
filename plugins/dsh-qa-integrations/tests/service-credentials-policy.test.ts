@@ -54,6 +54,13 @@ describe("managed service credentials: policy", () => {
       allowed: false,
       code: "SensitiveReadRequiresPersonalCredential",
     });
+    // The model relays this sentence to the user word for word, so it has to
+    // name the rule that fired and the way out: a deployment that reads it as
+    // «your integration is broken» hunts the wrong thing entirely.
+    if (decision.allowed) throw new Error("expected a refusal");
+    expect(decision.message).toContain("acme.logs.read");
+    expect(decision.message).toContain("personal account");
+    expect(decision.message).toContain("capability switch is at fault");
   });
 
   it("refuses an operation the provider did not classify", () => {

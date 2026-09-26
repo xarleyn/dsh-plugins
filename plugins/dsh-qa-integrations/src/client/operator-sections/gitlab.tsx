@@ -1,8 +1,9 @@
 /**
  * The GitLab section of the operator card: the instances the deployment reads,
  * the surface the agent may touch, and the byte budgets of file and job-log
- * reads. CI is one switch here: the Host resolver splits it into the metadata
- * and log halves of earlier releases.
+ * reads. CI is the two switches the Host resolver answers with — `ciMetadataRead`
+ * and `ciLogsRead` — and each of them reads through the single `ciRead` of an
+ * earlier release, exactly as the resolver folds it.
  */
 
 import type { ReactElement } from "react";
@@ -17,7 +18,19 @@ const CAPABILITIES: readonly CapabilitySpec[] = [
   { key: "searchRead", label: "Поиск: чтение" },
   { key: "issuesRead", label: "Задачи: чтение" },
   { key: "mergeRequestsRead", label: "MR: чтение" },
-  { key: "ciRead", label: "CI: чтение" },
+  // The pre-split `ciRead` still governs a half the layer never named, which is
+  // how the resolver folds it; showing the switch without that fold would read
+  // «included» over a deployment that switched CI off.
+  {
+    key: "ciMetadataRead",
+    label: "CI: пайплайны и джобы: чтение",
+    read: (record) => record.ciMetadataRead ?? record.ciRead,
+  },
+  {
+    key: "ciLogsRead",
+    label: "CI: лог джоба: чтение",
+    read: (record) => record.ciLogsRead ?? record.ciRead,
+  },
 ];
 
 const LIMITS = [

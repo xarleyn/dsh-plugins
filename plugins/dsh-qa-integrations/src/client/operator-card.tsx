@@ -32,6 +32,7 @@ import {
 } from "react";
 import type { QaIntegrationsConfig } from "../config.js";
 import { Toggle, type ControlProps } from "./operator-controls.js";
+import { serviceReachNoteForPath } from "./operator-service-reach.js";
 import { Bitrix24Section } from "./operator-sections/bitrix24.js";
 import { ConfluenceSection } from "./operator-sections/confluence.js";
 import { CredentialHelpSection } from "./operator-sections/credential-help.js";
@@ -43,6 +44,7 @@ import {
   isOverridden,
   overriddenKeys,
   PROVIDER_IDS,
+  rawBool,
   rawObject,
   Section,
   type OperatorForm,
@@ -131,24 +133,41 @@ export function OperatorCard({ form }: CardProps): ReactElement | null {
     unset,
     overridden,
   };
-  /** Capability toggle: reads default on, deny-listed switches default off. */
+  const serviceSlice = rawObject(config.managedServiceCredentials);
+  /**
+   * Capability toggle: reads default on, deny-listed switches default off. The
+   * managed service credential never reaches some of these readings, and a
+   * switch it does not reach says so in its own hint slot: one annotation point
+   * for every toggle the sections render, so a section can neither forget nor
+   * mistype the switch it annotates — and its own hint cannot bury the note.
+   */
   const toggle = (
     label: string,
     path: readonly string[],
     value: boolean,
     hint?: string,
-  ): ReactElement => (
-    <Toggle
-      key={path.join(".")}
-      label={label}
-      hint={hint}
-      path={path}
-      value={value}
-      disabled={!writable}
-      write={write}
-      overridden={overridden(path)}
-    />
-  );
+  ): ReactElement => {
+    const ceiling = serviceReachNoteForPath(
+      path,
+      rawBool(serviceSlice.enabled, false),
+    );
+    let note = hint;
+    if (ceiling !== undefined) {
+      note = note === undefined ? ceiling : `${note}; ${ceiling}`;
+    }
+    return (
+      <Toggle
+        key={path.join(".")}
+        label={label}
+        hint={note}
+        path={path}
+        value={value}
+        disabled={!writable}
+        write={write}
+        overridden={overridden(path)}
+      />
+    );
+  };
   const sections: OperatorForm = { config, control, toggle };
 
   return (

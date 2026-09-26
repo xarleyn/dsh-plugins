@@ -12,6 +12,7 @@ import {
 import type { IntegrationBroker } from "../../broker.js";
 import type { IntegrationPrincipal } from "../../types.js";
 import { createToolKit } from "../../tool-kit.js";
+import { BITRIX_OPERATIONS } from "./catalog.js";
 
 export const BITRIX24_TOOL_NAMES = [
   "bitrix_search_crm",
@@ -81,7 +82,11 @@ export function createBitrix24Tools(options: {
   /** Mount the timeline-comment write tool; default stays read-only. */
   readonly crmCommentWrite?: boolean;
 }): readonly ToolDefinition[] {
-  const kit = createToolKit({ ...options, provider: "bitrix24" });
+  const kit = createToolKit({
+    ...options,
+    provider: "bitrix24",
+    operations: BITRIX_OPERATIONS,
+  });
   const tool = kit.tool;
 
   const tools: ToolDefinition[] = [

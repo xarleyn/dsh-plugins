@@ -27,6 +27,11 @@ export interface CapabilitySpec {
   /** Whether the switch reads on when the layer names nothing; default on. */
   readonly on?: boolean;
   readonly hint?: string;
+  /**
+   * The raw value this switch stands for, when the resolver folds another key
+   * into it. Absent means the resolver's input for `key` alone.
+   */
+  readonly read?: (record: Record<string, unknown>) => unknown;
 }
 
 /** One numeric tuning knob under `[provider, key]`. */
@@ -70,16 +75,20 @@ export function ProviderSection(props: ProviderSectionProps): ReactElement {
   const zone = `qa-integrations-${provider}`;
   const record = rawObject(form.config[provider]);
   const httpPath = props.http?.path ?? [provider, "allowInsecureHttp"];
+  // One read of every switch, so the collapsed count and the checklist under it
+  // cannot disagree about a key that folds another one in.
+  const switchOn = (cap: CapabilitySpec): boolean =>
+    rawBool(
+      cap.read === undefined ? record[cap.key] : cap.read(record),
+      cap.on !== false,
+    );
   return (
     <Section
       testId={zone}
       title={props.title}
       state={providerState(record, {
         enabled: true,
-        capabilities: props.capabilities.map((cap) => [
-          cap.key,
-          cap.on !== false,
-        ]),
+        capabilities: props.capabilities.map(switchOn),
         counts: props.counts,
       })}
     >
@@ -111,12 +120,7 @@ export function ProviderSection(props: ProviderSectionProps): ReactElement {
         kind="checks"
       >
         {props.capabilities.map((cap) =>
-          form.toggle(
-            cap.label,
-            [provider, cap.key],
-            rawBool(record[cap.key], cap.on !== false),
-            cap.hint,
-          ),
+          form.toggle(cap.label, [provider, cap.key], switchOn(cap), cap.hint),
         )}
       </Group>
       {props.limits === undefined ? null : (
