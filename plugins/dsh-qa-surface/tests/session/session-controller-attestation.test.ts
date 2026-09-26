@@ -56,7 +56,7 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
-    const opensBefore = world.open.mock.calls.length;
+    const opensBefore = world.retain.mock.calls.length;
     // First send-time attestation hits an agent whose tool view the Host
     // dismantled; the retry after the re-bind sees a healthy catalog.
     world.secureSession.mockResolvedValueOnce({
@@ -69,7 +69,7 @@ describe("QA session controller", () => {
       },
     });
     expect(await controller.send("hello")).toBe(true);
-    expect(world.open.mock.calls.length).toBe(opensBefore + 1);
+    expect(world.retain.mock.calls.length).toBe(opensBefore + 1);
     expect(world.faces.get("created-1")?.prompt).toHaveBeenCalledWith(
       [{ type: "text", text: "hello" }],
       "queue",
@@ -100,7 +100,9 @@ describe("QA session controller", () => {
       .mockResolvedValueOnce(refusal);
     expect(await controller.send("hello")).toBe(true);
     expect(world.create).toHaveBeenCalledTimes(2);
-    expect(world.open).toHaveBeenCalledWith("created-2");
+    expect(world.retain).toHaveBeenCalledWith("created-2", {
+      source: "qaSurface",
+    });
     expect(world.faces.get("created-2")?.prompt).toHaveBeenCalledWith(
       [{ type: "text", text: "hello" }],
       "queue",

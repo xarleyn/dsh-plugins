@@ -3,10 +3,10 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
-import type { ScopeKey } from "@deepseek-ai/dsh-scope";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { QaAccounts } from "../../src/accounts/store.js";
 import { QaAccessService } from "../../src/access/service.js";
+import type { QaPresetScopeLease } from "../../src/access/capability-catalog.js";
 import { QaRoleRepository } from "../../src/access/role-repository.js";
 import type { QaSessionLogReader } from "../../src/admin/session-log.js";
 import { resolveConfig } from "../../src/resolve-config.js";
@@ -26,8 +26,8 @@ function harness(
     };
     /** Collects the ids the ownership sweep reclaimed. */
     readonly onVanishedSessions?: (sessionIds: readonly string[]) => void;
-    /** The standing scope of the QA preset, faked by the harness. */
-    readonly presetScope?: () => Promise<ScopeKey | undefined>;
+    /** The standing scope lease of the QA preset, faked by the harness. */
+    readonly presetScope?: () => Promise<QaPresetScopeLease | undefined>;
   } = {},
 ) {
   const root = mkdtempSync(path.join(tmpdir(), "qa-access-"));

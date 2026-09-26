@@ -29,7 +29,9 @@ export function collectSubagents(
       id: summary.id,
       title: summary.blank ? "Субагент" : summary.displayTitle,
       running: summary.running,
-      completed: summary.completed === true,
+      // The Host reports one lifecycle flag per row; anything not running is
+      // presented as finished.
+      completed: !summary.running,
       meta: [relativeTime(summary.updatedAt, now)],
     });
   }

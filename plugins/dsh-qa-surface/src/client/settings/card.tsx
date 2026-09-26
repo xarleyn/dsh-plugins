@@ -10,7 +10,7 @@
  */
 
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
@@ -64,17 +64,17 @@ const REFRESH_INTERVAL_MS = 5_000;
 const REFUSED_MESSAGE =
   "Хост отклонил изменение: значение не сохранилось. Обычно так отвечает несовместимая комбинация полей — проверьте связанные значения этого раздела. Точную причину хост пишет в свой журнал.";
 
-/** The face the slot entry injects into this card. */
+/** The face the tab entry injects into this card. */
 export interface QaSettingsCardFace {
-  readonly scope: SettingsScope<QaSurfaceConfig>;
+  readonly form: ConfigForm<QaSurfaceConfig>;
   describe(): Promise<RemoteResult<ResolvedQaSurfaceConfig>>;
 }
 
-type CardProps = PropsRuntime<"settings.plugin.item"> &
+type CardProps = PropsRuntime<"settings.plugins.tab"> &
   InjectFace<QaSettingsCardFace>;
 
-/** Mutation operations as the bound scope declares them. */
-type ScopeOps = Parameters<SettingsScope<QaSurfaceConfig>["mutate"]>[0];
+/** Mutation operations as the bound form declares them. */
+type ScopeOps = Parameters<ConfigForm<QaSurfaceConfig>["mutate"]>[0];
 
 function displayError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -86,8 +86,8 @@ function displayError(error: unknown): string {
   return "Хост отклонил изменение настроек помощника.";
 }
 
-export function QaSettingsCard({ scope, describe }: CardProps) {
-  const store = useMemo(() => bindSettingsExternalStore(scope), [scope]);
+export function QaSettingsCard({ form, describe }: CardProps) {
+  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
   const settings = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -148,11 +148,11 @@ export function QaSettingsCard({ scope, describe }: CardProps) {
   }, [refresh]);
 
   /**
-   * Path-addressed writes into the namespace. The scope's mutation operations
+   * Path-addressed writes into the namespace. The form's mutation operations
    * are typed for the wire's JSON values, which a control's value satisfies by
    * construction; the cast keeps that boundary in one place.
    *
-   * A write the Host refuses does not reject the scope's promise: the scope
+   * A write the Host refuses does not reject the form's promise: the form
    * reloads Host state and settles normally. Acceptance is therefore confirmed
    * against the namespace — the revision advances on every committed change,
    * and a write that changed nothing is answered by the section itself —
@@ -164,7 +164,7 @@ export function QaSettingsCard({ scope, describe }: CardProps) {
       entries: readonly ConfigEntry[],
       cleared: readonly (readonly string[])[],
     ) => {
-      const before = scope.getSnapshot().revision;
+      const before = form.getSnapshot().revision;
       const ops = [
         ...entries.map((entry) => ({
           op: "set" as const,
@@ -174,19 +174,19 @@ export function QaSettingsCard({ scope, describe }: CardProps) {
         ...cleared.map((path) => ({ op: "unset" as const, path: [...path] })),
       ] as unknown as ScopeOps;
       try {
-        await scope.mutate(ops);
+        await form.mutate(ops);
       } catch (cause) {
         setWriteError(displayError(cause));
         return;
       }
-      const after = scope.getSnapshot();
+      const after = form.getSnapshot();
       const landed =
         after.revision !== before || mutationLanded(entries, cleared, after);
       // Held until a later write lands: the message names what to look at, and
       // a timer that clears it would only hide the problem.
       setWriteError(landed ? null : REFUSED_MESSAGE);
     },
-    [scope],
+    [form],
   );
 
   const write = useCallback(
@@ -309,5 +309,18 @@ export function QaSettingsCard({ scope, describe }: CardProps) {
         </>
       )}
     </CardShell>
+  );
+}
+
+/**
+ * The tab page this plugin registers. The card shell's root is an `<li>`, and a
+ * tab owns its own content, so the list around it belongs to the plugin
+ * (AGENTS.md, card-shell contract).
+ */
+export function QaSettingsTab(props: CardProps) {
+  return (
+    <ul className="qa-settings-cards">
+      <QaSettingsCard {...props} />
+    </ul>
   );
 }

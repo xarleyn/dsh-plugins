@@ -3,10 +3,14 @@ import type {
   SessionId,
 } from "@deepseek-ai/dsh-client-connection/client";
 import type {
+  SessionBinding,
   SessionFace,
+  SessionReference,
+  SessionReferenceSource,
   SubmissionHandle,
 } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { ConversationBinding } from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type { UserMessage } from "@deepseek-ai/dsh-llm";
 import { bytesToBase64 } from "./base64.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
 import type {
@@ -36,11 +40,7 @@ import {
   QaPolicyAttestationError,
 } from "./attestation.js";
 import { QaChatIndex } from "./chat-index.js";
-import {
-  isDelegatedSession,
-  visibleSubagentCandidates,
-  type SubagentCatalogs,
-} from "./lineage.js";
+import { isDelegatedSession, visibleSubagentCandidates } from "./lineage.js";
 import { SessionAssetRepository } from "./session-assets.js";
 import { createQaSession } from "./create-session.js";
 import {
@@ -72,6 +72,20 @@ import { waitFor } from "./wait-for.js";
 import { QA_REGENERATE_MARKER } from "./QaTranscriptAdapter.js";
 import { readableSubagentName } from "./settlement.js";
 import { projectBoundSessionState } from "./project-session-state.js";
+
+declare module "@deepseek-ai/dsh-api-session-controller/client" {
+  interface SessionReferenceSourceMap {
+    /** The QA surface holds the Session of the chat it is showing. */
+    qaSurface: unknown;
+  }
+}
+
+/**
+ * `rc.2` deleted the Host-wide navigation: a Session lives while the view that
+ * retained it holds the reference, so binding a chat means retaining it for as
+ * long as this controller projects it.
+ */
+const QA_SURFACE_SESSION_SOURCE = "qaSurface" satisfies SessionReferenceSource;
 import { projectTurnSources, sourceAnchorRoot } from "./turn-sources.js";
 
 export interface QaAccountsFacade {
@@ -224,8 +238,11 @@ export class QaSessionController {
   private readonly streamPublisher: StreamPublisher;
   private state: QaSessionState = QA_SESSION_IDLE_STATE;
   private session: SessionFace | undefined;
+  /** The reference that keeps {@link session} alive; released with the binding. */
+  private sessionReference: SessionReference | undefined;
   private conversationBinding: ConversationBinding | undefined;
   private unsubscribeSession: (() => void) | undefined;
+  private unsubscribeInbox: (() => void) | undefined;
   private unsubscribeChat: (() => void) | undefined;
   private readonly unsubscribeConnection: () => void;
   private ensuring: Promise<void> | undefined;
@@ -1377,19 +1394,34 @@ export class QaSessionController {
       track = true,
       allowCompatibilityReadOnly = false,
     } = options;
-    this.sessions.open(id as SessionId);
-    let binding = this.sessions.binding(id as SessionId);
-    if (binding === undefined) {
-      await waitFor(
-        this.sessions.list,
-        (snapshot) => Object.hasOwn(snapshot.byId, id),
-        this.timeoutMs,
-      );
-      binding = this.sessions.binding(id as SessionId);
+    const reference = this.sessions.retain(id as SessionId, {
+      source: QA_SURFACE_SESSION_SOURCE,
+    });
+    let binding: SessionBinding | undefined = this.sessions.binding(
+      id as SessionId,
+    );
+    try {
+      if (binding === undefined) {
+        await reference.ready;
+        binding = this.sessions.binding(id as SessionId);
+      }
+      if (binding === undefined) {
+        await waitFor(
+          this.sessions.list,
+          (snapshot) => Object.hasOwn(snapshot.byId, id),
+          this.timeoutMs,
+        );
+        binding = this.sessions.binding(id as SessionId);
+      }
+    } finally {
+      // A binding this controller never got to hold must not leave a reference
+      // counting against the Session it could not show.
+      if (binding === undefined) reference.release();
     }
     if (binding === undefined)
       throw new Error("Session binding is unavailable.");
     this.unbind();
+    this.sessionReference = reference;
     this.session = binding.session;
     this.conversationBinding = this.conversation.binding(id as SessionId);
     this.policyReady = false;
@@ -1399,6 +1431,12 @@ export class QaSessionController {
       this.operationError = null;
       this.publishSessionUpdate();
     });
+    // The queue strip reads the Inbox projection, which the Host publishes on
+    // its own channel: a claim or a splice changes no session snapshot, so the
+    // strip would otherwise keep the rows the agent has already taken.
+    this.unsubscribeInbox = binding.session.projections
+      .faceOf("inbox")
+      .subscribe(() => this.publishSessionUpdate());
     // Subscribing the Chat target activates it, so the assembled transcript
     // (nodes, partials, running calls) materializes for the projection.
     this.unsubscribeChat = this.conversationBinding
@@ -1446,9 +1484,13 @@ export class QaSessionController {
   }
 
   private unbind(): void {
+    this.sessionReference?.release();
+    this.sessionReference = undefined;
     this.streamPublisher.clear();
     this.unsubscribeSession?.();
     this.unsubscribeSession = undefined;
+    this.unsubscribeInbox?.();
+    this.unsubscribeInbox = undefined;
     this.unsubscribeChat?.();
     this.unsubscribeChat = undefined;
     this.conversationBinding = undefined;
@@ -1567,6 +1609,7 @@ export class QaSessionController {
         this.admissionPending || this.pendingSubmission !== undefined,
       chatsRevision: this.chatsRevision,
       viewingSubagent: this.viewingSubagent,
+      queuedMessages: this.queuedMessages(),
       slash: this.slashView(),
       config: this.config,
       subagentNames: this.subagentNames(),
@@ -1597,6 +1640,18 @@ export class QaSessionController {
       pendingMessage: this.pendingSubmission?.message ?? null,
     };
     this.emit();
+  }
+
+  /**
+   * The messages the Host has accepted for the agent's next turn. They arrive
+   * through the session's Inbox projection rather than the snapshot the queue
+   * strip used to read: `rc.2` moved pending input onto the projection surface,
+   * and a key the Host never published reads as no queued work.
+   */
+  private queuedMessages(): readonly UserMessage[] {
+    const inbox = this.session?.projections.faceOf("inbox").getSnapshot() as
+      { readonly "next-turn"?: readonly UserMessage[] } | undefined;
+    return inbox?.["next-turn"] ?? [];
   }
 
   /**
@@ -1639,11 +1694,7 @@ export class QaSessionController {
     const names: Record<string, string> = {};
     const list = this.sessions.list.getSnapshot();
     const chats = this.visibleChatIds();
-    const candidates = visibleSubagentCandidates(
-      list.byId ?? {},
-      (list.subagentsByParent ?? {}) as SubagentCatalogs,
-      chats,
-    );
+    const candidates = visibleSubagentCandidates(list.byId ?? {}, chats);
     for (const candidate of candidates) {
       const name = readableSubagentName(candidate.label, candidate.id);
       if (name !== undefined) names[candidate.id] = name;

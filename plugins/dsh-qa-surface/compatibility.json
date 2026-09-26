@@ -9,7 +9,7 @@
       "remote.agentPresets.select",
       "uiConversation.binding",
       "sessions.binding",
-      "settingsScope",
+      "configForms",
       "settings.onboarding list-slot shadowing",
       "keyed child slots with owner props",
       "webServer.register",
