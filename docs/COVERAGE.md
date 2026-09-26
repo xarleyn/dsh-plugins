@@ -23,13 +23,13 @@ refactoring it, not to close a review.
   snapshot below is committed: without it there is nothing to compare a later
   measurement against.
 
-## Snapshot — 2026-09-26
+## Snapshot — 2026-09-27
 
 One-off measurement, not maintained by any gate and not refreshed on release.
 Reproduce it with `pnpm install --frozen-lockfile && pnpm test:coverage` and read
 the summaries; the numbers below are statements/branches/functions/lines
 percentages per package, with the line counts behind the last column. Measured
-on `dsh-v0.1.7-rc` merged into this branch (`848e1cf`).
+on `dsh-v0.1.7-rc` merged into this branch (`81c1f8c`).
 
 | Package | Stmts | Br | Fn | Lines | Lines covered |
 | --- | --- | --- | --- | --- | --- |
@@ -38,38 +38,38 @@ on `dsh-v0.1.7-rc` merged into this branch (`848e1cf`).
 | `@yadsh/dsh-answer-review-gate` | 93.6 | 89.3 | 94.9 | 95.9 | 355/370 |
 | `@yadsh/dsh-git-readonly` | 92.1 | 79.7 | 89.0 | 94.1 | 417/443 |
 | `@yadsh/dsh-audit-core` | 91.8 | 81.4 | 97.6 | 95.3 | 183/192 |
-| `@yadsh/dsh-cas-results` | 90.8 | 84.2 | 85.3 | 92.8 | 673/725 |
-| `@yadsh/dsh-l10n-overrides` | 90.4 | 87.0 | 96.9 | 92.2 | 684/742 |
-| `@yadsh/dsh-plugin-log` | 87.4 | 74.4 | 82.8 | 90.6 | 290/320 |
-| `@yadsh/dsh-qa-integrations` | 84.1 | 74.0 | 81.9 | 86.1 | 5615/6523 |
-| `@yadsh/dsh-documents` | 83.6 | 73.1 | 80.9 | 85.8 | 3092/3604 |
+| `@yadsh/dsh-cas-results` | 91.1 | 84.4 | 86.0 | 93.1 | 675/725 |
+| `@yadsh/dsh-l10n-overrides` | 90.7 | 87.2 | 97.1 | 92.4 | 697/754 |
+| `@yadsh/dsh-plugin-log` | 87.6 | 75.3 | 83.0 | 90.8 | 295/325 |
+| `@yadsh/dsh-qa-integrations` | 84.2 | 73.9 | 82.1 | 86.2 | 5628/6531 |
+| `@yadsh/dsh-documents` | 84.1 | 73.6 | 81.1 | 86.3 | 3109/3604 |
 | `@yadsh/dsh-jev-compaction` | 83.1 | 77.8 | 73.5 | 85.0 | 1257/1478 |
 | `@yadsh/dsh-audit-ui` | 83.1 | 66.5 | 73.6 | 86.0 | 395/459 |
-| `@yadsh/dsh-qa-surface` | 82.1 | 76.1 | 75.8 | 84.0 | 12150/14458 |
+| `@yadsh/dsh-qa-surface` | 82.1 | 76.2 | 75.9 | 84.1 | 12160/14457 |
 | `@yadsh/dsh-ui-repair` | 82.0 | 71.1 | 76.7 | 84.2 | 702/834 |
-| `@yadsh/dsh-kv-persist` | 81.0 | 75.5 | 71.3 | 83.9 | 574/684 |
+| `@yadsh/dsh-kv-persist` | 81.3 | 75.5 | 71.7 | 84.1 | 593/705 |
 | `@yadsh/dsh-user-correction-miner` | 80.9 | 68.7 | 77.9 | 81.3 | 257/316 |
 | `@yadsh/dsh-draft-sessions` | 79.9 | 69.0 | 76.0 | 82.4 | 661/802 |
 | `@yadsh/dsh-sleev` | 76.8 | 73.3 | 73.2 | 78.2 | 194/248 |
+| `@yadsh/dsh-domain-experts` | 74.2 | 74.4 | 61.0 | 75.4 | 1414/1875 |
 | `@yadsh/dsh-model-safety-gate` | 73.8 | 70.3 | 66.3 | 76.0 | 910/1198 |
-| `@yadsh/dsh-domain-experts` | 73.1 | 73.1 | 64.2 | 74.3 | 1382/1860 |
 | `@yadsh/dsh-preset-persona-editor` | 72.7 | 61.5 | 61.3 | 76.7 | 622/811 |
-| `@yadsh/dsh-web-fetch-authenticated` | 69.8 | 58.1 | 62.3 | 71.6 | 1815/2534 |
-| `@yadsh/dsh-session-audit` | 67.0 | 62.0 | 60.0 | 69.4 | 408/588 |
+| `@yadsh/dsh-session-audit` | 69.9 | 66.1 | 61.7 | 72.4 | 459/634 |
+| `@yadsh/dsh-web-fetch-authenticated` | 69.8 | 58.1 | 62.2 | 71.6 | 1815/2535 |
 | `@yadsh/dsh-doc-impact` | 60.5 | 54.3 | 55.5 | 62.0 | 668/1077 |
 | `@yadsh/dsh-qa-browser` | 58.6 | 55.8 | 60.1 | 60.0 | 933/1556 |
-| `@yadsh/dsh-session-scope` | 53.1 | 42.2 | 52.0 | 54.3 | 663/1222 |
+| `@yadsh/dsh-session-scope` | 53.2 | 42.2 | 52.1 | 54.3 | 664/1223 |
+| `@yadsh/dsh-prompt-firewall` | 49.3 | 44.9 | 42.7 | 49.6 | 172/347 |
 | `@yadsh/dsh-openviking-memory` | 47.7 | 44.9 | 50.3 | 50.2 | 1372/2732 |
-| `@yadsh/dsh-prompt-firewall` | 47.2 | 40.1 | 41.9 | 47.8 | 166/347 |
 | `@yadsh/dsh-plugin-log-ui` | 45.8 | 45.4 | 41.8 | 46.3 | 157/339 |
 
-29 projects measured, 37 221 of 47 108 measured lines executed (79.0%), median
-81.0 statements. The aggregate is line-weighted, so `dsh-qa-surface` and
-`dsh-qa-integrations` carry nearly half of it between them; the per-package rows
+29 projects measured, 37 390 of 47 216 measured lines executed (79.2%), median
+81.3 statements. The aggregate is line-weighted, so `dsh-qa-surface` and
+`dsh-qa-integrations` carry over a third of it between them; the per-package rows
 are the readable unit. `@yadsh/dsh-config` and `@yadsh/dsh-plugin-scripts` have
 no suite at all, so they are absent by design rather than by failure.
 
-### What this snapshot cannot say about four projects
+### What this snapshot cannot say about three projects
 
 `@yadsh/dsh-plugin-kit`, `@yadsh/dsh-test-kit` and `@yadsh/dsh-plugin-generator`
 have no number here: their suites do not start on this tree. All three extend
@@ -82,25 +82,37 @@ symlink instead of the real path, so the search lands on
 the defect is in the shared tsconfig preset, not in the measurement, and fixing
 it belongs to another card than this one.
 
-`@yadsh/dsh-domain-experts` was measured by running `vitest run --coverage` in
-the package directly: its `build` target is red on this tree (the typert
-generator rejects `installSection` against the pinned host catalog), so `nx`
-skipped its `test:coverage` on a dependency, not on its own tests. The number
-above is real, the path to it is not the one `pnpm test:coverage` takes.
+They are absent from the table rather than ranked at the bottom, and that
+distinction is the reason this section exists: `reportOnFailure` makes each of
+them write a summary anyway. `dsh-test-kit` and the generator write an empty one
+— no file rows, `pct: "Unknown"`. `dsh-plugin-kit` writes 0.0 over 2 lines: its
+summary lists two of the twelve files under `src`, one line each, none executed.
+Read straight, that is the worst package in the repository and it is not a
+measured package at all.
 
 ### Red suites in the measured set
 
 `reportOnFailure` kept the percentage of every package whose suite went red in
-the table above, which is the point of the flag. Twenty-four test files across
-eight packages failed on this tree, identically with and without `--coverage`, so
-a low tail reads differently once you know which rows carry it: `dsh-openviking-memory` (13
-files), `dsh-qa-integrations` (2), `dsh-model-safety-gate` (2),
-`dsh-prompt-firewall` (2), and one each in `dsh-qa-surface`,
-`dsh-preset-persona-editor`, `dsh-web-fetch-authenticated` and
-`dsh-plugin-log-ui`. A failing suite measures its own file as unexecuted, so
-these percentages are a floor. `@yadsh/dsh-session-scope` (53.1 / 42.2 branches)
-and `@yadsh/dsh-doc-impact` (60.5 / 54.3) are green and still the weakest of the
-lot, which is the kind of finding the ratio never made.
+the table above, which is the point of the flag. Twenty-seven test files across
+ten packages failed on this tree, so a low tail reads differently once you know
+which rows carry it: `dsh-openviking-memory` (13 files), `dsh-qa-surface` (3),
+`dsh-qa-integrations` (2), `dsh-model-safety-gate` (2), `dsh-prompt-firewall`
+(2), and one each in `dsh-domain-experts`, `dsh-preset-persona-editor`,
+`dsh-web-fetch-authenticated`, `dsh-plugin-log-ui` and `dsh-kv-persist`.
+
+Twenty-four of the twenty-seven are not test failures at all: they are collection
+errors carrying `SyntaxError: Invalid or unexpected token`, the same defect the
+base carries without this card's changes, and they fail identically with and
+without `--coverage`. The remaining three went red under the parallel `run-many`
+and passed when re-run one file at a time in the same tree
+(`personal-skills-service-limits` and `coordinator-idle-checkpoint`), or with it
+(`qa-settings-card-sections`, red on the base). None of the three is a
+measurement artifact.
+
+A failing suite measures its own file as unexecuted, so these percentages are a
+floor. `@yadsh/dsh-session-scope` (53.2 / 42.2 branches) and
+`@yadsh/dsh-doc-impact` (60.5 / 54.3) are green and still the weakest of the lot,
+which is the kind of finding the ratio never made.
 
 ## What moved when the denominator became shared
 
@@ -119,7 +131,7 @@ alone and not a single test changed:
 from it; `@yadsh/dsh-qa-integrations` configured a reporter list and no tree at
 all; `@yadsh/dsh-ui-repair` had no Vitest config, so it had never been measured.
 
-The same three packages in the snapshot above moved again (67.0, 79.9, 76.8),
+The same three packages in the snapshot above moved again (69.9, 79.9, 76.8),
 and that second move is the code, not the denominator: the tree between the two
 runs grew, so only the row-to-row percentage of one run is a denominator
 statement.
@@ -130,11 +142,11 @@ Refactor planning ranked packages by lines of test code per line of `src`. That
 ratio is not a coverage number: it grows whenever a package gains tests of any
 quality, it is easiest to win on a small package with a large suite, and it never
 names a statement. Against the snapshot above it agrees only weakly — Spearman
-rho 0.43 over the 28 projects the catalog scored and this tree could measure —
+rho 0.42 over the 28 projects the catalog scored and this tree could measure —
 and it errs in both directions. It called `audit-ui` the worst (30) while it
 measures 83.1 statements, mid-table; it called `session-scope` healthy (63) while
-its 53.1 / 42.2 branches is the weakest green suite in the repository; and its
-best score, `l10n-overrides` at 205, measures 90.4 — a real number, but the
+its 53.2 / 42.2 branches is the weakest green suite in the repository; and its
+best score, `l10n-overrides` at 205, measures 90.7 — a real number, but the
 ranking placed it above packages that measure better. So the ratio was a ranking
 of effort, not of risk, and it cannot point at the corner that is untested.
 Compare this table with another measurement of the same tree; never with a line
