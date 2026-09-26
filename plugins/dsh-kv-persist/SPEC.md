@@ -65,8 +65,13 @@ Numbered, verifiable guarantees for release `0.1.0` (acceptance criteria §74):
 15. **A15 — Atomic metadata.** Manifest writes are temp-file + rename; a
     crash cannot leave half-written metadata that parses as valid (§40).
 16. **A16 — Clean unload.** Hot unload/dispose stops timers, stops new
-    persistence work, and performs the shutdown checkpoint when configured
-    (§58, §74.20).
+    persistence work, and performs the shutdown checkpoint when configured.
+    Refusing new intake and running that final checkpoint are separate: the
+    checkpoint still runs after intake is closed, and it queues behind an open
+    slot lease so it sees the turn that lease produced. The wait for it is
+    bounded by `checkpoint.shutdownGraceMs` — only the wait is abandoned
+    (`kv.session.shutdown_flush_abandoned`), never the write — so a stream that
+    never closes cannot stall the unload (§58, §59, §74.20).
 
 ## 2. Data model
 
