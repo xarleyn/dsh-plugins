@@ -157,20 +157,32 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
   const removeTool = (name: string) =>
     update({ allowedTools: withToolRemoved(draft.allowedTools, name) });
   return (
-    <form id={FORM_ID} className="dsh-qa-settings__page" onSubmit={submit}>
+    <form
+      id={FORM_ID}
+      className="dsh-qa-settings__page"
+      data-testid="qa-settings-skill-editor"
+      onSubmit={submit}
+    >
       <div className="dsh-qa-settings__page-head">
-        <button type="button" className="dsh-qa-settings__back" onClick={back}>
+        <button
+          type="button"
+          className="dsh-qa-settings__back"
+          data-testid="qa-settings-skill-back"
+          onClick={back}
+        >
           ← Навыки
         </button>
         <div className="dsh-qa-settings__head-actions">
           {props.mode === "edit" ? (
             <QaSettingsButton
+              testId="qa-settings-skill-delete"
               label="Удалить"
               tone="danger"
               onClick={() => setConfirmDelete(true)}
             />
           ) : null}
           <QaSettingsButton
+            testId="qa-settings-skill-save"
             type="submit"
             tone="primary"
             label={
@@ -187,12 +199,13 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
         </div>
       </div>
       {partial && confirmPartial ? (
-        <QaSettingsNotice tone="warn">
+        <QaSettingsNotice tone="warn" testId="qa-settings-skill-partial">
           Файл больше предела чтения: редактор видит только его начало и
           сохранит только его.{" "}
           <button
             type="button"
             className="dsh-qa-settings__link"
+            data-testid="qa-settings-skill-partial-cancel"
             onClick={() => setConfirmPartial(false)}
           >
             Отменить
@@ -200,11 +213,12 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
         </QaSettingsNotice>
       ) : null}
       {confirmDiscard ? (
-        <QaSettingsNotice tone="warn">
+        <QaSettingsNotice tone="warn" testId="qa-settings-skill-discard">
           Есть несохранённые изменения.{" "}
           <button
             type="button"
             className="dsh-qa-settings__link"
+            data-testid="qa-settings-skill-discard-leave"
             onClick={props.onBack}
           >
             Выйти без сохранения
@@ -212,6 +226,7 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
           <button
             type="button"
             className="dsh-qa-settings__link"
+            data-testid="qa-settings-skill-discard-stay"
             onClick={() => setConfirmDiscard(false)}
           >
             Остаться
@@ -219,7 +234,7 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
         </QaSettingsNotice>
       ) : null}
       {props.error === null ? null : (
-        <QaSettingsNotice tone="error">
+        <QaSettingsNotice tone="error" testId="qa-settings-skill-error">
           {props.error}
           {props.conflict ? (
             <>
@@ -227,6 +242,7 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
               <button
                 type="button"
                 className="dsh-qa-settings__link"
+                data-testid="qa-settings-skill-reload"
                 onClick={props.onReload}
               >
                 Перезагрузить текущую версию
@@ -235,7 +251,11 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
           ) : null}
         </QaSettingsNotice>
       )}
-      <QaSettingsField label="Название" hint={SKILLS_NAME_HINT}>
+      <QaSettingsField
+        testId="qa-settings-skill-name"
+        label="Название"
+        hint={SKILLS_NAME_HINT}
+      >
         <input
           value={draft.name}
           placeholder="jira-investigation"
@@ -244,7 +264,11 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
           onChange={(event) => update({ name: event.currentTarget.value })}
         />
       </QaSettingsField>
-      <QaSettingsField label="Описание" hint={SKILLS_DESCRIPTION_HINT}>
+      <QaSettingsField
+        testId="qa-settings-skill-description"
+        label="Описание"
+        hint={SKILLS_DESCRIPTION_HINT}
+      >
         <textarea
           rows={3}
           value={draft.description}
@@ -255,6 +279,7 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
         />
       </QaSettingsField>
       <QaSettingsField
+        testId="qa-settings-skill-when-to-use"
         label="Когда использовать"
         hint="Необязательно: подсказка ассистенту, в каких ситуациях навык уместен."
       >
@@ -265,14 +290,16 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
           onChange={(event) => update({ whenToUse: event.currentTarget.value })}
         />
       </QaSettingsField>
-      <QaSettingsSection title="Поведение">
+      <QaSettingsSection testId="qa-settings-skill-behaviour" title="Поведение">
         <QaSettingsToggle
+          testId="qa-settings-skill-model-invocable"
           label="Агент может использовать навык автоматически"
           hint={SKILLS_BEHAVIOUR_HINT}
           checked={draft.modelInvocable}
           onChange={(checked) => update({ modelInvocable: checked })}
         />
         <QaSettingsToggle
+          testId="qa-settings-skill-user-invocable"
           label={`Доступен как /${draft.name.trim() === "" ? "имя" : draft.name.trim()}`}
           hint="Если выключено, навык видит только ассистент."
           checked={draft.userInvocable}
@@ -280,15 +307,22 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
         />
       </QaSettingsSection>
       <QaSettingsSection
+        testId="qa-settings-skill-tools"
         title="Инструменты"
         aside={
-          <span className="dsh-qa-settings__section-aside">
+          <span
+            className="dsh-qa-settings__section-aside"
+            data-testid="qa-settings-skill-tools-count"
+          >
             {draft.allowedTools.length} выбрано
           </span>
         }
       >
         {draft.allowedTools.length === 0 ? null : (
-          <ul className="dsh-qa-settings__chips">
+          <ul
+            className="dsh-qa-settings__chips"
+            data-testid="qa-settings-skill-tools-chips"
+          >
             {draft.allowedTools.map((name) => {
               const unavailable = catalogKnown && !availableSet.has(name);
               return (
@@ -299,11 +333,15 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
                       ? "dsh-qa-settings__chip dsh-qa-settings__chip--unavailable"
                       : "dsh-qa-settings__chip"
                   }
+                  data-testid="qa-settings-skill-tool-chip"
                 >
-                  <span>{name}</span>
+                  <span data-testid="qa-settings-skill-tool-chip-name">
+                    {name}
+                  </span>
                   <button
                     type="button"
                     className="dsh-qa-settings__chip-remove"
+                    data-testid="qa-settings-skill-tool-chip-remove"
                     aria-label={`Убрать инструмент ${name}`}
                     title={
                       unavailable
@@ -320,12 +358,19 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
           </ul>
         )}
         <QaSettingsButton
+          testId="qa-settings-skill-tools-add"
           label="Добавить инструменты"
           onClick={() => setPickerOpen(true)}
         />
-        <p className="dsh-qa-settings__field-hint">{SKILLS_TOOLS_HINT}</p>
+        <p
+          className="dsh-qa-settings__field-hint"
+          data-testid="qa-settings-skill-tools-hint"
+        >
+          {SKILLS_TOOLS_HINT}
+        </p>
       </QaSettingsSection>
       <QaSettingsField
+        testId="qa-settings-skill-body"
         label="Инструкции"
         hint="Markdown. Это тело навыка — ассистент читает его, когда применяет навык."
       >
@@ -345,34 +390,56 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
           props.validation.diagnostics,
         )}
       />
-      <QaSettingsSection title="Дополнительно">
+      <QaSettingsSection
+        testId="qa-settings-skill-advanced"
+        title="Дополнительно"
+      >
         <QaSettingsButton
+          testId="qa-settings-skill-advanced-toggle"
           label={advancedOpen ? "Скрыть" : "Показать"}
           onClick={() => setAdvancedOpen((current) => !current)}
         />
         {advancedOpen ? (
-          <div className="dsh-qa-settings__advanced">
+          <div
+            className="dsh-qa-settings__advanced"
+            data-testid="qa-settings-skill-advanced-body"
+          >
             {document === null ? null : (
-              <p className="dsh-qa-settings__field-hint">
+              <p
+                className="dsh-qa-settings__field-hint"
+                data-testid="qa-settings-skill-source"
+              >
                 Файл навыка: <code>{document.sourcePath}</code>
               </p>
             )}
             {Object.keys(extraFrontmatter).length === 0 ? null : (
-              <div>
-                <p className="dsh-qa-settings__field-hint">
+              <div data-testid="qa-settings-skill-frontmatter">
+                <p
+                  className="dsh-qa-settings__field-hint"
+                  data-testid="qa-settings-skill-frontmatter-label"
+                >
                   Сохраняемые поля frontmatter:
                 </p>
-                <pre className="dsh-qa-settings__preview">
+                <pre
+                  className="dsh-qa-settings__preview"
+                  data-testid="qa-settings-skill-frontmatter-preview"
+                >
                   {JSON.stringify(extraFrontmatter, null, 2)}
                 </pre>
               </div>
             )}
-            <div>
-              <p className="dsh-qa-settings__field-hint">
+            <div data-testid="qa-settings-skill-preview">
+              <p
+                className="dsh-qa-settings__field-hint"
+                data-testid="qa-settings-skill-preview-label"
+              >
                 Предпросмотр SKILL.md
                 {props.validation.pending ? " (проверка…)" : ""}:
               </p>
-              <pre className="dsh-qa-settings__preview">
+              <pre
+                className="dsh-qa-settings__preview"
+                data-testid="qa-settings-skill-preview-file"
+              >
                 {props.validation.preview}
               </pre>
             </div>
@@ -398,10 +465,12 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
         footer={
           <>
             <QaSettingsButton
+              testId="qa-settings-skill-delete-cancel"
               label="Отмена"
               onClick={() => setConfirmDelete(false)}
             />
             <QaSettingsButton
+              testId="qa-settings-skill-delete-confirm"
               tone="danger"
               label="Удалить навык"
               onClick={() => {
@@ -412,7 +481,10 @@ export function QaSkillEditor(props: QaSkillEditorProps) {
           </>
         }
       >
-        <p className="dsh-qa-settings__lead">
+        <p
+          className="dsh-qa-settings__lead"
+          data-testid="qa-settings-skill-delete-lead"
+        >
           Удалить навык «{draft.name.trim() || "без названия"}»? Его можно будет
           восстановить вручную из корзины.
         </p>
@@ -432,7 +504,10 @@ function SkillDiagnostics(props: {
   );
   if (errors.length === 0 && warnings.length === 0) return null;
   return (
-    <ul className="dsh-qa-settings__diagnostics">
+    <ul
+      className="dsh-qa-settings__diagnostics"
+      data-testid="qa-settings-skill-diagnostics"
+    >
       {[...errors, ...warnings].map((entry, index) => (
         <li
           key={`${entry.code}:${entry.detail ?? ""}:${String(index)}`}
@@ -440,6 +515,11 @@ function SkillDiagnostics(props: {
             entry.severity === "error"
               ? "dsh-qa-settings__diagnostic dsh-qa-settings__diagnostic--error"
               : "dsh-qa-settings__diagnostic"
+          }
+          data-testid={
+            entry.severity === "error"
+              ? "qa-settings-skill-diagnostic-error"
+              : "qa-settings-skill-diagnostic-warning"
           }
         >
           {diagnosticMessage(entry)}
