@@ -82,7 +82,7 @@ export function AuditPage(props: AuditPageProps): ReactNode {
     return (
       <div
         className="dsh-audit-page dsh-audit-page--empty"
-        data-testid="audit-page--empty"
+        data-testid="audit-page-empty"
       >
         <UnattachedAudits items={unattached} />
         <div className="dsh-audit-page__state">
