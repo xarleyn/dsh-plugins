@@ -143,7 +143,11 @@ function descriptor(
     method,
     invocation: { kind: "direct" },
     parameters,
-    result: { mode: "strict", typeSymbol: resultType, schema: resultSchema },
+    result: {
+      mode: "strict",
+      typeSymbol: resultType,
+      create: () => resultSchema,
+    },
   };
 }
 
@@ -157,7 +161,7 @@ const stringParameter = (
   codec: {
     mode: "strict",
     typeSymbol: "string",
-    schema: allowEmpty ? z.string() : z.string().min(1),
+    create: () => (allowEmpty ? z.string() : z.string().min(1)),
   },
 });
 
@@ -167,7 +171,11 @@ const numberParameter = (
   name,
   wire: name,
   source: "json",
-  codec: { mode: "strict", typeSymbol: "number", schema: z.number().finite() },
+  codec: {
+    mode: "strict",
+    typeSymbol: "number",
+    create: () => z.number().finite(),
+  },
 });
 
 const nullableButtonParameter: InvocationDescriptor["parameters"][number] = {
@@ -177,7 +185,7 @@ const nullableButtonParameter: InvocationDescriptor["parameters"][number] = {
   codec: {
     mode: "strict",
     typeSymbol: '"left" | "middle" | "right" | null',
-    schema: z.enum(["left", "middle", "right"]).nullable(),
+    create: () => z.enum(["left", "middle", "right"]).nullable(),
   },
 };
 
@@ -188,7 +196,7 @@ const clickCountParameter: InvocationDescriptor["parameters"][number] = {
   codec: {
     mode: "strict",
     typeSymbol: "1 | 2",
-    schema: z.union([z.literal(1), z.literal(2)]),
+    create: () => z.union([z.literal(1), z.literal(2)]),
   },
 };
 
@@ -357,7 +365,7 @@ const qaBrowserRemote = {
           codec: {
             mode: "strict",
             typeSymbol: "BrowserHumanPointerAction",
-            schema: z.enum(["move", "click", "down", "up"]),
+            create: () => z.enum(["move", "click", "down", "up"]),
           },
         },
         numberParameter("x"),
@@ -412,7 +420,7 @@ const qaBrowserRemote = {
           codec: {
             mode: "strict",
             typeSymbol: "BrowserPanelHistoryAction",
-            schema: z.enum(["back", "forward", "reload"]),
+            create: () => z.enum(["back", "forward", "reload"]),
           },
         },
       ],
