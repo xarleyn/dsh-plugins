@@ -8,6 +8,7 @@ import {
 import type { IntegrationBroker } from "../../broker.js";
 import type { IntegrationPrincipal } from "../../types.js";
 import { createToolKit } from "../../tool-kit.js";
+import { JIRA_OPERATIONS } from "./catalog.js";
 import { ISSUE_INCLUDES, SEARCH_FIELDS } from "./operations.js";
 
 export const JIRA_TOOL_NAMES = [
@@ -62,7 +63,11 @@ export function createJiraTools(options: {
     sessionId: string,
   ) => IntegrationPrincipal | undefined;
 }): readonly ToolDefinition[] {
-  const kit = createToolKit({ ...options, provider: "jira" });
+  const kit = createToolKit({
+    ...options,
+    provider: "jira",
+    operations: JIRA_OPERATIONS,
+  });
   const tool = kit.tool;
 
   return [

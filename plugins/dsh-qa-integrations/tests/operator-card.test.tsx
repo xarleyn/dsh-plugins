@@ -12,6 +12,9 @@ import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import { OperatorCard } from "../src/client/operator-card.js";
+import { SERVICE_REACH } from "../src/client/operator-service-reach.js";
+import { GitlabSection } from "../src/client/operator-sections/gitlab.js";
+import type { OperatorForm } from "../src/client/operator-sections/shared.js";
 
 /** The slot props the Host supplies are outside this test's concern. */
 const Card = OperatorCard as unknown as (props: {
@@ -203,6 +206,40 @@ function rowOf(fieldTestId: string, key: string): HTMLElement {
   return row as HTMLElement;
 }
 
+/** Switches the reach table annotates — each one has to show up on the card. */
+const SERVICE_REACH_ROWS = Object.values(SERVICE_REACH).reduce(
+  (total, notes) => total + Object.keys(notes).length,
+  0,
+);
+
+/**
+ * The switches one provider section hands to the card's toggle, addressed by
+ * the path they write and read as the values they show. Rendering the section
+ * alone keeps this off the full-card budget the suite already spends.
+ */
+function sectionSwitches(
+  section: (props: { readonly form: OperatorForm }) => ReactElement,
+  config: Record<string, unknown>,
+): Map<string, boolean> {
+  const seen = new Map<string, boolean>();
+  const form = {
+    config,
+    control: {
+      disabled: true,
+      write: () => {},
+      unset: () => {},
+      overridden: () => false,
+    },
+    toggle: (label: string, path: readonly string[], value: boolean) => {
+      seen.set(path.join("."), value);
+      return <span key={path.join(".")} />;
+    },
+  } as unknown as OperatorForm;
+  const Section = section;
+  render(<Section form={form} />);
+  return seen;
+}
+
 const RESOLVED = {
   enabled: false,
   timeoutMs: 15000,
@@ -260,14 +297,22 @@ describe("integrations operator card", () => {
         ) as HTMLInputElement
       ).checked,
     ).toBe(false);
+    // No managed credential on this stand, so no switch claims a ceiling that
+    // nobody can hit: the note appears only beside a slice that is in use.
+    expect(
+      [...document.querySelectorAll(".qai-op__toggle-copy > span")].filter(
+        (span) => span.textContent?.includes("личный аккаунт"),
+      ),
+    ).toHaveLength(0);
   });
 
   it("summarises each collapsed provider in its header", () => {
     renderCard({ value: RESOLVED });
     expand();
-    // GitLab: on, one instance, all seven capabilities on by default.
+    // GitLab: on, one instance, all eight capabilities on by default — CI
+    // counts as the two halves the resolver actually answers with.
     expect(
-      screen.getByText("включён · 1 инстанс · доступно 7 из 7"),
+      screen.getByText("включён · 1 инстанс · доступно 8 из 8"),
     ).toBeDefined();
     // Bitrix24 counts the deny-listed write tool as off.
     expect(screen.getByText("включён · доступно 8 из 9")).toBeDefined();
@@ -346,10 +391,13 @@ describe("integrations operator card", () => {
     }
     // A capability of each provider, named by the switch the Host reads and
     // read back through the checklist that owns it — which is what "its
-    // deployment knobs" means here. The caption stays the assertion.
+    // deployment knobs" means here. The caption stays the assertion. GitLab CI
+    // is the two halves the resolver answers with, not the `ciRead` alias one
+    // released hid behind a single switch.
     for (const [zone, key, caption] of [
       ["confluence", "versions-read", "Версии: чтение"],
-      ["gitlab", "ci-read", "CI: чтение"],
+      ["gitlab", "ci-metadata-read", "CI: пайплайны и джобы: чтение"],
+      ["gitlab", "ci-logs-read", "CI: лог джоба: чтение"],
       ["teamcity", "agents-read", "Агенты: чтение"],
       ["jira", "transitions-read", "Переходы: чтение"],
       ["testit", "auto-tests-read", "Автотесты: чтение"],
@@ -364,6 +412,28 @@ describe("integrations operator card", () => {
         `${id} sits in the capabilities checklist`,
       ).toBe(true);
     }
+  });
+
+  it("reads GitLab's CI halves through the single switch they replaced", () => {
+    // `resolveGitlabConfig` keeps a pre-split `ciRead` governing both halves
+    // until one of them is named. A card that read the halves alone would show
+    // them enabled over a deployment that switched CI off — and would then write
+    // a half that quietly overrides the alias it still displays as on.
+    const aliased = sectionSwitches(GitlabSection, {
+      gitlab: { ciRead: false },
+    });
+    expect(aliased.get("gitlab.ciMetadataRead")).toBe(false);
+    expect(aliased.get("gitlab.ciLogsRead")).toBe(false);
+    // An explicit half wins over the alias, which is the resolver's own order.
+    const halved = sectionSwitches(GitlabSection, {
+      gitlab: { ciRead: false, ciLogsRead: true },
+    });
+    expect(halved.get("gitlab.ciMetadataRead")).toBe(false);
+    expect(halved.get("gitlab.ciLogsRead")).toBe(true);
+    // Nothing named reads the schema default, as it did before the split.
+    const fresh = sectionSwitches(GitlabSection, { gitlab: {} });
+    expect(fresh.get("gitlab.ciMetadataRead")).toBe(true);
+    expect(fresh.get("gitlab.ciLogsRead")).toBe(true);
   });
 
   it("writes a capability toggle as one path-addressed set", () => {
@@ -606,6 +676,27 @@ describe("integrations operator card", () => {
       },
     });
     expand();
+    // This render is the one with managed credentials on, so it also answers
+    // issue #285: the operator ticked «Логи сборок: чтение», the stand really
+    // does grant it, and a tester on the read-only service account is still
+    // refused — the switch has to say so where it was ticked.
+    const checks = screen.getByTestId("qa-integrations-teamcity-capabilities");
+    const logs = labelledControl(checks, /Логи сборок: чтение/u);
+    expect(logs.closest("label")?.textContent).toContain("личный аккаунт");
+    // A switch the credential does reach carries no note, so the ones that do
+    // keep meaning something.
+    const failures = labelledControl(checks, /Провалы: чтение/u);
+    expect(failures.closest("label")?.textContent).not.toContain(
+      "личный аккаунт",
+    );
+    // Every row of the table reaches the card, exactly once: the annotation is
+    // one lookup inside the card's toggle, so this count is the card↔table half
+    // of the drift check tests/operator-service-reach.test.ts cannot cover.
+    const notes = [
+      ...document.querySelectorAll(".qai-op__toggle-copy > span"),
+    ].filter((span) => span.textContent?.includes("личный аккаунт"));
+    expect(notes).toHaveLength(SERVICE_REACH_ROWS);
+
     openSection("service-access");
     fireEvent.click(
       screen.getByTestId("qa-integrations-service-access-add-profile"),

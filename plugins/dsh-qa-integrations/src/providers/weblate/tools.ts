@@ -8,6 +8,7 @@ import {
 import type { IntegrationBroker } from "../../broker.js";
 import type { IntegrationPrincipal } from "../../types.js";
 import { createToolKit } from "../../tool-kit.js";
+import { WEBLATE_OPERATIONS } from "./catalog.js";
 import { UNIT_STATE_FILTERS } from "./query.js";
 
 export const WEBLATE_TOOL_NAMES = [
@@ -177,7 +178,11 @@ export function createWeblateTools(options: {
     sessionId: string,
   ) => IntegrationPrincipal | undefined;
 }): readonly ToolDefinition[] {
-  const kit = createToolKit({ ...options, provider: "weblate" });
+  const kit = createToolKit({
+    ...options,
+    provider: "weblate",
+    operations: WEBLATE_OPERATIONS,
+  });
   const tool = kit.tool;
 
   return [

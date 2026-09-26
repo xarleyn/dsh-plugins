@@ -8,6 +8,7 @@ import {
 import type { IntegrationBroker } from "../../broker.js";
 import type { IntegrationPrincipal } from "../../types.js";
 import { createToolKit } from "../../tool-kit.js";
+import { TESTIT_OPERATIONS } from "./catalog.js";
 import {
   RESULT_OUTCOMES,
   TESTIT_LIMITS,
@@ -75,7 +76,11 @@ export function createTestitTools(options: {
     sessionId: string,
   ) => IntegrationPrincipal | undefined;
 }): readonly ToolDefinition[] {
-  const kit = createToolKit({ ...options, provider: "testit" });
+  const kit = createToolKit({
+    ...options,
+    provider: "testit",
+    operations: TESTIT_OPERATIONS,
+  });
   const tool = kit.tool;
 
   return [

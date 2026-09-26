@@ -240,8 +240,13 @@ export function providerState(
   shape: {
     /** Include the on/off word; false for sections without a provider switch. */
     readonly enabled?: boolean;
-    /** Capability keys with the default the card's own toggle uses. */
-    readonly capabilities?: readonly (readonly [string, boolean])[];
+    /**
+     * Capability switches as the card reads them, in the order the checklist
+     * renders them. Values rather than keys because a switch can fold another
+     * key in (GitLab's split CI), and the collapsed count has to agree with the
+     * switches under it.
+     */
+    readonly capabilities?: readonly boolean[];
     /** List-valued connection fields worth counting, with their word forms. */
     readonly counts?: readonly {
       readonly path: string;
@@ -260,9 +265,7 @@ export function providerState(
   }
   const capabilities = shape.capabilities ?? [];
   if (capabilities.length > 0) {
-    const on = capabilities.filter(([key, fallback]) =>
-      rawBool(provider[key], fallback),
-    ).length;
+    const on = capabilities.filter((enabled) => enabled).length;
     parts.push(`доступно ${on} из ${capabilities.length}`);
   }
   return parts.join(" · ");
