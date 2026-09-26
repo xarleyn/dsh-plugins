@@ -41,9 +41,13 @@ export interface ValueProps<T> {
   readonly value: T;
 }
 
-function OverriddenMark(props: { shown: boolean }) {
+function OverriddenMark(props: { shown: boolean; testId: string }) {
   if (!props.shown) return null;
-  return <span className="qai-op__overridden">переопределено</span>;
+  return (
+    <span className="qai-op__overridden" data-testid={props.testId}>
+      переопределено
+    </span>
+  );
 }
 
 /** The control's DOM id, derived from its settings path: one per field. */
@@ -51,19 +55,48 @@ export function fieldId(path: readonly string[]): string {
   return `qai-op-${path.join("-")}`;
 }
 
+/** The test id zone the operator card of this package answers to. */
+const TEST_ID_ZONE = "qa-integrations";
+
+/** A settings path segment spelled the way a test id is spelled. */
+function kebabSegment(segment: string): string {
+  return segment.replace(/([a-z0-9])([A-Z])/gu, "$1-$2").toLowerCase();
+}
+
+/**
+ * The test id of the control that writes `path`: the settings key is what the
+ * Host stores the value under and what the card mutates by, so a reworded
+ * caption or a switched interface language cannot move a knob away from the
+ * check that reaches it. The parts of a field hang off this id with a suffix
+ * (`-field`, `-row`, `-add`), and a node a field repeats keeps the id of its
+ * template — a run tells the copies apart by their place in the list.
+ *
+ * A section that mounts two fields on one path — the service-profile row keeps
+ * a resource map and a deny map under `managedServiceCredentials.profiles` —
+ * names itself with the `testId` prop instead, so an id never answers twice.
+ */
+function testIdOf(path: readonly string[]): string {
+  return [TEST_ID_ZONE, ...path.map(kebabSegment)].join("-");
+}
+
 function FieldFrame(props: {
   label: string;
   path: readonly string[];
+  /** The field's own test id; every part of it hangs off this one. */
+  testId: string;
   overridden: boolean;
   hint?: string;
   children: ReactNode;
 }) {
   return (
-    <div className="qai-op__field">
+    <div className="qai-op__field" data-testid={`${props.testId}-field`}>
       {/* A real label, so clicking the caption lands in the field. */}
       <label className="qai-op__label" htmlFor={fieldId(props.path)}>
         {props.label}
-        <OverriddenMark shown={props.overridden} />
+        <OverriddenMark
+          shown={props.overridden}
+          testId={`${props.testId}-overridden`}
+        />
       </label>
       {props.children}
       {props.hint === undefined ? null : (
@@ -78,22 +111,29 @@ export function Toggle(props: {
   label: string;
   hint?: string;
   path: readonly string[];
+  /** Names the control where its settings path alone would answer twice. */
+  testId?: string;
   value: boolean;
   disabled: boolean;
   write: ConfigWrite;
   overridden?: boolean;
 }): ReactElement {
+  const testId = props.testId ?? testIdOf(props.path);
   return (
-    <label className="qai-op__toggle-row">
+    <label className="qai-op__toggle-row" data-testid={`${testId}-row`}>
       <span className="qai-op__toggle-copy">
         <strong>
           {props.label}
-          <OverriddenMark shown={props.overridden === true} />
+          <OverriddenMark
+            shown={props.overridden === true}
+            testId={`${testId}-overridden`}
+          />
         </strong>
         {props.hint === undefined ? null : <span>{props.hint}</span>}
       </span>
       <input
         className="qai-op__toggle"
+        data-testid={testId}
         type="checkbox"
         checked={props.value}
         disabled={props.disabled}
@@ -110,6 +150,8 @@ export function NumberField(props: {
   label: string;
   hint?: string;
   path: readonly string[];
+  /** Names the control where its settings path alone would answer twice. */
+  testId?: string;
   value: number | undefined;
   disabled: boolean;
   write: ConfigWrite;
@@ -132,16 +174,19 @@ export function NumberField(props: {
     if (!Number.isFinite(next) || next === props.value) return;
     props.write(props.path, next);
   };
+  const testId = props.testId ?? testIdOf(props.path);
   return (
     <FieldFrame
       label={props.label}
       path={props.path}
+      testId={testId}
       overridden={props.overridden(props.path)}
       hint={props.hint}
     >
       <input
         id={fieldId(props.path)}
         className="qai-op__input"
+        data-testid={testId}
         type="text"
         inputMode="numeric"
         value={draft}
@@ -167,6 +212,8 @@ export function TextField(props: {
   hint?: string;
   placeholder?: string;
   path: readonly string[];
+  /** Names the control where its settings path alone would answer twice. */
+  testId?: string;
   value: string | undefined;
   disabled: boolean;
   write: ConfigWrite;
@@ -187,16 +234,19 @@ export function TextField(props: {
     if (next === props.value) return;
     props.write(props.path, next);
   };
+  const testId = props.testId ?? testIdOf(props.path);
   return (
     <FieldFrame
       label={props.label}
       path={props.path}
+      testId={testId}
       overridden={props.overridden(props.path)}
       hint={props.hint}
     >
       <input
         id={fieldId(props.path)}
         className="qai-op__input"
+        data-testid={testId}
         type="text"
         value={draft}
         placeholder={props.placeholder}
@@ -221,22 +271,27 @@ export function SelectField(props: {
   label: string;
   hint?: string;
   path: readonly string[];
+  /** Names the control where its settings path alone would answer twice. */
+  testId?: string;
   value: string;
   options: ReadonlyArray<{ value: string; label: string }>;
   disabled: boolean;
   write: ConfigWrite;
   overridden: OverrideCheck;
 }): ReactElement {
+  const testId = props.testId ?? testIdOf(props.path);
   return (
     <FieldFrame
       label={props.label}
       path={props.path}
+      testId={testId}
       overridden={props.overridden(props.path)}
       hint={props.hint}
     >
       <select
         id={fieldId(props.path)}
         className="qai-op__input"
+        data-testid={testId}
         value={props.value}
         disabled={props.disabled}
         onChange={(event) => {
@@ -262,6 +317,8 @@ export function StringListField(props: {
   hint?: string;
   placeholder?: string;
   path: readonly string[];
+  /** Names the control where its settings path alone would answer twice. */
+  testId?: string;
   values: readonly string[];
   disabled: boolean;
   write: ConfigWrite;
@@ -271,6 +328,7 @@ export function StringListField(props: {
   const [draft, setDraft] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const addInput = useRef<HTMLInputElement | null>(null);
+  const testId = props.testId ?? testIdOf(props.path);
   const commit = (next: readonly string[]) => {
     if (next.length === 0) props.unset(props.path);
     else props.write(props.path, next);
@@ -299,16 +357,22 @@ export function StringListField(props: {
     <FieldFrame
       label={props.label}
       path={props.path}
+      testId={testId}
       overridden={props.overridden(props.path)}
       hint={props.hint}
     >
       <ul className="qai-op__rows">
         {props.values.map((row, index) => (
-          <li key={`${index}:${row}`} className="qai-op__row">
+          <li
+            key={`${index}:${row}`}
+            className="qai-op__row"
+            data-testid={`${testId}-row`}
+          >
             <span className="qai-op__row-value">{row}</span>
             <button
               type="button"
               className="qai-op__row-remove"
+              data-testid={`${testId}-remove`}
               disabled={props.disabled}
               onClick={() => {
                 commit(props.values.filter((_, at) => at !== index));
@@ -322,6 +386,7 @@ export function StringListField(props: {
       <span className="qai-op__row-add">
         <input
           className="qai-op__input"
+          data-testid={`${testId}-value-input`}
           type="text"
           ref={addInput}
           value={draft}
@@ -340,13 +405,16 @@ export function StringListField(props: {
         <button
           type="button"
           className="qai-op__button"
+          data-testid={`${testId}-add`}
           disabled={props.disabled}
           onClick={add}
         >
           добавить
         </button>
         {notice === null ? null : (
-          <span className="qai-op__pending">{notice}</span>
+          <span className="qai-op__pending" data-testid={`${testId}-notice`}>
+            {notice}
+          </span>
         )}
       </span>
     </FieldFrame>
@@ -381,6 +449,8 @@ export function InstanceListField(props: {
   label: string;
   hint?: string;
   path: readonly string[];
+  /** Names the control where its settings path alone would answer twice. */
+  testId?: string;
   instances: readonly InstanceDraft[];
   /**
    * Products a row may declare, first one being what the Host reads when the
@@ -440,10 +510,12 @@ export function InstanceListField(props: {
       drafts.map((row, at) => (at === index ? { ...row, ...patch } : row)),
     );
   };
+  const testId = props.testId ?? testIdOf(props.path);
   return (
     <FieldFrame
       label={props.label}
       path={props.path}
+      testId={testId}
       overridden={props.overridden(props.path)}
       hint={props.hint}
     >
@@ -455,11 +527,16 @@ export function InstanceListField(props: {
           const stored =
             index < storedCount.current ? props.instances[index] : undefined;
           return (
-            <li key={`${index}:${row.id}`} className="qai-op__instance">
+            <li
+              key={`${index}:${row.id}`}
+              className="qai-op__instance"
+              data-testid={`${testId}-row`}
+            >
               <span className="qai-op__instance-cell">
                 <span className="qai-op__instance-key">id</span>
                 <input
                   className="qai-op__input"
+                  data-testid={`${testId}-id-input`}
                   type="text"
                   value={drafts[index]?.id ?? ""}
                   placeholder="corp"
@@ -485,6 +562,7 @@ export function InstanceListField(props: {
                 <span className="qai-op__instance-key">название</span>
                 <input
                   className="qai-op__input"
+                  data-testid={`${testId}-label-input`}
                   type="text"
                   value={drafts[index]?.label ?? ""}
                   placeholder="Корпоративный GitLab"
@@ -510,6 +588,7 @@ export function InstanceListField(props: {
                 <span className="qai-op__instance-key">адрес</span>
                 <input
                   className="qai-op__input"
+                  data-testid={`${testId}-base-url-input`}
                   type="text"
                   value={drafts[index]?.baseUrl ?? ""}
                   placeholder="https://gitlab.example.corp"
@@ -538,6 +617,7 @@ export function InstanceListField(props: {
                   <span className="qai-op__instance-key">развёртывание</span>
                   <select
                     className="qai-op__input"
+                    data-testid={`${testId}-deployment-select`}
                     value={
                       drafts[index]?.deploymentType ??
                       deployments[0]?.value ??
@@ -563,6 +643,7 @@ export function InstanceListField(props: {
               <button
                 type="button"
                 className="qai-op__row-remove"
+                data-testid={`${testId}-remove`}
                 disabled={props.disabled}
                 onClick={() => {
                   const removedStored = index < storedCount.current;
@@ -576,7 +657,10 @@ export function InstanceListField(props: {
                 убрать
               </button>
               {index >= storedCount.current ? (
-                <span className="qai-op__pending">
+                <span
+                  className="qai-op__pending"
+                  data-testid={`${testId}-row-pending`}
+                >
                   {draftNote(instanceDraftMissing(row))}
                 </span>
               ) : null}
@@ -588,6 +672,7 @@ export function InstanceListField(props: {
         <button
           type="button"
           className="qai-op__button"
+          data-testid={`${testId}-add`}
           disabled={props.disabled}
           onClick={() => {
             commit([...drafts, { id: "", label: "", baseUrl: "" }]);
@@ -596,7 +681,7 @@ export function InstanceListField(props: {
           добавить
         </button>
         {drafts.length === 0 && props.disabled ? (
-          <span className="qai-op__pending">
+          <span className="qai-op__pending" data-testid={`${testId}-pending`}>
             не сохранено — Хост не принимает правки из этого браузера
           </span>
         ) : null}
@@ -615,6 +700,8 @@ export function RecordField(props: {
   label: string;
   hint?: string;
   path: readonly string[];
+  /** Names the control where its settings path alone would answer twice. */
+  testId?: string;
   entries: ReadonlyArray<readonly [string, string]>;
   keyPlaceholder: string;
   valuePlaceholder: string;
@@ -662,20 +749,23 @@ export function RecordField(props: {
     setKeyDraft("");
     setValueDraft("");
   };
+  const testId = props.testId ?? testIdOf(props.path);
   return (
     <FieldFrame
       label={props.label}
       path={props.path}
+      testId={testId}
       overridden={props.overridden(props.path)}
       hint={props.hint}
     >
       <ul className="qai-op__rows">
         {props.entries.map(([key, value]) => (
-          <li key={key} className="qai-op__row">
+          <li key={key} className="qai-op__row" data-testid={`${testId}-row`}>
             <span className="qai-op__row-key">{key}</span>
             {props.fixedValue === undefined ? (
               <input
                 className="qai-op__input"
+                data-testid={`${testId}-row-value`}
                 type="text"
                 defaultValue={value}
                 placeholder={props.valuePlaceholder}
@@ -700,11 +790,17 @@ export function RecordField(props: {
                 }}
               />
             ) : (
-              <span className="qai-op__row-value">{value}</span>
+              <span
+                className="qai-op__row-value"
+                data-testid={`${testId}-row-value`}
+              >
+                {value}
+              </span>
             )}
             <button
               type="button"
               className="qai-op__row-remove"
+              data-testid={`${testId}-remove`}
               disabled={props.disabled}
               onClick={() => {
                 commit(props.entries.filter(([rowKey]) => rowKey !== key));
@@ -718,6 +814,7 @@ export function RecordField(props: {
       <span className="qai-op__row-add">
         <input
           className="qai-op__input"
+          data-testid={`${testId}-key-input`}
           type="text"
           ref={keyInput}
           value={keyDraft}
@@ -736,6 +833,7 @@ export function RecordField(props: {
         {props.fixedValue === undefined ? (
           <input
             className="qai-op__input"
+            data-testid={`${testId}-value-input`}
             type="text"
             ref={valueInput}
             value={valueDraft}
@@ -755,13 +853,16 @@ export function RecordField(props: {
         <button
           type="button"
           className="qai-op__button"
+          data-testid={`${testId}-add`}
           disabled={props.disabled}
           onClick={add}
         >
           добавить
         </button>
         {notice === null ? null : (
-          <span className="qai-op__pending">{notice}</span>
+          <span className="qai-op__pending" data-testid={`${testId}-notice`}>
+            {notice}
+          </span>
         )}
       </span>
     </FieldFrame>
