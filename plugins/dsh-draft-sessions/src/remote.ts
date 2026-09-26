@@ -77,11 +77,15 @@ function descriptor(
         codec: {
           mode: "strict",
           typeSymbol: requestType,
-          schema: requestSchema,
+          create: () => requestSchema,
         },
       },
     ],
-    result: { mode: "strict", typeSymbol: resultType, schema: resultSchema },
+    result: {
+      mode: "strict",
+      typeSymbol: resultType,
+      create: () => resultSchema,
+    },
   };
 }
 

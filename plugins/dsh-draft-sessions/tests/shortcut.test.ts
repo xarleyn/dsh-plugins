@@ -81,8 +81,13 @@ function options(
     },
     sessions: {
       list: snapshot({
-        byId: { "session-a": { updatedAt: 1_000 } },
-        current: "session-a",
+        byId: {
+          "session-a": {
+            id: "session-a",
+            updatedAt: 1_000,
+            retainedBy: { draftComposer: 1 },
+          },
+        },
         phase: "ready",
       }) as never,
     },
@@ -103,10 +108,15 @@ function options(
 }
 
 describe("draft shortcut", () => {
-  it("prefers the current Session Workspace and falls back to recent", () => {
+  it("prefers the retained Session Workspace and falls back to recent", () => {
     const sessions = {
-      byId: { "session-a": { updatedAt: 20_000 } },
-      current: "session-a",
+      byId: {
+        "session-a": {
+          id: "session-a",
+          updatedAt: 20_000,
+          retainedBy: { draftComposer: 1 },
+        },
+      },
       phase: "ready",
     } as never;
     const workspaces = {
@@ -127,10 +137,7 @@ describe("draft shortcut", () => {
 
     expect(resolveDraftWorkspace(sessions, workspaces)).toBe("workspace-a");
     expect(
-      resolveDraftWorkspace(
-        { byId: {}, current: undefined, phase: "ready" } as never,
-        workspaces,
-      ),
+      resolveDraftWorkspace({ byId: {}, phase: "ready" } as never, workspaces),
     ).toBe("workspace-b");
   });
 
