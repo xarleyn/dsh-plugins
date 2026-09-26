@@ -1,14 +1,7 @@
 // @vitest-environment jsdom
 
-import { render, waitFor, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-
-const mermaid = vi.hoisted(() => ({
-  initialize: vi.fn(),
-  render: vi.fn(),
-}));
-
-vi.mock("mermaid", () => ({ default: mermaid }));
+import { render, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
 import { Markdown } from "../../../src/client/components/Markdown.js";
 import { QaMessage } from "../../../src/client/components/QaMessage.js";
@@ -98,19 +91,18 @@ describe("assistant Markdown while an answer streams", () => {
     expect(container.textContent).not.toContain("$$");
   });
 
-  it("keeps a diagram half-written as source instead of failing to render it", async () => {
-    mermaid.render.mockResolvedValue({ svg: "<svg><text>Flow</text></svg>" });
+  it("keeps a diagram as source in every frame it streams", () => {
     const open = "Схема:\n\n```mermaid\ngraph TD\n  A --> B";
-    const frame = renderFrame(open, true);
-    expect(within(frame).queryByTestId("qa-md-mermaid")).toBeNull();
-    expect(frame.textContent).toContain("graph TD");
-    expect(mermaid.render).not.toHaveBeenCalled();
-
-    const closed = renderFrame(`${open}\n\`\`\`\n`, true);
-    await waitFor(() =>
-      expect(within(closed).getByTestId("qa-md-mermaid")).toBeTruthy(),
-    );
-    expect(mermaid.render).toHaveBeenCalledOnce();
+    for (const frame of [open, `${open}\n\`\`\`\n`]) {
+      const container = renderFrame(frame, true);
+      expect(container.querySelector("svg")).toBeNull();
+      expect(within(container).getByTestId("qa-md-code-lang").textContent).toBe(
+        "mermaid",
+      );
+      expect(
+        within(container).getByTestId("qa-md-code-content").textContent,
+      ).toContain("graph TD");
+    }
   });
 
   it("reads a half-typed delimiter row as the table header, not as prose", () => {

@@ -77,6 +77,22 @@ test("the CI workflow fans the projects it verifies out into a bounded matrix", 
     prepareJob.includes("- name: Check file size budget"),
     "the budget gate belongs to the prepare job, so the size of a pull request is reported without building every project",
   );
+  // Bands are only as good as what they can see: `prepare` has no build output,
+  // so a generated bundle is measured where a build has just written lib/.
+  assert.match(
+    workflow,
+    /- name: Check built bundle size budget\s+run: pnpm check:files/u,
+    "the generated-bundle band has to run after a build, or it reports nothing and reads as coverage",
+  );
+  const projectsJob = workflow.slice(
+    workflow.indexOf("  projects:"),
+    workflow.indexOf("  verify:"),
+  );
+  assert.ok(
+    projectsJob.indexOf("- name: Verify project\n") <
+      projectsJob.indexOf("- name: Check built bundle size budget"),
+    "the bundle band runs in the project job, after that project has been built",
+  );
   assert.match(
     workflow,
     /- name: Verify plugin logging contract\s+run: pnpm verify:logging/u,

@@ -63,8 +63,10 @@ Three ways a green run lies, all of them observed here:
 
 ## Environment traps that look like your bug
 
-- `node --test scripts/…` and `npm run test:release` both fail on
-  `npm_execpath`; only `pnpm test:release` is valid.
+- `node --test scripts/…` and `npm run test:release` work too: the release test
+  resolves pnpm and npm itself (`npm_execpath` → the install beside this node →
+  PATH) and spawns each in the form its install uses, so it no longer needs
+  `pnpm run` to export `npm_execpath`.
 - Node resolves `/tmp/...` to `D:\tmp` (a path that does not exist) on Windows.
   Use `$TMPDIR` / `os.tmpdir()`.
 - A run in a second checkout or worktree needs `NX_DAEMON=false

@@ -1005,6 +1005,7 @@ export function QaSurface(props: QaSurfaceProps) {
           {welcomeNotice}
           <main
             className={QA_SURFACE_CLASS}
+            data-testid="qa-surface-loading"
             aria-busy="true"
             aria-label={config.branding.title}
             tabIndex={-1}
@@ -1102,11 +1103,16 @@ export function QaSurface(props: QaSurfaceProps) {
   }
   if (adminRoute) {
     return (
-      <main className="dsh-qa-admin" aria-label="Администрирование QA">
+      <main
+        className="dsh-qa-admin"
+        data-testid="qa-surface-admin-denied"
+        aria-label="Администрирование QA"
+      >
         <div className="dsh-qa-admin__loading">
           <p>Этот раздел доступен только администратору.</p>
           <button
             type="button"
+            data-testid="qa-surface-admin-return"
             onClick={() =>
               window.history.pushState(null, "", config.route.path)
             }
@@ -1171,6 +1177,7 @@ export function QaSurface(props: QaSurfaceProps) {
       )}
       <main
         className={QA_SURFACE_CLASS}
+        data-testid="qa-surface-root"
         data-phase={state.phase}
         aria-label={config.branding.title}
         tabIndex={-1}
@@ -1228,7 +1235,7 @@ export function QaSurface(props: QaSurfaceProps) {
           }
           onClose={closeAudit}
         />
-        <div className="dsh-qa-body">
+        <div className="dsh-qa-body" data-testid="qa-surface-body">
           {state.viewingSubagent !== null && !config.ui.showHeader ? (
             <QaSubagentBanner onClose={handleCloseSubagent} />
           ) : null}
@@ -1313,10 +1320,14 @@ export function QaSurface(props: QaSurfaceProps) {
             />
           ) : null}
 
-          <div className="dsh-qa-workspace">
+          <div
+            className="dsh-qa-workspace"
+            data-testid="qa-surface-workspace-split"
+          >
             <div
               ref={chat}
               className="dsh-qa-chat"
+              data-testid="qa-surface-chat"
               style={
                 {
                   "--dsh-qa-content-width": `${config.ui.minContentWidth}px`,
@@ -1326,6 +1337,7 @@ export function QaSurface(props: QaSurfaceProps) {
               <div
                 ref={transcript}
                 className="dsh-qa-transcript"
+                data-testid="qa-surface-transcript"
                 onScroll={(event) => {
                   const element = event.currentTarget;
                   nearBottom.current = isNearBottom(element);
@@ -1345,6 +1357,7 @@ export function QaSurface(props: QaSurfaceProps) {
                   {empty ? (
                     <section
                       className="dsh-qa-welcome"
+                      data-testid="qa-surface-transcript-welcome"
                       aria-labelledby="dsh-qa-welcome-title"
                     >
                       <h2 id="dsh-qa-welcome-title">
@@ -1424,18 +1437,27 @@ export function QaSurface(props: QaSurfaceProps) {
                     </div>
                   )}
                   {state.compatibilityReadOnly === true ? (
-                    <div className="dsh-qa-compatibility" role="status">
+                    <div
+                      className="dsh-qa-compatibility"
+                      data-testid="qa-surface-compatibility"
+                      role="status"
+                    >
                       Этот чат создан при другой конфигурации стенда и открыт
                       только для чтения. История сохранена; чтобы продолжить
                       работу с текущими настройками, создайте новый чат.
                     </div>
                   ) : null}
                   {state.error === null ? null : (
-                    <div className="dsh-qa-error" role="alert">
+                    <div
+                      className="dsh-qa-error"
+                      data-testid="qa-surface-error"
+                      role="alert"
+                    >
                       <span>{state.error}</span>
                       {state.phase === "error" ? (
                         <button
                           type="button"
+                          data-testid="qa-surface-error-retry"
                           onClick={() => void controller?.ensureSession()}
                         >
                           Повторить
@@ -1446,7 +1468,7 @@ export function QaSurface(props: QaSurfaceProps) {
                 </div>
               </div>
 
-              <footer className="dsh-qa-footer">
+              <footer className="dsh-qa-footer" data-testid="qa-surface-footer">
                 <div className="dsh-qa-footer__inner">
                   <QaApproval
                     approvals={state.approvals}
@@ -1466,6 +1488,7 @@ export function QaSurface(props: QaSurfaceProps) {
                   hidden rather than unmounted. */}
                   <div
                     className="dsh-qa-composer-slot"
+                    data-testid="qa-surface-composer-slot"
                     hidden={state.questions.length > 0}
                   >
                     {/* Queued messages are not in the transcript yet, so this is

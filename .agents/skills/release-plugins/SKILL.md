@@ -237,8 +237,11 @@ The catalogue with symptoms, root causes and fixes is
   be yours, and `git add -A` will take their files. Stage explicit paths and
   assert the staged count; `git add` with a nonexistent pathspec adds nothing,
   silently.
-- **`pnpm test:release` via `node --test` fails** on `npm_execpath` (pnpm sets
-  it). Run it through pnpm.
+- **The release test finds its own package managers.** It reads `npm_execpath`
+  as a location rather than as node source — a standalone `pnpm.exe` is spawned
+  directly, a `.cjs`/`.js` wrapper through node — and falls back to the install
+  beside node or to PATH. So `node --test scripts/release-workflow.test.mjs`
+  reproduces what the gate runs.
 
 ## References
 

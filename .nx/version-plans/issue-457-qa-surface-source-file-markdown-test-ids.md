@@ -19,15 +19,17 @@ A group takes the id of the kind key it already declares
 (`qa-sources-group-web`, `qa-sources-group-file`), so a new kind inherits its hook
 rather than naming one, and a state the class carried as a modifier carries the
 same fact in the id — `qa-source-preview-line-highlight`, `qa-md-math-pending`,
-`qa-files-thumb-broken`. Two notices carry an id of their own — the truncated
-file preview and the Mermaid parser warning — so the checks that a broken
-diagram must not take the answer down with it name the notice instead of
-matching its sentence. The values are ASCII kebab-case, zoned by prefix, and
-no two of them name different things in the package.
+`qa-files-thumb-broken`. The truncated file preview carries an id of its own, so
+the check that a long source does not take the answer down with it names the
+notice instead of matching its sentence. A `mermaid` fence is a code block here —
+the client carries no diagram engine since 0.14.0 — so the fence is reached
+through the code-block ids and nothing names a diagram of its own. The values are
+ASCII kebab-case, zoned by prefix, and no two of them name different things in
+the package.
 
 The panel and renderer tests now reach those nodes through the ids instead of
 `querySelector(".dsh-qa-*")` or `getByText`, and what a test asserts about a
 caption or a control — the group titles, the Raw/Rendered toggle, the
-jump-to-message button, a diagram's expanded state — it still asserts through
+jump-to-message button, a source link — it still asserts through
 role, accessible name, or the control's own ARIA state. No markup and no
 appearance changed: an attribute was added.

@@ -33,8 +33,10 @@ import {
   enabledSubroles,
   normalizeCapabilityConfig,
   normalizeUserAccess,
+  personalUserSkillNames,
   resolveCapabilityPolicy,
   resolveSkillAccess,
+  withdrawnSkillNames,
 } from "./model.js";
 import {
   QaCapabilityCatalog,
@@ -171,6 +173,8 @@ function freezePolicy(
 function retainInstalledSnapshot(
   stored: QaEffectiveCapabilityPolicy,
   catalog: CapabilityCatalogSnapshot,
+  personalUserSkills: readonly string[],
+  withdrawn: ReadonlySet<string>,
 ): QaEffectiveCapabilityPolicy {
   const tool = (values: readonly string[]) =>
     values.filter((id) => catalog.toolIds.has(id));
@@ -178,12 +182,28 @@ function retainInstalledSnapshot(
     values.filter((id) => catalog.skillIds.has(id));
   const anySkill = (values: readonly string[]) =>
     values.filter((id) => catalog.userSkillIds.has(id));
+  // The snapshot froze the account's own names alongside the role's, and only
+  // the personal part of the list is read live. A name the account owns and the
+  // administrator withdrew since is therefore dropped here too, so the
+  // withdrawal reaches a chat already under way; a role's grants keep freezing,
+  // as they do for every other role edit.
+  const owned = catalog.ownUserSkillIds;
   return freezePolicy({
     subroleId: stored.subroleId,
     tools: tool(stored.tools),
     grantableTools: tool(stored.grantableTools),
     skills: modelSkill(stored.skills),
-    userSkills: anySkill(stored.userSkills),
+    // The frozen part of the user list is what the role granted then and the
+    // catalog still has; the personal part is read live, so a skill the account
+    // added today is invocable in a chat that started last week.
+    userSkills: [
+      ...new Set([
+        ...anySkill(stored.userSkills).filter(
+          (id) => !(owned.has(id) && withdrawn.has(id)),
+        ),
+        ...personalUserSkills,
+      ]),
+    ],
     sources: {
       systemTools: tool(stored.sources.systemTools),
       commonTools: tool(stored.sources.commonTools),
@@ -630,6 +650,7 @@ export class QaAccessService {
               tools: catalog.toolIds,
               skills: catalog.skillIds,
               userSkills: catalog.userSkillIds,
+              ownSkills: catalog.ownUserSkillIds,
             },
             skillMetadata: catalog.skillMetadata,
             revision: policyRevision(
@@ -638,7 +659,12 @@ export class QaAccessService {
               catalog.toolIds,
             ),
           })
-        : retainInstalledSnapshot(record.capabilitySnapshot, catalog);
+        : retainInstalledSnapshot(
+            record.capabilitySnapshot,
+            catalog,
+            personalUserSkillNames(config, catalog.ownUserSkillIds),
+            withdrawnSkillNames(config),
+          );
     if (record?.capabilitySnapshot === undefined) {
       accounts.updateSessionAccess(sessionId, { capabilitySnapshot: policy });
       this.options.logger.info("access.policy-snapshotted", {
