@@ -1,12 +1,16 @@
 // @vitest-environment jsdom
 
 import { describe, expect, it } from "vitest";
-import { createTranslator, flushMutations } from "./dom-translator.helpers.js";
+import {
+  createTranslator,
+  flushMutations,
+  getByTestId,
+} from "./dom-translator.helpers.js";
 
 describe("DomTranslator", () => {
   it("translates dynamic descendants, new scope roots, and exact updates", async () => {
     document.body.innerHTML = `
-      <section class="scope"><span id="text">Other</span></section>
+      <section class="scope" data-testid="l10n-scope-host"><span id="text">Other</span></section>
       <input class="scope" id="attribute" placeholder="Other">
     `;
     const translator = createTranslator([
@@ -23,7 +27,7 @@ describe("DomTranslator", () => {
     const added = document.createElement("span");
     added.id = "added";
     added.textContent = "Enviar";
-    document.querySelector("section.scope")?.append(added);
+    getByTestId(document, "l10n-scope-host").append(added);
     const newScope = document.createElement("section");
     newScope.className = "scope";
     newScope.innerHTML = '<span id="new-scope-text">Enviar</span>';
@@ -55,7 +59,7 @@ describe("DomTranslator", () => {
         <span id="move-conversation" title="Enviar">Enviar</span>
         <span id="move-scope" title="Enviar">Enviar</span>
       </section>
-      <section class="second"></section>
+      <section class="second" data-testid="l10n-second-scope"></section>
     `;
     const translator = createTranslator([
       {
@@ -82,9 +86,9 @@ describe("DomTranslator", () => {
     document
       .querySelector("#conversation")
       ?.append(document.querySelector("#move-conversation") as Element);
-    document
-      .querySelector(".second")
-      ?.append(document.querySelector("#move-scope") as Element);
+    getByTestId(document, "l10n-second-scope").append(
+      document.querySelector("#move-scope") as Element,
+    );
     await flushMutations();
 
     for (const id of ["move-outside", "move-protected", "move-conversation"]) {
@@ -101,7 +105,9 @@ describe("DomTranslator", () => {
 
   it("restores and releases a translated subtree when it is disconnected", async () => {
     document.body.innerHTML = `
-      <section class="scope"><span id="transient" title="Enviar">Enviar</span></section>
+      <section class="scope" data-testid="l10n-scope-host">
+        <span id="transient" title="Enviar">Enviar</span>
+      </section>
     `;
     const translator = createTranslator([
       {
@@ -121,7 +127,7 @@ describe("DomTranslator", () => {
     expect(transient.getAttribute("title")).toBe("Enviar");
     transient.textContent = "External";
     transient.setAttribute("title", "External");
-    document.querySelector(".scope")?.append(transient);
+    getByTestId(document, "l10n-scope-host").append(transient);
     await flushMutations();
     translator.setLocale("zh");
     translator.dispose();
@@ -194,7 +200,7 @@ describe("DomTranslator", () => {
 
   it("does not feed its own mutations back through another rule", async () => {
     document.body.innerHTML =
-      '<section class="outer"><div class="inner"></div></section>';
+      '<section class="outer"><div class="inner" data-testid="l10n-inner-scope"></div></section>';
     const translator = createTranslator([
       { source: "Uno", target: "One", scope: ".outer" },
       { source: "One", target: "Chained", scope: ".inner" },
@@ -202,7 +208,7 @@ describe("DomTranslator", () => {
     translator.setLocale("en");
     const added = document.createElement("span");
     added.textContent = "Uno";
-    document.querySelector(".inner")?.append(added);
+    getByTestId(document, "l10n-inner-scope").append(added);
 
     await flushMutations();
 
@@ -211,7 +217,7 @@ describe("DomTranslator", () => {
 
   it("is inactive until English, restores owned values, and preserves external changes", async () => {
     document.body.innerHTML = `
-      <section class="scope">
+      <section class="scope" data-testid="l10n-scope-host">
         <span id="owned-text">Enviar</span>
         <span id="external-text">Enviar</span>
         <input id="owned-attribute" placeholder="Escribe">
@@ -271,7 +277,7 @@ describe("DomTranslator", () => {
 
     const later = document.createElement("span");
     later.textContent = "Enviar";
-    document.querySelector(".scope")?.append(later);
+    getByTestId(document, "l10n-scope-host").append(later);
     translator.setLocale("en");
     await flushMutations();
     expect(later.textContent).toBe("Enviar");
