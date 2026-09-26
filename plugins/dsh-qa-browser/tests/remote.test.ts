@@ -56,12 +56,12 @@ describe("QA Browser Remote contribution", () => {
       focusOnAutoReveal: false,
       coordinateInputEnabled: true,
     };
-    expect(() => state.schema.parse(state$)).not.toThrow();
+    expect(() => state.create().parse(state$)).not.toThrow();
     // The chrome draws its arrows from this depth, so a tab without it must
     // never reach the browser.
     const { id, url, title, status, revision, viewport } = tab;
     expect(() =>
-      state.schema.parse({
+      state.create().parse({
         ...state$,
         tabs: [{ id, url, title, status, revision, viewport }],
       }),
@@ -70,7 +70,7 @@ describe("QA Browser Remote contribution", () => {
     // policy refused something for, and an absent list is not "nothing was
     // refused", it is a tab the panel cannot decide about.
     expect(() =>
-      state.schema.parse({
+      state.create().parse({
         ...state$,
         tabs: [{ ...tab, policyRefusals: undefined }],
       }),
@@ -99,11 +99,11 @@ describe("QA Browser Remote contribution", () => {
       focusOnAutoReveal: false,
       coordinateInputEnabled: true,
     };
-    expect(() => state.schema.parse(state$)).not.toThrow();
+    expect(() => state.create().parse(state$)).not.toThrow();
     // The same entries travel with a tab, which is how the banner explains the
     // page in front of the operator rather than the whole session.
     expect(() =>
-      state.schema.parse({
+      state.create().parse({
         ...state$,
         session: {
           sessionId: "session_test",
@@ -139,12 +139,12 @@ describe("QA Browser Remote contribution", () => {
       { code: refusal.code, kind: refusal.kind, message: refusal.message },
     ]) {
       expect(() =>
-        state.schema.parse({ ...state$, policyRefusals: [broken] }),
+        state.create().parse({ ...state$, policyRefusals: [broken] }),
       ).toThrow();
     }
     // The wire keeps its own bound on the list, whatever a Host sends.
     expect(() =>
-      state.schema.parse({
+      state.create().parse({
         ...state$,
         policyRefusals: Array.from({ length: 17 }, () => refusal),
       }),
@@ -158,7 +158,7 @@ describe("QA Browser Remote contribution", () => {
     const codec = frame?.result;
     if (codec?.mode !== "strict") throw new Error("panelFrame must be strict");
     expect(() =>
-      codec.schema.parse({
+      codec.create().parse({
         tabId: "tab_test",
         revision: 1,
         url: "https://example.test",
