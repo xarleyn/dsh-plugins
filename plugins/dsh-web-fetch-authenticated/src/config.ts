@@ -1,6 +1,7 @@
 /**
  * Plugin configuration (SPEC §7/§23): the schemastery schema the Cordis loader
- * and the settings section share, plus `resolveConfig`, which applies
+ * and the Host settings forms share, the live-reference shape that schema
+ * resolves to, plus `resolveConfig`, which applies
  * security-oriented defaults, validates rules, and drops the invalid ones with
  * reported reasons (fail closed, SPEC §32.6).
  * @module config
@@ -140,22 +141,63 @@ const ruleSchema = z.object({
   documents: documentsSchema as z<DocumentsConfig>,
 });
 
-/** Runtime schema consumed by the Cordis loader and the settings section. */
-export const ConfigSchema: z<WebFetchAuthConfig> = z.object({
+/**
+ * Runtime schema consumed by the Cordis loader and by the Host settings forms.
+ *
+ * `configVersion` is the one field the card never edits, so it stays a plain
+ * number; every other node carries `.volatile()`, which in `0.1.7` is what makes
+ * a field a live form field and what makes the Host serve this entry's namespace
+ * at all. Volatility is marked on the top-level nodes only — the rule list marks
+ * the ARRAY, because a volatile node inside array items, dictionary values or
+ * union members is rejected when the schema resolves.
+ */
+export const ConfigSchema = z.object({
   configVersion: z.number().step(1).min(1).default(1),
-  enabled: z.boolean().default(true),
-  rules: z.array(ruleSchema).default([]) as z<AuthenticatedFetchRule[]>,
-  defaultPolicy: z.object({
-    unmatched: z.union(["block"] as const),
-  }) as z<DefaultPolicy>,
-  limits: fetchLimitsSchema as z<FetchLimits>,
-  documents: documentsSchema as z<DocumentsConfig>,
-  audit: z
-    .object({
-      enabled: z.boolean().default(true),
-    })
-    .default({ enabled: true } satisfies AuditConfig) as z<AuditConfig>,
+  enabled: z.boolean().default(true).volatile(),
+  rules: (
+    z.array(ruleSchema).default([]) as z<AuthenticatedFetchRule[]>
+  ).volatile(),
+  defaultPolicy: (
+    z.object({
+      unmatched: z.union(["block"] as const),
+    }) as z<DefaultPolicy>
+  ).volatile(),
+  limits: (fetchLimitsSchema as z<FetchLimits>).volatile(),
+  documents: (documentsSchema as z<DocumentsConfig>).volatile(),
+  audit: (
+    z
+      .object({
+        enabled: z.boolean().default(true),
+      })
+      .default({ enabled: true } satisfies AuditConfig) as z<AuditConfig>
+  ).volatile(),
 });
+
+/**
+ * The profile as the Host hands it to `apply()`: every `.volatile()` node arrives
+ * as a stable reference whose value the loader replaces on a live edit, so a
+ * field is read with `.get()` per operation rather than captured once at entry.
+ */
+export type WebFetchAuthVolatileConfig = ReturnType<typeof ConfigSchema>;
+
+/**
+ * One operation's worth of the live profile, read exactly once per reference.
+ * The result is a plain document: everything downstream (`resolveConfig`,
+ * `validateConfig`, the provider) keeps working on values it cannot outlive.
+ */
+export function readVolatileConfig(
+  config: WebFetchAuthVolatileConfig,
+): WebFetchAuthConfig {
+  return {
+    configVersion: config.configVersion,
+    enabled: config.enabled.get(),
+    rules: config.rules.get(),
+    defaultPolicy: config.defaultPolicy.get(),
+    limits: config.limits.get(),
+    documents: config.documents.get(),
+    audit: config.audit.get(),
+  };
+}
 
 /** Merge one rule's limits over the global defaults. */
 function resolveLimits(
