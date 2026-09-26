@@ -278,7 +278,13 @@ export class IntegrationBroker {
         // refuse: the ceiling already bounds what the token can reach here, and
         // the finding is recorded for the operator instead.
         if (code !== undefined && health?.status !== "unsafe_scope") {
-          this.repository.updateValidation(principal, providerId, false, code);
+          this.recordValidation(
+            principal,
+            providerId,
+            integration,
+            false,
+            code,
+          );
           this.repository.audit({
             ownerUserId: principal.userId,
             provider: providerId,
@@ -296,9 +302,10 @@ export class IntegrationBroker {
           });
           throw new IntegrationError(code, "Service credential is unusable");
         }
-        this.repository.updateValidation(
+        this.recordValidation(
           principal,
           providerId,
+          integration,
           true,
           code ?? null,
         );
@@ -321,9 +328,10 @@ export class IntegrationBroker {
       // here, and a revoked one must stop being offered. Policies are left
       // untouched, so a newly detected capability starts denied until the user
       // enables it in Settings.
-      this.repository.updateValidation(
+      this.recordValidation(
         principal,
         providerId,
+        integration,
         true,
         null,
         validation.capabilities,
@@ -341,7 +349,7 @@ export class IntegrationBroker {
     } catch (error) {
       const code =
         error instanceof IntegrationError ? error.code : "ProviderUnavailable";
-      this.repository.updateValidation(principal, providerId, false, code);
+      this.recordValidation(principal, providerId, integration, false, code);
       this.repository.audit({
         ownerUserId: principal.userId,
         provider: providerId,
@@ -358,6 +366,41 @@ export class IntegrationBroker {
       });
       throw error;
     }
+  }
+
+  /**
+   * Store one validation verdict against the binding it was produced from. A
+   * probe outlives its binding whenever the account reconnects or switches
+   * credential mode while the provider is being reached: what it found describes
+   * a credential no longer in use, so that verdict is dropped and logged instead
+   * of overwriting the live binding's account and capabilities.
+   */
+  private recordValidation(
+    principal: IntegrationPrincipal,
+    providerId: IntegrationProviderId,
+    integration: StoredIntegration,
+    success: boolean,
+    errorCode: string | null,
+    capabilities?: readonly IntegrationCapability[],
+  ): void {
+    const applied = this.repository.updateValidation(
+      principal,
+      providerId,
+      success,
+      errorCode,
+      capabilities,
+      {
+        bindingRevision: integration.bindingRevision,
+        secretRef: integration.secretRef,
+        serviceProfileId: integration.serviceProfileId,
+      },
+    );
+    if (applied) return;
+    this.logger.warn("credential.validation-stale", {
+      provider: providerId,
+      integrationId: integration.id,
+      bindingRevision: integration.bindingRevision,
+    });
   }
 
   /**
@@ -578,8 +621,16 @@ export class IntegrationBroker {
             sourceSessionId: request.sourceSessionId,
           })
         : undefined;
+    // The stored grant is only half of the answer: a capability this deployment
+    // has since withdrawn stays served until the connection is re-established
+    // unless the live provider set is consulted as well. Denied here — before
+    // the secret is decrypted and before anything reaches upstream.
     const mode = this.repository.policy(integration, capability);
-    if (mode !== "allow" || !integration.capabilities.includes(capability)) {
+    if (
+      mode !== "allow" ||
+      !integration.capabilities.includes(capability) ||
+      !provider.capabilities.includes(capability)
+    ) {
       this.repository.audit({
         ownerUserId: principal.userId,
         provider: request.provider,
