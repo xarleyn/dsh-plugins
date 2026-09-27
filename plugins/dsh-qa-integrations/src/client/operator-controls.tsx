@@ -58,9 +58,25 @@ export function fieldId(path: readonly string[]): string {
 /** The test id zone the operator card of this package answers to. */
 const TEST_ID_ZONE = "qa-integrations";
 
-/** A settings path segment spelled the way a test id is spelled. */
+/**
+ * One settings key spelled the way a test id has to be spelled: camelCase humps
+ * come apart (`allowedHosts` is `allowed-hosts`, and an acronym run belongs to
+ * the word after it, so `maxHTTPRetries` is `max-http-retries`) and every other
+ * run of non-alphanumerics collapses to one dash (`issues.read` is
+ * `issues-read`). Whatever the key looks like, the answer is ASCII kebab-case:
+ * an id carrying a dot or a stray capital is a selector the harness cannot quote.
+ */
 function kebabSegment(segment: string): string {
-  return segment.replace(/([a-z0-9])([A-Z])/gu, "$1-$2").toLowerCase();
+  return (
+    segment
+      .replace(/([a-z0-9])([A-Z])/gu, "$1-$2")
+      .replace(/([A-Z]+)([A-Z][a-z])/gu, "$1-$2")
+      // The `i` is what keeps the capitals the two splits above just produced: a
+      // case-free class would eat them and glue `maxFileBytes` back together.
+      .replace(/[^a-z0-9]+/giu, "-")
+      .replace(/^-+|-+$/gu, "")
+      .toLowerCase()
+  );
 }
 
 /**
@@ -68,15 +84,22 @@ function kebabSegment(segment: string): string {
  * Host stores the value under and what the card mutates by, so a reworded
  * caption or a switched interface language cannot move a knob away from the
  * check that reaches it. The parts of a field hang off this id with a suffix
- * (`-field`, `-row`, `-add`), and a node a field repeats keeps the id of its
- * template — a run tells the copies apart by their place in the list.
+ * (`-field`, `-row`, `-add`).
+ *
+ * What a field repeats keeps the id of its template — the rows of a list editor
+ * read alike, and one of them is the node whose `data-dsh-row-key` carries its
+ * value, never a number baked into a name (epic #453).
  *
  * A section that mounts two fields on one path — the service-profile row keeps
  * a resource map and a deny map under `managedServiceCredentials.profiles` —
- * names itself with the `testId` prop instead, so an id never answers twice.
+ * names the second one through the `testId` prop, so an id never answers twice
+ * and `getByTestId` never trips over a field it shares its path with.
  */
-function testIdOf(path: readonly string[]): string {
-  return [TEST_ID_ZONE, ...path.map(kebabSegment)].join("-");
+export function testIdOf(path: readonly string[]): string {
+  return [
+    TEST_ID_ZONE,
+    ...path.map(kebabSegment).filter((segment) => segment !== ""),
+  ].join("-");
 }
 
 function FieldFrame(props: {
@@ -366,6 +389,7 @@ export function StringListField(props: {
           <li
             key={`${index}:${row}`}
             className="qai-op__row"
+            data-dsh-row-key={row}
             data-testid={`${testId}-row`}
           >
             <span className="qai-op__row-value">{row}</span>
@@ -530,6 +554,7 @@ export function InstanceListField(props: {
             <li
               key={`${index}:${row.id}`}
               className="qai-op__instance"
+              data-dsh-row-key={row.id}
               data-testid={`${testId}-row`}
             >
               <span className="qai-op__instance-cell">
@@ -760,7 +785,12 @@ export function RecordField(props: {
     >
       <ul className="qai-op__rows">
         {props.entries.map(([key, value]) => (
-          <li key={key} className="qai-op__row" data-testid={`${testId}-row`}>
+          <li
+            key={key}
+            className="qai-op__row"
+            data-dsh-row-key={key}
+            data-testid={`${testId}-row`}
+          >
             <span className="qai-op__row-key">{key}</span>
             {props.fixedValue === undefined ? (
               <input
