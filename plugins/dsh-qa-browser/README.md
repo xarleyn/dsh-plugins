@@ -209,17 +209,21 @@ What attach mode changes, and what it deliberately does not:
 pnpm --filter @yadsh/dsh-qa-browser check
 ```
 
-The real Chromium integration tests are opt-in so ordinary CI does not download
-browser binaries. Both runtime modes are covered there: the launch case starts
-its own Chromium, and the attach case starts one outside the plugin, points
-`runtime.cdpEndpoint` at it, and checks that the plugin's teardown left it
-running — which is why the attach case needs an explicit executable:
+The real Chromium integration tests are opt-in so ordinary CI neither downloads
+nor spawns a browser. Both runtime modes are covered there: the launch case
+starts its own Chromium, and the attach case starts one outside the plugin,
+points `runtime.cdpEndpoint` at it, and checks that the plugin's teardown left
+it running. The suite looks for a browser the way the launch path looks for one
+— Playwright's own build, then an installed Chrome, Chromium or Edge — so one
+variable is enough wherever any of them exists:
 
 ```powershell
 $env:DSH_QA_BROWSER_E2E = "1"
-$env:DSH_QA_BROWSER_EXECUTABLE = "C:\path\to\chrome.exe"
 pnpm --filter @yadsh/dsh-qa-browser test:browser
 ```
+
+`DSH_QA_BROWSER_EXECUTABLE` names the binary instead of leaving it to that
+search — the switch to use when the machine has several, or none findable.
 
 ## License
 

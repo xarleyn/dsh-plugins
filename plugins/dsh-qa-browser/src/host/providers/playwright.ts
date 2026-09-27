@@ -38,7 +38,14 @@ interface PolicyBlockState {
   lastError?: unknown;
 }
 
-function systemBrowserCandidates(): readonly string[] {
+/**
+ * The browsers already on this machine, most preferred first.
+ *
+ * The launch path walks these after Playwright's own build; the opt-in Chromium
+ * suite starts its external browser from the same list, so what attach mode is
+ * proven against is a browser this runtime could have found itself.
+ */
+export function systemBrowserCandidates(): readonly string[] {
   if (process.platform === "win32") {
     const roots = [
       process.env["PROGRAMFILES"],
