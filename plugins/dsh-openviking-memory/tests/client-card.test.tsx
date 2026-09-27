@@ -95,10 +95,13 @@ function openCard(form: unknown): HTMLElement {
   return view.container;
 }
 
-function labeledInput(label: string): HTMLInputElement {
-  const element = screen.getByLabelText(label);
+function labeledInput(label: string, testId: string): HTMLInputElement {
+  const element = screen.getByTestId(testId);
+  // The id is the handle a test reaches the control by; the field's own label
+  // stays the name a reader hears, and both have to point at one node.
+  expect(screen.getByLabelText(label)).toBe(element);
   if (!(element instanceof HTMLInputElement)) {
-    throw new Error(`${label} is not an input`);
+    throw new Error(`${testId} is not an input`);
   }
   return element;
 }
@@ -129,9 +132,9 @@ describe("shell contract", () => {
     expect(chevron?.getAttribute("d")).toBe("m3.5 5.25 3.5 3.5 3.5-3.5");
 
     // The badge projects the master switch, not live state.
-    expect(
-      container.querySelector(".dsh-plugin-card__badge")?.textContent,
-    ).toBe("Auto-inject");
+    expect(screen.getByTestId("openviking-card-badge").textContent).toBe(
+      "Auto-inject",
+    );
   });
 
   it("renders no body while collapsed and none at all when unavailable", () => {
@@ -154,15 +157,15 @@ describe("shell contract", () => {
   it("shows the loading text before the first accepted section", () => {
     const { form } = makeForm({ status: "loading", value: undefined });
     openCard(form);
-    expect(
-      screen.getByText(/Loading the OpenViking Memory configuration/),
-    ).not.toBeNull();
+    expect(screen.getByTestId("openviking-card-loading").textContent).toMatch(
+      /Loading the OpenViking Memory configuration/u,
+    );
   });
 
   it("projects the manual-recall badge when auto-inject is off", () => {
     const { form } = makeForm({ value: { ...CONFIG, autoInject: false } });
     openCard(form);
-    expect(document.querySelector(".dsh-plugin-card__badge")?.textContent).toBe(
+    expect(screen.getByTestId("openviking-card-badge").textContent).toBe(
       "Manual recall",
     );
   });
@@ -173,12 +176,23 @@ describe("controls and writes", () => {
     const { form } = makeForm();
     openCard(form);
 
-    expect(labeledInput("endpoint").value).toBe("http://127.0.0.1:1933");
-    expect(labeledInput("apiKey").type).toBe("password");
-    expect(labeledInput("scoreThreshold").value).toBe("0.35");
+    expect(
+      labeledInput("endpoint", "openviking-card-connection-endpoint").value,
+    ).toBe("http://127.0.0.1:1933");
+    expect(
+      labeledInput("apiKey", "openviking-card-connection-api-key").type,
+    ).toBe("password");
+    expect(
+      labeledInput("scoreThreshold", "openviking-card-recall-score-threshold")
+        .value,
+    ).toBe("0.35");
     // Unset in the composition: the placeholder shows the upstream default.
-    expect(labeledInput("recallLimit").value).toBe("");
-    expect(labeledInput("recallLimit").placeholder).toBe("10");
+    const recallLimit = labeledInput(
+      "recallLimit",
+      "openviking-card-recall-limit",
+    );
+    expect(recallLimit.value).toBe("");
+    expect(recallLimit.placeholder).toBe("10");
   });
 
   it("disables every control while the namespace is read-only", () => {
@@ -200,7 +214,9 @@ describe("controls and writes", () => {
     const { form } = makeForm();
     openCard(form);
 
-    fireEvent.click(screen.getByLabelText("autoInject"));
+    fireEvent.click(
+      labeledInput("autoInject", "openviking-card-presentation-auto-inject"),
+    );
     await waitFor(() => {
       expect(form.set).toHaveBeenCalledWith("autoInject", false);
     });
@@ -210,7 +226,10 @@ describe("controls and writes", () => {
     const { form } = makeForm({ value: { ...CONFIG, qaUserScoping: false } });
     openCard(form);
 
-    const toggle = labeledInput("qaUserScoping");
+    const toggle = labeledInput(
+      "qaUserScoping",
+      "openviking-card-multi-user-scoping",
+    );
     expect(toggle.checked).toBe(false);
 
     fireEvent.click(toggle);
@@ -224,14 +243,20 @@ describe("controls and writes", () => {
     // as "off" — that would show the switch flipped the wrong way round.
     const { form } = makeForm();
     openCard(form);
-    expect(labeledInput("qaUserScoping").checked).toBe(true);
+    expect(
+      labeledInput("qaUserScoping", "openviking-card-multi-user-scoping")
+        .checked,
+    ).toBe(true);
   });
 
   it("commits a text draft on blur and clears an emptied one", async () => {
     const { form } = makeForm();
     openCard(form);
 
-    const endpoint = labeledInput("endpoint");
+    const endpoint = labeledInput(
+      "endpoint",
+      "openviking-card-connection-endpoint",
+    );
     fireEvent.change(endpoint, { target: { value: "http://ov.example:1933" } });
     fireEvent.blur(endpoint);
     await waitFor(() => {
@@ -252,7 +277,10 @@ describe("controls and writes", () => {
     const { form } = makeForm();
     openCard(form);
 
-    const budget = labeledInput("recallTokenBudget");
+    const budget = labeledInput(
+      "recallTokenBudget",
+      "openviking-card-recall-token-budget",
+    );
     fireEvent.change(budget, { target: { value: "4096" } });
     fireEvent.blur(budget);
     await waitFor(() => {
@@ -269,8 +297,8 @@ describe("controls and writes", () => {
     fireEvent.blur(budget);
     await waitFor(() => {
       expect(
-        screen.getByText(/outside this field's configured range/),
-      ).not.toBeNull();
+        screen.getByTestId("openviking-card-write-error").textContent,
+      ).toMatch(/outside this field's configured range/u);
     });
     expect(form.set).not.toHaveBeenCalledWith("recallTokenBudget", 999999);
   });
@@ -279,7 +307,8 @@ describe("controls and writes", () => {
     const { form } = makeForm();
     openCard(form);
 
-    const peerScope = screen.getByLabelText("recallPeerScope");
+    const peerScope = screen.getByTestId("openviking-card-recall-peer-scope");
+    expect(screen.getByLabelText("recallPeerScope")).toBe(peerScope);
     if (!(peerScope instanceof HTMLSelectElement)) {
       throw new Error("recallPeerScope is not a select");
     }
@@ -298,7 +327,8 @@ describe("controls and writes", () => {
     const { form } = makeForm();
     openCard(form);
 
-    const area = document.querySelector("textarea");
+    const area = screen.getByTestId("openviking-card-capture-filters");
+    expect(screen.getByLabelText("captureFilters")).toBe(area);
     if (!(area instanceof HTMLTextAreaElement)) throw new Error("missing area");
     fireEvent.change(area, { target: { value: "s/x/y/\n\nd|noise|" } });
     fireEvent.blur(area);
@@ -324,8 +354,17 @@ describe("overrides", () => {
     });
     openCard(form);
 
-    expect(screen.getAllByText("override")).toHaveLength(2);
-    const reset = screen.getByRole("button", { name: "Reset 2 overrides" });
+    expect(screen.getAllByTestId(/-override$/u)).toHaveLength(2);
+    expect(
+      screen.getByTestId("openviking-card-connection-api-key-override"),
+    ).toBeDefined();
+    expect(
+      screen.getByTestId("openviking-card-capture-sync-turns-override"),
+    ).toBeDefined();
+    const reset = screen.getByTestId("openviking-card-reset-all");
+    expect(screen.getByRole("button", { name: "Reset 2 overrides" })).toBe(
+      reset,
+    );
     fireEvent.click(reset);
     await waitFor(() => {
       expect(form.mutate).toHaveBeenCalledWith([
@@ -338,7 +377,8 @@ describe("overrides", () => {
   it("offers no reset when nothing is overridden", () => {
     const { form } = makeForm();
     openCard(form);
-    expect(screen.queryByRole("button", { name: /Reset/ })).toBeNull();
+    expect(screen.queryByTestId("openviking-card-reset-all")).toBeNull();
+    expect(screen.queryByRole("button", { name: /Reset/u })).toBeNull();
   });
 
   it("surfaces a failed write as an error line", async () => {
@@ -347,9 +387,13 @@ describe("overrides", () => {
     set.mockReturnValueOnce(Promise.reject(new Error("revision conflict")));
     openCard(form);
 
-    fireEvent.click(screen.getByLabelText("autoInject"));
+    fireEvent.click(
+      labeledInput("autoInject", "openviking-card-presentation-auto-inject"),
+    );
     await waitFor(() => {
-      expect(screen.getByText("revision conflict")).not.toBeNull();
+      expect(
+        screen.getByTestId("openviking-card-write-error").textContent,
+      ).toBe("revision conflict");
     });
   });
 });
