@@ -6,7 +6,7 @@
  * this module.
  */
 
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 
 /** Mutation actions (SPEC §14). */
 export type PruneAction = "KEEP_FULL" | "KEEP_TRUNCATED" | "KEEP_STUB";

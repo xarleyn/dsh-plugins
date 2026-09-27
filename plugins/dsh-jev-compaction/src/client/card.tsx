@@ -25,7 +25,7 @@ import {
 import type { ReactElement } from "react";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 
-import type { JevCompactionConfig } from "../config.js";
+import type { JevCompactionConfig } from "../config/index.js";
 import {
   NumberField,
   SelectField,

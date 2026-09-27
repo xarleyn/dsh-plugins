@@ -26,8 +26,8 @@ import { contentRef } from "../../src/archive/hash.js";
 import {
   DEFAULT_SHAPE_TOOLS,
   resolveJevCompactionConfig,
-} from "../../src/config.js";
-import type { ResolvedJevCompactionConfig } from "../../src/config.js";
+} from "../../src/config/index.js";
+import type { ResolvedJevCompactionConfig } from "../../src/config/index.js";
 import type {
   JevAnswers,
   JevQuestion,

@@ -4,7 +4,7 @@
  * the mutation renderer's measurement.
  */
 
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 import type { PruneAction } from "./policy.js";
 
 /** One planned item's size accounting. */

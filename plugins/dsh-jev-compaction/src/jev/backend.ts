@@ -11,7 +11,7 @@
  * reports.
  */
 
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 import { JevInvalidResponseError, validateJevResponse } from "./validate.js";
 import type {
   JevAnswers,
