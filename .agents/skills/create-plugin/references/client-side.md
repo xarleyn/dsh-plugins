@@ -104,23 +104,23 @@ plugin can pass every gate with a card no user ever sees. Do these in order:
 
 1. Rebuild the client bundle, then run the card contract against the **built**
    `lib/client.js` (stale `lib/` answers for the previous build).
-2. `pnpm verify:packages` — the hygiene gate only checks that your plugin *owes*
-   a card-contract script; run the script.
-3. Prove it live on a stand: the card is present, it expands, and its closed /
-   hover / focus-visible / open states match a first-party card (AGENTS.md asks
-   for the visual comparison, and only a browser can give it).
+2. Run `pnpm verify:packages` as well — it proves only that your plugin *owes*
+   that script, not that it passed. The gates map in `release-and-gates.md` says
+   what each gate actually asserts.
+3. Prove it live on a stand (`qa-stand-run`): the card is present and it
+   expands. The state comparison AGENTS.md asks for is a browser's job, and no
+   gate gives it.
 
 "Card is not visible" — check in this order, it is almost always one of these:
 
-- **Stale bundle.** Fetch `/plugins/<full-package-name>/client.js` and confirm
-  it is the build you just made.
-- **Wrong extension point.** `settings.plugin.item` is discovered from the host
-  settings directory, which is deliberately unavailable to a non-loopback
-  browser: a card that must work from the LAN belongs on
-  `settings.plugins.tab`. This is a placement rule, not a bug.
-- **No namespace.** A `settings.plugin.item` card renders nothing when its Host
-  settings namespace is unavailable — and creating an empty namespace just to
-  make a page appear is forbidden.
+- **Stale bundle.** Fetch the served URL from §Bundle identity and shape and
+  confirm it is the build you just made.
+- **Wrong extension point.** Apply the entry-point rule above: a card that must
+  answer from the LAN belongs on `settings.plugins.tab`. Misplaced is not
+  broken.
+- **No namespace.** A `settings.plugin.item` card renders nothing while its Host
+  settings namespace is unavailable — and inventing an empty namespace to make a
+  page appear is the forbidden shortcut the same rule names.
 - **Dead loader entry.** See the `inject` contract above: the plugin disappears
   from the UI and the host log stays clean.
 
@@ -128,19 +128,19 @@ plugin can pass every gate with a card no user ever sees. Do these in order:
 
 No gate opens the page, so "green" is never evidence about layout:
 
-- **Measure instead of eyeballing.** Overflow is `el.scrollWidth > el.clientWidth`
-  at every level; check overlapping rects and the computed radius and type scale
-  against the token, not against a memory of the design.
-- **Layout inside the settings surface is container-driven.** The dialog is an
-  800px surface with a ~556px content column, so viewport media queries never
-  fire — resize by container and measure there.
-- **Capture the states that can differ**: closed / hover / focus-visible / open
-  for a card, plus the empty, loading and refusal states of whatever you added.
+- **Measure instead of eyeballing.** The overflow check is the one §Settings
+  cards and pages already gives; walk it level by level, including inside the
+  settings dialog that section explains. Add what it does not cover: overlapping
+  rects, and the computed radius and type scale read against the token, not
+  against a memory of the design.
+- **Capture the states that can differ**: the card states AGENTS.md compares
+  (§Proving the card you just registered), plus the empty, loading and refusal
+  states of whatever you added.
 - **Keep the artifacts, do not create them in a package.** Screenshots and
-  measurements are round evidence: they go to the deployment's local notes,
-  never into a `plugins/*/` directory (the published-content gate rejects docs,
-  and a tarball must not carry them either). And never delete screenshots or
-  evidence you did not produce — see `shared-checkout` §7.
+  measurements are round evidence: they go to the deployment's local notes, and
+  nothing of the kind belongs under `plugins/*/` — §Packaging and docs layout in
+  `release-and-gates.md` says why, and the tarball must not carry them either.
+  Never delete evidence you did not produce (`shared-checkout` §7).
 - **Report the artifact, not the verdict**: which state, which measurement,
   which file proves it.
 

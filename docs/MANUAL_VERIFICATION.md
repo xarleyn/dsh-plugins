@@ -206,12 +206,13 @@ Acceptance for a self-hosted wiki: put the context path in `baseUrl`
 
 ## 4. Adding a provider
 
-The anatomy is not on this page:
-`plugins/dsh-qa-integrations/src/providers/README.md` names every module a
-provider owes (catalog, config, `index.ts`, tools, `credential-help.ts`,
-conformance fixture) and every rule the package gate enforces. This section is
-the order of work around it, because every provider so far was added by a
-session that started by re-deriving the shape of its neighbours.
+The anatomy has one home:
+`plugins/dsh-qa-integrations/src/providers/README.md` — «Что должен реализовать
+новый провайдер» with its numbered list, and the section after it naming what
+the package gate enforces. That page owns both, so this one does not repeat
+them. What neither page had was the order of work around the anatomy, because
+every provider so far was added by a session that started by re-deriving the
+shape of its neighbours.
 
 1. **Spec before code** — `plugins/dsh-qa-integrations/docs/specs/providers-<id>.md`,
    in the shape the existing specs have: the endpoints, the identity read, the
@@ -220,26 +221,23 @@ session that started by re-deriving the shape of its neighbours.
 2. **Copy the newest provider, not the shortest one.** Name it instead of
    trusting this page:
    `git log --diff-filter=A --format=%ad --name-only -- 'plugins/dsh-qa-integrations/src/providers/*/index.ts' | head`
-   — the last directory added is the current shape, and what makes it current is
-   that its catalog carries the per-operation `security` classification and its
-   transport goes through the kernel's read policy. Tool names, capability flags
-   and token-scope names follow the same neighbour.
-3. Anything generic that must change is a change to `providers/kernel/` or
-   `providers/shared/`, never a second copy of the function inside the provider —
-   the package gate fails the copy.
-4. `tests/<id>/conformance.test.ts` declaring one of the provider's reads and
-   running the shared conformance set; the gate fails when it is missing.
-5. Build, then run the package's own gate —
+   — the last directory added is the current shape, and tool names, capability
+   flags and token-scope names follow that neighbour.
+3. Work the numbered list in the providers README top to bottom. Where fitting a
+   new provider means changing something generic, the change belongs in
+   `providers/kernel/` or `providers/shared/`; the rule against a second copy
+   inside the provider is that README's to state, not this page's.
+4. Build, then run the package's own gate —
    `pnpm --filter @yadsh/dsh-qa-integrations build` followed by
    `pnpm --filter @yadsh/dsh-qa-integrations verify`; then §1's probe and §2's
    acceptance rows against a real instance, and §6's negative cases.
-6. Public text last: the package `README.md` and `credential-help.ts` ship in the
-   tarball, so they carry synthetic values only (`PROJ-123`,
-   `jira.example.corp`, «Демо-продукт»). A deployment's custom field names,
-   space keys and project keys are operator **config** — never a fixture, an
-   example, or a commit (AGENTS.md, "No internal identifiers in public
+5. Public text last: the package `README.md` and the user-visible strings of
+   `credential-help.ts` ship in the tarball, so they carry synthetic values only
+   (`PROJ-123`, `jira.example.corp`, «Демо-продукт»). A deployment's custom field
+   names, space keys and project keys are operator **config** — never a fixture,
+   an example, or a commit (AGENTS.md, "No internal identifiers in public
    content").
-7. A version plan for the package, then the pull request against the branch the
+6. A version plan for the package, then the pull request against the branch the
    release line is on — not against `main`.
 
 ## 5. Adding a second product to a provider

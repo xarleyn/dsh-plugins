@@ -86,7 +86,7 @@ the change they describe:
 | a package added/renamed, or a manifest field changed | `pnpm plugins:manifest`, which regenerates the root `plugins.json` **and** the root `README.md` package table | `pnpm verify:packages` fails on manifest drift |
 | user-visible behavior | the plugin's `README.md`; its `SPEC.md` when the product contract moved (config surface, tool names, degradation) | review only — no gate reads prose |
 | a config knob added/renamed | the schema field's JSDoc, the plugin's `cordis.patch.yml` example, the README config section | the file's existence is gated; the values it names are on you |
-| **any** change inside `plugins/<dir>/` — code, tests, packaging, README, docs | a version plan `.nx/version-plans/<topic>.md`; its text IS the CHANGELOG entry, so a missing plan means the feature never appears in any changelog | `pnpm release:check` (it keys on any file under the package directory, docs included) and `pnpm verify:packages` |
+| any change inside `plugins/<dir>/` a diff attributes to the project — code, tests, README, docs | a version plan `.nx/version-plans/<topic>.md`; its text IS the CHANGELOG entry, so a missing plan means the feature never appears in any changelog | `pnpm release:check` — what it counts and what it ignores is §Version plans and releases — plus `pnpm verify:packages` |
 | a `dsh-qa-surface` plan | a newer curated entry in `plugins/dsh-qa-surface/src/client/components/QaChangelog.tsx`, in the same change — a released section is frozen, new text goes to the planned version | the hygiene gate plus `qa-sidebar-changelog.test.tsx` |
 | host/peer requirements | `compatibility.json`, plus `docs/COMPATIBILITY.md` (the peer matrix) for a new package | the hygiene gate compares `compatibility.node` with `engines.node` verbatim |
 | a release landed | nothing by hand: `CHANGELOG.md` and the consumed plans are the release commit's business, and work after it needs a new plan | the release workflow (`release-plugins`) |
@@ -107,9 +107,14 @@ the repository and in the wave's release notes.
   Changelog paragraph (what the user gets; neutral wording).
   ```
 
-- A plan is required for ANY publishable-package change — source, tests,
-  client cosmetics, packaging. Plans of one package merge into the highest
-  bump. The plan text IS the changelog entry nx generates.
+- A plan is required for ANY publishable-package change — source, tests, client
+  cosmetics, and README or docs under the package. `pnpm release:check` counts
+  every file `git diff` puts under the project directory EXCEPT the ones
+  `release.versionPlans.ignorePatternsForPlanCheck` in `nx.json` names (today
+  `**/package.json` and `**/CHANGELOG.md`), so a commit that touches only those
+  asks for no plan — a manifest edit is gated by `pnpm verify:packages` and
+  `pnpm tarball:verify`, not by plan check. Plans of one package merge into the
+  highest bump. The plan text IS the changelog entry nx generates.
 - Missing plan = the feature never appears in any changelog (nx is silent).
   Broken fence = nx silently ignores the plan (no bump, no entry, not even
   counted). `pnpm verify:packages` validates plans the way Nx reads them.
