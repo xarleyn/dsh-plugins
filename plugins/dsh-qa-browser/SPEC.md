@@ -2206,6 +2206,13 @@ Cover:
 - download;
 - browser crash/restart path if practical.
 
+Both `runtime.mode` values are exercised here, including the one no fake can
+answer for: `attach` joins a Chromium this runtime did not start and checks that
+its teardown leaves that process and its owner's pages running. The suite is
+opt-in elsewhere in the workspace and required in this project's own CI job,
+which sets `DSH_QA_BROWSER_E2E=1` and fails the job when the requested run cannot
+find a browser — a check that skipped would read as a check that passed.
+
 ### 40.3 Tool contract tests
 
 For every tool:

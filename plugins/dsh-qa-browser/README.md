@@ -209,13 +209,23 @@ What attach mode changes, and what it deliberately does not:
 pnpm --filter @yadsh/dsh-qa-browser check
 ```
 
-The real Chromium integration tests are opt-in so ordinary CI neither downloads
-nor spawns a browser. Both runtime modes are covered there: the launch case
-starts its own Chromium, and the attach case starts one outside the plugin,
-points `runtime.cdpEndpoint` at it, and checks that the plugin's teardown left
-it running. The suite looks for a browser the way the launch path looks for one
-— Playwright's own build, then an installed Chrome, Chromium or Edge — so one
-variable is enough wherever any of them exists:
+The real Chromium integration tests are opt-in so a project that has nothing to
+do with a browser never downloads or spawns one. This project's own CI job is
+not such a project: `ci.yml` sets the variable below for
+`@yadsh/dsh-qa-browser`, so what only a real browser can answer is checked on a
+pull request and on `main` rather than left to whoever remembers to run it. Both
+runtime modes are covered there: the launch case starts its own Chromium, and the
+attach case starts one outside the plugin, points `runtime.cdpEndpoint` at it,
+and checks that the plugin's teardown left it running. The suite looks for a
+browser the way the launch path looks for one — Playwright's own build, then an
+installed Chrome, Chromium or Edge — so one variable is enough wherever any of
+them exists:
+
+```bash
+DSH_QA_BROWSER_E2E=1 pnpm --filter @yadsh/dsh-qa-browser test:browser
+```
+
+On Windows PowerShell:
 
 ```powershell
 $env:DSH_QA_BROWSER_E2E = "1"
