@@ -1141,6 +1141,12 @@ A BrowserContext is isolated per DSH Session.
 
 The user may log in through the Browser panel once human control exists.
 
+`attach` (§3.3) does not loosen this. The rule is about the contexts this runtime
+builds, and an attached browser arrives with a context of its own — the owner's
+cookies, logins and storage — which the runtime neither takes up for a session nor
+reads: every session is built with `newContext` and none is handed that default
+context.
+
 ### 19.2 Named profiles
 
 Later support:
@@ -1186,6 +1192,13 @@ This preserves auth without sharing live tabs between unrelated agent Sessions.
 A true persistent Chromium profile may be added later for sites that cannot be captured adequately by storage state.
 
 Do not block MVP on it.
+
+`attach` (§3.3) reaches such a profile without taking it over: the joined browser
+already runs in the deployment's own user-data-dir, and that state stays the
+owner's. This plugin saves none of it, seeds none of it into a Session context and
+shows none of it to the model — §19.3's rule about raw content applies to a profile
+this runtime merely visits as much as to one it manages, and what bounds it is
+§3.3's endpoint gate rather than anything here.
 
 ---
 
@@ -1588,6 +1601,17 @@ capabilities:
   trace: true
   unsafeEvaluate: false
 ```
+
+These flags bound this plugin's tools. An attached browser (§3.3) is a case where
+they are not the boundary: the deployment has opened a DevTools endpoint on a
+browser this runtime only visits, and reaching that endpoint is a stronger handle
+on the browser than any flag above — its owner's tabs, its profile and its network
+are all within reach of whoever can dial it, whatever `capabilities` say. So
+`attach` is not a way to obtain these capabilities ungated, and switching them off
+is not a promise about a browser this plugin does not own; the gate for that is
+§3.3 keeping the endpoint on this machine unless `allowRemoteCdpEndpoint` is
+written down. What the flags do bound, in either mode, is what the model may ask
+this runtime to do.
 
 ### 27.1 Console
 
