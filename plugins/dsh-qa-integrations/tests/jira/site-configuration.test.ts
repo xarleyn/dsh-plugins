@@ -46,6 +46,20 @@ describe("jira site configuration", () => {
         ],
       }),
     ).toThrow(/duplicate/u);
+    // This list already went through the shared address policy, so the
+    // fragment rule the kernel gained reaches it too: a row that used to load
+    // now refuses at startup, and that is the decision being pinned.
+    expect(() =>
+      resolveJiraConfig({
+        sites: [
+          {
+            id: "pasted",
+            label: "x",
+            baseUrl: "https://jira.example/#/dashboard/10400",
+          },
+        ],
+      }),
+    ).toThrow(/no fragment/u);
   });
 
   it("keeps a site that declares no product on Cloud, and names the others", () => {

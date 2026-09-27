@@ -60,6 +60,20 @@ describe("confluence site configuration", () => {
         ],
       }),
     ).toThrow(/duplicate/u);
+    // This list began resolving through the shared address policy with the
+    // fragment rule already in it; the row pins that the rule came along rather
+    // than being canonicalized away on the way.
+    expect(() =>
+      resolveConfluenceConfig({
+        instances: [
+          {
+            id: "pasted",
+            label: "x",
+            baseUrl: "https://company.atlassian.net/#/spaces/ENG/pages/123",
+          },
+        ],
+      }),
+    ).toThrow(/no fragment/u);
   });
 
   it("keeps an instance that declares no product on Cloud, and names the others", () => {

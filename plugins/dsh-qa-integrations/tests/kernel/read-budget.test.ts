@@ -88,9 +88,26 @@ async function answeringServer(
   };
 }
 
+/**
+ * How long one attempt at a real socket is given.
+ *
+ * The budget is what the cases measure, so it cannot be the shortest delay that
+ * happens to work on an idle machine: a loopback handshake and a two-packet
+ * exchange that must fit inside it take a couple of milliseconds unloaded and
+ * arbitrarily long under a loaded runner, and a case that loses that race
+ * reddens without anything in the kernel regressing. The stall cases do not get
+ * looser for it — a server that falls silent mid-body is silent forever, so any
+ * budget still ends in `UpstreamTimeout` and `hits === 1` still means the
+ * request reached the handler rather than never left.
+ */
+const SOCKET_BUDGET_MS = 1_000;
+
+/** The budget of an attempt that never touches a socket (see `hanging`). */
+const IN_MEMORY_BUDGET_MS = 60;
+
 function policyOf(target: Partial<FetchRetryPolicy> = {}): FetchRetryPolicy {
   return {
-    timeoutMs: 60,
+    timeoutMs: SOCKET_BUDGET_MS,
     retries: 0,
     headers: {},
     transportFailure: (_error, timedOut) =>
@@ -183,7 +200,11 @@ describe("kernel read budget", () => {
       fetchWithRetries(
         hanging,
         "http://127.0.0.1:1/never-answers",
-        policyOf({ retries: 1, retriable: RESEND_AFTER_EVERY_FAULT }),
+        policyOf({
+          timeoutMs: IN_MEMORY_BUDGET_MS,
+          retries: 1,
+          retriable: RESEND_AFTER_EVERY_FAULT,
+        }),
         readJson,
       ),
     ).rejects.toMatchObject({ code: "UpstreamTimeout" });
