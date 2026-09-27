@@ -32,18 +32,21 @@ const enabled = process.env["DSH_QA_BROWSER_E2E"] === "1";
  */
 function discoverChromium(): string | null {
   const explicit = process.env["DSH_QA_BROWSER_EXECUTABLE"];
-  if (explicit !== undefined) return existsSync(explicit) ? explicit : null;
-  const candidates = [
-    // Playwright names its own build even when it was never downloaded.
-    (() => {
-      try {
-        return [chromium.executablePath()];
-      } catch {
-        return [];
-      }
-    })(),
-    systemBrowserCandidates(),
-  ].flat();
+  if (explicit !== undefined) {
+    if (!existsSync(explicit)) {
+      throw new Error(
+        `DSH_QA_BROWSER_EXECUTABLE names ${explicit}, which is not there`,
+      );
+    }
+    return explicit;
+  }
+  let candidates = [...systemBrowserCandidates()];
+  try {
+    // Playwright names its own build even where it was never downloaded.
+    candidates = [chromium.executablePath(), ...candidates];
+  } catch {
+    // No registry entry to read: the installed browsers still stand.
+  }
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
 }
 
@@ -265,7 +268,9 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
     );
   });
 
-  const externalChromium = discoverChromium();
+  // Collected whether or not the suite runs, so the search happens only for a
+  // suite that was actually asked for.
+  const externalChromium = enabled ? discoverChromium() : null;
 
   it.skipIf(externalChromium === null)(
     "drives an external Chromium over CDP and leaves it running on stop",
