@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from "@testing-library/react";
+import { render, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { Markdown } from "../../../src/client/components/Markdown.js";
@@ -59,7 +59,7 @@ function renderFrame(text: string, streaming: boolean): HTMLElement {
 describe("assistant Markdown while an answer streams", () => {
   it("holds an open display formula as literal TeX instead of its dollars", () => {
     const container = renderFrame(OPEN_FORMULA, true);
-    const pending = container.querySelector(".dsh-qa-md-math--pending");
+    const pending = within(container).queryByTestId("qa-md-math-pending");
     expect(pending?.textContent).toBe("\\frac{a}{b} = c");
     expect(container.textContent).not.toContain("$$");
     expect(container.querySelector(".katex")).toBeNull();
@@ -71,7 +71,7 @@ describe("assistant Markdown while an answer streams", () => {
       true,
     );
     expect(
-      container.querySelector(".dsh-qa-md-math--pending")?.textContent,
+      within(container).queryByTestId("qa-md-math-pending")?.textContent,
     ).toBe("\\eta = \\frac{A}{B}");
     expect(container.textContent).not.toContain("$$");
   });
@@ -79,14 +79,14 @@ describe("assistant Markdown while an answer streams", () => {
   it("holds a math fence that is still open", () => {
     const container = renderFrame("Формула:\n\n```math\n\\frac{a}{b}", true);
     expect(
-      container.querySelector(".dsh-qa-md-math--pending")?.textContent,
+      within(container).queryByTestId("qa-md-math-pending")?.textContent,
     ).toBe("\\frac{a}{b}");
     expect(container.querySelector(".katex")).toBeNull();
   });
 
   it("renders the formula through KaTeX as soon as its fence closes", () => {
     const container = renderFrame(CLOSED_FORMULA, true);
-    expect(container.querySelector(".dsh-qa-md-math--pending")).toBeNull();
+    expect(within(container).queryByTestId("qa-md-math-pending")).toBeNull();
     expect(container.querySelector(".katex")).not.toBeNull();
     expect(container.textContent).not.toContain("$$");
   });
@@ -95,9 +95,13 @@ describe("assistant Markdown while an answer streams", () => {
     const open = "Схема:\n\n```mermaid\ngraph TD\n  A --> B";
     for (const frame of [open, `${open}\n\`\`\`\n`]) {
       const container = renderFrame(frame, true);
-      expect(container.querySelector(".dsh-qa-mermaid")).toBeNull();
       expect(container.querySelector("svg")).toBeNull();
-      expect(container.textContent).toContain("graph TD");
+      expect(within(container).getByTestId("qa-md-code-lang").textContent).toBe(
+        "mermaid",
+      );
+      expect(
+        within(container).getByTestId("qa-md-code-content").textContent,
+      ).toContain("graph TD");
     }
   });
 
@@ -143,7 +147,7 @@ describe("assistant Markdown while an answer streams", () => {
       true,
     );
     expect(
-      container.querySelector(".dsh-qa-md-math--pending")?.textContent,
+      within(container).queryByTestId("qa-md-math-pending")?.textContent,
     ).toBe("\\frac{a}{b}");
     expect(container.textContent).not.toContain("$$");
   });
@@ -154,7 +158,7 @@ describe("assistant Markdown while an answer streams", () => {
       true,
     );
     expect(
-      container.querySelector(".dsh-qa-md-math--pending")?.textContent,
+      within(container).queryByTestId("qa-md-math-pending")?.textContent,
     ).toBe("\\eta = \\frac{A}{B}");
     expect(container.textContent).not.toContain("$$");
   });
@@ -191,7 +195,9 @@ describe("assistant Markdown while an answer streams", () => {
     const { container, rerender } = render(
       <QaMessage message={message} renderMarkdown showTimestamp={false} />,
     );
-    expect(container.querySelector(".dsh-qa-md-math--pending")).not.toBeNull();
+    expect(
+      within(container).queryByTestId("qa-md-math-pending"),
+    ).not.toBeNull();
     rerender(
       <QaMessage
         message={{ ...message, text: CLOSED_FORMULA, status: "committed" }}
@@ -199,7 +205,7 @@ describe("assistant Markdown while an answer streams", () => {
         showTimestamp={false}
       />,
     );
-    expect(container.querySelector(".dsh-qa-md-math--pending")).toBeNull();
+    expect(within(container).queryByTestId("qa-md-math-pending")).toBeNull();
     expect(container.querySelector(".katex")).not.toBeNull();
   });
 

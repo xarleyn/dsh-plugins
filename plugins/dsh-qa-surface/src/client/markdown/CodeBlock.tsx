@@ -27,20 +27,23 @@ export const CodeBlock = memo(function CodeBlock({
     clipboard.writeText(code).then(pulseCopied, () => undefined);
   }, [code, pulseCopied]);
   return (
-    <div className="dsh-qa-md-code">
-      <div className="dsh-qa-md-code__banner">
-        <span className="dsh-qa-md-code__lang">{lang ?? ""}</span>
+    <div className="dsh-qa-md-code" data-testid="qa-md-code">
+      <div className="dsh-qa-md-code__banner" data-testid="qa-md-code-banner">
+        <span className="dsh-qa-md-code__lang" data-testid="qa-md-code-lang">
+          {lang ?? ""}
+        </span>
         <button
           type="button"
           className="dsh-qa-md-code__copy"
+          data-testid="qa-md-code-copy"
           onClick={onCopy}
           aria-label={copied ? "Скопировано" : "Копировать код"}
         >
           {copied ? "Скопировано" : "Копировать"}
         </button>
       </div>
-      <pre tabIndex={0}>
-        <code data-language={lang}>
+      <pre tabIndex={0} data-testid="qa-md-code-pre">
+        <code data-language={lang} data-testid="qa-md-code-content">
           {lines.map((line, index) => (
             <Fragment key={index}>
               {index > 0 ? "\n" : null}
@@ -52,6 +55,7 @@ export const CodeBlock = memo(function CodeBlock({
                     key={spanIndex}
                     className="dsh-qa-md-tok"
                     data-tok={span.cls}
+                    data-testid="qa-md-code-token"
                   >
                     {span.text}
                   </span>
@@ -68,7 +72,12 @@ export const CodeBlock = memo(function CodeBlock({
 /** The globe an external link wears, drawn like the surface's other icons. */
 export function LinkGlyph(): ReactNode {
   return (
-    <svg className="dsh-qa-md-link-icon" viewBox="0 0 14 14" aria-hidden="true">
+    <svg
+      className="dsh-qa-md-link-icon"
+      data-testid="qa-md-link-icon"
+      viewBox="0 0 14 14"
+      aria-hidden="true"
+    >
       <circle cx="7" cy="7" r="5.1" />
       <path d="M7 1.9c1.6 1.7 1.6 8.5 0 10.2M7 1.9c-1.6 1.7-1.6 8.5 0 10.2M1.9 7h10.2" />
     </svg>
