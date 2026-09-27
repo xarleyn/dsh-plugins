@@ -15,8 +15,8 @@ expensive one is the third, and it has already happened once in this repository
 Center instance, so every tool of that provider could never work, and it took a
 hand-written `curl` session on the stand to find out.
 
-Use this page when: you add or change a provider, add a *second product* to an
-existing one (see [Adding a second product](#adding-a-second-product-to-a-provider)),
+Use this page when: you add a provider (§4), change one, add a *second product*
+to an existing one (see [Adding a second product](#adding-a-second-product-to-a-provider)),
 you are verifying a release against a stand, or a user reports "the tools do
 not answer".
 
@@ -204,7 +204,45 @@ declaration is refused at connect with the value that fixes it.
 Acceptance for a self-hosted wiki: put the context path in `baseUrl`
 (`https://wiki.example.corp/confluence`), not in a path the provider appends.
 
-## 4. Adding a second product to a provider
+## 4. Adding a provider
+
+The anatomy is not on this page:
+`plugins/dsh-qa-integrations/src/providers/README.md` names every module a
+provider owes (catalog, config, `index.ts`, tools, `credential-help.ts`,
+conformance fixture) and every rule the package gate enforces. This section is
+the order of work around it, because every provider so far was added by a
+session that started by re-deriving the shape of its neighbours.
+
+1. **Spec before code** — `plugins/dsh-qa-integrations/docs/specs/providers-<id>.md`,
+   in the shape the existing specs have: the endpoints, the identity read, the
+   paging, the allow-list of reading paths, and the compatibility section naming
+   which products the provider speaks.
+2. **Copy the newest provider, not the shortest one.** Name it instead of
+   trusting this page:
+   `git log --diff-filter=A --format=%ad --name-only -- 'plugins/dsh-qa-integrations/src/providers/*/index.ts' | head`
+   — the last directory added is the current shape, and what makes it current is
+   that its catalog carries the per-operation `security` classification and its
+   transport goes through the kernel's read policy. Tool names, capability flags
+   and token-scope names follow the same neighbour.
+3. Anything generic that must change is a change to `providers/kernel/` or
+   `providers/shared/`, never a second copy of the function inside the provider —
+   the package gate fails the copy.
+4. `tests/<id>/conformance.test.ts` declaring one of the provider's reads and
+   running the shared conformance set; the gate fails when it is missing.
+5. Build, then run the package's own gate —
+   `pnpm --filter @yadsh/dsh-qa-integrations build` followed by
+   `pnpm --filter @yadsh/dsh-qa-integrations verify`; then §1's probe and §2's
+   acceptance rows against a real instance, and §6's negative cases.
+6. Public text last: the package `README.md` and `credential-help.ts` ship in the
+   tarball, so they carry synthetic values only (`PROJ-123`,
+   `jira.example.corp`, «Демо-продукт»). A deployment's custom field names,
+   space keys and project keys are operator **config** — never a fixture, an
+   example, or a commit (AGENTS.md, "No internal identifiers in public
+   content").
+7. A version plan for the package, then the pull request against the branch the
+   release line is on — not against `main`.
+
+## 5. Adding a second product to a provider
 
 The recipe that would have caught the Atlassian data-centre gap **before** the
 code was written. Do these in order and write the answers down; a mismatch here
@@ -228,7 +266,7 @@ is a design decision, not a bug to discover later.
 6. **Run this playbook against both products** on the stand, and paste the
    probe output of both into the PR.
 
-## 5. Negative cases worth running by hand
+## 6. Negative cases worth running by hand
 
 These are the ones a gate cannot prove either, and each has a distinct message
 the user must be able to read:
@@ -250,7 +288,7 @@ the user must be able to read:
 - **A name filter that resolves to nobody, or to several people** — refused
   with the identifier to pass instead of an empty page.
 
-## 6. Recording the result
+## 7. Recording the result
 
 Paste into the PR (or the deployment's round playbook) the smallest set that
 lets a reviewer re-run it:

@@ -74,6 +74,28 @@ in the test wiring — fix it, never write it off as flaky.
   `plugin-dependency-allowlist.json`; justify it by the target publishing a
   real extension API, and expect the reviewer to ask.
 
+## Docs sync (what to update after what)
+
+The recurring failure is not a wrong rule but a stale neighbour document: code
+lands, and the manifest, the README, the changelog surface or the compatibility
+row keeps describing the previous behavior. Update these in the same commit as
+the change they describe:
+
+| The change | What to update | Who checks it |
+| --- | --- | --- |
+| a package added/renamed, or a manifest field changed | `pnpm plugins:manifest`, which regenerates the root `plugins.json` **and** the root `README.md` package table | `pnpm verify:packages` fails on manifest drift |
+| user-visible behavior | the plugin's `README.md`; its `SPEC.md` when the product contract moved (config surface, tool names, degradation) | review only — no gate reads prose |
+| a config knob added/renamed | the schema field's JSDoc, the plugin's `cordis.patch.yml` example, the README config section | the file's existence is gated; the values it names are on you |
+| **any** change inside `plugins/<dir>/` — code, tests, packaging, README, docs | a version plan `.nx/version-plans/<topic>.md`; its text IS the CHANGELOG entry, so a missing plan means the feature never appears in any changelog | `pnpm release:check` (it keys on any file under the package directory, docs included) and `pnpm verify:packages` |
+| a `dsh-qa-surface` plan | a newer curated entry in `plugins/dsh-qa-surface/src/client/components/QaChangelog.tsx`, in the same change — a released section is frozen, new text goes to the planned version | the hygiene gate plus `qa-sidebar-changelog.test.tsx` |
+| host/peer requirements | `compatibility.json`, plus `docs/COMPATIBILITY.md` (the peer matrix) for a new package | the hygiene gate compares `compatibility.node` with `engines.node` verbatim |
+| a release landed | nothing by hand: `CHANGELOG.md` and the consumed plans are the release commit's business, and work after it needs a new plan | the release workflow (`release-plugins`) |
+
+Never hand-edit `CHANGELOG.md`, never add a feature row to a version that
+already shipped, and never write into a plan or changelog text that something
+internal was removed or renamed (AGENTS.md): plan text is published twice — in
+the repository and in the wave's release notes.
+
 ## Version plans and releases
 
 - Format:
