@@ -97,6 +97,53 @@ Everything below was confirmed by a broken surface, not by a green gate.
   inside `<button>` is invalid DOM and a keyboard trap — make toggle and
   selection sibling controls.
 
+## Proving the card you just registered
+
+The shell contract lives in AGENTS.md and the gates assert its *text*, so a
+plugin can pass every gate with a card no user ever sees. Do these in order:
+
+1. Rebuild the client bundle, then run the card contract against the **built**
+   `lib/client.js` (stale `lib/` answers for the previous build).
+2. `pnpm verify:packages` — the hygiene gate only checks that your plugin *owes*
+   a card-contract script; run the script.
+3. Prove it live on a stand: the card is present, it expands, and its closed /
+   hover / focus-visible / open states match a first-party card (AGENTS.md asks
+   for the visual comparison, and only a browser can give it).
+
+"Card is not visible" — check in this order, it is almost always one of these:
+
+- **Stale bundle.** Fetch `/plugins/<full-package-name>/client.js` and confirm
+  it is the build you just made.
+- **Wrong extension point.** `settings.plugin.item` is discovered from the host
+  settings directory, which is deliberately unavailable to a non-loopback
+  browser: a card that must work from the LAN belongs on
+  `settings.plugins.tab`. This is a placement rule, not a bug.
+- **No namespace.** A `settings.plugin.item` card renders nothing when its Host
+  settings namespace is unavailable — and creating an empty namespace just to
+  make a page appear is forbidden.
+- **Dead loader entry.** See the `inject` contract above: the plugin disappears
+  from the UI and the host log stays clean.
+
+## Proving a UI change beyond the gates
+
+No gate opens the page, so "green" is never evidence about layout:
+
+- **Measure instead of eyeballing.** Overflow is `el.scrollWidth > el.clientWidth`
+  at every level; check overlapping rects and the computed radius and type scale
+  against the token, not against a memory of the design.
+- **Layout inside the settings surface is container-driven.** The dialog is an
+  800px surface with a ~556px content column, so viewport media queries never
+  fire — resize by container and measure there.
+- **Capture the states that can differ**: closed / hover / focus-visible / open
+  for a card, plus the empty, loading and refusal states of whatever you added.
+- **Keep the artifacts, do not create them in a package.** Screenshots and
+  measurements are round evidence: they go to the deployment's local notes,
+  never into a `plugins/*/` directory (the published-content gate rejects docs,
+  and a tarball must not carry them either). And never delete screenshots or
+  evidence you did not produce — see `shared-checkout` §7.
+- **Report the artifact, not the verdict**: which state, which measurement,
+  which file proves it.
+
 ## Styles and design tokens
 
 - Unknown `var(--dsw-…)` invalidates the ENTIRE declaration at computed-value
