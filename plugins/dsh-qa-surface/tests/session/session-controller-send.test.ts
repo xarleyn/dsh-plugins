@@ -707,6 +707,84 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
+  it("keeps a retried first send in the chat whose session never opened", async () => {
+    // The other half of a failed adoption: the Host listed the session and gave
+    // its binding out, and only the open refused. Holding a session that never
+    // opened is holding nothing — the identity must name no session and the
+    // surface must not claim that chat id either.
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
+    });
+    await controller.ensureSession();
+    await controller.startDraft();
+    const draftKey = controller.getSnapshot().chatKey;
+    world.createSession.mockImplementationOnce(async () => {
+      const id = String(await world.create());
+      const face = world.faces.get(id);
+      face?.source.set({ ...face.source.getSnapshot(), openState: "error" });
+      return { ok: true as const, value: id };
+    });
+
+    expect(await controller.send("Первый вопрос")).toBe(false);
+    expect(controller.getSnapshot()).toMatchObject({
+      chatKey: draftKey,
+      sessionId: null,
+      error: expect.stringMatching(/Не удалось начать чат/u),
+    });
+
+    expect(await controller.send("Первый вопрос")).toBe(true);
+    expect(controller.getSnapshot()).toMatchObject({
+      chatKey: draftKey,
+      sessionId: "created-3",
+    });
+    expect(world.faces.get("created-3")?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "Первый вопрос" }],
+      "queue",
+    );
+    controller.dispose();
+  });
+
+  it("keeps the chat whose fresh session was refused by policy attestation", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
+    });
+    await controller.ensureSession();
+    await controller.startDraft();
+    const draftKey = controller.getSnapshot().chatKey;
+    world.secureSession.mockImplementationOnce(async () => ({
+      ok: false as const,
+      error: { code: "policy-unavailable" },
+    }));
+
+    // The refused session keeps its transcript for the caller that inspects it,
+    // but it owns nothing: were the identity handed to it, the next session this
+    // surface bound — another chat restored underneath the draft — would read as
+    // a move between chats, and the composer would be rebuilt over the question
+    // the stand has not admitted.
+    expect(await controller.send("Первый вопрос")).toBe(false);
+    expect(controller.getSnapshot()).toMatchObject({
+      chatKey: draftKey,
+      error: expect.stringMatching(/Настройки помощника недоступны/u),
+    });
+
+    await controller.ensureSession();
+    expect(controller.getSnapshot()).toMatchObject({
+      chatKey: draftKey,
+      sessionId: "created-1",
+    });
+    controller.dispose();
+  });
+
   it("keeps an in-flight send out of the chat that replaces the vanished one", async () => {
     const world = harness();
     const controller = new QaSessionController({
