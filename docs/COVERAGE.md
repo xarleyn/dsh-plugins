@@ -30,17 +30,19 @@ refactoring it, not to close a review.
 One-off measurement, not maintained by any gate and not refreshed on release.
 The numbers below are statements/branches/functions/lines percentages per
 package, with the line counts behind the last column. Measured on this branch
-after its rebase, with `dsh-v0.1.7-rc` at `792a6cb9`.
+after its rebase, with `dsh-v0.1.7-rc` at `869d96e7`.
 
 Reproduce it with `pnpm install --frozen-lockfile && pnpm test:coverage` and read
 the summaries. The root script carries `--parallel=1` because the fan-out lies:
 on the Windows machine this snapshot was taken on, eight projects at a time run
 out of memory inside the instrumentation, and the run then reports a package red
 while printing no number for it at all — `dsh-qa-surface` and
-`dsh-qa-integrations` both died that way on this tree (`FATAL ERROR: Zone
-Allocation failed - process out of memory`). A killed worker drops the files it
-had not reached, so a parallel number can under-read the package; the paragraph on
-red suites below names the one it also turned red for no reason at all.
+`dsh-qa-integrations` both died that way when the fan-out was left at its default,
+and `dsh-documents` read 76.7 statements against the 84.1 it measures alone
+(`FATAL ERROR: Zone Allocation failed - process out of memory`). A killed worker
+drops the files it had not reached, so a parallel number can under-read the
+package; the paragraph on red suites below names the suite the load also turned red
+for no reason at all.
 
 | Package | Stmts | Br | Fn | Lines | Lines covered |
 | --- | --- | --- | --- | --- | --- |
@@ -56,12 +58,12 @@ red suites below names the one it also turned red for no reason at all.
 | `@yadsh/dsh-documents` | 84.1 | 73.6 | 81.1 | 86.3 | 3109/3604 |
 | `@yadsh/dsh-jev-compaction` | 83.1 | 77.8 | 73.5 | 85.0 | 1257/1478 |
 | `@yadsh/dsh-audit-ui` | 83.1 | 66.5 | 73.6 | 86.0 | 395/459 |
-| `@yadsh/dsh-qa-surface` | 82.1 | 76.2 | 75.9 | 84.1 | 12160/14457 |
+| `@yadsh/dsh-qa-surface` | 82.1 | 76.2 | 75.8 | 84.1 | 12156/14457 |
 | `@yadsh/dsh-ui-repair` | 82.0 | 71.1 | 76.7 | 84.2 | 702/834 |
 | `@yadsh/dsh-kv-persist` | 81.3 | 75.5 | 71.7 | 84.1 | 593/705 |
 | `@yadsh/dsh-user-correction-miner` | 80.9 | 68.7 | 77.9 | 81.3 | 257/316 |
 | `@yadsh/dsh-draft-sessions` | 79.9 | 69.0 | 76.0 | 82.4 | 661/802 |
-| `@yadsh/dsh-sleev` | 76.8 | 73.3 | 73.2 | 78.2 | 194/248 |
+| `@yadsh/dsh-sleev` | 76.8 | 73.2 | 73.2 | 78.2 | 194/248 |
 | `@yadsh/dsh-domain-experts` | 74.2 | 74.4 | 61.0 | 75.4 | 1414/1875 |
 | `@yadsh/dsh-model-safety-gate` | 73.8 | 70.3 | 66.3 | 76.0 | 910/1198 |
 | `@yadsh/dsh-preset-persona-editor` | 72.7 | 61.5 | 61.3 | 76.7 | 622/811 |
@@ -74,7 +76,7 @@ red suites below names the one it also turned red for no reason at all.
 | `@yadsh/dsh-openviking-memory` | 47.7 | 44.9 | 50.3 | 50.2 | 1372/2732 |
 | `@yadsh/dsh-plugin-log-ui` | 45.8 | 45.4 | 41.8 | 46.3 | 157/339 |
 
-29 projects measured, 37 415 of 47 259 measured lines executed (79.2%), median
+29 projects measured, 37 411 of 47 259 measured lines executed (79.2%), median
 81.3 statements. The aggregate is line-weighted, so `dsh-qa-surface` and
 `dsh-qa-integrations` carry two fifths of it between them; the per-package rows
 are the readable unit. `@yadsh/dsh-config` and `@yadsh/dsh-plugin-scripts` have
@@ -83,16 +85,17 @@ no suite at all, so they are absent by design rather than by failure.
 Two rows moved between this snapshot and the one the branch carried before its
 rebase although no commit of the base touched either package: `dsh-git-readonly`
 covers 416 of its 443 lines here against 417 there, and `dsh-cas-results` 673
-against 675. The command was then run a second time on this same tree, and those
-two rows came back 417 and 674 while `dsh-qa-surface` moved 12 160 → 12 158 and
-every other row repeated exactly. The three packages that wobble read the machine
-rather than the repository — `dsh-git-readonly` shells out to a real `git`,
-`dsh-cas-results` has a garbage-collection suite keyed on wall-clock age, and
-`dsh-qa-surface`'s jsdom suites reach paths in run order — so one or two covered
-lines is the noise floor of this measurement. The table records the first of the
-two runs; a row that moved by a line or two between two snapshots is not a
-finding, and a difference worth reading is a package changing position, not a
-count changing by one.
+against 675. The command was run three times across the rebase to settle it, and
+those two rows came back 416, 417, 416 and 673, 674, 673 while every other row
+repeated exactly in all three. So one or two covered lines is the noise floor of
+this measurement, not a finding: `dsh-git-readonly` shells out to a real `git` and
+`dsh-cas-results` has a garbage-collection suite keyed on wall-clock age, and both
+read the machine rather than the repository. `dsh-qa-surface` is the least stable
+number in the table — 12 160, then 12 158, then 12 156 covered lines across the
+three runs — because its client suites are the ones that fail in run order,
+described below. The table records the third run, on this branch's final tree; a
+row that moved by a line or two between two snapshots is not a change in what the
+tests exercise.
 
 ### What this snapshot cannot say about three projects
 
@@ -118,25 +121,31 @@ measured package at all.
 ### Red suites in the measured set
 
 `reportOnFailure` kept the percentage of every package whose suite went red in
-the table above, which is the point of the flag. Twenty-five test files across
-nine packages failed on this tree, so a low tail reads differently once you know
-which rows carry it: `dsh-openviking-memory` (13 files), `dsh-qa-integrations`
-(2), `dsh-model-safety-gate` (2), `dsh-prompt-firewall` (2), `dsh-qa-surface`
-(2), and one each in `dsh-domain-experts`, `dsh-preset-persona-editor`,
+the table above, which is the point of the flag. Twenty-six test files across nine
+packages failed in the recorded run, so a low tail reads differently once you know
+which rows carry it: `dsh-openviking-memory` (13 files), `dsh-qa-surface` (3),
+`dsh-qa-integrations` (2), `dsh-model-safety-gate` (2), `dsh-prompt-firewall` (2),
+and one each in `dsh-domain-experts`, `dsh-preset-persona-editor`,
 `dsh-web-fetch-authenticated` and `dsh-plugin-log-ui`.
 
-Twenty-four of the twenty-five are not test failures at all: they are collection
+Twenty-four of the twenty-six are not test failures at all: they are collection
 errors carrying `SyntaxError: Invalid or unexpected token`. The measurement is not
 what puts them in the column — `pnpm nx run-many -t test --parallel=1` over all
 thirty-two projects names the same twelve red ones with the same collection errors
-file for file, instrumented or not. The one assertion failure inside the measured
-set, `qa-settings-card-sections` (`QA Surface card > bounds the request ceiling by
-the number the Host validates against`), fails in every shape of the run, on a
-product assertion no part of this measurement touches. Two further `dsh-qa-surface`
-suites (`settings-sources-section`, `qa-admin-console-overview`) went red in the
-thirty-two-project run and passed in the instrumented one and when re-run alone:
-that package's own jsdom order dependence, not a property of the measurement, and
-not this card's package to fix.
+file for file, instrumented or not.
+
+The remaining two are assertion failures, and only one of them is a fact about the
+code. `qa-settings-card-sections` (`QA Surface card > bounds the request ceiling by
+the number the Host validates against`) failed in every shape of the run — six
+runs of that package across two trees — on a product assertion no part of this
+measurement touches. `qa-question-composer`, the other file in the recorded run,
+passed in two isolated re-runs of the same package right after it; and a plain
+thirty-two-project run on the previous tree went red on two *further* client suites
+instead (`settings-sources-section`, `qa-admin-console-overview`) while
+`qa-question-composer` stayed green. `dsh-qa-surface`'s jsdom suites are order
+dependent, which is that package's problem and not a property of `--coverage`; it
+is also why the same three percentages repeat across runs of this table while its
+covered-line count does not.
 
 Read the parallelism before reading a percentage as a verdict. The fan-out
 described above did not only lose two packages: it also made
