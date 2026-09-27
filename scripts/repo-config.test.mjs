@@ -382,8 +382,10 @@ test("a cached build restores its artifacts, not only its verdict", (t) => {
 // a package can lose its `test:coverage` script, or keep a hand-copied setup
 // that drifts from its own `test`, and every command stays green. These checks
 // hold the three things the number depends on — the preset's shape, the script
-// of each package that runs vitest, and the merge semantics a package must not
-// fight.
+// of each package that runs vitest over a `src` tree, and the merge semantics a
+// package must not fight. A package with no TypeScript under `src` is the one
+// exception: the preset measures `src/**`, so there is no number for it to
+// produce, and the case is named on every run rather than left out silently.
 const PRESET = "packages/config/vitest/vitest.config.ts";
 const WORKSPACE_GROUPS = ["plugins", "packages", "tooling/generators"];
 
@@ -414,6 +416,21 @@ function setupOf(script) {
   return at === -1 ? null : script.slice(0, at);
 }
 
+/** Whether the package ships the tree the preset measures: TypeScript under `src`. */
+function hasMeasuredSource(dir) {
+  const root = path.join(ROOT, dir, "src");
+  if (!existsSync(root)) return false;
+  const pending = [root];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      if (entry.isDirectory()) pending.push(path.join(current, entry.name));
+      else if (/\.[cm]?tsx?$/.test(entry.name)) return true;
+    }
+  }
+  return false;
+}
+
 test("the shared Vitest preset carries the coverage defaults", async () => {
   const { baseConfig } = await import(new URL(`../${PRESET}`, import.meta.url));
   const coverage = baseConfig.test?.coverage ?? {};
@@ -440,15 +457,26 @@ test("the shared Vitest preset carries the coverage defaults", async () => {
 });
 
 test("every package that runs vitest declares the matching test:coverage", () => {
-  const measured = workspacePackages().filter(
+  const vitestPackages = workspacePackages().filter(
     (pkg) => setupOf(pkg.scripts.test ?? "") !== null,
   );
-  assert.ok(measured.length > 0, "no package runs vitest at all");
+  assert.ok(vitestPackages.length > 0, "no package runs vitest at all");
+  const measured = vitestPackages.filter((pkg) => hasMeasuredSource(pkg.dir));
+  for (const { dir } of vitestPackages) {
+    if (hasMeasuredSource(dir)) continue;
+    console.log(
+      `not measured: ${dir} — no TypeScript under src, so the preset has no tree to instrument`,
+    );
+  }
+  assert.ok(
+    measured.length > 0,
+    "no package has a src tree, so test:coverage measures nothing anywhere",
+  );
   for (const { dir, scripts } of measured) {
     const coverage = scripts["test:coverage"];
     assert.ok(
       coverage,
-      `${dir} runs vitest in \`test\` but declares no \`test:coverage\``,
+      `${dir} runs vitest over its src tree but declares no \`test:coverage\``,
     );
     assert.ok(
       coverage.startsWith(`${setupOf(scripts.test)}vitest run --coverage`),

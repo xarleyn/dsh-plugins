@@ -30,72 +30,72 @@ refactoring it, not to close a review.
 One-off measurement, not maintained by any gate and not refreshed on release.
 The numbers below are statements/branches/functions/lines percentages per
 package, with the line counts behind the last column. Measured on this branch
-after its rebase, with `dsh-v0.1.7-rc` at `869d96e7`.
+after its rebase, with `dsh-v0.1.7-rc` at `0dbbd0d1`.
 
 Reproduce it with `pnpm install --frozen-lockfile && pnpm test:coverage` and read
-the summaries. The root script carries `--parallel=1` because the fan-out lies:
-on the Windows machine this snapshot was taken on, eight projects at a time run
-out of memory inside the instrumentation, and the run then reports a package red
-while printing no number for it at all — `dsh-qa-surface` and
-`dsh-qa-integrations` both died that way when the fan-out was left at its default,
-and `dsh-documents` read 76.7 statements against the 84.1 it measures alone
-(`FATAL ERROR: Zone Allocation failed - process out of memory`). A killed worker
-drops the files it had not reached, so a parallel number can under-read the
-package; the paragraph on red suites below names the suite the load also turned red
-for no reason at all.
+the summaries. The root script carries `--parallel=1` because the command's own
+contract is "print a number for every package", and a worker the instrumenter
+kills leaves no summary behind, so a fan-out silently drops packages instead of
+reporting them. This machine showed the same failure mode in serial form while the
+snapshot was being taken: one run of `pnpm test:coverage` died with
+`FATAL ERROR: Zone Allocation failed - process out of memory` inside
+`@yadsh/dsh-qa-surface:build`, under the pressure of the other worktrees on the
+box, and printed no number for any of the 32 projects. The recorded numbers come
+from the serial run that completed, cross-checked against a second pass taken one
+project at a time with a retry whenever a summary was missing; the paragraph under
+the table names the three rows the two passes do not agree on.
 
 | Package | Stmts | Br | Fn | Lines | Lines covered |
 | --- | --- | --- | --- | --- | --- |
 | `@yadsh/dsh-lightrag` | 96.1 | 89.5 | 94.7 | 97.7 | 301/308 |
 | `@yadsh/dsh-tool-offload` | 94.8 | 86.9 | 98.4 | 96.2 | 325/338 |
 | `@yadsh/dsh-answer-review-gate` | 93.6 | 89.3 | 94.9 | 95.9 | 355/370 |
-| `@yadsh/dsh-git-readonly` | 91.9 | 78.8 | 87.7 | 93.9 | 416/443 |
+| `@yadsh/dsh-git-readonly` | 92.1 | 79.7 | 89.0 | 94.1 | 417/443 |
 | `@yadsh/dsh-audit-core` | 91.8 | 81.4 | 97.6 | 95.3 | 183/192 |
-| `@yadsh/dsh-cas-results` | 90.8 | 84.2 | 85.3 | 92.8 | 673/725 |
+| `@yadsh/dsh-cas-results` | 91.0 | 84.4 | 86.0 | 93.0 | 674/725 |
 | `@yadsh/dsh-l10n-overrides` | 90.7 | 87.2 | 97.1 | 92.4 | 697/754 |
 | `@yadsh/dsh-plugin-log` | 87.6 | 75.3 | 83.0 | 90.8 | 295/325 |
-| `@yadsh/dsh-qa-integrations` | 84.2 | 73.9 | 82.1 | 86.2 | 5628/6531 |
+| `@yadsh/dsh-qa-integrations` | 86.1 | 74.6 | 84.5 | 88.8 | 5793/6522 |
+| `@yadsh/dsh-model-safety-gate` | 84.2 | 77.0 | 75.7 | 86.6 | 1040/1201 |
 | `@yadsh/dsh-documents` | 84.1 | 73.6 | 81.1 | 86.3 | 3109/3604 |
+| `@yadsh/dsh-domain-experts` | 84.0 | 78.3 | 76.3 | 86.5 | 1647/1904 |
+| `@yadsh/dsh-qa-surface` | 83.2 | 76.8 | 77.0 | 85.6 | 12508/14611 |
 | `@yadsh/dsh-jev-compaction` | 83.1 | 77.8 | 73.5 | 85.0 | 1257/1478 |
 | `@yadsh/dsh-audit-ui` | 83.1 | 66.5 | 73.6 | 86.0 | 395/459 |
-| `@yadsh/dsh-qa-surface` | 82.1 | 76.2 | 75.8 | 84.1 | 12156/14457 |
 | `@yadsh/dsh-ui-repair` | 82.0 | 71.1 | 76.7 | 84.2 | 702/834 |
 | `@yadsh/dsh-kv-persist` | 81.3 | 75.5 | 71.7 | 84.1 | 593/705 |
 | `@yadsh/dsh-user-correction-miner` | 80.9 | 68.7 | 77.9 | 81.3 | 257/316 |
 | `@yadsh/dsh-draft-sessions` | 79.9 | 69.0 | 76.0 | 82.4 | 661/802 |
-| `@yadsh/dsh-sleev` | 76.8 | 73.2 | 73.2 | 78.2 | 194/248 |
-| `@yadsh/dsh-domain-experts` | 74.2 | 74.4 | 61.0 | 75.4 | 1414/1875 |
-| `@yadsh/dsh-model-safety-gate` | 73.8 | 70.3 | 66.3 | 76.0 | 910/1198 |
-| `@yadsh/dsh-preset-persona-editor` | 72.7 | 61.5 | 61.3 | 76.7 | 622/811 |
-| `@yadsh/dsh-session-audit` | 69.9 | 66.1 | 61.7 | 72.4 | 459/634 |
-| `@yadsh/dsh-web-fetch-authenticated` | 69.8 | 58.1 | 62.2 | 71.6 | 1815/2535 |
-| `@yadsh/dsh-doc-impact` | 60.5 | 54.3 | 55.5 | 62.0 | 668/1077 |
+| `@yadsh/dsh-sleev` | 76.8 | 73.3 | 73.2 | 78.2 | 194/248 |
+| `@yadsh/dsh-preset-persona-editor` | 74.7 | 63.7 | 64.4 | 79.7 | 655/822 |
+| `@yadsh/dsh-openviking-memory` | 72.2 | 63.5 | 75.3 | 75.5 | 2065/2735 |
+| `@yadsh/dsh-web-fetch-authenticated` | 72.0 | 59.4 | 65.1 | 74.1 | 1885/2543 |
+| `@yadsh/dsh-session-audit` | 67.8 | 66.1 | 61.0 | 70.9 | 459/647 |
+| `@yadsh/dsh-prompt-firewall` | 62.9 | 50.6 | 55.5 | 63.7 | 225/353 |
+| `@yadsh/dsh-doc-impact` | 60.5 | 54.3 | 55.4 | 62.0 | 667/1076 |
 | `@yadsh/dsh-qa-browser` | 58.8 | 56.0 | 60.3 | 60.1 | 961/1599 |
+| `@yadsh/dsh-plugin-log-ui` | 57.9 | 48.8 | 53.1 | 58.8 | 203/345 |
 | `@yadsh/dsh-session-scope` | 53.2 | 42.2 | 52.1 | 54.3 | 664/1223 |
-| `@yadsh/dsh-prompt-firewall` | 49.3 | 44.9 | 42.7 | 49.6 | 172/347 |
-| `@yadsh/dsh-openviking-memory` | 47.7 | 44.9 | 50.3 | 50.2 | 1372/2732 |
-| `@yadsh/dsh-plugin-log-ui` | 45.8 | 45.4 | 41.8 | 46.3 | 157/339 |
 
-29 projects measured, 37 411 of 47 259 measured lines executed (79.2%), median
-81.3 statements. The aggregate is line-weighted, so `dsh-qa-surface` and
+29 projects measured, 39 187 of 47 482 measured lines executed (82.5%), median
+83.1 statements. The aggregate is line-weighted, so `dsh-qa-surface` and
 `dsh-qa-integrations` carry two fifths of it between them; the per-package rows
-are the readable unit. `@yadsh/dsh-config` and `@yadsh/dsh-plugin-scripts` have
-no suite at all, so they are absent by design rather than by failure.
+are the readable unit. `@yadsh/dsh-plugin-scripts` runs no vitest suite and is
+absent by design; `@yadsh/dsh-config` does run one — it tests the Vitest preset
+itself — but ships no `src`, so the preset's `include` has no tree to instrument
+and the contract test names that package on every run instead of letting it drop
+out silently.
 
-Two rows moved between this snapshot and the one the branch carried before its
-rebase although no commit of the base touched either package: `dsh-git-readonly`
-covers 416 of its 443 lines here against 417 there, and `dsh-cas-results` 673
-against 675. The command was run three times across the rebase to settle it, and
-those two rows came back 416, 417, 416 and 673, 674, 673 while every other row
-repeated exactly in all three. So one or two covered lines is the noise floor of
-this measurement, not a finding: `dsh-git-readonly` shells out to a real `git` and
-`dsh-cas-results` has a garbage-collection suite keyed on wall-clock age, and both
-read the machine rather than the repository. `dsh-qa-surface` is the least stable
-number in the table — 12 160, then 12 158, then 12 156 covered lines across the
-three runs — because its client suites are the ones that fail in run order,
-described below. The table records the third run, on this branch's final tree; a
-row that moved by a line or two between two snapshots is not a change in what the
-tests exercise.
+Two passes over this tree disagree in three rows and agree in the other 26:
+`dsh-cas-results` covered 673 lines in one and 674 in the other, `dsh-documents`
+3112 and 3109, `dsh-qa-surface` 12 506 and 12 508, and no percentage moved by more
+than a tenth of a point. So up to three covered lines is the noise floor of this
+measurement, not a finding. Both of the packages that moved read the machine rather
+than the repository: `dsh-cas-results` has a garbage-collection suite keyed on
+wall-clock age and `dsh-documents` drives a `libreoffice` subprocess.
+`dsh-git-readonly`, the other suite that shells out to a real `git`, repeated its
+417/443 exactly. A row that moved by a few lines between two snapshots is not a
+change in what the tests exercise.
 
 ### What this snapshot cannot say about three projects
 
@@ -118,46 +118,42 @@ summary lists two of the twelve files under `src`, one line each, none executed.
 Read straight, that is the worst package in the repository and it is not a
 measured package at all.
 
-### Red suites in the measured set
+### The red column the previous snapshot carried
 
-`reportOnFailure` kept the percentage of every package whose suite went red in
-the table above, which is the point of the flag. Twenty-six test files across nine
-packages failed in the recorded run, so a low tail reads differently once you know
-which rows carry it: `dsh-openviking-memory` (13 files), `dsh-qa-surface` (3),
-`dsh-qa-integrations` (2), `dsh-model-safety-gate` (2), `dsh-prompt-firewall` (2),
-and one each in `dsh-domain-experts`, `dsh-preset-persona-editor`,
-`dsh-web-fetch-authenticated` and `dsh-plugin-log-ui`.
+The snapshot this one replaced listed 26 failing test files across nine packages,
+24 of them collection errors reading `SyntaxError: Invalid or unexpected token`.
+None of it was a property of `--coverage` and none of it is a fact about those
+packages' tests: it was the missing decorator lowering that `dsh-v0.1.7-rc` fixed
+in #603 while this card was open. The one assertion failure named there did not
+survive the rebase either, and it was never a fact about the product: #603 found
+that `qa-settings-card-sections` asked `section()` for the caption «Сессия» where
+that helper takes a `data-testid`. On the rebased tree the measured set is green —
+every test file of all 29 packages passes, three files are skipped
+(`dsh-domain-experts`, `dsh-kv-persist`, `dsh-qa-browser`) — so no row of the table
+above carries a red tail. `reportOnFailure` stays on regardless: a red run is still
+expected to print the number it measured.
 
-Twenty-four of the twenty-six are not test failures at all: they are collection
-errors carrying `SyntaxError: Invalid or unexpected token`. The measurement is not
-what puts them in the column — `pnpm nx run-many -t test --parallel=1` over all
-thirty-two projects names the same twelve red ones with the same collection errors
-file for file, instrumented or not.
+That fix is also what moved the numbers, and it was checked rather than assumed:
+deleting the single `plugins: [lowerStandardDecorators()]` line from the shared
+preset and re-running returns the old snapshot exactly — `dsh-openviking-memory`
+47.73 over 1372/2732 against the 47.7 / 1372 of that table, `dsh-plugin-log-ui`
+45.76, `dsh-prompt-firewall` 49.34, `dsh-model-safety-gate` 73.83,
+`dsh-domain-experts` 74.19, five of the six red again — and putting the line back
+reproduces 72.16, 57.88, 62.91, 84.23, 83.95 green. So a row that reads higher
+than the last snapshot does not mean anyone wrote more tests; the code it imports
+merely became loadable.
 
-The remaining two are assertion failures, and only one of them is a fact about the
-code. `qa-settings-card-sections` (`QA Surface card > bounds the request ceiling by
-the number the Host validates against`) failed in every shape of the run — six
-runs of that package across two trees — on a product assertion no part of this
-measurement touches. `qa-question-composer`, the other file in the recorded run,
-passed in two isolated re-runs of the same package right after it; and a plain
-thirty-two-project run on the previous tree went red on two *further* client suites
-instead (`settings-sources-section`, `qa-admin-console-overview`) while
-`qa-question-composer` stayed green. `dsh-qa-surface`'s jsdom suites are order
-dependent, which is that package's problem and not a property of `--coverage`; it
-is also why the same three percentages repeat across runs of this table while its
-covered-line count does not.
+The same lever also moves a row the other way, which is the trap in comparing
+snapshots across it. `dsh-session-audit` was green before #603 and is green after
+it, and its percentage *fell* from 69.9 to 67.8 while its covered lines held at
+459: the lowered emit attributes thirteen more lines of `src/index.ts` to the
+report, 61 to 74, so the denominator grew under an unchanged suite. Percentages
+from the two trees are not comparable, in either direction.
 
-Read the parallelism before reading a percentage as a verdict. The fan-out
-described above did not only lose two packages: it also made
-`documents-providers-backends` (`libreoffice provider > converts through a
-per-job profile`) fail on a real subprocess under eight-way load, a suite that is
-green at `--parallel=1`, and pulled `dsh-documents` down to 76.7 statements
-against the 84.1 it measures alone.
-
-A failing suite measures its own file as unexecuted, so these percentages are a
-floor. `@yadsh/dsh-session-scope` (53.2 / 42.2 branches) and
-`@yadsh/dsh-doc-impact` (60.5 / 54.3) are green and still the weakest of the lot,
-which is the kind of finding the ratio never made.
+A failing suite measures its own file as unexecuted, so a red run is a floor; the
+green rows above are not. `@yadsh/dsh-session-scope` (53.2 statements, 42.2
+branches) and `@yadsh/dsh-doc-impact` (60.5 / 54.3) are the weakest of the lot and
+they are passing — which is the kind of finding the ratio never made.
 
 ## What moved when the denominator became shared
 
@@ -165,46 +161,57 @@ Four plugins measured a subset of their own `src` before the preset took over,
 and the preset does not narrow: `mergeConfig` concatenates arrays, so a package
 that wants a smaller tree has to reach for `coverage.exclude`. Both columns below
 are the *same* tree and the *same* run of the same suite — this branch measured
-twice, once with the package's historical `include` restored through
-`--coverage.include` — the command line replaces that array where a package config
-file would concatenate onto it — and once with it dropped, so the gap is the
-denominator alone, with not a single test changed:
+each package twice, once with its historical denominator restored through
+`--coverage.exclude` and once as the preset configures it — so the gap is the
+denominator alone, with not a single test changed.
+
+The restoration has to go through `exclude`, and that is worth stating because the
+obvious route is wrong. Passing the old glob as `--coverage.include` does *not*
+recreate the old measurement: the preset's own `include` concatenates onto it, and
+the modules the suite actually loaded stay in the report either way. On
+`dsh-qa-browser` that shortcut printed 961 covered lines over 1550 — the preset's
+covered count against a denominator missing only the one `.tsx` nothing imports —
+a number that belongs to neither configuration. `exclude` is the one that wins over
+`include`, and it is what these rows use:
 
 | Package | Measured before | Stmts | Lines | Measured after | Stmts | Lines |
 | --- | --- | --- | --- | --- | --- | --- |
-| `@yadsh/dsh-session-audit` | `src/host/**/*.ts` + `src/config.ts` | 80.1 | 359/433 | all of `src` | 69.9 | 459/634 |
+| `@yadsh/dsh-session-audit` | `src/host/**/*.ts` + `src/config.ts` | 80.1 | 359/433 | all of `src` | 67.8 | 459/647 |
 | `@yadsh/dsh-draft-sessions` | `src/host/**/*.ts` + `src/shared/**/*.ts` | 89.0 | 136/150 | all of `src` | 79.9 | 661/802 |
 | `@yadsh/dsh-sleev` | `src/host/**/*.ts` + `src/shared/**/*.ts` | 89.7 | 91/98 | all of `src` | 76.8 | 194/248 |
-| `@yadsh/dsh-qa-browser` | `src/**/*.ts` | 60.8 | 961/1550 | all of `src`, `.tsx` included | 58.8 | 961/1599 |
+| `@yadsh/dsh-qa-browser` | `src/**/*.ts` | 59.6 | 869/1432 | all of `src`, `.tsx` included | 58.8 | 961/1599 |
 
-The percentage falls in every row while the executed code grows in three of them:
+The percentage falls in every row and the executed code grows in every row:
 `dsh-draft-sessions` reported 136 covered lines against its own tree and 661
 against the whole one. The wider denominator did not uncover an untested client;
 it stopped hiding a tested one in the count.
 
-`dsh-qa-browser` is the row that makes the arithmetic visible: its own glob was
-`src/**/*.ts`, forty-nine measured lines from the preset's tree, so it moved
-60.8 → 58.8 with 961 covered lines in both columns. A package whose old tree
-already nearly matched the preset's gains almost nothing from the change, which
-is the reason the four are listed with their numbers rather than folded into one
-sentence.
+`dsh-qa-browser` is the row that barely moves, and its four `.tsx` files say why:
+three of them are imported by the suite and partly executed (`BrowserPanel.tsx`
+25/31, `chrome.tsx` 65/85, `BrowserRefusals.tsx` 2/2) while only the client entry
+`index.tsx` never runs, 0/49. A package whose own glob already covered everything
+its tests load gains little from the change — 92 covered lines in, 167 measured
+lines in — which is the reason the four are listed with their numbers rather than
+folded into one sentence.
 
-`@yadsh/dsh-qa-integrations` configured a reporter list and no tree at all, and
-`@yadsh/dsh-ui-repair` had no Vitest config; neither had ever been measured, so
-neither appears above.
+`@yadsh/dsh-qa-integrations` configured a reporter list and no tree at all, so its
+`json` reporter never wrote the summary the snapshot reads; `@yadsh/dsh-ui-repair`
+had no Vitest config. Neither had ever been measured, so neither appears above.
+Both are in the table now, at 86.1 (5793/6522) and 82.0 (702/834).
 
 ## The ratio this replaced
 
 Refactor planning ranked packages by lines of test code per line of `src`. That
 ratio is not a coverage number: it grows whenever a package gains tests of any
 quality, it is easiest to win on a small package with a large suite, and it never
-names a statement. Against the snapshot above it agrees only weakly — Spearman
-rho 0.42 over the 28 projects the catalog scored and this tree could measure —
-and it errs in both directions. It called `audit-ui` the worst (30) while it
-measures 83.1 statements, mid-table; it called `session-scope` healthy (63) while
-its 53.2 / 42.2 branches is the weakest green suite in the repository; and its
-best score, `l10n-overrides` at 205, measures 90.7 — a real number, but the
-ranking placed it above packages that measure better. So the ratio was a ranking
-of effort, not of risk, and it cannot point at the corner that is untested.
+names a statement. Against the snapshot above it agrees only weakly — Spearman rho
+0.53 over the 25 projects the catalog scored and this tree could measure — and it
+errs in both directions. It called `audit-ui` the worst (30) while it measures 83.1
+statements, fifteenth of 29; it called `session-scope` healthy (63) while its 53.2
+/ 42.2 branches is the weakest row in the repository; and its best score,
+`l10n-overrides` at 205, measures 90.7 — a real number, but behind the five
+paired packages the ratio ranked far below it (`lightrag` 86, `tool-offload` 90,
+`answer-review-gate` 104, `git-readonly` 83, `cas-results` 70). So the ratio was a
+ranking of effort, not of risk, and it cannot point at the corner that is untested.
 Compare this table with another measurement of the same tree; never with a line
 count.
