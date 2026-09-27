@@ -16,7 +16,11 @@ has to: before the secret is decrypted and before a single byte reaches the
 vendor. The card reports a connection through the same intersection, so a
 withdrawn capability leaves the list the operator sees at the same moment it
 leaves the set a call is served from, instead of sitting there as a switch that
-is only ever a refusal.
+is only ever a refusal. Writing an allowance goes through it too: a policy for a
+capability the deployment does not offer is refused rather than stored, because
+a row saved while the capability is away would wake up the moment it returns —
+a permission nobody asked for, which is what a newly detected capability is kept
+from by starting denied.
 
 A verdict about an old credential can no longer rewrite the current one. A
 validation probe outlives its own connection whenever the account is re-saved
@@ -42,10 +46,14 @@ service token, say — still overwrote the status of the live connection. And a
 probe unlocks the credential its own binding names rather than whatever the row
 points at when the read happens, so the answer it produces and the generation
 the verdict is filed against are the same connection by construction, not
-because nothing happened to intervene.
+because nothing happened to intervene. A read that loses that credential to the
+reconnect says so as the missing connection it is: the operation is recorded as
+a failure rather than among the calls policy declined, and the user is not told
+to store a token they just replaced.
 
 Both are pinned by tests: a stored grant the provider no longer offers is
 refused without unlocking the secret and is gone from the card that describes
-the connection, and a validation that lands after the account moved is
-discarded — in either completion order, and after a re-save of the very profile
-the binding already ran under.
+the connection, an allowance for it is refused while it is away and still does
+not serve when it returns, and a validation that lands after the account moved
+is discarded — in either completion order, and after a re-save of the very
+profile the binding already ran under.

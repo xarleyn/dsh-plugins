@@ -160,11 +160,13 @@ export class IntegrationBroker {
 
   /**
    * The capabilities a connection may use as it stands: the stored grant, with
-   * anything this deployment has since withdrawn from the provider removed. The
-   * call gate and the operator card both read through here, so the card never
-   * lists a capability a call would refuse — and a grant that survives only in
-   * the database stops being served, rather than running until the connection
-   * is next established.
+   * anything this deployment has since withdrawn from the provider removed.
+   * Everything that decides or displays the reach of a connection reads through
+   * here — the call gate, the operator card, and the policy editor — so a
+   * capability the deployment has taken away is neither served, nor offered as a
+   * switch, nor able to collect a fresh allowance. A grant that survives only in
+   * the database stops being served, rather than running until the connection is
+   * next established.
    */
   private grantedCapabilities(
     integration: StoredIntegration,
@@ -571,7 +573,16 @@ export class IntegrationBroker {
     patch: PolicyPatch,
   ): IntegrationSummary {
     const integration = this.requireConnected(principal, providerId);
-    if (!integration.capabilities.includes(patch.operation)) {
+    // An allowance is written only for a capability the connection has as it
+    // stands. A row set against one the deployment has withdrawn would sit inert
+    // and start serving the moment that capability came back — a permission
+    // nobody asked for, against the rule `validate` keeps for a capability the
+    // credential newly reveals: it stays denied until somebody enables it.
+    const granted = this.grantedCapabilities(
+      integration,
+      this.providers.get(providerId),
+    );
+    if (!granted.includes(patch.operation)) {
       throw new IntegrationError("InvalidRequest", "Capability is unavailable");
     }
     if (!(["allow", "confirm", "deny"] as const).includes(patch.mode)) {
@@ -1041,9 +1052,15 @@ export class IntegrationBroker {
   private async decrypt(integration: StoredIntegration): Promise<string> {
     const record = this.repository.secretByRef(integration.secretRef);
     if (record === undefined) {
+      // The binding named a credential that is no longer stored: it was spent by
+      // a reconnect while this read was under way. Refuse it as the missing
+      // connection it is, the same way `requireConnected` refuses a binding that
+      // has gone, and never as a policy refusal — `PersonalCredentialRequired`
+      // would tell the user to store a token they just replaced, and the audit
+      // trail would file a lost race among the calls policy declined.
       throw new IntegrationError(
-        "PersonalCredentialRequired",
-        "This operation needs a personal credential",
+        "IntegrationNotConnected",
+        "The credential this request started from is no longer stored",
       );
     }
     if (
