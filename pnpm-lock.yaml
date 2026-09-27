@@ -290,6 +290,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
@@ -324,6 +327,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
@@ -379,6 +385,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
@@ -413,6 +422,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
@@ -443,6 +455,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
@@ -474,6 +489,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -511,6 +529,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -566,6 +587,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -642,6 +666,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -736,6 +763,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -876,6 +906,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -952,6 +985,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1001,6 +1037,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1032,6 +1071,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1069,6 +1111,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1154,6 +1199,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1266,6 +1314,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1354,6 +1405,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1427,6 +1481,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1506,6 +1563,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1591,6 +1651,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1673,6 +1736,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1824,6 +1890,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1918,6 +1987,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1982,6 +2054,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2055,6 +2130,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2107,6 +2185,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2156,6 +2237,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2217,6 +2301,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2299,6 +2386,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2333,6 +2423,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../../packages/config
