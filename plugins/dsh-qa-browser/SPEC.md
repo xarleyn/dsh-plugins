@@ -112,10 +112,12 @@ playwright
 
 Possible later providers:
 
-- remote CDP;
 - browser sidecar;
 - Chrome extension / user Chrome bridge;
 - an existing agent-browser runtime.
+
+Remote CDP is not on this list: it shipped as a mode of the provider above, in
+§3.3.
 
 Tools and UI must depend on Browser service contracts, not directly on Playwright classes.
 
@@ -142,6 +144,12 @@ What the mode does not change: per-DSH-session browser contexts (§7), the
 server-side network policy (§17), the snapshot and ref model (§12), and the
 recovery rule that a browser which is gone is never pretended to still be there
 (§7.5).
+
+What the mode must not gain: an attached browser arrives with a default context
+holding the tabs its owner opened. The runtime builds its sessions with
+`newContext` and closes exactly those, so it never enumerates that context, never
+drives a page inside it, and never closes it — which is what keeps §5's "no
+controlling arbitrary existing user tabs" true while §3.3 is in the release.
 
 The endpoint is a control handle, so it is treated as one: an `attach` runtime
 reaches `localhost` by default, and any other host needs
@@ -231,7 +239,7 @@ Add:
 - uploads;
 - downloads;
 - trace viewer integration;
-- optional remote/sidecar provider.
+- optional sidecar provider — the remote half of this item shipped as §3.3.
 
 This phasing is mandatory unless implementation proves several phases are trivial.
 
@@ -242,7 +250,10 @@ This phasing is mandatory unless implementation proves several phases are trivia
 Do not implement in the initial release:
 
 - a Chrome extension;
-- controlling arbitrary existing user tabs;
+- controlling arbitrary existing user tabs — `attach` (§3.3) is what puts such
+  tabs within reach, since whoever holds the endpoint can enumerate them, so the
+  non-goal survives the feature only because the runtime keeps to the contexts it
+  created: it never reads, drives, or closes the browser's own default context;
 - importing cookies from the user's normal browser;
 - arbitrary filesystem access from model arguments;
 - arbitrary JavaScript evaluation by default;
@@ -2183,7 +2194,7 @@ This fixture is critical for stable Browser tests.
 - Session creation/close;
 - tab create/select/close;
 - max tab limit;
-- crash state;
+- crash state, and a dropped CDP link kept apart from it (§3.3);
 - idle eviction.
 
 ### 40.2 Playwright integration tests
@@ -2208,7 +2219,9 @@ Cover:
 
 Both `runtime.mode` values are exercised here, including the one no fake can
 answer for: `attach` joins a Chromium this runtime did not start and checks that
-its teardown leaves that process and its owner's pages running. The suite is
+its teardown leaves that process and its owner's pages running. The same run then
+kills that browser between actions, because a fake only announces a disconnect
+while a real one is the thing the panel has to read correctly. The suite is
 opt-in elsewhere in the workspace and required in this project's own CI job,
 which sets `DSH_QA_BROWSER_E2E=1` and fails the job when the requested run cannot
 find a browser — a check that skipped would read as a check that passed.
