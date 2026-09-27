@@ -12,7 +12,8 @@
  * `undefined`), and `readDocument()` renders a broken preset's declarations
  * exactly as it renders a healthy one — it never consults the activation
  * diagnostic. `withoutReadDocument` models a host inside the `<0.2.0` part of
- * the compatibility range that predates the method.
+ * the compatibility range that predates the method, and `answerNothing` one that
+ * answers the method with a value that is not a composition.
  */
 
 import type {
@@ -67,6 +68,14 @@ export interface FixturePreset {
 export interface RosterShape {
   /** Answer as a host whose registry publishes no `readDocument()`. */
   readonly withoutReadDocument?: boolean;
+  /**
+   * Answer `readDocument()` with nothing at all rather than a document or a
+   * refusal. The published `0.1.7-rc.2` registry does neither — it resolves a
+   * document or rejects with `agent-preset/not-found` — so this models a host
+   * inside the `<0.2.0` part of the compatibility range that answers the method
+   * with a value the face does not describe.
+   */
+  readonly answerNothing?: boolean;
 }
 
 /** A roster over the presets a test registered, keyed by id. */
@@ -88,6 +97,7 @@ export function rosterOf(
   const readDocument = async (
     agentPreset: string,
   ): Promise<PresetComposition> => {
+    if (shape.answerNothing) return undefined as unknown as PresetComposition;
     const entry = entries[agentPreset];
     if (entry === undefined || entry.content === null)
       throw notKnown(agentPreset);

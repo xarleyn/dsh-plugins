@@ -224,8 +224,13 @@ function SectionsArea(props: {
           className="preset-persona__list"
           data-testid="persona-sections-list"
         >
-          {document.sections.map((section) => (
-            <SectionRow key={section.name} section={section} />
+          {/* A hand-edited composition can declare two sections under one name,
+              so the name alone is not an identity React can tell rows apart by. */}
+          {document.sections.map((section, index) => (
+            <SectionRow
+              key={`${section.name}:${String(index)}`}
+              section={section}
+            />
           ))}
         </ul>
       )}

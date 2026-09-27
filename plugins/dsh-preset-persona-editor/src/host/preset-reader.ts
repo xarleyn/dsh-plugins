@@ -50,6 +50,10 @@ import { reasonOf } from "./validation.js";
 const NO_READ_DOCUMENT =
   "the deployment's agent-preset registry does not answer readDocument(), so no composition can be read";
 
+/** Why a composition could not be read, when the host answered at all. */
+const NO_COMPOSITION_TEXT =
+  "the deployment's agent-preset registry answered readDocument() without a composition to read";
+
 /** The one logger call the reader makes. */
 export type PresetReadLogger = Pick<PluginLoggerLike, "warn">;
 
@@ -187,6 +191,15 @@ export type CompositionRead =
   | { readonly composition: PresetComposition; readonly refusal: "" }
   | { readonly composition: null; readonly refusal: string };
 
+/** Whether the host answered with a composition this page can read. */
+function isComposition(answer: unknown): answer is PresetComposition {
+  return (
+    typeof answer === "object" &&
+    answer !== null &&
+    typeof (answer as { content?: unknown }).content === "string"
+  );
+}
+
 /**
  * Read one preset's composition from the registry.
  * @param roster - the host's `agentPresets` service.
@@ -204,7 +217,15 @@ export async function readComposition(
   if (typeof read !== "function")
     return { composition: null, refusal: NO_READ_DOCUMENT };
   try {
-    return { composition: await read.call(roster, id), refusal: "" };
+    const answer: unknown = await read.call(roster, id);
+    // `readDocument` is typed to answer a document and the published registry
+    // either answers one or rejects, but a host inside the `<0.2.0` range is
+    // free to answer anything. Reading `.content` off that answer would raise a
+    // TypeError this page then shows as its only reason, so a malformed answer
+    // is refused here, in words.
+    if (!isComposition(answer))
+      return { composition: null, refusal: NO_COMPOSITION_TEXT };
+    return { composition: answer, refusal: "" };
   } catch (cause) {
     // A preset can be retired between the roster read and this call, and the
     // registry can refuse a composition for its own reasons. Both are the host's
