@@ -15,11 +15,13 @@ export function AuditSection(props: ConfigProps) {
   const disabled = !props.writable;
   return (
     <Section
+      testId="safety-section-audit"
       title="Audit"
       modified={props.overridden(["audit"])}
       aside={
         props.overridden(["audit"]) ? (
           <ResetButton
+            testId="safety-audit-reset"
             disabled={disabled}
             label="Reset"
             onClick={() => {
@@ -31,6 +33,7 @@ export function AuditSection(props: ConfigProps) {
     >
       <div className="msg-grid">
         <Toggle
+          testId="safety-audit-enabled"
           checked={config?.audit?.enabled ?? true}
           disabled={disabled}
           label="Record verdicts"
@@ -40,6 +43,7 @@ export function AuditSection(props: ConfigProps) {
           }}
         />
         <Toggle
+          testId="safety-audit-include-raw-content"
           checked={config?.audit?.includeRawContent ?? false}
           disabled={disabled}
           label="Include raw content"
@@ -50,7 +54,10 @@ export function AuditSection(props: ConfigProps) {
         />
       </div>
       {config?.audit?.includeRawContent === true ? (
-        <div className="msg-notice warn">
+        <div
+          className="msg-notice warn"
+          data-testid="safety-audit-notice-raw-content"
+        >
           Raw content is on. The checked prompt, output, or tool argument is
           stored in the session log and the recent-verdict list, so anything the
           gate inspects — including secrets it matched — is written down

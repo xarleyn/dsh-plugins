@@ -18,17 +18,18 @@ export function VerdictsSection(props: VerdictsProps) {
   const rows = props.inspect?.audit ?? [];
   return (
     <Section
+      testId="safety-section-verdicts"
       title="Recent verdicts"
       modified={false}
       hint={props.inspect === null ? undefined : "Newest first, last 50 checks"}
     >
       {rows.length === 0 ? (
-        <div className="msg-empty">
+        <div className="msg-empty" data-testid="safety-verdicts-empty">
           No check has run since the gate started.
         </div>
       ) : (
         <div className="msg-table-wrap">
-          <table className="msg-table">
+          <table className="msg-table" data-testid="safety-verdicts-table">
             <thead>
               <tr>
                 <th>Turn</th>
@@ -44,28 +45,40 @@ export function VerdictsSection(props: VerdictsProps) {
               {rows.map((row, index) => (
                 <tr
                   key={`${row.contentSha256}:${row.channel}:${String(index)}`}
+                  data-testid="safety-verdicts-row"
                 >
-                  <td className="msg-mono">
+                  <td className="msg-mono" data-testid="safety-verdicts-turn">
                     {row.turn === null ? "—" : `t${row.turn}`}
                     {row.step === null ? "" : `.${row.step}`}
                   </td>
-                  <td>
+                  <td data-testid="safety-verdicts-channel">
                     {row.direction === "tools" && row.toolName !== null
                       ? row.toolName
                       : row.channel}
                   </td>
-                  <td>
+                  <td data-testid="safety-verdicts-decision">
                     <span className={`msg-pill ${row.decision}`}>
                       {row.decision}
                     </span>
                     {row.errorCode !== null ? (
-                      <div className="msg-muted">{row.errorCode}</div>
+                      <div
+                        className="msg-muted"
+                        data-testid="safety-verdicts-error-code"
+                      >
+                        {row.errorCode}
+                      </div>
                     ) : null}
                   </td>
-                  <td>{joinList(row.categories)}</td>
-                  <td>{row.confidence.toFixed(2)}</td>
-                  <td>{formatMs(row.latencyMs)}</td>
-                  <td>
+                  <td data-testid="safety-verdicts-categories">
+                    {joinList(row.categories)}
+                  </td>
+                  <td data-testid="safety-verdicts-confidence">
+                    {row.confidence.toFixed(2)}
+                  </td>
+                  <td data-testid="safety-verdicts-latency">
+                    {formatMs(row.latencyMs)}
+                  </td>
+                  <td data-testid="safety-verdicts-content">
                     <span className="msg-mono" title={row.summary}>
                       {shortHash(row.contentSha256)}
                     </span>
@@ -73,7 +86,12 @@ export function VerdictsSection(props: VerdictsProps) {
                       {formatCount(row.contentChars)} chars
                     </div>
                     {row.rawContent !== null ? (
-                      <div className="msg-raw">{row.rawContent}</div>
+                      <div
+                        className="msg-raw"
+                        data-testid="safety-verdicts-raw-content"
+                      >
+                        {row.rawContent}
+                      </div>
                     ) : null}
                   </td>
                 </tr>

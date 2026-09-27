@@ -12,11 +12,13 @@ export function AdvancedSection(props: ConfigProps) {
   const disabled = !props.writable;
   return (
     <Section
+      testId="safety-section-advanced"
       title="Advanced"
       modified={props.overridden(["customBlockPatterns"])}
       aside={
         props.overridden(["customBlockPatterns"]) ? (
           <ResetButton
+            testId="safety-advanced-reset"
             disabled={disabled}
             label="Reset"
             onClick={() => {
@@ -27,6 +29,7 @@ export function AdvancedSection(props: ConfigProps) {
       }
     >
       <ListField
+        testId="safety-advanced-custom-block-patterns"
         label="Extra block patterns (one per line, comma separated)"
         hint="Case-insensitive JavaScript regular expressions, scanned in the deterministic layer. A pattern that does not compile is refused here rather than silently dropped at load."
         value={config?.customBlockPatterns ?? []}

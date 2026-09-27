@@ -41,12 +41,14 @@ export function StatusSection(props: StatusProps) {
 
   return (
     <Section
+      testId="safety-section-status"
       title="Status"
       modified={false}
       aside={
         <button
           type="button"
           className="msg-btn"
+          data-testid="safety-status-refresh"
           disabled={props.refreshing}
           onClick={props.onRefresh}
         >
@@ -57,6 +59,7 @@ export function StatusSection(props: StatusProps) {
       <div className="msg-status">
         {" "}
         <Chip
+          testId="safety-status-mode"
           label="Mode"
           value={
             inspect === null
@@ -66,6 +69,7 @@ export function StatusSection(props: StatusProps) {
           tone={inspect === null || !inspect.enabled ? "off" : mode.tone}
         />
         <Chip
+          testId="safety-status-classifier"
           label="Classifier"
           value={
             classifier === undefined
@@ -78,20 +82,44 @@ export function StatusSection(props: StatusProps) {
           }
         />
         <Chip
+          testId="safety-status-uptime"
           label="Uptime"
           value={formatUptime(inspect?.startedAt, props.now)}
         />
-        <Chip label="Refresh" value="every 3s" />
+        <Chip
+          testId="safety-status-poll-interval"
+          label="Refresh"
+          value="every 3s"
+        />
       </div>
       {classifier !== undefined && classifier.reason !== null ? (
-        <div className="msg-notice warn">{classifier.reason}</div>
+        <div
+          className="msg-notice warn"
+          data-testid="safety-status-classifier-reason"
+        >
+          {classifier.reason}
+        </div>
       ) : null}
       <Stats
+        testId="safety-status-counters"
         items={[
-          { value: formatCount(checks), label: "checks" },
-          { value: formatCount(blocks), label: "blocks" },
-          { value: formatCount(metrics?.warns), label: "warnings" },
           {
+            testId: "safety-status-checks",
+            value: formatCount(checks),
+            label: "checks",
+          },
+          {
+            testId: "safety-status-blocks",
+            value: formatCount(blocks),
+            label: "blocks",
+          },
+          {
+            testId: "safety-status-warnings",
+            value: formatCount(metrics?.warns),
+            label: "warnings",
+          },
+          {
+            testId: "safety-status-classifier-requests",
             value: formatCount(metrics?.classifierRequests),
             label: "classifier calls",
           },
@@ -102,44 +130,53 @@ export function StatusSection(props: StatusProps) {
           Counters appear once the card reaches the running gate.
         </p>
       ) : (
-        <details className="msg-advanced">
+        <details className="msg-advanced" data-testid="safety-status-details">
           <summary>All counters</summary>
           <div className="msg-advanced-content">
             <Stats
+              testId="safety-status-detail-counters"
               items={[
                 {
+                  testId: "safety-status-input-checks",
                   value: formatCount(metrics.checks.input),
                   label: "input checks",
                 },
                 {
+                  testId: "safety-status-output-checks",
                   value: formatCount(
                     metrics.checks.text + metrics.checks.reasoning,
                   ),
                   label: "output checks",
                 },
                 {
+                  testId: "safety-status-tool-checks",
                   value: formatCount(metrics.checks.tool),
                   label: "tool checks",
                 },
                 {
+                  testId: "safety-status-tool-result-checks",
                   value: formatCount(metrics.checks["tool-result"]),
                   label: "tool-result checks",
                 },
                 {
+                  testId: "safety-status-blocked-prompts",
                   value: formatCount(metrics.blocks.input),
                   label: "blocked prompts",
                 },
                 {
+                  testId: "safety-status-blocked-outputs",
                   value: formatCount(
                     metrics.blocks.output + metrics.blocks.reasoning,
                   ),
                   label: "blocked outputs",
                 },
                 {
+                  testId: "safety-status-denied-tools",
                   value: formatCount(metrics.blocks.tools),
                   label: "denied tools",
                 },
                 {
+                  testId: "safety-status-classifier-errors",
                   value: formatCount(metrics.classifierErrors),
                   label: "classifier errors",
                 },
