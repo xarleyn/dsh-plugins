@@ -17,7 +17,7 @@ export const strings = {
   loadFailed: "The preset roster could not be read.",
   empty: "This deployment composes no agent presets.",
   intro:
-    "Each agent preset can carry its own persona. Pick a preset to edit the system-prompt text it composes with, or reset it to inherit the deployment's persona.",
+    "Each agent preset can carry its own persona. Pick a preset to read the system-prompt text it composes with.",
 
   /** Badges on a roster row. */
   badgeCustom: "Custom",
@@ -33,7 +33,7 @@ export const strings = {
   describesError: "not readable as a composition",
   describedDefault: "default preset",
 
-  open: "Edit persona",
+  open: "Read persona",
   close: "Close",
 
   prefixLabel: "Persona prefix",
@@ -51,31 +51,10 @@ export const strings = {
   runtimeHint:
     "Send the dynamic runtime-context snapshots (sandbox, approval, working directory) with this persona.",
 
-  save: "Save",
-  saving: "Saving…",
-  revert: "Revert",
-  reset: "Reset",
-  resetting: "Resetting…",
   reload: "Reload",
 
-  saved: "Saved to the preset composition.",
-  nothingToSave: "No changes to save.",
-  conflict:
-    "Preset was modified externally. Reload before saving your changes.",
   gone: "This preset is no longer in the roster.",
-  readOnlyShipped:
-    "This preset ships with the deployment and cannot be edited.",
-  unreadable: "This preset's composition cannot be rewritten by this editor.",
-  dirty: "Unsaved changes",
-
-  copyTitle: "Copy and edit",
-  copyHint:
-    "A shipped preset belongs to the deployment. Copy it to your own presets and edit the copy.",
-  copyIdLabel: "New preset id",
-  copyNameLabel: "Display name",
-  copyAction: "Copy",
-  copying: "Copying…",
-  copyFailed: "The preset could not be copied.",
+  unreadable: "This preset's composition cannot be read by this page.",
 
   previewTitle: "Preview",
   previewConfig: "Persona config",
@@ -104,46 +83,37 @@ export const strings = {
     "A small registrar the preset carries (prompt-sections.mjs) mounts them, so they keep working with this plugin uninstalled.",
   sectionsEmpty:
     "This preset contributes no sections of its own: the deployment's prompt stands.",
-  sectionsAdd: "Add section",
-  sectionsRemove: "Remove",
-  sectionsRemoveAll: "Remove all",
   sectionNameLabel: "Name",
   sectionOrderLabel: "Order",
   sectionTextLabel: "Text",
   sectionEnabledLabel: "Enabled",
   sectionOff: "off",
-  sectionNameMissing: "Give the section a name.",
-  sectionNamePadded: "A name cannot start or end with a space.",
-  sectionNameDuplicated: "Another section already uses this name.",
-  sectionOrderNotWhole: "The order must be a whole number.",
-  sectionTextMissing:
-    "A section with no text adds nothing; turn it off instead.",
   sectionFirstPartyName:
     "This name belongs to a first-party section, and a section of this preset shadows it.",
   sectionsModulePresent:
     "The preset ships its registrar (prompt-sections.mjs).",
   sectionsModuleForeign:
-    "The preset's prompt-sections.mjs was written by hand: this page edits the section list only, and saving leaves that file alone.",
+    "The preset's prompt-sections.mjs was written by hand, so the sections it registers need not match the list below.",
   sectionsModuleMissing:
-    "The registrar file is missing, so a sections row would register nothing; saving writes it.",
+    "The registrar file is missing, so a sections row registers nothing.",
   sectionsModuleUnknown: "The registrar could not be checked.",
   sectionsAmbiguous:
-    "More than one composition row names the registrar, so these sections cannot be edited here.",
-  sectionsError: "The section list cannot be rewritten by this editor.",
+    "More than one composition row names the registrar, so these sections cannot be attributed here.",
+  sectionsError: "The section list is not a plain sequence this page can read.",
   sectionsPreview: "Prompt sections config",
   sectionsUnknownKeys: "Keys this editor does not manage in the sections row",
 
   unknownKeysTitle: "Keys this editor does not manage",
   unknownKeysHint:
-    "They are preserved when you save, and removed with the row when you reset.",
-  foreignKeysTitle: "Expressions this editor will not rewrite",
+    "The composition carries them; this page only reads the keys it describes.",
+  foreignKeysTitle: "Expressions this editor cannot describe",
   foreignKeysHint:
-    "This row sets a managed key to a `!!js` expression. Edit the composition file directly.",
+    "This row sets a managed key to a `!!js` expression, so its value is not the text shown here.",
   extraRowsTitle: "More than one persona row",
   extraRowsHint:
-    "This preset names more than one @deepseek-ai/dsh-persona row, so no single one is its persona. Edit the composition file directly.",
+    "This preset names more than one @deepseek-ai/dsh-persona row, so no single one is its persona. Read the composition file itself.",
 
-  fileTitle: "Composition file",
+  fileTitle: "Composition",
   fileHint: "Source of truth: the preset's own agent.cordis.yml.",
   pathLabel: "Path",
 } as const;

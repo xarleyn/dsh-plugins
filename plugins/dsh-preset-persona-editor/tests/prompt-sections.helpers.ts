@@ -8,17 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach } from "vitest";
 
-import type { WriteContext } from "../src/host/preset-writer.js";
-import { DEFAULT_LIMITS, type PersonaLimits } from "../src/host/validation.js";
-import type { PersonaDraft, PromptSectionDraft } from "../src/types.js";
-import { rosterOf } from "./helpers/preset-roster.js";
-
-export const PERSONA_DRAFT: PersonaDraft = {
-  prefix: "You are a preset.",
-  suffix: "",
-  complete: false,
-  includeRuntimeContext: true,
-};
+import type { PromptSectionDraft } from "../src/types.js";
 
 /** Two sections, one of them off. */
 export const SECTIONS: readonly PromptSectionDraft[] = [
@@ -79,10 +69,3 @@ beforeEach(async () => {
 afterEach(async () => {
   await rm(root, { recursive: true, force: true });
 });
-
-export function context(
-  roster: ReturnType<typeof rosterOf>,
-  limits: PersonaLimits = DEFAULT_LIMITS,
-): WriteContext {
-  return { roster, limits };
-}

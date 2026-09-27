@@ -100,11 +100,20 @@ await runVerifyPackage({
       );
     }
 
-    // The host half must never mount or rewrite a preset it does not own: the
-    // shipped presets are refused by trust, not by path spelling.
-    const writer = await readFile("lib/host/preset-writer.js");
-    assert.match(writer, /trust/u);
-    assert.doesNotMatch(writer, /rm\(\s*preset\.path/u);
+    // The host half reads presets and writes nothing: since 0.1.7-rc.2 the Host
+    // has no durable preset-authoring path, so the published Remote namespace
+    // must name the two reads and no operation that changes a preset.
+    const service = await readFile("lib/host/service.js");
+    assert.match(service, /listPersonas/u);
+    const wire = await readFile("lib/typert.host.js");
+    const methods = [...wire.matchAll(/method:\s*'([^']+)'/gu)].map(
+      (match) => match[1],
+    );
+    assert.deepEqual(
+      methods.sort(),
+      ["list", "read"],
+      `the persona namespace publishes ${methods.join(", ")}; expected list, read`,
+    );
 
     // The spec's product contract stays a document with an honest status.
     const spec = await readFile("SPEC.md");

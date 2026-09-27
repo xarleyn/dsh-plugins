@@ -33,7 +33,6 @@ describe("reading presets", () => {
     expect(document.hasRow).toBe(true);
     expect(document.editable).toBe(true);
     expect(document.rowCount).toBe(2);
-    expect(document.revision).toMatch(/^[0-9a-f]{64}$/u);
   });
 
   it("reports the inherited state when the preset has no persona row", async () => {
@@ -55,14 +54,12 @@ describe("reading presets", () => {
       },
     });
     const catalog = await readCatalog(roster);
-    expect(catalog.authorable).toBe(true);
     const shipped = catalog.presets.find((row) => row.id === "shipped");
     expect(shipped?.editable).toBe(false);
     expect(shipped?.trust).toBe("system");
     const missing = catalog.presets.find((row) => row.id === "missing");
     expect(missing?.persona).toBe("unreadable");
     expect(missing?.editable).toBe(false);
-    expect(missing?.revision).toBe("");
   });
 
   it("reports an ambiguous preset instead of guessing", async () => {

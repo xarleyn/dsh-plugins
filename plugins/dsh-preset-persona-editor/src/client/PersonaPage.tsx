@@ -20,11 +20,7 @@ import { ChevronDown } from "@yadsh/dsh-plugin-kit/client";
 import type { PersonaPresetRow } from "../types.js";
 import { PersonaEditor } from "./PersonaEditor.js";
 import { strings } from "./locale.js";
-import {
-  isDirty,
-  type PersonaPageController,
-  type PersonaPageSnapshot,
-} from "./store.js";
+import type { PersonaPageController, PersonaPageSnapshot } from "./store.js";
 
 /** The page's injected business face. */
 export interface PersonaPageInjected {
@@ -56,7 +52,7 @@ function describe(row: PersonaPresetRow): string {
   return parts.filter((part) => part !== "").join(" · ");
 }
 
-/** One roster row: the card shell with the persona editor inside. */
+/** One roster row: the card shell with the persona reader inside. */
 function PresetCard(props: {
   readonly row: PersonaPresetRow;
   readonly state: PersonaPageSnapshot;
@@ -64,7 +60,6 @@ function PresetCard(props: {
 }): ReactElement {
   const { row, state, controller } = props;
   const open = state.open?.id === row.id;
-  const dirty = open ? isDirty(state.open) : false;
   return (
     <li
       className={
@@ -91,7 +86,7 @@ function PresetCard(props: {
           className="dsh-plugin-card__badge"
           data-testid="persona-preset-badge"
         >
-          {dirty ? strings.dirty : badgeOf(row)}
+          {badgeOf(row)}
         </span>
         <ChevronDown />
       </button>

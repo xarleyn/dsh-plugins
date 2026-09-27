@@ -15,9 +15,9 @@ export type PresetTrust = "system" | "user";
 /**
  * How a preset carries its persona:
  * - `none` — no persona row: the deployment's own persona applies (inherited);
- * - `local` — exactly one persona row this editor can rewrite;
+ * - `local` — exactly one persona row this editor can read;
  * - `ambiguous` — more than one persona row, so no single one is "the" persona;
- * - `unreadable` — the composition file is missing or is not a valid YAML list.
+ * - `unreadable` — the composition is missing or is not a valid YAML list.
  */
 export type PersonaState = "none" | "local" | "ambiguous" | "unreadable";
 
@@ -48,7 +48,7 @@ export interface PromptSectionDraft {
 /**
  * How a preset carries its prompt sections:
  * - `none` — no sections row: the preset contributes no sections of its own;
- * - `local` — one row of this editor's, with a list it can rewrite;
+ * - `local` — one row of this editor's, with a list it can read;
  * - `ambiguous` — more than one row names the registrar;
  * - `unreadable` — the composition itself cannot be read.
  */
@@ -56,18 +56,12 @@ export type SectionsState = "none" | "local" | "ambiguous" | "unreadable";
 
 /**
  * The registrar file beside the composition:
- * - `present` — the file is the one this editor writes;
+ * - `present` — the file is the one this editor ships;
  * - `foreign` — a file is there but its content differs (hand-edited);
  * - `missing` — no file: a sections row would register nothing;
  * - `unknown` — the composition could not be read, so nothing was checked.
  */
 export type SectionsModuleState = "present" | "foreign" | "missing" | "unknown";
-
-/** The whole draft one save commits: the persona and the prompt sections. */
-export interface PresetDraft {
-  readonly persona: PersonaDraft;
-  readonly sections: readonly PromptSectionDraft[];
-}
 
 /** One roster row: a preset and the persona state read from its composition. */
 export interface PersonaPresetRow {
@@ -79,25 +73,21 @@ export interface PersonaPresetRow {
   readonly trust: PresetTrust;
   /** Whether a session naming no preset composes this one. */
   readonly isDefault: boolean;
-  /** Whether this editor may rewrite the preset (a `user` root preset). */
+  /** Whether this preset's composition this editor can open and read. */
   readonly editable: boolean;
   /** Why the preset cannot compose a session; `""` when it can. */
   readonly broken: string;
   readonly persona: PersonaState;
   /** `complete` of the local persona row; `false` when there is none. */
   readonly complete: boolean;
-  /** Content revision of the composition file; `""` when it cannot be read. */
-  readonly revision: string;
 }
 
-/** The roster plus the deployment's authoring stance. */
+/** The roster as the page reads it. */
 export interface PersonaCatalog {
   readonly presets: readonly PersonaPresetRow[];
-  /** Whether the deployment configures a user-writable preset root. */
-  readonly authorable: boolean;
 }
 
-/** One preset opened for editing: its persona, its file, and its context. */
+/** One preset opened for reading: its persona, its composition, its context. */
 export interface PersonaDocument {
   readonly id: string;
   readonly name: string;
@@ -105,34 +95,33 @@ export interface PersonaDocument {
   readonly trust: PresetTrust;
   readonly editable: boolean;
   readonly isDefault: boolean;
-  /** Absolute path of the composition file this editor rewrites. */
+  /** Absolute path of the composition file this editor reads. */
   readonly path: string;
-  /** Content revision the next write must present back. */
-  readonly revision: string;
   /** Whether the preset carries a persona row of its own. */
   readonly hasRow: boolean;
   /** Values read from the row; defaults when the preset has none. */
   readonly persona: PersonaDraft;
   /**
-   * Config keys the row carries that this editor does not manage. They are
-   * preserved by a save and dropped by a reset, so the UI discloses them.
+   * Config keys the row carries that this editor does not manage. The page
+   * discloses them; it has no way to rewrite them.
    */
   readonly unknownKeys: readonly string[];
   /**
    * Managed keys whose value is not a plain scalar (an `!!js` expression, a
-   * collection). Their presence refuses a save: rewriting them would drop the
-   * expression the composition means.
+   * collection). Their presence means the row says more than this page's four
+   * fields can describe.
    */
   readonly foreignKeys: readonly string[];
-  /** Persona rows beyond the first; non-zero refuses a save. */
+  /** Persona rows beyond the first; non-zero means there is no single persona. */
   readonly extraRows: number;
   /** The prompt sections the preset contributes, in file order. */
   readonly sections: readonly PromptSectionDraft[];
   /** How the preset carries those sections. */
   readonly sectionsState: SectionsState;
   /**
-   * Why the sections list cannot be rewritten (`!!js` inside it, a flow
-   * sequence, more than one sections row); `""` when it can.
+   * Why the sections list is not a plain block sequence this page can read
+   * (`!!js` inside it, a flow sequence, more than one sections row); `""` when
+   * it is.
    */
   readonly sectionsError: string;
   /** State of the registrar file the sections row names. */
@@ -140,11 +129,11 @@ export interface PersonaDocument {
   /** Config keys of the sections row other than `sections`. */
   readonly sectionsUnknownKeys: readonly string[];
   /**
-   * Why this preset cannot be edited at all (the file is missing or is not a
-   * composition, the persona row is flow-styled, ...); `""` when it can.
+   * Why this preset's composition cannot be read at all (it is missing or is
+   * not a composition, the persona row is flow-styled, ...); `""` when it can.
    */
   readonly readError: string;
-  /** The composition file's text, for the read-only file viewer. */
+  /** The composition's text, for the read-only file viewer. */
   readonly source: string;
   /** Order of the persona prefix section on this deployment. */
   readonly prefixOrder: number;
@@ -152,9 +141,4 @@ export interface PersonaDocument {
   readonly suffixOrder: number;
   /** Total composition rows the preset names. */
   readonly rowCount: number;
-}
-
-/** What a successful write returns: the revision the file now has. */
-export interface PersonaWriteReceipt {
-  readonly revision: string;
 }

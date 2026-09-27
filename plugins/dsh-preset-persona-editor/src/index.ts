@@ -1,23 +1,20 @@
 /**
- * `@yadsh/dsh-preset-persona-editor`: edit an agent preset's persona — prefix,
- * suffix, complete mode, and the runtime-context toggle — from the settings UI.
+ * `@yadsh/dsh-preset-persona-editor`: read what an agent preset contributes to
+ * the prompt — prefix, suffix, complete mode, the runtime-context toggle, and
+ * the named sections — from the settings UI.
  *
  * The Cordis entrypoint. The plugin registers `ctx.presetPersonaEditor` and
  * nothing else: no prompt section, no tool, no listener. The persona a session
  * actually receives is the one `@deepseek-ai/dsh-persona` composes from the
- * preset's own composition, and this plugin's only job is to write that row
- * into `agent.cordis.yml` on request. Uninstalling it leaves every edited
- * preset working exactly as edited.
+ * preset's own composition, and this plugin only ever reads it: the Host has no
+ * durable preset-authoring path since `0.1.7-rc.2`, so editing from this page
+ * went with it (decision D2 of `docs/DSH-0.1.7-MIGRATION.md` §10).
  */
 
 import { PresetPersonaEditor } from "./host/service.js";
 
-export {
-  PresetPersonaEditor,
-  ConfigSchema,
-  DEFAULT_MAX_PERSONA_BYTES,
-} from "./host/service.js";
-export type { Config, PresetPersonaEditorDeps } from "./host/service.js";
+export { PresetPersonaEditor } from "./host/service.js";
+export type { PresetPersonaEditorDeps } from "./host/service.js";
 export {
   normalizeDraft,
   normalizeSections,
@@ -60,19 +57,7 @@ export {
   type PresetRosterFace,
   type SystemPromptFace,
 } from "./host/preset-reader.js";
-export {
-  copyPreset,
-  resetPersona,
-  savePersona,
-  type WriteContext,
-} from "./host/preset-writer.js";
-export {
-  conflict,
-  invalid,
-  notFound,
-  readOnly,
-  unavailable,
-} from "./host/errors.js";
+export { invalid, notFound, unavailable } from "./host/errors.js";
 export {
   PERSONA_MANAGED_KEYS,
   PERSONA_PLUGIN_NAME,
@@ -98,7 +83,6 @@ export type {
   PersonaDraft,
   PersonaPresetRow,
   PersonaState,
-  PersonaWriteReceipt,
   PresetTrust,
 } from "./types.js";
 
