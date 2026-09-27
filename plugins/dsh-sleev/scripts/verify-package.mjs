@@ -41,6 +41,11 @@ await runVerifyPackage({
       "dsh-plugin-card__name",
       "m3.5 5.25 3.5 3.5 3.5-3.5",
     ],
+    // One test id of the epic #453 pass is pinned as the representative of the
+    // rest: an id no gate reads can be renamed away without anything noticing.
+    // The attribute is asserted, not the bare value — `dsh-sleev-save` is a
+    // class name too, so the string alone would pass with the id gone.
+    matches: [/["']data-testid["']\s*:\s*["']sleev-save["']/u],
     notMatches: [/dsw-alias-border-label-dimmed/u, /⌄/u],
     cardContract: { legacyPatterns: [/\.dsh-sleev-card\{/u] },
   },

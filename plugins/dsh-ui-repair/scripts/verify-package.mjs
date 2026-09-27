@@ -29,4 +29,14 @@ await runVerifyPackage({
     "lib/client.js",
     "lib/types/index.d.ts",
   ],
+  clientBundle: {
+    /*
+     * One test id of the epic #453 pass is pinned as the representative of the
+     * rest, so an id no gate reads cannot be renamed away unnoticed. The
+     * `data-dsh-ui-repair-*` hooks the card keeps itself out of its own scan
+     * with are asserted by scripts/verify-client-bundle.mjs; these ids sit
+     * beside them and are asserted on the attribute, not the bare value.
+     */
+    matches: [/["']data-testid["']\s*:\s*["']repair-mode["']/u],
+  },
 });

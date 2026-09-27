@@ -90,7 +90,10 @@ describe("DomTranslator", () => {
     }
     // The surfaces epic #453 named with a stable test id, none of which a
     // keyword above reads: a rendered table or code block, a quoted source
-    // snippet, a line of the log buffer.
+    // snippet, a line of the log buffer. This fixture imitates those ids, so it
+    // cannot notice a rename on the producer's side: `log-panel-line` is written
+    // by plugins/dsh-plugin-log-ui/src/client/panel/LogPanel.tsx and pinned by
+    // that package's scripts/verify-package.mjs.
     for (const testId of [
       "qa-md-table",
       "qa-md-code",

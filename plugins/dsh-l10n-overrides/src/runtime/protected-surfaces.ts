@@ -27,6 +27,9 @@ const TEST_ID_PROTECTION_KEYWORDS = [...CLASS_PROTECTION_KEYWORDS, "composer"];
 // trusts; the class keywords stay as the fallback for markup that carries no
 // test id yet.
 const PROTECTED_SURFACE_TEST_IDS = [
+  // Written by plugins/dsh-plugin-log-ui/src/client/panel/LogPanel.tsx and
+  // pinned by that package's scripts/verify-package.mjs, so the producer cannot
+  // rename it out of this table unnoticed. The fixture below only imitates it.
   "log-panel-line",
   "qa-source-chip-card-snippet",
   "qa-source-detail-snippet",
