@@ -114,6 +114,27 @@ describe("reading presets", () => {
     expect(catalog.presets[0]?.broken).toBe("");
   });
 
+  it("refuses an answer that is not a composition, in words", async () => {
+    const logger = recordingLogger();
+    const roster = rosterOf({ demo: { content: OWNED_PRESET } }, "demo", {
+      answerNothing: true,
+    });
+    const catalog = await readCatalog(roster, logger);
+    expect(catalog.presets[0]?.persona).toBe("unreadable");
+    const document = await readDocument(roster, undefined, "demo", logger);
+    // The reader tells a refusal from an answer by the answer's `composition`,
+    // so an answer that carries no text has to be turned into a refusal here —
+    // reading it further would raise a TypeError this page then shows as the
+    // only reason it has.
+    expect(document.readError).toMatch(/without a composition to read/u);
+    expect(document.readError).not.toMatch(/Cannot read properties/u);
+    expect(document.source).toBe("");
+    expect(logger.warn).toHaveBeenCalledWith(
+      "preset-persona.composition-refused",
+      expect.objectContaining({ agentPreset: "demo" }),
+    );
+  });
+
   it("reports an ambiguous preset instead of guessing", async () => {
     const roster = rosterOf({
       demo: {

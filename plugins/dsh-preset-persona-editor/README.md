@@ -102,6 +102,13 @@ with the registry's own reason on the card.
   `broken` cannot start a session, yet its declarations still render, so its
   readings are real; a preset whose composition the registry will not render has
   no readings, and the card carries the registry's reason for that.
+- A host that answers differently than either of those says so too. Inside the
+  `<0.2.0` half of the compatibility range a deployment may publish no
+  `readDocument()` at all, or answer it with something that is not a
+  composition; the card names which of the two happened, in this page's words,
+  rather than blaming the preset or showing a `TypeError`. What the host's own
+  reason may contain is bounded by §5 of `SPEC.md`: the registry's failures name
+  preset ids, and that text is already on the host's own `list` Remote.
 - Presets apply to **new sessions**: DSH composes an agent from the preset it
   names when the session starts, and a running session keeps the composition it
   began with. The page states this instead of implying a live swap.

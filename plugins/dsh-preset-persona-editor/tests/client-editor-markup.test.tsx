@@ -12,7 +12,7 @@
 
 import { cleanup, render, screen } from "@testing-library/react";
 import { createElement } from "react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PersonaEditor } from "../src/client/PersonaEditor.js";
 import { strings } from "../src/client/locale.js";
@@ -30,19 +30,32 @@ afterEach(cleanup);
 /** Elements that arrive with a user-agent margin the page has to reset. */
 const BLOCK_ELEMENTS = ["p", "ul", "pre"];
 
-/** Render the editor body over one document, as the card would. */
-function show(document: PersonaDocument) {
-  const state: PersonaPageSnapshot = {
+/** The page state that shows one document in the open card. */
+function stateOf(document: PersonaDocument): PersonaPageSnapshot {
+  return {
     ...INITIAL_STATE,
     status: "ready",
     open: { id: "demo", status: "ready", error: "", document },
   };
+}
+
+/** Render the editor body over one document, as the card would. */
+function show(document: PersonaDocument) {
   return render(
     createElement(PersonaEditor, {
-      state,
+      state: stateOf(document),
       controller: new PersonaPageController(faceOf()),
     }),
   );
+}
+
+/** One section of a composition, as the reader hands it to the page. */
+function sectionOf(
+  name: string,
+  order: number,
+  text: string,
+): PersonaDocument["sections"][number] {
+  return { name, order, text, enabled: true };
 }
 
 /** The text of a `<p>` the editor shows, or `null` when it shows none. */
@@ -139,6 +152,63 @@ describe("the reader's markup", () => {
       const { label } = ties(container, control);
       expect(label, "a control with no label tied to it").not.toBeNull();
       expect((label ?? "").trim()).not.toBe("");
+    }
+  });
+
+  it("keeps two sections that share a name as two rows of their own", () => {
+    // A composition edited by hand can declare two sections under one name: the
+    // reader drops an empty name but keeps a duplicate. Keyed by the name alone,
+    // the list would render with one key twice, and React answers that by
+    // warning and dropping a row — so the second row would keep showing values
+    // the preset no longer carries.
+    const warning = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const first = documentOf({
+        sections: [
+          sectionOf("preset:review", 100, "Read carefully."),
+          sectionOf("preset:review", 200, "Quote the line."),
+        ],
+        sectionsState: "local",
+      });
+      const view = show(first);
+      expect(
+        view.container.querySelectorAll('[data-testid="persona-section-row"]'),
+      ).toHaveLength(2);
+      expect(
+        screen
+          .getAllByTestId("persona-section-name")
+          .map((input) => (input as HTMLInputElement).value),
+      ).toEqual(["preset:review", "preset:review"]);
+      expect(
+        screen
+          .getAllByTestId("persona-section-text")
+          .map((area) => (area as HTMLTextAreaElement).value),
+      ).toEqual(["Read carefully.", "Quote the line."]);
+      view.rerender(
+        createElement(PersonaEditor, {
+          state: stateOf(
+            documentOf({
+              sections: [
+                sectionOf("preset:review", 100, "Read carefully."),
+                sectionOf("preset:review", 200, "Name the file."),
+              ],
+              sectionsState: "local",
+            }),
+          ),
+          controller: new PersonaPageController(faceOf()),
+        }),
+      );
+      expect(
+        screen
+          .getAllByTestId("persona-section-text")
+          .map((area) => (area as HTMLTextAreaElement).value),
+      ).toEqual(["Read carefully.", "Name the file."]);
+      const words = warning.mock.calls
+        .map((call) => String(call[0]))
+        .join("\n");
+      expect(words).not.toMatch(/same key/u);
+    } finally {
+      warning.mockRestore();
     }
   });
 

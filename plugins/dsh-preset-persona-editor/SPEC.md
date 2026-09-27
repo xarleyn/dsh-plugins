@@ -95,6 +95,12 @@ Numbered, testable guarantees:
     the sections by the harness's own order vocabulary, and the page warns when
     a section name belongs to a first-party section, because a section
     registered in a preset's scope shadows the deployment-global one.
+20. **Reading does not enforce the harness's uniqueness rule.** The reader drops
+    a section with no name and keeps every other row it can parse, so a
+    composition edited by hand may declare two sections under one name. The page
+    shows both rows, each with its own values, and says nothing about the
+    duplicate: the collision is the preset's fact and the harness's to refuse,
+    and this page has no write left to refuse it with.
 
 ## 2. Data model
 
@@ -111,6 +117,18 @@ Numbered, testable guarantees:
   persona prefix and suffix. The broken reason and the read reason are separate
   fields on purpose: `readDocument` renders a broken preset's declarations too,
   so one does not imply the other.
+
+Both reasons are the host's text, passed through untouched, and the page has one
+rule about what it puts in front of a browser: the registry's own refusals name
+identities, not locations. Measured against the published `0.1.7-rc.2` source —
+`agent-preset/not-found` answers `Unknown agent preset: <id>` with the roster's
+ids in `details`, and the `broken` line is `<entry id> (<plugin name>): <mount
+failure>` built by the registry's own audit; the Loader it audits adds nothing
+but entry ids to its messages. A deployment therefore shows on this page exactly
+the text its own `agentPresets` `list`/`read` Remotes already answer to any
+client, which is why no field is re-worded here. What the page writes itself are
+the two refusals a host owes no words for: no `readDocument()` in the
+compatibility range, and an answer that is not a composition.
 
 ## 3. Lifecycle
 
@@ -171,9 +189,14 @@ Numbered, testable guarantees:
 10. a composition the registry refuses outright — no readings, and the reason is
     the host's own words rather than this page's guess, with the same refusal
     reaching the deployment log;
-11. a preset the roster does not know, answered with the page's own not-found
+11. a host that answers the composition read with no composition — a deployment
+    inside the `<0.2.0` half of the range that publishes no `readDocument()`, or
+    one that resolves a value carrying no text. Each is refused in the page's
+    own words, and never as the `TypeError` that reading the answer further
+    would have thrown;
+12. a preset the roster does not know, answered with the page's own not-found
     code and the Host's reason logged beside it;
-12. the ordering and shadowing warnings of a section named `deployment:*`.
+13. the ordering and shadowing warnings of a section named `deployment:*`.
 
 ## 6. Implementation status
 

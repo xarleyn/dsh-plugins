@@ -12,68 +12,13 @@ import { Context } from "@deepseek-ai/cordis";
 import { silentPluginLogger } from "@yadsh/dsh-plugin-log";
 import { describe, expect, it, vi } from "vitest";
 
-import type {
-  PresetComposition,
-  PresetRosterFace,
-} from "../src/host/preset-reader.js";
+import type { PresetRosterFace } from "../src/host/preset-reader.js";
 import { PresetPersonaEditor } from "../src/host/service.js";
-
-/** A composition with a persona row this editor reads. */
-const OWNED = [
-  "- id: persona",
-  "  name: '@deepseek-ai/dsh-persona'",
-  "  config:",
-  "    prefix: A shipped-looking persona.",
-  "",
-  "- id: tool-shell",
-  "  name: '@deepseek-ai/dsh-tool-bash'",
-  "",
-].join("\n");
-
-const INHERITED = "- id: tool-shell\n  name: '@deepseek-ai/dsh-tool-bash'\n";
-
-/** A roster over the compositions a test declares, in the roster's own order. */
-function rosterOf(
-  entries: Record<string, { content: string | null; broken?: string }>,
-  defaultId = "",
-): PresetRosterFace {
-  const rows = () =>
-    Object.entries(entries).map(([id, entry]) => ({
-      id,
-      name: `preset ${id}`,
-      ...(entry.broken === undefined ? {} : { broken: entry.broken }),
-    }));
-  const resolve = async (id?: string) => {
-    const key = id ?? defaultId;
-    const entry = entries[key];
-    if (entry === undefined) {
-      throw new Error(`agent-preset/not-found: Unknown agent preset: ${key}`);
-    }
-    return {
-      id: key,
-      name: `preset ${key}`,
-      ...(entry.broken === undefined ? {} : { broken: entry.broken }),
-    };
-  };
-  return {
-    list: async () => rows(),
-    resolve,
-    readDocument: async (agentPreset: string): Promise<PresetComposition> => {
-      const entry = entries[agentPreset];
-      if (entry === undefined || entry.content === null) {
-        throw new Error(
-          `agent-preset/not-found: Unknown agent preset: ${agentPreset}`,
-        );
-      }
-      return {
-        agentPreset,
-        content: entry.content,
-        name: `preset ${agentPreset}`,
-      };
-    },
-    defaultId,
-  };
-}
+import {
+  INHERITED_PRESET,
+  OWNED_PRESET,
+  rosterOf,
+} from "./preset-roster.helpers.js";
 
 function contextOf(
   roster: PresetRosterFace,
@@ -102,8 +47,8 @@ describe("PresetPersonaEditor", () => {
     const service = build(
       rosterOf(
         {
-          demo: { content: OWNED },
-          plain: { content: INHERITED },
+          demo: { content: OWNED_PRESET },
+          plain: { content: INHERITED_PRESET },
           retired: { content: null },
         },
         "plain",
@@ -125,17 +70,17 @@ describe("PresetPersonaEditor", () => {
   });
 
   it("reads one preset and keeps the composition the registry rendered", async () => {
-    const service = build(rosterOf({ demo: { content: OWNED } }));
+    const service = build(rosterOf({ demo: { content: OWNED_PRESET } }));
     const document = await service.readPersona("demo");
     expect(document.readError).toBe("");
     expect(document.hasRow).toBe(true);
-    expect(document.persona.prefix).toBe("A shipped-looking persona.");
-    expect(document.source).toBe(OWNED);
+    expect(document.persona.prefix).toBe("You are the shipped demo persona.");
+    expect(document.source).toBe(OWNED_PRESET);
     expect(document.rowCount).toBe(2);
   });
 
   it("reads the section orders the prompt service publishes", async () => {
-    const roster = rosterOf({ demo: { content: OWNED } });
+    const roster = rosterOf({ demo: { content: OWNED_PRESET } });
     const service = new PresetPersonaEditor(
       contextOf(roster, (name) =>
         name === "DEPLOYMENT_PERSONA_PREFIX" ? 0 : 10200,
@@ -149,14 +94,16 @@ describe("PresetPersonaEditor", () => {
 
   it("reads a broken preset's composition and carries the roster's reason", async () => {
     const service = build(
-      rosterOf({ demo: { content: OWNED, broken: "a row names nothing" } }),
+      rosterOf({
+        demo: { content: OWNED_PRESET, broken: "a row names nothing" },
+      }),
     );
     const document = await service.readPersona("demo");
     expect(document.broken).toBe("a row names nothing");
     // Being unable to compose a session is not being unreadable: the registry
     // renders the declarations of a preset that failed to activate.
     expect(document.readError).toBe("");
-    expect(document.persona.prefix).toBe("A shipped-looking persona.");
+    expect(document.persona.prefix).toBe("You are the shipped demo persona.");
   });
 
   it("answers an unknown preset with the editor's not-found code", async () => {
@@ -200,6 +147,43 @@ describe("PresetPersonaEditor", () => {
         reason: expect.stringContaining("Unknown agent preset: retired"),
       }),
     );
+  });
+
+  it("reads a host without readDocument as unreadable presets, not as a failed call", async () => {
+    const warn = vi.fn();
+    const service = new PresetPersonaEditor(
+      contextOf(
+        rosterOf({ demo: { content: OWNED_PRESET } }, "demo", {
+          withoutReadDocument: true,
+        }),
+      ),
+      { logger: { ...silentPluginLogger(), warn } },
+    );
+    const catalog = await service.listPersonas();
+    expect(catalog.presets[0]?.persona).toBe("unreadable");
+    expect(catalog.presets[0]?.broken).toBe("");
+    const document = await service.readPersona("demo");
+    expect(document.readError).toMatch(/does not answer readDocument/u);
+    expect(warn).toHaveBeenCalledWith(
+      "preset-persona.composition-refused",
+      expect.objectContaining({ agentPreset: "demo" }),
+    );
+  });
+
+  it("says what a readDocument that answers no composition refused", async () => {
+    const service = build(
+      rosterOf({ demo: { content: OWNED_PRESET } }, "demo", {
+        answerNothing: true,
+      }),
+    );
+    const document = await service.readPersona("demo");
+    expect(document.persona.prefix).toBe("");
+    expect(document.source).toBe("");
+    // The page promises the host's own words for a refusal. An answer that is
+    // not a composition has no words, so the card gets this page's rather than
+    // the TypeError that reading `.content` off it would throw.
+    expect(document.readError).toMatch(/without a composition to read/u);
+    expect(document.readError).not.toMatch(/Cannot read properties/u);
   });
 
   it("publishes no write operation", () => {
