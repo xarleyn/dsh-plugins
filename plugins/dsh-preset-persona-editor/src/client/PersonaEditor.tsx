@@ -1,153 +1,68 @@
 /**
- * The preset editor: the persona's four fields, the advanced prompt-sections
- * area, the actions, and the disclosures a write needs.
+ * The preset reader: the persona's four fields as they are composed today, the
+ * advanced prompt-sections area, and the disclosures a composition carries.
  *
  * The body only ever renders for the preset the roster opened, and it renders
- * nothing it cannot back with a fact: a preset whose file cannot be parsed
- * shows the reason instead of an editor, a shipped preset shows the way to a
- * copy instead of dead fields, and a row that carries keys this editor does
- * not own says so before the user saves.
+ * nothing it cannot back with a fact: a preset whose composition cannot be
+ * parsed shows the reason instead of the readings, and a row that carries keys
+ * this page does not describe says so. Nothing here can be typed into — the
+ * Host has no durable preset-authoring path, so the page reads.
  * @module client/PersonaEditor
  */
 
 import type { ReactElement } from "react";
 
 import { FIRST_PARTY_NAME_HINT } from "../shared/prompt-sections.js";
-import type {
-  PersonaDocument,
-  PresetDraft,
-  SectionsModuleState,
-} from "../types.js";
+import type { PersonaDocument, SectionsModuleState } from "../types.js";
 import { PersonaPreview } from "./PersonaPreview.js";
 import { strings } from "./locale.js";
-import {
-  isDirty,
-  sectionIssues,
-  type SectionIssue,
-  type PersonaPageController,
-  type PersonaPageSnapshot,
-} from "./store.js";
+import type { PersonaPageController, PersonaPageSnapshot } from "./store.js";
 
-/** One labelled text field. */
+/** One labelled text reading. */
 function Field(props: {
   readonly testId: string;
   readonly label: string;
   readonly hint: string;
   readonly value: string;
   readonly rows: number;
-  readonly disabled: boolean;
-  readonly onChange: (value: string) => void;
 }): ReactElement {
   return (
-    <label className="preset-persona__field">
+    <p className="preset-persona__field">
       <span className="preset-persona__label">{props.label}</span>
       <textarea
         className="preset-persona__textarea"
         rows={props.rows}
         value={props.value}
-        disabled={props.disabled}
+        readOnly
         data-testid={props.testId}
         spellCheck={false}
-        onChange={(event) => {
-          props.onChange(event.target.value);
-        }}
       />
       <span className="preset-persona__hint">{props.hint}</span>
-    </label>
+    </p>
   );
 }
 
-/** A checkbox with its own explanation, as a block the user can scan. */
+/** A state shown as a checkbox the user cannot change. */
 function Check(props: {
   readonly testId: string;
   readonly label: string;
   readonly hint: string;
   readonly checked: boolean;
-  readonly disabled: boolean;
-  readonly onChange: (checked: boolean) => void;
 }): ReactElement {
   return (
-    <label className="preset-persona__check">
+    <p className="preset-persona__check">
       <input
         type="checkbox"
         checked={props.checked}
-        disabled={props.disabled}
+        disabled
         data-testid={props.testId}
-        onChange={(event) => {
-          props.onChange(event.target.checked);
-        }}
+        readOnly
       />
       <span className="preset-persona__check-text">
         <span className="preset-persona__label">{props.label}</span>
         <span className="preset-persona__hint">{props.hint}</span>
       </span>
-    </label>
-  );
-}
-
-/** The copy form, shown for a preset the deployment owns. */
-function CopyForm(props: {
-  readonly state: PersonaPageSnapshot;
-  readonly controller: PersonaPageController;
-}): ReactElement | null {
-  const draft = props.state.copyDraft;
-  if (draft === null) return null;
-  return (
-    <div className="preset-persona__section" data-testid="persona-copy-form">
-      <p className="preset-persona__section-title">{strings.copyTitle}</p>
-      <p className="preset-persona__hint">{strings.copyHint}</p>
-      <div className="preset-persona__row">
-        <label className="preset-persona__field">
-          <span className="preset-persona__label">{strings.copyIdLabel}</span>
-          <input
-            className="preset-persona__input"
-            value={draft.id}
-            data-testid="persona-copy-id"
-            spellCheck={false}
-            onChange={(event) => {
-              props.controller.editCopy({ id: event.target.value });
-            }}
-          />
-        </label>
-        <label className="preset-persona__field">
-          <span className="preset-persona__label">{strings.copyNameLabel}</span>
-          <input
-            className="preset-persona__input"
-            value={draft.name}
-            data-testid="persona-copy-name"
-            onChange={(event) => {
-              props.controller.editCopy({ name: event.target.value });
-            }}
-          />
-        </label>
-      </div>
-      {draft.error === "" ? null : (
-        <p className="preset-persona__error" data-testid="persona-copy-error">
-          {draft.error}
-        </p>
-      )}
-      <div className="preset-persona__actions">
-        <button
-          type="button"
-          className="preset-persona__button preset-persona__button--primary"
-          disabled={draft.busy}
-          data-testid="persona-copy-submit"
-          onClick={() => void props.controller.copy()}
-        >
-          {draft.busy ? strings.copying : strings.copyAction}
-        </button>
-        <button
-          type="button"
-          className="preset-persona__button"
-          data-testid="persona-copy-cancel"
-          onClick={() => {
-            props.controller.cancelCopy();
-          }}
-        >
-          {strings.close}
-        </button>
-      </div>
-    </div>
+    </p>
   );
 }
 
@@ -165,84 +80,54 @@ function registrarLine(module: SectionsModuleState): string {
   }
 }
 
-/** One section of the advanced area: its four fields and its own issues. */
+/** One section of the advanced area: its values and what it says about them. */
 function SectionRow(props: {
-  readonly index: number;
-  readonly section: PresetDraft["sections"][number];
-  readonly issue: SectionIssue | undefined;
-  readonly editable: boolean;
-  readonly controller: PersonaPageController;
+  readonly section: PersonaDocument["sections"][number];
 }): ReactElement {
-  const { index, section, issue, editable, controller } = props;
+  const { section } = props;
   return (
     <li
       className="preset-persona__section-row"
       data-testid="persona-section-row"
     >
       <div className="preset-persona__row">
-        <label className="preset-persona__field preset-persona__field--tight">
+        <p className="preset-persona__field preset-persona__field--tight">
           <span className="preset-persona__label">
             {strings.sectionNameLabel}
           </span>
           <input
             className="preset-persona__input"
             value={section.name}
-            disabled={!editable}
+            readOnly
             data-testid="persona-section-name"
             spellCheck={false}
-            onChange={(event) => {
-              controller.editSection(index, { name: event.target.value });
-            }}
           />
-        </label>
-        <label className="preset-persona__field preset-persona__field--tight">
+        </p>
+        <p className="preset-persona__field preset-persona__field--tight">
           <span className="preset-persona__label">
             {strings.sectionOrderLabel}
           </span>
           <input
             className="preset-persona__input"
-            type="number"
-            step={1}
             value={Number.isInteger(section.order) ? String(section.order) : ""}
-            disabled={!editable}
+            readOnly
             data-testid="persona-section-order"
-            onChange={(event) => {
-              controller.editSection(index, {
-                order:
-                  event.target.value === ""
-                    ? Number.NaN
-                    : Number(event.target.value),
-              });
-            }}
           />
-        </label>
-        <label className="preset-persona__check">
+        </p>
+        <p className="preset-persona__check">
           <input
             type="checkbox"
             checked={section.enabled}
-            disabled={!editable}
+            disabled
+            readOnly
             data-testid="persona-section-enabled"
-            onChange={(event) => {
-              controller.editSection(index, { enabled: event.target.checked });
-            }}
           />
           <span className="preset-persona__label">
             {strings.sectionEnabledLabel}
           </span>
-        </label>
-        <button
-          type="button"
-          className="preset-persona__button"
-          disabled={!editable}
-          data-testid="persona-section-remove"
-          onClick={() => {
-            controller.removeSection(index);
-          }}
-        >
-          {strings.sectionsRemove}
-        </button>
+        </p>
       </div>
-      <label className="preset-persona__field">
+      <p className="preset-persona__field">
         <span className="preset-persona__label">
           {strings.sectionTextLabel}
         </span>
@@ -250,22 +135,11 @@ function SectionRow(props: {
           className="preset-persona__textarea"
           rows={3}
           value={section.text}
-          disabled={!editable}
+          readOnly
           data-testid="persona-section-text"
           spellCheck={false}
-          onChange={(event) => {
-            controller.editSection(index, { text: event.target.value });
-          }}
         />
-      </label>
-      {issue === undefined ? null : (
-        <p
-          className="preset-persona__error"
-          data-testid="persona-section-error"
-        >
-          {issue.reason}
-        </p>
-      )}
+      </p>
       {FIRST_PARTY_NAME_HINT.test(section.name) ? (
         <p className="preset-persona__warn" data-testid="persona-section-warn">
           {strings.sectionFirstPartyName}
@@ -279,17 +153,13 @@ function SectionRow(props: {
  * The advanced area: the sections this preset contributes.
  *
  * It is a disclosure rather than a second page: a preset usually has none, the
- * ones that do are the power-user case, and keeping it inside the same card
- * means one draft and one save cover both halves of the preset's prompt.
+ * ones that do are the power-user case, and keeping them inside the same card
+ * means one reading covers both halves of the preset's prompt.
  */
 function SectionsArea(props: {
   readonly document: PersonaDocument;
-  readonly draft: PresetDraft;
-  readonly controller: PersonaPageController;
-  readonly editable: boolean;
-  readonly issues: readonly SectionIssue[];
 }): ReactElement {
-  const { document, draft, controller, editable, issues } = props;
+  const { document } = props;
   return (
     <details
       className="preset-persona__details preset-persona__section"
@@ -331,7 +201,7 @@ function SectionsArea(props: {
           — {strings.unknownKeysHint}
         </p>
       )}
-      {draft.sections.length === 0 ? (
+      {document.sections.length === 0 ? (
         <p
           className="preset-persona__hint"
           data-testid="persona-sections-empty"
@@ -343,47 +213,17 @@ function SectionsArea(props: {
           className="preset-persona__list"
           data-testid="persona-sections-list"
         >
-          {draft.sections.map((section, index) => (
-            <SectionRow
-              key={index}
-              index={index}
-              section={section}
-              issue={issues.find((entry) => entry.index === index)}
-              editable={editable}
-              controller={controller}
-            />
+          {document.sections.map((section) => (
+            <SectionRow key={section.name} section={section} />
           ))}
         </ul>
       )}
-      <div className="preset-persona__actions">
-        <button
-          type="button"
-          className="preset-persona__button"
-          disabled={!editable}
-          data-testid="persona-sections-add"
-          onClick={() => {
-            controller.addSection();
-          }}
-        >
-          {strings.sectionsAdd}
-        </button>
-        <button
-          type="button"
-          className="preset-persona__button"
-          disabled={!editable || draft.sections.length === 0}
-          data-testid="persona-sections-remove-all"
-          onClick={() => {
-            controller.clearSections();
-          }}
-        >
-          {strings.sectionsRemoveAll}
-        </button>
-      </div>
     </details>
   );
 }
 
-/** The disclosures about what the row carries beyond this editor's four keys. */ function Disclosures(props: {
+/** The disclosures about what the row carries beyond this page's four keys. */
+function Disclosures(props: {
   readonly document: PersonaDocument;
 }): ReactElement | null {
   const { document } = props;
@@ -421,7 +261,7 @@ function SectionsArea(props: {
   );
 }
 
-/** The editor body of the open preset. */
+/** The reader body of the open preset. */
 export function PersonaEditor(props: {
   readonly state: PersonaPageSnapshot;
   readonly controller: PersonaPageController;
@@ -436,24 +276,15 @@ export function PersonaEditor(props: {
       </p>
     );
   }
-  if (
-    open.status === "failed" ||
-    open.document === null ||
-    open.draft === null
-  ) {
+  if (open.status === "failed" || open.document === null) {
     return (
       <p className="preset-persona__error" data-testid="persona-editor-error">
         {open.error}
       </p>
     );
   }
-  const { document, draft } = open;
-  const editable =
-    document.editable && document.readError === "" && document.extraRows === 0;
-  const sectionsEditable = editable && document.sectionsError === "";
-  const issues = sectionIssues(draft.sections);
-  const dirty = isDirty(open);
-  const shipped = document.trust === "system";
+  const { document } = open;
+  const readable = document.readError === "" && document.extraRows === 0;
 
   return (
     <>
@@ -469,9 +300,9 @@ export function PersonaEditor(props: {
         </p>
       )}
 
-      {editable ? null : (
+      {readable ? null : (
         <p className="preset-persona__warn" data-testid="persona-read-only">
-          {shipped ? strings.readOnlyShipped : strings.unreadable}
+          {strings.unreadable}
         </p>
       )}
 
@@ -479,36 +310,24 @@ export function PersonaEditor(props: {
         testId="persona-prefix"
         label={strings.prefixLabel}
         hint={strings.prefixHint}
-        value={draft.persona.prefix}
+        value={document.persona.prefix}
         rows={7}
-        disabled={!editable}
-        onChange={(prefix) => {
-          controller.edit({ prefix });
-        }}
       />
       <Field
         testId="persona-suffix"
         label={strings.suffixLabel}
         hint={strings.suffixHint}
-        value={draft.persona.suffix}
+        value={document.persona.suffix}
         rows={3}
-        disabled={!editable}
-        onChange={(suffix) => {
-          controller.edit({ suffix });
-        }}
       />
 
       <Check
         testId="persona-complete"
         label={strings.completeLabel}
         hint={strings.completeHint}
-        checked={draft.persona.complete}
-        disabled={!editable}
-        onChange={(complete) => {
-          controller.edit({ complete });
-        }}
+        checked={document.persona.complete}
       />
-      {draft.persona.complete ? (
+      {document.persona.complete ? (
         <p
           className="preset-persona__warn"
           data-testid="persona-complete-warning"
@@ -521,53 +340,14 @@ export function PersonaEditor(props: {
         testId="persona-runtime-context"
         label={strings.runtimeLabel}
         hint={strings.runtimeHint}
-        checked={draft.persona.includeRuntimeContext}
-        disabled={!editable}
-        onChange={(includeRuntimeContext) => {
-          controller.edit({ includeRuntimeContext });
-        }}
+        checked={document.persona.includeRuntimeContext}
       />
 
-      <SectionsArea
-        document={document}
-        draft={draft}
-        controller={controller}
-        editable={sectionsEditable}
-        issues={issues}
-      />
+      <SectionsArea document={document} />
 
       <Disclosures document={document} />
 
       <div className="preset-persona__actions">
-        <button
-          type="button"
-          className="preset-persona__button preset-persona__button--primary"
-          disabled={!editable || !dirty || state.busy || issues.length > 0}
-          data-testid="persona-save"
-          onClick={() => void controller.save()}
-        >
-          {state.busy ? strings.saving : strings.save}
-        </button>
-        <button
-          type="button"
-          className="preset-persona__button"
-          disabled={!editable || !dirty || state.busy}
-          data-testid="persona-revert"
-          onClick={() => {
-            controller.revert();
-          }}
-        >
-          {strings.revert}
-        </button>
-        <button
-          type="button"
-          className="preset-persona__button"
-          disabled={!editable || state.busy || !document.hasRow}
-          data-testid="persona-reset"
-          onClick={() => void controller.reset()}
-        >
-          {open.pendingReset ? `${strings.reset}?` : strings.reset}
-        </button>
         <button
           type="button"
           className="preset-persona__button"
@@ -576,23 +356,9 @@ export function PersonaEditor(props: {
         >
           {strings.reload}
         </button>
-        {shipped && state.authorable ? (
-          <button
-            type="button"
-            className="preset-persona__button"
-            data-testid="persona-copy"
-            onClick={() => {
-              controller.beginCopy();
-            }}
-          >
-            {strings.copyTitle}
-          </button>
-        ) : null}
       </div>
 
-      <CopyForm state={state} controller={controller} />
-
-      <PersonaPreview document={document} draft={draft} />
+      <PersonaPreview document={document} />
     </>
   );
 }

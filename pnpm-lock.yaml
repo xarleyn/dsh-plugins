@@ -1472,9 +1472,6 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: catalog:dsh-dev
         version: 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)
-      '@deepseek-ai/schemastery':
-        specifier: catalog:dsh-dev
-        version: 3.18.4
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3

@@ -1,6 +1,6 @@
 /**
- * Shared fixtures for the preset file-layer tests, moved here verbatim from
- * the single-file original.
+ * Shared fixtures for the preset file-layer tests, moved here verbatim from the
+ * single-file original.
  */
 
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
@@ -9,28 +9,7 @@ import { join } from "node:path";
 import { afterEach, beforeEach } from "vitest";
 
 import type { PresetRosterFace } from "../src/host/preset-reader.js";
-import {
-  savePersona as writePreset,
-  type WriteContext,
-} from "../src/host/preset-writer.js";
-import type { PersonaDraft, PresetDraft } from "../src/types.js";
-
-/**
- * The persona-only form of a save: these tests all start from a preset with no
- * prompt sections, so the sections half is empty.
- */
-export function savePersona(
-  context: WriteContext,
-  id: string,
-  persona: Partial<PersonaDraft> | undefined,
-  expectedRevision: string,
-): ReturnType<typeof writePreset> {
-  const draft: Partial<PresetDraft> = {
-    persona: persona as PersonaDraft,
-    sections: [],
-  };
-  return writePreset(context, id, draft, expectedRevision);
-}
+import type { PersonaDraft } from "../src/types.js";
 
 /** A composition with a persona row and one row this editor must not touch. */
 export const OWNED_PRESET = [

@@ -182,7 +182,6 @@ interface PresetInspection {
   readonly state: PersonaState;
   readonly draft: PersonaDraft;
   readonly complete: boolean;
-  readonly revision: string;
   readonly readError: string;
   readonly unknownKeys: readonly string[];
   readonly foreignKeys: readonly string[];
@@ -231,7 +230,6 @@ export async function inspectPreset(
     return {
       state: "unreadable",
       complete: false,
-      revision: "",
       readError: `the composition file could not be read: ${reasonOf(cause)}`,
       sectionsModule,
       ...ABSENT,
@@ -244,7 +242,6 @@ export async function inspectPreset(
       state: inspection.state,
       draft: inspection.draft,
       complete: inspection.draft.complete,
-      revision: file.revision,
       readError: "",
       unknownKeys: inspection.unknownKeys,
       foreignKeys: inspection.foreignKeys,
@@ -259,7 +256,6 @@ export async function inspectPreset(
     return {
       state: "unreadable",
       complete: false,
-      revision: file.revision,
       readError: reasonOf(cause),
       sectionsModule,
       ...ABSENT,
@@ -291,10 +287,9 @@ export async function readCatalog(
       broken: preset.broken ?? "",
       persona: inspection.state,
       complete: inspection.complete,
-      revision: inspection.revision,
     });
   }
-  return { presets: rows, authorable: roster.authorable };
+  return { presets: rows };
 }
 
 /** The section orders the preview outline places the persona around. */
@@ -313,12 +308,12 @@ export function personaOrders(systemPrompt: SystemPromptFace | undefined): {
 }
 
 /**
- * One preset as an editable document: its persona values, its unmanaged keys,
- * its file, and the revision a save must present back.
+ * One preset as a readable document: its persona values, its unmanaged keys,
+ * and its composition text.
  * @param roster - the host's `agentPresets` service.
  * @param systemPrompt - the host's `systemPrompt` service, when mounted.
  * @param id - the preset to open.
- * @returns the document; `readError` explains a file this editor cannot edit.
+ * @returns the document; `readError` explains a composition this page cannot read.
  */
 export async function readDocument(
   roster: PresetRosterFace,
@@ -345,7 +340,6 @@ export async function readDocument(
     editable: preset.trust === "user" && inspection.state !== "unreadable",
     isDefault: preset.id === roster.defaultId,
     path: preset.path,
-    revision: inspection.revision,
     hasRow: inspection.state === "local",
     persona: inspection.draft,
     unknownKeys: inspection.unknownKeys,
