@@ -182,7 +182,7 @@ Numbered, testable guarantees:
 | Host service (`presetPersonaEditor` Remote: list, read) | Implemented |
 | Composition reading (persona row, sections row, unmanaged keys, ambiguity) | Implemented |
 | Composition surgery (in-place rewrite, insert, remove; comments/`!!js`/EOL/BOM preserved) — a library with no caller since the cutover | Implemented, tested |
-| Section validation rules — a library with no caller since the cutover | Implemented, tested |
+| Section and draft validation rules — a library with no caller since the cutover, and the reason `preset-persona/invalid` is still declared: it is what this library throws | Implemented, tested |
 | Preset state the registry publishes (broken reason, default id, display name) | Implemented |
 | Browser page (`settings.section`, roster, readings, advanced area, preview, composition viewer) | Implemented |
 | Package gates (manifest, bundle, compatibility, tarball) | Implemented |
@@ -197,3 +197,9 @@ wrote the sections, the harness mounted the preset, and `systemPrompt.assemble`
 for that preset's scope returned the section text, with a disabled section
 absent. None of that is re-verified against `0.1.7-rc.2`, and the writes it
 describes are gone.
+
+What an eye in a browser would have caught — the name each reading carries after
+the `<label>`/`<p>` round trip, and that one refusal answers with one sentence —
+is pinned by `tests/client-editor-markup.test.tsx`, the only test in the package
+that renders the client at all. A live pass would still be the one that shows a
+real deployment's registry behaving as its published types say.
