@@ -223,7 +223,10 @@ pnpm --filter @yadsh/dsh-qa-browser test:browser
 ```
 
 `DSH_QA_BROWSER_EXECUTABLE` names the binary instead of leaving it to that
-search — the switch to use when the machine has several, or none findable.
+search — the switch to use when the machine has several, or none findable. A run
+that was asked for and could not find a browser fails rather than skipping: a
+named binary that is not there says so, and a search that came up empty says so
+too.
 
 ## License
 
