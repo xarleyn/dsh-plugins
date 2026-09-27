@@ -26,7 +26,10 @@ named its last — so an unsent question, its attachments and the per-chat panel
 outlived the chat they belonged to and were shown by the next one. Adopting a
 session is the whole of it now: a first send whose session never reached a
 binding, never opened, or was refused by the policy check is retried in the same
-chat rather than read as another one, and a chat that takes over the screen —
-because a persisted chat was refused, or because it simply vanished — starts
-empty and quiet, without the question and the "sending" state of the chat it
-replaced.
+chat rather than read as another one, and an adoption that finishes after the
+visitor has moved to another chat — the Host listed or refused its session too
+late — belongs to nobody and takes nothing back: the chat on screen keeps its
+identity and its subscriptions, and the next question rides it as usual. A chat
+that takes over the screen — because a persisted chat was refused, or because it
+simply vanished — starts empty and quiet, without the question and the "sending"
+state of the chat it replaced.

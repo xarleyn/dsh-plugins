@@ -301,11 +301,14 @@ export class QaSessionController {
    * rather than a counter: {@link bind} compares the session it is about to
    * adopt against it, so any path that ends up in another session takes another
    * identity — and a draft adopting its first session keeps the one it holds.
-   * It names a session this controller actually holds and nothing else: {@link
-   * bind} hands the identity over where it takes the session and takes it back
-   * when the adoption fails, so naming a session means this chat opened an
-   * attested one. A chat that names no session keeps its identity for the next
-   * attempt, which is what holds a retried first send in the same chat.
+   * It only ever names a session this controller holds: {@link bind} hands it
+   * out when an adoption is whole — opened, attested, tracked — and both a
+   * failed adoption and {@link unbind} take it back. The converse does not hold:
+   * a held session may name nothing, which is the transcript of an attestation
+   * this chat could not pass and whose caller still reads it. So a chat whose
+   * first send fell short keeps its identity while naming no session, and the
+   * retry — which brings a fresh id — stays in the composer the question was
+   * typed into instead of reading as a move to another chat.
    */
   private namedSession: string | null = null;
   /**
@@ -1087,7 +1090,7 @@ export class QaSessionController {
           adminPreview: this.adminPreview,
         });
         if (this.disposed || operation !== this.generation) return false;
-        await this.bind(id);
+        await this.bind(id, { operation });
         if (this.disposed || operation !== this.generation) return false;
         this.drafting = false;
         if (this.config.session.policy === "browser-persistent") {
@@ -1161,7 +1164,10 @@ export class QaSessionController {
         this.forgetChat(sessionId);
         throw new Error("Этот чат больше недоступен.");
       }
-      await this.bind(sessionId, { allowCompatibilityReadOnly: true });
+      await this.bind(sessionId, {
+        operation,
+        allowCompatibilityReadOnly: true,
+      });
       if (this.disposed || operation !== this.generation) return;
       this.chats.saveActive(sessionId);
     } catch (error) {
@@ -1209,7 +1215,12 @@ export class QaSessionController {
     this.emit();
     try {
       await this.waitForConnection();
-      await this.bind(id, { attest: false, track: false, report: false });
+      await this.bind(id, {
+        operation,
+        attest: false,
+        track: false,
+        report: false,
+      });
     } catch (error) {
       // A newer operation superseded this view request: leave its state alone.
       if (this.disposed || operation !== this.generation) return;
@@ -1384,6 +1395,7 @@ export class QaSessionController {
       // it is the deployment's only chance to learn the reason.
       try {
         await this.bind(id, {
+          operation,
           report: !restored,
           allowCompatibilityReadOnly: existing,
         });
@@ -1422,7 +1434,7 @@ export class QaSessionController {
         // identity naming no session, so without this the replacement would
         // adopt the refused chat's.
         this.openChat();
-        await this.bind(id);
+        await this.bind(id, { operation });
       }
       if (this.disposed || operation !== this.generation) return;
       if (this.config.session.policy === "browser-persistent") {
@@ -1469,7 +1481,7 @@ export class QaSessionController {
     try {
       await this.waitForConnection();
       try {
-        await this.bind(id);
+        await this.bind(id, { operation });
         if (this.disposed || operation !== this.generation) return null;
         if (this.policyReady) return id;
       } catch (error) {
@@ -1481,11 +1493,11 @@ export class QaSessionController {
         return null;
       }
       // Only a chat that never received a prompt is replaced here, so the fresh
-      // id continues the chat the user is writing into. Hand the identity over
-      // to it — bind() would otherwise read another chat and take a new one —
-      // because the question this send carries is still in the composer.
+      // id continues the chat the user is writing into: leaving the binding
+      // above takes the identity's name back, and bind() then adopts the fresh
+      // id under the identity still on screen — the question this send carries
+      // has not left the composer.
       this.unbind();
-      this.namedSession = null;
       this.chats.clearActive();
       const created = await createQaSession({
         createSession: this.createSessionRemote,
@@ -1494,7 +1506,7 @@ export class QaSessionController {
         adminPreview: this.adminPreview,
       });
       if (this.disposed || operation !== this.generation) return null;
-      await this.bind(created);
+      await this.bind(created, { operation });
       if (this.disposed || operation !== this.generation) return null;
       this.chats.saveActive(created);
       return this.policyReady ? created : null;
@@ -1529,16 +1541,35 @@ export class QaSessionController {
     this.admissionPending = false;
   }
 
+  /**
+   * Adopt one Host session as the chat on screen: take its binding, wait for it
+   * to open, attest the policy, and only then hand the chat identity to the
+   * session, so {@link namedSession} never names one this controller does not
+   * hold.
+   *
+   * Any of those waits can outlive the operation it belongs to — the user moves
+   * to another chat while a first send is still looking for its session — so an
+   * adoption that is no longer the one on screen takes nothing back and gives
+   * nothing out: neither the identity, which another chat holds, nor the
+   * binding, whose subscriptions belong to what the visitor is reading. Two
+   * questions decide that at each wait: is this still the generation the caller
+   * owns, and is this still the session this call took? {@link startDraft}
+   * retires a binding without bumping the generation, so neither question alone
+   * answers it.
+   */
   private async bind(
     id: string,
     options: {
+      /** The generation whose adoption this is; see the two guards below. */
+      operation: number;
       report?: boolean;
       attest?: boolean;
       track?: boolean;
       allowCompatibilityReadOnly?: boolean;
-    } = {},
+    },
   ): Promise<void> {
     const {
+      operation,
       report = true,
       attest = true,
       track = true,
@@ -1570,17 +1601,21 @@ export class QaSessionController {
     }
     if (binding === undefined)
       throw new Error("Session binding is unavailable.");
-    // Another session under the identity that named the previous one is another
+    if (this.disposed || operation !== this.generation) {
+      // A newer operation owns the chat on screen while this one was still
+      // looking for its session. Adopting now would retire the binding that
+      // newer operation is showing, so this one gives up before it takes
+      // anything; the reference it retained is its own to release.
+      reference.release();
+      return;
+    }
+    // Another session under the identity that named a different one is another
     // chat: it takes its own identity, so nothing the previous chat was holding
     // — an unsent question, staged attachments, an open drawer — walks into it.
-    // A chat that names no session yet adopts one under the identity it already
-    // has, which is what keeps a draft's first prompt on the screen. Both
-    // halves wait for the binding this controller actually holds: a bind that
-    // never got one leaves the identity naming no session, or the retried first
-    // send — which creates a fresh id — would read as another chat and rebuild
-    // the composer around the very question that has to be sent again.
+    // A chat that names no session adopts under the identity it already has,
+    // which is what keeps a retried first send — it brings a fresh id — in the
+    // composer the question was typed into.
     if (this.namedSession !== null && this.namedSession !== id) this.openChat();
-    this.namedSession = id;
     this.unbind();
     this.sessionReference = reference;
     this.session = binding.session;
@@ -1633,25 +1668,45 @@ export class QaSessionController {
           throw new QaPolicyAttestationError();
         }
       }
+      if (
+        this.disposed ||
+        operation !== this.generation ||
+        this.session !== binding.session
+      ) {
+        // The chat on screen moved on while this adoption waited: what replaced
+        // it holds the identity and the binding now, so there is nothing here
+        // left to finish, and nothing of theirs to undo.
+        return;
+      }
       if (track) {
-        this.chatSessionId = String(this.session.sessionId);
+        this.chatSessionId = String(binding.session.sessionId);
         this.viewingSubagent = null;
-        this.chats.addChat(String(this.session.sessionId));
-        this.accounts?.onSessionCreated(String(this.session.sessionId));
+        this.chats.addChat(String(binding.session.sessionId));
+        this.accounts?.onSessionCreated(String(binding.session.sessionId));
       }
     } catch (error) {
-      // The adoption did not complete, so this chat must not keep naming the
-      // session it could not finish with: a retried first send brings another
-      // id, and an identity still pointing here would read that retry as a move
-      // to another chat — rebuilding the composer over the very question that
-      // has to go again. A session that never opened is not one this controller
-      // holds, so it goes too; a session whose attestation was refused stays,
-      // because its caller reads the transcript before deciding whether the chat
-      // may be replaced.
-      this.namedSession = null;
-      if (!(error instanceof QaPolicyAttestationError)) this.unbind();
+      // An adoption that fell short must not leave the chat naming the session
+      // it could not finish with: a retried first send brings another id, and an
+      // identity still pointing here would read that retry as a move to another
+      // chat — rebuilding the composer over the very question that has to go
+      // again. A session that never opened is not one this controller holds, so
+      // it goes too; a session whose attestation was refused stays, because its
+      // caller reads the transcript before deciding whether the chat may be
+      // replaced. None of this is ours to undo once a newer chat has retired the
+      // binding this call took: that chat owns the identity from then on.
+      if (
+        !this.disposed &&
+        operation === this.generation &&
+        this.session === binding.session
+      ) {
+        this.namedSession = null;
+        if (!(error instanceof QaPolicyAttestationError)) this.unbind();
+      }
       throw error;
     }
+    // Opened, attested, tracked: the adoption is whole only now, and only now
+    // does the chat take this session as its identity.
+    this.namedSession = id;
     this.publish();
     // Deliberately not awaited: the palette is a convenience, and a chat must
     // open at once whether or not the skill and command registries answer.
@@ -1675,6 +1730,10 @@ export class QaSessionController {
       this.assets.release(String(this.session.sessionId));
     }
     this.session = undefined;
+    // A chat that holds no session names no session: {@link bind} hands the
+    // identity out when an adoption is whole, and leaving a binding is the hand
+    // that takes it back.
+    this.namedSession = null;
     this.hostSources.reset();
     this.hostApprovals.reset();
     this.hostQuestions.reset();
