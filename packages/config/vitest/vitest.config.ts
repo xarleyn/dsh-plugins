@@ -57,6 +57,9 @@ const DECORATOR_LINE_RE = /^\s*@[A-Za-z_$]/m;
  * JavaScript. Every file that declares a decorator in this repository is a
  * `.ts` host entry, so nothing needs the JSX route today; a decorated `.tsx`
  * would need its own JSX-aware emit, not a widened copy of this expression.
+ * This bounds the transform's scope only. `coverage.include` measures `.tsx` on
+ * purpose — reporting a loaded module needs no lowering, and the client code is
+ * part of the `src` tree every package is expected to measure.
  */
 const TYPESCRIPT_FILE_RE = /\.[cm]?ts$/;
 
