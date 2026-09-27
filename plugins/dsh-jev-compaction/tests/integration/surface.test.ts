@@ -19,7 +19,7 @@ import {
   isSnapshotFresh,
 } from "../../src/dsh/surface.js";
 import { buildState } from "../../src/jev/state.js";
-import { resolveJevCompactionConfig } from "../../src/config.js";
+import { resolveJevCompactionConfig } from "../../src/config/index.js";
 
 const MODEL = "test-model";
 // Small recent window so multi-turn fixtures keep old results eligible; the
