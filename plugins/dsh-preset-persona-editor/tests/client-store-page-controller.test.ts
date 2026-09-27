@@ -40,7 +40,7 @@ describe("PersonaPageController", () => {
     expect(controller.snapshot().error).toBe("boom");
   });
 
-  it("keeps the roster on screen when a refresh fails", async () => {
+  it("keeps the roster on screen when a refresh fails, and says so", async () => {
     const list = vi
       .fn()
       .mockResolvedValueOnce(OK_CATALOG)
@@ -51,9 +51,17 @@ describe("PersonaPageController", () => {
     const controller = new PersonaPageController(faceOf({ list }));
     await controller.load();
     await controller.load();
-    expect(controller.snapshot().status).toBe("ready");
-    expect(controller.snapshot().presets).toHaveLength(1);
-    expect(controller.snapshot().error).toBe("boom");
+    const state = controller.snapshot();
+    expect(state.status).toBe("ready");
+    expect(state.presets).toHaveLength(1);
+    // The refusal is the fact this transition adds, and only the notice slot
+    // reaches the screen a ready roster renders: `error` belongs to the failed
+    // screen, which does not render here, so writing it would hide the message.
+    expect(state.error).toBe("");
+    expect(state.notice).toEqual({
+      kind: "error",
+      text: `${strings.loadFailed} boom`,
+    });
   });
 
   it("opens a preset and keeps the document it read", async () => {

@@ -101,6 +101,12 @@ Numbered, testable guarantees:
     shows both rows, each with its own values, and says nothing about the
     duplicate: the collision is the preset's fact and the harness's to refuse,
     and this page has no write left to refuse it with.
+21. **A roster a refresh failed to update is not presented as current.** The
+    rows stay on screen — a refused `list()` is not a deployment that composes
+    no presets — and the refusal is put above them. Nothing else on this screen
+    can carry it: the page records no timestamp for the list it shows, so the
+    words explaining why the rows did not change are the only claim it can make
+    about their age.
 
 ## 2. Data model
 
@@ -141,6 +147,11 @@ not a composition.
    directory, and a cached answer would be the one that goes stale when a preset
    is registered or retired). A composition the registry refuses is logged with
    the host's reason and the row is badged `Unreadable`.
+   A refresh that fails over a list already on screen keeps the rows — dropping
+   them would answer a refused `list()` with a deployment that composes nothing
+   — and carries the refusal into the notice the roster screen renders: the
+   rows it keeps are stale precisely because the refresh failed, and `status`
+   staying `ready` means nothing else on this screen can say it.
 2. Open a preset: its values, its unmanaged keys, and the composition the
    registry renders for it are read, and nothing else happens.
 3. There is no step 3. The page has no write, so there is no revision check, no
@@ -198,7 +209,11 @@ not a composition.
     would have thrown;
 12. a preset the roster does not know, answered with the page's own not-found
     code and the Host's reason logged beside it;
-13. the ordering and shadowing warnings of a section named `deployment:*`.
+13. the ordering and shadowing warnings of a section named `deployment:*`;
+14. a roster refresh refused over the rows it keeps — asserted on the rendered
+    page, not only in the controller, because the store's `error` belongs to the
+    screen that draws when there is no list at all, and a message written where
+    the ready screen reads nothing is a stale roster passing as a current one.
 
 ## 6. Implementation status
 
