@@ -1018,7 +1018,7 @@ Nice-to-have:
 A Markdown document may contain:
 
 ```md
-[See architecture](../architecture.md)
+[See architecture](../ARCHITECTURE.md)
 ```
 
 Phase 1:

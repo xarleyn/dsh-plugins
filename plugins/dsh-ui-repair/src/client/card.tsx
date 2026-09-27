@@ -33,6 +33,7 @@ interface ToggleProps {
   readonly description: string;
   readonly checked: boolean;
   readonly disabled: boolean;
+  readonly testId: string;
   readonly onChange: (checked: boolean) => void;
 }
 
@@ -48,6 +49,7 @@ function Toggle(props: ToggleProps) {
         type="checkbox"
         checked={props.checked}
         disabled={props.disabled}
+        data-testid={props.testId}
         onChange={(event) => props.onChange(event.currentTarget.checked)}
       />
     </label>
@@ -156,7 +158,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
       label={(open) => `${open ? "Hide" : "Show"} settings: UI Repair`}
       bodyClassName="uir-body"
     >
-      <div data-dsh-ui-repair-ui>
+      <div data-dsh-ui-repair-ui data-testid="repair-ui">
         <section className="uir-section">
           <h3 className="uir-section-title">Policy</h3>
           <Toggle
@@ -164,6 +166,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
             description="Disabling restores all temporary repairs and stops observation."
             checked={config.enabled}
             disabled={!writable}
+            testId="repair-toggle-enabled"
             onChange={(checked) => void form.set("enabled", checked)}
           />
           <div className="uir-grid">
@@ -173,6 +176,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
                 className="uir-control"
                 value={config.mode}
                 disabled={!writable}
+                data-testid="repair-mode"
                 onChange={(event) =>
                   void form.set(
                     "mode",
@@ -197,6 +201,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
                 step="1"
                 value={Math.round(config.autoConfidence * 100)}
                 disabled={!writable}
+                data-testid="repair-auto-confidence"
                 onChange={(event) => setConfidence("autoConfidence", event)}
               />
             </label>
@@ -210,6 +215,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
                 step="1"
                 value={Math.round(config.dangerousConfidence * 100)}
                 disabled={!writable}
+                data-testid="repair-dangerous-confidence"
                 onChange={(event) =>
                   setConfidence("dangerousConfidence", event)
                 }
@@ -221,6 +227,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
             description="Run one bounded scan after the browser plugin mounts."
             checked={config.scanOnStartup}
             disabled={!writable}
+            testId="repair-toggle-scan-startup"
             onChange={(checked) => void form.set("scanOnStartup", checked)}
           />
           <Toggle
@@ -228,6 +235,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
             description="Batch affected roots through MutationObserver and animation frames."
             checked={config.scanAfterMutation}
             disabled={!writable}
+            testId="repair-toggle-scan-mutation"
             onChange={(checked) => void form.set("scanAfterMutation", checked)}
           />
           <Toggle
@@ -235,6 +243,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
             description="Observe bounded repair roots for geometry changes."
             checked={config.scanAfterResize}
             disabled={!writable}
+            testId="repair-toggle-scan-resize"
             onChange={(checked) => void form.set("scanAfterResize", checked)}
           />
         </section>
@@ -246,6 +255,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
               className="uir-button"
               type="button"
               disabled={scanning || !config.enabled}
+              data-testid="repair-scan"
               onClick={() => void scan()}
             >
               {scanning ? "Scanning..." : "Scan now"}
@@ -253,6 +263,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
             <button
               className="uir-button"
               type="button"
+              data-testid="repair-rollback"
               onClick={() => {
                 runtime.rollbackAll();
               }}
@@ -261,7 +272,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
             </button>
           </div>
           {report === undefined ? (
-            <p className="uir-muted">
+            <p className="uir-muted" data-testid="repair-report-empty">
               No completed scan in this browser session.
             </p>
           ) : (
@@ -286,7 +297,11 @@ export function UIRepairCard({ form, runtime }: CardProps) {
               </div>
               <ul className="uir-issues">
                 {report.issues.slice(0, 5).map((issue) => (
-                  <li className="uir-issue" key={issue.id}>
+                  <li
+                    className="uir-issue"
+                    key={issue.id}
+                    data-testid="repair-issue"
+                  >
                     <div className="uir-issue-summary">
                       <span className="uir-rule">{issue.ruleId}</span>
                       <span className="uir-target">{issue.target}</span>
@@ -312,6 +327,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
                               report.ignored.includes(issue.id) ||
                               report.applied.includes(issue.id)
                             }
+                            data-testid="repair-issue-apply"
                             onClick={() => void applyIssue(issue)}
                           >
                             {pendingRepair === issue.id
@@ -325,6 +341,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
                           disabled={
                             !writable || report.ignored.includes(issue.id)
                           }
+                          data-testid="repair-issue-ignore"
                           onClick={() => ignoreIssue(issue)}
                         >
                           {report.ignored.includes(issue.id)
@@ -337,7 +354,11 @@ export function UIRepairCard({ form, runtime }: CardProps) {
                 ))}
               </ul>
               {repairError === undefined ? null : (
-                <p className="uir-error" role="status">
+                <p
+                  className="uir-error"
+                  role="status"
+                  data-testid="repair-apply-error"
+                >
                   {repairError}
                 </p>
               )}
@@ -356,6 +377,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
               <li
                 className="uir-ignore-item"
                 key={`${rule.plugin ?? ""}:${rule.rule ?? ""}:${rule.selector ?? ""}:${index}`}
+                data-testid="repair-ignore-row"
               >
                 <code>
                   {rule.selector ??
@@ -365,6 +387,7 @@ export function UIRepairCard({ form, runtime }: CardProps) {
                   className="uir-button"
                   type="button"
                   disabled={!writable}
+                  data-testid="repair-ignore-remove"
                   onClick={() => removeIgnore(index)}
                 >
                   Remove
@@ -379,19 +402,25 @@ export function UIRepairCard({ form, runtime }: CardProps) {
               disabled={!writable}
               placeholder=".intentional-overflow"
               aria-label="CSS selector to ignore"
+              data-testid="repair-ignore-input"
               onChange={(event) => setSelector(event.currentTarget.value)}
             />
             <button
               className="uir-button"
               type="button"
               disabled={!writable}
+              data-testid="repair-ignore-add"
               onClick={addSelector}
             >
               Add selector
             </button>
           </div>
           {selectorError === undefined ? null : (
-            <p className="uir-error" role="alert">
+            <p
+              className="uir-error"
+              role="alert"
+              data-testid="repair-ignore-error"
+            >
               {selectorError}
             </p>
           )}
