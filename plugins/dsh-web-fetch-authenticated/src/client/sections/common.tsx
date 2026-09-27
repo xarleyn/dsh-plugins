@@ -50,12 +50,18 @@ export interface CardFace {
 
 export function Pill({
   tone,
+  testId,
   children,
 }: {
   tone: "ok" | "warn" | "err";
+  testId?: string;
   children: string;
 }): JSX.Element {
-  return <span className={`wfa-pill ${tone}`}>{children}</span>;
+  return (
+    <span className={`wfa-pill ${tone}`} data-testid={testId}>
+      {children}
+    </span>
+  );
 }
 
 /**
@@ -103,12 +109,14 @@ export function Meta({
  */
 export function IconButton({
   label,
+  testId,
   danger,
   disabled,
   onClick,
   children,
 }: {
   label: string;
+  testId?: string;
   danger?: boolean;
   disabled?: boolean;
   onClick: () => void;
@@ -117,6 +125,7 @@ export function IconButton({
   return (
     <button
       className={danger === true ? "wfa-icon-btn danger" : "wfa-icon-btn"}
+      data-testid={testId}
       type="button"
       aria-label={label}
       title={label}
@@ -184,12 +193,14 @@ export function Field({
 
 export function ToggleRow({
   title,
+  testId,
   hint,
   checked,
   disabled,
   onChange,
 }: {
   title: string;
+  testId?: string;
   hint: string;
   checked: boolean;
   disabled: boolean;
@@ -203,6 +214,7 @@ export function ToggleRow({
       </span>
       <input
         className="wfa-toggle"
+        data-testid={testId}
         type="checkbox"
         checked={checked}
         disabled={disabled}

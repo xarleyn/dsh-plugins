@@ -20,12 +20,13 @@ export function GlobalSection({
 }): JSX.Element {
   const limits = config?.limits;
   return (
-    <section className="wfa-section">
+    <section className="wfa-section" data-testid="wfa-global-section">
       <div className="wfa-section-title">
         <h3>Global</h3>
       </div>
       <ToggleRow
         title="Provider enabled"
+        testId="wfa-global-provider-enabled"
         hint="Disabled providers report unavailable to ctx.web."
         checked={config?.enabled ?? true}
         disabled={!writable}
@@ -35,6 +36,7 @@ export function GlobalSection({
       />
       <ToggleRow
         title="Audit log"
+        testId="wfa-global-audit-enabled"
         hint="Sanitized per-request records in the plugin log; never secrets."
         checked={config?.audit?.enabled ?? true}
         disabled={!writable}
@@ -46,6 +48,7 @@ export function GlobalSection({
         <Field label="Default timeout (ms)">
           <input
             className="wfa-control"
+            data-testid="wfa-global-timeout"
             inputMode="numeric"
             disabled={!writable}
             value={
@@ -66,6 +69,7 @@ export function GlobalSection({
         <Field label="Max response size (bytes)">
           <input
             className="wfa-control"
+            data-testid="wfa-global-max-response-bytes"
             inputMode="numeric"
             disabled={!writable}
             value={
@@ -88,6 +92,7 @@ export function GlobalSection({
         <Field label="Max decoded body (chars)">
           <input
             className="wfa-control"
+            data-testid="wfa-global-max-body-chars"
             inputMode="numeric"
             disabled={!writable}
             value={

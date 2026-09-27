@@ -104,12 +104,13 @@ export function CredentialControl({
   }, [credentials, refName]);
 
   return (
-    <div className="wfa-field">
+    <div className="wfa-field" data-testid="wfa-rule-credential">
       <span>Credential</span>
       <div className="wfa-grid">
         <Field label="Reference name">
           <input
             className="wfa-control"
+            data-testid="wfa-rule-credential-ref"
             value={refName}
             placeholder="CORP_JIRA_TOKEN"
             onChange={(event) => {
@@ -122,6 +123,7 @@ export function CredentialControl({
         >
           <input
             className="wfa-control"
+            data-testid="wfa-rule-credential-secret"
             type="password"
             autoComplete="off"
             value={secret}
@@ -137,6 +139,7 @@ export function CredentialControl({
       <div className="wfa-actions">
         <Pill
           tone={state === undefined ? "warn" : state.configured ? "ok" : "err"}
+          testId="wfa-rule-credential-state"
         >
           {state === undefined
             ? "unknown"
@@ -146,6 +149,7 @@ export function CredentialControl({
         </Pill>
         <button
           className="wfa-btn"
+          data-testid="wfa-rule-credential-save"
           type="button"
           disabled={
             busy ||
@@ -160,6 +164,7 @@ export function CredentialControl({
         </button>
         <button
           className="wfa-btn danger"
+          data-testid="wfa-rule-credential-remove"
           type="button"
           disabled={busy || state?.configured !== true}
           onClick={() => {
@@ -169,7 +174,11 @@ export function CredentialControl({
           Remove
         </button>
       </div>
-      {message !== undefined && <p className="wfa-note">{message}</p>}
+      {message !== undefined && (
+        <p className="wfa-note" data-testid="wfa-rule-credential-message">
+          {message}
+        </p>
+      )}
       <p className="wfa-note">
         The secret is written once to the DSH credential store under the
         reference name above; the rule config keeps only the name. Values are
