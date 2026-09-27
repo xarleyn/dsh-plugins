@@ -95,8 +95,7 @@ export interface QaIntegrationsConfig {
  */
 export type QaIntegrationsSnapshot = {
   readonly [Key in keyof QaIntegrationsConfig]?:
-    | QaIntegrationsConfig[Key]
-    | undefined;
+    QaIntegrationsConfig[Key] | undefined;
 };
 
 export interface ResolvedQaIntegrationsConfig {
@@ -171,12 +170,7 @@ export const ConfigSchema: z<QaIntegrationsConfig, LiveQaIntegrationsConfig> =
       .volatile(),
     masterKeyVersion: z.number().step(1).min(1).default(1).volatile(),
     timeoutMs: z.number().step(1).min(1).default(15_000).volatile(),
-    maxResponseBytes: z
-      .number()
-      .step(1)
-      .min(1)
-      .default(2_000_000)
-      .volatile(),
+    maxResponseBytes: z.number().step(1).min(1).default(2_000_000).volatile(),
     allowedPortalSuffixes: z
       .array(z.string())
       .default([".bitrix24.ru", ".bitrix24.com", ".bitrix24.eu"])
