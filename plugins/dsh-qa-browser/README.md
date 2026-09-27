@@ -173,13 +173,18 @@ runtime:
 
 The endpoint is an `http`/`https` URL for the browser's DevTools server —
 Playwright reads its `webSocketDebuggerUrl` itself — or that `ws`/`wss` URL
-directly. By default it has to name this machine: `localhost`, `127.0.0.1`,
-`::1`. A `*.localhost` name is not on that list although it is meant to be local:
-this plugin never resolves the endpoint, Playwright dials it through the system
-resolver, and a resolver with a search domain can answer `chrome.localhost` with
-a machine somewhere else. Holding a CDP endpoint means holding the browser, its
-every tab included and past this plugin's own policy, so an endpoint beyond
-loopback — including one that merely looks like it — needs
+directly. By default it has to name this machine, and the list is read exactly:
+`localhost`, `127.0.0.1`, `::1`, plus the forms the URL parser itself resolves to
+those (`http://127.1`, `http://2130706433`). A `*.localhost` name is not on it
+although it is meant to be local, and neither is `localhost.` with a trailing dot
+— that dot turns the literal into a DNS query. This plugin never resolves the
+endpoint, Playwright dials it through the system resolver, and a resolver with a
+search domain can answer `chrome.localhost` with a machine somewhere else. For an
+`http` endpoint the gate bounds the address written down, which is the first hop:
+the server there replies with the `ws` URL to dial, so a deployment that needs the
+dialled address pinned writes a `ws` URL. Holding a CDP endpoint means holding the
+browser, its every tab included and past this plugin's own policy, so an endpoint
+beyond loopback — including one that merely looks like it — needs
 `allowRemoteCdpEndpoint: true` written next to it: a decision someone made on
 purpose, not a default.
 
@@ -193,14 +198,19 @@ they are refused as well.
 
 What attach mode changes, and what it deliberately does not:
 
-- The browser is not ours to stop. Closing a session, evicting an idle one and
-  shutting the plugin down drop the link and the contexts this runtime created;
-  the process — and any page a person has open in it — stay up.
+- The browser is not ours to stop. Closing a session or evicting an idle one
+  releases that session's own context and keeps the link; only shutting the
+  plugin down drops the link along with every context this runtime created. The
+  process — and any page a person has open in it — stay up through all of it.
 - The isolation is the same: every DSH session gets its own browser context
   rather than the default one the person is looking at, so the agent's cookies,
-  storage and tabs are the session's own. That default context is never read,
-  driven, or closed — SPEC §5 keeps existing user tabs a non-goal, and this is
-  the mode that could have broken it.
+  storage and tabs are the session's own. This runtime never asks the browser for
+  that default context — not through `contexts()`, not through `pages()` — so it
+  drives no page inside it and closes nothing it did not build. SPEC §5 keeps
+  existing user tabs a non-goal, and this is the mode that could have broken it.
+  What the CDP connection itself attaches to is Playwright's business, which is
+  why the promise is checked against a real browser: the person's own tab is
+  still listed by that browser after this plugin's teardown.
 - The policy is the same: every document, redirect and subrequest still passes
   the server-side scheme, host, DNS, private-network and metadata gates, and a
   refusal is still listed per tab in the panel.

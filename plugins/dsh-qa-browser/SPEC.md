@@ -138,7 +138,8 @@ today.
 | Where the browser comes from | an installed executable, discovered or named | `runtime.cdpEndpoint`, loopback unless opened up |
 | `headless: false` | a window a person may watch and click in | refused: this runtime owns no window to show |
 | Keys of the other mode | `cdpEndpoint`, `allowRemoteCdpEndpoint: true` | `executablePath`, another `browserChannel`, `chromiumSandbox: false` |
-| Session teardown | process exits | link and our own contexts drop, process stays |
+| Session close | its own context closes | its own context closes, the link stays |
+| Runtime stop | the process exits | the link and our own contexts drop, the process stays |
 | Lost browser | `BROWSER_CRASHED` | `BROWSER_CONNECTION_LOST` |
 
 Each mode refuses the keys that describe the other one, instead of reading them
@@ -151,26 +152,37 @@ recovery rule that a browser which is gone is never pretended to still be there
 
 What the mode must not gain: an attached browser arrives with a default context
 holding the tabs its owner opened. The runtime builds its sessions with
-`newContext` and closes exactly those, so it never enumerates that context, never
-drives a page inside it, and never closes it — which is what keeps §5's "no
-controlling arbitrary existing user tabs" true while §3.3 is in the release.
+`newContext` and closes exactly those, and it never asks that browser for what it
+already has — `contexts()` and `pages()` are Playwright's two routes to the owner's
+tabs and the provider calls neither, which is what keeps §5's "controlling
+arbitrary existing user tabs" a non-goal while §3.3 is in the release. The
+guarantee is this runtime's own code path, not the protocol's: a CDP connection
+does observe the browser's targets, so the half no fake can answer for — that the
+owner's tab is still there after this plugin's teardown — is checked against a real
+Chromium.
 
 The endpoint is a control handle, so it is treated as one: an `attach` runtime
 reaches `localhost` by default, and any other host needs
-`runtime.allowRemoteCdpEndpoint: true` in the same config block. A person who
-can reach that host can reach the browser, which is a property of the deployment
-the operator built — the runtime documents it and does not promise otherwise.
+`runtime.allowRemoteCdpEndpoint: true` in the same config block. The gate reads
+the host the URL parser produced, so `*.localhost` and a `localhost.` carrying a
+trailing dot both count as other hosts. An `http` endpoint bounds the address
+written down, which is the first hop — that server answers with the `ws` URL
+Playwright then dials — so a deployment that must pin the dialled address writes a
+`ws` URL. A person who can reach that host can reach the browser, which is a
+property of the deployment the operator built — the runtime documents it and does
+not promise otherwise.
 
 Attaching does not merge this runtime with the Harness's own browser tooling. It
-is a second driver of one Chromium, not a shared session: the pages stay in the
-contexts each driver created, so a `browser_use` page of the Harness and a
-session of this plugin never see each other's tabs, cookies or storage — while
-both consume the same browser process, its profile directory and its
-`--remote-debugging-port`. The gates on §17 sit in this runtime's request path
-only: what the Harness or a person does in another tab of an attached browser is
-outside them, which is the same fact the endpoint is loopback-only by default for.
-Two runtimes on one endpoint is a deployment choice, and it is visible in one
-place — whoever holds the endpoint can drive the browser.
+is a second driver of one Chromium, not a shared session: the pages of this plugin
+live in the contexts it created, so a `browser_use` page of the Harness and a
+session of this plugin work on separate tabs, cookies and storage — while both
+consume the same browser process, its profile directory and its
+`--remote-debugging-port`, and whoever holds the endpoint can list every target in
+that browser. The gates on §17 sit in this runtime's request path only: what the
+Harness or a person does in another tab of an attached browser is outside them,
+which is the same fact the endpoint is loopback-only by default for. Two runtimes
+on one endpoint is a deployment choice, and it is visible in one place — whoever
+holds the endpoint can drive the browser.
 
 ---
 
@@ -257,7 +269,8 @@ Do not implement in the initial release:
 - controlling arbitrary existing user tabs — `attach` (§3.3) is what puts such
   tabs within reach, since whoever holds the endpoint can enumerate them, so the
   non-goal survives the feature only because the runtime keeps to the contexts it
-  created: it never reads, drives, or closes the browser's own default context;
+  created: it asks the attached browser for none of its own contexts and drives
+  and closes no page outside the ones it built;
 - importing cookies from the user's normal browser;
 - arbitrary filesystem access from model arguments;
 - arbitrary JavaScript evaluation by default;
@@ -2201,6 +2214,19 @@ This fixture is critical for stable Browser tests.
 - crash state, and a dropped CDP link kept apart from it (§3.3);
 - idle eviction.
 
+#### Runtime modes and config
+
+- both `runtime.mode` values, and each mode refusing the keys that describe the
+  other one;
+- the endpoint gate: the names that count as this machine, including the forms
+  the URL parser collapses into a loopback literal, and the ones that only prove
+  nothing — `*.localhost`, a `localhost.` with its trailing dot, an IPv4-mapped
+  IPv6 literal — which need `allowRemoteCdpEndpoint` written down;
+- what the provider asks of either browser: the context options and the network
+  gates it installs on top of it, the refusal it hands back when a socket server
+  was never dialed, and that it asks an attached browser for no context of its
+  own.
+
 ### 40.2 Playwright integration tests
 
 Run a real local Chromium.
@@ -2225,10 +2251,14 @@ Both `runtime.mode` values are exercised here, including the one no fake can
 answer for: `attach` joins a Chromium this runtime did not start and checks that
 its teardown leaves that process and its owner's pages running. The same run then
 kills that browser between actions, because a fake only announces a disconnect
-while a real one is the thing the panel has to read correctly. The suite is
-opt-in elsewhere in the workspace and required in this project's own CI job,
-which sets `DSH_QA_BROWSER_E2E=1` and fails the job when the requested run cannot
-find a browser — a check that skipped would read as a check that passed.
+while a real one arrives on Playwright's own schedule. What that run reads back is
+the session state and the structured error an action returns — `disconnected`,
+`BROWSER_CONNECTION_LOST` — which is what the panel is rendered from; its wording
+is pinned in the unit suite. Each attach case finds its own browser through the
+same search the launch path uses, and a run that was asked for and found nothing
+fails saying so rather than skipping: a skipped attach case would read as a check
+that passed. The suite is opt-in elsewhere in the workspace and required in this
+project's own CI job, which sets `DSH_QA_BROWSER_E2E=1`.
 
 ### 40.3 Tool contract tests
 

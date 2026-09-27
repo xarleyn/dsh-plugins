@@ -330,13 +330,18 @@ const CDP_ENDPOINT_PROTOCOLS = new Set(["http:", "https:", "ws:", "wss:"]);
  * `browser.localhost` into a query for `browser.localhost.example.corp` and hand
  * back a real address. A name whose meaning the runtime cannot check is not a
  * proof, so such an endpoint needs `allowRemoteCdpEndpoint` written down.
+ *
+ * The check runs on `URL.hostname`, which is the stronger form of the rule: the
+ * parser has already turned `http://2130706433`, `http://127.1` and
+ * `http://127.0.0.1.` into `127.0.0.1`, so an accepted oddity is an address the
+ * resolver has no part in, while userinfo and any host it hides are separated
+ * out. A trailing dot after a *name* is kept rather than stripped: `localhost.`
+ * is not the literal but a DNS query, and whether its answer is loopback depends
+ * on the resolver and on libc — glibc reads it from `/etc/hosts`, musl sends it
+ * out.
  */
 function isLoopbackHost(hostname: string): boolean {
-  const host = hostname
-    .replace(/^\[/u, "")
-    .replace(/\]$/u, "")
-    .replace(/\.$/u, "")
-    .toLowerCase();
+  const host = hostname.replace(/^\[/u, "").replace(/\]$/u, "").toLowerCase();
   if (host === "localhost") return true;
   if (host === "::1") return true;
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/u.test(host);
@@ -349,6 +354,14 @@ function isLoopbackHost(hostname: string): boolean {
  * and reads every page inside it, past this plugin's own network policy. So the
  * default reaches only this machine, and a host beyond it needs the switch
  * flipped on purpose — the same reason the browser's own pages are gated.
+ *
+ * What the gate bounds is the address written down, which is the whole handle for
+ * a `ws`/`wss` endpoint and the first hop for an `http`/`https` one: Playwright
+ * asks that URL for `/json/version` and dials the `webSocketDebuggerUrl` the
+ * answer names. A loopback HTTP server can therefore point the session at a
+ * browser elsewhere — which is why the endpoint is only trusted as far as whoever
+ * owns that port trusts it, and why a deployment that must pin the dialed address
+ * writes a `ws` URL.
  */
 function resolveCdpEndpoint(
   raw: QaBrowserConfig,

@@ -88,11 +88,13 @@ class FakeBrowser {
   /**
    * The owner's own context: an attached browser always has one, and it holds
    * the tabs a person is looking at. Playwright hands it out through
-   * `contexts()`, so the fake hands it out too — and counts the times anyone
-   * asks, because taking it would mean driving those tabs.
+   * `contexts()` and through `pages()`, so the fake hands it out both ways and
+   * counts the times anyone asks, because taking it would mean driving those
+   * tabs.
    */
   readonly ownerContext = new FakeContext();
   contextsAsked = 0;
+  pagesAsked = 0;
   /** What the provider asked Chromium to build the context with. */
   contextOptions: Record<string, unknown> = {};
   private readonly disconnectListeners: (() => void)[] = [];
@@ -109,6 +111,12 @@ class FakeBrowser {
   contexts(): FakeContext[] {
     this.contextsAsked += 1;
     return [this.ownerContext, ...this.created];
+  }
+
+  /** The other way to reach every page of the browser, from its root. */
+  pages(): never[] {
+    this.pagesAsked += 1;
+    return [];
   }
 
   async newContext(options: Record<string, unknown>): Promise<FakeContext> {
@@ -369,11 +377,12 @@ describe("PlaywrightBrowserProvider runtime modes", () => {
     await provider.stop();
 
     // SPEC §5 keeps "controlling arbitrary existing user tabs" a non-goal, and
-    // an attached browser arrives with exactly such tabs. They are reachable
-    // through `contexts()[0]`, which is why the runtime never asks: a session
-    // lives in a context it created and closes no other.
+    // an attached browser arrives with exactly such tabs. Playwright has two
+    // routes to them and this runtime asks for neither, so a session lives in a
+    // context it created. That the owner's tab then survives our teardown is not
+    // answerable from a fake — it is what the real-Chromium run reads back over
+    // `/json/list`.
     expect(browser.contextsAsked).toBe(0);
-    expect(browser.ownerContext.closeCalls).toBe(0);
-    expect(browser.ownerContext.events).toEqual([]);
+    expect(browser.pagesAsked).toBe(0);
   });
 });
