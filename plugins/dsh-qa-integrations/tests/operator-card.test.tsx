@@ -8,7 +8,7 @@
  * change — the card adds no persistence of its own.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import { OperatorCard } from "../src/client/operator-card.js";
@@ -116,6 +116,34 @@ function captionOf(node: Element): string {
 }
 
 /**
+ * The caption a labelled control prints, taken off the label it belongs to and
+ * stripped of what the label carries besides it: the «переопределено» mark and,
+ * on a toggle, the hint that sits beside the caption. Exact equality is what
+ * makes the caption an assertion — a prefix check would let «CRM: чтение и
+ * запись» pass for «CRM: чтение».
+ */
+function captionOfControl(control: HTMLInputElement): string {
+  const labels = [...(control.labels ?? [])];
+  expect(
+    labels.length,
+    `${control.getAttribute("data-testid")} is labelled once`,
+  ).toBe(1);
+  const label = labels[0] as Element;
+  // A toggle keeps its caption in a <strong> of its own, apart from the hint.
+  const caption = label.querySelector("strong") ?? label;
+  const parts = [...caption.childNodes]
+    .filter(
+      (node) =>
+        !(
+          node instanceof Element &&
+          node.matches("[data-testid$='-overridden']")
+        ),
+    )
+    .map((node) => node.textContent ?? "");
+  return parts.join(" ").replace(/\s+/gu, " ").trim();
+}
+
+/**
  * The section one zone owns, found by its test id. The zones are `general`,
  * `service-access` and one per provider, so a knob is reached through the
  * provider that owns it whatever its caption happens to say in Russian.
@@ -133,20 +161,18 @@ function openSection(zone: string): void {
  * The control that writes a settings path, found by its test id — the key the
  * Host stores the value under — instead of by the Russian caption the field
  * carries. A reworded hint or a switched interface language then no longer
- * moves a knob away from the check that reaches it, and the uniqueness of the
- * id is what `getByTestId` answers with. What the caption is for stays
- * asserted: the control must still carry that label, so the operator's handle
- * and the test's cannot drift apart unnoticed.
+ * moves a knob away from the check that reaches it. The lookup spans the card
+ * because the id is unique outside a list row, which
+ * `operator-test-ids.test.tsx` checks; where a test is about a knob sitting in a
+ * section, it says so with `contains`.
+ * What the caption is for stays asserted: the control must still carry exactly
+ * that label, so the operator's handle and the test's cannot drift apart.
  */
-function controlAt(testId: string, caption: string | RegExp): HTMLElement {
+function controlAt(testId: string, caption: string): HTMLElement {
   const control = screen.getByTestId(testId) as HTMLInputElement;
-  const labels = control.labels ?? [];
-  expect(labels.length, `${testId} is labelled once`).toBe(1);
-  const text = captionOf(labels[0] as Element);
-  expect(
-    caption instanceof RegExp ? caption.test(text) : text.startsWith(caption),
-    `${testId} is captioned ${caption}; the label reads ${text}`,
-  ).toBe(true);
+  expect(captionOfControl(control), `${testId} is captioned ${caption}`).toBe(
+    caption,
+  );
   return control;
 }
 
@@ -161,6 +187,20 @@ function buttonAt(testId: string, caption: string): HTMLElement {
   expect(button.localName, `${testId} is a button`).toBe("button");
   expect(captionOf(button), `${testId} is captioned ${caption}`).toBe(caption);
   return button;
+}
+
+/**
+ * One row of a list editor, told apart by the value it carries instead of by
+ * its place in the list. Epic #453 keeps the template id on every row of an
+ * editor — the rows of `gitlab.instances` read alike — so the row's own key
+ * attribute is the handle a check uses when it needs *this* row.
+ */
+function rowOf(fieldTestId: string, key: string): HTMLElement {
+  const row = screen
+    .getAllByTestId(`${fieldTestId}-row`)
+    .find((node) => node.getAttribute("data-dsh-row-key") === key);
+  expect(row, `the ${fieldTestId} row keyed ${key}`).toBeDefined();
+  return row as HTMLElement;
 }
 
 const RESOLVED = {
@@ -216,7 +256,7 @@ describe("integrations operator card", () => {
       (
         controlAt(
           "qa-integrations-enabled",
-          /Плагин включён/u,
+          "Плагин включён",
         ) as HTMLInputElement
       ).checked,
     ).toBe(false);
@@ -345,7 +385,7 @@ describe("integrations operator card", () => {
   it("enables the plugin from the always-open general section", () => {
     const stub = renderCard({ value: RESOLVED });
     expand();
-    fireEvent.click(controlAt("qa-integrations-enabled", /Плагин включён/u));
+    fireEvent.click(controlAt("qa-integrations-enabled", "Плагин включён"));
     expect(stub.writes).toEqual([
       { op: "set", path: ["enabled"], value: true },
     ]);
@@ -380,7 +420,7 @@ describe("integrations operator card", () => {
     );
     const toggle = controlAt(
       "qa-integrations-enabled",
-      /Плагин включён/u,
+      "Плагин включён",
     ) as HTMLInputElement;
     expect(toggle.disabled).toBe(true);
   });
@@ -440,16 +480,15 @@ describe("integrations operator card", () => {
       },
     });
     expand();
-    const select = screen.getByTestId(
+    // The row the fixture stores is the one keyed `wiki`, not "the first row".
+    const row = rowOf("qa-integrations-confluence-instances", "wiki");
+    const select = within(row).getByTestId(
       "qa-integrations-confluence-instances-deployment-select",
     ) as HTMLSelectElement;
     expect(select.value).toBe("server");
-    const label = screen.getByTestId(
+    const label = within(row).getByTestId(
       "qa-integrations-confluence-instances-label-input",
     ) as HTMLInputElement;
-    expect(
-      screen.getAllByTestId("qa-integrations-confluence-instances-row"),
-    ).toHaveLength(1);
     fireEvent.change(label, { target: { value: "Корпоративная вики" } });
     fireEvent.blur(label);
     expect(stub.writes).toEqual([
@@ -540,15 +579,18 @@ describe("integrations operator card", () => {
     expect(rows()).toHaveLength(2);
     stub.writes.splice(0);
 
-    // The stored row is the first of them, the draft the operator started last.
-    const removeStored = screen.getAllByTestId(
-      "qa-integrations-gitlab-instances-remove",
-    )[0] as HTMLButtonElement;
-    fireEvent.click(removeStored);
+    // Both rows wear the template id, so the one to remove is the row the
+    // deployment stored — the node keyed `corp`, not the first of the two.
+    fireEvent.click(
+      within(rowOf("qa-integrations-gitlab-instances", "corp")).getByTestId(
+        "qa-integrations-gitlab-instances-remove",
+      ),
+    );
 
     expect(stub.writes).toEqual([
       { op: "unset", path: ["gitlab", "instances"] },
     ]);
+    // The draft the operator started stays on screen.
     expect(rows()).toHaveLength(1);
   });
 
