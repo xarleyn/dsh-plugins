@@ -212,6 +212,50 @@ describe("resolveQaBrowserConfig", () => {
     ).toMatchObject({ mode: "launch", cdpEndpoint: null });
   });
 
+  it("counts as local only the names whose answer this machine owns", () => {
+    // The gate reads `URL.hostname`, so what is compared is the address that
+    // will be dialed rather than the string that was typed: the parser has
+    // already collapsed `2130706433`, `127.1` and `127.0.0.1.` into 127.0.0.1,
+    // and has already parted `evil.example@127.0.0.1` into a credential and a
+    // host. A trailing dot after a *name* survives all of that — `localhost.` is
+    // a DNS query whose answer depends on the resolver and on libc, glibc reading
+    // it from the hosts file while musl sends it out — so it joins the names that
+    // only a written switch can accept.
+    for (const cdpEndpoint of [
+      "http://LOCALHOST:9222",
+      "http://2130706433:9222",
+      "http://127.1:9222",
+      "ws://127.0.0.1.:9222/devtools/browser/6c1a2b3c",
+      "http://evil.example@127.0.0.1:9222",
+      "ws://[::1]:9222/devtools/browser/6c1a2b3c",
+    ]) {
+      expect(
+        resolveQaBrowserConfig({ runtime: { mode: "attach", cdpEndpoint } })
+          .runtime.cdpEndpoint,
+      ).toBe(cdpEndpoint);
+    }
+    for (const cdpEndpoint of [
+      "http://localhost.:9222",
+      "http://localhost.:9222/json/version",
+      "http://127.0.0.1.evil:9222",
+      "http://0.0.0.0:9222",
+      "ws://[::ffff:127.0.0.1]:9222/devtools/browser/6c1a2b3c",
+    ]) {
+      expect(() =>
+        resolveQaBrowserConfig({ runtime: { mode: "attach", cdpEndpoint } }),
+      ).toThrow(/outside this machine/u);
+      expect(
+        resolveQaBrowserConfig({
+          runtime: {
+            mode: "attach",
+            cdpEndpoint,
+            allowRemoteCdpEndpoint: true,
+          },
+        }).runtime.cdpEndpoint,
+      ).toBe(cdpEndpoint);
+    }
+  });
+
   it("does not let attach promise a window it cannot show", () => {
     expect(() =>
       resolveQaBrowserConfig({
