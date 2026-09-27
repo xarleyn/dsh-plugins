@@ -214,6 +214,9 @@ export class TestitTransport {
           authorization: `PrivateToken ${token}`,
           accept: "application/json",
         },
+        // The deadline is this deployment's own, so a request it already gave
+        // up on is not sent again — which is the shared default, so this
+        // provider names no rule of its own.
         transportFailure: (error, timedOut) =>
           timedOut
             ? new IntegrationError("UpstreamTimeout", "Test IT did not answer")
@@ -226,9 +229,6 @@ export class TestitTransport {
                   "ProviderUnavailable",
                   "Test IT request failed",
                 ),
-        // A refused connection stays refused; a slow installation is more often
-        // busy than gone, so anything else earns another bounded attempt.
-        retriable: (error) => error.code !== "UpstreamTimeout",
         statusFailure: (response) => this.failure(response),
       },
       read,

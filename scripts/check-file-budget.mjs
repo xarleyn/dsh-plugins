@@ -95,10 +95,6 @@ export const fileBudgetAllowlist = [
       "assertion list over the built client bundle and the packed tarball: it grows with the shipped surface, not with a module design",
   },
   {
-    path: "plugins/dsh-qa-integrations/src/index.ts",
-    reason: "legacy before the gate landed; owned by a refactor card",
-  },
-  {
     path: "plugins/dsh-qa-surface/src/accounts/store.ts",
     reason: "legacy before the gate landed; owned by a refactor card",
   },

@@ -36,6 +36,20 @@ describe("weblate instance configuration", () => {
         resolveWeblateConfig({ instances: instances as never }),
       ).toThrow(/weblate integration config/u);
     }
+    // This list began resolving through the shared address policy with the
+    // fragment rule already in it; the row pins that the rule came along rather
+    // than being canonicalized away on the way.
+    expect(() =>
+      resolveWeblateConfig({
+        instances: [
+          {
+            id: "main",
+            label: "Weblate",
+            baseUrl: "https://weblate.example.com/#projects",
+          },
+        ],
+      }),
+    ).toThrow(/no fragment/u);
     // Plain HTTP is a development escape hatch, never the default.
     expect(() =>
       resolveWeblateConfig({

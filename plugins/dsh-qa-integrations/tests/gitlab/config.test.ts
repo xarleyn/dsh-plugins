@@ -57,6 +57,20 @@ describe("gitlab instance configuration", () => {
         ],
       }),
     ).toThrow(/duplicate/u);
+    // This list already went through the shared address policy, so the
+    // fragment rule the kernel gained reaches it too: a row that used to load
+    // now refuses at startup, and that is the decision being pinned.
+    expect(() =>
+      resolveGitlabConfig({
+        instances: [
+          {
+            id: "pasted",
+            label: "x",
+            baseUrl: "https://gitlab.com/-/user_settings/tokens#expires",
+          },
+        ],
+      }),
+    ).toThrow(/no fragment/u);
   });
 
   it("allows plain HTTP only when the deployment says so", () => {

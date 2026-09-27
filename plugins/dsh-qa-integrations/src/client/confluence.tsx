@@ -70,6 +70,9 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
   ResourceNotFound: "Confluence не нашёл страницу или аккаунт её не видит.",
   RateLimited: "Слишком много запросов. Попробуйте позже.",
   ResultTooLarge: "Ответ Confluence слишком большой для одного запроса.",
+  UpstreamTimeout: "Confluence не ответил вовремя. Попробуйте ещё раз.",
+  TlsFailure:
+    "Сертификат Confluence не принят стендом. Нужен сертификат, которому доверяет сервер.",
   OperationDeniedByPolicy:
     "Пространство вне списка, разрешённого оператором стенда.",
   ServiceCredentialUnavailable:
