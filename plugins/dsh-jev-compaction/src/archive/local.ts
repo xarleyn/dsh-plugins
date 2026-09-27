@@ -25,7 +25,7 @@ import { dirname, join } from "node:path";
 
 import { dshHomePath } from "@deepseek-ai/dsh-home-paths";
 
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 import { contentRef, refHex } from "./hash.js";
 import type {
   ArchiveRef,

@@ -335,9 +335,12 @@ function ServiceProfilesField(props: {
                 />
               </span>
             </div>
+            {/* Both editors write one path, so each names its own test id rather
+                than colliding with its sibling on the derived one. */}
             <RecordField
               label="Ресурсы (вид: значения через запятую)"
               path={[...PROFILE_PATH]}
+              testId={`qa-integrations-service-access-profile-${index}-resources`}
               entries={row.resources}
               keyPlaceholder="projects"
               valuePlaceholder="group/repo, group/other"
@@ -360,6 +363,7 @@ function ServiceProfilesField(props: {
               label="Запрещённые операции"
               hint="каждая запись всегда хранит значение deny"
               path={[...PROFILE_PATH]}
+              testId={`qa-integrations-service-access-profile-${index}-policy`}
               entries={row.policy}
               keyPlaceholder="mergeRequest.create"
               valuePlaceholder=""

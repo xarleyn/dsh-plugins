@@ -17,7 +17,7 @@ import {
   resolveJevCompactionConfig,
   type JevCompactionConfig,
   type ResolvedJevCompactionConfig,
-} from "../config.js";
+} from "../config/index.js";
 
 /** Keys the engine consumes itself; everything else belongs to the prune service. */
 const ENGINE_ONLY_KEYS = new Set([

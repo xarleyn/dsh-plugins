@@ -8,7 +8,7 @@
  * change — the card adds no persistence of its own.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import { OperatorCard } from "../src/client/operator-card.js";
@@ -116,6 +116,34 @@ function captionOf(node: Element): string {
 }
 
 /**
+ * The caption a labelled control prints, taken off the label it belongs to and
+ * stripped of what the label carries besides it: the «переопределено» mark and,
+ * on a toggle, the hint that sits beside the caption. Exact equality is what
+ * makes the caption an assertion — a prefix check would let «CRM: чтение и
+ * запись» pass for «CRM: чтение».
+ */
+function captionOfControl(control: HTMLInputElement): string {
+  const labels = [...(control.labels ?? [])];
+  expect(
+    labels.length,
+    `${control.getAttribute("data-testid")} is labelled once`,
+  ).toBe(1);
+  const label = labels[0] as Element;
+  // A toggle keeps its caption in a <strong> of its own, apart from the hint.
+  const caption = label.querySelector("strong") ?? label;
+  const parts = [...caption.childNodes]
+    .filter(
+      (node) =>
+        !(
+          node instanceof Element &&
+          node.matches("[data-testid$='-overridden']")
+        ),
+    )
+    .map((node) => node.textContent ?? "");
+  return parts.join(" ").replace(/\s+/gu, " ").trim();
+}
+
+/**
  * The section one zone owns, found by its test id. The zones are `general`,
  * `service-access` and one per provider, so a knob is reached through the
  * provider that owns it whatever its caption happens to say in Russian.
@@ -130,32 +158,49 @@ function openSection(zone: string): void {
 }
 
 /**
- * The control a caption inside `scope` is bound to — what `getByLabelText`
- * answers, taken from the label's side rather than the control's. The library
- * asks every labelable element of the scope for its `labels`, and jsdom answers
- * that by scanning all two hundred `<label>` elements of this card once per
- * control: 40–150 ms for the first lookup of a provider, whatever subtree the
- * query was scoped to. A `<label>` already knows the control it binds — that is
- * what a click on the caption uses — so one walk of the captions says the same
- * thing for a fraction of a millisecond. What `get` adds on top is kept: a
- * caption that binds nothing, or binds two controls, fails here.
+ * The control that writes a settings path, found by its test id — the key the
+ * Host stores the value under — instead of by the Russian caption the field
+ * carries. A reworded hint or a switched interface language then no longer
+ * moves a knob away from the check that reaches it. The lookup spans the card
+ * because the id is unique outside a list row, which
+ * `operator-test-ids.test.tsx` checks; where a test is about a knob sitting in a
+ * section, it says so with `contains`.
+ * What the caption is for stays asserted: the control must still carry exactly
+ * that label, so the operator's handle and the test's cannot drift apart.
  */
-function labelledControl(
-  scope: HTMLElement,
-  caption: string | RegExp,
-): HTMLElement {
-  const controls = new Set<HTMLElement | null>();
-  for (const label of scope.querySelectorAll("label")) {
-    const text = captionOf(label);
-    const bound =
-      caption instanceof RegExp ? caption.test(text) : text === caption;
-    if (bound) controls.add((label as HTMLLabelElement).control);
-  }
-  const bound = [...controls].filter(
-    (control): control is HTMLElement => control !== null,
+function controlAt(testId: string, caption: string): HTMLElement {
+  const control = screen.getByTestId(testId) as HTMLInputElement;
+  expect(captionOfControl(control), `${testId} is captioned ${caption}`).toBe(
+    caption,
   );
-  expect(bound, `controls bound to ${caption}`).toHaveLength(1);
-  return bound[0] as HTMLElement;
+  return control;
+}
+
+/**
+ * The `<button>` behind `testId`. The caption is what the operator reads before
+ * clicking, so it stays the assertion; the id is what the test reaches by, so
+ * neither the copy nor the accessible-name computation of the other thousand
+ * buttons of this card is on the path of the lookup.
+ */
+function buttonAt(testId: string, caption: string): HTMLElement {
+  const button = screen.getByTestId(testId);
+  expect(button.localName, `${testId} is a button`).toBe("button");
+  expect(captionOf(button), `${testId} is captioned ${caption}`).toBe(caption);
+  return button;
+}
+
+/**
+ * One row of a list editor, told apart by the value it carries instead of by
+ * its place in the list. Epic #453 keeps the template id on every row of an
+ * editor — the rows of `gitlab.instances` read alike — so the row's own key
+ * attribute is the handle a check uses when it needs *this* row.
+ */
+function rowOf(fieldTestId: string, key: string): HTMLElement {
+  const row = screen
+    .getAllByTestId(`${fieldTestId}-row`)
+    .find((node) => node.getAttribute("data-dsh-row-key") === key);
+  expect(row, `the ${fieldTestId} row keyed ${key}`).toBeDefined();
+  return row as HTMLElement;
 }
 
 const RESOLVED = {
@@ -203,13 +248,15 @@ describe("integrations operator card", () => {
     expect(screen.getByTestId("qa-integrations-teamcity")).toBeDefined();
     expect(screen.getByTestId("qa-integrations-service-access")).toBeDefined();
     // The badge names the layer state: nothing overridden yet.
-    expect(screen.getByText("по умолчанию")).toBeDefined();
+    expect(
+      captionOf(screen.getByTestId("qa-integrations-override-badge")),
+    ).toBe("по умолчанию");
     // The general section mounts open and the disabled plugin shows it.
     expect(
       (
-        labelledControl(
-          sectionOf("general"),
-          /Плагин включён/u,
+        controlAt(
+          "qa-integrations-enabled",
+          "Плагин включён",
         ) as HTMLInputElement
       ).checked,
     ).toBe(false);
@@ -258,10 +305,13 @@ describe("integrations operator card", () => {
     expect(limits.open).toBe(false);
     fireEvent.click(limits.querySelector("summary") as HTMLElement);
     expect(limits.open).toBe(true);
-    expect(
-      (labelledControl(limits, "Потолок файла, байт") as HTMLInputElement)
-        .value,
-    ).toBe("131072");
+    const ceiling = controlAt(
+      "qa-integrations-gitlab-max-file-bytes",
+      "Потолок файла, байт",
+    ) as HTMLInputElement;
+    // The knob stayed inside the group the regrouping folded it into.
+    expect(limits.contains(ceiling)).toBe(true);
+    expect(ceiling.value).toBe("131072");
   });
 
   it("keeps every deployment knob reachable after the regrouping", () => {
@@ -277,39 +327,42 @@ describe("integrations operator card", () => {
     ]) {
       openSection(zone);
     }
-    // One representative of each kind, in each provider that has it. The
-    // captions are read in one pass: six name lookups over the whole card were
-    // most of what this case used to cost.
-    const captions = [...document.querySelectorAll("label")].map(captionOf);
-    for (const label of [
-      "Инстансы GitLab",
-      "Сайты Confluence",
-      "Адрес сервера TeamCity",
-      "Сайты Jira Cloud",
-      "Инсталляции Test IT",
-      "Инстансы Weblate",
+    // One representative of each kind, in each provider that has it. A knob is
+    // named by the settings path it writes, so the caption the operator reads
+    // is no longer on the path of the lookup — and a duplicated id is a failure
+    // of `getByTestId` on its own.
+    for (const field of [
+      "qa-integrations-gitlab-instances-field",
+      "qa-integrations-confluence-instances-field",
+      "qa-integrations-teamcity-server-url-field",
+      "qa-integrations-jira-sites-field",
+      "qa-integrations-testit-instances-field",
+      "qa-integrations-weblate-instances-field",
     ]) {
       expect(
-        captions.filter((caption) => caption === label),
-        `connection editor of ${label}`,
-      ).toHaveLength(1);
+        screen.getByTestId(field),
+        `connection editor ${field}`,
+      ).toBeTruthy();
     }
-    // A capability of each provider, read through the checklist that owns it —
-    // which is what "its deployment knobs" means here.
-    for (const [zone, capability] of [
-      ["confluence", "Версии: чтение"],
-      ["gitlab", "CI: чтение"],
-      ["teamcity", "Агенты: чтение"],
-      ["jira", "Переходы: чтение"],
-      ["testit", "Автотесты: чтение"],
-      ["weblate", "Скриншоты: чтение"],
+    // A capability of each provider, named by the switch the Host reads and
+    // read back through the checklist that owns it — which is what "its
+    // deployment knobs" means here. The caption stays the assertion.
+    for (const [zone, key, caption] of [
+      ["confluence", "versions-read", "Версии: чтение"],
+      ["gitlab", "ci-read", "CI: чтение"],
+      ["teamcity", "agents-read", "Агенты: чтение"],
+      ["jira", "transitions-read", "Переходы: чтение"],
+      ["testit", "auto-tests-read", "Автотесты: чтение"],
+      ["weblate", "screenshots-read", "Скриншоты: чтение"],
     ] as const) {
+      const id = `qa-integrations-${zone}-${key}`;
+      const control = controlAt(id, caption);
       expect(
-        labelledControl(
-          screen.getByTestId(`qa-integrations-${zone}-capabilities`),
-          capability,
-        ),
-      ).toBeDefined();
+        screen
+          .getByTestId(`qa-integrations-${zone}-capabilities`)
+          .contains(control),
+        `${id} sits in the capabilities checklist`,
+      ).toBe(true);
     }
   });
 
@@ -318,8 +371,8 @@ describe("integrations operator card", () => {
     expand();
     // The Bitrix24 section is collapsed until opened.
     openSection("bitrix24");
-    const crm = labelledControl(
-      sectionOf("bitrix24"),
+    const crm = controlAt(
+      "qa-integrations-bitrix24-crm-read",
       "CRM: чтение",
     ) as HTMLInputElement;
     expect(crm.checked).toBe(true);
@@ -332,7 +385,7 @@ describe("integrations operator card", () => {
   it("enables the plugin from the always-open general section", () => {
     const stub = renderCard({ value: RESOLVED });
     expand();
-    fireEvent.click(labelledControl(sectionOf("general"), /Плагин включён/u));
+    fireEvent.click(controlAt("qa-integrations-enabled", "Плагин включён"));
     expect(stub.writes).toEqual([
       { op: "set", path: ["enabled"], value: true },
     ]);
@@ -343,23 +396,31 @@ describe("integrations operator card", () => {
       value: RESOLVED,
       user: { teamcity: { serverUrl: "https://teamcity.example.corp" } },
     });
-    expect(screen.getByText("переопределено: 1")).toBeDefined();
+    expect(
+      captionOf(screen.getByTestId("qa-integrations-override-badge")),
+    ).toBe("переопределено: 1");
     expand();
-    fireEvent.click(screen.getByText("Сбросить переопределения (1)"));
+    fireEvent.click(
+      buttonAt(
+        "qa-integrations-reset-overrides",
+        "Сбросить переопределения (1)",
+      ),
+    );
     expect(stub.writes).toEqual([{ op: "unset", path: ["teamcity"] }]);
   });
 
   it("shows read-only copy when the Host document takes no writes", () => {
     renderCard({ value: RESOLVED, writable: false });
     expand();
-    // The anchored copy is the read-only banner; the list editors say the same
-    // words about a row they could not commit, so the query stays specific.
-    expect(
-      screen.getByText(/^Хост не принимает правки из этого браузера/u),
-    ).toBeDefined();
-    const toggle = labelledControl(
-      sectionOf("general"),
-      /Плагин включён/u,
+    // The banner is named by what it reports, so it no longer has to be told
+    // apart from the list editors that repeat the same words about a row they
+    // could not commit; the copy it shows is still what the check reads.
+    expect(captionOf(screen.getByTestId("qa-integrations-read-only"))).toMatch(
+      /^Хост не принимает правки из этого браузера/u,
+    );
+    const toggle = controlAt(
+      "qa-integrations-enabled",
+      "Плагин включён",
     ) as HTMLInputElement;
     expect(toggle.disabled).toBe(true);
   });
@@ -377,8 +438,9 @@ describe("integrations operator card", () => {
       },
     });
     expand();
-    const section = sectionOf("jira");
-    const select = section.querySelector("select") as HTMLSelectElement;
+    const select = screen.getByTestId(
+      "qa-integrations-jira-sites-deployment-select",
+    ) as HTMLSelectElement;
     // A site that names no product reads as the Host resolver's own default.
     expect(select.value).toBe("cloud");
     fireEvent.change(select, { target: { value: "server" } });
@@ -418,11 +480,15 @@ describe("integrations operator card", () => {
       },
     });
     expand();
-    const section = sectionOf("confluence");
-    const select = section.querySelector("select") as HTMLSelectElement;
+    // The row the fixture stores is the one keyed `wiki`, not "the first row".
+    const row = rowOf("qa-integrations-confluence-instances", "wiki");
+    const select = within(row).getByTestId(
+      "qa-integrations-confluence-instances-deployment-select",
+    ) as HTMLSelectElement;
     expect(select.value).toBe("server");
-    const row = section.querySelector(".qai-op__instance") as HTMLElement;
-    const label = row.querySelectorAll("input")[1] as HTMLInputElement;
+    const label = within(row).getByTestId(
+      "qa-integrations-confluence-instances-label-input",
+    ) as HTMLInputElement;
     fireEvent.change(label, { target: { value: "Корпоративная вики" } });
     fireEvent.blur(label);
     expect(stub.writes).toEqual([
@@ -468,11 +534,24 @@ describe("integrations operator card", () => {
     for (const zone of ["confluence", "jira", "gitlab"]) {
       openSection(zone);
     }
+    // A row carries the deployment control only where the provider has one, so
+    // the count of these ids is the answer; the path they hang off says which
+    // provider's rows they are.
+    const deploymentControls = (testId: string): number =>
+      screen.queryAllByTestId(testId).length;
     // One control per row of the two providers that distinguish a deployment…
-    expect(sectionOf("confluence").querySelectorAll("select")).toHaveLength(1);
-    expect(sectionOf("jira").querySelectorAll("select")).toHaveLength(1);
+    expect(
+      deploymentControls(
+        "qa-integrations-confluence-instances-deployment-select",
+      ),
+    ).toBe(1);
+    expect(
+      deploymentControls("qa-integrations-jira-sites-deployment-select"),
+    ).toBe(1);
     // …and none at all for a provider that has no such distinction.
-    expect(sectionOf("gitlab").querySelectorAll("select")).toHaveLength(0);
+    expect(
+      deploymentControls("qa-integrations-gitlab-instances-deployment-select"),
+    ).toBe(0);
   });
 
   it("starts a row the operator adds on the Cloud default", () => {
@@ -480,14 +559,12 @@ describe("integrations operator card", () => {
       value: { ...RESOLVED, jira: { enabled: true, sites: [] } },
     });
     expand();
-    const section = sectionOf("jira");
-    // The add button sits in the span next to the row list; the field-alias
-    // record editor further down carries one of its own.
-    const add = section.querySelector(
-      ".qai-op__instances ~ span button",
-    ) as HTMLButtonElement;
-    fireEvent.click(add);
-    const select = section.querySelector("select") as HTMLSelectElement;
+    // The add button of this editor, named by the path its rows write: the
+    // field-alias record editor further down carries one of its own.
+    fireEvent.click(screen.getByTestId("qa-integrations-jira-sites-add"));
+    const select = screen.getByTestId(
+      "qa-integrations-jira-sites-deployment-select",
+    ) as HTMLSelectElement;
     expect(select.value).toBe("cloud");
     // An unfinished row stays a local draft, so nothing is committed yet.
     expect(stub.writes).toEqual([]);
@@ -496,23 +573,25 @@ describe("integrations operator card", () => {
   it("keeps an unfinished instance draft local when the stored row is removed", () => {
     const stub = renderCard({ value: RESOLVED });
     expand();
-    const section = sectionOf("gitlab");
-    const add = section.querySelector(
-      ".qai-op__instances ~ span button",
-    ) as HTMLButtonElement;
-    fireEvent.click(add);
-    expect(section.querySelectorAll(".qai-op__instance")).toHaveLength(2);
+    fireEvent.click(screen.getByTestId("qa-integrations-gitlab-instances-add"));
+    const rows = () =>
+      screen.getAllByTestId("qa-integrations-gitlab-instances-row");
+    expect(rows()).toHaveLength(2);
     stub.writes.splice(0);
 
-    const removeStored = section.querySelector(
-      ".qai-op__instance .qai-op__row-remove",
-    ) as HTMLButtonElement;
-    fireEvent.click(removeStored);
+    // Both rows wear the template id, so the one to remove is the row the
+    // deployment stored — the node keyed `corp`, not the first of the two.
+    fireEvent.click(
+      within(rowOf("qa-integrations-gitlab-instances", "corp")).getByTestId(
+        "qa-integrations-gitlab-instances-remove",
+      ),
+    );
 
     expect(stub.writes).toEqual([
       { op: "unset", path: ["gitlab", "instances"] },
     ]);
-    expect(section.querySelectorAll(".qai-op__instance")).toHaveLength(1);
+    // The draft the operator started stays on screen.
+    expect(rows()).toHaveLength(1);
   });
 
   it("shows a new service profile as a local draft without storing it", () => {

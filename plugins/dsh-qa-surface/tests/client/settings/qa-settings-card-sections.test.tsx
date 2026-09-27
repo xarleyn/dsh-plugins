@@ -225,7 +225,7 @@ describe("QA Surface card", () => {
     // the deployment would have honoured.
     await renderCard();
     openCard();
-    const field = within(section("Сессия")).getByLabelText(
+    const field = within(section("qa-settings-session")).getByLabelText(
       /Максимум одновременных вопросов/u,
     ) as HTMLInputElement;
     expect(field.min).toBe("0");

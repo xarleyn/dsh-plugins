@@ -40,7 +40,13 @@ hand-rolling `defineConfig`.
 ```bash
 pnpm install
 pnpm lint
+pnpm test
 ```
+
+`pnpm test` covers the Vitest preset itself (see `tests/`): it is the only place
+the decorator lowering is checked, so a regression there surfaces as this
+package's red suite rather than as a nameless `SyntaxError` in every package
+that imports a decorated host entry.
 
 ## License
 
