@@ -3,6 +3,7 @@ import { statusErrorOf, transportFailureOf } from "../kernel/errors.js";
 import {
   fetchWithRetries,
   readBoundedJson,
+  RESEND_AFTER_EVERY_FAULT,
   type ResponseRead,
 } from "../kernel/read-policy.js";
 import {
@@ -142,6 +143,12 @@ export class JiraTransport {
           accept: "application/json",
         },
         transportFailure,
+        // The deviation from the shared default, named rather than implied:
+        // Jira re-sends a call this deployment gave up on, so one read can cost
+        // `retries × timeoutMs` rather than the `timeoutMs` the default promises.
+        // A Jira read is a GET that answers the same question either way, which
+        // is what makes paying the wait again acceptable here.
+        retriable: RESEND_AFTER_EVERY_FAULT,
         statusFailure,
       },
       read,

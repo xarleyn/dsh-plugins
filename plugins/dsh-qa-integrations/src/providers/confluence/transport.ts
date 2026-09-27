@@ -4,6 +4,7 @@ import { statusErrorOf, transportFailureOf } from "../kernel/errors.js";
 import {
   fetchWithRetries,
   readBoundedJson,
+  RESEND_AFTER_EVERY_FAULT,
   type ResponseRead,
 } from "../kernel/read-policy.js";
 import {
@@ -237,6 +238,10 @@ export class ConfluenceTransport {
           accept: "application/json",
         },
         transportFailure,
+        // A transport fault is the one failure Confluence retries to the end:
+        // an aborted connection is worth another try, however long each of them
+        // is held to its own deadline.
+        retriable: RESEND_AFTER_EVERY_FAULT,
         statusFailure,
       },
       read,

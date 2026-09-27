@@ -1,6 +1,4 @@
-import { resolveConfig } from "../../src/config.js";
-import { JiraProvider } from "../../src/providers/jira/index.js";
-import { cloud, credentialFor, providerFor, SITES, stub } from "./shared.js";
+import { providerFor, credentialFor, cloud, stub } from "./shared.js";
 
 /**
  * What `tests/jira/conformance.test.ts` does not cover: an answer that is not
@@ -19,32 +17,6 @@ describe("jira failure model", () => {
         {},
       ),
     ).rejects.toMatchObject({ code: "ProviderUnavailable" });
-  });
-
-  it("spends one deadline on a request that never answers", async () => {
-    let attempts = 0;
-    const hanging: typeof fetch = (_input, init) =>
-      new Promise((_resolve, reject) => {
-        attempts += 1;
-        init?.signal?.addEventListener("abort", () =>
-          reject(new DOMException("This operation was aborted", "AbortError")),
-        );
-      });
-    const provider = new JiraProvider(
-      resolveConfig({ timeoutMs: 30, jira: { sites: SITES, retries: 2 } }),
-      hanging,
-    );
-    await expect(
-      provider.execute(
-        { credential: credentialFor(provider) },
-        "connection.get",
-        {},
-      ),
-    ).rejects.toMatchObject({ code: "UpstreamTimeout" });
-    // The deadline is this deployment's own verdict, so asking again cannot make
-    // the answer arrive sooner — two further attempts only triple how long a
-    // caller waits to be told the instance is not replying.
-    expect(attempts).toBe(1);
   });
 
   it("refuses an operation that is not in the catalog", async () => {
