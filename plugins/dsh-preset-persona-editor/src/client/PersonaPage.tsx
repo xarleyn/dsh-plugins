@@ -156,6 +156,17 @@ export function PersonaPage(props: PersonaPageProps): ReactElement {
           data-testid="persona-notice"
         >
           {state.notice.text}
+          {/* The sentence is the user's to acknowledge, and a state the page
+              holds for them has to be a state they can put down: opening a
+              preset is the only other way this notice leaves the screen. */}
+          <button
+            type="button"
+            className="preset-persona__notice-dismiss"
+            data-testid="persona-notice-dismiss"
+            onClick={() => controller.dismissNotice()}
+          >
+            {strings.dismiss}
+          </button>
         </p>
       ) : null}
       {state.presets.length === 0 ? (

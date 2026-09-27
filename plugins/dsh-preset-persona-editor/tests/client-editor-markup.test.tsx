@@ -13,7 +13,7 @@
 // @vitest-environment jsdom
 
 import { RemoteError } from "@deepseek-ai/dsh-typert-protocol";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -328,7 +328,11 @@ describe("the reader's markup", () => {
 });
 
 describe("the roster screen", () => {
-  it("says a refresh failed over the roster it keeps on screen", async () => {
+  /**
+   * A controller holding a roster already on screen, whose next refresh is
+   * refused — the state `list()` fails into when there is a list to keep.
+   */
+  async function refusedRefresh(): Promise<PersonaPageController> {
     const list = vi.fn().mockResolvedValue(OK_CATALOG);
     const controller = new PersonaPageController(faceOf({ list }));
     await controller.load();
@@ -336,15 +340,30 @@ describe("the roster screen", () => {
       ok: false as const,
       error: new RemoteError("gateway/internal", "boom", {}),
     });
+    return controller;
+  }
 
-    showPage(controller);
+  it("says a refresh failed over the roster it keeps on screen", async () => {
+    showPage(await refusedRefresh());
     // The controller records the refusal while `status` stays "ready", so this
     // screen — not the failed one — is where the words have to land. A roster
     // that refreshes into a message nobody renders is a stale list passing as
     // a fresh one.
     const notice = await screen.findByTestId("persona-notice");
-    expect(notice.textContent).toBe(`${strings.loadFailed} boom`);
+    expect(notice.textContent).toContain(`${strings.loadFailed} boom`);
     expect(notice.classList.contains("preset-persona__error")).toBe(true);
+    expect(screen.getAllByTestId("persona-preset-row")).toHaveLength(1);
+  });
+
+  it("lets the user put the refusal down without losing the rows", async () => {
+    showPage(await refusedRefresh());
+    await screen.findByTestId("persona-notice");
+    // `dismissNotice` is on the controller, and a method only its own test
+    // reaches is a notice the screen cannot be rid of: opening a preset was the
+    // only way out. Pressed by name, so an unbound handler is a failure here
+    // rather than a console error a user would meet first.
+    fireEvent.click(screen.getByRole("button", { name: strings.dismiss }));
+    expect(screen.queryByTestId("persona-notice")).toBeNull();
     expect(screen.getAllByTestId("persona-preset-row")).toHaveLength(1);
   });
 });
