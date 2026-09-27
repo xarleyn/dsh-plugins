@@ -98,6 +98,119 @@ describe("IntegrationRepository connections", () => {
     expect(repository.secretFor(alice, "bitrix24")?.id).toBe("secret-2");
   });
 
+  it("starts a new binding generation on a reconnect that changes nothing", () => {
+    const { repository } = rig();
+    open.push(repository);
+    const first = repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: secret("secret-1"),
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+    });
+    const switched = repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: null,
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+      credentialSource: "service",
+      serviceProfileId: "acme-readonly",
+    });
+    // The shape a re-save from Settings makes when the user touches nothing: the
+    // same mode, the same managed profile, the same stored credential.
+    const reconnected = repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: null,
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+      credentialSource: "service",
+      serviceProfileId: "acme-readonly",
+    });
+
+    expect(first.bindingRevision).toBe(1);
+    expect(switched.bindingRevision).toBe(2);
+    // A generation that moved is all the guard needs, so it has to move for a
+    // reconnect that leaves every other field where it was.
+    expect(reconnected.bindingRevision).toBe(3);
+    expect(reconnected.secretRef).toBe("secret-1");
+
+    // A verdict produced against the generation two reconnects back is refused,
+    // though its secret and profile are still the ones the row carries.
+    expect(
+      repository.updateValidation(
+        alice,
+        "bitrix24",
+        false,
+        "CredentialExpired",
+        undefined,
+        {
+          bindingRevision: switched.bindingRevision,
+          secretRef: switched.secretRef,
+          serviceProfileId: switched.serviceProfileId,
+        },
+      ),
+    ).toBe(false);
+    expect(repository.find(alice, "bitrix24")?.status).not.toBe("error");
+    expect(
+      repository.updateValidation(
+        alice,
+        "bitrix24",
+        false,
+        "CredentialExpired",
+        undefined,
+        {
+          bindingRevision: reconnected.bindingRevision,
+          secretRef: reconnected.secretRef,
+          serviceProfileId: reconnected.serviceProfileId,
+        },
+      ),
+    ).toBe(true);
+    expect(repository.find(alice, "bitrix24")?.status).toBe("error");
+  });
+
+  it("keeps a secret addressable by the ref its binding named", () => {
+    const { repository } = rig();
+    open.push(repository);
+    repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: secret("secret-old"),
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+    });
+    const binding = repository.find(alice, "bitrix24")!;
+    repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: secret("secret-new"),
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "12",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+    });
+
+    // The live row answers through principal and provider, so a lookup that
+    // starts there follows a reconnect; the reference the binding carried is
+    // the address of the credential it actually spent.
+    expect(repository.secretFor(alice, "bitrix24")?.id).toBe("secret-new");
+    expect(binding.secretRef).toBe("secret-old");
+    // And a reconnect drops the credential it replaced, so the older reference
+    // resolves to nothing rather than to whatever took its place.
+    expect(repository.secretByRef(binding.secretRef)).toBeUndefined();
+    expect(repository.secretByRef("secret-new")?.id).toBe("secret-new");
+    expect(repository.secretByRef(null)).toBeUndefined();
+  });
+
   it("reads only the rows a lookup asks for", () => {
     const { repository } = rig();
     open.push(repository);

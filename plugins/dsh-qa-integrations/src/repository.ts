@@ -276,9 +276,9 @@ function policyKey(integrationId: string, operation: string): string {
 
 /**
  * The identity a binding had when a probe started against it. A verdict is only
- * worth storing while the row still carries all three: a reconnect swaps the
- * secret, a mode switch bumps the revision and names another profile, and either
- * makes the older answer about a credential that is no longer in use.
+ * worth storing while the row still carries all three: any reconnect bumps the
+ * revision and may swap the secret, a mode switch names another profile, and
+ * either makes the older answer about a credential that is no longer in use.
  */
 export interface IntegrationBindingGeneration {
   readonly bindingRevision: number;
@@ -385,6 +385,21 @@ export class IntegrationRepository {
     return row === undefined ? undefined : toSecret(row);
   }
 
+  /**
+   * The secret one binding named, whether or not the row still points at it.
+   * A probe has to unlock the credential of the binding it started from: looked
+   * up through principal and provider instead, it spends whatever took that
+   * binding's place and its answer is then a verdict about a connection the
+   * generation guard has no reason to accept.
+   */
+  secretByRef(secretRef: string | null): EncryptedSecretRecord | undefined {
+    if (secretRef === null) return undefined;
+    const row = this.storage.db
+      .prepare("SELECT * FROM integration_secrets WHERE id = ?")
+      .get(secretRef) as SecretRow | undefined;
+    return row === undefined ? undefined : toSecret(row);
+  }
+
   policy(
     integration: StoredIntegration,
     operation: IntegrationCapability,
@@ -428,11 +443,14 @@ export class IntegrationRepository {
         credentialSource === "service"
           ? (options.serviceProfileId ?? null)
           : null;
-      // Switching credential mode bumps the binding revision, which is what
-      // everything derived from the previous identity is keyed by.
-      const switched =
-        existing !== undefined &&
-        existing.credentialSource !== credentialSource;
+      // Every reconnect starts a new binding generation, not only one that
+      // changes the credential source. Re-saving the same profile spends a
+      // credential the probes already in flight never saw, so everything
+      // derived from the identity before it — caches, cursors, prepared
+      // actions, a verdict still being waited for — is stale from this moment
+      // on. A revision that moved only on a mode switch left a same-profile
+      // reconnect indistinguishable from the binding it replaced, which is the
+      // one thing the generation guard in `updateValidation` has to catch.
       const integration: StoredIntegration = Object.freeze({
         id: existing?.id ?? randomUUID(),
         ownerUserId: options.principal.userId,
@@ -449,7 +467,7 @@ export class IntegrationRepository {
             : options.secret.id,
         credentialSource,
         serviceProfileId,
-        bindingRevision: (existing?.bindingRevision ?? 1) + (switched ? 1 : 0),
+        bindingRevision: (existing?.bindingRevision ?? 0) + 1,
         serviceSelection:
           serviceProfileId !== null &&
           serviceProfileId === existing?.serviceProfileId

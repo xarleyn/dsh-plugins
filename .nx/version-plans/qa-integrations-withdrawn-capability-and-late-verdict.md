@@ -30,6 +30,18 @@ a transaction would not have helped: the gap the old answer falls through is the
 await in front of it, so only the generation of the connection decides which
 verdict still belongs to the row.
 
+Two things had to change for that guard to actually catch a reconnect. Every
+reconnect now opens a new binding generation, not only one that changes the
+credential source: an operator re-saving the same managed profile from Settings
+leaves the source, the profile and the stored credential exactly where they
+were, so a generation that moved only on a mode switch kept that reconnect
+invisible, and a verdict taken from the credential before it — an expired
+service token, say — still overwrote the status of the live connection. And a
+probe unlocks the credential its own binding names rather than whatever the row
+points at when the read happens, so the answer it produces and the generation
+the verdict is filed against are the same connection by construction, not
+because nothing happened to intervene.
+
 Where the deadline is this deployment's own verdict, it is now asked only once.
 A timeout is folded into `UpstreamTimeout` by every transport, and three of them
 — Jira, TeamCity and Confluence — let anything they folded earn another attempt,
@@ -43,6 +55,7 @@ gone.
 
 All three are pinned by tests: a stored grant the provider no longer offers is
 refused without decrypting anything, a deferred validation that lands after a
-reconnect is discarded in both completion orders, and a request that never
-answers costs one attempt in each of the three providers while a refused
-connection still costs the whole budget.
+reconnect is discarded in both completion orders and after a re-save of the very
+profile the binding already ran under, and a request that never answers costs one
+attempt in each of the three providers while a refused connection still costs the
+whole budget.
