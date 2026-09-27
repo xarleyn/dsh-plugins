@@ -170,7 +170,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
         title="Jev Compaction"
         description="Semantic result shaping and historical context compaction powered by Jev."
         badge={
-          <span className="dsh-plugin-card__badge">
+          <span className="dsh-plugin-card__badge" data-testid="jevc-badge">
             {badgeText(enabled, shapingEnabled)}
           </span>
         }
@@ -178,22 +178,25 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
         bodyClassName="jevc-body"
       >
         {settings.status === "loading" || config === undefined ? (
-          <p className="jevc-muted">
+          <p className="jevc-muted" data-testid="jevc-loading">
             Loading the Jev Compaction configuration…
           </p>
         ) : (
           <>
             {error !== null ? (
-              <div className="jevc-error" role="alert">
+              <div className="jevc-error" role="alert" data-testid="jevc-error">
                 {error}
               </div>
             ) : null}
 
-            <section className="jevc-section">
-              <div className="jevc-status">
+            <section className="jevc-section" data-testid="jevc-status-section">
+              <div className="jevc-status" data-testid="jevc-status">
                 <span>
                   Status:{" "}
-                  <span className="jevc-status-value">
+                  <span
+                    className="jevc-status-value"
+                    data-testid="jevc-status-enabled"
+                  >
                     <span
                       className={
                         enabled ? "jevc-status-dot--on" : "jevc-status-dot--off"
@@ -206,20 +209,34 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 </span>
                 <span>
                   Provider:{" "}
-                  <span className="jevc-status-value">{provider}</span>
+                  <span
+                    className="jevc-status-value"
+                    data-testid="jevc-status-provider"
+                  >
+                    {provider}
+                  </span>
                 </span>
                 <span>
                   Model:{" "}
-                  <span className="jevc-status-value">
+                  <span
+                    className="jevc-status-value"
+                    data-testid="jevc-status-model"
+                  >
                     {config.jev?.model ?? ""}
                   </span>
                 </span>
                 <span>
                   Mode:{" "}
-                  <span className="jevc-status-value">{settings.mode}</span>
+                  <span
+                    className="jevc-status-value"
+                    data-testid="jevc-status-mode"
+                  >
+                    {settings.mode}
+                  </span>
                 </span>
               </div>
               <Toggle
+                testId="jevc-enabled"
                 label="Enable Jev Compaction"
                 description="Turns semantic context management on or off without uninstalling the plugin."
                 checked={enabled}
@@ -231,7 +248,10 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
               />
             </section>
 
-            <section className="jevc-section">
+            <section
+              className="jevc-section"
+              data-testid="jevc-shaping-section"
+            >
               <div className="jevc-section-title">Immediate result shaping</div>
               <p className="jevc-hint">
                 Semantically compress large repetitive tool outputs before they
@@ -240,6 +260,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 session replay unless the archive below is on.
               </p>
               <Toggle
+                testId="jevc-shaping-enabled"
                 label="Shape tool results before they are persisted"
                 description="Off by default: this changes durable model-visible content."
                 checked={shapingEnabled}
@@ -250,13 +271,18 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               {shapingEnabled && !archiveEnabled ? (
-                <div className="jevc-warning" role="status">
+                <div
+                  className="jevc-warning"
+                  role="status"
+                  data-testid="jevc-shaping-warning"
+                >
                   Shaped output may not be recoverable from session replay: the
                   original-output archive is off.
                 </div>
               ) : null}
 
               <TagListField
+                testId="jevc-include-tools"
                 label="Eligible tools"
                 description="Only these tools may be shaped. Unknown tools are kept unchanged."
                 values={shaping?.includeTools ?? []}
@@ -267,6 +293,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <TagListField
+                testId="jevc-exclude-tools"
                 label="Never shape these tools"
                 description="Exclusions win over the eligible list."
                 values={shaping?.excludeTools ?? []}
@@ -279,6 +306,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
               />
 
               <NumberField
+                testId="jevc-shaping-threshold"
                 label="Minimum result size"
                 unit="characters"
                 value={shaping?.thresholdChars ?? 12000}
@@ -293,6 +321,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <NumberField
+                testId="jevc-shaping-max-per-turn"
                 label="Maximum shaped results per turn"
                 value={shaping?.maxPerTurn ?? 2}
                 min={0}
@@ -306,6 +335,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <Toggle
+                testId="jevc-preserve-errors"
                 label="Preserve errors"
                 description="Keep failed tool results unchanged. Recommended."
                 checked={shaping?.preserveErrors ?? true}
@@ -317,6 +347,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
               />
 
               <NumberField
+                testId="jevc-shaping-min-savings-ratio"
                 label="Minimum savings ratio"
                 unit="(0-1)"
                 value={shaping?.minSavingsRatio ?? 0.3}
@@ -334,6 +365,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <NumberField
+                testId="jevc-shaping-min-savings"
                 label="Minimum savings"
                 unit="characters"
                 value={shaping?.minSavingsChars ?? 4000}
@@ -357,7 +389,10 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
               </p>
             </section>
 
-            <section className="jevc-section">
+            <section
+              className="jevc-section"
+              data-testid="jevc-archive-section"
+            >
               <div className="jevc-section-title">Original output archive</div>
               <p className="jevc-hint">
                 Immediate shaping happens before DSH persists the final tool
@@ -365,6 +400,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 output for diagnostics and future recovery.
               </p>
               <Toggle
+                testId="jevc-archive-enabled"
                 label="Archive the original output"
                 description="Save the full rendered result locally before immediate shaping so it can be inspected later."
                 checked={archiveEnabled}
@@ -375,11 +411,16 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               {!archiveEnabled ? (
-                <div className="jevc-warning" role="status">
+                <div
+                  className="jevc-warning"
+                  role="status"
+                  data-testid="jevc-archive-warning"
+                >
                   Shaped output may not be recoverable from session replay.
                 </div>
               ) : null}
               <NumberField
+                testId="jevc-archive-retention"
                 label="Retention"
                 unit="days (0 = keep)"
                 value={archive?.retentionDays ?? 14}
@@ -394,6 +435,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <NumberField
+                testId="jevc-archive-max-bytes"
                 label="Maximum archive size"
                 unit={archiveSize.unit}
                 value={archiveSize.value}
@@ -413,6 +455,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <SelectField
+                testId="jevc-archive-on-failure"
                 label="If archiving fails"
                 description="Fail-open by default: an unarchived result is never shaped."
                 value={archive?.onFailure ?? "keep-original"}
@@ -424,6 +467,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <TextField
+                testId="jevc-archive-root"
                 label="Archive root"
                 value={archiveRoot}
                 placeholder="default: $DSH_HOME/data/dsh-jev-compaction/originals"
@@ -436,13 +480,17 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
               />
             </section>
 
-            <section className="jevc-section">
+            <section
+              className="jevc-section"
+              data-testid="jevc-compaction-section"
+            >
               <div className="jevc-section-title">Historical compaction</div>
               <p className="jevc-hint">
                 When context grows, semantically prune stale historical tool
                 results before falling back to ordinary summary compaction.
               </p>
               <NumberField
+                testId="jevc-trigger-context-ratio"
                 label="Start semantic pruning at"
                 unit="% of model context"
                 value={Math.round((config.trigger?.contextRatio ?? 0.7) * 100)}
@@ -461,6 +509,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <NumberField
+                testId="jevc-trigger-min-surface-tokens"
                 label="Minimum surface tokens"
                 value={config.trigger?.minSurfaceTokens ?? 32000}
                 min={1}
@@ -474,6 +523,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <NumberField
+                testId="jevc-preserve-recent-messages"
                 label="Preserve recent messages"
                 value={config.preserve?.recentMessages ?? 6}
                 min={0}
@@ -487,6 +537,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <NumberField
+                testId="jevc-preserve-recent-tokens"
                 label="Preserve recent tokens"
                 value={config.preserve?.recentTokens ?? 12000}
                 min={0}
@@ -500,6 +551,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <NumberField
+                testId="jevc-decisions-full-threshold"
                 label="Full-keep threshold"
                 unit="(0-1)"
                 value={config.decisions?.fullThreshold ?? 0.7}
@@ -517,6 +569,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <NumberField
+                testId="jevc-decisions-truncate-threshold"
                 label="Truncate threshold"
                 unit="(0-1)"
                 value={config.decisions?.truncateThreshold ?? 0.45}
@@ -535,12 +588,16 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
               />
             </section>
 
-            <section className="jevc-section">
+            <section
+              className="jevc-section"
+              data-testid="jevc-backend-section"
+            >
               <div className="jevc-section-title">Decision backend</div>
               <p className="jevc-hint">
                 Jev/System One endpoint used for semantic retention decisions.
               </p>
               <SelectField
+                testId="jevc-provider"
                 label="Provider"
                 value={provider}
                 options={PROVIDER_OPTIONS}
@@ -551,6 +608,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <TextField
+                testId="jevc-endpoint"
                 label="Endpoint"
                 value={config.jev?.baseUrl ?? ""}
                 placeholder="https://api.typesafe.ai/v1/systemone"
@@ -561,6 +619,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <TextField
+                testId="jevc-model"
                 label="Model"
                 value={config.jev?.model ?? ""}
                 disabled={!writable}
@@ -570,6 +629,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                 }}
               />
               <TextField
+                testId="jevc-api-key-env"
                 label="API key environment variable"
                 value={apiKeyEnv}
                 placeholder="TYPESAFE_API_KEY"
@@ -582,10 +642,11 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
               />
             </section>
 
-            <details className="jevc-details">
+            <details className="jevc-details" data-testid="jevc-advanced">
               <summary>Advanced</summary>
               <div className="jevc-details-body">
                 <NumberField
+                  testId="jevc-timeout"
                   label="Request timeout"
                   unit="ms"
                   value={config.jev?.timeoutMs ?? 2500}
@@ -601,6 +662,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                   }}
                 />
                 <NumberField
+                  testId="jevc-max-concurrency"
                   label="Concurrent Jev requests"
                   value={config.jev?.maxConcurrency ?? 4}
                   min={1}
@@ -615,6 +677,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                   }}
                 />
                 <NumberField
+                  testId="jevc-max-state-tokens"
                   label="Jev state token ceiling"
                   value={config.state?.maxStateTokens ?? 25000}
                   min={1000}
@@ -628,6 +691,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                   }}
                 />
                 <NumberField
+                  testId="jevc-keep-head-lines"
                   label="Head lines kept per shaped result"
                   value={shaping?.keepHeadLines ?? 8}
                   min={0}
@@ -641,6 +705,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                   }}
                 />
                 <NumberField
+                  testId="jevc-keep-tail-lines"
                   label="Tail lines kept per shaped result"
                   value={shaping?.keepTailLines ?? 12}
                   min={0}
@@ -654,6 +719,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                   }}
                 />
                 <NumberField
+                  testId="jevc-min-classification-confidence"
                   label="Minimum classification confidence"
                   unit="(0-1)"
                   value={shaping?.minClassificationConfidence ?? 0.6}
@@ -677,6 +743,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
                   }}
                 />
                 <SelectField
+                  testId="jevc-log-level"
                   label="Log level"
                   value={config.diagnostics?.logLevel ?? "info"}
                   options={LOG_LEVEL_OPTIONS}
@@ -690,7 +757,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
             </details>
 
             {writable ? null : (
-              <p className="jevc-hint">
+              <p className="jevc-hint" data-testid="jevc-read-only">
                 This profile exposes the settings read-only.
               </p>
             )}
@@ -699,6 +766,7 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
               <button
                 type="button"
                 className="jevc-button"
+                data-testid="jevc-reset-overrides"
                 disabled={!writable || overrides.length === 0}
                 onClick={resetAll}
               >
