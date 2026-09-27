@@ -37,14 +37,15 @@ hand-rolling `defineConfig`.
 
 The Vitest preset also carries the coverage defaults, so every package measures
 the same denominator: the V8 provider, the `text` and `json-summary` reporters,
-and `src/**` as the instrumented tree. `mergeConfig` concatenates arrays instead
-of replacing them, so a package that repeats `coverage.include` only widens that
-tree — measuring less is `coverage.exclude`'s job, and it costs comparability
-with every other package. `pnpm run test:coverage` in any package prints its own
-percentages, and `pnpm test:coverage` at the root prints them for all of them. A
-run with a failing test still reports, because the number is what the command is
-for. Thresholds are deliberately not configured — the percentage is a signal to
-read, not a gate to satisfy.
+and `src/**/*.ts` plus `src/**/*.tsx` as the instrumented tree. `mergeConfig`
+concatenates arrays instead of replacing them, so a package that repeats
+`coverage.include` only widens that tree — measuring less is
+`coverage.exclude`'s job, and it costs comparability with every other package.
+`pnpm run test:coverage` in any package prints its own percentages, and
+`pnpm test:coverage` at the root prints them for all of them, one project at a
+time. A run with a failing test still reports, because the number is what the
+command is for. Thresholds are deliberately not configured — the percentage is a
+signal to read, not a gate to satisfy.
 
 ## Development
 
