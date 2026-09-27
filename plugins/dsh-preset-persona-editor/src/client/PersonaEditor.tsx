@@ -3,14 +3,16 @@
  * advanced prompt-sections area, and the disclosures a composition carries.
  *
  * The body only ever renders for the preset the roster opened, and it renders
- * nothing it cannot back with a fact: a preset whose composition cannot be
- * parsed shows the reason instead of the readings, and a row that carries keys
- * this page does not describe says so. Nothing here can be typed into — the
- * Host has no durable preset-authoring path, so the page reads.
+ * nothing it cannot back with a fact. The two failures a preset can carry stay
+ * two sentences: `broken` is the registry's own reason that no session composes
+ * from this preset, and it does not stop the readings below from being real;
+ * `readError` is the reason there are no readings. A row that carries keys this
+ * page does not describe says so. Nothing here can be typed into — the Host has
+ * no durable preset-authoring path, so the page reads.
  * @module client/PersonaEditor
  */
 
-import type { ReactElement } from "react";
+import { useId, type ReactElement } from "react";
 
 import { FIRST_PARTY_NAME_HINT } from "../shared/prompt-sections.js";
 import type { PersonaDocument } from "../types.js";
@@ -18,7 +20,14 @@ import { PersonaPreview } from "./PersonaPreview.js";
 import { strings } from "./locale.js";
 import type { PersonaPageController, PersonaPageSnapshot } from "./store.js";
 
-/** One labelled text reading. */
+/**
+ * One labelled text reading.
+ *
+ * The label is tied to the control by `for` rather than by wrapping it: a
+ * wrapping label makes the control's accessible name every text inside it, and
+ * the hint that explains a reading is not part of its name. The hint stays
+ * reachable, as a description.
+ */
 function Field(props: {
   readonly testId: string;
   readonly label: string;
@@ -26,19 +35,26 @@ function Field(props: {
   readonly value: string;
   readonly rows: number;
 }): ReactElement {
+  const id = useId();
   return (
-    <p className="preset-persona__field">
-      <span className="preset-persona__label">{props.label}</span>
+    <div className="preset-persona__field">
+      <label className="preset-persona__label" htmlFor={id}>
+        {props.label}
+      </label>
       <textarea
+        id={id}
         className="preset-persona__textarea"
         rows={props.rows}
         value={props.value}
         readOnly
+        aria-describedby={`${id}-hint`}
         data-testid={props.testId}
         spellCheck={false}
       />
-      <span className="preset-persona__hint">{props.hint}</span>
-    </p>
+      <span className="preset-persona__hint" id={`${id}-hint`}>
+        {props.hint}
+      </span>
+    </div>
   );
 }
 
@@ -49,20 +65,27 @@ function Check(props: {
   readonly hint: string;
   readonly checked: boolean;
 }): ReactElement {
+  const id = useId();
   return (
-    <p className="preset-persona__check">
+    <div className="preset-persona__check">
       <input
+        id={id}
         type="checkbox"
         checked={props.checked}
         disabled
+        aria-describedby={`${id}-hint`}
         data-testid={props.testId}
         readOnly
       />
       <span className="preset-persona__check-text">
-        <span className="preset-persona__label">{props.label}</span>
-        <span className="preset-persona__hint">{props.hint}</span>
+        <label className="preset-persona__label" htmlFor={id}>
+          {props.label}
+        </label>
+        <span className="preset-persona__hint" id={`${id}-hint`}>
+          {props.hint}
+        </span>
       </span>
-    </p>
+    </div>
   );
 }
 
@@ -71,53 +94,58 @@ function SectionRow(props: {
   readonly section: PersonaDocument["sections"][number];
 }): ReactElement {
   const { section } = props;
+  const id = useId();
   return (
     <li
       className="preset-persona__section-row"
       data-testid="persona-section-row"
     >
       <div className="preset-persona__row">
-        <p className="preset-persona__field preset-persona__field--tight">
-          <span className="preset-persona__label">
+        <div className="preset-persona__field preset-persona__field--tight">
+          <label className="preset-persona__label" htmlFor={`${id}-name`}>
             {strings.sectionNameLabel}
-          </span>
+          </label>
           <input
+            id={`${id}-name`}
             className="preset-persona__input"
             value={section.name}
             readOnly
             data-testid="persona-section-name"
             spellCheck={false}
           />
-        </p>
-        <p className="preset-persona__field preset-persona__field--tight">
-          <span className="preset-persona__label">
+        </div>
+        <div className="preset-persona__field preset-persona__field--tight">
+          <label className="preset-persona__label" htmlFor={`${id}-order`}>
             {strings.sectionOrderLabel}
-          </span>
+          </label>
           <input
+            id={`${id}-order`}
             className="preset-persona__input"
             value={Number.isInteger(section.order) ? String(section.order) : ""}
             readOnly
             data-testid="persona-section-order"
           />
-        </p>
-        <p className="preset-persona__check">
+        </div>
+        <div className="preset-persona__check">
           <input
+            id={`${id}-enabled`}
             type="checkbox"
             checked={section.enabled}
             disabled
             readOnly
             data-testid="persona-section-enabled"
           />
-          <span className="preset-persona__label">
+          <label className="preset-persona__label" htmlFor={`${id}-enabled`}>
             {strings.sectionEnabledLabel}
-          </span>
-        </p>
+          </label>
+        </div>
       </div>
-      <p className="preset-persona__field">
-        <span className="preset-persona__label">
+      <div className="preset-persona__field">
+        <label className="preset-persona__label" htmlFor={`${id}-text`}>
           {strings.sectionTextLabel}
-        </span>
+        </label>
         <textarea
+          id={`${id}-text`}
           className="preset-persona__textarea"
           rows={3}
           value={section.text}
@@ -125,7 +153,7 @@ function SectionRow(props: {
           data-testid="persona-section-text"
           spellCheck={false}
         />
-      </p>
+      </div>
       {FIRST_PARTY_NAME_HINT.test(section.name) ? (
         <p className="preset-persona__warn" data-testid="persona-section-warn">
           {strings.sectionFirstPartyName}
@@ -279,12 +307,6 @@ export function PersonaEditor(props: {
       {document.readError === "" ? null : (
         <p className="preset-persona__error" data-testid="persona-read-error">
           {strings.unreadable} {document.readError}
-        </p>
-      )}
-
-      {document.editable ? null : (
-        <p className="preset-persona__warn" data-testid="persona-unreadable">
-          {strings.unreadable}
         </p>
       )}
 

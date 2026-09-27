@@ -50,7 +50,6 @@ export interface PersonaPageSnapshot {
   readonly error: string;
   readonly presets: readonly PersonaPresetRow[];
   readonly open: OpenPreset | null;
-  readonly busy: boolean;
   readonly notice: Notice | null;
 }
 
@@ -60,7 +59,6 @@ export const INITIAL_STATE: PersonaPageSnapshot = {
   error: "",
   presets: [],
   open: null,
-  busy: false,
   notice: null,
 };
 
@@ -117,17 +115,16 @@ export class PersonaPageController {
 
   /** Read the roster. Keeps the current list on screen while it refreshes. */
   async load(): Promise<void> {
-    this.set(
-      this.state.presets.length === 0
-        ? { status: "loading", error: "", busy: true }
-        : { busy: true },
-    );
+    // A refresh over a list that is already on screen changes no fact until the
+    // answer arrives, so it sets nothing here: an empty patch would hand
+    // `useSyncExternalStore` a new object to re-render for.
+    const first = this.state.presets.length === 0;
+    if (first) this.set({ status: "loading", error: "" });
     const result = await this.face.list();
     if (!result.ok) {
       this.set({
-        status: this.state.presets.length === 0 ? "failed" : "ready",
+        status: first ? "failed" : "ready",
         error: describeFailure(result.error),
-        busy: false,
       });
       return;
     }
@@ -135,7 +132,6 @@ export class PersonaPageController {
       status: "ready",
       error: "",
       presets: result.value.presets,
-      busy: false,
     });
   }
 

@@ -18,8 +18,9 @@ to the screen is issue #605.
 
 ## Features
 
-- **One card per preset**, with an `Inherited` / `Custom` / `Shipped` badge, so
-  it is visible at a glance which presets carry their own persona.
+- **One card per preset**, badged `Cannot compose`, `Unreadable`, `Two rows`,
+  `Custom` or `Inherited` — the first two say what the registry could not do,
+  the rest say which persona the composition carries.
 - **The persona's four values** in the persona's own semantics: the prefix
   replaces the deployment's persona prefix for this preset, the suffix renders
   after the first-party guidance.
@@ -97,6 +98,10 @@ with the registry's own reason on the card.
   or more than one persona row in one preset — each is named on the card,
   because then no single value is "the" persona.
 - The composition text itself, for every case the four fields cannot hold.
+- Two failures that are not the same failure: a preset the registry calls
+  `broken` cannot start a session, yet its declarations still render, so its
+  readings are real; a preset whose composition the registry will not render has
+  no readings, and the card carries the registry's reason for that.
 - Presets apply to **new sessions**: DSH composes an agent from the preset it
   names when the session starts, and a running session keeps the composition it
   began with. The page states this instead of implying a live swap.

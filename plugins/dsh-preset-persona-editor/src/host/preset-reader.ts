@@ -10,8 +10,14 @@
  * and what arrives here is the effective list. Reads are unmemoized on purpose:
  * the roster is a live directory, and a cached answer would be the one that goes
  * stale exactly when a preset is registered or retired.
+ *
+ * A registry that refuses a composition is never reduced to a bare `null`: the
+ * reason travels with the read and is logged, because the refusal is the host's
+ * fact and this page has no business replacing it with its own wording.
  * @module host/preset-reader
  */
+
+import type { PluginLoggerLike } from "@yadsh/dsh-plugin-log";
 
 import {
   PERSONA_PREFIX_FALLBACK_ORDER,
@@ -39,6 +45,13 @@ import {
 } from "./composition.js";
 import { notFound } from "./errors.js";
 import { reasonOf } from "./validation.js";
+
+/** Why a composition could not be read, in the host's own words. */
+const NO_READ_DOCUMENT =
+  "the deployment's agent-preset registry does not answer readDocument(), so no composition can be read";
+
+/** The one logger call the reader makes. */
+export type PresetReadLogger = Pick<PluginLoggerLike, "warn">;
 
 /** One preset as the registry's roster reports it. */
 export interface PresetEntry {
@@ -163,44 +176,63 @@ const ABSENT: {
 };
 
 /**
+ * The registry's answer for one preset's composition: the rendered text, or the
+ * host's reason for refusing it.
+ *
+ * The two members discriminate the read — a refusal always names a reason, and
+ * an answer always carries the text — so a caller cannot lose one behind the
+ * other.
+ */
+export type CompositionRead =
+  | { readonly composition: PresetComposition; readonly refusal: "" }
+  | { readonly composition: null; readonly refusal: string };
+
+/**
  * Read one preset's composition from the registry.
  * @param roster - the host's `agentPresets` service.
  * @param id - the preset to open.
- * @returns the rendered composition, or `null` when the registry refuses it.
+ * @returns the rendered composition, or the reason the registry refused it.
  */
 export async function readComposition(
   roster: PresetRosterFace,
   id: string,
-): Promise<PresetComposition | null> {
+): Promise<CompositionRead> {
+  // The face is the one `0.1.7-rc.2` answers with, but the compatibility range
+  // reaches to `<0.2.0`: a host without this method would otherwise turn every
+  // preset on the roster into an unreadable row with nothing in the log.
+  const read = (roster as { readDocument?: unknown }).readDocument;
+  if (typeof read !== "function")
+    return { composition: null, refusal: NO_READ_DOCUMENT };
   try {
-    return await roster.readDocument(id);
-  } catch {
-    // A preset can be retired between the roster read and this call; the row
-    // then carries no readings, which is what `unreadable` means here.
-    return null;
+    return { composition: await read.call(roster, id), refusal: "" };
+  } catch (cause) {
+    // A preset can be retired between the roster read and this call, and the
+    // registry can refuse a composition for its own reasons. Both are the host's
+    // facts, so the reason rides along instead of collapsing into a `null`.
+    return { composition: null, refusal: reasonOf(cause) };
   }
 }
 
 /**
  * Inspect one preset's composition, reporting every failure the page has words
  * for.
- * @param composition - the rendered composition, or `null` when refused.
+ * @param read - the registry's answer for the preset.
  * @returns the persona and sections state of the composition.
  */
 export async function inspectPreset(
-  composition: PresetComposition | null,
+  read: CompositionRead,
 ): Promise<PresetInspection> {
-  if (composition === null) {
+  if (read.composition === null) {
     return {
       state: "unreadable",
       complete: false,
-      readError: "the registry returned no composition for this preset",
+      readError: read.refusal,
       ...ABSENT,
       sectionsState: "unreadable",
     };
   }
   try {
-    const inspection = inspectComposition(composition.content);
+    const inspection = inspectComposition(read.composition.content);
     return {
       state: inspection.state,
       draft: inspection.draft,
@@ -225,40 +257,42 @@ export async function inspectPreset(
   }
 }
 
-/** Whether a composition a page can read stands behind this preset. */
-function isReadable(
-  broken: string,
-  composition: PresetComposition | null,
-  state: PersonaState,
-): boolean {
-  return broken === "" && composition !== null && state !== "unreadable";
-}
-
 /**
  * The roster with each preset's persona state, for the settings page.
  * @param roster - the host's `agentPresets` service.
+ * @param logger - where a refused composition is reported.
  * @returns one row per preset, in the roster's own order.
  */
 export async function readCatalog(
   roster: PresetRosterFace,
+  logger?: PresetReadLogger,
 ): Promise<PersonaCatalog> {
   const presets = await roster.list();
   const defaultId = roster.defaultId;
-  const rows: PersonaPresetRow[] = [];
-  for (const preset of presets) {
-    const broken = preset.broken ?? "";
-    const composition = await readComposition(roster, preset.id);
-    const inspection = await inspectPreset(composition);
-    rows.push({
-      id: preset.id,
-      name: preset.name ?? "",
-      description: preset.description ?? "",
-      isDefault: preset.id === defaultId,
-      broken,
-      persona: inspection.state,
-      complete: inspection.complete,
-    });
-  }
+  // Every preset's composition renders independently, and the roster is read on
+  // each page load: a sequential walk would pay one YAML render after another
+  // for a page that only shows the state of each row.
+  const rows = await Promise.all(
+    presets.map(async (preset): Promise<PersonaPresetRow> => {
+      const read = await readComposition(roster, preset.id);
+      if (read.refusal !== "") {
+        logger?.warn("preset-persona.composition-refused", {
+          agentPreset: preset.id,
+          reason: read.refusal,
+        });
+      }
+      const inspection = await inspectPreset(read);
+      return {
+        id: preset.id,
+        name: preset.name ?? "",
+        description: preset.description ?? "",
+        isDefault: preset.id === defaultId,
+        broken: preset.broken ?? "",
+        persona: inspection.state,
+        complete: inspection.complete,
+      };
+    }),
+  );
   return { presets: rows };
 }
 
@@ -280,28 +314,41 @@ export function personaOrders(systemPrompt: SystemPromptFace | undefined): {
 /**
  * One preset as a document: its persona values, its unmanaged keys, the
  * composition the Host renders for it, and what the deployment places around it.
+ *
+ * The three ways a preset answers differently than "here is its persona" stay
+ * three fields: `broken` is the registry's own failure to compose a session
+ * (which does not stop it rendering the composition), `readError` is the failure
+ * to read that composition, and `persona` is what the composition says. The page
+ * has no field that merges them: a merged answer is the one that has to be
+ * described by a single sentence, and no sentence here fits all three.
  * @param roster - the host's `agentPresets` service.
  * @param systemPrompt - the host's `systemPrompt` service, when mounted.
  * @param id - the preset to open.
+ * @param logger - where a refused composition is reported.
  * @returns the document; `readError` explains a composition this page cannot read.
  */
 export async function readDocument(
   roster: PresetRosterFace,
   systemPrompt: SystemPromptFace | undefined,
   id: string,
+  logger?: PresetReadLogger,
 ): Promise<PersonaDocument> {
   const preset = await resolvePreset(roster, id);
-  const composition = await readComposition(roster, id);
-  const inspection = await inspectPreset(composition);
+  const read = await readComposition(roster, id);
+  if (read.refusal !== "") {
+    logger?.warn("preset-persona.composition-refused", {
+      agentPreset: id,
+      reason: read.refusal,
+    });
+  }
+  const inspection = await inspectPreset(read);
   const orders = personaOrders(systemPrompt);
-  const broken = preset.broken ?? "";
-  const source = composition?.content ?? "";
+  const source = read.composition?.content ?? "";
   return {
     id: preset.id,
-    name: composition?.name ?? preset.name ?? "",
-    description: composition?.description ?? preset.description ?? "",
-    broken,
-    editable: isReadable(broken, composition, inspection.state),
+    name: read.composition?.name ?? preset.name ?? "",
+    description: read.composition?.description ?? preset.description ?? "",
+    broken: preset.broken ?? "",
     isDefault: preset.id === roster.defaultId,
     hasRow: inspection.state === "local",
     persona: inspection.draft,
@@ -334,7 +381,8 @@ function topLevelRowCount(text: string): number {
 
 /**
  * Resolve a preset id, reporting the editor's own not-found code so a client
- * has one failure to branch on whatever the registry throws.
+ * has one failure to branch on whatever the registry throws. The registry's own
+ * reason rides on the message: it is the part a deployment log has to keep.
  * @param roster - the host's `agentPresets` service.
  * @param id - the preset id.
  * @returns the resolved preset.
@@ -346,8 +394,8 @@ export async function resolvePreset(
 ): Promise<PresetEntry> {
   try {
     return await roster.resolve(id);
-  } catch {
-    throw notFound(id);
+  } catch (cause) {
+    throw notFound(id, reasonOf(cause));
   }
 }
 
