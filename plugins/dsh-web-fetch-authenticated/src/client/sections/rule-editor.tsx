@@ -49,11 +49,12 @@ export function RuleEditor({
       : draft.basicPasswordRef.trim();
 
   return (
-    <div className="wfa-editor">
+    <div className="wfa-editor" data-testid="wfa-rule-editor">
       <div className="wfa-grid">
         <Field label="Rule name">
           <input
             className="wfa-control"
+            data-testid="wfa-rule-editor-name"
             value={draft.name}
             onChange={(event) => {
               patch({ name: event.target.value });
@@ -63,6 +64,7 @@ export function RuleEditor({
         <Field label="Description">
           <input
             className="wfa-control"
+            data-testid="wfa-rule-editor-description"
             value={draft.description}
             onChange={(event) => {
               patch({ description: event.target.value });
@@ -72,6 +74,7 @@ export function RuleEditor({
       </div>
       <ToggleRow
         title="Enabled"
+        testId="wfa-rule-editor-enabled"
         hint="Disabled rules never match."
         checked={draft.enabled}
         disabled={false}
@@ -84,6 +87,7 @@ export function RuleEditor({
         <Field label="Hostnames (one per line, exact)">
           <textarea
             className="wfa-control"
+            data-testid="wfa-rule-editor-hosts"
             rows={2}
             value={draft.hosts}
             placeholder={"jira.example.corp\nwiki.example.corp"}
@@ -95,6 +99,7 @@ export function RuleEditor({
         <Field label="Ports (optional, comma separated)">
           <input
             className="wfa-control"
+            data-testid="wfa-rule-editor-ports"
             value={draft.ports}
             placeholder="443, 8443"
             onChange={(event) => {
@@ -105,6 +110,7 @@ export function RuleEditor({
       </div>
       <ToggleRow
         title="Allow http://"
+        testId="wfa-rule-editor-http"
         hint="HTTPS is always allowed; adding http warns and transmits the credential unencrypted."
         checked={draft.schemesHttp}
         disabled={false}
@@ -116,6 +122,7 @@ export function RuleEditor({
         <Field label="Allowed path patterns (optional, one per line)">
           <textarea
             className="wfa-control"
+            data-testid="wfa-rule-editor-allow-paths"
             rows={2}
             value={draft.allowPaths}
             placeholder={"/browse/**\n/rest/api/**"}
@@ -127,6 +134,7 @@ export function RuleEditor({
         <Field label="Denied path patterns (optional)">
           <textarea
             className="wfa-control"
+            data-testid="wfa-rule-editor-deny-paths"
             rows={2}
             value={draft.denyPaths}
             placeholder="/rest/api/*/settings/**"
@@ -141,6 +149,7 @@ export function RuleEditor({
         <Field label="Authentication">
           <select
             className="wfa-control"
+            data-testid="wfa-rule-editor-auth-type"
             value={draft.authType}
             onChange={(event) => {
               patch({ authType: event.target.value as AuthType });
@@ -156,6 +165,7 @@ export function RuleEditor({
           <Field label="Header name">
             <input
               className="wfa-control"
+              data-testid="wfa-rule-editor-header-name"
               value={draft.headerName}
               placeholder="X-API-Key"
               onChange={(event) => {
@@ -168,6 +178,7 @@ export function RuleEditor({
           <Field label="Username">
             <input
               className="wfa-control"
+              data-testid="wfa-rule-editor-username"
               value={draft.basicUsername}
               onChange={(event) => {
                 patch({ basicUsername: event.target.value });
@@ -181,6 +192,7 @@ export function RuleEditor({
           <Field label="Value prefix (optional)">
             <input
               className="wfa-control"
+              data-testid="wfa-rule-editor-value-prefix"
               value={draft.headerPrefix}
               placeholder="ApiKey "
               onChange={(event) => {
@@ -207,6 +219,7 @@ export function RuleEditor({
         <Field label="Content adapter">
           <select
             className="wfa-control"
+            data-testid="wfa-rule-editor-adapter-type"
             value={draft.adapterType}
             onChange={(event) => {
               patch({
@@ -225,6 +238,7 @@ export function RuleEditor({
           <Field label="Jira flavor">
             <select
               className="wfa-control"
+              data-testid="wfa-rule-editor-jira-flavor"
               value={draft.jiraFlavor}
               onChange={(event) => {
                 patch({
@@ -245,6 +259,7 @@ export function RuleEditor({
           <Field label="Page cleanup">
             <select
               className="wfa-control"
+              data-testid="wfa-rule-editor-cleanup"
               value={draft.cleanup}
               onChange={(event) => {
                 patch({
@@ -262,10 +277,11 @@ export function RuleEditor({
         )}
       </div>
       {draft.adapterType === "jira" && (
-        <div className="wfa-checks">
+        <div className="wfa-checks" data-testid="wfa-rule-editor-jira-options">
           <label className="wfa-check">
             <input
               type="checkbox"
+              data-testid="wfa-rule-editor-include-comments"
               checked={draft.includeComments}
               onChange={(event) => {
                 patch({ includeComments: event.target.checked });
@@ -276,6 +292,7 @@ export function RuleEditor({
           <label className="wfa-check">
             <input
               type="checkbox"
+              data-testid="wfa-rule-editor-include-links"
               checked={draft.includeLinks}
               onChange={(event) => {
                 patch({ includeLinks: event.target.checked });
@@ -309,7 +326,7 @@ export function RuleEditor({
       <RuleAdvancedFields draft={draft} patch={patch} />
 
       {errors.length > 0 && (
-        <div className="wfa-error">
+        <div className="wfa-error" data-testid="wfa-rule-editor-errors">
           {errors.map((error, index) => (
             <div key={index}>{error}</div>
           ))}
@@ -318,6 +335,7 @@ export function RuleEditor({
       <div className="wfa-actions">
         <button
           className="wfa-btn primary"
+          data-testid="wfa-rule-editor-save"
           type="button"
           disabled={errors.length > 0}
           onClick={() => {
@@ -326,7 +344,12 @@ export function RuleEditor({
         >
           Save rule
         </button>
-        <button className="wfa-btn" type="button" onClick={onCancel}>
+        <button
+          className="wfa-btn"
+          data-testid="wfa-rule-editor-cancel"
+          type="button"
+          onClick={onCancel}
+        >
           Cancel
         </button>
       </div>

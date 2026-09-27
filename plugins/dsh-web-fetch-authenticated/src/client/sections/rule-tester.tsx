@@ -25,10 +25,11 @@ export function RuleTester({
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   return (
-    <div className="wfa-editor">
+    <div className="wfa-editor" data-testid="wfa-rule-tester">
       <div className="wfa-actions">
         <input
           className="wfa-control"
+          data-testid="wfa-rule-tester-url"
           style={{ flex: 1 }}
           value={url}
           placeholder="https://jira.example.corp/browse/PROJ-123"
@@ -38,6 +39,7 @@ export function RuleTester({
         />
         <button
           className="wfa-btn primary"
+          data-testid="wfa-rule-tester-run"
           type="button"
           disabled={busy || url.trim().length === 0}
           onClick={() => {
@@ -61,7 +63,11 @@ export function RuleTester({
           Run test
         </button>
       </div>
-      {error !== undefined && <div className="wfa-error">{error}</div>}
+      {error !== undefined && (
+        <div className="wfa-error" data-testid="wfa-rule-tester-error">
+          {error}
+        </div>
+      )}
       {report !== undefined && <TestReport report={report} />}
     </div>
   );
@@ -69,9 +75,11 @@ export function RuleTester({
 
 function TestReport({ report }: { report: RuleTestReport }): JSX.Element {
   return (
-    <div className="wfa-report">
+    <div className="wfa-report" data-testid="wfa-rule-tester-report">
       <MetaLine>
-        <Pill tone={report.ok ? "ok" : "err"}>{report.outcome}</Pill>
+        <Pill tone={report.ok ? "ok" : "err"} testId="wfa-rule-tester-outcome">
+          {report.outcome}
+        </Pill>
         {report.statusCode !== undefined && (
           <Meta label="HTTP">{report.statusCode}</Meta>
         )}
