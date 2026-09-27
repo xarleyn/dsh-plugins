@@ -120,15 +120,17 @@ Numbered, testable guarantees:
 
 Both reasons are the host's text, passed through untouched, and the page has one
 rule about what it puts in front of a browser: the registry's own refusals name
-identities, not locations. Measured against the published `0.1.7-rc.2` source —
+identities, not locations. Measured against the installed `0.1.7-rc.2` class,
+driven over a hand-seeded definition rather than trusted from its types —
 `agent-preset/not-found` answers `Unknown agent preset: <id>` with the roster's
-ids in `details`, and the `broken` line is `<entry id> (<plugin name>): <mount
-failure>` built by the registry's own audit; the Loader it audits adds nothing
-but entry ids to its messages. A deployment therefore shows on this page exactly
-the text its own `agentPresets` `list`/`read` Remotes already answer to any
-client, which is why no field is re-worded here. What the page writes itself are
-the two refusals a host owes no words for: no `readDocument()` in the
-compatibility range, and an answer that is not a composition.
+ids in `details` and never resolves `undefined`, and the `broken` line is
+`<entry id> (<plugin name>): <mount failure>` built by the registry's own audit;
+the Loader it audits adds nothing but entry ids to its messages. A deployment
+therefore shows on this page exactly the text its own `agentPresets`
+`list`/`read` Remotes already answer to any client, which is why no field is
+re-worded here. What the page writes itself are the two refusals a host owes no
+words for: no `readDocument()` in the compatibility range, and an answer that is
+not a composition.
 
 ## 3. Lifecycle
 
@@ -210,7 +212,7 @@ compatibility range, and an answer that is not a composition.
 | Browser page (`settings.section`, roster, readings, advanced area, preview, composition viewer) | Implemented |
 | Package gates (manifest, bundle, compatibility, tarball) | Implemented |
 | Writing a preset through this page | Withdrawn (decision D2; issue #605) |
-| Live check on an `0.1.7-rc.2` deployment | Not done — the last live pass was against `0.1.5-rc.2` |
+| Live check on an `0.1.7-rc.2` deployment | Not done — the last live pass was against `0.1.5-rc.2`, and this repository ships no deployment to open one in. What it owes is the card in three states — a preset read cleanly, one the roster calls `broken`, one whose composition read the registry refused — beside a first-party card, because `client-editor-markup.test.tsx` pins the markup a screen reader reads and the margin each block resets, not the spacing a person sees |
 
 The page was exercised against a live deployment at `0.1.5-rc.2`: the roster, a
 save into a composition that uses a folded scalar, reset, a save from the
