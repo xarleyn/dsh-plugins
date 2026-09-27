@@ -17,7 +17,11 @@ export function StatusSection({
   warnings: readonly string[];
 }): JSX.Element {
   if (report === undefined) {
-    return <div className="wfa-empty">Loading provider status…</div>;
+    return (
+      <div className="wfa-empty" data-testid="wfa-status-loading">
+        Loading provider status…
+      </div>
+    );
   }
   const selection =
     report.fetchProviderId === undefined
@@ -26,10 +30,13 @@ export function StatusSection({
         ? 'pinned to "authenticated"'
         : `pinned to "${report.fetchProviderId}" — rules are inert until ctx.web selects this provider`;
   return (
-    <section className="wfa-section">
+    <section className="wfa-section" data-testid="wfa-status-section">
       <div className="wfa-section-title">
         <h3>Provider</h3>
-        <Pill tone={report.enabled ? "ok" : "warn"}>
+        <Pill
+          tone={report.enabled ? "ok" : "warn"}
+          testId="wfa-status-enabled-state"
+        >
           {report.enabled ? "Enabled" : "Disabled"}
         </Pill>
       </div>
@@ -55,21 +62,25 @@ export function StatusSection({
         limits.
       </div>
       {report.configErrors.length > 0 && (
-        <div className="wfa-error">
+        <div className="wfa-error" data-testid="wfa-status-config-errors">
           {report.configErrors.map((error, index) => (
             <div key={index}>{error}</div>
           ))}
         </div>
       )}
       {warnings.length > 0 && (
-        <div className="wfa-warnings">
+        <div className="wfa-warnings" data-testid="wfa-status-config-warnings">
           {warnings.map((warning, index) => (
             <div key={index}>{warning}</div>
           ))}
         </div>
       )}
       {report.credentialStates.map((state) => (
-        <p className="wfa-muted" key={state.ref}>
+        <p
+          className="wfa-muted"
+          data-testid="wfa-status-credential-state"
+          key={state.ref}
+        >
           Credential <code>{state.ref}</code>:{" "}
           {state.configured ? "configured" : "not configured"}
           {state.writable

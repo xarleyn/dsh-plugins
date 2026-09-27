@@ -19,23 +19,42 @@ export function RuleAdvancedFields({
   patch: (changes: Partial<RuleDraft>) => void;
 }): JSX.Element {
   return (
-    <details className="wfa-advanced">
-      <summary>Network policy, redirects, and limits</summary>
+    <details className="wfa-advanced" data-testid="wfa-rule-editor-advanced">
+      <summary data-testid="wfa-rule-editor-advanced-summary">
+        Network policy, redirects, and limits
+      </summary>
       <div className="wfa-advanced-content">
-        <div className="wfa-checks">
+        <div className="wfa-checks" data-testid="wfa-rule-editor-network">
           {(
             [
-              ["allowPublic", "Public IPs"],
-              ["allowPrivate", "Private networks (RFC1918)"],
-              ["allowLoopback", "Loopback"],
-              ["allowLinkLocal", "Link-local"],
-              ["allowCGNAT", "Carrier-grade NAT"],
-              ["allowIPv6ULA", "IPv6 unique-local"],
+              ["allowPublic", "Public IPs", "wfa-rule-editor-network-public"],
+              [
+                "allowPrivate",
+                "Private networks (RFC1918)",
+                "wfa-rule-editor-network-private",
+              ],
+              ["allowLoopback", "Loopback", "wfa-rule-editor-network-loopback"],
+              [
+                "allowLinkLocal",
+                "Link-local",
+                "wfa-rule-editor-network-link-local",
+              ],
+              [
+                "allowCGNAT",
+                "Carrier-grade NAT",
+                "wfa-rule-editor-network-cgnat",
+              ],
+              [
+                "allowIPv6ULA",
+                "IPv6 unique-local",
+                "wfa-rule-editor-network-ipv6-ula",
+              ],
             ] as const
-          ).map(([key, label]) => (
+          ).map(([key, label, testId]) => (
             <label className="wfa-check" key={key}>
               <input
                 type="checkbox"
+                data-testid={testId}
                 checked={draft.network[key]}
                 onChange={(event) => {
                   patch({
@@ -54,6 +73,7 @@ export function RuleAdvancedFields({
           <Field label="Allowed CIDRs (one per line)">
             <textarea
               className="wfa-control"
+              data-testid="wfa-rule-editor-allowed-cidrs"
               rows={2}
               value={draft.network.allowedCidrs}
               placeholder="10.20.0.0/16"
@@ -70,6 +90,7 @@ export function RuleAdvancedFields({
           <Field label="Denied CIDRs (one per line)">
             <textarea
               className="wfa-control"
+              data-testid="wfa-rule-editor-denied-cidrs"
               rows={2}
               value={draft.network.deniedCidrs}
               onChange={(event) => {
@@ -87,6 +108,7 @@ export function RuleAdvancedFields({
           <Field label="Redirects">
             <select
               className="wfa-control"
+              data-testid="wfa-rule-editor-redirect-mode"
               value={draft.redirectMode}
               onChange={(event) => {
                 patch({ redirectMode: event.target.value as RedirectMode });
@@ -102,6 +124,7 @@ export function RuleAdvancedFields({
           <Field label="Max redirects">
             <input
               className="wfa-control"
+              data-testid="wfa-rule-editor-max-redirects"
               value={draft.maxRedirects}
               placeholder="3"
               onChange={(event) => {
@@ -114,6 +137,7 @@ export function RuleAdvancedFields({
           <Field label="Allowed redirect origins (one per line)">
             <textarea
               className="wfa-control"
+              data-testid="wfa-rule-editor-allowed-origins"
               rows={2}
               value={draft.allowedOrigins}
               placeholder="https://sso.example.corp"
@@ -127,6 +151,7 @@ export function RuleAdvancedFields({
           <Field label="Timeout (ms)">
             <input
               className="wfa-control"
+              data-testid="wfa-rule-editor-timeout"
               value={draft.timeoutMs}
               placeholder="30000"
               onChange={(event) => {
@@ -137,6 +162,7 @@ export function RuleAdvancedFields({
           <Field label="Max response bytes">
             <input
               className="wfa-control"
+              data-testid="wfa-rule-editor-max-response-bytes"
               value={draft.maxResponseBytes}
               placeholder="5242880"
               onChange={(event) => {
@@ -147,6 +173,7 @@ export function RuleAdvancedFields({
           <Field label="Max decoded chars">
             <input
               className="wfa-control"
+              data-testid="wfa-rule-editor-max-body-chars"
               value={draft.maxBodyChars}
               placeholder="100000"
               onChange={(event) => {
@@ -157,6 +184,7 @@ export function RuleAdvancedFields({
           <Field label="Test URL (optional, used by Test)">
             <input
               className="wfa-control"
+              data-testid="wfa-rule-editor-test-url"
               value={draft.testUrl}
               placeholder="https://jira.example.corp/status"
               onChange={(event) => {
