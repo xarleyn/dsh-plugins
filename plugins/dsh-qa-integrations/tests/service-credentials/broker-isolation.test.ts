@@ -132,6 +132,20 @@ function deferrableProvider(options: {
 const repositories: IntegrationRepository[] = [];
 
 /**
+ * A store that records which credential each unlock was asked for: an operation
+ * has to spend the secret its own binding names, and only the record identity
+ * tells that apart from whatever the row happened to point at when it read.
+ */
+class RecordingSecretStore extends SecretStore {
+  public readonly unlocked: string[] = [];
+
+  override async decrypt(record: EncryptedSecretRecord): Promise<string> {
+    this.unlocked.push(record.id);
+    return await super.decrypt(record);
+  }
+}
+
+/**
  * A store that counts its own decrypt calls: a policy refusal has to land before
  * the credential is unlocked, and only a counter can tell that apart from a
  * refusal that unlocked the secret first and then changed its mind.
@@ -470,5 +484,54 @@ describe("IntegrationBroker user isolation", () => {
 
     expect(refreshed.capabilities).toEqual(["crm.read", "chat.read"]);
     expect(warns).not.toContain("credential.validation-stale");
+  });
+
+  it("unlocks the credential the binding it works from names", async () => {
+    const secrets = new RecordingSecretStore(
+      new MemoryKeyProvider(new Map([[1, randomBytes(32)]]), 1),
+    );
+    const broker = buildBroker(
+      path.join(root, "bound-credential.json"),
+      fakeProvider({ capabilities: ["crm.read"] }),
+      [],
+      secrets,
+    );
+    const repository = repositories.at(-1)!;
+    const principal = { userId: "heidi" };
+    await broker.connect(principal, "acme", {
+      token: "https://heidi.example/rest/9/heidi-token-a",
+    });
+    const first = repository.find(principal, "acme")!;
+
+    await expect(
+      broker.call(principal, {
+        provider: "acme",
+        operation: "crm.get",
+        input: {},
+        sourceSessionId: "session-heidi",
+      }),
+    ).resolves.toMatchObject({ data: { operation: "crm.get" } });
+    await broker.validate(principal, "acme");
+    // Both operations spent exactly the record this binding carries — the read
+    // is addressed by the binding, so it cannot follow a reconnect that happens
+    // while the operation is still on its way.
+    expect(secrets.unlocked).toEqual([first.secretRef, first.secretRef]);
+
+    await broker.connect(principal, "acme", {
+      token: "https://bob.example/rest/10/heidi-token-b",
+    });
+    const second = repository.find(principal, "acme")!;
+    expect(second.secretRef).not.toBe(first.secretRef);
+    // The replaced credential is gone from the store, so an operation bound to
+    // it could not spend it even if it wanted to.
+    expect(repository.secretByRef(first.secretRef)).toBeUndefined();
+
+    await broker.call(principal, {
+      provider: "acme",
+      operation: "crm.get",
+      input: {},
+      sourceSessionId: "session-heidi",
+    });
+    expect(secrets.unlocked.at(-1)).toBe(second.secretRef);
   });
 });

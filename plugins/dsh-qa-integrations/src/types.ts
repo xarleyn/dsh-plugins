@@ -203,8 +203,10 @@ export interface StoredIntegration {
   /** Managed profile this binding resolves to, when it runs in service mode. */
   readonly serviceProfileId: string | null;
   /**
-   * Incremented on every credential-mode switch. Cache keys, cursors and pending
-   * actions are bound to it, so switching modes invalidates them all at once.
+   * Incremented on every reconnect and on every credential-mode switch. Cache
+   * keys, cursors, pending actions and validation verdicts are bound to it, so
+   * either move invalidates everything derived from the previous identity —
+   * including a re-save of the profile the binding already ran under.
    */
   readonly bindingRevision: number;
   /** What this binding narrows the profile's allowlist to, if anything. */
