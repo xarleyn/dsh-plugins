@@ -977,6 +977,19 @@ assert.doesNotMatch(jiraJql, /customfield_\\d/u);
 // An empty version or custom field is a first-class filter, in both directions.
 assert.match(jiraJql, /IS \$\{isEmpty \? "" : "NOT "\}EMPTY/u);
 assert.match(jiraJql, /statusCategory/u);
+// The history is the same typed vocabulary rather than a clause the caller writes:
+// the fields are an allow-list of what Jira keeps a history for, the operators are
+// the two Jira spells, a value is quoted like any other, and a person in a history
+// clause is validated by the same boundary as a person in an equality filter.
+assert.match(jiraJql, /HISTORY_FIELDS/u);
+assert.match(jiraJql, /WAS \$\{value\}/u);
+assert.match(jiraJql, /CHANGED/u);
+assert.match(jiraJql, /userFilter\(text, label, deployment\)/u);
+assert.match(jiraTools, /history: \{/u);
+// No history clause is assembled from a value the builder did not read: a keyword
+// that cannot belong to the operator is a refusal, not a dropped bound.
+assert.match(jiraJql, /only history\.op changed answers/u);
+assert.match(jiraJql, /contradict each other/u);
 const jiraConfig = await readFile(
   new URL("src/providers/jira/config.ts", root),
   "utf8",

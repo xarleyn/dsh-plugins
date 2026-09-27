@@ -38,6 +38,15 @@ const ACCOUNT_HINT =
 const TIMESTAMP_HINT =
   "ISO 8601 timestamp, a plain date (YYYY-MM-DD), or Jira's own relative token such as -3w (three weeks), -2d, -4h, -30m. Both bounds are inclusive.";
 
+/**
+ * A person inside a history clause is named by the identifier the issue's own
+ * change log shows. The directory is deliberately not consulted on this path:
+ * a name would cost an unbounded read behind a filter whose whole job is to
+ * widen a search, and the identifier is already in the hand of whoever asks.
+ */
+const PERSON_VALUE_HINT =
+  'A person is the identifier Jira filters on — an accountId on Cloud, a user name on a Server / Data Center instance — or "me", never a display name: `jira_get_issue` with `include: ["changelog_summary"]` shows the identifier, and this filter reads no user directory.';
+
 const FILTER_HINT =
   "Filters are built into JQL by the provider, one clause per filter, so nothing here can add a clause of its own. There is no raw JQL argument.";
 
@@ -143,6 +152,64 @@ export function createJiraTools(
         updatedBefore: {
           type: "string",
           description: `Issues updated at or before this time. ${TIMESTAMP_HINT}`,
+        },
+        history: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: {
+              field: {
+                type: "string",
+                required: true,
+                enum: [
+                  "status",
+                  "assignee",
+                  "reporter",
+                  "priority",
+                  "resolution",
+                  "fixVersion",
+                ],
+                description:
+                  "Which field's past is asked about — only these keep a history Jira searches. The current value is filtered by the field's own filter, a custom field by customFields.",
+              },
+              op: {
+                type: "string",
+                required: true,
+                enum: ["was", "changed"],
+                description:
+                  '"was" — the field held the value at some point; "changed" — the field moved at some point, with value the value it moved to and from the value it moved away from.',
+              },
+              value: {
+                type: "string",
+                description: `The value asked about; required for "was". ${PERSON_VALUE_HINT}`,
+              },
+              from: {
+                type: "string",
+                description:
+                  'With "changed" only: the value it moved away from.',
+              },
+              by: {
+                type: "string",
+                description:
+                  "Who made the change; the identifier rule of value applies — a display name is refused and no user directory is read.",
+              },
+              on: {
+                type: "string",
+                description: `The one day the value was held. ${TIMESTAMP_HINT}`,
+              },
+              after: {
+                type: "string",
+                description: `The history is searched from this time on. ${TIMESTAMP_HINT}`,
+              },
+              before: {
+                type: "string",
+                description: `The history is searched up to this time. ${TIMESTAMP_HINT}`,
+              },
+            },
+            additionalProperties: false,
+          },
+          description:
+            'Search the change history rather than the values an issue carries now: up to three clauses, ANDed. { field: "status", op: "was", value: "In Progress" } is «побывали в In Progress», { field: "status", op: "changed", after: "-2w" } — «двигали статус за две недели», { field: "assignee", op: "changed", value: "5b10…" } — «переназначали на кого-то». Every value is quoted and escaped like any other filter, so a history clause cannot widen the search either.',
         },
         customFields: {
           type: "array",
@@ -347,6 +414,7 @@ export function createJiraTools(
                 40,
               ),
             }),
+        ...(args["history"] === undefined ? {} : { history: args["history"] }),
         ...(args["customFields"] === undefined
           ? {}
           : { customFields: args["customFields"] }),
