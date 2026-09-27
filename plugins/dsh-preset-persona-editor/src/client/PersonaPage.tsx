@@ -70,12 +70,14 @@ function PresetCard(props: {
       className={
         open ? "dsh-plugin-card dsh-plugin-card--open" : "dsh-plugin-card"
       }
+      data-testid="persona-preset-row"
     >
       <button
         type="button"
         className="dsh-plugin-card__header"
         aria-expanded={open}
         aria-label={`${open ? strings.close : strings.open}: ${row.name || row.id}`}
+        data-testid="persona-preset-header"
         onClick={() => {
           if (open) controller.close();
           else void controller.open(row.id);
@@ -85,13 +87,19 @@ function PresetCard(props: {
           <span className="dsh-plugin-card__name">{row.name || row.id}</span>
           <span className="dsh-plugin-card__description">{describe(row)}</span>
         </span>
-        <span className="dsh-plugin-card__badge">
+        <span
+          className="dsh-plugin-card__badge"
+          data-testid="persona-preset-badge"
+        >
           {dirty ? strings.dirty : badgeOf(row)}
         </span>
         <ChevronDown />
       </button>
       {open ? (
-        <div className="dsh-plugin-card__body preset-persona__body">
+        <div
+          className="dsh-plugin-card__body preset-persona__body"
+          data-testid="persona-preset-body"
+        >
           <PersonaEditor state={state} controller={controller} />
         </div>
       ) : null}
@@ -110,21 +118,25 @@ export function PersonaPage(props: PersonaPageProps): ReactElement {
 
   if (state.status === "loading") {
     return (
-      <div className="preset-persona preset-persona__intro">
+      <div
+        className="preset-persona preset-persona__intro"
+        data-testid="persona-loading"
+      >
         {strings.loading}
       </div>
     );
   }
   if (state.status === "failed") {
     return (
-      <div className="preset-persona">
-        <p className="preset-persona__error">
+      <div className="preset-persona" data-testid="persona-load-failed">
+        <p className="preset-persona__error" data-testid="persona-load-error">
           {strings.loadFailed} {state.error}
         </p>
         <div className="preset-persona__actions">
           <button
             type="button"
             className="preset-persona__button"
+            data-testid="persona-load-reload"
             onClick={() => void controller.load()}
           >
             {strings.reload}
@@ -134,7 +146,7 @@ export function PersonaPage(props: PersonaPageProps): ReactElement {
     );
   }
   return (
-    <div className="preset-persona">
+    <div className="preset-persona" data-testid="persona-page">
       <p className="preset-persona__intro">{strings.intro}</p>
       {state.notice !== null ? (
         <p
@@ -145,14 +157,17 @@ export function PersonaPage(props: PersonaPageProps): ReactElement {
                 ? "preset-persona__warn"
                 : "preset-persona__ok"
           }
+          data-testid="persona-notice"
         >
           {state.notice.text}
         </p>
       ) : null}
       {state.presets.length === 0 ? (
-        <p className="preset-persona__intro">{strings.empty}</p>
+        <p className="preset-persona__intro" data-testid="persona-empty">
+          {strings.empty}
+        </p>
       ) : (
-        <ul className="preset-persona__list">
+        <ul className="preset-persona__list" data-testid="persona-roster">
           {state.presets.map((row) => (
             <PresetCard
               key={row.id}

@@ -30,6 +30,7 @@ import {
 
 /** One labelled text field. */
 function Field(props: {
+  readonly testId: string;
   readonly label: string;
   readonly hint: string;
   readonly value: string;
@@ -45,6 +46,7 @@ function Field(props: {
         rows={props.rows}
         value={props.value}
         disabled={props.disabled}
+        data-testid={props.testId}
         spellCheck={false}
         onChange={(event) => {
           props.onChange(event.target.value);
@@ -57,6 +59,7 @@ function Field(props: {
 
 /** A checkbox with its own explanation, as a block the user can scan. */
 function Check(props: {
+  readonly testId: string;
   readonly label: string;
   readonly hint: string;
   readonly checked: boolean;
@@ -69,6 +72,7 @@ function Check(props: {
         type="checkbox"
         checked={props.checked}
         disabled={props.disabled}
+        data-testid={props.testId}
         onChange={(event) => {
           props.onChange(event.target.checked);
         }}
@@ -89,7 +93,7 @@ function CopyForm(props: {
   const draft = props.state.copyDraft;
   if (draft === null) return null;
   return (
-    <div className="preset-persona__section">
+    <div className="preset-persona__section" data-testid="persona-copy-form">
       <p className="preset-persona__section-title">{strings.copyTitle}</p>
       <p className="preset-persona__hint">{strings.copyHint}</p>
       <div className="preset-persona__row">
@@ -98,6 +102,7 @@ function CopyForm(props: {
           <input
             className="preset-persona__input"
             value={draft.id}
+            data-testid="persona-copy-id"
             spellCheck={false}
             onChange={(event) => {
               props.controller.editCopy({ id: event.target.value });
@@ -109,6 +114,7 @@ function CopyForm(props: {
           <input
             className="preset-persona__input"
             value={draft.name}
+            data-testid="persona-copy-name"
             onChange={(event) => {
               props.controller.editCopy({ name: event.target.value });
             }}
@@ -116,13 +122,16 @@ function CopyForm(props: {
         </label>
       </div>
       {draft.error === "" ? null : (
-        <p className="preset-persona__error">{draft.error}</p>
+        <p className="preset-persona__error" data-testid="persona-copy-error">
+          {draft.error}
+        </p>
       )}
       <div className="preset-persona__actions">
         <button
           type="button"
           className="preset-persona__button preset-persona__button--primary"
           disabled={draft.busy}
+          data-testid="persona-copy-submit"
           onClick={() => void props.controller.copy()}
         >
           {draft.busy ? strings.copying : strings.copyAction}
@@ -130,6 +139,7 @@ function CopyForm(props: {
         <button
           type="button"
           className="preset-persona__button"
+          data-testid="persona-copy-cancel"
           onClick={() => {
             props.controller.cancelCopy();
           }}
@@ -165,7 +175,10 @@ function SectionRow(props: {
 }): ReactElement {
   const { index, section, issue, editable, controller } = props;
   return (
-    <li className="preset-persona__section-row">
+    <li
+      className="preset-persona__section-row"
+      data-testid="persona-section-row"
+    >
       <div className="preset-persona__row">
         <label className="preset-persona__field preset-persona__field--tight">
           <span className="preset-persona__label">
@@ -175,6 +188,7 @@ function SectionRow(props: {
             className="preset-persona__input"
             value={section.name}
             disabled={!editable}
+            data-testid="persona-section-name"
             spellCheck={false}
             onChange={(event) => {
               controller.editSection(index, { name: event.target.value });
@@ -191,6 +205,7 @@ function SectionRow(props: {
             step={1}
             value={Number.isInteger(section.order) ? String(section.order) : ""}
             disabled={!editable}
+            data-testid="persona-section-order"
             onChange={(event) => {
               controller.editSection(index, {
                 order:
@@ -206,6 +221,7 @@ function SectionRow(props: {
             type="checkbox"
             checked={section.enabled}
             disabled={!editable}
+            data-testid="persona-section-enabled"
             onChange={(event) => {
               controller.editSection(index, { enabled: event.target.checked });
             }}
@@ -218,6 +234,7 @@ function SectionRow(props: {
           type="button"
           className="preset-persona__button"
           disabled={!editable}
+          data-testid="persona-section-remove"
           onClick={() => {
             controller.removeSection(index);
           }}
@@ -234,6 +251,7 @@ function SectionRow(props: {
           rows={3}
           value={section.text}
           disabled={!editable}
+          data-testid="persona-section-text"
           spellCheck={false}
           onChange={(event) => {
             controller.editSection(index, { text: event.target.value });
@@ -241,10 +259,17 @@ function SectionRow(props: {
         />
       </label>
       {issue === undefined ? null : (
-        <p className="preset-persona__error">{issue.reason}</p>
+        <p
+          className="preset-persona__error"
+          data-testid="persona-section-error"
+        >
+          {issue.reason}
+        </p>
       )}
       {FIRST_PARTY_NAME_HINT.test(section.name) ? (
-        <p className="preset-persona__warn">{strings.sectionFirstPartyName}</p>
+        <p className="preset-persona__warn" data-testid="persona-section-warn">
+          {strings.sectionFirstPartyName}
+        </p>
       ) : null}
     </li>
   );
@@ -266,7 +291,10 @@ function SectionsArea(props: {
 }): ReactElement {
   const { document, draft, controller, editable, issues } = props;
   return (
-    <details className="preset-persona__details preset-persona__section">
+    <details
+      className="preset-persona__details preset-persona__section"
+      data-testid="persona-sections"
+    >
       <summary>{strings.sectionsTitle}</summary>
       <p className="preset-persona__hint">{strings.sectionsHint}</p>
       <p className="preset-persona__hint">{strings.sectionsKeeps}</p>
@@ -274,15 +302,26 @@ function SectionsArea(props: {
         {registrarLine(document.sectionsModule)}
       </p>
       {document.sectionsError === "" ? null : (
-        <p className="preset-persona__error">
+        <p
+          className="preset-persona__error"
+          data-testid="persona-sections-error"
+        >
           {strings.sectionsError} {document.sectionsError}
         </p>
       )}
       {document.sectionsState === "ambiguous" ? (
-        <p className="preset-persona__error">{strings.sectionsAmbiguous}</p>
+        <p
+          className="preset-persona__error"
+          data-testid="persona-sections-ambiguous"
+        >
+          {strings.sectionsAmbiguous}
+        </p>
       ) : null}
       {document.sectionsUnknownKeys.length === 0 ? null : (
-        <p className="preset-persona__hint">
+        <p
+          className="preset-persona__hint"
+          data-testid="persona-sections-unknown-keys"
+        >
           {strings.sectionsUnknownKeys}:{" "}
           {document.sectionsUnknownKeys.map((key) => (
             <code key={key} className="preset-persona__code">
@@ -293,9 +332,17 @@ function SectionsArea(props: {
         </p>
       )}
       {draft.sections.length === 0 ? (
-        <p className="preset-persona__hint">{strings.sectionsEmpty}</p>
+        <p
+          className="preset-persona__hint"
+          data-testid="persona-sections-empty"
+        >
+          {strings.sectionsEmpty}
+        </p>
       ) : (
-        <ul className="preset-persona__list">
+        <ul
+          className="preset-persona__list"
+          data-testid="persona-sections-list"
+        >
           {draft.sections.map((section, index) => (
             <SectionRow
               key={index}
@@ -313,6 +360,7 @@ function SectionsArea(props: {
           type="button"
           className="preset-persona__button"
           disabled={!editable}
+          data-testid="persona-sections-add"
           onClick={() => {
             controller.addSection();
           }}
@@ -323,6 +371,7 @@ function SectionsArea(props: {
           type="button"
           className="preset-persona__button"
           disabled={!editable || draft.sections.length === 0}
+          data-testid="persona-sections-remove-all"
           onClick={() => {
             controller.clearSections();
           }}
@@ -343,9 +392,9 @@ function SectionsArea(props: {
   const hasExtras = document.extraRows > 0;
   if (!hasUnknown && !hasForeign && !hasExtras) return null;
   return (
-    <div className="preset-persona__section">
+    <div className="preset-persona__section" data-testid="persona-disclosures">
       {hasUnknown ? (
-        <p className="preset-persona__hint">
+        <p className="preset-persona__hint" data-testid="persona-unknown-keys">
           <span className="preset-persona__section-title">
             {strings.unknownKeysTitle}
           </span>{" "}
@@ -358,13 +407,13 @@ function SectionsArea(props: {
         </p>
       ) : null}
       {hasForeign ? (
-        <p className="preset-persona__error">
+        <p className="preset-persona__error" data-testid="persona-foreign-keys">
           {strings.foreignKeysTitle}: {document.foreignKeys.join(", ")}.{" "}
           {strings.foreignKeysHint}
         </p>
       ) : null}
       {hasExtras ? (
-        <p className="preset-persona__error">
+        <p className="preset-persona__error" data-testid="persona-extra-rows">
           {strings.extraRowsTitle}: {strings.extraRowsHint}
         </p>
       ) : null}
@@ -381,14 +430,22 @@ export function PersonaEditor(props: {
   const open = state.open;
 
   if (open === null || open.status === "loading") {
-    return <p className="preset-persona__intro">{strings.loading}</p>;
+    return (
+      <p className="preset-persona__intro" data-testid="persona-editor-loading">
+        {strings.loading}
+      </p>
+    );
   }
   if (
     open.status === "failed" ||
     open.document === null ||
     open.draft === null
   ) {
-    return <p className="preset-persona__error">{open.error}</p>;
+    return (
+      <p className="preset-persona__error" data-testid="persona-editor-error">
+        {open.error}
+      </p>
+    );
   }
   const { document, draft } = open;
   const editable =
@@ -407,18 +464,19 @@ export function PersonaEditor(props: {
       </div>
 
       {document.readError === "" ? null : (
-        <p className="preset-persona__error">
+        <p className="preset-persona__error" data-testid="persona-read-error">
           {strings.unreadable} {document.readError}
         </p>
       )}
 
       {editable ? null : (
-        <p className="preset-persona__warn">
+        <p className="preset-persona__warn" data-testid="persona-read-only">
           {shipped ? strings.readOnlyShipped : strings.unreadable}
         </p>
       )}
 
       <Field
+        testId="persona-prefix"
         label={strings.prefixLabel}
         hint={strings.prefixHint}
         value={draft.persona.prefix}
@@ -429,6 +487,7 @@ export function PersonaEditor(props: {
         }}
       />
       <Field
+        testId="persona-suffix"
         label={strings.suffixLabel}
         hint={strings.suffixHint}
         value={draft.persona.suffix}
@@ -440,6 +499,7 @@ export function PersonaEditor(props: {
       />
 
       <Check
+        testId="persona-complete"
         label={strings.completeLabel}
         hint={strings.completeHint}
         checked={draft.persona.complete}
@@ -449,10 +509,16 @@ export function PersonaEditor(props: {
         }}
       />
       {draft.persona.complete ? (
-        <p className="preset-persona__warn">{strings.completeWarning}</p>
+        <p
+          className="preset-persona__warn"
+          data-testid="persona-complete-warning"
+        >
+          {strings.completeWarning}
+        </p>
       ) : null}
 
       <Check
+        testId="persona-runtime-context"
         label={strings.runtimeLabel}
         hint={strings.runtimeHint}
         checked={draft.persona.includeRuntimeContext}
@@ -477,6 +543,7 @@ export function PersonaEditor(props: {
           type="button"
           className="preset-persona__button preset-persona__button--primary"
           disabled={!editable || !dirty || state.busy || issues.length > 0}
+          data-testid="persona-save"
           onClick={() => void controller.save()}
         >
           {state.busy ? strings.saving : strings.save}
@@ -485,6 +552,7 @@ export function PersonaEditor(props: {
           type="button"
           className="preset-persona__button"
           disabled={!editable || !dirty || state.busy}
+          data-testid="persona-revert"
           onClick={() => {
             controller.revert();
           }}
@@ -495,6 +563,7 @@ export function PersonaEditor(props: {
           type="button"
           className="preset-persona__button"
           disabled={!editable || state.busy || !document.hasRow}
+          data-testid="persona-reset"
           onClick={() => void controller.reset()}
         >
           {open.pendingReset ? `${strings.reset}?` : strings.reset}
@@ -502,6 +571,7 @@ export function PersonaEditor(props: {
         <button
           type="button"
           className="preset-persona__button"
+          data-testid="persona-reload"
           onClick={() => void controller.reload()}
         >
           {strings.reload}
@@ -510,6 +580,7 @@ export function PersonaEditor(props: {
           <button
             type="button"
             className="preset-persona__button"
+            data-testid="persona-copy"
             onClick={() => {
               controller.beginCopy();
             }}

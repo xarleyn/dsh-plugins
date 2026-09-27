@@ -111,7 +111,7 @@ function OutlineRow(props: { readonly entry: OutlineEntry }): ReactElement {
       ? "preset-persona__outline-row preset-persona__outline-row--muted"
       : "preset-persona__outline-row";
   return (
-    <li className={className}>
+    <li className={className} data-testid="persona-outline-row">
       <span className="preset-persona__order">{String(entry.order)}</span>
       <span className="preset-persona__outline-text">{entry.text}</span>
     </li>
@@ -125,11 +125,11 @@ export function PersonaPreview(props: {
 }): ReactElement {
   const { document, draft } = props;
   return (
-    <div className="preset-persona__section">
+    <div className="preset-persona__section" data-testid="persona-preview">
       <p className="preset-persona__section-title">{strings.previewTitle}</p>
 
       <p className="preset-persona__hint">{strings.previewStructureHint}</p>
-      <ul className="preset-persona__outline">
+      <ul className="preset-persona__outline" data-testid="persona-outline">
         {outlineEntries(document, draft).map((entry, index) => (
           <OutlineRow
             key={`${String(entry.order)}-${entry.text}-${String(index)}`}
@@ -138,7 +138,10 @@ export function PersonaPreview(props: {
         ))}
       </ul>
       {draft.persona.complete ? (
-        <p className="preset-persona__warn">
+        <p
+          className="preset-persona__warn"
+          data-testid="persona-outline-complete"
+        >
           {strings.outlineComplete} {strings.outlineSuppressed}
         </p>
       ) : null}
@@ -146,7 +149,10 @@ export function PersonaPreview(props: {
         {strings.outlineRows(document.rowCount)}
       </p>
 
-      <details className="preset-persona__details">
+      <details
+        className="preset-persona__details"
+        data-testid="persona-preview-config"
+      >
         <summary>{strings.previewConfig}</summary>
         <pre className="preset-persona__pre">
           {renderConfigBlock(draft.persona, 4, "\n").trimEnd()}
@@ -154,7 +160,10 @@ export function PersonaPreview(props: {
       </details>
 
       {draft.sections.length === 0 ? null : (
-        <details className="preset-persona__details">
+        <details
+          className="preset-persona__details"
+          data-testid="persona-preview-sections"
+        >
           <summary>{strings.sectionsPreview}</summary>
           <pre className="preset-persona__pre">
             {renderSectionsList(draft.sections, 4, "\n")}
@@ -162,7 +171,10 @@ export function PersonaPreview(props: {
         </details>
       )}
 
-      <details className="preset-persona__details">
+      <details
+        className="preset-persona__details"
+        data-testid="persona-preview-file"
+      >
         <summary>{strings.fileTitle}</summary>
         <p className="preset-persona__hint">{strings.fileHint}</p>
         <pre className="preset-persona__pre">{document.source}</pre>

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from "@testing-library/react";
+import { render, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { Markdown } from "../../../src/client/components/Markdown.js";
@@ -17,7 +17,9 @@ describe("Mermaid fence rendering", () => {
       <Markdown text={"```mermaid\ngraph TD\n  A --> B\n```"} />,
     );
 
-    expect(container.querySelector("code")?.textContent).toContain("graph TD");
+    expect(
+      within(container).getByTestId("qa-md-code-content").textContent,
+    ).toContain("graph TD");
     expect(container.querySelector("svg")).toBeNull();
   });
 
@@ -26,9 +28,11 @@ describe("Mermaid fence rendering", () => {
       <Markdown text={"```mermaid\nsequenceDiagram\n  A->>B: ok\n```"} />,
     );
 
-    expect(container.querySelector(".dsh-qa-md-code__lang")?.textContent).toBe(
+    expect(within(container).getByTestId("qa-md-code-lang").textContent).toBe(
       "mermaid",
     );
-    expect(container.textContent).toContain("sequenceDiagram");
+    expect(
+      within(container).getByTestId("qa-md-code-content").textContent,
+    ).toContain("sequenceDiagram");
   });
 });

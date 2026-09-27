@@ -47,6 +47,17 @@ await runVerifyPackage({
       "dsh-plugin-card__name",
       "m3.5 5.25 3.5 3.5 3.5-3.5",
     ],
+    /*
+     * One test id of the epic #453 pass is pinned, and this one carries more
+     * than a locator: `log-panel-line` is on the DOM translator's
+     * protected-surface table (plugins/dsh-l10n-overrides/src/runtime/
+     * protected-surfaces.ts), which is what keeps a logged line out of machine
+     * translation. The translator's own suite only imitates the id, so without
+     * this assertion a rename here would lift the protection silently. The
+     * attribute is asserted, not the bare value, so the id cannot pass on the
+     * strength of a class name.
+     */
+    matches: [/["']data-testid["']\s*:\s*["']log-panel-line["']/u],
     notMatches: [
       /useSyncExternalStore\)\(scope\.subscribe/u,
       /⌄/u,

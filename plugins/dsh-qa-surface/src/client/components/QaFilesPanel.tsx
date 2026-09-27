@@ -30,15 +30,33 @@ function QaFileImage({
     };
   }, [image.attachmentId, resolve]);
   if (url === null) {
-    return <span className="dsh-qa-files__thumb" data-state="loading" />;
+    return (
+      <span
+        className="dsh-qa-files__thumb"
+        data-state="loading"
+        data-testid="qa-files-thumb-loading"
+      />
+    );
   }
   if (url === "") {
-    return <span className="dsh-qa-files__thumb" data-state="broken" />;
+    return (
+      <span
+        className="dsh-qa-files__thumb"
+        data-state="broken"
+        data-testid="qa-files-thumb-broken"
+      />
+    );
   }
   return (
-    <a href={url} target="_blank" rel="noreferrer">
+    <a
+      href={url}
+      data-testid="qa-files-thumb-link"
+      target="_blank"
+      rel="noreferrer"
+    >
       <img
         className="dsh-qa-files__thumb"
+        data-testid="qa-files-thumb"
         src={url}
         alt="Прикреплённое изображение"
       />
@@ -79,7 +97,10 @@ export function QaFilesPanel({
 }: QaFilesPanelProps) {
   const workspace =
     sessionId === undefined || api === undefined ? null : (
-      <section className="dsh-qa-files__workspace">
+      <section
+        className="dsh-qa-files__workspace"
+        data-testid="qa-files-workspace"
+      >
         <h3>
           <span>Рабочий каталог</span>
         </h3>
@@ -88,14 +109,16 @@ export function QaFilesPanel({
     );
   if (groups.length === 0) {
     return (
-      <div className="dsh-qa-files">
+      <div className="dsh-qa-files" data-testid="qa-files-panel">
         {workspace}
-        <p className="dsh-qa-files__empty">В этом чате нет вложений.</p>
+        <p className="dsh-qa-files__empty" data-testid="qa-files-empty">
+          В этом чате нет вложений.
+        </p>
       </div>
     );
   }
   return (
-    <div className="dsh-qa-files">
+    <div className="dsh-qa-files" data-testid="qa-files-panel">
       {workspace}
       {groups.map((group) => {
         const time =
@@ -103,12 +126,17 @@ export function QaFilesPanel({
             ? "Вложенные файлы"
             : formatDayTime(group.timestamp);
         return (
-          <section key={group.messageId} className="dsh-qa-files__group">
+          <section
+            key={group.messageId}
+            className="dsh-qa-files__group"
+            data-testid="qa-files-group"
+          >
             <h3>
-              <span>{time}</span>
+              <span data-testid="qa-files-group-time">{time}</span>
               <button
                 type="button"
                 className="dsh-qa-files__jump"
+                data-testid="qa-files-jump"
                 aria-label={`Перейти к сообщению от ${time}`}
                 title="К сообщению"
                 onClick={() => onJumpToMessage(group.messageId)}
@@ -118,7 +146,10 @@ export function QaFilesPanel({
                 </svg>
               </button>
             </h3>
-            <div className="dsh-qa-files__items">
+            <div
+              className="dsh-qa-files__items"
+              data-testid="qa-files-group-items"
+            >
               {group.files.map((file) => (
                 <QaFileAttachment
                   key={file.attachmentId}
