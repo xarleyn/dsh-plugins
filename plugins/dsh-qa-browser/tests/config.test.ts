@@ -196,6 +196,20 @@ describe("resolveQaBrowserConfig", () => {
         runtime: { cdpEndpoint: "http://build-host:9222" },
       }),
     ).toThrow(/only used when runtime.mode is attach/u);
+
+    // The switch only speaks about an endpoint, and `launch` has none: writing
+    // it would leave a config claiming a door the runtime does not open.
+    // Writing the default the other way stays fine.
+    expect(() =>
+      resolveQaBrowserConfig({
+        runtime: { mode: "launch", allowRemoteCdpEndpoint: true },
+      }),
+    ).toThrow(/allowRemoteCdpEndpoint only opens a runtime.cdpEndpoint/u);
+    expect(
+      resolveQaBrowserConfig({
+        runtime: { mode: "launch", allowRemoteCdpEndpoint: false },
+      }).runtime,
+    ).toMatchObject({ mode: "launch", cdpEndpoint: null });
   });
 
   it("does not let attach promise a window it cannot show", () => {

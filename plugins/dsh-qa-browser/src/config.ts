@@ -217,7 +217,7 @@ export const QaBrowserConfigSchema: z<QaBrowserConfig> = z
           .boolean()
           .default(false)
           .description(
-            "Let runtime.cdpEndpoint name a host outside this machine. A DevTools endpoint is full control of the browser, so the default keeps it on loopback.",
+            "Let runtime.cdpEndpoint name a host outside this machine. A DevTools endpoint is full control of the browser, so the default keeps it on loopback. Refused under runtime.mode launch, which has no endpoint to open.",
           ),
         headless: z.boolean().default(true),
         chromiumSandbox: z
@@ -359,6 +359,13 @@ function resolveCdpEndpoint(
     if (endpoint !== null) {
       throw new TypeError(
         "dsh-qa-browser: runtime.cdpEndpoint is only used when runtime.mode is attach",
+      );
+    }
+    if (raw.runtime?.allowRemoteCdpEndpoint === true) {
+      // The switch opens an endpoint, and this mode has none: a deployment that
+      // wrote it would believe it had opened a door that leads nowhere.
+      throw new TypeError(
+        "dsh-qa-browser: runtime.allowRemoteCdpEndpoint only opens a runtime.cdpEndpoint, and runtime.mode launch has none",
       );
     }
     return null;
