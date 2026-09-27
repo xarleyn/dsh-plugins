@@ -221,6 +221,45 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
+  it("keeps the refused chat on screen when its replacement cannot be created", async () => {
+    const world = harness(["saved"]);
+    const storageKey = "dsh-qa-surface.session:v1:/qa:session";
+    world.stored.set(storageKey, "saved");
+    world.secureSession.mockImplementation(async () => ({
+      ok: false as const,
+      error: { code: "policy-unavailable" },
+    }));
+    world.createSession.mockImplementation(async () => ({
+      ok: false as const,
+      error: {
+        code: "qa.session_create_refused",
+        message: "preset unavailable",
+      },
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    const seen: number[] = [];
+    const stop = controller.subscribe(() =>
+      seen.push(controller.getSnapshot().chatKey),
+    );
+    await controller.ensureSession();
+    stop();
+
+    // The replacement never arrived, so no chat was opened and nobody moved
+    // between chats: the identity the surface started with still names what is
+    // on screen, and the composer keeps the text the visitor was reading
+    // instead of being rebuilt over an empty chat and an error.
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: null,
+      error: expect.stringMatching(/Не удалось начать чат/u),
+    });
+    expect(new Set(seen).size).toBe(1);
+    expect(controller.getSnapshot().chatKey).toBe(seen[0]);
+    controller.dispose();
+  });
+
   it("treats a chat that disappeared under the surface as another chat", async () => {
     const world = harness();
     const controller = new QaSessionController({

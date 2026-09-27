@@ -301,6 +301,9 @@ export class QaSessionController {
    * rather than a counter: {@link bind} compares the session it is about to
    * adopt against it, so any path that ends up in another session takes another
    * identity — and a draft adopting its first session keeps the one it holds.
+   * It names a session this controller actually holds and nothing else: a bind
+   * that fell short of a binding leaves the identity on the session it named
+   * before, so a retried first send stays the same chat.
    */
   private namedSession: string | null = null;
   /**
@@ -1051,7 +1054,6 @@ export class QaSessionController {
     }
     this.drafting = true;
     this.openChat();
-    this.pendingSubmission = undefined;
     this.unbind();
     this.operationError = null;
     this.admissionPending = false;
@@ -1125,7 +1127,6 @@ export class QaSessionController {
     const operation = ++this.generation;
     this.drafting = false;
     this.openChat();
-    this.pendingSubmission = undefined;
     this.viewingSubagent = null;
     this.unbind();
     this.operationError = null;
@@ -1191,7 +1192,6 @@ export class QaSessionController {
     const operation = ++this.generation;
     this.drafting = false;
     this.openChat();
-    this.pendingSubmission = undefined;
     this.viewingSubagent = { id, title };
     this.unbind();
     this.operationError = null;
@@ -1404,18 +1404,12 @@ export class QaSessionController {
         this.operationError = null;
         this.chats.clearActive();
         // The replacement is another chat — empty, and not one the user asked
-        // to open — so it takes its own identity: the unsent text, the staged
-        // attachments and the per-chat drawers of the refused chat are dropped
-        // instead of being handed to the chat that replaced it.
-        this.openChat();
-        this.pendingSubmission = undefined;
-        this.state = {
-          ...QA_SESSION_IDLE_STATE,
-          chatKey: this.chatKey,
-          chatsRevision: this.chatsRevision,
-          phase: "creating",
-        };
-        this.emit();
+        // to open — so {@link bind} hands it an identity of its own, dropping
+        // the refused chat's unsent text, staged attachments and drawers rather
+        // than handing them to a conversation nobody chose. Nothing is published
+        // for it here: until the replacement exists this is still the chat on
+        // screen, and a fresh session the stand refuses to create must not cost
+        // the visitor the draft they were reading.
         id = await createQaSession({
           createSession: this.createSessionRemote,
           token: this.accounts?.token() ?? "",
@@ -1512,14 +1506,20 @@ export class QaSessionController {
   }
 
   /**
-   * Begin a chat of its own: take a fresh identity from the page-wide sequence
-   * and leave it naming no session yet. Called on every move between chats —
-   * reset, switch, subagent view — and by {@link bind} when it ends up in a
-   * session the current identity does not name.
+   * Begin a chat of its own: take a fresh identity from the page-wide sequence,
+   * leave it naming no session yet, and retire the send the ending chat had in
+   * flight. Called on every move between chats — reset, switch, subagent view —
+   * and by {@link bind} when it ends up in a session the identity does not name.
    */
   private openChat(): void {
     this.namedSession = null;
     this.chatKey = nextChatKey();
+    // A send in flight belongs to the chat that is ending. The projection reads
+    // the optimistic row and the busy flag out of it without asking which chat
+    // is on screen, so unless it dies here, the chat that takes this identity
+    // shows a question it never received and waits for a send it never made.
+    this.pendingSubmission = undefined;
+    this.admissionPending = false;
   }
 
   private async bind(
@@ -1537,13 +1537,6 @@ export class QaSessionController {
       track = true,
       allowCompatibilityReadOnly = false,
     } = options;
-    // Another session under the identity that named the previous one is another
-    // chat: it takes its own identity, so nothing the previous chat was holding
-    // — an unsent question, staged attachments, an open drawer — walks into it.
-    // A chat that names no session yet adopts one under the identity it already
-    // has, which is what keeps a draft's first prompt on the screen.
-    if (this.namedSession !== null && this.namedSession !== id) this.openChat();
-    this.namedSession = id;
     const reference = this.sessions.retain(id as SessionId, {
       source: QA_SURFACE_SESSION_SOURCE,
     });
@@ -1570,6 +1563,17 @@ export class QaSessionController {
     }
     if (binding === undefined)
       throw new Error("Session binding is unavailable.");
+    // Another session under the identity that named the previous one is another
+    // chat: it takes its own identity, so nothing the previous chat was holding
+    // — an unsent question, staged attachments, an open drawer — walks into it.
+    // A chat that names no session yet adopts one under the identity it already
+    // has, which is what keeps a draft's first prompt on the screen. Both
+    // halves wait for the binding this controller actually holds: a bind that
+    // fell short of it must leave the identity where it was, or the retried
+    // first send — which creates a fresh id — would read as another chat and
+    // rebuild the composer around the very question that has to be sent again.
+    if (this.namedSession !== null && this.namedSession !== id) this.openChat();
+    this.namedSession = id;
     this.unbind();
     this.sessionReference = reference;
     this.session = binding.session;
