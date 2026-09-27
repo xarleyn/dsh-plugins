@@ -36,4 +36,6 @@ and what the config accepts. The opt-in Chromium run then covers what only a
 real browser can answer: it starts a Chromium outside the plugin, drives it over
 CDP, screenshots it, and checks that the plugin's teardown left it running. That
 run needs one variable, `DSH_QA_BROWSER_E2E=1`, and finds a browser on the
-machine the way the launch path finds one.
+machine the way the launch path finds one. A run that was asked for and found
+nothing fails saying so — an attach case that quietly skipped would be the one
+result nobody could read.

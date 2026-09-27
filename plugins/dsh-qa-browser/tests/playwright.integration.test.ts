@@ -28,9 +28,10 @@ const enabled = process.env["DSH_QA_BROWSER_E2E"] === "1";
  * it and `DSH_QA_BROWSER_EXECUTABLE` only overrides that. The attach case then
  * joins a browser the runtime could have started itself — which is the point:
  * what separates the modes is who owns the process, not where the binary came
- * from.
+ * from. A run that was asked for and found nothing fails rather than skipping:
+ * a skipped attach case is the one result this card's claim cannot be read from.
  */
-function discoverChromium(): string | null {
+function discoverChromium(): string {
   const explicit = process.env["DSH_QA_BROWSER_EXECUTABLE"];
   if (explicit !== undefined) {
     if (!existsSync(explicit)) {
@@ -47,7 +48,14 @@ function discoverChromium(): string | null {
   } catch {
     // No registry entry to read: the installed browsers still stand.
   }
-  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+  const found = candidates.find((candidate) => existsSync(candidate));
+  if (found === undefined) {
+    throw new Error(
+      "no Chromium to attach to: install Chrome, Chromium or Edge, or name a " +
+        "binary with DSH_QA_BROWSER_EXECUTABLE",
+    );
+  }
+  return found;
 }
 
 /** Free a port the external Chromium can be asked to listen on. */
@@ -269,7 +277,8 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
   });
 
   // Collected whether or not the suite runs, so the search happens only for a
-  // suite that was actually asked for.
+  // suite that was actually asked for. An asked-for suite with nothing to attach
+  // to fails in that search, so the skip below only ever holds in a disabled run.
   const externalChromium = enabled ? discoverChromium() : null;
 
   it.skipIf(externalChromium === null)(
