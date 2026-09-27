@@ -681,11 +681,18 @@ describe("integrations operator card", () => {
     // does grant it, and a tester on the read-only service account is still
     // refused — the switch has to say so where it was ticked.
     const checks = screen.getByTestId("qa-integrations-teamcity-capabilities");
-    const logs = labelledControl(checks, /Логи сборок: чтение/u);
+    const logs = controlAt(
+      "qa-integrations-teamcity-logs-read",
+      "Логи сборок: чтение",
+    );
+    expect(checks.contains(logs)).toBe(true);
     expect(logs.closest("label")?.textContent).toContain("личный аккаунт");
     // A switch the credential does reach carries no note, so the ones that do
     // keep meaning something.
-    const failures = labelledControl(checks, /Провалы: чтение/u);
+    const failures = controlAt(
+      "qa-integrations-teamcity-failures-read",
+      "Провалы: чтение",
+    );
     expect(failures.closest("label")?.textContent).not.toContain(
       "личный аккаунт",
     );
