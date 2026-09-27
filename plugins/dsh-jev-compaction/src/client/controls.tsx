@@ -5,12 +5,17 @@
  * half-typed value never becomes a write and a refused write never clears the
  * field under the user's cursor. `overridden` marks a field whose value comes
  * from the user layer rather than the deployment default.
+ *
+ * Every control carries the `data-testid` its card passes in, so a browser test
+ * reaches it without naming the English caption; the overridden mark is that
+ * same id with `-chip` on the end, so no two fields claim one hook.
  */
 
 import type { ChangeEvent, ReactElement } from "react";
 import { useEffect, useId, useState } from "react";
 
 export interface ToggleProps {
+  readonly testId: string;
   readonly label: string;
   readonly description?: string;
   readonly checked: boolean;
@@ -27,7 +32,9 @@ export function Toggle(props: ToggleProps): ReactElement {
         <label className="jevc-row-label" htmlFor={id}>
           {props.label}
           {props.overridden === true ? (
-            <span className="jevc-chip"> · overridden</span>
+            <span className="jevc-chip" data-testid={`${props.testId}-chip`}>
+              {" · overridden"}
+            </span>
           ) : null}
         </label>
         {props.description === undefined ? null : (
@@ -40,6 +47,7 @@ export function Toggle(props: ToggleProps): ReactElement {
         className="jevc-toggle"
         checked={props.checked}
         disabled={props.disabled}
+        data-testid={props.testId}
         onChange={(event: ChangeEvent<HTMLInputElement>) => {
           props.onToggle(event.target.checked);
         }}
@@ -49,6 +57,7 @@ export function Toggle(props: ToggleProps): ReactElement {
 }
 
 export interface NumberFieldProps {
+  readonly testId: string;
   readonly label: string;
   readonly description?: string;
   readonly value: number;
@@ -90,7 +99,9 @@ export function NumberField(props: NumberFieldProps): ReactElement {
       <label className="jevc-field-label" htmlFor={id}>
         {props.label}
         {props.overridden === true ? (
-          <span className="jevc-chip"> · overridden</span>
+          <span className="jevc-chip" data-testid={`${props.testId}-chip`}>
+            {" · overridden"}
+          </span>
         ) : null}
       </label>
       <div className="jevc-inline">
@@ -103,6 +114,7 @@ export function NumberField(props: NumberFieldProps): ReactElement {
           max={props.max}
           step={props.step ?? 1}
           disabled={props.disabled}
+          data-testid={props.testId}
           onChange={(event) => {
             setDraft(event.target.value);
           }}
@@ -123,6 +135,7 @@ export function NumberField(props: NumberFieldProps): ReactElement {
 }
 
 export interface TextFieldProps {
+  readonly testId: string;
   readonly label: string;
   readonly description?: string;
   readonly value: string;
@@ -145,7 +158,9 @@ export function TextField(props: TextFieldProps): ReactElement {
       <label className="jevc-field-label" htmlFor={id}>
         {props.label}
         {props.overridden === true ? (
-          <span className="jevc-chip"> · overridden</span>
+          <span className="jevc-chip" data-testid={`${props.testId}-chip`}>
+            {" · overridden"}
+          </span>
         ) : null}
       </label>
       <input
@@ -155,6 +170,7 @@ export function TextField(props: TextFieldProps): ReactElement {
         value={draft}
         placeholder={props.placeholder}
         disabled={props.disabled}
+        data-testid={props.testId}
         onChange={(event) => {
           setDraft(event.target.value);
         }}
@@ -173,6 +189,7 @@ export function TextField(props: TextFieldProps): ReactElement {
 }
 
 export interface SelectFieldProps {
+  readonly testId: string;
   readonly label: string;
   readonly description?: string;
   readonly value: string;
@@ -192,7 +209,9 @@ export function SelectField(props: SelectFieldProps): ReactElement {
       <label className="jevc-field-label" htmlFor={id}>
         {props.label}
         {props.overridden === true ? (
-          <span className="jevc-chip"> · overridden</span>
+          <span className="jevc-chip" data-testid={`${props.testId}-chip`}>
+            {" · overridden"}
+          </span>
         ) : null}
       </label>
       <select
@@ -200,6 +219,7 @@ export function SelectField(props: SelectFieldProps): ReactElement {
         className="jevc-input"
         value={props.value}
         disabled={props.disabled}
+        data-testid={props.testId}
         onChange={(event) => {
           props.onCommit(event.target.value);
         }}
@@ -218,6 +238,7 @@ export function SelectField(props: SelectFieldProps): ReactElement {
 }
 
 export interface TagListFieldProps {
+  readonly testId: string;
   readonly label: string;
   readonly description?: string;
   readonly values: readonly string[];
@@ -253,21 +274,30 @@ export function TagListField(props: TagListFieldProps): ReactElement {
       <label className="jevc-field-label" htmlFor={id}>
         {props.label}
         {props.overridden === true ? (
-          <span className="jevc-chip"> · overridden</span>
+          <span className="jevc-chip" data-testid={`${props.testId}-chip`}>
+            {" · overridden"}
+          </span>
         ) : null}
       </label>
-      <div className="jevc-tags">
+      <div className="jevc-tags" data-testid={`${props.testId}-list`}>
         {props.values.length === 0 ? (
-          <span className="jevc-empty">none</span>
+          <span className="jevc-empty" data-testid={`${props.testId}-empty`}>
+            none
+          </span>
         ) : (
           props.values.map((value) => (
-            <span key={value} className="jevc-tag">
+            <span
+              key={value}
+              className="jevc-tag"
+              data-testid={`${props.testId}-tag`}
+            >
               {value}
               <button
                 type="button"
                 className="jevc-tag-remove"
                 aria-label={`Remove ${value}`}
                 disabled={props.disabled}
+                data-testid={`${props.testId}-remove`}
                 onClick={() => {
                   props.onCommit(
                     props.values.filter((entry) => entry !== value),
@@ -288,6 +318,7 @@ export function TagListField(props: TagListFieldProps): ReactElement {
           value={draft}
           placeholder={props.placeholder ?? "add a tool name"}
           disabled={props.disabled}
+          data-testid={props.testId}
           onChange={(event) => {
             setDraft(event.target.value);
           }}
@@ -302,6 +333,7 @@ export function TagListField(props: TagListFieldProps): ReactElement {
           type="button"
           className="jevc-button"
           disabled={props.disabled || draft.trim().length === 0}
+          data-testid={`${props.testId}-add`}
           onClick={add}
         >
           Add

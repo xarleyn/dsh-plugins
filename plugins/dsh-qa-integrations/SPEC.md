@@ -1657,7 +1657,7 @@ The MVP is ready when all of the following are true:
 ## 38. Detailed specifications
 
 `SPEC.md` is the entry point; the design documents that carry the per-area
-details live under [`docs/specs/`](./docs/specs/):
+details live under `docs/specs/`, each one linked to its file below:
 
 - [`docs/specs/managed-service-credentials.md`](./docs/specs/managed-service-credentials.md)
   — the deployment-managed service-token mode: capability classification, the
