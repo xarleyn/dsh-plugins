@@ -1,28 +1,25 @@
 /**
- * The file layer: reading a preset's persona state, the revision guard, and
- * every refusal that must leave the file exactly as it was.
+ * Reading presets: a preset's persona state out of the composition the registry
+ * renders, and every failure the page has to say instead of a reading.
  *
- * The preset root is a real temporary directory, so the guarantees under test
- * are the ones the file system gives: bytes on disk, modes, the byte-order
- * mark, and the fact that a refused write did not touch the file at all.
+ * The roster is a fixture over the same face the plugin reads the host with, so
+ * what is under test is the reader's own decisions: what counts as one persona,
+ * what an unmanaged key is, and what a refused or unparsable composition answers
+ * with.
  */
 
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
 import { readCatalog, readDocument } from "../src/host/preset-reader.js";
 import {
   INHERITED_PRESET,
   OWNED_PRESET,
-  preset,
-  root,
   rosterOf,
-} from "./preset-files.helpers.js";
+} from "./preset-roster.helpers.js";
 
 describe("reading presets", () => {
   it("reports a local persona with its four values", async () => {
-    const path = await preset(OWNED_PRESET);
-    const roster = rosterOf({ demo: { path, trust: "user" } });
+    const roster = rosterOf({ demo: { content: OWNED_PRESET } });
     const document = await readDocument(roster, undefined, "demo");
     expect(document.persona).toEqual({
       prefix: "You are the shipped demo persona.",
@@ -33,67 +30,69 @@ describe("reading presets", () => {
     expect(document.hasRow).toBe(true);
     expect(document.editable).toBe(true);
     expect(document.rowCount).toBe(2);
+    expect(document.source).toBe(OWNED_PRESET);
   });
 
   it("reports the inherited state when the preset has no persona row", async () => {
-    const path = await preset(INHERITED_PRESET);
-    const roster = rosterOf({ demo: { path, trust: "user" } });
+    const roster = rosterOf({ demo: { content: INHERITED_PRESET } });
     const document = await readDocument(roster, undefined, "demo");
     expect(document.hasRow).toBe(false);
     expect(document.persona.prefix).toBe("");
     expect(document.persona.includeRuntimeContext).toBe(true);
   });
 
-  it("marks a shipped preset as not editable, and unreadable files as such", async () => {
-    const path = await preset(OWNED_PRESET);
-    const roster = rosterOf({
-      shipped: { path, trust: "system" },
-      missing: {
-        path: join(root, "nowhere", "agent.cordis.yml"),
-        trust: "user",
+  it("marks a preset that cannot compose, and one with no composition, as unreadable material", async () => {
+    const roster = rosterOf(
+      {
+        shipped: {
+          content: OWNED_PRESET,
+          broken: "the tool row names nothing",
+        },
+        retired: { content: null },
       },
-    });
+      "shipped",
+    );
     const catalog = await readCatalog(roster);
     const shipped = catalog.presets.find((row) => row.id === "shipped");
-    expect(shipped?.editable).toBe(false);
-    expect(shipped?.trust).toBe("system");
-    const missing = catalog.presets.find((row) => row.id === "missing");
-    expect(missing?.persona).toBe("unreadable");
-    expect(missing?.editable).toBe(false);
+    expect(shipped?.broken).toBe("the tool row names nothing");
+    expect(shipped?.persona).toBe("local");
+    expect(shipped?.isDefault).toBe(true);
+    const retired = catalog.presets.find((row) => row.id === "retired");
+    expect(retired?.persona).toBe("unreadable");
+    expect(retired?.broken).toBe("");
   });
 
   it("reports an ambiguous preset instead of guessing", async () => {
-    const path = await preset(
-      [
-        "- id: persona",
-        "  name: '@deepseek-ai/dsh-persona'",
-        "  config:",
-        "    prefix: first",
-        "",
-        "- id: persona-two",
-        "  name: '@deepseek-ai/dsh-persona'",
-        "  config:",
-        "    prefix: second",
-        "",
-      ].join("\n"),
-    );
-    const roster = rosterOf({ demo: { path, trust: "user" } });
+    const roster = rosterOf({
+      demo: {
+        content: [
+          "- id: persona",
+          "  name: '@deepseek-ai/dsh-persona'",
+          "  config:",
+          "    prefix: first",
+          "",
+          "- id: persona-two",
+          "  name: '@deepseek-ai/dsh-persona'",
+          "  config:",
+          "    prefix: second",
+          "",
+        ].join("\n"),
+      },
+    });
     const document = await readDocument(roster, undefined, "demo");
     expect(document.hasRow).toBe(false);
     expect(document.extraRows).toBe(1);
   });
 
   it("reports the failure of a composition that is not a list", async () => {
-    const path = await preset("id: persona\n");
-    const roster = rosterOf({ demo: { path, trust: "user" } });
+    const roster = rosterOf({ demo: { content: "id: persona\n" } });
     const document = await readDocument(roster, undefined, "demo");
     expect(document.editable).toBe(false);
     expect(document.readError).toMatch(/not a YAML list/u);
   });
 
   it("uses the deployment's own section orders", async () => {
-    const path = await preset(OWNED_PRESET);
-    const roster = rosterOf({ demo: { path, trust: "user" } });
+    const roster = rosterOf({ demo: { content: OWNED_PRESET } });
     const document = await readDocument(
       roster,
       {

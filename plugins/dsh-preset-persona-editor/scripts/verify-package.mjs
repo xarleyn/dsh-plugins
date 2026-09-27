@@ -62,9 +62,9 @@ await runVerifyPackage({
     moduleLoaderId: true,
     matches: [
       // Browser bundle identity (AGENTS.md): the registration id is the full
-      // package name, and the page names the preset composition file it edits.
+      // package name, and the page names the composition it reads.
       /id:\s*"@yadsh\/dsh-preset-persona-editor"/u,
-      /agent\.cordis\.yml/u,
+      /Declared composition/u,
     ],
     notMatches: [
       // The browser half edits text; the YAML surgery and the file-system

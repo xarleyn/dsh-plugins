@@ -1,12 +1,7 @@
 /**
- * Shared fixtures for the prompt-sections tests, moved here verbatim from the
- * single-file original.
+ * Shared fixtures for the prompt-sections tests: compositions the reader and
+ * the surgery library are handed, in the spellings a preset actually uses.
  */
-
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach } from "vitest";
 
 import type { PromptSectionDraft } from "../src/types.js";
 
@@ -59,13 +54,3 @@ export const WITH_SECTIONS = [
   "  name: '@deepseek-ai/dsh-tool-bash'",
   "",
 ].join("\n");
-
-export let root = "";
-
-beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "preset-sections-"));
-});
-
-afterEach(async () => {
-  await rm(root, { recursive: true, force: true });
-});

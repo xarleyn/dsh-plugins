@@ -22,7 +22,7 @@ export const strings = {
   /** Badges on a roster row. */
   badgeCustom: "Custom",
   badgeInherited: "Inherited",
-  badgeShipped: "Shipped",
+  badgeBroken: "Cannot compose",
   badgeAmbiguous: "Two rows",
   badgeUnreadable: "Unreadable",
 
@@ -90,13 +90,6 @@ export const strings = {
   sectionOff: "off",
   sectionFirstPartyName:
     "This name belongs to a first-party section, and a section of this preset shadows it.",
-  sectionsModulePresent:
-    "The preset ships its registrar (prompt-sections.mjs).",
-  sectionsModuleForeign:
-    "The preset's prompt-sections.mjs was written by hand, so the sections it registers need not match the list below.",
-  sectionsModuleMissing:
-    "The registrar file is missing, so a sections row registers nothing.",
-  sectionsModuleUnknown: "The registrar could not be checked.",
   sectionsAmbiguous:
     "More than one composition row names the registrar, so these sections cannot be attributed here.",
   sectionsError: "The section list is not a plain sequence this page can read.",
@@ -111,9 +104,10 @@ export const strings = {
     "This row sets a managed key to a `!!js` expression, so its value is not the text shown here.",
   extraRowsTitle: "More than one persona row",
   extraRowsHint:
-    "This preset names more than one @deepseek-ai/dsh-persona row, so no single one is its persona. Read the composition file itself.",
+    "This preset names more than one @deepseek-ai/dsh-persona row, so no single one is its persona. Read the preset's own declarations.",
 
-  fileTitle: "Composition",
-  fileHint: "Source of truth: the preset's own agent.cordis.yml.",
-  pathLabel: "Path",
+  brokenTitle: "Why this preset cannot compose a session",
+  compositionTitle: "Declared composition",
+  compositionHint:
+    "What the Host renders from the preset's own declarations — the effective plugin list, not a file's bytes.",
 } as const;

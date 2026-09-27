@@ -47,13 +47,11 @@ export {
   inspectPreset,
   personaOrders,
   readCatalog,
+  readComposition,
   readDocument,
-  readPresetFile,
-  readSectionsModule,
-  revisionOf,
   type CompositionInspection,
+  type PresetComposition,
   type PresetEntry,
-  type PresetFile,
   type PresetRosterFace,
   type SystemPromptFace,
 } from "./host/preset-reader.js";
@@ -83,7 +81,6 @@ export type {
   PersonaDraft,
   PersonaPresetRow,
   PersonaState,
-  PresetTrust,
 } from "./types.js";
 
 /** Cordis plugin name (the unscoped runtime id of the bundle patch). */

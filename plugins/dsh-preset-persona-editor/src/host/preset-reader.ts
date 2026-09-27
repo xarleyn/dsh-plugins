@@ -1,18 +1,17 @@
 /**
  * Reading presets: the roster with each preset's persona state, and one preset
- * opened as an editable document.
+ * opened as the composition the Host renders from its declarations.
  *
- * The reader never mounts a preset and never asks the loader anything: it reads
- * the same composition file a session would be composed from, so an answer here
- * means the same thing for a session created afterwards. Reads are unmemoized on
- * purpose — the roster is a live directory, and a cached answer would be the one
- * that goes stale exactly when someone edits a file by hand.
+ * The reader never mounts a preset, never asks the loader anything and no longer
+ * touches the file system: since `0.1.7-rc.2` the registry answers `readDocument`
+ * with the preset's child plugin list as entry-list YAML, which is the same
+ * declaration a session composes from. It is rendered, not read — so a preset's
+ * own comments, byte-order mark and hand formatting are the Loader's business,
+ * and what arrives here is the effective list. Reads are unmemoized on purpose:
+ * the roster is a live directory, and a cached answer would be the one that goes
+ * stale exactly when a preset is registered or retired.
  * @module host/preset-reader
  */
-
-import { createHash } from "node:crypto";
-import { readFile } from "node:fs/promises";
-import { dirname, join } from "node:path";
 
 import {
   PERSONA_PREFIX_FALLBACK_ORDER,
@@ -21,21 +20,14 @@ import {
   PERSONA_SUFFIX_FALLBACK_ORDER,
   PERSONA_SUFFIX_ORDER_NAME,
 } from "../shared/persona.js";
-import {
-  SECTIONS_MODULE_FILE,
-  SECTIONS_MODULE_SOURCE,
-  SECTIONS_MODULE_SPECIFIER,
-} from "../shared/prompt-sections.js";
-import { splitBom } from "../shared/render.js";
+import { SECTIONS_MODULE_SPECIFIER } from "../shared/prompt-sections.js";
 import type {
   PersonaCatalog,
   PersonaDocument,
   PersonaDraft,
   PersonaPresetRow,
   PersonaState,
-  PresetTrust,
   PromptSectionDraft,
-  SectionsModuleState,
   SectionsState,
 } from "../types.js";
 import {
@@ -48,27 +40,33 @@ import {
 import { notFound } from "./errors.js";
 import { reasonOf } from "./validation.js";
 
-/** The fields this editor reads off one preset. */
+/** One preset as the registry's roster reports it. */
 export interface PresetEntry {
   readonly id: string;
-  readonly trust: PresetTrust;
-  /** Absolute path of the preset's composition file. */
-  readonly path: string;
   readonly name?: string | undefined;
   readonly description?: string | undefined;
+  readonly order?: number | undefined;
+  /** Why this preset cannot compose a session; absent when it can. */
   readonly broken?: string | undefined;
+}
+
+/** One declared composition, rendered by the Host for reading. */
+export interface PresetComposition {
+  readonly agentPreset: string;
+  /** The child plugin list as entry-list YAML, `!!js` expressions included. */
+  readonly content: string;
+  readonly name?: string | undefined;
+  readonly description?: string | undefined;
 }
 
 /** The slice of the host's `agentPresets` service this editor uses. */
 export interface PresetRosterFace {
   list(): Promise<readonly PresetEntry[]>;
   resolve(id?: string): Promise<PresetEntry>;
-  /** Whether the deployment configures a user-writable preset root. */
-  readonly authorable: boolean;
+  /** The preset's declared composition, rendered from its own declarations. */
+  readDocument(agentPreset: string): Promise<PresetComposition>;
   /** Id of the preset a session naming none composes, read live. */
   readonly defaultId: string;
-  /** Duplicate a preset directory into the writable root. */
-  copy(from: string, id: string, name?: string): Promise<unknown>;
 }
 
 /** The slice of the host's `systemPrompt` service this editor uses. */
@@ -76,16 +74,6 @@ export interface SystemPromptFace {
   getSectionOrder(
     name: "DEPLOYMENT_PERSONA_PREFIX" | "DEPLOYMENT_PERSONA_SUFFIX",
   ): number;
-}
-
-/** One composition file's text, byte-order mark, and content revision. */
-export interface PresetFile {
-  /** The text the parser sees: byte-order mark removed. */
-  readonly text: string;
-  /** Whether the file began with a U+FEFF. */
-  readonly bom: boolean;
-  /** Hash of the file's bytes, mark included. */
-  readonly revision: string;
 }
 
 /** What a composition says about its persona and its prompt sections. */
@@ -101,33 +89,11 @@ export interface CompositionInspection {
   readonly sectionsUnknownKeys: readonly string[];
 }
 
-/** Content revision of a composition file: a hash of its bytes. */
-export function revisionOf(bytes: string | Uint8Array): string {
-  return createHash("sha256").update(bytes).digest("hex");
-}
-
-/**
- * Read one composition file.
- * @param path - absolute path of the file.
- * @returns its text, byte-order mark, and revision.
- */
-export async function readPresetFile(path: string): Promise<PresetFile> {
-  const bytes = await readFile(path);
-  const split = splitBom(bytes.toString("utf8"));
-  return {
-    text: split.text,
-    bom: split.bom,
-    // The revision covers the file as it is on disk, mark included, so any
-    // byte an outside editor changes invalidates a pending save.
-    revision: revisionOf(bytes),
-  };
-}
-
 /**
  * Inspect a composition's persona row.
  * @param text - the composition's text.
  * @returns the persona state and the values the row carries.
- * @throws CompositionError when the file is not an editable composition.
+ * @throws CompositionError when the text is not a composition this page reads.
  */
 export function inspectComposition(text: string): CompositionInspection {
   const parse = parseComposition(text);
@@ -158,25 +124,6 @@ export function inspectComposition(text: string): CompositionInspection {
   };
 }
 
-/**
- * Read the state of the registrar module beside a composition.
- * @param compositionPath - absolute path of the composition file.
- * @returns `present` for this editor's own file, `foreign` for an edited one,
- * `missing` when there is none.
- */
-export async function readSectionsModule(
-  compositionPath: string,
-): Promise<SectionsModuleState> {
-  const path = join(dirname(compositionPath), SECTIONS_MODULE_FILE);
-  let text: string;
-  try {
-    text = await readFile(path, "utf8");
-  } catch {
-    return "missing";
-  }
-  return text === SECTIONS_MODULE_SOURCE ? "present" : "foreign";
-}
-
 /** The persona state of one preset, with the failure that produced it. */
 interface PresetInspection {
   readonly state: PersonaState;
@@ -190,7 +137,6 @@ interface PresetInspection {
   readonly sectionsState: SectionsState;
   readonly sectionsError: string;
   readonly sectionsUnknownKeys: readonly string[];
-  readonly sectionsModule: SectionsModuleState;
 }
 
 const ABSENT: {
@@ -199,7 +145,6 @@ const ABSENT: {
   readonly foreignKeys: readonly string[];
   readonly extraRows: number;
   readonly sections: readonly PromptSectionDraft[];
-  readonly sectionsState: SectionsState;
   readonly sectionsError: string;
   readonly sectionsUnknownKeys: readonly string[];
 } = {
@@ -213,31 +158,49 @@ const ABSENT: {
   foreignKeys: [],
   extraRows: 0,
   sections: [],
-  sectionsState: "none",
   sectionsError: "",
   sectionsUnknownKeys: [],
 };
 
-/** Read one preset's persona and sections state, reporting every failure. */
-export async function inspectPreset(
-  preset: PresetEntry,
-): Promise<PresetInspection> {
-  const sectionsModule = await readSectionsModule(preset.path);
-  let file: PresetFile;
+/**
+ * Read one preset's composition from the registry.
+ * @param roster - the host's `agentPresets` service.
+ * @param id - the preset to open.
+ * @returns the rendered composition, or `null` when the registry refuses it.
+ */
+export async function readComposition(
+  roster: PresetRosterFace,
+  id: string,
+): Promise<PresetComposition | null> {
   try {
-    file = await readPresetFile(preset.path);
-  } catch (cause) {
+    return await roster.readDocument(id);
+  } catch {
+    // A preset can be retired between the roster read and this call; the row
+    // then carries no readings, which is what `unreadable` means here.
+    return null;
+  }
+}
+
+/**
+ * Inspect one preset's composition, reporting every failure the page has words
+ * for.
+ * @param composition - the rendered composition, or `null` when refused.
+ * @returns the persona and sections state of the composition.
+ */
+export async function inspectPreset(
+  composition: PresetComposition | null,
+): Promise<PresetInspection> {
+  if (composition === null) {
     return {
       state: "unreadable",
       complete: false,
-      readError: `the composition file could not be read: ${reasonOf(cause)}`,
-      sectionsModule,
+      readError: "the registry returned no composition for this preset",
       ...ABSENT,
       sectionsState: "unreadable",
     };
   }
   try {
-    const inspection = inspectComposition(file.text);
+    const inspection = inspectComposition(composition.content);
     return {
       state: inspection.state,
       draft: inspection.draft,
@@ -250,18 +213,25 @@ export async function inspectPreset(
       sectionsState: inspection.sectionsState,
       sectionsError: inspection.sectionsError,
       sectionsUnknownKeys: inspection.sectionsUnknownKeys,
-      sectionsModule,
     };
   } catch (cause) {
     return {
       state: "unreadable",
       complete: false,
       readError: reasonOf(cause),
-      sectionsModule,
       ...ABSENT,
       sectionsState: "unreadable",
     };
   }
+}
+
+/** Whether a composition a page can read stands behind this preset. */
+function isReadable(
+  broken: string,
+  composition: PresetComposition | null,
+  state: PersonaState,
+): boolean {
+  return broken === "" && composition !== null && state !== "unreadable";
 }
 
 /**
@@ -276,15 +246,15 @@ export async function readCatalog(
   const defaultId = roster.defaultId;
   const rows: PersonaPresetRow[] = [];
   for (const preset of presets) {
-    const inspection = await inspectPreset(preset);
+    const broken = preset.broken ?? "";
+    const composition = await readComposition(roster, preset.id);
+    const inspection = await inspectPreset(composition);
     rows.push({
       id: preset.id,
       name: preset.name ?? "",
       description: preset.description ?? "",
-      trust: preset.trust,
       isDefault: preset.id === defaultId,
-      editable: preset.trust === "user" && inspection.state !== "unreadable",
-      broken: preset.broken ?? "",
+      broken,
       persona: inspection.state,
       complete: inspection.complete,
     });
@@ -308,8 +278,8 @@ export function personaOrders(systemPrompt: SystemPromptFace | undefined): {
 }
 
 /**
- * One preset as a readable document: its persona values, its unmanaged keys,
- * and its composition text.
+ * One preset as a document: its persona values, its unmanaged keys, the
+ * composition the Host renders for it, and what the deployment places around it.
  * @param roster - the host's `agentPresets` service.
  * @param systemPrompt - the host's `systemPrompt` service, when mounted.
  * @param id - the preset to open.
@@ -321,25 +291,18 @@ export async function readDocument(
   id: string,
 ): Promise<PersonaDocument> {
   const preset = await resolvePreset(roster, id);
-  const inspection = await inspectPreset(preset);
+  const composition = await readComposition(roster, id);
+  const inspection = await inspectPreset(composition);
   const orders = personaOrders(systemPrompt);
-  let source = "";
-  let rowCount = 0;
-  try {
-    source = (await readPresetFile(preset.path)).text;
-    rowCount = topLevelRowCount(source);
-  } catch {
-    // The viewer shows nothing when the file cannot be read at all; the
-    // readError beside it already carries the reason.
-  }
+  const broken = preset.broken ?? "";
+  const source = composition?.content ?? "";
   return {
     id: preset.id,
-    name: preset.name ?? "",
-    description: preset.description ?? "",
-    trust: preset.trust,
-    editable: preset.trust === "user" && inspection.state !== "unreadable",
+    name: composition?.name ?? preset.name ?? "",
+    description: composition?.description ?? preset.description ?? "",
+    broken,
+    editable: isReadable(broken, composition, inspection.state),
     isDefault: preset.id === roster.defaultId,
-    path: preset.path,
     hasRow: inspection.state === "local",
     persona: inspection.draft,
     unknownKeys: inspection.unknownKeys,
@@ -348,13 +311,12 @@ export async function readDocument(
     sections: inspection.sections,
     sectionsState: inspection.sectionsState,
     sectionsError: inspection.sectionsError,
-    sectionsModule: inspection.sectionsModule,
     sectionsUnknownKeys: inspection.sectionsUnknownKeys,
     readError: inspection.readError,
     source,
     prefixOrder: orders.prefixOrder,
     suffixOrder: orders.suffixOrder,
-    rowCount,
+    rowCount: topLevelRowCount(source),
   };
 }
 
@@ -372,7 +334,7 @@ function topLevelRowCount(text: string): number {
 
 /**
  * Resolve a preset id, reporting the editor's own not-found code so a client
- * has one failure to branch on whatever the harness throws.
+ * has one failure to branch on whatever the registry throws.
  * @param roster - the host's `agentPresets` service.
  * @param id - the preset id.
  * @returns the resolved preset.

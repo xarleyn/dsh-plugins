@@ -84,8 +84,9 @@ Numbered, testable guarantees:
     composes with this plugin uninstalled, because the registrar is the preset's
     own module. The page no longer materializes it.
 17. ~~**The registrar is never rewritten.**~~ **Withdrawn** — nothing is
-    rewritten. The page still reports whether the registrar beside a composition
-    is this editor's own file, a hand-written one, or absent.
+    rewritten, and since the composition arrives rendered from the preset's
+    declarations, the file beside it is not something this page can see at all.
+    What a preset declares as its sections is what the page reports.
 18. ~~**Section data is validated where the harness would fail.**~~ Withdrawn as
     a gate on a write. The rules are the harness's own — a name is a single-line
     identifier unique within the preset, an order is a whole number, a text is
@@ -99,22 +100,24 @@ Numbered, testable guarantees:
 
 - `PersonaDraft` — `prefix`, `suffix`, `complete`, `includeRuntimeContext`,
   exactly the config `@deepseek-ai/dsh-persona` accepts.
-- `PersonaPresetRow` — one roster row: id, display name, description, trust,
-  is-default, readability, broken reason, persona state (`none` | `local` |
-  `ambiguous` | `unreadable`) and `complete`.
-- `PersonaDocument` — one opened preset: the four values, the composition file's
-  path, its unmanaged and unrewritable keys, the composition text, the number of
-  composition rows, and the section orders the deployment resolves for the
-  persona prefix and suffix.
+- `PersonaPresetRow` — one roster row: id, display name, description,
+  is-default, broken reason, persona state (`none` | `local` | `ambiguous` |
+  `unreadable`) and `complete`. An `0.1.7-rc.2` roster row publishes no
+  ownership and no path, so neither reaches this model.
+- `PersonaDocument` — one opened preset: the four values, whether the registry
+  answered and the composition parsed, the roster's broken reason, its unmanaged
+  keys, the composition text the Host rendered, the number of composition rows,
+  and the section orders the deployment resolves for the persona prefix and
+  suffix.
 
 ## 3. Lifecycle
 
-1. Open the page: the roster is read through the `agentPresets` service; every
-   preset's composition is read (unmemoized — it is a live directory, and a
-   cached answer would be the one that goes stale when someone edits a file by
-   hand).
-2. Open a preset: its values, its unmanaged keys, and its composition text are
-   read, and nothing else happens.
+1. Open the page: the roster is read through the `agentPresets` service, and
+   every preset's composition is read through it as well (unmemoized — the
+   roster is a live directory, and a cached answer would be the one that goes
+   stale when a preset is registered or retired).
+2. Open a preset: its values, its unmanaged keys, and the composition the
+   registry renders for it are read, and nothing else happens.
 3. There is no step 3. The page has no write, so there is no revision check, no
    readback, and no atomic replace.
 
@@ -129,8 +132,8 @@ Numbered, testable guarantees:
 - The advanced area as a reading: the named, ordered sections a preset
   contributes, whether each is enabled, and their place in the assembled prompt.
 - The disclosures a hand-edited composition needs: keys beyond the four, a
-  managed key set to an expression, more than one persona row, a registrar that
-  is not this editor's own.
+  managed key set to an expression, more than one persona row, and the reason
+  the registry gives for a preset that cannot compose.
 - The composition text itself, for every case the four fields cannot hold.
 
 ### Not included (since the 0.1.7-rc.2 cutover)
@@ -157,7 +160,8 @@ Numbered, testable guarantees:
 8. uninstall safety: the plugin's presence is not required for any preset to
    compose — the persona is plain composition YAML and the sections are a module
    the preset owns;
-9. a preset whose sections a hand-written registrar mounts, reported as foreign;
+9. a preset the registry reports as broken — the roster's own reason reaches the
+   card, and the page shows no readings for it;
 10. a preset the roster does not know, answered with the page's own not-found
     code and the Host's reason logged beside it;
 11. the ordering and shadowing warnings of a section named `deployment:*`.
@@ -170,7 +174,7 @@ Numbered, testable guarantees:
 | Composition reading (persona row, sections row, unmanaged keys, ambiguity) | Implemented |
 | Composition surgery (in-place rewrite, insert, remove; comments/`!!js`/EOL/BOM preserved) — a library with no caller since the cutover | Implemented, tested |
 | Section validation rules — a library with no caller since the cutover | Implemented, tested |
-| Registrar file state (own / hand-written / absent) | Implemented |
+| Preset state the registry publishes (broken reason, default id, display name) | Implemented |
 | Browser page (`settings.section`, roster, readings, advanced area, preview, composition viewer) | Implemented |
 | Package gates (manifest, bundle, compatibility, tarball) | Implemented |
 | Writing a preset through this page | Withdrawn (decision D2; issue #605) |
