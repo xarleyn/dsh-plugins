@@ -154,7 +154,10 @@ function WebFetchAuthCard({
         title="Authenticated Web Fetch"
         description="Per-origin authenticated rules for web_fetch: credentials, SSRF policy, and diagnostics."
         badge={
-          <span className="dsh-plugin-card__badge">
+          <span
+            className="dsh-plugin-card__badge"
+            data-testid="wfa-card-enabled-state"
+          >
             {(config?.enabled ?? true) ? "Enabled" : "Disabled"}
           </span>
         }
@@ -163,7 +166,11 @@ function WebFetchAuthCard({
         }
         bodyClassName="wfa-body"
       >
-        {error !== null && <div className="wfa-error">{error}</div>}
+        {error !== null && (
+          <div className="wfa-error" data-testid="wfa-card-error">
+            {error}
+          </div>
+        )}
         <StatusSection status={report} warnings={warnings} />
         <RulesSection
           config={config}

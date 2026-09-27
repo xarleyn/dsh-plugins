@@ -17,6 +17,7 @@ import {
   rawObject,
   rawRecord,
   rawString,
+  resourceRecord,
   resourceRows,
   Section,
   type OperatorForm,
@@ -85,21 +86,6 @@ function profileWire(draft: ProfileDraft): Record<string, unknown> {
     );
   }
   return wire;
-}
-
-/** `{ kind: ["a", "b"] }` from the editor's `kind: "a, b"` rows. */
-function resourceRecord(
-  rows: ReadonlyArray<readonly [string, string]>,
-): Record<string, readonly string[]> {
-  const record: Record<string, readonly string[]> = {};
-  for (const [kind, values] of rows) {
-    const list = values
-      .split(",")
-      .map((row) => row.trim())
-      .filter((row) => row !== "");
-    if (list.length > 0) record[kind] = list;
-  }
-  return record;
 }
 
 /**

@@ -1942,10 +1942,14 @@ export class QaSessionController {
     const session = this.session;
     if (session === undefined) return { kind: "refused", reason: null };
     const sessionId = String(session.sessionId);
-    if (!this.config.lockdown.enabled) {
+    if (!this.config.lockdown.enabled && this.accounts === undefined) {
       this.policyReady = true;
       return { kind: "ok", sessionId };
     }
+    // With lockdown off there is no policy to pin, but the Host call still
+    // runs: account identity and ownership are admitted there independently of
+    // lockdown, and skipping the call is what let a browser that restored
+    // another account's chat write into it without ever being asked who spoke.
     this.policyReady = false;
     this.publish();
     const outcome = await attestQaPolicy({

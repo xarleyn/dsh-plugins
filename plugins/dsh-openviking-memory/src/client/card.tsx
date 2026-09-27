@@ -157,7 +157,10 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
         title="OpenViking Memory"
         description="Durable memory tools, conversation capture, and automatic profile/recall injection against one OpenViking server."
         badge={
-          <span className="dsh-plugin-card__badge">
+          <span
+            className="dsh-plugin-card__badge"
+            data-testid="openviking-card-badge"
+          >
             {badgeText(autoInject)}
           </span>
         }
@@ -167,14 +170,24 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
         bodyClassName="ovm-body"
       >
         {settings.status === "loading" ? (
-          <p className="ovm-muted">
+          <p className="ovm-muted" data-testid="openviking-card-loading">
             Loading the OpenViking Memory configuration…
           </p>
         ) : (
           <>
-            {error !== null ? <div className="ovm-error">{error}</div> : null}
+            {error !== null ? (
+              <div
+                className="ovm-error"
+                data-testid="openviking-card-write-error"
+              >
+                {error}
+              </div>
+            ) : null}
 
-            <section className="ovm-section">
+            <section
+              className="ovm-section"
+              data-testid="openviking-card-presentation"
+            >
               <div className="ovm-section-title">
                 <h3>Automatic context presentation</h3>
               </div>
@@ -184,6 +197,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                 checked={autoInject}
                 disabled={!writable}
                 overridden={overridden("autoInject")}
+                testId="openviking-card-presentation-auto-inject"
                 onToggle={(checked) => {
                   write("autoInject", checked);
                 }}
@@ -194,6 +208,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                 checked={config?.injectStartupProfile ?? true}
                 disabled={!writable}
                 overridden={overridden("injectStartupProfile")}
+                testId="openviking-card-presentation-inject-startup-profile"
                 onToggle={(checked) => {
                   write("injectStartupProfile", checked);
                 }}
@@ -204,6 +219,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                 checked={config?.injectStepProfile ?? true}
                 disabled={!writable}
                 overridden={overridden("injectStepProfile")}
+                testId="openviking-card-presentation-inject-step-profile"
                 onToggle={(checked) => {
                   write("injectStepProfile", checked);
                 }}
@@ -214,6 +230,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                 checked={config?.autoRecall ?? true}
                 disabled={!writable}
                 overridden={overridden("autoRecall")}
+                testId="openviking-card-presentation-auto-recall"
                 onToggle={(checked) => {
                   write("autoRecall", checked);
                 }}
@@ -229,7 +246,10 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
               </p>
             </section>
 
-            <section className="ovm-section">
+            <section
+              className="ovm-section"
+              data-testid="openviking-card-connection"
+            >
               <div className="ovm-section-title">
                 <h3>Connection</h3>
               </div>
@@ -241,6 +261,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   placeholder="http://127.0.0.1:1933"
                   disabled={!writable}
                   overridden={overridden("endpoint")}
+                  testId="openviking-card-connection-endpoint"
                   onCommit={commitText("endpoint")}
                 />
                 <TextField
@@ -251,6 +272,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   secret
                   disabled={!writable}
                   overridden={overridden("apiKey")}
+                  testId="openviking-card-connection-api-key"
                   onCommit={commitText("apiKey")}
                 />
                 <TextField
@@ -260,6 +282,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   placeholder="(from OPENVIKING_ACCOUNT)"
                   disabled={!writable}
                   overridden={overridden("account")}
+                  testId="openviking-card-connection-account"
                   onCommit={commitText("account")}
                 />
                 <TextField
@@ -269,6 +292,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   placeholder="(from OPENVIKING_USER)"
                   disabled={!writable}
                   overridden={overridden("user")}
+                  testId="openviking-card-connection-user"
                   onCommit={commitText("user")}
                 />
               </div>
@@ -280,7 +304,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
               </p>
             </section>
 
-            <section className="ovm-section">
+            <section className="ovm-section" data-testid="openviking-card-peer">
               <div className="ovm-section-title">
                 <h3>Peer identity</h3>
               </div>
@@ -290,6 +314,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                 checked={config?.workspacePeer ?? true}
                 disabled={!writable}
                 overridden={overridden("workspacePeer")}
+                testId="openviking-card-peer-workspace-peer"
                 onToggle={(checked) => {
                   write("workspacePeer", checked);
                 }}
@@ -302,6 +327,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   placeholder="(derived from the workspace)"
                   disabled={!writable}
                   overridden={overridden("peerId")}
+                  testId="openviking-card-peer-id"
                   onCommit={commitText("peerId")}
                 />
                 <TextField
@@ -311,12 +337,16 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   placeholder="git | cwd | none | team-{dir}"
                   disabled={!writable}
                   overridden={overridden("peerSource")}
+                  testId="openviking-card-peer-source"
                   onCommit={commitText("peerSource")}
                 />
               </div>
             </section>
 
-            <section className="ovm-section">
+            <section
+              className="ovm-section"
+              data-testid="openviking-card-recall"
+            >
               <div className="ovm-section-title">
                 <h3>Recall</h3>
               </div>
@@ -331,6 +361,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   ]}
                   disabled={!writable}
                   overridden={overridden("recallPeerScope")}
+                  testId="openviking-card-recall-peer-scope"
                   onSelect={commitSelect("recallPeerScope")}
                 />
                 <SelectField
@@ -343,6 +374,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   ]}
                   disabled={!writable}
                   overridden={overridden("recallQueryExpansion")}
+                  testId="openviking-card-recall-query-expansion"
                   onSelect={commitSelect("recallQueryExpansion")}
                 />
                 <SelectField
@@ -358,6 +390,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   ]}
                   disabled={!writable}
                   overridden={overridden("recallRewrite")}
+                  testId="openviking-card-recall-rewrite"
                   onSelect={commitSelect("recallRewrite")}
                 />
                 <NumberField
@@ -369,6 +402,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("recallTokenBudget")}
+                  testId="openviking-card-recall-token-budget"
                   onCommit={commitNumber("recallTokenBudget")}
                   onInvalid={invalidInput}
                 />
@@ -381,6 +415,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("recallMaxContentChars")}
+                  testId="openviking-card-recall-max-content-chars"
                   onCommit={commitNumber("recallMaxContentChars")}
                   onInvalid={invalidInput}
                 />
@@ -394,6 +429,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("recallLimit")}
+                  testId="openviking-card-recall-limit"
                   onCommit={commitNumber("recallLimit")}
                   onInvalid={invalidInput}
                 />
@@ -406,6 +442,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={0.05}
                   disabled={!writable}
                   overridden={overridden("scoreThreshold")}
+                  testId="openviking-card-recall-score-threshold"
                   onCommit={commitNumber("scoreThreshold")}
                   onInvalid={invalidInput}
                 />
@@ -418,6 +455,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("minQueryLength")}
+                  testId="openviking-card-recall-min-query-length"
                   onCommit={commitNumber("minQueryLength")}
                   onInvalid={invalidInput}
                 />
@@ -430,6 +468,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("profileTokenBudget")}
+                  testId="openviking-card-recall-profile-token-budget"
                   onCommit={commitNumber("profileTokenBudget")}
                   onInvalid={invalidInput}
                 />
@@ -443,6 +482,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("recallDedupTurns")}
+                  testId="openviking-card-recall-dedup-turns"
                   onCommit={commitNumber("recallDedupTurns")}
                   onInvalid={invalidInput}
                 />
@@ -456,6 +496,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("recallContextTimeoutMs")}
+                  testId="openviking-card-recall-context-timeout-ms"
                   onCommit={commitNumber("recallContextTimeoutMs")}
                   onInvalid={invalidInput}
                 />
@@ -469,6 +510,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("recallMaxTokens")}
+                  testId="openviking-card-recall-max-tokens"
                   onCommit={commitNumber("recallMaxTokens")}
                   onInvalid={invalidInput}
                 />
@@ -482,6 +524,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("recallCompressMaxBullets")}
+                  testId="openviking-card-recall-compress-max-bullets"
                   onCommit={commitNumber("recallCompressMaxBullets")}
                   onInvalid={invalidInput}
                 />
@@ -492,13 +535,17 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                 checked={config?.recallPreferAbstract ?? true}
                 disabled={!writable}
                 overridden={overridden("recallPreferAbstract")}
+                testId="openviking-card-recall-prefer-abstract"
                 onToggle={(checked) => {
                   write("recallPreferAbstract", checked);
                 }}
               />
             </section>
 
-            <section className="ovm-section">
+            <section
+              className="ovm-section"
+              data-testid="openviking-card-capture"
+            >
               <div className="ovm-section-title">
                 <h3>Capture and commit</h3>
               </div>
@@ -508,6 +555,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                 checked={config?.syncTurns ?? true}
                 disabled={!writable}
                 overridden={overridden("syncTurns")}
+                testId="openviking-card-capture-sync-turns"
                 onToggle={(checked) => {
                   write("syncTurns", checked);
                 }}
@@ -518,6 +566,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                 checked={config?.captureToolResults ?? false}
                 disabled={!writable}
                 overridden={overridden("captureToolResults")}
+                testId="openviking-card-capture-tool-results"
                 onToggle={(checked) => {
                   write("captureToolResults", checked);
                 }}
@@ -528,6 +577,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                 checked={config?.captureAssistantTurns ?? true}
                 disabled={!writable}
                 overridden={overridden("captureAssistantTurns")}
+                testId="openviking-card-capture-assistant-turns"
                 onToggle={(checked) => {
                   write("captureAssistantTurns", checked);
                 }}
@@ -542,6 +592,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("captureMaxLength")}
+                  testId="openviking-card-capture-max-length"
                   onCommit={commitNumber("captureMaxLength")}
                   onInvalid={invalidInput}
                 />
@@ -554,6 +605,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("captureToolMaxChars")}
+                  testId="openviking-card-capture-tool-max-chars"
                   onCommit={commitNumber("captureToolMaxChars")}
                   onInvalid={invalidInput}
                 />
@@ -567,6 +619,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("commitTokenThreshold")}
+                  testId="openviking-card-capture-commit-token-threshold"
                   onCommit={commitNumber("commitTokenThreshold")}
                   onInvalid={invalidInput}
                 />
@@ -579,6 +632,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("commitKeepRecentCount")}
+                  testId="openviking-card-capture-commit-keep-recent-count"
                   onCommit={commitNumber("commitKeepRecentCount")}
                   onInvalid={invalidInput}
                 />
@@ -590,11 +644,15 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                 placeholder={"s/internal/stable/\nd|debug noise|"}
                 disabled={!writable}
                 overridden={overridden("captureFilters")}
+                testId="openviking-card-capture-filters"
                 onCommit={commitFilters("captureFilters")}
               />
             </section>
 
-            <section className="ovm-section">
+            <section
+              className="ovm-section"
+              data-testid="openviking-card-multi-user"
+            >
               <div className="ovm-section-title">
                 <h3>Multi-user memory</h3>
               </div>
@@ -604,6 +662,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                 checked={config?.qaUserScoping ?? true}
                 disabled={!writable}
                 overridden={overridden("qaUserScoping")}
+                testId="openviking-card-multi-user-scoping"
                 onToggle={(checked) => {
                   write("qaUserScoping", checked);
                 }}
@@ -626,7 +685,10 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
               </p>
             </section>
 
-            <details className="ovm-advanced">
+            <details
+              className="ovm-advanced"
+              data-testid="openviking-card-advanced"
+            >
               <summary>Advanced</summary>
               <div className="ovm-advanced-content">
                 <ToggleRow
@@ -635,6 +697,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                   checked={config?.skipSubagentSessions ?? false}
                   disabled={!writable}
                   overridden={overridden("skipSubagentSessions")}
+                  testId="openviking-card-advanced-skip-subagent-sessions"
                   onToggle={(checked) => {
                     write("skipSubagentSessions", checked);
                   }}
@@ -650,6 +713,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                     step={1}
                     disabled={!writable}
                     overridden={overridden("requestTimeoutMs")}
+                    testId="openviking-card-advanced-request-timeout-ms"
                     onCommit={commitNumber("requestTimeoutMs")}
                     onInvalid={invalidInput}
                   />
@@ -663,6 +727,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                     step={1}
                     disabled={!writable}
                     overridden={overridden("mcpToolCallTimeoutMs")}
+                    testId="openviking-card-advanced-mcp-tool-call-timeout-ms"
                     onCommit={commitNumber("mcpToolCallTimeoutMs")}
                     onInvalid={invalidInput}
                   />
@@ -677,6 +742,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                     ]}
                     disabled={!writable}
                     overridden={overridden("captureMode")}
+                    testId="openviking-card-advanced-capture-mode"
                     onSelect={commitSelect("captureMode")}
                   />
                 </div>
@@ -699,6 +765,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
                 <button
                   type="button"
                   className="ovm-btn"
+                  data-testid="openviking-card-reset-all"
                   disabled={!writable}
                   onClick={resetAll}
                 >

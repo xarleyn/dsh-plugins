@@ -103,12 +103,20 @@ function MemoryItem(props: {
   readonly folder: boolean;
 }): React.JSX.Element {
   return (
-    <li className="ovm-qa__item">
-      <span className="ovm-qa__item-name">
+    <li className="ovm-qa__item" data-testid="openviking-memory-item">
+      <span
+        className="ovm-qa__item-name"
+        data-testid="openviking-memory-item-name"
+      >
         {props.folder ? `${props.name}/` : props.name}
       </span>
       {props.summary === "" ? null : (
-        <span className="ovm-qa__item-summary">{props.summary}</span>
+        <span
+          className="ovm-qa__item-summary"
+          data-testid="openviking-memory-item-summary"
+        >
+          {props.summary}
+        </span>
       )}
     </li>
   );
@@ -120,17 +128,30 @@ function MemoryGroup(props: {
 }): React.JSX.Element {
   const hidden = props.group.total - props.group.items.length;
   return (
-    <div className="ovm-qa__card">
+    <div className="ovm-qa__card" data-testid="openviking-memory-group">
       <div className="ovm-qa__card-head">
-        <span className="ovm-qa__card-name">{props.group.title}</span>
-        <span className="ovm-qa__card-count">
+        <span
+          className="ovm-qa__card-name"
+          data-testid="openviking-memory-group-title"
+        >
+          {props.group.title}
+        </span>
+        <span
+          className="ovm-qa__card-count"
+          data-testid="openviking-memory-group-count"
+        >
           {props.group.total === 1
             ? "1 запись"
             : `${props.group.total} записей`}
         </span>
       </div>
       {props.group.summary === "" ? null : (
-        <p className="ovm-qa__card-summary">{props.group.summary}</p>
+        <p
+          className="ovm-qa__card-summary"
+          data-testid="openviking-memory-group-summary"
+        >
+          {props.group.summary}
+        </p>
       )}
       <ul className="ovm-qa__items">
         {props.group.items.map((item) => (
@@ -143,7 +164,10 @@ function MemoryGroup(props: {
         ))}
       </ul>
       {hidden > 0 ? (
-        <p className="ovm-qa__muted">
+        <p
+          className="ovm-qa__muted"
+          data-testid="openviking-memory-group-hidden"
+        >
           Показаны первые {props.group.items.length}; всего {props.group.total}.
         </p>
       ) : null}
@@ -158,7 +182,7 @@ function MemoryOverview(props: {
   const view = props.overview;
   if (!view.connected) {
     return (
-      <p className="ovm-qa__error">
+      <p className="ovm-qa__error" data-testid="openviking-memory-unavailable">
         Память недоступна: {view.error ?? "сервер не ответил"}. Разговоры при
         этом продолжают записываться, как только он вернётся.
       </p>
@@ -167,7 +191,10 @@ function MemoryOverview(props: {
 
   if (view.scoped && !view.accountApplies) {
     return (
-      <p className="ovm-qa__error">
+      <p
+        className="ovm-qa__error"
+        data-testid="openviking-memory-identity-refused"
+      >
         Сервер памяти не подтвердил учётную запись
         {view.serverIdentity === ""
           ? ""
@@ -184,23 +211,35 @@ function MemoryOverview(props: {
 
   return (
     <>
-      <div className="ovm-qa__facts">
-        <div className="ovm-qa__fact">
+      <div className="ovm-qa__facts" data-testid="openviking-memory-totals">
+        <div
+          className="ovm-qa__fact"
+          data-testid="openviking-memory-total-sections"
+        >
           <b>{view.totals.sections}</b>
           <span>разделов</span>
         </div>
-        <div className="ovm-qa__fact">
+        <div
+          className="ovm-qa__fact"
+          data-testid="openviking-memory-total-memories"
+        >
           <b>{view.totals.memories}</b>
           <span>записей</span>
         </div>
-        <div className="ovm-qa__fact">
+        <div
+          className="ovm-qa__fact"
+          data-testid="openviking-memory-total-sessions"
+        >
           <b>{view.totals.sessions}</b>
           <span>разговоров</span>
         </div>
       </div>
 
       {view.scoped && !view.accountApplies ? (
-        <p className="ovm-qa__notice">
+        <p
+          className="ovm-qa__notice"
+          data-testid="openviking-memory-notice-server-not-scoped"
+        >
           Развёртывание настроено разделять память по учётным записям, но сервер
           памяти его не применяет
           {view.serverIdentity === ""
@@ -211,29 +250,40 @@ function MemoryOverview(props: {
       ) : null}
 
       {!view.scoped ? (
-        <p className="ovm-qa__notice">
+        <p
+          className="ovm-qa__notice"
+          data-testid="openviking-memory-notice-scoping-off"
+        >
           Разделение памяти по пользователям в этом развёртывании выключено: все
           аккаунты пользуются одной памятью.
         </p>
       ) : null}
 
       {view.truncated.memories || view.truncated.sessions ? (
-        <p className="ovm-qa__notice">
+        <p
+          className="ovm-qa__notice"
+          data-testid="openviking-memory-notice-truncated"
+        >
           Сервер достиг лимита выдачи: счётчики показывают минимум, а не
           гарантированно полный итог.
         </p>
       ) : null}
 
       {empty ? (
-        <p className="ovm-qa__muted">
+        <p className="ovm-qa__muted" data-testid="openviking-memory-empty">
           Память пока пуста: она наполнится по мере разговоров.
         </p>
       ) : null}
 
       {view.profile === null ? null : (
-        <div className="ovm-qa__block">
+        <div className="ovm-qa__block" data-testid="openviking-memory-profile">
           <h4 className="ovm-qa__block-title">Что ассистент о вас знает</h4>
-          <pre className="ovm-qa__profile">{view.profile.text}</pre>
+          <pre
+            className="ovm-qa__profile"
+            data-testid="openviking-memory-profile-text"
+          >
+            {view.profile.text}
+          </pre>
           <p className="ovm-qa__muted">
             Из файла {view.profile.name}
             {view.profile.truncated ? "; показаны только первые символы" : ""}.
@@ -242,7 +292,7 @@ function MemoryOverview(props: {
       )}
 
       {view.groups.length === 0 ? null : (
-        <div className="ovm-qa__block">
+        <div className="ovm-qa__block" data-testid="openviking-memory-groups">
           <h4 className="ovm-qa__block-title">Что запомнено</h4>
           <p className="ovm-qa__block-hint">
             Записи, которые ассистент сделал по ходу разговоров.
@@ -254,18 +304,30 @@ function MemoryOverview(props: {
       )}
 
       {view.sessions.length === 0 ? null : (
-        <div className="ovm-qa__block">
+        <div className="ovm-qa__block" data-testid="openviking-memory-sessions">
           <h4 className="ovm-qa__block-title">Прошлые разговоры</h4>
           <ul className="ovm-qa__chats">
             {view.sessions.map((session) => (
-              <li className="ovm-qa__chat" key={session.id}>
+              <li
+                className="ovm-qa__chat"
+                data-testid="openviking-memory-session"
+                key={session.id}
+              >
                 <span className="ovm-qa__chat-meta">
-                  <span className="ovm-qa__chat-id">
+                  <span
+                    className="ovm-qa__chat-id"
+                    data-testid="openviking-memory-session-id"
+                  >
                     {session.id.slice(0, 8)}
                   </span>
-                  <span>{formatTime(session.updatedAt) ?? "без даты"}</span>
+                  <span data-testid="openviking-memory-session-updated">
+                    {formatTime(session.updatedAt) ?? "без даты"}
+                  </span>
                 </span>
-                <span className="ovm-qa__item-summary">
+                <span
+                  className="ovm-qa__item-summary"
+                  data-testid="openviking-memory-session-summary"
+                >
                   {session.summary === ""
                     ? "Память не оставила описания этого разговора."
                     : session.summary}
@@ -274,7 +336,10 @@ function MemoryOverview(props: {
             ))}
           </ul>
           {view.totals.sessions > view.sessions.length ? (
-            <p className="ovm-qa__muted">
+            <p
+              className="ovm-qa__muted"
+              data-testid="openviking-memory-sessions-hidden"
+            >
               Показаны последние {view.sessions.length} из{" "}
               {view.totals.sessions}.
             </p>
@@ -328,23 +393,36 @@ export function createMemoryOverviewSection(remote: MemoryOverviewRemote) {
     }, [load]);
 
     return (
-      <section className="ovm-qa" aria-label="Память OpenViking">
+      <section
+        className="ovm-qa"
+        data-testid="openviking-memory-root"
+        aria-label="Память OpenViking"
+      >
         <p className="ovm-qa__lead">
           Память ассистента — то, что он сохранил из ваших разговоров. Эта
           страница только читает: память наполняется самими разговорами, а
           автоподстановку в ответы задаёт развёртывание.
         </p>
 
-        {error !== null ? <p className="ovm-qa__error">{error}</p> : null}
+        {error !== null ? (
+          <p className="ovm-qa__error" data-testid="openviking-memory-error">
+            {error}
+          </p>
+        ) : null}
 
         {overview !== null ? (
           <MemoryOverview overview={overview} />
         ) : error === null ? (
-          <p className="ovm-qa__muted">Читаю память…</p>
+          <p className="ovm-qa__muted" data-testid="openviking-memory-loading">
+            Читаю память…
+          </p>
         ) : null}
 
         <div className="ovm-qa__footer">
-          <p className="ovm-qa__muted">
+          <p
+            className="ovm-qa__muted"
+            data-testid="openviking-memory-space-state"
+          >
             {overview === null || !overview.connected
               ? "Память OpenViking"
               : overview.scoped && overview.accountApplies
@@ -354,6 +432,7 @@ export function createMemoryOverviewSection(remote: MemoryOverviewRemote) {
           <button
             type="button"
             className="ovm-qa__btn"
+            data-testid="openviking-memory-refresh"
             disabled={busy}
             onClick={() => {
               void load();

@@ -63,11 +63,12 @@ export function RulesSection({
   };
 
   return (
-    <section className="wfa-section">
+    <section className="wfa-section" data-testid="wfa-rules-section">
       <div className="wfa-section-title">
         <h3>Rules</h3>
         <button
           className="wfa-btn"
+          data-testid="wfa-rules-add"
           type="button"
           disabled={!writable}
           onClick={() => {
@@ -79,31 +80,39 @@ export function RulesSection({
         </button>
       </div>
       {rules.length === 0 && creating === false && (
-        <div className="wfa-empty">
+        <div className="wfa-empty" data-testid="wfa-rules-empty">
           No rules yet. Every URL is rejected until a rule matches (strict
           mode).
         </div>
       )}
-      <div className="wfa-rules">
+      <div className="wfa-rules" data-testid="wfa-rules-list">
         {rules.map((rule) => (
           <div key={rule.id}>
-            <div className="wfa-rule">
+            <div className="wfa-rule" data-testid="wfa-rule-row">
               <span className="wfa-rule-main">
                 <span className="wfa-rule-name">{rule.name}</span>
                 <span className="wfa-rule-origin">{originSummary(rule)}</span>
               </span>
               <span className="wfa-actions" style={{ gap: 5 }}>
-                <Pill tone={rule.enabled ? "ok" : "warn"}>
+                <Pill
+                  tone={rule.enabled ? "ok" : "warn"}
+                  testId="wfa-rule-enabled-state"
+                >
                   {rule.enabled ? "enabled" : "disabled"}
                 </Pill>
-                <Pill tone="warn">{authSummary(rule.auth)}</Pill>
+                <Pill tone="warn" testId="wfa-rule-auth-state">
+                  {authSummary(rule.auth)}
+                </Pill>
                 {rule.adapter !== undefined && rule.adapter.type !== "none" && (
-                  <Pill tone="ok">{adapterSummary(rule.adapter)}</Pill>
+                  <Pill tone="ok" testId="wfa-rule-adapter-state">
+                    {adapterSummary(rule.adapter)}
+                  </Pill>
                 )}
               </span>
               <span className="wfa-actions">
                 <IconButton
                   label={rule.enabled ? "Disable" : "Enable"}
+                  testId="wfa-rule-toggle"
                   disabled={!writable}
                   onClick={() => {
                     toggleRule(rule.id, !rule.enabled);
@@ -113,6 +122,7 @@ export function RulesSection({
                 </IconButton>
                 <IconButton
                   label="Test"
+                  testId="wfa-rule-test"
                   onClick={() => {
                     setTestingId(testingId === rule.id ? undefined : rule.id);
                     setEditingId(undefined);
@@ -123,6 +133,7 @@ export function RulesSection({
                 </IconButton>
                 <IconButton
                   label="Edit"
+                  testId="wfa-rule-edit"
                   disabled={!writable}
                   onClick={() => {
                     setEditingId(editingId === rule.id ? undefined : rule.id);
@@ -134,6 +145,7 @@ export function RulesSection({
                 </IconButton>
                 <IconButton
                   label="Delete"
+                  testId="wfa-rule-delete"
                   danger
                   disabled={!writable}
                   onClick={() => {

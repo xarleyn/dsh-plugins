@@ -19,7 +19,7 @@ export function DiagnosticsSection({
   const [error, setError] = useState<string | undefined>();
   const [busy, setBusy] = useState(false);
   return (
-    <section className="wfa-section">
+    <section className="wfa-section" data-testid="wfa-diagnostics-section">
       <div className="wfa-section-title">
         <h3>Diagnostics</h3>
         <span className="wfa-note">
@@ -29,6 +29,7 @@ export function DiagnosticsSection({
       <div className="wfa-actions">
         <input
           className="wfa-control"
+          data-testid="wfa-diagnostics-url"
           style={{ flex: 1 }}
           value={url}
           placeholder="https://jira.example.corp/browse/PROJ-123"
@@ -38,6 +39,7 @@ export function DiagnosticsSection({
         />
         <button
           className="wfa-btn"
+          data-testid="wfa-diagnostics-run"
           type="button"
           disabled={busy || url.trim().length === 0}
           onClick={() => {
@@ -61,9 +63,13 @@ export function DiagnosticsSection({
           Diagnose
         </button>
       </div>
-      {error !== undefined && <div className="wfa-error">{error}</div>}
+      {error !== undefined && (
+        <div className="wfa-error" data-testid="wfa-diagnostics-error">
+          {error}
+        </div>
+      )}
       {report !== undefined && (
-        <div className="wfa-report">
+        <div className="wfa-report" data-testid="wfa-diagnostics-report">
           <div>
             <b>URL:</b>{" "}
             {report.validUrl ? report.url : `${report.url} (invalid)`}
