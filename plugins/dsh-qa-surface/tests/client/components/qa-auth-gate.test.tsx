@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../../src/resolve-config.js";
 import { QaSidebar } from "../../../src/client/components/QaSidebar.js";
@@ -84,7 +90,13 @@ describe("QA auth gate", () => {
     const view = render(
       <GateView accounts={accounts} allowRegistration={allowRegistration} />,
     );
-    void accounts.start();
+    // The gate stage is published by the whoami probe `start` awaits, so the
+    // update lands after the render returned. Flushing it inside act is what
+    // makes the projection see it; left floating, React reports the update as
+    // unwrapped and the next test inherits the render.
+    await act(async () => {
+      await accounts.start();
+    });
     await waitFor(() => {
       expect(accounts.getSnapshot().stage).toBe("gate");
     });

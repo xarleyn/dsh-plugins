@@ -15,6 +15,7 @@ import {
   DISABLED_SLASH_VIEW,
   DEFAULT_SLASH_POLICY,
 } from "../../helpers/slash.js";
+import { settle } from "../../helpers/act.js";
 
 /** Mount one composer over a fixed policy, returning its change spy. */
 function mount(overrides: Partial<Parameters<typeof QaComposer>[0]> = {}): {
@@ -63,6 +64,8 @@ describe("QA composer", () => {
     expect(send).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: "Enter" });
     expect(send).toHaveBeenCalledWith("hello", [], null);
+    // The composer releases its draft once the accepted send resolves.
+    await settle();
   });
 
   it("shows a real Stop button during generation", () => {

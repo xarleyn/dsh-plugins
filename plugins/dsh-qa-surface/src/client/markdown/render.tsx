@@ -430,6 +430,7 @@ function renderFootnoteSection(context: RenderContext): ReactNode | null {
   if (items.length === 0) return null;
   return (
     <section
+      key="footnotes"
       className="dsh-qa-md-footnotes"
       data-testid="qa-md-footnotes"
       aria-label="Сноски"

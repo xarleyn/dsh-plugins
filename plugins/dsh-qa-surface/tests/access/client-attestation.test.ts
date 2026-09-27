@@ -68,6 +68,29 @@ describe("proofMatchesConfig", () => {
     ).toBe(false);
   });
 
+  it("reads the vacuous proof of an unpinned deployment as an admission", () => {
+    // With lockdown off the Host evaluates none of the pins and answers with
+    // their empty shapes, having admitted the session for this account. There
+    // is nothing to compare but the session the proof names.
+    const off = resolveConfig({ lockdown: { enabled: false } }).lockdown;
+    expect(
+      proofMatchesConfig(
+        proof({
+          enabled: false,
+          sandboxModeMatches: false,
+          approvalIsNever: false,
+          permissionPreset: "",
+          toolPolicyLoaded: false,
+        }),
+        off,
+        "session-1",
+      ),
+    ).toBe(true);
+    expect(proofMatchesConfig(proof({ enabled: false }), off, "other")).toBe(
+      false,
+    );
+  });
+
   it("refuses when any verified fact is false", () => {
     for (const key of [
       "agentPresetMatches",
