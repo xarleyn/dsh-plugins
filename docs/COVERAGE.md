@@ -16,9 +16,10 @@ refactoring it, not to close a review.
   package. `scripts/repo-config.test.mjs` holds that rule, the shape of the
   preset, and the pairing of each package's `test` and `test:coverage` scripts.
 - Each package runs `vitest run --coverage` behind its own `test:coverage`;
-  `pnpm test:coverage` at the root walks them all through `nx run-many`, and
-  `nx.json` makes the target depend on `build` and keeps it out of the cache.
-  One package at a time is how a number is trusted — see the snapshot note below.
+  `pnpm test:coverage` at the root walks them all through `nx run-many` one
+  project at a time, and `nx.json` makes the target depend on `build` and keeps it
+  out of the cache. The single-project fan-out is the measurement's own
+  requirement, not a style choice — see the note under the snapshot.
 - The machine-readable result is `<package>/coverage/coverage-summary.json`,
   which `coverage/` in `.gitignore` keeps out of the repository. That is why the
   snapshot below is committed: without it there is nothing to compare a later
@@ -31,16 +32,15 @@ The numbers below are statements/branches/functions/lines percentages per
 package, with the line counts behind the last column. Measured on this branch
 after its rebase, with `dsh-v0.1.7-rc` at `792a6cb9`.
 
-Reproduce it with `pnpm install --frozen-lockfile && pnpm nx run-many -t
-test:coverage --parallel=1` and read the summaries. Sequential is not a
-preference: on the Windows machine this snapshot was taken on, the default
-fan-out of eight projects runs out of memory inside the instrumentation and the
-run then reports a package red while printing no number for it at all —
-`dsh-qa-surface` and `dsh-qa-integrations` both died that way on this tree
-(`FATAL ERROR: Zone Allocation failed - process out of memory`). A killed worker
-drops the files it had not reached, so a parallel number can under-read the
-package; the paragraph on red suites below names the one it also turned red for
-no reason at all.
+Reproduce it with `pnpm install --frozen-lockfile && pnpm test:coverage` and read
+the summaries. The root script carries `--parallel=1` because the fan-out lies:
+on the Windows machine this snapshot was taken on, eight projects at a time run
+out of memory inside the instrumentation, and the run then reports a package red
+while printing no number for it at all — `dsh-qa-surface` and
+`dsh-qa-integrations` both died that way on this tree (`FATAL ERROR: Zone
+Allocation failed - process out of memory`). A killed worker drops the files it
+had not reached, so a parallel number can under-read the package; the paragraph on
+red suites below names the one it also turned red for no reason at all.
 
 | Package | Stmts | Br | Fn | Lines | Lines covered |
 | --- | --- | --- | --- | --- | --- |
@@ -80,13 +80,19 @@ no reason at all.
 are the readable unit. `@yadsh/dsh-config` and `@yadsh/dsh-plugin-scripts` have
 no suite at all, so they are absent by design rather than by failure.
 
-Two rows moved between this run and the one the branch carried before its rebase
-although no commit of the base touched either package: `dsh-git-readonly` covers
-416 of its 443 lines here against 417 there, and `dsh-cas-results` 673 against
-675. Both suites read the machine rather than the repository — `dsh-git-readonly`
-shells out to a real `git`, and `dsh-cas-results` has a garbage-collection suite
-keyed on wall-clock age — so a difference of one or two covered lines is the noise
-floor of this measurement, not a change in what the tests exercise.
+Two rows moved between this snapshot and the one the branch carried before its
+rebase although no commit of the base touched either package: `dsh-git-readonly`
+covers 416 of its 443 lines here against 417 there, and `dsh-cas-results` 673
+against 675. The command was then run a second time on this same tree, and those
+two rows came back 417 and 674 while `dsh-qa-surface` moved 12 160 → 12 158 and
+every other row repeated exactly. The three packages that wobble read the machine
+rather than the repository — `dsh-git-readonly` shells out to a real `git`,
+`dsh-cas-results` has a garbage-collection suite keyed on wall-clock age, and
+`dsh-qa-surface`'s jsdom suites reach paths in run order — so one or two covered
+lines is the noise floor of this measurement. The table records the first of the
+two runs; a row that moved by a line or two between two snapshots is not a
+finding, and a difference worth reading is a package changing position, not a
+count changing by one.
 
 ### What this snapshot cannot say about three projects
 
