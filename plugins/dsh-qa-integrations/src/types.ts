@@ -136,6 +136,12 @@ export interface IntegrationSummary {
   readonly externalAccountName: string | null;
   readonly credentialConfigured: boolean;
   readonly credentialUpdatedAt: string | null;
+  /**
+   * What the connection may use as it stands: the stored grant, minus anything
+   * this deployment has since withdrawn from the provider. {@link policy} is
+   * built from this list, so a capability the card does not name is one a call
+   * would refuse.
+   */
   readonly capabilities: readonly IntegrationCapability[];
   /**
    * Labels and hints for every capability the provider declares, so a client
