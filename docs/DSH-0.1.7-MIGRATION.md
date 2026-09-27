@@ -1563,3 +1563,18 @@ transform options, and passing `target` explicitly changes nothing — `es2021`,
 `vitest.config.ts` in `dsh-web-fetch-authenticated`, since removed). The fix
 belongs to the shared tooling (`packages/config/vitest/vitest.config.ts`, or the
 vite major it was pulled in under), not to a migration card.
+
+**Landed by #603.** `packages/config/vitest/vitest.config.ts` now carries a
+`dsh:lower-standard-decorators` pre plugin: it parses each TypeScript module, and
+where the AST really declares a decorator it emits the module through the root
+`typescript` compiler (the same lowering `pnpm build` uses) before Vite's oxc
+transform sees it. Nothing per package had to change — except
+`dsh-qa-integrations`, the one project whose `vitest.config.ts` called
+`defineConfig` directly instead of consuming the preset, which now calls
+`definePluginVitestConfig`. Measured on `bot/603` over `792a6cb9`:
+`nx run-many -t test` reports no `SyntaxError` in any of the 32 projects, and the
+six packages named above collect their suites (`dsh-qa-integrations` 112 files /
+845 tests). Do not read a decorator failure as a new regression, and do not
+work around it in a package — `dsh-draft-sessions`'s decorator-free
+`@Remote` application (`src/index.ts:107`) is now unnecessary.
+
