@@ -667,6 +667,87 @@ describe("QA session controller", () => {
     second.dispose();
   });
 
+  it("keeps a retried first send in the chat whose session never got a binding", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
+    });
+    await controller.ensureSession();
+    await controller.startDraft();
+    const draftKey = controller.getSnapshot().chatKey;
+
+    // The Host created and listed the session, but its binding never appeared,
+    // so bind() falls short of adopting it. The identity has to go on naming no
+    // session: were it handed the session this attempt could not open, the
+    // retry below — which creates a different id — would read as another chat
+    // and rebuild the composer around the very question being retried.
+    world.createSession.mockImplementationOnce(async () => {
+      const id = String(await world.create());
+      world.bindings.delete(id);
+      return { ok: true as const, value: id };
+    });
+    expect(await controller.send("Первый вопрос")).toBe(false);
+    expect(controller.getSnapshot()).toMatchObject({
+      chatKey: draftKey,
+      sessionId: null,
+      error: expect.stringMatching(/Не удалось начать чат/u),
+    });
+
+    expect(await controller.send("Первый вопрос")).toBe(true);
+    // The draft's own chat, still the one the composer belongs to.
+    expect(controller.getSnapshot().chatKey).toBe(draftKey);
+    expect(world.faces.get("created-3")?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "Первый вопрос" }],
+      "queue",
+    );
+    controller.dispose();
+  });
+
+  it("keeps an in-flight send out of the chat that replaces the vanished one", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    const leaving = world.faces.get("created-1");
+    let releasePrompt!: (value: {
+      ok: true;
+      value: { accepted: true };
+    }) => void;
+    leaving?.prompt.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releasePrompt = resolve;
+        }),
+    );
+    const sending = controller.send("Вопрос в полёте");
+    await until(() => (leaving?.prompt.mock.calls.length ?? 0) > 0);
+    expect(controller.getSnapshot().pendingMessage).toMatchObject({
+      text: "Вопрос в полёте",
+    });
+
+    // The Host stopped listing the chat this send rides, and the surface
+    // bootstraps another one underneath: bind() takes a new identity for it, so
+    // the optimistic row and the busy flag of the abandoned chat have to end
+    // with that identity rather than be shown by the chat that replaced it.
+    world.list.set({ ...world.list.getSnapshot(), ids: [], byId: {} });
+    await controller.ensureSession();
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: "created-2",
+      pendingMessage: null,
+      canSend: true,
+    });
+
+    releasePrompt({ ok: true, value: { accepted: true } });
+    expect(await sending).toBe(false);
+    controller.dispose();
+  });
+
   it("reports a first send whose session cannot be created", async () => {
     const world = harness();
     const controller = new QaSessionController({
