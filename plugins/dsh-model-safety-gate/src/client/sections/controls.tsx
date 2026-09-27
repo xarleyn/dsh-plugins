@@ -18,6 +18,7 @@ export interface ConfigProps extends SectionProps {
 
 /** Small clearing control shown beside a section the user layer overrides. */
 export function ResetButton(props: {
+  testId: string;
   disabled: boolean;
   label: string;
   onClick: () => void;
@@ -26,6 +27,7 @@ export function ResetButton(props: {
     <button
       type="button"
       className="msg-btn link"
+      data-testid={props.testId}
       disabled={props.disabled}
       onClick={props.onClick}
     >

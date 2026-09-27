@@ -117,4 +117,37 @@ describe("reminder state", () => {
     state.reconcile([nextImpact]);
     expect(state.pending()).toEqual([nextImpact]);
   });
+
+  it("retires a pending impact when its rule leaves the configuration", () => {
+    const state = new ImpactState();
+    const impact = pendingImpact();
+    state.reconcile([impact]);
+    // The rule is switched off (or deleted), so no detection names it any
+    // more. The impact stays in the history but stops steering the turn.
+    state.reconcile([]);
+    expect(state.pending()).toEqual([]);
+    expect(state.all()).toEqual([{ ...impact, status: "superseded" }]);
+  });
+
+  it("resumes a retired impact when the same rule comes back", () => {
+    const state = new ImpactState();
+    const impact = pendingImpact();
+    state.reconcile([impact]);
+    state.reconcile([]);
+    state.reconcile([impact]);
+    expect(state.pending()).toEqual([impact]);
+  });
+
+  it("keeps an explicit resolution across a rule disable and revert", () => {
+    const state = new ImpactState();
+    const impact = pendingImpact();
+    state.reconcile([impact]);
+    state.update(
+      resolveImpact(impact, { ruleId: "auth", status: "reviewed-current" }, []),
+    );
+    state.reconcile([]);
+    state.reconcile([impact]);
+    expect(state.all()).toEqual([{ ...impact, status: "reviewed-current" }]);
+    expect(state.pending()).toEqual([]);
+  });
 });

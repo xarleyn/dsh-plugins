@@ -185,7 +185,10 @@ export function SafetyGateCard({ form, inspect }: CardProps) {
         title="Model Safety Gate"
         description="Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results."
         badge={
-          <span className="dsh-plugin-card__badge">
+          <span
+            className="dsh-plugin-card__badge"
+            data-testid="safety-card-badge"
+          >
             {badgeText(enabled, mode)}
           </span>
         }
@@ -195,12 +198,21 @@ export function SafetyGateCard({ form, inspect }: CardProps) {
         bodyClassName="msg-body"
       >
         {settings.status === "loading" ? (
-          <p className="msg-muted">Loading the Safety Gate configuration…</p>
+          <p className="msg-muted" data-testid="safety-card-loading">
+            Loading the Safety Gate configuration…
+          </p>
         ) : (
           <>
-            {error !== null ? <div className="msg-error">{error}</div> : null}
+            {error !== null ? (
+              <div className="msg-error" data-testid="safety-card-error">
+                {error}
+              </div>
+            ) : null}
             {snapshot?.configRejected ? (
-              <div className="msg-error">
+              <div
+                className="msg-error"
+                data-testid="safety-card-config-rejected"
+              >
                 The gate is still running its last workable configuration:{" "}
                 {snapshot.configRejected}
               </div>
@@ -235,6 +247,7 @@ export function SafetyGateCard({ form, inspect }: CardProps) {
                 <button
                   type="button"
                   className="msg-btn"
+                  data-testid="safety-card-reset-overrides"
                   disabled={!writable}
                   onClick={resetAll}
                 >

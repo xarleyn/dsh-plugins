@@ -16,6 +16,7 @@ export function ToolsSection(props: ConfigProps) {
   const disabled = !props.writable;
   return (
     <Section
+      testId="safety-section-tools"
       title="Tools and results"
       modified={
         props.overridden(["tools"]) || props.overridden(["toolResults"])
@@ -23,6 +24,7 @@ export function ToolsSection(props: ConfigProps) {
       aside={
         props.overridden(["tools"]) || props.overridden(["toolResults"]) ? (
           <ResetButton
+            testId="safety-tools-reset"
             disabled={disabled}
             label="Reset"
             onClick={() => {
@@ -35,6 +37,7 @@ export function ToolsSection(props: ConfigProps) {
     >
       <div className="msg-grid">
         <Toggle
+          testId="safety-tools-enabled"
           checked={config?.tools?.enabled ?? true}
           disabled={disabled}
           label="Gate tool calls"
@@ -44,6 +47,7 @@ export function ToolsSection(props: ConfigProps) {
           }}
         />
         <Toggle
+          testId="safety-tools-classify-calls"
           checked={config?.tools?.semanticClassifier ?? true}
           disabled={disabled}
           label="Classify tool calls"
@@ -53,6 +57,7 @@ export function ToolsSection(props: ConfigProps) {
           }}
         />
         <Toggle
+          testId="safety-tool-results-enabled"
           checked={config?.toolResults?.enabled ?? true}
           disabled={disabled}
           label="Scan tool results"
@@ -62,6 +67,7 @@ export function ToolsSection(props: ConfigProps) {
           }}
         />
         <Toggle
+          testId="safety-tool-results-classify-untrusted"
           checked={config?.toolResults?.classifyUntrustedSources ?? true}
           disabled={disabled}
           label="Classify untrusted results"
@@ -72,6 +78,7 @@ export function ToolsSection(props: ConfigProps) {
         />
       </div>
       <ListField
+        testId="safety-tools-sensitive-tools"
         label="Only these tools (names, comma separated)"
         hint="Empty gates every tool. A list narrows the gate to the named tools and leaves the rest untouched."
         value={config?.tools?.sensitiveTools ?? []}

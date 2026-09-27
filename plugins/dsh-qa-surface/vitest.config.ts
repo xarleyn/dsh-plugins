@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { definePluginVitestConfig } from "@yadsh/dsh-config/vitest";
 
 const packageVersion = (
@@ -10,5 +11,12 @@ const packageVersion = (
 export default definePluginVitestConfig({
   define: {
     __DSH_QA_VERSION__: JSON.stringify(packageVersion),
+  },
+  test: {
+    setupFiles: [
+      fileURLToPath(
+        new URL("./tests/helpers/console-guard.ts", import.meta.url),
+      ),
+    ],
   },
 });

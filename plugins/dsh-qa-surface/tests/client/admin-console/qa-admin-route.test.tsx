@@ -23,6 +23,7 @@ import type {
   QaConversationSummary,
 } from "../../../src/types.js";
 import { harness } from "../../helpers/session-fakes.js";
+import { settle } from "../../helpers/act.js";
 
 // jsdom has no ResizeObserver; the chat surface's width handles observe it.
 globalThis.ResizeObserver ??= class {
@@ -62,27 +63,34 @@ const OVERVIEW: QaAdminOverview = {
 
 const SUMMARY = {} as QaConversationSummary;
 
+/** The one role the fixtures below both offer and record on a chat. */
+const ANALYST = {
+  id: "analyst",
+  name: "Аналитик",
+  enabled: true,
+  capabilities: {
+    tools: { always: [], skillGrantable: [] },
+    skills: [],
+  },
+};
+
 function accessApi(): QaAccessApi {
   return {
     current: vi.fn(async () => ({
       ok: true as const,
       value: {
-        subroles: [
-          {
-            id: "analyst",
-            name: "Аналитик",
-            enabled: true,
-            capabilities: {
-              tools: { always: [], skillGrantable: [] },
-              skills: [],
-            },
-          },
-        ],
+        subroles: [ANALYST],
         defaultSubrole: "analyst",
         policy: "selectable" as const,
       },
     })),
-    session: vi.fn(),
+    // Once a chat is bound and the account is authed, the surface reads the
+    // role the session was created under. A `vi.fn()` that returns nothing
+    // crashes that read, so the fixture answers it.
+    session: vi.fn(async () => ({
+      ok: true as const,
+      value: { subrole: ANALYST, adminPreview: false },
+    })),
     admin: vi.fn(async () => ({
       ok: true as const,
       value: {
@@ -277,6 +285,9 @@ describe("the surface that hosts the admin console", () => {
 
   it("leaves the chat surface in charge outside the console", async () => {
     render(<QaSurface {...surfaceAt("/qa")} />);
+    // The chat surface bootstraps its session after the first paint; let that
+    // update land before the assertions instead of leaving it to React.
+    await settle();
     expect(screen.queryByTestId("qa-admin-root")).toBeNull();
     // Neither half of the console is mounted: not the administrator's own
     // screen, not the refusal the surface paints for everyone else.

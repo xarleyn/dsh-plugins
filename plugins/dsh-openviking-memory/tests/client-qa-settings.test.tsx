@@ -13,6 +13,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -82,15 +83,39 @@ describe("account-scoped memory page", () => {
     await waitFor(() => {
       expect(remote.userMemoryOverview).toHaveBeenCalledWith("token-a");
     });
-    expect(await screen.findByText("Что ассистент о вас знает")).toBeDefined();
-    expect(screen.getByText("Ассистент отвечает по-русски.")).toBeDefined();
-    expect(screen.getByText("Разборы")).toBeDefined();
-    expect(screen.getByText("ftp_настройка")).toBeDefined();
-    expect(screen.getByText("Настраивали FTP.")).toBeDefined();
+    const profile = await screen.findByTestId("openviking-memory-profile");
+    expect(
+      within(profile).getByRole("heading", {
+        name: "Что ассистент о вас знает",
+      }),
+    ).toBeDefined();
+    expect(
+      screen.getByTestId("openviking-memory-profile-text").textContent,
+    ).toBe("Ассистент отвечает по-русски.");
+    const group = screen.getByTestId("openviking-memory-group");
+    expect(
+      within(group).getByTestId("openviking-memory-group-title").textContent,
+    ).toBe("Разборы");
+    expect(
+      within(group).getByTestId("openviking-memory-item-name").textContent,
+    ).toBe("ftp_настройка");
+    expect(
+      screen.getByTestId("openviking-memory-session-summary").textContent,
+    ).toBe("Настраивали FTP.");
     // The counts are the store's totals, not the rows on screen.
-    expect(screen.getByText("разделов")).toBeDefined();
-    expect(screen.getByText("записей")).toBeDefined();
-    expect(screen.getByText("разговоров")).toBeDefined();
+    const totals = screen.getByTestId("openviking-memory-totals");
+    expect(
+      within(totals).getByTestId("openviking-memory-total-sections")
+        .textContent,
+    ).toBe("1разделов");
+    expect(
+      within(totals).getByTestId("openviking-memory-total-memories")
+        .textContent,
+    ).toBe("1записей");
+    expect(
+      within(totals).getByTestId("openviking-memory-total-sessions")
+        .textContent,
+    ).toBe("1разговоров");
     // Read-only page: nothing here writes to the store.
     expect(screen.queryByRole("checkbox")).toBeNull();
   });
@@ -109,11 +134,12 @@ describe("account-scoped memory page", () => {
 
     render(<Page token="token-a" />);
 
-    await waitFor(() => {
-      expect(screen.getByText(/содержимое памяти не показано/u)).toBeDefined();
-    });
-    expect(screen.getByText(/deepseek-harness/u)).toBeDefined();
-    expect(screen.queryByText("Ассистент отвечает по-русски.")).toBeNull();
+    const refusal = await screen.findByTestId(
+      "openviking-memory-identity-refused",
+    );
+    expect(refusal.textContent).toMatch(/содержимое памяти не показано/u);
+    expect(refusal.textContent).toContain("deepseek-harness");
+    expect(screen.queryByTestId("openviking-memory-profile-text")).toBeNull();
   });
 
   it("says so when the deployment does not separate accounts", async () => {
@@ -126,13 +152,12 @@ describe("account-scoped memory page", () => {
 
     render(<Page token="token-a" />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          /Разделение памяти по пользователям в этом развёртывании/u,
-        ),
-      ).toBeDefined();
-    });
+    const notice = await screen.findByTestId(
+      "openviking-memory-notice-scoping-off",
+    );
+    expect(notice.textContent).toMatch(
+      /Разделение памяти по пользователям в этом развёртывании/u,
+    );
   });
 
   it("tells an empty memory apart from a broken one", async () => {
@@ -151,9 +176,9 @@ describe("account-scoped memory page", () => {
 
     render(<Page token="token-a" />);
 
-    await waitFor(() => {
-      expect(screen.getByText(/Память пока пуста/u)).toBeDefined();
-    });
+    const empty = await screen.findByTestId("openviking-memory-empty");
+    expect(empty.textContent).toMatch(/Память пока пуста/u);
+    expect(screen.queryByTestId("openviking-memory-unavailable")).toBeNull();
   });
 
   it("reports why the store could not be read", async () => {
@@ -174,11 +199,10 @@ describe("account-scoped memory page", () => {
 
     render(<Page token="token-a" />);
 
-    await waitFor(() => {
-      expect(
-        screen.getByText(/Память недоступна: fetch failed/u),
-      ).toBeDefined();
-    });
+    const unavailable = await screen.findByTestId(
+      "openviking-memory-unavailable",
+    );
+    expect(unavailable.textContent).toMatch(/Память недоступна: fetch failed/u);
   });
 
   it("shows a refusal instead of inventing a state", async () => {
@@ -192,9 +216,8 @@ describe("account-scoped memory page", () => {
 
     render(<Page token="token-a" />);
 
-    await waitFor(() => {
-      expect(screen.getByText("Нужен вход в аккаунт QA.")).toBeDefined();
-    });
+    const error = await screen.findByTestId("openviking-memory-error");
+    expect(error.textContent).toBe("Нужен вход в аккаунт QA.");
   });
 
   it("re-reads the memory on demand", async () => {
@@ -202,8 +225,11 @@ describe("account-scoped memory page", () => {
     const Page = createMemoryOverviewSection(remote);
 
     render(<Page token="token-a" />);
-    await screen.findByText("Разборы");
-    fireEvent.click(screen.getByText("Обновить"));
+    await screen.findByTestId("openviking-memory-group");
+    const refresh = screen.getByTestId("openviking-memory-refresh");
+    // The id is the handle; the caption a reader presses is still "Обновить".
+    expect(screen.getByRole("button", { name: "Обновить" })).toBe(refresh);
+    fireEvent.click(refresh);
 
     await waitFor(() => {
       expect(remote.userMemoryOverview).toHaveBeenCalledTimes(2);
@@ -236,6 +262,9 @@ describe("account-scoped memory page", () => {
     await waitFor(() => {
       expect(remote.userMemoryOverview).toHaveBeenCalledWith("token-old");
     });
+    expect(screen.getByTestId("openviking-memory-loading").textContent).toBe(
+      "Читаю память…",
+    );
     rendered.rerender(<Page token="token-new" />);
     await waitFor(() => {
       expect(remote.userMemoryOverview).toHaveBeenCalledWith("token-new");
@@ -249,7 +278,9 @@ describe("account-scoped memory page", () => {
         }),
       );
     });
-    expect(screen.queryByText("old account")).toBeNull();
+    expect(
+      screen.queryByTestId("openviking-memory-profile-text")?.textContent,
+    ).not.toBe("old account");
     expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(
       true,
     );
@@ -262,7 +293,9 @@ describe("account-scoped memory page", () => {
         }),
       );
     });
-    expect(await screen.findByText("new account")).toBeDefined();
+    expect(
+      (await screen.findByTestId("openviking-memory-profile-text")).textContent,
+    ).toBe("new account");
     expect((screen.getByRole("button") as HTMLButtonElement).disabled).toBe(
       false,
     );

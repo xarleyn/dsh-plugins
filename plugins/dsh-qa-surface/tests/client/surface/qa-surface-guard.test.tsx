@@ -2,6 +2,7 @@
 
 import { render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { ReactElement } from "react";
 import type { QaSurfaceProps } from "../../../src/client/QaSurface.js";
 import { QaSurfaceGuard } from "../../../src/client/QaSurfaceGuard.js";
 import {
@@ -19,6 +20,25 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/**
+ * Render a surface that crashes on its first hook read.
+ *
+ * jsdom reports an uncaught error through the window `error` event, which
+ * prints outside `console` and so stays in the output even with console.error
+ * stubbed. Here the crash is the case under test and the guard is what
+ * absorbs it, so the report is expected noise — kept off the transcript the
+ * way the panel host's crash test keeps its own.
+ */
+function renderCrashingSurface(ui: ReactElement): ReturnType<typeof render> {
+  const suppress = (event: ErrorEvent) => event.preventDefault();
+  window.addEventListener("error", suppress);
+  try {
+    return render(ui);
+  } finally {
+    window.removeEventListener("error", suppress);
+  }
+}
+
 describe("QaSurfaceGuard", () => {
   it("absorbs a surface crash as the fullscreen failure card", () => {
     const errors = vi
@@ -27,7 +47,7 @@ describe("QaSurfaceGuard", () => {
     // The empty face is what the slot inject hands over when its lazy host
     // service reads fail; the surface's first hook read throws into the
     // guard, which must swap in the failure card instead of propagating.
-    render(<QaSurfaceGuard {...({} as QaSurfaceProps)} />);
+    renderCrashingSurface(<QaSurfaceGuard {...({} as QaSurfaceProps)} />);
     expect(screen.getByRole("alert")).toBeTruthy();
     expect(screen.getByRole("button", { name: "Перезагрузить" })).toBeTruthy();
     expect(errors).toHaveBeenCalledWith(
@@ -38,7 +58,7 @@ describe("QaSurfaceGuard", () => {
 
   it("keeps covering the frame until the browser reloads", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    render(<QaSurfaceGuard {...({} as QaSurfaceProps)} />);
+    renderCrashingSurface(<QaSurfaceGuard {...({} as QaSurfaceProps)} />);
     // The failure card is the alert the operator cannot miss, and the sheet
     // pins the surface root class it reuses to the whole viewport: the crash
     // must not thin the overlay out into a partial page where host chrome
@@ -62,7 +82,7 @@ describe("QaSurfaceGuard", () => {
 
   it("keeps the body mask attribute set while the surface is broken", () => {
     vi.spyOn(console, "error").mockImplementation(() => undefined);
-    render(<QaSurfaceGuard {...({} as QaSurfaceProps)} />);
+    renderCrashingSurface(<QaSurfaceGuard {...({} as QaSurfaceProps)} />);
     // The mask attribute is owned by the guard, above the boundary: a crash
     // unmounts the surface, but must not lift the mask with it. With the
     // face missing, the route reads as permanently active — a broken surface
@@ -83,7 +103,7 @@ describe("QaSurfaceGuard", () => {
         }),
       },
     } as unknown as QaSurfaceProps;
-    const { unmount } = render(<QaSurfaceGuard {...face} />);
+    const { unmount } = renderCrashingSurface(<QaSurfaceGuard {...face} />);
     expect(
       document
         .querySelector('link[data-dsh-qa-surface="favicon"]')
