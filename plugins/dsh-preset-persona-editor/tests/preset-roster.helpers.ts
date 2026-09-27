@@ -7,13 +7,16 @@
  * the composition text, so a test names that text and the reader sees it.
  *
  * The refusals mirror the published `0.1.7-rc.2` registry rather than the
- * editor's guess at it: `resolve()` and `readDocument()` both throw
- * `agent-preset/not-found` for an id they do not hold (neither answers
- * `undefined`), and `readDocument()` renders a broken preset's declarations
- * exactly as it renders a healthy one — it never consults the activation
- * diagnostic. `withoutReadDocument` models a host inside the `<0.2.0` part of
- * the compatibility range that predates the method, and `answerNothing` one that
- * answers the method with a value that is not a composition.
+ * editor's guess at it, and the two shapes it answers with were driven through
+ * the installed class, not read off its types alone: `resolve()` and
+ * `readDocument()` both **reject** an id they do not hold with
+ * `agent-preset/not-found` — `Unknown agent preset: <id>`, the roster's ids in
+ * `details`, and never `undefined` — and `readDocument()` renders a broken
+ * preset's declarations exactly as it renders a healthy one, since it never
+ * consults the activation diagnostic. `withoutReadDocument` models a host inside
+ * the `<0.2.0` part of the compatibility range that predates the method, and
+ * `answerNothing` one that answers the method with a value that is not a
+ * composition — neither is something the published registry does.
  */
 
 import type {
