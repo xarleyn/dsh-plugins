@@ -105,9 +105,12 @@ and a check that is red gets switched off; without the printed line an exemption
 that nobody sees reads as coverage after half a year. Two classes are in it:
 
 - sources that were over 1400 lines before the gate landed — the qa-surface type,
-  admin, account and client modules, the integrations operator card and index, the
-  browser session manager, the authenticated-fetch client sections, and the
-  session-scope client. They leave one by one as their refactor card splits them.
+  index, admin, account and client modules, and the integrations index. They leave
+  one by one as their refactor card splits them, and four already did: the
+  integrations operator card, back within budget after the provider-core split, the
+  session-scope client, whose file that split deleted, and the browser session
+  manager and the authenticated-fetch client sections, each now a barrel over the
+  module directory that took its body.
 - `plugins/dsh-qa-integrations/scripts/verify-package.mjs`, an assertion list run
   over the built bundle and the packed tarball. Its length tracks the shipped
   surface rather than a module design, which is exactly the case the source budget
