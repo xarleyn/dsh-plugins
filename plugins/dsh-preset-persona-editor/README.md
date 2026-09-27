@@ -113,7 +113,9 @@ with the registry's own reason on the card.
   them would answer a failed `list()` with a deployment that composes no
   presets — and the reason arrives above them: the screen that draws a list
   draws no failure of its own otherwise, and rows held on screen after a
-  refused refresh are rows the page has not told anyone are stale.
+  refused refresh are rows the page has not told anyone are stale. The notice
+  carries a Dismiss control, because the page keeps the message for the user
+  and opening a preset is not the same as having read it.
 - Presets apply to **new sessions**: DSH composes an agent from the preset it
   names when the session starts, and a running session keeps the composition it
   began with. The page states this instead of implying a live swap.

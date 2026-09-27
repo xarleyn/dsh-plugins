@@ -29,6 +29,9 @@ const BODY = `
 .preset-persona__warn{color:var(--dsw-alias-state-warn-primary);background:var(--dsw-alias-state-warn-tertiary);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.5;margin:0}
 .preset-persona__error{color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:1.55;margin:0}
 .preset-persona__ok{color:var(--dsw-alias-state-success-primary);font-size:12px;margin:0}
+.preset-persona__notice-dismiss{appearance:none;font:inherit;color:var(--dsw-alias-label-secondary);background:0 0;border:0;padding:0 0 0 8px;cursor:pointer;text-decoration:underline}
+.preset-persona__notice-dismiss:hover{color:var(--dsw-alias-label-primary)}
+.preset-persona__notice-dismiss:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .preset-persona__actions{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
 .preset-persona__button{appearance:none;font:inherit;font-size:13px;line-height:1.4;border-radius:8px;padding:6px 12px;cursor:pointer;border:1px solid var(--dsw-alias-border-l2);background:0 0;color:var(--dsw-alias-label-primary)}
 .preset-persona__button:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}

@@ -55,6 +55,7 @@ export const strings = {
 
   gone: "This preset is no longer in the roster.",
   unreadable: "This preset's composition cannot be read by this page.",
+  dismiss: "Dismiss",
 
   previewTitle: "Preview",
   previewConfig: "Persona config",

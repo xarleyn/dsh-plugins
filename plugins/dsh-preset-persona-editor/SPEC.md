@@ -106,7 +106,9 @@ Numbered, testable guarantees:
     no presets — and the refusal is put above them. Nothing else on this screen
     can carry it: the page records no timestamp for the list it shows, so the
     words explaining why the rows did not change are the only claim it can make
-    about their age.
+    about their age. The notice carries the control that dismisses it — a
+    message the page holds for the user is theirs to put down, and navigating
+    into a preset is not the same as reading it.
 
 ## 2. Data model
 
@@ -214,6 +216,9 @@ not a composition.
     page, not only in the controller, because the store's `error` belongs to the
     screen that draws when there is no list at all, and a message written where
     the ready screen reads nothing is a stale roster passing as a current one.
+    The notice is then dismissed by its own control, pressed by name: a state
+    the page keeps for the user has to be one they can put down, and a method
+    only its own test reaches is not that control.
 
 ## 6. Implementation status
 
