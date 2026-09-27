@@ -76,14 +76,18 @@ function renderDisplayMath(
 ): ReactNode {
   if (!pending) {
     return (
-      <div key={key} className="dsh-qa-md-math">
+      <div key={key} className="dsh-qa-md-math" data-testid="qa-md-math">
         {renderTexToReact(text, true)}
       </div>
     );
   }
   if (text.trim() === "") return null;
   return (
-    <div key={key} className="dsh-qa-md-math dsh-qa-md-math--pending">
+    <div
+      key={key}
+      className="dsh-qa-md-math dsh-qa-md-math--pending"
+      data-testid="qa-md-math-pending"
+    >
       <code>{text}</code>
     </div>
   );
@@ -155,6 +159,7 @@ function renderListItem(
     <input
       key="task"
       type="checkbox"
+      data-testid="qa-md-task-checkbox"
       checked={item.checked}
       disabled
       aria-label="Задача"
@@ -184,7 +189,11 @@ function renderListItem(
     parts.push(renderBlock(block, `${key}:${index + 1}`, context));
   });
   return (
-    <li key={key} className={item.task ? "dsh-qa-md-task" : undefined}>
+    <li
+      key={key}
+      className={item.task ? "dsh-qa-md-task" : undefined}
+      data-testid={item.task ? "qa-md-task-item" : undefined}
+    >
       {parts}
     </li>
   );
@@ -196,7 +205,7 @@ function renderTable(
   context: RenderContext,
 ): ReactNode {
   return (
-    <div key={key} className="dsh-qa-md-table">
+    <div key={key} className="dsh-qa-md-table" data-testid="qa-md-table">
       <table>
         <thead>
           <tr>
@@ -323,7 +332,11 @@ function inlineNodes(
         const src = remoteImage(node.src);
         if (src === undefined) {
           return (
-            <span key={nodeKey} className="dsh-qa-md-image-alt">
+            <span
+              key={nodeKey}
+              className="dsh-qa-md-image-alt"
+              data-testid="qa-md-image-alt"
+            >
               {node.alt}
             </span>
           );
@@ -332,6 +345,7 @@ function inlineNodes(
           <img
             key={nodeKey}
             className="dsh-qa-md-image"
+            data-testid="qa-md-image"
             src={src}
             alt={node.alt}
             loading="lazy"
@@ -348,7 +362,11 @@ function inlineNodes(
         );
       case "footnoteRef":
         return (
-          <sup key={nodeKey} className="dsh-qa-md-fn-ref">
+          <sup
+            key={nodeKey}
+            className="dsh-qa-md-fn-ref"
+            data-testid="qa-md-fn-ref"
+          >
             {footnoteNumber(node.id, context)}
           </sup>
         );
@@ -403,11 +421,19 @@ function renderFootnoteSection(context: RenderContext): ReactNode | null {
     if (tail === undefined || tail.kind !== "paragraph") {
       children.push(...backrefs);
     }
-    items.push(<li key={key}>{children}</li>);
+    items.push(
+      <li key={key} data-testid="qa-md-footnote-item">
+        {children}
+      </li>,
+    );
   }
   if (items.length === 0) return null;
   return (
-    <section className="dsh-qa-md-footnotes" aria-label="Сноски">
+    <section
+      className="dsh-qa-md-footnotes"
+      data-testid="qa-md-footnotes"
+      aria-label="Сноски"
+    >
       <ol>{items}</ol>
     </section>
   );
