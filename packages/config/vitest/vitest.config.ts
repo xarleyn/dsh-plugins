@@ -37,19 +37,55 @@ import {
 /** A decorator always opens its own line; a JSDoc tag opens it with `*`. */
 const DECORATOR_LINE_RE = /^\s*@[A-Za-z_$]/m;
 
-const TYPESCRIPT_FILE_RE = /\.[cm]?tsx?$/;
+/**
+ * Clean TypeScript only — `tsx` is deliberately absent. The transform labels its
+ * output `moduleType: "js"`, and a lowered `.tsx` still carries JSX (`jsx`
+ * defaults to `preserve`), which Vite would then be told to read as plain
+ * JavaScript. Every file that declares a decorator in this repository is a
+ * `.ts` host entry, so nothing needs the JSX route today; a decorated `.tsx`
+ * would need its own JSX-aware emit, not a widened copy of this expression.
+ */
+const TYPESCRIPT_FILE_RE = /\.[cm]?ts$/;
 
 const SOURCE_MAP_COMMENT_RE = /\n?\/\/[#@] sourceMappingURL=[^\n]*\n?$/;
 
-/** Matches what `packages/config/tsconfig/node.json` compiles with. */
+/**
+ * Emit options for the lowering, and where each one comes from.
+ *
+ * `ts.transpileModule` reads no tsconfig, so what a plugin build gets from
+ * `packages/config/tsconfig/node.json` has to be restated here — and it cannot
+ * all be restated exactly. Do not "correct" the divergences below against
+ * `node.json`: each is load-bearing, and removing one returns every decorated
+ * host entry to the red that made this transform necessary.
+ *
+ * From `node.json`:
+ * - `target: ES2022` — the build's target, hence the emit the lowering repeats.
+ * - `sourceMap` — on there too; here it is what keeps a failure pointing at the
+ *   TypeScript line rather than at the lowered output.
+ *
+ * Pinned to what `node.json` already implies, restated so a tsconfig edit cannot
+ * move this emit on its own:
+ * - `experimentalDecorators: false` — the reason the transform exists. Legacy
+ *   lowering hands the decorator a descriptor, while `Remote` takes a
+ *   `ClassMethodDecoratorContext`; nothing in the repository enables it.
+ * - `useDefineForClassFields: true` — what `target: ES2022` gives by default,
+ *   and it decides how a decorated field is written.
+ *
+ * Deliberately not `node.json`:
+ * - `module: ESNext` rather than `NodeNext`: `transpileModule` cannot see the
+ *   nearest `package.json`, so it reads a `.ts` input as CommonJS and `NodeNext`
+ *   emits `exports.Store = Store` into a module Vite loads as ESM.
+ * - `importHelpers: false`: enabled, the emit becomes
+ *   `import { __esDecorate } from "tslib"`, and no plugin depends on tslib.
+ * - `inlineSources: true`: not a build option at all — the map handed to Vite
+ *   carries the source text, so a stack frame prints a line worth reading.
+ */
 const TRANSPILE_OPTIONS: ts.CompilerOptions = {
   target: ts.ScriptTarget.ES2022,
   module: ts.ModuleKind.ESNext,
   experimentalDecorators: false,
   useDefineForClassFields: true,
   importHelpers: false,
-  // Kept for Vite's own JSX transform, so React refresh stays untouched.
-  jsx: ts.JsxEmit.Preserve,
   sourceMap: true,
   inlineSources: true,
 };
@@ -70,7 +106,7 @@ function declaresDecorator(fileName: string, code: string): boolean {
     code,
     ts.ScriptTarget.Latest,
     false,
-    fileName.endsWith("x") ? ts.ScriptKind.TSX : ts.ScriptKind.TS,
+    ts.ScriptKind.TS,
   );
   let found = false;
   const visit = (node: ts.Node): void => {
@@ -95,9 +131,22 @@ function declaresDecorator(fileName: string, code: string): boolean {
  *
  * `tsc` lowers standard decorators correctly — it is what `pnpm build` runs,
  * which is why `build`, `typecheck` and the shipped bundle never showed the
- * gap — so the same compiler performs the lowering here. Legacy lowering is
- * not an option: `Remote` receives a `ClassMethodDecoratorContext`, so
- * `@oxc-project/runtime/helpers/decorate` would record the wrong semantics.
+ * gap — so the lowering is done by the TypeScript compiler rather than by
+ * widening oxc's config, which offers no lever for this (`OxcOptions` passes no
+ * tsconfig through to the transform).
+ *
+ * Not the same *binary*, though: this preset resolves `typescript` from
+ * `catalog:tooling` (5.9.3), while a plugin build compiles with `tsc` from
+ * `catalog:plugin-tooling` (7.0.2). The two agree where it matters — diffed on a
+ * decorated method, the `__esDecorate` / `__runInitializers` prelude and the
+ * class wrapper are byte-identical — and they differ only in module emit, which
+ * {@link TRANSPILE_OPTIONS} overrides on purpose. `packages/config`'s own suite
+ * pins the semantics that a version split could break: the decorator receiving a
+ * standard context rather than a descriptor.
+ *
+ * Legacy lowering is not an option: `Remote` receives a
+ * `ClassMethodDecoratorContext`, so `@oxc-project/runtime/helpers/decorate`
+ * would record the wrong semantics.
  */
 export function lowerStandardDecorators(): Plugin {
   return {

@@ -1566,15 +1566,32 @@ vite major it was pulled in under), not to a migration card.
 
 **Landed by #603.** `packages/config/vitest/vitest.config.ts` now carries a
 `dsh:lower-standard-decorators` pre plugin: it parses each TypeScript module, and
-where the AST really declares a decorator it emits the module through the root
-`typescript` compiler (the same lowering `pnpm build` uses) before Vite's oxc
-transform sees it. Nothing per package had to change — except
-`dsh-qa-integrations`, the one project whose `vitest.config.ts` called
-`defineConfig` directly instead of consuming the preset, which now calls
-`definePluginVitestConfig`. Measured on `bot/603` over `792a6cb9`:
-`nx run-many -t test` reports no `SyntaxError` in any of the 32 projects, and the
-six packages named above collect their suites (`dsh-qa-integrations` 112 files /
-845 tests). Do not read a decorator failure as a new regression, and do not
-work around it in a package — `dsh-draft-sessions`'s decorator-free
-`@Remote` application (`src/index.ts:107`) is now unnecessary.
+where the AST really declares a decorator it emits the module through the
+`typescript` the preset resolves, before Vite's oxc transform sees it. That
+compiler is not the one a plugin build runs, and the difference is worth naming:
+the preset takes `typescript` from `catalog:tooling` (5.9.3), while `pnpm build`
+compiles a plugin with `tsc` from `catalog:plugin-tooling` (7.0.2). Both lower a
+decorated method to the same `__esDecorate` / `__runInitializers` prelude and the
+same class wrapper — diffed byte for byte on the fixture under
+`packages/config/tests/` — so what is left between them is module emit, which the
+preset overrides on purpose (`transpileModule` cannot read `package.json`, so
+`node.json`'s `NodeNext` would emit CommonJS where `ESNext` keeps the ESM). The
+lowering takes `.ts` files only: a decorated `.tsx` would reach Vite as JSX
+labelled `moduleType: "js"`, and no `.tsx` in the repository declares a
+decorator.
+
+Nothing per package had to change — except `dsh-qa-integrations`, the one project
+whose `vitest.config.ts` called `defineConfig` directly instead of consuming the
+preset, which now calls `definePluginVitestConfig`. The preset carries its own
+suite now (`packages/config/tests/lower-standard-decorators.test.ts`, run by
+`nx run-many -t test` as `@yadsh/dsh-config`): it imports a decorated fixture
+through the preset, so a regression prints the named failure this card spent its
+first pass hunting for — with the plugin removed for a control run, that suite
+fails with `SyntaxError: Invalid or unexpected token` and no frame. Measured on
+`bot/603` over `792a6cb9`: `nx run-many -t test` reports no `SyntaxError` in any
+project, and the six packages named above collect their suites
+(`dsh-qa-integrations` 112 files green). Do not read a decorator
+failure as a new regression, and do not work around it in a package —
+`dsh-draft-sessions`'s decorator-free `@Remote` application
+(`src/index.ts:107`) is now unnecessary.
 

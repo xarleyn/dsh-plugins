@@ -21,6 +21,7 @@
     "vitest": "catalog:tooling"
   },
   "scripts": {
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run"
   }
 }
