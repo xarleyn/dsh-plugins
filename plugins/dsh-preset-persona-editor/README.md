@@ -82,10 +82,11 @@ install command above creates.
 composition. It reads the row's list and registers each enabled section through
 `ctx.systemPrompt`, which is what makes a section of this preset shadow a
 deployment-global section of the same name. It imports nothing from this plugin,
-so the preset keeps composing with the plugin uninstalled — and it is code, so
-this page never reads it as data: it reports the list the composition names and
-says whether the registrar file is the one this editor ships or a hand-written
-one.
+so the preset keeps composing with the plugin uninstalled. It is code, so this
+page does not read it as data: it reports the list the composition names, and
+that is what the preset declares — whether the module beside it matches is the
+Loader's answer at mount, and a preset that cannot compose arrives as broken,
+with the registry's own reason on the card.
 
 ## What the page shows
 
@@ -103,7 +104,7 @@ one.
 ## Compatibility
 
 - DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (tested against `0.1.7-rc.2`).
-- Requires the deployment to mount `@deepseek-ai/dsh-agent-presets` (the
+- Requires the deployment to mount `@deepseek-ai/dsh-agent-preset-registry` (the
   `agentPresets` service) and `@deepseek-ai/dsh-system-prompt`.
 - Client surface: `settings.section` and the Typert Remote namespace
   `presetPersonaEditor`.
@@ -116,7 +117,7 @@ pnpm install
 pnpm --filter @yadsh/dsh-preset-persona-editor check
 ```
 
-`check` runs lint, typecheck, the test suite (composition surgery, the file
+`check` runs lint, typecheck, the test suite (composition surgery, the reading
 layer, the service's wire surface, the page's store and wiring, and the built
 browser bundle), the build, and the package gate.
 

@@ -33,15 +33,16 @@ export type PersonaPageProps = PropsRuntime<"settings.section"> &
 
 /** The state badge of one roster row. */
 function badgeOf(row: PersonaPresetRow): string {
+  if (row.broken !== "") return strings.badgeBroken;
   if (row.persona === "unreadable") return strings.badgeUnreadable;
   if (row.persona === "ambiguous") return strings.badgeAmbiguous;
-  if (row.trust === "system") return strings.badgeShipped;
   return row.persona === "local" ? strings.badgeCustom : strings.badgeInherited;
 }
 
 /** The one-line description under a roster row's name. */
 function describe(row: PersonaPresetRow): string {
   const parts: string[] = [];
+  if (row.broken !== "") parts.push(row.broken);
   if (row.persona === "none") parts.push(strings.describesMissing);
   if (row.persona === "ambiguous") parts.push(strings.describesAmbiguous);
   if (row.persona === "unreadable") parts.push(strings.describesError);

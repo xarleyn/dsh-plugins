@@ -1,7 +1,7 @@
 {
   "name": "@yadsh/dsh-preset-persona-editor",
   "version": "0.1.2",
-  "description": "Edit an agent preset's persona for the DeepSeek Harness from the settings UI: prefix, suffix, complete mode, and the runtime-context toggle, written back into the preset's own agent.cordis.yml",
+  "description": "Read what an agent preset contributes to the prompt from the DeepSeek Harness settings UI: the persona prefix, suffix, complete mode and runtime-context toggle the preset composes with, and the named prompt sections it registers in its own name",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/xarleyn/dsh-plugins.git",
@@ -100,7 +100,7 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
-    "@deepseek-ai/dsh-agent-presets": "catalog:dsh",
+    "@deepseek-ai/dsh-agent-preset-registry": "catalog:dsh",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
@@ -111,7 +111,7 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-agent-presets": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-agent-preset-registry": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",

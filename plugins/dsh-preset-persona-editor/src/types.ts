@@ -9,9 +9,6 @@
  * @module types
  */
 
-/** Whether the deployment ships a preset or the user owns it. */
-export type PresetTrust = "system" | "user";
-
 /**
  * How a preset carries its persona:
  * - `none` — no persona row: the deployment's own persona applies (inherited);
@@ -54,15 +51,6 @@ export interface PromptSectionDraft {
  */
 export type SectionsState = "none" | "local" | "ambiguous" | "unreadable";
 
-/**
- * The registrar file beside the composition:
- * - `present` — the file is the one this editor ships;
- * - `foreign` — a file is there but its content differs (hand-edited);
- * - `missing` — no file: a sections row would register nothing;
- * - `unknown` — the composition could not be read, so nothing was checked.
- */
-export type SectionsModuleState = "present" | "foreign" | "missing" | "unknown";
-
 /** One roster row: a preset and the persona state read from its composition. */
 export interface PersonaPresetRow {
   readonly id: string;
@@ -70,11 +58,8 @@ export interface PersonaPresetRow {
   readonly name: string;
   /** Description the preset published; `""` when it published none. */
   readonly description: string;
-  readonly trust: PresetTrust;
   /** Whether a session naming no preset composes this one. */
   readonly isDefault: boolean;
-  /** Whether this preset's composition this editor can open and read. */
-  readonly editable: boolean;
   /** Why the preset cannot compose a session; `""` when it can. */
   readonly broken: string;
   readonly persona: PersonaState;
@@ -92,11 +77,15 @@ export interface PersonaDocument {
   readonly id: string;
   readonly name: string;
   readonly description: string;
-  readonly trust: PresetTrust;
+  /** Why the preset cannot compose a session; `""` when it can. */
+  readonly broken: string;
+  /**
+   * Whether the registry answered for this preset and its composition parsed,
+   * so the page has readings to show. Since `0.1.7-rc.2` a roster row carries
+   * neither ownership nor a path, so nothing finer than this is derivable.
+   */
   readonly editable: boolean;
   readonly isDefault: boolean;
-  /** Absolute path of the composition file this editor reads. */
-  readonly path: string;
   /** Whether the preset carries a persona row of its own. */
   readonly hasRow: boolean;
   /** Values read from the row; defaults when the preset has none. */
@@ -114,7 +103,7 @@ export interface PersonaDocument {
   readonly foreignKeys: readonly string[];
   /** Persona rows beyond the first; non-zero means there is no single persona. */
   readonly extraRows: number;
-  /** The prompt sections the preset contributes, in file order. */
+  /** The prompt sections the preset contributes, in composition order. */
   readonly sections: readonly PromptSectionDraft[];
   /** How the preset carries those sections. */
   readonly sectionsState: SectionsState;
@@ -124,16 +113,15 @@ export interface PersonaDocument {
    * it is.
    */
   readonly sectionsError: string;
-  /** State of the registrar file the sections row names. */
-  readonly sectionsModule: SectionsModuleState;
   /** Config keys of the sections row other than `sections`. */
   readonly sectionsUnknownKeys: readonly string[];
   /**
-   * Why this preset's composition cannot be read at all (it is missing or is
-   * not a composition, the persona row is flow-styled, ...); `""` when it can.
+   * Why this preset's composition cannot be read at all (the registry refused
+   * it, it is not a composition, the persona row is flow-styled, ...); `""` when
+   * it can.
    */
   readonly readError: string;
-  /** The composition's text, for the read-only file viewer. */
+  /** The composition's text, as the Host rendered it from the declarations. */
   readonly source: string;
   /** Order of the persona prefix section on this deployment. */
   readonly prefixOrder: number;

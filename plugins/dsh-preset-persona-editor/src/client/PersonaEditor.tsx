@@ -13,7 +13,7 @@
 import type { ReactElement } from "react";
 
 import { FIRST_PARTY_NAME_HINT } from "../shared/prompt-sections.js";
-import type { PersonaDocument, SectionsModuleState } from "../types.js";
+import type { PersonaDocument } from "../types.js";
 import { PersonaPreview } from "./PersonaPreview.js";
 import { strings } from "./locale.js";
 import type { PersonaPageController, PersonaPageSnapshot } from "./store.js";
@@ -64,20 +64,6 @@ function Check(props: {
       </span>
     </p>
   );
-}
-
-/** One line about the registrar file the sections row names. */
-function registrarLine(module: SectionsModuleState): string {
-  switch (module) {
-    case "present":
-      return strings.sectionsModulePresent;
-    case "foreign":
-      return strings.sectionsModuleForeign;
-    case "missing":
-      return strings.sectionsModuleMissing;
-    default:
-      return strings.sectionsModuleUnknown;
-  }
 }
 
 /** One section of the advanced area: its values and what it says about them. */
@@ -168,9 +154,6 @@ function SectionsArea(props: {
       <summary>{strings.sectionsTitle}</summary>
       <p className="preset-persona__hint">{strings.sectionsHint}</p>
       <p className="preset-persona__hint">{strings.sectionsKeeps}</p>
-      <p className="preset-persona__hint">
-        {registrarLine(document.sectionsModule)}
-      </p>
       {document.sectionsError === "" ? null : (
         <p
           className="preset-persona__error"
@@ -284,15 +267,14 @@ export function PersonaEditor(props: {
     );
   }
   const { document } = open;
-  const readable = document.readError === "" && document.extraRows === 0;
 
   return (
     <>
-      <div className="preset-persona__meta">
-        <p className="preset-persona__path">
-          {strings.pathLabel}: <code>{document.path}</code>
+      {document.broken === "" ? null : (
+        <p className="preset-persona__error" data-testid="persona-broken">
+          {strings.brokenTitle}: {document.broken}
         </p>
-      </div>
+      )}
 
       {document.readError === "" ? null : (
         <p className="preset-persona__error" data-testid="persona-read-error">
@@ -300,8 +282,8 @@ export function PersonaEditor(props: {
         </p>
       )}
 
-      {readable ? null : (
-        <p className="preset-persona__warn" data-testid="persona-read-only">
+      {document.editable ? null : (
+        <p className="preset-persona__warn" data-testid="persona-unreadable">
           {strings.unreadable}
         </p>
       )}

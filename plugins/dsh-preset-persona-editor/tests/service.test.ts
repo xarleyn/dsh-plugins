@@ -1,22 +1,22 @@
 /**
  * The host service: the Remote surface a client drives, wired to a real roster
- * shape and a real file on disk.
+ * shape and a real composition.
  *
- * The cordis context is a bare one — `provide` for the two services the
- * plugin injects — so what is under test is the plugin's own wiring, not a
- * deployment: the wire methods exist, they answer with the editor's DTOs, and
- * every refusal arrives as a typed Remote failure the host's reason is logged
- * beside.
+ * The cordis context is a bare one — `provide` for the two services the plugin
+ * injects — so what is under test is the plugin's own wiring, not a deployment:
+ * the wire methods exist, they answer with the editor's DTOs, and every refusal
+ * arrives as a typed Remote failure the host's reason is logged beside.
  */
 
-import { mkdtemp, mkdir, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import { Context } from "@deepseek-ai/cordis";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
-import { PresetPersonaEditor } from "../src/host/service.js";
 import { silentPluginLogger } from "@yadsh/dsh-plugin-log";
+import { describe, expect, it, vi } from "vitest";
+
+import type {
+  PresetComposition,
+  PresetRosterFace,
+} from "../src/host/preset-reader.js";
+import { PresetPersonaEditor } from "../src/host/service.js";
 
 /** A composition with a persona row this editor reads. */
 const OWNED = [
@@ -30,117 +30,140 @@ const OWNED = [
   "",
 ].join("\n");
 
-let root = "";
-let ctx: Context;
-let paths: Record<string, string>;
+const INHERITED = "- id: tool-shell\n  name: '@deepseek-ai/dsh-tool-bash'\n";
 
-/** A roster over the presets a test wrote into the temporary root. */
-function installRoster(
-  entries: Record<string, "system" | "user">,
+/** A roster over the compositions a test declares, in the roster's own order. */
+function rosterOf(
+  entries: Record<string, { content: string | null; broken?: string }>,
   defaultId = "",
-): void {
+): PresetRosterFace {
+  const rows = () =>
+    Object.entries(entries).map(([id, entry]) => ({
+      id,
+      name: `preset ${id}`,
+      ...(entry.broken === undefined ? {} : { broken: entry.broken }),
+    }));
   const resolve = async (id?: string) => {
-    const key = id ?? "";
-    const trust = entries[key];
-    if (trust === undefined) throw new Error("agent-preset/not-found");
-    return { id: key, trust, path: paths[key] ?? "", name: `preset ${key}` };
+    const key = id ?? defaultId;
+    const entry = entries[key];
+    if (entry === undefined) throw new Error("agent-preset/not-found");
+    return {
+      id: key,
+      name: `preset ${key}`,
+      ...(entry.broken === undefined ? {} : { broken: entry.broken }),
+    };
   };
-  ctx.provide("agentPresets", {
-    list: async () =>
-      await Promise.all(
-        Object.keys(entries).map(async (id) => await resolve(id)),
-      ),
+  return {
+    list: async () => rows(),
     resolve,
-    authorable: Object.values(entries).includes("user"),
+    readDocument: async (agentPreset: string): Promise<PresetComposition> => {
+      const entry = entries[agentPreset];
+      if (entry === undefined || entry.content === null) {
+        throw new Error("agent-preset/not-found");
+      }
+      return {
+        agentPreset,
+        content: entry.content,
+        name: `preset ${agentPreset}`,
+      };
+    },
     defaultId,
-    copy: async () => undefined,
+  };
+}
+
+function contextOf(
+  roster: PresetRosterFace,
+  orders: (name: string) => number = () => 0,
+): Context {
+  const ctx = new Context();
+  ctx.provide("agentPresets", roster);
+  ctx.provide("systemPrompt", { getSectionOrder: orders });
+  return ctx;
+}
+
+function build(roster: PresetRosterFace): PresetPersonaEditor {
+  return new PresetPersonaEditor(contextOf(roster), {
+    logger: silentPluginLogger(),
   });
-  ctx.provide("systemPrompt", {
-    getSectionOrder: (name: string) =>
-      name === "DEPLOYMENT_PERSONA_PREFIX" ? 0 : 10200,
-  });
 }
-
-/** Write one composition into the temporary root. */
-async function writePreset(id: string, text: string): Promise<void> {
-  const directory = join(root, id);
-  await mkdir(directory, { recursive: true });
-  const path = join(directory, "agent.cordis.yml");
-  await writeFile(path, text, "utf8");
-  paths[id] = path;
-}
-
-function build(): PresetPersonaEditor {
-  return new PresetPersonaEditor(ctx, { logger: silentPluginLogger() });
-}
-
-beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "preset-persona-service-"));
-  paths = {};
-  ctx = new Context();
-});
-
-afterEach(async () => {
-  await rm(root, { recursive: true, force: true });
-});
 
 describe("PresetPersonaEditor", () => {
   it("registers itself under the wire service key", () => {
-    installRoster({});
-    build();
+    const ctx = contextOf(rosterOf({}));
+    new PresetPersonaEditor(ctx, { logger: silentPluginLogger() });
     expect(ctx.get("presetPersonaEditor")).toBeDefined();
   });
 
   it("lists the roster with each preset's persona state", async () => {
-    await writePreset("demo", OWNED);
-    await writePreset(
-      "plain",
-      "- id: tool-shell\n  name: '@deepseek-ai/dsh-tool-bash'\n",
+    const service = build(
+      rosterOf(
+        {
+          demo: { content: OWNED },
+          plain: { content: INHERITED },
+          retired: { content: null },
+        },
+        "plain",
+      ),
     );
-    installRoster({ demo: "user", plain: "user", shipped: "system" }, "plain");
-    // A preset whose file is missing still has to appear, as unreadable.
-    paths.shipped = join(root, "shipped", "agent.cordis.yml");
-    const catalog = await build().listPersonas();
+    const catalog = await service.listPersonas();
     expect(catalog.presets.map((row) => row.id)).toEqual([
       "demo",
       "plain",
-      "shipped",
+      "retired",
     ]);
     expect(catalog.presets.map((row) => row.persona)).toEqual([
       "local",
       "none",
       "unreadable",
     ]);
+    expect(catalog.presets.map((row) => row.broken)).toEqual(["", "", ""]);
     expect(catalog.presets[1]?.isDefault).toBe(true);
   });
 
-  it("reads one preset, with the deployment's section orders", async () => {
-    await writePreset("demo", OWNED);
-    installRoster({ demo: "user" });
-    const document = await build().readPersona("demo");
+  it("reads one preset and keeps the composition the registry rendered", async () => {
+    const service = build(rosterOf({ demo: { content: OWNED } }));
+    const document = await service.readPersona("demo");
     expect(document.editable).toBe(true);
     expect(document.hasRow).toBe(true);
     expect(document.persona.prefix).toBe("A shipped-looking persona.");
+    expect(document.source).toBe(OWNED);
+    expect(document.rowCount).toBe(2);
+  });
+
+  it("reads the section orders the prompt service publishes", async () => {
+    const roster = rosterOf({ demo: { content: OWNED } });
+    const service = new PresetPersonaEditor(
+      contextOf(roster, (name) =>
+        name === "DEPLOYMENT_PERSONA_PREFIX" ? 0 : 10200,
+      ),
+      { logger: silentPluginLogger() },
+    );
+    const document = await service.readPersona("demo");
     expect(document.prefixOrder).toBe(0);
     expect(document.suffixOrder).toBe(10200);
-    expect(document.source).toBe(OWNED);
-    expect(document.path).toBe(paths.demo);
+  });
+
+  it("reports a preset the roster calls broken, with the roster's reason", async () => {
+    const service = build(
+      rosterOf({ demo: { content: OWNED, broken: "a row names nothing" } }),
+    );
+    const document = await service.readPersona("demo");
+    expect(document.broken).toBe("a row names nothing");
+    expect(document.editable).toBe(false);
+    expect(document.persona.prefix).toBe("A shipped-looking persona.");
   });
 
   it("answers an unknown preset with the editor's not-found code", async () => {
-    installRoster({});
-    const service = build();
+    const service = build(rosterOf({}));
     await expect(service.readPersona("ghost")).rejects.toMatchObject({
       code: "preset-persona/not-found",
     });
   });
 
   it("logs the host's own reason beside the not-found it answers with", async () => {
-    installRoster({});
-    const info = vi.fn();
     const warn = vi.fn();
-    const service = new PresetPersonaEditor(ctx, {
-      logger: { ...silentPluginLogger(), info, warn },
+    const service = new PresetPersonaEditor(contextOf(rosterOf({})), {
+      logger: { ...silentPluginLogger(), warn },
     });
     await expect(service.readPersona("ghost")).rejects.toMatchObject({
       code: "preset-persona/not-found",
@@ -153,8 +176,7 @@ describe("PresetPersonaEditor", () => {
   });
 
   it("publishes no write operation", () => {
-    installRoster({});
-    const service = build() as unknown as Record<string, unknown>;
+    const service = build(rosterOf({})) as unknown as Record<string, unknown>;
     for (const write of ["savePersona", "resetPersona", "copyPreset"]) {
       expect(service[write]).toBeUndefined();
     }

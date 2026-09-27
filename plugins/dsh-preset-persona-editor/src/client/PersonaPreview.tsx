@@ -168,10 +168,10 @@ export function PersonaPreview(props: {
 
       <details
         className="preset-persona__details"
-        data-testid="persona-preview-file"
+        data-testid="persona-preview-composition"
       >
-        <summary>{strings.fileTitle}</summary>
-        <p className="preset-persona__hint">{strings.fileHint}</p>
+        <summary>{strings.compositionTitle}</summary>
+        <p className="preset-persona__hint">{strings.compositionHint}</p>
         <pre className="preset-persona__pre">{document.source}</pre>
       </details>
     </div>

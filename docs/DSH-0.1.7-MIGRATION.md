@@ -530,6 +530,23 @@ All **[verified]** by the compiler during the trial bump:
   `ctx.agentPresets.register(definition)` in-process, which is memory-only and
   returns a disposer (`src/index.ts:80`). This is now a feature decision for the
   owner, not a migration detail — see §10.
+
+  **[landed #518, 27.09] D2 taken as read-only, and the face moved.** The plugin
+  now type-imports `@deepseek-ai/dsh-agent-preset-registry` and reads through
+  `list()`, `resolve()`, `defaultId` and `readDocument(id)`; the class in `rc.2`
+  is `AgentPresetRegistry` and its `resolve()` answers `AgentPreset`
+  (`{ id, name?, description?, order?, broken? }` — `lib/types/preset.d.ts`),
+  *not* the `AgentPresetRow` above, which is `remoteExportList()`'s shape.
+  `readDocument` is what replaced the file: it dumps the declared child plugin
+  list as entry-list YAML (`lib/types/types.d.ts`, `readDocument` in
+  `lib/index.js`), so `PresetEntry`'s `trust` and `path`, `PresetRosterFace`'s
+  `authorable` and `copy`, the `readPresetFile`/`readSectionsModule` helpers and
+  the whole of `src/host/preset-writer.ts` are gone — the last in its own commit,
+  so reverting D2 is one revert. `standingKeyFor` and `modeSelectionEnabled` were
+  never read by this plugin: `src/index.ts:561` above is a **harness** line, not
+  one of ours, and our `src` has zero hits for either name. `select(agent, id)`
+  needs a live `Agent`, so the settings page has no use for it and did not gain
+  one.
 - **`tool-result` blocks are gone.** `ToolResultBlock` was replaced by
   `ToolAdditionBlock`/`ToolRemovalBlock`, so `ContentBlock` no longer has
   `content`, and `ToolResultMessage` no longer overlaps the old literal shapes.
@@ -1213,6 +1230,13 @@ editor as read-only + `select`, or writing preset YAML/registration through a
 plugin-owned path (the plugin already has its own file IO in
 `src/host/preset-reader.ts`) and owning durability plus the `agent-preset`
 compatibility implications. This is a feature decision, not a migration step.
+**[decided 2026-09-27, #508] Option 1 — read-only, no `select` here.** Landed in
+#518: the roster face the plugin reads is `list`/`resolve`/`readDocument`/
+`defaultId`, `save`/`reset`/`copy` and `src/host/preset-writer.ts` were removed
+in one commit so a reversal is a single revert, and #605 carries the blocker for
+returning persona edits to the screen. `select` takes a live `Agent`, which a
+settings page does not have, so the read-only build did not grow a session
+surface; see §5's registry bullet for the landed shape and the file-by-file list.
 
 **D3 — the `auto` permission preset vs qa lockdown (§5, §8.5) — newly open.**
 `dsh-qa-surface` hard-pins `approvalPolicy: "never"`, refuses any other value
@@ -1262,6 +1286,7 @@ excluding the shared 2-line `compatibility.json` wave each row also carries.
 | `dsh-cas-results`, `dsh-git-readonly`, `dsh-lightrag`, `dsh-l10n-overrides` | **mechanical** | metadata only | `compatibility.json:4-5` each | 2 each | 15 / 12 / 9 / 17 files pass today, unchanged |
 | `dsh-session-audit` | **mechanical** | client slots all survive (§8.2); `ApprovalRequestEvent.displayReason` is moot here — the package reads audit artifacts off disk and ingests no session events (`approval` over `src`/`tests`: zero hits), so it has nothing to persist | **none of our own**: `compatibility.json:4-5` and `README.md:110` both belong to #511's wave; `SPEC.md:261` and `docs/ARCHITECTURE-NOTES.md:4-5,10,42` record the `0.1.5-rc.2` verification pass and stay historical | 0 | measured on the `rc.2` catalogs at `05d8235`: `pnpm --filter @yadsh/dsh-session-audit check` green — 8 files / 88 tests, typecheck exit 0, `verify-package: all gates passed`; repo-wide `pnpm -r --no-bail typecheck` fails 17 projects and this is not one of them, `TS2742` 0 |
 | `@yadsh/dsh-audit-core`, `@yadsh/dsh-audit-ui`, `@yadsh/dsh-plugin-log`, `@yadsh/dsh-config` | **nothing** | typert unchanged §8.5; grep for every migrating identifier returns zero (`audit-core/src/types.ts:113` `provenance` is its own schema field) | — | 0 | 5 / 3 / 1 / — pass today |
+| `dsh-preset-persona-editor` | **decision (D2) → landed #518** | registry rename `dsh-agent-presets` → `dsh-agent-preset-registry`; the roster face has **no** replacement for `authorable`/`copy`/`trust`/`path` — the read half moves to `list`/`resolve`/`readDocument`/`defaultId`, the write half (`save`/`reset`/`copy`, `preset-writer.ts`, the Config ceilings) is removed in its own commit; `select` needs a live `Agent` so this page never takes it; **no D1 dependency** — it registers `settings.section`, which survives | `src/host/{preset-reader.ts,service.ts}`, `src/{index.ts,types.ts}`, `src/client/{store.ts,PersonaPage.tsx,PersonaEditor.tsx,PersonaPreview.tsx,locale.ts,styles.ts}`, `package.json` (peer+dev, and `schemastery` leaves with the Config), `README.md`, `SPEC.md`, `scripts/verify-package.mjs`; `compatibility.json` needs nothing — `service:agentPresets` is the same key at `rc.2` | ~620 across the two commits, ≈350 of them deletions of the write half | `tests/{preset-reading,preset-roster.helpers,service,client-bundle,client-index,client-store.*}.test.ts` — `service.test.ts` cannot load under `vite@8.3.1` (§13.3), verified against `lib/host/service.js` by hand instead |
 | `@yadsh/dsh-plugin-generator` (`tooling/`) | **mechanical** | generator defaults + its test literal | `tooling/generators/dsh-plugin/src/index.ts:364,365,395,428,473` **[verified]**, `tests/index.test.ts:100-101` **[verified]** | 7 | `tests/index.test.ts` (2 files pass today) |
 
 **Wave totals.** D1-gated (card shell) packages: **exactly 12**, measured rather

@@ -16,7 +16,7 @@
 
 import type { Context } from "@deepseek-ai/cordis";
 // Type-only: pulls the `ctx.agentPresets` and `ctx.systemPrompt` service merges.
-import type {} from "@deepseek-ai/dsh-agent-presets";
+import type {} from "@deepseek-ai/dsh-agent-preset-registry";
 import type {} from "@deepseek-ai/dsh-system-prompt";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import {
