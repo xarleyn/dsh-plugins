@@ -156,7 +156,10 @@ export function OperatorCard({ form }: CardProps): ReactElement | null {
       title="Интеграции — конфигурация"
       description="Операторские настройки подключений: провайдеры, адреса, возможности и сервисные доступы. Правка применяется к запущенному сервису сразу."
       badge={
-        <span className="dsh-plugin-card__badge">
+        <span
+          className="dsh-plugin-card__badge"
+          data-testid="qa-integrations-override-badge"
+        >
           {keys.length === 0
             ? "по умолчанию"
             : `переопределено: ${keys.length}`}
@@ -170,17 +173,32 @@ export function OperatorCard({ form }: CardProps): ReactElement | null {
       bodyClassName="qai-op__body"
     >
       {settings.status === "loading" ? (
-        <p className="qai-op__muted">Загружаем конфигурацию интеграций…</p>
+        <p className="qai-op__muted" data-testid="qa-integrations-loading">
+          Загружаем конфигурацию интеграций…
+        </p>
       ) : (
         <>
-          {error !== null ? <div className="qai-op__error">{error}</div> : null}
+          {error !== null ? (
+            <div
+              className="qai-op__error"
+              data-testid="qa-integrations-write-error"
+            >
+              {error}
+            </div>
+          ) : null}
           {!writable ? (
-            <p className="qai-op__muted">
+            <p
+              className="qai-op__muted"
+              data-testid="qa-integrations-read-only"
+            >
               Хост не принимает правки из этого браузера — значения показаны
               только для чтения.
             </p>
           ) : null}
-          <div className="qai-op__toolbar">
+          <div
+            className="qai-op__toolbar"
+            data-testid="qa-integrations-toolbar"
+          >
             <span className="qai-op__hint">
               Слой правок поверх конфигурации профиля: очищенная настройка
               возвращается к значению из yaml.
@@ -188,6 +206,7 @@ export function OperatorCard({ form }: CardProps): ReactElement | null {
             <button
               type="button"
               className="qai-op__button"
+              data-testid="qa-integrations-reset-overrides"
               disabled={!writable || keys.length === 0}
               onClick={resetAll}
             >
