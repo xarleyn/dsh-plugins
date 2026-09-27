@@ -15,6 +15,9 @@ const EXPECTED_CONSOLE: readonly RegExp[] = [
   /^dsh-qa-surface: policy attestation request failed/u,
   // A session operation that ended in the error phase logs what threw.
   /^dsh-qa-surface: session operation failed/u,
+  // A queue row whose write the transport refused: the test asserts the refusal
+  // the strip shows, and the controller logs what it hit.
+  /^dsh-qa-surface: queue operation failed/u,
   // The account controller's refusals: the gate probe, and an action the
   // Host turned down.
   /^dsh-qa-surface: accounts whoami failed/u,
