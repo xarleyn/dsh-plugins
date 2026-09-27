@@ -18,9 +18,11 @@ The sensitive-read refusal now names the capability it refused
 the user's token are not at fault; the provider's own second lock words the same
 distinction between a write, a personal read and a denied read, and answers with
 the broker's code for every operation of every catalog. Every tool the ceiling
-refuses as a reading says so in its description, the sentence being composed from
-the operation's own classification — the model knows the condition before it
-tries, and no provider can be left out of it. The operator card marks each
+refuses as a reading says so in its description — the sentence being composed
+from the operation's own classification, so the model knows the condition before
+it tries. The description carries it only while the deployment hands out managed
+credentials, because on a stand without a shared token the warning would withhold
+a reading the personal connection answers. The operator card marks each
 capability switch the managed credential does not reach — TeamCity logs and
 artifacts, the GitLab CI job trace, Jira and Test IT attachments, the Bitrix24
 reads of people and their text — with whether it escapes the credential whole or
@@ -31,5 +33,7 @@ answers with (`ciMetadataRead` and `ciLogsRead`), each read in the resolver's ow
 order — the half, else the pre-split `ciRead`, else the default: one handle could
 neither show a half switched off on its own nor set one without overriding the
 alias it still displayed. Tests recompute the card's table from every provider catalog and count
-the notes in the rendered card, so it cannot drift away from what the ceilings
-actually enforce.
+the notes in the rendered card, compare every mounted description with its
+operation's classification under each provider's real tool-name prefix, and check
+that a stand with no managed credential carries no note at all — so none of it
+drifts away from what the ceilings actually enforce.

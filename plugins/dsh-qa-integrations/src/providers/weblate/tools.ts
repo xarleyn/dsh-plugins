@@ -5,9 +5,10 @@ import {
   requiredInteger,
   requiredText,
 } from "../../coerce.js";
-import type { IntegrationBroker } from "../../broker.js";
-import type { IntegrationPrincipal } from "../../types.js";
-import { createToolKit } from "../../tool-kit.js";
+import {
+  createToolKit,
+  type ProviderToolFactoryOptions,
+} from "../../tool-kit.js";
 import { WEBLATE_OPERATIONS } from "./catalog.js";
 import { UNIT_STATE_FILTERS } from "./query.js";
 
@@ -172,12 +173,9 @@ const UNIT_FILTER_PARAMETERS = {
  * QA user who owns the DSH session, and the tool schemas carry no user,
  * credential or instance selector.
  */
-export function createWeblateTools(options: {
-  readonly broker: IntegrationBroker;
-  readonly principalForSession: (
-    sessionId: string,
-  ) => IntegrationPrincipal | undefined;
-}): readonly ToolDefinition[] {
+export function createWeblateTools(
+  options: ProviderToolFactoryOptions,
+): readonly ToolDefinition[] {
   const kit = createToolKit({
     ...options,
     provider: "weblate",

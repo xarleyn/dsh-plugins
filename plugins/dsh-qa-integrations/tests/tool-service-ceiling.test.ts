@@ -9,6 +9,11 @@
  * refuses says so, and a tool it allows does not. That holds for every provider,
  * so the wording cannot come back on TeamCity alone, and it cannot drift from a
  * reclassified operation.
+ *
+ * The other half is the stand that hands out no managed credential: there the
+ * ceiling is not a condition anyone meets, so no description may mention it. A
+ * warning about a ceiling that is not there withholds a reading the personal
+ * connection would answer, which is the same failure #285 is about.
  */
 
 import { readFileSync } from "node:fs";
@@ -32,10 +37,11 @@ interface Surface {
   readonly description: string;
 }
 
-function surface(): ReadonlyMap<string, Surface> {
+function surface(managedServiceCredentialsEnabled: boolean) {
   const tools = createIntegrationTools({
     broker: { call: async () => undefined } as never,
     principalForSession: () => undefined,
+    managedServiceCredentialsEnabled,
   }) as unknown as readonly Surface[];
   return new Map(tools.map((tool) => [tool.name, tool]));
 }
@@ -61,27 +67,41 @@ function declared(
     .filter((entry) => entry.name.startsWith(prefix));
 }
 
+/**
+ * Each provider's catalog and the prefix its tool names carry. The prefix is
+ * spelled out rather than taken from the provider id because Bitrix24 names its
+ * tools `bitrix_*`: a derived prefix matched nothing on either side, and the
+ * comparison stayed green over the largest block of notices on the surface.
+ */
 const PROVIDERS = Object.freeze({
-  bitrix24: BITRIX_OPERATIONS,
-  confluence: CONFLUENCE_OPERATIONS,
-  gitlab: GITLAB_OPERATIONS,
-  jira: JIRA_OPERATIONS,
-  teamcity: TEAMCITY_OPERATIONS,
-  testit: TESTIT_OPERATIONS,
-  weblate: WEBLATE_OPERATIONS,
+  bitrix24: { operations: BITRIX_OPERATIONS, toolPrefix: "bitrix_" },
+  confluence: {
+    operations: CONFLUENCE_OPERATIONS,
+    toolPrefix: "confluence_",
+  },
+  gitlab: { operations: GITLAB_OPERATIONS, toolPrefix: "gitlab_" },
+  jira: { operations: JIRA_OPERATIONS, toolPrefix: "jira_" },
+  teamcity: { operations: TEAMCITY_OPERATIONS, toolPrefix: "teamcity_" },
+  testit: { operations: TESTIT_OPERATIONS, toolPrefix: "testit_" },
+  weblate: { operations: WEBLATE_OPERATIONS, toolPrefix: "weblate_" },
 });
 
 describe("integration tools: what the service ceiling refuses", () => {
-  const built = surface();
+  const built = surface(true);
 
-  for (const [provider, operations] of Object.entries(PROVIDERS)) {
+  for (const [provider, { operations, toolPrefix }] of Object.entries(
+    PROVIDERS,
+  )) {
     it(`says the condition on every ${provider} reading the ceiling denies`, () => {
       const entries = declared(
         `../src/providers/${provider}/tools.ts`,
-        `${provider}_`,
+        toolPrefix,
       );
+      // Both sides of the comparison have to hold tools: an empty set matches an
+      // empty set, which is how a provider could drop out of this check.
+      expect(entries.length, provider).toBeGreaterThan(0);
       const own = [...built.keys()].filter((name) =>
-        name.startsWith(`${provider}_`),
+        name.startsWith(toolPrefix),
       );
       expect(entries, provider).toHaveLength(own.length);
 
@@ -99,6 +119,19 @@ describe("integration tools: what the service ceiling refuses", () => {
       }
     });
   }
+
+  it("says nothing about a ceiling this stand never meets", () => {
+    // A deployment without managed credentials answers every one of these
+    // readings on the user's own connection, so the warning would be a reason
+    // not to call a tool that works — and the mounted set must not shift with it.
+    const personal = surface(false);
+    expect(personal.size).toBe(built.size);
+    for (const [name, tool] of personal) {
+      expect(tool.description.endsWith(SERVICE_CEILING_NOTICE), name).toBe(
+        false,
+      );
+    }
+  });
 
   it("warns about the reading the report was about, and not its summary", () => {
     // teamcity_build_log is the call that failed in the session log, while
