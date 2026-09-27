@@ -254,15 +254,21 @@ export function ListField(props: {
   );
 }
 
-/** Grouped counters rendered as one row of tiles. */
+/**
+ * Grouped counters rendered as one row of tiles.
+ *
+ * Each tile counts a different thing, so the call site names every one of them;
+ * sharing the group id across the tiles would leave a single counter reachable
+ * only through its caption.
+ */
 export function Stats(props: {
   testId: string;
-  items: ReadonlyArray<{ value: string; label: string }>;
+  items: ReadonlyArray<{ testId: string; value: string; label: string }>;
 }) {
   return (
     <div className="msg-stats" data-testid={props.testId}>
       {props.items.map((item) => (
-        <div className="msg-stat" key={item.label}>
+        <div className="msg-stat" data-testid={item.testId} key={item.testId}>
           <b>{item.value}</b>
           <span>{item.label}</span>
         </div>

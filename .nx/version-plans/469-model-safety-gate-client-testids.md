@@ -10,11 +10,12 @@ carries a `data-testid`, as do its toggles, selects, inputs and textareas, the
 per-section reset, the status chips and counters, the banner of each state the
 card reports, and the cells of a verdict row. The ids are ASCII kebab-case under
 the `safety-` zone (`safety-gate-mode`, `safety-classifier-notice-remote`,
-`safety-audit-notice-raw-content`, `safety-gate-session-override`), 92 distinct
+`safety-audit-notice-raw-content`, `safety-gate-session-override`), 104 distinct
 values, none reused by a second kind of node. A state gets its own id rather
-than a shared one whose text differs, and a repeated node — a verdict row, a
-counter tile — holds the id of its template, so no row index or caption is baked
-into a name. A browser check can now reach a control without reading its English
+than a shared one whose text differs. A repeated node of one template — a row of
+the verdict table — holds that template's id and no row index, while a counter
+tile, which counts a different figure from its neighbours, carries an id of its
+own. A browser check can now reach a control without reading its English
 label, the class of a banner, or a walk up to the enclosing `<section>`.
 
 Only attributes were added: the markup, the card shell and the rendered text are

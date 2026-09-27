@@ -103,10 +103,23 @@ export function StatusSection(props: StatusProps) {
       <Stats
         testId="safety-status-counters"
         items={[
-          { value: formatCount(checks), label: "checks" },
-          { value: formatCount(blocks), label: "blocks" },
-          { value: formatCount(metrics?.warns), label: "warnings" },
           {
+            testId: "safety-status-checks",
+            value: formatCount(checks),
+            label: "checks",
+          },
+          {
+            testId: "safety-status-blocks",
+            value: formatCount(blocks),
+            label: "blocks",
+          },
+          {
+            testId: "safety-status-warnings",
+            value: formatCount(metrics?.warns),
+            label: "warnings",
+          },
+          {
+            testId: "safety-status-classifier-requests",
             value: formatCount(metrics?.classifierRequests),
             label: "classifier calls",
           },
@@ -124,38 +137,46 @@ export function StatusSection(props: StatusProps) {
               testId="safety-status-detail-counters"
               items={[
                 {
+                  testId: "safety-status-input-checks",
                   value: formatCount(metrics.checks.input),
                   label: "input checks",
                 },
                 {
+                  testId: "safety-status-output-checks",
                   value: formatCount(
                     metrics.checks.text + metrics.checks.reasoning,
                   ),
                   label: "output checks",
                 },
                 {
+                  testId: "safety-status-tool-checks",
                   value: formatCount(metrics.checks.tool),
                   label: "tool checks",
                 },
                 {
+                  testId: "safety-status-tool-result-checks",
                   value: formatCount(metrics.checks["tool-result"]),
                   label: "tool-result checks",
                 },
                 {
+                  testId: "safety-status-blocked-prompts",
                   value: formatCount(metrics.blocks.input),
                   label: "blocked prompts",
                 },
                 {
+                  testId: "safety-status-blocked-outputs",
                   value: formatCount(
                     metrics.blocks.output + metrics.blocks.reasoning,
                   ),
                   label: "blocked outputs",
                 },
                 {
+                  testId: "safety-status-denied-tools",
                   value: formatCount(metrics.blocks.tools),
                   label: "denied tools",
                 },
                 {
+                  testId: "safety-status-classifier-errors",
                   value: formatCount(metrics.classifierErrors),
                   label: "classifier errors",
                 },

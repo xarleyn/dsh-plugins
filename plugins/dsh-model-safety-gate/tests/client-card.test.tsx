@@ -111,6 +111,26 @@ const INSPECT: SafetyGateInspect = {
       rawContent: null,
       policyVersion: "1",
     },
+    {
+      turn: 3,
+      step: null,
+      direction: "output",
+      channel: "text",
+      toolName: null,
+      decision: "warn",
+      categories: ["self_harm"],
+      summary: "ideation",
+      confidence: 0.62,
+      classifierProvider: "local",
+      classifierModel: "safety-small",
+      classifierRan: true,
+      latencyMs: 34,
+      contentSha256: "b".repeat(64),
+      contentChars: 96,
+      errorCode: null,
+      rawContent: null,
+      policyVersion: "1",
+    },
   ],
   startedAt: Date.now() - 65_000,
 };
@@ -211,20 +231,26 @@ describe("Safety Gate card", () => {
   it("opens into the configuration and status sections", async () => {
     await renderCard();
     openCard();
-    for (const plane of [
-      "status",
-      "gate",
-      "input",
-      "output",
-      "tools",
-      "classifier",
-      "audit",
-      "verdicts",
-      "advanced",
-    ]) {
+    for (const [plane, title] of [
+      ["status", "Status"],
+      ["gate", "Gate"],
+      ["input", "Input guard"],
+      ["output", "Output stream"],
+      ["tools", "Tools and results"],
+      ["classifier", "Classifier"],
+      ["audit", "Audit"],
+      ["verdicts", "Recent verdicts"],
+      ["advanced", "Advanced"],
+    ] as const) {
       const section = screen.getByTestId(`safety-section-${plane}`);
-      // Every frame keeps its own heading, so the plane stays reachable by role.
-      expect(within(section).getByRole("heading", { level: 3 })).toBeTruthy();
+      // The frame of this plane carries the heading of this plane: the id says
+      // which frame is open, the accessible name says what it is called.
+      expect(
+        within(section).getByRole("heading", {
+          level: 3,
+          name: new RegExp(title, "u"),
+        }),
+      ).toBeTruthy();
     }
     await waitFor(() => {
       // The status projection arrives from the Remote after the first poll.
@@ -232,6 +258,19 @@ describe("Safety Gate card", () => {
         screen.getByText(/Average classifier latency/u).textContent,
       ).toContain("50.0 ms"); // 300 ms over 6 classifier calls
     });
+    for (const [group, tile, value] of [
+      ["safety-status-counters", "safety-status-checks", "17"],
+      ["safety-status-counters", "safety-status-blocks", "2"],
+      ["safety-status-counters", "safety-status-warnings", "3"],
+      ["safety-status-counters", "safety-status-classifier-requests", "6"],
+      ["safety-status-detail-counters", "safety-status-blocked-prompts", "1"],
+      ["safety-status-detail-counters", "safety-status-classifier-errors", "1"],
+    ] as const) {
+      // A tile counts one figure, so it is its own hook: no caption, and no
+      // walk through the group, stands between a check and the number.
+      const node = within(screen.getByTestId(group)).getByTestId(tile);
+      expect(node.querySelector("b")?.textContent).toBe(value);
+    }
     expect(screen.getByRole("button", { name: /Hide settings/u })).toBeTruthy();
   });
 
@@ -352,17 +391,19 @@ describe("Safety Gate card", () => {
       expect(screen.queryByTestId("safety-verdicts-table")).not.toBeNull();
     });
     const table = screen.getByTestId("safety-verdicts-table");
-    const row = within(table).getByTestId("safety-verdicts-row");
+    // Every row of the template carries the same id, so a repeated node is read
+    // as a collection and each cell is addressed through its own row.
+    const rows = within(table).getAllByTestId("safety-verdicts-row");
+    expect(rows).toHaveLength(2);
     // The projection is still a table, so assistive tech reads the verdicts.
-    expect(within(table).getAllByRole("row")).toHaveLength(2);
-    expect(
-      within(row).getByTestId("safety-verdicts-decision").textContent,
-    ).toContain("block");
-    expect(within(row).getByTestId("safety-verdicts-channel").textContent).toBe(
-      "input",
-    );
-    expect(
-      within(row).getByTestId("safety-verdicts-categories").textContent,
-    ).toBe("prompt_injection");
+    expect(within(table).getAllByRole("row")).toHaveLength(3);
+    const cell = (testId: string) =>
+      rows.map((row) => within(row).getByTestId(testId).textContent);
+    expect(cell("safety-verdicts-decision")).toEqual(["block", "warn"]);
+    expect(cell("safety-verdicts-channel")).toEqual(["input", "text"]);
+    expect(cell("safety-verdicts-categories")).toEqual([
+      "prompt_injection",
+      "self_harm",
+    ]);
   });
 });
