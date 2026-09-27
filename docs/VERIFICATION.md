@@ -139,12 +139,12 @@ negative cases, the order of work for adding a provider, and the checklist for
 adding a second product to a provider.
 
 Nothing above opens the page either. A surface that overflows its container, a
-settings card that never appears for a non-loopback browser, a state (closed,
-hover, focus-visible, open) that does not match the first-party shell, and a
-client bundle that dies on mount all pass the whole gate set: the bundle gates
-assert its identity and self-containedness, the card-contract gate asserts the
-shell's text, and neither renders it. The proof is a measurement and a screenshot
-of each state beside a first-party card, on a stand — the recipe is in
+settings card that never appears for a non-loopback browser, a card state that
+does not match the first-party shell, and a client bundle that dies on mount all
+pass the whole gate set: the bundle gates assert its identity and
+self-containedness, the card-contract gate asserts the shell's text, and neither
+renders it. The proof is a measurement and a screenshot of each state the shell
+contract names, beside a first-party card, on a stand — the recipe is in
 [`../.agents/skills/create-plugin/references/client-side.md`](../.agents/skills/create-plugin/references/client-side.md)
 (§Proving the card you just registered, §Proving a UI change beyond the gates),
 and the round it belongs to is recorded under [Stand acceptance](#stand-acceptance).

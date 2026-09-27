@@ -46,9 +46,11 @@ the maintainer rather than probing the network for it.
 
 ## 1. Before changing anything on a live stand
 
-- **Do not start, stop or restart a stand you did not bring up.** Prepare the
-  change and ask; the restart is then one step for them
-  (`shared-checkout` §5).
+- **Do not start, stop, restart, recreate or wipe a stand you did not bring up.**
+  "Yours" means this session brought it up and nothing else has touched it since.
+  Anywhere else, prepare the change and ask; the restart is then one step for
+  them (`shared-checkout` §5). The same test gates every repair in
+  `references/troubleshooting.md`, including the ones that delete files.
 - **Pull the kit's settings state before editing it.** The slice is a
   synchronizable copy of the deployment, people are testing on it, and its
   configs may have moved under you; an unpulled edit silently reverts theirs.
@@ -84,9 +86,14 @@ the source loop while iterating.
    `config/dsh/`. A *relative* `link:` resolves against the profile directory,
    installs nothing, and leaves the old store version in place — no error,
    no log line, just stale behavior.
-4. `docker compose restart qa` (or `up -d qa` when the override file itself
-   changed — the new volume only mounts on recreate).
-5. To go back, restore the released `@yadsh/...@x.y.z` line and restart.
+4. Apply the line — `docker compose restart qa`, or `up -d qa` when the override
+   file itself changed (the new volume only mounts on recreate) — **only on a
+   stand §1 calls yours.** On anyone else's rig, stop at the edited
+   `plugins.txt` and say so in the report: reconciliation runs on the next start
+   whoever triggers it, so what you hand over is one prepared step, not a restart
+   you perform.
+5. To go back, restore the released `@yadsh/...@x.y.z` line and put its restart
+   through the same test.
 
 **Tarball loop (`file:`).** `pnpm pack` in the plugin directory, drop the
 `.tgz` into the kit's packages directory **with the version in its filename**,
@@ -110,11 +117,19 @@ Two more facts that cost hours when unknown:
   another was itself a defect.
 - Operator surface: the loopback port on the machine running the container,
   opened with the **launch token**. `data/admin-url.txt` is not authoritative —
-  it survives port changes and moves — so take the token from the boot log:
+  it survives port changes and moves — so take the token from the boot log. The
+  recipe assigns it and prints a confirmation, never the value:
 
   ```bash
-  docker compose logs qa | grep -o "token=[A-Za-z0-9_-]*" | tail -1
+  LAUNCH_TOKEN=$(docker compose logs qa 2>&1 \
+    | sed -n 's/.*token=\([A-Za-z0-9_-]*\).*/\1/p' | tail -1)
+  [ -n "$LAUNCH_TOKEN" ] && echo "launch token: taken from the boot log"
   ```
+
+  `grep -o` is the mistake this replaces: its output is a command result, so the
+  value lands in the session transcript. Interpolate `"$LAUNCH_TOKEN"` into the
+  one request that needs it; the token and the operator URL carrying it stay out
+  of every log, screenshot, report and pull request (`Do not touch`).
 
   A launch token expires while a live harness keeps running, so a `401 dsh web
   authentication required` is usually a stale token, not a broken host layer.
@@ -140,14 +155,17 @@ Two more facts that cost hours when unknown:
 4. UI findings are measured, not eyeballed — see
    `create-plugin/references/client-side.md` §Proving a UI change beyond the
    gates.
-5. Client-side changes are visible after a rebuild and a page reload;
-   host-side changes are not visible without a restart, so verify those with
-   tests and end the report with "needs a restart" rather than performing one.
+5. Client-side changes are visible after a rebuild and a page reload; host-side
+   changes are not visible without a restart. On a stand §1 calls yours, restart
+   and re-check. On anyone else's, verify the change with tests and end the
+   report with "needs a restart" rather than performing one.
 
 ## 5. Report template
 
 ```text
 stand:    <which slice, which build/line each plugin came from>
+restart:  <performed — this session brought the stand up | not performed — whose
+          rig, and the one step you asked for>
 checked:  <playbook + the rows you walked>
 result:   PASS/FAIL per row, with the log line or measurement that proves it
 fell:     <what broke, its symptom text, the issue it belongs to>
@@ -160,6 +178,10 @@ symptom-to-cause table keys on that text.
 ## Do not touch
 
 - Another account's chats and profile, and the operator's own working data.
+- A stand you did not bring up: its container lifecycle (`restart`, `up -d`,
+  `down`) and its installed state — the profile's `node_modules`, its lock file
+  and `data/`, which the repairs in `references/troubleshooting.md` delete.
+  Prepare the step, then ask.
 - The "reset overrides" control on an integrations card: overrides are the only
   place some instances exist, so it removes them for the whole stand. A
   provider's enable checkbox is per-provider; "plugin enabled" is global — those
@@ -168,7 +190,8 @@ symptom-to-cause table keys on that text.
   compose override are usually not in the kit's `.gitignore`, so `git add -A`
   commits them. Stage explicit paths.
 - Any credential: never echo a token into a log, a screenshot, a PR or this
-  repository.
+  repository. The operator URL is a credential — it carries the token — so the
+  same refusal covers pasting it, and the report names the port, not the URL.
 
 ## References
 
