@@ -109,6 +109,11 @@ with the registry's own reason on the card.
   rather than blaming the preset or showing a `TypeError`. What the host's own
   reason may contain is bounded by §5 of `SPEC.md`: the registry's failures name
   preset ids, and that text is already on the host's own `list` Remote.
+- A roster that refuses to refresh says so. The rows stay on screen — dropping
+  them would answer a failed `list()` with a deployment that composes no
+  presets — and the reason arrives above them: the screen that draws a list
+  draws no failure of its own otherwise, and rows held on screen after a
+  refused refresh are rows the page has not told anyone are stale.
 - Presets apply to **new sessions**: DSH composes an agent from the preset it
   names when the session starts, and a running session keeps the composition it
   began with. The page states this instead of implying a live swap.

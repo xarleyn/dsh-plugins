@@ -47,6 +47,7 @@ export interface OpenPreset {
 /** Everything the page renders from. */
 export interface PersonaPageSnapshot {
   readonly status: "loading" | "ready" | "failed";
+  /** What the roster screen says when it reads nothing: only `failed` shows it. */
   readonly error: string;
   readonly presets: readonly PersonaPresetRow[];
   readonly open: OpenPreset | null;
@@ -122,9 +123,17 @@ export class PersonaPageController {
     if (first) this.set({ status: "loading", error: "" });
     const result = await this.face.list();
     if (!result.ok) {
+      const reason = describeFailure(result.error);
+      if (first) {
+        this.set({ status: "failed", error: reason });
+        return;
+      }
+      // The roster stays on screen, so this refusal is the page's to say out
+      // loud: `status` keeps its "ready" and the failed screen that reads
+      // `error` never renders over a list. The notice slot is what the ready
+      // screen shows, so the stale rows arrive with the reason they are stale.
       this.set({
-        status: first ? "failed" : "ready",
-        error: describeFailure(result.error),
+        notice: { kind: "error", text: `${strings.loadFailed} ${reason}` },
       });
       return;
     }
