@@ -1,20 +1,27 @@
 /**
- * The reader's markup, as a browser and an assistive technology see it.
+ * The client's markup, as a browser and an assistive technology see it.
  *
  * Nothing else in the package renders the client: the bundle test replaces the
  * React creators with a no-op, so an element that lost its name, or a warning
  * that repeats a sentence already on screen, would reach a deployment unseen.
- * These cases hold the page's two promises — every reading is named, and
- * "cannot compose" and "cannot read" are two different sentences.
+ * These cases hold the page's promises over both of its surfaces — the reader,
+ * where every reading is named and "cannot compose" and "cannot read" are two
+ * different sentences, and the roster screen, where whatever the controller
+ * records has to be something the screen actually draws.
  */
 
 // @vitest-environment jsdom
 
+import { RemoteError } from "@deepseek-ai/dsh-typert-protocol";
 import { cleanup, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PersonaEditor } from "../src/client/PersonaEditor.js";
+import {
+  PersonaPage,
+  type PersonaPageProps,
+} from "../src/client/PersonaPage.js";
 import { strings } from "../src/client/locale.js";
 import { styles } from "../src/client/styles.js";
 import {
@@ -23,7 +30,7 @@ import {
   type PersonaPageSnapshot,
 } from "../src/client/store.js";
 import type { PersonaDocument } from "../src/types.js";
-import { documentOf, faceOf } from "./client-store.helpers.js";
+import { documentOf, faceOf, OK_CATALOG } from "./client-store.helpers.js";
 
 afterEach(cleanup);
 
@@ -49,6 +56,18 @@ function show(document: PersonaDocument) {
   );
 }
 
+/**
+ * Render the roster screen over one controller.
+ *
+ * The settings shell's own props are runtime seats the page never reads, so
+ * only the injected face is handed over.
+ */
+function showPage(controller: PersonaPageController) {
+  return render(
+    createElement(PersonaPage, { controller } as unknown as PersonaPageProps),
+  );
+}
+
 /** One section of a composition, as the reader hands it to the page. */
 function sectionOf(
   name: string,
@@ -62,6 +81,19 @@ function sectionOf(
 function paragraph(container: HTMLElement, testId: string): string | null {
   const found = container.querySelector(`[data-testid="${testId}"]`);
   return found?.textContent ?? null;
+}
+
+/**
+ * The paragraphs on screen carrying these words.
+ *
+ * A sentence is told once or the page contradicts itself, so the rule is about
+ * the words rather than about a test id: a warning removed from the markup
+ * leaves an id-based assertion unable to fail.
+ */
+function saying(container: HTMLElement, words: string): string[] {
+  return [...container.querySelectorAll("p")]
+    .map((element) => element.textContent ?? "")
+    .filter((text) => text.includes(words));
 }
 
 /**
@@ -241,22 +273,18 @@ describe("the reader's markup", () => {
     );
     // The sentence belongs to this one paragraph. A second copy of it, or a
     // second warning saying the same thing, is the page contradicting itself.
-    const copies = [...container.querySelectorAll("p")].filter((p) =>
-      (p.textContent ?? "").includes(strings.unreadable),
-    );
-    expect(copies).toHaveLength(1);
+    expect(saying(container, strings.unreadable)).toHaveLength(1);
     expect(
-      container.querySelector('[data-testid="persona-unreadable"]'),
-    ).toBeNull();
+      container.querySelectorAll('[data-testid="persona-read-error"]'),
+    ).toHaveLength(1);
   });
 
   it("keeps no warning at all for a preset it read cleanly", () => {
     const { container } = show(documentOf());
     expect(paragraph(container, "persona-read-error")).toBeNull();
     expect(paragraph(container, "persona-broken")).toBeNull();
-    expect(
-      container.querySelector('[data-testid="persona-unreadable"]'),
-    ).toBeNull();
+    expect(saying(container, strings.unreadable)).toEqual([]);
+    expect(saying(container, strings.brokenTitle)).toEqual([]);
   });
 
   it("resets the user-agent margin on every block it renders", () => {
@@ -296,5 +324,27 @@ describe("the reader's markup", () => {
       }
     }
     expect(checked.size).toBeGreaterThan(3);
+  });
+});
+
+describe("the roster screen", () => {
+  it("says a refresh failed over the roster it keeps on screen", async () => {
+    const list = vi.fn().mockResolvedValue(OK_CATALOG);
+    const controller = new PersonaPageController(faceOf({ list }));
+    await controller.load();
+    list.mockResolvedValue({
+      ok: false as const,
+      error: new RemoteError("gateway/internal", "boom", {}),
+    });
+
+    showPage(controller);
+    // The controller records the refusal while `status` stays "ready", so this
+    // screen — not the failed one — is where the words have to land. A roster
+    // that refreshes into a message nobody renders is a stale list passing as
+    // a fresh one.
+    const notice = await screen.findByTestId("persona-notice");
+    expect(notice.textContent).toBe(`${strings.loadFailed} boom`);
+    expect(notice.classList.contains("preset-persona__error")).toBe(true);
+    expect(screen.getAllByTestId("persona-preset-row")).toHaveLength(1);
   });
 });
