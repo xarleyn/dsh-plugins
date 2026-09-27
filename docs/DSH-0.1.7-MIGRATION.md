@@ -526,7 +526,11 @@ All **[verified]** by the compiler during the trial bump:
   `dsh-preset-persona-editor`**, which this bullet claimed at `src/index.ts:561`:
   `modeSelectionEnabled` occurs in no plugin or package source at the pre-cutover
   tag (`git grep` over `plugins` and `packages` at `df9f26f3` returns zero), and
-  `standingKeyFor` occurs in exactly one place repo-wide —
+  `standingKeyFor` occurs in exactly one place among the plugin and package
+  sources (`git grep` over `plugins` and `packages` at `df9f26f3`; the name also
+  survives in prose — this document and
+  `.nx/version-plans/513-qa-surface-rc2-settings-config.md:29` — which reads the
+  finding rather than reproducing it) —
   `dsh-qa-surface/tests/wiring/index-wiring.test.ts:101`, a stub of the
   *registry's* own remote, not a reader of it. This plugin's `src/index.ts` is
   111 lines, so the cited site never existed. D2 was, and stayed, about
@@ -549,7 +553,13 @@ All **[verified]** by the compiler during the trial bump:
   `lib/index.js`), so `PresetEntry`'s `trust` and `path`, `PresetRosterFace`'s
   `authorable` and `copy`, the `readPresetFile`/`readSectionsModule` helpers and
   the whole of `src/host/preset-writer.ts` are gone — the last in its own commit,
-  so reverting D2 is one revert. `standingKeyFor` and `modeSelectionEnabled` were
+  but **that commit is not a reversible unit on its own**:
+  `git merge-tree --write-tree --merge-base=<write-half> HEAD <write-half>^`
+  conflicts in 16 paths (13 content, 3 modify/delete), and the `preset-writer.ts`
+  it puts back reads `readPresetFile`/`revisionOf` and `preset.path`, which the
+  read-path migration deleted, so the result does not compile. Reversing D2 is a
+  revert of the whole #518 series, and that is the cost #605 has to budget.
+  `standingKeyFor` and `modeSelectionEnabled` were
   never read by this plugin: `src/index.ts:561` above is a **harness** line, not
   one of ours, and our `src` has zero hits for either name. `select(agent, id)`
   needs a live `Agent`, so the settings page has no use for it and did not gain
@@ -1240,7 +1250,11 @@ compatibility implications. This is a feature decision, not a migration step.
 **[decided 2026-09-27, #508] Option 1 — read-only, no `select` here.** Landed in
 #518: the roster face the plugin reads is `list`/`resolve`/`readDocument`/
 `defaultId`, `save`/`reset`/`copy` and `src/host/preset-writer.ts` were removed
-in one commit so a reversal is a single revert, and #605 carries the blocker for
+in one commit — which is **not** a reversible unit by itself: reverting that
+commit on top of the read-path commit conflicts in 16 paths and puts the writer
+back against helpers (`readPresetFile`, `revisionOf`, `preset.path`) the
+read-path migration deleted, so it does not compile. A reversal of D2 is a revert
+of the whole #518 series. #605 carries the blocker for
 returning persona edits to the screen. `select` takes a live `Agent`, which a
 settings page does not have, so the read-only build did not grow a session
 surface; see §5's registry bullet for the landed shape and the file-by-file list.
