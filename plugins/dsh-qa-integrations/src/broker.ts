@@ -1,5 +1,6 @@
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { IntegrationError, type IntegrationErrorCode } from "./errors.js";
+import type { IntegrationProvider } from "./providers/contract.js";
 import type { IntegrationProviderRegistry } from "./providers/registry.js";
 import type { IntegrationRepository } from "./repository.js";
 import type { SecretStore } from "./secrets/secret-store.js";
@@ -133,7 +134,8 @@ export class IntegrationBroker {
         service,
       };
     }
-    const policy = integration.capabilities.map((capability) => ({
+    const granted = this.grantedCapabilities(integration, provider);
+    const policy = granted.map((capability) => ({
       capability,
       mode: this.repository.policy(integration, capability),
     }));
@@ -146,7 +148,7 @@ export class IntegrationBroker {
       externalAccountName: integration.displayName,
       credentialConfigured: secret !== undefined,
       credentialUpdatedAt: secret?.updatedAt ?? null,
-      capabilities: integration.capabilities,
+      capabilities: granted,
       capabilityInfo: provider.capabilityInfo,
       policy,
       lastValidatedAt: integration.lastValidatedAt,
@@ -154,6 +156,23 @@ export class IntegrationBroker {
       credentialSource: integration.credentialSource,
       service,
     };
+  }
+
+  /**
+   * The capabilities a connection may use as it stands: the stored grant, with
+   * anything this deployment has since withdrawn from the provider removed. The
+   * call gate and the operator card both read through here, so the card never
+   * lists a capability a call would refuse — and a grant that survives only in
+   * the database stops being served, rather than running until the connection
+   * is next established.
+   */
+  private grantedCapabilities(
+    integration: StoredIntegration,
+    provider: IntegrationProvider,
+  ): readonly IntegrationCapability[] {
+    return integration.capabilities.filter((capability) =>
+      provider.capabilities.includes(capability),
+    );
   }
 
   /**
@@ -628,8 +647,7 @@ export class IntegrationBroker {
     const mode = this.repository.policy(integration, capability);
     if (
       mode !== "allow" ||
-      !integration.capabilities.includes(capability) ||
-      !provider.capabilities.includes(capability)
+      !this.grantedCapabilities(integration, provider).includes(capability)
     ) {
       this.repository.audit({
         ownerUserId: principal.userId,

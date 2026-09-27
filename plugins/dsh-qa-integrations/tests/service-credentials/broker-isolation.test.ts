@@ -379,6 +379,10 @@ describe("IntegrationBroker user isolation", () => {
     // The counter is live: serving this read did unlock the credential.
     expect(secrets.decryptCount).toBeGreaterThan(0);
     const decrypted = secrets.decryptCount;
+    // The card lists the grant while the provider still offers it.
+    expect(broker.summary(principal, "acme").capabilities).toEqual([
+      "crm.read",
+    ]);
 
     // The operator switches the capability off. The stored grant and its policy
     // are untouched — that is what a reconnect-free withdrawal leaves behind.
@@ -407,6 +411,12 @@ describe("IntegrationBroker user isolation", () => {
     expect(executed).toEqual(["upstream"]);
     // Denied on the deployment's own withdrawal, ahead of any decryption.
     expect(secrets.decryptCount).toBe(decrypted);
+    // The card reads through the same intersection, so the withdrawn grant
+    // leaves the switches on show at the moment it stops being served — a
+    // listing the next call refuses is its own offer to click it.
+    const shown = broker.summary(principal, "acme");
+    expect(shown.capabilities).toEqual([]);
+    expect(shown.policy).toEqual([]);
   });
 
   it("drops a validation verdict that lands after the account reconnected", async () => {
