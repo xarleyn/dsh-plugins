@@ -173,11 +173,20 @@ runtime:
 
 The endpoint is an `http`/`https` URL for the browser's DevTools server —
 Playwright reads its `webSocketDebuggerUrl` itself — or that `ws`/`wss` URL
-directly. By default it has to name this machine: `localhost`, a `*.localhost`
-name, `127.0.0.1`, `::1`. Holding a CDP endpoint means holding the browser, its
+directly. By default it has to name this machine: `localhost`, `127.0.0.1`,
+`::1`. A `*.localhost` name is not on that list although it is meant to be local:
+this plugin never resolves the endpoint, Playwright dials it through the system
+resolver, and a resolver with a search domain can answer `chrome.localhost` with
+a machine somewhere else. Holding a CDP endpoint means holding the browser, its
 every tab included and past this plugin's own policy, so an endpoint beyond
-loopback needs `allowRemoteCdpEndpoint: true` written next to it — a decision
-someone made on purpose, not a default.
+loopback — including one that merely looks like it — needs
+`allowRemoteCdpEndpoint: true` written next to it: a decision someone made on
+purpose, not a default.
+
+The keys that choose and shape a process are refused under `attach` rather than
+ignored: `executablePath`, a `browserChannel` other than `chromium`, and
+`chromiumSandbox: false` all describe a Chromium this plugin starts, and a
+deployment that wrote them would not be getting what it wrote.
 
 What attach mode changes, and what it deliberately does not:
 
@@ -186,7 +195,9 @@ What attach mode changes, and what it deliberately does not:
   the process — and any page a person has open in it — stay up.
 - The isolation is the same: every DSH session gets its own browser context
   rather than the default one the person is looking at, so the agent's cookies,
-  storage and tabs are the session's own.
+  storage and tabs are the session's own. That default context is never read,
+  driven, or closed — SPEC §5 keeps existing user tabs a non-goal, and this is
+  the mode that could have broken it.
 - The policy is the same: every document, redirect and subrequest still passes
   the server-side scheme, host, DNS, private-network and metadata gates, and a
   refusal is still listed per tab in the panel.

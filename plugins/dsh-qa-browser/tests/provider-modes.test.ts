@@ -83,8 +83,16 @@ class FakeBrowser {
   connected = true;
   /** Counts `close()`, which kills our own process and only unlinks from theirs. */
   closed = 0;
-  /** The contexts built on this browser, ours and any the owner already had. */
-  readonly contexts: FakeContext[] = [];
+  /** The contexts this runtime built on the browser. */
+  readonly created: FakeContext[] = [];
+  /**
+   * The owner's own context: an attached browser always has one, and it holds
+   * the tabs a person is looking at. Playwright hands it out through
+   * `contexts()`, so the fake hands it out too — and counts the times anyone
+   * asks, because taking it would mean driving those tabs.
+   */
+  readonly ownerContext = new FakeContext();
+  contextsAsked = 0;
   /** What the provider asked Chromium to build the context with. */
   contextOptions: Record<string, unknown> = {};
   private readonly disconnectListeners: (() => void)[] = [];
@@ -98,10 +106,15 @@ class FakeBrowser {
     this.disconnectListeners.push(listener);
   }
 
+  contexts(): FakeContext[] {
+    this.contextsAsked += 1;
+    return [this.ownerContext, ...this.created];
+  }
+
   async newContext(options: Record<string, unknown>): Promise<FakeContext> {
     this.contextOptions = options;
     const context = new FakeContext();
-    this.contexts.push(context);
+    this.created.push(context);
     return context;
   }
 
@@ -310,9 +323,9 @@ describe("PlaywrightBrowserProvider runtime modes", () => {
       viewport: { width: 1_280, height: 720 },
       deviceScaleFactor: 1,
     });
-    expect(browser.contexts[0]?.events).toEqual(["route", "route-web-socket"]);
+    expect(browser.created[0]?.events).toEqual(["route", "route-web-socket"]);
 
-    const socket = await browser.contexts[0]?.dial("ws://127.0.0.1:9/auth");
+    const socket = await browser.created[0]?.dial("ws://127.0.0.1:9/auth");
     expect(asked).toEqual(["ws://127.0.0.1:9/auth"]);
     expect(socket?.connections).toBe(0);
     expect(socket?.closures[0]?.code).toBe(1008);
@@ -330,17 +343,37 @@ describe("PlaywrightBrowserProvider runtime modes", () => {
     await provider.start(ATTACH_CONFIG.runtime);
     await provider.createContext(contextOptions());
     await provider.createContext(contextOptions({ sessionId: "session-y" }));
-    expect(browser.contexts).toHaveLength(2);
+    expect(browser.created).toHaveLength(2);
 
     await provider.stop();
 
     // Exactly the two contexts this runtime asked for, and one link dropped:
     // the closure we requested is Playwright's own, so the browser is still
     // there for its owner and nothing tells the operator it went away.
-    expect(browser.contexts.map((context) => context.closeCalls)).toEqual([
+    expect(browser.created.map((context) => context.closeCalls)).toEqual([
       1, 1,
     ]);
     expect(browser.closed).toBe(1);
     expect(seen).toEqual([]);
+  });
+
+  it("leaves the context the browser came with alone", async () => {
+    const browser = new FakeBrowser();
+    const playwright = fakePlaywright(browser);
+    const provider = new PlaywrightBrowserProvider(
+      async () => playwright.module,
+    );
+
+    await provider.start(ATTACH_CONFIG.runtime);
+    await provider.createContext(contextOptions());
+    await provider.stop();
+
+    // SPEC §5 keeps "controlling arbitrary existing user tabs" a non-goal, and
+    // an attached browser arrives with exactly such tabs. They are reachable
+    // through `contexts()[0]`, which is why the runtime never asks: a session
+    // lives in a context it created and closes no other.
+    expect(browser.contextsAsked).toBe(0);
+    expect(browser.ownerContext.closeCalls).toBe(0);
+    expect(browser.ownerContext.events).toEqual([]);
   });
 });

@@ -321,14 +321,23 @@ function normalizedStrings(values: readonly string[] | undefined): string[] {
 /** The endpoint forms Playwright will dial for us. */
 const CDP_ENDPOINT_PROTOCOLS = new Set(["http:", "https:", "ws:", "wss:"]);
 
-/** Whether a CDP endpoint names this machine rather than somewhere reachable. */
+/**
+ * Whether a CDP endpoint names this machine rather than somewhere reachable.
+ *
+ * Only `localhost` itself and the loopback literals count. A `*.localhost` name
+ * is *intended* to be loopback, but this host is never resolved here — Playwright
+ * dials it through the system resolver, where ndots and a search domain can turn
+ * `browser.localhost` into a query for `browser.localhost.example.corp` and hand
+ * back a real address. A name whose meaning the runtime cannot check is not a
+ * proof, so such an endpoint needs `allowRemoteCdpEndpoint` written down.
+ */
 function isLoopbackHost(hostname: string): boolean {
   const host = hostname
     .replace(/^\[/u, "")
     .replace(/\]$/u, "")
     .replace(/\.$/u, "")
     .toLowerCase();
-  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host === "localhost") return true;
   if (host === "::1") return true;
   return /^127\.\d{1,3}\.\d{1,3}\.\d{1,3}$/u.test(host);
 }
@@ -388,7 +397,20 @@ function resolveCdpEndpoint(
 export function resolveQaBrowserConfig(
   raw: QaBrowserConfig = {},
 ): ResolvedQaBrowserConfig {
-  const mode: QaBrowserRuntimeMode = raw.runtime?.mode ?? "launch";
+  // The mode arrives from a config file, not from a TypeScript caller, so it is
+  // checked rather than trusted. An unrecognised value would otherwise fall into
+  // the launch path and resolve to a config that says something else.
+  const writtenMode: string | undefined = raw.runtime?.mode;
+  if (
+    writtenMode !== undefined &&
+    writtenMode !== "launch" &&
+    writtenMode !== "attach"
+  ) {
+    throw new TypeError(
+      `dsh-qa-browser: runtime.mode must be "launch" or "attach", not ${String(writtenMode)}`,
+    );
+  }
+  const mode: QaBrowserRuntimeMode = writtenMode ?? "launch";
   const executable = raw.runtime?.executablePath?.trim() || null;
   if (executable !== null && !path.isAbsolute(executable)) {
     throw new TypeError(
@@ -403,6 +425,22 @@ export function resolveQaBrowserConfig(
     throw new TypeError(
       "dsh-qa-browser: runtime.headless cannot be false when runtime.mode is attach",
     );
+  }
+  // The same reasoning covers the knobs that choose and shape a process: under
+  // `attach` there is no process to choose or shape, and a deployment that wrote
+  // them expects them to hold. Silence here would be a config that lies.
+  if (mode === "attach") {
+    const channel = raw.runtime?.browserChannel?.trim() ?? "";
+    const idle = [
+      executable !== null ? "executablePath" : null,
+      channel !== "" && channel !== "chromium" ? "browserChannel" : null,
+      raw.runtime?.chromiumSandbox === false ? "chromiumSandbox" : null,
+    ].filter((name): name is string => name !== null);
+    if (idle.length > 0) {
+      throw new TypeError(
+        `dsh-qa-browser: runtime.${idle.join(" and runtime.")} configure a Chromium this runtime starts, and runtime.mode attach starts none`,
+      );
+    }
   }
   const cdpEndpoint = resolveCdpEndpoint(raw, mode);
   const allowedSchemes = [

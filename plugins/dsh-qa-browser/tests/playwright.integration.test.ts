@@ -133,12 +133,8 @@ async function stopExternalChromium(
   }
   if (!closed) child.kill();
   const exited = await Promise.race([
-    child.exitCode !== null
-      ? Promise.resolve<"exit" | "timeout">("exit")
-      : new Promise<"exit" | "timeout">((resolve) =>
-          child.once("exit", () => resolve("exit")),
-        ),
-    new Promise<"exit" | "timeout">((resolve) =>
+    waitForExit(child).then(() => "exit" as const),
+    new Promise<"timeout">((resolve) =>
       setTimeout(() => resolve("timeout"), 5_000),
     ),
   ]);
@@ -146,6 +142,16 @@ async function stopExternalChromium(
   if (exited === "timeout") {
     throw new Error("the external Chromium outlived its own teardown");
   }
+}
+
+/**
+ * Resolve once the browser process is gone. A kill leaves `exitCode` null and
+ * the signal set, so neither field alone answers the question — and waiting for
+ * an `exit` that has already been announced would wait forever.
+ */
+async function waitForExit(child: ChildProcess): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((resolve) => child.once("exit", () => resolve()));
 }
 
 /** The policy with a log of the destinations it was asked about. */
@@ -395,6 +401,64 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
     },
     120_000,
   );
+
+  it("reads a killed attached browser as a dropped link, never as a crash", async () => {
+    if (externalChromium === null) {
+      throw new Error("attach needs a Chromium this suite can start");
+    }
+    const debugPort = await freePort();
+    const external = await startExternalChromium(externalChromium, debugPort);
+    try {
+      const config = resolveQaBrowserConfig({
+        runtime: {
+          mode: "attach",
+          cdpEndpoint: `http://127.0.0.1:${String(debugPort)}`,
+        },
+      });
+      const manager = new QaBrowserSessionManager({
+        config,
+        provider: new PlaywrightBrowserProvider(),
+        policy: new BrowserNetworkPolicy(config.security.network),
+        startIdleTimer: false,
+      });
+      managers.push(manager);
+      const session = await manager.ensureSession("attach-dropped");
+      const tabId = session.selectedTabId!;
+
+      // The browser a person started dies while our session is open. No fake
+      // stands in here: the disconnect arrives as a real socket closing, on
+      // Playwright's own schedule, so the wait below is for the event rather
+      // than for the process.
+      external.child.kill();
+      await waitForExit(external.child);
+
+      const deadline = Date.now() + 15_000;
+      while (manager.getSession("attach-dropped")?.status !== "disconnected") {
+        if (Date.now() > deadline) {
+          throw new Error(
+            `the dropped link was never reported: the session stayed ` +
+              `${String(manager.getSession("attach-dropped")?.status)}`,
+          );
+        }
+        await new Promise((resolve) => setTimeout(resolve, 100));
+      }
+
+      // An operator reading the panel is told the link to *their* browser went
+      // away, not that a Chromium this plugin never started has crashed, and the
+      // runtime refuses to offer the tabs that were in it.
+      expect(manager.getSession("attach-dropped")).toMatchObject({
+        status: "disconnected",
+        selectedTabId: null,
+        tabIds: [],
+      });
+      await expect(
+        manager.snapshot("attach-dropped", tabId),
+      ).rejects.toMatchObject({ code: "BROWSER_CONNECTION_LOST" });
+    } finally {
+      await stopExternalChromium(external.child, debugPort);
+      await rm(external.userDataDir, { recursive: true, force: true });
+    }
+  }, 120_000);
 
   it("launches Chromium, navigates to a local fixture and returns a PNG", async () => {
     const html = await readFile(

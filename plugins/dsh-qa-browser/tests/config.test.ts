@@ -77,12 +77,77 @@ describe("resolveQaBrowserConfig", () => {
     ).toThrow(/only used when runtime.mode is attach/u);
   });
 
+  it("refuses a mode it does not know instead of defaulting it", () => {
+    // A misspelt mode would otherwise take the launch path and resolve to a
+    // config that still carries the word the deployment wrote.
+    for (const mode of ["Attach", "connected", "sidecar", ""]) {
+      expect(() =>
+        resolveQaBrowserConfig({
+          runtime: { mode } as unknown as { mode: "launch" | "attach" },
+        }),
+      ).toThrow(/runtime\.mode must be "launch" or "attach"/u);
+    }
+  });
+
+  it("refuses a config that shapes a process attach mode has none of", () => {
+    const endpoint = "http://127.0.0.1:9222";
+    // Absolute on every platform: `executablePath` is checked for that first,
+    // and a Windows-style path would read as relative on the Linux CI runner.
+    const executable = path.resolve(process.cwd(), "chromium", "chrome.exe");
+    for (const knobs of [
+      { executablePath: executable },
+      { browserChannel: "msedge" },
+      { chromiumSandbox: false },
+    ]) {
+      expect(() =>
+        resolveQaBrowserConfig({
+          runtime: { mode: "attach", cdpEndpoint: endpoint, ...knobs },
+        }),
+      ).toThrow(/runtime\.mode attach starts none/u);
+    }
+    expect(() =>
+      resolveQaBrowserConfig({
+        runtime: {
+          mode: "attach",
+          cdpEndpoint: endpoint,
+          executablePath: executable,
+          browserChannel: "msedge",
+          chromiumSandbox: false,
+        },
+      }),
+    ).toThrow(
+      /executablePath and runtime\.browserChannel and runtime\.chromiumSandbox/u,
+    );
+    // A deployment that spells out the defaults attach mode behaves as has to
+    // keep working: the refusal is about a value that would have been ignored.
+    expect(
+      resolveQaBrowserConfig({
+        runtime: {
+          mode: "attach",
+          cdpEndpoint: endpoint,
+          browserChannel: "chromium",
+          headless: true,
+          chromiumSandbox: true,
+        },
+      }).runtime.mode,
+    ).toBe("attach");
+    // The same keys are the point of launch mode, so nothing is refused there.
+    expect(
+      resolveQaBrowserConfig({
+        runtime: {
+          executablePath: executable,
+          browserChannel: "msedge",
+          chromiumSandbox: false,
+        },
+      }).runtime.executablePath,
+    ).toBe(executable);
+  });
+
   it("accepts the endpoint forms Playwright dials", () => {
     for (const cdpEndpoint of [
       "http://127.0.0.1:9222",
       "http://localhost:9222/json/version",
       "http://[::1]:9222",
-      "https://chrome.localhost:9222",
       "ws://127.0.0.1:9222/devtools/browser/6c1a2b3c",
     ]) {
       const config = resolveQaBrowserConfig({
@@ -103,11 +168,15 @@ describe("resolveQaBrowserConfig", () => {
 
   it("keeps a debug endpoint on this machine until the deployment opens it", () => {
     // A CDP endpoint is full control of a browser, so anything beyond loopback
-    // has to be a decision someone wrote down.
+    // has to be a decision someone wrote down. A `*.localhost` name belongs in
+    // this list although it is *meant* to be loopback: this runtime never
+    // resolves it, so a resolver that answers it elsewhere is a host like any
+    // other, and only the written switch can accept that.
     for (const cdpEndpoint of [
       "http://build-host:9222",
-      "http://10.0.0.5:9222",
-      "ws://192.168.1.20:9222/devtools/browser/6c1a2b3c",
+      "https://chrome.localhost:9222",
+      "http://203.0.113.20:9222",
+      "ws://browser.net.example:9222/devtools/browser/6c1a2b3c",
     ]) {
       expect(() =>
         resolveQaBrowserConfig({ runtime: { mode: "attach", cdpEndpoint } }),
