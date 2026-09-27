@@ -6,7 +6,7 @@
  * that appears before the conversation strip declares its seat, is a silent
  * no-op in a real DSH session.
  */
-import { render } from "@testing-library/react";
+import { render, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import { AuditPage } from "../src/client/AuditPage.js";
@@ -202,32 +202,35 @@ describe("AuditPage", () => {
         }),
       ]),
     );
-    const { findByText, getByText } = render(
+    const { findByTestId } = render(
       <AuditPage sessionId={SESSION} api={api} />,
     );
 
+    const notice = await findByTestId("audit-unattached");
     expect(
-      await findByText("No audit available for this session"),
-    ).toBeDefined();
+      within(notice).getByTestId("audit-unattached-title").textContent,
+    ).toBe("2 audits are not shown in any session");
     expect(
-      await findByText("2 audits are not shown in any session"),
-    ).toBeDefined();
-    expect(
-      getByText(
-        "no session matches its directory name, and its analysis names none",
-      ),
-    ).toBeDefined();
-    expect(getByText("analysis.json is not valid JSON")).toBeDefined();
+      within(notice)
+        .getAllByTestId("audit-unattached-reason")
+        .map((reason) => reason.textContent),
+    ).toEqual([
+      "no session matches its directory name, and its analysis names none",
+      "analysis.json is not valid JSON",
+    ]);
+    // The notice stays a list: a reader reaches the stranded audits through the
+    // list semantics, not through the wording of the sentence above them.
+    expect(within(notice).getAllByRole("listitem")).toHaveLength(2);
   });
 
   it("says nothing about unattached audits when none exist", async () => {
     const api = createAuditApi(remoteOf(summaryValue({ available: false })));
-    const { findByText, queryByText } = render(
+    const { findByTestId, queryByTestId } = render(
       <AuditPage sessionId={SESSION} api={api} />,
     );
 
-    await findByText("No audit available for this session");
-    expect(queryByText(/not shown in any session/u)).toBeNull();
+    await findByTestId("audit-page-empty");
+    expect(queryByTestId("audit-unattached")).toBeNull();
   });
 
   it("counts one unattached audit in the singular", async () => {
@@ -236,23 +239,30 @@ describe("AuditPage", () => {
         unattachedValue(),
       ]),
     );
-    const { findByText } = render(<AuditPage sessionId={SESSION} api={api} />);
+    const { findByTestId } = render(
+      <AuditPage sessionId={SESSION} api={api} />,
+    );
 
+    const notice = await findByTestId("audit-unattached");
     expect(
-      await findByText("1 audit is not shown in any session"),
-    ).toBeDefined();
+      within(notice).getByTestId("audit-unattached-title").textContent,
+    ).toBe("1 audit is not shown in any session");
+    expect(within(notice).getAllByRole("listitem")).toHaveLength(1);
   });
 
   it("notes unattached audits beside a session's own audit", async () => {
     const api = createAuditApi(
       remoteOf(summaryValue(), auditValue(), [unattachedValue()]),
     );
-    const { findByText } = render(<AuditPage sessionId={SESSION} api={api} />);
+    const { findByTestId, findByText } = render(
+      <AuditPage sessionId={SESSION} api={api} />,
+    );
 
     // The reader who has an audit still learns that others are stranded.
+    const notice = await findByTestId("audit-unattached");
     expect(
-      await findByText("1 audit is not shown in any session"),
-    ).toBeDefined();
+      within(notice).getByTestId("audit-unattached-title").textContent,
+    ).toBe("1 audit is not shown in any session");
     expect(await findByText("Mixed")).toBeDefined();
   });
 
@@ -260,12 +270,12 @@ describe("AuditPage", () => {
     const failing = remoteOf();
     failing.unattached = () => failed("boom");
     const api = createAuditApi(failing);
-    const { findByText, queryByText } = render(
+    const { findByText, queryByTestId } = render(
       <AuditPage sessionId={SESSION} api={api} />,
     );
 
     expect(await findByText("Mixed")).toBeDefined();
-    expect(queryByText(/not shown in any session/u)).toBeNull();
+    expect(queryByTestId("audit-unattached")).toBeNull();
   });
 
   it("renders the status bar and the report once loaded", async () => {

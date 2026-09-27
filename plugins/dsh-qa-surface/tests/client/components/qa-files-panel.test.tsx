@@ -29,8 +29,7 @@ const groups: readonly QaChatFileGroup[] = [
 describe("files panel", () => {
   it("renders one section per message with the sent file handle", () => {
     render(<QaFilesPanel groups={groups} onJumpToMessage={vi.fn()} />);
-    const badges = document.querySelectorAll(".dsh-qa-files__group");
-    expect(badges).toHaveLength(2);
+    expect(screen.getAllByTestId("qa-files-group")).toHaveLength(2);
     const chip = screen.getByTestId("qa-file");
     expect(within(chip).getByTestId("qa-file-name").textContent).toBe(
       "notes.md",
@@ -48,26 +47,24 @@ describe("files panel", () => {
       />,
     );
     await waitFor(() =>
-      expect(document.querySelector("img.dsh-qa-files__thumb")).toBeTruthy(),
+      expect(screen.getByTestId("qa-files-thumb")).toBeTruthy(),
     );
     expect(resolveImage).toHaveBeenCalledWith("img-1");
-    const thumb = document.querySelector(
-      "img.dsh-qa-files__thumb",
-    ) as HTMLImageElement;
-    expect(thumb.src).toBe("blob:resolved");
+    const thumb = screen.getByTestId("qa-files-thumb");
+    expect((thumb as HTMLImageElement).src).toBe("blob:resolved");
   });
 
   it("jumps to the sending message", () => {
     const onJumpToMessage = vi.fn();
     render(<QaFilesPanel groups={groups} onJumpToMessage={onJumpToMessage} />);
-    fireEvent.click(
-      screen.getAllByRole("button", { name: /Перейти к сообщению/u })[1]!,
-    );
+    const [, second] = screen.getAllByTestId("qa-files-jump");
+    expect(second?.getAttribute("aria-label")).toMatch(/Перейти к сообщению/u);
+    fireEvent.click(second!);
     expect(onJumpToMessage).toHaveBeenCalledWith("user:1");
   });
 
   it("shows the empty state for attachment-free chats", () => {
     render(<QaFilesPanel groups={[]} onJumpToMessage={vi.fn()} />);
-    expect(screen.getByText("В этом чате нет вложений.")).toBeTruthy();
+    expect(screen.getByTestId("qa-files-empty")).toBeTruthy();
   });
 });

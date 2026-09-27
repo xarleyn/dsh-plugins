@@ -168,9 +168,14 @@ export function LogPanel({
   }, []);
 
   return (
-    <div className="plu-log" data-plu-log-tab={tab.id}>
+    <div className="plu-log" data-plu-log-tab={tab.id} data-testid="log-panel">
       <div className="plu-log-bar">
-        <div className="plu-log-levels" role="group" aria-label="Log levels">
+        <div
+          className="plu-log-levels"
+          role="group"
+          aria-label="Log levels"
+          data-testid="log-panel-levels"
+        >
           {LOG_PANEL_LEVELS.map((level) => (
             <button
               key={level}
@@ -179,6 +184,7 @@ export function LogPanel({
               data-plu-level={level}
               data-plu-level-on={levels.has(level) || undefined}
               aria-pressed={levels.has(level)}
+              data-testid="log-panel-level-chip"
               onClick={() => {
                 toggleLevel(level);
               }}
@@ -193,6 +199,7 @@ export function LogPanel({
             className="plu-log-action"
             aria-pressed={paused}
             title={paused ? "Resume live output" : "Pause live output"}
+            data-testid="log-panel-pause"
             onClick={() => {
               setPaused((current) => !current);
             }}
@@ -204,13 +211,19 @@ export function LogPanel({
             className="plu-log-action"
             aria-pressed={follow}
             title="Keep the newest line in view"
+            data-testid="log-panel-follow"
             onClick={() => {
               setFollow(true);
             }}
           >
             Follow
           </button>
-          <button type="button" className="plu-log-action" onClick={clear}>
+          <button
+            type="button"
+            className="plu-log-action"
+            data-testid="log-panel-clear"
+            onClick={clear}
+          >
             Clear
           </button>
         </div>
@@ -222,6 +235,7 @@ export function LogPanel({
           value={source}
           aria-label="Filter by source plugin"
           title="Show one plugin's lines"
+          data-testid="log-panel-source"
           onChange={(event) => {
             setSource(event.currentTarget.value);
           }}
@@ -239,11 +253,12 @@ export function LogPanel({
           value={query}
           placeholder="Filter text"
           aria-label="Filter log text"
+          data-testid="log-panel-search"
           onChange={(event) => {
             setQuery(event.currentTarget.value);
           }}
         />
-        <span className="plu-log-count">
+        <span className="plu-log-count" data-testid="log-panel-count">
           {visible.length === records.length
             ? `${records.length} line${records.length === 1 ? "" : "s"}`
             : `${visible.length} of ${records.length} lines`}
@@ -252,19 +267,23 @@ export function LogPanel({
       </div>
 
       {error !== null ? (
-        <p className="plu-log-note" role="status">
+        <p className="plu-log-note" role="status" data-testid="log-panel-error">
           {error}
         </p>
       ) : null}
       {dropped > 0 ? (
-        <p className="plu-log-note plu-log-note--drop" role="status">
+        <p
+          className="plu-log-note plu-log-note--drop"
+          role="status"
+          data-testid="log-panel-dropped"
+        >
           {dropped} record{dropped === 1 ? "" : "s"} dropped before this panel
           could read them.
         </p>
       ) : null}
       {hostBuffered >= LOG_PANEL_CAPACITY &&
       records.length === LOG_PANEL_CAPACITY ? (
-        <p className="plu-log-note">
+        <p className="plu-log-note" data-testid="log-panel-capped">
           Showing the newest {LOG_PANEL_CAPACITY} lines.
         </p>
       ) : null}
@@ -274,6 +293,7 @@ export function LogPanel({
         ref={body}
         role="log"
         aria-live="off"
+        data-testid="log-panel-body"
         onScroll={() => {
           const element = body.current;
           if (element === null) return;
@@ -284,17 +304,26 @@ export function LogPanel({
         }}
       >
         {visible.length === 0 ? (
-          <p className="plu-log-empty">
+          <p className="plu-log-empty" data-testid="log-panel-empty">
             {records.length === 0
               ? "Nothing logged yet. Records appear here as the host plugins write them."
               : "No line matches the current filters."}
           </p>
         ) : (
           visible.map((record) => (
+            /*
+             * `log-panel-line` is on the DOM translator's protected-surface table
+             * (plugins/dsh-l10n-overrides/src/runtime/protected-surfaces.ts): a
+             * logged line is another plugin's text, so machine translation must
+             * never rewrite it. Renaming this id lifts that protection silently —
+             * the translator's own test carries its own copy of the id — so the
+             * id is pinned in scripts/verify-package.mjs.
+             */
             <div
               className="plu-log-line"
               key={record.seq}
               data-plu-level={record.level}
+              data-testid="log-panel-line"
             >
               <span className="plu-log-time">{formatTime(record.time)}</span>{" "}
               <span className="plu-log-level" data-plu-level={record.level}>

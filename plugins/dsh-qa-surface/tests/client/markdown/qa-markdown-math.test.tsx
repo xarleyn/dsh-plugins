@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Markdown } from "../../../src/client/components/Markdown.js";
 
@@ -10,7 +10,7 @@ describe("assistant math", () => {
       <Markdown text={"before\n\n$$\nE = mc^2\n$$\n\nafter"} />,
     );
     expect(
-      container.querySelector(".dsh-qa-md-math .katex-display"),
+      screen.getByTestId("qa-md-math").querySelector(".katex-display"),
     ).toBeTruthy();
     expect(container.querySelector(".katex")?.textContent).toContain("=");
     expect(container.textContent).toContain("before");
@@ -18,9 +18,9 @@ describe("assistant math", () => {
   });
 
   it("renders a one-line $$…$$ block as display math", () => {
-    const { container } = render(<Markdown text={"$$a^2 + b^2 = c^2$$"} />);
+    render(<Markdown text={"$$a^2 + b^2 = c^2$$"} />);
     expect(
-      container.querySelector(".dsh-qa-md-math .katex-display"),
+      screen.getByTestId("qa-md-math").querySelector(".katex-display"),
     ).toBeTruthy();
   });
 
@@ -31,16 +31,18 @@ describe("assistant math", () => {
   });
 
   it("renders a ```math fence as display math and other fences as code", () => {
-    const { container } = render(
+    render(
       <Markdown
         text={
           "```math\n\\frac{a}{b}\n```\n\n```math\n```\n\n```text\n\\frac{a}{b}\n```"
         }
       />,
     );
-    expect(container.querySelector(".dsh-qa-md-math .katex")).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-md-math").querySelector(".katex"),
+    ).toBeTruthy();
     // An empty math fence stays a code card, and other languages never render math.
-    expect(container.querySelectorAll(".dsh-qa-md-code").length).toBe(2);
+    expect(screen.getAllByTestId("qa-md-code")).toHaveLength(2);
   });
 
   it("renders inline $…$ and $$…$$ math inside a paragraph", () => {
@@ -103,30 +105,29 @@ describe("assistant math", () => {
 
 describe("assistant footnotes", () => {
   it("renders a reference as a numbered sup and appends the section", () => {
-    const { container } = render(
+    render(
       <Markdown text={"Текст[^1] с сноской.\n\n[^1]: А это её определение."} />,
     );
-    expect(container.querySelector(".dsh-qa-md-fn-ref")?.textContent).toBe("1");
-    const section = container.querySelector(".dsh-qa-md-footnotes");
-    expect(section).toBeTruthy();
-    expect(section?.querySelector("li")?.textContent).toContain(
-      "А это её определение.",
-    );
-    expect(section?.textContent).toContain("↩");
+    expect(screen.getByTestId("qa-md-fn-ref").textContent).toBe("1");
+    const section = screen.getByTestId("qa-md-footnotes");
+    expect(
+      within(section).getByTestId("qa-md-footnote-item").textContent,
+    ).toContain("А это её определение.");
+    expect(section.textContent).toContain("↩");
   });
 
   it("numbers footnotes in first-reference order and repeats the number", () => {
-    const { container } = render(
+    render(
       <Markdown
         text={
           "Второй[^b], потом первый[^a], снова второй[^b].\n\n[^a]: первая\n\n[^b]: вторая"
         }
       />,
     );
-    const refs = [...container.querySelectorAll(".dsh-qa-md-fn-ref")];
+    const refs = screen.getAllByTestId("qa-md-fn-ref");
     expect(refs.map((ref) => ref.textContent)).toEqual(["1", "2", "1"]);
-    const items = container.querySelectorAll(".dsh-qa-md-footnotes li");
-    expect(items.length).toBe(2);
+    const items = screen.getAllByTestId("qa-md-footnote-item");
+    expect(items).toHaveLength(2);
     expect(items[0]?.textContent).toContain("вторая");
     expect(items[1]?.textContent).toContain("первая");
     // The repeated reference leaves two back-reference markers in its body.
@@ -135,8 +136,8 @@ describe("assistant footnotes", () => {
 
   it("keeps an undefined label literal text", () => {
     const { container } = render(<Markdown text={"Текст[^foo] конец."} />);
-    expect(container.querySelector(".dsh-qa-md-fn-ref")).toBeNull();
-    expect(container.querySelector(".dsh-qa-md-footnotes")).toBeNull();
+    expect(screen.queryByTestId("qa-md-fn-ref")).toBeNull();
+    expect(screen.queryByTestId("qa-md-footnotes")).toBeNull();
     expect(container.querySelector("p")?.textContent).toContain("[^foo]");
   });
 
@@ -144,16 +145,16 @@ describe("assistant footnotes", () => {
     const { container } = render(
       <Markdown text={"Один[^Abc], два[^foo bar].\n\n[^abc]: определение"} />,
     );
-    expect(container.querySelectorAll(".dsh-qa-md-fn-ref").length).toBe(1);
+    expect(screen.getAllByTestId("qa-md-fn-ref")).toHaveLength(1);
     expect(container.textContent).toContain("[^foo bar]");
   });
 
   it("keeps lazy continuation lines in the definition body", () => {
-    const { container } = render(
+    render(
       <Markdown text={"a[^1]\n\n[^1]: первый\nпродолжение без отступа"} />,
     );
-    const section = container.querySelector(".dsh-qa-md-footnotes");
-    expect(section?.textContent).toContain("первый\nпродолжение без отступа");
+    const section = screen.getByTestId("qa-md-footnotes");
+    expect(section.textContent).toContain("первый\nпродолжение без отступа");
   });
 
   it("renders indented multi-paragraph bodies with blocks", () => {
@@ -162,9 +163,9 @@ describe("assistant footnotes", () => {
         text={"a[^1]\n\n[^1]: первый абзац\n\n    второй продолжает\n\nконец"}
       />,
     );
-    const section = container.querySelector(".dsh-qa-md-footnotes");
-    expect(section?.textContent).toContain("первый абзац");
-    expect(section?.textContent).toContain("второй продолжает");
+    const section = screen.getByTestId("qa-md-footnotes");
+    expect(section.textContent).toContain("первый абзац");
+    expect(section.textContent).toContain("второй продолжает");
     // The definition ends before the non-indented line, which stays a top
     // level paragraph; the footnote section itself renders after all blocks.
     const text = container.textContent ?? "";
@@ -175,9 +176,9 @@ describe("assistant footnotes", () => {
   });
 
   it("renders math inside a footnote body", () => {
-    const { container } = render(
-      <Markdown text={"a[^1]\n\n[^1]: формула $x^2$ тут"} />,
-    );
-    expect(container.querySelector(".dsh-qa-md-footnotes .katex")).toBeTruthy();
+    render(<Markdown text={"a[^1]\n\n[^1]: формула $x^2$ тут"} />);
+    expect(
+      screen.getByTestId("qa-md-footnotes").querySelector(".katex"),
+    ).toBeTruthy();
   });
 });

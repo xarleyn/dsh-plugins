@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { Markdown } from "../../../src/client/components/Markdown.js";
 
@@ -25,7 +25,7 @@ describe("safe Markdown", () => {
         }
       />,
     );
-    const table = container.querySelector(".dsh-qa-md-table table");
+    const table = screen.getByTestId("qa-md-table").querySelector("table");
     expect(table).toBeTruthy();
     expect(container.querySelectorAll("thead th").length).toBe(2);
     expect(container.querySelectorAll("tbody tr").length).toBe(2);

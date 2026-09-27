@@ -9,7 +9,7 @@
 ## 1. Summary
 
 `dsh-plugin-log-ui` — клиентский плагин-настройщик для
-[`@yadsh/dsh-plugin-log`](../../packages/plugin-log). Добавляет карточку
+[`@yadsh/dsh-plugin-log`](../../packages/plugin-log/README.md). Добавляет карточку
 **Plugin logging** табом на страницу *Settings → Plugins* и через
 Typert-сервис применяет политику логирования к уже зарегистрированным и новым
 консьюмерам `@yadsh/dsh-plugin-log`, а также панель **Plugin logs** —
