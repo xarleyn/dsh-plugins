@@ -29,7 +29,7 @@ import {
   resolveArchiveRoot,
 } from "../../src/archive/local.js";
 import { shortRef, type ArchivedToolResult } from "../../src/archive/types.js";
-import { resolveJevCompactionConfig } from "../../src/config.js";
+import { resolveJevCompactionConfig } from "../../src/config/index.js";
 
 let root: string;
 let archive: LocalResultArchive;

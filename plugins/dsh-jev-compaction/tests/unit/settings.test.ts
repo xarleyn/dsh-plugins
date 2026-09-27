@@ -13,11 +13,11 @@ import { describe, expect, it } from "vitest";
 import {
   plainJevCompactionConfig,
   resolveJevCompactionConfig,
-} from "../../src/config.js";
+} from "../../src/config/index.js";
 import type {
   JevCompactionConfig,
   JevCompactionLiveConfig,
-} from "../../src/config.js";
+} from "../../src/config/index.js";
 import { JevCompactionService } from "../../src/service.js";
 import { installJevCompactionSettings } from "../../src/settings/install.js";
 import { JEV_COMPACTION_SETTINGS_NAMESPACE } from "../../src/shared/settings.js";

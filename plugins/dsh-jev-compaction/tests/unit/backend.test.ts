@@ -8,7 +8,7 @@ import {
   type FetchLike,
 } from "../../src/jev/backend.js";
 import type { JevQuestion, JevState } from "../../src/jev/types.js";
-import { resolveJevCompactionConfig } from "../../src/config.js";
+import { resolveJevCompactionConfig } from "../../src/config/index.js";
 
 const STATE: JevState = { context: "c", goal: "g", history: [] };
 const QUESTIONS: JevQuestion[] = [

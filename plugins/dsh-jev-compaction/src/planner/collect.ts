@@ -17,7 +17,7 @@ import {
 } from "../dsh/surface.js";
 import { PRUNED_BY } from "../mutation/render.js";
 import { isShapedText, readArchiveRef } from "../result-shaping/reconstruct.js";
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 
 /** Normalized candidate model (SPEC §9.2) — no DSH event shapes. */
 export interface ToolResultCandidate {

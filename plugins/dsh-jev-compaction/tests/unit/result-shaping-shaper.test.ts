@@ -12,8 +12,8 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SHAPE_TOOLS,
   resolveJevCompactionConfig,
-} from "../../src/config.js";
-import type { ResolvedJevCompactionConfig } from "../../src/config.js";
+} from "../../src/config/index.js";
+import type { ResolvedJevCompactionConfig } from "../../src/config/index.js";
 import type {
   ArchivedToolResult,
   OriginalResultArchive,

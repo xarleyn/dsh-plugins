@@ -25,7 +25,7 @@ import type {
   ToolExecutionResult,
 } from "@deepseek-ai/dsh-tools";
 
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 import type { ShapeSkipReason } from "./metrics.js";
 import type { ImmediateResultShaper } from "./shaper.js";
 

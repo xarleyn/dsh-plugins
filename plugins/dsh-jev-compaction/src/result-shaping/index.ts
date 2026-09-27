@@ -14,7 +14,7 @@ import type { Session } from "@deepseek-ai/dsh-session";
 import { collectArchive } from "../archive/gc.js";
 import { LocalResultArchive, resolveArchiveRoot } from "../archive/local.js";
 import type { OriginalResultArchive } from "../archive/types.js";
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 import { goalFromSession } from "../jev/state.js";
 import type { SystemOneBackend } from "../jev/types.js";
 import { JEV_EVENTS } from "../observability/logging.js";
