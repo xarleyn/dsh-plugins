@@ -224,7 +224,8 @@ export class WeblateTransport {
         // Aborts, DNS failures and refused connections: a transient network
         // fault is worth one more attempt, a permanent one keeps failing. The
         // deadline is this deployment's own, so a request it already gave up on
-        // is not sent again.
+        // is not sent again — which is the shared default, so this provider
+        // names no rule of its own.
         transportFailure: (error, timedOut) =>
           timedOut
             ? new IntegrationError("UpstreamTimeout", "Weblate did not answer")
@@ -237,7 +238,6 @@ export class WeblateTransport {
                   "ProviderUnavailable",
                   "Provider request failed",
                 ),
-        retriable: (error) => error.code !== "UpstreamTimeout",
         statusFailure: (response) => this.failure(response),
       },
       read,

@@ -80,6 +80,34 @@ function legacySiblingOf(filePath: string): string | undefined {
     : undefined;
 }
 
+/**
+ * One row of a provider's connect-form list: the address a token may be spent
+ * against, and the managed credential bound to it when this deployment has one.
+ * Every provider's list is this shape, so the shape is stated once; the
+ * deployment type travels only for the two products that distinguish the
+ * vendor's hosted installation from a self-hosted one, and its absence is what
+ * tells the client to read the resolver's own default.
+ */
+function instanceSummary(
+  row: {
+    readonly id: string;
+    readonly label: string;
+    readonly baseUrl: string;
+    readonly deploymentType?: "cloud" | "server" | undefined;
+  },
+  service: { readonly label: string } | null,
+): IntegrationInstanceSummary {
+  return {
+    id: row.id,
+    label: row.label,
+    baseUrl: row.baseUrl,
+    ...(row.deploymentType === undefined
+      ? {}
+      : { deploymentType: row.deploymentType }),
+    service,
+  };
+}
+
 /** Host remote, broker owner, and registration point for read-only tools. */
 export class QaIntegrations extends TypertRemoteService {
   static inject = inject;
@@ -261,48 +289,34 @@ export class QaIntegrations extends TypertRemoteService {
       ? providers.list().map(providerSummary)
       : [];
     this.configuredConfluenceSites = config.confluence.enabled
-      ? config.confluence.instances.map((instance) => ({
-          id: instance.id,
-          label: instance.label,
-          baseUrl: instance.baseUrl,
-          deploymentType: instance.deploymentType,
-          service: this.serviceBinding("confluence", instance.id),
-        }))
+      ? config.confluence.instances.map((site) =>
+          instanceSummary(site, this.serviceBinding("confluence", site.id)),
+        )
       : [];
     this.configuredInstances = config.gitlab.enabled
-      ? config.gitlab.instances.map((instance) => ({
-          id: instance.id,
-          label: instance.label,
-          baseUrl: instance.baseUrl,
-          service: this.serviceBinding("gitlab", instance.id),
-        }))
+      ? config.gitlab.instances.map((instance) =>
+          instanceSummary(instance, this.serviceBinding("gitlab", instance.id)),
+        )
       : [];
     this.configuredJiraSites = config.jira.enabled
-      ? config.jira.sites.map((site) => ({
-          id: site.id,
-          label: site.label,
-          baseUrl: site.baseUrl,
-          deploymentType: site.deploymentType,
-          service: this.serviceBinding("jira", site.id),
-        }))
+      ? config.jira.sites.map((site) =>
+          instanceSummary(site, this.serviceBinding("jira", site.id)),
+        )
       : [];
     this.configuredTestitInstances = config.testit.enabled
-      ? config.testit.instances.map((instance) => ({
-          id: instance.id,
-          label: instance.label,
-          baseUrl: instance.baseUrl,
-          service: this.serviceBinding("testit", instance.id),
-        }))
+      ? config.testit.instances.map((instance) =>
+          instanceSummary(instance, this.serviceBinding("testit", instance.id)),
+        )
       : [];
     // The portal a Bitrix24 connection answers on is a hostname, not a URL —
     // the same shape a webhook URL reports, so profile and connection match.
     this.configuredBitrix24Portals = config.bitrix24.enabled
-      ? config.bitrix24.instances.map((instance) => ({
-          id: instance.id,
-          label: instance.label,
-          baseUrl: instance.portal,
-          service: this.serviceBinding("bitrix24", instance.id),
-        }))
+      ? config.bitrix24.instances.map((portal) =>
+          instanceSummary(
+            { id: portal.id, label: portal.label, baseUrl: portal.portal },
+            this.serviceBinding("bitrix24", portal.id),
+          ),
+        )
       : [];
     this.configuredServer =
       config.teamcity.enabled && config.teamcity.serverUrl !== ""
@@ -314,12 +328,12 @@ export class QaIntegrations extends TypertRemoteService {
           }
         : null;
     this.configuredWeblateInstances = config.weblate.enabled
-      ? config.weblate.instances.map((instance) => ({
-          id: instance.id,
-          label: instance.label,
-          baseUrl: instance.baseUrl,
-          service: this.serviceBinding("weblate", instance.id),
-        }))
+      ? config.weblate.instances.map((instance) =>
+          instanceSummary(
+            instance,
+            this.serviceBinding("weblate", instance.id),
+          ),
+        )
       : [];
     // The broker is one object for the service's lifetime — the mounted tools
     // close over it — so a fresh configuration is swapped in rather than
@@ -473,9 +487,7 @@ export class QaIntegrations extends TypertRemoteService {
 
   @Remote("getBitrix24")
   getBitrix24(token: string): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.summary(principal, "bitrix24"),
-    );
+    return this.summaryOf(token, "bitrix24");
   }
 
   @Remote("putBitrix24Credential")
@@ -488,60 +500,41 @@ export class QaIntegrations extends TypertRemoteService {
       readonly useServiceCredential?: boolean | undefined;
     },
   ): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.connect(
-        principal,
-        "bitrix24",
-        {
-          token: input.token,
-          options: { instanceId: input.instanceId },
-        },
-        { useServiceCredential: input.useServiceCredential },
-      ),
-    );
+    return this.putCredentialOf(token, "bitrix24", {
+      token: input.token,
+      options: { instanceId: input.instanceId },
+      useServiceCredential: input.useServiceCredential,
+    });
   }
 
   @Remote("bitrix24Instances")
   bitrix24Instances(token: string): readonly IntegrationInstanceSummary[] {
-    return this.run(token, () => this.configuredBitrix24Portals);
+    return this.endpointsOf(token, this.configuredBitrix24Portals);
   }
 
   @Remote("testBitrix24")
   async testBitrix24(token: string): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.validate(principal, "bitrix24"),
-    );
+    return this.validateOf(token, "bitrix24");
   }
 
   @Remote("patchBitrix24Policy")
   patchBitrix24Policy(token: string, patch: PolicyPatch): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.patchPolicy(principal, "bitrix24", patch),
-    );
+    return this.patchPolicyOf(token, "bitrix24", patch);
   }
 
   @Remote("disconnectBitrix24")
   disconnectBitrix24(token: string): boolean {
-    return this.run(token, (principal) =>
-      this.broker.disconnect(principal, "bitrix24"),
-    );
+    return this.disconnectOf(token, "bitrix24");
   }
 
-  /**
-   * Instances this deployment allows. The connect form picks from this list and
-   * never takes a hostname, which is what keeps the broker from being pointed at
-   * an origin the operator did not configure.
-   */
   @Remote("gitlabInstances")
   gitlabInstances(token: string): readonly IntegrationInstanceSummary[] {
-    return this.run(token, () => this.configuredInstances);
+    return this.endpointsOf(token, this.configuredInstances);
   }
 
   @Remote("getGitlab")
   getGitlab(token: string): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.summary(principal, "gitlab"),
-    );
+    return this.summaryOf(token, "gitlab");
   }
 
   @Remote("putGitlabCredential")
@@ -554,55 +547,36 @@ export class QaIntegrations extends TypertRemoteService {
       readonly useServiceCredential?: boolean | undefined;
     },
   ): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.connect(
-        principal,
-        "gitlab",
-        {
-          token: input.token,
-          options: { instanceId: input.instanceId },
-        },
-        { useServiceCredential: input.useServiceCredential },
-      ),
-    );
+    return this.putCredentialOf(token, "gitlab", {
+      token: input.token,
+      options: { instanceId: input.instanceId },
+      useServiceCredential: input.useServiceCredential,
+    });
   }
 
   @Remote("testGitlab")
   async testGitlab(token: string): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.validate(principal, "gitlab"),
-    );
+    return this.validateOf(token, "gitlab");
   }
 
   @Remote("patchGitlabPolicy")
   patchGitlabPolicy(token: string, patch: PolicyPatch): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.patchPolicy(principal, "gitlab", patch),
-    );
+    return this.patchPolicyOf(token, "gitlab", patch);
   }
 
   @Remote("disconnectGitlab")
   disconnectGitlab(token: string): boolean {
-    return this.run(token, (principal) =>
-      this.broker.disconnect(principal, "gitlab"),
-    );
+    return this.disconnectOf(token, "gitlab");
   }
 
-  /**
-   * Sites this deployment allows. The connect form picks from this list and
-   * never takes a hostname, which is what keeps the broker from being pointed
-   * at an origin the operator did not configure.
-   */
   @Remote("confluenceSites")
   confluenceSites(token: string): readonly IntegrationInstanceSummary[] {
-    return this.run(token, () => this.configuredConfluenceSites);
+    return this.endpointsOf(token, this.configuredConfluenceSites);
   }
 
   @Remote("getConfluence")
   getConfluence(token: string): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.summary(principal, "confluence"),
-    );
+    return this.summaryOf(token, "confluence");
   }
 
   /**
@@ -625,48 +599,34 @@ export class QaIntegrations extends TypertRemoteService {
       readonly useServiceCredential?: boolean | undefined;
     },
   ): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.connect(
-        principal,
-        "confluence",
-        {
-          token: input.token,
-          options: {
-            instanceId: input.instanceId,
-            ...(input.email === undefined ? {} : { email: input.email }),
-          },
-        },
-        { useServiceCredential: input.useServiceCredential },
-      ),
-    );
+    return this.putCredentialOf(token, "confluence", {
+      token: input.token,
+      options: {
+        instanceId: input.instanceId,
+        ...(input.email === undefined ? {} : { email: input.email }),
+      },
+      useServiceCredential: input.useServiceCredential,
+    });
   }
 
   @Remote("testConfluence")
   async testConfluence(token: string): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.validate(principal, "confluence"),
-    );
+    return this.validateOf(token, "confluence");
   }
 
   @Remote("patchConfluencePolicy")
   patchConfluencePolicy(token: string, patch: PolicyPatch): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.patchPolicy(principal, "confluence", patch),
-    );
+    return this.patchPolicyOf(token, "confluence", patch);
   }
 
   @Remote("disconnectConfluence")
   disconnectConfluence(token: string): boolean {
-    return this.run(token, (principal) =>
-      this.broker.disconnect(principal, "confluence"),
-    );
+    return this.disconnectOf(token, "confluence");
   }
 
   @Remote("getTeamcity")
   getTeamcity(token: string): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.summary(principal, "teamcity"),
-    );
+    return this.summaryOf(token, "teamcity");
   }
 
   /**
@@ -684,14 +644,10 @@ export class QaIntegrations extends TypertRemoteService {
       readonly useServiceCredential?: boolean | undefined;
     },
   ): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.connect(
-        principal,
-        "teamcity",
-        { token: input.token },
-        { useServiceCredential: input.useServiceCredential },
-      ),
-    );
+    return this.putCredentialOf(token, "teamcity", {
+      token: input.token,
+      useServiceCredential: input.useServiceCredential,
+    });
   }
 
   /**
@@ -702,46 +658,32 @@ export class QaIntegrations extends TypertRemoteService {
    */
   @Remote("teamcityServer")
   teamcityServer(token: string): IntegrationInstanceSummary | null {
-    return this.run(token, () => this.configuredServer);
+    return this.endpointsOf(token, this.configuredServer);
   }
 
   @Remote("testTeamcity")
   async testTeamcity(token: string): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.validate(principal, "teamcity"),
-    );
+    return this.validateOf(token, "teamcity");
   }
 
   @Remote("patchTeamcityPolicy")
   patchTeamcityPolicy(token: string, patch: PolicyPatch): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.patchPolicy(principal, "teamcity", patch),
-    );
+    return this.patchPolicyOf(token, "teamcity", patch);
   }
 
   @Remote("disconnectTeamcity")
   disconnectTeamcity(token: string): boolean {
-    return this.run(token, (principal) =>
-      this.broker.disconnect(principal, "teamcity"),
-    );
+    return this.disconnectOf(token, "teamcity");
   }
 
-  /**
-   * Sites this deployment allows. Like the GitLab instance list, the connect
-   * form picks from it and never takes a hostname: the Atlassian site a token is
-   * spent against is operator configuration, and the e-mail the form collects
-   * next to the token is an identity, not a secret.
-   */
   @Remote("jiraSites")
   jiraSites(token: string): readonly IntegrationInstanceSummary[] {
-    return this.run(token, () => this.configuredJiraSites);
+    return this.endpointsOf(token, this.configuredJiraSites);
   }
 
   @Remote("getJira")
   getJira(token: string): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.summary(principal, "jira"),
-    );
+    return this.summaryOf(token, "jira");
   }
 
   @Remote("putJiraCredential")
@@ -759,60 +701,41 @@ export class QaIntegrations extends TypertRemoteService {
       readonly useServiceCredential?: boolean | undefined;
     },
   ): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.connect(
-        principal,
-        "jira",
-        {
-          token: input.token,
-          // The broker resolves the profile by `instanceId`; Jira names its
-          // instances `siteId` on the wire.
-          options: {
-            instanceId: input.siteId,
-            ...(input.email === undefined ? {} : { email: input.email }),
-          },
-        },
-        { useServiceCredential: input.useServiceCredential },
-      ),
-    );
+    return this.putCredentialOf(token, "jira", {
+      token: input.token,
+      // The broker resolves the profile by `instanceId`; Jira names its
+      // instances `siteId` on the wire.
+      options: {
+        instanceId: input.siteId,
+        ...(input.email === undefined ? {} : { email: input.email }),
+      },
+      useServiceCredential: input.useServiceCredential,
+    });
   }
 
   @Remote("testJira")
   async testJira(token: string): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.validate(principal, "jira"),
-    );
+    return this.validateOf(token, "jira");
   }
 
   @Remote("patchJiraPolicy")
   patchJiraPolicy(token: string, patch: PolicyPatch): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.patchPolicy(principal, "jira", patch),
-    );
+    return this.patchPolicyOf(token, "jira", patch);
   }
 
   @Remote("disconnectJira")
   disconnectJira(token: string): boolean {
-    return this.run(token, (principal) =>
-      this.broker.disconnect(principal, "jira"),
-    );
+    return this.disconnectOf(token, "jira");
   }
 
-  /**
-   * Installations this deployment allows. Like the GitLab instance list, the
-   * connect form picks from it and never takes a hostname: the Test IT address a
-   * token is spent against is operator configuration.
-   */
   @Remote("testitInstances")
   testitInstances(token: string): readonly IntegrationInstanceSummary[] {
-    return this.run(token, () => this.configuredTestitInstances);
+    return this.endpointsOf(token, this.configuredTestitInstances);
   }
 
   @Remote("getTestit")
   getTestit(token: string): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.summary(principal, "testit"),
-    );
+    return this.summaryOf(token, "testit");
   }
 
   @Remote("putTestitCredential")
@@ -825,55 +748,36 @@ export class QaIntegrations extends TypertRemoteService {
       readonly useServiceCredential?: boolean | undefined;
     },
   ): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.connect(
-        principal,
-        "testit",
-        {
-          token: input.token,
-          options: { instanceId: input.instanceId },
-        },
-        { useServiceCredential: input.useServiceCredential },
-      ),
-    );
+    return this.putCredentialOf(token, "testit", {
+      token: input.token,
+      options: { instanceId: input.instanceId },
+      useServiceCredential: input.useServiceCredential,
+    });
   }
 
   @Remote("testTestit")
   async testTestit(token: string): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.validate(principal, "testit"),
-    );
+    return this.validateOf(token, "testit");
   }
 
   @Remote("patchTestitPolicy")
   patchTestitPolicy(token: string, patch: PolicyPatch): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.patchPolicy(principal, "testit", patch),
-    );
+    return this.patchPolicyOf(token, "testit", patch);
   }
 
   @Remote("disconnectTestit")
   disconnectTestit(token: string): boolean {
-    return this.run(token, (principal) =>
-      this.broker.disconnect(principal, "testit"),
-    );
+    return this.disconnectOf(token, "testit");
   }
 
-  /**
-   * Instances this deployment allows. The connect form picks from this list and
-   * never takes a hostname, which is what keeps the broker from being pointed at
-   * an origin the operator did not configure.
-   */
   @Remote("weblateInstances")
   weblateInstances(token: string): readonly IntegrationInstanceSummary[] {
-    return this.run(token, () => this.configuredWeblateInstances);
+    return this.endpointsOf(token, this.configuredWeblateInstances);
   }
 
   @Remote("getWeblate")
   getWeblate(token: string): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.summary(principal, "weblate"),
-    );
+    return this.summaryOf(token, "weblate");
   }
 
   @Remote("putWeblateCredential")
@@ -886,38 +790,26 @@ export class QaIntegrations extends TypertRemoteService {
       readonly useServiceCredential?: boolean | undefined;
     },
   ): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.connect(
-        principal,
-        "weblate",
-        {
-          token: input.token,
-          options: { instanceId: input.instanceId },
-        },
-        { useServiceCredential: input.useServiceCredential },
-      ),
-    );
+    return this.putCredentialOf(token, "weblate", {
+      token: input.token,
+      options: { instanceId: input.instanceId },
+      useServiceCredential: input.useServiceCredential,
+    });
   }
 
   @Remote("testWeblate")
   async testWeblate(token: string): Promise<IntegrationSummary> {
-    return this.runAsync(token, (principal) =>
-      this.broker.validate(principal, "weblate"),
-    );
+    return this.validateOf(token, "weblate");
   }
 
   @Remote("patchWeblatePolicy")
   patchWeblatePolicy(token: string, patch: PolicyPatch): IntegrationSummary {
-    return this.run(token, (principal) =>
-      this.broker.patchPolicy(principal, "weblate", patch),
-    );
+    return this.patchPolicyOf(token, "weblate", patch);
   }
 
   @Remote("disconnectWeblate")
   disconnectWeblate(token: string): boolean {
-    return this.run(token, (principal) =>
-      this.broker.disconnect(principal, "weblate"),
-    );
+    return this.disconnectOf(token, "weblate");
   }
 
   /**
@@ -1013,6 +905,84 @@ export class QaIntegrations extends TypertRemoteService {
     return profile?.enabled === true ? { label: profile.label } : null;
   }
 
+  /**
+   * The six calls one provider's connect card makes, and the fields that card
+   * spends. What a provider owns is the address list it offers and the fields
+   * its form collects; the questions the card asks the broker — what is bound,
+   * does the credential still reach the upstream, narrow its policy, let it go —
+   * are the same seven times over, and a copy per provider is where the seventh
+   * starts answering one of them differently.
+   */
+  private summaryOf(
+    token: string,
+    provider: IntegrationProviderId,
+  ): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.summary(principal, provider),
+    );
+  }
+
+  private async validateOf(
+    token: string,
+    provider: IntegrationProviderId,
+  ): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.validate(principal, provider),
+    );
+  }
+
+  private patchPolicyOf(
+    token: string,
+    provider: IntegrationProviderId,
+    patch: PolicyPatch,
+  ): IntegrationSummary {
+    return this.run(token, (principal) =>
+      this.broker.patchPolicy(principal, provider, patch),
+    );
+  }
+
+  private disconnectOf(
+    token: string,
+    provider: IntegrationProviderId,
+  ): boolean {
+    return this.run(token, (principal) =>
+      this.broker.disconnect(principal, provider),
+    );
+  }
+
+  /**
+   * The endpoints this deployment declared for one provider. A connect form
+   * picks from this list and never takes a hostname, which is what keeps the
+   * broker from being pointed at an origin the operator did not configure.
+   * TeamCity answers with the single server or `null`, so the row shape is the
+   * caller's.
+   */
+  private endpointsOf<T>(token: string, endpoints: T): T {
+    return this.run(token, () => endpoints);
+  }
+
+  /** Spend one connect form's fields on a provider's credential. */
+  private async putCredentialOf(
+    token: string,
+    provider: IntegrationProviderId,
+    input: {
+      readonly token: string;
+      readonly options?: Readonly<Record<string, string>> | undefined;
+      readonly useServiceCredential?: boolean | undefined;
+    },
+  ): Promise<IntegrationSummary> {
+    return this.runAsync(token, (principal) =>
+      this.broker.connect(
+        principal,
+        provider,
+        input.options === undefined
+          ? { token: input.token }
+          : { token: input.token, options: input.options },
+        { useServiceCredential: input.useServiceCredential },
+      ),
+    );
+  }
+
   private requirePrincipal(token: string): IntegrationPrincipal {
     if (!this.enabled) {
       throw new IntegrationError(
@@ -1055,467 +1025,12 @@ export class QaIntegrations extends TypertRemoteService {
   }
 }
 
-export { IntegrationBroker } from "./broker.js";
-export {
-  ConfigSchema,
-  resolveConfig,
-  snapshotConfig,
-  type LiveQaIntegrationsConfig,
-  type QaIntegrationsConfig,
-  type QaIntegrationsSnapshot,
-  type ResolvedQaIntegrationsConfig,
-} from "./config.js";
-export {
-  MANAGED_SERVICE_CREDENTIALS_DEFAULTS,
-  managedServiceCredentialsSchema,
-  resolveManagedServiceCredentials,
-  type ManagedServiceCredentialProfileConfig,
-  type ManagedServiceCredentialProfileInput,
-  type ManagedServiceCredentialsConfig,
-  type ManagedServiceCredentialsInput,
-} from "./service-credentials/config.js";
-export {
-  evaluateServiceOperation,
-  narrowBoundary,
-  SERVICE_CEILING,
-  type ServiceOperationQuery,
-  type ServicePolicyDecision,
-} from "./service-credentials/policy.js";
-export { ServiceCredentialRegistry } from "./service-credentials/registry.js";
-export { operationCapabilityServiceState } from "./service-credentials/state.js";
-export { profilePolicyRevision } from "./service-credentials/config.js";
-export {
-  CREDENTIAL_SOURCES,
-  isCredentialSource,
-  UNCLASSIFIED_OPERATION,
-  type CredentialSource as ManagedCredentialSource,
-  type DataSensitivity,
-  type OperationEffect,
-  type OperationSecurityMetadata,
-  type OperationServiceDecision,
-  type ResolvedCredentialContext,
-  type ResolvedServiceCredential,
-  type SafeExternalIdentity,
-  type ServiceCredentialHealth,
-  type ServiceCredentialProfile,
-  type ServiceCredentialStatus,
-  type ServiceResourceBoundary,
-} from "./service-credentials/types.js";
-export { IntegrationError } from "./errors.js";
-export {
-  BITRIX_CAPABILITIES,
-  BITRIX_OPERATIONS,
-  BITRIX24_CAPABILITY_INFO,
-  bitrix24OperationCapability,
-  enabledCapabilities,
-  type Bitrix24Capability,
-  type Bitrix24CapabilityDefinition,
-  type BitrixOperationDefinition,
-} from "./providers/bitrix24/catalog.js";
-export {
-  BITRIX24_DEFAULTS,
-  bitrix24ConfigSchema,
-  resolveBitrix24Config,
-  type Bitrix24Flags,
-} from "./providers/bitrix24/config.js";
-export {
-  Bitrix24Provider,
-  parseBitrixWebhook,
-} from "./providers/bitrix24/index.js";
-export {
-  BITRIX_HANDLERS,
-  BITRIX_PROJECTIONS,
-} from "./providers/bitrix24/operations.js";
-export {
-  createBitrix24Tools,
-  BITRIX24_TOOL_NAMES,
-} from "./providers/bitrix24/tools.js";
-export {
-  GitlabProvider,
-  groupAllowed as gitlabGroupAllowed,
-  projectAllowed as gitlabProjectAllowed,
-} from "./providers/gitlab/index.js";
-export {
-  GITLAB_CAPABILITIES,
-  GITLAB_CAPABILITY_INFO,
-  GITLAB_CI_SPLIT_CAPABILITIES,
-  GITLAB_LEGACY_CI_CAPABILITY,
-  GITLAB_OPERATIONS,
-  GITLAB_RESOURCE_KIND,
-  capabilitiesForScopes,
-  gitlabOperationCapability,
-  gitlabOperationMetadata,
-  type GitlabCapability,
-  type GitlabCapabilityDefinition,
-  type GitlabOperationDefinition,
-} from "./providers/gitlab/catalog.js";
-export {
-  GITLAB_DEFAULTS,
-  gitlabConfigSchema,
-  resolveGitlabConfig,
-  type GitlabConfigInput,
-  type GitlabFlags,
-  type GitlabInstance,
-} from "./providers/gitlab/config.js";
-export {
-  createGitlabTools,
-  GITLAB_TOOL_NAMES,
-} from "./providers/gitlab/tools.js";
-export {
-  GitlabTransport,
-  credentialFromPlaintext as gitlabCredentialFromPlaintext,
-  credentialInstance,
-  type GitlabCredential,
-} from "./providers/gitlab/transport.js";
-export {
-  GITLAB_HANDLERS,
-  GITLAB_PROJECTIONS,
-} from "./providers/gitlab/operations.js";
-export { ConfluenceProvider } from "./providers/confluence/index.js";
-export {
-  adfToText as confluenceAdfToText,
-  textBudget,
-} from "./providers/confluence/adf.js";
-export {
-  CONFLUENCE_CAPABILITIES,
-  CONFLUENCE_CAPABILITY_INFO,
-  CONFLUENCE_OPERATIONS,
-  confluenceOperationCapability,
-  type ConfluenceCapability,
-  type ConfluenceCapabilityDefinition,
-  type ConfluenceOperationDefinition,
-} from "./providers/confluence/catalog.js";
-export {
-  CONFLUENCE_DEFAULTS,
-  confluenceConfigSchema,
-  resolveConfluenceConfig,
-  spaceAllowed,
-  type ConfluenceFlags,
-  type ConfluenceInstance,
-} from "./providers/confluence/config.js";
-export {
-  buildCql,
-  cqlLiteral,
-  CONTENT_TYPES,
-  ORDER_BY,
-  type ConfluenceOrder,
-  type ConfluenceSearchFilter,
-} from "./providers/confluence/cql.js";
-export {
-  COMMENT_KINDS,
-  CONFLUENCE_HANDLERS,
-  CONFLUENCE_PROJECTIONS,
-  DEFAULT_LIMIT,
-  bodyLimit,
-  commentChildrenPath,
-  commentCollections,
-  commentKind,
-  commentPath,
-  commentReplies,
-  isNumericSpace,
-  modifiedAfterDate,
-  numericId,
-  offsetCursor,
-  pageLimit,
-  plainExcerpt,
-  spaceRef,
-  upstreamCursor,
-  type ConfluenceCommentKind,
-  type ConfluenceProjection,
-  type ConfluenceProjectionContext,
-  type ConfluenceRequest,
-} from "./providers/confluence/operations.js";
-export {
-  createConfluenceTools,
-  CONFLUENCE_TOOL_NAMES,
-} from "./providers/confluence/tools.js";
-export {
-  ConfluenceTransport,
-  credentialFromPlaintext as confluenceCredentialFromPlaintext,
-  credentialInstance as confluenceCredentialInstance,
-  type ConfluenceCredential,
-} from "./providers/confluence/transport.js";
-export {
-  TeamcityProvider,
-  buildTypeAllowed as teamcityBuildTypeAllowed,
-  projectAllowed as teamcityProjectAllowed,
-} from "./providers/teamcity/index.js";
-export {
-  TEAMCITY_CAPABILITIES,
-  TEAMCITY_CAPABILITY_INFO,
-  TEAMCITY_INSTANCE_ID,
-  TEAMCITY_OPERATIONS,
-  TEAMCITY_RESOURCE_KIND,
-  TEAMCITY_STREAM_OPERATIONS,
-  enabledCapabilities as enabledTeamcityCapabilities,
-  teamcityOperationCapability,
-  teamcityOperationMetadata,
-  type TeamCityCapability,
-  type TeamCityCapabilityDefinition,
-  type TeamCityOperationDefinition,
-} from "./providers/teamcity/catalog.js";
-export {
-  TEAMCITY_DEFAULTS,
-  DEFAULT_LOG_LINES,
-  resolveTeamCityConfig,
-  teamcityConfigSchema,
-  type TeamCityConfigInput,
-  type TeamCityFlags,
-} from "./providers/teamcity/config.js";
-export {
-  artifactBinaryProblem,
-  artifactByteLimit,
-  artifactPath,
-  textArtifact,
-  type ArtifactPath,
-} from "./providers/teamcity/artifacts.js";
-export {
-  LOG_MODES,
-  logLines,
-  logMode,
-  sanitizeLog,
-  selectLogWindow,
-  trimToBytes,
-  type LogMode,
-  type LogWindow,
-} from "./providers/teamcity/logs.js";
-export {
-  PRIVATE_CIDRS,
-  canonicalServerUrl,
-  cidrProblem,
-  hostPatternProblem,
-  isIpLiteral,
-  serverUrlProblem,
-  type TeamCityNetworkMode,
-  type TeamCityNetworkPolicy,
-} from "./providers/teamcity/network.js";
-export {
-  buildBuildLocator,
-  dimension,
-  joinDimensions,
-  locatorValue,
-  nested,
-  teamCityDate,
-  type BuildLocatorInput,
-} from "./providers/teamcity/locators.js";
-export {
-  TEAMCITY_HANDLERS,
-  TEAMCITY_LIMITS,
-  TEAMCITY_PROJECTIONS,
-  isoDate,
-  listLimit,
-  type TeamCityProjection,
-  type TeamCityRequest,
-} from "./providers/teamcity/operations.js";
-export {
-  TeamCityTransport,
-  configuredServer as teamcityConfiguredServer,
-  credentialFromPlaintext as teamcityCredentialFromPlaintext,
-  type TeamCityCredential,
-} from "./providers/teamcity/transport.js";
-export {
-  createTeamcityTools,
-  TEAMCITY_TOOL_NAMES,
-} from "./providers/teamcity/tools.js";
-export { JiraProvider } from "./providers/jira/index.js";
-export {
-  JIRA_CAPABILITIES,
-  JIRA_CAPABILITY_INFO,
-  JIRA_COMPANION_PATHS,
-  JIRA_OPERATIONS,
-  JIRA_READ_PATHS,
-  enabledCapabilities as enabledJiraCapabilities,
-  jiraOperationCapability,
-  type JiraCapability,
-  type JiraCapabilityDefinition,
-  type JiraOperationDefinition,
-} from "./providers/jira/catalog.js";
-export {
-  JIRA_DEFAULTS,
-  SEARCH_PAGE_CAP,
-  jiraConfigSchema,
-  jiraSite,
-  resolveJiraConfig,
-  type JiraFlags,
-  type JiraSite,
-} from "./providers/jira/config.js";
-export {
-  adfToText as jiraAdfToText,
-  bodyText,
-  isAdf,
-  type AdfText,
-} from "./providers/jira/adf.js";
-export {
-  buildJql,
-  commentLimit,
-  commentStart,
-  issueKey as jiraIssueKey,
-  jqlDateValue,
-  jqlLiteral,
-  needsUserLookup,
-  pageToken,
-  projectKey as jiraProjectKey,
-  searchLimit,
-  textClauses,
-  textMatch,
-  type CustomFieldClause,
-} from "./providers/jira/jql.js";
-export {
-  ISSUE_INCLUDES,
-  JIRA_HANDLERS,
-  JIRA_PROJECTIONS,
-  SEARCH_FIELDS as JIRA_SEARCH_FIELDS,
-  customFieldValue,
-  issueFields,
-  issueUrl,
-  requestedIncludes,
-  wantsFieldNames,
-  type JiraProjection,
-} from "./providers/jira/operations.js";
-export {
-  JiraTransport,
-  basicAuthorization,
-  credentialFromPlaintext as jiraCredentialFromPlaintext,
-  credentialSite,
-  type JiraCredential,
-} from "./providers/jira/transport.js";
-export { createJiraTools, JIRA_TOOL_NAMES } from "./providers/jira/tools.js";
-export { TestitProvider } from "./providers/testit/index.js";
-export {
-  TESTIT_CAPABILITIES,
-  TESTIT_CAPABILITY_INFO,
-  TESTIT_OPERATIONS,
-  enabledCapabilities as enabledTestitCapabilities,
-  testitOperationCapability,
-  type TestitCapability,
-  type TestitCapabilityDefinition,
-  type TestitListKind,
-  type TestitOperationDefinition,
-} from "./providers/testit/catalog.js";
-export {
-  TESTIT_DEFAULTS,
-  resolveTestitConfig,
-  testitConfigSchema,
-  testitInstance,
-  type TestitFlags,
-  type TestitInstance,
-} from "./providers/testit/config.js";
-export {
-  assertReadableSize,
-  attachmentBinaryProblem,
-  attachmentByteLimit,
-  attachmentExtension,
-  attachmentName,
-} from "./providers/testit/attachments.js";
-export {
-  RESULT_OUTCOMES,
-  TESTIT_HANDLERS,
-  TESTIT_LIMITS,
-  TESTIT_PROJECTIONS,
-  TEST_RUN_STATES,
-  WORK_ITEM_ENTITY_TYPES,
-  WORK_ITEM_PRIORITIES,
-  WORK_ITEM_STATES,
-  bounded as testitBounded,
-  capped,
-  contentBlock as testitContentBlock,
-  listLimit as testitListLimit,
-  listOffset as testitListOffset,
-  paged,
-  type TestitProjection,
-  type TestitProjectionContext,
-  type TestitRequest,
-} from "./providers/testit/operations.js";
-export {
-  TestitTransport,
-  credentialFromPlaintext as testitCredentialFromPlaintext,
-  credentialInstance as testitCredentialInstance,
-  type TestitCredential,
-  type TestitPage,
-} from "./providers/testit/transport.js";
-export {
-  createTestitTools,
-  TESTIT_TOOL_NAMES,
-} from "./providers/testit/tools.js";
-export { WeblateProvider } from "./providers/weblate/index.js";
-export {
-  WEBLATE_CAPABILITIES,
-  WEBLATE_CAPABILITY_INFO,
-  WEBLATE_OPERATIONS,
-  enabledCapabilities as weblateEnabledCapabilities,
-  weblateOperationCapability,
-  type WeblateCapability,
-  type WeblateCapabilityDefinition,
-  type WeblateOperationDefinition,
-} from "./providers/weblate/catalog.js";
-export {
-  WEBLATE_DEFAULTS,
-  resolveWeblateConfig,
-  weblateConfigSchema,
-  weblateInstance,
-  type WeblateFlags,
-  type WeblateInstance,
-} from "./providers/weblate/config.js";
-export {
-  WEBLATE_HANDLERS,
-  WEBLATE_PROJECTIONS,
-  WEBLATE_UNTRUSTED_OPERATIONS,
-  accountFromUsers,
-  componentRef,
-  projectRef as weblateProjectRef,
-  sameOriginUrl,
-  translationRef as weblateTranslationRef,
-  unitState as weblateUnitState,
-  type WeblateProjection,
-  type WeblateProjectionContext,
-} from "./providers/weblate/operations.js";
-export {
-  FAILING_CHECK_CLAUSE,
-  UNIT_STATE_FILTERS,
-  UNIT_TEXT_FIELDS,
-  buildUnitQuery,
-  exactClause as weblateExactClause,
-  quoteQueryValue,
-  stateClause as weblateStateClause,
-  textClause as weblateTextClause,
-  type UnitStateFilter,
-  type UnitTextField,
-} from "./providers/weblate/query.js";
-export {
-  WeblateTransport,
-  credentialFromPlaintext as weblateCredentialFromPlaintext,
-  credentialInstance as weblateCredentialInstance,
-  resultsOf,
-  type WeblateCredential,
-} from "./providers/weblate/transport.js";
-export {
-  createWeblateTools,
-  WEBLATE_TOOL_NAMES,
-} from "./providers/weblate/tools.js";
-export { IntegrationProviderRegistry } from "./providers/registry.js";
-export {
-  serviceBoundaryOf,
-  serviceResourceDenied,
-} from "./providers/shared/service-boundary.js";
-export { IntegrationRepository } from "./repository.js";
-export {
-  DockerSecretKeyProvider,
-  MemoryKeyProvider,
-  type KeyProvider,
-} from "./secrets/key-provider.js";
-export { SecretStore } from "./secrets/secret-store.js";
-export { createToolKit, type ToolKitOptions } from "./tool-kit.js";
-export {
-  createIntegrationTools,
-  INTEGRATION_TOOL_NAMES,
-  integrationToolNames,
-} from "./tools.js";
-export type * from "./types.js";
-export {
-  BitrixTransport,
-  credentialFromPlaintext,
-  type BitrixCredential,
-} from "./providers/bitrix24/transport.js";
+/**
+ * The published names of this package are listed once, in `public-api.ts`;
+ * re-exported here so the entry module stays the one thing a consumer resolves.
+ */
+export * from "./public-api.js";
+
 export default QaIntegrations;
 
 /** Structural face of the optional Host settings service, read defensively. */

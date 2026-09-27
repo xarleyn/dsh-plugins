@@ -23,14 +23,20 @@ src/
     registry.ts        реестр провайдеров
     kernel/            ядро провайдера: адрес, токен, политика чтения, ошибки
       address.ts       resolveEndpointList/findEndpoint: канонизация адресов оператора,
-                       SSRF-граница списка (id-грамматика, HTTPS, `<origin><path>`, дубликаты)
+                       SSRF-граница списка (id-грамматика, HTTPS, `<origin><path>`,
+                       дубликаты; строка не несёт credentials, query и fragment),
+                       `insecureTarget` — слово для development-исключения, `extra` —
+                       собственные поля строки сверх общей формы
       token.ts         decodeCredentialFields/requireConfiguredEndpoint: разбор
                        зашифрованного credential и fail-closed резолв инстанса
       read-policy.ts   fetchWithRetries (GET, `redirect: "error"`, таймаут на попытку,
                        распространяется и на чтение тела, backoff с `Retry-After`,
                        ответ читается переданным колбэком `read`), readBoundedText,
                        readBoundedJson, withinCap, looksBinary, causeCode, numberFrom,
-                       sleep, retryDelay, backoff
+                       sleep, retryDelay, backoff. Два именованных бюджета повторов —
+                       DEADLINE_IS_THE_BUDGET (дефолт, если провайдер не назвал
+                       другой: один `timeoutMs` на весь запрос) и
+                       RESEND_AFTER_EVERY_FAULT (худший случай `retries × timeoutMs`)
       errors.ts        statusErrorOf/transportFailureOf: общая карта статусов апстрима
                        в доменные ошибки; провайдер даёт только своё имя и отступления
     shared/            общий слой ответов: механика, одинаковая для всех провайдеров
@@ -146,6 +152,16 @@ src/
   висящим. Читатель обязан отпустить поток на любом выходе (`reader.cancel()`
   без `await` — источник, который ничего не отдаёт, не дождёт и отмену), а
   отказ тела сворачивается в `UpstreamTimeout`, а не в `ProviderUnavailable`.
+- Что делать с запросом, на который деплой уже дал себе отказ, — решение
+  развёртывания, а не деталь транспорта, поэтому ядро держит оба варианта под
+  именами: `DEADLINE_IS_THE_BUDGET` (дефолт, если провайдер не назвал другой:
+  один `timeoutMs` на весь вызов) и `RESEND_AFTER_EVERY_FAULT` (апстрим чаще
+  занят, чем исчез; худший случай — `retries × timeoutMs`). Провайдер либо
+  называет правило, либо берёт дефолт и `retriable` не объявляет; своя лямбда в
+  `transport.ts` — та же вторая копия политики, из-за которой слова комментария
+  и поведение разошлись однажды. Общее у обоих правил одно: тело, которое
+  перестали читать, второй попытки не получает — такой запрос ответил, и отказ
+  чтения есть вердикт о payload, а не сбой, который мог уйти.
 - Одно имя — одна семантика. Читатель поля (`stringOf(source, key)`) и
   читатель значения (`fileText(value)`, `asArray(value)`) называются по-разному
   уже потому, что по-разному отвечают на пустое значение: первый считает поле
@@ -177,9 +193,12 @@ src/
 2. `providers/<id>/config.ts` — схема среза `providers.<id>` в YAML и дефолты.
    Если провайдер ходит не на один фиксированный хост, а на инстансы, список
    инстансов объявляет оператор: адрес никогда не приходит из тула. Канонизацию
-   и проверку списка (`baseUrl`, HTTPS, дубликаты id) выполняет
-   `kernel/address.ts` (`resolveEndpointList`) — провайдер называет только поле
-   списка и слово для development-исключения, и падает на ошибке оператора, а
+   и проверку списка выполняет `kernel/address.ts` (`resolveEndpointList`):
+   id-грамматика, HTTPS, `<origin><path>`, дубликаты — и отказ строке, которая
+   несёт credentials, query или fragment: вставленный вместо адреса браузерный
+   URL — не endpoint, а fragment до сервера всё равно не доезжает. Провайдер
+   называет только поле списка, слово для development-исключения и, если его
+   строка несёт больше общей формы, `extra`. Падает это на загрузке конфига, а
    не выбрасывает инстанс молча. Разбор credential и fail-closed резолв
    инстанса — те же два примитива `kernel/token.ts`; карта статусов и
    формулировки отказов транспорта — `statusErrorOf`/`transportFailureOf` из

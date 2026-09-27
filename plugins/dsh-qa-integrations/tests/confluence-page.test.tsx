@@ -217,6 +217,26 @@ describe("Integrations Confluence card", () => {
     );
   });
 
+  it("names a stalled upstream rather than hiding it in a generic refusal", async () => {
+    // The plan promises the operator notices a stalled upstream. That holds
+    // only while the card carries the copy `UpstreamTimeout` folds into;
+    // without it the failure lands on «Не удалось выполнить действие».
+    const Card = createConfluenceCard(
+      remote({
+        getConfluence: async () => ({
+          ok: false,
+          error: failure(
+            "Integration request failed (reason: UpstreamTimeout)",
+          ),
+        }),
+      }),
+    );
+    const { container } = render(<Card token="qa-account-token" />);
+    await waitFor(() =>
+      expect(container.textContent).toContain("Confluence не ответил вовремя"),
+    );
+  });
+
   it("tells the user when the operator configured no site", async () => {
     const Card = createConfluenceCard(
       remote({ confluenceSites: async () => ({ ok: true, value: [] }) }),
