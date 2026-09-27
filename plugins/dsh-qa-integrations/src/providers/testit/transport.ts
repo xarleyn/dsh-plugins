@@ -214,6 +214,9 @@ export class TestitTransport {
           authorization: `PrivateToken ${token}`,
           accept: "application/json",
         },
+        // The deadline is this deployment's own, so a request it already gave
+        // up on is not sent again — which is the shared default, so this
+        // provider names no rule of its own.
         transportFailure: (error, timedOut) =>
           timedOut
             ? new IntegrationError("UpstreamTimeout", "Test IT did not answer")

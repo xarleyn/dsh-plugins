@@ -45,10 +45,13 @@ whichever provider happened to hold a copy.
 
 What is unchanged: the package's `exports`, the settings slot the card registers
 in, and the DOM the operator's tests read. Hence `patch` — no consumer of this
-plugin calls anything differently. What an operator can notice is a connect-form
-row that refuses a pasted browser URL, and a stalled upstream that costs the
-timeout this deployment configured rather than the longer wait its provider's
-comment had promised.
+plugin calls anything differently. What an operator can notice is a config that
+used to load and is now refused at startup, naming the endpoint entry whose
+`baseUrl` carries a pasted browser URL — the list is theirs, so it is the load
+and the card's instance list that say so, not the user's connect form — and a
+stalled upstream that costs the timeout this deployment configured rather than
+the longer wait its provider's comment had promised, which every provider card
+now words on its own.
 
 **The host side of the same copying.** `src/index.ts` kept the connect card's
 plumbing seven times over: each provider restated, in its own body, how a summary

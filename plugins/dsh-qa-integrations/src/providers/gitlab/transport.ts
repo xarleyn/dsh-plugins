@@ -178,6 +178,9 @@ export class GitlabTransport {
           "private-token": token,
           accept: "application/json",
         },
+        // The deadline is this deployment's own, so a request it already gave
+        // up on is not sent again — which is the shared default, so this
+        // provider names no rule of its own.
         transportFailure,
         statusFailure,
       },
