@@ -159,6 +159,22 @@ class CountingSecretStore extends SecretStore {
   }
 }
 
+/**
+ * A store that loses the credential a binding names. This is what a reconnect
+ * leaves behind for a read that started before it: the binding still points at a
+ * secret that no longer exists. Nothing in the broker's own flow can be
+ * interleaved between the capture and the unlock, so the state comes from here.
+ */
+class VanishingSecretRepository extends IntegrationRepository {
+  public secretGone = false;
+
+  override secretByRef(
+    secretRef: string | null,
+  ): EncryptedSecretRecord | undefined {
+    return this.secretGone ? undefined : super.secretByRef(secretRef);
+  }
+}
+
 function buildBroker(
   filePath: string,
   provider: IntegrationProvider,
@@ -417,6 +433,126 @@ describe("IntegrationBroker user isolation", () => {
     const shown = broker.summary(principal, "acme");
     expect(shown.capabilities).toEqual([]);
     expect(shown.policy).toEqual([]);
+  });
+
+  it("keeps a withdrawn capability from collecting a fresh allowance", async () => {
+    const broker = buildBroker(
+      path.join(root, "withdrawn-allowance.json"),
+      fakeProvider({ capabilities: ["crm.read", "tasks.read"] }),
+    );
+    const principal = { userId: "ivan" };
+    await broker.connect(principal, "acme", {
+      token: "https://ivan.example/rest/11/ivan-token",
+    });
+    // Connecting allows everything the credential reported, so the switch the
+    // user turns off here is one the withdrawal has to leave off.
+    broker.patchPolicy(principal, "acme", {
+      operation: "tasks.read",
+      mode: "deny",
+    });
+    broker.swap(
+      registryOf(fakeProvider({ capabilities: ["crm.read"] })),
+      undefined,
+      true,
+      DEFAULT_SERVICE_RATE_LIMIT,
+    );
+
+    // A page opened before the withdrawal still shows the switch and posts what
+    // it rendered. That capability is not part of this connection any more, so
+    // no allowance may be written against it: a row set inside the window would
+    // sit inert and then serve the moment the deployment gave the capability
+    // back — a permission nobody asked for.
+    expect(() =>
+      broker.patchPolicy(principal, "acme", {
+        operation: "tasks.read",
+        mode: "allow",
+      }),
+    ).toThrowError(/Capability is unavailable/u);
+
+    // The deployment gives the capability back. What serves now is what the user
+    // left behind before the window, not what a stale page posted inside it.
+    broker.swap(
+      registryOf(fakeProvider({ capabilities: ["crm.read", "tasks.read"] })),
+      undefined,
+      true,
+      DEFAULT_SERVICE_RATE_LIMIT,
+    );
+    expect(
+      broker
+        .summary(principal, "acme")
+        .policy.find((entry) => entry.capability === "tasks.read")?.mode,
+    ).toBe("deny");
+    await expect(
+      broker.call(principal, {
+        provider: "acme",
+        operation: "tasks.list",
+        input: {},
+        sourceSessionId: "session-ivan",
+      }),
+    ).rejects.toMatchObject({ code: "OperationDeniedByPolicy" });
+  });
+
+  it("files a credential the read lost to a reconnect as an error, not a refusal", async () => {
+    const secrets = new CountingSecretStore(
+      new MemoryKeyProvider(new Map([[1, randomBytes(32)]]), 1),
+    );
+    const repository = new VanishingSecretRepository(
+      path.join(root, "vanished-credential.db"),
+    );
+    repositories.push(repository);
+    const broker = new IntegrationBroker(
+      repository,
+      secrets,
+      registryOf(fakeProvider({ capabilities: ["crm.read"] })),
+      fakeLogger(),
+    );
+    const principal = { userId: "judy" };
+    await broker.connect(principal, "acme", {
+      token: "https://judy.example/rest/12/judy-token",
+    });
+
+    // The account is re-saved while this read is on its way, so the credential
+    // the binding names has been spent and the unlock finds nothing at that
+    // reference. Nobody declined this call — the connection moved under it — so
+    // the trail has to say an operation failed, not that policy refused one,
+    // and the user must not be told to store a token they just replaced.
+    repository.secretGone = true;
+    const decrypted = secrets.decryptCount;
+    await expect(
+      broker.call(principal, {
+        provider: "acme",
+        operation: "crm.get",
+        input: {},
+        sourceSessionId: "session-judy",
+      }),
+    ).rejects.toMatchObject({ code: "IntegrationNotConnected" });
+    expect(secrets.decryptCount).toBe(decrypted);
+    expect(repository.read().audit.at(-1)).toMatchObject({
+      ownerUserId: "judy",
+      operation: "crm.get",
+      result: "error",
+    });
+
+    // The other half of the classification is unchanged: a call the policy
+    // declines is still filed as a refusal.
+    broker.swap(
+      registryOf(fakeProvider({ capabilities: [] })),
+      undefined,
+      true,
+      DEFAULT_SERVICE_RATE_LIMIT,
+    );
+    await expect(
+      broker.call(principal, {
+        provider: "acme",
+        operation: "crm.get",
+        input: {},
+        sourceSessionId: "session-judy",
+      }),
+    ).rejects.toMatchObject({ code: "OperationDeniedByPolicy" });
+    expect(repository.read().audit.at(-1)).toMatchObject({
+      operation: "crm.get",
+      result: "denied",
+    });
   });
 
   it("drops a validation verdict that lands after the account reconnected", async () => {
