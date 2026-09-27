@@ -186,7 +186,10 @@ purpose, not a default.
 The keys that choose and shape a process are refused under `attach` rather than
 ignored: `executablePath`, a `browserChannel` other than `chromium`, and
 `chromiumSandbox: false` all describe a Chromium this plugin starts, and a
-deployment that wrote them would not be getting what it wrote.
+deployment that wrote them would not be getting what it wrote. The refusals run
+both ways: under `launch`, `cdpEndpoint` and
+`allowRemoteCdpEndpoint: true` describe a browser this mode does not join, so
+they are refused as well.
 
 What attach mode changes, and what it deliberately does not:
 

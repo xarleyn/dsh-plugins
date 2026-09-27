@@ -137,8 +137,12 @@ today.
 | Chromium process | started and stopped by this runtime | started and stopped by the deployment |
 | Where the browser comes from | an installed executable, discovered or named | `runtime.cdpEndpoint`, loopback unless opened up |
 | `headless: false` | a window a person may watch and click in | refused: this runtime owns no window to show |
+| Keys of the other mode | `cdpEndpoint`, `allowRemoteCdpEndpoint: true` | `executablePath`, another `browserChannel`, `chromiumSandbox: false` |
 | Session teardown | process exits | link and our own contexts drop, process stays |
 | Lost browser | `BROWSER_CRASHED` | `BROWSER_CONNECTION_LOST` |
+
+Each mode refuses the keys that describe the other one, instead of reading them
+and resolving into a config that claims something the runtime does not do.
 
 What the mode does not change: per-DSH-session browser contexts (§7), the
 server-side network policy (§17), the snapshot and ref model (§12), and the

@@ -22,8 +22,10 @@ whose answer a search domain can change proves nothing. Attach mode owns no
 process, and the config says so rather than quietly ignoring the keys that would
 shape one — `headless: false`, an `executablePath`, a `browserChannel` other than
 `chromium`, and `chromiumSandbox: false` are each refused when the config
-resolves. A mode outside `launch` and `attach` is refused too, instead of falling
-into `launch` while the resolved config still carries the word that was written.
+resolves, as are `cdpEndpoint` and `allowRemoteCdpEndpoint: true` under `launch`,
+where there is no endpoint for them to open. A mode outside `launch` and
+`attach` is refused too, instead of falling into `launch` while the resolved
+config still carries the word that was written.
 
 Losing the browser now says which kind of loss it was. A dropped CDP connection
 reports `BROWSER_CONNECTION_LOST`, the panel reads "the connection to the
