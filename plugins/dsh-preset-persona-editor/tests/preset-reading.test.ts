@@ -5,17 +5,28 @@
  * The roster is a fixture over the same face the plugin reads the host with, so
  * what is under test is the reader's own decisions: what counts as one persona,
  * what an unmanaged key is, and what a refused or unparsable composition answers
- * with.
+ * with. The refusals are worded the way the published `0.1.7-rc.2` registry
+ * words them, so a test that passes on the fixture cannot pass on an invented
+ * reason.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi, type Mock } from "vitest";
 
-import { readCatalog, readDocument } from "../src/host/preset-reader.js";
+import {
+  readCatalog,
+  readDocument,
+  type PresetReadLogger,
+} from "../src/host/preset-reader.js";
 import {
   INHERITED_PRESET,
   OWNED_PRESET,
   rosterOf,
 } from "./preset-roster.helpers.js";
+
+/** A logger that records what the reader had to say about a refusal. */
+function recordingLogger(): { warn: Mock<PresetReadLogger["warn"]> } {
+  return { warn: vi.fn<PresetReadLogger["warn"]>() };
+}
 
 describe("reading presets", () => {
   it("reports a local persona with its four values", async () => {
@@ -28,7 +39,7 @@ describe("reading presets", () => {
       includeRuntimeContext: true,
     });
     expect(document.hasRow).toBe(true);
-    expect(document.editable).toBe(true);
+    expect(document.readError).toBe("");
     expect(document.rowCount).toBe(2);
     expect(document.source).toBe(OWNED_PRESET);
   });
@@ -41,7 +52,7 @@ describe("reading presets", () => {
     expect(document.persona.includeRuntimeContext).toBe(true);
   });
 
-  it("marks a preset that cannot compose, and one with no composition, as unreadable material", async () => {
+  it("reads a broken preset's composition, and calls a refused one unreadable", async () => {
     const roster = rosterOf(
       {
         shipped: {
@@ -60,6 +71,47 @@ describe("reading presets", () => {
     const retired = catalog.presets.find((row) => row.id === "retired");
     expect(retired?.persona).toBe("unreadable");
     expect(retired?.broken).toBe("");
+  });
+
+  it("keeps the roster's own order over a read that finishes out of order", async () => {
+    const roster = rosterOf({
+      slow: { content: INHERITED_PRESET },
+      fast: { content: OWNED_PRESET },
+    });
+    const catalog = await readCatalog(roster);
+    expect(catalog.presets.map((row) => row.id)).toEqual(["slow", "fast"]);
+  });
+
+  it("carries the registry's own reason when it refuses a composition", async () => {
+    const roster = rosterOf({ retired: { content: null } });
+    const document = await readDocument(roster, undefined, "retired");
+    expect(document.persona.prefix).toBe("");
+    expect(document.source).toBe("");
+    expect(document.rowCount).toBe(0);
+    expect(document.readError).toContain("Unknown agent preset: retired");
+  });
+
+  it("logs a refused composition beside the row that shows it", async () => {
+    const logger = recordingLogger();
+    const roster = rosterOf({ retired: { content: null } });
+    const catalog = await readCatalog(roster, logger);
+    expect(catalog.presets[0]?.persona).toBe("unreadable");
+    expect(logger.warn).toHaveBeenCalledWith(
+      "preset-persona.composition-refused",
+      { agentPreset: "retired", reason: expect.any(String) },
+    );
+  });
+
+  it("says the registry has no readDocument, instead of blaming the presets", async () => {
+    const logger = recordingLogger();
+    const roster = rosterOf({ demo: { content: OWNED_PRESET } }, "demo", {
+      withoutReadDocument: true,
+    });
+    const catalog = await readCatalog(roster, logger);
+    expect(catalog.presets[0]?.persona).toBe("unreadable");
+    const document = await readDocument(roster, undefined, "demo", logger);
+    expect(document.readError).toMatch(/does not answer readDocument/u);
+    expect(catalog.presets[0]?.broken).toBe("");
   });
 
   it("reports an ambiguous preset instead of guessing", async () => {
@@ -87,7 +139,7 @@ describe("reading presets", () => {
   it("reports the failure of a composition that is not a list", async () => {
     const roster = rosterOf({ demo: { content: "id: persona\n" } });
     const document = await readDocument(roster, undefined, "demo");
-    expect(document.editable).toBe(false);
+    expect(document.persona.prefix).toBe("");
     expect(document.readError).toMatch(/not a YAML list/u);
   });
 

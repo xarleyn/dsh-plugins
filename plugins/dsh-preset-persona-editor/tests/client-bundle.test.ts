@@ -26,6 +26,7 @@ function browserRequire(name: string): unknown {
       jsx: () => null,
       jsxs: () => null,
       useEffect: () => undefined,
+      useId: () => "persona-field",
       useSyncExternalStore: () => undefined,
       useState: () => [undefined, () => undefined],
     };

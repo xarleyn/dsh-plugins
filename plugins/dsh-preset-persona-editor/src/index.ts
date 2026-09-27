@@ -50,8 +50,10 @@ export {
   readComposition,
   readDocument,
   type CompositionInspection,
+  type CompositionRead,
   type PresetComposition,
   type PresetEntry,
+  type PresetReadLogger,
   type PresetRosterFace,
   type SystemPromptFace,
 } from "./host/preset-reader.js";

@@ -77,14 +77,12 @@ export interface PersonaDocument {
   readonly id: string;
   readonly name: string;
   readonly description: string;
-  /** Why the preset cannot compose a session; `""` when it can. */
-  readonly broken: string;
   /**
-   * Whether the registry answered for this preset and its composition parsed,
-   * so the page has readings to show. Since `0.1.7-rc.2` a roster row carries
-   * neither ownership nor a path, so nothing finer than this is derivable.
+   * Why the preset cannot compose a session, in the registry's own words; `""`
+   * when it can. A broken preset still answers `readDocument`, so this says
+   * nothing about whether the page has readings to show.
    */
-  readonly editable: boolean;
+  readonly broken: string;
   readonly isDefault: boolean;
   /** Whether the preset carries a persona row of its own. */
   readonly hasRow: boolean;
@@ -116,9 +114,10 @@ export interface PersonaDocument {
   /** Config keys of the sections row other than `sections`. */
   readonly sectionsUnknownKeys: readonly string[];
   /**
-   * Why this preset's composition cannot be read at all (the registry refused
-   * it, it is not a composition, the persona row is flow-styled, ...); `""` when
-   * it can.
+   * Why this preset's composition cannot be read at all — the registry's own
+   * refusal, or the reason a parsed composition is not one this page describes;
+   * `""` when it can. Kept apart from `broken`: a preset that cannot compose a
+   * session can still have a perfectly readable composition.
    */
   readonly readError: string;
   /** The composition's text, as the Host rendered it from the declarations. */

@@ -90,7 +90,6 @@ describe("PersonaPageController", () => {
     const read = vi.fn(async () => ({
       ok: true as const,
       value: documentOf({
-        editable: false,
         readError: "the composition is not valid YAML",
       }),
     }));

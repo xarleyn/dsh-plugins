@@ -72,14 +72,19 @@ export class PresetPersonaEditor extends TypertRemoteService {
   /** The roster with each preset's persona state. */
   @Remote("list")
   async listPersonas(): Promise<PersonaCatalog> {
-    return await readCatalog(this.roster);
+    return await readCatalog(this.roster, this.logger);
   }
 
   /** One preset as a document: its persona, its sections, its composition. */
   @Remote("read")
   async readPersona(agentPreset: string): Promise<PersonaDocument> {
     try {
-      return await readDocument(this.roster, this.prompts, agentPreset);
+      return await readDocument(
+        this.roster,
+        this.prompts,
+        agentPreset,
+        this.logger,
+      );
     } catch (cause) {
       // The reader answers its own not-found code, which is what the page
       // branches on; the Host's reason for refusing the id would otherwise be

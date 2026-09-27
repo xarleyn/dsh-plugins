@@ -27,7 +27,6 @@ export function documentOf(
     name: "Demo",
     description: "",
     broken: "",
-    editable: true,
     isDefault: false,
     hasRow: true,
     persona: {

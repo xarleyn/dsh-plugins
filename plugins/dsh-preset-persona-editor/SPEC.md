@@ -104,18 +104,23 @@ Numbered, testable guarantees:
   is-default, broken reason, persona state (`none` | `local` | `ambiguous` |
   `unreadable`) and `complete`. An `0.1.7-rc.2` roster row publishes no
   ownership and no path, so neither reaches this model.
-- `PersonaDocument` — one opened preset: the four values, whether the registry
-  answered and the composition parsed, the roster's broken reason, its unmanaged
-  keys, the composition text the Host rendered, the number of composition rows,
-  and the section orders the deployment resolves for the persona prefix and
-  suffix.
+- `PersonaDocument` — one opened preset: the four values, the roster's broken
+  reason, the reason a composition could not be read (`""` when it could), its
+  unmanaged keys, the composition text the Host rendered, the number of
+  composition rows, and the section orders the deployment resolves for the
+  persona prefix and suffix. The broken reason and the read reason are separate
+  fields on purpose: `readDocument` renders a broken preset's declarations too,
+  so one does not imply the other.
 
 ## 3. Lifecycle
 
 1. Open the page: the roster is read through the `agentPresets` service, and
-   every preset's composition is read through it as well (unmemoized — the
-   roster is a live directory, and a cached answer would be the one that goes
-   stale when a preset is registered or retired).
+   every preset's composition is read through it as well — one render per
+   preset, awaited together rather than one after another, since the page shows
+   only the state each one came back with (unmemoized — the roster is a live
+   directory, and a cached answer would be the one that goes stale when a preset
+   is registered or retired). A composition the registry refuses is logged with
+   the host's reason and the row is badged `Unreadable`.
 2. Open a preset: its values, its unmanaged keys, and the composition the
    registry renders for it are read, and nothing else happens.
 3. There is no step 3. The page has no write, so there is no revision check, no
@@ -161,10 +166,14 @@ Numbered, testable guarantees:
    compose — the persona is plain composition YAML and the sections are a module
    the preset owns;
 9. a preset the registry reports as broken — the roster's own reason reaches the
-   card, and the page shows no readings for it;
-10. a preset the roster does not know, answered with the page's own not-found
+   card, and the readings are shown beside it: a preset that cannot activate
+   still declares a composition, and `readDocument` renders it regardless;
+10. a composition the registry refuses outright — no readings, and the reason is
+    the host's own words rather than this page's guess, with the same refusal
+    reaching the deployment log;
+11. a preset the roster does not know, answered with the page's own not-found
     code and the Host's reason logged beside it;
-11. the ordering and shadowing warnings of a section named `deployment:*`.
+12. the ordering and shadowing warnings of a section named `deployment:*`.
 
 ## 6. Implementation status
 

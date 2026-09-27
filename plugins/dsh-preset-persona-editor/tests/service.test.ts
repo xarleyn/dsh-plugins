@@ -46,7 +46,9 @@ function rosterOf(
   const resolve = async (id?: string) => {
     const key = id ?? defaultId;
     const entry = entries[key];
-    if (entry === undefined) throw new Error("agent-preset/not-found");
+    if (entry === undefined) {
+      throw new Error(`agent-preset/not-found: Unknown agent preset: ${key}`);
+    }
     return {
       id: key,
       name: `preset ${key}`,
@@ -59,7 +61,9 @@ function rosterOf(
     readDocument: async (agentPreset: string): Promise<PresetComposition> => {
       const entry = entries[agentPreset];
       if (entry === undefined || entry.content === null) {
-        throw new Error("agent-preset/not-found");
+        throw new Error(
+          `agent-preset/not-found: Unknown agent preset: ${agentPreset}`,
+        );
       }
       return {
         agentPreset,
@@ -123,7 +127,7 @@ describe("PresetPersonaEditor", () => {
   it("reads one preset and keeps the composition the registry rendered", async () => {
     const service = build(rosterOf({ demo: { content: OWNED } }));
     const document = await service.readPersona("demo");
-    expect(document.editable).toBe(true);
+    expect(document.readError).toBe("");
     expect(document.hasRow).toBe(true);
     expect(document.persona.prefix).toBe("A shipped-looking persona.");
     expect(document.source).toBe(OWNED);
@@ -143,13 +147,15 @@ describe("PresetPersonaEditor", () => {
     expect(document.suffixOrder).toBe(10200);
   });
 
-  it("reports a preset the roster calls broken, with the roster's reason", async () => {
+  it("reads a broken preset's composition and carries the roster's reason", async () => {
     const service = build(
       rosterOf({ demo: { content: OWNED, broken: "a row names nothing" } }),
     );
     const document = await service.readPersona("demo");
     expect(document.broken).toBe("a row names nothing");
-    expect(document.editable).toBe(false);
+    // Being unable to compose a session is not being unreadable: the registry
+    // renders the declarations of a preset that failed to activate.
+    expect(document.readError).toBe("");
     expect(document.persona.prefix).toBe("A shipped-looking persona.");
   });
 
@@ -173,6 +179,27 @@ describe("PresetPersonaEditor", () => {
       expect.objectContaining({ agentPreset: "ghost" }),
     );
     expect(JSON.stringify(warn.mock.calls[0])).toContain("not in the roster");
+    expect(JSON.stringify(warn.mock.calls[0])).toContain(
+      "Unknown agent preset: ghost",
+    );
+  });
+
+  it("logs the registry's reason for a composition it will not render", async () => {
+    const warn = vi.fn();
+    const service = new PresetPersonaEditor(
+      contextOf(rosterOf({ retired: { content: null } })),
+      { logger: { ...silentPluginLogger(), warn } },
+    );
+    const document = await service.readPersona("retired");
+    expect(document.persona.prefix).toBe("");
+    expect(document.readError).toContain("Unknown agent preset: retired");
+    expect(warn).toHaveBeenCalledWith(
+      "preset-persona.composition-refused",
+      expect.objectContaining({
+        agentPreset: "retired",
+        reason: expect.stringContaining("Unknown agent preset: retired"),
+      }),
+    );
   });
 
   it("publishes no write operation", () => {

@@ -20,13 +20,22 @@ declare module "@deepseek-ai/dsh-typert-protocol" {
   }
 }
 
-/** The preset is not in the roster. */
+/**
+ * The preset is not in the roster.
+ *
+ * `hostReason` is the registry's own words for the refusal. The page answers a
+ * single not-found code whatever the registry threw, so without the reason kept
+ * here it would be lost before the service logs the failure.
+ */
 export function notFound(
   agentPreset: string,
+  hostReason = "",
 ): RemoteError<"preset-persona/not-found"> {
   return new RemoteError(
     "preset-persona/not-found",
-    `preset-persona-editor: preset "${agentPreset}" is not in the roster`,
+    hostReason === ""
+      ? `preset-persona-editor: preset "${agentPreset}" is not in the roster`
+      : `preset-persona-editor: preset "${agentPreset}" is not in the roster — the registry answered: ${hostReason}`,
     { agentPreset },
   );
 }
