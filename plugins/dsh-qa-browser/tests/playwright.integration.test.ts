@@ -1,20 +1,141 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { readFile } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
+import { chromium } from "playwright";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { resolveQaBrowserConfig } from "../src/config.js";
 import { BrowserNetworkPolicy } from "../src/host/policy.js";
-import { PlaywrightBrowserProvider } from "../src/host/providers/playwright.js";
+import {
+  PlaywrightBrowserProvider,
+  systemBrowserCandidates,
+} from "../src/host/providers/playwright.js";
 import { QaBrowserSessionManager } from "../src/host/session-manager.js";
 
 const enabled = process.env["DSH_QA_BROWSER_E2E"] === "1";
+
+/**
+ * A browser to start outside the runtime under test.
+ *
+ * The suite is opt-in because it needs a real Chromium, not because it needs to
+ * be told which one, so the executable is found the way the launch path finds
+ * it and `DSH_QA_BROWSER_EXECUTABLE` only overrides that. The attach case then
+ * joins a browser the runtime could have started itself — which is the point:
+ * what separates the modes is who owns the process, not where the binary came
+ * from.
+ */
+function discoverChromium(): string | null {
+  const explicit = process.env["DSH_QA_BROWSER_EXECUTABLE"];
+  if (explicit !== undefined) return existsSync(explicit) ? explicit : null;
+  const candidates = [
+    // Playwright names its own build even when it was never downloaded.
+    (() => {
+      try {
+        return [chromium.executablePath()];
+      } catch {
+        return [];
+      }
+    })(),
+    systemBrowserCandidates(),
+  ].flat();
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
+}
+
+/** Free a port the external Chromium can be asked to listen on. */
+async function freePort(): Promise<number> {
+  const probe = createServer();
+  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const { port } = probe.address() as AddressInfo;
+  await new Promise<void>((resolve) => probe.close(() => resolve()));
+  return port;
+}
+
+/**
+ * A Chromium this runtime did not start and does not own — which is the whole
+ * claim attach mode makes, so the test starts the browser the way a person or a
+ * sidecar would: by running it with a debug port.
+ */
+async function startExternalChromium(
+  executable: string,
+  port: number,
+): Promise<{ child: ChildProcess; userDataDir: string }> {
+  const userDataDir = await mkdtemp(join(tmpdir(), "qa-browser-attach-"));
+  const child = spawn(
+    executable,
+    [
+      "--headless=new",
+      `--remote-debugging-port=${String(port)}`,
+      `--user-data-dir=${userDataDir}`,
+      "--no-first-run",
+      "--no-default-browser-check",
+      "about:blank",
+    ],
+    { stdio: "ignore" },
+  );
+  const deadline = Date.now() + 30_000;
+  for (;;) {
+    try {
+      const answered = await fetch(
+        `http://127.0.0.1:${String(port)}/json/version`,
+      );
+      if (answered.ok) return { child, userDataDir };
+    } catch {
+      // The port is not listening yet.
+    }
+    if (Date.now() > deadline) {
+      child.kill();
+      throw new Error(
+        `Chromium did not open its CDP endpoint on ${String(port)}`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+}
+
+/** Ask the browser to quit over its own protocol, then stop waiting if it did. */
+async function stopExternalChromium(
+  child: ChildProcess,
+  port: number,
+): Promise<void> {
+  let closed = false;
+  try {
+    const version = (await (
+      await fetch(`http://127.0.0.1:${String(port)}/json/version`)
+    ).json()) as { webSocketDebuggerUrl?: string };
+    if (version.webSocketDebuggerUrl !== undefined) {
+      const socket = new WebSocket(version.webSocketDebuggerUrl);
+      await new Promise<void>((resolve) =>
+        socket.addEventListener("open", () => resolve()),
+      );
+      socket.send(JSON.stringify({ id: 1, method: "Browser.close" }));
+      socket.close();
+      closed = true;
+    }
+  } catch {
+    // Already gone, or unreachable: the fallback below handles both.
+  }
+  if (!closed) child.kill();
+  const exited = await Promise.race([
+    child.exitCode !== null
+      ? Promise.resolve<"exit" | "timeout">("exit")
+      : new Promise<"exit" | "timeout">((resolve) =>
+          child.once("exit", () => resolve("exit")),
+        ),
+    new Promise<"exit" | "timeout">((resolve) =>
+      setTimeout(() => resolve("timeout"), 5_000),
+    ),
+  ]);
+  child.kill();
+  if (exited === "timeout") {
+    throw new Error("the external Chromium outlived its own teardown");
+  }
+}
 
 /** The policy with a log of the destinations it was asked about. */
 class RecordingPolicy extends BrowserNetworkPolicy {
@@ -135,96 +256,6 @@ function socketProbeConfig(
   });
 }
 
-/** Free a port the external Chromium can be asked to listen on. */
-async function freePort(): Promise<number> {
-  const probe = createServer();
-  await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
-  const { port } = probe.address() as AddressInfo;
-  await new Promise<void>((resolve) => probe.close(() => resolve()));
-  return port;
-}
-
-/**
- * A Chromium this runtime did not start and does not own — which is the whole
- * claim attach mode makes, so the test starts the browser the way a person or a
- * sidecar would: by running it with a debug port.
- */
-async function startExternalChromium(
-  executable: string,
-  port: number,
-): Promise<{ child: ChildProcess; userDataDir: string }> {
-  const userDataDir = await mkdtemp(join(tmpdir(), "qa-browser-attach-"));
-  const child = spawn(
-    executable,
-    [
-      "--headless=new",
-      `--remote-debugging-port=${String(port)}`,
-      `--user-data-dir=${userDataDir}`,
-      "--no-first-run",
-      "--no-default-browser-check",
-      "about:blank",
-    ],
-    { stdio: "ignore" },
-  );
-  const deadline = Date.now() + 30_000;
-  for (;;) {
-    try {
-      const answered = await fetch(
-        `http://127.0.0.1:${String(port)}/json/version`,
-      );
-      if (answered.ok) return { child, userDataDir };
-    } catch {
-      // The port is not listening yet.
-    }
-    if (Date.now() > deadline) {
-      child.kill();
-      throw new Error(
-        `Chromium did not open its CDP endpoint on ${String(port)}`,
-      );
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-}
-
-/** Ask the browser to quit over its own protocol, then stop waiting if it did. */
-async function stopExternalChromium(
-  child: ChildProcess,
-  port: number,
-): Promise<void> {
-  let closed = false;
-  try {
-    const version = (await (
-      await fetch(`http://127.0.0.1:${String(port)}/json/version`)
-    ).json()) as { webSocketDebuggerUrl?: string };
-    if (version.webSocketDebuggerUrl !== undefined) {
-      const socket = new WebSocket(version.webSocketDebuggerUrl);
-      await new Promise<void>((resolve) =>
-        socket.addEventListener("open", () => resolve()),
-      );
-      socket.send(JSON.stringify({ id: 1, method: "Browser.close" }));
-      socket.close();
-      closed = true;
-    }
-  } catch {
-    // Already gone, or unreachable: the fallback below handles both.
-  }
-  if (!closed) child.kill();
-  const exited = await Promise.race([
-    child.exitCode !== null
-      ? Promise.resolve<"exit" | "timeout">("exit")
-      : new Promise<"exit" | "timeout">((resolve) =>
-          child.once("exit", () => resolve("exit")),
-        ),
-    new Promise<"exit" | "timeout">((resolve) =>
-      setTimeout(() => resolve("timeout"), 5_000),
-    ),
-  ]);
-  child.kill();
-  if (exited === "timeout") {
-    throw new Error("the external Chromium outlived its own teardown");
-  }
-}
-
 describe.skipIf(!enabled)("Playwright Browser runtime", () => {
   const managers: QaBrowserSessionManager[] = [];
 
@@ -234,13 +265,13 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
     );
   });
 
-  const externalChromium = process.env["DSH_QA_BROWSER_EXECUTABLE"];
+  const externalChromium = discoverChromium();
 
-  it.skipIf(externalChromium === undefined)(
+  it.skipIf(externalChromium === null)(
     "drives an external Chromium over CDP and leaves it running on stop",
     async () => {
-      if (externalChromium === undefined) {
-        throw new Error("attach needs an explicit Chromium to join");
+      if (externalChromium === null) {
+        throw new Error("attach needs a Chromium this suite can start");
       }
       const html = await readFile(
         new URL("./fixtures/app.html", import.meta.url),

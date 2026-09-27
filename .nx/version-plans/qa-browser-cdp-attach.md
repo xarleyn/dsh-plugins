@@ -28,8 +28,12 @@ logs `browser.connection-lost`; our own process dying keeps `BROWSER_CRASHED`.
 Both rebuild the session on the next action, and both wait for the link or the
 process with mode-accurate wording while a first page opens.
 
-The launch path is not merely unbroken by this: both modes are now pinned by
-tests. Each one names the Playwright entry point it expects, what it reports
-when the browser goes away, and what the config accepts; the opt-in Chromium
-integration run additionally starts a browser outside the plugin, drives it over
-CDP, screenshots it, and checks that the plugin's teardown left it running.
+The launch path is not merely unbroken by this: both modes are pinned by the
+suite that runs on every `pnpm test`. Each one names the Playwright entry point
+it expects, the context options and network gates it builds on top of that
+browser — attached ones included —, what it reports when the browser goes away,
+and what the config accepts. The opt-in Chromium run then covers what only a
+real browser can answer: it starts a Chromium outside the plugin, drives it over
+CDP, screenshots it, and checks that the plugin's teardown left it running. That
+run needs one variable, `DSH_QA_BROWSER_E2E=1`, and finds a browser on the
+machine the way the launch path finds one.

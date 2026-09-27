@@ -149,6 +149,17 @@ reaches `localhost` by default, and any other host needs
 can reach that host can reach the browser, which is a property of the deployment
 the operator built — the runtime documents it and does not promise otherwise.
 
+Attaching does not merge this runtime with the Harness's own browser tooling. It
+is a second driver of one Chromium, not a shared session: the pages stay in the
+contexts each driver created, so a `browser_use` page of the Harness and a
+session of this plugin never see each other's tabs, cookies or storage — while
+both consume the same browser process, its profile directory and its
+`--remote-debugging-port`. The gates on §17 sit in this runtime's request path
+only: what the Harness or a person does in another tab of an attached browser is
+outside them, which is the same fact the endpoint is loopback-only by default for.
+Two runtimes on one endpoint is a deployment choice, and it is visible in one
+place — whoever holds the endpoint can drive the browser.
+
 ---
 
 ## 4. Scope by delivery phase
