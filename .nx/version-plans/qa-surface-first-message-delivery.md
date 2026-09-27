@@ -23,8 +23,10 @@ only where that session is actually adopted. The surface re-creates this
 controller whenever the account, the configuration or the route changes, and a
 rebuilt controller used to name its first chat exactly as its predecessor had
 named its last — so an unsent question, its attachments and the per-chat panels
-outlived the chat they belonged to and were shown by the next one. A first send
-whose session never reached a binding is now retried in the same chat rather
-than read as another one, and a chat that takes over the screen — because a
-persisted chat was refused, or because it simply vanished — starts empty and
-quiet, without the question and the "sending" state of the chat it replaced.
+outlived the chat they belonged to and were shown by the next one. Adopting a
+session is the whole of it now: a first send whose session never reached a
+binding, never opened, or was refused by the policy check is retried in the same
+chat rather than read as another one, and a chat that takes over the screen —
+because a persisted chat was refused, or because it simply vanished — starts
+empty and quiet, without the question and the "sending" state of the chat it
+replaced.
