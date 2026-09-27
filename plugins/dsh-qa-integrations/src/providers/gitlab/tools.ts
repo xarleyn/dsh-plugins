@@ -6,9 +6,10 @@ import {
   requiredStringList,
   requiredText,
 } from "../../coerce.js";
-import type { IntegrationBroker } from "../../broker.js";
-import type { IntegrationPrincipal } from "../../types.js";
-import { createToolKit } from "../../tool-kit.js";
+import {
+  createToolKit,
+  type ProviderToolFactoryOptions,
+} from "../../tool-kit.js";
 import { GITLAB_OPERATIONS } from "./catalog.js";
 import { ISSUE_SCOPES, MR_SCOPES, SEARCH_SCOPES } from "./operations.js";
 
@@ -84,12 +85,9 @@ const SORT_HINT = 'Sort direction: "asc" or "desc".';
  * the QA user who owns the DSH session, and the tool schemas carry no user,
  * credential or instance selector.
  */
-export function createGitlabTools(options: {
-  readonly broker: IntegrationBroker;
-  readonly principalForSession: (
-    sessionId: string,
-  ) => IntegrationPrincipal | undefined;
-}): readonly ToolDefinition[] {
+export function createGitlabTools(
+  options: ProviderToolFactoryOptions,
+): readonly ToolDefinition[] {
   const kit = createToolKit({
     ...options,
     provider: "gitlab",

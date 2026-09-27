@@ -5,9 +5,10 @@ import {
   requiredStringList,
   requiredText,
 } from "../../coerce.js";
-import type { IntegrationBroker } from "../../broker.js";
-import type { IntegrationPrincipal } from "../../types.js";
-import { createToolKit } from "../../tool-kit.js";
+import {
+  createToolKit,
+  type ProviderToolFactoryOptions,
+} from "../../tool-kit.js";
 import { CONFLUENCE_OPERATIONS } from "./catalog.js";
 import {
   COMMENT_KINDS,
@@ -69,12 +70,9 @@ const MAX_CHARS = {
  * QA user who owns the DSH session, and the tool schemas carry no user,
  * credential, e-mail or site selector.
  */
-export function createConfluenceTools(options: {
-  readonly broker: IntegrationBroker;
-  readonly principalForSession: (
-    sessionId: string,
-  ) => IntegrationPrincipal | undefined;
-}): readonly ToolDefinition[] {
+export function createConfluenceTools(
+  options: ProviderToolFactoryOptions,
+): readonly ToolDefinition[] {
   const kit = createToolKit({
     ...options,
     provider: "confluence",

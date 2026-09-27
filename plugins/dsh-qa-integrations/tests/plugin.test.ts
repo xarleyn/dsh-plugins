@@ -11,6 +11,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import QaIntegrations, { name as pluginName } from "../src/index.js";
+import { SERVICE_CEILING_NOTICE } from "../src/providers/shared/service-boundary.js";
 import { IntegrationRepository } from "../src/repository.js";
 
 /** What the plugin asked the mounted settings service to do for its entry. */
@@ -42,6 +43,7 @@ async function host(
   ctx: Context;
   tools: string[];
   removed: string[];
+  descriptions: Map<string, string>;
   configured: ConfigureCapture[];
   /**
    * Commit an operator edit the way the Loader does: replace the entry's
@@ -52,6 +54,9 @@ async function host(
 }> {
   const tools: string[] = [];
   const removed: string[] = [];
+  // What each mounted tool says about itself, by name: the ceiling a managed
+  // credential meets is part of a description, and a remount has to refresh it.
+  const descriptions = new Map<string, string>();
   const configured: ConfigureCapture[] = [];
   const ctx = new Context();
   ctx.provide("qaSurface", {
@@ -60,11 +65,13 @@ async function host(
     principalForToken: () => undefined,
   } as never);
   ctx.provide("tools", {
-    register: (definition: { name: string }) => {
+    register: (definition: { name: string; description: string }) => {
       tools.push(definition.name);
+      descriptions.set(definition.name, definition.description);
       return () => {
         // The active set shrinks, so live disable assertions see it.
         tools.splice(tools.indexOf(definition.name), 1);
+        descriptions.delete(definition.name);
         removed.push(definition.name);
       };
     },
@@ -85,6 +92,7 @@ async function host(
     ctx,
     tools,
     removed,
+    descriptions,
     configured,
     fiber,
     commit(patch: Record<string, unknown>) {
@@ -167,6 +175,30 @@ describe("integrations plugin entry", () => {
     commit({ teamcity: { enabled: false } });
     expect(of("teamcity")).toEqual([]);
     expect(of("gitlab").length).toBeGreaterThan(0);
+  });
+
+  it("moves the ceiling warning with the credential that meets it", async () => {
+    const { descriptions, commit } = await host(
+      { enabled: true },
+      { withSettings: true },
+    );
+    await settle();
+    // This stand issues no managed credential, so the ceiling is a condition
+    // nobody meets: a build-log tool that warned about it would be talking the
+    // model out of a reading the user's own connection answers (#285).
+    expect(
+      descriptions.get("teamcity_build_log")?.endsWith(SERVICE_CEILING_NOTICE),
+    ).toBe(false);
+    // Handing out shared credentials re-registers the descriptions, because the
+    // mounted set alone did not change.
+    commit({ managedServiceCredentials: { enabled: true } });
+    expect(
+      descriptions.get("teamcity_build_log")?.endsWith(SERVICE_CEILING_NOTICE),
+    ).toBe(true);
+    commit({ managedServiceCredentials: { enabled: false } });
+    expect(
+      descriptions.get("teamcity_build_log")?.endsWith(SERVICE_CEILING_NOTICE),
+    ).toBe(false);
   });
 
   it("closes the store when the plugin is disposed", async () => {

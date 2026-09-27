@@ -36,6 +36,14 @@ export interface IntegrationToolOptions {
   /** Mount the Bitrix24 timeline-comment tool; default stays read-only. */
   readonly bitrix24CrmCommentWrite?: boolean;
   /**
+   * Whether this deployment hands out managed service credentials, which is what
+   * decides whether a tool warns about the ceiling those credentials meet. Off
+   * by default: a stand without a shared token has no ceiling to describe, and a
+   * tool that claimed one would talk a model out of a reading its own personal
+   * connection answers.
+   */
+  readonly managedServiceCredentialsEnabled?: boolean;
+  /**
    * The providers this deployment actually enables. Absent means every one,
    * which is what a caller that has no configuration to speak of asks for;
    * present means the tools of a provider the operator switched off are neither
@@ -112,6 +120,8 @@ export function createIntegrationTools(
   const shared = {
     broker: options.broker,
     principalForSession: options.principalForSession,
+    managedServiceCredentialsEnabled:
+      options.managedServiceCredentialsEnabled === true,
   };
   return [
     ...(mounted("bitrix24")

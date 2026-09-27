@@ -35,11 +35,27 @@ const OUTPUT = {
   ) => [{ type: "text" as const, text: JSON.stringify(value.data) }],
 } as const;
 
-export interface ToolKitOptions {
+/**
+ * What a provider's tool factory takes from the deployment. One type for all
+ * seven, so no factory can be built on a broker alone and go on describing a
+ * managed credential this stand never issues.
+ */
+export interface ProviderToolFactoryOptions {
   readonly broker: IntegrationBroker;
   readonly principalForSession: (
     sessionId: string,
   ) => IntegrationPrincipal | undefined;
+  /**
+   * Whether this deployment hands out managed service credentials at all. The
+   * ceiling is a property of those credentials, so with the slice off a warning
+   * about it would send a model away from a reading its own personal connection
+   * does answer — the symptom #285 is about, caused by the warning itself. The
+   * operator card drops the same note for the same reason.
+   */
+  readonly managedServiceCredentialsEnabled: boolean;
+}
+
+export interface ToolKitOptions extends ProviderToolFactoryOptions {
   readonly provider: IntegrationProviderId;
   /**
    * The provider's own catalog. A tool reads its operation's classification from
@@ -99,9 +115,12 @@ export function createToolKit(options: ToolKitOptions) {
     readonly input: (args: Record<string, unknown>) => Record<string, unknown>;
   }): ToolDefinition => {
     const security = options.operations[definition.operation]?.security;
+    const warns =
+      options.managedServiceCredentialsEnabled &&
+      serviceCeilingRefusedReading(security);
     return defineTool({
       name: definition.name,
-      description: serviceCeilingRefusedReading(security)
+      description: warns
         ? `${definition.description} ${SERVICE_CEILING_NOTICE}`
         : definition.description,
       parameters: definition.parameters,

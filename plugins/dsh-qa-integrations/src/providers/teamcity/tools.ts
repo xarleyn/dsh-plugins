@@ -5,9 +5,10 @@ import {
   requiredInteger,
   requiredText,
 } from "../../coerce.js";
-import type { IntegrationBroker } from "../../broker.js";
-import type { IntegrationPrincipal } from "../../types.js";
-import { createToolKit } from "../../tool-kit.js";
+import {
+  createToolKit,
+  type ProviderToolFactoryOptions,
+} from "../../tool-kit.js";
 import { TEAMCITY_OPERATIONS } from "./catalog.js";
 import { TEAMCITY_DEFAULTS } from "./config.js";
 import { LOG_MODES } from "./logs.js";
@@ -60,12 +61,9 @@ const UNTRUSTED_LOG =
  * QA user who owns the DSH session, and no tool schema carries a user,
  * credential or server selector.
  */
-export function createTeamcityTools(options: {
-  readonly broker: IntegrationBroker;
-  readonly principalForSession: (
-    sessionId: string,
-  ) => IntegrationPrincipal | undefined;
-}): readonly ToolDefinition[] {
+export function createTeamcityTools(
+  options: ProviderToolFactoryOptions,
+): readonly ToolDefinition[] {
   const kit = createToolKit({
     ...options,
     provider: "teamcity",
