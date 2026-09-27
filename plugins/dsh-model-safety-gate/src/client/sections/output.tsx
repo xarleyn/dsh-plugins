@@ -84,7 +84,10 @@ export function OutputSection(props: ConfigProps) {
           }}
         />
       </div>
-      <details className="msg-advanced" data-testid="safety-output-window">
+      <details
+        className="msg-advanced"
+        data-testid="safety-output-window-details"
+      >
         <summary>Rolling window</summary>
         <div className="msg-advanced-content msg-grid">
           <NumberField
