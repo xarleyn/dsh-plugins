@@ -20,7 +20,7 @@ config directory is the source of truth the container re-applies on every start,
 so anything you change through the UI is provisional, and anything you restart
 belongs to someone else.
 
-## 0. Read the local briefing before you touch anything
+## 0. Get the stand's coordinates before you touch anything
 
 The stand lives in a deployment kit checkout (a `qa-deploy-docker/`-style
 directory beside this repository: its compose file, `config/dsh/`, `data/`,
@@ -36,15 +36,19 @@ one of them is checkable from this repository. A disagreement is settled by the
 kit, not by this page: follow the kit, report the disagreement, and correct the
 skill.
 
-On a machine that keeps a local slice briefing (`.private/guides/` in this
-repo's main checkout: the slice path, its ports, its test accounts, the config
-overrides already applied to it) read it first and take the coordinates from it.
-Never invent a path, a port, an account or a password, and never put one of them
-into a tracked file, a commit, a pull request or your report — the repository is
-public.
+The coordinates of a slice — where it lives on the machine, its ports, its test
+accounts, the config overrides already applied to it — are not in this
+repository and are not in this skill: the repository is public and a stand is a
+real deployment. Ask the operator of the rig, or read them off the kit's own
+README. A machine may keep them in notes the repository does not track, and its
+operator can hand you those notes, but no step here depends on one existing:
+this page deliberately does not say where such notes live, so a fresh clone is
+never missing a file the recipe needs. Never invent a path, a port, an account
+or a password, and never put one of them into a tracked file, a commit, a pull
+request or your report.
 
-If there is no briefing and the kit's README does not answer the question, ask
-the maintainer rather than probing the network for it.
+If the operator does not answer and the kit's README does not either, ask the
+maintainer rather than probing the network for it.
 
 ## 1. Before changing anything on a live stand
 
@@ -53,32 +57,49 @@ the maintainer rather than probing the network for it.
   Anywhere else, prepare the change and ask; the restart is then one step for
   them (`shared-checkout` §5). The same test gates every repair in
   `references/troubleshooting.md`, including the ones that delete files.
-- **Sync the kit before editing its config.** The slice is a synchronizable copy
-  of the deployment, people are testing on it, and its configs may have moved
-  under you; an unpulled edit silently reverts theirs. `$KIT` hereafter is that
-  checkout — §0's directory, not this repository. It is also where every
-  `docker compose` command in this skill runs, because that is where compose
-  finds its configuration file: from the repository directory it reads no file at
-  all, and its own refusal is the misdiagnosis §3 works to avoid.
+- **Check the kit against its upstream before editing its config.** The slice is
+  a synchronizable copy of the deployment, people are testing on it, and its
+  configs may have moved under you. `$KIT` hereafter is that checkout — §0's
+  directory, not this repository. It is also where every `docker compose` command
+  in this skill runs, because that is where compose finds its configuration file:
+  from the repository directory it reads no file at all, and its own refusal is
+  the misdiagnosis §3 works to avoid.
 
   ```bash
   # did anyone else edit a tracked config? untracked kit files are noise: see below
   git -C "$KIT" status --porcelain --untracked-files=no -- config/dsh
-  git -C "$KIT" pull --ff-only   # a refused pull is itself the answer
+  git -C "$KIT" fetch --quiet                 # writes .git only, never the tree
+  git -C "$KIT" rev-list --count HEAD..@{u}   # behind; no upstream = fatal
   ```
 
-  A `status` that comes back non-empty, or a `pull` that refuses, means the state
-  you were about to edit is not the state on disk: stop and ask whose edit it is.
+  `fetch` is the whole step, and that is the point: it moves no file under
+  `config/dsh/`, so it cannot change what a running stand re-applies on its next
+  start. Moving the working tree onto what upstream holds is a `pull`, and a
+  `pull` answers to the same test as a restart, because §1 says what a restart
+  does — the entrypoint re-applies `config/dsh/` over the installed profile on
+  *every* start, including one nobody asked for, since a crash loop restarts
+  itself. On a rig this session did not bring up, a fast-forward therefore
+  exchanges the deployment under the person reproducing something on it.
+
+  Read the answers and act on each:
+  - a non-empty `status` is someone's uncommitted edit: stop and ask whose, and
+    do not `checkout`/`restore` the kit's config to clear it — that is the very
+    revert this step exists to prevent (`shared-checkout` §5);
+  - a non-zero behind-count on a rig that is not yours is reported, not fixed:
+    prepare the edit against what is on disk and say the kit is N commits behind,
+    because ordering the sync is the operator's call, not yours;
+  - a sync on a stand §1 calls yours takes the `pull --ff-only` form: it refuses a
+    diverged kit instead of merging into it, and that refusal is itself the
+    answer. A fatal `rev-list` means the branch has no upstream to compare with;
+    a kit that is no git checkout at all falls back to §0 — its README owns the
+    update route, so ask for it instead of improvising a sync.
+
   `--untracked-files=no` is deliberate and asks a narrower question — the kit's
   local files (`.env`, `secrets/`, the compose override; see *Do not touch*) are
-  usually not in its `.gitignore`, so counting untracked paths here would stop
-  the step on files nobody edited. `shared-checkout` §7 makes the same choice for
-  the same test, and the case it gives up is not lost: a merge that would
-  overwrite an untracked file is refused by `pull` itself.
-  Do not `checkout`/`restore` the kit's config to make the pull pass — that is
-  the very revert this step exists to prevent (`shared-checkout` §5). If the kit
-  is not a git checkout, §0's rule applies: its README owns the update route, so
-  ask for it instead of improvising a sync.
+  usually not in its `.gitignore`, so counting untracked paths here would stop the
+  step on files nobody edited. `shared-checkout` §7 makes the same choice for the
+  same test, and the case it gives up is not lost: a sync that would land a file
+  over an untracked local one is refused by `pull` itself.
 - `config/dsh/plugins.txt` is the only source of truth for which plugins run:
   the entrypoint reconciles the profile from it on every container start — new
   or changed specs install, removed ones disappear.
@@ -146,21 +167,31 @@ Two more facts that cost hours when unknown:
 - Operator surface: the loopback port on the machine running the container,
   opened with the **launch token**. `data/admin-url.txt` is not authoritative —
   it survives port changes and moves — so take the token from the boot log. The
-  recipe assigns it and prints only its length, never the value, and it keeps
-  the log command's own failure apart from a capture that matched nothing:
+  recipe assigns it and prints only its length, never the value, and it keeps the
+  three ways an empty answer happens apart: compose refusing, compose answering
+  with nothing logged, and a log whose boot line the pattern misses.
 
   ```bash
   if LAUNCH_LOG=$(cd "$KIT" && docker compose logs qa); then
-    LAUNCH_TOKEN=$(printf '%s\n' "$LAUNCH_LOG" \
-      | sed -nE "s/.*(^|[^A-Za-z0-9_-])token=([^&#\"'[:space:]]*).*/\2/p" | tail -1)
-    if [ -n "$LAUNCH_TOKEN" ]; then
-      echo "launch token: ${#LAUNCH_TOKEN} characters, taken from the boot log"
+    if [ -z "$LAUNCH_LOG" ]; then
+      echo "launch token: NO LOG YET — compose answered with an empty log, so the" \
+           "pattern never had a line to miss: the container has printed nothing" \
+           "(freshly recreated, gone before it boots, or logs not captured)." \
+           "What the rig is doing:"
+      (cd "$KIT" && docker compose ps)
     else
-      echo "launch token: NOT FOUND — compose answered, so this is the boot line" \
-           "not matching the pattern, not a dead stand"
+      LAUNCH_TOKEN=$(printf '%s\n' "$LAUNCH_LOG" \
+        | sed -nE "s/.*(^|[^A-Za-z0-9_-])token=([^&#\"'[:space:]]*).*/\2/p" | tail -1)
+      if [ -n "$LAUNCH_TOKEN" ]; then
+        echo "launch token: ${#LAUNCH_TOKEN} characters, taken from the boot log"
+      else
+        echo "launch token: NOT FOUND — compose answered with a log that carries" \
+             "no standalone token=: the boot line's format moved, the stand's" \
+             "state did not"
+      fi
     fi
   else
-    echo "compose produced no log at all (its own error is above) — there is" \
+    echo "compose would not answer at all (its own error is above) — there is" \
          "nothing to capture: check you were in the kit, the service name," \
          "compose, and the daemon"
   fi
@@ -186,7 +217,7 @@ Two more facts that cost hours when unknown:
 
   ```bash
   OPERATOR_URL="<the kit's loopback operator URL>?token=$LAUNCH_TOKEN"
-  printf 'url = "%s"\n' "$OPERATOR_URL" | curl -sS --config - -o <evidence file>
+  printf 'url = "%s"\n' "$OPERATOR_URL" | curl -sS --config - -D - -o /dev/null
   ```
 
   The assignment is the shell's own and `printf` is a bash builtin, so the value
@@ -194,8 +225,23 @@ Two more facts that cost hours when unknown:
   variable name; `curl` takes the URL from stdin, and on a refused connection its
   own error named the host and port, not the query. Typing the URL does not
   satisfy the rule: pasting the expanded value into a command line leaves it in
-  history. The token and the operator URL carrying it stay out of every log,
-  screenshot, report and pull request, and out of argv and history
+  history.
+
+  `-D - -o /dev/null` is what keeps the proof out of the artifact. What this
+  request proves is *that the operator surface answered*, and the status line with
+  the response headers says that; the body is whatever the operator page renders —
+  accounts, chats, the stand's own data — so it is not saved at all. Writing it as
+  the round's evidence puts a live rig's data into a file that then travels into
+  the report, the pull request and the public history. Read the dumped headers
+  before quoting any of them: a `Location:` that echoes the token back turns the
+  header dump into a carrier too, and then the status line alone is the evidence.
+
+  Verifying afterwards is not comparing the artifact with the token. Grepping a
+  saved file for `"$LAUNCH_TOKEN"` moves the value back into argv and shell
+  history, and a printed match lands it in the transcript the round records — a
+  check that has to name the secret to run is a second capture of it, not a proof.
+  The token and the operator URL carrying it stay out of every log, screenshot,
+  report and pull request, out of argv and history, and out of the evidence files
   (`Do not touch`).
 
   The boot line's own format lives in the kit and cannot be checked from this
@@ -213,13 +259,16 @@ Two more facts that cost hours when unknown:
   pattern does not buy off, and the length is the only thing about the value you
   may print — it is how you notice a six-character capture.
 
-  The two empty outcomes are different findings and must not share a diagnosis.
-  "compose answered, nothing matched" is about the boot line's format, and the
-  kit's README is where that is settled — do not swap in another regex.
-  "compose produced no log" is about a broken command, and the first candidate is
-  where it was run: re-check `$KIT` before blaming the rig, then look with
-  `docker compose ps` — in that directory, not the README's. Either way, never
-  point an unverified value at the operator API.
+  The three empty answers are different findings and must not share a diagnosis.
+  "compose would not answer" is about the command, and its first candidate is where
+  it was run: re-check `$KIT` before blaming the rig. "compose answered with no
+  log" is about the state of the stand, which is why the branch prints `docker
+  compose ps` there — a container that has not reached the boot line is a rig
+  finding, and `references/troubleshooting.md` §The stack does not come up is where
+  a stand that will not boot is worked. "compose answered with a log and nothing
+  matched" is about the boot line's format, and the kit's README is where that is
+  settled — do not swap in another regex. Either way, never point an unverified
+  value at the operator API.
 
   A launch token expires while a live harness keeps running, so a `401 dsh web
   authentication required` is usually a stale token — but only once you know the
@@ -228,10 +277,10 @@ Two more facts that cost hours when unknown:
 - The built client bundle is served at `/plugins/<full-package-name>/client.js`,
   the scoped path (AGENTS.md) — fetch that URL to prove which build the browser
   actually got.
-- Accounts: use the ones the local briefing names, or register one through the
-  plugin's own CLI inside the container. The installed `.bin` shims can answer
-  empty with exit code 0 while changing nothing — invoke the CLI by its full
-  path under the profile's `node_modules` and re-read the list to confirm.
+- Accounts: use the ones the operator named with the coordinates (§0), or register
+  one through the plugin's own CLI inside the container. The installed `.bin` shims
+  can answer empty with exit code 0 while changing nothing — invoke the CLI by its
+  full path under the profile's `node_modules` and re-read the list to confirm.
 
 ## 4. Run the pass, and prove it
 
@@ -244,7 +293,10 @@ Two more facts that cost hours when unknown:
 3. Collect evidence rather than asserting health: run the kit's collector over
    the logs and let its exit code say the result. What a recorded round must
    leave behind is `release-plugins` §1b step 3; a pass that leaves nothing is
-   not evidence, whatever the gates said.
+   not evidence, whatever the gates said. Evidence is public text before it is
+   anything else — a log tail from a live rig names hosts, accounts and paths —
+   so the marker sweep `release-plugins` §0 runs before a release runs over it
+   too, before the round's report goes out and again before the pull request.
 4. UI findings are measured, not eyeballed — see
    `create-plugin/references/client-side.md` §Proving a UI change beyond the
    gates.
@@ -272,9 +324,10 @@ symptom-to-cause table keys on that text.
 
 - Another account's chats and profile, and the operator's own working data.
 - A stand you did not bring up: its container lifecycle (`restart`, `up -d`,
-  `down`) and its installed state — the profile's `node_modules`, its lock file
-  and `data/`, which the repairs in `references/troubleshooting.md` delete.
-  Prepare the step, then ask.
+  `down`), the kit's working tree (a `pull` rewrites `config/dsh/`, and the next
+  start — asked for or not — re-applies it), and its installed state — the
+  profile's `node_modules`, its lock file and `data/`, which the repairs in
+  `references/troubleshooting.md` delete. Prepare the step, then ask.
 - The "reset overrides" control on an integrations card: overrides are the only
   place some instances exist, so it removes them for the whole stand. A
   provider's enable checkbox is per-provider; "plugin enabled" is global — those
@@ -286,7 +339,13 @@ symptom-to-cause table keys on that text.
   repository, and never let one become a command argument or typed text — argv is
   in the process list and the typed line is in shell history (§3). The operator
   URL is a credential — it carries the token — so the same refusal covers pasting
-  it, and the report names the port, not the URL.
+  it, and the report names the port, not the URL. Nor is a credential evidence:
+  the operator request proves itself with its status line and headers, and the
+  body that request would render is the stand's data, not yours to keep (§3).
+- The machine-local notes that carry a stand's coordinates. The repository's
+  tracked `.gitignore` ignores that directory in every clone, which is the
+  protection a per-checkout exclusion never was; `git add -f` on a path there is
+  still the leak, and it is the one thing this directory makes easy.
 
 ## References
 
