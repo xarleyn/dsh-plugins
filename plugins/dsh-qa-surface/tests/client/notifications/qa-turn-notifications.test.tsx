@@ -319,13 +319,16 @@ describe("turn completion notices", () => {
   it("lets a browser that already allowed the prompt switch the channel on", async () => {
     // Permission granted from elsewhere and nothing stored here: the browser has
     // no question left to ask, so the page's own action is the only way in.
+    FakeNotification.permission = "granted";
     const page = mountPage(hostList([{ id: "mine", running: true }]));
     page.redraw({ list: hostList([{ id: "mine", running: false }]) });
     fireEvent.click(
       screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
     );
+    // The choice is stored on its own: a click that asked the browser nothing
+    // spends no prompt.
     await waitFor(() =>
-      expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: true }),
+      expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: false }),
     );
     // The click settled the channel without spending the browser's prompt.
     expect(FakeNotification.asked).toBe(0);
@@ -344,15 +347,17 @@ describe("turn completion notices", () => {
     ).toBeNull();
   });
 
-  it("keeps the granted switch off once the line it sat under is waved off", () => {
-    // Waving it off answers the reader's question about the channel, not only
-    // the browser's prompt: a granted origin does not get the action back.
+  it("keeps the cross a way of clearing the stack, not of refusing the channel", () => {
+    // On a stand without accounts this action is the channel's only way in, and
+    // waving one line off says nothing about it: the switch comes back with the
+    // next line rather than leaving the reader stuck behind localStorage.
+    FakeNotification.permission = "granted";
     const page = mountPage(hostList([{ id: "mine", running: true }]));
     page.redraw({ list: hostList([{ id: "mine", running: false }]) });
     fireEvent.click(
       screen.getByLabelText(`${QA_TURN_NOTICE_COPY.dismiss}: Чат mine`),
     );
-    expect(storedPrefs()).toEqual({ osEnabled: false, osOffered: true });
+    expect(storedPrefs()).toBeNull();
 
     settleSecondChat(
       page,
@@ -362,7 +367,67 @@ describe("turn completion notices", () => {
       ]),
     );
     expect(screen.getByText("Чат second")).toBeTruthy();
-    expect(FakeNotification.raised).toEqual([]);
+    expect(
+      screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    ).toBeTruthy();
+  });
+
+  it("asks the browser again once the reader takes a granted permission back", async () => {
+    // Revoking the channel in the address bar returns the browser to `default`.
+    // Because the earlier switch-on never spent a prompt there, the page still
+    // has a question to ask rather than a mark telling it not to ask.
+    FakeNotification.permission = "granted";
+    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    fireEvent.click(
+      screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    );
+    await waitFor(() =>
+      expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: false }),
+    );
+
+    FakeNotification.permission = "default";
+    settleSecondChat(
+      page,
+      hostList([
+        { id: "mine", running: false },
+        { id: "second", running: true },
+      ]),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    );
+    await waitFor(() =>
+      expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: true }),
+    );
+    expect(FakeNotification.asked).toBe(1);
+  });
+
+  it("offers no switch the reader has already thrown", () => {
+    // The channel being on is the reader's own answer: the action is for the one
+    // still missing, and it is not a fixture the stack carries around.
+    FakeNotification.permission = "granted";
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ osEnabled: true, osOffered: false }),
+    );
+    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(screen.getByText("Чат mine")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    ).toBeNull();
+  });
+
+  it("offers no switch the stand itself has closed", () => {
+    // `allowOs` leaves the in-page line and takes the desktop with it: a granted
+    // browser is not an answer that overrides what the deployment switched off.
+    FakeNotification.permission = "granted";
+    const page = mountPage(hostList([{ id: "mine", running: true }]), {
+      notifications: { enabled: true, allowOs: false },
+    });
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(screen.getByText("Чат mine")).toBeTruthy();
     expect(
       screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
     ).toBeNull();
@@ -450,6 +515,7 @@ describe("the account's own channels", () => {
     // The browser has answered for this origin already, and with an account the
     // channel itself is decided in the «Уведомления» section: the notice asks
     // for nothing there and writes nothing on its own.
+    FakeNotification.permission = "granted";
     const { options, onSave } = signedIn({ inApp: true, desktop: false });
     const page = mountPage(hostList([{ id: "mine", running: true }]), options);
     page.redraw({ list: hostList([{ id: "mine", running: false }]) });

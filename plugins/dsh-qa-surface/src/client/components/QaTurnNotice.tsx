@@ -10,9 +10,9 @@ export interface QaTurnNoticeProps {
   /** Take one line out of the stack. */
   readonly onDismiss: (key: string) => void;
   /**
-   * Offer the desktop channel. Omitted when it is unavailable, refused, or
-   * already answered: the offer is a single question per browser, never a
-   * fixture of the stack.
+   * Offer the desktop channel. Omitted when the deployment has closed it, when
+   * the browser has refused it, or when the channel is already on: the line is
+   * not a fixture of the stack and shows only while one is.
    */
   readonly onEnableDesktop?: () => void;
   /**
