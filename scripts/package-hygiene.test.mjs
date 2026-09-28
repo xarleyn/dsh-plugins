@@ -22,6 +22,7 @@ import {
   validateDiscoverability,
   validatePublishedContent,
   validatePublishablePlugin,
+  validatePublishableSharedPackage,
   validateVersionPlan,
   validateWorkspaceScripts,
   verifyVersionPlans,
@@ -62,6 +63,14 @@ async function fixture(overrides = {}) {
     ...overrides,
   });
   return directory;
+}
+
+const GATE_CALL =
+  "runVerifyPackage({ mainTypesMatchRootExport: true, publishedDependenciesResolve: true });\n";
+
+function writeGateScript(directory, name, source) {
+  mkdirSync(path.join(directory, "scripts"), { recursive: true });
+  writeFileSync(path.join(directory, "scripts", name), source);
 }
 
 test("matches `**/` across any depth of directories", () => {
@@ -135,6 +144,76 @@ test("rejects missing canonical package metadata", async () => {
     assert.ok(errors.some((error) => error.includes("declaration layout")));
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("requires a package gate on a publishable shared package", async () => {
+  // A shared package without `verify` still publishes, and nothing asks whether
+  // its declared exports were built or its published ranges resolve.
+  const ungated = await fixture();
+  try {
+    assert.deepEqual(validatePublishableSharedPackage(ungated), [
+      "scripts.verify is required for every publishable shared package",
+    ]);
+  } finally {
+    await rm(ungated, { recursive: true, force: true });
+  }
+
+  const gated = await fixture({
+    scripts: { verify: "pnpm run verify:package" },
+  });
+  try {
+    writeGateScript(gated, "verify-package.mjs", GATE_CALL);
+    assert.deepEqual(validatePublishableSharedPackage(gated), []);
+  } finally {
+    await rm(gated, { recursive: true, force: true });
+  }
+});
+
+test("keeps the shared package gate on what packing cannot show", async () => {
+  // A `verify` that exists but stopped passing the options would exit 0 while the
+  // docs next to it still promise the two checks, so the script is read too.
+  const narrowed = await fixture({
+    scripts: { verify: "pnpm run verify:package" },
+  });
+  try {
+    writeGateScript(
+      narrowed,
+      "verify-package.mjs",
+      "runVerifyPackage({ exportsBuilt: true });\n",
+    );
+    assert.deepEqual(validatePublishableSharedPackage(narrowed), [
+      "no script under scripts/ calls runVerifyPackage with mainTypesMatchRootExport and publishedDependenciesResolve enabled; a shared package gate keeps both options on — packing cannot show either",
+    ]);
+
+    // One option dropped is the more likely accident: a refactor that keeps the
+    // other and still prints "all gates passed".
+    writeGateScript(
+      narrowed,
+      "verify-package.mjs",
+      "runVerifyPackage({ mainTypesMatchRootExport: true });\n",
+    );
+    assert.deepEqual(validatePublishableSharedPackage(narrowed), [
+      "no script under scripts/ calls runVerifyPackage with publishedDependenciesResolve enabled; a shared package gate keeps both options on — packing cannot show either",
+    ]);
+
+    // The call is what carries the options, so prose naming them helps nobody.
+    writeGateScript(
+      narrowed,
+      "verify-package.mjs",
+      "// mainTypesMatchRootExport: true\nrunVerifyPackage({ exportsBuilt: true });\n",
+    );
+    assert.equal(validatePublishableSharedPackage(narrowed).length, 1);
+
+    // An option turned off is not turned on.
+    writeGateScript(
+      narrowed,
+      "verify-package.mjs",
+      "runVerifyPackage({ mainTypesMatchRootExport: true, publishedDependenciesResolve: false });\n",
+    );
+    assert.equal(validatePublishableSharedPackage(narrowed).length, 1);
+  } finally {
+    await rm(narrowed, { recursive: true, force: true });
   }
 });
 
