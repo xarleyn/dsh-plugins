@@ -296,6 +296,98 @@ describe("turn completion notices", () => {
     );
     expect(storedPrefs()).toEqual({ osEnabled: false, osOffered: true });
   });
+
+  /**
+   * The frames that settle a second chat, so a channel switched on mid-scenario
+   * is measured on a turn that ended after the switch and not on one already
+   * reported.
+   */
+  function settleSecondChat(
+    page: ReturnType<typeof mountPage>,
+    list: SessionListState,
+  ): void {
+    page.redraw({ list, chatIds: ["mine", "second"] });
+    page.redraw({
+      list: hostList([
+        { id: "mine", running: false },
+        { id: "second", running: false },
+      ]),
+      chatIds: ["mine", "second"],
+    });
+  }
+
+  it("lets a browser that already allowed the prompt switch the channel on", async () => {
+    // Permission granted from elsewhere and nothing stored here: the browser has
+    // no question left to ask, so the page's own action is the only way in.
+    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    fireEvent.click(
+      screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    );
+    await waitFor(() =>
+      expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: true }),
+    );
+    // The click settled the channel without spending the browser's prompt.
+    expect(FakeNotification.asked).toBe(0);
+
+    document.hasFocus = () => false;
+    settleSecondChat(
+      page,
+      hostList([
+        { id: "mine", running: false },
+        { id: "second", running: true },
+      ]),
+    );
+    expect(FakeNotification.raised).toEqual(["Чат second"]);
+    expect(
+      screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    ).toBeNull();
+  });
+
+  it("keeps the granted switch off once the line it sat under is waved off", () => {
+    // Waving it off answers the reader's question about the channel, not only
+    // the browser's prompt: a granted origin does not get the action back.
+    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    fireEvent.click(
+      screen.getByLabelText(`${QA_TURN_NOTICE_COPY.dismiss}: Чат mine`),
+    );
+    expect(storedPrefs()).toEqual({ osEnabled: false, osOffered: true });
+
+    settleSecondChat(
+      page,
+      hostList([
+        { id: "mine", running: false },
+        { id: "second", running: true },
+      ]),
+    );
+    expect(screen.getByText("Чат second")).toBeTruthy();
+    expect(FakeNotification.raised).toEqual([]);
+    expect(
+      screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    ).toBeNull();
+  });
+
+  it("offers no switch a refused browser cannot honour", () => {
+    FakeNotification.permission = "denied";
+    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(screen.getByText("Чат mine")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    ).toBeNull();
+  });
+
+  it("offers no switch a page without the desktop API cannot honour", () => {
+    // Off a non-secure context there is no Notification to ask or to obey.
+    vi.stubGlobal("Notification", undefined);
+    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(screen.getByText("Чат mine")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    ).toBeNull();
+  });
 });
 
 describe("the account's own channels", () => {
@@ -352,5 +444,19 @@ describe("the account's own channels", () => {
     // The browser still remembers it asked, which is a fact about this
     // browser's prompt rather than about the person.
     expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: true });
+  });
+
+  it("leaves a granted channel of a signed-in reader to their own settings", () => {
+    // The browser has answered for this origin already, and with an account the
+    // channel itself is decided in the «Уведомления» section: the notice asks
+    // for nothing there and writes nothing on its own.
+    const { options, onSave } = signedIn({ inApp: true, desktop: false });
+    const page = mountPage(hostList([{ id: "mine", running: true }]), options);
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(screen.getByText("Чат mine")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    ).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
   });
 });
