@@ -246,8 +246,8 @@ export function QaSurface(props: QaSurfaceProps) {
   /**
    * The control the keyboard last held inside the ring, and the step it held in
    * it. Recorded as focus moves, so it names where the reader is rather than
-   * where they once were: focus landing anywhere outside the ring — a dialog,
-   * the native shell, the page's own background — clears it.
+   * where they once were: a focus landing on any control outside the ring —
+   * another dialog, the native shell — lets it go.
    */
   const ringAnchor = useRef<{ element: HTMLElement; index: number } | null>(
     null,
