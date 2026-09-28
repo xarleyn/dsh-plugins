@@ -1246,8 +1246,10 @@ wave; §4.2's recipe stands as the record of where the platform is going.
 the copy-to-writable-root capability does not exist at `rc.2`, and neither does
 `modeSelectionEnabled` or `standingKeyFor`. Owner must choose between shipping the
 editor as read-only + `select`, or writing preset YAML/registration through a
-plugin-owned path (the plugin already has its own file IO in
-`src/host/preset-reader.ts`) and owning durability plus the `agent-preset`
+plugin-owned path (the plugin then had its own file IO in
+`src/host/preset-reader.ts` — `readFile`/`createHash`/`node:path`, which the
+option below deleted along with the writer, so reviving option 2 starts from no
+file IO at all) and owning durability plus the `agent-preset`
 compatibility implications. This is a feature decision, not a migration step.
 **[decided 2026-09-27, #508] Option 1 — read-only, no `select` here.** Landed in
 #518: the roster face the plugin reads is `list`/`resolve`/`readDocument`/
