@@ -373,6 +373,49 @@ describe("PlaywrightBrowserProvider runtime modes", () => {
     expect(seen).toEqual([]);
   });
 
+  it("keeps the link when a session of an attached browser closes", async () => {
+    const browser = new FakeBrowser();
+    const playwright = fakePlaywright(browser);
+    const provider = new PlaywrightBrowserProvider(
+      async () => playwright.module,
+    );
+    const seen = crashes(provider);
+
+    await provider.start(ATTACH_CONFIG.runtime);
+    const first = await provider.createContext(contextOptions());
+    const second = await provider.createContext(
+      contextOptions({ sessionId: "session-b" }),
+    );
+
+    // §3.3 puts the boundary of a session close at that session's own context,
+    // and a person's browser is on the other side of it: an agent finishing a
+    // session must not stop the Chromium its owner opened, not even when it was
+    // the last session this runtime had — the browser was up before it and stays
+    // up after. The sibling case above covers the stop of the whole runtime,
+    // which is the one place the link does drop.
+    await provider.closeContext(first.id);
+    await provider.closeContext(second.id);
+
+    expect(browser.created.map((context) => context.closeCalls)).toEqual([
+      1, 1,
+    ]);
+    expect(browser.closed).toBe(0);
+    expect(browser.isConnected()).toBe(true);
+    expect(seen).toEqual([]);
+
+    // Still attached, so the next session is built on this browser rather than
+    // on one the runtime falls back to starting.
+    await provider.createContext(contextOptions({ sessionId: "session-c" }));
+    expect(playwright.connectOverCDP).toHaveBeenCalledTimes(1);
+    expect(playwright.launch).not.toHaveBeenCalled();
+
+    await provider.stop();
+    expect(browser.closed).toBe(1);
+    expect(browser.created.map((context) => context.closeCalls)).toEqual([
+      1, 1, 1,
+    ]);
+  });
+
   it("leaves the context the browser came with alone", async () => {
     const browser = new FakeBrowser();
     const playwright = fakePlaywright(browser);
@@ -386,14 +429,15 @@ describe("PlaywrightBrowserProvider runtime modes", () => {
 
     // SPEC §5 keeps "controlling arbitrary existing user tabs" a non-goal, and
     // an attached browser arrives with exactly such tabs. A `Browser` handle
-    // reaches the context it came with through `contexts()` only, and this
-    // runtime asks for neither that nor the convenience `newPage()` that would
-    // place a page outside a context it built — so a session lives in a context
-    // of its own, and the owner's context is never even asked to close. That the
-    // owner's tab then survives our teardown is not answerable from a fake — it
-    // is what the real-Chromium run reads back over `/json/list`.
+    // reaches the context it came with through `contexts()` only — asking for it
+    // is the one way this runtime could drive or close a tab that is not its own
+    // — and Playwright's convenience `newPage()` is the shortcut into that same
+    // context. These two counts are the checks that can redden. Counting the
+    // owner's `close()` on top of them would not: the only route to that handle
+    // is the `contexts()` call the first line already forbids, so it stands for
+    // any code whatever. Where a surviving owner tab is measured is the run no
+    // fake stands in for — the real Chromium, read back over `/json/list`.
     expect(browser.contextsAsked).toBe(0);
     expect(browser.sharedPageAsked).toBe(0);
-    expect(browser.ownerContext.closeCalls).toBe(0);
   });
 });

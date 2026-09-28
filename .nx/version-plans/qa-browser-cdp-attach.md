@@ -5,13 +5,13 @@
 The Browser runtime can now drive a Chromium it did not start.
 
 `runtime.mode` chooses where the browser comes from. `launch` — still the
-default, and still the shape every documented deployment runs — owns one
-process: it starts it for the first session and closes it on teardown. `attach`
-joins a browser that is already up, through its DevTools endpoint, and the
-runtime's own teardown drops the link and the contexts it created while leaving
-the process and a person's own tabs alone. The provider seam existed for exactly
-this, so the SPEC's "remote CDP" landed as a second mode of the Playwright
-provider instead of a third provider or a new package.
+default, and still the shape DOCKER.md puts first, the image that carries its
+own Chromium — owns one process: it starts it for the first session and closes
+it on teardown. `attach` joins a browser that is already up, through its DevTools
+endpoint, and the runtime's own teardown drops the link and the contexts it
+created while leaving the process and a person's own tabs alone. The provider
+seam existed for exactly this, so the SPEC's "remote CDP" landed as a second mode
+of the Playwright provider instead of a third provider or a new package.
 
 The endpoint is a control handle — whoever holds it drives that browser, past
 this plugin's own network policy — so `runtime.cdpEndpoint` names this machine
@@ -42,13 +42,17 @@ process with mode-accurate wording while a first page opens.
 The launch path is not merely unbroken by this: both modes are pinned by the
 suite that runs on every `pnpm test`. Each one names the Playwright entry point
 it expects, the context options and network gates it builds on top of that
-browser — attached ones included —, what it reports when the browser goes away,
-that an attached browser is never asked for the context it came with (`contexts()`
+browser — attached ones included —, what it reports when the browser goes away
+and under which log key each of the two losses reaches the operator, that an
+attached browser is never asked for the context it came with (`contexts()`
 is the one route a `Browser` handle offers to it, and the provider never calls
-it), and what the config accepts, endpoint forms included. The opt-in Chromium run
-then covers what only a real browser can answer: it starts a Chromium outside the
-plugin, drives it over CDP, screenshots it, and checks that the plugin's teardown
-left that process running with its owner's page still in it — and, in a second
+it), where a session close stops and the runtime's own stop begins — closing the
+last of this runtime's contexts leaves the borrowed browser linked for the next
+session —, and what the config accepts, endpoint forms included. The opt-in
+Chromium run then covers what only a real browser can answer: it starts a
+Chromium outside the plugin, drives it over CDP, screenshots it, and checks that
+the plugin's teardown left that process running with its owner's page still in
+it — and, in a second
 case, kills the browser mid-session and reads the session back as a lost link
 rather than a crash. The network gates are exercised on that attached browser
 too — the refused navigation, the refused socket handshake, and the service worker
@@ -70,8 +74,8 @@ than to what someone runs when they remember.
 
 The network policy keeps running on an attached browser, with its premise moved:
 the gate resolves and classifies a destination in the Host process, while the
-browser dials from wherever the deployment started it. One machine means one
-answer, which is what every documented deployment has until now; a Chromium in
-its own container has its own resolver and its own `/etc/hosts`, so an allow-list
-written for the Host is a judgment about a name that browser may read
-differently.
+browser dials from wherever the deployment started it. Where the two are one
+machine there is one answer, and that is every deployment that starts its own
+browser; a Chromium in its own container — the sidecar DOCKER.md draws for this
+mode — has its own resolver and its own `/etc/hosts`, so an allow-list written
+for the Host is a judgment about a name that browser may read differently.

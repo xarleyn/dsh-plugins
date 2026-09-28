@@ -2259,7 +2259,9 @@ This fixture is critical for stable Browser tests.
 - Session creation/close;
 - tab create/select/close;
 - max tab limit;
-- crash state, and a dropped CDP link kept apart from it (§3.3);
+- crash state, and a dropped CDP link kept apart from it (§3.3) — kept apart in
+  the session status, in the code an action returns, and in the key the Host
+  logs, since those are the three places an operator reads the loss;
 - idle eviction.
 
 #### Runtime modes and config
@@ -2281,6 +2283,11 @@ This fixture is critical for stable Browser tests.
   context that browser came with — `contexts()`, the one route a `Browser` handle
   offers to it — nor through Playwright's convenience `newPage()`, which builds a
   context this runtime neither configures nor closes; it closes neither.
+- where each mode's teardown reaches, which is the two rows of the §3.3 table a
+  session close answers to: closing a session — and closing the last of them, so
+  that the browser is left holding no context of ours at all — releases that
+  session's context and leaves the link standing for the next one, while only
+  stopping the runtime drops the link and closes what this runtime built.
 
 ### 40.2 Playwright integration tests
 

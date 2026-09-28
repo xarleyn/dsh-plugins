@@ -9,6 +9,7 @@ import type {
   BrowserProviderStartOptions,
 } from "../src/host/providers/contract.js";
 import { QaBrowserSessionManager } from "../src/host/session-manager.js";
+import type { BrowserRuntimeLogger } from "../src/host/session/index.js";
 import type {
   BrowserNavigationRequest,
   BrowserSnapshotMode,
@@ -282,6 +283,13 @@ export class FakeProvider implements BrowserProvider {
   }
 }
 
+/** One line the runtime wrote for the operator to read. */
+export interface LoggedEvent {
+  readonly level: "debug" | "info" | "warn" | "error";
+  readonly event: string;
+  readonly fields?: Record<string, unknown>;
+}
+
 export function createHarness(
   options: {
     now?: () => number;
@@ -296,14 +304,25 @@ export function createHarness(
     session: { maxTabs: options.maxTabs },
     security: { network: { allowHosts: ["*.example"] } },
   });
+  // The log is a surface an operator reads, so it is recorded rather than
+  // dropped on the floor: the two ways a browser can go away have to reach it
+  // under different keys, the same way they reach the panel.
+  const logged: LoggedEvent[] = [];
+  const logger: BrowserRuntimeLogger = {
+    debug: (event, fields) => logged.push({ level: "debug", event, fields }),
+    info: (event, fields) => logged.push({ level: "info", event, fields }),
+    warn: (event, fields) => logged.push({ level: "warn", event, fields }),
+    error: (event, fields) => logged.push({ level: "error", event, fields }),
+  };
   const manager = new QaBrowserSessionManager({
     config,
     provider,
+    logger,
     policy: new BrowserNetworkPolicy(config.security.network, {
       lookup: (async () => [{ address: "203.0.113.10", family: 4 }]) as never,
     }),
     now: options.now,
     startIdleTimer: false,
   });
-  return { config, manager, provider };
+  return { config, manager, provider, logged };
 }
