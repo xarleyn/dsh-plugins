@@ -24,20 +24,17 @@ belongs to someone else.
 
 The stand lives in a deployment kit checkout (a `qa-deploy-docker/`-style
 directory beside this repository: its compose file, `config/dsh/`, `data/`,
-`.env`, `secrets/`), not in this repo. Its playbook files are the version that
-travels:
+`.env`, `secrets/`), not in this repo. What it carries is the pass itself: the
+`docs/manual-testing/` playbooks and the evidence collector. `release-plugins`
+§1b is the page that names those files and orders them for a wave, and this page
+does not repeat it — a roster copied into the stand's skill is a roster that
+later drifts from the wave's.
 
-- `docs/manual-testing/smoke.md` — after every deploy;
-- `docs/manual-testing/wave.md` — release-wave acceptance, one row per changed
-  package: package → manual check → evidence;
-- `docs/manual-testing/signatures.md` — refusal text → cause → action;
-- `scripts/qa-smoke-evidence.mjs` — collects the evidence from the plugin logs
-  and exits non-zero on a FAIL.
-
-Those names are the kit's — the paths, the playbook files, the collector, the
-`QA_HTTP_PORT` variable and the boot line §3 parses. Not one of them is checkable
-from this repository, so a disagreement is settled by the kit, not by this page:
-follow the kit, report the disagreement, and correct the skill.
+So: every kit name below — the playbooks and the collector §4 sends you to, the
+`QA_HTTP_PORT` variable and the boot line §3 parses — belongs to the kit, and not
+one of them is checkable from this repository. A disagreement is settled by the
+kit, not by this page: follow the kit, report the disagreement, and correct the
+skill.
 
 On a machine that keeps a local slice briefing (`.private/guides/` in this
 repo's main checkout: the slice path, its ports, its test accounts, the config
@@ -56,9 +53,22 @@ the maintainer rather than probing the network for it.
   Anywhere else, prepare the change and ask; the restart is then one step for
   them (`shared-checkout` §5). The same test gates every repair in
   `references/troubleshooting.md`, including the ones that delete files.
-- **Pull the kit's settings state before editing it.** The slice is a
-  synchronizable copy of the deployment, people are testing on it, and its
-  configs may have moved under you; an unpulled edit silently reverts theirs.
+- **Sync the kit before editing its config.** The slice is a synchronizable copy
+  of the deployment, people are testing on it, and its configs may have moved
+  under you; an unpulled edit silently reverts theirs. In the kit directory
+  (`$KIT` hereafter — §0's checkout, not this repository):
+
+  ```bash
+  git -C "$KIT" status --porcelain -- config/dsh   # someone else's uncommitted edit
+  git -C "$KIT" pull --ff-only                     # a refused pull is itself the answer
+  ```
+
+  A `status` that comes back non-empty, or a `pull` that refuses, means the state
+  you were about to edit is not the state on disk: stop and ask whose edit it is.
+  Do not `checkout`/`restore` the kit's config to make the pull pass — that is
+  the very revert this step exists to prevent (`shared-checkout` §5). If the kit
+  is not a git checkout, §0's rule applies: its README owns the update route, so
+  ask for it instead of improvising a sync.
 - `config/dsh/plugins.txt` is the only source of truth for which plugins run:
   the entrypoint reconciles the profile from it on every container start — new
   or changed specs install, removed ones disappear.
@@ -126,15 +136,22 @@ Two more facts that cost hours when unknown:
 - Operator surface: the loopback port on the machine running the container,
   opened with the **launch token**. `data/admin-url.txt` is not authoritative —
   it survives port changes and moves — so take the token from the boot log. The
-  recipe assigns it and prints only its length, never the value:
+  recipe assigns it and prints only its length, never the value, and it keeps
+  the log command's own failure apart from a capture that matched nothing:
 
   ```bash
-  LAUNCH_TOKEN=$(docker compose logs qa 2>&1 \
-    | sed -n 's/.*[^A-Za-z0-9_]token=\([^&"[:space:]]*\).*/\1/p' | tail -1)
-  if [ -n "$LAUNCH_TOKEN" ]; then
-    echo "launch token: ${#LAUNCH_TOKEN} characters, taken from the boot log"
+  if LAUNCH_LOG=$(docker compose logs qa); then
+    LAUNCH_TOKEN=$(printf '%s\n' "$LAUNCH_LOG" \
+      | sed -n 's/.*[^A-Za-z0-9_]token=\([^&"[:space:]]*\).*/\1/p' | tail -1)
+    if [ -n "$LAUNCH_TOKEN" ]; then
+      echo "launch token: ${#LAUNCH_TOKEN} characters, taken from the boot log"
+    else
+      echo "launch token: NOT FOUND — compose answered, so this is the boot line" \
+           "not matching the pattern, not a dead stand"
+    fi
   else
-    echo "launch token: NOT FOUND in the boot log — stop, do not guess"
+    echo "compose produced no log at all (its own error is above) — there is" \
+         "nothing to capture: check the service name, compose, and the daemon"
   fi
   ```
 
@@ -142,17 +159,29 @@ Two more facts that cost hours when unknown:
   value lands in the session transcript. Interpolate `"$LAUNCH_TOKEN"` into the
   one request that needs it; the token and the operator URL carrying it stay out
   of every log, screenshot, report and pull request (`Do not touch`).
+  `compose logs` writes the container's log to stdout and its own complaints to
+  stderr, and there is no `2>&1` here on purpose — merging them would feed a
+  daemon error into the pattern and let it be reported as a moved boot line. Both
+  variables hold a credential: print the length, never the value.
 
   The boot line's own format lives in the kit and cannot be checked from this
   repository, so know what this pattern buys and what it does not. The
   `[^A-Za-z0-9_]` before `token=` rejects a `refresh_token=` sharing the line, and
   the value class stops at `&`, a quote or whitespace — so a token carrying `.`,
-  `+`, `=` or `:` is taken whole instead of cut at its first dot. `.*` is greedy,
-  so a line with two *standalone* `token=` parameters yields the last one, and the
-  length is the only thing about the value you may print: it is how you notice a
-  six-character capture. An empty result means the line moved, not that the stand
-  is down — read the kit's README, do not swap in another regex, and never point an
-  unverified value at the operator API.
+  `+`, `=` or `:` is taken whole instead of cut at its first dot. That boundary
+  costs a match, though: a `token=` that opens a line has no character in front of
+  it to satisfy the class, so it is missed — one more reason a NOT FOUND is read
+  as "the line is not what this assumes", never as "the stand is down". `.*` is
+  greedy, so a line with two *standalone* `token=` parameters yields the last one,
+  and the length is the only thing about the value you may print: it is how you
+  notice a six-character capture.
+
+  The two empty outcomes are different findings and must not share a diagnosis.
+  "compose answered, nothing matched" is about the boot line's format, and the
+  kit's README is where that is settled — do not swap in another regex.
+  "compose produced no log" is about a broken command, and its next look is
+  `docker compose ps`, not the README. Either way, never point an unverified
+  value at the operator API.
 
   A launch token expires while a live harness keeps running, so a `401 dsh web
   authentication required` is usually a stale token — but only once you know the
@@ -168,15 +197,16 @@ Two more facts that cost hours when unknown:
 
 ## 4. Run the pass, and prove it
 
-1. Pick the playbook: `smoke.md` after any deploy, `wave.md` for a wave,
-   `signatures.md` when something refuses. Follow the steps as written and
+1. Pick the playbook for the occasion you are in — `release-plugins` §1b orders
+   the kit's set and is its only roster here. Follow the steps as written and
    deviate only where a step fails — then record the deviation, because a step
    that fails is a finding, not an inconvenience.
 2. Do not conclude "the stand is unreachable" from one failed probe: re-check
    later. Do not scan the network for it.
-3. Collect evidence rather than asserting health: the kit's evidence collector
-   reads the plugin logs and returns non-zero on a FAIL. Green gates plus a
-   round without a written protocol and evidence means the round did not happen.
+3. Collect evidence rather than asserting health: run the kit's collector over
+   the logs and let its exit code say the result. What a recorded round must
+   leave behind is `release-plugins` §1b step 3; a pass that leaves nothing is
+   not evidence, whatever the gates said.
 4. UI findings are measured, not eyeballed — see
    `create-plugin/references/client-side.md` §Proving a UI change beyond the
    gates.
