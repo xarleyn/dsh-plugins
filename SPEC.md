@@ -8,6 +8,19 @@
 
 ---
 
+## Document precedence
+
+This SPEC is the architecture brief the monorepo was built to. It stays `Draft` because it records intent rather than the operating procedure, and a command read here is no evidence that the command runs. Where this file and the repository disagree, the repository wins, in this order:
+
+1. **What actually runs** — the scripts in `package.json`, the release configuration in `nx.json`, `.github/workflows/ci.yml`, `.github/workflows/release.yml` and `scripts/`. A check that is not in that set is not a gate.
+2. **The runbooks** — [docs/RELEASING.md](docs/RELEASING.md) for the release procedure and [docs/VERIFICATION.md](docs/VERIFICATION.md) for what each gate asserts. Both are maintained against the code.
+3. **This SPEC** — the target architecture and the reasoning behind it.
+4. **[README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md)** — the contributor-facing restatements of 1–3.
+
+Two release decisions postdate this document, and §13, §14, §17, §18, §20 and §22 now state them: a release run publishes a wave and marks it with one `release/<date>` tag and one GitHub Release, and the version-plan gate is the repository's own `scripts/check-release-plans.mjs` rather than Nx's `release plan:check`. Those sections name the older scheme where it still matters, because live tooling still reads it.
+
+---
+
 ## 1. Purpose
 
 Create a clean, scalable monorepo for multiple DeepSeek Harness (DSH) plugins with:
@@ -50,12 +63,12 @@ Nx must not replace pnpm.
 | Project graph | Nx |
 | Affected build/test/lint | Nx |
 | Task caching | Nx |
-| Release planning | Nx Release |
-| Independent versioning | Nx Release |
-| Changelog generation | Nx Release |
-| Git tags | Nx Release |
-| npm publication orchestration | Nx Release |
-| GitHub Releases | Nx Release / GitHub Actions |
+| Release planning (version plans) | Nx Release |
+| Release versioning and changelogs | Nx Release (`nx release --skip-publish`) |
+| Version-plan gate | `scripts/check-release-plans.mjs` (`pnpm release:check`) |
+| npm publication orchestration | `scripts/publish-release.mjs`, driven by the release workflow through npm OIDC |
+| Git tags | the release workflow — one `release/<date>` wave tag per run (§20) |
+| GitHub Releases | the release workflow — one Release per wave (§20) |
 
 ---
 
@@ -88,9 +101,17 @@ dsh-plugins/
 │  └─ config/
 │
 ├─ tooling/
-│  ├─ generators/
-│  ├─ scripts/
-│  └─ release/
+│  └─ generators/
+│
+├─ scripts/
+│  ├─ check-release-plans.mjs
+│  ├─ publish-release.mjs
+│  ├─ wave-release-notes.mjs
+│  └─ tarball-verify.sh
+│
+├─ docs/
+│  ├─ RELEASING.md
+│  └─ VERIFICATION.md
 │
 ├─ .nx/
 │  └─ version-plans/
@@ -485,10 +506,9 @@ Required capabilities:
 - release planning;
 - independent versioning;
 - changelog generation;
-- dependency-aware version bumps;
-- Git tags;
-- GitHub Releases;
-- publish orchestration.
+- version application, on the release commit (`nx release --skip-publish`).
+
+Dependents are not versioned with their bases (§14), so Nx does no dependency-aware bump here. Tagging, npm publication and the GitHub Release are steps of `.github/workflows/release.yml`, not of Nx (§14, §20).
 
 Do not introduce Nx-specific complexity into plugin source code.
 
@@ -531,10 +551,10 @@ Use file-based version plans.
 Developer workflow:
 
 ```bash
-pnpm nx release plan
+pnpm release:plan
 ```
 
-Example generated plan:
+`release:plan` is `nx release plan` (the `Nx Release` row of §2). Example generated plan:
 
 ```yaml
 ---
@@ -550,37 +570,49 @@ Store plans under:
 .nx/version-plans/
 ```
 
-CI should validate that publishable changes include a version plan.
+A plan file must open with its `---` front-matter fence: Nx silently ignores a plan it cannot parse, so the repository's gate rejects such a file rather than letting a release ship without the entry behind it.
 
-Example:
+CI validates that publishable changes include a version plan:
 
 ```bash
-pnpm nx release plan:check
+pnpm release:check --base="$NX_BASE" --head="$NX_HEAD"
 ```
 
+`release:check` is `node scripts/check-release-plans.mjs`, not `nx release plan:check`. Nx compares one `base..head` range the same way for every project, so on a branch that ran its own release it reports the published work as unreleased and demands plans that release already consumed and deleted; the repository's gate instead anchors each project on the newest release tag its history can reach (§20) and ignores the paths Nx ignores for this decision (`release.versionPlans.ignorePatternsForPlanCheck`). The same command runs locally and in CI, which is what keeps the two answers identical.
+
 This makes version intent explicit in the PR instead of deriving all release semantics only from commit-message conventions.
+
+The contributor procedure and the gate's semantics are owned by [docs/RELEASING.md](docs/RELEASING.md#contributor-flow) and the Version plans row of [docs/VERIFICATION.md](docs/VERIFICATION.md#gate-map).
 
 ---
 
 ## 14. Nx release configuration
 
-Recommended direction:
+Shipped configuration, as `release` in `nx.json`:
 
 ```json
 {
   "release": {
     "projects": [
       "plugins/*",
+      "packages/plugin-log",
       "packages/plugin-kit",
-      "packages/ui-kit"
+      "packages/audit-core",
+      "packages/audit-ui"
     ],
 
     "projectsRelationship": "independent",
 
-    "versionPlans": true,
+    "versionPlans": {
+      "ignorePatternsForPlanCheck": ["**/CHANGELOG.md", "**/package.json"]
+    },
 
     "version": {
       "updateDependents": "never"
+    },
+
+    "git": {
+      "tag": false
     },
 
     "releaseTag": {
@@ -588,9 +620,8 @@ Recommended direction:
     },
 
     "changelog": {
-      "projectChangelogs": {
-        "createRelease": "github"
-      }
+      "workspaceChangelog": false,
+      "projectChangelogs": true
     }
   }
 }
@@ -598,7 +629,13 @@ Recommended direction:
 
 Dependents are not versioned with their bases: every workspace range is a caret, so a minor or patch release of a base resolves without republishing the plugins that depend on it, and a release wave carries only the packages whose code actually changed. A major release of a base needs explicit version plans for its dependents in the same change.
 
-Exact syntax must be verified against the Nx version selected during implementation.
+`Nx Release` versions and writes changelogs and nothing else (`git.tag: false`, `changelog.projectChangelogs: true` with no `createRelease`). The release workflow runs `nx release --skip-publish`, then publishes to npm itself and creates the wave tag and the GitHub Release (§20) — publishing first is what makes a pushed tag mean something.
+
+`releaseTag.pattern` describes the per-package tag shape, which a release run no longer creates. It stays because the tags of the previous scheme are still in the repository's history: `scripts/check-release-plans.mjs` falls back to `{projectName}@*` when the head cannot reach a `release/*` tag, and the `publish_only` recovery path accepts those tags for a release made before the wave scheme. It is the shape of the past releases, not of a new one.
+
+The syntax above is the one the pinned Nx accepts — `nx` in the `tooling` catalog of `pnpm-workspace.yaml`, checked with `pnpm nx release --help`.
+
+The registry preflight and the publish-then-tag order are [docs/RELEASING.md](docs/RELEASING.md#maintainer-flow); how a plan is read and why a malformed one is rejected is [docs/RELEASING.md](docs/RELEASING.md#contributor-flow).
 
 ---
 
@@ -623,16 +660,18 @@ verify tarball
   ↓
 npm publish
   ↓
-Git tag
+one wave tag (release/<date>)
   ↓
-GitHub Release
+one GitHub Release for the wave
   ↓
-attach .tgz
+attach every .tgz of the wave
 ```
 
 Do not make installation directly from a Git repository the primary distribution model.
 
 A prebuilt npm package or `.tgz` avoids unnecessary source builds on the user's DSH instance.
+
+The shipped run of this flow, with the pre-publication registry check and the install-from-registry check that sit between publish and tag, is [docs/RELEASING.md](docs/RELEASING.md#maintainer-flow).
 
 ---
 
@@ -680,6 +719,8 @@ At minimum, verification should ensure:
 - package can be installed from the tarball;
 - plugin can initialize in a minimal DSH-compatible smoke test.
 
+[docs/VERIFICATION.md](docs/VERIFICATION.md#gate-map) names the command behind each of these checks — `pnpm verify:packages` for the manifest and content rules, the per-project `verify` target for the built package, `pnpm tarball:verify` for packing and the clean-room install.
+
 ---
 
 ## 17. CI workflow
@@ -690,22 +731,33 @@ File:
 .github/workflows/ci.yml
 ```
 
-PR pipeline:
+The run has one `prepare` job of repository-wide checks, then one job per selected project:
 
 ```bash
+# prepare — workspace-wide gates, run once
 pnpm install --frozen-lockfile
+pnpm deps:check
+pnpm lint:workspace
+pnpm format
+pnpm check:files
+pnpm verify:logging
+pnpm verify:a11y
+pnpm verify:packages
+pnpm test:release
+pnpm release:check --base="$NX_BASE" --head="$NX_HEAD"
 
-pnpm nx affected -t lint
-pnpm nx affected -t typecheck
-pnpm nx affected -t test
-pnpm nx affected -t build
-
-pnpm nx release plan:check
+# projects — one runner per selected project
+pnpm nx run-many -t lint typecheck test build verify --projects="$NX_PROJECT" --output-style=static
+pnpm tarball:verify:packages "$PACKAGE_DIRECTORY"   # publishable projects only
 ```
 
-CI should use Nx affected calculation so that a change to one plugin does not rebuild every package unnecessarily.
+Affected calculation picks the projects, not the targets: a pull request runs `pnpm nx show projects --affected --base="$NX_BASE" --head="$NX_HEAD" --json` and verifies those, so a change to one plugin does not rebuild every package unnecessarily. A push is the verification of the branch itself, so it takes the whole workspace — selecting a push by `--affected` would silently drop a project the previous run never reached.
 
-Where useful, CI can also run tarball verification only for affected publishable packages.
+Where useful, CI also runs tarball verification for affected publishable packages, and it does: every publishable project in the matrix packs and installs its own tarball.
+
+A third job, `Verify projects`, runs nothing of its own — it only reads the results of `prepare` and the project matrix, so branch protection has one context to require.
+
+The command list and what each gate asserts is [docs/VERIFICATION.md](docs/VERIFICATION.md#local-one-shot); the reason `pnpm release:check` runs on both events is [docs/RELEASING.md](docs/RELEASING.md#contributor-flow).
 
 ---
 
@@ -717,47 +769,39 @@ File:
 .github/workflows/release.yml
 ```
 
-Initial implementation should use manual:
+The run is manual, as recommended, and takes four inputs: `dry_run` (preview), `first_release` (resolve versions from `package.json` because no release tags exist yet), `publish_only` (publish the versions of an already-tagged release commit) and `create_github_releases` (one GitHub Release for the wave, default `true`).
 
-```yaml
-workflow_dispatch:
-```
-
-Recommended flow:
+The shipped flow, in the order the workflow runs it:
 
 ```text
-Manual release trigger
+Manual release trigger (workflow_dispatch on a ref)
         ↓
-checkout
+checkout that ref with the full history
         ↓
 pnpm install --frozen-lockfile
         ↓
-release gates
+apply the committed Nx Version Plans, calculate independent versions, write project changelogs, commit it all (nx release --skip-publish)
         ↓
-apply Nx Version Plans
+select the released packages; preflight npm (every version either exists there or is publishable, every range the wave publishes resolves)
         ↓
-calculate independent versions
+release gates: one runner per released package verifies, packs its tarball and installs that tarball in a clean environment; a second job runs the repository-wide gates and an Nx sweep of everything the release does not publish
         ↓
-update dependency ranges
+publish to npm through OIDC, in dependency order
         ↓
-generate changelogs
+verify every published version installs from the registry
         ↓
-build affected release packages
+tag the wave: one annotated release/<date> tag
         ↓
-pack and verify
+push the release commit and the tag
         ↓
-publish to npm
-        ↓
-commit version/changelog changes
-        ↓
-create Git tags
-        ↓
-create GitHub Releases
-        ↓
-attach .tgz artifacts
+create one GitHub Release for the wave and attach every .tgz
 ```
 
+Two corrections against the flow this section originally sketched: dependency ranges are not rewritten at release time (§14), and the release commit precedes publication rather than following it — nothing is pushed until npm holds every version, which is what makes a pushed tag a claim a consumer can act on.
+
 A later iteration may automate release execution after merge once the pipeline has proven reliable.
+
+The dry-run-then-live maintainer sequence, the `publish_only` recovery and the failure recipes are [docs/RELEASING.md](docs/RELEASING.md#maintainer-flow) and [docs/RELEASING.md](docs/RELEASING.md#failure-recovery).
 
 ---
 
@@ -779,28 +823,35 @@ Use npm provenance where supported.
 
 Do not store broad, long-lived npm publish tokens unless OIDC cannot be used.
 
+The repository ships no `NPM_TOKEN` at all: the workflow publishes through OIDC, and `scripts/publish-release.mjs` runs `npm publish <tarball> --access public` per package, in dependency order. Registering each package's Trusted Publisher, and the one manual first publish a brand-new name needs before Trusted Publishing can answer it, is [docs/RELEASING.md](docs/RELEASING.md#a-new-package-needs-one-manual-first-publish).
+
 ---
 
 ## 20. Git tags and GitHub Releases
 
-Because package versions are independent, tags should include package identity.
+Package versions stay independent (§12), but a release run is one event, so it is marked once: the wave it publishes gets one annotated tag and one GitHub Release.
 
-Preferred pattern:
+```text
+release/2026-09-24
+release/2026-09-22-2
+```
+
+`release/<UTC date>`, with a `-<n>` suffix when that day already carries a wave. The tag is created after npm holds every version of the wave and is pushed with the release commit, so a tag in this repository always names a commit the registry already serves — and the tag list stops growing by one tag per released package.
+
+The GitHub Release has the same shape: one per wave, titled `Release <date>`, with every package's `.tgz` attached and each package's changelog entry in the notes. It is created by `gh release create` in the workflow, not by Nx (§14).
+
+Package identity is still recoverable from a wave tag: the release commit it points at records the version every package in the wave was bumped to, and each project's `CHANGELOG.md` carries the entry its version plan wrote.
+
+The per-package scheme this section originally recommended —
 
 ```text
 @yadsh/dsh-draft-sessions@1.4.2
 @yadsh/dsh-ui-tweaks@0.7.1
 ```
 
-GitHub Releases should be generated per independently released package.
+— is historical, but it is not a dead reference either. Releases made before the wave scheme carry those tags, and three live readers still need them: `scripts/check-release-plans.mjs` falls back to `{projectName}@*` when the head reaches no `release/*` tag; the `publish_only` path of the release workflow accepts a per-package tag as the proof that a release of that older shape was made; and its GitHub Release step keeps a per-package loop for a released ref that carries no wave tag. Do not read that fallback as the target shape, and do not mint new tags of that form — the wave tag is the only tag a release run creates.
 
-Each GitHub Release should ideally include:
-
-- package name;
-- version;
-- generated changelog;
-- installation command;
-- `.tgz` release asset.
+See [docs/RELEASING.md](docs/RELEASING.md#maintainer-flow) for the order that produces the tag and [docs/RELEASING.md](docs/RELEASING.md#failure-recovery) for what a missing tag or release is recovered with.
 
 ---
 
@@ -853,27 +904,31 @@ The generator should make adding a new plugin a near-zero-boilerplate operation.
 
 ## 22. Repository-level scripts
 
-Root `package.json` should provide convenient commands such as:
+Root `package.json` provides the convenient commands — this excerpt is the current file:
 
 ```json
 {
   "scripts": {
     "build": "nx run-many -t build",
-    "test": "nx run-many -t test",
+    "test": "pnpm test:release && nx run-many -t test",
     "typecheck": "nx run-many -t typecheck",
-    "lint": "nx run-many -t lint",
+    "lint": "pnpm lint:workspace && nx run-many -t lint",
+    "check": "pnpm lint && pnpm format && pnpm typecheck && pnpm test && pnpm build && pnpm check:files && pnpm verify && pnpm deps:check",
 
     "affected:build": "nx affected -t build",
     "affected:test": "nx affected -t test",
-    "affected:check": "nx affected -t lint,typecheck,test,build",
+    "affected:check": "nx affected -t lint typecheck test build verify",
 
     "release:plan": "nx release plan",
-    "release:check": "nx release plan:check"
+    "release:check": "node scripts/check-release-plans.mjs",
+    "release:dry-run": "nx release --dry-run"
   }
 }
 ```
 
-Exact scripts may be adjusted to Nx CLI behavior in the selected version.
+`check` is the local one-shot a contributor runs before opening a PR, and `release:check` is the version-plan gate §13 describes — a repository script, not `nx release plan:check`, and the identical command CI runs. The block is an excerpt of the root `package.json`, which is where these commands are defined: the runbooks restate them, they do not own them.
+
+[docs/VERIFICATION.md](docs/VERIFICATION.md#local-one-shot) walks the order `check` runs and [docs/VERIFICATION.md](docs/VERIFICATION.md#gate-map) says what each gate asserts.
 
 ---
 
@@ -1140,9 +1195,9 @@ This architecture does not attempt to:
 - configure independent Nx releases;
 - configure version plans;
 - generate changelogs;
-- create per-package Git tags;
 - publish to npm;
-- create GitHub Releases;
+- create one `release/<date>` wave tag per release run (§20);
+- create one GitHub Release per release run (§20);
 - attach `.tgz` artifacts;
 - configure npm Trusted Publishing/OIDC.
 
@@ -1173,9 +1228,9 @@ The implementation is complete when all of the following are true:
 - [ ] Each plugin can have an independent version.
 - [ ] Release intent can be declared using Nx Version Plans.
 - [ ] CI verifies version plans where appropriate.
-- [ ] Release pipeline generates changelogs and Git tags.
+- [ ] Release pipeline generates changelogs and the wave tag.
 - [ ] Release pipeline can publish affected packages to npm.
-- [ ] GitHub Releases are generated per released plugin.
+- [ ] One GitHub Release per release run carries every released package's changelog and `.tgz` (§20).
 - [ ] `.tgz` artifacts are attached to releases.
 - [ ] Packed tarballs are smoke-tested before publication.
 - [ ] npm publication uses OIDC/Trusted Publishing if supported.
