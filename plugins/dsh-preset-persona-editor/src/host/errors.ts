@@ -13,7 +13,7 @@ declare module "@deepseek-ai/dsh-typert-protocol" {
   interface RemoteErrorDetailsMap {
     /** The roster does not know this preset id. */
     "preset-persona/not-found": { agentPreset: string };
-    /** A draft this editor would produce is refused before it is used. */
+    /** The validation rules refuse a persona draft or a section list. */
     "preset-persona/invalid": { agentPreset: string; reason: string };
     /** The deployment does not mount a service this editor needs. */
     "preset-persona/unavailable": { service: string };
@@ -40,7 +40,16 @@ export function notFound(
   );
 }
 
-/** The request is refused before anything is written. */
+/**
+ * The validation rules refuse a persona draft or a section list.
+ *
+ * Decision D2 took the write operations out of this namespace, so nothing
+ * inside the plugin raises it any more: `src/host/validation.ts` stays the
+ * package's exported library for the write path `docs/DSH-0.1.7-MIGRATION.md`
+ * §10 describes, and the browser keeps its branch on this code so that whenever
+ * those rules do run, the refusal arrives as its reason rather than as a bare
+ * failure.
+ */
 export function invalid(
   agentPreset: string,
   reason: string,

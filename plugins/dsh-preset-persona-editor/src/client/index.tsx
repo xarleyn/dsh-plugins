@@ -76,7 +76,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             name: "settings.section",
             id: "preset-persona",
             // Ordered after the deployment's Agent Presets section (20): this
-            // page edits one field of what that page composes.
+            // page reads back one part of what that page composes.
             order: 21,
             label: strings.nav,
             inject: () => registered,
