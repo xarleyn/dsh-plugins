@@ -1,10 +1,13 @@
 import { spawn, type ChildProcess } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { existsSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
-import { createServer } from "node:http";
+import http, { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+
+import { expect } from "vitest";
 
 import { chromium } from "playwright";
 
@@ -167,6 +170,72 @@ export async function removeProfileDir(userDataDir: string): Promise<void> {
     maxRetries: 10,
     retryDelay: 250,
   });
+}
+
+/**
+ * Ask a browser's DevTools server the two hops an endpoint makes — the
+ * `/json/version` question an `http` endpoint asks and the `ws` upgrade its
+ * answer names — under headers that are written down rather than inferred.
+ *
+ * Which request a browser answers is the browser's own decision, taken before
+ * this runtime is involved, and it is the question a deployment asks its sidecar
+ * guide. So the request leaves carrying the header the guide is being checked on:
+ * `host` is the literal `Host` value to send, and `origin` is the `Origin` a page
+ * puts on a request it starts from itself.
+ *
+ * The answer is a status code; a browser that is not there at all fails the probe
+ * rather than answering, so a refusal is never read off a process that never came
+ * up.
+ *
+ * Every question goes out over its own connection (`agent: false`): a Node socket
+ * pooled after one request would carry the next header over the connection the
+ * browser is already done with, and the reset that follows reads as an answer the
+ * browser never gave.
+ */
+export async function devToolsHostProbe(
+  debugPort: number,
+): Promise<
+  (request: {
+    readonly host: string;
+    readonly socket?: boolean;
+    readonly origin?: string;
+  }) => Promise<number>
+> {
+  const version = (await (
+    await fetch(`http://127.0.0.1:${String(debugPort)}/json/version`)
+  ).json()) as { webSocketDebuggerUrl?: string };
+  expect(typeof version.webSocketDebuggerUrl).toBe("string");
+  const socketPath = new URL(version.webSocketDebuggerUrl ?? "").pathname;
+  return ({ host, socket = false, origin }) =>
+    new Promise<number>((resolve, reject) => {
+      const headers: Record<string, string> = { host };
+      if (origin !== undefined) headers["origin"] = origin;
+      if (socket) {
+        headers["connection"] = "Upgrade";
+        headers["upgrade"] = "websocket";
+        headers["sec-websocket-key"] = randomBytes(16).toString("base64");
+        headers["sec-websocket-version"] = "13";
+      }
+      const request = http.request(
+        {
+          host: "127.0.0.1",
+          port: debugPort,
+          path: socket ? socketPath : "/json/version",
+          headers,
+          agent: false,
+        },
+        (response) => {
+          response.resume();
+          resolve(response.statusCode ?? 0);
+        },
+      );
+      request.on("upgrade", (_response, socketStream) => {
+        socketStream.destroy();
+        resolve(101);
+      });
+      request.on("error", reject);
+      request.end();
+    });
 }
 
 /**

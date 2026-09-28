@@ -188,7 +188,14 @@ IP address or `localhost` — on the `/json/version` question an `http` endpoint
 asks and on the `ws` upgrade that answer names, both read off a live browser in
 §40.2 — so a container's service name clears `allowRemoteCdpEndpoint` and is then
 refused by the browser itself, and the session fails to start. DOCKER.md writes
-the address form for that reason. A person who can reach that host can reach the
+the address form for that reason, and disowns `--remote-allow-origins` as the way
+out of it: the flag guards the other header, the `Origin` of an upgrade, and §40.2
+reads both halves off a live browser — an upgrade carrying a page's origin is
+refused where the flag is unset and carried through where it is `*`, while the name
+in `Host` is refused with the flag set exactly as it is without it. So the switch
+moves a check this deployment is not failing, and what it gives up is the guard
+that keeps a page the browser loads from dialling its own DevTools endpoint. A
+person who can reach that host can reach the
 browser, which is a property of the deployment the operator built — the runtime
 documents it and does not promise otherwise.
 
@@ -2366,10 +2373,17 @@ drives back as a target of *that* browser, and leaves the process running when i
 own teardown ends. That run also puts to the browser the question §3.3 leaves with
 it: what answer each shape of `Host` header gets — an address and `localhost`
 answered, a container's name refused on the `/json/version` hop and on the `ws`
-upgrade alike, which is why DOCKER.md writes an address — and it asks the same
-question of a browser started with `--remote-allow-origins`, the switch that guide
-disowns, because "the name stays refused with it set" is an answer only a browser
-that was given the flag can give. Each attach case finds
+upgrade alike, which is why DOCKER.md writes an address. The same two browsers are
+then asked about the other header the endpoint judges, so that the guide's sentence
+about the switch it disowns is read off a browser that was given it: an upgrade
+carrying a page's `Origin` is refused by the Chromium started without
+`--remote-allow-origins` and carried through by the one started with
+`--remote-allow-origins=*` — the reading that separates the two processes, without
+which every other assertion here would hold for a browser that never had the flag —
+while the name is refused on both hops of the flagged browser too, which is what
+makes the switch useless for the address problem and not merely neutral: what it
+opens is the endpoint's own protection against a page the browser loads dialling
+back into it. Each attach case finds
 its own browser through the same search the launch path uses, and a run that was
 asked for and found nothing fails saying so rather than skipping: a skipped
 attach case would read as a check that passed. The suite is opt-in elsewhere in

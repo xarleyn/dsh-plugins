@@ -65,12 +65,18 @@ browser before this plugin has any say in it —
 the check guards both hops, the `/json/version` question an `http` endpoint asks
 and the `ws` upgrade that answer names. So `http://chromium:9222` and
 `http://host.docker.internal:9222` cannot be made to work by resolution, and
-`--remote-allow-origins` is not the lever: it guards the `Origin` header, and the
-name was still refused with it set. Nor does the `ws` form rescue it — the upgrade
-carries the same header, so the "try connecting via ws://" advice Playwright
-prints with this failure walks into the same refusal. Pin the sidecar's address on
-the compose network, or share its network namespace and dial the loopback, which
-needs no switch either:
+`--remote-allow-origins` is not the lever: it guards a different header, the
+`Origin` of an upgrade, and the name was refused with it set — on both hops,
+exactly as it is without it. That guard is worth keeping, too. A browser started
+without the flag turns down an upgrade carrying a page's `Origin` (HTTP 403),
+which is what keeps a site the browser happens to visit from dialling its own
+DevTools endpoint — a dial started by a page always carries that header;
+`--remote-allow-origins=*` answers that upgrade, so it lets any page's dial
+through, and fixes nothing about the name.
+Nor does the `ws` form rescue it — the upgrade carries the same `Host` header, so
+the "try connecting via ws://" advice Playwright prints with this failure walks
+into the same refusal. Pin the sidecar's address on the compose network, or share
+its network namespace and dial the loopback, which needs no switch either:
 
 ```yaml
 services:
