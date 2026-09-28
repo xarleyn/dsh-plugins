@@ -204,6 +204,15 @@ which is the same fact the endpoint is loopback-only by default for. Two runtime
 on one endpoint is a deployment choice, and it is visible in one place — whoever
 holds the endpoint can drive the browser.
 
+Both of those are the browser's answer rather than this code's, and §40.2 reads
+them off a live Chromium: a second connection to the same endpoint writes a marker
+into the context that browser arrived with, and a session of this runtime on that
+very origin finds neither the cookie nor the stored value, while the origin §17.3
+refuses for that session is still served to the other tab. A fake cannot stand in
+for either reading — it hands over the objects it was built with, so it can neither
+leak a driver's storage into a session nor refuse a request on a route it never
+installed.
+
 ---
 
 ## 4. Scope by delivery phase
@@ -1165,7 +1174,9 @@ The user may log in through the Browser panel once human control exists.
 builds, and an attached browser arrives with a context of its own — the owner's
 cookies, logins and storage — which the runtime neither takes up for a session nor
 reads: every session is built with `newContext` and none is handed that default
-context.
+context. The second half is read off a live browser in §40.2: a session opened on
+the origin that other context wrote to finds neither its cookie nor its stored
+value, and the marker the session writes never reaches it.
 
 ### 19.2 Named profiles
 
@@ -2327,8 +2338,17 @@ is pinned in the unit suite. The gates are read back on that borrowed browser as
 well — the navigation refusal, the refused socket handshake, and the rule that no
 service worker of the session reaches the network outside the gate — because the
 unit suite registers a route handler and calls it itself, which says nothing about
-whether an attached browser obeys it. The `http` and the `ws` form §3.3 documents
-are both dialled there, because they are two ways of learning where to connect: an
+whether an attached browser obeys it. A second driver on that endpoint is measured
+in the same run, because §3.3 makes two promises about that coexistence and the
+browser, not this code, keeps them: a page opened through another connection, in
+the context the browser arrived with, writes a cookie and a stored value on an
+origin, and a session of this runtime reaches that origin and reads neither; the
+origin §17.3 refuses for that session is served to the other tab, and the fixture
+records the request. No fake answers either reading — it hands over the objects it
+was built with, so it can neither carry one driver's storage into another driver's
+session nor refuse a request on a route nobody installed. The `http` and the `ws`
+form §3.3 documents are both dialled there, because they are two ways of learning
+where to connect: an
 `http` one asks that server for the address to dial next, while a `ws` one is
 dialled as written, which is why a deployment that must pin the address writes it.
 An `http`-only run would leave that form untried against a real browser, so the

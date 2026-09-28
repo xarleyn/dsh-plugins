@@ -70,7 +70,13 @@ it without asking anything where to go next, and an `http`-only run would have l
 that form untried against a real browser. The two secure spellings ride the same
 two branches, and the suite that runs on every `pnpm test` holds a case for each of
 the four, so a scheme dropped from the gate reddens the case standing for it rather
-than quietly turning a documented form into a refusal. Each attach case finds its
+than quietly turning a documented form into a refusal. The run also puts a second
+driver on that endpoint, the shape the Harness's own browser tool makes of a shared
+Chromium: a page opened through another connection, in the context the browser
+arrived with, neither lends its cookies and storage to a session of this plugin nor
+takes one, and the origin this plugin's policy refuses for a session is served to
+it — the two promises about coexisting drivers, read off a live browser instead of
+asserted. Each attach case finds its
 browser through the same search the launch path uses, so a
 run that was asked for and found nothing fails saying so — an attach case that
 quietly skipped would be the one result nobody could read. That run needs one
