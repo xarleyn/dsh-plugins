@@ -1,11 +1,11 @@
 /**
- * The persona page: the preset roster as cards, each opening its persona
- * editor in the card body.
+ * The persona page: the preset roster as cards, each opening the persona that
+ * preset composes.
  *
  * Registered into `settings.section`, beside the deployment's own Agent
- * Presets page. It is a page rather than a configuration card on purpose: the
- * thing it edits is a composition file, not a settings namespace, and its data
- * arrives over this plugin's own Remote namespace.
+ * Presets page. It is a page rather than a configuration card on purpose: what
+ * it shows is a composition the preset registry renders, not a settings
+ * namespace, and its data arrives over this plugin's own Remote namespace.
  * @module client/PersonaPage
  */
 

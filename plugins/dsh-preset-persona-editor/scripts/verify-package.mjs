@@ -67,8 +67,8 @@ await runVerifyPackage({
       /Declared composition/u,
     ],
     notMatches: [
-      // The browser half edits text; the YAML surgery and the file-system
-      // writer stay host-side, so no node built-in may reach the bundle.
+      // The browser half renders what the host read; the YAML parsing stays
+      // host-side, so no node built-in may reach the bundle.
       /\brequire\(\s*["']node:/u,
       /\brequire\(\s*["']yaml["']\s*\)/u,
       /\bfrom\s*["']yaml["']/u,

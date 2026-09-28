@@ -46,7 +46,12 @@ import {
 import { notFound } from "./errors.js";
 import { reasonOf } from "./validation.js";
 
-/** Why a composition could not be read, in the host's own words. */
+/**
+ * Why a composition could not be read, in this page's words rather than the
+ * host's: a registry that publishes no `readDocument()` throws nothing whose
+ * text could be quoted, so the alternative is a bare `TypeError` on the card.
+ * SPEC.md §2 keeps the two kinds of reason apart.
+ */
 const NO_READ_DOCUMENT =
   "the deployment's agent-preset registry does not answer readDocument(), so no composition can be read";
 
