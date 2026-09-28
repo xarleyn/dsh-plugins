@@ -1330,13 +1330,24 @@ Presets are convenience only; custom size is optional.
 
 Useful statuses:
 
-- Starting Chromium…
+- Starting Chromium… — or, in `attach` mode, Connecting to the browser…
 - Loading…
 - Agent controlling
 - Human controlling
 - Browser crashed
+- Browser connection lost
 - Navigation blocked
 - Reconnecting stream…
+
+The first entry is the only line `runtime.mode` (§3.3) changes, and it changes
+because the modes wait for different things: `launch` starts a process this
+runtime owns, `attach` dials a link to a process it does not, so a strip reading
+as a launch would describe a process the deployment never started. The two losses
+are separate statuses rather than one status with two wordings, because they are
+separate observations: `crashed` is this runtime's own process dying, which is the
+one case with a crash log to go and read, while a dropped CDP link says nothing
+about whether the browser behind it still runs — and an attached browser is never
+reported as crashed at all (§7.5).
 
 ---
 
@@ -2324,6 +2335,8 @@ For every tool:
 - frame sizing;
 - viewport letterbox;
 - auto reveal;
+- the wait for a first page, worded for the mode that owns or borrows the
+  browser (§21.5);
 - disconnected state;
 - crash state.
 
