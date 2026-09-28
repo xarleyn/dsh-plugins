@@ -15,10 +15,9 @@ expensive one is the third, and it has already happened once in this repository
 Center instance, so every tool of that provider could never work, and it took a
 hand-written `curl` session on the stand to find out.
 
-Use this page when: you add or change a provider, add a *second product* to an
-existing one (see [Adding a second product](#adding-a-second-product-to-a-provider)),
-you are verifying a release against a stand, or a user reports "the tools do
-not answer".
+Use this page when: you add a provider (§4), change one, add a *second product*
+to an existing one (§5), you are verifying a release against a stand, or a user
+reports "the tools do not answer".
 
 Everything below uses synthetic addresses (`jira.example.corp`,
 `git.example.com`, «Демо-продукт») so this page can live in a public
@@ -204,7 +203,51 @@ declaration is refused at connect with the value that fixes it.
 Acceptance for a self-hosted wiki: put the context path in `baseUrl`
 (`https://wiki.example.corp/confluence`), not in a path the provider appends.
 
-## 4. Adding a second product to a provider
+## 4. Adding a provider
+
+The anatomy has one home:
+`plugins/dsh-qa-integrations/src/providers/README.md` — «Что должен реализовать
+новый провайдер» with its numbered list, and the section after it naming what
+the package gate enforces. That page owns both, so this one does not repeat
+them. What neither page had was the order of work around the anatomy, because
+every provider so far was added by a session that started by re-deriving the
+shape of its neighbours.
+
+1. **Spec before code** — `plugins/dsh-qa-integrations/docs/specs/providers-<id>.md`,
+   in the shape the existing specs have: the endpoints, the identity read, the
+   paging, the allow-list of reading paths, and the compatibility section naming
+   which products the provider speaks.
+2. **Copy the newest provider, not the shortest one.** Name it instead of
+   trusting this page:
+   `git log --diff-filter=A --format=%h --name-only -- 'plugins/dsh-qa-integrations/src/providers/*/index.ts' | head`
+   — the first directory the output names is the last one added, because `git
+   log` walks commits newest-first. Do not read a date column for that order:
+   `%ad` prints author dates while the walk is by commit dates, and on a base
+   built from merges and rebases the two disagree, so the newest directory stops
+   being the top line. Tool names, capability flags and token-scope names follow
+   that neighbour.
+3. Work the numbered list in the providers README top to bottom. Where fitting a
+   new provider means changing something generic, the change belongs in
+   `providers/kernel/` or `providers/shared/`; the rule against a second copy
+   inside the provider is that README's to state, not this page's.
+4. Build, then run the package's own gate —
+   `pnpm --filter @yadsh/dsh-qa-integrations build` followed by
+   `pnpm --filter @yadsh/dsh-qa-integrations verify`; then §1's probe and §2's
+   acceptance rows against a real instance, and §6's negative cases.
+5. Public text last: the package `README.md` and the user-visible strings of the
+   credential help ship in the tarball, so they carry synthetic values only
+   (`PROJ-123`, `jira.example.corp`, «Демо-продукт»). The help is a family, not a
+   file — `src/providers/<id>/credential-help.ts` for every provider plus
+   `src/providers/shared/credential-help.ts`, the operator section
+   `src/client/operator-sections/credential-help.tsx`, and the shared card copy
+   in `src/client/copy.ts` — so grep the set rather than opening one file and
+   calling the check done. A deployment's custom field names, space keys and
+   project keys are operator **config** — never a fixture, an example, or a commit
+   (AGENTS.md, "No internal identifiers in public content").
+6. A version plan for the package, then the pull request against the branch the
+   release line is on — not against `main`.
+
+## 5. Adding a second product to a provider
 
 The recipe that would have caught the Atlassian data-centre gap **before** the
 code was written. Do these in order and write the answers down; a mismatch here
@@ -228,7 +271,7 @@ is a design decision, not a bug to discover later.
 6. **Run this playbook against both products** on the stand, and paste the
    probe output of both into the PR.
 
-## 5. Negative cases worth running by hand
+## 6. Negative cases worth running by hand
 
 These are the ones a gate cannot prove either, and each has a distinct message
 the user must be able to read:
@@ -250,7 +293,7 @@ the user must be able to read:
 - **A name filter that resolves to nobody, or to several people** — refused
   with the identifier to pass instead of an empty page.
 
-## 6. Recording the result
+## 7. Recording the result
 
 Paste into the PR (or the deployment's round playbook) the smallest set that
 lets a reviewer re-run it:
