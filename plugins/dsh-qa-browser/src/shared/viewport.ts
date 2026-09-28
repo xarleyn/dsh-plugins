@@ -5,6 +5,10 @@ import type { BrowserViewport } from "../types.js";
  * that may resize a tab — the agent's `browser_viewport` tool and the QA
  * panel's device controls — so a browser chrome cannot reach a size the model
  * is not allowed to ask for.
+ *
+ * Shared rather than Host: the panel reads the same numbers for its inputs'
+ * min/max, and a client bundle must not reach into `src/host/**`. Pure and
+ * dependency-free, so the browser build inlines it without the Node runtime.
  */
 export const VIEWPORT_BOUNDS = {
   width: { min: 320, max: 7_680 },
