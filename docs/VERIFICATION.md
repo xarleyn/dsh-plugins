@@ -48,7 +48,7 @@ checkout happens to hold.
 | Gate | Command | Asserts |
 | --- | --- | --- |
 | Dependency boundaries | `pnpm deps:check` (`scripts/check-dependencies.sh`) | Plugins may depend on shared packages, never the reverse; DSH runtime packages are peers, not dependencies; no cross-package relative imports; a plugin→plugin edge only if `plugin-dependency-allowlist.json` declares it with a reason (§27.11); a range a named catalog holds is declared through the catalog, peers excepted, and the remaining literal ranges are listed as advice so a shared range staying literal is a seen decision (§27.12) |
-| Package hygiene | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | Every plugin exposes the canonical `check`/`verify`/`prepack` contract, uses pnpm, and only calls declared local scripts; every publishable package declares `compatibility.json`, `cordis.patch.yml`, `LICENSE`, `README.md`; `types` points at a standard `lib/` layout; every `.nx/version-plans/*.md` file parses the way Nx reads it (front-matter fence, known package, valid bump, changelog message); a version plan naming the qa-surface project requires a newer curated entry in `QaChangelog.tsx`; a plugin declaring `dsh.client` keeps a script that asserts its full package name, and a plugin registering a configuration card (`settings.plugin.item` or, after the `0.1.7` slot rename, `plugins.row.config`; a card that stays on `settings.plugins.tab` counts when its sources carry the shell) keeps a script that runs the card contract |
+| Package hygiene | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | Every plugin exposes the canonical `check`/`verify`/`prepack` contract, uses pnpm, and only calls declared local scripts; every publishable package declares `compatibility.json`, `cordis.patch.yml`, `LICENSE`, `README.md`; `types` points at a standard `lib/` layout; every `.nx/version-plans/*.md` file parses the way Nx reads it (front-matter fence, known package, valid bump, changelog message); a version plan naming the qa-surface project requires a curated entry in `QaChangelog.tsx` whose `version:` is exactly the version those plans bump to (`AGENTS.md` §QA surface release notes owns the rule); a plugin declaring `dsh.client` keeps a script that asserts its full package name, and a plugin registering a configuration card (`settings.plugin.item` or, after the `0.1.7` slot rename, `plugins.row.config`; a card that stays on `settings.plugins.tab` counts when its sources carry the shell) keeps a script that runs the card contract |
 | Discoverability | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | Every publishable manifest carries canonical monorepo metadata (`repository.directory`, `homepage`, `bugs.url`), a description naming DeepSeek Harness/DSH, and the canonical keyword set plus feature words; the root `plugins.json` catalog and the README package table match the workspace manifests — the manifest lists published packages, the README table also documents private build tooling (`pnpm plugins:manifest` regenerates both); `plugins.json` additionally validates against `docs/plugins.schema.json`, and unknown schema keywords fail the gate instead of silently skipping the check |
 | Published content | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | A tarball carries the runtime, the bundle patch, compatibility data, legal notices, the README, and the images it embeds — never specs, changelogs, roadmaps, design docs, integration notes, or README translations; every relative link in a published README resolves inside the tarball, so the package page shows no dead links |
 | Logging contract | `pnpm verify:logging` (`scripts/verify-plugin-logging.mjs`) | Plugins write logs through `@yadsh/dsh-plugin-log` conventions (see [PLUGIN_LOGGING.md](PLUGIN_LOGGING.md)) |
@@ -135,7 +135,22 @@ and — the expensive one — a provider that speaks a different API than the
 instance serves. Those are covered by
 [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md), which carries the probe
 command (`scripts/probe-provider.mjs`), the per-provider acceptance steps, the
-negative cases, and the checklist for adding a second product to a provider.
+negative cases, the order of work for adding a provider, and the checklist for
+adding a second product to a provider.
+
+Nothing above opens the page either. A surface that overflows its container, a
+settings card that never appears for a non-loopback browser, a card state that
+does not match the first-party shell, and a client bundle that dies on mount all
+pass the whole gate set: the bundle gates assert its identity and
+self-containedness, the card-contract gate asserts the shell's text, and neither
+renders it. The proof is a measurement and a screenshot of each state the shell
+contract names, beside a first-party card, on a stand — the steps are in the
+`create-plugin` skill's `client-side` reference (§Proving the card you just
+registered, §Proving a UI change beyond the gates), and the round it belongs to
+is recorded under [Stand acceptance](#stand-acceptance). That pointer is a name
+rather than a file link on purpose: nothing in the gate set resolves a link from
+`docs/**` into `.agents/**`, so such a link rots silently whenever a skill is
+reorganized, while a name still says which skill to open.
 
 Two files [PLUGIN_GUIDELINES.md](PLUGIN_GUIDELINES.md) §4.1 lists are
 **not** gated, deliberately: `tsdown.config.ts`, which seven host-only plugins
@@ -190,5 +205,8 @@ matches all pass lint, typecheck, test and verify. A wave that will be deployed
 is therefore accepted on a stand as well. The deployment kit carries the manual
 playbooks — smoke after every deploy, wave acceptance with a row per changed
 package, and a refusal-to-cause reference — together with the evidence collector
-each round is recorded by. Run that pass on the test stand before moving the
-deployment's plugin list, and repeat the smoke pass on the deployment itself.
+each round is recorded by. Those are roles, not paths: the kit's file names are
+listed once, in the `release-plugins` skill §1b, and `qa-stand-run` is the route
+a single plugin change takes to the same pass. Run that pass on the test stand
+before moving the deployment's plugin list, and repeat the smoke pass on the
+deployment itself.
