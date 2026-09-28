@@ -102,6 +102,72 @@ describe("reading presets", () => {
     );
   });
 
+  it("says a refusal that belongs to the host once for the roster it covers", async () => {
+    const logger = recordingLogger();
+    const roster = rosterOf(
+      {
+        one: { content: OWNED_PRESET },
+        two: { content: INHERITED_PRESET },
+        three: { content: OWNED_PRESET },
+      },
+      "one",
+      { withoutReadDocument: true },
+    );
+    const catalog = await readCatalog(roster, logger);
+    expect(catalog.presets).toHaveLength(3);
+    // The registry either publishes `readDocument()` or it does not, so three
+    // rows refused the same way are one fact about the deployment. Answered per
+    // row, every visit to Settings cost this deployment three identical `warn`
+    // lines for that one fact, and the roster grows with it.
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "preset-persona.composition-refused",
+      {
+        agentPreset: "one, two, three",
+        reason: expect.stringMatching(/does not answer readDocument/u),
+      },
+    );
+  });
+
+  it("keeps a refusal that belongs to one preset beside that preset", async () => {
+    const logger = recordingLogger();
+    const roster = rosterOf({
+      healthy: { content: OWNED_PRESET },
+      retired: { content: null },
+      alsoHealthy: { content: INHERITED_PRESET },
+    });
+    await readCatalog(roster, logger);
+    // Grouping by reason must not merge what the registry refused for its own
+    // reasons: this is one preset's fact, and the id that names it is the whole
+    // content of the line.
+    expect(logger.warn).toHaveBeenCalledTimes(1);
+    expect(logger.warn).toHaveBeenCalledWith(
+      "preset-persona.composition-refused",
+      {
+        agentPreset: "retired",
+        reason: expect.stringContaining("Unknown agent preset: retired"),
+      },
+    );
+  });
+
+  it("reads the composition of the preset the roster resolved", async () => {
+    // `resolve(id?)` answers the deployment's default when the id is left out —
+    // the installed class reads `id ?? this.defaultId` — while `readDocument()`
+    // looks the id up exactly, with no such fallback. Asking with the request
+    // rather than the answer would hand back the default preset's document under
+    // `Unknown agent preset: undefined`. The Remote's parameter is typed, but the
+    // face it drives keeps the host's optional one.
+    const roster = rosterOf({ demo: { content: OWNED_PRESET } }, "demo");
+    const document = await readDocument(
+      roster,
+      undefined,
+      undefined as unknown as string,
+    );
+    expect(document.id).toBe("demo");
+    expect(document.readError).toBe("");
+    expect(document.persona.prefix).toBe("You are the shipped demo persona.");
+  });
+
   it("says the registry has no readDocument, instead of blaming the presets", async () => {
     const logger = recordingLogger();
     const roster = rosterOf({ demo: { content: OWNED_PRESET } }, "demo", {
