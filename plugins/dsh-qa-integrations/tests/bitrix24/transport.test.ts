@@ -5,7 +5,7 @@ import { CREDENTIAL } from "./shared.js";
 /**
  * The provider-level proof that the Bitrix24 transport *uses* the shared
  * reader: the fine-grained boundary cases of that reader live in
- * `tests/provider-http.test.ts`, and what matters here is the wiring and the
+ * `tests/kernel/http.test.ts`, and what matters here is the wiring and the
  * order of the transport's own decisions.
  */
 const JSON_HEADERS = { "content-type": "application/json" };
