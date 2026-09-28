@@ -26,7 +26,7 @@
     },
     "plugins": {
       "type": "array",
-      "description": "Every publishable package in the monorepo, ordered by directory.",
+      "description": "Every publishable package in the monorepo, ordered by directory. Each entry declares its kind, so a reader can tell a package the Host registers from a package a consumer imports.",
       "items": {
         "type": "object",
         "additionalProperties": false,
@@ -36,6 +36,7 @@
           "path",
           "description",
           "keywords",
+          "kind",
           "install",
           "homepage",
           "client"
@@ -62,9 +63,14 @@
             "items": { "type": "string" },
             "description": "Package keywords, copied from its package.json."
           },
+          "kind": {
+            "type": "string",
+            "enum": ["plugin", "library"],
+            "description": "Install contract of the package: \"plugin\" is a standalone DSH plugin the Host registers (it declares dsh.bundle and ships a Cordis patch), \"library\" is a shared runtime package another package imports and cannot be registered."
+          },
           "install": {
             "type": "string",
-            "description": "Install command for a DSH profile."
+            "description": "Install command matching the kind: profile plugin registration for a plugin, package-manager dependency add for a library."
           },
           "homepage": {
             "type": "string",

@@ -584,8 +584,8 @@ export function validateDiscoverability(directory, repoRoot = process.cwd()) {
  * The root README is the human entry point to the published set, so its package
  * table is a second catalog beside `plugins.json`: a package missing from it is
  * invisible to a reader who never opens the JSON, and a row that still calls a
- * published package "private" misstates which npm names `dsh plugin add` can
- * install. The gate keeps both catalogs listing the same package set.
+ * published package "private" misstates which npm names are published, and so
+ * installable at all. The gate keeps both catalogs listing the same package set.
  */
 export function findReadmeCatalogGaps(repoRoot = process.cwd()) {
   const readmePath = path.join(repoRoot, "README.md");

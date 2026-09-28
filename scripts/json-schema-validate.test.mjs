@@ -112,9 +112,25 @@ test("unknown properties validate against an object additionalProperties", () =>
   ]);
 });
 
+test("enum accepts only the values the schema lists", () => {
+  const kind = { type: "string", enum: ["plugin", "library"] };
+  assert.deepEqual(validateAgainstSchema("plugin", kind), []);
+  assert.deepEqual(validateAgainstSchema("library", kind), []);
+  assert.deepEqual(validateAgainstSchema("widget", kind), [
+    '$: expected one of "plugin", "library", received "widget"',
+  ]);
+  assert.deepEqual(validateAgainstSchema(7, kind), [
+    "$: expected string, received number",
+    '$: expected one of "plugin", "library", received 7',
+  ]);
+  assert.throws(
+    () => validateAgainstSchema("plugin", { enum: "plugin" }),
+    /schema\.enum must be an array/u,
+  );
+});
+
 test("unsupported validation keywords throw instead of passing silently", () => {
   for (const keyword of [
-    { enum: ["a"] },
     { oneOf: [{ type: "string" }] },
     { anyOf: [{ type: "string" }] },
     { allOf: [{ type: "string" }] },

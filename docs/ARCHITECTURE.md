@@ -26,7 +26,11 @@ Publishability is decided per package, not by directory: anything a published
 plugin imports at runtime must be publishable and in the Nx release project
 list, while workspace-only build/test helpers stay `private`. `pnpm
 plugins:manifest` regenerates the root `README.md` table and `plugins.json` from
-the manifests, so those two carry the authoritative list.
+the manifests, so those two carry the authoritative list. Each catalogued entry
+also records which install contract it honors: `plugin` for a package declaring
+`dsh.bundle`, registered on a profile with `dsh plugin --profile <profile> add`,
+and `library` for a shared package under `packages/` that a consumer installs
+with `pnpm add` and the Host never loads as a plugin.
 
 ## Host process vs browser client
 
