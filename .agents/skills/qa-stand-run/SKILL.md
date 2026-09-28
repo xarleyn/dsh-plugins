@@ -152,7 +152,7 @@ Two more facts that cost hours when unknown:
   ```bash
   if LAUNCH_LOG=$(cd "$KIT" && docker compose logs qa); then
     LAUNCH_TOKEN=$(printf '%s\n' "$LAUNCH_LOG" \
-      | sed -n 's/.*[^A-Za-z0-9_]token=\([^&"[:space:]]*\).*/\1/p' | tail -1)
+      | sed -nE "s/.*(^|[^A-Za-z0-9_-])token=([^&#\"'[:space:]]*).*/\2/p" | tail -1)
     if [ -n "$LAUNCH_TOKEN" ]; then
       echo "launch token: ${#LAUNCH_TOKEN} characters, taken from the boot log"
     else
@@ -167,29 +167,51 @@ Two more facts that cost hours when unknown:
   ```
 
   `grep -o` is the mistake this replaces: its output is a command result, so the
-  value lands in the session transcript. Interpolate `"$LAUNCH_TOKEN"` into the
-  one request that needs it; the token and the operator URL carrying it stay out
-  of every log, screenshot, report and pull request (`Do not touch`).
-  `compose logs` writes the container's log to stdout and its own complaints to
-  stderr, and there is no `2>&1` here on purpose — merging them would feed a
-  daemon error into the pattern and let it be reported as a moved boot line. The
-  `cd` sits inside the substitution for the same reason: it points compose at the
+  value lands in the session transcript. `compose logs` writes the container's
+  log to stdout and its own complaints to stderr, and there is no `2>&1` here on
+  purpose — merging them would feed a daemon error into the pattern and let it be
+  reported as a moved boot line. The `cd` sits inside the substitution for the
+  same reason: it points compose at the
   kit's configuration and leaves your shell where it was, and running this from
   the repository directory would ask compose to read no file at all — your own
   mistake reaching you as the branch that blames the stand. Both variables hold
   a credential: print the length, never the value.
 
+  Passing the variable on is the next mistake. An expanded value in a command's
+  argument list is argv, and argv is readable in the process list, while the line
+  you typed stays in shell history — the two carriers
+  `docs/MANUAL_VERIFICATION.md` §1 refuses for a probe token, and this token is
+  the same kind of secret. Hand it to the one request over a channel the tool
+  reads instead of an argument it publishes:
+
+  ```bash
+  OPERATOR_URL="<the kit's loopback operator URL>?token=$LAUNCH_TOKEN"
+  printf 'url = "%s"\n' "$OPERATOR_URL" | curl -sS --config - -o <evidence file>
+  ```
+
+  The assignment is the shell's own and `printf` is a bash builtin, so the value
+  goes into the pipe without becoming an argument and the transcript shows the
+  variable name; `curl` takes the URL from stdin, and on a refused connection its
+  own error named the host and port, not the query. Typing the URL does not
+  satisfy the rule: pasting the expanded value into a command line leaves it in
+  history. The token and the operator URL carrying it stay out of every log,
+  screenshot, report and pull request, and out of argv and history
+  (`Do not touch`).
+
   The boot line's own format lives in the kit and cannot be checked from this
-  repository, so know what this pattern buys and what it does not. The
-  `[^A-Za-z0-9_]` before `token=` rejects a `refresh_token=` sharing the line, and
-  the value class stops at `&`, a quote or whitespace — so a token carrying `.`,
-  `+`, `=` or `:` is taken whole instead of cut at its first dot. That boundary
-  costs a match, though: a `token=` that opens a line has no character in front of
-  it to satisfy the class, so it is missed — one more reason a NOT FOUND is read
-  as "the line is not what this assumes", never as "the stand is down". `.*` is
-  greedy, so a line with two *standalone* `token=` parameters yields the last one,
-  and the length is the only thing about the value you may print: it is how you
-  notice a six-character capture.
+  repository, so know what this pattern buys and what it does not, on the fake
+  lines it was run against: the boundary group `(^|[^A-Za-z0-9_-])` rejects a key
+  joined to `token` by `-` or `_` — `access-token=`, `refresh_token=`, `notoken=`
+  give no capture — and the `^` alternative lets a `token=` that opens a line
+  match, so a miss means the format moved, never that the stand is down. The
+  value class stops at `&`, `#`, either quote or whitespace: a token carrying
+  `.`, `+`, `=` or `:` is taken whole, a `#fragment` after it is not, and a quoted
+  `token='abc'` yields an empty capture rather than a value wrapped in quotes —
+  the recipe reads that as NOT FOUND and sends you to the kit's README. `.*` is
+  greedy, so a line with two *standalone* `token=` parameters yields the last
+  one, and `tail -1` takes the last matching line; that is the residue this
+  pattern does not buy off, and the length is the only thing about the value you
+  may print — it is how you notice a six-character capture.
 
   The two empty outcomes are different findings and must not share a diagnosis.
   "compose answered, nothing matched" is about the boot line's format, and the
@@ -261,8 +283,10 @@ symptom-to-cause table keys on that text.
   compose override are usually not in the kit's `.gitignore`, so `git add -A`
   commits them. Stage explicit paths.
 - Any credential: never echo a token into a log, a screenshot, a PR or this
-  repository. The operator URL is a credential — it carries the token — so the
-  same refusal covers pasting it, and the report names the port, not the URL.
+  repository, and never let one become a command argument or typed text — argv is
+  in the process list and the typed line is in shell history (§3). The operator
+  URL is a credential — it carries the token — so the same refusal covers pasting
+  it, and the report names the port, not the URL.
 
 ## References
 

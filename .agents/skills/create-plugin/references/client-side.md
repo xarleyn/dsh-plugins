@@ -100,14 +100,13 @@ Everything below was confirmed by a broken surface, not by a green gate.
 ## Proving the card you just registered
 
 The shell contract lives in AGENTS.md and the gates assert its *text*, so a
-plugin can pass every gate with a card no user ever sees. Do these in order:
+plugin can pass every gate with a card no user ever sees. The bullet above owns
+the bundle half of this — the verify script runs the contract against the built
+`lib/client.js`, and the hygiene gate proves only that the script exists — so
+what follows is the half no gate covers, in order:
 
-1. Rebuild the client bundle, then run the card contract against the **built**
-   `lib/client.js` (stale `lib/` answers for the previous build).
-2. Run `pnpm verify:packages` as well — it proves only that your plugin *owes*
-   that script, not that it passed. The gates map in `release-and-gates.md` says
-   what each gate actually asserts.
-3. Prove it live on a stand (`qa-stand-run`): the card is present and it
+1. Rebuild first: a stale `lib/` answers for the previous build.
+2. Prove it live on a stand (`qa-stand-run`): the card is present and it
    expands. The state comparison AGENTS.md asks for is a browser's job, and no
    gate gives it.
 

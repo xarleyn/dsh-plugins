@@ -219,9 +219,13 @@ shape of its neighbours.
    which products the provider speaks.
 2. **Copy the newest provider, not the shortest one.** Name it instead of
    trusting this page:
-   `git log --diff-filter=A --format=%ad --name-only -- 'plugins/dsh-qa-integrations/src/providers/*/index.ts' | head`
-   — the last directory added is the current shape, and tool names, capability
-   flags and token-scope names follow that neighbour.
+   `git log --diff-filter=A --format=%h --name-only -- 'plugins/dsh-qa-integrations/src/providers/*/index.ts' | head`
+   — the first directory the output names is the last one added, because `git
+   log` walks commits newest-first. Do not read a date column for that order:
+   `%ad` prints author dates while the walk is by commit dates, and on a base
+   built from merges and rebases the two disagree, so the newest directory stops
+   being the top line. Tool names, capability flags and token-scope names follow
+   that neighbour.
 3. Work the numbered list in the providers README top to bottom. Where fitting a
    new provider means changing something generic, the change belongs in
    `providers/kernel/` or `providers/shared/`; the rule against a second copy
@@ -230,12 +234,16 @@ shape of its neighbours.
    `pnpm --filter @yadsh/dsh-qa-integrations build` followed by
    `pnpm --filter @yadsh/dsh-qa-integrations verify`; then §1's probe and §2's
    acceptance rows against a real instance, and §6's negative cases.
-5. Public text last: the package `README.md` and the user-visible strings of
-   `credential-help.ts` ship in the tarball, so they carry synthetic values only
-   (`PROJ-123`, `jira.example.corp`, «Демо-продукт»). A deployment's custom field
-   names, space keys and project keys are operator **config** — never a fixture,
-   an example, or a commit (AGENTS.md, "No internal identifiers in public
-   content").
+5. Public text last: the package `README.md` and the user-visible strings of the
+   credential help ship in the tarball, so they carry synthetic values only
+   (`PROJ-123`, `jira.example.corp`, «Демо-продукт»). The help is a family, not a
+   file — `src/providers/<id>/credential-help.ts` for every provider plus
+   `src/providers/shared/credential-help.ts`, the operator section
+   `src/client/operator-sections/credential-help.tsx`, and the shared card copy
+   in `src/client/copy.ts` — so grep the set rather than opening one file and
+   calling the check done. A deployment's custom field names, space keys and
+   project keys are operator **config** — never a fixture, an example, or a commit
+   (AGENTS.md, "No internal identifiers in public content").
 6. A version plan for the package, then the pull request against the branch the
    release line is on — not against `main`.
 
