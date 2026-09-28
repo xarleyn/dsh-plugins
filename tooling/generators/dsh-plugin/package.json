@@ -8,6 +8,7 @@
     "@nx/devkit": "catalog:tooling"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@types/node": "catalog:tooling",
     "eslint": "catalog:tooling",
@@ -17,6 +18,7 @@
   "scripts": {
     "lint": "eslint src tests",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit"
   }
 }

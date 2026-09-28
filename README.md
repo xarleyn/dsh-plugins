@@ -115,6 +115,7 @@ catalog.
 - [Plugin guidelines](docs/PLUGIN_GUIDELINES.md) — the canonical rulebook every plugin must follow
 - [Plugin logging](docs/PLUGIN_LOGGING.md) — file logging API, formats, levels, console mirror
 - [Verification runbook](docs/VERIFICATION.md) — what each gate asserts, locally and in CI
+- [Test coverage](docs/COVERAGE.md) — what `pnpm test:coverage` measures, and the last committed snapshot per package
 - [Releasing](docs/RELEASING.md) and [compatibility policy](docs/COMPATIBILITY.md)
 
 ## Releases
