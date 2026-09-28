@@ -5,7 +5,12 @@ import type { StorageLike } from "../types.js";
 export interface QaNotificationPrefs {
   /** Raise a desktop notice for a finished turn while this page is in the background. */
   readonly osEnabled: boolean;
-  /** The offer was answered or waved off: a notice never asks a second time. */
+  /**
+   * This browser's one permission prompt has been spent — answered or waved off
+   * while it was pending — and the page does not ask it a second time. Says
+   * nothing about the channel: with the prompt already granted elsewhere the
+   * choice of the channel is {@link osEnabled} alone.
+   */
   readonly osOffered: boolean;
 }
 

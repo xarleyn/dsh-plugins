@@ -143,37 +143,51 @@ export function useQaTurnNotifications(
 
   // The browser's answer about this origin and the reader's answer about the
   // channel are separate questions, and the switch is for whichever is still
-  // open. An unanswered browser is asked by the click; a granted one has nothing
-  // left to be asked, and anonymously this page is the whole record of the
-  // channel — without the action a reader who allowed the prompt elsewhere has
-  // no way in. A signed-in reader has the settings section for that instead.
+  // open. An unanswered browser is asked by the click, and `osOffered` marks its
+  // one prompt as spent. A granted browser has no prompt left to spend, and its
+  // answer says nothing about the channel: the reader's own answer is
+  // `osEnabled`, and anonymously this page is the whole record of that channel —
+  // without the action a reader who allowed the prompt elsewhere has no way in.
+  // A signed-in reader has the settings section for that instead.
   const permission = readNotificationPermission();
+  const unansweredBrowser = permission === "default" && !prefs.osOffered;
   const offered =
     notifications.enabled &&
     notifications.allowOs &&
-    !prefs.osOffered &&
-    (permission === "default" ||
+    (unansweredBrowser ||
       (permission === "granted" && account === undefined && !prefs.osEnabled));
 
-  // Waving a notice off while the offer is on screen is the answer to the
-  // offer too: it never returns to ask a second time.
+  // Waving a notice off clears the stack. Where the offer under it is the
+  // browser's own unanswered prompt it is also the answer to that prompt: the
+  // mark exists so that one page never asks the same question twice. Where the
+  // origin is already granted the cross says nothing about the channel, and the
+  // action returns with the next line — on a stand without accounts it is the
+  // only way that channel has of being switched on.
   const dismiss = useCallback(
     (key: string) => {
       setItems((previous) => previous.filter((item) => item.key !== key));
-      if (offered) savePrefs({ ...prefs, osOffered: true });
+      if (offered && unansweredBrowser)
+        savePrefs({ ...prefs, osOffered: true });
     },
-    [offered, prefs, savePrefs],
+    [offered, unansweredBrowser, prefs, savePrefs],
   );
 
   // Answering the offer writes the choice where it belongs: on the account once
   // there is one, so it survives into another browser, and in this browser's own
-  // store otherwise. The browser keeps its own copy either way — what it decides
-  // is that the question has been asked here, which is a fact about this
-  // browser's permission prompt rather than about the person.
+  // store otherwise. What this browser marks for itself is that its prompt has
+  // been spent, which is a fact about the prompt rather than about the person:
+  // a click that found the origin already granted spends nothing, so the mark
+  // stays out of the way should the reader take the permission back later and
+  // the page have to ask.
   const enableDesktop = useCallback(() => {
-    void requestNotificationPermission().then((permission) => {
-      const granted = permission === "granted";
-      savePrefs({ ...prefs, osEnabled: granted, osOffered: true });
+    const spendsThePrompt = readNotificationPermission() === "default";
+    void requestNotificationPermission().then((answer) => {
+      const granted = answer === "granted";
+      savePrefs({
+        ...prefs,
+        osEnabled: granted,
+        osOffered: prefs.osOffered || spendsThePrompt,
+      });
       if (account === undefined) return;
       void account.onSave({
         inApp: account.notifications.inApp,

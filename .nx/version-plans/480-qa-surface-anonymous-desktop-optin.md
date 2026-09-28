@@ -18,7 +18,17 @@ permission plus an explicit opt-in now delivers the notice, and the click spends
 no second prompt — `requestNotificationPermission` short-circuits on an answered
 origin, which is what the test pins by counting the asks.
 
+The two answers now keep separate records. `osOffered` marks that this browser has
+spent its one permission prompt, so it gates only the branch that still has a
+prompt to spend; where the origin is granted, the action stands or falls on
+`osEnabled` alone. That is what keeps the line's own cross from being read as a
+refusal of the channel: it clears the stack, and the action returns with the next
+notice instead of taking this stand's only way in away for good. A click that
+asked the browser nothing leaves the mark untouched, so a reader who later revokes
+the permission in the address bar finds the question again rather than a page that
+stopped asking.
+
 A signed-in reader is left alone with the settings section: the browser's question
 is still asked where it is unanswered, and the channel itself is not the notice's
-to switch. A denied or unsupported browser gets no action, and a reader who waved
-the line off is not asked again — that answer is stored as it was before.
+to switch. A denied browser, a page without the notification API and a stand that
+closed the desktop with `notifications.allowOs` get the line and no action.
