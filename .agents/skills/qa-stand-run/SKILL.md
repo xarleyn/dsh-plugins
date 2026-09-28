@@ -52,11 +52,14 @@ maintainer rather than probing the network for it.
 
 ## 1. Before changing anything on a live stand
 
-- **Do not start, stop, restart, recreate or wipe a stand you did not bring up.**
-  "Yours" means this session brought it up and nothing else has touched it since.
-  Anywhere else, prepare the change and ask; the restart is then one step for
-  them (`shared-checkout` §5). The same test gates every repair in
-  `references/troubleshooting.md`, including the ones that delete files.
+- **Do not start, stop, restart, recreate or wipe a stand you did not bring up,
+  and do not write into its `config/dsh/`.** "Yours" means this session
+  brought it up and nothing else has touched it since. Anywhere else, prepare the
+  change and ask; the restart is then one step for them (`shared-checkout` §5).
+  The same test gates every repair in `references/troubleshooting.md`, including
+  the ones that delete files. It gates a config edit for the reason the `pull`
+  bullet below gives: the edit waits for the next start, and the next start may be
+  one nobody asked for.
 - **Check the kit against its upstream before editing its config.** The slice is
   a synchronizable copy of the deployment, people are testing on it, and its
   configs may have moved under you. `$KIT` hereafter is that checkout — §0's
@@ -116,6 +119,14 @@ maintainer rather than probing the network for it.
 Two loops. Prefer the tarball loop when the answer must be "as released", and
 the source loop while iterating.
 
+**Both loops end by writing `config/dsh/`, and §1's test gates that write, not
+only the start that follows it.** A `plugins.txt` line is not a note to yourself:
+the next start reconciles from whatever the file holds, and the next start may be
+another person's or a crash loop's. So on a rig this session did not bring up,
+name the override file, the mount path and the exact spec line in the ask, and
+write none of them — what you hand over is a prepared *edit*, which becomes the
+deployment the moment they run it, not an inert draft.
+
 **Source loop (`link:`).**
 
 1. Build first, in dependency order: `packages/*` are not built by git and nx
@@ -134,10 +145,10 @@ the source loop while iterating.
    no log line, just stale behavior.
 4. Apply the line — `docker compose restart qa`, or `up -d qa` when the override
    file itself changed (the new volume only mounts on recreate), either one run
-   in `$KIT` — **only on a stand §1 calls yours.** On anyone else's rig, stop at
-   the edited `plugins.txt` and say so in the report: reconciliation runs on the
-   next start whoever triggers it, so what you hand over is one prepared step,
-   not a restart you perform.
+   in `$KIT`. A `link:` spec is a live directory rather than a frozen version, so
+   every later start builds the rig from whatever that worktree holds at the
+   moment it runs. Name the linked worktree and its branch in the report: it is
+   one lane's checkout, and whoever restarts after you inherits its code (§1).
 5. To go back, restore the released `@yadsh/...@x.y.z` line and put its restart
    through the same test.
 
@@ -217,7 +228,8 @@ Two more facts that cost hours when unknown:
 
   ```bash
   OPERATOR_URL="<the kit's loopback operator URL>?token=$LAUNCH_TOKEN"
-  printf 'url = "%s"\n' "$OPERATOR_URL" | curl -sS --config - -D - -o /dev/null
+  printf 'url = "%s"\n' "$OPERATOR_URL" |
+    curl -sS --config - -o /dev/null -w 'operator: %{http_code}\n'
   ```
 
   The assignment is the shell's own and `printf` is a bash builtin, so the value
@@ -225,16 +237,25 @@ Two more facts that cost hours when unknown:
   variable name; `curl` takes the URL from stdin, and on a refused connection its
   own error named the host and port, not the query. Typing the URL does not
   satisfy the rule: pasting the expanded value into a command line leaves it in
-  history.
+  history. Read `000` as that case, not as the surface refusing you: `%{http_code}`
+  prints it when no response arrived at all, and a connection that refused is a
+  finding about the pipe — §4 step 2 is what to do with one failed probe, and a
+  `401` is the different finding `references/troubleshooting.md` works.
 
-  `-D - -o /dev/null` is what keeps the proof out of the artifact. What this
-  request proves is *that the operator surface answered*, and the status line with
-  the response headers says that; the body is whatever the operator page renders —
-  accounts, chats, the stand's own data — so it is not saved at all. Writing it as
-  the round's evidence puts a live rig's data into a file that then travels into
-  the report, the pull request and the public history. Read the dumped headers
-  before quoting any of them: a `Location:` that echoes the token back turns the
-  header dump into a carrier too, and then the status line alone is the evidence.
+  `-o /dev/null -w '%{http_code}'` is what keeps the proof out of the transcript.
+  What this request proves is *that the operator surface answered*, and the status
+  code says that on its own. Neither half of the reply is kept: the body is
+  whatever the operator page renders — accounts, chats, the stand's own data — so
+  writing it as the round's evidence would put a live rig's data into a file that
+  then travels into the report, the pull request and the public history; and the
+  response headers are a carrier the same way, since a redirect answers with
+  `Location:` and an authenticated reply with `Set-Cookie` — the surface is
+  described as authorising a role from its cookie in
+  `references/troubleshooting.md`, whose cause column is the host's to confirm.
+  The risk is enough: nothing here knows what the deployment answers with, so the
+  round records the number and no header line. Headers are looked at only to
+  diagnose a code the round cannot explain, and what that look prints is
+  diagnosis, not evidence.
 
   Verifying afterwards is not comparing the artifact with the token. Grepping a
   saved file for `"$LAUNCH_TOKEN"` moves the value back into argv and shell
@@ -303,14 +324,15 @@ Two more facts that cost hours when unknown:
 5. Client-side changes are visible after a rebuild and a page reload; host-side
    changes are not visible without a restart. On a stand §1 calls yours, restart
    and re-check. On anyone else's, verify the change with tests and end the
-   report with "needs a restart" rather than performing one.
+   report with "needs a restart" rather than writing their `config/dsh/` or
+   performing one.
 
 ## 5. Report template
 
 ```text
 stand:    <which slice, which build/line each plugin came from>
 restart:  <performed — this session brought the stand up | not performed — whose
-          rig, and the one step you asked for>
+          rig, and the config write and the start you asked for instead>
 checked:  <playbook + the rows you walked>
 result:   PASS/FAIL per row, with the log line or measurement that proves it
 fell:     <what broke, its symptom text, the issue it belongs to>
@@ -324,9 +346,10 @@ symptom-to-cause table keys on that text.
 
 - Another account's chats and profile, and the operator's own working data.
 - A stand you did not bring up: its container lifecycle (`restart`, `up -d`,
-  `down`), the kit's working tree (a `pull` rewrites `config/dsh/`, and the next
-  start — asked for or not — re-applies it), and its installed state — the
-  profile's `node_modules`, its lock file and `data/`, which the repairs in
+  `down`), its `config/dsh/` — reached either through the kit's working tree (a
+  `pull` rewrites it) or by editing a spec line yourself — since the next start,
+  asked for or not, re-applies what that directory holds, and its installed state
+  — the profile's `node_modules`, its lock file and `data/`, which the repairs in
   `references/troubleshooting.md` delete. Prepare the step, then ask.
 - The "reset overrides" control on an integrations card: overrides are the only
   place some instances exist, so it removes them for the whole stand. A
@@ -340,8 +363,9 @@ symptom-to-cause table keys on that text.
   in the process list and the typed line is in shell history (§3). The operator
   URL is a credential — it carries the token — so the same refusal covers pasting
   it, and the report names the port, not the URL. Nor is a credential evidence:
-  the operator request proves itself with its status line and headers, and the
-  body that request would render is the stand's data, not yours to keep (§3).
+  the operator request proves itself with its status code alone — the body it
+  would render is the stand's data, and the headers it answers with can carry the
+  token back or open a session, so neither is kept (§3).
 - The machine-local notes that carry a stand's coordinates. The repository's
   tracked `.gitignore` ignores that directory in every clone, which is the
   protection a per-checkout exclusion never was; `git add -f` on a path there is
