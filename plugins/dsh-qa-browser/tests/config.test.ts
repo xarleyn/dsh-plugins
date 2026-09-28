@@ -144,11 +144,19 @@ describe("resolveQaBrowserConfig", () => {
   });
 
   it("accepts the endpoint forms Playwright dials", () => {
+    // One case per member of `CDP_ENDPOINT_PROTOCOLS`, because the set is the
+    // promise the README repeats: `https`/`wss` are how a sidecar names an
+    // endpoint that is not plain text, and Playwright treats the two halves
+    // differently — a `ws*` URL is dialed as written, while an `http*` one is
+    // asked for `/json/version` first. Drop a scheme from the set and the case
+    // that stands for it is the thing that has to redden.
     for (const cdpEndpoint of [
       "http://127.0.0.1:9222",
+      "https://127.0.0.1:9222",
       "http://localhost:9222/json/version",
       "http://[::1]:9222",
       "ws://127.0.0.1:9222/devtools/browser/6c1a2b3c",
+      "wss://127.0.0.1:9222/devtools/browser/6c1a2b3c",
     ]) {
       const config = resolveQaBrowserConfig({
         runtime: { mode: "attach", cdpEndpoint },
@@ -177,6 +185,10 @@ describe("resolveQaBrowserConfig", () => {
       "https://chrome.localhost:9222",
       "http://203.0.113.20:9222",
       "ws://browser.net.example:9222/devtools/browser/6c1a2b3c",
+      // A sidecar on another host is the shape DOCKER.md draws, and a TLS
+      // endpoint is the better half of it; the switch still gates it, because
+      // what the gate bounds is the address written down, not the cipher.
+      "wss://chromium.net.example:9222/devtools/browser/6c1a2b3c",
     ]) {
       expect(() =>
         resolveQaBrowserConfig({ runtime: { mode: "attach", cdpEndpoint } }),

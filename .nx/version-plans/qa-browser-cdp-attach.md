@@ -53,12 +53,15 @@ case, kills the browser mid-session and reads the session back as a lost link
 rather than a crash. The network gates are exercised on that attached browser
 too — the refused navigation, the refused socket handshake, and the service worker
 that reaches no address outside the gate — since a request path only a launched
-browser walked through would prove nothing about the mode this card ships. Both
-endpoint forms the mode accepts are dialled there, `ws` included: the deployment
+browser walked through would prove nothing about the mode this card ships. The
+`http` and the `ws` form the mode accepts are both dialled there: the deployment
 writes the address itself instead of asking a server for one, Playwright connects to
 it without asking anything where to go next, and an `http`-only run would have left
-that form untried against a real browser. Each attach case finds its browser through
-the same search the launch path uses, so a
+that form untried against a real browser. The two secure spellings ride the same
+two branches, and the suite that runs on every `pnpm test` holds a case for each of
+the four, so a scheme dropped from the gate reddens the case standing for it rather
+than quietly turning a documented form into a refusal. Each attach case finds its
+browser through the same search the launch path uses, so a
 run that was asked for and found nothing fails saying so — an attach case that
 quietly skipped would be the one result nobody could read. That run needs one
 variable, `DSH_QA_BROWSER_E2E=1`. This
