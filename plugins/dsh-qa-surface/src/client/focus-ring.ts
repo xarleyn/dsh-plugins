@@ -1,11 +1,27 @@
 import type { KeyboardEvent } from "react";
 
 /**
- * The controls a browser puts on the Tab path, in DOM order: what is focusable
- * and has not been taken off the page by `hidden` or by an `inert` ancestor.
+ * The controls a browser may put on the Tab path, in DOM order — what `focusable`
+ * then drops for having been taken off the page or off the tab order.
  */
 const TABABLE_SELECTOR =
-  "button:not([disabled]), textarea:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex='-1'])";
+  "button:not([disabled]), textarea:not([disabled]), a[href], input:not([disabled]), [tabindex]";
+
+/**
+ * Whether `tabindex` takes this element off the Tab path.
+ *
+ * The negative value has to be read off every branch of the selector, not just
+ * off the `[tabindex]` one: what makes the composer's attachment picker
+ * unreachable by Tab is the `-1` it carries, and the browser never asks that the
+ * element is not also an `input`. The content attribute is what is consulted,
+ * because that is what the markup writes and the one thing a browser and jsdom
+ * agree on; a value neither can parse leaves the element on the path.
+ */
+function isTabbedOut(element: HTMLElement): boolean {
+  const value = element.getAttribute("tabindex");
+  if (value === null) return false;
+  return Number.parseInt(value, 10) < 0;
+}
 
 /**
  * Whether a modal gate has taken this element away from the keyboard: the
@@ -32,10 +48,10 @@ export function isInert(element: HTMLElement): boolean {
   return false;
 }
 
-/** Every control of `root` the keyboard can still reach. */
+/** Every control of `root` the keyboard can still reach, in DOM order. */
 export function focusable(root: HTMLElement): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(TABABLE_SELECTOR)].filter(
-    (element) => !element.hidden && !isInert(element),
+    (element) => !element.hidden && !isTabbedOut(element) && !isInert(element),
   );
 }
 

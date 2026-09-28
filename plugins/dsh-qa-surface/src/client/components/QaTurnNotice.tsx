@@ -34,6 +34,15 @@ export const QA_TURN_NOTICE_COPY = Object.freeze({
   offerAction: "Включить системные уведомления",
 });
 
+/**
+ * The line of the stack, named once so the markup and whatever walks the lines
+ * cannot drift apart: the surface hands the keyboard back to a neighbouring line
+ * when the one the reader stood on goes away, and it finds its lines by this
+ * class.
+ */
+export const QA_TURN_NOTICE_LINE_CLASS = "dsh-qa-turn-notice__item";
+export const QA_TURN_NOTICE_LINE_SELECTOR = `.${QA_TURN_NOTICE_LINE_CLASS}`;
+
 function CrossIcon() {
   return (
     <svg viewBox="0 0 14 14" aria-hidden="true">
@@ -65,7 +74,7 @@ export function QaTurnNotice(props: QaTurnNoticeProps) {
     >
       {items.map((item) => (
         <div
-          className="dsh-qa-turn-notice__item"
+          className={QA_TURN_NOTICE_LINE_CLASS}
           data-testid="qa-turn-notice-item"
           key={item.key}
         >
