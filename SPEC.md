@@ -17,7 +17,9 @@ This SPEC is the architecture brief the monorepo was built to. It stays `Draft` 
 3. **This SPEC** — the target architecture and the reasoning behind it.
 4. **[README.md](README.md) and [CONTRIBUTING.md](CONTRIBUTING.md)** — the contributor-facing restatements of 1–3.
 
-Two release decisions postdate this document, and §13, §14, §17, §18, §20 and §22 now state them: a release run publishes a wave and marks it with one `release/<date>` tag and one GitHub Release, and the version-plan gate is the repository's own `scripts/check-release-plans.mjs` rather than Nx's `release plan:check`. Those sections name the older scheme where it still matters, because live tooling still reads it.
+Two release decisions postdate this document, and the release sections now state them: a release run publishes a wave and marks it with one `release/<date>` tag and one GitHub Release, and the version-plan gate is the repository's own `scripts/check-release-plans.mjs` rather than Nx's `release plan:check`. The sections that carry those decisions are §2, §3, §11–§22 and the phase and acceptance lines of §33 and §34; they still name the older scheme where its shape is legible, and §20 records how much of it is left to read — a tag census that comes back empty.
+
+The precedence above is a statement, not a mechanism. `scripts/repo-config.test.mjs` compares the two blocks this file copies verbatim, the `release` configuration of §14 and the command excerpt of §22, against `nx.json` and `package.json`, and CI runs it as part of `pnpm test:release`. A change to either config that leaves the copies behind fails a gate rather than quietly turning this Draft into a description of a release nobody runs.
 
 ---
 
@@ -30,7 +32,7 @@ Create a clean, scalable monorepo for multiple DeepSeek Harness (DSH) plugins wi
 - minimal duplication of installed dependencies;
 - reusable shared code without copy-paste;
 - isolated package boundaries between plugins;
-- fast CI that only checks affected projects;
+- fast CI that checks the affected projects of a pull request, and the whole workspace of a push (§17);
 - independent plugin versioning;
 - low-friction releases;
 - automatic changelogs, Git tags, npm publication, and GitHub Releases;
@@ -107,11 +109,13 @@ dsh-plugins/
 │  ├─ check-release-plans.mjs
 │  ├─ publish-release.mjs
 │  ├─ wave-release-notes.mjs
-│  └─ tarball-verify.sh
+│  ├─ tarball-verify.sh
+│  └─ …
 │
 ├─ docs/
 │  ├─ RELEASING.md
-│  └─ VERIFICATION.md
+│  ├─ VERIFICATION.md
+│  └─ …
 │
 ├─ .nx/
 │  └─ version-plans/
@@ -128,6 +132,8 @@ dsh-plugins/
 ├─ tsconfig.base.json
 └─ README.md
 ```
+
+The tree is the shape of the repository, not an inventory: `scripts/` and `docs/` list the files a release run reads, and both directories hold more (§22 quotes the root manifest, which is where the repository's commands are declared, and [docs/VERIFICATION.md](docs/VERIFICATION.md#gate-map) lists every gate that runs).
 
 ---
 
@@ -554,7 +560,7 @@ Developer workflow:
 pnpm release:plan
 ```
 
-`release:plan` is `nx release plan` (the `Nx Release` row of §2). Example generated plan:
+`release:plan` is `nx release plan` (the *Release planning (version plans)* row of §2). Example generated plan:
 
 ```yaml
 ---
@@ -570,7 +576,7 @@ Store plans under:
 .nx/version-plans/
 ```
 
-A plan file must open with its `---` front-matter fence: Nx silently ignores a plan it cannot parse, so the repository's gate rejects such a file rather than letting a release ship without the entry behind it.
+A plan file must open with its `---` front-matter fence, because Nx silently ignores a plan it cannot parse. Two gates hold that rule, and they fail differently. `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) reproduces Nx's parsing rules and rejects the file by name; the release workflow runs that same check — `node scripts/verify-package-hygiene.mjs --version-plans-only` — before it versions anything. `pnpm release:check` instead reads a plan exactly the way Nx does, so a file without the fence is skipped there rather than reported, and it fails one step later: the project that file was written for is named by no plan at all.
 
 CI validates that publishable changes include a version plan:
 
@@ -631,7 +637,7 @@ Dependents are not versioned with their bases: every workspace range is a caret,
 
 `Nx Release` versions and writes changelogs and nothing else (`git.tag: false`, `changelog.projectChangelogs: true` with no `createRelease`). The release workflow runs `nx release --skip-publish`, then publishes to npm itself and creates the wave tag and the GitHub Release (§20) — publishing first is what makes a pushed tag mean something.
 
-`releaseTag.pattern` describes the per-package tag shape, which a release run no longer creates. It stays because the tags of the previous scheme are still in the repository's history: `scripts/check-release-plans.mjs` falls back to `{projectName}@*` when the head cannot reach a `release/*` tag, and the `publish_only` recovery path accepts those tags for a release made before the wave scheme. It is the shape of the past releases, not of a new one.
+`releaseTag.pattern` describes the per-package tag shape, which a release run no longer creates and which no tag in this repository still carries (§20). Three paths read that shape as a fallback rather than as the target — the plan gate, the `publish_only` proof and the GitHub Release step — and on the current history each of them resolves to no tag at all (§20). The pattern is the shape of past releases, not of a new one; do not mint tags in it.
 
 The syntax above is the one the pinned Nx accepts — `nx` in the `tooling` catalog of `pnpm-workspace.yaml`, checked with `pnpm nx release --help`.
 
@@ -748,12 +754,13 @@ pnpm release:check --base="$NX_BASE" --head="$NX_HEAD"
 
 # projects — one runner per selected project
 pnpm nx run-many -t lint typecheck test build verify --projects="$NX_PROJECT" --output-style=static
-pnpm tarball:verify:packages "$PACKAGE_DIRECTORY"   # publishable projects only
+pnpm check:files                                    # the build output now exists to measure
+pnpm tarball:verify:packages "$PACKAGE_DIRECTORY"   # every publishable project
 ```
 
-Affected calculation picks the projects, not the targets: a pull request runs `pnpm nx show projects --affected --base="$NX_BASE" --head="$NX_HEAD" --json` and verifies those, so a change to one plugin does not rebuild every package unnecessarily. A push is the verification of the branch itself, so it takes the whole workspace — selecting a push by `--affected` would silently drop a project the previous run never reached.
+Tarball verification is not something CI reaches for where useful — it is a condition on the matrix row: every project `publishable` covers packs its tarball and installs that tarball in a clean environment, so no package can ship from a run that only read its source tree (§16). `pnpm check:files` runs a second time here for the opposite reason: the `prepare` checkout has no build output, so the generated-bundle band of the size budget measures nothing until this project has been built.
 
-Where useful, CI also runs tarball verification for affected publishable packages, and it does: every publishable project in the matrix packs and installs its own tarball.
+Affected calculation picks the projects, not the targets: a pull request runs `pnpm nx show projects --affected --base="$NX_BASE" --head="$NX_HEAD" --json` and verifies those, so a change to one plugin does not rebuild every package unnecessarily. A push is the verification of the branch itself, so it takes the whole workspace — selecting a push by `--affected` would silently drop a project the previous run never reached.
 
 A third job, `Verify projects`, runs nothing of its own — it only reads the results of `prepare` and the project matrix, so branch protection has one context to require.
 
@@ -849,7 +856,13 @@ The per-package scheme this section originally recommended —
 @yadsh/dsh-ui-tweaks@0.7.1
 ```
 
-— is historical, but it is not a dead reference either. Releases made before the wave scheme carry those tags, and three live readers still need them: `scripts/check-release-plans.mjs` falls back to `{projectName}@*` when the head reaches no `release/*` tag; the `publish_only` path of the release workflow accepts a per-package tag as the proof that a release of that older shape was made; and its GitHub Release step keeps a per-package loop for a released ref that carries no wave tag. Do not read that fallback as the target shape, and do not mint new tags of that form — the wave tag is the only tag a release run creates.
+— is historical, and there is nothing of it left to read. `git ls-remote --tags` against either remote, and `git tag -l` in a fresh clone, list the `release/*` waves and no `name@version` tag. The releases the per-package scheme made are in this history as commits (`chore(release): publish` runs back to 2026-08-30, and the first wave tag is `release/2026-09-17`), but no tag of that shape is reachable on them, so the three paths that still read it are insurance rather than a live dependency:
+
+- `scripts/check-release-plans.mjs` falls back to `{projectName}@*` when the head reaches no `release/*` tag. With neither shape reachable the gate reads the project as never shipped and counts its whole change against the base — the conservative answer, not a hole (§13).
+- The `publish_only` path takes a per-package tag as the proof that a release of the older shape was already published; on this history it stops at `Missing release tag` instead of republishing one of those commits.
+- The GitHub Release step keeps a per-package loop for a released ref that carries no wave tag — a ref only a tag of the older shape would identify.
+
+Do not read those fallbacks as the target shape, and do not mint new tags of that form — the wave tag is the only tag a release run creates.
 
 See [docs/RELEASING.md](docs/RELEASING.md#maintainer-flow) for the order that produces the tag and [docs/RELEASING.md](docs/RELEASING.md#failure-recovery) for what a missing tag or release is recovered with.
 

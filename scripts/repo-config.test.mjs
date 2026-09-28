@@ -23,6 +23,15 @@
 // last two cases read that config and then prove the behaviour in a throwaway
 // workspace assembled from it, so neither the mistake nor its fix can hide
 // inside nx's own resolution.
+//
+// SPEC.md is read for the opposite reason. It ranks itself below the code it
+// describes, so a line of it that disagrees with `nx.json` is wrong rather than
+// authoritative — but two of its blocks are copied verbatim from configuration,
+// and a copy is the one form of prose that fails silently: the section keeps
+// reading as shipped configuration while the file behind it has moved. Those two
+// blocks are compared to their sources here, which is what turns the release
+// examples in §14 and §22 from a document that was aligned once into one that
+// cannot drift unnoticed.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
@@ -493,6 +502,53 @@ test("no package narrows coverage by re-declaring include", () => {
       readFileSync(file, "utf8"),
       /coverage:\s*\{[^{}]*\binclude\s*:/su,
       `${dir}/vitest.config.ts re-declares coverage.include; mergeConfig concatenates arrays, so it widens the measured tree instead of narrowing it — use coverage.exclude`,
+    );
+  }
+});
+
+const SPEC_MD = read("SPEC.md");
+
+/**
+ * The first fenced `json` block under a section heading of SPEC.md, parsed. The
+ * heading is matched rather than the block so a renamed or deleted section fails
+ * by name instead of leaving the case silently asserting nothing.
+ */
+function specBlock(heading) {
+  const at = SPEC_MD.indexOf(`\n## ${heading}\n`);
+  assert.notEqual(at, -1, `SPEC.md no longer has a "## ${heading}" section`);
+  const block = /```json\n(?<body>[\s\S]*?)\n```/u.exec(SPEC_MD.slice(at));
+  assert.ok(
+    block,
+    `the "## ${heading}" section of SPEC.md no longer carries a fenced json block`,
+  );
+  return JSON.parse(block.groups.body);
+}
+
+test("SPEC.md reproduces the release configuration nx.json ships", () => {
+  const { release } = specBlock("14. Nx release configuration");
+  assert.deepEqual(
+    release,
+    NX_JSON.release,
+    "SPEC.md §14 quotes `release` from nx.json; editing one without the other leaves a Draft describing a configuration nobody runs",
+  );
+});
+
+test("SPEC.md quotes commands the root package.json declares", () => {
+  const excerpt = specBlock("22. Repository-level scripts").scripts;
+  const shipped = readJson(new URL("../package.json", import.meta.url)).scripts;
+  assert.ok(
+    Object.keys(excerpt).length > 0,
+    "the §22 excerpt names no script at all",
+  );
+  for (const [name, command] of Object.entries(excerpt)) {
+    assert.equal(
+      shipped[name],
+      command,
+      `SPEC.md §22 quotes \`${name}\` as \`${command}\`, but package.json ${
+        name in shipped
+          ? `now runs \`${shipped[name]}\``
+          : "does not declare it"
+      }`,
     );
   }
 });
