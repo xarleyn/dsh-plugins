@@ -61,10 +61,13 @@ the plugin's teardown left that process running with its owner's page still in
 it — and, in a second
 case, kills the browser mid-session and reads the session back as a lost link
 rather than a crash. The network gates are exercised on that attached browser
-too — the refused navigation, the refused socket handshake, and the service worker
-that reaches no address outside the gate — since a request path only a launched
-browser walked through would prove nothing about the mode this card ships. The
-`http` and the `ws` form the mode accepts are both dialled there: the deployment
+too, in both directions — the refused navigation, the refused socket handshake,
+the socket they permit still arriving at its server, and the service worker that
+reaches no address outside the gate — since a request path only a launched browser
+walked through would prove nothing about the mode this card ships, and a borrowed
+context that intercepted requests merely to drop them would answer every refusal
+correctly while leaving a session unable to hold a live connection. The `http` and
+the `ws` form the mode accepts are both dialled there: the deployment
 writes the address itself instead of asking a server for one, Playwright connects to
 it without asking anything where to go next, and an `http`-only run would have left
 that form untried against a real browser. The two secure spellings ride the same

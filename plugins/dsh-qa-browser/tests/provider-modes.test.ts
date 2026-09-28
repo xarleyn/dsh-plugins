@@ -317,6 +317,7 @@ describe("PlaywrightBrowserProvider runtime modes", () => {
       contextOptions({
         validateRequest: async (url) => {
           asked.push(url);
+          if (url !== "ws://127.0.0.1:9/auth") return;
           throw new QaBrowserError(
             "BROWSER_HOST_BLOCKED",
             "Blocked by policy.",
@@ -341,10 +342,25 @@ describe("PlaywrightBrowserProvider runtime modes", () => {
     });
     expect(browser.created[0]?.events).toEqual(["route", "route-web-socket"]);
 
-    const socket = await browser.created[0]?.dial("ws://127.0.0.1:9/auth");
+    const refused = await browser.created[0]?.dial("ws://127.0.0.1:9/auth");
     expect(asked).toEqual(["ws://127.0.0.1:9/auth"]);
-    expect(socket?.connections).toBe(0);
-    expect(socket?.closures[0]?.code).toBe(1008);
+    expect(refused?.connections).toBe(0);
+    expect(refused?.closures[0]?.code).toBe(1008);
+
+    // The other half of the pair, which the refusal above cannot stand in for:
+    // a destination the gate let through is handed to Playwright to relay rather
+    // than dropped. Delete that relay and every assertion above still holds —
+    // and the real browser measures this direction only in the opt-in run, so
+    // the suite that runs on every `pnpm test` has to hold it here.
+    const permitted = await browser.created[0]?.dial(
+      "wss://feed.example/streams",
+    );
+    expect(asked).toEqual([
+      "ws://127.0.0.1:9/auth",
+      "wss://feed.example/streams",
+    ]);
+    expect(permitted?.connections).toBe(1);
+    expect(permitted?.closures).toEqual([]);
     await provider.stop();
   });
 

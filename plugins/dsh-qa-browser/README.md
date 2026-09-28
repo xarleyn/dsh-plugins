@@ -224,11 +224,14 @@ What attach mode changes, and what it deliberately does not:
   and storage to this plugin's session nor takes the session's.
 - The policy is the same code, on a moved premise: every document, redirect,
   subrequest and socket of a session still passes the server-side scheme, host,
-  DNS, private-network and metadata gates, and a refusal is still listed per tab
-  in the panel. What `attach` changes is where those two halves run: the gate
-  resolves and classifies the name in this process, while the browser dials from
-  wherever the deployment started it. On one machine that is the same answer; a
-  browser in another container has its own resolver and its own `/etc/hosts`, so
+  DNS, private-network and metadata gates, a refusal is still listed per tab in
+  the panel, and what those gates let through still reaches its destination — a
+  borrowed context that intercepted requests only to drop them would read as a
+  gated one until the permitted traffic was looked for. What `attach` changes is
+  where those two halves run: the gate resolves and classifies the name in this
+  process, while the browser dials from wherever the deployment started it. On
+  one machine that is the same answer; a browser in another container has its own
+  resolver and its own `/etc/hosts`, so
   an allow-list written for the Host is a judgment about a name the browser may
   read differently. The gates stop at this runtime's request path, too: a
   destination refused for a session of this plugin is served to a page this
@@ -257,12 +260,14 @@ do with a browser never downloads or spawns one. This project's own CI job is
 not such a project: `ci.yml` sets the variable below for
 `@yadsh/dsh-qa-browser`, so what only a real browser can answer is checked on a
 pull request and on `main` rather than left to whoever remembers to run it. Both
-runtime modes are covered there: the launch case starts its own Chromium, and the
-attach case starts one outside the plugin, points `runtime.cdpEndpoint` at it,
-drives a session through the network gates on that borrowed browser, and checks
-that the plugin's teardown left it running. The endpoint is dialled in both forms
-the mode accepts — an `http` one, which asks that server where to connect next, and
-the `ws` one a deployment writes when it must pin the address itself. The run also
+runtime modes are covered there: the launch case starts its own Chromium, and
+the attach case starts one outside the plugin, points `runtime.cdpEndpoint` at
+it, drives a session through the network gates on that borrowed browser in both
+directions — the destination refused and the one let through to its server — and
+checks that the plugin's teardown left it running. The endpoint is dialled in
+both forms the mode accepts — an `http` one, which asks that server where to
+connect next, and the `ws` one a deployment writes when it must pin the address
+itself. The run also
 puts a second driver on that endpoint, the shape the Harness's own browser tool
 makes of a shared Chromium: the cookies and storage of a page it opened in the
 browser's own context stay out of this plugin's session and the session's stay out

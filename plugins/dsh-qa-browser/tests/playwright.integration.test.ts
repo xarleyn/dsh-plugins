@@ -494,6 +494,50 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
     });
   }, 120_000);
 
+  it("carries a WebSocket the policy allows on a browser it only joined", async () => {
+    // The refused handshake above is the half the gate is judged on, and it is
+    // the easy half: not connecting is something this runtime does by itself. A
+    // socket the policy lets through is the other direction, and only Playwright
+    // can serve it — `connectToServer()` hands the page's traffic back to a
+    // browser this runtime neither started nor created the context of. Whether
+    // that relay works over a joined CDP connection is the browser's answer: a
+    // session whose permitted sockets silently died would be broken in the one
+    // mode this card ships while every other attach case stayed green.
+    await withAttachedChromium(async (endpoint) => {
+      const html = await readFile(
+        new URL("./fixtures/ws-probe.html", import.meta.url),
+        "utf8",
+      );
+      const probe = await startProbeServer({ "/probe": html });
+      try {
+        const config = socketProbeConfig(["http", "https", "ws"], endpoint);
+        const manager = new QaBrowserSessionManager({
+          config,
+          provider: new PlaywrightBrowserProvider(),
+          policy: new BrowserNetworkPolicy(config.security.network),
+          startIdleTimer: false,
+        });
+        managers.push(manager);
+        const session = await manager.ensureSession("attach-ws-allowed");
+        const tabId = session.selectedTabId!;
+        await manager.navigate("attach-ws-allowed", tabId, {
+          url: `http://127.0.0.1:${probe.port}/probe`,
+        });
+        // The frame the probe pushes after the handshake reaches the page
+        // through the joined browser, so the gate let the socket through rather
+        // than swallowing it.
+        await manager.wait("attach-ws-allowed", tabId, {
+          text: "message:ready",
+          timeoutMs: 15_000,
+        });
+
+        expect(probe.upgrades).toEqual(["/feed"]);
+      } finally {
+        await probe.close();
+      }
+    });
+  }, 120_000);
+
   it("keeps a service worker of a joined browser from dialing past the gate", async () => {
     // §17 lets no worker run in a policy-gated context because a worker dials
     // from outside page routing. Keeping it out is a context option handed to a
