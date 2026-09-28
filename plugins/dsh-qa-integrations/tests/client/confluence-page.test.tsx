@@ -1,0 +1,321 @@
+// @vitest-environment jsdom
+
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import type { RemoteFailure } from "@deepseek-ai/dsh-typert-protocol";
+import {
+  createConfluenceCard,
+  type ConfluenceRemote,
+} from "../../src/client/confluence.js";
+// The card renders whatever the host declares, so the fixture reuses the
+// provider's own labels.
+import { CONFLUENCE_CAPABILITY_INFO } from "../../src/providers/confluence/catalog.js";
+import type { IntegrationSummary } from "../../src/types.js";
+
+const SANDBOX = {
+  id: "sandbox",
+  label: "Sandbox",
+  baseUrl: "https://sandbox.atlassian.net",
+  deploymentType: "cloud" as const,
+  service: null,
+};
+/** A self-hosted instance: it accepts a personal access token, no account. */
+const WIKI = {
+  id: "wiki",
+  label: "Корпоративная вики",
+  baseUrl: "https://wiki.example.corp",
+  deploymentType: "server" as const,
+  service: null,
+};
+const SITES = [
+  {
+    id: "company",
+    label: "Company",
+    baseUrl: "https://company.atlassian.net",
+    deploymentType: "cloud" as const,
+    service: null,
+  },
+  SANDBOX,
+];
+
+const disconnected: IntegrationSummary = {
+  provider: "confluence",
+  displayName: "Confluence",
+  status: "not_connected",
+  portal: null,
+  externalAccountName: null,
+  credentialConfigured: false,
+  credentialUpdatedAt: null,
+  capabilities: ["identity.read", "content.read"],
+  capabilityInfo: CONFLUENCE_CAPABILITY_INFO,
+  policy: [
+    { capability: "identity.read", mode: "allow" },
+    { capability: "content.read", mode: "allow" },
+  ],
+  lastValidatedAt: null,
+  errorCode: null,
+  credentialSource: "personal",
+  service: null,
+};
+
+const connected: IntegrationSummary = {
+  ...disconnected,
+  status: "connected",
+  portal: "https://company.atlassian.net",
+  externalAccountName: "Alice Example",
+  credentialConfigured: true,
+  credentialUpdatedAt: "2026-09-16T06:00:00.000Z",
+  lastValidatedAt: "2026-09-16T06:00:00.000Z",
+};
+
+/** The host answers a refused call with a typed remote failure, not an Error. */
+function failure(message: string): RemoteFailure {
+  return { message } as unknown as RemoteFailure;
+}
+
+function remote(overrides: Partial<ConfluenceRemote> = {}): ConfluenceRemote {
+  return {
+    confluenceSites: async () => ({ ok: true, value: SITES }),
+    getConfluence: async () => ({ ok: true, value: disconnected }),
+    putConfluenceCredential: async () => ({ ok: true, value: connected }),
+    testConfluence: async () => ({ ok: true, value: connected }),
+    patchConfluencePolicy: async () => ({ ok: true, value: connected }),
+    disconnectConfluence: async () => ({ ok: true, value: true }),
+    ...overrides,
+  };
+}
+
+/** The test id zone this card owns; every hook below is named from it. */
+const Z = "qa-integrations-provider-card-confluence";
+
+describe("Integrations Confluence card", () => {
+  it("keeps the account e-mail and the API token write-only", async () => {
+    const writes: { instanceId: string; email?: string; token: string }[] = [];
+    const Card = createConfluenceCard(
+      remote({
+        putConfluenceCredential: async (_token, input) => {
+          writes.push(input);
+          return { ok: true, value: connected };
+        },
+      }),
+    );
+    const { container } = render(<Card token="qa-account-token" />);
+    const select = await screen.findByLabelText("Сайт Confluence");
+    expect(select).toHaveProperty("value", "");
+    const token = screen.getByLabelText("Atlassian API token");
+    expect(token).toHaveProperty("type", "password");
+    const email = screen.getByLabelText("Почта аккаунта Atlassian");
+    expect(email).toHaveProperty("type", "email");
+    // The connect button stays locked until a site, an e-mail and a token exist.
+    const connect = screen.getByRole("button", {
+      name: "Сохранить и проверить",
+    });
+    expect(connect).toHaveProperty("disabled", true);
+    fireEvent.change(select, { target: { value: "sandbox" } });
+    fireEvent.change(email, { target: { value: "alice@example.com" } });
+    fireEvent.click(connect);
+    expect(connect).toHaveProperty("disabled", true);
+    fireEvent.change(token, { target: { value: "ATATT3xFfGF0secret" } });
+    fireEvent.click(connect);
+    await screen.findByText("Alice Example");
+    expect(writes).toEqual([
+      {
+        instanceId: "sandbox",
+        email: "alice@example.com",
+        token: "ATATT3xFfGF0secret",
+      },
+    ]);
+    await waitFor(() =>
+      expect(screen.queryByLabelText("Atlassian API token")).toBeNull(),
+    );
+    expect(container.textContent).not.toContain("ATATT3xFfGF0secret");
+    expect(container.textContent).not.toContain("Показать токен");
+  });
+
+  it("shows the single configured site without asking for a choice", async () => {
+    const writes: string[] = [];
+    const Card = createConfluenceCard(
+      remote({
+        confluenceSites: async () => ({ ok: true, value: [SANDBOX] }),
+        putConfluenceCredential: async (_token, input) => {
+          writes.push(input.instanceId);
+          return { ok: true, value: connected };
+        },
+      }),
+    );
+    render(<Card token="qa-account-token" />);
+    const line = await screen.findByTestId(`${Z}-instance-static`);
+    expect(line.textContent).toContain("Sandbox");
+    expect(screen.queryByLabelText("Сайт Confluence")).toBeNull();
+    expect(screen.queryByTestId(`${Z}-not-configured`)).toBeNull();
+    fireEvent.change(screen.getByLabelText("Почта аккаунта Atlassian"), {
+      target: { value: "alice@example.com" },
+    });
+    fireEvent.change(screen.getByLabelText("Atlassian API token"), {
+      target: { value: "ATATT3xFfGF0secret" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Сохранить и проверить" }),
+    );
+    await waitFor(() => expect(writes).toEqual(["sandbox"]));
+  });
+
+  it("keeps the capability rows honest and patchable", async () => {
+    const patched: string[] = [];
+    const Card = createConfluenceCard(
+      remote({
+        getConfluence: async () => ({
+          ok: true,
+          value: {
+            ...connected,
+            capabilities: ["content.read", "comments.read"],
+            policy: [
+              { capability: "content.read", mode: "allow" },
+              { capability: "comments.read", mode: "deny" },
+            ],
+          },
+        }),
+        patchConfluencePolicy: async (_token, patch) => {
+          patched.push(`${patch.operation}:${patch.mode}`);
+          return { ok: true, value: connected };
+        },
+      }),
+    );
+    const { container } = render(<Card token="qa-account-token" />);
+    const content = await screen.findByLabelText("Читать страницы");
+    const comments = screen.getByLabelText("Читать комментарии");
+    const versions = screen.getByLabelText("Читать версии страниц");
+    expect(content).toHaveProperty("checked", true);
+    expect(comments).toHaveProperty("checked", false);
+    expect(comments).toHaveProperty("disabled", false);
+    // A capability the deployment switched off is offered but locked.
+    expect(versions).toHaveProperty("disabled", true);
+    expect(container.textContent).toContain("Выключено оператором стенда");
+    expect(container.textContent).toContain("Появится позже");
+
+    fireEvent.click(comments);
+    await waitFor(() => expect(patched).toEqual(["comments.read:allow"]));
+  });
+
+  it("explains a refusal that comes from the stand's space allowlist", async () => {
+    const Card = createConfluenceCard(
+      remote({
+        getConfluence: async () => ({ ok: true, value: connected }),
+        testConfluence: async () => ({
+          ok: false,
+          error: failure(
+            "Integration request failed (reason: OperationDeniedByPolicy)",
+          ),
+        }),
+      }),
+    );
+    render(<Card token="qa-account-token" />);
+    await screen.findByTestId(`${Z}-summary`);
+    fireEvent.click(screen.getByRole("button", { name: "Проверить" }));
+    const error = await screen.findByTestId(`${Z}-error`);
+    expect(error.textContent).toContain(
+      "вне списка, разрешённого оператором стенда",
+    );
+  });
+
+  it("names a stalled upstream rather than hiding it in a generic refusal", async () => {
+    // The plan promises the operator notices a stalled upstream. That holds
+    // only while the card carries the copy `UpstreamTimeout` folds into;
+    // without it the failure lands on «Не удалось выполнить действие».
+    const Card = createConfluenceCard(
+      remote({
+        getConfluence: async () => ({
+          ok: false,
+          error: failure(
+            "Integration request failed (reason: UpstreamTimeout)",
+          ),
+        }),
+      }),
+    );
+    const { container } = render(<Card token="qa-account-token" />);
+    await waitFor(() =>
+      expect(container.textContent).toContain("Confluence не ответил вовремя"),
+    );
+  });
+
+  it("tells the user when the operator configured no site", async () => {
+    const Card = createConfluenceCard(
+      remote({ confluenceSites: async () => ({ ok: true, value: [] }) }),
+    );
+    const { container } = render(<Card token="qa-account-token" />);
+    const hint = await screen.findByTestId(`${Z}-not-configured`);
+    expect(hint.textContent).toContain(
+      "Оператор не настроил ни одного сайта Confluence",
+    );
+    expect(container.textContent).not.toContain("Atlassian API token");
+  });
+
+  it("switches to the personal access token of the site the user picks", async () => {
+    const writes: { instanceId: string; email?: string; token: string }[] = [];
+    const Card = createConfluenceCard(
+      remote({
+        confluenceSites: async () => ({ ok: true, value: [SANDBOX, WIKI] }),
+        putConfluenceCredential: async (_token, input) => {
+          writes.push(input);
+          return { ok: true, value: connected };
+        },
+      }),
+    );
+    const { container } = render(<Card token="qa-account-token" />);
+    const select = await screen.findByLabelText("Сайт Confluence");
+    // A Cloud site keeps the account field and both of the original labels.
+    fireEvent.change(select, { target: { value: "sandbox" } });
+    expect(screen.getByLabelText("Почта аккаунта Atlassian")).toBeDefined();
+    expect(screen.getByLabelText("Atlassian API token")).toBeDefined();
+    expect(screen.getByTestId(`${Z}-deployment`).textContent).toBe(
+      "Развёртывание: Atlassian Cloud",
+    );
+    // The self-hosted instance asks for a personal access token and no account.
+    fireEvent.change(select, { target: { value: "wiki" } });
+    expect(screen.queryByLabelText("Почта аккаунта Atlassian")).toBeNull();
+    expect(screen.queryByLabelText("Atlassian API token")).toBeNull();
+    expect(screen.getByLabelText("Личный токен доступа (PAT)")).toBeDefined();
+    expect(screen.getByTestId(`${Z}-deployment`).textContent).toBe(
+      "Развёртывание: Server / Data Center",
+    );
+    const connect = screen.getByRole("button", {
+      name: "Сохранить и проверить",
+    });
+    expect(connect).toHaveProperty("disabled", true);
+    const pat = "Mzc4OTk0NDg3MTkwOnN5bnRoZXRpYy1wYXQ";
+    fireEvent.change(screen.getByLabelText("Личный токен доступа (PAT)"), {
+      target: { value: pat },
+    });
+    // The token alone unlocks the submit: a server instance needs no account.
+    expect(connect).toHaveProperty("disabled", false);
+    fireEvent.click(connect);
+    await waitFor(() =>
+      expect(writes).toEqual([{ instanceId: "wiki", token: pat }]),
+    );
+    expect(container.textContent).not.toContain(pat);
+  });
+
+  it("confirms before disconnecting and dropping the credential", async () => {
+    let disconnectedCalls = 0;
+    const Card = createConfluenceCard(
+      remote({
+        getConfluence: async () => ({ ok: true, value: connected }),
+        disconnectConfluence: async () => {
+          disconnectedCalls += 1;
+          return { ok: true, value: true };
+        },
+      }),
+    );
+    render(<Card token="qa-account-token" />);
+    await screen.findByText("Alice Example");
+    fireEvent.click(screen.getByRole("button", { name: "Отключить" }));
+    expect(disconnectedCalls).toBe(0);
+    const dialog = await screen.findByRole("alertdialog", {
+      name: "Подтверждение отключения Confluence",
+    });
+    expect(dialog.textContent).toContain(
+      "Отключить Confluence и удалить сохранённый токен?",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Да, отключить" }));
+    await waitFor(() => expect(disconnectedCalls).toBe(1));
+  });
+});
