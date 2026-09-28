@@ -18,6 +18,22 @@ either way; the authority is not.
 `$KIT`** (`SKILL.md` §1). Run from the repository directory, compose reads no
 configuration file, and its own refusal arrives as a symptom of the stand.
 
+**A quoted symptom is a string to search for, so the table says whose string it
+is.** What this repository's plugins print is checkable here and is quoted from
+the code: the attestation reason codes (`unknown-tools`,
+`composition-mismatch`), `SKILL_NOT_AVAILABLE`, `TeamCity URL is not allowed by
+this deployment`. What the host prints is not this repository's source but is
+still shipped text — `401 dsh web authentication required` is the host's own
+reply — and a disagreement there is settled by the rig, per `SKILL.md` §0, the
+same way as a configuration name the rig owns (`DSH_REMOTE_API_SERVICES`), which
+is looked up in the deployment, never grepped out of this tree. Two quotes are
+weaker still: `corrupted session record` and `… is listed as a dependency but is
+not installed` have no shipped text behind them — they are carried from a stand
+someone read, so if a live log shows either refusal differently the log wins and
+the row is corrected. The split matters because the table keys on the refusal's
+own text (`SKILL.md` §5): a name no code emits reads as an empty cell, and the
+finding then gets filed under the wrong cause.
+
 §1 answers *whose* rig, not *what state* it is in. A stand under test carries a
 reproduction — resolved versions, a deliberate pin, a config someone is looking
 at — and the repairs below can spend it before you have proved the fault was in
@@ -42,9 +58,9 @@ cleanup of a slice; that is where a stand that "will not boot" usually lives.
 | `session.create-rejected reason="composition-mismatch" … model=false` | the model pin does not match the model the session actually gets | compare all three pin sources (`.env` default-model variables, the installed settings' `agent-default-model`, the profile patch's session provider/model) before editing any of them — the entrypoint rewrites the second from the first on every boot, so a hand-edit there is provisional |
 | chats refuse to start after a config edit, and the refusal names a model | `.env` changed but the container kept its old environment | recreate the container (`up -d`); `restart` does not re-read `.env` |
 | a tool is in the catalog but the chat says it is outside the capability profile, or `SKILL_NOT_AVAILABLE` | the account was not granted the activation skill, or dynamic activation is on while the skill is missing from the loaded skills directory | check the skills directory is non-empty, then the audience grant in the admin surface — this is an entitlement, not a code fault |
-| attestation failure naming a tool (`lockdown attestation failed`, `unknown-tools`, the policy-attestation error) | the policy allow-list names a tool the **built** bundle does not export; attestation is fail-closed, so one wrong name removes the whole tool surface | take the names from the built bundle, not from a README or a source comment |
+| attestation refusing a tool name: the host log carries `session.create-rejected` with the reason `unknown-tools` and the error `unknown QA tool(s): <the names>`, and the browser console prints the whole refusal — `dsh-qa-surface: policy attestation failed (reason: unknown-tools). A lockdown.toolPolicy name is not mounted in this session's tool catalog — check the deployment agent preset and the tool's server availability.` | a name in the effective allow-list (`lockdown.toolPolicy.allow`, or the role's `policy.tools` when a capability profile supplies one) that the running session does not mount — `dsh-qa-surface` puts every name through one mount test (`qaToolPolicyPlan` over the tools this agent can see) and prints the names that failed it in the error line of the first column. Attestation is fail-closed: the session is refused before it exists, so no chat opens and the tool surface goes with it | work the two checks the refusal itself names, in its order: the deployment agent preset, then that tool's server availability — the preset decides what the agent inherits, the catalog holds what is mounted now. Compare against what this session mounts, not against a README, a source comment, or a bundle's export list |
 | a client-session call to a service answers connection refused while the operator reaches it | the client session dials only the services named in `DSH_REMOTE_API_SERVICES`, and that variable **replaces** the built-in list rather than extending it | print the effective list before assuming the service is down |
-| an address-policy refusal from a networked provider (`allowedHosts`, port not allowed) | the default deployment allows nothing, and the policy is re-checked on every call | the first refusal is the policy, not the server — declare the host/port, then retry once |
+| an address-policy refusal from a networked provider: `TeamCity URL is not allowed by this deployment`, or `TeamCity URL must use one of the configured ports: …` | the default deployment allows nothing (`network.allowedHosts` starts empty, and `trusted-private` is the only mode that makes a name dialable), and the provider re-checks the policy where it builds each request URL | the first refusal is the policy, not the server — an empty address policy announces itself on the host log at start (`teamcity.address-policy-empty`), so read that before retrying; then declare the host or port and retry once |
 
 ## The surface is missing or wrong
 
