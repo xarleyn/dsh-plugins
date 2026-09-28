@@ -26,7 +26,8 @@ Guarantees 3, 4, 5, 6, 9, 16, 17 and 18 below are **withdrawn**: not
 implemented, not deferred. They stay on this page because they are the contract a
 restored write path has to meet again. That removal is one commit, but this page
 does not promise it reverts alone: replayed over the read-path migration it
-conflicts in 18 paths (15 content, 3 modify/delete) and puts back a
+conflicts in 19 paths (16 content, 3 modify/delete) at the head of this series
+and puts back a
 `preset-writer.ts` that reads `readPresetFile`, `revisionOf` and `preset.path`,
 all three of which this cutover deleted, so the result does not compile.
 Reversing D2 is a revert of the whole #518 series, which is the cost issue #605
