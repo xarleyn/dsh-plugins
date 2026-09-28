@@ -1,103 +1,67 @@
 /**
  * Public `ctx.presetPersonaEditor` service: the host half of the agent-preset
- * persona editor.
+ * persona reader.
  *
  * The service owns no state of its own. Every read goes to the preset roster
- * and the composition files the roster points at; every write goes back into
- * the preset's own `agent.cordis.yml` and nowhere else. That is the whole
- * design: the persona's source of truth is the preset composition, so the
- * feature keeps working — and keeps its meaning — with this plugin uninstalled.
+ * and the composition the roster points at. It writes nothing: the Host has no
+ * durable preset-authoring path since `0.1.7-rc.2`, so this page reports what a
+ * preset composes rather than changing it (decision D2 of
+ * `docs/DSH-0.1.7-MIGRATION.md` §10).
  *
  * Wire surface (`presetPersonaEditor` namespace):
  *  - `list` — the roster with each preset's persona state;
- *  - `read` — one preset as an editable document, revision included;
- *  - `save` — write the four persona values through a revision check;
- *  - `reset` — drop the persona row so the deployment's persona applies again;
- *  - `copy` — duplicate a preset into the writable root for editing.
+ *  - `read` — one preset as a document, its composition text included.
  * @module host/service
  */
 
 import type { Context } from "@deepseek-ai/cordis";
 // Type-only: pulls the `ctx.agentPresets` and `ctx.systemPrompt` service merges.
-import type {} from "@deepseek-ai/dsh-agent-presets";
+import type {} from "@deepseek-ai/dsh-agent-preset-registry";
 import type {} from "@deepseek-ai/dsh-system-prompt";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
-import z from "@deepseek-ai/schemastery";
 import {
   createHostLoggerSink,
   getPluginLogger,
   type PluginLoggerLike,
 } from "@yadsh/dsh-plugin-log";
 
-import type {
-  PersonaCatalog,
-  PersonaDocument,
-  PersonaWriteReceipt,
-  PresetDraft,
-} from "../types.js";
+import type { PersonaCatalog, PersonaDocument } from "../types.js";
 import {
   readCatalog,
   readDocument,
   type PresetRosterFace,
   type SystemPromptFace,
 } from "./preset-reader.js";
-import {
-  copyPreset as duplicatePreset,
-  resetPersona as dropPersonaRow,
-  savePersona as writePersona,
-} from "./preset-writer.js";
-import { DEFAULT_LIMITS, type PersonaLimits } from "./validation.js";
-
-/** Plugin configuration: what this deployment lets the editor write. */
-export interface Config {
-  /** Whether a `complete` persona may be written at all. */
-  allowComplete?: boolean;
-  /** Byte ceiling for prefix plus suffix. */
-  maxPersonaBytes?: number;
-  /** How many prompt sections one preset may contribute. */
-  maxSections?: number;
-  /** Byte ceiling for the prompt sections together. */
-  maxSectionsBytes?: number;
-}
-
-/** The plugin's configuration schema, shared by the Cordis loader. */
-export const ConfigSchema: z<Config> = z.object({
-  allowComplete: z.boolean().default(true),
-  maxPersonaBytes: z.number().default(DEFAULT_LIMITS.maxPersonaBytes),
-  maxSections: z.number().default(DEFAULT_LIMITS.maxSections),
-  maxSectionsBytes: z.number().default(DEFAULT_LIMITS.maxSectionsBytes),
-});
+import { reasonOf } from "./validation.js";
 
 /** Overridable internals for tests. */
 export interface PresetPersonaEditorDeps {
   readonly logger?: PluginLoggerLike;
 }
 
-/** The default byte ceiling, exported for the tests and the plugin manifest. */
-export const DEFAULT_MAX_PERSONA_BYTES = DEFAULT_LIMITS.maxPersonaBytes;
-
 export class PresetPersonaEditor extends TypertRemoteService {
   static inject = ["agentPresets", "systemPrompt"];
-  static Config = ConfigSchema;
 
   private readonly logger: PluginLoggerLike;
-  private readonly limits: PersonaLimits;
 
   constructor(
     ctx: Context,
-    config: Config = {},
+    /**
+     * The deployment's `config:` row for this plugin, named with the leading
+     * underscore that marks it present-but-unread. Cordis builds a plugin
+     * positionally — `new callback(ctx, config)` — and validates the row only
+     * against a `static Config`, which this plugin has none of: decision D2 took
+     * the four ceilings out with the write operations they gated. So nothing
+     * reads it, which `README.md` says to the operator outright, and the
+     * parameter stands in this slot so that the seam below is a test seam rather
+     * than a configuration wearing its place.
+     */
+    _config: Record<string, unknown> = {},
     deps: PresetPersonaEditorDeps = {},
   ) {
     // The Typert generator reads these as literals: the Cordis service key and
     // the wire namespace must be spelled here, not aliased through a constant.
     super(ctx, "presetPersonaEditor", { namespace: "presetPersonaEditor" });
-    this.limits = {
-      allowComplete: config.allowComplete ?? DEFAULT_LIMITS.allowComplete,
-      maxPersonaBytes: config.maxPersonaBytes ?? DEFAULT_LIMITS.maxPersonaBytes,
-      maxSections: config.maxSections ?? DEFAULT_LIMITS.maxSections,
-      maxSectionsBytes:
-        config.maxSectionsBytes ?? DEFAULT_LIMITS.maxSectionsBytes,
-    };
     this.logger =
       deps.logger ??
       (getPluginLogger({
@@ -122,72 +86,29 @@ export class PresetPersonaEditor extends TypertRemoteService {
   /** The roster with each preset's persona state. */
   @Remote("list")
   async listPersonas(): Promise<PersonaCatalog> {
-    return await readCatalog(this.roster);
+    return await readCatalog(this.roster, this.logger);
   }
 
-  /** One preset opened for editing. */
+  /** One preset as a document: its persona, its sections, its composition. */
   @Remote("read")
   async readPersona(agentPreset: string): Promise<PersonaDocument> {
-    return await readDocument(this.roster, this.prompts, agentPreset);
-  }
-
-  /** Write the persona and the prompt sections into the preset's composition. */
-  @Remote("save")
-  async savePersona(
-    agentPreset: string,
-    draft: PresetDraft,
-    expectedRevision: string,
-  ): Promise<PersonaWriteReceipt> {
-    const receipt = await writePersona(
-      { roster: this.roster, limits: this.limits },
-      agentPreset,
-      draft,
-      expectedRevision,
-    );
-    this.logger.info("preset-persona.saved", {
-      agentPreset,
-      complete: draft?.persona?.complete === true,
-      prefixBytes: Buffer.byteLength(draft?.persona?.prefix ?? "", "utf8"),
-      suffixBytes: Buffer.byteLength(draft?.persona?.suffix ?? "", "utf8"),
-      sections: Array.isArray(draft?.sections) ? draft.sections.length : 0,
-      sectionBytes: Array.isArray(draft?.sections)
-        ? draft.sections.reduce(
-            (total, section) =>
-              total + Buffer.byteLength(section?.text ?? "", "utf8"),
-            0,
-          )
-        : 0,
-    });
-    return receipt;
-  }
-
-  /** Drop the preset's persona row, so the deployment's persona applies again. */
-  @Remote("reset")
-  async resetPersona(
-    agentPreset: string,
-    expectedRevision: string,
-  ): Promise<PersonaWriteReceipt> {
-    const receipt = await dropPersonaRow(
-      { roster: this.roster, limits: this.limits },
-      agentPreset,
-      expectedRevision,
-    );
-    this.logger.info("preset-persona.reset", { agentPreset });
-    return receipt;
-  }
-
-  /** Duplicate a preset into the writable root and open the copy. */
-  @Remote("copy")
-  async copyPreset(
-    from: string,
-    id: string,
-    name: string,
-  ): Promise<PersonaDocument> {
-    await duplicatePreset(this.roster, from, id, name);
-    this.logger.info("preset-persona.copied", { from, agentPreset: id });
-    // The copy is opened by id, so the caller gets one document back rather
-    // than a second round trip through a roster that may not have settled yet.
-    return await readDocument(this.roster, this.prompts, id);
+    try {
+      return await readDocument(
+        this.roster,
+        this.prompts,
+        agentPreset,
+        this.logger,
+      );
+    } catch (cause) {
+      // The reader answers its own not-found code, which is what the page
+      // branches on; the Host's reason for refusing the id would otherwise be
+      // lost with no trace in the deployment log.
+      this.logger.warn("preset-persona.read-refused", {
+        agentPreset,
+        reason: reasonOf(cause),
+      });
+      throw cause;
+    }
   }
 }
 
@@ -195,7 +116,7 @@ export default PresetPersonaEditor;
 
 declare module "@deepseek-ai/cordis" {
   interface Context {
-    /** Browse and edit agent-preset personas through the composition files. */
+    /** Browse an agent preset's persona through the composition it composes from. */
     presetPersonaEditor: PresetPersonaEditor;
   }
 }

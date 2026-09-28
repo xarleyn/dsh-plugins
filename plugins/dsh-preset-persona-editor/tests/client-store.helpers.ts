@@ -10,7 +10,6 @@ import type {
   PersonaCatalog,
   PersonaDocument,
   PersonaDraft,
-  PersonaWriteReceipt,
 } from "../src/types.js";
 
 export const DRAFT: PersonaDraft = {
@@ -27,11 +26,8 @@ export function documentOf(
     id: "demo",
     name: "Demo",
     description: "",
-    trust: "user",
-    editable: true,
+    broken: "",
     isDefault: false,
-    path: "/tmp/demo/agent.cordis.yml",
-    revision: "rev-1",
     hasRow: true,
     persona: {
       prefix: "Original prefix.",
@@ -45,7 +41,6 @@ export function documentOf(
     sections: [],
     sectionsState: "none",
     sectionsError: "",
-    sectionsModule: "missing",
     sectionsUnknownKeys: [],
     readError: "",
     source: "- id: persona\n",
@@ -58,19 +53,15 @@ export function documentOf(
 
 export function catalogOf(): PersonaCatalog {
   return {
-    authorable: true,
     presets: [
       {
         id: "demo",
         name: "Demo",
         description: "",
-        trust: "user",
         isDefault: true,
-        editable: true,
         broken: "",
         persona: "local",
         complete: false,
-        revision: "rev-1",
       },
     ],
   };
@@ -84,19 +75,6 @@ export function faceOf(overrides: Partial<PersonaFace> = {}): PersonaFace {
   return {
     list: vi.fn(async () => OK_CATALOG),
     read: vi.fn(async () => OK_DOCUMENT),
-    save: vi.fn(
-      async (): Promise<{ ok: true; value: PersonaWriteReceipt }> => ({
-        ok: true,
-        value: { revision: "rev-2" },
-      }),
-    ),
-    reset: vi.fn(
-      async (): Promise<{ ok: true; value: PersonaWriteReceipt }> => ({
-        ok: true,
-        value: { revision: "rev-2" },
-      }),
-    ),
-    copy: vi.fn(async () => OK_DOCUMENT),
     ...overrides,
   };
 }

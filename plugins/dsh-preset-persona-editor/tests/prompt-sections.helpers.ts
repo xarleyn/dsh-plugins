@@ -1,24 +1,9 @@
 /**
- * Shared fixtures for the prompt-sections tests, moved here verbatim from the
- * single-file original.
+ * Shared fixtures for the prompt-sections tests: compositions the reader and
+ * the surgery library are handed, in the spellings a preset actually uses.
  */
 
-import { mkdtemp, rm } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { afterEach, beforeEach } from "vitest";
-
-import type { WriteContext } from "../src/host/preset-writer.js";
-import { DEFAULT_LIMITS, type PersonaLimits } from "../src/host/validation.js";
-import type { PersonaDraft, PromptSectionDraft } from "../src/types.js";
-import { rosterOf } from "./helpers/preset-roster.js";
-
-export const PERSONA_DRAFT: PersonaDraft = {
-  prefix: "You are a preset.",
-  suffix: "",
-  complete: false,
-  includeRuntimeContext: true,
-};
+import type { PromptSectionDraft } from "../src/types.js";
 
 /** Two sections, one of them off. */
 export const SECTIONS: readonly PromptSectionDraft[] = [
@@ -69,20 +54,3 @@ export const WITH_SECTIONS = [
   "  name: '@deepseek-ai/dsh-tool-bash'",
   "",
 ].join("\n");
-
-export let root = "";
-
-beforeEach(async () => {
-  root = await mkdtemp(join(tmpdir(), "preset-sections-"));
-});
-
-afterEach(async () => {
-  await rm(root, { recursive: true, force: true });
-});
-
-export function context(
-  roster: ReturnType<typeof rosterOf>,
-  limits: PersonaLimits = DEFAULT_LIMITS,
-): WriteContext {
-  return { roster, limits };
-}
