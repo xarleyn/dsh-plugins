@@ -274,6 +274,10 @@ endpoints, and that every tool names exactly one catalog operation.
 
 ### Deferred
 
+Each row below is dispositioned — with what the code does today, the default already on record
+and what actually blocks it — in
+[`providers-deferred.md`](./providers-deferred.md).
+
 - create a suggestion for a unit;
 - add a comment to a unit;
 - edit a unit target, approve a translation;

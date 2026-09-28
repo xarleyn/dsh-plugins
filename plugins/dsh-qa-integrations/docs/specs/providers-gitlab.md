@@ -1883,6 +1883,13 @@ Each advanced operation requires an explicit threat review and policy addition. 
 
 ## 36. Acceptance criteria for read-only MVP
 
+The items below are dispositioned row by row — shipped, shipped differently, not planned, or
+waiting on a decision that is not the implementation lane's — in
+[`providers-deferred.md`](./providers-deferred.md), together with the Weblate equivalent. Several
+of these boxes name deferred work (OAuth, the resource restriction, the cache namespace, token
+refresh), so the list describes a later phase than the read-only one README says is shipped; it
+is kept as written until that is reconciled.
+
 The provider is MVP-ready only when all are true:
 
 - [ ] User connects GitLab via OAuth + PKCE without exposing token to the browser after callback.
