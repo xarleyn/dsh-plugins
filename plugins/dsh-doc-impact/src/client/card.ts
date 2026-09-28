@@ -13,7 +13,15 @@ import {
   NumberField,
   TextAreaField,
   TextField,
+  type ChoiceProps,
 } from "./fields.js";
+import type { Translate } from "./dictionary.js";
+import type {
+  CardFace,
+  ModeOption,
+  OnLimitOption,
+  CardSnapshot,
+} from "./settings-form.js";
 
 const CSS = [
   PLUGIN_CARD_SHELL_CSS.trim(),
@@ -45,8 +53,16 @@ const CSS = [
 ].join("\n");
 if (typeof document !== "undefined") injectCardStyles("dsh-doc-impact", CSS);
 
-export function ConfigCard(props: any) {
-  const state = props.useDocImpactCard(function (snapshot: any) {
+/** The props the Host hands the tab component: the injected face plus the locale binding. */
+export interface ConfigCardProps extends CardFace {
+  readonly t: Translate;
+  readonly useDocImpactCard: (
+    select: (snapshot: CardSnapshot) => CardSnapshot,
+  ) => CardSnapshot;
+}
+
+export function ConfigCard(props: ConfigCardProps) {
+  const state = props.useDocImpactCard(function (snapshot) {
     return snapshot;
   });
   if (!state.available) return null;
@@ -85,7 +101,7 @@ export function ConfigCard(props: any) {
       fallback: true,
       state: fields.enabled,
       disabled: disabled,
-      onChoose: function (value: unknown) {
+      onChoose: function (value: boolean) {
         props.choose("enabled", value);
       },
       onReset: function () {
@@ -100,7 +116,7 @@ export function ConfigCard(props: any) {
       fallback: true,
       state: fields.steer,
       disabled: disabled,
-      onChoose: function (value: unknown) {
+      onChoose: function (value: boolean) {
         props.choose("steer", value);
       },
       onReset: function () {
@@ -121,7 +137,7 @@ export function ConfigCard(props: any) {
         props.resetField("configFile");
       },
     }),
-    createElement(ChoiceField, {
+    createElement<ChoiceProps<ModeOption>>(ChoiceField, {
       t: t,
       id: "doc-impact-mode",
       labelKey: "modeLabel",
@@ -130,7 +146,7 @@ export function ConfigCard(props: any) {
       fallback: "remind",
       state: fields.mode,
       disabled: disabled,
-      onChoose: function (value: unknown) {
+      onChoose: function (value: ModeOption) {
         props.choose("mode", value);
       },
       onReset: function () {
@@ -151,7 +167,7 @@ export function ConfigCard(props: any) {
         props.resetField("maxReminderRounds");
       },
     }),
-    createElement(ChoiceField, {
+    createElement<ChoiceProps<OnLimitOption>>(ChoiceField, {
       t: t,
       id: "doc-impact-on-limit",
       labelKey: "onLimitLabel",
@@ -160,7 +176,7 @@ export function ConfigCard(props: any) {
       fallback: "allow",
       state: fields.onLimit,
       disabled: disabled,
-      onChoose: function (value: unknown) {
+      onChoose: function (value: OnLimitOption) {
         props.choose("onLimit", value);
       },
       onReset: function () {
@@ -219,7 +235,7 @@ export function ConfigCard(props: any) {
       fallback: false,
       state: fields.debug,
       disabled: disabled,
-      onChoose: function (value: unknown) {
+      onChoose: function (value: boolean) {
         props.choose("debug", value);
       },
       onReset: function () {
