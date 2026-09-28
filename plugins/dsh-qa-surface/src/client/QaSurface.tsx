@@ -76,7 +76,10 @@ import { QaFilesPanel } from "./components/QaFilesPanel.js";
 import { isQaModalOpen } from "./components/QaModal.js";
 import { QaRightRail, type QaRailTabModel } from "./components/QaRightRail.js";
 import { QaSourcesPanel } from "./components/QaSourcesPanel.js";
-import { QaTurnNotice } from "./components/QaTurnNotice.js";
+import {
+  QA_TURN_NOTICE_LINE_SELECTOR,
+  QaTurnNotice,
+} from "./components/QaTurnNotice.js";
 import { useQaTurnNotifications } from "./notifications/use-turn-notifications.js";
 import {
   QA_TURN_FOLLOW_PX,
@@ -93,7 +96,7 @@ import { VariantSwitcher } from "./components/VariantSwitcher.js";
 import { QaWelcomeNotice } from "./components/QaWelcomeNotice.js";
 import { statusText, titleFromMessages } from "./components/surface-utils.js";
 import { useThinkingPhrase } from "./components/thinking-phrases.js";
-import { focusRing, isInert, trapKeys } from "./focus-ring.js";
+import { focusRing, focusable, isInert, trapKeys } from "./focus-ring.js";
 import {
   QaUserSettingsDialog,
   type QaSettingsSectionId,
@@ -204,6 +207,41 @@ function isNearBottom(element: HTMLElement): boolean {
   );
 }
 
+/**
+ * The stack line the reader's control stands on, or null when the stack has no
+ * lines left. The desktop opt-in is not a line: it is what the stack ends with,
+ * so losing it is losing the last control of the last line, and that line is
+ * taken as its place.
+ */
+function noticeLineOf(
+  target: HTMLElement,
+  stack: HTMLElement,
+): HTMLElement | null {
+  const line = target.closest<HTMLElement>(QA_TURN_NOTICE_LINE_SELECTOR);
+  if (line !== null) return line;
+  const lines = stack.querySelectorAll<HTMLElement>(
+    QA_TURN_NOTICE_LINE_SELECTOR,
+  );
+  return lines.item(lines.length - 1);
+}
+
+/**
+ * The line the stack lists on this side of `line`, or null when there is none:
+ * the opt-in block shares the stack with the lines but is not one of them, so it
+ * is not a place a reader can be handed back to.
+ */
+function adjacentNoticeLine(
+  line: HTMLElement,
+  side: "previous" | "next",
+): HTMLElement | null {
+  const sibling =
+    side === "previous" ? line.previousElementSibling : line.nextElementSibling;
+  return sibling instanceof HTMLElement &&
+    sibling.matches(QA_TURN_NOTICE_LINE_SELECTOR)
+    ? sibling
+    : null;
+}
+
 export function QaSurface(props: QaSurfaceProps) {
   const route = useSyncExternalStore(
     props.route.subscribe,
@@ -264,16 +302,32 @@ export function QaSurface(props: QaSurfaceProps) {
     [dialogOwnsKeyboard],
   );
   /**
-   * The stack control the keyboard last held, and the step of the ring it held.
-   * The stack alone is remembered: a control of `<main>` that leaves the page
-   * with its row — a queue dock entry, a transcript action, a rebuilt chat — is
-   * the surface's own business, and this ring hands nothing back there. Read as
-   * focus moves, so it names where the reader stands rather than where they once
-   * stood: a focus landing anywhere else lets the place go.
+   * Where the keyboard last stood in the notice stack: the control, the line it
+   * stood on, the lines the stack listed beside it, and the control's step
+   * within the line. The stack alone is remembered: a control of `<main>` that
+   * leaves the page with its row — a queue dock entry, a transcript action, a
+   * rebuilt chat — is the surface's own business, and this ring hands nothing
+   * back there. Read as focus moves, so it names where the reader stands rather
+   * than where they once stood: a focus landing anywhere else lets the place go.
+   *
+   * The place is held as lines, not as a number counted along the ring, because
+   * a counted place is not a stable coordinate here. A finished turn is put in
+   * front of the lines the reader already sees (`use-turn-notifications.ts`), so
+   * a step counted from the front of the stack slides by as many controls as the
+   * batch brought, and `<main>`, which the ring counts first, grows and shrinks
+   * for reasons of its own. The line the reader stood on and its neighbours keep
+   * the one claim the restore has to make — hand the keyboard to the line that
+   * took their place — whatever else arrived or left in the same moment.
    */
-  const ringAnchor = useRef<{ element: HTMLElement; index: number } | null>(
-    null,
-  );
+  const ringAnchor = useRef<{
+    /** The control itself: its loss is read from the page, not counted. */
+    element: HTMLElement;
+    line: HTMLElement | null;
+    /** The control's step among the tabbables of that line. */
+    step: number;
+    before: HTMLElement | null;
+    after: HTMLElement | null;
+  } | null>(null);
   useEffect(() => {
     const onFocusIn = (event: FocusEvent) => {
       const target = event.target;
@@ -286,12 +340,24 @@ export function QaSurface(props: QaSurfaceProps) {
         ringAnchor.current = null;
         return;
       }
-      const index = focusRing(ringRoots()).indexOf(target);
-      ringAnchor.current = index < 0 ? null : { element: target, index };
+      const line = noticeLineOf(target, stack);
+      if (line === null) {
+        ringAnchor.current = null;
+        return;
+      }
+      const controls = focusable(line);
+      const step = controls.indexOf(target);
+      ringAnchor.current = {
+        element: target,
+        line,
+        step: step < 0 ? controls.length - 1 : step,
+        before: adjacentNoticeLine(line, "previous"),
+        after: adjacentNoticeLine(line, "next"),
+      };
     };
     document.addEventListener("focusin", onFocusIn);
     return () => document.removeEventListener("focusin", onFocusIn);
-  }, [ringRoots]);
+  }, []);
   /**
    * Keys typed in the surface: Tab stays in the ring, and nothing else of the
    * key reaches the harness the overlay is built on.
@@ -975,12 +1041,13 @@ export function QaSurface(props: QaSurfaceProps) {
    * three off, a fourth turn pushing the oldest out of a full stack, the opt-in
    * going away once the browser has answered the permission question. So the
    * loss is read where it happens — the control the ring held is out of the page
-   * and nothing of the ring holds the focus — and the reader is put back on the
-   * step they stood on, or on the nearest control the ring still has. The anchor
-   * goes only with the focus it hands back: a page takes the focus out of a
-   * removed control on its own moment, not in step with this render. A dialog
-   * that holds the keyboard is not the ring's business, and is left to put the
-   * focus wherever it thinks the reader belongs.
+   * and nothing of the ring holds the focus — and the reader is handed to the
+   * line that took the lost one's place, on the same control of it: a cross
+   * given back as a cross. The anchor goes only with the focus it hands back: a
+   * page takes the focus out of a removed control on its own moment, not in step
+   * with this render. A dialog that holds the keyboard is not the ring's
+   * business, and is left to put the focus wherever it thinks the reader
+   * belongs.
    */
   useEffect(() => {
     const anchor = ringAnchor.current;
@@ -993,7 +1060,20 @@ export function QaSurface(props: QaSurfaceProps) {
     const active = document.activeElement;
     if (active !== null && ring.includes(active as HTMLElement)) return;
     ringAnchor.current = null;
-    (ring[Math.min(anchor.index, ring.length - 1)] ?? surface.current)?.focus();
+    // The line itself first, for a control that left while its line stayed:
+    // then whichever neighbour is still on screen, the one after the reader
+    // taking the place the stack still lists in that order.
+    for (const line of [anchor.line, anchor.after, anchor.before]) {
+      if (line === null || !line.isConnected) continue;
+      const controls = focusable(line);
+      const target = controls[Math.min(anchor.step, controls.length - 1)];
+      if (target === undefined) continue;
+      target.focus();
+      return;
+    }
+    // The stack has no line left to stand on: back into the interface, onto the
+    // control the ring reaches last.
+    (ring.at(-1) ?? surface.current)?.focus();
   });
 
   // The audit provider is optional: `auditSnapshot.api` is null until the

@@ -339,6 +339,46 @@ async function mount(options: MountOptions = {}): Promise<QaSessionTestWorld> {
 }
 
 describe("the notice stack inside the surface's Tab ring", () => {
+  it("takes a control off the path by its `tabindex`, whatever tag it carries", () => {
+    const { container } = render(
+      <div>
+        {/* What makes these unreachable is the `-1`, and a browser reads it
+            before it asks what element the `-1` stands on. */}
+        <button type="button" tabIndex={-1} data-testid="off-path-button" />
+        <input type="file" tabIndex={-1} data-testid="off-path-input" />
+        <pre tabIndex={-1} data-testid="off-path-pre" />
+        <button type="button" hidden data-testid="hidden-button" />
+        <button type="button" disabled data-testid="disabled-button" />
+        <div tabIndex={0} data-testid="listed" />
+      </div>,
+    );
+
+    expect(
+      focusable(container).map((element) => element.dataset.testid),
+    ).toEqual(["listed"]);
+  });
+
+  it("jumps the composer's hidden file picker on the way to the attach button", async () => {
+    await mount();
+    const picker = screen.getByTestId("qa-composer-file-input");
+    const attach = screen.getByTestId("qa-composer-attach");
+    const composer = screen.getByTestId("qa-composer-input");
+    // The picker is opened by the attach button, so it is taken off the tab
+    // order by hand — the one control of the page that is focusable by script
+    // and no further by Tab.
+    expect(picker.getAttribute("tabindex")).toBe("-1");
+    expect(focusable(document.body)).not.toContain(picker);
+    expect(focusable(document.body)).toContain(attach);
+
+    // And the keyboard follows that read, because this stand walks production's
+    // own list: the key given below the picker has to answer with the control
+    // after it. An enumeration that kept the picker would step the test onto a
+    // control no Tab reaches in a browser.
+    composer.focus();
+    pressTab();
+    expect(focused()).toBe(attach);
+  });
+
   it("carries Tab from the composer over every control of the stack", async () => {
     await mount();
     const composer = await screen.findByTestId("qa-composer-input");
@@ -527,6 +567,30 @@ describe("the reader left standing when a notice goes away", () => {
     expect(lines()).toHaveLength(3);
     expect(focusedLine()).toBe(line(-1));
     expect(focusedLine()).not.toBe(oldest);
+  });
+
+  it("keeps the focus on the oldest line when a batch of turns lands on it", async () => {
+    const world = await mount({
+      chats: BACKGROUNDS,
+      settled: BACKGROUNDS.slice(0, 2),
+    });
+    expect(lines()).toHaveLength(2);
+    const oldest = line(-1);
+    const dismiss = controlOf(oldest, "qa-turn-notice-dismiss");
+    dismiss.focus();
+
+    // Two turns settle in one tick: the stack puts both in front of what the
+    // reader can see and, capped at three lines, lets go of the line they stand
+    // on. A place counted along the ring slides by exactly the controls the
+    // batch brought and hands the keyboard to one of the fresh lines; what the
+    // reader lost is the last line, and the last line is whichever one is left
+    // standing last.
+    settleTurns(world, BACKGROUNDS.slice(2));
+    expect(lines()).toHaveLength(3);
+    expect(focusedLine()).toBe(line(-1));
+    expect(focusedLine()).not.toBe(oldest);
+    // The same control of it: a cross given back as a cross.
+    expect(focused().dataset.testid).toBe("qa-turn-notice-dismiss");
   });
 
   it("keeps the focus in the stack when the opt-in answers itself away", async () => {
