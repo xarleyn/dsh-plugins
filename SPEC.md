@@ -19,7 +19,7 @@ This SPEC is the architecture brief the monorepo was built to. It stays `Draft` 
 
 Two release decisions postdate this document, and the release sections now state them: a release run publishes a wave and marks it with one `release/<date>` tag and one GitHub Release, and the version-plan gate is the repository's own `scripts/check-release-plans.mjs` rather than Nx's `release plan:check`. The sections that carry those decisions are §2, §3, §11–§22 and the phase and acceptance lines of §33 and §34; they still name the older scheme where its shape is legible, and §20 records how much of it is left to read — a tag census that comes back empty.
 
-The precedence above is a statement, not a mechanism. `scripts/repo-config.test.mjs` compares the two blocks this file copies verbatim, the `release` configuration of §14 and the command excerpt of §22, against `nx.json` and `package.json`, and CI runs it as part of `pnpm test:release`. A change to either config that leaves the copies behind fails a gate rather than quietly turning this Draft into a description of a release nobody runs.
+The precedence above is a statement, not a mechanism. `scripts/repo-config.test.mjs` compares the three blocks this file copies verbatim — the `release` configuration of §14, the `prepare` gate list of §17 and the command excerpt of §22 — against `nx.json`, `.github/workflows/ci.yml` and `package.json`, re-runs the local half of §20's tag census, and CI runs all of it as part of `pnpm test:release`. A change to any of those files that leaves the copies behind fails a gate rather than quietly turning this Draft into a description of a release nobody runs.
 
 ---
 
@@ -748,6 +748,7 @@ pnpm format
 pnpm check:files
 pnpm verify:logging
 pnpm verify:a11y
+pnpm verify:testids
 pnpm verify:packages
 pnpm test:release
 pnpm release:check --base="$NX_BASE" --head="$NX_HEAD"
@@ -757,6 +758,8 @@ pnpm nx run-many -t lint typecheck test build verify --projects="$NX_PROJECT" --
 pnpm check:files                                    # the build output now exists to measure
 pnpm tarball:verify:packages "$PACKAGE_DIRECTORY"   # every publishable project
 ```
+
+The `prepare` half is the workflow's own step list, and `scripts/repo-config.test.mjs` compares them command for command against `.github/workflows/ci.yml`; the project half names the gates that run per selected project rather than every step that job runs.
 
 Tarball verification is not something CI reaches for where useful — it is a condition on the matrix row: every project `publishable` covers packs its tarball and installs that tarball in a clean environment, so no package can ship from a run that only read its source tree (§16). `pnpm check:files` runs a second time here for the opposite reason: the `prepare` checkout has no build output, so the generated-bundle band of the size budget measures nothing until this project has been built.
 
@@ -856,7 +859,7 @@ The per-package scheme this section originally recommended —
 @yadsh/dsh-ui-tweaks@0.7.1
 ```
 
-— is historical, and there is nothing of it left to read. `git ls-remote --tags` against either remote, and `git tag -l` in a fresh clone, list the `release/*` waves and no `name@version` tag. The releases the per-package scheme made are in this history as commits (`chore(release): publish` runs back to 2026-08-30, and the first wave tag is `release/2026-09-17`), but no tag of that shape is reachable on them, so the three paths that still read it are insurance rather than a live dependency:
+— is historical, and there is nothing of it left to read. `git ls-remote --tags` against either remote, and `git tag -l` in a fresh clone, list the `release/*` waves and no `name@version` tag; the census was taken on 2026-09-28, and `scripts/repo-config.test.mjs` re-runs its local half on every `pnpm test:release`, which is the half a checkout can see. The releases the per-package scheme made are in this history as commits (`chore(release): publish` runs back to 2026-08-30, and the first wave tag is `release/2026-09-17`), but no tag of that shape is reachable on them, so the three paths that still read it are insurance rather than a live dependency:
 
 - `scripts/check-release-plans.mjs` falls back to `{projectName}@*` when the head reaches no `release/*` tag. With neither shape reachable the gate reads the project as never shipped and counts its whole change against the base — the conservative answer, not a hole (§13).
 - The `publish_only` path takes a per-package tag as the proof that a release of the older shape was already published; on this history it stops at `Missing release tag` instead of republishing one of those commits.
