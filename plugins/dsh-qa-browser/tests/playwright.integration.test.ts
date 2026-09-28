@@ -1,6 +1,6 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
-import http, { createServer } from "node:http";
+import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
 
 import { afterEach, describe, expect, it } from "vitest";
@@ -11,6 +11,7 @@ import { PlaywrightBrowserProvider } from "../src/host/providers/playwright.js";
 import { QaBrowserSessionManager } from "../src/host/session-manager.js";
 
 import {
+  devToolsHostProbe,
   discoverChromium,
   freePort,
   removeProfileDir,
@@ -21,6 +22,9 @@ import {
 } from "./external-chromium.helpers.js";
 
 const enabled = process.env["DSH_QA_BROWSER_E2E"] === "1";
+
+/** The `Origin` a web page puts on a socket it opens from itself. */
+const PAGE_ORIGIN = "http://page.example";
 
 /** The policy with a log of the destinations it was asked about. */
 class RecordingPolicy extends BrowserNetworkPolicy {
@@ -143,53 +147,6 @@ function socketProbeConfig(
         : { mode: "attach", cdpEndpoint },
     security: { network: { allowedSchemes: [...schemes] } },
   });
-}
-
-/**
- * Ask a browser's DevTools server the two hops an endpoint makes — the
- * `/json/version` question an `http` endpoint asks and the `ws` upgrade its
- * answer names — under a `Host` header that is written down rather than
- * inferred. Which shapes of header the browser answers is the question a
- * deployment asks its sidecar guide, and it is the browser's answer, so the
- * request has to leave carrying the name the guide is being checked on.
- */
-async function devToolsHostProbe(
-  debugPort: number,
-): Promise<(hostHeader: string, overSocket?: boolean) => Promise<number>> {
-  const version = (await (
-    await fetch(`http://127.0.0.1:${String(debugPort)}/json/version`)
-  ).json()) as { webSocketDebuggerUrl?: string };
-  expect(typeof version.webSocketDebuggerUrl).toBe("string");
-  const socketPath = new URL(version.webSocketDebuggerUrl ?? "").pathname;
-  return (hostHeader, overSocket = false) =>
-    new Promise<number>((resolve, reject) => {
-      const request = http.request(
-        {
-          host: "127.0.0.1",
-          port: debugPort,
-          path: overSocket ? socketPath : "/json/version",
-          headers: overSocket
-            ? {
-                host: hostHeader,
-                connection: "Upgrade",
-                upgrade: "websocket",
-                "sec-websocket-key": randomBytes(16).toString("base64"),
-                "sec-websocket-version": "13",
-              }
-            : { host: hostHeader },
-        },
-        (response) => {
-          response.resume();
-          resolve(response.statusCode ?? 0);
-        },
-      );
-      request.on("upgrade", (_response, socket) => {
-        socket.destroy();
-        resolve(101);
-      });
-      request.on("error", reject);
-      request.end();
-    });
 }
 
 describe.skipIf(!enabled)("Playwright Browser runtime", () => {
@@ -441,10 +398,11 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
   it("answers only the endpoint forms the browser itself accepts", async () => {
     // §3.3 and DOCKER.md both leave the endpoint to the deployment, and Chromium
     // decides what it answers before this runtime is involved at all: the
-    // DevTools server checks the request's `Host` header, while
-    // `allowRemoteCdpEndpoint` only opens the config gate and Playwright then
-    // dials whatever it was given. So the address shape a sidecar guide sends an
-    // operator to is the browser's answer, which is measured here.
+    // DevTools server checks the request's `Host` header, and the origin of an
+    // upgrade, while `allowRemoteCdpEndpoint` only opens the config gate and
+    // Playwright then dials whatever it was given. So the address shape a sidecar
+    // guide sends an operator to, and what a flag named in that guide opens, are
+    // the browser's answers, which is what is measured here.
     const executable = discoverChromium();
     const debugPort = await freePort();
     const port = String(debugPort);
@@ -453,23 +411,42 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
       const ask = await devToolsHostProbe(debugPort);
       // What answers: an address, the one name Chromium recognises, and any IP —
       // the header has to parse as an address, not belong to this machine.
-      expect(await ask(`127.0.0.1:${port}`)).toBe(200);
-      expect(await ask(`localhost:${port}`)).toBe(200);
-      expect(await ask(`203.0.113.20:${port}`)).toBe(200);
-      expect(await ask(`127.0.0.1:${port}`, true)).toBe(101);
+      expect(await ask({ host: `127.0.0.1:${port}` })).toBe(200);
+      expect(await ask({ host: `localhost:${port}` })).toBe(200);
+      expect(await ask({ host: `203.0.113.20:${port}` })).toBe(200);
+      expect(await ask({ host: `127.0.0.1:${port}`, socket: true })).toBe(101);
       // What does not: the compose service name the sidecar shape writes, on
       // both hops, so a pinned `ws` URL gets around nothing.
-      expect(await ask(`chromium:${port}`)).toBeGreaterThanOrEqual(400);
-      expect(await ask(`chromium:${port}`, true)).toBeGreaterThanOrEqual(400);
+      expect(await ask({ host: `chromium:${port}` })).toBeGreaterThanOrEqual(
+        400,
+      );
+      expect(
+        await ask({ host: `chromium:${port}`, socket: true }),
+      ).toBeGreaterThanOrEqual(400);
+      // And what the disowned switch is really about: an upgrade carrying the
+      // `Origin` of a page, which is how a web page dials the browser it runs in.
+      // Without the flag the browser turns that request away, while the same
+      // `Origin` on the `/json/version` question is answered — the guard sits on
+      // the upgrade, where a page actually reaches the browser.
+      expect(
+        await ask({ host: `127.0.0.1:${port}`, origin: PAGE_ORIGIN }),
+      ).toBe(200);
+      expect(
+        await ask({
+          host: `127.0.0.1:${port}`,
+          socket: true,
+          origin: PAGE_ORIGIN,
+        }),
+      ).toBeGreaterThanOrEqual(400);
 
-      // The same guide then disowns the switch a deployment reaches for:
-      // `--remote-allow-origins` "guards the `Origin` header", so a name in
-      // `Host` stays refused with it set. That is a claim about a browser started
-      // with the flag, and nothing else in this suite ever starts one, so it is
-      // asked here of a second Chromium that has it. Left unmeasured, the
-      // sentence would only ever have been read off browsers that never had the
-      // flag — and a flag that did move the `Host` check would still be sending
-      // every sidecar guide to an address rather than to a name.
+      // The same guide then disowns that switch: `--remote-allow-origins` "guards
+      // the `Origin` header", so a name in `Host` stays refused with it set. That
+      // is a claim about a browser started with the flag, and nothing else in this
+      // suite ever starts one, so it is asked here of a second Chromium that has
+      // it. Left unmeasured, the sentence would only ever have been read off
+      // browsers that never had the flag — and a flag that did move the `Host`
+      // check would still be sending every sidecar guide to an address rather than
+      // to a name.
       const flaggedPort = await freePort();
       const flagged = await startExternalChromium(executable, flaggedPort, [
         "--remote-allow-origins=*",
@@ -478,13 +455,34 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
         const askFlagged = await devToolsHostProbe(flaggedPort);
         const flaggedAddress = `127.0.0.1:${String(flaggedPort)}`;
         const flaggedName = `chromium:${String(flaggedPort)}`;
-        // The control that makes the two refusals below the browser's answer
-        // rather than a browser that never came up: this Chromium answers its own
-        // address on both hops, exactly as the unflagged one did.
-        expect(await askFlagged(flaggedAddress)).toBe(200);
-        expect(await askFlagged(flaggedAddress, true)).toBe(101);
-        expect(await askFlagged(flaggedName)).toBeGreaterThanOrEqual(400);
-        expect(await askFlagged(flaggedName, true)).toBeGreaterThanOrEqual(400);
+        // This Chromium is up and answers its own address on both hops, so the
+        // refusals below are its judgment about the headers rather than a browser
+        // that never came up.
+        expect(await askFlagged({ host: flaggedAddress })).toBe(200);
+        expect(await askFlagged({ host: flaggedAddress, socket: true })).toBe(
+          101,
+        );
+        // The one reading that separates the two processes, and so the control
+        // that the flag reached this one: the page-origin upgrade the unflagged
+        // browser refused is carried through here. Ask without it and every
+        // assertion in this case holds for a browser started with no flag at all,
+        // and the two sentences below would be read off a browser that never had
+        // the switch the guide is talking about.
+        expect(
+          await askFlagged({
+            host: flaggedAddress,
+            socket: true,
+            origin: PAGE_ORIGIN,
+          }),
+        ).toBe(101);
+        // What the flag does not move: the name is refused with it set, on both
+        // hops, exactly as it was without it.
+        expect(await askFlagged({ host: flaggedName })).toBeGreaterThanOrEqual(
+          400,
+        );
+        expect(
+          await askFlagged({ host: flaggedName, socket: true }),
+        ).toBeGreaterThanOrEqual(400);
       } finally {
         await stopExternalChromium(flagged.child, flaggedPort);
         await removeProfileDir(flagged.userDataDir);
