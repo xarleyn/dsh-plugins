@@ -50,6 +50,17 @@ const OVERRIDDEN: NamespaceSnapshot = {
   revision: 1,
 };
 
+/** A host form that answers every write by throwing, the way a moved-on revision fence does. */
+function rejectingForm(snapshot: NamespaceSnapshot): NamespaceForm {
+  return {
+    getSnapshot: () => snapshot,
+    subscribe: () => () => undefined,
+    mutate: async () => {
+      throw new Error("revision fence moved on");
+    },
+  };
+}
+
 function paths(writes: readonly NamespaceOp[]): string[] {
   return writes.map((write) => `${write.op}:${write.path.join(".")}`);
 }
@@ -91,6 +102,23 @@ describe("staged settings form", () => {
     actions.discard();
     expect(form.getSnapshot().dirty).toBe(false);
     expect(form.getSnapshot().failed).toBe(false);
+  });
+
+  it("keeps the drafts when the write throws instead of answering", async () => {
+    const form = new SettingsForm(rejectingForm(OVERRIDDEN));
+    const actions = form.actions();
+
+    actions.choose("onLimit", "error");
+    await actions.save();
+    expect(form.getSnapshot().failed).toBe(true);
+    expect(form.getSnapshot().dirty).toBe(true);
+
+    // A rejected write releases the saving flag, so the card is not stuck in a
+    // pass that never ends and the same draft can be committed on a retry.
+    expect(form.getSnapshot().saving).toBe(false);
+    await actions.save();
+    expect(form.getSnapshot().failed).toBe(true);
+    expect(form.getSnapshot().dirty).toBe(true);
   });
 
   it("refuses a draft the field kind or operation cannot carry", () => {
