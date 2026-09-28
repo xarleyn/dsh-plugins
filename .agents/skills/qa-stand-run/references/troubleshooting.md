@@ -15,8 +15,10 @@ up, and on anyone else's rig name the paths and the command in your ask instead.
 The repair is the same either way; the authority is not.
 
 **The `up -d` and `restart` here are `docker compose` commands, so they belong to
-`$KIT`** (`SKILL.md` §1). Run from the repository directory, compose reads no
-configuration file, and its own refusal arrives as a symptom of the stand.
+`$KIT`** (`SKILL.md` §1), and §1's guard decides whether `$KIT` names the kit at
+all: with the variable unset these commands do not fail as a kit, they run
+somewhere else. Run from the repository directory, compose reads no configuration
+file, and its own refusal arrives as a symptom of the stand.
 
 **A quoted symptom is a string to search for, so the table says whose string it
 is.** What this repository's plugins print is checkable here and is quoted from
@@ -87,9 +89,10 @@ cleanup of a slice; that is where a stand that "will not boot" usually lives.
   bundle you got is the bundle you built.
 - **Operator URL answers `401 dsh web authentication required`** (even from the
   stand's own machine): take a fresh token from the boot log (`SKILL.md` §3, whose
-  recipe tells "no such line" from "no log yet" from "compose would not answer",
-  and runs in the kit so that a wrong directory is not read as a dead rig) and
-  retry once. A `200` there is this row settling itself — the first token had
+  recipe refuses an unset `$KIT` before the rig is asked anything and then tells
+  "no such line" from "no log yet" from "compose would not answer", running in the
+  kit so that a wrong directory is not read as a dead rig) and retry once. A `200`
+  there is this row settling itself — the first token had
   expired while the harness kept running. Whether the kit offers any other way to
   get one is its rule, not this tree's, so ask its operator instead of assuming
   the boot log is the only door.

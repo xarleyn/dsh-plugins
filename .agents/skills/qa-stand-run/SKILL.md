@@ -69,11 +69,31 @@ maintainer rather than probing the network for it.
   the misdiagnosis §3 works to avoid.
 
   ```bash
-  # did anyone else edit a tracked config? untracked kit files are noise: see below
-  git -C "$KIT" status --porcelain --untracked-files=no -- config/dsh
-  git -C "$KIT" fetch --quiet                 # writes .git only, never the tree
-  git -C "$KIT" rev-list --count HEAD..@{u}   # behind; no upstream = fatal
+  # §0 owns this path; without it an unset $KIT acts where you happen to stand
+  if [ ! -d "$KIT/config/dsh" ]; then
+    echo "not the kit's directory — these three commands did not run; §0 owns" \
+         "this path"
+  else
+    # did someone else edit a tracked config? untracked kit files are noise
+    git -C "$KIT" status --porcelain --untracked-files=no -- config/dsh
+    git -C "$KIT" fetch --quiet                 # writes .git only, never the tree
+    git -C "$KIT" rev-list --count HEAD..@{u}   # behind; no upstream = fatal
+  fi
   ```
+
+  The guard comes first because an unset `$KIT` does not fail. Measured: `git -C ""`
+  returns 0 and acts on **this repository** — the config check then reads a clean
+  tree that is not the kit's, and the `pull` form moves this checkout instead of
+  the kit's — while `cd ""` returns 0 and leaves the shell where it was, which for
+  §3 is the repository directory, where compose reads no file at all. A shell
+  taking the POSIX empty-argument branch would land in `$HOME` instead, and a
+  compose file living there answers with someone else's stack; not reproducible on
+  this shell, and the guard makes the two readings equally irrelevant. A path that
+  is set but absent does fail, loudly: `git -C` prints `fatal: cannot change to`
+  with a non-zero code. `config/dsh` is the marker because §1 says the entrypoint
+  reconciles from that directory; a kit whose config sits elsewhere is a
+  disagreement §0 settles in the kit's favour, and the guard's own refusal is the
+  loud kind.
 
   `fetch` is the whole step, and that is the point: it moves no file under
   `config/dsh/`, so it cannot change what a running stand re-applies on its next
@@ -178,12 +198,17 @@ Two more facts that cost hours when unknown:
 - Operator surface: the loopback port on the machine running the container,
   opened with the **launch token**. `data/admin-url.txt` is not authoritative —
   it survives port changes and moves — so take the token from the boot log. The
-  recipe assigns it and prints only its length, never the value, and it keeps the
-  three ways an empty answer happens apart: compose refusing, compose answering
-  with nothing logged, and a log whose boot line the pattern misses.
+  recipe assigns it and prints only its length, never the value; it refuses an unset
+  `$KIT` before the stand is asked anything (§1's guard — the stand cannot be blamed
+  for a variable that was never set), and it keeps the three ways an empty answer
+  happens apart: compose refusing, compose answering with nothing logged, and a log
+  whose boot line the pattern misses.
 
   ```bash
-  if LAUNCH_LOG=$(cd "$KIT" && docker compose logs qa); then
+  if [ ! -d "$KIT/config/dsh" ]; then
+    echo "launch token: NO KIT — \$KIT is unset or is not the kit's directory, so" \
+         "nothing below ran and the stand has not been asked anything: §0 owns it"
+  elif LAUNCH_LOG=$(cd "$KIT" && docker compose logs qa); then
     if [ -z "$LAUNCH_LOG" ]; then
       echo "launch token: NO LOG YET — compose answered with an empty log, so the" \
            "pattern never had a line to miss: the container has printed nothing" \
@@ -203,8 +228,8 @@ Two more facts that cost hours when unknown:
     fi
   else
     echo "compose would not answer at all (its own error is above) — there is" \
-         "nothing to capture: check you were in the kit, the service name," \
-         "compose, and the daemon"
+         "nothing to capture: what is left is the service name, compose, the" \
+         "daemon, and a compose file that is not at \$KIT's root (§0)"
   fi
   ```
 
@@ -229,8 +254,26 @@ Two more facts that cost hours when unknown:
   ```bash
   OPERATOR_URL="<the kit's loopback operator URL>?token=$LAUNCH_TOKEN"
   printf 'url = "%s"\n' "$OPERATOR_URL" |
-    curl -sS --config - -o /dev/null -w 'operator: %{http_code}\n'
+    curl -q -sS --config - -o /dev/null -w 'operator: %{http_code}\n'
   ```
+
+  `-q` is the option that keeps this off the transcript, and it only works in
+  first position. `curl` reads the user's own `~/.curlrc` *before* the command
+  line, and `--config -` does not cancel that read — so a `verbose`, `trace` or
+  `trace-ascii` sitting in that file prints the very request carrying the token,
+  into the same stdout and stderr that this round's transcript is. Measured on
+  curl 8.18.0 (Windows build) against a stub answering 200, with `verbose` in the
+  rc: without `-q` the output names the rc file it read — a machine-local path —
+  then the request line `> GET /admin?token=AbCd.123+xy:99 HTTP/1.1`, then the
+  response headers, `< Set-Cookie: dsh_session=…` among them. So verbosity puts
+  back both halves this recipe decided not to keep: the token, and the headers a
+  `-o /dev/null -w` call discards on purpose. With `-q` *after* `-sS` the rc is
+  still read and still prints it; `-q` first is the only form that yields a bare
+  `operator: 200`. `--config -` itself — config text from standard input — is
+  behaviour that varies with the build, which is why the version above is named.
+  If a curl refuses this form, report the refusal and curl's own message; the
+  repair is not to move the token back into the arguments, which
+  `docs/MANUAL_VERIFICATION.md` §1 refuses for exactly this kind of secret.
 
   The assignment is the shell's own and `printf` is a bash builtin, so the value
   goes into the pipe without becoming an argument and the transcript shows the
@@ -280,11 +323,14 @@ Two more facts that cost hours when unknown:
   pattern does not buy off, and the length is the only thing about the value you
   may print — it is how you notice a six-character capture.
 
-  The three empty answers are different findings and must not share a diagnosis.
-  "compose would not answer" is about the command, and its first candidate is where
-  it was run: re-check `$KIT` before blaming the rig. "compose answered with no
-  log" is about the state of the stand, which is why the branch prints `docker
-  compose ps` there — a container that has not reached the boot line is a rig
+  The three empty answers are different findings and must not share a diagnosis,
+  and the guard's refusal is not one of them: it says the kit was never located,
+  so no command reached a rig and the stand holds no finding yet. "compose would
+  not answer" is about the command, and once §1's guard has passed what is left
+  for it is the service name, compose itself, the daemon, and a compose file that
+  is not at the kit's root. "compose answered with no log" is about the state of
+  the stand, which is why the branch prints `docker compose ps` there — a
+  container that has not reached the boot line is a rig
   finding, and `references/troubleshooting.md` §The stack does not come up is where
   a stand that will not boot is worked. "compose answered with a log and nothing
   matched" is about the boot line's format, and the kit's README is where that is
@@ -360,8 +406,11 @@ symptom-to-cause table keys on that text.
   commits them. Stage explicit paths.
 - Any credential: never echo a token into a log, a screenshot, a PR or this
   repository, and never let one become a command argument or typed text — argv is
-  in the process list and the typed line is in shell history (§3). The operator
-  URL is a credential — it carries the token — so the same refusal covers pasting
+  in the process list and the typed line is in shell history (§3). A curl that was
+  not given `-q` first adds a third carrier: its own `~/.curlrc` is read before the
+  command line, and a verbosity setting there prints that request's own line and
+  the response headers with it (§3). The operator URL is a credential — it carries
+  the token — so the same refusal covers pasting
   it, and the report names the port, not the URL. Nor is a credential evidence:
   the operator request proves itself with its status code alone — the body it
   would render is the stand's data, and the headers it answers with can carry the
