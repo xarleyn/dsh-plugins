@@ -247,8 +247,11 @@ pull request and on `main` rather than left to whoever remembers to run it. Both
 runtime modes are covered there: the launch case starts its own Chromium, and the
 attach case starts one outside the plugin, points `runtime.cdpEndpoint` at it,
 drives a session through the network gates on that borrowed browser, and checks
-that the plugin's teardown left it running. The suite looks for a browser the way
-the launch path looks for one — Playwright's own build, then an installed Chrome,
+that the plugin's teardown left it running. The endpoint is dialled in both forms
+the mode accepts — an `http` one, which asks that server where to connect next, and
+the `ws` one a deployment writes when it must pin the address itself. The suite looks
+for a browser the way the launch path looks for one — Playwright's own build, then
+an installed Chrome,
 Chromium or Edge — so one variable is enough wherever any of them exists:
 
 ```bash

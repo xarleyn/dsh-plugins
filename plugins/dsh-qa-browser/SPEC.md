@@ -179,9 +179,10 @@ the host the URL parser produced, so `*.localhost` and a `localhost.` carrying a
 trailing dot both count as other hosts. An `http` endpoint bounds the address
 written down, which is the first hop — that server answers with the `ws` URL
 Playwright then dials — so a deployment that must pin the dialled address writes a
-`ws` URL. A person who can reach that host can reach the browser, which is a
-property of the deployment the operator built — the runtime documents it and does
-not promise otherwise.
+`ws` URL; §40.2 attaches through one on a real browser, so the form a pinning
+deployment is sent to is dialled here rather than only described. A person who can
+reach that host can reach the browser, which is a property of the deployment the
+operator built — the runtime documents it and does not promise otherwise.
 
 Attaching does not merge this runtime with the Harness's own browser tooling. It
 is a second driver of one Chromium, not a shared session: the pages of this plugin
@@ -2306,8 +2307,16 @@ is pinned in the unit suite. The gates are read back on that borrowed browser as
 well — the navigation refusal, the refused socket handshake, and the rule that no
 service worker of the session reaches the network outside the gate — because the
 unit suite registers a route handler and calls it itself, which says nothing about
-whether an attached browser obeys it. Each attach case finds its own browser
-through the same search the launch path uses, and a run that was asked for and
+whether an attached browser obeys it. Both endpoint forms §3.3 documents are
+dialled there, because they are two ways of learning where to connect: an `http`
+one asks that server for the address to dial next, while a `ws` one is dialled as
+written, which is why a deployment that must pin the address writes it. An
+`http`-only run would leave that form untried against a real browser, so the case
+takes the `ws` URL from the browser's own `/json/version` answer — what a pinning
+deployment would have written once — attaches through it, reads the page it drives
+back as a target of *that* browser, and leaves the process running when its own
+teardown ends. Each attach case finds its own browser through the same search the
+launch path uses, and a run that was asked for and
 found nothing fails saying so rather than skipping: a skipped attach case would
 read as a check that passed. The suite is opt-in elsewhere in the workspace and
 required in this project's own CI job, which sets `DSH_QA_BROWSER_E2E=1`.
