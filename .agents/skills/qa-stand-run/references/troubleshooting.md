@@ -57,7 +57,8 @@ cleanup of a slice; that is where a stand that "will not boot" usually lives.
 - **Operator URL answers `401 dsh web authentication required`** (even from the
   stand's own machine): the launch token expired while the harness kept running
   and there is no re-issue path — take a fresh token from the boot log
-  (`SKILL.md` §3).
+  (`SKILL.md` §3, whose recipe tells "no such line" apart from "no such
+  service").
 - **Everything says "connecting…" forever through a proxy.** The operator
   surface authorises the request's role from its cookie and its origin: a proxy
   that does not rewrite `Host`/`Origin`/`Referer` gets `403` on every RPC, and

@@ -205,5 +205,8 @@ matches all pass lint, typecheck, test and verify. A wave that will be deployed
 is therefore accepted on a stand as well. The deployment kit carries the manual
 playbooks — smoke after every deploy, wave acceptance with a row per changed
 package, and a refusal-to-cause reference — together with the evidence collector
-each round is recorded by. Run that pass on the test stand before moving the
-deployment's plugin list, and repeat the smoke pass on the deployment itself.
+each round is recorded by. Those are roles, not paths: the kit's file names are
+listed once, in the `release-plugins` skill §1b, and `qa-stand-run` is the route
+a single plugin change takes to the same pass. Run that pass on the test stand
+before moving the deployment's plugin list, and repeat the smoke pass on the
+deployment itself.
