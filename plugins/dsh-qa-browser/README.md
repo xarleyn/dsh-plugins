@@ -180,13 +180,14 @@ although it is meant to be local, and neither is `localhost.` with a trailing do
 — that dot turns the literal into a DNS query. This plugin never resolves the
 endpoint, Playwright dials it through the system resolver, and a resolver with a
 search domain can answer `chrome.localhost` with a machine somewhere else. For an
-`http` endpoint the gate bounds the address written down, which is the first hop:
-the server there replies with the `ws` URL to dial, so a deployment that needs the
-dialled address pinned writes a `ws` URL. Holding a CDP endpoint means holding the
-browser, its every tab included and past this plugin's own policy, so an endpoint
-beyond loopback — including one that merely looks like it — needs
-`allowRemoteCdpEndpoint: true` written next to it: a decision someone made on
-purpose, not a default.
+`http` or `https` endpoint the gate bounds the address written down, which is the
+first hop: the server there replies with the `ws` URL to dial, and wrapping that
+first request in TLS does not move the answer to the second one, so a deployment
+that needs the dialled address pinned writes a `ws`/`wss` URL. Holding a CDP
+endpoint means holding the browser, its every tab included and past this plugin's
+own policy, so an endpoint beyond loopback — including one that merely looks like
+it — needs `allowRemoteCdpEndpoint: true` written next to it: a decision someone
+made on purpose, not a default.
 
 The keys that choose and shape a process are refused under `attach` rather than
 ignored: `executablePath`, a `browserChannel` other than `chromium`, and

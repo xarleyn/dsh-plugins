@@ -176,10 +176,11 @@ The endpoint is a control handle, so it is treated as one: an `attach` runtime
 reaches `localhost` by default, and any other host needs
 `runtime.allowRemoteCdpEndpoint: true` in the same config block. The gate reads
 the host the URL parser produced, so `*.localhost` and a `localhost.` carrying a
-trailing dot both count as other hosts. An `http` endpoint bounds the address
-written down, which is the first hop — that server answers with the `ws` URL
-Playwright then dials — so a deployment that must pin the dialled address writes a
-`ws` URL; §40.2 attaches through one on a real browser, so the form a pinning
+trailing dot both count as other hosts. An `http` or an `https` endpoint bounds
+the address written down, which is the first hop — that server answers with the
+`ws` URL Playwright then dials, and TLS around the question moves nothing in the
+answer — so a deployment that must pin the dialled address writes a `ws` or a
+`wss` URL; §40.2 attaches through one on a real browser, so the form a pinning
 deployment is sent to is dialled here rather than only described. A person who can
 reach that host can reach the browser, which is a property of the deployment the
 operator built — the runtime documents it and does not promise otherwise.
@@ -2269,6 +2270,11 @@ This fixture is critical for stable Browser tests.
   the URL parser collapses into a loopback literal, and the ones that only prove
   nothing — `*.localhost`, a `localhost.` with its trailing dot, an IPv4-mapped
   IPv6 literal — which need `allowRemoteCdpEndpoint` written down;
+- one case for each scheme the gate accepts, so dropping any of the four from it
+  reddens the case standing for it: the `http`/`https` pair Playwright asks for
+  an address, the `ws`/`wss` pair it dials as written, each still bounded by the
+  host gate above, and a form outside the four refused with a message naming the
+  forms that do work;
 - what the provider asks of either browser: the context options and the network
   gates it installs on top of it, the refusal it hands back when a socket server
   was never dialed, and that of an attached browser it asks neither for the
@@ -2307,15 +2313,15 @@ is pinned in the unit suite. The gates are read back on that borrowed browser as
 well — the navigation refusal, the refused socket handshake, and the rule that no
 service worker of the session reaches the network outside the gate — because the
 unit suite registers a route handler and calls it itself, which says nothing about
-whether an attached browser obeys it. Both endpoint forms §3.3 documents are
-dialled there, because they are two ways of learning where to connect: an `http`
-one asks that server for the address to dial next, while a `ws` one is dialled as
-written, which is why a deployment that must pin the address writes it. An
-`http`-only run would leave that form untried against a real browser, so the case
-takes the `ws` URL from the browser's own `/json/version` answer — what a pinning
-deployment would have written once — attaches through it, reads the page it drives
-back as a target of *that* browser, and leaves the process running when its own
-teardown ends. Each attach case finds its own browser through the same search the
+whether an attached browser obeys it. The `http` and the `ws` form §3.3 documents
+are both dialled there, because they are two ways of learning where to connect: an
+`http` one asks that server for the address to dial next, while a `ws` one is
+dialled as written, which is why a deployment that must pin the address writes it.
+An `http`-only run would leave that form untried against a real browser, so the
+case takes the `ws` URL from the browser's own `/json/version` answer — what a
+pinning deployment would have written once — attaches through it, reads the page it
+drives back as a target of *that* browser, and leaves the process running when its
+own teardown ends. Each attach case finds its own browser through the same search the
 launch path uses, and a run that was asked for and
 found nothing fails saying so rather than skipping: a skipped attach case would
 read as a check that passed. The suite is opt-in elsewhere in the workspace and
