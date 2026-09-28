@@ -39,10 +39,28 @@ function badgeOf(row: PersonaPresetRow): string {
   return row.persona === "local" ? strings.badgeCustom : strings.badgeInherited;
 }
 
+/**
+ * The one line a roster card's header can carry about a broken preset.
+ *
+ * The registry's `broken` is a tree, not a sentence: `diagnostic()` joins its
+ * failed and pending rows with `\n`, and each row's mount detail nests its own
+ * causes under `- ` with `\n  ` continuations. The card shell gives a
+ * description wrapping prose and no line break of its own — it styles no
+ * `white-space`, and `AGENTS.md` holds the shell rules identical in every
+ * plugin, so a tree handed to it arrives collapsed into one run-on line, and
+ * pre-formatting it here would be restyling the shell. What this keeps is the
+ * registry's own first line, `<entry id> (<plugin name>): <message>`: the row
+ * that failed, in the host's words. The whole tree, with its breaks intact, is
+ * what the opened card states.
+ */
+function headlineOf(text: string): string {
+  return text.split("\n")[0] ?? "";
+}
+
 /** The one-line description under a roster row's name. */
 function describe(row: PersonaPresetRow): string {
   const parts: string[] = [];
-  if (row.broken !== "") parts.push(row.broken);
+  if (row.broken !== "") parts.push(headlineOf(row.broken));
   if (row.persona === "none") parts.push(strings.describesMissing);
   if (row.persona === "ambiguous") parts.push(strings.describesAmbiguous);
   if (row.persona === "unreadable") parts.push(strings.describesError);
@@ -185,6 +203,22 @@ export function PersonaPage(props: PersonaPageProps): ReactElement {
           ))}
         </ul>
       )}
+      {/* The roster is a live directory the page reads once: a preset waiting on
+          a service that has not mounted yet becomes healthy by itself, and a row
+          that cannot compose for a reason the deployment has already fixed stays
+          as the page first saw it. This is the control that asks again, on the
+          screen that shows the answer — the reader's Reload re-reads one preset
+          only. */}
+      <div className="preset-persona__actions">
+        <button
+          type="button"
+          className="preset-persona__button"
+          data-testid="persona-roster-reload"
+          onClick={() => void controller.refresh()}
+        >
+          {strings.reloadRoster}
+        </button>
+      </div>
     </div>
   );
 }

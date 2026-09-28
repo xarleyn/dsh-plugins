@@ -177,6 +177,17 @@ export class PersonaPageController {
     if (id !== undefined) await this.open(id);
   }
 
+  /** Re-read the roster from the screen that is showing it. */
+  async refresh(): Promise<void> {
+    // A preset the registry reports as waiting on a service that has not mounted
+    // yet becomes healthy on its own, so a roster row can carry a refusal the
+    // deployment has already outgrown. This notice is the one that says the rows
+    // are stale: a fresh read answers it, and a refused fresh read puts a refusal
+    // back in its place.
+    this.dismissNotice();
+    await this.load();
+  }
+
   /** Drop a notice the user has read. */
   dismissNotice(): void {
     if (this.state.notice !== null) this.set({ notice: null });

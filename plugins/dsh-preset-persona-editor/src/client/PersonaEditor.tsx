@@ -58,7 +58,17 @@ function Field(props: {
   );
 }
 
-/** A state shown as a checkbox the user cannot change. */
+/**
+ * A state shown as a checkbox the user cannot change.
+ *
+ * The control is not `disabled`: a disabled control leaves the tab order, so a
+ * keyboard reader would step over two of the persona's four values and never
+ * learn they exist. It stays reachable and says what it is — `aria-disabled`, and
+ * a `checked` value the page owns, which an ignored change cannot move.
+ * `readOnly` is not the way to say it: the attribute applies to the controls that
+ * take text, and a browser honours it on a checkbox by nothing, which is why the
+ * textarea readings above carry it and this one carries a pinned value instead.
+ */
 function Check(props: {
   readonly testId: string;
   readonly label: string;
@@ -72,10 +82,10 @@ function Check(props: {
         id={id}
         type="checkbox"
         checked={props.checked}
-        disabled
+        aria-disabled="true"
         aria-describedby={`${id}-hint`}
         data-testid={props.testId}
-        readOnly
+        onChange={() => undefined}
       />
       <span className="preset-persona__check-text">
         <label className="preset-persona__label" htmlFor={id}>
@@ -131,9 +141,9 @@ function SectionRow(props: {
             id={`${id}-enabled`}
             type="checkbox"
             checked={section.enabled}
-            disabled
-            readOnly
+            aria-disabled="true"
             data-testid="persona-section-enabled"
+            onChange={() => undefined}
           />
           <label className="preset-persona__label" htmlFor={`${id}-enabled`}>
             {strings.sectionEnabledLabel}
