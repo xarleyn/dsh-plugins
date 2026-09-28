@@ -1662,6 +1662,9 @@ details live under `docs/specs/`, each one linked to its file below:
 - [`docs/specs/managed-service-credentials.md`](./docs/specs/managed-service-credentials.md)
   — the deployment-managed service-token mode: capability classification, the
   broker's ceiling, and what a provider must declare to support it.
+- [`docs/specs/providers-deferred.md`](./docs/specs/providers-deferred.md)
+  — everything the GitLab and Weblate providers left out, one row per item: what
+  the code does today, the default already on record, and what blocks it.
 - [`docs/specs/providers-confluence.md`](./docs/specs/providers-confluence.md)
 - [`docs/specs/providers-gitlab.md`](./docs/specs/providers-gitlab.md)
 - [`docs/specs/providers-jira.md`](./docs/specs/providers-jira.md)
