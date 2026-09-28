@@ -95,6 +95,8 @@ function Probe(props: ProbeProps) {
 
 class FakeNotification {
   static permission: NotificationPermission = "granted";
+  /** What the reader answers the browser's prompt with, once it is asked. */
+  static answer: NotificationPermission = "granted";
   static raised: string[] = [];
   static asked = 0;
 
@@ -108,8 +110,8 @@ class FakeNotification {
 
   static async requestPermission(): Promise<NotificationPermission> {
     FakeNotification.asked += 1;
-    // The reader answered the browser's prompt by allowing this origin.
-    FakeNotification.permission = "granted";
+    // The reader answered the browser's prompt, one way or the other.
+    FakeNotification.permission = FakeNotification.answer;
     return FakeNotification.permission;
   }
 }
@@ -161,6 +163,7 @@ beforeEach(() => {
   document.hasFocus = () => true;
   window.localStorage.clear();
   FakeNotification.permission = "granted";
+  FakeNotification.answer = "granted";
   FakeNotification.raised = [];
   FakeNotification.asked = 0;
   vi.stubGlobal("Notification", FakeNotification);
@@ -287,6 +290,36 @@ describe("turn completion notices", () => {
     expect(FakeNotification.asked).toBe(1);
   });
 
+  it("writes a refused prompt as a channel that stayed off", async () => {
+    // The other half of the click: what the browser answers is what the record
+    // keeps, and the spent prompt is what stops the page asking a second time.
+    FakeNotification.permission = "default";
+    FakeNotification.answer = "denied";
+    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    fireEvent.click(
+      screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    );
+    await waitFor(() =>
+      expect(storedPrefs()).toEqual({ osEnabled: false, osOffered: true }),
+    );
+    expect(FakeNotification.asked).toBe(1);
+
+    document.hasFocus = () => false;
+    settleSecondChat(
+      page,
+      hostList([
+        { id: "mine", running: false },
+        { id: "second", running: true },
+      ]),
+    );
+    expect(screen.getByText("Чат second")).toBeTruthy();
+    expect(FakeNotification.raised).toEqual([]);
+    expect(
+      screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    ).toBeNull();
+  });
+
   it("waves the offer off with the line it sits under", () => {
     FakeNotification.permission = "default";
     const page = mountPage(hostList([{ id: "mine", running: true }]));
@@ -399,6 +432,30 @@ describe("turn completion notices", () => {
     );
     await waitFor(() =>
       expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: true }),
+    );
+    expect(FakeNotification.asked).toBe(1);
+  });
+
+  it("offers the browser's question while the record claims a channel it cannot deliver", async () => {
+    // The state the address bar leaves behind: the reader's own answer is still
+    // on, the browser's is missing. The record cannot close the offer here,
+    // because nothing is delivered with it — and on a stand without accounts
+    // this question is the only way the channel gets back. Answering it with a
+    // refusal moves the record to what the browser will actually do.
+    FakeNotification.permission = "default";
+    FakeNotification.answer = "denied";
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ osEnabled: true, osOffered: false }),
+    );
+    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(FakeNotification.raised).toEqual([]);
+    fireEvent.click(
+      screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    );
+    await waitFor(() =>
+      expect(storedPrefs()).toEqual({ osEnabled: false, osOffered: true }),
     );
     expect(FakeNotification.asked).toBe(1);
   });
