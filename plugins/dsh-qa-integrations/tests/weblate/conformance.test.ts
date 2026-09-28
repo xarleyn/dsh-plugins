@@ -1,7 +1,7 @@
 import { resolveConfig } from "../../src/config.js";
 import { WeblateProvider } from "../../src/providers/weblate/index.js";
 import { INSTANCES, TOKEN } from "./shared.js";
-import { describeProviderConformance } from "../provider-conformance.helpers.js";
+import { describeProviderConformance } from "../helpers/provider-conformance.helpers.js";
 
 describeProviderConformance({
   provider: "weblate",

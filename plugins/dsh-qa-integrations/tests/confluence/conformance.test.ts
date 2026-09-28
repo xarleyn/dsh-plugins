@@ -1,7 +1,7 @@
 import { resolveConfig } from "../../src/config.js";
 import { ConfluenceProvider } from "../../src/providers/confluence/index.js";
 import { COMPANY, EMAIL, SITES, TOKEN } from "./shared.js";
-import { describeProviderConformance } from "../provider-conformance.helpers.js";
+import { describeProviderConformance } from "../helpers/provider-conformance.helpers.js";
 
 const BASIC = Buffer.from(`${EMAIL}:${TOKEN}`, "utf8").toString("base64");
 
