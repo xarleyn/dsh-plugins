@@ -181,9 +181,16 @@ the address written down, which is the first hop — that server answers with th
 `ws` URL Playwright then dials, and TLS around the question moves nothing in the
 answer — so a deployment that must pin the dialled address writes a `ws` or a
 `wss` URL; §40.2 attaches through one on a real browser, so the form a pinning
-deployment is sent to is dialled here rather than only described. A person who can
-reach that host can reach the browser, which is a property of the deployment the
-operator built — the runtime documents it and does not promise otherwise.
+deployment is sent to is dialled here rather than only described. What the gate
+lets through is wider than what a browser answers, and the gap belongs to the
+deployment: Chromium checks the `Host` header of a DevTools request and answers an
+IP address or `localhost` — on the `/json/version` question an `http` endpoint
+asks and on the `ws` upgrade that answer names, both read off a live browser in
+§40.2 — so a container's service name clears `allowRemoteCdpEndpoint` and is then
+refused by the browser itself, and the session fails to start. DOCKER.md writes
+the address form for that reason. A person who can reach that host can reach the
+browser, which is a property of the deployment the operator built — the runtime
+documents it and does not promise otherwise.
 
 Attaching does not merge this runtime with the Harness's own browser tooling. It
 is a second driver of one Chromium, not a shared session: the pages of this plugin
@@ -2328,11 +2335,15 @@ An `http`-only run would leave that form untried against a real browser, so the
 case takes the `ws` URL from the browser's own `/json/version` answer — what a
 pinning deployment would have written once — attaches through it, reads the page it
 drives back as a target of *that* browser, and leaves the process running when its
-own teardown ends. Each attach case finds its own browser through the same search the
-launch path uses, and a run that was asked for and
-found nothing fails saying so rather than skipping: a skipped attach case would
-read as a check that passed. The suite is opt-in elsewhere in the workspace and
-required in this project's own CI job, which sets `DSH_QA_BROWSER_E2E=1`.
+own teardown ends. That run also puts to the browser the question §3.3 leaves with
+it: what answer each shape of `Host` header gets — an address and `localhost`
+answered, a container's name refused on the `/json/version` hop and on the `ws`
+upgrade alike, which is why DOCKER.md writes an address. Each attach case finds
+its own browser through the same search the launch path uses, and a run that was
+asked for and found nothing fails saying so rather than skipping: a skipped
+attach case would read as a check that passed. The suite is opt-in elsewhere in
+the workspace and required in this project's own CI job, which sets
+`DSH_QA_BROWSER_E2E=1`.
 
 ### 40.3 Tool contract tests
 
