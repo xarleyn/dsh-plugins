@@ -63,7 +63,7 @@ describe("QaBrowserSessionManager", () => {
   });
 
   it("marks state lost on crash and recreates the context on the next ensure", async () => {
-    const { manager, provider } = createHarness();
+    const { manager, provider, logged } = createHarness();
     await manager.ensureSession("crash");
     provider.crash();
     expect(manager.getSession("crash")).toMatchObject({
@@ -71,6 +71,14 @@ describe("QaBrowserSessionManager", () => {
       selectedTabId: null,
       tabIds: [],
     });
+    // The log line is the other half of the distinction for whoever reads the
+    // container's output: a crashed process has a crash log to go and look at,
+    // and this is the case that says where to find it.
+    expect(
+      logged
+        .filter((entry) => entry.level === "error")
+        .map((entry) => entry.event),
+    ).toEqual(["browser.crashed"]);
     await manager.ensureSession("crash");
     expect(manager.getSession("crash")?.status).toBe("ready");
     await manager.dispose();
@@ -123,7 +131,7 @@ describe("QaBrowserSessionManager", () => {
   });
 
   it("keeps a dropped CDP link apart from a crash and re-attaches on the next ensure", async () => {
-    const { manager, provider } = createHarness({
+    const { manager, provider, logged } = createHarness({
       runtime: { mode: "attach", cdpEndpoint: "http://127.0.0.1:9222" },
     });
     const session = await manager.ensureSession("attached");
@@ -138,6 +146,13 @@ describe("QaBrowserSessionManager", () => {
       selectedTabId: null,
       tabIds: [],
     });
+    // And so is the log: an operator who reads `browser.crashed` goes looking for
+    // a crash log of a process this plugin never started.
+    expect(
+      logged
+        .filter((entry) => entry.level === "error")
+        .map((entry) => entry.event),
+    ).toEqual(["browser.connection-lost"]);
     await expect(manager.snapshot("attached", tabId)).rejects.toMatchObject({
       code: "BROWSER_CONNECTION_LOST",
     });
