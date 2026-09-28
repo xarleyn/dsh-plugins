@@ -310,10 +310,13 @@ Two more facts that cost hours when unknown:
 
   The boot line's own format lives in the kit and cannot be checked from this
   repository, so know what this pattern buys and what it does not, on the fake
-  lines it was run against: the boundary group `(^|[^A-Za-z0-9_-])` rejects a key
-  joined to `token` by `-` or `_` — `access-token=`, `refresh_token=`, `notoken=`
-  give no capture — and the `^` alternative lets a `token=` that opens a line
-  match, so a miss means the format moved, never that the stand is down. The
+  lines it was run against — `scripts/qa-stand-launch-token.test.mjs` replays
+  this same pipeline over that set, so a rewritten recipe reddens a gate instead
+  of quietly changing what a capture means. The boundary group
+  `(^|[^A-Za-z0-9_-])` rejects a key joined to `token` by `-` or `_` —
+  `access-token=`, `refresh_token=`, `notoken=` give no capture — and the `^`
+  alternative lets a `token=` that opens a line match, so a miss means the
+  format moved, never that the stand is down. The
   value class stops at `&`, `#`, either quote or whitespace: a token carrying
   `.`, `+`, `=` or `:` is taken whole, a `#fragment` after it is not, and a quoted
   `token='abc'` yields an empty capture rather than a value wrapped in quotes —
