@@ -131,6 +131,32 @@ jobs:
           NX_PROJECT: ${{ matrix.project }}
         run: pnpm nx run-many -t lint typecheck test build verify --projects="$NX_PROJECT" --output-style=static
 
+      # The unit suite pins both runtime modes against a fake browser, but the
+      # claim attach mode exists to keep — the browser we do not own is still
+      # running after our teardown — is only answerable against a real Chromium.
+      # So this project's own job asks for the opt-in run instead of leaving it
+      # to whoever remembers. The suite finds a browser the way the launch path
+      # finds one; where the image has none, Playwright's own build is the one
+      # that search reads. An asked-for run that finds nothing fails, which is
+      # the point: a skipped one would look like this check having passed.
+      - name: Drive an external Chromium over CDP
+        if: matrix.project == '@yadsh/dsh-qa-browser'
+        env:
+          DSH_QA_BROWSER_E2E: "1"
+        run: |
+          found=0
+          for candidate in \
+            /usr/bin/google-chrome /usr/bin/google-chrome-stable \
+            /usr/bin/chromium /usr/bin/chromium-browser; do
+            if [ -x "$candidate" ]; then
+              found=1
+            fi
+          done
+          if [ "$found" = 0 ]; then
+            pnpm --filter @yadsh/dsh-qa-browser exec playwright install chromium
+          fi
+          pnpm --filter @yadsh/dsh-qa-browser test:browser
+
       # The budget gate in `prepare` runs on a checkout with no build output, so
       # there its generated-bundle band measures nothing. This project has just
       # been built, so its bundles exist on disk and the runaway tripwire — the
