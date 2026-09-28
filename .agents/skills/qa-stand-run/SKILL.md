@@ -55,16 +55,26 @@ the maintainer rather than probing the network for it.
   `references/troubleshooting.md`, including the ones that delete files.
 - **Sync the kit before editing its config.** The slice is a synchronizable copy
   of the deployment, people are testing on it, and its configs may have moved
-  under you; an unpulled edit silently reverts theirs. In the kit directory
-  (`$KIT` hereafter — §0's checkout, not this repository):
+  under you; an unpulled edit silently reverts theirs. `$KIT` hereafter is that
+  checkout — §0's directory, not this repository. It is also where every
+  `docker compose` command in this skill runs, because that is where compose
+  finds its configuration file: from the repository directory it reads no file at
+  all, and its own refusal is the misdiagnosis §3 works to avoid.
 
   ```bash
-  git -C "$KIT" status --porcelain -- config/dsh   # someone else's uncommitted edit
-  git -C "$KIT" pull --ff-only                     # a refused pull is itself the answer
+  # did anyone else edit a tracked config? untracked kit files are noise: see below
+  git -C "$KIT" status --porcelain --untracked-files=no -- config/dsh
+  git -C "$KIT" pull --ff-only   # a refused pull is itself the answer
   ```
 
   A `status` that comes back non-empty, or a `pull` that refuses, means the state
   you were about to edit is not the state on disk: stop and ask whose edit it is.
+  `--untracked-files=no` is deliberate and asks a narrower question — the kit's
+  local files (`.env`, `secrets/`, the compose override; see *Do not touch*) are
+  usually not in its `.gitignore`, so counting untracked paths here would stop
+  the step on files nobody edited. `shared-checkout` §7 makes the same choice for
+  the same test, and the case it gives up is not lost: a merge that would
+  overwrite an untracked file is refused by `pull` itself.
   Do not `checkout`/`restore` the kit's config to make the pull pass — that is
   the very revert this step exists to prevent (`shared-checkout` §5). If the kit
   is not a git checkout, §0's rule applies: its README owns the update route, so
@@ -102,11 +112,11 @@ the source loop while iterating.
    installs nothing, and leaves the old store version in place — no error,
    no log line, just stale behavior.
 4. Apply the line — `docker compose restart qa`, or `up -d qa` when the override
-   file itself changed (the new volume only mounts on recreate) — **only on a
-   stand §1 calls yours.** On anyone else's rig, stop at the edited
-   `plugins.txt` and say so in the report: reconciliation runs on the next start
-   whoever triggers it, so what you hand over is one prepared step, not a restart
-   you perform.
+   file itself changed (the new volume only mounts on recreate), either one run
+   in `$KIT` — **only on a stand §1 calls yours.** On anyone else's rig, stop at
+   the edited `plugins.txt` and say so in the report: reconciliation runs on the
+   next start whoever triggers it, so what you hand over is one prepared step,
+   not a restart you perform.
 5. To go back, restore the released `@yadsh/...@x.y.z` line and put its restart
    through the same test.
 
@@ -140,7 +150,7 @@ Two more facts that cost hours when unknown:
   the log command's own failure apart from a capture that matched nothing:
 
   ```bash
-  if LAUNCH_LOG=$(docker compose logs qa); then
+  if LAUNCH_LOG=$(cd "$KIT" && docker compose logs qa); then
     LAUNCH_TOKEN=$(printf '%s\n' "$LAUNCH_LOG" \
       | sed -n 's/.*[^A-Za-z0-9_]token=\([^&"[:space:]]*\).*/\1/p' | tail -1)
     if [ -n "$LAUNCH_TOKEN" ]; then
@@ -151,7 +161,8 @@ Two more facts that cost hours when unknown:
     fi
   else
     echo "compose produced no log at all (its own error is above) — there is" \
-         "nothing to capture: check the service name, compose, and the daemon"
+         "nothing to capture: check you were in the kit, the service name," \
+         "compose, and the daemon"
   fi
   ```
 
@@ -161,8 +172,12 @@ Two more facts that cost hours when unknown:
   of every log, screenshot, report and pull request (`Do not touch`).
   `compose logs` writes the container's log to stdout and its own complaints to
   stderr, and there is no `2>&1` here on purpose — merging them would feed a
-  daemon error into the pattern and let it be reported as a moved boot line. Both
-  variables hold a credential: print the length, never the value.
+  daemon error into the pattern and let it be reported as a moved boot line. The
+  `cd` sits inside the substitution for the same reason: it points compose at the
+  kit's configuration and leaves your shell where it was, and running this from
+  the repository directory would ask compose to read no file at all — your own
+  mistake reaching you as the branch that blames the stand. Both variables hold
+  a credential: print the length, never the value.
 
   The boot line's own format lives in the kit and cannot be checked from this
   repository, so know what this pattern buys and what it does not. The
@@ -179,9 +194,10 @@ Two more facts that cost hours when unknown:
   The two empty outcomes are different findings and must not share a diagnosis.
   "compose answered, nothing matched" is about the boot line's format, and the
   kit's README is where that is settled — do not swap in another regex.
-  "compose produced no log" is about a broken command, and its next look is
-  `docker compose ps`, not the README. Either way, never point an unverified
-  value at the operator API.
+  "compose produced no log" is about a broken command, and the first candidate is
+  where it was run: re-check `$KIT` before blaming the rig, then look with
+  `docker compose ps` — in that directory, not the README's. Either way, never
+  point an unverified value at the operator API.
 
   A launch token expires while a live harness keeps running, so a `401 dsh web
   authentication required` is usually a stale token — but only once you know the

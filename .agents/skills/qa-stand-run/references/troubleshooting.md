@@ -14,6 +14,10 @@ action: run it on the slice this session brought up, and on anyone else's rig
 name the paths and the command in your ask instead. The repair is the same
 either way; the authority is not.
 
+**The `up -d` and `restart` here are `docker compose` commands, so they belong to
+`$KIT`** (`SKILL.md` §1). Run from the repository directory, compose reads no
+configuration file, and its own refusal arrives as a symptom of the stand.
+
 §1 answers *whose* rig, not *what state* it is in. A stand under test carries a
 reproduction — resolved versions, a deliberate pin, a config someone is looking
 at — and the repairs below can spend it before you have proved the fault was in
@@ -57,8 +61,9 @@ cleanup of a slice; that is where a stand that "will not boot" usually lives.
 - **Operator URL answers `401 dsh web authentication required`** (even from the
   stand's own machine): the launch token expired while the harness kept running
   and there is no re-issue path — take a fresh token from the boot log
-  (`SKILL.md` §3, whose recipe tells "no such line" apart from "no such
-  service").
+  (`SKILL.md` §3, whose recipe tells "no such line" apart from "compose would not
+  answer", and runs in the kit so that a wrong directory is not read as a dead
+  rig).
 - **Everything says "connecting…" forever through a proxy.** The operator
   surface authorises the request's role from its cookie and its origin: a proxy
   that does not rewrite `Host`/`Origin`/`Referer` gets `403` on every RPC, and
