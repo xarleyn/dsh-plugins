@@ -26,8 +26,9 @@ Guarantees 3, 4, 5, 6, 9, 16, 17 and 18 below are **withdrawn**: not
 implemented, not deferred. They stay on this page because they are the contract a
 restored write path has to meet again. That removal is one commit, but this page
 does not promise it reverts alone: replayed over the read-path migration it
-conflicts in 19 paths (16 content, 3 modify/delete) at the head of this series
-and puts back a
+conflicts in 20 paths (17 content, 3 modify/delete) at `865679b3`, the head of
+this series — `src/client/store.ts` joined with the sixth round's roster control
+— and puts back a
 `preset-writer.ts` that reads `readPresetFile`, `revisionOf` and `preset.path`,
 all three of which this cutover deleted, so the result does not compile.
 Reversing D2 is a revert of the whole #518 series, which is the cost issue #605
@@ -114,7 +115,16 @@ Numbered, testable guarantees:
     words explaining why the rows did not change are the only claim it can make
     about their age. The notice carries the control that dismisses it — a
     message the page holds for the user is theirs to put down, and navigating
-    into a preset is not the same as reading it.
+    into a preset is not the same as reading it. The screen carries the control
+    that asks the roster again too, and for the reason on the other side of it:
+    a row the registry is still auditing becomes healthy by itself, so a refusal
+    this page states can outlive the fact that produced it while the screen keeps
+    showing it. Without that control the only way back is remounting the section.
+22. **A reading a keyboard reaches is a reading the page cannot change.** The
+    persona's two text values arrive `readOnly` and its two switches stay in the
+    tab order with a value the page pinned — `aria-disabled`, not `disabled`,
+    which drops a control out of the order altogether and leaves its value
+    undiscoverable to the reader this page writes its labels for.
 
 ## 2. Data model
 
@@ -138,13 +148,25 @@ identities, not locations. Measured against the installed `0.1.7-rc.2` class,
 driven over a hand-seeded definition rather than trusted from its types —
 `agent-preset/not-found` answers `Unknown agent preset: <id>` with the roster's
 ids in `details` and never resolves `undefined`, and the `broken` line is
-`<entry id> (<plugin name>): <mount failure>` built by the registry's own audit;
-the Loader it audits adds nothing but entry ids to its messages. A deployment
-therefore shows on this page exactly the text its own `agentPresets`
-`list`/`read` Remotes already answer to any client, which is why no field is
-re-worded here. What the page writes itself are the two refusals a host owes no
-words for: no `readDocument()` in the compatibility range, and an answer that is
-not a composition.
+`<entry id> (<plugin name>): <mount failure>` built by the registry's own audit.
+What that failure text is stays the mounted plugin's: `mountDetail()` renders the
+error the row rejected with, its message verbatim and its causes nested under
+`- `, so the tree can carry any plugin's words, not the Loader's. The page adds
+nothing to it and discloses nothing the deployment kept to itself — the same
+tree is what the registry's own `agentPresets` `list` Remote already answers to
+any client, which is why no field is re-worded here. A deployment therefore
+shows on this page exactly the text its own `list`/`read` Remotes already
+answer. What the page writes itself are the two refusals a host owes no words
+for: no `readDocument()` in the compatibility range, and an answer that is not a
+composition.
+
+One carrying detail, because the rule above is about words and this is about
+shape: the tree is multi-line, and a roster card's header is one line the shell
+styles for every first-party card. So the header states the tree's own first
+line — the row that refused — and the whole tree, with the breaks the host wrote
+it with, arrives in the opened card. Truncation would be the failure mode here,
+which is why `tests/client-editor-markup.test.tsx` asserts both halves: one line
+on the header, every line under it.
 
 ## 3. Lifecycle
 
@@ -153,8 +175,11 @@ not a composition.
    preset, awaited together rather than one after another, since the page shows
    only the state each one came back with (unmemoized — the roster is a live
    directory, and a cached answer would be the one that goes stale when a preset
-   is registered or retired). A composition the registry refuses is logged with
-   the host's reason and the row is badged `Unreadable`.
+   is registered or retired). A composition the registry refuses is badged
+   `Unreadable` and reported in the deployment log once for each reason it
+   states: a host that publishes no `readDocument()` refuses every row with the
+   same sentence, and a roster of N presets is one fact about the deployment, not
+   N lines to read through.
    A refresh that fails over a list already on screen keeps the rows — dropping
    them would answer a refused `list()` with a deployment that composes nothing
    — and carries the refusal into the notice the roster screen renders: the
@@ -229,7 +254,16 @@ not a composition.
     the ready screen reads nothing is a stale roster passing as a current one.
     The notice is then dismissed by its own control, pressed by name: a state
     the page keeps for the user has to be one they can put down, and a method
-    only its own test reaches is not that control.
+    only its own test reaches is not that control;
+15. a roster retried from the screen that shows it — a row the registry was still
+    auditing answers healthy without a remount, and a retry that is refused puts
+    the refusal back on the screen instead of leaving it quiet;
+16. a refusal the registry answers as a tree of causes — the card's header keeps
+    the one line it has room for, and every line of the tree, with the breaks the
+    host wrote it with, is what the opened card states;
+17. the same values read by a keyboard — no control on the screen is `disabled`,
+    so each reading is reached in turn, and the two switches keep the value the
+    composition carries when a click lands on them.
 
 ## 6. Implementation status
 
@@ -240,10 +274,10 @@ not a composition.
 | Composition surgery (in-place rewrite, insert, remove; comments/`!!js`/EOL/BOM preserved) — a library with no caller since the cutover | Implemented, tested |
 | Section and draft validation rules — a library with no caller since the cutover, and the reason `preset-persona/invalid` is still declared: it is what this library throws | Implemented, tested |
 | Preset state the registry publishes (broken reason, default id, display name) | Implemented |
-| Browser page (`settings.section`, roster, readings, advanced area, preview, composition viewer) | Implemented |
+| Browser page (`settings.section`, roster with its own reload, readings, advanced area, preview, composition viewer) | Implemented |
 | Package gates (manifest, bundle, compatibility, tarball) | Implemented |
 | Writing a preset through this page | Withdrawn (decision D2; issue #605) |
-| Live check on an `0.1.7-rc.2` deployment | Not done — the last live pass was against `0.1.5-rc.2`, and this repository ships no deployment to open one in. What it owes is the card in three states — a preset read cleanly, one the roster calls `broken`, one whose composition read the registry refused — beside a first-party card, because `client-editor-markup.test.tsx` pins the markup a screen reader reads and the margin each block resets, not the spacing a person sees |
+| Live check on an `0.1.7-rc.2` deployment | Not done — the last live pass was against `0.1.5-rc.2`, and this repository ships no deployment to open one in. What it owes is the card in four states — a preset read cleanly, one the roster calls `broken`, one whose composition read the registry refused, and one whose `broken` is a **tree** rather than a line — beside a first-party card, because `client-editor-markup.test.tsx` pins the markup a screen reader reads, the margin each block resets, and which line of a tree the header keeps, not whether a nested cause under `- ` is legible to a person once the breaks are kept. That is the concrete question this row is now owed by: the page carries the registry's multi-line refusal with `white-space: pre-line` and one line of it on the closed card, and no test can say the result reads as a tree rather than as a stack of lines |
 
 The page was exercised against a live deployment at `0.1.5-rc.2`: the roster, a
 save into a composition that uses a folded scalar, reset, a save from the
