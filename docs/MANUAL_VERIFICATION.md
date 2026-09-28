@@ -16,9 +16,8 @@ Center instance, so every tool of that provider could never work, and it took a
 hand-written `curl` session on the stand to find out.
 
 Use this page when: you add a provider (§4), change one, add a *second product*
-to an existing one (see [Adding a second product](#adding-a-second-product-to-a-provider)),
-you are verifying a release against a stand, or a user reports "the tools do
-not answer".
+to an existing one (§5), you are verifying a release against a stand, or a user
+reports "the tools do not answer".
 
 Everything below uses synthetic addresses (`jira.example.corp`,
 `git.example.com`, «Демо-продукт») so this page can live in a public

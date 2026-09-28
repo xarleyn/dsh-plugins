@@ -34,6 +34,11 @@ travels:
 - `scripts/qa-smoke-evidence.mjs` — collects the evidence from the plugin logs
   and exits non-zero on a FAIL.
 
+Those names are the kit's — the paths, the playbook files, the collector, the
+`QA_HTTP_PORT` variable and the boot line §3 parses. Not one of them is checkable
+from this repository, so a disagreement is settled by the kit, not by this page:
+follow the kit, report the disagreement, and correct the skill.
+
 On a machine that keeps a local slice briefing (`.private/guides/` in this
 repo's main checkout: the slice path, its ports, its test accounts, the config
 overrides already applied to it) read it first and take the coordinates from it.
@@ -104,7 +109,10 @@ filename deploys nothing.
 Two more facts that cost hours when unknown:
 
 - **`@latest` lines float.** Every reinstall pulls whatever is newest, so a
-  reproduction needs an explicit pin.
+  reproduction needs an explicit pin. Together with the line-keyed reconciliation
+  above, that is why deleting the profile's installed state is a re-pin decision
+  and not a cleanup — see `references/troubleshooting.md` §The stack does not
+  come up.
 - **Outside the main checkout run with `NX_DAEMON=false NX_SKIP_NX_CACHE=true`.**
   The daemon and the cache are shared across worktrees and will replay another
   lane's build and report phantom success (`docs/VERIFICATION.md` §The Nx cache
@@ -118,12 +126,16 @@ Two more facts that cost hours when unknown:
 - Operator surface: the loopback port on the machine running the container,
   opened with the **launch token**. `data/admin-url.txt` is not authoritative —
   it survives port changes and moves — so take the token from the boot log. The
-  recipe assigns it and prints a confirmation, never the value:
+  recipe assigns it and prints only its length, never the value:
 
   ```bash
   LAUNCH_TOKEN=$(docker compose logs qa 2>&1 \
-    | sed -n 's/.*token=\([A-Za-z0-9_-]*\).*/\1/p' | tail -1)
-  [ -n "$LAUNCH_TOKEN" ] && echo "launch token: taken from the boot log"
+    | sed -n 's/.*[^A-Za-z0-9_]token=\([^&"[:space:]]*\).*/\1/p' | tail -1)
+  if [ -n "$LAUNCH_TOKEN" ]; then
+    echo "launch token: ${#LAUNCH_TOKEN} characters, taken from the boot log"
+  else
+    echo "launch token: NOT FOUND in the boot log — stop, do not guess"
+  fi
   ```
 
   `grep -o` is the mistake this replaces: its output is a command result, so the
@@ -131,8 +143,21 @@ Two more facts that cost hours when unknown:
   one request that needs it; the token and the operator URL carrying it stay out
   of every log, screenshot, report and pull request (`Do not touch`).
 
+  The boot line's own format lives in the kit and cannot be checked from this
+  repository, so know what this pattern buys and what it does not. The
+  `[^A-Za-z0-9_]` before `token=` rejects a `refresh_token=` sharing the line, and
+  the value class stops at `&`, a quote or whitespace — so a token carrying `.`,
+  `+`, `=` or `:` is taken whole instead of cut at its first dot. `.*` is greedy,
+  so a line with two *standalone* `token=` parameters yields the last one, and the
+  length is the only thing about the value you may print: it is how you notice a
+  six-character capture. An empty result means the line moved, not that the stand
+  is down — read the kit's README, do not swap in another regex, and never point an
+  unverified value at the operator API.
+
   A launch token expires while a live harness keeps running, so a `401 dsh web
-  authentication required` is usually a stale token, not a broken host layer.
+  authentication required` is usually a stale token — but only once you know the
+  value came from the operator URL's own parameter: a capture of the wrong
+  `token=` answers `401` the same way, and re-issuing it is not a fix.
 - The built client bundle is served at `/plugins/<full-package-name>/client.js`,
   the scoped path (AGENTS.md) — fetch that URL to prove which build the browser
   actually got.

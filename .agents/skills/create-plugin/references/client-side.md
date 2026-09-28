@@ -133,8 +133,9 @@ No gate opens the page, so "green" is never evidence about layout:
   settings dialog that section explains. Add what it does not cover: overlapping
   rects, and the computed radius and type scale read against the token, not
   against a memory of the design.
-- **Capture the states that can differ**: the card states AGENTS.md compares
-  (§Proving the card you just registered), plus the empty, loading and refusal
+- **Capture the states that can differ**: the states the card UI section of
+  AGENTS.md asks you to compare against a first-party card — that section names
+  them, this page does not copy the list — plus the empty, loading and refusal
   states of whatever you added.
 - **Keep the artifacts, do not create them in a package.** Screenshots and
   measurements are round evidence: they go to the deployment's local notes, and
