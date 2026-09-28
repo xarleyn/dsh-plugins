@@ -2296,11 +2296,13 @@ This fixture is critical for stable Browser tests.
   host gate above, and a form outside the four refused with a message naming the
   forms that do work;
 - what the provider asks of either browser: the context options and the network
-  gates it installs on top of it, the refusal it hands back when a socket server
-  was never dialed, and that of an attached browser it asks neither for the
-  context that browser came with — `contexts()`, the one route a `Browser` handle
-  offers to it — nor through Playwright's convenience `newPage()`, which builds a
-  context this runtime neither configures nor closes; it closes neither.
+  gates it installs on top of it, what a routed socket gets in both directions —
+  the refusal it hands back when a socket server was never dialed, and the relay
+  it starts for a destination the gate permitted —, and that of an attached
+  browser it asks neither for the context that browser came with — `contexts()`,
+  the one route a `Browser` handle offers to it — nor through Playwright's
+  convenience `newPage()`, which builds a context this runtime neither configures
+  nor closes; it closes neither.
 - where each mode's teardown reaches, which is the two rows of the §3.3 table a
   session close answers to: closing a session — and closing the last of them, so
   that the browser is left holding no context of ours at all — releases that
@@ -2335,11 +2337,17 @@ while a real one arrives on Playwright's own schedule. What that run reads back 
 the session state and the structured error an action returns — `disconnected`,
 `BROWSER_CONNECTION_LOST` — which is what the panel is rendered from; its wording
 is pinned in the unit suite. The gates are read back on that borrowed browser as
-well — the navigation refusal, the refused socket handshake, and the rule that no
-service worker of the session reaches the network outside the gate — because the
-unit suite registers a route handler and calls it itself, which says nothing about
-whether an attached browser obeys it. A second driver on that endpoint is measured
-in the same run, because §3.3 makes two promises about that coexistence and the
+well — the navigation refusal, the refused socket handshake, the socket the gate
+permitted still arriving at its server, and the rule that no service worker of
+the session reaches the network outside the gate — because the unit suite
+registers a route handler and calls it itself, which says nothing about whether
+an attached browser obeys it. The permitted socket is read there in its own
+right rather than as a copy of the launched case: a request path that swallowed
+everything would answer every refusal correctly and still leave a session on
+someone else's browser unable to hold a live connection, and whether that relay
+survives a context Playwright did not create is the joined browser's answer, not
+this code's. A second driver on that endpoint is measured in the same run,
+because §3.3 makes two promises about that coexistence and the
 browser, not this code, keeps them: a page opened through another connection, in
 the context the browser arrived with, writes a cookie and a stored value on an
 origin, and a session of this runtime reaches that origin and reads neither; the
