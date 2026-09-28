@@ -19,7 +19,8 @@
         "session-audit",
         "trajectory-evaluation"
       ],
-      "install": "dsh plugin --profile <profile> add @yadsh/dsh-audit-core",
+      "kind": "library",
+      "install": "pnpm add @yadsh/dsh-audit-core",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/audit-core#readme",
       "client": false
     },
@@ -38,7 +39,8 @@
         "markdown",
         "react"
       ],
-      "install": "dsh plugin --profile <profile> add @yadsh/dsh-audit-ui",
+      "kind": "library",
+      "install": "pnpm add @yadsh/dsh-audit-ui",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/audit-ui#readme",
       "client": false
     },
@@ -57,7 +59,8 @@
         "sqlite",
         "storage"
       ],
-      "install": "dsh plugin --profile <profile> add @yadsh/dsh-plugin-kit",
+      "kind": "library",
+      "install": "pnpm add @yadsh/dsh-plugin-kit",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-kit#readme",
       "client": false
     },
@@ -77,7 +80,8 @@
         "structured-logging",
         "observability"
       ],
-      "install": "dsh plugin --profile <profile> add @yadsh/dsh-plugin-log",
+      "kind": "library",
+      "install": "pnpm add @yadsh/dsh-plugin-log",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-log#readme",
       "client": false
     },
@@ -98,6 +102,7 @@
         "quality-gate",
         "review-gate"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-answer-review-gate",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-answer-review-gate#readme",
       "client": false
@@ -118,6 +123,7 @@
         "deduplication",
         "context-management"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-cas-results",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-cas-results#readme",
       "client": false
@@ -137,6 +143,7 @@
         "impact-analysis",
         "docs"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-doc-impact",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-doc-impact#readme",
       "client": true
@@ -158,6 +165,7 @@
         "markdown",
         "ocr"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-documents",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-documents#readme",
       "client": true
@@ -179,6 +187,7 @@
         "scoping",
         "agent-teams"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-domain-experts",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-domain-experts#readme",
       "client": true
@@ -199,6 +208,7 @@
         "web-ui",
         "autosave"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-draft-sessions",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-draft-sessions#readme",
       "client": true
@@ -219,6 +229,7 @@
         "provenance",
         "agent-tools"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-git-readonly",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-git-readonly#readme",
       "client": false
@@ -244,6 +255,7 @@
         "tool-output",
         "settings-card"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-jev-compaction",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-jev-compaction#readme",
       "client": true
@@ -264,6 +276,7 @@
         "persistence",
         "session-state"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-kv-persist",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-kv-persist#readme",
       "client": false
@@ -283,6 +296,7 @@
         "i18n",
         "web-ui"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-l10n-overrides",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-l10n-overrides#readme",
       "client": true
@@ -304,6 +318,7 @@
         "retrieval",
         "agent-tools"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-lightrag",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-lightrag#readme",
       "client": false
@@ -326,6 +341,7 @@
         "stream-guard",
         "defense-in-depth"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-model-safety-gate",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-model-safety-gate#readme",
       "client": true
@@ -349,6 +365,7 @@
         "auto-recall",
         "context"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-openviking-memory",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-openviking-memory#readme",
       "client": true
@@ -370,6 +387,7 @@
         "web-ui",
         "observability"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-plugin-log-ui",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-plugin-log-ui#readme",
       "client": true
@@ -392,6 +410,7 @@
         "settings-ui",
         "web-ui"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-preset-persona-editor",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-preset-persona-editor#readme",
       "client": true
@@ -414,6 +433,7 @@
         "observability",
         "middleware"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-prompt-firewall",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-prompt-firewall#readme",
       "client": true
@@ -433,6 +453,7 @@
         "playwright",
         "qa"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-browser",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-qa-browser#readme",
       "client": true
@@ -459,6 +480,7 @@
         "weblate",
         "credentials"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-integrations",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-qa-integrations#readme",
       "client": true
@@ -480,6 +502,7 @@
         "testing",
         "quality-assurance"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-qa-surface",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-qa-surface#readme",
       "client": true
@@ -500,6 +523,7 @@
         "trajectory-review",
         "web-ui"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-session-audit",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-session-audit#readme",
       "client": true
@@ -520,6 +544,7 @@
         "session-scope",
         "workspace-scope"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-session-scope",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-session-scope#readme",
       "client": true
@@ -540,6 +565,7 @@
         "observability",
         "context-optimization"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-sleev",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-sleev#readme",
       "client": true
@@ -564,6 +590,7 @@
         "cost",
         "llm"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-tool-offload",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-tool-offload#readme",
       "client": false
@@ -584,6 +611,7 @@
         "dom",
         "diagnostics"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-ui-repair",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-ui-repair#readme",
       "client": true
@@ -604,6 +632,7 @@
         "corrections",
         "knowledge-extraction"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-user-correction-miner",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-user-correction-miner#readme",
       "client": false
@@ -625,6 +654,7 @@
         "security",
         "fetch"
       ],
+      "kind": "plugin",
       "install": "dsh plugin --profile <profile> add @yadsh/dsh-web-fetch-authenticated",
       "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-web-fetch-authenticated#readme",
       "client": true
