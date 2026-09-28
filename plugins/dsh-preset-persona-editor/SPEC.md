@@ -289,7 +289,10 @@ absent. None of that is re-verified against `0.1.7-rc.2`, and the writes it
 describes are gone.
 
 What an eye in a browser would have caught — the name each reading carries after
-the `<label>`/`<p>` round trip, and that one refusal answers with one sentence —
-is pinned by `tests/client-editor-markup.test.tsx`, the only test in the package
-that renders the client at all. A live pass would still be the one that shows a
-real deployment's registry behaving as its published types say.
+the `<label>`/`<p>` round trip, that a composition this page cannot read answers
+with one sentence and one paragraph, that a preset which cannot activate answers
+with the tree the host wrote (its first line on the closed card, every line on the
+opened one), and that no reading is a control a keyboard steps over — is pinned by
+`tests/client-editor-markup.test.tsx`, the only test in the package that renders
+the client at all. A live pass would still be the one that shows a real
+deployment's registry behaving as its published types say.

@@ -13,10 +13,11 @@ It reads, and does not write. Since DeepSeek Harness `0.1.7-rc.2` the Host has
 no durable preset-authoring path — the roster's `authorable` root and its `copy`
 operation were deleted, not relocated — so this page reports what a preset
 composes rather than changing it. The decision is D2 of §10 of the
-[migration guide](https://github.com/xarleyn/dsh-plugins/blob/main/docs/DSH-0.1.7-MIGRATION.md);
-what a restored write path is waiting on is named in §0 of the
-[package specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-preset-persona-editor/SPEC.md),
-which the tarball does not carry either and the repository does.
+[migration guide](https://github.com/xarleyn/dsh-plugins/blob/main/docs/DSH-0.1.7-MIGRATION.md),
+and §0 of the
+[package specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-preset-persona-editor/SPEC.md)
+names the issue a restored write path is waiting on. Neither document ships in
+the tarball, so both are linked where the repository keeps them.
 
 ## Features
 
