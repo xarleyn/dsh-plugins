@@ -14,12 +14,17 @@ action: run it on the slice this session brought up, and on anyone else's rig
 name the paths and the command in your ask instead. The repair is the same
 either way; the authority is not.
 
+§1 answers *whose* rig, not *what state* it is in. A stand under test carries a
+reproduction — resolved versions, a deliberate pin, a config someone is looking
+at — and the repairs below can spend it before you have proved the fault was in
+the code.
+
 ## The stack does not come up
 
 | Symptom | Likely cause | First action |
 | --- | --- | --- |
 | `502` on the favicon, container restarts about every minute | the application container is in a crash loop — that 502 is the proxy's own health check against a dead upstream, not a TLS problem | read the container's last start log before touching anything |
-| `… is listed as a dependency but is not installed`, boot aborts | the profile's `node_modules` came through a stand move and holds 0-byte symlink files (Windows does not restore the link) | delete the profile's `node_modules` and its lock file: both regenerate from `plugins.txt` on the next start. This is the most destructive action on this page and the stand's own installed state, so the strictest reading of §1 applies to it |
+| `… is listed as a dependency but is not installed`, boot aborts | the profile's `node_modules` came through a stand move and holds 0-byte symlink files (Windows does not restore the link) | copy each plugin's resolved version out of the profile's lock file, then delete that `node_modules` and the lock file with it. Do not count on the next boot putting the same versions back: reconciliation keys on the spec *line* (`SKILL.md` §2), so a line you did not change may install nothing, and an `@latest` line installs whatever is newest — have the pins restated before the boot and confirm the versions after it. The most destructive action on this page: it deletes the stand's own installed state, so the strictest reading of §1 applies to it |
 | stack was fine, then a cleanup removed an empty directory and `up` fails outright | the compose override's mount point no longer exists, and Docker cannot create it inside a read-only bind | recreate the empty directory on the host, then `up -d` |
 | pnpm prints an install failure on a rename inside a Windows bind-mount, yet the plugin behaves as installed | the rename is the noise, the install is complete | test whether the module resolves; do not treat that exit code as fatal — every other failure still is |
 

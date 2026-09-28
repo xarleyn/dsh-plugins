@@ -144,10 +144,13 @@ does not match the first-party shell, and a client bundle that dies on mount all
 pass the whole gate set: the bundle gates assert its identity and
 self-containedness, the card-contract gate asserts the shell's text, and neither
 renders it. The proof is a measurement and a screenshot of each state the shell
-contract names, beside a first-party card, on a stand — the recipe is in
-[`../.agents/skills/create-plugin/references/client-side.md`](../.agents/skills/create-plugin/references/client-side.md)
-(§Proving the card you just registered, §Proving a UI change beyond the gates),
-and the round it belongs to is recorded under [Stand acceptance](#stand-acceptance).
+contract names, beside a first-party card, on a stand — the steps are in the
+`create-plugin` skill's `client-side` reference (§Proving the card you just
+registered, §Proving a UI change beyond the gates), and the round it belongs to
+is recorded under [Stand acceptance](#stand-acceptance). That pointer is a name
+rather than a file link on purpose: nothing in the gate set resolves a link from
+`docs/**` into `.agents/**`, so such a link rots silently whenever a skill is
+reorganized, while a name still says which skill to open.
 
 Two files [PLUGIN_GUIDELINES.md](PLUGIN_GUIDELINES.md) §4.1 lists are
 **not** gated, deliberately: `tsdown.config.ts`, which seven host-only plugins
