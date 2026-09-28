@@ -76,9 +76,9 @@ cleanup of a slice; that is where a stand that "will not boot" usually lives.
 - **Operator URL answers `401 dsh web authentication required`** (even from the
   stand's own machine): the launch token expired while the harness kept running
   and there is no re-issue path — take a fresh token from the boot log
-  (`SKILL.md` §3, whose recipe tells "no such line" apart from "compose would not
-  answer", and runs in the kit so that a wrong directory is not read as a dead
-  rig).
+  (`SKILL.md` §3, whose recipe tells "no such line" from "no log yet" from
+  "compose would not answer", and runs in the kit so that a wrong directory is
+  not read as a dead rig).
 - **Everything says "connecting…" forever through a proxy.** The operator
   surface authorises the request's role from its cookie and its origin: a proxy
   that does not rewrite `Host`/`Origin`/`Referer` gets `403` on every RPC, and
@@ -97,5 +97,6 @@ cleanup of a slice; that is where a stand that "will not boot" usually lives.
   which is why a stand that will not boot and a chat that will not open can be
   the same finding.
 
-Do not rewrite or delete journals ad hoc: recovery is a documented repair on the
-machine's local briefing, and its backup originals live outside the repository.
+Do not rewrite or delete journals ad hoc: recovery is a documented repair the
+stand's operator holds — ask for it instead of improvising one — and its backup
+originals live outside the repository.

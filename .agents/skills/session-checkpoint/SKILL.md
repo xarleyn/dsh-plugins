@@ -52,10 +52,10 @@ Rules that keep the tiers from collapsing into each other:
 - a checkpoint holds **state**, not history — never a narrative of what you did;
 - a plan doc holds **stages**, not turns.
 
-`.private/` is local-only: excluded through `.git/info/exclude` and guarded by a
-pre-commit hook that blocks any `.private/…` path. It lives in the **main**
-checkout and is invisible from a worktree, so from a worktree write the
-absolute path. It is not protected from `git clean -xfd`.
+`.private/` is local-only: the tracked root `.gitignore` ignores it in every
+clone, and a pre-commit hook blocks any `.private/…` path. It lives in the
+**main** checkout and is invisible from a worktree, so from a worktree write
+the absolute path. It is not protected from `git clean -xfd`.
 
 ## The memory tier, exactly
 
