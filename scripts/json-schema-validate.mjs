@@ -22,6 +22,7 @@ const ANNOTATION_KEYWORDS = new Set([
 
 const SUPPORTED_KEYWORDS = new Set([
   "additionalProperties",
+  "enum",
   "format",
   "items",
   "properties",
@@ -90,6 +91,23 @@ function formatErrors(value, format, path) {
 }
 
 /**
+ * `enum` is the closed-vocabulary keyword: a value outside the list is a
+ * contract violation, not a formatting difference, so it is reported with the
+ * accepted values rather than only the expected type.
+ */
+function enumErrors(value, allowed, path) {
+  if (!Array.isArray(allowed)) {
+    throw new Error(`${path}: schema.enum must be an array of values`);
+  }
+  if (allowed.some((candidate) => Object.is(candidate, value))) return [];
+  const variants = allowed.map((candidate) => JSON.stringify(candidate));
+  return [
+    `${path}: expected one of ${variants.join(", ")}, ` +
+      `received ${JSON.stringify(value)}`,
+  ];
+}
+
+/**
  * Validates `value` against `schema` and returns human-readable errors such as
  * `$.plugins[2].client: expected boolean, received string`. An empty array
  * means the value matches the schema. Unsupported schema constructs throw
@@ -117,6 +135,9 @@ export function validateAgainstSchema(value, schema, path = "$") {
   }
   if ("format" in schema) {
     errors.push(...formatErrors(value, schema.format, path));
+  }
+  if ("enum" in schema) {
+    errors.push(...enumErrors(value, schema.enum, path));
   }
 
   const isObject =
