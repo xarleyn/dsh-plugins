@@ -138,6 +138,83 @@ test("reads the fixed text of a composed value", () => {
   );
 });
 
+test("reads nothing where nothing renders", () => {
+  const sources = [
+    `// rename data-test-id to data-testid before the next release`,
+    `// <div data-testid="composer" />`,
+    `const PROTECTED = ["editor"]; // log-ui writes data-testid="log-panel"`,
+    [
+      `/**`,
+      ` * Every control carries the \`data-testid\` its card passes in, so a`,
+      ` * browser test reaches it: <div data-testid="composer" />.`,
+      ` */`,
+      `export function Field({ testId }) {`,
+      `  return <div data-testid={testId} />;`,
+      `}`,
+    ].join("\n"),
+    `<button data-testid="qa-rule-add">{/* data-test-id="x" */}</button>`,
+  ];
+
+  for (const source of sources) {
+    assert.deepEqual(
+      messages(source),
+      [],
+      `expected no finding for ${source.slice(0, 48)}`,
+    );
+  }
+});
+
+test("keeps reading a line that carries a URI, a glob or an apostrophe", () => {
+  const finding = ['"composer" carries no zone prefix'];
+  const sources = [
+    `<input placeholder="https://host/v1" data-testid="composer" />`,
+    `const GLOB = "services/**";\n<div data-testid="composer" />`,
+    `<span>viking://</span> <div data-testid="composer" />`,
+    `<p>don't <span data-testid="composer" /></p>`,
+    `const re = /^\\.\\//u;\n<div data-testid="composer" />`,
+  ];
+
+  for (const source of sources) {
+    assert.deepEqual(
+      messages(source),
+      finding,
+      `expected the attribute on ${source.slice(0, 40)} to be read`,
+    );
+  }
+});
+
+test("reads the testId prop a card hands to its own controls", () => {
+  // One component down the prop becomes the rendered attribute, so the value is
+  // written here and nowhere else; the prop's own name is not a misspelling.
+  assert.deepEqual(messages(`<Field testId="docs-pipeline" />`), []);
+  assert.deepEqual(messages(`<Field testId={'docs-pipeline'} />`), []);
+  assert.deepEqual(
+    messages(`const items = [{ testId: "safety-status-checks" }];`),
+    [],
+  );
+  assert.deepEqual(messages(`<Field testId={testId} label="Mode" />`), []);
+  assert.deepEqual(messages(`<Field testId="composer" />`), [
+    '"composer" carries no zone prefix',
+  ]);
+  assert.deepEqual(messages(`<Field testId={item ? "panel" : null} />`), [
+    '"panel" carries no zone prefix',
+  ]);
+  assert.deepEqual(messages(`<Field testId="qa-474-panel" />`), [
+    'names a task number in "qa-474-panel"',
+  ]);
+  assert.match(messages(`<Field testId="qa-панель" />`)[0], /Cyrillic/u);
+});
+
+test("counts a prop site only where it writes a value", () => {
+  assert.equal(
+    countTestIdSites(
+      `<Field testId="a-b" /><Field testId={testId} />` +
+        `React.createElement("p", { testId: "c-d" });`,
+    ),
+    2,
+  );
+});
+
 test("takes the zone and collision rules off a value it cannot resolve", () => {
   // The prefix is the caller's, so neither rule reaches it.
   assert.deepEqual(
@@ -214,12 +291,41 @@ test("excuses one node named across its mutually exclusive states", async () => 
       root,
       "other-plugin",
       "image.tsx",
-      `<span data-testid="qa-message-image" />`,
+      `<span data-testid="qa-attachment-image" />`,
     );
 
     const result = await verifyTestIds(root);
 
     assert.deepEqual(result, { sources: 2, sites: 3 });
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("fails two packages that claim one value", async () => {
+  // The zone prefix is what keeps two plugins apart on one page, so a value one
+  // package already owns is a collision even in the other package's own file.
+  const root = await mkdtemp(path.join(tmpdir(), "verify-testids-"));
+  try {
+    writePlugin(
+      root,
+      "example-plugin",
+      "panel.tsx",
+      `<div data-testid="qa-panel-row">one</div>`,
+    );
+    writePlugin(
+      root,
+      "other-plugin",
+      "panel.tsx",
+      `<div data-testid="qa-panel-row">two</div>`,
+    );
+    await assert.rejects(verifyTestIds(root), (error) => {
+      assert.match(
+        String(error.message),
+        /plugins\/other-plugin\/src\/client\/panel\.tsx:1: "qa-panel-row" is also declared in plugins\/example-plugin\/src\/client\/panel\.tsx:1/u,
+      );
+      return true;
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -242,6 +348,67 @@ test("asks a package's own manifest who its people are", async () => {
       verifyTestIds(root),
       /panel\.tsx:1: names a person in "qa-xarleyn-panel"/u,
     );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("reads a name out of an author line, not the host of its address", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "verify-testids-"));
+  try {
+    writeManifest(root, "example-plugin", {
+      name: "@yadsh/example-plugin",
+      author: "Иван Петров <ivan@example.com>",
+      contributors: ["Petr Smith <petr@example.org>"],
+    });
+    writePlugin(
+      root,
+      "example-plugin",
+      "panel.tsx",
+      `<div data-testid="qa-example-row">the host names no one</div>`,
+    );
+    assert.deepEqual(await verifyTestIds(root), { sources: 1, sites: 1 });
+
+    writePlugin(
+      root,
+      "example-plugin",
+      "row.tsx",
+      `<Field testId="qa-ivan-row" />`,
+    );
+    await assert.rejects(
+      verifyTestIds(root),
+      /row\.tsx:1: names a person in "qa-ivan-row"/u,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("fails a prop that hands on a value another file already owns", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "verify-testids-"));
+  try {
+    writePlugin(
+      root,
+      "example-plugin",
+      "fields.tsx",
+      `<div data-testid="docs-pipeline">the slot</div>`,
+    );
+    writePlugin(
+      root,
+      "example-plugin",
+      "card.tsx",
+      `<Section testId="docs-pipeline">the same slot</Section>`,
+    );
+    await assert.rejects(verifyTestIds(root), (error) => {
+      // Whichever of the two files the walk met first owns the value, so the
+      // assertion names both rather than guessing the order.
+      const lines = String(error.message).split("\n- ").slice(1);
+      assert.equal(lines.length, 1);
+      assert.match(lines[0], /src\/client\/fields\.tsx:1/u);
+      assert.match(lines[0], /src\/client\/card\.tsx:1/u);
+      assert.match(lines[0], /"docs-pipeline" is also declared in /u);
+      return true;
+    });
   } finally {
     await rm(root, { recursive: true, force: true });
   }
