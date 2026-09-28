@@ -64,6 +64,13 @@ The plugin takes no configuration: it writes nothing, so it has no ceilings to
 enforce. Its row in the deployment composition is the plain two-field entry the
 install command above creates.
 
+A row that still names the four ceilings the write path carried —
+`allowComplete`, `maxPersonaBytes`, `maxSections`, `maxSectionsBytes` — changes
+nothing, and it is worth knowing why rather than finding out by experiment: the
+plugin declares no Config schema, so the Host hands that block to it unvalidated
+and the plugin reads none of it. Drop the `config:` key with the writer that
+needed it.
+
 ## What a preset with sections looks like
 
 ```yaml

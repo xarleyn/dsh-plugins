@@ -44,7 +44,21 @@ export class PresetPersonaEditor extends TypertRemoteService {
 
   private readonly logger: PluginLoggerLike;
 
-  constructor(ctx: Context, deps: PresetPersonaEditorDeps = {}) {
+  constructor(
+    ctx: Context,
+    /**
+     * The deployment's `config:` row for this plugin, which the leading underscore
+     * marks as present-but-unread. Cordis builds a plugin positionally —
+     * `new callback(ctx, config)` — and validates that row only against a
+     * `static Config`, which this plugin has none of: decision D2 took the four
+     * ceilings out along with the write operations they gated. So the row is read
+     * by nobody, which `README.md` says to the operator, and the parameter stands
+     * in this slot so the seam below is a seam rather than a misplaced
+     * configuration — named `config`, typed as one, and never consulted.
+     */
+    _config: Record<string, unknown> = {},
+    deps: PresetPersonaEditorDeps = {},
+  ) {
     // The Typert generator reads these as literals: the Cordis service key and
     // the wire namespace must be spelled here, not aliased through a constant.
     super(ctx, "presetPersonaEditor", { namespace: "presetPersonaEditor" });
