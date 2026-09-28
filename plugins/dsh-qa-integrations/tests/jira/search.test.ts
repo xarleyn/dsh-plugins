@@ -88,6 +88,31 @@ describe("jira search", () => {
     });
   });
 
+  it("carries a typed history clause to the search endpoint", async () => {
+    const { fetcher, calls } = search();
+    const provider = providerFor(fetcher);
+    await provider.execute(
+      { credential: credentialFor(provider) },
+      "issues.search",
+      {
+        projectKeys: ["PROJ"],
+        history: [
+          { field: "status", op: "was", value: "In Progress" },
+          {
+            field: "assignee",
+            op: "changed",
+            value: "5b10ac8d82e05b22cc7d4ef5",
+            by: "me",
+            after: "-2w",
+          },
+        ],
+      },
+    );
+    expect(calls[0]?.url.searchParams.get("jql")).toBe(
+      'project in ("PROJ") AND status WAS "In Progress" AND assignee CHANGED TO "5b10ac8d82e05b22cc7d4ef5" BY currentUser() AFTER -2w ORDER BY updated DESC',
+    );
+  });
+
   it("lowers the page on request but never raises the deployment ceiling", async () => {
     const { fetcher, calls } = search();
     const provider = providerFor(fetcher, {

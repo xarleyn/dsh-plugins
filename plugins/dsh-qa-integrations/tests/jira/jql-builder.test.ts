@@ -147,6 +147,186 @@ describe("jql builder", () => {
     expect(() => buildJql({})).toThrow(/at least one filter/u);
   });
 
+  it("searches the history of a field with WAS and CHANGED", () => {
+    expect(
+      buildJql({
+        history: [{ field: "status", op: "was", value: "In Progress" }],
+      }),
+    ).toBe('status WAS "In Progress" ORDER BY updated DESC');
+    // The window the operator takes, and the single day it takes instead.
+    expect(
+      buildJql({
+        history: [
+          {
+            field: "status",
+            op: "was",
+            value: "Done",
+            after: "-2w",
+            before: "-1w",
+          },
+        ],
+      }),
+    ).toBe('status WAS "Done" AFTER -2w BEFORE -1w ORDER BY updated DESC');
+    expect(
+      buildJql({
+        history: [
+          { field: "priority", op: "was", value: "High", on: "2026-09-01" },
+        ],
+      }),
+    ).toBe('priority WAS "High" ON "2026-09-01" ORDER BY updated DESC');
+    // A move needs no value to be a question: «статус менялся» is its own ask.
+    expect(buildJql({ history: [{ field: "status", op: "changed" }] })).toBe(
+      "status CHANGED ORDER BY updated DESC",
+    );
+    expect(
+      buildJql({
+        history: [
+          {
+            field: "resolution",
+            op: "changed",
+            from: "Отклонено",
+            value: "Fixed",
+            by: "me",
+            after: "-3w",
+          },
+        ],
+      }),
+    ).toBe(
+      'resolution CHANGED FROM "Отклонено" TO "Fixed" BY currentUser() AFTER -3w ORDER BY updated DESC',
+    );
+    // A person field keeps the identifier its product filters on, on both
+    // sides of the move.
+    expect(
+      buildJql(
+        {
+          history: [
+            {
+              field: "assignee",
+              op: "changed",
+              value: "5b10ac8d82e05b22cc7d4ef5",
+              by: "me",
+            },
+          ],
+        },
+        "cloud",
+      ),
+    ).toBe(
+      'assignee CHANGED TO "5b10ac8d82e05b22cc7d4ef5" BY currentUser() ORDER BY updated DESC',
+    );
+    expect(
+      buildJql(
+        {
+          history: [{ field: "assignee", op: "was", value: "smirnov" }],
+        },
+        "server",
+      ),
+    ).toBe('assignee WAS "smirnov" ORDER BY updated DESC');
+    // The field is matched whatever case it is sent in, the way the status
+    // category is, and is spelled back the way Jira names it.
+    expect(
+      buildJql({ history: [{ field: "fixversion", op: "was", value: "3.8" }] }),
+    ).toContain('fixVersion WAS "3.8"');
+    // History clauses join the rest of the search, ANDed like every filter.
+    expect(
+      buildJql({
+        projectKeys: ["PROJ"],
+        history: [
+          { field: "status", op: "was", value: "In Progress" },
+          { field: "priority", op: "changed", after: "-2d" },
+        ],
+      }),
+    ).toBe(
+      'project in ("PROJ") AND status WAS "In Progress" AND priority CHANGED AFTER -2d ORDER BY updated DESC',
+    );
+  });
+
+  it("keeps a history value a value, never a clause", () => {
+    expect(
+      buildJql({
+        history: [
+          { field: "status", op: "was", value: 'x" OR project = SECRET' },
+        ],
+      }),
+    ).toBe('status WAS "x\\" OR project = SECRET" ORDER BY updated DESC');
+    expect(
+      buildJql({
+        history: [{ field: "status", op: "was", value: "back\\slash" }],
+      }),
+    ).toBe('status WAS "back\\\\slash" ORDER BY updated DESC');
+  });
+
+  it("refuses a history filter it cannot read", () => {
+    for (const unusable of [
+      [],
+      "status WAS Done",
+      ["status"],
+      Array.from({ length: 4 }, () => ({
+        field: "status",
+        op: "changed",
+      })),
+    ]) {
+      expect(() => buildJql({ history: unusable })).toThrow(
+        /history is invalid/u,
+      );
+    }
+    // A field with no searchable history, and a field that belongs to
+    // customFields rather than to this filter.
+    for (const field of ["description", "customfield_1002", "labels"]) {
+      expect(() =>
+        buildJql({ history: [{ field, op: "was", value: "x" }] }),
+      ).toThrow(/history\.field accepts status/u);
+    }
+    expect(() =>
+      buildJql({ history: [{ field: "status", op: "held", value: "x" }] }),
+    ).toThrow(/history\.op accepts/u);
+    expect(() =>
+      buildJql({ history: [{ field: "status", op: "was" }] }),
+    ).toThrow(/needs the value the field held/u);
+    // A keyword that cannot belong to the operator is refused, not dropped.
+    expect(() =>
+      buildJql({
+        history: [{ field: "status", op: "was", value: "Done", from: "Open" }],
+      }),
+    ).toThrow(/only history\.op changed answers/u);
+    expect(() =>
+      buildJql({
+        history: [
+          {
+            field: "status",
+            op: "was",
+            value: "Done",
+            on: "2026-09-01",
+            after: "-2w",
+          },
+        ],
+      }),
+    ).toThrow(/contradict each other/u);
+    expect(() =>
+      buildJql({
+        history: [
+          { field: "status", op: "was", value: "Done", after: "yesterday" },
+        ],
+      }),
+    ).toThrow(/history\.after is invalid/u);
+    // A person here is the identifier the change log shows: this filter reads
+    // no directory, so a name is refused instead of quietly matching nobody.
+    expect(() =>
+      buildJql({
+        history: [{ field: "assignee", op: "changed", value: "Иван Иванов" }],
+      }),
+    ).toThrow(/must be "me" or the accountId/u);
+    expect(() =>
+      buildJql({
+        history: [{ field: "status", op: "changed", by: "Иван Иванов" }],
+      }),
+    ).toThrow(/history\.by must be/u);
+    expect(() =>
+      buildJql({
+        history: [{ field: "status", op: "was", value: "line\nbreak" }],
+      }),
+    ).toThrow(/history\.value is invalid/u);
+  });
+
   it("refuses a name where Jira needs an account id", () => {
     expect(() => buildJql({ assignee: "Иван Иванов" })).toThrow(
       /must be "me" or the accountId/u,
