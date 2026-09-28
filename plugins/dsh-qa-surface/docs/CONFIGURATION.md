@@ -531,11 +531,22 @@ and — once the reader allowed it — the same line from the operating system.
 The scope is the browser's own chat history, not the stand's session list. A
 notice exists only for a chat this page would have listed in its sidebar, so
 another account's turn ends silently here even on a stand where an
-administrator can read those chats. A chat that was already running when the
-page opened is not attributed to this reader, and frames a reconnecting browser
-cannot vouch for are re-projected without notices. A turn that ends in the chat
-already on screen, with this window active, produces nothing: the answer is in
-front of the reader.
+administrator can read those chats.
+
+The notice is for a turn this page saw begin. A chat found already running when
+the page opened is not attributed to this reader: that run ends in silence, and
+the same chat's next turn, whose start the page does see, notifies again. The
+rule runs across a gap in the link. A frame read while the browser was
+reconnecting vouches for nothing, so it neither reports a run it appears to have
+finished nor credits a run the first live frame shows under way: a turn still
+running when the link dropped, and the reader's own question that was queued
+before the drop and went out only as the link returned, both end unreported.
+Which of those the stale list was showing is not something this page can tell,
+and the silence is the honest answer until a browser can vouch for the host list
+across a gap.
+
+A turn that ends in the chat already on screen, with this window active,
+produces nothing: the answer is in front of the reader.
 
 What a notice may carry is the chat's own title and the fact that the turn
 ended — never the answer, a path, an account or a session id. The operating
