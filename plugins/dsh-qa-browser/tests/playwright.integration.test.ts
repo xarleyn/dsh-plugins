@@ -418,6 +418,74 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
     }
   }, 120_000);
 
+  it("joins a browser through a ws endpoint pinned to one address", async () => {
+    // §3.3 tells a deployment that must pin the browser it dials to write a `ws`
+    // URL: an `http` endpoint is only a question, and the answer names the
+    // address to dial next. That form is a different branch of Playwright's own
+    // connect step — it takes the URL it was given and asks no server where to
+    // go — so the unit fake, which only records the string it was handed,
+    // cannot tell a working endpoint from one that never dials. A real browser
+    // answers that, and answers the other half too: the loopback `ws` URL the
+    // gate is documented to accept without the remote switch.
+    const executable = discoverChromium();
+    const debugPort = await freePort();
+    const external = await startExternalChromium(executable, debugPort);
+    const probe = await startProbeServer({
+      "/": await readFile(
+        new URL("./fixtures/app.html", import.meta.url),
+        "utf8",
+      ),
+    });
+    try {
+      const { webSocketDebuggerUrl } = (await (
+        await fetch(`http://127.0.0.1:${String(debugPort)}/json/version`)
+      ).json()) as { webSocketDebuggerUrl?: string };
+      expect(typeof webSocketDebuggerUrl).toBe("string");
+      const endpoint = webSocketDebuggerUrl!;
+
+      const config = resolveQaBrowserConfig({
+        runtime: { mode: "attach", cdpEndpoint: endpoint },
+      });
+      const manager = new QaBrowserSessionManager({
+        config,
+        provider: new PlaywrightBrowserProvider(),
+        policy: new BrowserNetworkPolicy(config.security.network),
+        startIdleTimer: false,
+      });
+      managers.push(manager);
+
+      const session = await manager.ensureSession("attach-pinned-ws");
+      const tabId = session.selectedTabId!;
+      const pageUrl = `http://127.0.0.1:${String(probe.port)}/`;
+      const result = await manager.navigate("attach-pinned-ws", tabId, {
+        url: pageUrl,
+      });
+      expect(result).toMatchObject({ ok: true, title: "QA Browser fixture" });
+
+      // The page this session drives is a target of the browser behind that
+      // endpoint — which is the only reading that tells a joined browser apart
+      // from one the runtime started for itself and never showed anyone.
+      const listed = (await (
+        await fetch(`http://127.0.0.1:${String(debugPort)}/json/list`)
+      ).json()) as { type: string; url: string }[];
+      expect(
+        listed.filter((target) => target.type === "page").map((t) => t.url),
+      ).toContain(pageUrl);
+
+      // Same promise as the `http` case, on the endpoint form that recommendation
+      // points at: the link and our own context go, the browser does not.
+      await manager.dispose();
+      const stillUp = await fetch(
+        `http://127.0.0.1:${String(debugPort)}/json/version`,
+      );
+      expect(stillUp.ok).toBe(true);
+    } finally {
+      await stopExternalChromium(external.child, debugPort);
+      await rm(external.userDataDir, { recursive: true, force: true });
+      await probe.close();
+    }
+  }, 120_000);
+
   it("reads a killed attached browser as a dropped link, never as a crash", async () => {
     const executable = discoverChromium();
     const debugPort = await freePort();
