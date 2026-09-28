@@ -129,7 +129,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "test:browser": "vitest run tests/playwright.integration.test.ts",
+    "test:browser": "vitest run tests/playwright.integration.test.ts tests/playwright.coexist.integration.test.ts",
     "verify:package": "node scripts/verify-package.mjs",
     "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",

@@ -63,7 +63,7 @@ describe("QaBrowserSessionManager", () => {
   });
 
   it("marks state lost on crash and recreates the context on the next ensure", async () => {
-    const { manager, provider } = createHarness();
+    const { manager, provider, logged } = createHarness();
     await manager.ensureSession("crash");
     provider.crash();
     expect(manager.getSession("crash")).toMatchObject({
@@ -71,6 +71,14 @@ describe("QaBrowserSessionManager", () => {
       selectedTabId: null,
       tabIds: [],
     });
+    // The log line is the other half of the distinction for whoever reads the
+    // container's output: a crashed process has a crash log to go and look at,
+    // and this is the case that says where to find it.
+    expect(
+      logged
+        .filter((entry) => entry.level === "error")
+        .map((entry) => entry.event),
+    ).toEqual(["browser.crashed"]);
     await manager.ensureSession("crash");
     expect(manager.getSession("crash")?.status).toBe("ready");
     await manager.dispose();
@@ -106,6 +114,52 @@ describe("QaBrowserSessionManager", () => {
     expect(built[0]?.closed).toBe(true);
     expect(provider.stops).toBe(1);
     expect(manager.getSession("late")).toBeNull();
+  });
+
+  it("passes the configured runtime mode down to the provider", async () => {
+    const { manager, provider } = createHarness({
+      runtime: { mode: "attach", cdpEndpoint: "http://127.0.0.1:9222" },
+    });
+
+    await manager.ensureSession("attached");
+
+    expect(provider.startOptions.at(-1)).toMatchObject({
+      mode: "attach",
+      cdpEndpoint: "http://127.0.0.1:9222",
+    });
+    await manager.dispose();
+  });
+
+  it("keeps a dropped CDP link apart from a crash and re-attaches on the next ensure", async () => {
+    const { manager, provider, logged } = createHarness({
+      runtime: { mode: "attach", cdpEndpoint: "http://127.0.0.1:9222" },
+    });
+    const session = await manager.ensureSession("attached");
+    const tabId = session.selectedTabId!;
+
+    provider.crash("BROWSER_CONNECTION_LOST");
+
+    // The browser a person started is likely still running; only our link to it
+    // is gone, and the panel is told that rather than a crash it cannot verify.
+    expect(manager.getSession("attached")).toMatchObject({
+      status: "disconnected",
+      selectedTabId: null,
+      tabIds: [],
+    });
+    // And so is the log: an operator who reads `browser.crashed` goes looking for
+    // a crash log of a process this plugin never started.
+    expect(
+      logged
+        .filter((entry) => entry.level === "error")
+        .map((entry) => entry.event),
+    ).toEqual(["browser.connection-lost"]);
+    await expect(manager.snapshot("attached", tabId)).rejects.toMatchObject({
+      code: "BROWSER_CONNECTION_LOST",
+    });
+    await manager.ensureSession("attached");
+    expect(manager.getSession("attached")?.status).toBe("ready");
+    expect(provider.starts).toBe(2);
+    await manager.dispose();
   });
 
   it("binds semantic refs to a revision and refuses stale actions", async () => {
