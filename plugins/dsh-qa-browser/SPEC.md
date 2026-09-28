@@ -2366,7 +2366,10 @@ drives back as a target of *that* browser, and leaves the process running when i
 own teardown ends. That run also puts to the browser the question §3.3 leaves with
 it: what answer each shape of `Host` header gets — an address and `localhost`
 answered, a container's name refused on the `/json/version` hop and on the `ws`
-upgrade alike, which is why DOCKER.md writes an address. Each attach case finds
+upgrade alike, which is why DOCKER.md writes an address — and it asks the same
+question of a browser started with `--remote-allow-origins`, the switch that guide
+disowns, because "the name stays refused with it set" is an answer only a browser
+that was given the flag can give. Each attach case finds
 its own browser through the same search the launch path uses, and a run that was
 asked for and found nothing fails saying so rather than skipping: a skipped
 attach case would read as a check that passed. The suite is opt-in elsewhere in

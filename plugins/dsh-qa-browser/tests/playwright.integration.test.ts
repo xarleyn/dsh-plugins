@@ -145,6 +145,53 @@ function socketProbeConfig(
   });
 }
 
+/**
+ * Ask a browser's DevTools server the two hops an endpoint makes — the
+ * `/json/version` question an `http` endpoint asks and the `ws` upgrade its
+ * answer names — under a `Host` header that is written down rather than
+ * inferred. Which shapes of header the browser answers is the question a
+ * deployment asks its sidecar guide, and it is the browser's answer, so the
+ * request has to leave carrying the name the guide is being checked on.
+ */
+async function devToolsHostProbe(
+  debugPort: number,
+): Promise<(hostHeader: string, overSocket?: boolean) => Promise<number>> {
+  const version = (await (
+    await fetch(`http://127.0.0.1:${String(debugPort)}/json/version`)
+  ).json()) as { webSocketDebuggerUrl?: string };
+  expect(typeof version.webSocketDebuggerUrl).toBe("string");
+  const socketPath = new URL(version.webSocketDebuggerUrl ?? "").pathname;
+  return (hostHeader, overSocket = false) =>
+    new Promise<number>((resolve, reject) => {
+      const request = http.request(
+        {
+          host: "127.0.0.1",
+          port: debugPort,
+          path: overSocket ? socketPath : "/json/version",
+          headers: overSocket
+            ? {
+                host: hostHeader,
+                connection: "Upgrade",
+                upgrade: "websocket",
+                "sec-websocket-key": randomBytes(16).toString("base64"),
+                "sec-websocket-version": "13",
+              }
+            : { host: hostHeader },
+        },
+        (response) => {
+          response.resume();
+          resolve(response.statusCode ?? 0);
+        },
+      );
+      request.on("upgrade", (_response, socket) => {
+        socket.destroy();
+        resolve(101);
+      });
+      request.on("error", reject);
+      request.end();
+    });
+}
+
 describe.skipIf(!enabled)("Playwright Browser runtime", () => {
   const managers: QaBrowserSessionManager[] = [];
 
@@ -398,44 +445,12 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
     // `allowRemoteCdpEndpoint` only opens the config gate and Playwright then
     // dials whatever it was given. So the address shape a sidecar guide sends an
     // operator to is the browser's answer, which is measured here.
+    const executable = discoverChromium();
     const debugPort = await freePort();
     const port = String(debugPort);
-    const external = await startExternalChromium(discoverChromium(), debugPort);
+    const external = await startExternalChromium(executable, debugPort);
     try {
-      const version = (await (
-        await fetch(`http://127.0.0.1:${port}/json/version`)
-      ).json()) as { webSocketDebuggerUrl?: string };
-      expect(typeof version.webSocketDebuggerUrl).toBe("string");
-      const socketPath = new URL(version.webSocketDebuggerUrl ?? "").pathname;
-      const ask = (hostHeader: string, overSocket = false) =>
-        new Promise<number>((resolve, reject) => {
-          const request = http.request(
-            {
-              host: "127.0.0.1",
-              port: debugPort,
-              path: overSocket ? socketPath : "/json/version",
-              headers: overSocket
-                ? {
-                    host: hostHeader,
-                    connection: "Upgrade",
-                    upgrade: "websocket",
-                    "sec-websocket-key": randomBytes(16).toString("base64"),
-                    "sec-websocket-version": "13",
-                  }
-                : { host: hostHeader },
-            },
-            (response) => {
-              response.resume();
-              resolve(response.statusCode ?? 0);
-            },
-          );
-          request.on("upgrade", (_response, socket) => {
-            socket.destroy();
-            resolve(101);
-          });
-          request.on("error", reject);
-          request.end();
-        });
+      const ask = await devToolsHostProbe(debugPort);
       // What answers: an address, the one name Chromium recognises, and any IP —
       // the header has to parse as an address, not belong to this machine.
       expect(await ask(`127.0.0.1:${port}`)).toBe(200);
@@ -446,6 +461,34 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
       // both hops, so a pinned `ws` URL gets around nothing.
       expect(await ask(`chromium:${port}`)).toBeGreaterThanOrEqual(400);
       expect(await ask(`chromium:${port}`, true)).toBeGreaterThanOrEqual(400);
+
+      // The same guide then disowns the switch a deployment reaches for:
+      // `--remote-allow-origins` "guards the `Origin` header", so a name in
+      // `Host` stays refused with it set. That is a claim about a browser started
+      // with the flag, and nothing else in this suite ever starts one, so it is
+      // asked here of a second Chromium that has it. Left unmeasured, the
+      // sentence would only ever have been read off browsers that never had the
+      // flag — and a flag that did move the `Host` check would still be sending
+      // every sidecar guide to an address rather than to a name.
+      const flaggedPort = await freePort();
+      const flagged = await startExternalChromium(executable, flaggedPort, [
+        "--remote-allow-origins=*",
+      ]);
+      try {
+        const askFlagged = await devToolsHostProbe(flaggedPort);
+        const flaggedAddress = `127.0.0.1:${String(flaggedPort)}`;
+        const flaggedName = `chromium:${String(flaggedPort)}`;
+        // The control that makes the two refusals below the browser's answer
+        // rather than a browser that never came up: this Chromium answers its own
+        // address on both hops, exactly as the unflagged one did.
+        expect(await askFlagged(flaggedAddress)).toBe(200);
+        expect(await askFlagged(flaggedAddress, true)).toBe(101);
+        expect(await askFlagged(flaggedName)).toBeGreaterThanOrEqual(400);
+        expect(await askFlagged(flaggedName, true)).toBeGreaterThanOrEqual(400);
+      } finally {
+        await stopExternalChromium(flagged.child, flaggedPort);
+        await removeProfileDir(flagged.userDataDir);
+      }
     } finally {
       await stopExternalChromium(external.child, debugPort);
       await removeProfileDir(external.userDataDir);

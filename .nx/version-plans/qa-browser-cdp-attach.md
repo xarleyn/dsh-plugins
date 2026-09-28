@@ -29,7 +29,10 @@ DevTools request only when its `Host` header is an IP address or `localhost`, on
 the `/json/version` question and on the `ws` upgrade alike, so a container's
 service name is refused by the browser itself and DOCKER.md now names an address.
 The opt-in run puts that question to a live browser rather than taking the shape
-on faith.
+on faith, and puts it to one started with `--remote-allow-origins` too: that flag
+guards the `Origin` header, and a name in `Host` is refused with it set just as it
+is without it, which is why the guide names an address rather than a switch to
+reach for.
 Attach mode owns no process, and the config says so rather than quietly ignoring
 the keys that would shape one — `headless: false`, an `executablePath`, a
 `browserChannel` other than `chromium`, and `chromiumSandbox: false` are each

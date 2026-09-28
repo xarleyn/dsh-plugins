@@ -61,10 +61,15 @@ export async function freePort(): Promise<number> {
  * A Chromium this runtime did not start and does not own — which is the whole
  * claim attach mode makes, so the test starts the browser the way a person or a
  * sidecar would: by running it with a debug port.
+ *
+ * `extraArgs` carries a flag the case is asking about. What a DevTools endpoint
+ * answers is the browser's answer, so a claim that some Chromium flag changes
+ * nothing is only readable off a browser started with that flag set.
  */
 export async function startExternalChromium(
   executable: string,
   port: number,
+  extraArgs: readonly string[] = [],
 ): Promise<{ child: ChildProcess; userDataDir: string }> {
   const userDataDir = await mkdtemp(join(tmpdir(), "qa-browser-attach-"));
   const child = spawn(
@@ -75,6 +80,7 @@ export async function startExternalChromium(
       `--user-data-dir=${userDataDir}`,
       "--no-first-run",
       "--no-default-browser-check",
+      ...extraArgs,
       "about:blank",
     ],
     { stdio: "ignore" },
