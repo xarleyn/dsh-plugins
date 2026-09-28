@@ -6,7 +6,7 @@
  * label survives the label moving into a tooltip, and one on a class survives a
  * restyle, while `getByTestId` says which slot it actually pressed. Epic #453
  * made that address a convention — one attribute name, a kebab-case ASCII value
- * carrying the package's zone, unique within a package — and this gate is the
+ * carrying the package's zone, one value owning one file — and this gate is the
  * half of the convention a machine can read, so it does not rot between the
  * review that approved an id and the bundle that ships it.
  *
@@ -20,17 +20,27 @@
  * 2. a value decided at the site is ASCII kebab-case, and is longer than one
  *    segment: the zone prefix is what keeps two plugins apart once they render
  *    into the same page.
- * 3. the same value is not written in two files of one package. Within a file a
+ * 3. the same value is not written twice in the workspace. Within one file a
  *    value may repeat — that is how the epic names one slot in its mutually
  *    exclusive states, `qa-message-image` at loading, broken and loaded — and no
  *    static read can tell two branches from two mounted nodes. Across a file
- *    boundary nothing excuses the collision, so that is what is reported.
+ *    boundary nothing excuses the collision, and across a package boundary the
+ *    collision is the very thing rule 2's zone prefix exists to prevent, so the
+ *    comparison is not stopped at the package edge.
  * 4. no value carries Cyrillic, a task number or a person. AGENTS.md puts that
  *    rule over fixtures and published strings, and an id is both: it ships in the
  *    tarball, and it names the node in every screenshot of a run. A task number
  *    is any all-digit segment; a person is checked against the names the
  *    workspace's own manifests declare, so the rule carries no list to keep
  *    current and stays silent on an id that names no one here.
+ *
+ * A site is where a value reaches the attribute, which is one step wider than
+ * the attribute itself: a card that renders its fields through its own controls
+ * names the slot with a `testId` prop, and the id is written there, not at the
+ * `data-testid={testId}` one component down. Those 500-odd props carry the same
+ * values and follow the same convention, so rules 2 to 4 and the collision read
+ * them too; rule 1 does not, because `testId` is the prop's name, not a
+ * misspelling of the attribute's.
  *
  * What the gate leaves alone is a value it cannot read. `${testIdZone}-empty`
  * and `props.testId` are composed at runtime, so their prefix is not a zone this
@@ -39,7 +49,9 @@
  * caller can change. A quoted string that is an argument or a comparison operand
  * — the `"label"` of `testIdPart(testId, "label")`, the `"error"` of
  * `entry.severity === "error"` — names no node at all, so it is skipped: asking
- * it to carry a zone would report the code that reads best.
+ * it to carry a zone would report the code that reads best. A comment is read the
+ * same way it renders — as nothing — because a note about the spelling a file
+ * used to carry, or a doc example, names no node either.
  */
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
@@ -57,13 +69,19 @@ const skippedDirectories = new Set([
 ]);
 
 const attributeName = "data-testid";
+/** The prop a card names its own control's slot with. */
+const propName = "testId";
 /** Every spelling of the attribute name that is an attempt at `data-testid`. */
 const attributeNameSite = /\bdata[-_]?test[-_]?id(?![\w-])/giu;
+/**
+ * The `testId` prop a card hands to its own controls. The preceding character is
+ * excluded rather than matched as a word boundary, so `data-testId` stays the
+ * misspelling rule's and `props.testId` stays a pass-through, never a name.
+ */
+const propSite = /(^|[^$\w.-])testId(?![\w-])(\s*[:=])(?!=)/gu;
 /** The same attribute written as a key of a `createElement` attributes object. */
 const attributesKeySite =
   /(["'])(data[-_]?test[-_]?id)\1\s*:\s*(?:"([^"]*)"|'([^']*)'|`([^`]*)`)/giu;
-/** A JSX comment renders nothing, so `{/* … *\/}` is never a value. */
-const jsxComment = /\{\s*\/\*[\s\S]*?\*\/\s*\}/gu;
 
 const kebabCase = /^[a-z0-9]+(?:-[a-z0-9]+)*$/u;
 const cyrillic = /[\u0400-\u04ff]/u;
@@ -73,6 +91,105 @@ const taskNumberSegment = /(?:^|-)\d+(?:-|$)/u;
 const separator = /[^a-z0-9]+/u;
 /** The operator that puts a string in value position: a branch, not a test. */
 const valuePosition = /(?:\?|:|\|\||&&|=>|\?\?)\s*$/u;
+/**
+ * What may stand in front of a comment opening: whitespace, the line's start, or a
+ * boundary. A slash that follows a colon, a letter or a backslash belongs to
+ * something else — the `//` of `viking://`, the escaped pair that closes the
+ * regular expression `/^\.\//u`.
+ */
+const commentStarter = /[\s{}()[\],;]/u;
+/** What may not stand in front of a quote: an identifier char means an apostrophe. */
+const joinedToWord = /[$\w\\]/u;
+
+/**
+ * The offsets every comment owns in one source, as `[start, end)` pairs.
+ *
+ * A comment renders nothing, so it is not a place where an attribute is written:
+ * the note above a field that says `rename data-test-id to data-testid`, and the
+ * doc example that shows `<div data-testid="composer" />`, both describe the
+ * convention instead of breaking it.
+ *
+ * Strings and templates are stepped over rather than scanned through, because
+ * the shortcut would blind the read: the `//` in `"viking://~/memories"` and the
+ * `/*` in a `"services/**"` glob are a URI and a pattern, not a comment, and a
+ * fake block comment would hide the rest of the file. An apostrophe is kept out
+ * of the string state for the mirror reason — `don't` in card copy is no one's
+ * quote, and treating it as one would hide the attributes that share its line.
+ */
+function commentRanges(source) {
+  const ranges = [];
+  const templates = [];
+  let quote = "";
+  let depth = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote !== "") {
+      if (character === "\\") index += 1;
+      else if (character === quote) quote = "";
+      else if (
+        quote === "`" &&
+        character === "$" &&
+        source[index + 1] === "{"
+      ) {
+        templates.push(depth);
+        depth = 0;
+        quote = "";
+        index += 1;
+      } else if (quote !== "`" && character === "\n") {
+        quote = "";
+      }
+      continue;
+    }
+    if (
+      (character === '"' || character === "'" || character === "`") &&
+      !joinedToWord.test(source[index - 1] ?? "")
+    ) {
+      quote = character;
+      continue;
+    }
+    if (character === "{") depth += 1;
+    else if (character === "}") {
+      if (depth === 0 && templates.length > 0) {
+        quote = "`";
+        depth = templates.pop() ?? 0;
+      } else depth = Math.max(0, depth - 1);
+    }
+    if (character !== "/") continue;
+    const boundary = index === 0 || commentStarter.test(source[index - 1]);
+    if (source[index + 1] === "/" && boundary) {
+      const newline = source.indexOf("\n", index);
+      const stop = newline === -1 ? source.length : newline;
+      ranges.push([index, stop]);
+      index = stop - 1;
+      continue;
+    }
+    if (source[index + 1] === "*" && boundary) {
+      const closer = source.indexOf("*/", index + 2);
+      const stop = closer === -1 ? source.length : closer + 2;
+      ranges.push([index, stop]);
+      index = stop - 1;
+    }
+  }
+  return ranges;
+}
+
+/**
+ * The source with every comment blanked. Nothing is removed: a blanked character
+ * keeps its own index and its own line break, so the offsets the caller reports
+ * are the ones the author sees.
+ */
+function withoutComments(source) {
+  const ranges = commentRanges(source);
+  if (ranges.length === 0) return source;
+  let text = "";
+  let cursor = 0;
+  for (const [start, end] of ranges) {
+    text += source.slice(cursor, start);
+    text += source.slice(start, end).replace(/[^\n]/g, " ");
+    cursor = end;
+  }
+  return text + source.slice(cursor);
+}
 
 /**
  * Whether a name sits where an attribute is written. A selector string —
@@ -122,14 +239,17 @@ function templateSkeleton(template) {
 }
 
 /**
- * The value written at an attribute site, or null where this read cannot reach
- * it. `start` is the offset just past the attribute name.
+ * The value written at a site, or null where this read cannot reach it. `start`
+ * is the offset just past the name, and `assignment` is what puts the value after
+ * it: `=` for a JSX attribute or prop, `:` for a property of the attributes
+ * object `createElement` takes. A second `=` is a comparison, not a write.
  */
-function attributeValue(text, start) {
+function valueAfter(text, start, assignment) {
   let index = start;
   while (index < text.length && /\s/u.test(text[index])) index += 1;
-  if (text[index] !== "=") return null;
+  if (text[index] !== assignment) return null;
   index += 1;
+  if (assignment === "=" && text[index] === "=") return null;
   while (index < text.length && /\s/u.test(text[index])) index += 1;
   const quote = text[index];
   if (quote === '"' || quote === "'") {
@@ -145,7 +265,7 @@ function attributeValue(text, start) {
 
 /**
  * What a site renders. `owned` is the value the attribute always carries, which
- * is the only kind a package can hold once; `conditional` is a literal that
+ * is the only kind the workspace can hold once; `conditional` is a literal that
  * reaches the attribute only along one branch, so the site may render several of
  * them and none of them proves a collision; `composed` is the fixed text of a
  * value built at runtime. A quoted string in a test or an argument — the `"error"`
@@ -181,15 +301,13 @@ function readableValues(value) {
 }
 
 /**
- * Every test id site in one source, as `{ index, name, attribute, owned,
+ * Every test id site in one source, as `{ index, name, attribute, prop, owned,
  * conditional, composed }`. The name is kept as written, so a misspelling is
  * reportable even inside a selector string, and offsets survive because comment
- * masking replaces nothing with fewer characters.
+ * masking blanks characters rather than removing them.
  */
 function testIdSites(source) {
-  const text = source.replace(jsxComment, (comment) =>
-    comment.replace(/[^\n]/gu, " "),
-  );
+  const text = withoutComments(source);
   const sites = [];
   for (const match of text.matchAll(attributeNameSite)) {
     // A name inside quotes is a key or a string, read by `attributesKeySite`
@@ -197,12 +315,26 @@ function testIdSites(source) {
     if (/["']$/u.test(text.slice(0, match.index))) continue;
     const attribute = isAttributePosition(text, match.index);
     const values = readableValues(
-      attribute ? attributeValue(text, match.index + match[0].length) : null,
+      attribute ? valueAfter(text, match.index + match[0].length, "=") : null,
     );
     sites.push({
       index: match.index,
       name: match[0],
       attribute,
+      prop: false,
+      ...values,
+    });
+  }
+  for (const match of text.matchAll(propSite)) {
+    const name = match.index + match[1].length;
+    const values = readableValues(
+      valueAfter(text, name + propName.length, match[2].slice(-1)),
+    );
+    sites.push({
+      index: name,
+      name: propName,
+      attribute: carriesValue(values),
+      prop: true,
       ...values,
     });
   }
@@ -213,6 +345,7 @@ function testIdSites(source) {
       index: match.index,
       name: match[2],
       attribute: true,
+      prop: false,
       owned: template ? [] : [candidate],
       conditional: [],
       composed: template
@@ -221,6 +354,22 @@ function testIdSites(source) {
     });
   }
   return sites;
+}
+
+/** Whether a site writes a value this read can reach at all. */
+function carriesValue(values) {
+  return (
+    values.owned.length + values.conditional.length + values.composed.length > 0
+  );
+}
+
+/**
+ * Whether a site writes the attribute under a name `getByTestId` cannot resolve.
+ * The `testId` prop is the component's own name for the slot, not a misspelling
+ * of the attribute's, so it is never a finding here.
+ */
+function misspelled(site) {
+  return !site.prop && site.name !== attributeName;
 }
 
 /** Why a value is not what the convention says, or null when it is. */
@@ -273,7 +422,7 @@ export function auditTestIds(source, { personNames = [] } = {}) {
   const names = new Set(personNames.map((name) => name.toLowerCase()));
   const findings = [];
   for (const site of testIdSites(source)) {
-    if (site.name !== attributeName) {
+    if (misspelled(site)) {
       findings.push({
         index: site.index,
         value: null,
@@ -298,13 +447,13 @@ export function auditTestIds(source, { personNames = [] } = {}) {
 
 /**
  * The values a source owns at its attribute sites, with the offset of each — the
- * set a package may hold only once. A value a branch may or may not render is
+ * set the workspace may hold only once. A value a branch may or may not render is
  * left out: the same read that excuses three states of one node in one file
  * cannot prove two of them mounted together.
  */
 export function testIdValues(source) {
   return testIdSites(source).flatMap((site) =>
-    site.attribute && site.name === attributeName
+    site.attribute && !misspelled(site)
       ? site.owned
           .filter((value) => value.length > 0)
           .map((value) => ({ index: site.index, value }))
@@ -337,13 +486,20 @@ async function sourceFiles(directory) {
   return files;
 }
 
+/** An email's address, with the name in front of the `@` kept as a token. */
+const emailAddress = /[^@\s<>]+@[^\s<>]*/gu;
+/** A homepage written into the author field, whose host names no person. */
+const webAddress = /[a-z][a-z0-9+.-]*:\/\/[^\s<>]*/giu;
+
 /**
  * The people this workspace declares as its authors. A test id is published with
  * the bundle that renders it, so a name or a login reaching one is the leak
  * AGENTS.md rules out; reading the manifests means the gate asks about the people
- * actually named here instead of carrying a list nobody maintains. Email address
- * parts are left out on purpose: a domain word is not a person, and a token like
- * `example` would otherwise refuse an id that names nothing.
+ * actually named here instead of carrying a list nobody maintains. An author line
+ * is a name plus an address, and only the name names someone: `Иван Петров
+ * <ivan@example.com>` contributes `ivan` and `petrov`, because the login is what
+ * a person is called, while `example` and `com` are the host's own words and must
+ * not refuse an id that names no one here.
  */
 async function personNames(packageDirectory) {
   const manifest = await readFile(
@@ -361,6 +517,10 @@ async function personNames(packageDirectory) {
     ...new Set(
       declared
         .join(" ")
+        .replace(webAddress, " ")
+        .replace(emailAddress, (address) =>
+          address.slice(0, address.indexOf("@")),
+        )
         .toLowerCase()
         .split(separator)
         .filter((token) => token.length >= 4),
@@ -377,6 +537,9 @@ export async function verifyTestIds(repoRoot = workspaceRoot) {
   const findings = [];
   let sources = 0;
   let sites = 0;
+  // The first file to decide a value owns it; a second one is the collision, and
+  // the map spans the workspace so two packages claiming one id see each other.
+  const declared = new Map();
   for (const root of sourceRoots) {
     const directory = join(repoRoot, root);
     const packages = await readdir(directory, { withFileTypes: true }).catch(
@@ -390,8 +553,6 @@ export async function verifyTestIds(repoRoot = workspaceRoot) {
       const packageDirectory = join(directory, entry.name);
       const names = await personNames(packageDirectory);
       const files = await sourceFiles(join(packageDirectory, "src"));
-      // The first file to decide a value owns it; a second one is the collision.
-      const declared = new Map();
       for (const file of files) {
         const source = await readFile(file, "utf8");
         sources += 1;
