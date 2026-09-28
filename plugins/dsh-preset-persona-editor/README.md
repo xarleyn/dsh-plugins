@@ -12,9 +12,11 @@ a preset composition.
 It reads, and does not write. Since DeepSeek Harness `0.1.7-rc.2` the Host has
 no durable preset-authoring path — the roster's `authorable` root and its `copy`
 operation were deleted, not relocated — so this page reports what a preset
-composes rather than changing it. The decision is D2 of
-`docs/DSH-0.1.7-MIGRATION.md` §10, and the blocker for returning persona edits
-to the screen is issue #605.
+composes rather than changing it. The decision is D2 of §10 of the
+[migration guide](https://github.com/xarleyn/dsh-plugins/blob/main/docs/DSH-0.1.7-MIGRATION.md);
+what a restored write path is waiting on is named in §0 of the
+[package specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-preset-persona-editor/SPEC.md),
+which the tarball does not carry either and the repository does.
 
 ## Features
 
@@ -29,7 +31,8 @@ to the screen is issue #605.
 - **Runtime context** (`includeRuntimeContext`, on by default) shown per preset:
   whether its sessions receive the dynamic sandbox/approval snapshots.
 - **Prompt sections (advanced)** — a preset can contribute named, ordered
-  sections of its own: name, order, text, and an `enabled` switch. A section
+  sections of its own: name, order, text, and the `enabled` value each row
+  carries. A section
   registered under a first-party name (`deployment:*`, `tool:*`, …) shadows that
   section for this preset's sessions. The list is data in the composition row;
   the preset ships a small registrar (`prompt-sections.mjs`) that mounts it, so
@@ -108,14 +111,20 @@ with the registry's own reason on the card.
 - Two failures that are not the same failure: a preset the registry calls
   `broken` cannot start a session, yet its declarations still render, so its
   readings are real; a preset whose composition the registry will not render has
-  no readings, and the card carries the registry's reason for that.
+  no readings, and the card carries the registry's reason for that. The registry
+  answers a `broken` preset with a tree — the row that refused, and beneath it
+  each cause it wrapped — so the closed card states that tree's first line and
+  the opened card states every line, breaks included: a settings card has room
+  for one line of description, and the line it uses is the host's own.
 - A host that answers differently than either of those says so too. Inside the
   `<0.2.0` half of the compatibility range a deployment may publish no
   `readDocument()` at all, or answer it with something that is not a
   composition; the card names which of the two happened, in this page's words,
   rather than blaming the preset or showing a `TypeError`. What the host's own
-  reason may contain is bounded by §2 of `SPEC.md`: the registry's failures name
-  preset ids, and that text is already on the host's own `list` Remote.
+  reason may contain is bounded by §2 of the
+  [package specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-preset-persona-editor/SPEC.md):
+  the registry's failures name preset ids, and that text is already on the
+  host's own `list` Remote.
 - A roster that refuses to refresh says so. The rows stay on screen — dropping
   them would answer a failed `list()` with a deployment that composes no
   presets — and the reason arrives above them: the screen that draws a list
@@ -123,6 +132,12 @@ with the registry's own reason on the card.
   refused refresh are rows the page has not told anyone are stale. The notice
   carries a Dismiss control, because the page keeps the message for the user
   and opening a preset is not the same as having read it.
+- A roster that has gone stale on its own can be asked again. **Reload the
+  roster** re-reads the list under the rows it draws: a preset waiting on a
+  service that has not mounted yet becomes healthy by itself, and the page that
+  read it once would otherwise keep saying so after the deployment stopped
+  agreeing. The reader's own Reload re-reads the open preset; the roster's
+  re-reads the list.
 - Presets apply to **new sessions**: DSH composes an agent from the preset it
   names when the session starts, and a running session keeps the composition it
   began with. The page states this instead of implying a live swap.
