@@ -13,7 +13,7 @@ pnpm check
 runs, in order: `lint` (workspace tooling + per-project eslint) → `format` →
 `typecheck` → `test` (repo-script tests, then per-project Vitest) → `build` →
 `check:files` (after the build, so the generated bundles exist to measure) →
-`verify` (per-project `verify` targets + the two root contract gates) →
+`verify` (per-project `verify` targets + the root contract gates) →
 `deps:check`. CI runs the same targets per affected project.
 
 ### The Nx cache in a worktree
@@ -53,6 +53,7 @@ checkout happens to hold.
 | Published content | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | A tarball carries the runtime, the bundle patch, compatibility data, legal notices, the README, and the images it embeds — never specs, changelogs, roadmaps, design docs, integration notes, or README translations; every relative link in a published README resolves inside the tarball, so the package page shows no dead links |
 | Logging contract | `pnpm verify:logging` (`scripts/verify-plugin-logging.mjs`) | Plugins write logs through `@yadsh/dsh-plugin-log` conventions (see [PLUGIN_LOGGING.md](PLUGIN_LOGGING.md)) |
 | Button names | `pnpm verify:a11y` (`scripts/verify-button-names.mjs`) | Every button a plugin or shared client package renders under `src/` carries an accessible name — `aria-label`, `aria-labelledby`, `title`, or children that can produce text — so a screen reader and `getByRole("button", { name })` can address it; an icon-only button is reported as `path:line` |
+| Test ids | `pnpm verify:testids` (`scripts/verify-testids.mjs`) | Every `data-testid` a plugin or shared client package renders under `src/` follows the epic #453 convention: the attribute is spelled exactly `data-testid` (a `data-test-id` is an address `getByTestId` never resolves), a value the site decides is ASCII kebab-case with a zone in front of it, and one value is owned by one file of the workspace — the zone is what keeps two plugins apart once they render into one page, so the collision read does not stop at the package edge. A site is where the value reaches the attribute, which is one step wider than the attribute: a card that renders its fields through its own controls names the slot in the `testId` prop it passes down, and those values carry the same rules (the prop's own name is not read as a misspelling of the attribute's). The exceptions are read the way a static file can read them: a value repeated inside one file is how one node names its mutually exclusive states (`qa-message-image` at loading, broken and loaded), a value composed at runtime — `${testIdZone}-empty`, `props.testId` — is asked only about the text no caller can change, so its prefix and its collisions stay this gate's blind spot, and a comment renders nothing, so the doc example and the note about an old spelling are read as no site at all. Cyrillic, an all-digit segment and a segment naming a person the workspace's own manifests declare as an author are refused (an author line contributes its name and its login, not the host of its address): `AGENTS.md` §No internal identifiers covers these strings because they ship in the published bundle and name the node in every test screenshot |
 | Client bundle | per-plugin `verify` chain (`plugins/*/scripts/verify-client-bundle.mjs`, or bundle asserts inside `verify-package.mjs`) | Built `lib/client.js` registers under the plugin's **full npm package name** and stays a classic ModuleLoader script rather than an ESM module; the React family the shell provides is its only external — everything else the client uses is inlined (see [ARCHITECTURE.md](ARCHITECTURE.md#host-process-vs-browser-client)). A plugin may run these asserts as a separate `verify:client` script (`dsh-doc-impact` does); the other client bundles carry them inside `verify:package`. Either way the integration URL is `/plugins/<full-package-name>/client.js` |
 | Configuration card | per-plugin `verify` chain (`clientBundle.cardContract`, or a direct call to `scripts/verify-plugin-card-contract.mjs`) | Every bundle that renders the settings-card shell — the 12 plugins registering a `settings.plugin.item` card and the two `settings.section` pages that reuse the shell — carries the canonical shell CSS, the inline chevron SVG, the rendered open-state class pair and the header's `aria-expanded`; font-glyph chevrons, non-canonical shell tokens and the plugin's own legacy shell classes fail the gate. `@yadsh/dsh-plugin-kit` runs the same contract over the shell modules every plugin bundle inlines, so the canonical text is checked at its source too. A plugin without a card owes nothing here |
 | Packed package | per-plugin `verify:package` (`plugins/*/scripts/verify-package.mjs`) | Static asserts only: manifest fields, `files` allowlist, exports exist on disk, no `workspace:`/`catalog:` leakage. Packing and the clean-room import smoke live in `pnpm tarball:verify`, not here |
@@ -164,10 +165,10 @@ their presence would reject packages that are correct as they stand.
 `.github/workflows/ci.yml` selects affected Nx projects once, then fans their
 `lint`, `typecheck`, `test`, `build`, `verify`, and publishable-tarball checks
 out through a bounded GitHub Actions matrix. Repository-wide `deps:check`,
-tooling tests and lint, `check:files`, `verify:logging`, `verify:a11y`, and
-`verify:packages` run once before the matrix. `pnpm check` covers `lint`,
-`format`, `typecheck`, `test`, `build`, `check:files`, `verify`, and
-`deps:check` — it does not run `tarball:verify` or
+tooling tests and lint, `check:files`, `verify:logging`, `verify:a11y`,
+`verify:testids`, and `verify:packages` run once before the matrix. `pnpm check`
+covers `lint`, `format`, `typecheck`, `test`, `build`, `check:files`, `verify`,
+and `deps:check` — it does not run `tarball:verify` or
 `release:check`; run those separately before pushing. `pnpm affected:check`
 mirrors the per-project CI targets locally.
 
