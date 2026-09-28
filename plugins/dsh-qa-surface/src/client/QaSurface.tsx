@@ -202,10 +202,33 @@ function focusable(root: HTMLElement): HTMLElement[] {
   ].filter((element) => !element.hidden);
 }
 
-function trapKeys(event: KeyboardEvent<HTMLElement>): void {
+/**
+ * The roots the Tab ring walks: the surface, then the notice stack it paints
+ * in `document.body`.
+ */
+function focusRing(roots: readonly (HTMLElement | null)[]): HTMLElement[] {
+  return roots
+    .filter((root): root is HTMLElement => root !== null)
+    .flatMap((root) => focusable(root));
+}
+
+/**
+ * Keep Tab inside the QA interface.
+ *
+ * The ring is wider than `<main>`: the notice stack is a portal that sits after
+ * the surface in the page, so a Tab leaving the composer walks into it, and the
+ * edge where the key is caught and turned back is the stack's last button — not
+ * the last control inside `<main>`, which is where it stopped the reader short
+ * of the notice. A key typed inside the portal is trapped by the handler
+ * mounted on the stack: `<main>` is not its ancestor and never hears it.
+ */
+function trapKeys(
+  event: KeyboardEvent<HTMLElement>,
+  roots: readonly (HTMLElement | null)[],
+): void {
   event.stopPropagation();
   if (event.key !== "Tab") return;
-  const items = focusable(event.currentTarget);
+  const items = focusRing(roots);
   if (items.length === 0) {
     event.preventDefault();
     event.currentTarget.focus();
@@ -267,6 +290,28 @@ export function QaSurface(props: QaSurfaceProps) {
   const transcript = useRef<HTMLDivElement>(null);
   const chat = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
+  const surface = useRef<HTMLElement>(null);
+  /** The notice stack: after `<main>` in the page, inside the ring with it. */
+  const noticeStack = useRef<HTMLDivElement>(null);
+  /** Whether the keyboard is working the stack, so its removal is the reader's loss. */
+  const keyboardInStack = useRef(false);
+  /**
+   * Keys typed in the surface: Tab stays in the ring, and nothing else of the
+   * key reaches the harness the overlay is built on.
+   */
+  const trapSurfaceKeys = useCallback((event: KeyboardEvent<HTMLElement>) => {
+    trapKeys(event, [surface.current, noticeStack.current]);
+  }, []);
+  /**
+   * Keys typed in the notice stack. Only the Tab this ring answers is taken:
+   * the stack is painted above whatever dialog is open, and an Escape pressed
+   * here is the reader's answer to that dialog, not the surface's business.
+   */
+  const trapNoticeKeys = useCallback((event: KeyboardEvent<HTMLElement>) => {
+    keyboardInStack.current = true;
+    if (event.key !== "Tab") return;
+    trapKeys(event, [surface.current, noticeStack.current]);
+  }, []);
   /** Turn marks of the visible transcript, kept in a ref for stable callbacks. */
   const railItemsRef = useRef<readonly QaTurnRailItem[]>([]);
   const activeTurnFrame = useRef<number | null>(null);
@@ -914,6 +959,17 @@ export function QaSurface(props: QaSurfaceProps) {
     activeSessionId,
     onSwitch: handleSwitch,
   });
+  /**
+   * Waving the last line off takes the control the reader was working out of
+   * the page, and a page with nothing focused answers Tab with the browser's
+   * own order — which leaves the QA interface. The surface takes the focus back.
+   */
+  useEffect(() => {
+    if (turnNotices.items.length > 0 || !keyboardInStack.current) return;
+    keyboardInStack.current = false;
+    const root = surface.current;
+    if (root !== null && !root.contains(document.activeElement)) root.focus();
+  }, [turnNotices.items.length]);
 
   // The audit provider is optional: `auditSnapshot.api` is null until the
   // audit plugin's client bundle is loaded, and the badge is absent until
@@ -1131,6 +1187,8 @@ export function QaSurface(props: QaSurfaceProps) {
         items={turnNotices.items}
         onOpen={turnNotices.onOpen}
         onDismiss={turnNotices.onDismiss}
+        rootRef={noticeStack}
+        onKeyDown={trapNoticeKeys}
         {...(turnNotices.onEnableDesktop === undefined
           ? {}
           : { onEnableDesktop: turnNotices.onEnableDesktop })}
@@ -1176,12 +1234,13 @@ export function QaSurface(props: QaSurfaceProps) {
         />
       )}
       <main
+        ref={surface}
         className={QA_SURFACE_CLASS}
         data-testid="qa-surface-root"
         data-phase={state.phase}
         aria-label={config.branding.title}
         tabIndex={-1}
-        onKeyDown={trapKeys}
+        onKeyDown={trapSurfaceKeys}
       >
         {previewing || sessionPreview ? (
           <QaAdminPreviewBanner

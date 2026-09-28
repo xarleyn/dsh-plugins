@@ -1,4 +1,5 @@
 import { createPortal } from "react-dom";
+import type { KeyboardEventHandler, RefObject } from "react";
 import type { QaTurnNoticeItem } from "../notifications/notification-dispatcher.js";
 
 export interface QaTurnNoticeProps {
@@ -14,6 +15,15 @@ export interface QaTurnNoticeProps {
    * fixture of the stack.
    */
   readonly onEnableDesktop?: () => void;
+  /**
+   * The stack is painted in `document.body`, so the surface that owns it keeps
+   * its Tab ring reachable: `rootRef` is the element the ring counts these
+   * buttons from, and `onKeyDown` traps the key here, where no ancestor
+   * `<main>` can hear it. Both are optional — a stand that reads the stack on
+   * its own needs neither.
+   */
+  readonly rootRef?: RefObject<HTMLDivElement>;
+  readonly onKeyDown?: KeyboardEventHandler<HTMLDivElement>;
 }
 
 export const QA_TURN_NOTICE_COPY = Object.freeze({
@@ -39,11 +49,14 @@ function CrossIcon() {
  * what the transcript is for.
  */
 export function QaTurnNotice(props: QaTurnNoticeProps) {
-  const { items, onOpen, onDismiss, onEnableDesktop } = props;
+  const { items, onOpen, onDismiss, onEnableDesktop, rootRef, onKeyDown } =
+    props;
   if (items.length === 0) return null;
 
   return createPortal(
     <div
+      ref={rootRef}
+      onKeyDown={onKeyDown}
       className="dsh-qa-turn-notice"
       data-testid="qa-turn-notice"
       role="region"
