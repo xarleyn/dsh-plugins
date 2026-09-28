@@ -438,8 +438,8 @@ under `plugins/dsh-qa-surface/tests/`:
   `running: true → false` for the bound chat; does not fire on
   reconnect, error, unmount, cold-start projection of an already
   running chat, or on the *first* frame of a session that started
-  before the tab opened (mirrors `sawRunning` in
-  `QaSessionController.ts:1440-1457`).
+  before the tab opened (the shipped gate is the per-chat reading in
+  `turn-completion-source.ts`; §3.1, §12).
 - `background-completion-source.test.ts` — non-bound owned chat
   running→idle fires once; non-owned chat running→idle does not fire;
   admin-visible foreign chat does not fire when
@@ -557,8 +557,8 @@ notifications.ts` the wiring. `config.notifications`
 **Where this departs from the design above.**
 
 - **§3.1's observed start is the gate, and it holds for the whole run
-  (#483).** The differ keeps a per-chat reading with four states —
-  `idle`, `watched`, `unwatched`, `stale` — and reports a turn only
+  (#483).** The differ keeps a per-chat reading with three states —
+  `idle`, `watched`, `unwatched` — and reports a turn only
   where a `watched` run is seen ending in a frame the browser could
   vouch for. Before this, the first frame that found a chat running was
   re-projected in silence and the frame after it reported that run's
@@ -566,12 +566,21 @@ notifications.ts` the wiring. `config.notifications`
   frame and was broken by the next, so a turn that began before the tab
   opened was still attributed to the reader who opened it. What the
   link going down does to that evidence is the same rule rather than a
-  new one — a stale frame vouches for nothing, so a run watched before
-  the drop and still under way after the link returns is re-baselined as
-  `unwatched` and ends unreported, because this page cannot tell that
-  run from one that started and finished inside the gap. Whether the
-  host list lets a browser vouch for anything across a gap at all is
-  R2, and settling it on a live stand is #479.
+  new one — a stale frame vouches for neither fact a reading is made
+  of, so it leaves the chat `unwatched` whichever way `running` pointed
+  in it: a run watched before the drop and still under way after the
+  link returns ends unreported, because this page cannot tell that run
+  from one that started and finished inside the gap, and so does a chat
+  that read idle through the gap and running in the first live frame,
+  which is how the reader's own queued question leaves at the moment
+  the link is back. No fourth label earns its keep here — the gap and
+  the unwitnessed start settle the same question the same way — so the
+  reading names the evidence, not its cause. Whether the host list lets
+  a browser vouch for anything across a gap at all is R2, and settling
+  it on a live stand is #479; the silence is written into
+  `docs/CONFIGURATION.md` as the shipped promise in the meantime, so a
+  stand that needs the notice through a gap is a #479 change rather
+  than an undocumented difference from the docs.
 - §3.5's five booleans are two: `inApp` and `desktop`. A preference is only
   worth storing if a channel exists to honor it, and the shipped dispatcher has
   two — the line in the page and the notice the page hands to the operating

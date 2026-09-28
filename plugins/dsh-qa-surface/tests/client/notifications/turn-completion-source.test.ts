@@ -137,21 +137,43 @@ describe("turn completion source", () => {
     // that run from one that started and was not seen starting during the gap,
     // so the end it reads after the link returns is not its news either.
     expect(page.see([chat("a", true)], { now: 3, paused: true })).toEqual([]);
-    expect(page.seen.get("a")).toBe("stale");
     expect(page.see([chat("a", true)], { now: 4 })).toEqual([]);
-    expect(page.seen.get("a")).toBe("unwatched");
     expect(page.see([chat("a", false)], { now: 5 })).toEqual([]);
+    // What the gap took was this page's evidence, not its subscription: the next
+    // turn, seen from its start, is reported again.
+    expect(page.watchTurn("a", 6)).toEqual([
+      { sessionId: "a", title: "Чат a", at: 8 },
+    ]);
   });
 
-  it("does not credit a start read in a stale frame", () => {
+  it("does not credit a start read while the link is down", () => {
     const page = openPage();
     page.see([chat("a", false)], { now: 1 });
     // The chat appears running in a frame the browser cannot vouch for, and the
     // link only returns afterwards.
     expect(page.see([chat("a", true)], { now: 2, paused: true })).toEqual([]);
-    expect(page.seen.get("a")).toBe("stale");
     expect(page.see([chat("a", true)], { now: 3 })).toEqual([]);
     expect(page.see([chat("a", false)], { now: 4 })).toEqual([]);
+    expect(page.watchTurn("a", 5)).toEqual([
+      { sessionId: "a", title: "Чат a", at: 7 },
+    ]);
+  });
+
+  it("leaves the trusted idle behind when the link goes down", () => {
+    const page = openPage();
+    page.see([chat("a", false)], { now: 1 });
+    // The reader queued a question before the drop and it goes out on the
+    // recovered link: the chat is idle in the stale frame and running in the
+    // first live one. Which run the page is looking at is not something the
+    // frame it cannot vouch for can settle, so this turn goes unreported too —
+    // what a browser may claim across a gap is #479.
+    expect(page.see([chat("a", false)], { now: 2, paused: true })).toEqual([]);
+    expect(page.see([chat("a", true)], { now: 3 })).toEqual([]);
+    expect(page.see([chat("a", false)], { now: 4 })).toEqual([]);
+    // The link holding is enough to watch the next turn begin.
+    expect(page.watchTurn("a", 5)).toEqual([
+      { sessionId: "a", title: "Чат a", at: 7 },
+    ]);
   });
 
   it("keeps its own clock for a completion without an explicit one", () => {

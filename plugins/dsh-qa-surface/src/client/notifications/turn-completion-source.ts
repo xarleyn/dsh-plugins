@@ -14,10 +14,12 @@ export interface QaTurnCompletion {
 }
 
 /**
- * What this page last read about one chat's turn. Four readings, because two
+ * What this page last read about one chat's turn. Three readings, because two
  * facts decide whether the end of a run is this reader's news: whether the chat
  * was running, and whether the frame that said so was one the browser could
- * vouch for.
+ * vouch for. A frame read while the link was down cannot settle either fact, so
+ * it leaves the chat unwatched whichever way `running` pointed in it — that is
+ * the whole of what a stale frame is worth to this page.
  */
 export type QaTurnSighting =
   /**
@@ -31,17 +33,12 @@ export type QaTurnSighting =
    */
   | "watched"
   /**
-   * Running, but its beginning was not seen here — found this way when the page
-   * opened, or after a gap in what the browser could vouch for. Its end is not
-   * this reader's news.
+   * No evidence of where a run began: the chat was found running without the
+   * page seeing it start — which is how the page opens — or the last frame read
+   * came while the browser was reconnecting. Neither a run ending here nor one
+   * starting in the next frame is this reader's news.
    */
-  | "unwatched"
-  /**
-   * Read while the browser was reconnecting. The list is stale, so the page
-   * vouches for nothing: neither a run ending in this frame nor one starting in
-   * the next is evidence of anything.
-   */
-  | "stale";
+  | "unwatched";
 
 export interface QaTurnCompletionOptions {
   /**
@@ -97,7 +94,8 @@ function readSighting(
   running: boolean,
   paused: boolean,
 ): QaTurnSighting {
-  if (paused) return "stale";
+  // A stale frame settles neither fact, so it leaves no trusted reading behind.
+  if (paused) return "unwatched";
   if (!running) return "idle";
   return previous === "idle" || previous === "watched"
     ? "watched"

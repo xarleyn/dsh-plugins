@@ -269,6 +269,24 @@ describe("turn completion notices", () => {
     expect(screen.queryByText("Чат mine")).toBeNull();
   });
 
+  it("loses the reader's own turn that starts on a recovered link", () => {
+    const page = mountPage(hostList([{ id: "mine", running: false }]));
+    // The question was queued before the drop and goes out as the link returns:
+    // the chat is idle in the stale frame and running in the first live one, so
+    // the page never saw where that run began. Its end is reported as silently
+    // as any other run it cannot vouch for (#479).
+    page.redraw({
+      list: hostList([{ id: "mine", running: false }]),
+      paused: true,
+    });
+    page.redraw({ list: hostList([{ id: "mine", running: true }]) });
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(screen.queryByText("Чат mine")).toBeNull();
+    // While the link holds, the page is watching again.
+    page.watchTurn();
+    expect(screen.getByText("Чат mine")).toBeTruthy();
+  });
+
   it("raises nothing on a stand that switched the channel off", () => {
     const page = mountPage(hostList([{ id: "mine", running: false }]));
     page.watchTurn(
