@@ -6,7 +6,7 @@
  * record the tool reports. The human half of the same runtime is
  * `panel-actions.ts`.
  */
-import { clampViewport } from "../viewport.js";
+import { clampViewport } from "../../shared/viewport.js";
 import { QaBrowserError, type QaBrowserErrorCode } from "../../errors.js";
 import type {
   BrowserActionResult,
