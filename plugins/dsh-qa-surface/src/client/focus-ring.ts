@@ -8,15 +8,28 @@ const TABABLE_SELECTOR =
   "button:not([disabled]), textarea:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
 /**
- * Whether a modal gate has taken this element away from the keyboard. `inert` is
- * a reflected attribute, so a subtree a dialog marked inert from script reads
- * here the way the browser reads it. jsdom reflects nothing and blocks no focus,
- * which leaves two things to a live stand: that the gate's own `inert` reaches
- * this query as an attribute, and that the ring's edge and the gate's own trap
- * hold the keyboard between them without help from this file.
+ * Whether a modal gate has taken this element away from the keyboard: the
+ * element itself or an ancestor of it is marked inert.
+ *
+ * `inert` is read as a property, not looked up as an attribute. The gate marks
+ * the page inert from script (`QaWelcomeNotice`), a browser reflects that into
+ * the attribute, and jsdom stores nothing but the property on the element it
+ * was given — so the property is the one thing the two agree on, and the walk
+ * up the parent chain is what stands in for the browser's own inheritance.
+ * That a browser additionally refuses focus to everything found here is the
+ * browser's doing: what a live stand has to settle is that the ring's edge and
+ * the gate's own trap hold the keyboard between them without help from this
+ * file.
  */
-export function isInert(element: Element): boolean {
-  return element.closest("[inert]") !== null;
+export function isInert(element: HTMLElement): boolean {
+  for (
+    let node: HTMLElement | null = element;
+    node !== null;
+    node = node.parentElement
+  ) {
+    if (node.inert) return true;
+  }
+  return false;
 }
 
 /** Every control of `root` the keyboard can still reach. */

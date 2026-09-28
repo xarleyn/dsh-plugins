@@ -73,6 +73,7 @@ import {
 } from "./components/QaAgentsDrawer.js";
 import { collectChatFiles, countChatAttachments } from "./chat-files.js";
 import { QaFilesPanel } from "./components/QaFilesPanel.js";
+import { isQaModalOpen } from "./components/QaModal.js";
 import { QaRightRail, type QaRailTabModel } from "./components/QaRightRail.js";
 import { QaSourcesPanel } from "./components/QaSourcesPanel.js";
 import { QaTurnNotice } from "./components/QaTurnNotice.js";
@@ -244,10 +245,31 @@ export function QaSurface(props: QaSurfaceProps) {
   /** The notice stack: after `<main>` in the page, inside the ring with it. */
   const noticeStack = useRef<HTMLDivElement>(null);
   /**
-   * The control the keyboard last held inside the ring, and the step it held in
-   * it. Recorded as focus moves, so it names where the reader is rather than
-   * where they once were: a focus landing on any control outside the ring —
-   * another dialog, the native shell — lets it go.
+   * Whether a dialog, rather than this ring, owns the keyboard: the onboarding
+   * gate holds the page inert, and a `QaModal` stands over it with the Escape of
+   * its own. Neither paints the notice stack away — a dialog is a neighbour of
+   * it, not an ancestor — so the ring has to step back of its own accord, and
+   * step back to the subtree it counted before the stack was ever part of it.
+   */
+  const dialogOwnsKeyboard = useCallback((): boolean => {
+    const root = surface.current;
+    return isQaModalOpen() || (root !== null && isInert(root));
+  }, []);
+  /** The roots the Tab ring is drawn around, in the order the ring walks them. */
+  const ringRoots = useCallback(
+    (): readonly (HTMLElement | null)[] =>
+      dialogOwnsKeyboard()
+        ? [surface.current]
+        : [surface.current, noticeStack.current],
+    [dialogOwnsKeyboard],
+  );
+  /**
+   * The stack control the keyboard last held, and the step of the ring it held.
+   * The stack alone is remembered: a control of `<main>` that leaves the page
+   * with its row — a queue dock entry, a transcript action, a rebuilt chat — is
+   * the surface's own business, and this ring hands nothing back there. Read as
+   * focus moves, so it names where the reader stands rather than where they once
+   * stood: a focus landing anywhere else lets the place go.
    */
   const ringAnchor = useRef<{ element: HTMLElement; index: number } | null>(
     null,
@@ -255,44 +277,49 @@ export function QaSurface(props: QaSurfaceProps) {
   useEffect(() => {
     const onFocusIn = (event: FocusEvent) => {
       const target = event.target;
-      if (!(target instanceof HTMLElement)) {
+      const stack = noticeStack.current;
+      if (
+        !(target instanceof HTMLElement) ||
+        stack === null ||
+        !stack.contains(target)
+      ) {
         ringAnchor.current = null;
         return;
       }
-      const index = focusRing([surface.current, noticeStack.current]).indexOf(
-        target,
-      );
+      const index = focusRing(ringRoots()).indexOf(target);
       ringAnchor.current = index < 0 ? null : { element: target, index };
     };
     document.addEventListener("focusin", onFocusIn);
     return () => document.removeEventListener("focusin", onFocusIn);
-  }, []);
+  }, [ringRoots]);
   /**
    * Keys typed in the surface: Tab stays in the ring, and nothing else of the
    * key reaches the harness the overlay is built on.
    */
-  const trapSurfaceKeys = useCallback((event: KeyboardEvent<HTMLElement>) => {
-    trapKeys(event, [surface.current, noticeStack.current]);
-  }, []);
+  const trapSurfaceKeys = useCallback(
+    (event: KeyboardEvent<HTMLElement>) => {
+      trapKeys(event, ringRoots());
+    },
+    [ringRoots],
+  );
   /**
    * Keys typed in the notice stack, where no ancestor `<main>` can hear them.
    *
    * Only the Tab this ring answers is taken; every other key is left to bubble
    * as the browser would carry it, so a dialog that listens on the window —
    * `QaModal`, and the settings dialog built on it — still hears the Escape the
-   * reader gives it. A dialog that traps keys on its own portal root is the
-   * other case: the stack is that dialog's sibling, not its descendant, so the
-   * key never reaches it. The onboarding gate is such a dialog, and it refuses
-   * Escape by design; while it holds the surface inert the stack steps out of
-   * the ring too, because a second trap painted over the gate's own would strand
-   * the reader in a stack of three buttons with no way back to the dialog.
+   * reader gives it. A dialog is also why that Tab is left alone: the stack is
+   * the dialog's neighbour rather than its content, so a ring closed around both
+   * would take the reader out of the dialog they are working in and put them
+   * back on a page held under the scrim.
    */
-  const trapNoticeKeys = useCallback((event: KeyboardEvent<HTMLElement>) => {
-    if (event.key !== "Tab") return;
-    const root = surface.current;
-    if (root !== null && isInert(root)) return;
-    trapKeys(event, [root, noticeStack.current]);
-  }, []);
+  const trapNoticeKeys = useCallback(
+    (event: KeyboardEvent<HTMLElement>) => {
+      if (event.key !== "Tab" || dialogOwnsKeyboard()) return;
+      trapKeys(event, ringRoots());
+    },
+    [dialogOwnsKeyboard, ringRoots],
+  );
   /** Turn marks of the visible transcript, kept in a ref for stable callbacks. */
   const railItemsRef = useRef<readonly QaTurnRailItem[]>([]);
   const activeTurnFrame = useRef<number | null>(null);
@@ -951,12 +978,18 @@ export function QaSurface(props: QaSurfaceProps) {
    * and nothing of the ring holds the focus — and the reader is put back on the
    * step they stood on, or on the nearest control the ring still has. The anchor
    * goes only with the focus it hands back: a page takes the focus out of a
-   * removed control on its own moment, not in step with this render.
+   * removed control on its own moment, not in step with this render. A dialog
+   * that holds the keyboard is not the ring's business, and is left to put the
+   * focus wherever it thinks the reader belongs.
    */
   useEffect(() => {
     const anchor = ringAnchor.current;
     if (anchor === null || anchor.element.isConnected) return;
-    const ring = focusRing([surface.current, noticeStack.current]);
+    if (dialogOwnsKeyboard()) {
+      ringAnchor.current = null;
+      return;
+    }
+    const ring = focusRing(ringRoots());
     const active = document.activeElement;
     if (active !== null && ring.includes(active as HTMLElement)) return;
     ringAnchor.current = null;

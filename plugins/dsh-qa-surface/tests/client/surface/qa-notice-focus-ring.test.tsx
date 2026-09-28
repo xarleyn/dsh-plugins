@@ -18,7 +18,12 @@ import {
 } from "../../../src/client/QaSurface.js";
 import { QaAuditController } from "../../../src/client/audit/controller.js";
 import { QaSurfacePanelRegistry } from "../../../src/client/panels/registry.js";
-import { focusRing, focusable } from "../../../src/client/focus-ring.js";
+import type { ResolvedQaSurfaceConfig } from "../../../src/types.js";
+import {
+  focusRing,
+  focusable,
+  isInert,
+} from "../../../src/client/focus-ring.js";
 import { resolveConfig } from "../../../src/resolve-config.js";
 import { QA_WELCOME_NOTICE_VERSION } from "../../../src/client/components/QaWelcomeNotice.js";
 import { qaStorageNamespace } from "../../../src/shared/session-key.js";
@@ -171,12 +176,56 @@ function settleTurns(world: QaSessionTestWorld, ids: readonly string[]): void {
 }
 
 let route: QaRouteController | undefined;
+/**
+ * The element the application is mounted into. The onboarding gate marks this
+ * one inert rather than the surface, and jsdom reflects nothing from an `inert`
+ * property into an attribute — so the stand has to give it a node it can find by
+ * id, or the gate marks nothing and a test of the gate tests an empty room.
+ */
+let appRoot: HTMLDivElement | undefined;
+
+/**
+ * The config the surface reads, with the write the deployment's own settings use.
+ * Publishing a config that switches a part of the surface off is how a test takes
+ * a control of `<main>` out of the page while the reader stands on it, and makes
+ * the surface re-render over that loss — the one shape of loss the notice ring is
+ * not meant to answer for.
+ */
+interface ConfigStore {
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly getSnapshot: () => unknown;
+  /** The config the surface is reading now, the one a test edits against. */
+  readonly current: () => ResolvedQaSurfaceConfig;
+  readonly publish: (config: ResolvedQaSurfaceConfig) => void;
+}
+
+function createConfigStore(initial: ResolvedQaSurfaceConfig): ConfigStore {
+  let snapshot = { status: "ready" as const, config: initial, error: null };
+  const listeners = new Set<() => void>();
+  return {
+    subscribe: (listener) => {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    getSnapshot: () => snapshot,
+    current: () => snapshot.config,
+    publish: (config) => {
+      snapshot = { status: "ready", config, error: null };
+      for (const listener of [...listeners]) listener();
+    },
+  };
+}
+
+let configs: ConfigStore | undefined;
 
 afterEach(() => {
   cleanup();
   document.hasFocus = keepFocus;
   route?.dispose();
   route = undefined;
+  configs = undefined;
+  appRoot?.remove();
+  appRoot = undefined;
   vi.unstubAllGlobals();
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
@@ -189,6 +238,12 @@ interface MountOptions {
   readonly settled?: readonly string[];
   /** Leave the onboarding gate standing instead of acknowledging it away. */
   readonly withWelcome?: boolean;
+  /**
+   * Put the chat rail on screen. Its footer is the one control of an anonymous
+   * stand that opens a `QaModal` of the surface, and the dialog case cannot be
+   * read out of a page that holds no dialog to open.
+   */
+  readonly withSessionList?: boolean;
 }
 
 /**
@@ -200,7 +255,9 @@ async function mount(options: MountOptions = {}): Promise<QaSessionTestWorld> {
   const settled = options.settled ?? [BACKGROUNDS[0]];
   const chats = options.chats ?? settled;
   window.history.replaceState(null, "", "/qa");
-  const config = resolveConfig({});
+  const config = resolveConfig(
+    options.withSessionList === true ? { ui: { showSessionList: true } } : {},
+  );
   const ns = qaStorageNamespace(config);
   if (options.withWelcome !== true) {
     window.localStorage.setItem(
@@ -231,16 +288,16 @@ async function mount(options: MountOptions = {}): Promise<QaSessionTestWorld> {
   const face = world.faces.get(ACTIVE);
   face?.source.set({ ...face.source.getSnapshot(), blank: false });
 
-  const configSnapshot = { status: "ready" as const, config, error: null };
   const sectionsSnapshot = { sections: [], revision: 0 };
+  configs = createConfigStore(config);
+  appRoot = document.createElement("div");
+  appRoot.id = "root";
+  document.body.append(appRoot);
   render(
     <QaSurface
       {...({
         route,
-        config: {
-          subscribe: () => () => undefined,
-          getSnapshot: () => configSnapshot,
-        },
+        config: configs,
         accessApi: accessApi(),
         sessions: world.sessions,
         api: world.api,
@@ -261,9 +318,19 @@ async function mount(options: MountOptions = {}): Promise<QaSessionTestWorld> {
         renderSlot: () => null,
       } as unknown as QaSurfaceProps)}
     />,
+    { container: appRoot },
   );
   await settle();
   await screen.findByTestId("qa-composer-input");
+  // The surface asks for the composer's focus on an animation frame of its own
+  // mount, and that frame lands whenever the event loop gets to it. A test that
+  // starts working with the keyboard before it has been burned therefore has its
+  // focus moved under it mid-case, so the stand waits the frame out here.
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      window.requestAnimationFrame(() => resolve());
+    });
+  });
 
   // The watcher reports a turn it watched run, so the frame arrives in two.
   settleTurns(world, settled);
@@ -332,15 +399,18 @@ describe("the notice stack inside the surface's Tab ring", () => {
     window.removeEventListener("keydown", dismissed);
   });
 
-  it("steps out of the ring while a modal gate holds the surface inert", async () => {
-    await mount();
+  it("leaves the keyboard to the gate that holds the page inert", async () => {
+    await mount({ withWelcome: true });
     const surface = surfaceRoot();
     const stack = stackRoot();
-    // The onboarding gate marks the surface inert from script. A browser
-    // reflects that into the attribute and jsdom implements neither the
-    // reflection nor the focus it blocks, so the attribute is what the test
-    // sets — the stand run is what settles the pair for real.
-    surface.setAttribute("inert", "");
+    // The gate marks the element the application is mounted into, and the
+    // surface stands under that mark while the stack, painted into
+    // `document.body`, does not. The property is what the ring reads: a browser
+    // reflects it into the attribute and jsdom reflects it into nothing, so a
+    // test that set the attribute by hand would be describing a state the page
+    // never reaches.
+    expect(appRoot?.inert).toBe(true);
+    expect(isInert(surface)).toBe(true);
 
     // A control that cannot take focus is not a step of the ring: an edge that
     // pointed into the inert surface would aim `focus()` at a node that ignores
@@ -349,16 +419,13 @@ describe("the notice stack inside the surface's Tab ring", () => {
       focusRing([surface, stack]).some((element) => surface.contains(element)),
     ).toBe(false);
 
+    // The gate owns the page while it is up and traps the keys of its own
+    // dialog. A second trap drawn over it would leave the reader with nowhere to
+    // go but a stack of three buttons, so the ring lets this one through.
     const offer = screen.getByTestId("qa-turn-notice-offer-action");
     offer.focus();
-    // The gate owns the page while it is up, and its dialog traps the keys
-    // inside itself. A second trap drawn over it would leave the reader with
-    // nowhere to go but the stack, so the ring lets this one through.
     expect(fireEvent.keyDown(offer, { key: "Tab" })).toBe(true);
-
-    surface.removeAttribute("inert");
-    expect(fireEvent.keyDown(offer, { key: "Tab" })).toBe(false);
-    expect(surfaceRoot().contains(focused())).toBe(true);
+    expect(fireEvent.keyDown(offer, { key: "Tab", shiftKey: true })).toBe(true);
   });
 
   it("keeps the onboarding dialog's own trap in charge", async () => {
@@ -372,12 +439,60 @@ describe("the notice stack inside the surface's Tab ring", () => {
     // the surface's ring never hears the key and never pulls them out of it.
     for (let press = 0; press < 4; press++) pressTab();
     expect(dialog.contains(focused())).toBe(true);
+  });
 
-    // And the stack the same notice raised keeps the ring around the surface.
+  it("leaves the stack out of the ring while a dialog of the surface is open", async () => {
+    await mount({ withSessionList: true });
+    fireEvent.click(screen.getByTestId("qa-surface-sidebar-version"));
+    await screen.findByTestId("qa-surface-modal");
+    const surface = surfaceRoot();
     const offer = screen.getByTestId("qa-turn-notice-offer-action");
+
+    // `QaModal` marks nothing inert and traps no Tab of its own, so while it is
+    // up the dialog is where the reader is and this ring does not own the
+    // keyboard. The stack therefore answers nothing, in either direction — the
+    // same answer it gave before the notices joined the ring at all. A key taken
+    // here would turn the reader out of the dialog and onto a surface held under
+    // the scrim.
     offer.focus();
+    expect(fireEvent.keyDown(offer, { key: "Tab" })).toBe(true);
+    expect(fireEvent.keyDown(offer, { key: "Tab", shiftKey: true })).toBe(true);
+
+    // And the surface's own edge no longer reaches into the stack either: the
+    // last control of `<main>` turns back into `<main>`.
+    const lastOfMain = focusable(surface).at(-1);
+    if (lastOfMain === undefined) throw new Error("the surface holds nothing");
+    lastOfMain.focus();
+    expect(fireEvent.keyDown(lastOfMain, { key: "Tab" })).toBe(false);
+    expect(surface.contains(focused())).toBe(true);
+    expect(stackRoot().contains(focused())).toBe(false);
+
+    // Escape given to a notice is the reader's: the stack lets it bubble, and
+    // the dialog's own listener on the window is what hears it.
+    offer.focus();
+    fireEvent.keyDown(offer, { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByTestId("qa-surface-modal")).toBeNull(),
+    );
+
+    // Gone, and the ring is drawn around the stack again.
     expect(fireEvent.keyDown(offer, { key: "Tab" })).toBe(false);
     expect(surfaceRoot().contains(focused())).toBe(true);
+  });
+
+  it("walks into the stack from the surface's edge while no dialog is up", async () => {
+    await mount();
+    const surface = surfaceRoot();
+    const lastOfMain = focusable(surface).at(-1);
+    if (lastOfMain === undefined) throw new Error("the surface holds nothing");
+    lastOfMain.focus();
+
+    // The same key the case above leaves alone: the ring's last step is the
+    // stack's last button now, so the edge of `<main>` is a step of the way to
+    // the notices rather than the end of the page.
+    pressTab();
+    expect(stackRoot().contains(focused())).toBe(true);
+    expect(focused()).toBe(screen.getByTestId("qa-turn-notice-open"));
   });
 });
 
@@ -434,7 +549,9 @@ describe("the reader left standing when a notice goes away", () => {
     await mount();
     const dismiss = screen.getByTestId("qa-turn-notice-dismiss");
     dismiss.focus();
-    // A key typed inside the stack is what says the reader works it by keyboard.
+    // The place is remembered as focus lands on the stack's control, not as the
+    // reader proves they work it by keyboard — and a Tab given here is nowhere
+    // near the edge of the ring, so the focus stays exactly where it was.
     fireEvent.keyDown(dismiss, { key: "Tab" });
     expect(document.activeElement).toBe(dismiss);
 
@@ -447,5 +564,35 @@ describe("the reader left standing when a notice goes away", () => {
     // before the page answers, and the place they were working is lost twice.
     expect(focused()).not.toBe(surface);
     expect(tabbables().some((element) => element === focused())).toBe(true);
+  });
+
+  it("leaves the focus alone when a control of the surface goes away under it", async () => {
+    await mount();
+    const header = screen.getByTestId("qa-surface-header-files");
+    // A control that already holds the focus gives no focusin when it is asked
+    // for one, so the keyboard is put elsewhere first and walked onto the header
+    // — the only way this case says anything about the place it lands on.
+    screen.getByTestId("qa-composer-input").focus();
+    header.focus();
+
+    // The deployment turned the header off, which is how a control of `<main>`
+    // leaves the page under the reader: the surface itself re-renders over the
+    // loss, so a ring that remembered this place would be able to answer it.
+    const config = configs?.current();
+    if (config === undefined) throw new Error("the surface is not mounted");
+    act(() =>
+      configs?.publish({ ...config, ui: { ...config.ui, showHeader: false } }),
+    );
+    await waitFor(() =>
+      expect(screen.queryByTestId("qa-surface-header")).toBeNull(),
+    );
+
+    // The same shape of loss — a focused control out of the page and nothing
+    // focused after it — read from the surface rather than from the notices. A
+    // row of the queue dock, a transcript action taken back by its message, a
+    // rebuilt chat: the surface decides where its reader goes after any of those,
+    // and a step handed back from the ring would be a rule this card never
+    // promised. What the ring remembers is a step of the notice stack only.
+    expect(focused()).toBe(document.body);
   });
 });
