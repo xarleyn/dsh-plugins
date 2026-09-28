@@ -204,16 +204,22 @@ What attach mode changes, and what it deliberately does not:
   process — and any page a person has open in it — stay up through all of it.
 - The isolation is the same: every DSH session gets its own browser context
   rather than the default one the person is looking at, so the agent's cookies,
-  storage and tabs are the session's own. This runtime never asks the browser for
-  that default context — not through `contexts()`, not through `pages()` — so it
-  drives no page inside it and closes nothing it did not build. SPEC §5 keeps
-  existing user tabs a non-goal, and this is the mode that could have broken it.
-  What the CDP connection itself attaches to is Playwright's business, which is
-  why the promise is checked against a real browser: the person's own tab is
-  still listed by that browser after this plugin's teardown.
-- The policy is the same: every document, redirect and subrequest still passes
-  the server-side scheme, host, DNS, private-network and metadata gates, and a
-  refusal is still listed per tab in the panel.
+  storage and tabs are the session's own. A `Browser` handle reaches the context
+  it came with through one method, `contexts()`, and this runtime never calls it —
+  so it drives no page inside that context and closes nothing it did not build.
+  SPEC §5 keeps existing user tabs a non-goal, and this is the mode that could
+  have broken it. What the CDP connection itself attaches to is Playwright's
+  business, which is why the promise is checked against a real browser: the
+  person's own tab is still listed by that browser after this plugin's teardown.
+- The policy is the same code, on a moved premise: every document, redirect,
+  subrequest and socket of a session still passes the server-side scheme, host,
+  DNS, private-network and metadata gates, and a refusal is still listed per tab
+  in the panel. What `attach` changes is where those two halves run: the gate
+  resolves and classifies the name in this process, while the browser dials from
+  wherever the deployment started it. On one machine that is the same answer; a
+  browser in another container has its own resolver and its own `/etc/hosts`, so
+  an allow-list written for the Host is a judgment about a name the browser may
+  read differently.
 - It is headless-only. In launch mode `headless: false` promises a window a
   person can watch and click in; attach mode owns no window, so that
   combination is refused when the config resolves. Whether the browser behind
@@ -240,10 +246,10 @@ not such a project: `ci.yml` sets the variable below for
 pull request and on `main` rather than left to whoever remembers to run it. Both
 runtime modes are covered there: the launch case starts its own Chromium, and the
 attach case starts one outside the plugin, points `runtime.cdpEndpoint` at it,
-and checks that the plugin's teardown left it running. The suite looks for a
-browser the way the launch path looks for one — Playwright's own build, then an
-installed Chrome, Chromium or Edge — so one variable is enough wherever any of
-them exists:
+drives a session through the network gates on that borrowed browser, and checks
+that the plugin's teardown left it running. The suite looks for a browser the way
+the launch path looks for one — Playwright's own build, then an installed Chrome,
+Chromium or Edge — so one variable is enough wherever any of them exists:
 
 ```bash
 DSH_QA_BROWSER_E2E=1 pnpm --filter @yadsh/dsh-qa-browser test:browser

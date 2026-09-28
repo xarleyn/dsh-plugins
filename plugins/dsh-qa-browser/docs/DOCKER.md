@@ -55,7 +55,10 @@ runtime:
 
 Keep that endpoint on an internal network. Whoever can dial it controls that
 browser outright — this plugin's own network policy is enforced by the Host on
-the pages it drives, not by Chromium against whoever else connects. The sidecar
-is still the deployment's to install and harden: its seccomp profile, `/dev/shm`
-size and `--no-sandbox` choice are the same decisions as above, just moved one
-container over.
+the pages it drives, not by Chromium against whoever else connects. The policy
+still gates every request of this plugin's sessions, but it decides by resolving
+and classifying the name inside the Host container, while the sidecar dials with
+its own resolver and its own `/etc/hosts`: give the two containers the same view
+of a host that matters, or name addresses. The sidecar is still the deployment's
+to install and harden: its seccomp profile, `/dev/shm` size and `--no-sandbox`
+choice are the same decisions as above, just moved one container over.

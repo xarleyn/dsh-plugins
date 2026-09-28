@@ -88,15 +88,16 @@ class FakeBrowser {
   /**
    * The owner's own context: an attached browser always has one, and it holds
    * the tabs a person is looking at. Playwright hands it out through
-   * `contexts()` and through `pages()`, so the fake hands it out both ways and
-   * counts the times anyone asks, because taking it would mean driving those
-   * tabs.
+   * `contexts()` — the one route a `Browser` handle offers, and the one
+   * `connectOverCDP` documents — and the fake counts the times anyone asks,
+   * because taking it would mean driving those tabs.
    */
   readonly ownerContext = new FakeContext();
   contextsAsked = 0;
-  pagesAsked = 0;
   /** What the provider asked Chromium to build the context with. */
   contextOptions: Record<string, unknown> = {};
+  /** Whether the runtime took the shortcut that skips `newContext`. */
+  sharedPageAsked = 0;
   private readonly disconnectListeners: (() => void)[] = [];
 
   isConnected(): boolean {
@@ -113,10 +114,17 @@ class FakeBrowser {
     return [this.ownerContext, ...this.created];
   }
 
-  /** The other way to reach every page of the browser, from its root. */
-  pages(): never[] {
-    this.pagesAsked += 1;
-    return [];
+  /**
+   * Playwright's convenience entry: one call for a page, and the context behind it
+   * is Playwright's to manage, not this runtime's — so it carries none of the
+   * viewport, timeouts or network route this provider installs on the contexts it
+   * builds, and it is not in the list `stop()` closes. The fake hands out a
+   * context of exactly that kind, so a runtime that took the shortcut would be
+   * driving an ungated page it cannot shut down.
+   */
+  async newPage(): Promise<FakeContext> {
+    this.sharedPageAsked += 1;
+    return new FakeContext();
   }
 
   async newContext(options: Record<string, unknown>): Promise<FakeContext> {
@@ -377,12 +385,15 @@ describe("PlaywrightBrowserProvider runtime modes", () => {
     await provider.stop();
 
     // SPEC §5 keeps "controlling arbitrary existing user tabs" a non-goal, and
-    // an attached browser arrives with exactly such tabs. Playwright has two
-    // routes to them and this runtime asks for neither, so a session lives in a
-    // context it created. That the owner's tab then survives our teardown is not
-    // answerable from a fake — it is what the real-Chromium run reads back over
-    // `/json/list`.
+    // an attached browser arrives with exactly such tabs. A `Browser` handle
+    // reaches the context it came with through `contexts()` only, and this
+    // runtime asks for neither that nor the convenience `newPage()` that would
+    // place a page outside a context it built — so a session lives in a context
+    // of its own, and the owner's context is never even asked to close. That the
+    // owner's tab then survives our teardown is not answerable from a fake — it
+    // is what the real-Chromium run reads back over `/json/list`.
     expect(browser.contextsAsked).toBe(0);
-    expect(browser.pagesAsked).toBe(0);
+    expect(browser.sharedPageAsked).toBe(0);
+    expect(browser.ownerContext.closeCalls).toBe(0);
   });
 });

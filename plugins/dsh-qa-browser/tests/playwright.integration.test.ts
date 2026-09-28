@@ -154,6 +154,25 @@ async function waitForExit(child: ChildProcess): Promise<void> {
   await new Promise<void>((resolve) => child.once("exit", () => resolve()));
 }
 
+/**
+ * Run `body` against a Chromium this runtime only joins, and stop that browser
+ * afterwards. The cases that need one are the gates and the teardown of a
+ * borrowed browser — the parts a launched Chromium cannot stand in for.
+ */
+async function withAttachedChromium(
+  body: (endpoint: string) => Promise<void>,
+): Promise<void> {
+  const executable = discoverChromium();
+  const debugPort = await freePort();
+  const external = await startExternalChromium(executable, debugPort);
+  try {
+    await body(`http://127.0.0.1:${String(debugPort)}`);
+  } finally {
+    await stopExternalChromium(external.child, debugPort);
+    await rm(external.userDataDir, { recursive: true, force: true });
+  }
+}
+
 /** The policy with a log of the destinations it was asked about. */
 class RecordingPolicy extends BrowserNetworkPolicy {
   readonly asked: string[] = [];
@@ -264,11 +283,15 @@ async function startProbeServer(pages: Record<string, string>): Promise<{
 
 function socketProbeConfig(
   schemes: readonly string[],
+  cdpEndpoint: string | null,
 ): ReturnType<typeof resolveQaBrowserConfig> {
   return resolveQaBrowserConfig({
-    runtime: {
-      executablePath: process.env["DSH_QA_BROWSER_EXECUTABLE"] ?? null,
-    },
+    runtime:
+      cdpEndpoint === null
+        ? {
+            executablePath: process.env["DSH_QA_BROWSER_EXECUTABLE"] ?? null,
+          }
+        : { mode: "attach", cdpEndpoint },
     security: { network: { allowedSchemes: [...schemes] } },
   });
 }
@@ -451,6 +474,94 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
     }
   }, 120_000);
 
+  it("denies a refused WebSocket handshake on a browser it only joined", async () => {
+    // The docs promise the session's request path is the same in both modes, and
+    // a socket is the half a launched browser cannot answer for: the route is
+    // installed on a context Playwright did not build, over a connection it did
+    // not open. The unit suite registers the handler and calls it itself, so
+    // only a real attached browser shows whether the browser honors it.
+    await withAttachedChromium(async (endpoint) => {
+      const html = await readFile(
+        new URL("./fixtures/ws-probe.html", import.meta.url),
+        "utf8",
+      );
+      const probe = await startProbeServer({ "/probe": html });
+      try {
+        const config = socketProbeConfig(["http", "https"], endpoint);
+        const policy = new RecordingPolicy(config.security.network);
+        const manager = new QaBrowserSessionManager({
+          config,
+          provider: new PlaywrightBrowserProvider(),
+          policy,
+          startIdleTimer: false,
+        });
+        managers.push(manager);
+        const session = await manager.ensureSession("attach-ws-denied");
+        const tabId = session.selectedTabId!;
+        await manager.navigate("attach-ws-denied", tabId, {
+          url: `http://127.0.0.1:${probe.port}/probe`,
+        });
+        await manager.wait("attach-ws-denied", tabId, {
+          text: "closed",
+          timeoutMs: 15_000,
+        });
+
+        // Same reading as the launched case: the gate saw the socket, and the
+        // server it points at was never offered a handshake.
+        expect(policy.asked).toContain(`ws://127.0.0.1:${probe.port}/feed`);
+        expect(probe.upgrades).toEqual([]);
+      } finally {
+        await probe.close();
+      }
+    });
+  }, 120_000);
+
+  it("keeps a service worker of a joined browser from dialing past the gate", async () => {
+    // §17 lets no worker run in a policy-gated context because a worker dials
+    // from outside page routing. Keeping it out is a context option handed to a
+    // browser this runtime did not start, so the rule is read back on the borrowed
+    // browser too, with every scheme open: what is being tested is the gate's
+    // reach rather than the answer it would give. Whether the silence comes from
+    // that option or from the joined browser is the launched case's question; this
+    // one asks only that no request of a session on a borrowed browser reaches the
+    // network past the gate.
+    await withAttachedChromium(async (endpoint) => {
+      const html = await readFile(
+        new URL("./fixtures/sw-probe.html", import.meta.url),
+        "utf8",
+      );
+      const probe = await startProbeServer({ "/sw-probe": html });
+      try {
+        const config = socketProbeConfig(["http", "https", "ws"], endpoint);
+        const policy = new RecordingPolicy(config.security.network);
+        const manager = new QaBrowserSessionManager({
+          config,
+          provider: new PlaywrightBrowserProvider(),
+          policy,
+          startIdleTimer: false,
+        });
+        managers.push(manager);
+        const session = await manager.ensureSession("attach-sw-probe");
+        const tabId = session.selectedTabId!;
+        await manager.navigate("attach-sw-probe", tabId, {
+          url: `http://127.0.0.1:${probe.port}/sw-probe`,
+        });
+        await manager.wait("attach-sw-probe", tabId, {
+          text: "no-worker",
+          timeoutMs: 15_000,
+        });
+
+        expect(policy.asked.filter((url) => url.includes("/worker-"))).toEqual(
+          [],
+        );
+        expect(probe.requests).toEqual([]);
+        expect(probe.upgrades).toEqual([]);
+      } finally {
+        await probe.close();
+      }
+    });
+  }, 120_000);
+
   it("launches Chromium, navigates to a local fixture and returns a PNG", async () => {
     const html = await readFile(
       new URL("./fixtures/app.html", import.meta.url),
@@ -569,7 +680,7 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
     );
     const probe = await startProbeServer({ "/probe": html });
     try {
-      const config = socketProbeConfig(["http", "https"]);
+      const config = socketProbeConfig(["http", "https"], null);
       const policy = new RecordingPolicy(config.security.network);
       const manager = new QaBrowserSessionManager({
         config,
@@ -604,7 +715,7 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
     );
     const probe = await startProbeServer({ "/probe": html });
     try {
-      const config = socketProbeConfig(["http", "https", "ws"]);
+      const config = socketProbeConfig(["http", "https", "ws"], null);
       const manager = new QaBrowserSessionManager({
         config,
         provider: new PlaywrightBrowserProvider(),
@@ -639,7 +750,7 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
     try {
       // Every scheme is open, so what is being tested is the gate's reach
       // rather than the answer it would give: a worker dials from outside it.
-      const config = socketProbeConfig(["http", "https", "ws"]);
+      const config = socketProbeConfig(["http", "https", "ws"], null);
       const policy = new RecordingPolicy(config.security.network);
       const manager = new QaBrowserSessionManager({
         config,
