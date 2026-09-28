@@ -12,8 +12,9 @@
  * stale exactly when a preset is registered or retired.
  *
  * A registry that refuses a composition is never reduced to a bare `null`: the
- * reason travels with the read and is logged, because the refusal is the host's
- * fact and this page has no business replacing it with its own wording.
+ * reason travels with the read and is logged once for the fact it states, because
+ * the refusal is the host's fact and this page has no business replacing it with
+ * its own wording.
  * @module host/preset-reader
  */
 
@@ -298,17 +299,19 @@ export async function readCatalog(
   // Every preset's composition renders independently, and the roster is read on
   // each page load: a sequential walk would pay one YAML render after another
   // for a page that only shows the state of each row.
-  const rows = await Promise.all(
-    presets.map(async (preset): Promise<PersonaPresetRow> => {
-      const read = await readComposition(roster, preset.id);
-      if (read.refusal !== "") {
-        logger?.warn("preset-persona.composition-refused", {
-          agentPreset: preset.id,
-          reason: read.refusal,
-        });
-      }
-      const inspection = await inspectPreset(read);
-      return {
+  //
+  // Refusals are collected rather than logged on the spot, because a refusal is
+  // often not one preset's fact: `NO_READ_DOCUMENT` and `NO_COMPOSITION_TEXT`
+  // describe the whole host, which either publishes `readDocument()` or does not.
+  // Logged per row, a deployment with N presets paid N identical `warn` lines for
+  // one host state on every visit to Settings. Grouped by reason after the walk,
+  // the sentence is stated once and the rows it covers travel with it, in the
+  // roster's order rather than in the order the renders happened to fail.
+  const read = await Promise.all(
+    presets.map(async (preset) => {
+      const answer = await readComposition(roster, preset.id);
+      const inspection = await inspectPreset(answer);
+      const row: PersonaPresetRow = {
         id: preset.id,
         name: preset.name ?? "",
         description: preset.description ?? "",
@@ -317,9 +320,21 @@ export async function readCatalog(
         persona: inspection.state,
         complete: inspection.complete,
       };
+      return { row, refusal: answer.refusal };
     }),
   );
-  return { presets: rows };
+  const refused = new Map<string, string[]>();
+  for (const { row, refusal } of read) {
+    if (refusal === "") continue;
+    refused.set(refusal, [...(refused.get(refusal) ?? []), row.id]);
+  }
+  for (const [reason, agentPresets] of refused) {
+    logger?.warn("preset-persona.composition-refused", {
+      agentPreset: agentPresets.join(", "),
+      reason,
+    });
+  }
+  return { presets: read.map(({ row }) => row) };
 }
 
 /** The section orders the preview outline places the persona around. */
@@ -360,10 +375,17 @@ export async function readDocument(
   logger?: PresetReadLogger,
 ): Promise<PersonaDocument> {
   const preset = await resolvePreset(roster, id);
-  const read = await readComposition(roster, id);
+  // The id the registry answered with, not the one it was asked for:
+  // `resolve(id?)` falls back to the deployment's default preset (`id ??
+  // defaultId` in the installed class), while `readDocument()` does an exact
+  // lookup with no such fallback. Asking with the request id would therefore
+  // return the default preset's document under a refusal when the caller left it
+  // out — which the Remote's typed parameter keeps unreachable today, and the
+  // face's own optional parameter does not.
+  const read = await readComposition(roster, preset.id);
   if (read.refusal !== "") {
     logger?.warn("preset-persona.composition-refused", {
-      agentPreset: id,
+      agentPreset: preset.id,
       reason: read.refusal,
     });
   }
