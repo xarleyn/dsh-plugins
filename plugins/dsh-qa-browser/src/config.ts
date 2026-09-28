@@ -451,14 +451,14 @@ export function resolveQaBrowserConfig(
   // them expects them to hold. Silence here would be a config that lies.
   if (mode === "attach") {
     const channel = raw.runtime?.browserChannel?.trim() ?? "";
-    const idle = [
+    const processKeys = [
       executable !== null ? "executablePath" : null,
       channel !== "" && channel !== "chromium" ? "browserChannel" : null,
       raw.runtime?.chromiumSandbox === false ? "chromiumSandbox" : null,
     ].filter((name): name is string => name !== null);
-    if (idle.length > 0) {
+    if (processKeys.length > 0) {
       throw new TypeError(
-        `dsh-qa-browser: runtime.${idle.join(" and runtime.")} configure a Chromium this runtime starts, and runtime.mode attach starts none`,
+        `dsh-qa-browser: runtime.${processKeys.join(" and runtime.")} configure a Chromium this runtime starts, and runtime.mode attach starts none`,
       );
     }
   }

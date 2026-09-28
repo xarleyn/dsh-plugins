@@ -43,16 +43,28 @@ The launch path is not merely unbroken by this: both modes are pinned by the
 suite that runs on every `pnpm test`. Each one names the Playwright entry point
 it expects, the context options and network gates it builds on top of that
 browser — attached ones included —, what it reports when the browser goes away,
-that an attached browser is never asked for a context it did not build (neither
-through `contexts()` nor through `pages()`, the two routes to the owner's tabs),
-and what the config accepts, endpoint forms included. The opt-in Chromium run
+that an attached browser is never asked for the context it came with (`contexts()`
+is the one route a `Browser` handle offers to it, and the provider never calls
+it), and what the config accepts, endpoint forms included. The opt-in Chromium run
 then covers what only a real browser can answer: it starts a Chromium outside the
 plugin, drives it over CDP, screenshots it, and checks that the plugin's teardown
 left that process running with its owner's page still in it — and, in a second
 case, kills the browser mid-session and reads the session back as a lost link
-rather than a crash. Each attach case finds its browser through the same search
-the launch path uses, so a run that was asked for and found nothing fails saying
-so — an attach case that quietly skipped would be the one result nobody could
-read. That run needs one variable, `DSH_QA_BROWSER_E2E=1`. This project's own CI
-job sets it, so the run belongs to what checks a change rather than to what
-someone runs when they remember.
+rather than a crash. The network gates are exercised on that attached browser
+too — the refused navigation, the refused socket handshake, and the service worker
+that reaches no address outside the gate — since a request path only a launched
+browser walked through would prove nothing about the mode this card ships. Each
+attach case finds its browser through the same search the launch path uses, so a
+run that was asked for and found nothing fails saying so — an attach case that
+quietly skipped would be the one result nobody could read. That run needs one
+variable, `DSH_QA_BROWSER_E2E=1`. This
+project's own CI job sets it, so the run belongs to what checks a change rather
+than to what someone runs when they remember.
+
+The network policy keeps running on an attached browser, with its premise moved:
+the gate resolves and classifies a destination in the Host process, while the
+browser dials from wherever the deployment started it. One machine means one
+answer, which is what every documented deployment has until now; a Chromium in
+its own container has its own resolver and its own `/etc/hosts`, so an allow-list
+written for the Host is a judgment about a name that browser may read
+differently.

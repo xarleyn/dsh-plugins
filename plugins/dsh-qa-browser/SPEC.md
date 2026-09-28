@@ -127,10 +127,10 @@ Do **not** split a third npm package until a second consumer/provider actually r
 
 The Browser runtime stays its own runtime. Joining someone else's Chromium is a
 second way to obtain the browser, not a different product: the seam already
-existed in `BrowserProvider`, so "remote CDP" from the list above shipped as
-`runtime.mode: attach` on the Playwright provider rather than as a third
-provider, a new package, or a replacement for the mode every deployment uses
-today.
+existed in `BrowserProvider`, so the remote-CDP option §3.2 keeps off its
+provider list shipped as `runtime.mode: attach` on the Playwright provider rather
+than as a third provider, a new package, or a replacement for the mode every
+deployment uses today.
 
 | | `launch` (default) | `attach` |
 | --- | --- | --- |
@@ -146,20 +146,31 @@ Each mode refuses the keys that describe the other one, instead of reading them
 and resolving into a config that claims something the runtime does not do.
 
 What the mode does not change: per-DSH-session browser contexts (§7), the
-server-side network policy (§17), the snapshot and ref model (§12), and the
-recovery rule that a browser which is gone is never pretended to still be there
-(§7.5).
+snapshot and ref model (§12), and the recovery rule that a browser which is gone
+is never pretended to still be there (§7.5).
+
+The network policy (§17) is the one thing the mode keeps with a moved premise.
+The gate still runs on every document, redirect, subrequest and socket, because
+it sits in the request path of the context this runtime builds — but §17 decides
+by resolving and classifying the destination inside the Host process, while
+Chromium dials from wherever it was started. Under `launch` the two are the same
+machine, so the answer the gate classified is the answer the browser used; an
+attached browser in another container has its own resolver and its own
+`/etc/hosts`, so a name can mean one address to the gate and another to the
+browser it gates. The policy is this runtime's judgment, not a property of the
+browser.
 
 What the mode must not gain: an attached browser arrives with a default context
 holding the tabs its owner opened. The runtime builds its sessions with
 `newContext` and closes exactly those, and it never asks that browser for what it
-already has — `contexts()` and `pages()` are Playwright's two routes to the owner's
-tabs and the provider calls neither, which is what keeps §5's "controlling
-arbitrary existing user tabs" a non-goal while §3.3 is in the release. The
-guarantee is this runtime's own code path, not the protocol's: a CDP connection
-does observe the browser's targets, so the half no fake can answer for — that the
-owner's tab is still there after this plugin's teardown — is checked against a real
-Chromium.
+already has: `contexts()` is the one method by which a `Browser` handle hands out
+the context it came with — `connectOverCDP` documents it as the route to the
+default context — and the provider never calls it, which is what keeps §5's
+"controlling arbitrary existing user tabs" a non-goal while §3.3 is in the
+release. The guarantee is this runtime's own code path, not the protocol's: a CDP
+connection does observe the browser's targets, so the half no fake can answer for
+— that the owner's tab is still there after this plugin's teardown — is checked
+against a real Chromium.
 
 The endpoint is a control handle, so it is treated as one: an `attach` runtime
 reaches `localhost` by default, and any other host needs
@@ -2248,8 +2259,10 @@ This fixture is critical for stable Browser tests.
   IPv6 literal — which need `allowRemoteCdpEndpoint` written down;
 - what the provider asks of either browser: the context options and the network
   gates it installs on top of it, the refusal it hands back when a socket server
-  was never dialed, and that it asks an attached browser for no context of its
-  own.
+  was never dialed, and that of an attached browser it asks neither for the
+  context that browser came with — `contexts()`, the one route a `Browser` handle
+  offers to it — nor through Playwright's convenience `newPage()`, which builds a
+  context this runtime neither configures nor closes; it closes neither.
 
 ### 40.2 Playwright integration tests
 
@@ -2278,11 +2291,15 @@ kills that browser between actions, because a fake only announces a disconnect
 while a real one arrives on Playwright's own schedule. What that run reads back is
 the session state and the structured error an action returns — `disconnected`,
 `BROWSER_CONNECTION_LOST` — which is what the panel is rendered from; its wording
-is pinned in the unit suite. Each attach case finds its own browser through the
-same search the launch path uses, and a run that was asked for and found nothing
-fails saying so rather than skipping: a skipped attach case would read as a check
-that passed. The suite is opt-in elsewhere in the workspace and required in this
-project's own CI job, which sets `DSH_QA_BROWSER_E2E=1`.
+is pinned in the unit suite. The gates are read back on that borrowed browser as
+well — the navigation refusal, the refused socket handshake, and the rule that no
+service worker of the session reaches the network outside the gate — because the
+unit suite registers a route handler and calls it itself, which says nothing about
+whether an attached browser obeys it. Each attach case finds its own browser
+through the same search the launch path uses, and a run that was asked for and
+found nothing fails saying so rather than skipping: a skipped attach case would
+read as a check that passed. The suite is opt-in elsewhere in the workspace and
+required in this project's own CI job, which sets `DSH_QA_BROWSER_E2E=1`.
 
 ### 40.3 Tool contract tests
 
