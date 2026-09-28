@@ -154,8 +154,10 @@ function createProvider(
 }
 
 const START_OPTIONS = {
+  mode: "launch",
   executablePath: process.execPath,
   browserChannel: "chromium",
+  cdpEndpoint: null,
   headless: true,
   chromiumSandbox: false,
 } satisfies BrowserProviderStartOptions;
