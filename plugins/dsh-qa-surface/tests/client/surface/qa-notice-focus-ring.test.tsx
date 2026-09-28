@@ -339,7 +339,7 @@ async function mount(options: MountOptions = {}): Promise<QaSessionTestWorld> {
 }
 
 describe("the notice stack inside the surface's Tab ring", () => {
-  it("takes a control off the path by its `tabindex`, whatever tag it carries", () => {
+  it("leaves off the path what a browser leaves off: a negative `tabindex`, a hidden parent", () => {
     const { container } = render(
       <div>
         {/* What makes these unreachable is the `-1`, and a browser reads it
@@ -348,6 +348,11 @@ describe("the notice stack inside the surface's Tab ring", () => {
         <input type="file" tabIndex={-1} data-testid="off-path-input" />
         <pre tabIndex={-1} data-testid="off-path-pre" />
         <button type="button" hidden data-testid="hidden-button" />
+        {/* A panel body the surface keeps mounted and hides rather than unmounts:
+            the browser takes its controls off the path along with it. */}
+        <div hidden>
+          <button type="button" data-testid="under-a-hidden-parent" />
+        </div>
         <button type="button" disabled data-testid="disabled-button" />
         <div tabIndex={0} data-testid="listed" />
       </div>,

@@ -1,8 +1,8 @@
 import type { KeyboardEvent } from "react";
 
 /**
- * The controls a browser may put on the Tab path, in DOM order — what `focusable`
- * then drops for having been taken off the page or off the tab order.
+ * The tags and states a browser may give a place on the Tab path. What the page
+ * has since taken away is read by `focusable`, one condition per function below.
  */
 const TABABLE_SELECTOR =
   "button:not([disabled]), textarea:not([disabled]), a[href], input:not([disabled]), [tabindex]";
@@ -21,6 +21,20 @@ function isTabbedOut(element: HTMLElement): boolean {
   const value = element.getAttribute("tabindex");
   if (value === null) return false;
   return Number.parseInt(value, 10) < 0;
+}
+
+/**
+ * Whether the page has taken this element out of the layout: `hidden` stands on
+ * it or on one of its ancestors, and a browser reads that as a control with no
+ * place on the Tab path.
+ *
+ * The ancestor chain matters for the same reason `inert` does: a panel body the
+ * surface keeps mounted and hides instead of unmounting leaves its buttons in
+ * `root`, and an edge of the ring aimed at one of them is a key the surface
+ * prevents and can hand no focus to.
+ */
+function isHidden(element: HTMLElement): boolean {
+  return element.closest("[hidden]") !== null;
 }
 
 /**
@@ -48,10 +62,15 @@ export function isInert(element: HTMLElement): boolean {
   return false;
 }
 
-/** Every control of `root` the keyboard can still reach, in DOM order. */
+/**
+ * Every control of `root` the keyboard can still reach, in DOM order: what the
+ * page has not hidden, what still carries a place in the tab order, and what no
+ * `inert` ancestor has handed to a dialog.
+ */
 export function focusable(root: HTMLElement): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(TABABLE_SELECTOR)].filter(
-    (element) => !element.hidden && !isTabbedOut(element) && !isInert(element),
+    (element) =>
+      !isHidden(element) && !isTabbedOut(element) && !isInert(element),
   );
 }
 
