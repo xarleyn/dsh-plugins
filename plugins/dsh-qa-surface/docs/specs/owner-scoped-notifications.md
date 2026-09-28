@@ -111,9 +111,11 @@ has:
 - Fires on the transition `phase: "running" → "ready"` **for a chat the
   client has ever bound or listed** — that is, an id in
   `chatIds()` — and where the previous running snapshot had
-  `running === true` **and** the client saw the turn start
-  (`pendingSubmission?.sawRunning` at `QaSessionController.ts:1440-1457`
-  is the precedent). A chat that never ran in this browser is not a
+  `running === true` **and** the client saw the turn start. The
+  controller's `pendingSubmission?.sawRunning` was the precedent for
+  that gate; the flag is gone from `QaSessionController` and the
+  shipped source keeps its own per-chat reading of it instead (§12).
+  A chat that never ran in this browser is not a
   completed turn; a chat that started before the tab opened is not
   attributed to this user.
 - Does **not** fire on reconnect (`phase: "reconnecting"`), on error
@@ -482,8 +484,14 @@ AGENTS.md §QA surface release notes.
    Deferred — likely needs the same source, different filter.
 4. **What is the correct cold-start behaviour for the background
    source when several owned chats are already running when the page
-   loads?** The initial projection must set the "was running" baseline
-   without emitting completions. Call out in implementation.
+   loads?** Answered (#483): the initial projection sets a baseline of
+   *running, and this page did not see it start* — not plain *running*,
+   which the next frame would report as a finished turn. §3.1 asks for
+   the start to be watched and `docs/CONFIGURATION.md` promises that a
+   chat already running when the page opened is not attributed to the
+   reader, so the run a page merely found under way ends in silence,
+   and the first turn this page watches begin is reported once. What
+   the same rule does to the frames around a reconnect is §12.
 5. **Should the sidebar `running` dot gain a "was completed since you
    last looked" dot with a click-to-clear?** UI only, no new
    plumbing; likely worth pairing with Phase 2.
@@ -548,6 +556,22 @@ notifications.ts` the wiring. `config.notifications`
 
 **Where this departs from the design above.**
 
+- **§3.1's observed start is the gate, and it holds for the whole run
+  (#483).** The differ keeps a per-chat reading with four states —
+  `idle`, `watched`, `unwatched`, `stale` — and reports a turn only
+  where a `watched` run is seen ending in a frame the browser could
+  vouch for. Before this, the first frame that found a chat running was
+  re-projected in silence and the frame after it reported that run's
+  end: the promise of §3.1 and `docs/CONFIGURATION.md` held for one
+  frame and was broken by the next, so a turn that began before the tab
+  opened was still attributed to the reader who opened it. What the
+  link going down does to that evidence is the same rule rather than a
+  new one — a stale frame vouches for nothing, so a run watched before
+  the drop and still under way after the link returns is re-baselined as
+  `unwatched` and ends unreported, because this page cannot tell that
+  run from one that started and finished inside the gap. Whether the
+  host list lets a browser vouch for anything across a gap at all is
+  R2, and settling it on a live stand is #479.
 - §3.5's five booleans are two: `inApp` and `desktop`. A preference is only
   worth storing if a channel exists to honor it, and the shipped dispatcher has
   two — the line in the page and the notice the page hands to the operating

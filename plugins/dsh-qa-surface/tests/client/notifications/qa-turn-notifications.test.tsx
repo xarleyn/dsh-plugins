@@ -70,6 +70,10 @@ interface ProbeProps {
   };
 }
 
+type RedrawProps = Partial<Omit<ProbeProps, "chatIds">> & {
+  chatIds?: readonly string[];
+};
+
 function Probe(props: ProbeProps) {
   const notices = useQaTurnNotifications({
     chats: buildChatRows(props.chatIds, props.list.byId, props.activeSessionId),
@@ -139,15 +143,33 @@ function mountPage(
     ...(options.account === undefined ? {} : { account: options.account }),
   };
   const view = render(<Probe {...props} />);
+  const redraw = (next: RedrawProps) => {
+    view.rerender(<Probe {...props} {...next} />);
+  };
   return {
     view,
     onSwitch: props.onSwitch,
-    redraw(
-      next: Partial<Omit<ProbeProps, "chatIds">> & {
-        chatIds?: readonly string[];
-      },
+    redraw,
+    /**
+     * Watch a turn through to its end: the page sees each named chat start, and
+     * then sees it stop. A notice is raised only for a run the reader watched
+     * begin, so a scenario that wants one is drawn from an idle chat; what the
+     * page merely found running is the cold start, and that is its own story.
+     */
+    watchTurn(
+      ids: readonly string[] = ["mine"],
+      during: RedrawProps = {},
+      end: RedrawProps = {},
     ) {
-      view.rerender(<Probe {...props} {...next} />);
+      redraw({
+        ...during,
+        list: hostList(ids.map((id) => ({ id, running: true }))),
+      });
+      redraw({
+        ...during,
+        ...end,
+        list: hostList(ids.map((id) => ({ id, running: false }))),
+      });
     },
   };
 }
@@ -175,13 +197,20 @@ describe("turn completion notices", () => {
   it("reports the owner's own chat and never the other account's", () => {
     const page = mountPage(
       hostList([
-        { id: "mine", running: true },
+        { id: "mine", running: false },
         { id: "theirs", running: true },
       ]),
     );
     expect(screen.queryByText("Чат mine")).toBeNull();
 
-    // Both turns end in the same frame; only this browser's chat is on screen.
+    // Both turns end in the same frame; only this browser's chat is on screen,
+    // so only that one is watched from its start and only that one is reported.
+    page.redraw({
+      list: hostList([
+        { id: "mine", running: true },
+        { id: "theirs", running: true },
+      ]),
+    });
     page.redraw({
       list: hostList([
         { id: "mine", running: false },
@@ -192,6 +221,19 @@ describe("turn completion notices", () => {
     expect(screen.queryByText("Чат theirs")).toBeNull();
   });
 
+  it("says nothing about a turn that was already running when the page opened", () => {
+    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    // The reader joined a conversation already under way. Its end is not
+    // something they were waiting for, and it is not reported — not now, and
+    // not once the page has had a turn of its own to watch.
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(screen.queryByText("Чат mine")).toBeNull();
+    expect(FakeNotification.raised).toEqual([]);
+
+    page.watchTurn();
+    expect(screen.getByText("Чат mine")).toBeTruthy();
+  });
+
   it("stays silent about a turn it never saw run", () => {
     const page = mountPage(hostList([{ id: "mine", running: false }]));
     page.redraw({ list: hostList([{ id: "mine", running: false }]) });
@@ -199,7 +241,10 @@ describe("turn completion notices", () => {
   });
 
   it("says nothing while the browser is reconnecting", () => {
-    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    const page = mountPage(hostList([{ id: "mine", running: false }]));
+    page.redraw({ list: hostList([{ id: "mine", running: true }]) });
+    // The turn ends while the link is down, and the frames that follow carry a
+    // list this page cannot vouch for.
     page.redraw({
       list: hostList([{ id: "mine", running: false }]),
       paused: true,
@@ -210,12 +255,27 @@ describe("turn completion notices", () => {
     expect(screen.queryByText("Чат mine")).toBeNull();
   });
 
-  it("raises nothing on a stand that switched the channel off", () => {
-    const page = mountPage(hostList([{ id: "mine", running: true }]));
+  it("loses the turn a reconnect found still running", () => {
+    const page = mountPage(hostList([{ id: "mine", running: false }]));
+    page.redraw({ list: hostList([{ id: "mine", running: true }]) });
+    // The chat is still running on both sides of the gap, but the page cannot
+    // tell that run from one that started and ended inside it.
     page.redraw({
-      list: hostList([{ id: "mine", running: false }]),
-      notifications: { enabled: false, allowOs: false },
+      list: hostList([{ id: "mine", running: true }]),
+      paused: true,
     });
+    page.redraw({ list: hostList([{ id: "mine", running: true }]) });
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(screen.queryByText("Чат mine")).toBeNull();
+  });
+
+  it("raises nothing on a stand that switched the channel off", () => {
+    const page = mountPage(hostList([{ id: "mine", running: false }]));
+    page.watchTurn(
+      ["mine"],
+      {},
+      { notifications: { enabled: false, allowOs: false } },
+    );
     expect(screen.queryByText("Чат mine")).toBeNull();
     expect(FakeNotification.raised).toEqual([]);
   });
@@ -225,8 +285,8 @@ describe("turn completion notices", () => {
       STORAGE_KEY,
       JSON.stringify({ osEnabled: true, osOffered: true }),
     );
-    const page = mountPage(hostList([{ id: "mine", running: true }]));
-    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    const page = mountPage(hostList([{ id: "mine", running: false }]));
+    page.watchTurn();
     expect(FakeNotification.raised).toEqual([]);
     expect(screen.getByText("Чат mine")).toBeTruthy();
   });
@@ -237,14 +297,14 @@ describe("turn completion notices", () => {
       STORAGE_KEY,
       JSON.stringify({ osEnabled: true, osOffered: true }),
     );
-    const page = mountPage(hostList([{ id: "mine", running: true }]));
-    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    const page = mountPage(hostList([{ id: "mine", running: false }]));
+    page.watchTurn();
     expect(FakeNotification.raised).toEqual(["Чат mine"]);
   });
 
   it("opens the chat and retires its line", () => {
-    const page = mountPage(hostList([{ id: "mine", running: true }]));
-    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    const page = mountPage(hostList([{ id: "mine", running: false }]));
+    page.watchTurn();
     fireEvent.click(screen.getByText("Чат mine"));
     expect(page.onSwitch).toHaveBeenCalledWith("mine");
     expect(screen.queryByText("Чат mine")).toBeNull();
@@ -252,8 +312,8 @@ describe("turn completion notices", () => {
 
   it("asks for the desktop channel once and remembers the answer", async () => {
     FakeNotification.permission = "default";
-    const page = mountPage(hostList([{ id: "mine", running: true }]));
-    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    const page = mountPage(hostList([{ id: "mine", running: false }]));
+    page.watchTurn();
     const offer = screen.getByRole("button", {
       name: QA_TURN_NOTICE_COPY.offerAction,
     });
@@ -263,21 +323,17 @@ describe("turn completion notices", () => {
       expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: true }),
     );
 
-    // The question is gone, and a later turn does not bring it back.
+    // The question is gone, and a later turn does not bring it back. The second
+    // chat joins the sidebar idle, so its turn is one this page watches.
+    const both = { chatIds: ["mine", "second"] };
     page.redraw({
-      list: hostList([
-        { id: "mine", running: false },
-        { id: "second", running: true },
-      ]),
-      chatIds: ["mine", "second"],
-    });
-    page.redraw({
+      ...both,
       list: hostList([
         { id: "mine", running: false },
         { id: "second", running: false },
       ]),
-      chatIds: ["mine", "second"],
     });
+    page.watchTurn(["second"], both, both);
     expect(screen.getByText("Чат second")).toBeTruthy();
     expect(
       screen.queryByRole("button", {
@@ -289,8 +345,8 @@ describe("turn completion notices", () => {
 
   it("waves the offer off with the line it sits under", () => {
     FakeNotification.permission = "default";
-    const page = mountPage(hostList([{ id: "mine", running: true }]));
-    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    const page = mountPage(hostList([{ id: "mine", running: false }]));
+    page.watchTurn();
     fireEvent.click(
       screen.getByLabelText(`${QA_TURN_NOTICE_COPY.dismiss}: Чат mine`),
     );
@@ -316,8 +372,8 @@ describe("the account's own channels", () => {
     );
     document.hasFocus = () => false;
     const { options } = signedIn({ inApp: true, desktop: false });
-    const page = mountPage(hostList([{ id: "mine", running: true }]), options);
-    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    const page = mountPage(hostList([{ id: "mine", running: false }]), options);
+    page.watchTurn();
     expect(FakeNotification.raised).toEqual([]);
     expect(screen.getByText("Чат mine")).toBeTruthy();
   });
@@ -325,15 +381,15 @@ describe("the account's own channels", () => {
   it("raises the desktop notice because the account asked for it", () => {
     document.hasFocus = () => false;
     const { options } = signedIn({ inApp: true, desktop: true });
-    const page = mountPage(hostList([{ id: "mine", running: true }]), options);
-    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    const page = mountPage(hostList([{ id: "mine", running: false }]), options);
+    page.watchTurn();
     expect(FakeNotification.raised).toEqual(["Чат mine"]);
   });
 
   it("keeps the page line off when the reader switched it off", () => {
     const { options } = signedIn({ inApp: false, desktop: false });
-    const page = mountPage(hostList([{ id: "mine", running: true }]), options);
-    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    const page = mountPage(hostList([{ id: "mine", running: false }]), options);
+    page.watchTurn();
     expect(screen.queryByText("Чат mine")).toBeNull();
     expect(FakeNotification.raised).toEqual([]);
   });
@@ -341,8 +397,8 @@ describe("the account's own channels", () => {
   it("answers the desktop offer on the account, not on this browser", async () => {
     FakeNotification.permission = "default";
     const { options, onSave } = signedIn({ inApp: true, desktop: false });
-    const page = mountPage(hostList([{ id: "mine", running: true }]), options);
-    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    const page = mountPage(hostList([{ id: "mine", running: false }]), options);
+    page.watchTurn();
     fireEvent.click(
       screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
     );

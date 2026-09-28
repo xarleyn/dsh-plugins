@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   settleTurnCompletions,
   type QaChatActivity,
+  type QaTurnCompletion,
+  type QaTurnSighting,
 } from "../../../src/client/notifications/turn-completion-source.js";
 
 function chat(
@@ -13,101 +15,151 @@ function chat(
 }
 
 /**
- * The notices a page may raise are bounded by what this function is fed, so
- * the rules of who is reported — and who is silently skipped — live here.
+ * One page's side of the host list: what it sees, in the order it sees it, and
+ * what each frame was worth as a notice. The notices a page may raise are
+ * bounded by what it watched, so who is reported — and who is silently skipped
+ * — is decided here.
  */
+function openPage() {
+  const seen = new Map<string, QaTurnSighting>();
+  const see = (
+    chats: readonly QaChatActivity[],
+    options: { paused?: boolean; now?: number } = {},
+  ): QaTurnCompletion[] => settleTurnCompletions(seen, chats, options);
+  /** One turn this page watched: idle, then running, then idle again. */
+  const watchTurn = (id: string, now = 0): QaTurnCompletion[] => {
+    see([chat(id, false)], { now });
+    see([chat(id, true)], { now: now + 1 });
+    return see([chat(id, false)], { now: now + 2 });
+  };
+  return { seen, see, watchTurn };
+}
+
 describe("turn completion source", () => {
   it("reports a chat once it stops, and not before", () => {
-    const seen = new Map<string, boolean>();
-    expect(
-      settleTurnCompletions(seen, [chat("a", true)], { now: 1_000 }),
-    ).toEqual([]);
-    expect(
-      settleTurnCompletions(seen, [chat("a", true)], { now: 1_500 }),
-    ).toEqual([]);
-    expect(
-      settleTurnCompletions(seen, [chat("a", false)], { now: 2_000 }),
-    ).toEqual([{ sessionId: "a", title: "Чат a", at: 2_000 }]);
-    expect(
-      settleTurnCompletions(seen, [chat("a", false)], { now: 3_000 }),
-    ).toEqual([]);
+    const page = openPage();
+    expect(page.see([chat("a", false)], { now: 1_000 })).toEqual([]);
+    expect(page.see([chat("a", true)], { now: 1_500 })).toEqual([]);
+    expect(page.see([chat("a", true)], { now: 1_800 })).toEqual([]);
+    expect(page.see([chat("a", false)], { now: 2_000 })).toEqual([
+      { sessionId: "a", title: "Чат a", at: 2_000 },
+    ]);
+    expect(page.see([chat("a", false)], { now: 3_000 })).toEqual([]);
   });
 
   it("keeps the cold-start projection silent", () => {
-    const seen = new Map<string, boolean>();
+    const page = openPage();
     // A chat that was already running when the page opened is not a turn this
     // reader started, and the first frame must not read as a batch of
     // completions.
-    const completions = settleTurnCompletions(
-      seen,
-      [chat("a", true), chat("b", false), chat("c", true)],
-      { now: 1_000 },
-    );
-    expect(completions).toEqual([]);
-    expect([...seen.entries()]).toEqual([
-      ["a", true],
-      ["b", false],
-      ["c", true],
+    expect(
+      page.see([chat("a", true), chat("b", false), chat("c", true)], {
+        now: 1_000,
+      }),
+    ).toEqual([]);
+    expect([...page.seen.entries()]).toEqual([
+      ["a", "unwatched"],
+      ["b", "idle"],
+      ["c", "unwatched"],
     ]);
+    // The silence is not deferred: the run found under way ends unreported, so
+    // a turn that started before the page opened is never attributed to it.
+    expect(
+      page.see([chat("a", false), chat("b", false), chat("c", false)], {
+        now: 2_000,
+      }),
+    ).toEqual([]);
+  });
+
+  it("reports the first turn a page watches begin after its cold start", () => {
+    const page = openPage();
+    // The page opens on a run already under way, and that run ends in silence.
+    page.see([chat("a", true)], { now: 1 });
+    page.see([chat("a", false)], { now: 2 });
+    expect(page.seen.get("a")).toBe("idle");
+    // The next turn is seen beginning: it is reported, once.
+    expect(page.watchTurn("a", 3)).toEqual([
+      { sessionId: "a", title: "Чат a", at: 5 },
+    ]);
+    expect(page.see([chat("a", false)], { now: 6 })).toEqual([]);
   });
 
   it("never reports a chat it did not see running", () => {
-    const seen = new Map<string, boolean>();
-    settleTurnCompletions(seen, [chat("a", false)], { now: 1 });
-    expect(settleTurnCompletions(seen, [chat("a", false)], { now: 2 })).toEqual(
-      [],
-    );
+    const page = openPage();
+    page.see([chat("a", false)], { now: 1 });
+    expect(page.see([chat("a", false)], { now: 2 })).toEqual([]);
   });
 
   it("reports every chat that settles in one frame", () => {
-    const seen = new Map<string, boolean>([
-      ["a", true],
-      ["b", true],
-      ["c", false],
-    ]);
+    const page = openPage();
+    page.see([chat("a", false), chat("b", false), chat("c", false)], {
+      now: 1,
+    });
+    page.see([chat("a", true), chat("b", true), chat("c", false)], { now: 2 });
     expect(
-      settleTurnCompletions(
-        seen,
-        [chat("a", false), chat("b", false), chat("c", false)],
-        { now: 42 },
-      ).map((completion) => completion.sessionId),
+      page
+        .see([chat("a", false), chat("b", false), chat("c", false)], {
+          now: 42,
+        })
+        .map((completion) => completion.sessionId),
     ).toEqual(["a", "b"]);
   });
 
   it("drops a chat that leaves the list and rebuilds its baseline", () => {
-    const seen = new Map<string, boolean>();
-    settleTurnCompletions(seen, [chat("a", true)], { now: 1 });
+    const page = openPage();
+    page.watchTurn("a", 1);
     // Deleted here, or simply no longer listed by the host.
-    expect(settleTurnCompletions(seen, [], { now: 2 })).toEqual([]);
-    expect(seen.size).toBe(0);
-    // Re-added idle, then run: only the turn it watched is reported.
-    settleTurnCompletions(seen, [chat("a", false)], { now: 3 });
-    settleTurnCompletions(seen, [chat("a", true)], { now: 4 });
-    expect(
-      settleTurnCompletions(seen, [chat("a", false)], { now: 5 }),
-    ).toHaveLength(1);
+    expect(page.see([], { now: 2 })).toEqual([]);
+    expect(page.seen.size).toBe(0);
+    // Re-added running: the run it shows is not the one this page watched, and
+    // it ends unreported. Only a turn seen beginning from the rebuilt baseline
+    // is reported.
+    page.see([chat("a", true)], { now: 3 });
+    expect(page.see([chat("a", false)], { now: 4 })).toEqual([]);
+    expect(page.watchTurn("a", 5)).toHaveLength(1);
   });
 
   it("re-projects silently while the browser is reconnecting", () => {
-    const seen = new Map<string, boolean>();
-    settleTurnCompletions(seen, [chat("a", true)], { now: 1 });
+    const page = openPage();
+    page.see([chat("a", false)], { now: 1 });
+    page.see([chat("a", true)], { now: 2 });
     // The link dropped: the frames that follow carry a list this page cannot
-    // vouch for, so the turns they appear to have finished go unreported.
-    expect(
-      settleTurnCompletions(seen, [chat("a", false)], {
-        now: 2,
-        paused: true,
-      }),
-    ).toEqual([]);
-    expect(settleTurnCompletions(seen, [chat("a", false)], { now: 3 })).toEqual(
-      [],
-    );
+    // vouch for, so the turn they appear to have finished goes unreported.
+    expect(page.see([chat("a", false)], { now: 3, paused: true })).toEqual([]);
+    expect(page.see([chat("a", false)], { now: 4 })).toEqual([]);
+  });
+
+  it("loses a watched run across a gap it cannot vouch for", () => {
+    const page = openPage();
+    page.see([chat("a", false)], { now: 1 });
+    page.see([chat("a", true)], { now: 2 });
+    // The turn was still running while the link was down. The page cannot tell
+    // that run from one that started and was not seen starting during the gap,
+    // so the end it reads after the link returns is not its news either.
+    expect(page.see([chat("a", true)], { now: 3, paused: true })).toEqual([]);
+    expect(page.seen.get("a")).toBe("stale");
+    expect(page.see([chat("a", true)], { now: 4 })).toEqual([]);
+    expect(page.seen.get("a")).toBe("unwatched");
+    expect(page.see([chat("a", false)], { now: 5 })).toEqual([]);
+  });
+
+  it("does not credit a start read in a stale frame", () => {
+    const page = openPage();
+    page.see([chat("a", false)], { now: 1 });
+    // The chat appears running in a frame the browser cannot vouch for, and the
+    // link only returns afterwards.
+    expect(page.see([chat("a", true)], { now: 2, paused: true })).toEqual([]);
+    expect(page.seen.get("a")).toBe("stale");
+    expect(page.see([chat("a", true)], { now: 3 })).toEqual([]);
+    expect(page.see([chat("a", false)], { now: 4 })).toEqual([]);
   });
 
   it("keeps its own clock for a completion without an explicit one", () => {
-    const seen = new Map<string, boolean>([["a", true]]);
+    const page = openPage();
+    page.see([chat("a", false)]);
+    page.see([chat("a", true)]);
     const before = Date.now();
-    const [completion] = settleTurnCompletions(seen, [chat("a", false)]);
+    const [completion] = page.see([chat("a", false)]);
     expect(completion?.at).toBeGreaterThanOrEqual(before);
   });
 });

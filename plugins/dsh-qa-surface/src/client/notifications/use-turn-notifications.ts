@@ -22,6 +22,7 @@ import {
 import {
   settleTurnCompletions,
   type QaChatActivity,
+  type QaTurnSighting,
 } from "./turn-completion-source.js";
 
 /** Lines the stack holds; an older one is dropped rather than pushed away. */
@@ -59,8 +60,8 @@ export interface QaTurnNotifications {
 
 /**
  * Turn-completion notices for the chats this page owns: watch the sidebar's
- * rows, and when one of them stops running, say so in the channels the reader
- * and the deployment allow.
+ * rows, and when one of them stops running after this page watched that run
+ * begin, say so in the channels the reader and the deployment allow.
  */
 export function useQaTurnNotifications(
   input: QaTurnNotificationsInput,
@@ -75,7 +76,7 @@ export function useQaTurnNotifications(
     activeSessionId,
     onSwitch,
   } = input;
-  const seen = useRef(new Map<string, boolean>());
+  const seen = useRef(new Map<string, QaTurnSighting>());
   const [items, setItems] = useState<readonly QaTurnNoticeItem[]>([]);
   const [prefs, setPrefs] = useState<QaNotificationPrefs>(() =>
     readNotificationPrefs(storage, storageKey),
