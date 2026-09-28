@@ -107,7 +107,7 @@ with the registry's own reason on the card.
   `readDocument()` at all, or answer it with something that is not a
   composition; the card names which of the two happened, in this page's words,
   rather than blaming the preset or showing a `TypeError`. What the host's own
-  reason may contain is bounded by §5 of `SPEC.md`: the registry's failures name
+  reason may contain is bounded by §2 of `SPEC.md`: the registry's failures name
   preset ids, and that text is already on the host's own `list` Remote.
 - A roster that refuses to refresh says so. The rows stay on screen — dropping
   them would answer a failed `list()` with a deployment that composes no
