@@ -184,6 +184,11 @@ not a composition.
 
 - Writing any value: no save, no reset, no copy. The Host has no durable
   preset-authoring path — decision D2, and issue #605 for the return.
+- A deployment's `config:` row. Decision D2 took the four ceilings out with the
+  writes they gated, so the plugin declares no Config, and the row Cordis hands
+  the constructor positionally is named, typed and read by nothing; `README.md`
+  says that to the operator still carrying `allowComplete`, `maxPersonaBytes`,
+  `maxSections` or `maxSectionsBytes`.
 - Editing the registrar module's code from the page (it is the preset's file).
 - Editing any other preset row (tools, skills, sandbox) through this page.
 - A preset's metadata (name, description, order).
