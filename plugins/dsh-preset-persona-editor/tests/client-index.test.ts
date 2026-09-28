@@ -20,14 +20,11 @@ describe("client activation", () => {
   it("mounts the Remote and registers the page against the injected namespace", async () => {
     const list = vi.fn(async () => ({
       ok: true as const,
-      value: { presets: [], authorable: true },
+      value: { presets: [] },
     }));
     const presetPersonaEditor = {
       list,
       read: vi.fn(),
-      save: vi.fn(),
-      reset: vi.fn(),
-      copy: vi.fn(),
     };
     let pageFace: (() => unknown) | undefined;
     let registered: Record<string, unknown> | undefined;

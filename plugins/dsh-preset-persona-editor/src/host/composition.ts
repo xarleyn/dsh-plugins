@@ -3,12 +3,17 @@
  * prompt-sections row, rewrite the values they own, insert a row when the
  * preset has none, and remove one on reset.
  *
+ * Only the reading half has a caller inside this plugin: decision D2 took the
+ * write operations out of its namespace, and the rewriting half stays exported
+ * as the package's library for the write path
+ * `docs/DSH-0.1.7-MIGRATION.md` §10 describes.
+ *
  * Why not a YAML round-trip: a preset composition is not data. It carries
  * comments that explain the deployment, `!!js` expression scalars, `{{cwd}}`
  * templates, block literals with deliberate chomping, and its own spacing. An
  * emitter round-trip would silently rewrite every one of them. So the document
  * is parsed for *positions* only, and the text is spliced: each managed value's
- * byte range is replaced, and every other byte of the file stays untouched.
+ * byte range is replaced, and every other byte of the text stays untouched.
  *
  * The parser is configured with a catch-all tag so `!!js` scalars parse (as
  * tagged values this module then refuses to rewrite) instead of failing the

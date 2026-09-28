@@ -47,7 +47,7 @@ package.
 | `plugins/dsh-model-safety-gate` | `@yadsh/dsh-model-safety-gate` | Independent two-layer safety gate around the DeepSeek Harness agent loop: deterministic and model-classifier verdicts for prompts, streamed output, tools, and tool results |
 | `plugins/dsh-openviking-memory` | `@yadsh/dsh-openviking-memory` | OpenViking memory integration for DeepSeek Harness with configurable automatic context injection; derived from the official OpenViking DSH plugin. |
 | `plugins/dsh-plugin-log-ui` | `@yadsh/dsh-plugin-log-ui` | DSH settings UI for shared plugin logging levels and file format |
-| `plugins/dsh-preset-persona-editor` | `@yadsh/dsh-preset-persona-editor` | Edit an agent preset's persona for the DeepSeek Harness from the settings UI: prefix, suffix, complete mode, and the runtime-context toggle, written back into the preset's own agent.cordis.yml |
+| `plugins/dsh-preset-persona-editor` | `@yadsh/dsh-preset-persona-editor` | Read what an agent preset contributes to the prompt from the DeepSeek Harness settings UI: the persona prefix, suffix, complete mode and runtime-context toggle the preset composes with, and the named prompt sections it registers in its own name |
 | `plugins/dsh-prompt-firewall` | `@yadsh/dsh-prompt-firewall` | Prompt hygiene, observability, and policy middleware for DeepSeek Harness |
 | `plugins/dsh-qa-browser` | `@yadsh/dsh-qa-browser` | Session-scoped Playwright browser runtime for DeepSeek Harness and QA Surface |
 | `plugins/dsh-qa-integrations` | `@yadsh/dsh-qa-integrations` | Principal-scoped, encrypted user integrations for DSH QA Surface |
