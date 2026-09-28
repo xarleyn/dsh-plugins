@@ -8,11 +8,12 @@ const TABABLE_SELECTOR =
   "button:not([disabled]), textarea:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex='-1'])";
 
 /**
- * Whether a modal gate has taken this element away from the keyboard. `inert`
- * is a reflected attribute, so a subtree the dialog marked inert by script reads
- * here the same way the browser reads it. jsdom implements neither half: it
- * reflects nothing and blocks no focus, which is why the ring's inert handling is
- * settled on a live stand rather than by this file's tests.
+ * Whether a modal gate has taken this element away from the keyboard. `inert` is
+ * a reflected attribute, so a subtree a dialog marked inert from script reads
+ * here the way the browser reads it. jsdom reflects nothing and blocks no focus,
+ * which leaves two things to a live stand: that the gate's own `inert` reaches
+ * this query as an attribute, and that the ring's edge and the gate's own trap
+ * hold the keyboard between them without help from this file.
  */
 export function isInert(element: Element): boolean {
   return element.closest("[inert]") !== null;
