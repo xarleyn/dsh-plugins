@@ -63,6 +63,7 @@
     "@types/react-dom": "catalog:frontend-dev",
     "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",
     "jsdom": "catalog:tooling",
     "react": "catalog:frontend-dev",
@@ -75,6 +76,8 @@
     "lint": "eslint src tests",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run verify:package"
   }
 }

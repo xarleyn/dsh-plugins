@@ -98,6 +98,117 @@ before(async () => {
 after(async () => {
   await rm(globalThis.fixtureRoot, { recursive: true, force: true });
 });
+
+/**
+ * A workspace root carrying one publishable and one private member, so the
+ * published-range gate resolves a `workspace:` reference against the same tree
+ * pnpm pack resolves it against. Returns the directory of the subject package.
+ */
+async function writeWorkspace(name) {
+  const root = join(globalThis.fixtureRoot, name);
+  await mkdir(join(root, "packages"), { recursive: true });
+  await writeFile(
+    join(root, "pnpm-workspace.yaml"),
+    "packages:\n  - packages/*\n",
+  );
+  for (const member of [
+    { name: "@yadsh/dsh-public-helper", version: "1.0.0" },
+    { name: "@yadsh/dsh-private-helper", version: "1.0.0", private: true },
+  ]) {
+    const directory = join(root, "packages", member.name.split("/").pop());
+    await mkdir(directory, { recursive: true });
+    await writeFile(
+      join(directory, "package.json"),
+      `${JSON.stringify(member, null, 2)}\n`,
+    );
+  }
+  return join(root, "packages", "subject");
+}
+
+test("main and types are pinned to the root export", async () => {
+  const directory = join(globalThis.fixtureRoot, "main-types");
+  const rootExport = { types: "./lib-index.d.ts", default: "./lib-index.js" };
+  const fields = (main, types) => ({
+    main,
+    types,
+    exports: { ".": rootExport, "./package.json": "./package.json" },
+  });
+  const gate = () =>
+    runVerifyPackage(
+      baseOptions(directory, { mainTypesMatchRootExport: true }),
+    );
+
+  await writeFixture(directory, {
+    manifest: fields("./lib-index.js", "./lib-index.d.ts"),
+  });
+  await gate();
+
+  // A legacy field a rename left behind names a file nothing builds, and only a
+  // resolver that ignores `exports` loads it — which is why it fails here rather
+  // than in the packing gate.
+  await writeFixture(directory, {
+    manifest: fields("./lib/legacy.js", "./lib-index.d.ts"),
+  });
+  await assert.rejects(gate(), /main must name exports/u);
+
+  await writeFixture(directory, {
+    manifest: fields("./lib-index.js", "./lib/legacy.d.ts"),
+  });
+  await assert.rejects(gate(), /types must name exports/u);
+});
+
+test("a published dependency range resolves for a registry consumer", async () => {
+  const directory = await writeWorkspace("published-ranges");
+  const gate = async (manifest) => {
+    await writeFixture(directory, { manifest });
+    return runVerifyPackage(
+      baseOptions(directory, { publishedDependenciesResolve: true }),
+    );
+  };
+
+  // A member declared through the local protocol, an external package named by
+  // a catalog, and an external plain range all install from the registry.
+  await gate({
+    dependencies: {
+      "@yadsh/dsh-public-helper": "workspace:^",
+      "@deepseek-ai/cordis": "catalog:dsh",
+      pino: "^10.3.1",
+    },
+    // `devDependencies` never reaches the tarball, so a private member there is
+    // the workspace's own business.
+    devDependencies: { "@yadsh/dsh-private-helper": "workspace:^" },
+  });
+
+  // The pack step rewrites each of these into a range that looks installable, so
+  // only this source-level read sees what it pointed at.
+  await assert.rejects(
+    gate({ dependencies: { "@yadsh/dsh-private-helper": "workspace:^" } }),
+    /resolves to the private member/u,
+  );
+  await assert.rejects(
+    gate({ dependencies: { "@yadsh/dsh-absent-helper": "workspace:^" } }),
+    /no member publishes/u,
+  );
+  await assert.rejects(
+    gate({ dependencies: { "@yadsh/dsh-public-helper": "catalog:dsh" } }),
+    /names a workspace member through catalog:/u,
+  );
+  await assert.rejects(
+    gate({ dependencies: { "@yadsh/dsh-public-helper": "^1.0.0" } }),
+    /declare it as workspace:\^/u,
+  );
+});
+
+test("the range gate needs the package to sit in a workspace", async () => {
+  const directory = join(globalThis.fixtureRoot, "published-ranges-outside");
+  await writeFixture(directory);
+  await assert.rejects(
+    runVerifyPackage(
+      baseOptions(directory, { publishedDependenciesResolve: true }),
+    ),
+    /needs the workspace root/u,
+  );
+});
 test("a conforming package passes every staged gate", async () => {
   const directory = join(globalThis.fixtureRoot, "happy");
   await writeFixture(directory);
