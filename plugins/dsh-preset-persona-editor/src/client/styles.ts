@@ -4,7 +4,9 @@
  *
  * Every colour comes from a `--dsw-alias-*` token so the page follows the
  * client's light, dark, and system themes; nothing here defines a surface of
- * its own.
+ * its own. A refusal keeps the line breaks the host wrote it with: the registry
+ * reports a preset that cannot compose as a tree of causes, and a paragraph that
+ * collapses them is the same letters answering a different question.
  * @module client/styles
  */
 
@@ -27,7 +29,7 @@ const BODY = `
 .preset-persona__check input{margin:2px 0 0;flex:none}
 .preset-persona__check-text{display:flex;flex-direction:column;gap:3px}
 .preset-persona__warn{color:var(--dsw-alias-state-warn-primary);background:var(--dsw-alias-state-warn-tertiary);border-radius:8px;padding:8px 10px;font-size:12px;line-height:1.5;margin:0}
-.preset-persona__error{color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:1.55;margin:0}
+.preset-persona__error{color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:1.55;margin:0;white-space:pre-line}
 .preset-persona__ok{color:var(--dsw-alias-state-success-primary);font-size:12px;margin:0}
 .preset-persona__notice-dismiss{appearance:none;font:inherit;color:var(--dsw-alias-label-secondary);background:0 0;border:0;padding:0 0 0 8px;cursor:pointer;text-decoration:underline}
 .preset-persona__notice-dismiss:hover{color:var(--dsw-alias-label-primary)}

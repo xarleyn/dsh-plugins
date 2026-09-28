@@ -29,7 +29,7 @@ import {
   PersonaPageController,
   type PersonaPageSnapshot,
 } from "../src/client/store.js";
-import type { PersonaDocument } from "../src/types.js";
+import type { PersonaCatalog, PersonaDocument } from "../src/types.js";
 import { documentOf, faceOf, OK_CATALOG } from "./client-store.helpers.js";
 
 afterEach(cleanup);
@@ -76,6 +76,20 @@ function sectionOf(
 ): PersonaDocument["sections"][number] {
   return { name, order, text, enabled: true };
 }
+
+/**
+ * A preset the registry cannot activate, shaped the way the installed
+ * `0.1.7-rc.2` class shapes it: `diagnostic()` joins its failed and pending rows
+ * with `\n`, each row reads `<entry id> (<plugin name>): <detail>`, and the
+ * detail is `mountDetail()`, which nests a cause under `- ` with `\n  `
+ * continuations.
+ */
+const REFUSED_TREE = [
+  "persona (@deepseek-ai/dsh-persona): the row refused to mount",
+  "- @yadsh/demo-pack: no such module on disk",
+  "  the cause the pack wrapped",
+  "tool-bash (@deepseek-ai/dsh-tool-bash): waiting for sandbox",
+].join("\n");
 
 /** The text of a `<p>` the editor shows, or `null` when it shows none. */
 function paragraph(container: HTMLElement, testId: string): string | null {
@@ -244,6 +258,81 @@ describe("the reader's markup", () => {
     }
   });
 
+  it("keeps every reading reachable, and none of them editable", () => {
+    const { container } = show(
+      documentOf({
+        persona: {
+          prefix: "Original prefix.",
+          suffix: "",
+          complete: true,
+          includeRuntimeContext: false,
+        },
+        sections: [sectionOf("preset:review", 100, "Read carefully.")],
+        sectionsState: "local",
+      }),
+    );
+    const controls = [...container.querySelectorAll("input, textarea")];
+    expect(controls.length).toBeGreaterThan(4);
+    for (const control of controls) {
+      // A `disabled` control leaves the tab order, so a keyboard reader steps
+      // over the value it carries and never learns it exists.
+      expect(
+        control.hasAttribute("disabled"),
+        `a control no keyboard reader reaches: ${control.getAttribute("id")}`,
+      ).toBe(false);
+      // What says "reading" instead: `readonly` for the text a browser will not
+      // let be typed into, and `aria-disabled` for the checkbox the page pinned.
+      // `readOnly` is not the second one — it names a rule for the controls that
+      // take text, and a browser enforces it on a checkbox by nothing.
+      expect(
+        control.hasAttribute("readonly") ||
+          control.getAttribute("aria-disabled") === "true",
+        `a reading that does not say it is one: ${control.getAttribute("id")}`,
+      ).toBe(true);
+    }
+  });
+
+  it("holds a clicked checkbox at the value the composition carries", () => {
+    show(
+      documentOf({
+        persona: {
+          prefix: "Original prefix.",
+          suffix: "",
+          complete: true,
+          includeRuntimeContext: false,
+        },
+      }),
+    );
+    // The page's answer to a click has to be the composition's answer, for both
+    // values and in both directions — a control that only *looks* pinned has a
+    // state the reader then believes wrongly.
+    const complete = screen.getByRole("checkbox", {
+      name: strings.completeLabel,
+    }) as HTMLInputElement;
+    const runtime = screen.getByRole("checkbox", {
+      name: strings.runtimeLabel,
+    }) as HTMLInputElement;
+    fireEvent.click(complete);
+    fireEvent.click(runtime);
+    expect(complete.checked).toBe(true);
+    expect(runtime.checked).toBe(false);
+  });
+
+  it("states a refused composition with the breaks the host wrote it with", () => {
+    const { container } = show(documentOf({ broken: REFUSED_TREE }));
+    const stated = paragraph(container, "persona-broken");
+    // Every line of the tree, not just the first: the card header is the place
+    // that can carry one line, and this is the place that carries them all.
+    expect(stated).toBe(`${strings.brokenTitle}: ${REFUSED_TREE}`);
+    // And the structure the letters arrived in. A paragraph that collapses them
+    // answers the question in the right words and the wrong shape: the tree is
+    // what tells a nested cause from a second failure of the same row.
+    const rule = styles
+      .split("\n")
+      .find((line) => line.startsWith(".preset-persona__error{"));
+    expect(rule).toContain("white-space:pre-line");
+  });
+
   it("says a broken preset cannot compose without denying its readings", () => {
     const { container } = show(documentOf({ broken: "the row names nothing" }));
     expect(paragraph(container, "persona-broken")).toContain(
@@ -329,6 +418,31 @@ describe("the reader's markup", () => {
 
 describe("the roster screen", () => {
   /**
+   * The roster screen showing one preset the registry refused with `broken`,
+   * and answering the same way every time it is asked.
+   */
+  function alwaysRefusing(broken: string): PersonaPageController {
+    const catalog: PersonaCatalog = {
+      presets: [
+        {
+          id: "demo",
+          name: "Demo",
+          description: "",
+          isDefault: true,
+          broken,
+          persona: "unreadable",
+          complete: false,
+        },
+      ],
+    };
+    return new PersonaPageController(
+      faceOf({
+        list: vi.fn(async () => ({ ok: true as const, value: catalog })),
+      }),
+    );
+  }
+
+  /**
    * A controller holding a roster already on screen, whose next refresh is
    * refused — the state `list()` fails into when there is a list to keep.
    */
@@ -342,6 +456,76 @@ describe("the roster screen", () => {
     });
     return controller;
   }
+
+  it("keeps a card header to the line the shell has room for", async () => {
+    const { container } = showPage(alwaysRefusing(REFUSED_TREE));
+    await screen.findByTestId("persona-roster");
+    const description = container.querySelector(
+      ".dsh-plugin-card__description",
+    );
+    // The registry's own first line, which is the part that names the row that
+    // refused: the header is not this page's to re-word.
+    expect(description?.textContent).toContain(
+      REFUSED_TREE.split("\n")[0] ?? "",
+    );
+    // And one line, because that is all the shell gives a card — the breaks of
+    // the rest would render as spaces here however the text were assembled. The
+    // whole tree arrives in the opened card, in the paragraph that keeps them.
+    expect(description?.textContent).not.toContain("\n");
+    expect(screen.getByTestId("persona-preset-badge").textContent).toBe(
+      strings.badgeBroken,
+    );
+  });
+
+  it("re-reads the roster from the screen that shows it", async () => {
+    const refused: PersonaCatalog = {
+      presets: [
+        {
+          id: "demo",
+          name: "Demo",
+          description: "",
+          isDefault: true,
+          broken: "persona (@deepseek-ai/dsh-persona): waiting for sandbox",
+          persona: "unreadable",
+          complete: false,
+        },
+      ],
+    };
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: true as const, value: refused })
+      .mockResolvedValueOnce(OK_CATALOG);
+    showPage(new PersonaPageController(faceOf({ list })));
+    await screen.findByText(strings.badgeBroken);
+    // A row waiting on a service that has not mounted yet becomes healthy by
+    // itself, so the page that read it once holds a fact the deployment has
+    // already outgrown. The reader's Reload re-reads the open preset only; this
+    // is the control that asks the roster again.
+    fireEvent.click(screen.getByRole("button", { name: strings.reloadRoster }));
+    expect(await screen.findByText(strings.badgeCustom)).toBeTruthy();
+    expect(list).toHaveBeenCalledTimes(2);
+  });
+
+  it("answers a refused retry with the refusal again, not with silence", async () => {
+    const list = vi.fn().mockResolvedValue(OK_CATALOG);
+    const controller = new PersonaPageController(faceOf({ list }));
+    await controller.load();
+    list.mockResolvedValue({
+      ok: false as const,
+      error: new RemoteError("gateway/internal", "boom", {}),
+    });
+    showPage(controller);
+    await screen.findByTestId("persona-notice");
+    fireEvent.click(screen.getByRole("button", { name: strings.reloadRoster }));
+    // `refresh()` puts the notice down before it asks, because what the message
+    // carries is "these rows are stale" and a fresh answer settles that. A fresh
+    // answer that fails has to put a refusal back rather than leave the screen
+    // quiet over the rows it did not manage to replace.
+    const notice = await screen.findByTestId("persona-notice");
+    expect(notice.textContent).toContain(`${strings.loadFailed} boom`);
+    expect(screen.getAllByTestId("persona-preset-row")).toHaveLength(1);
+    expect(list).toHaveBeenCalledTimes(3);
+  });
 
   it("says a refresh failed over the roster it keeps on screen", async () => {
     showPage(await refusedRefresh());

@@ -52,6 +52,11 @@ export const strings = {
     "Send the dynamic runtime-context snapshots (sandbox, approval, working directory) with this persona.",
 
   reload: "Reload",
+  /**
+   * The roster screen's own wording: with a preset open the page shows two
+   * Reload buttons, and only one of them re-reads the list.
+   */
+  reloadRoster: "Reload the roster",
 
   gone: "This preset is no longer in the roster.",
   unreadable: "This preset's composition cannot be read by this page.",
