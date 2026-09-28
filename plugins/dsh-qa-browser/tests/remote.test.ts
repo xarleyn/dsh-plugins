@@ -107,23 +107,23 @@ describe("QA Browser Remote contribution", () => {
     // The panel words its wait for a first page from the mode, so a state
     // without it cannot say what the operator is waiting for.
     expect(() =>
-      state.schema.parse({ ...base, runtimeMode: "launch" }),
+      state.create().parse({ ...base, runtimeMode: "launch" }),
     ).not.toThrow();
-    expect(() => state.schema.parse(base)).toThrow();
+    expect(() => state.create().parse(base)).toThrow();
     expect(() =>
-      state.schema.parse({ ...base, runtimeMode: "sidecar" }),
+      state.create().parse({ ...base, runtimeMode: "sidecar" }),
     ).toThrow();
     // A browser the runtime can no longer reach is a different fact from a
     // browser that died: the person's own window is probably still open.
     expect(() =>
-      state.schema.parse({
+      state.create().parse({
         ...base,
         runtimeMode: "attach",
         session: session("disconnected"),
       }),
     ).not.toThrow();
     expect(() =>
-      state.schema.parse({ ...base, session: session("detached") }),
+      state.create().parse({ ...base, session: session("detached") }),
     ).toThrow();
   });
 
