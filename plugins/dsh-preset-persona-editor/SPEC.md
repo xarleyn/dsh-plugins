@@ -26,9 +26,9 @@ Guarantees 3, 4, 5, 6, 9, 16, 17 and 18 below are **withdrawn**: not
 implemented, not deferred. They stay on this page because they are the contract a
 restored write path has to meet again. That removal is one commit, but this page
 does not promise it reverts alone: replayed over the read-path migration it
-conflicts in 20 paths (17 content, 3 modify/delete) at `865679b3`, the head of
-this series — `src/client/store.ts` joined with the sixth round's roster control
-— and puts back a
+conflicts in 20 paths (17 content, 3 modify/delete) at `296b8836`, the last code
+commit of this series — `src/client/store.ts` joined with the sixth round's roster
+control — and puts back a
 `preset-writer.ts` that reads `readPresetFile`, `revisionOf` and `preset.path`,
 all three of which this cutover deleted, so the result does not compile.
 Reversing D2 is a revert of the whole #518 series, which is the cost issue #605
