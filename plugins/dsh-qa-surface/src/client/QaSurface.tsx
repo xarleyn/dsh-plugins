@@ -92,6 +92,7 @@ import { VariantSwitcher } from "./components/VariantSwitcher.js";
 import { QaWelcomeNotice } from "./components/QaWelcomeNotice.js";
 import { statusText, titleFromMessages } from "./components/surface-utils.js";
 import { useThinkingPhrase } from "./components/thinking-phrases.js";
+import { focusRing, isInert, trapKeys } from "./focus-ring.js";
 import {
   QaUserSettingsDialog,
   type QaSettingsSectionId,
@@ -194,57 +195,6 @@ export type QaSurfaceProps = PropsRuntime<"shell.overlay"> &
   PropsRenderSlots<"qa.surface.panel"> &
   InjectFace<QaSurfaceFace>;
 
-function focusable(root: HTMLElement): HTMLElement[] {
-  return [
-    ...root.querySelectorAll<HTMLElement>(
-      "button:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])",
-    ),
-  ].filter((element) => !element.hidden);
-}
-
-/**
- * The roots the Tab ring walks: the surface, then the notice stack it paints
- * in `document.body`.
- */
-function focusRing(roots: readonly (HTMLElement | null)[]): HTMLElement[] {
-  return roots
-    .filter((root): root is HTMLElement => root !== null)
-    .flatMap((root) => focusable(root));
-}
-
-/**
- * Keep Tab inside the QA interface.
- *
- * The ring is wider than `<main>`: the notice stack is a portal that sits after
- * the surface in the page, so a Tab leaving the composer walks into it, and the
- * edge where the key is caught and turned back is the stack's last button — not
- * the last control inside `<main>`, which is where it stopped the reader short
- * of the notice. A key typed inside the portal is trapped by the handler
- * mounted on the stack: `<main>` is not its ancestor and never hears it.
- */
-function trapKeys(
-  event: KeyboardEvent<HTMLElement>,
-  roots: readonly (HTMLElement | null)[],
-): void {
-  event.stopPropagation();
-  if (event.key !== "Tab") return;
-  const items = focusRing(roots);
-  if (items.length === 0) {
-    event.preventDefault();
-    event.currentTarget.focus();
-    return;
-  }
-  const first = items[0];
-  const last = items.at(-1);
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last?.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first?.focus();
-  }
-}
-
 /** Same follow threshold the rail uses: this close to the floor is "at bottom". */
 function isNearBottom(element: HTMLElement): boolean {
   return (
@@ -293,8 +243,30 @@ export function QaSurface(props: QaSurfaceProps) {
   const surface = useRef<HTMLElement>(null);
   /** The notice stack: after `<main>` in the page, inside the ring with it. */
   const noticeStack = useRef<HTMLDivElement>(null);
-  /** Whether the keyboard is working the stack, so its removal is the reader's loss. */
-  const keyboardInStack = useRef(false);
+  /**
+   * The control the keyboard last held inside the ring, and the step it held in
+   * it. Recorded as focus moves, so it names where the reader is rather than
+   * where they once were: focus landing anywhere outside the ring — a dialog,
+   * the native shell, the page's own background — clears it.
+   */
+  const ringAnchor = useRef<{ element: HTMLElement; index: number } | null>(
+    null,
+  );
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) {
+        ringAnchor.current = null;
+        return;
+      }
+      const index = focusRing([surface.current, noticeStack.current]).indexOf(
+        target,
+      );
+      ringAnchor.current = index < 0 ? null : { element: target, index };
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
   /**
    * Keys typed in the surface: Tab stays in the ring, and nothing else of the
    * key reaches the harness the overlay is built on.
@@ -303,14 +275,23 @@ export function QaSurface(props: QaSurfaceProps) {
     trapKeys(event, [surface.current, noticeStack.current]);
   }, []);
   /**
-   * Keys typed in the notice stack. Only the Tab this ring answers is taken:
-   * the stack is painted above whatever dialog is open, and an Escape pressed
-   * here is the reader's answer to that dialog, not the surface's business.
+   * Keys typed in the notice stack, where no ancestor `<main>` can hear them.
+   *
+   * Only the Tab this ring answers is taken; every other key is left to bubble
+   * as the browser would carry it, so a dialog that listens on the window —
+   * `QaModal`, and the settings dialog built on it — still hears the Escape the
+   * reader gives it. A dialog that traps keys on its own portal root is the
+   * other case: the stack is that dialog's sibling, not its descendant, so the
+   * key never reaches it. The onboarding gate is such a dialog, and it refuses
+   * Escape by design; while it holds the surface inert the stack steps out of
+   * the ring too, because a second trap painted over the gate's own would strand
+   * the reader in a stack of three buttons with no way back to the dialog.
    */
   const trapNoticeKeys = useCallback((event: KeyboardEvent<HTMLElement>) => {
-    keyboardInStack.current = true;
     if (event.key !== "Tab") return;
-    trapKeys(event, [surface.current, noticeStack.current]);
+    const root = surface.current;
+    if (root !== null && isInert(root)) return;
+    trapKeys(event, [root, noticeStack.current]);
   }, []);
   /** Turn marks of the visible transcript, kept in a ref for stable callbacks. */
   const railItemsRef = useRef<readonly QaTurnRailItem[]>([]);
@@ -960,16 +941,27 @@ export function QaSurface(props: QaSurfaceProps) {
     onSwitch: handleSwitch,
   });
   /**
-   * Waving the last line off takes the control the reader was working out of
-   * the page, and a page with nothing focused answers Tab with the browser's
-   * own order — which leaves the QA interface. The surface takes the focus back.
+   * A line leaving the stack takes the control the reader was working out of the
+   * page, and a page with nothing focused answers Tab with the browser's own
+   * order — which leaves the QA interface. Most of the ways a line goes leave
+   * the stack standing and its count of lines where it was: waving one of the
+   * three off, a fourth turn pushing the oldest out of a full stack, the opt-in
+   * going away once the browser has answered the permission question. So the
+   * loss is read where it happens — the control the ring held is out of the page
+   * and nothing of the ring holds the focus — and the reader is put back on the
+   * step they stood on, or on the nearest control the ring still has. The anchor
+   * goes only with the focus it hands back: a page takes the focus out of a
+   * removed control on its own moment, not in step with this render.
    */
   useEffect(() => {
-    if (turnNotices.items.length > 0 || !keyboardInStack.current) return;
-    keyboardInStack.current = false;
-    const root = surface.current;
-    if (root !== null && !root.contains(document.activeElement)) root.focus();
-  }, [turnNotices.items.length]);
+    const anchor = ringAnchor.current;
+    if (anchor === null || anchor.element.isConnected) return;
+    const ring = focusRing([surface.current, noticeStack.current]);
+    const active = document.activeElement;
+    if (active !== null && ring.includes(active as HTMLElement)) return;
+    ringAnchor.current = null;
+    (ring[Math.min(anchor.index, ring.length - 1)] ?? surface.current)?.focus();
+  });
 
   // The audit provider is optional: `auditSnapshot.api` is null until the
   // audit plugin's client bundle is loaded, and the badge is absent until
