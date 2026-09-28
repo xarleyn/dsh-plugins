@@ -141,14 +141,19 @@ export function useQaTurnNotifications(
     [onSwitch],
   );
 
-  // The offer is a single question per browser: asked when the desktop channel
-  // is still allowed by the deployment, unanswered, and the browser has not
-  // decided yet.
+  // The browser's answer about this origin and the reader's answer about the
+  // channel are separate questions, and the switch is for whichever is still
+  // open. An unanswered browser is asked by the click; a granted one has nothing
+  // left to be asked, and anonymously this page is the whole record of the
+  // channel — without the action a reader who allowed the prompt elsewhere has
+  // no way in. A signed-in reader has the settings section for that instead.
+  const permission = readNotificationPermission();
   const offered =
     notifications.enabled &&
     notifications.allowOs &&
     !prefs.osOffered &&
-    readNotificationPermission() === "default";
+    (permission === "default" ||
+      (permission === "granted" && account === undefined && !prefs.osEnabled));
 
   // Waving a notice off while the offer is on screen is the answer to the
   // offer too: it never returns to ask a second time.
