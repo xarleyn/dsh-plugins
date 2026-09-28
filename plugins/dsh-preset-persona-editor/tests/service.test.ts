@@ -31,16 +31,41 @@ function contextOf(
 }
 
 function build(roster: PresetRosterFace): PresetPersonaEditor {
-  return new PresetPersonaEditor(contextOf(roster), {
-    logger: silentPluginLogger(),
-  });
+  return new PresetPersonaEditor(
+    contextOf(roster),
+    {},
+    {
+      logger: silentPluginLogger(),
+    },
+  );
 }
 
 describe("PresetPersonaEditor", () => {
   it("registers itself under the wire service key", () => {
     const ctx = contextOf(rosterOf({}));
-    new PresetPersonaEditor(ctx, { logger: silentPluginLogger() });
+    new PresetPersonaEditor(ctx, {}, { logger: silentPluginLogger() });
     expect(ctx.get("presetPersonaEditor")).toBeDefined();
+  });
+
+  it("takes the deployment's config row where Cordis puts it", async () => {
+    // Cordis builds a plugin positionally — `new callback(ctx, config)` — and
+    // validates that row against a `static Config` this plugin does not have.
+    // A deployment that still carries the four ceilings decision D2 removed must
+    // read as an ignored row, so a collapsed signature — which would take it as
+    // the seam below — fails here on the logger that never answers.
+    const warn = vi.fn();
+    const service = new PresetPersonaEditor(
+      contextOf(rosterOf({})),
+      { allowComplete: false, maxSections: 1 },
+      { logger: { ...silentPluginLogger(), warn } },
+    );
+    await expect(service.readPersona("ghost")).rejects.toMatchObject({
+      code: "preset-persona/not-found",
+    });
+    expect(warn).toHaveBeenCalledWith(
+      "preset-persona.read-refused",
+      expect.objectContaining({ agentPreset: "ghost" }),
+    );
   });
 
   it("lists the roster with each preset's persona state", async () => {
@@ -85,6 +110,7 @@ describe("PresetPersonaEditor", () => {
       contextOf(roster, (name) =>
         name === "DEPLOYMENT_PERSONA_PREFIX" ? 0 : 10200,
       ),
+      {},
       { logger: silentPluginLogger() },
     );
     const document = await service.readPersona("demo");
@@ -115,9 +141,13 @@ describe("PresetPersonaEditor", () => {
 
   it("logs the host's own reason beside the not-found it answers with", async () => {
     const warn = vi.fn();
-    const service = new PresetPersonaEditor(contextOf(rosterOf({})), {
-      logger: { ...silentPluginLogger(), warn },
-    });
+    const service = new PresetPersonaEditor(
+      contextOf(rosterOf({})),
+      {},
+      {
+        logger: { ...silentPluginLogger(), warn },
+      },
+    );
     await expect(service.readPersona("ghost")).rejects.toMatchObject({
       code: "preset-persona/not-found",
     });
@@ -135,6 +165,7 @@ describe("PresetPersonaEditor", () => {
     const warn = vi.fn();
     const service = new PresetPersonaEditor(
       contextOf(rosterOf({ retired: { content: null } })),
+      {},
       { logger: { ...silentPluginLogger(), warn } },
     );
     const document = await service.readPersona("retired");
@@ -157,6 +188,7 @@ describe("PresetPersonaEditor", () => {
           withoutReadDocument: true,
         }),
       ),
+      {},
       { logger: { ...silentPluginLogger(), warn } },
     );
     const catalog = await service.listPersonas();
