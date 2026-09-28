@@ -87,8 +87,16 @@ export function useQaTurnNotifications(
     [account, prefs],
   );
 
+  // The record is merged onto what this page last wrote, not onto the snapshot a
+  // callback was built with: the browser answers its prompt on its own schedule,
+  // and the page keeps rendering while it waits.
+  const written = useRef(prefs);
   const savePrefs = useCallback(
-    (next: QaNotificationPrefs) => {
+    (
+      patch: (previous: QaNotificationPrefs) => Partial<QaNotificationPrefs>,
+    ) => {
+      const next = { ...written.current, ...patch(written.current) };
+      written.current = next;
       setPrefs(next);
       writeNotificationPrefs(storage, storageKey, next);
     },
@@ -149,6 +157,14 @@ export function useQaTurnNotifications(
   // `osEnabled`, and anonymously this page is the whole record of that channel —
   // without the action a reader who allowed the prompt elsewhere has no way in.
   // A signed-in reader has the settings section for that instead.
+  //
+  // The branches are deliberately uneven about `osEnabled`. Where the browser
+  // still owes its answer the channel delivers nothing whatever the record says,
+  // so the record cannot close the offer: a reader who revoked the permission in
+  // the address bar has this page's question as the only way of putting it back,
+  // and on a stand without accounts as the only way of switching the channel on
+  // again after a refusal. Where the answer is already granted there is no
+  // question to ask, and only the reader's own answer is open.
   const permission = readNotificationPermission();
   const unansweredBrowser = permission === "default" && !prefs.osOffered;
   const offered =
@@ -166,10 +182,9 @@ export function useQaTurnNotifications(
   const dismiss = useCallback(
     (key: string) => {
       setItems((previous) => previous.filter((item) => item.key !== key));
-      if (offered && unansweredBrowser)
-        savePrefs({ ...prefs, osOffered: true });
+      if (offered && unansweredBrowser) savePrefs(() => ({ osOffered: true }));
     },
-    [offered, unansweredBrowser, prefs, savePrefs],
+    [offered, unansweredBrowser, savePrefs],
   );
 
   // Answering the offer writes the choice where it belongs: on the account once
@@ -183,18 +198,17 @@ export function useQaTurnNotifications(
     const spendsThePrompt = readNotificationPermission() === "default";
     void requestNotificationPermission().then((answer) => {
       const granted = answer === "granted";
-      savePrefs({
-        ...prefs,
+      savePrefs((previous) => ({
         osEnabled: granted,
-        osOffered: prefs.osOffered || spendsThePrompt,
-      });
+        osOffered: previous.osOffered || spendsThePrompt,
+      }));
       if (account === undefined) return;
       void account.onSave({
         inApp: account.notifications.inApp,
         desktop: granted,
       });
     });
-  }, [account, prefs, savePrefs]);
+  }, [account, savePrefs]);
 
   return {
     items,

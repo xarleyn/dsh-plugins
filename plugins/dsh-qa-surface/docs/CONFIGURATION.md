@@ -549,14 +549,22 @@ the one a hidden or backgrounded tab can use. With it off a finished turn stays
 inside the page, which is the answer for a shared laptop, where a personal
 notice is everybody's notice.
 
-The reader's own answer about both channels lives in the settings dialog, on the
+Two answers stand behind the desktop channel, and each keeps its own record: what
+the browser allows for this origin, and what the reader chose for the channel.
+The reader's answer about both channels lives in the settings dialog, on the
 account: it follows the person to another browser, and what they chose yesterday
 in this browser decides nothing about who signs in today. On a stand without
 accounts there is no account to write to, so the desktop choice stays in the
-browser that made it. Either way the answer is asked for once — from a click,
-never on load or once per turn — and a denial, or a browser that offers no such
-API (which includes a stand served over plain HTTP), leaves the in-page line
-standing.
+browser that made it.
+
+The notice offers its action while either answer is still open, and the action is
+asked for from a click — never on load, never once per turn. A browser that has
+already granted is asked nothing, and only the reader's own choice is open; a
+browser whose permission the reader took back in the address bar is asked again,
+because with no grant the channel delivers nothing whatever the record says, and
+this page is where the channel is switched on. A denial, or a browser that offers
+no such API (which includes a stand served over plain HTTP), leaves the in-page
+line standing.
 
 ## Configuration channel over the LAN
 

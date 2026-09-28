@@ -28,6 +28,15 @@ asked the browser nothing leaves the mark untouched, so a reader who later revok
 the permission in the address bar finds the question again rather than a page that
 stopped asking.
 
+The branches stay uneven about `osEnabled`, on purpose. Where the browser still
+owes its answer the channel delivers nothing whatever the record says, so the
+record cannot close the offer: after a revoke in the address bar this page's
+question is the only way the channel gets back, and the answer to it is what the
+record keeps — a refusal switches the channel off rather than leaving it claiming
+a delivery the browser will not allow. A write made while the prompt is open is
+merged onto the record this page last wrote, not onto the one the click started
+from, so the answer settles the record instead of rolling it back.
+
 A signed-in reader is left alone with the settings section: the browser's question
 is still asked where it is unanswered, and the channel itself is not the notice's
 to switch. A denied browser, a page without the notification API and a stand that
