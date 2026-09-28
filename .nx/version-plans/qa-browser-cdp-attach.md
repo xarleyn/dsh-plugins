@@ -24,6 +24,12 @@ the runtime never resolves the endpoint itself, so a name whose answer a search
 domain or a resolver can change proves nothing. For an `http` endpoint what the
 gate bounds is the first hop — that server replies with the `ws` URL Playwright
 then dials — so a deployment that must pin the dialled address writes a `ws` URL.
+What the gate opens is not a browser that answers, either: Chromium replies to a
+DevTools request only when its `Host` header is an IP address or `localhost`, on
+the `/json/version` question and on the `ws` upgrade alike, so a container's
+service name is refused by the browser itself and DOCKER.md now names an address.
+The opt-in run puts that question to a live browser rather than taking the shape
+on faith.
 Attach mode owns no process, and the config says so rather than quietly ignoring
 the keys that would shape one — `headless: false`, an `executablePath`, a
 `browserChannel` other than `chromium`, and `chromiumSandbox: false` are each

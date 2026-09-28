@@ -189,6 +189,14 @@ own policy, so an endpoint beyond loopback — including one that merely looks l
 it — needs `allowRemoteCdpEndpoint: true` written next to it: a decision someone
 made on purpose, not a default.
 
+The gate is this plugin's half of the answer, and the browser keeps its own:
+Chromium checks the `Host` header of a DevTools request and answers an IP address
+or `localhost`, on both hops — the `/json/version` question an `http` endpoint
+asks and the `ws` upgrade that answer names. A container's service name clears
+the gate once the switch is written and is then refused by the browser, before a
+page ever opens, so write the address rather than the name. The opt-in run puts
+the question to a live browser rather than taking the shape on faith.
+
 The keys that choose and shape a process are refused under `attach` rather than
 ignored: `executablePath`, a `browserChannel` other than `chromium`, and
 `chromiumSandbox: false` all describe a Chromium this plugin starts, and a
