@@ -5,9 +5,11 @@ import {
   requiredStringList,
   requiredText,
 } from "../../coerce.js";
-import type { IntegrationBroker } from "../../broker.js";
-import type { IntegrationPrincipal } from "../../types.js";
-import { createToolKit } from "../../tool-kit.js";
+import {
+  createToolKit,
+  type ProviderToolFactoryOptions,
+} from "../../tool-kit.js";
+import { JIRA_OPERATIONS } from "./catalog.js";
 import { ISSUE_INCLUDES, SEARCH_FIELDS } from "./operations.js";
 
 export const JIRA_TOOL_NAMES = [
@@ -56,13 +58,14 @@ function names(description: string) {
  * integration of the QA user who owns the DSH session, and the tool schemas
  * carry no user, credential or site selector.
  */
-export function createJiraTools(options: {
-  readonly broker: IntegrationBroker;
-  readonly principalForSession: (
-    sessionId: string,
-  ) => IntegrationPrincipal | undefined;
-}): readonly ToolDefinition[] {
-  const kit = createToolKit({ ...options, provider: "jira" });
+export function createJiraTools(
+  options: ProviderToolFactoryOptions,
+): readonly ToolDefinition[] {
+  const kit = createToolKit({
+    ...options,
+    provider: "jira",
+    operations: JIRA_OPERATIONS,
+  });
   const tool = kit.tool;
 
   return [
