@@ -48,11 +48,17 @@ interface LocaleService {
 
 /**
  * The settings service the card reads its namespace through. `get` answers a
- * namespace the profile does not carry with nothing, and the guard below reads
- * that as “no card to draw” — the same outcome as an absent service.
+ * controller for any name, served or not, so "this profile does not carry the
+ * namespace" is not in its reply — the transient lives in the snapshot status
+ * instead. The instrument that says whether the namespace is served is
+ * `whileServed`, and the card claims its seat inside it.
  */
 interface ConfigFormsService {
-  get?(namespace: string): NamespaceForm | undefined;
+  get(namespace: string): NamespaceForm;
+  whileServed(
+    namespaces: readonly string[],
+    register: (served: ReadonlySet<string>) => () => void,
+  ): () => void;
 }
 
 /** The seat the card claims on the Settings → Plugins page. */
@@ -67,7 +73,7 @@ interface TabSeat {
 
 /** The slot service that turns the seat and the component into a page. */
 interface SlotsService {
-  inject(slot: string, factory: () => unknown): void;
+  inject(slot: string, factory: () => () => void): () => void;
   register(
     seat: TabSeat,
     component: (props: ConfigCardProps) => unknown,
@@ -101,26 +107,34 @@ export function apply(ctx: DocImpactClientContext): void {
   }
 
   const configForms = ctx.configForms;
-  if (!configForms || typeof configForms.get !== "function") return;
-  const namespace = configForms.get(SETTINGS_NS);
-  if (!namespace) return;
-  const form = new SettingsForm(namespace);
+  if (
+    !configForms ||
+    typeof configForms.get !== "function" ||
+    typeof configForms.whileServed !== "function"
+  )
+    return;
+  const form = new SettingsForm(configForms.get(SETTINGS_NS));
 
-  ctx.slots.inject("settings.plugins.tab", function () {
-    return ctx.slots.register(
-      {
-        name: "settings.plugins.tab",
-        id: SETTINGS_NS,
-        order: 30,
-        label: function () {
-          return _t("cardTitle");
+  // `whileServed` wraps the injection rather than the card body: it is the slot
+  // injection that draws the tab, so a namespace this profile does not serve
+  // would otherwise leave an empty tab on the Plugins page.
+  configForms.whileServed([SETTINGS_NS], function () {
+    return ctx.slots.inject("settings.plugins.tab", function () {
+      return ctx.slots.register(
+        {
+          name: "settings.plugins.tab",
+          id: SETTINGS_NS,
+          order: 30,
+          label: function () {
+            return _t("cardTitle");
+          },
+          locale: LOCALE_NS,
+          inject: function () {
+            return form.inject();
+          },
         },
-        locale: LOCALE_NS,
-        inject: function () {
-          return form.inject();
-        },
-      },
-      ConfigCard,
-    );
+        ConfigCard,
+      );
+    });
   });
 }

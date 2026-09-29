@@ -218,10 +218,21 @@ describe("staged settings form", () => {
     actions.resetField("reminders");
 
     // The five drafts above are refused by the compiler, which `typecheck` turns
-    // into a build failure the moment one of them stops being an error. The last
-    // call is the one the runtime can also catch: a field name the card does not
-    // edit has to be named, because in the built bundle the type argument that
-    // ruled it out is gone.
+    // into a build failure the moment one of them stops being an error. The names
+    // below are the ones the runtime has to catch too, because in the built
+    // bundle the type argument that ruled them out is gone — and a key the specs
+    // object merely *inherits* is not a field either, which is why the guard
+    // asks for an own property rather than for `undefined`.
     expect(() => form.getSnapshot()).toThrow(/has no field reminders/u);
+    actions.discard();
+
+    // @ts-expect-error — `"toString"` reaches the specs object through its prototype.
+    actions.resetField("toString");
+    expect(() => form.getSnapshot()).toThrow(/has no field toString/u);
+    actions.discard();
+
+    // @ts-expect-error — neither is the prototype itself a field.
+    actions.resetField("__proto__");
+    expect(() => form.getSnapshot()).toThrow(/has no field __proto__/u);
   });
 });

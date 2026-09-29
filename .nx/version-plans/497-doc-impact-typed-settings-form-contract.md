@@ -19,10 +19,11 @@ Two readings of the Host document became honest readings. The document is raw
 profile JSON, and the field specs only describe its shape: where a field promises
 a scalar and the layer holds an object or an array instead, the card now shows the
 default the field would fall back to rather than carrying that node into the
-field's value (an unchecked cast used to do the latter). And a namespace the host
-does not serve answers no form at all, which the bootstrap reads as "no card to
-register" the same way it reads an absent settings service — previously the card
-was built over that missing form and threw at its first snapshot read.
+field's value (an unchecked cast used to do the latter). And the Host hands out a
+settings form for any name asked of it, served or not, so the card asks the service
+that knows instead: the tab is claimed only while the namespace is served, where
+before it was claimed unconditionally and an unserved namespace left an empty tab
+on the Plugins page.
 
 What the card writes is unchanged. Drafts still never write before Save, Save
 still commits field-granular path operations in staging order, a save that did not

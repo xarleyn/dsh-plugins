@@ -202,9 +202,14 @@ export const FIELDS: readonly FieldSpec[] = Object.values(SPECS);
  * a field name that arrives from the Host or from a string is a card bug, and in
  * the built bundle the type is gone, so the alternative is a `TypeError` on
  * `undefined.path` from inside the snapshot read.
+ *
+ * The check is an own-property one: `SPECS` is a plain literal, so a name that
+ * only its prototype carries (`"toString"`, `"constructor"`, `"__proto__"`)
+ * answers with a member that is not a spec of anything, and the `undefined.path`
+ * the guard exists to prevent comes back through that door.
  */
 export function specOf<F extends SettingsField>(field: F): SpecsByField[F] {
-  const spec: SpecsByField[F] | undefined = SPECS[field];
+  const spec = Object.hasOwn(SPECS, field) ? SPECS[field] : undefined;
   if (spec === undefined) {
     throw new Error(`doc-impact card has no field ${String(field)}`);
   }
