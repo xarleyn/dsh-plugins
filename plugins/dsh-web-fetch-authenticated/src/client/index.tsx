@@ -1,7 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
   InjectFace,
   PropsRuntime,
@@ -46,6 +46,11 @@ import {
 
 const REFRESH_INTERVAL_MS = 5_000;
 
+// The Plugins page keys a row's configuration by `<package name>#<row id>`,
+// and the page resolves the Host form for the row id as the settings
+// namespace — both facts come from this package's `cordis.patch.yml` row.
+const WEB_FETCH_AUTH_ROW_CONFIG_KEY = `@yadsh/dsh-web-fetch-authenticated#${WEB_FETCH_AUTH_SETTINGS_NAMESPACE}`;
+
 interface RemoteService {
   status(): Promise<RemoteResult<ProviderStatusReport>>;
   testRule(ruleId: string, url?: string): Promise<RemoteResult<RuleTestReport>>;
@@ -58,7 +63,13 @@ interface ClientRemote {
   credentials: CredentialsRemote;
 }
 
-type CardProps = PropsRuntime<"settings.plugins.tab"> & InjectFace<CardFace>;
+// The row page renders `plugins.row.config` with its own owner `form` seat,
+// and the renderer spreads owner props after the injected face — so this
+// card's full ConfigForm rides under `settingsForm`, a name the owner never
+// occupies. The host seat is read but unused: the card keeps its own live
+// store binding over the same namespace.
+type CardProps = PropsRuntime<"plugins.row.config"> &
+  InjectFace<Omit<CardFace, "form"> & { settingsForm: CardFace["form"] }>;
 
 function displayError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -67,13 +78,17 @@ function displayError(error: unknown): string {
 }
 
 function WebFetchAuthCard({
-  form,
+  view,
+  settingsForm,
   status,
   testRule,
   diagnose,
   credentials,
 }: CardProps) {
-  const settingsStore = useMemo(() => bindSettingsExternalStore(form), [form]);
+  const settingsStore = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const settings = useSyncExternalStore(
     settingsStore.subscribe,
     settingsStore.getSnapshot,
@@ -102,6 +117,7 @@ function WebFetchAuthCard({
   }, [status]);
 
   useEffect(() => {
+    if (view !== "page") return;
     const stopPolling = startVisibilityAwarePolling(
       refresh,
       REFRESH_INTERVAL_MS,
@@ -110,33 +126,36 @@ function WebFetchAuthCard({
       stopPolling();
       activeRequest.current += 1;
     };
-  }, [refresh]);
+  }, [refresh, view]);
 
   const setPath = useCallback(
     (path: string[], value: unknown) => {
       const [field, nested] = path;
       if (field === undefined) return;
       if (nested === undefined) {
-        void form.set(field, value);
+        void settingsForm.set(field, value);
         return;
       }
-      const current = form.getSnapshot().value;
+      const current = settingsForm.getSnapshot().value;
       if (field === "audit") {
-        void form.set(field, { ...current?.audit, [nested]: value });
+        void settingsForm.set(field, { ...current?.audit, [nested]: value });
       } else if (field === "limits") {
-        void form.set(field, { ...current?.limits, [nested]: value });
+        void settingsForm.set(field, { ...current?.limits, [nested]: value });
       } else if (field === "defaultPolicy") {
-        void form.set(field, { ...current?.defaultPolicy, [nested]: value });
+        void settingsForm.set(field, {
+          ...current?.defaultPolicy,
+          [nested]: value,
+        });
       }
     },
-    [form],
+    [settingsForm],
   );
 
   const setRules = useCallback(
     (rules: AuthenticatedFetchRule[]) => {
-      void form.set("rules", rules);
+      void settingsForm.set("rules", rules);
     },
-    [form],
+    [settingsForm],
   );
 
   const warnings = useMemo(
@@ -144,10 +163,13 @@ function WebFetchAuthCard({
     [config],
   );
 
+  // The row page also asks this entry for a one-line description fallback;
+  // the form surface belongs to the page view only.
+  if (view !== "page") return null;
   if (settings.status === "unavailable") return null;
 
-  // The tab panel mounts this contribution as its own content, so the list the
-  // shell's `<li>` root belongs to is ours (AGENTS.md card contract).
+  // The row page renders the entry inside its own sections column, so the
+  // list the shell's `<li>` root belongs to stays ours (AGENTS.md contract).
   return (
     <ul className="wfa-cards">
       <CardShell
@@ -176,7 +198,13 @@ function WebFetchAuthCard({
           config={config}
           writable={writable}
           setRules={setRules}
-          face={{ form, status, testRule, diagnose, credentials }}
+          face={{
+            form: settingsForm,
+            status,
+            testRule,
+            diagnose,
+            credentials,
+          }}
         />
         <GlobalSection config={config} writable={writable} setPath={setPath} />
         <DiagnosticsSection diagnose={diagnose} />
@@ -190,7 +218,7 @@ function WebFetchAuthCard({
 // browser-side plugin fails to apply.
 export const inject = ["slots", "configForms", "remote", "remote.credentials"];
 
-/** Mount the generated Remote contribution and register the Plugins settings tab. */
+/** Mount the generated Remote contribution and register the card on the plugin's row page of the Plugins panel. */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const remote = (ctx as unknown as { remote: ClientRemote }).remote;
   const disposeRemote = await remote.$mount(webFetchAuthRemote);
@@ -213,14 +241,16 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         diagnose: (url) => injectedRemote.webFetchAuth.diagnose(url),
         credentials: injectedRemote.credentials,
       };
+      // The owner `form` seat of this slot lands after the injected face, so
+      // the card's ConfigForm crosses the boundary renamed (see CardProps).
+      const { form: settingsForm, ...faceRest } = face;
 
-      return ctx.slots.inject("settings.plugins.tab", () =>
+      return ctx.slots.inject("plugins.row.config", () =>
         ctx.slots.register(
           {
-            name: "settings.plugins.tab",
-            id: WEB_FETCH_AUTH_SETTINGS_NAMESPACE,
-            label: () => "Authenticated Web Fetch",
-            inject: () => face,
+            name: "plugins.row.config",
+            key: WEB_FETCH_AUTH_ROW_CONFIG_KEY,
+            inject: () => ({ ...faceRest, settingsForm }),
           },
           WebFetchAuthCard,
         ),

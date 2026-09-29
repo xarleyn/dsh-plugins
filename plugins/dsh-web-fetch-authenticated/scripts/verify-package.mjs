@@ -47,13 +47,17 @@ await runVerifyPackage({
       /viewBox: "0 0 14 14"/u,
       /wfa-icon-btn/u,
       /"http\(s\)"/u,
-      // The card mounts as its own tab of the Plugins settings section: the
-      // keyed `settings.plugin.item` seat was deleted in `0.1.7`.
-      /"settings\.plugins\.tab"/u,
-      // A tab seat and the `ctx.configForms` namespace are one string, and the
-      // Host derives both from the `cordis.patch.yml` row id.
+      // The card mounts on the plugin's own row page of the Plugins panel:
+      // the keyed `settings.plugins.tab` seat of the old settings section is
+      // gone, and the entry registers into `plugins.row.config`.
+      /"plugins\.row\.config"/u,
+      // The row page opens the entry by `<package name>#<row id>`, and the
+      // Host derives the row id from the `cordis.patch.yml` row — the same
+      // string as the `ctx.configForms` namespace, so a value saved before
+      // the move keeps reading under it.
+      /WEB_FETCH_AUTH_ROW_CONFIG_KEY = `@yadsh\/dsh-web-fetch-authenticated#\$\{WEB_FETCH_AUTH_SETTINGS_NAMESPACE\}`/u,
+      /key:\s*WEB_FETCH_AUTH_ROW_CONFIG_KEY/u,
       /WEB_FETCH_AUTH_SETTINGS_NAMESPACE\s*=\s*"web-fetch-authenticated"/u,
-      /id:\s*WEB_FETCH_AUTH_SETTINGS_NAMESPACE/u,
       /configForms\.get\(/u,
     ],
     cardContract: {
