@@ -56,9 +56,9 @@ Rules that keep the tiers from collapsing into each other:
 clone, which is the whole guard — `.gitignore` yields to `git add -f`, and no
 pre-commit hook is tracked here, so a machine that blocks a staged `.private/…`
 path does it with a local hook that is not committed and a `core.hooksPath` no
-clone inherits. Treat the path as unprotected the moment `git add -A` is near
-it. It lives in the **main** checkout and is invisible from a worktree, so from
-a worktree write the absolute path. It is not protected from `git clean -xfd`.
+clone inherits. It lives in the **main** checkout and is invisible from a
+worktree, so from a worktree write the absolute path. It is not protected from
+`git clean -xfd`.
 
 ## The memory tier, exactly
 
