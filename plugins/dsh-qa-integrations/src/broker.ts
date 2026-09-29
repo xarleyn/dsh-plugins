@@ -2,7 +2,10 @@ import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { IntegrationError, type IntegrationErrorCode } from "./errors.js";
 import type { IntegrationProvider } from "./providers/contract.js";
 import type { IntegrationProviderRegistry } from "./providers/registry.js";
-import type { IntegrationRepository } from "./repository.js";
+import type {
+  IntegrationBindingGeneration,
+  IntegrationRepository,
+} from "./repository.js";
 import type { SecretStore } from "./secrets/secret-store.js";
 import { DEFAULT_SERVICE_RATE_LIMIT } from "./service-credentials/config.js";
 import {
@@ -390,6 +393,24 @@ export class IntegrationBroker {
   }
 
   /**
+   * The identity a write-back has to compare against: the row, its revision and
+   * the credential of the binding this operation started from. Every field is
+   * needed — the revision alone cannot tell a replaced connection from a newly
+   * created one, because a disconnect erases the row and the next connect starts
+   * its revision over at the first number.
+   */
+  private bindingGeneration(
+    integration: StoredIntegration,
+  ): IntegrationBindingGeneration {
+    return {
+      bindingId: integration.id,
+      bindingRevision: integration.bindingRevision,
+      secretRef: integration.secretRef,
+      serviceProfileId: integration.serviceProfileId,
+    };
+  }
+
+  /**
    * Store one validation verdict against the binding it was produced from. A
    * probe outlives its binding whenever the account reconnects or switches
    * credential mode while the provider is being reached: what it found describes
@@ -410,11 +431,7 @@ export class IntegrationBroker {
       success,
       errorCode,
       capabilities,
-      {
-        bindingRevision: integration.bindingRevision,
-        secretRef: integration.secretRef,
-        serviceProfileId: integration.serviceProfileId,
-      },
+      this.bindingGeneration(integration),
     );
     if (applied) return;
     this.logger.warn("credential.validation-stale", {
@@ -458,7 +475,10 @@ export class IntegrationBroker {
   /**
    * Move one binding between credential sources. Both directions invalidate
    * everything derived from the previous identity by bumping the binding
-   * revision, and neither direction ever falls back on its own.
+   * revision, and neither direction ever falls back on its own. A switch that
+   * reaches upstream first (the personal direction validates the stored token)
+   * only lands on the binding it started from, so a reconnect during that probe
+   * costs the switch rather than rewriting the new connection.
    */
   async setCredentialSource(
     principal: IntegrationPrincipal,
@@ -475,7 +495,7 @@ export class IntegrationBroker {
     }
     if (source === "service") {
       const resolved = this.resolveService(principal, integration);
-      this.repository.setCredentialSource({
+      const switched = this.repository.setCredentialSource({
         principal,
         provider: providerId,
         source: "service",
@@ -484,7 +504,11 @@ export class IntegrationBroker {
         tenantId: resolved.profile.portal,
         externalUserId: `service:${resolved.profile.id}`,
         displayName: resolved.profile.label,
+        expected: this.bindingGeneration(integration),
       });
+      if (switched === undefined) {
+        throw this.refuseStaleSwitch(providerId, integration);
+      }
       this.repository.audit({
         ownerUserId: principal.userId,
         provider: providerId,
@@ -512,7 +536,11 @@ export class IntegrationBroker {
       credential: await this.secrets.decrypt(secret),
       credentialSource: "personal",
     });
-    this.repository.setCredentialSource({
+    // The probe above reached upstream, so the binding may have moved while it
+    // was away. The switch carries the identity that probe found; writing it
+    // unconditionally would put a replaced token's account and grant onto
+    // whatever connection the account has now.
+    const switched = this.repository.setCredentialSource({
       principal,
       provider: providerId,
       source: "personal",
@@ -521,7 +549,11 @@ export class IntegrationBroker {
       tenantId: validation.tenantId,
       externalUserId: validation.externalUserId,
       displayName: validation.displayName,
+      expected: this.bindingGeneration(integration),
     });
+    if (switched === undefined) {
+      throw this.refuseStaleSwitch(providerId, integration);
+    }
     this.repository.audit({
       ownerUserId: principal.userId,
       provider: providerId,
@@ -536,6 +568,28 @@ export class IntegrationBroker {
       credentialSource: "personal",
     });
     return this.summary(principal, providerId);
+  }
+
+  /**
+   * Refuse a switch the store would not apply: the account reconnected while the
+   * request was on its way, so the binding it was asked against is gone and the
+   * identity it carries is a token that has already been replaced. Nothing was
+   * written, so the answer names the lost generation rather than claiming a
+   * change of mode the store never made.
+   */
+  private refuseStaleSwitch(
+    providerId: IntegrationProviderId,
+    integration: StoredIntegration,
+  ): IntegrationError {
+    this.logger.warn("credential.switch-stale", {
+      provider: providerId,
+      integrationId: integration.id,
+      bindingRevision: integration.bindingRevision,
+    });
+    return new IntegrationError(
+      "IntegrationNotConnected",
+      "The connection changed while the credential was being switched",
+    );
   }
 
   /**
