@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaSessionController } from "../../src/client/QaSessionController.js";
+import { QA_SESSION_IDLE_STATE } from "../../src/client/types.js";
 import { harness } from "../helpers/session-fakes.js";
 import { legacy, snapshot } from "../helpers/conversation-fakes.js";
 import type {
@@ -216,7 +217,7 @@ describe("QA session controller", () => {
     // replacement arrives under its own identity and the surface drops the
     // draft, the staged attachments and the drawers of the refused one instead
     // of handing them to a conversation nobody chose to open.
-    expect(seen[0]).toBeTypeOf("number");
+    expect(seen[0]).toBeGreaterThan(QA_SESSION_IDLE_STATE.chatKey);
     expect(controller.getSnapshot().chatKey).not.toBe(seen[0]);
     controller.dispose();
   });
