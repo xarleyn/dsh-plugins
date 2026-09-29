@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { test } from "node:test";
 
@@ -151,6 +151,45 @@ test("the PR workflow also builds pull requests that target a release branch", a
     workflow,
     /push:\s+branches: \[main\]/u,
     "direct pushes stay limited to main",
+  );
+});
+
+test("the tooling test command still names every tooling test that exists", async () => {
+  // CI runs `pnpm test:release`, whose value is a list of files written out one by
+  // one, while `docs/VERIFICATION.md` describes that series by its mask. A test
+  // file added under one of these directories and left out of the list is a gate
+  // no run ever executes, and the mask is exactly what hides the difference — so
+  // the list and the directories are compared here rather than trusted to the
+  // attention of whoever adds the next file.
+  const manifest = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  const command = manifest.scripts["test:release"];
+  assert.match(
+    command,
+    /^node --test \S/u,
+    "`test:release` no longer opens with `node --test` followed by its file list, so this check would be reading a different command",
+  );
+  const named = command
+    .slice("node --test ".length)
+    .trim()
+    .split(/\s+/u)
+    .sort();
+
+  const onDisk = [];
+  for (const directory of ["scripts", "packages/plugin-scripts"]) {
+    for (const entry of await readdir(
+      new URL(`../${directory}/`, import.meta.url),
+    )) {
+      if (entry.endsWith(".test.mjs")) onDisk.push(`${directory}/${entry}`);
+    }
+  }
+  onDisk.sort();
+
+  assert.deepEqual(
+    named,
+    onDisk,
+    "`test:release` must name exactly the `*.test.mjs` files of `scripts/` and `packages/plugin-scripts/` — one entry each, no duplicates. A file on disk the command omits is a check that never runs; an entry with no file behind it fails `node --test` on the spot.",
   );
 });
 
