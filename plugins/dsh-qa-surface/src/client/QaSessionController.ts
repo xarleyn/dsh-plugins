@@ -274,9 +274,11 @@ export class QaSessionController {
   private pendingSequence = 0;
   /**
    * Queued submissions whose message this binding has already seen in the
-   * Host's Inbox. The Host retires a submission echo when its queue occurrence
-   * arrives; an echo that outlives the claim it proved must not put the row
-   * back as a question still crossing the transport.
+   * Host's Inbox. The mask that keeps an echo the session library failed to
+   * retire from coming back as a question still crossing the transport: the
+   * retirement is `@deepseek-ai/dsh-api-session-controller`'s own contract, and
+   * `projectQueue` in project-session-state.ts carries the citation, the three
+   * limits the mask inherits from it, and the point where this set is dead code.
    */
   private readonly admittedSubmissions = new Set<string>();
   private policyReady = false;
@@ -1724,9 +1726,9 @@ export class QaSessionController {
       chatsRevision: this.chatsRevision,
       viewingSubagent: this.viewingSubagent,
       queuedMessages,
-      // A copy: the projection input is a value, and this set keeps being
-      // written on the next frame while the state built from it may live on.
-      admittedSubmissions: new Set(this.admittedSubmissions),
+      // Not a copy on purpose: `projectQueue` reads it synchronously and keeps
+      // nothing, while a state holding it would go stale on the next frame.
+      admittedSubmissions: this.admittedSubmissions,
       slash: this.slashView(),
       config: this.config,
       subagentNames: this.subagentNames(),
@@ -1778,11 +1780,16 @@ export class QaSessionController {
   }
 
   /**
-   * Record the queued submissions whose message the Host's queue has already
-   * listed, and forget the echoes its snapshot stopped registering. Listing the
+   * Record the queued submissions whose message the Host's Inbox has already
+   * listed, and forget the echoes the snapshot stopped registering. Listing the
    * message is the server's own receipt for it, so from that frame on the row
    * belongs to the queue: an echo the claim leaves behind must not read again
    * as a question still crossing the transport.
+   *
+   * The forgetting is one-sided and is the mask's own limit, not the Host's: a
+   * frame that carries no local echo at all — which a library honouring its
+   * retirement contract also produces — settles the receipt, so the next echo
+   * for that id draws as crossing again. See `projectQueue`.
    *
    * Read from the notification, not from the projected frame: the projection of
    * a running turn is spaced, and an absorbed frame is dropped rather than

@@ -181,19 +181,21 @@ describe("QA queue strip", () => {
 
   it("keeps nothing of a message the turn has taken", () => {
     // The strip only ever sees the queue it is handed, so this pins the frame
-    // the claim produces: the row stood there as a question the server had
-    // already taken, and the claim leaves the strip with nothing to show. A row
-    // still standing there after that frame, without a single button, reads as
-    // a question that never left the browser, and the visitor types it again.
-    // The projection is held to the same frame by
-    // tests/session/session-controller-queue.test.ts.
+    // the claim produces from the strip's side: the delivered row is gone and
+    // the row the server still holds keeps its operations. Standing where the
+    // delivered one had been, «отправляется…» with no button reads as a
+    // question that never left the browser, and the visitor types it again.
+    // That a claim hands the strip no row for a delivered send is held by the
+    // projection at tests/session/session-controller-queue.test.ts, and a strip
+    // handed no row at all is «renders nothing while no message waits».
+    const waiting = row({ id: "message-2", preview: "третий вопрос" });
     const { view, onEdit, onSendNow, onRemove } = mount({
       rows: [row({ id: "request-1", sending: true })],
     });
     expect(screen.getByRole("status").textContent).toBe("отправляется…");
     view.rerender(
       <QaQueueDock
-        rows={[]}
+        rows={[waiting]}
         running
         canEdit
         onEdit={onEdit}
@@ -202,7 +204,8 @@ describe("QA queue strip", () => {
       />,
     );
     expect(view.container.querySelector('[role="status"]')).toBeNull();
-    expect(view.container.querySelector(".dsh-qa-queue")).toBeNull();
+    expect(screen.getByText("третий вопрос")).toBeTruthy();
+    expect(screen.getByLabelText("Убрать сообщение из очереди")).toBeTruthy();
   });
 
   it("leaves the rows readable while the binding may not write", () => {

@@ -244,10 +244,14 @@ describe("QA message queue", () => {
     // admitted mid-turn, inside a spacing window, and the turn claims it before
     // the window closes. Neither of those frames reaches the projection — an
     // absorbed frame is dropped, not replayed — so the first frame the browser
-    // renders is an empty queue over an echo the Host left behind. Measuring the
-    // receipt on the projected frame would leave the buttonless «отправляется…»
-    // row there, which is the ghost this card reports.
-    const world = await ready(["saved"], 25);
+    // renders is an empty queue over an echo the session library left behind.
+    // Measuring the receipt on the projected frame would leave the buttonless
+    // «отправляется…» row there, which is the ghost this card reports.
+    //
+    // The window is deliberately wider than the test: the case must not depend
+    // on two calls fitting inside a real-time interval, and the frame that ends
+    // it projects at once because the turn is no longer running.
+    const world = await ready(["saved"], 60_000);
     const { controller } = world;
     let projected = 0;
     controller.subscribe(() => {
