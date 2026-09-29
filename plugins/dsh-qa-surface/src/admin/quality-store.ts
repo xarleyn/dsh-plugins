@@ -181,12 +181,14 @@ const MIGRATIONS: readonly SqliteMigration[] = [
   {
     version: 2,
     up: `
-      -- Retention and every newest-first list are defined by \`seq\` within one
-      -- family, so both walk (kind, seq): the cap reads the row at rank \`cap\`
-      -- to know where the overflow starts, and a re-judged rating moving to the
-      -- end of the order pays for that read. Without this index each of those
-      -- steps scans and sorts the whole family, and the feedback family is
-      -- capped at twenty thousand rows — every 👎 on the stand would sort them.
+      -- Three statements read one family's order, and all three walk (kind,
+      -- seq): the cap looks up the row at rank cap to know where the overflow
+      -- starts, a reload replays the family in insertion order, and a write
+      -- mints its place from the family's MAX(seq). Without this index the
+      -- first two sort the whole family into a temp B-tree — and the reload
+      -- runs on every read that follows a write, so the 👎 that moves a
+      -- re-judged rating to the end of the order pays for that sort twice over.
+      -- The feedback family is capped at twenty thousand rows.
       CREATE INDEX IF NOT EXISTS quality_rows_kind_seq
         ON quality_rows (kind, seq);
     `,
@@ -723,9 +725,11 @@ export class QaQualityStore {
    * already holds is re-rated — feedback disappears without anything new
    * arriving to displace it.
    *
-   * Reading that rank costs a walk over `cap` entries of the (kind, seq)
-   * index on every write — linear in the cap, not a seek — so the cap, not the
-   * family, bounds the cost; sorting the family would have cost a temp B-tree.
+   * Reading that rank is not a seek: it walks cap entries of the family's own
+   * slice of the (kind, seq) index, so the cap bounds the cost of every write,
+   * while the delete reaches only the rows it removes and a write that does not
+   * overflow pays the read alone. Without the index the same read sorts the
+   * whole family into a temp B-tree.
    */
   private applyCap(kind: QualityRowKind): void {
     this.storage.db

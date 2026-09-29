@@ -21,14 +21,23 @@ The cut now ranks instead of measuring: a family keeps the newest `cap` rows by
 already holds costs nothing, while a genuine overflow still costs exactly its
 oldest entry. The cut runs on every write and the feedback family grows to
 20 000 rows, so finding the rank reads through an index instead of scanning and
-sorting: schema version 2 adds the `(kind, seq)` index that the cap and every
-newest-first list are defined by. What that removes is the sort, not the
-traversal — the read walks as many index entries as the cap, so a family of its
-own size still costs a full walk of the covering index, bounded by the cap
-rather than by a seek.
+sorting: schema version 2 adds the `(kind, seq)` index that the cap, the reload
+of one family and the sequence a new row takes are defined by. Those three
+statements are what SQL orders here; the newest-first shape a reader sees is
+built in memory, so the index is not what gives it. What the index removes is
+the sort — from the write that trims and, more often, from the read that opens
+the file again: on twenty thousand rows that reload stopped building a temp
+B-tree and measured about half its former cost. What stays is the traversal:
+finding the rank walks as many index entries as the cap, so the cap bounds it
+rather than a seek, but only of that family's slice of the index, and the delete
+reaches just the rows it removes — a write that does not overflow pays the read
+and nothing else.
 
-The tests fill the feedback family to its cap and re-judge one record, do the
-same to the review family, fill the queue and drop one entry from its middle,
-and let the ownership sweep forget three conversations of a full queue before
-refilling it to the cap — asserting the row count and which record gave up its
-place, both in the open store and after a reopen.
+The tests fill the feedback family to its cap and re-judge one record, and do
+the same to the review family, each time asserting the row count and which
+record gave up its place both in the open store and after a reopen. Two more
+fill the queue: one drops an entry from the middle and then pushes past the cap,
+asserting in the open store, and one lets the ownership sweep forget three
+conversations of a full queue before refilling it to the cap, through the reopen
+as well. A last test reads the query plan of the rank lookup and of the reload,
+so the index that bounds this cost is checked rather than assumed.

@@ -412,27 +412,36 @@ describe("QaQualityStore storage", () => {
     const { file } = rig();
     createSchema(file);
     const db = new DatabaseSync(file);
-    let plan: string;
+    let cap: string;
+    let reload: string;
     try {
-      plan = (
+      const planOf = (sql: string): string =>
         db
-          .prepare(
-            `EXPLAIN QUERY PLAN
-             SELECT seq FROM quality_rows WHERE kind = ? ORDER BY seq DESC
-              LIMIT 1 OFFSET 10`,
-          )
-          .all("feedback") as { detail: string }[]
-      )
-        .map((row) => row.detail)
-        .join("\n");
+          .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+          .all("feedback")
+          .map((row) => row.detail as string)
+          .join("\n");
+
+      // The two statements that order a family by `seq`. Both run against a
+      // store that holds twenty thousand ratings: the cap reads the row at its
+      // rank on every write, and a reload replays the family in insertion order
+      // on every read that follows one. Sorted instead of walked, either would
+      // build a temp B-tree of that whole family.
+      cap = planOf(
+        `SELECT seq FROM quality_rows WHERE kind = ? ORDER BY seq DESC
+          LIMIT 1 OFFSET 10`,
+      );
+      reload = planOf(
+        "SELECT json FROM quality_rows WHERE kind = ? ORDER BY seq",
+      );
     } finally {
       db.close();
     }
 
-    // The cap reads the row at its rank on every write, so a scan with a sort
-    // here is a sort of twenty thousand ratings paid for by every 👎.
-    expect(plan).toContain("quality_rows_kind_seq");
-    expect(plan).not.toMatch(/TEMP B-TREE/);
+    for (const plan of [cap, reload]) {
+      expect(plan).toContain("quality_rows_kind_seq");
+      expect(plan).not.toMatch(/TEMP B-TREE/);
+    }
   });
 
   it("imports the pre-SQLite file and renames it aside", () => {
