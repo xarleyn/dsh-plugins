@@ -8,8 +8,9 @@ import { validateAgainstSchema } from "./json-schema-validate.mjs";
  * The repository publishes one npm package per `plugins/` (and public
  * `packages/`) directory, which is invisible to crawlers that only read a
  * single package manifest. `plugins.json` is the machine-readable catalog that
- * maps every published package to its monorepo directory so DSH directories,
- * marketplace indexers, and RAG crawlers do not have to guess.
+ * maps every published package to its monorepo directory and to the install
+ * contract it honors, so DSH directories, marketplace indexers, and RAG
+ * crawlers do not have to guess.
  *
  * The README package table is the human-readable half of the same catalog. Both
  * halves are generated from the workspace manifests here, and private build
@@ -23,15 +24,43 @@ export const PACKAGE_GROUPS = ["plugins", "packages"];
 export const README_FILE = "README.md";
 export const SCHEMA_FILE = "docs/plugins.schema.json";
 export const PRIVATE_PACKAGE_LABEL = "private workspace package";
-export const CATALOG_HEADER = "| Directory | npm package | Purpose |";
-export const CATALOG_SEPARATOR = "| --- | --- | --- |";
+export const CATALOG_HEADER = "| Directory | npm package | Kind | Purpose |";
+export const CATALOG_SEPARATOR = "| --- | --- | --- | --- |";
+
+/**
+ * Two install contracts live in this repository, and one catalog line cannot
+ * carry both: a standalone DSH plugin the Host registers on a profile, and a
+ * shared runtime library a consumer installs as a dependency. `dsh.bundle` is
+ * the declaration the Host reads to load a plugin, so its presence is the
+ * contract itself — an entry without a bundle has nothing to register, and
+ * naming a registration command for it would advertise an install that cannot
+ * work. Private build tooling is in neither contract and is not published, so
+ * the README marks it as such while the catalog omits it entirely.
+ */
+export const PLUGIN_KIND = "plugin";
+export const LIBRARY_KIND = "library";
+const CATALOG_KIND_LABELS = {
+  [PLUGIN_KIND]: "DSH plugin",
+  [LIBRARY_KIND]: "runtime library",
+};
+const UNPUBLISHED_PACKAGE_KIND_LABEL = "not published";
 
 function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
 
-export function installCommand(npmName) {
-  return `dsh plugin --profile <profile> add ${npmName}`;
+export function packageKind(manifest) {
+  return manifest.dsh?.bundle === undefined ? LIBRARY_KIND : PLUGIN_KIND;
+}
+
+export function installCommand(npmName, kind) {
+  if (kind === PLUGIN_KIND) {
+    return `dsh plugin --profile <profile> add ${npmName}`;
+  }
+  if (kind === LIBRARY_KIND) {
+    return `pnpm add ${npmName}`;
+  }
+  throw new TypeError(`unknown catalog kind ${JSON.stringify(kind)}`);
 }
 
 /**
@@ -49,13 +78,15 @@ export function collectPluginEntries(repoRoot = process.cwd()) {
       if (!existsSync(manifestPath)) continue;
       const manifest = readJson(manifestPath);
       if (manifest.private === true) continue;
+      const kind = packageKind(manifest);
       entries.push({
         name: dirent.name,
         npm: manifest.name,
         path: `${group}/${dirent.name}`,
         description: manifest.description,
         keywords: manifest.keywords ?? [],
-        install: installCommand(manifest.name),
+        kind,
+        install: installCommand(manifest.name, kind),
         homepage: manifest.homepage,
         client: manifest.dsh?.client !== undefined,
       });
@@ -173,9 +204,11 @@ export function collectCatalogEntries(repoRoot = process.cwd()) {
       const manifestPath = path.join(groupRoot, dirent.name, "package.json");
       if (!existsSync(manifestPath)) continue;
       const manifest = readJson(manifestPath);
+      const isPrivate = manifest.private === true;
       groupEntries.push({
         path: `${group}/${dirent.name}`,
-        npm: manifest.private === true ? null : manifest.name,
+        npm: isPrivate ? null : manifest.name,
+        kind: isPrivate ? null : packageKind(manifest),
         description: manifest.description ?? "",
       });
     }
@@ -193,6 +226,9 @@ export function renderCatalogTable(entries) {
   const rows = entries.map((entry) => [
     `\`${entry.path}\``,
     entry.npm === null ? PRIVATE_PACKAGE_LABEL : `\`${entry.npm}\``,
+    entry.kind === null
+      ? UNPUBLISHED_PACKAGE_KIND_LABEL
+      : CATALOG_KIND_LABELS[entry.kind],
     tableCell(entry.description),
   ]);
   return [

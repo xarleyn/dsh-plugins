@@ -525,11 +525,24 @@ test("catalogs publishable packages and skips private ones", async () => {
   const root = await workspaceFixture({
     plugins: {
       "dsh-b": packageManifest("dsh-b", {
-        dsh: { client: { platform: "web" } },
+        dsh: {
+          bundle: { patch: "./cordis.patch.yml" },
+          client: { platform: "web" },
+        },
       }),
-      "dsh-a": packageManifest("dsh-a"),
+      "dsh-a": packageManifest("dsh-a", {
+        dsh: { bundle: { patch: "./cordis.patch.yml" } },
+      }),
     },
     packages: {
+      "plugin-kit": packageManifest("dsh-plugin-kit", {
+        repository: {
+          ...CANONICAL_REPOSITORY,
+          directory: "packages/plugin-kit",
+        },
+        homepage:
+          "https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-kit#readme",
+      }),
       "plugin-private": packageManifest("dsh-private", { private: true }),
     },
   });
@@ -537,20 +550,27 @@ test("catalogs publishable packages and skips private ones", async () => {
     const manifest = buildManifest(root);
     assert.deepEqual(
       manifest.plugins.map((entry) => entry.npm),
-      ["@yadsh/dsh-a", "@yadsh/dsh-b"],
+      ["@yadsh/dsh-plugin-kit", "@yadsh/dsh-a", "@yadsh/dsh-b"],
     );
     assert.deepEqual(manifest.plugins[0], {
-      name: "dsh-a",
-      npm: "@yadsh/dsh-a",
-      path: "plugins/dsh-a",
-      description: "dsh-a for DeepSeek Harness",
+      name: "plugin-kit",
+      npm: "@yadsh/dsh-plugin-kit",
+      path: "packages/plugin-kit",
+      description: "dsh-plugin-kit for DeepSeek Harness",
       keywords: CANONICAL_KEYWORDS,
-      install: "dsh plugin --profile <profile> add @yadsh/dsh-a",
+      kind: "library",
+      install: "pnpm add @yadsh/dsh-plugin-kit",
       homepage:
-        "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-a#readme",
+        "https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-kit#readme",
       client: false,
     });
-    assert.equal(manifest.plugins[1].client, true);
+    assert.equal(manifest.plugins[1].kind, "plugin");
+    assert.equal(
+      manifest.plugins[1].install,
+      "dsh plugin --profile <profile> add @yadsh/dsh-a",
+    );
+    assert.equal(manifest.plugins[2].kind, "plugin");
+    assert.equal(manifest.plugins[2].client, true);
     assert.equal(manifest.repository, "https://github.com/xarleyn/dsh-plugins");
     assert.equal(manifest.githubTopic, "dsh-plugin");
   } finally {
@@ -615,7 +635,11 @@ test("fails on a catalog entry for a package that no longer exists", async () =>
 
 test("keeps the root README table listing every publishable package", async () => {
   const root = await workspaceFixture({
-    plugins: { "dsh-a": packageManifest("dsh-a") },
+    plugins: {
+      "dsh-a": packageManifest("dsh-a", {
+        dsh: { bundle: { patch: "./cordis.patch.yml" } },
+      }),
+    },
     packages: { "dsh-plugin-kit": packageManifest("dsh-plugin-kit") },
   });
   try {
@@ -629,9 +653,9 @@ test("keeps the root README table listing every publishable package", async () =
     // the table is invisible to a reader who never opens plugins.json.
     writeFileSync(
       path.join(root, "README.md"),
-      "| Directory | npm package | Purpose |\n" +
-        "| --- | --- | --- |\n" +
-        "| `plugins/dsh-a` | `@yadsh/dsh-a` | a |\n",
+      "| Directory | npm package | Kind | Purpose |\n" +
+        "| --- | --- | --- | --- |\n" +
+        "| `plugins/dsh-a` | `@yadsh/dsh-a` | DSH plugin | a |\n",
     );
     assert.deepEqual(findReadmeCatalogGaps(root), [
       "@yadsh/dsh-plugin-kit is missing from the root README package table (packages/dsh-plugin-kit)",
@@ -641,19 +665,19 @@ test("keeps the root README table listing every publishable package", async () =
     // table just as effectively, so the gate keys on the npm name.
     writeFileSync(
       path.join(root, "README.md"),
-      "| Directory | npm package | Purpose |\n" +
-        "| --- | --- | --- |\n" +
-        "| `plugins/dsh-a` | `@yadsh/dsh-a` | a |\n" +
-        "| `packages/dsh-plugin-kit` | private workspace package | kit |\n",
+      "| Directory | npm package | Kind | Purpose |\n" +
+        "| --- | --- | --- | --- |\n" +
+        "| `plugins/dsh-a` | `@yadsh/dsh-a` | DSH plugin | a |\n" +
+        "| `packages/dsh-plugin-kit` | private workspace package | not published | kit |\n",
     );
     assert.equal(findReadmeCatalogGaps(root).length, 1);
 
     writeFileSync(
       path.join(root, "README.md"),
-      "| Directory | npm package | Purpose |\n" +
-        "| --- | --- | --- |\n" +
-        "| `plugins/dsh-a` | `@yadsh/dsh-a` | a |\n" +
-        "| `packages/dsh-plugin-kit` | `@yadsh/dsh-plugin-kit` | kit |\n",
+      "| Directory | npm package | Kind | Purpose |\n" +
+        "| --- | --- | --- | --- |\n" +
+        "| `plugins/dsh-a` | `@yadsh/dsh-a` | DSH plugin | a |\n" +
+        "| `packages/dsh-plugin-kit` | `@yadsh/dsh-plugin-kit` | runtime library | kit |\n",
     );
     assert.deepEqual(findReadmeCatalogGaps(root), []);
   } finally {

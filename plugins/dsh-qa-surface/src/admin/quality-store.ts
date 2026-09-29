@@ -161,6 +161,41 @@ const CONVERSATION_KINDS: readonly QualityRowKind[] = Object.freeze([
   "queue",
 ]);
 
+// The statements that read a whole family, or its end, named here so the plan
+// test can ask SQLite about the query the store actually prepares: a copy
+// retyped in the test keeps passing after the store's own query has drifted off
+// the index.
+
+/** Give up everything older in rank than the row at the cap, whose position the
+ * caller binds as `QA_ROW_CAPS[kind] - 1`. */
+export const OVERFLOW_CUT_SQL = `
+  DELETE FROM quality_rows
+   WHERE kind = ?
+     AND seq < (
+       SELECT seq FROM quality_rows
+        WHERE kind = ?
+        ORDER BY seq DESC
+        LIMIT 1 OFFSET ?
+     )`;
+
+/** Read a whole family back in the order its records arrived. */
+export const FAMILY_REPLAY_SQL = `
+  SELECT json FROM quality_rows WHERE kind = ? ORDER BY seq`;
+
+/** Write one record at the end of its family's order, taking that end from the
+ * family's `MAX(seq)` whether the record is new or being re-judged. */
+export const ROW_PLACEMENT_SQL = `
+  INSERT INTO quality_rows (kind, key, seq, json)
+  VALUES (?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_rows WHERE kind = ?), ?)
+  ON CONFLICT(kind, key) DO UPDATE SET
+    seq = (SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_rows WHERE kind = excluded.kind),
+    json = excluded.json`;
+
+/** Read a whole family with each record's identity, the way the ownership sweep
+ * finds the rows of a conversation it is forgetting. */
+export const FAMILY_MEMBERSHIP_SQL = `
+  SELECT key, json FROM quality_rows WHERE kind = ?`;
+
 const MIGRATIONS: readonly SqliteMigration[] = [
   {
     version: 1,
@@ -176,6 +211,43 @@ const MIGRATIONS: readonly SqliteMigration[] = [
         json TEXT NOT NULL,
         PRIMARY KEY (kind, key)
       );
+    `,
+  },
+  {
+    version: 2,
+    up: `
+      -- Four family-scoped reads are what this index serves: the cap looks up
+      -- the row at rank cap to know where the overflow starts, a write mints its
+      -- place from the family's MAX(seq), a reload replays the family in
+      -- insertion order, and the ownership sweep reads a family for the rows of
+      -- a vanished conversation. What the index removes is the sort, and it
+      -- removes it from two of them: without it the rank lookup and the replay
+      -- sort the whole family into a temp B-tree, and the replay runs on every
+      -- read that follows a write, so the 👎 that moves a re-judged rating to the
+      -- end of the order pays for that sort twice over. What it does not do is
+      -- cover the table: the two reads that want nothing but seq — the rank
+      -- lookup and MAX(seq) — are answered from the index alone, while the
+      -- replay and the sweep want json as well and still reach the row, so they
+      -- get cheaper without becoming flat. Measured on a feedback family
+      -- planted to its twenty thousand row cap — those four reads, each bound
+      -- the way the store binds it, median of 201 timed calls, SQLite 3.51.3 on
+      -- node v24.15.0, JSON parsing left out — the rank lookup went from
+      -- 7.0 ms to 0.35 ms and MAX(seq) from 2.9 ms to 0.02 ms, the replay from
+      -- 14 ms to 7.6 ms and the sweep from 9.0 ms to 7.9 ms. Take them again by
+      -- timing the same four reads against a family planted to the cap, once
+      -- with quality_rows_kind_seq dropped and once with it. Of those numbers
+      -- the first pair is the one that travels: read from the index alone,
+      -- milliseconds becoming fractions of a millisecond held on a second
+      -- machine too. The shares the replay and the sweep saved moved between
+      -- the runs taken here — the replay by between 45 % and 54 %, the sweep by
+      -- between 4 % and 12 % — so those last two say a direction, not a ratio.
+      -- The counts that check a legacy import are not among those four: neither
+      -- the emptiness test that runs before the import nor the per-family
+      -- arrival check after it sorts anything, and both were already answered
+      -- from a covering index — the primary key's before, this one after — so
+      -- all that changed is which index they read.
+      CREATE INDEX IF NOT EXISTS quality_rows_kind_seq
+        ON quality_rows (kind, seq);
     `,
   },
 ];
@@ -575,9 +647,7 @@ export class QaQualityStore {
     this.storage.transaction(() => {
       for (const kind of CONVERSATION_KINDS) {
         for (const row of asRows<{ key: string; json: string }>(
-          this.storage.db
-            .prepare("SELECT key, json FROM quality_rows WHERE kind = ?")
-            .all(kind),
+          this.storage.db.prepare(FAMILY_MEMBERSHIP_SQL).all(kind),
         )) {
           let record: unknown;
           try {
@@ -673,13 +743,7 @@ export class QaQualityStore {
   private upsertRow(kind: QualityRowKind, key: string, value: unknown): void {
     this.storage.transaction(() => {
       this.storage.db
-        .prepare(
-          `INSERT INTO quality_rows (kind, key, seq, json)
-           VALUES (?, ?, (SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_rows WHERE kind = ?), ?)
-           ON CONFLICT(kind, key) DO UPDATE SET
-             seq = (SELECT COALESCE(MAX(seq), 0) + 1 FROM quality_rows WHERE kind = excluded.kind),
-             json = excluded.json`,
-        )
+        .prepare(ROW_PLACEMENT_SQL)
         .run(kind, key, kind, JSON.stringify(value));
       this.applyCap(kind);
     });
@@ -709,27 +773,22 @@ export class QaQualityStore {
    * a real record, so a family at its cap loses one every time a record it
    * already holds is re-rated — feedback disappears without anything new
    * arriving to displace it.
+   *
+   * Reading that rank is not a seek: it walks cap entries of the family's own
+   * slice of the (kind, seq) index, so the cap bounds the cost of every write,
+   * while the delete reaches only the rows it removes and a write that does not
+   * overflow pays the read alone. Without the index the same read sorts the
+   * whole family into a temp B-tree.
    */
   private applyCap(kind: QualityRowKind): void {
     this.storage.db
-      .prepare(
-        `DELETE FROM quality_rows
-          WHERE kind = ?
-            AND seq < (
-              SELECT seq FROM quality_rows
-               WHERE kind = ?
-               ORDER BY seq DESC
-               LIMIT 1 OFFSET ?
-            )`,
-      )
+      .prepare(OVERFLOW_CUT_SQL)
       .run(kind, kind, QA_ROW_CAPS[kind] - 1);
   }
 
   private rowsOf(kind: QualityRowKind): readonly unknown[] {
     return asRows<{ json: string }>(
-      this.storage.db
-        .prepare("SELECT json FROM quality_rows WHERE kind = ? ORDER BY seq")
-        .all(kind),
+      this.storage.db.prepare(FAMILY_REPLAY_SQL).all(kind),
     ).map((entry) => JSON.parse(entry.json) as unknown);
   }
 

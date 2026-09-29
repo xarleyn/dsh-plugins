@@ -23,6 +23,20 @@
 // last two cases read that config and then prove the behaviour in a throwaway
 // workspace assembled from it, so neither the mistake nor its fix can hide
 // inside nx's own resolution.
+//
+// SPEC.md is read for the opposite reason. It ranks itself below the code it
+// describes, so a line of it that disagrees with `nx.json` is wrong rather than
+// authoritative — but three of its blocks are copied verbatim from configuration,
+// and a copy is the one form of prose that fails silently: the section keeps
+// reading as shipped configuration while the file behind it has moved. Each copy
+// is therefore cut from the section its heading names and not from the first
+// fenced body below it, because an unbounded slice lets the next section answer
+// for this one; the copies in §14, §17 and §22 are then compared to `nx.json`,
+// to the `prepare` job of `ci.yml` and to the root `package.json`. That is what
+// turns them from a document that was aligned once into one that cannot drift
+// unnoticed. §20 states one fact about the repository rather than its
+// configuration — that no `name@version` tag is left to read — so the census
+// behind it is re-run here, and the section dates the half a checkout cannot see.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
@@ -495,4 +509,140 @@ test("no package narrows coverage by re-declaring include", () => {
       `${dir}/vitest.config.ts re-declares coverage.include; mergeConfig concatenates arrays, so it widens the measured tree instead of narrowing it — use coverage.exclude`,
     );
   }
+});
+
+const SPEC_MD = read("SPEC.md");
+
+const FENCES = {
+  bash: /^```bash\n(?<body>[\s\S]*?)\n```$/mu,
+  json: /^```json\n(?<body>[\s\S]*?)\n```$/mu,
+};
+
+/**
+ * The body of one section of SPEC.md: the lines between its heading and the next
+ * heading of the file. The heading is matched rather than the block so a renamed
+ * or deleted section fails by name instead of leaving the case silently asserting
+ * nothing, and the slice ends there because one that runs to the end of the file
+ * lets whichever fenced block comes next answer for the section under test — the
+ * drift these cases exist to catch.
+ */
+function specSection(heading) {
+  const marker = `\n## ${heading}\n`;
+  const at = SPEC_MD.indexOf(marker);
+  assert.notEqual(at, -1, `SPEC.md no longer has a "## ${heading}" section`);
+  const body = SPEC_MD.slice(at + marker.length);
+  const boundary = /^#{2,6} /mu.exec(body);
+  return boundary ? body.slice(0, boundary.index) : body;
+}
+
+/** The first fenced `language` block of a section of SPEC.md, as text. */
+function specFence(heading, language) {
+  const block = FENCES[language].exec(specSection(heading));
+  assert.ok(
+    block,
+    `the "## ${heading}" section of SPEC.md no longer carries a \`\`\`${language} block`,
+  );
+  return block.groups.body;
+}
+
+/** The first fenced `json` block of a section of SPEC.md, parsed. */
+function specBlock(heading) {
+  return JSON.parse(specFence(heading, "json"));
+}
+
+test("SPEC.md reproduces the release configuration nx.json ships", () => {
+  const { release } = specBlock("14. Nx release configuration");
+  assert.deepEqual(
+    release,
+    NX_JSON.release,
+    "SPEC.md §14 quotes `release` from nx.json; editing one without the other leaves a Draft describing a configuration nobody runs",
+  );
+});
+
+/**
+ * The commands one job of `ci.yml` runs, in order: every step with a single-line
+ * `run:`, so a block scalar — the step that selects projects rather than gating
+ * them — is not read as a gate. A job ends where the next two-space key begins.
+ */
+function jobCommands(workflow, name) {
+  const marker = `  ${name}:`;
+  const at = workflow.indexOf(marker);
+  assert.notEqual(at, -1, `ci.yml no longer has a "${name}" job`);
+  const body = workflow.slice(at + marker.length);
+  const end = /^ {2}\S/mu.exec(body);
+  const commands = [];
+  for (const line of body.slice(0, end ? end.index : undefined).split("\n")) {
+    const step = /^ {8}run: (?<command>.*)$/u.exec(line);
+    if (step && step.groups.command !== "|") commands.push(step.groups.command);
+  }
+  return commands;
+}
+
+test("SPEC.md reproduces the prepare gates the CI workflow runs", () => {
+  const gates = jobCommands(read(".github/workflows/ci.yml"), "prepare");
+  const block = specFence("17. CI workflow", "bash");
+  const start = block.indexOf("# prepare");
+  const end = block.indexOf("# projects");
+  assert.ok(
+    start !== -1 && end > start,
+    "the §17 block of SPEC.md no longer marks where the prepare gates end and the per-project commands begin",
+  );
+  const listed = block
+    .slice(start, end)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"));
+  assert.deepEqual(
+    listed,
+    gates,
+    "SPEC.md §17 lists the prepare gates as ci.yml runs them; a gate added to the workflow, dropped or reordered there and left behind in the section makes the Draft describe a run nobody has",
+  );
+});
+
+test("SPEC.md quotes commands the root package.json declares", () => {
+  const excerpt = specBlock("22. Repository-level scripts").scripts;
+  const shipped = readJson(new URL("../package.json", import.meta.url)).scripts;
+  assert.ok(
+    Object.keys(excerpt).length > 0,
+    "the §22 excerpt names no script at all",
+  );
+  for (const [name, command] of Object.entries(excerpt)) {
+    assert.equal(
+      shipped[name],
+      command,
+      `SPEC.md §22 quotes \`${name}\` as \`${command}\`, but package.json ${
+        name in shipped
+          ? `now runs \`${shipped[name]}\``
+          : "does not declare it"
+      }`,
+    );
+  }
+});
+
+/** The tags a checkout of this repository reaches, matching a `git tag -l` pattern. */
+function tagsMatching(pattern) {
+  const result = git("tag", "-l", pattern);
+  assert.equal(
+    result.status,
+    0,
+    `\`git tag -l ${pattern}\` failed: ${result.output}`,
+  );
+  return result.output.split("\n").filter(Boolean);
+}
+
+test("SPEC.md §20's tag census still comes back empty", () => {
+  // The section's claim is about the tag set, so the checkout has to carry it:
+  // both workflows fetch with `fetch-depth: 0`, and a run that sees no wave tag
+  // cannot tell an empty census from an empty clone — so that case says so
+  // instead of reporting coverage it does not have.
+  if (tagsMatching("release/*").length === 0) {
+    console.log(
+      "not enforced: this checkout reaches no release/* tag, so it would reach no name@version tag either",
+    );
+  }
+  assert.deepEqual(
+    tagsMatching("*@*"),
+    [],
+    "SPEC.md §20 states that nothing of the per-package tag scheme is left to read; a tag of that shape makes the scheme live again, and `releaseTag.pattern` in §14 with it",
+  );
 });
