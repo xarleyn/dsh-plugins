@@ -24,7 +24,9 @@ import {
   OPERATIONS,
   PROFILE_INPUT,
   fakeLogger,
+  gatedProbe,
   repositories,
+  type ProbeGate,
 } from "./helpers.js";
 /**
  * What the provider's credential probe answers next. The probe's verdict is
@@ -139,6 +141,7 @@ interface Harness {
   readonly broker: IntegrationBroker;
   readonly registry: ServiceCredentialRegistry;
   readonly seen: Seen[];
+  readonly probe: ProbeGate;
 }
 
 function buildHarness(
@@ -151,7 +154,7 @@ function buildHarness(
 ): Harness {
   const providers = new IntegrationProviderRegistry();
   const seen: Seen[] = [];
-  providers.register(
+  const probe = gatedProbe(
     fakeProvider({
       capabilities: options.capabilities ?? [
         "identity.read",
@@ -162,6 +165,7 @@ function buildHarness(
       seen,
     }),
   );
+  providers.register(probe.provider);
   const repository = new IntegrationRepository(filePath);
   repositories.push(repository);
   const registry = new ServiceCredentialRegistry(
@@ -182,6 +186,7 @@ function buildHarness(
     ),
     registry,
     seen,
+    probe,
   };
 }
 
@@ -235,6 +240,56 @@ describe("managed service credentials: broker", () => {
     await expect(
       broker.setCredentialSource(alice, "acme", "personal"),
     ).rejects.toMatchObject({ code: "PersonalCredentialRequired" });
+  });
+
+  it("drops a credential switch whose probe lost the binding to a reconnect", async () => {
+    const { broker, probe } = buildHarness(
+      path.join(root, "switch-race.db"),
+      PROFILE_INPUT(),
+    );
+    const alice = { userId: "alice" };
+    await broker.connect(
+      alice,
+      "acme",
+      { token: "https://acme.example/rest/1/personal-token" },
+      { useServiceCredential: false },
+    );
+    await broker.setCredentialSource(alice, "acme", "service");
+    const repository = repositories.at(-1);
+    expect(repository?.find(alice, "acme")?.credentialSource).toBe("service");
+
+    // Switching back to personal reaches upstream for the stored token, and the
+    // account re-saves the connection as a managed one while that probe is open.
+    probe.hold();
+    const pending = broker.setCredentialSource(alice, "acme", "personal");
+    await probe.entered;
+    probe.resume();
+    await broker.connect(
+      alice,
+      "acme",
+      { token: "" },
+      { useServiceCredential: true },
+    );
+    probe.release();
+    await expect(pending).rejects.toMatchObject({
+      code: "IntegrationNotConnected",
+    });
+
+    // The identity the probe found belongs to a generation that is gone, so the
+    // live connection keeps what its own reconnect wrote rather than the mode,
+    // the name and the wider grant of a token that has since been replaced.
+    const after = repository?.find(alice, "acme");
+    expect(after?.credentialSource).toBe("service");
+    expect(after?.serviceProfileId).toBe("acme-readonly");
+    expect(after?.displayName).toBe("Acme Read-only");
+    expect(after?.capabilities).toEqual(["identity.read", "records.read"]);
+    expect(after?.bindingRevision).toBe(3);
+    // A switch that was refused is not left in the trail as one that happened.
+    expect(
+      repository
+        ?.read()
+        .audit.filter((entry) => entry.operation === "credential.switch"),
+    ).toHaveLength(1);
   });
 
   it("blocks calls the moment the deployment disables the profile", async () => {

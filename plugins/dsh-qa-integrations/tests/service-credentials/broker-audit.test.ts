@@ -1,8 +1,16 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
+import { IntegrationProviderRegistry } from "../../src/providers/registry.js";
 import { IntegrationRepository } from "../../src/repository.js";
-import { PROFILE_INPUT, buildHarness, repositories } from "./helpers.js";
+import { DEFAULT_SERVICE_RATE_LIMIT } from "../../src/service-credentials/config.js";
+import type { ServiceCredentialHealth } from "../../src/service-credentials/types.js";
+import {
+  PROFILE_INPUT,
+  buildHarness,
+  fakeProvider,
+  repositories,
+} from "./helpers.js";
 describe("managed service credentials: broker", () => {
   const root = mkdtempSync(path.join(tmpdir(), "qa-integrations-service-"));
   afterAll(() => {
@@ -197,5 +205,65 @@ describe("managed service credentials: broker", () => {
       "ci.read": ["ci.metadata.read", "ci.logs.read"],
     });
     expect(repository.read().integrations[0]?.capabilities).toEqual(before);
+  });
+
+  it("drops a service verdict that lands after the same profile was re-saved", async () => {
+    const file = path.join(root, "late-service-validation.db");
+    const { broker, registry, seen } = buildHarness(file, PROFILE_INPUT());
+    // A provider whose credential probe the test decides when to finish, so the
+    // verdict can be made to land after the binding it was taken from.
+    const providers = new IntegrationProviderRegistry();
+    let releaseProbe: (health: ServiceCredentialHealth) => void = () =>
+      undefined;
+    let markEntered: () => void = () => undefined;
+    const entered = new Promise<void>((resolve) => {
+      markEntered = resolve;
+    });
+    providers.register({
+      ...fakeProvider({
+        capabilities: [
+          "identity.read",
+          "records.read",
+          "logs.read",
+          "records.write",
+        ],
+        seen,
+      }),
+      validateServiceCredential: () =>
+        new Promise<ServiceCredentialHealth>((resolve) => {
+          releaseProbe = resolve;
+          markEntered();
+        }),
+    });
+    broker.swap(providers, registry, true, DEFAULT_SERVICE_RATE_LIMIT);
+
+    const alice = { userId: "alice" };
+    await broker.connect(alice, "acme", { token: "" });
+    expect(broker.summary(alice, "acme").status).toBe("connected");
+
+    const pending = broker.validate(alice, "acme");
+    await entered;
+    // The operator re-saves the very same profile while that probe is open: same
+    // credential source, same managed profile, same stored credential — the
+    // reconnect the generation guard used to be blind to.
+    await broker.connect(
+      alice,
+      "acme",
+      { token: "" },
+      {
+        useServiceCredential: true,
+      },
+    );
+    expect(broker.summary(alice, "acme").credentialSource).toBe("service");
+
+    // The old probe now answers about a credential state it found on its way in.
+    releaseProbe({ status: "expired" });
+    await expect(pending).rejects.toMatchObject({ code: "CredentialExpired" });
+
+    // Its verdict is the caller's answer, not the row's: the live binding keeps
+    // the status the re-save established for it.
+    const after = broker.summary(alice, "acme");
+    expect(after.status).toBe("connected");
+    expect(after.errorCode).toBeNull();
   });
 });

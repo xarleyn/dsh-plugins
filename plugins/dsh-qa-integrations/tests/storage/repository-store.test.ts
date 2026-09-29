@@ -7,6 +7,7 @@ import { IntegrationRepository } from "../../src/repository.js";
 import type {
   EncryptedSecretRecord,
   IntegrationPrincipal,
+  StoredIntegration,
 } from "../../src/types.js";
 
 const alice: IntegrationPrincipal = { userId: "user-alice" };
@@ -36,6 +37,32 @@ function rig(): {
   const dir = mkdtempSync(path.join(tmpdir(), "qa-integrations-store-"));
   const file = path.join(dir, "qa-integrations.db");
   return { dir, file, repository: new IntegrationRepository(file) };
+}
+
+/** The identity a guarded write compares the live row against. */
+function generationOf(binding: StoredIntegration) {
+  return {
+    bindingId: binding.id,
+    bindingRevision: binding.bindingRevision,
+    secretRef: binding.secretRef,
+    serviceProfileId: binding.serviceProfileId,
+  };
+}
+
+/** File one validation verdict against the generation a probe started from. */
+function verdict(
+  repository: IntegrationRepository,
+  expected: ReturnType<typeof generationOf>,
+  success = false,
+) {
+  return repository.updateValidation(
+    alice,
+    "bitrix24",
+    success,
+    success ? null : "CredentialExpired",
+    undefined,
+    expected,
+  );
 }
 
 /** Read the first column of a query out of the store's own database. */
@@ -96,6 +123,271 @@ describe("IntegrationRepository connections", () => {
     ]);
     expect(repository.find(alice, "bitrix24")?.externalUserId).toBe("12");
     expect(repository.secretFor(alice, "bitrix24")?.id).toBe("secret-2");
+  });
+
+  it("starts a new binding generation on a reconnect that changes nothing", () => {
+    const { repository } = rig();
+    open.push(repository);
+    const first = repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: secret("secret-1"),
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+    });
+    const switched = repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: null,
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+      credentialSource: "service",
+      serviceProfileId: "acme-readonly",
+    });
+    // The shape a re-save from Settings makes when the user touches nothing: the
+    // same mode, the same managed profile, the same stored credential.
+    const reconnected = repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: null,
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+      credentialSource: "service",
+      serviceProfileId: "acme-readonly",
+    });
+
+    expect(first.bindingRevision).toBe(1);
+    expect(switched.bindingRevision).toBe(2);
+    // A generation that moved is all the guard needs, so it has to move for a
+    // reconnect that leaves every other field where it was.
+    expect(reconnected.bindingRevision).toBe(3);
+    expect(reconnected.secretRef).toBe("secret-1");
+
+    // A verdict produced against the generation two reconnects back is refused,
+    // though its secret and profile are still the ones the row carries: the row
+    // is there, it simply belongs to another generation.
+    expect(verdict(repository, generationOf(switched))).toBe("stale");
+    expect(repository.find(alice, "bitrix24")?.status).not.toBe("error");
+    expect(verdict(repository, generationOf(reconnected))).toBe("applied");
+    expect(repository.find(alice, "bitrix24")?.status).toBe("error");
+  });
+
+  it("keeps a verdict from landing on a binding that was made again", () => {
+    const { repository } = rig();
+    open.push(repository);
+    const options: Parameters<IntegrationRepository["connect"]>[0] = {
+      principal: alice,
+      provider: "bitrix24",
+      secret: null,
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+      credentialSource: "service",
+      serviceProfileId: "acme-readonly",
+    };
+    const before = repository.connect(options);
+    repository.disconnect(alice, "bitrix24");
+    const after = repository.connect(options);
+
+    // A disconnect erases the row, so the connection made afterwards restarts its
+    // revision at the first number. A service binding that holds no personal
+    // credential then matches the old generation on every field but the id — the
+    // one thing a verdict has to be compared against as well.
+    expect(after.id).not.toBe(before.id);
+    expect(after.bindingRevision).toBe(before.bindingRevision);
+    expect(after.secretRef).toBe(before.secretRef);
+    expect(after.serviceProfileId).toBe(before.serviceProfileId);
+
+    expect(verdict(repository, generationOf(before))).toBe("stale");
+    // The healthy connection is left alone: neither an error status nor an error
+    // code it never earned.
+    const live = repository.find(alice, "bitrix24")!;
+    expect(live.status).toBe("connected");
+    expect(live.lastErrorCode).toBeNull();
+    expect(verdict(repository, generationOf(after), true)).toBe("applied");
+  });
+
+  it("separates a verdict with no binding from one that lost its generation", () => {
+    const { repository } = rig();
+    open.push(repository);
+    const binding = repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: null,
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+      credentialSource: "service",
+      serviceProfileId: "acme-readonly",
+    });
+    const generation = generationOf(binding);
+    expect(verdict(repository, generation)).toBe("applied");
+
+    // The account disconnected and nobody took the connection up again, so there
+    // is no row whose generation this verdict could disagree with. Both refusals
+    // reach the caller as one answer, and only the log can tell the person
+    // reading it which of the two races they are chasing.
+    repository.disconnect(alice, "bitrix24");
+    expect(verdict(repository, generation)).toBe("missing");
+    expect(
+      repository.setCredentialSource({
+        principal: alice,
+        provider: "bitrix24",
+        source: "personal",
+        serviceProfileId: null,
+        capabilities: ["crm.read"],
+        tenantId: "acme.bitrix24.ru",
+        externalUserId: "11",
+        displayName: "Alice",
+        expected: generation,
+      }),
+    ).toBe("missing");
+  });
+
+  it("keeps a mode switch from rewriting the binding that replaced its own", () => {
+    const { repository } = rig();
+    open.push(repository);
+    const personal = repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: secret("secret-1"),
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+    });
+    // The account reconnects with a different token while the switch probe is
+    // still open, so the switch is answering for a credential that is gone.
+    const replaced = repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: secret("secret-2"),
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "12",
+      displayName: "Alice the second",
+      capabilities: ["crm.read", "chat.read"],
+    });
+
+    expect(
+      repository.setCredentialSource({
+        principal: alice,
+        provider: "bitrix24",
+        source: "service",
+        serviceProfileId: "acme-readonly",
+        capabilities: ["crm.read"],
+        tenantId: "acme.bitrix24.ru",
+        externalUserId: "service:acme-readonly",
+        displayName: "Acme Read-only",
+        expected: generationOf(personal),
+      }),
+    ).toBe("stale");
+    const live = repository.find(alice, "bitrix24")!;
+    expect(live.credentialSource).toBe("personal");
+    expect(live.secretRef).toBe("secret-2");
+    expect(live.displayName).toBe("Alice the second");
+    expect(live.bindingRevision).toBe(replaced.bindingRevision);
+
+    // The same switch asked against the live generation goes through, so the
+    // refusal above is the moved binding and not a write that never lands.
+    expect(
+      repository.setCredentialSource({
+        principal: alice,
+        provider: "bitrix24",
+        source: "service",
+        serviceProfileId: "acme-readonly",
+        capabilities: ["crm.read"],
+        tenantId: "acme.bitrix24.ru",
+        externalUserId: "service:acme-readonly",
+        displayName: "Acme Read-only",
+        expected: generationOf(live),
+      }),
+    ).toBe("applied");
+    expect(repository.find(alice, "bitrix24")?.credentialSource).toBe(
+      "service",
+    );
+  });
+
+  it("keeps a secret addressable by the ref its binding named", () => {
+    const { repository } = rig();
+    open.push(repository);
+    repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: secret("secret-old"),
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+    });
+    const binding = repository.find(alice, "bitrix24")!;
+    repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: secret("secret-new"),
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "12",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+    });
+
+    // The live row answers through principal and provider, so a lookup that
+    // starts there follows a reconnect; the reference the binding carried picks
+    // which credential of that connection is unlocked, and only while the row
+    // still carries it.
+    expect(repository.secretFor(alice, "bitrix24")?.id).toBe("secret-new");
+    expect(binding.secretRef).toBe("secret-old");
+    expect(
+      repository.secretByRef(alice, "bitrix24", binding.secretRef),
+    ).toBeUndefined();
+    expect(repository.secretByRef(alice, "bitrix24", "secret-new")?.id).toBe(
+      "secret-new",
+    );
+    expect(repository.secretByRef(alice, "bitrix24", null)).toBeUndefined();
+  });
+
+  it("refuses a reference another account or provider carries", () => {
+    const { repository } = rig();
+    open.push(repository);
+    repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: secret("secret-alice"),
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+    });
+    const bob: IntegrationPrincipal = { userId: "user-bob" };
+    repository.connect({
+      principal: bob,
+      provider: "bitrix24",
+      secret: secret("secret-bob"),
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "12",
+      displayName: "Bob",
+      capabilities: ["crm.read"],
+    });
+
+    // `secret-alice` is a live row of the secrets table, so a read addressed by
+    // the reference alone would unlock it for the account that merely quoted it.
+    expect(repository.secretByRef(bob, "bitrix24", "secret-alice")).toBe(
+      undefined,
+    );
+    expect(repository.secretByRef(alice, "bitrix24", "secret-alice")?.id).toBe(
+      "secret-alice",
+    );
+    // And one account's reference does not reach across to another provider.
+    expect(repository.secretByRef(alice, "jira", "secret-alice")).toBe(
+      undefined,
+    );
   });
 
   it("reads only the rows a lookup asks for", () => {
