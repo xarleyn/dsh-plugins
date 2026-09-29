@@ -15,8 +15,8 @@ await runVerifyPackage({
   client: {
     platform: "web",
     injectEquals: [
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
       "@deepseek-ai/dsh-client-ui-settings",
-      "@deepseek-ai/dsh-client-ui-settings-plugins",
     ],
   },
   files: ["cordis.patch.yml", "compatibility.json", "README.md", "LICENSE"],
