@@ -6,7 +6,14 @@ import {
   injectCardStyles,
 } from "@yadsh/dsh-plugin-kit/client";
 import { createElement } from "react";
-import { MODE_OPTIONS, ON_LIMIT_OPTIONS } from "./settings-form.js";
+import {
+  MODE_OPTIONS,
+  ON_LIMIT_OPTIONS,
+  type CardFace,
+  type CardSnapshot,
+  type ModeOption,
+  type OnLimitOption,
+} from "./settings-form.js";
 import {
   BoolField,
   ChoiceField,
@@ -16,12 +23,6 @@ import {
   type ChoiceProps,
 } from "./fields.js";
 import type { Translate } from "./dictionary.js";
-import type {
-  CardFace,
-  ModeOption,
-  OnLimitOption,
-  CardSnapshot,
-} from "./settings-form.js";
 
 const CSS = [
   PLUGIN_CARD_SHELL_CSS.trim(),
