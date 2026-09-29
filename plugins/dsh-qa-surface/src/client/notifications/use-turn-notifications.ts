@@ -158,15 +158,14 @@ export function useQaTurnNotifications(
   // without the action a reader who allowed the prompt elsewhere has no way in.
   // A signed-in reader has the settings section for that instead.
   //
-  // The branches are deliberately uneven about `osEnabled`. Where the browser
-  // still owes its answer the channel delivers nothing whatever the record says,
-  // so the record cannot close the offer: a reader who revoked the permission in
-  // the address bar has this page's question as the only way of putting it back,
-  // and on a stand without accounts as the only way of switching the channel on
-  // again after a refusal. Where the answer is already granted there is no
-  // question to ask, and only the reader's own answer is open.
+  // Both branches then stand on the same reader's answer: `!prefs.osEnabled`.
+  // Where the record says the channel is on there is nothing for this page to
+  // offer, whatever the browser's answer is. A permission taken back in the
+  // address bar is the reader's own doing and is put back there — the record
+  // still says on, so delivery resumes the moment the origin is allowed again.
   const permission = readNotificationPermission();
-  const unansweredBrowser = permission === "default" && !prefs.osOffered;
+  const unansweredBrowser =
+    permission === "default" && !prefs.osOffered && !prefs.osEnabled;
   const offered =
     notifications.enabled &&
     notifications.allowOs &&
@@ -190,10 +189,9 @@ export function useQaTurnNotifications(
   // Answering the offer writes the choice where it belongs: on the account once
   // there is one, so it survives into another browser, and in this browser's own
   // store otherwise. What this browser marks for itself is that its prompt has
-  // been spent, which is a fact about the prompt rather than about the person:
-  // a click that found the origin already granted spends nothing, so the mark
-  // stays out of the way should the reader take the permission back later and
-  // the page have to ask.
+  // been spent, which is a fact about the prompt rather than about the person: a
+  // click that found the origin already granted spends nothing, because there is
+  // nothing there to spend.
   const enableDesktop = useCallback(() => {
     const spendsThePrompt = readNotificationPermission() === "default";
     void requestNotificationPermission().then((answer) => {
