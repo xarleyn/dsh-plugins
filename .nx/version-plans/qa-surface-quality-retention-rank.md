@@ -24,12 +24,13 @@ oldest entry. The cut runs on every write and the feedback family grows to
 sorting: schema version 2 adds a `(kind, seq)` index. Four family-scoped reads
 are what it serves — the cap's lookup of the row at its rank, the `MAX(seq)` a
 write takes its place from, the reload of one family, and the ownership sweep's
-read of a family it is emptying. The row count that verifies a legacy import is
-not one of them: it sorts nothing and was already answered from the primary
-key's covering index, so the new index only changed which index it reads. What
-a reader sees newest-first is assembled in memory, by lists that sort on
-`createdAt`; the one statement that reads backwards through `seq` is the rank
-lookup, so the index is not what gives readers their shape.
+read of a family it is emptying. The two counts that check a legacy import are
+not among them — neither the emptiness test that runs before the import nor the
+per-family arrival check after it — because neither sorts anything and both were
+already answered from a covering index, so the new index only changed which one
+they read. What a reader sees newest-first is assembled in memory, by lists that
+sort on `createdAt`; the one statement that reads backwards through `seq` is the
+rank lookup, so the index is not what gives readers their shape.
 
 What the index removes is the sort, and it removes it from two of those reads —
 the rank lookup and the replay. A re-judgement meets both: the write runs the
@@ -38,14 +39,19 @@ family once per write and once per read now walks it. It does not cover the
 table: the reads that want nothing but `seq` — the rank lookup and `MAX(seq)` —
 are answered from the index alone, whereas the replay and the sweep read `json`
 too and still reach the row, so they get cheaper without becoming flat.
-Measured on a feedback family planted to its 20 000-row cap — each statement run
-the way the store prepares it, median of 201 timed calls, SQLite 3.51.3 on node
-v24.15.0, JSON parsing left out — the rank lookup went from 7.3 ms to 0.32 ms
-and `MAX(seq)` from 3.4 ms to 0.03 ms, the replay from 16 ms to 6.9 ms and the
-sweep from 9.3 ms to 8.4 ms. What stays is the traversal: finding the rank walks
-as many index entries as the cap, so the cap bounds it rather than a seek, but
-only through that family's slice of the index, and the delete reaches just the
-rows it removes — a write that does not overflow pays the read alone.
+Measured on a feedback family planted to its 20 000-row cap — those four reads,
+each bound the way the store binds it, median of 201 timed calls, SQLite 3.51.3
+on node v24.15.0, JSON parsing left out — the rank lookup went from 7.0 ms to
+0.35 ms and `MAX(seq)` from 2.9 ms to 0.02 ms, the replay from 14 ms to 7.6 ms
+and the sweep from 9.0 ms to 7.9 ms. Of those, the first pair is the figure that
+travels: read from the index alone, milliseconds becoming fractions of a
+millisecond held on a second machine. The shares the replay and the sweep saved
+moved between the runs taken here — the replay by between 45 % and 54 %, the
+sweep by between 4 % and 12 % — so those last two say a direction, not a ratio.
+What stays is the traversal: finding the rank walks as many index entries as the
+cap, so the cap bounds it rather than a seek, but only through that family's
+slice of the index, and the delete reaches just the rows it removes — a write
+that does not overflow pays the read alone.
 
 The tests fill the feedback family to its cap and re-judge one record, and do
 the same to the review family, each time asserting the row count and which
@@ -54,15 +60,18 @@ fill the queue: one drops an entry from the middle and then pushes past the cap,
 asserting in the open store, and one lets the ownership sweep forget three
 conversations of a full queue before refilling it to the cap, through the reopen
 as well. One more opens a file that schema version 1 wrote — rows, no index, and
-the version number saying so — and checks that the upgrade adds the index and
-leaves the records alone, because every other test creates its file fresh and
-would only ever run that step on an empty table. A last test reads the query plan
-of the four statements above, bound with the arguments the store's own calls
-pass, so the index that bounds this cost is checked rather than assumed: the rank
-lookup and the replay walk it instead of sorting the family into a temp B-tree,
-and only the rank lookup and the `MAX(seq)` read are answered from the index
-alone. Nothing is seeded there, because a plan is compiled from the statement and
-the schema rather than from how many rows a table holds, and the sweep is claimed
-no further than that it sorts nothing — which of two same-cost indexes answers
-its bare `WHERE kind = ?` is the planner's tie-break and not a property of the
-statement, so its saving is the measured number above rather than an assertion.
+the version number saying so — checks that the upgrade adds the index, then
+re-judges a rating through it and reads the file back, so the step is proven on
+the paths a write takes and not only by opening the table. Every other test
+creates its file fresh and would only ever run that step on an empty table. A
+last test reads the query plan of the four statements above, bound with the
+arguments the store's own calls pass, so the index that bounds this cost is
+checked rather than assumed: the rank lookup and the replay walk it instead of
+sorting the family into a temp B-tree, and only the rank lookup and the
+`MAX(seq)` read are answered from the index alone. Nothing is seeded there,
+because a plan is compiled from the statement and the schema rather than from
+how many rows a table holds, and the sweep is claimed no further than that it
+sorts nothing — which of two same-cost indexes answers its bare
+`WHERE kind = ?` is the planner's tie-break and not a property of the statement,
+so what it saves is the measured direction above rather than a number asserted
+here.
