@@ -433,11 +433,14 @@ export class QaSurface extends TypertRemoteService {
     // log with its code and the provider the request was routed to. The chat row
     // names the code only, and the durable journal that holds the rest is a zstd
     // archive, so without this line a stand that lost its adapters is diagnosed
-    // by decoding frames.
+    // by decoding frames. The ownership map is passed through rather than
+    // reduced to a boolean: the record has to carry the chat an operator can
+    // find in /qa, which for a turn that died inside a delegated expert is that
+    // expert's root, not the expert's own id.
     const disposeTurnFailureLog = registerTurnFailureLog(
       ctx,
       this.logger,
-      (sessionId) => ownership.rootOf(sessionId) !== undefined,
+      (sessionId) => ownership.rootOf(sessionId),
     );
     // The identity note and the provenance rule ride the conversation as
     // durable context messages, delegated experts included: the QA preset's
