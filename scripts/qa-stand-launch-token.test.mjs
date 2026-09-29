@@ -12,9 +12,10 @@
  * promises about each: which joined keys give no capture, where the value stops,
  * and what the greediness of `.*` and `tail -1` yields.
  *
- * Two of those four rounds were about the `$KIT` guard around this assignment,
- * not about the assignment, and a guard needs the kit's directory to mean
- * anything: the cases below cover the capture, not the guard branches.
+ * Two of those four — points 17 and 39 — were about the `$KIT` the recipe runs
+ * in rather than about this assignment, and a directory guard only means
+ * something next to a kit: the cases below cover the capture, not the guard
+ * branches around it.
  *
  * The boot line's real format belongs to the deployment kit and is not
  * checkable from this repository (SKILL.md §0), so no case here feeds a live
