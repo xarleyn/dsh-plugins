@@ -543,7 +543,10 @@ running when the link dropped, and the reader's own question that was queued
 before the drop and went out only as the link returned, both end unreported.
 Which of those the stale list was showing is not something this page can tell,
 and the silence is the honest answer until a browser can vouch for the host list
-across a gap.
+across a gap. A chat this page stops reading is the same gap in the same
+evidence: while its row is away from the sidebar there is no frame naming it at
+all, so a run that returns to the list is found running again rather than watched
+beginning, and it ends unreported too.
 
 A turn that ends in the chat already on screen, with this window active,
 produces nothing: the answer is in front of the reader.

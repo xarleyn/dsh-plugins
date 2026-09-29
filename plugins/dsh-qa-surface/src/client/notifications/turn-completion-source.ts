@@ -28,8 +28,10 @@ export type QaTurnSighting =
    */
   | "idle"
   /**
-   * Running, from an `idle` reading this page held in the frame before: the run
-   * under way is one this page saw start.
+   * Running, and this page saw this very run begin: it held `idle` in the first
+   * frame that found the chat running. The frames after that keep the reading —
+   * the evidence is the witnessed start, so a run does not lose it by lasting
+   * longer than one frame.
    */
   | "watched"
   /**
