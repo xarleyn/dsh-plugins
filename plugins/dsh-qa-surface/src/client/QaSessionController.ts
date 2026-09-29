@@ -1720,7 +1720,9 @@ export class QaSessionController {
       chatsRevision: this.chatsRevision,
       viewingSubagent: this.viewingSubagent,
       queuedMessages,
-      admittedSubmissions: this.admittedSubmissions,
+      // A copy: the projection input is a value, and this set keeps being
+      // written on the next frame while the state built from it may live on.
+      admittedSubmissions: new Set(this.admittedSubmissions),
       slash: this.slashView(),
       config: this.config,
       subagentNames: this.subagentNames(),

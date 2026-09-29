@@ -11,10 +11,12 @@ import {
 
 type QueueWorld = QaSessionTestWorld & { controller: QaSessionController };
 
-/** Bind the stored chat and let its policy probe settle. */
-async function ready(): Promise<QueueWorld> {
-  const world = harness(["saved"]);
-  world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
+/** The bound chat, plus any further chat the test navigates to. */
+async function ready(
+  listed: readonly [string, ...string[]] = ["saved"],
+): Promise<QueueWorld> {
+  const world = harness([...listed]);
+  world.stored.set("dsh-qa-surface.session:v1:/qa:session", listed[0]);
   const controller = new QaSessionController({
     ...world,
     config: resolveConfig(),
@@ -23,14 +25,20 @@ async function ready(): Promise<QueueWorld> {
   return { ...world, controller };
 }
 
-/** Drive the bound chat's snapshot the way a Host frame would. */
+/** One queued submission echo, as the Host's snapshot registers it. */
+function queued(requestId: string, text: string): Record<string, unknown> {
+  return { requestId, placement: "queued", time: 1, text, attachments: [] };
+}
+
+/** Drive a bound chat's snapshot the way a Host frame would. */
 function setSnapshot(
   world: QueueWorld,
   snapshot: Partial<FakeSessionSnapshot>,
+  chatId = "saved",
 ): void {
-  const saved = world.faces.get("saved");
-  if (saved === undefined) return;
-  saved.source.set({ ...saved.source.getSnapshot(), ...snapshot });
+  const face = world.faces.get(chatId);
+  if (face === undefined) return;
+  face.source.set({ ...face.source.getSnapshot(), ...snapshot });
 }
 
 /**
@@ -41,9 +49,10 @@ function setInbox(
   world: QueueWorld,
   nextTurn: readonly Record<string, unknown>[],
   nextStep: readonly Record<string, unknown>[] = [],
+  chatId = "saved",
 ): void {
   world.faces
-    .get("saved")
+    .get(chatId)
     ?.inbox.set({ "next-turn": nextTurn, "next-step": nextStep });
 }
 
@@ -185,13 +194,6 @@ describe("QA message queue", () => {
   it("keeps a message the turn has taken out of the strip", async () => {
     const world = await ready();
     const { controller } = world;
-    const queued = (requestId: string, text: string) => ({
-      requestId,
-      placement: "queued",
-      time: 1,
-      text,
-      attachments: [],
-    });
     setInbox(world, [
       queuedMessage(
         "message-1",
@@ -228,6 +230,101 @@ describe("QA message queue", () => {
         id: "request-2",
         preview: "третий вопрос",
         text: "третий вопрос",
+        attachments: 0,
+        sending: true,
+      },
+    ]);
+    controller.dispose();
+  });
+
+  it("forgets a submission the Host has stopped registering", async () => {
+    // The record of what the queue has named is bounded by the Host's own
+    // snapshot, and that bound is what keeps a long-lived dock honest: an echo
+    // the server no longer registers is a send that no longer exists, so the id
+    // must not stay settled for the rest of the binding.
+    const world = await ready();
+    const { controller } = world;
+    setInbox(world, [
+      queuedMessage(
+        "message-1",
+        [{ type: "text", text: "второй вопрос" }],
+        "request-1",
+      ),
+    ]);
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "message-1",
+        preview: "второй вопрос",
+        text: "второй вопрос",
+        attachments: 0,
+        sending: false,
+      },
+    ]);
+    // The Host retires the echo along with the queue row: nothing waits, and
+    // nothing is in transport.
+    setInbox(world, []);
+    setSnapshot(world, { pendingSubmissions: [] });
+    expect(controller.getSnapshot().queue).toEqual([]);
+    // The same submission registered again is a send this browser has not seen
+    // land, and the strip says so.
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "request-1",
+        preview: "второй вопрос",
+        text: "второй вопрос",
+        attachments: 0,
+        sending: true,
+      },
+    ]);
+    controller.dispose();
+  });
+
+  it("keeps one chat's receipt from swallowing another chat's row", async () => {
+    // Request ids are minted per session, so an id one chat's queue has named
+    // says nothing about a send another chat still has crossing the transport.
+    // Carrying the record across the binding hides a live row the moment the
+    // operator switches chats.
+    const world = await ready(["saved", "other"]);
+    const { controller } = world;
+    setInbox(world, [
+      queuedMessage(
+        "message-1",
+        [{ type: "text", text: "второй вопрос" }],
+        "request-1",
+      ),
+    ]);
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "message-1",
+        preview: "второй вопрос",
+        text: "второй вопрос",
+        attachments: 0,
+        sending: false,
+      },
+    ]);
+    // The other chat's Host registers an echo of its own under the same id, and
+    // its queue has never named it.
+    setSnapshot(
+      world,
+      { pendingSubmissions: [queued("request-1", "вопрос другого чата")] },
+      "other",
+    );
+    await controller.switchTo("other");
+    expect(controller.getSnapshot().sessionId).toBe("other");
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "request-1",
+        preview: "вопрос другого чата",
+        text: "вопрос другого чата",
         attachments: 0,
         sending: true,
       },
