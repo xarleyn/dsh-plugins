@@ -97,6 +97,12 @@ class FakeNotification {
   static permission: NotificationPermission = "granted";
   /** What the reader answers the browser's prompt with, once it is asked. */
   static answer: NotificationPermission = "granted";
+  /**
+   * Set to a promise to keep the prompt open until the scenario answers it by
+   * hand: the browser decides on its own schedule, and the page keeps rendering
+   * while it waits.
+   */
+  static heldPrompt: Promise<NotificationPermission> | null = null;
   static raised: string[] = [];
   static asked = 0;
 
@@ -111,7 +117,8 @@ class FakeNotification {
   static async requestPermission(): Promise<NotificationPermission> {
     FakeNotification.asked += 1;
     // The reader answered the browser's prompt, one way or the other.
-    FakeNotification.permission = FakeNotification.answer;
+    FakeNotification.permission =
+      (await FakeNotification.heldPrompt) ?? FakeNotification.answer;
     return FakeNotification.permission;
   }
 }
@@ -164,6 +171,7 @@ beforeEach(() => {
   window.localStorage.clear();
   FakeNotification.permission = "granted";
   FakeNotification.answer = "granted";
+  FakeNotification.heldPrompt = null;
   FakeNotification.raised = [];
   FakeNotification.asked = 0;
   vi.stubGlobal("Notification", FakeNotification);
@@ -328,6 +336,49 @@ describe("turn completion notices", () => {
       screen.getByLabelText(`${QA_TURN_NOTICE_COPY.dismiss}: Чат mine`),
     );
     expect(storedPrefs()).toEqual({ osEnabled: false, osOffered: true });
+
+    // And the mark holds: the next line does not re-ask a question this page has
+    // already asked once. On a stand without accounts the way in then lives in
+    // the browser's own settings, until the origin is allowed there.
+    settleSecondChat(
+      page,
+      hostList([
+        { id: "mine", running: false },
+        { id: "second", running: true },
+      ]),
+    );
+    expect(screen.getByText("Чат second")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    ).toBeNull();
+    expect(FakeNotification.asked).toBe(0);
+  });
+
+  it("keeps one record out of a cross and a prompt answer that overlap", async () => {
+    // The browser answers on its own schedule and the page keeps rendering while
+    // it waits: a reader who waves the line off before the prompt has answered
+    // gets one settled record out of the two answers, rather than the last
+    // answer erasing the first.
+    FakeNotification.permission = "default";
+    let answerThePrompt!: (answer: NotificationPermission) => void;
+    FakeNotification.heldPrompt = new Promise((resolve) => {
+      answerThePrompt = resolve;
+    });
+    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    fireEvent.click(
+      screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    );
+    fireEvent.click(
+      screen.getByLabelText(`${QA_TURN_NOTICE_COPY.dismiss}: Чат mine`),
+    );
+    expect(storedPrefs()).toEqual({ osEnabled: false, osOffered: true });
+    expect(FakeNotification.asked).toBe(1);
+
+    answerThePrompt("granted");
+    await waitFor(() =>
+      expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: true }),
+    );
   });
 
   /**
@@ -598,6 +649,30 @@ describe("the account's own channels", () => {
     expect(
       screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
     ).toBeNull();
+    expect(onSave).not.toHaveBeenCalled();
+  });
+
+  it("offers no switch to a fresh browser of a reader whose account says on", () => {
+    // The second carrier of the reader's answer: the account outranks anything
+    // this browser remembers, and an empty store here is not a reader who still
+    // owes one. The action reads «включить» over a channel that is on, and the
+    // answer «не разрешать» would write `desktop: false` back to that account —
+    // so the only way this switch moves is off. What the fresh browser is missing
+    // is its own permission, and the settings section is where that is asked.
+    FakeNotification.permission = "default";
+    const { options, onSave } = signedIn({ inApp: true, desktop: true });
+    const page = mountPage(hostList([{ id: "mine", running: true }]), options);
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(screen.getByText("Чат mine")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    ).toBeNull();
+
+    // A page with no question left to ask marks nothing for itself either.
+    fireEvent.click(
+      screen.getByLabelText(`${QA_TURN_NOTICE_COPY.dismiss}: Чат mine`),
+    );
+    expect(storedPrefs()).toBeNull();
     expect(onSave).not.toHaveBeenCalled();
   });
 });
