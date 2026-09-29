@@ -134,7 +134,8 @@ configuration rebuild from a card edit that arrives after the gate is gone.
   unless explicitly opted in.
 - Sanitized plugin-log records (`safety-gate/check|block|warn|classifier-error`), failure
   modes, monotonic merge, counters.
-- Settings page (`Settings → Plugins → Model Safety Gate`) over the live
+- Configuration card on the plugin's row in the Plugins panel
+  (`plugins.row.config`, keyed by the package name and its row id) over the live
   configuration of the `dsh-model-safety-gate` profile entry: gate, input,
   output, tools, results, classifier, audit, and advanced sections, plus the
   running-gate status and recent-verdict view served by the `safetyGate`

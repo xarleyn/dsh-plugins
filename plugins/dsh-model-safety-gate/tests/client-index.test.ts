@@ -1,7 +1,8 @@
 /**
  * Client activation: the entry mounts the generated Remote contribution and
- * registers the card as one tab of the Plugins settings section, bound to the
- * configuration form the settings domain serves for this profile entry.
+ * registers the card as the configuration of this bundle's own row on the
+ * Plugins page, bound to the configuration form the settings domain serves for
+ * this profile entry.
  */
 
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -24,7 +25,6 @@ describe("client activation", () => {
     const safetyGate = { inspect };
     const form = {};
     let cardFace: (() => unknown) | undefined;
-    let tabOptions: { label?(): string } | undefined;
 
     const disposeSlot = vi.fn();
     const readyCtx = {
@@ -32,13 +32,10 @@ describe("client activation", () => {
       configForms: { get: vi.fn(() => form) },
       slots: {
         inject: vi.fn((_name: string, callback: () => unknown) => callback()),
-        register: vi.fn(
-          (options: { inject: () => unknown; label?(): string }) => {
-            cardFace = options.inject;
-            tabOptions = options;
-            return disposeSlot;
-          },
-        ),
+        register: vi.fn((options: { inject: () => unknown }) => {
+          cardFace = options.inject;
+          return disposeSlot;
+        }),
       },
     };
     const injectServices = vi.fn(
@@ -75,11 +72,14 @@ describe("client activation", () => {
     // Only `remote` and `inject` are read on the entry context: the slot
     // registry and the form arrive on the injected one.
     const dispose = await apply({ remote, inject: injectServices } as never);
-    const face = cardFace?.() as { form: unknown };
+    const face = cardFace?.() as { settingsForm: unknown };
 
     await expect(inspect()).resolves.toEqual({ ok: true, value: {} });
     expect(inspect).toHaveBeenCalledOnce();
-    expect(face).toMatchObject({ form });
+    // The seat hands the page's own `ConfigPageForm`, which can neither be
+    // subscribed to nor written field by field, so the card's live form arrives
+    // through the injected face, under a name that owner prop cannot shadow.
+    expect(face).toMatchObject({ settingsForm: form });
     expect(mount).toHaveBeenCalledOnce();
     expect(injectServices).toHaveBeenCalledOnce();
     // The settings namespace of a plugin is its profile entry id.
@@ -87,17 +87,18 @@ describe("client activation", () => {
       "dsh-model-safety-gate",
     );
     expect(readyCtx.slots.inject).toHaveBeenCalledWith(
-      "settings.plugins.tab",
+      "plugins.row.config",
       expect.any(Function),
     );
+    // The key is the package name joined to that same row id, which is what
+    // keeps a value saved before the seat moved readable after it.
     expect(readyCtx.slots.register).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: "settings.plugins.tab",
-        id: "model-safety-gate",
+        name: "plugins.row.config",
+        key: "@yadsh/dsh-model-safety-gate#dsh-model-safety-gate",
       }),
       expect.anything(),
     );
-    expect(tabOptions?.label?.()).toBe("Model Safety Gate");
     expect(style.textContent).toContain(".dsh-plugin-card{");
     expect(style.dataset.plugin).toBe("@yadsh/dsh-model-safety-gate");
 
