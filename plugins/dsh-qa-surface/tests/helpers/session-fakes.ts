@@ -143,6 +143,7 @@ export function publishChatSlice(
 export function landDurableUserRow(
   binding: ReturnType<typeof conversationBinding> | undefined,
   text: string,
+  rpcId?: string,
 ): void {
   publishChatSlice(
     binding,
@@ -152,7 +153,7 @@ export function landDurableUserRow(
           kind: "user",
           seq: 1,
           time: 10,
-          source: {},
+          source: rpcId === undefined ? {} : { kind: "user", rpcId },
           content: [{ type: "text", text }],
         },
       ] as ConversationNode[],

@@ -218,7 +218,12 @@ the running turn, drop it — addressed by the occurrence id the Host's queue
 frame carried, so the strip never claims a row the server does not have. The
 queue is Host state read through the session snapshot: the stand keeps no queue
 of its own, and a message waiting in the queue is absent from the transcript
-until the agent claims it.
+until the agent claims it. The one thing the stand keeps about the queue is the
+list of sends the Host has already named — in its Inbox or as a durable
+transcript row — held for the bound chat and dropped when the binding goes away.
+That record hides nothing the server still shows and only hides the browser's
+own echo of a message the Host has received, which is what keeps a claimed
+question from staying above the composer as an unsent one.
 
 ---
 

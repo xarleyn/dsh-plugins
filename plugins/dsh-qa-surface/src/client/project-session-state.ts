@@ -13,6 +13,7 @@ import type {
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 import { projectTranscript } from "./QaTranscriptAdapter.js";
+import { chatLegacyOf } from "./turn-sources.js";
 
 /** Everything the bound-chat projection reads; the computation is pure. */
 export interface QaBoundProjectionInput {
@@ -28,9 +29,10 @@ export interface QaBoundProjectionInput {
    */
   readonly queuedMessages: readonly UserMessage[];
   /**
-   * Queued submissions this binding has already seen in {@link queuedMessages}
-   * — the mask {@link projectQueue} draws with, and empty against a session
-   * library that retires an echo when its queue occurrence arrives.
+   * Request ids this binding has already seen the Host name, out of
+   * {@link queuedMessages} and the transcript. The mask {@link projectQueue}
+   * draws with while the session library's echo retirement waits on a frame the
+   * surface may never get.
    */
   readonly admittedSubmissions: ReadonlySet<string>;
   readonly conversationSnapshot: ConversationSnapshot | undefined;
@@ -83,20 +85,47 @@ function queuePreview(text: string): string {
     : flat;
 }
 
+/** The `source.rpcId` of one Host row, when the Host named the send it carries. */
+function rpcIdOf(source: unknown): string | null {
+  const rpcId = (source as { readonly rpcId?: unknown } | undefined)?.rpcId;
+  return rpcId === undefined || rpcId === null ? null : String(rpcId);
+}
+
 /**
- * The submission echoes the Host's queue carries, keyed by request id. A queued
- * message lists the echo it answers for, which is what keeps one send from
- * reading as two rows while it is both in transport and admitted.
+ * Request ids the Host's queue carries. A queued message lists the submission it
+ * answers for, which is what keeps one send from reading as two rows while it is
+ * both in transport and admitted.
  */
-export function admittedSubmissionIds(
+function queueNamedIds(queued: readonly UserMessage[]): Set<string> {
+  const ids = new Set<string>();
+  for (const message of queued) {
+    const id = rpcIdOf(message.source);
+    if (id !== null) ids.add(id);
+  }
+  return ids;
+}
+
+/**
+ * The request ids the Host has itself named for a send, out of the two lists it
+ * publishes: the messages waiting in its Inbox and the durable input rows of its
+ * transcript (`user` opens the turn that took the message, `steering` is one
+ * injected into the turn already running). Either is the server's own receipt
+ * that the message crossed, and reading both is what makes the receipt
+ * independent of which frame carried the news: a message the turn has claimed is
+ * gone from the Inbox yet stays in the transcript, so a send admitted and claimed
+ * between two notifications is still named by the next transcript frame.
+ */
+export function hostNamedSubmissionIds(
   queued: readonly UserMessage[],
+  conversationSnapshot: ConversationSnapshot | undefined,
 ): Set<string> {
-  return new Set(
-    queued.flatMap((message) => {
-      const rpcId = (message.source as { readonly rpcId?: unknown }).rpcId;
-      return rpcId === undefined ? [] : [String(rpcId)];
-    }),
-  );
+  const ids = queueNamedIds(queued);
+  for (const node of chatLegacyOf(conversationSnapshot).nodes) {
+    if (node.kind !== "user" && node.kind !== "steering") continue;
+    const id = rpcIdOf(node.source);
+    if (id !== null) ids.add(id);
+  }
+  return ids;
 }
 
 /**
@@ -105,39 +134,44 @@ export function admittedSubmissionIds(
  * crossing the transport comes from the submission echo registered for it, so
  * one queued send reads as one row at every moment.
  *
- * That echo is the browser's own, and its retirement is the session library's
- * job. `@deepseek-ai/dsh-api-session-controller` — the harness's
- * `packages/api/session-controller`, pinned at 0.1.7-rc.2 — documents
+ * That echo is the browser's own, and retiring it is the session library's job.
+ * `@deepseek-ai/dsh-api-session-controller` — the harness's
+ * `packages/api/session-controller`, pinned here at 0.1.7-rc.2 — documents
  * `SessionSnapshot.pendingSubmissions` as "Local prompt-submission echoes not
- * yet observed as durable events or queue occurrences" and `beginSubmission`
- * as "Queued echoes retire on queue acceptance", that retirement being the
- * `observed` branch of `PendingSubmissionRetirement`. The card measured a row
- * that survived the claim its own queue occurrence had proved and left the
- * screen only on a page reload — under that declaration, an echo outliving the
- * occurrence that should have retired it: the strip then drew the survivor as a
- * buttonless «отправляется…» row over a question the transcript had answered.
+ * yet observed as durable events or queue occurrences" and `beginSubmission` as
+ * "Queued echoes retire on queue acceptance", that retirement being the
+ * `observed` branch of `PendingSubmissionRetirement`. It does not complete the
+ * removal at acceptance: the settlement is latched and the removal deferred one
+ * animation frame (`scheduleObservedRetirement` hands `finishSubmission` to
+ * `scheduleFrame`; in the pinned bundle, `lib/client.js:2233` and `:2309`), and
+ * `scheduleFrame` falls back to a macrotask only where `requestAnimationFrame`
+ * does not exist at all. A surface whose frame clock has stopped therefore never
+ * runs the removal while its snapshot notifications keep arriving on microtasks —
+ * the card measured exactly that with the browser panel collapsed
+ * (`viewport=0x0`): the question and its answer in the feed, and the survivor
+ * drawn below it as a buttonless «отправляется…» row that a page reload cleared.
  *
- * So while that contract goes unmet, a submission the Inbox has once listed is
- * treated as settled and never drawn as crossing. The follow-up belongs to the
- * retirement named above, not to this package; the mask is a client-side
- * substitute for it, and carries three limits with it:
- * - it is terminal, so a message taken out of the queue without being handed
- * to the turn leaves no row either — the browser cannot tell the two cases;
+ * So while that removal waits on a clock the surface may not have, a submission
+ * the Host has once named is never drawn as crossing. The follow-up belongs to
+ * `scheduleObservedRetirement` / `scheduleFrame` in that package: retire a
+ * settlement that a delivered notification already proved without a frame. Two
+ * limits come with the substitute, and both are the mask's, not the Host's:
+ * - it is terminal, so a message taken out of the queue without being handed to
+ * the turn leaves no row either — the browser cannot tell the two cases, and the
+ * alternative is the permanent buttonless row this card reports;
  * - it lives for one binding, so re-subscribing a chat whose session object
- * still registers the echo draws the row again;
- * - the receipt is dropped by the first frame that stops registering the echo,
- * which is what a library honouring the contract looks like and also what a
- * frame carrying no local echoes looks like: such a frame re-draws
- * «отправляется…» over a message the queue already named.
- * A release that retires the echo at acceptance leaves this set empty on every
- * frame, and then the filter is dead code to delete.
+ * still registers the echo draws the row again until that echo is retired.
+ * Where the frame clock does run, the library retires the echo on the frame after
+ * the claim, so this filter has nothing left to hide; a release that retired at
+ * acceptance rather than on a frame would leave it hiding nothing at all, and the
+ * filter becomes dead code to delete.
  */
 function projectQueue(
   snapshot: QaBoundProjectionInput["sessionSnapshot"],
   queued: QaBoundProjectionInput["queuedMessages"],
   admitted: QaBoundProjectionInput["admittedSubmissions"],
 ): readonly QaQueueRow[] {
-  const echoed = admittedSubmissionIds(queued);
+  const echoed = queueNamedIds(queued);
   const sending = snapshot.pendingSubmissions
     .filter(
       (item) =>
