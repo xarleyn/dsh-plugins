@@ -5,10 +5,10 @@ import type {
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
-import type { ChangeEvent, ReactElement, ReactNode } from "react";
+import type { ChangeEvent, ReactNode } from "react";
 import { CardShell, PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
 import {
   SleevSettingsController,
@@ -18,17 +18,14 @@ import {
   type SleevSettingsFieldState,
 } from "./settings-controller.js";
 import {
+  SLEEV_ROW_CONFIG_KEY,
   SLEEV_SETTINGS_NAMESPACE_ID,
-  SLEEV_SETTINGS_TAB_ID,
 } from "../shared/settings.js";
 
 export * from "./settings-controller.js";
 
 const LOCALE_NAMESPACE = "dsh-sleev";
 const SETTINGS_NAMESPACE = SLEEV_SETTINGS_NAMESPACE_ID;
-const SETTINGS_TAB = SLEEV_SETTINGS_TAB_ID;
-/** Tab position among the plugin pages of the Host Plugins settings section. */
-const SETTINGS_TAB_ORDER = 30;
 
 type SleevLocaleKey =
   | "title"
@@ -117,7 +114,7 @@ const zh: Record<SleevLocaleKey, string> = {
 };
 
 const CARD_STYLES = `${PLUGIN_CARD_SHELL_CSS}
-.dsh-sleev-tab{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
+.dsh-sleev-config{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
 .dsh-sleev-button:focus-visible,.dsh-sleev-reset:focus-visible,.dsh-sleev-input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .dsh-sleev-read-only{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .dsh-sleev-pill{border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px;font-weight:500;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);white-space:nowrap}
@@ -143,7 +140,7 @@ textarea.dsh-sleev-input{height:64px;min-height:48px;padding:8px 12px;resize:ver
 .dsh-sleev-button:disabled{opacity:.4;cursor:default}
 `;
 
-type SleevSettingsCardProps = PropsRuntime<"settings.plugins.tab"> &
+type SleevSettingsCardProps = PropsRuntime<"plugins.row.config"> &
   PropsLocale<"dsh-sleev"> &
   InjectFace<SleevSettingsCardFace>;
 
@@ -192,7 +189,7 @@ function SettingsField(props: {
   );
 }
 
-/** Settings card contributed to the official Plugins → Plugin configuration tab. */
+/** Settings card for the Sleev bundle row of the Host Plugins page. */
 export function SleevSettingsCard(props: SleevSettingsCardProps) {
   const state = props.useSleevSettings((snapshot) => snapshot);
   if (!state.available) return null;
@@ -348,20 +345,22 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
 export const inject = ["slots", "configForms", "locale"];
 
 /**
- * Page seat of the Host Plugins settings section.
- *
- * The section mounts a tab contribution directly, so the card's `<li>` shell
- * needs the list parent the card contract assumes; the plugin owns that `<ul>`.
+ * Configuration seat of the Sleev bundle row on the Host Plugins page: `summary`
+ * is the row's one-liner and `page` the card, whose `<li>` shell needs the
+ * plugin-owned `<ul>` the card contract assumes. The card resolves the
+ * `dsh-sleev` namespace itself instead of taking the `form` this page hands it,
+ * which is what keeps values stored before the move readable after it.
  */
-export function SleevSettingsTab(props: SleevSettingsCardProps): ReactElement {
+export function SleevRowConfig(props: SleevSettingsCardProps): ReactNode {
+  if (props.view === "summary") return props.t("description");
   return (
-    <ul className="dsh-sleev-tab" data-testid="sleev-tab">
+    <ul className="dsh-sleev-config" data-testid="sleev-row-config">
       <SleevSettingsCard {...props} />
     </ul>
   );
 }
 
-/** Register Sleev's localized settings card as a tab of the Host Plugins section. */
+/** Register Sleev's localized settings card as its bundle row's configuration page. */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     const style = document.createElement("style");
@@ -377,17 +376,15 @@ export function apply(ctx: ClientContext): void {
   const controller = new SleevSettingsController(
     ctx.configForms.get<SleevSettings>(SETTINGS_NAMESPACE),
   );
-  ctx.slots.inject("settings.plugins.tab", () => {
+  ctx.slots.inject("plugins.row.config", () => {
     const unregister = ctx.slots.register(
       {
-        name: "settings.plugins.tab",
-        id: SETTINGS_TAB,
-        order: SETTINGS_TAB_ORDER,
-        label: () => "Sleev",
+        name: "plugins.row.config",
+        key: SLEEV_ROW_CONFIG_KEY,
         locale: LOCALE_NAMESPACE,
         inject: () => controller.inject(),
       },
-      SleevSettingsTab,
+      SleevRowConfig,
     );
     return () => {
       controller.dispose();

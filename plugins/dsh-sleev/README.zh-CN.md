@@ -42,7 +42,7 @@ dsh plugin --profile web remove @yadsh/dsh-sleev
 
 ## 设置界面
 
-打开 **设置 → 插件 → Sleev**，可以编辑：
+打开**插件**面板，选择 Sleev 插件包，并点击其 `dsh-sleev` 行的**配置**按钮，可以编辑：
 
 - 精确观测的提供商别名；
 - 观测的提供商名称前缀；

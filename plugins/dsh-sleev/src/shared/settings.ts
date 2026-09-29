@@ -5,5 +5,9 @@
  */
 export const SLEEV_SETTINGS_NAMESPACE_ID = "dsh-sleev";
 
-/** Tab identity of the browser card inside the Host Plugins settings section. */
-export const SLEEV_SETTINGS_TAB_ID = "sleev";
+/**
+ * Seat key of the card on the Host Plugins page: the bundle's package name and
+ * the row id its `cordis.patch.yml` declares, joined by `#`. The row id is the
+ * profile entry id above, which is why moving the card keeps the namespace.
+ */
+export const SLEEV_ROW_CONFIG_KEY = `@yadsh/dsh-sleev#${SLEEV_SETTINGS_NAMESPACE_ID}`;
