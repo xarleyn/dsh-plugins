@@ -46,14 +46,19 @@ service token, say — still overwrote the status of the live connection. And a
 probe unlocks the credential its own binding names rather than whatever the row
 points at when the read happens, so the answer it produces and the generation
 the verdict is filed against are the same connection by construction, not
-because nothing happened to intervene. A read that loses that credential to the
-reconnect says so as the missing connection it is: the operation is recorded as
-a failure rather than among the calls policy declined, and the user is not told
-to store a token they just replaced.
+because nothing happened to intervene. That read starts from the principal that
+asked and the provider being reached, like every other lookup in the store, and
+the reference only selects which generation of that connection is unlocked: a
+bare reference would hand any account's credential to whoever quoted its id. A
+read that loses that credential to the reconnect says so as the missing
+connection it is: the operation is recorded as a failure rather than among the
+calls policy declined, and the user is not told to store a token they just
+replaced.
 
 Both are pinned by tests: a stored grant the provider no longer offers is
 refused without unlocking the secret and is gone from the card that describes
 the connection, an allowance for it is refused while it is away and still does
-not serve when it returns, and a validation that lands after the account moved
-is discarded — in either completion order, and after a re-save of the very
-profile the binding already ran under.
+not serve when it returns, a validation that lands after the account moved is
+discarded — in either completion order, and after a re-save of the very profile
+the binding already ran under — and a secret reference resolves only for the
+account and provider whose live binding still carries it.
