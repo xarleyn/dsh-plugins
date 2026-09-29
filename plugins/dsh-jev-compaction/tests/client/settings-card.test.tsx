@@ -60,7 +60,7 @@ function stubForm(
 
 function renderCard(options: Parameters<typeof stubForm>[0] = {}) {
   const { form, ops } = stubForm(options);
-  const result = render(<JevCompactionCard form={form} />);
+  const result = render(<JevCompactionCard settingsForm={form} />);
   return { ...result, ops };
 }
 

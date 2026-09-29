@@ -4,22 +4,30 @@
  * The ModuleLoader registration (`window.__ModuleLoader__.load({ id, factory })`
  * with the full package name) is produced by the tsdown banner; this module
  * resolves the Host form for the plugin's own configuration section and mounts
- * the card as a tab of the Plugins page. Everything the card shows comes from
- * that form, so the plugin needs no Remote namespace — and no API key ever
- * crosses to the browser: the card edits the *name* of the environment variable
- * holding the key and only displays whether the Host can resolve it.
+ * the card as the configuration of this bundle's row on the Plugins page.
+ * Everything the card shows comes from that form, so the plugin needs no Remote
+ * namespace — and no API key ever crosses to the browser: the card edits the
+ * *name* of the environment variable holding the key and only displays whether
+ * the Host can resolve it.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
-import type {} from "@deepseek-ai/dsh-client-ui-slots";
+import type {
+  InjectFace,
+  PropsRuntime,
+} from "@deepseek-ai/dsh-client-ui-slots";
 import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 
 import type { JevCompactionConfig } from "../config/index.js";
 import { JEV_COMPACTION_SETTINGS_NAMESPACE } from "../shared/settings.js";
-import { JevCompactionCard } from "./card.js";
+import {
+  JEV_COMPACTION_ROW_SUMMARY,
+  JevCompactionCard,
+  type JevCompactionCardFace,
+} from "./card.js";
 import { styles } from "./styles.js";
 
 /** Package name: the style-tag key and the card's own plugin identity. */
@@ -27,14 +35,19 @@ export const CLIENT_PLUGIN_NAME = "@yadsh/dsh-jev-compaction";
 
 /**
  * The slot this card occupies. `settings.plugin.item` was removed with the
- * 0.1.7 settings rewrite; a plugin-owned configuration page now sits in the
- * Plugins section as a tab, which is also what keeps the card reachable from a
- * non-loopback browser.
+ * 0.1.7 settings rewrite, and the Plugins tab of the settings page is not where
+ * a card that edits this bundle's own Config belongs either: the Plugins page
+ * owns a seat for the configuration of one row a bundle declares.
  */
-export const SETTINGS_CARD_SLOT = "settings.plugins.tab";
+export const SETTINGS_CARD_SLOT = "plugins.row.config";
 
-/** Tab position among the contributed Plugins tabs. */
-const TAB_ORDER = 30;
+/**
+ * The seat key: the package name joined to the row id as `cordis.patch.yml`
+ * declares it. That row id is also the namespace the Host resolves this plugin's
+ * volatile Config under, so the move changes where the card renders and nothing
+ * about where its values live — one an older build saved is read back by this one.
+ */
+const ROW_CONFIG_KEY = `@yadsh/dsh-jev-compaction#${JEV_COMPACTION_SETTINGS_NAMESPACE}`;
 
 /**
  * Client services this module reads. The client runtime resolves only
@@ -56,7 +69,23 @@ interface ClientFace {
   };
 }
 
-/** Resolve the settings form and register the card as a Plugins tab. */
+type EntryProps = PropsRuntime<"plugins.row.config"> &
+  InjectFace<JevCompactionCardFace>;
+
+/**
+ * The entry the Plugins page renders for this bundle's row.
+ *
+ * The page asks for two views of one entry: the row's `summary` one-liner, shown
+ * wherever the bundle declares no description of its own, and the `page` body
+ * below. The summary lands inside the page's own text, so it returns the sentence
+ * and never a second card.
+ */
+function JevCompactionEntry(props: EntryProps) {
+  if (props.view === "summary") return JEV_COMPACTION_ROW_SUMMARY;
+  return <JevCompactionCard settingsForm={props.settingsForm} />;
+}
+
+/** Resolve the settings form and register the card as the row's configuration. */
 export function apply(ctx: Context): () => void {
   const face = ctx as unknown as Partial<ClientFace>;
   const slots = face.slots;
@@ -71,8 +100,10 @@ export function apply(ctx: Context): () => void {
     return noop;
   }
 
-  // The tab slot hands a card nothing, so the entry id is the join key into the
-  // Host settings document (`../shared/settings.ts`).
+  // The row seat hands the page's own `ConfigPageForm`, which is `{ state,
+  // mutate }` only — it cannot be subscribed to and carries no single-field
+  // write — so the entry resolves the full form itself. The join key into the
+  // Host settings document (`../shared/settings.ts`) is the row id.
   const form = face.configForms.get<JevCompactionConfig>(
     JEV_COMPACTION_SETTINGS_NAMESPACE,
   );
@@ -81,12 +112,10 @@ export function apply(ctx: Context): () => void {
     slots.register(
       {
         name: SETTINGS_CARD_SLOT,
-        id: JEV_COMPACTION_SETTINGS_NAMESPACE,
-        order: TAB_ORDER,
-        label: () => "Jev Compaction",
-        inject: () => ({ form }),
+        key: ROW_CONFIG_KEY,
+        inject: () => ({ settingsForm: form }),
       },
-      JevCompactionCard,
+      JevCompactionEntry,
     ),
   );
 
