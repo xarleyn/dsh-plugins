@@ -25,12 +25,13 @@
 // method guards and fallback translations below keep headless or older profiles
 // safe.
 
+import type { ConfigForms } from "@deepseek-ai/dsh-client-ui-settings/client";
 import { ConfigCard, type ConfigCardProps } from "./card.js";
 import { DICT, fallbackT, type Translate } from "./dictionary.js";
 import {
   SettingsForm,
   type CardFace,
-  type NamespaceForm,
+  type SettingsDocument,
 } from "./settings-form.js";
 
 /** The profile entry id of `cordis.patch.yml`, which on this host *is* the namespace. */
@@ -47,19 +48,15 @@ interface LocaleService {
 }
 
 /**
- * The settings service the card reads its namespace through. `get` answers a
- * controller for any name, served or not, so "this profile does not carry the
- * namespace" is not in its reply — the transient lives in the snapshot status
- * instead. The instrument that says whether the namespace is served is
+ * The settings service the card reads its namespace through: the Host's own
+ * `ConfigForms`, narrowed to the two members this entry calls, so a signature
+ * change on the provider stops compiling here instead of being mirrored by hand.
+ * `get` answers a controller for any name, served or not — "this profile does not
+ * carry the namespace" is not in its reply, the transient lives in the snapshot
+ * status. The instrument that says whether the namespace is served is
  * `whileServed`, and the card claims its seat inside it.
  */
-interface ConfigFormsService {
-  get(namespace: string): NamespaceForm;
-  whileServed(
-    namespaces: readonly string[],
-    register: (served: ReadonlySet<string>) => () => void,
-  ): () => void;
-}
+type ConfigFormsService = Pick<ConfigForms, "get" | "whileServed">;
 
 /** The seat the card claims on the Settings → Plugins page. */
 interface TabSeat {
@@ -113,7 +110,7 @@ export function apply(ctx: DocImpactClientContext): void {
     typeof configForms.whileServed !== "function"
   )
     return;
-  const form = new SettingsForm(configForms.get(SETTINGS_NS));
+  const form = new SettingsForm(configForms.get<SettingsDocument>(SETTINGS_NS));
 
   // `whileServed` wraps the injection rather than the card body: it is the slot
   // injection that draws the tab, so a namespace this profile does not serve

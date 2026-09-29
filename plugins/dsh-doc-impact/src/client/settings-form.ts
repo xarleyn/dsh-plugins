@@ -1,6 +1,10 @@
 // Staged settings form over the `dsh-doc-impact` settings namespace — a port of
 // the first-party CardForm semantics: staged drafts never write; Save commits
 // field-granular path operations in staging order (SPEC §37).
+import type {
+  ConfigForm,
+  ConfigFormSnapshot,
+} from "@deepseek-ai/dsh-client-ui-settings/client";
 import {
   DEFAULT_LIMIT_TEMPLATE,
   DEFAULT_REMINDER_TEMPLATE,
@@ -252,22 +256,39 @@ type Draft =
   | { readonly op: "set"; readonly value: DocImpactValue };
 
 /**
- * A layer of the namespace document: the Host's JSON, whose shape the field
- * specs describe, so every read is guarded and typed by the spec that asks.
+ * A layer of the namespace document. The Host answers `base` and `user` as JSON
+ * of no declared shape and `value` as the resolved section, so a layer is
+ * whatever the document happens to hold: every read goes through `pick`, which
+ * guards each step of the path the spec carries.
  */
-type SettingsLayer = Record<string, unknown> | undefined;
+type SettingsLayer = unknown;
+
+/**
+ * The `dsh-doc-impact` namespace section as the Host hands it: raw profile JSON
+ * whose shape only the field specs describe. This is the type argument the form
+ * asks the Host for — not `DocImpactSettingsSection`, which is the card's flat
+ * view of ten fields, not the nested document the namespace actually holds.
+ */
+export type SettingsDocument = Record<string, unknown>;
+
+/**
+ * The host `ConfigForm` of the namespace. Taken from the settings package rather
+ * than written out again: a hand-kept mirror of the Host is checked by nobody,
+ * since `apply` declares its own context, and this one had already drifted — the
+ * Host also offers `set`/`unset` and makes `mode` a mandatory part of the reply.
+ */
+export type NamespaceForm = ConfigForm<SettingsDocument>;
 
 /** The Host's view of one settings namespace. */
-export interface NamespaceSnapshot {
-  readonly status: "loading" | "ready" | "unavailable";
-  readonly value?: Record<string, unknown>;
-  readonly base?: Record<string, unknown>;
-  readonly user?: Record<string, unknown>;
-  readonly writable: boolean;
-  readonly revision?: number;
-}
+export type NamespaceSnapshot = ConfigFormSnapshot<SettingsDocument>;
 
-/** One field-granular path operation: `set` carries the value, `unset` drops the override. */
+/** One field-granular path operation the card emits: `set` carries the value,
+ *  `unset` drops the override. The Host calls this shape `SettingsPathOpView`,
+ *  which the settings package brings in from `@deepseek-ai/dsh-api-remotes` — a
+ *  dependency it does not declare, so the name resolves to nothing in this
+ *  workspace and the op stays described here. `CardOps` is what keeps that
+ *  description answerable: the moment the Host's own list resolves, an operation
+ *  this card emits that the Host does not take stops compiling. */
 export type NamespaceOp =
   | {
       readonly op: "set";
@@ -276,15 +297,13 @@ export type NamespaceOp =
     }
   | { readonly op: "unset"; readonly path: readonly string[] };
 
-/** The host `ConfigForm` of the namespace, as this form uses it. */
-export interface NamespaceForm {
-  getSnapshot(): NamespaceSnapshot;
-  subscribe(listener: () => void): () => void;
-  mutate(
-    ops: readonly NamespaceOp[],
-    expectedRevision?: number,
-  ): Promise<boolean>;
-}
+/** The ops the Host's `mutate` takes, as far as it can be read from here. */
+type HostOps = Parameters<NamespaceForm["mutate"]>[0];
+
+/** The card's ops, guarded against the Host's list — `never` if they do not fit. */
+export type CardOps = NamespaceOp extends HostOps[number]
+  ? readonly NamespaceOp[]
+  : never;
 
 /** One field as the card renders it: the draft text its kind shows, the value it
  *  stands on, whether the user layer holds an override, and whether the draft can
@@ -356,6 +375,37 @@ function pick(
     typeof node === "boolean"
     ? node
     : undefined;
+}
+
+/** Whether one read value stands in the vocabulary a choice field offers. */
+function isChoiceMember(
+  options: readonly DocImpactValue[],
+  value: DocImpactValue,
+): boolean {
+  return options.some(function (option: DocImpactValue) {
+    return option === value;
+  });
+}
+
+/**
+ * The value one spec allows at a document path. `pick` already refuses a node
+ * that is not a scalar; a choice additionally refuses a value outside its
+ * `options`, because the select it feeds has no `option` to mark selected and
+ * the operator would see an empty field instead of the value the Host holds.
+ * Reading it as absent puts the field back on its fallback, which the reset
+ * preview and the badge already use.
+ */
+function readOf(
+  spec: FieldSpec,
+  source: SettingsLayer,
+): DocImpactValue | undefined {
+  const value = pick(source, spec.path);
+  if (value === undefined) return undefined;
+  const options: readonly DocImpactValue[] | undefined =
+    spec.kind === "choice" ? spec.options : undefined;
+  return options !== undefined && !isChoiceMember(options, value)
+    ? undefined
+    : value;
 }
 
 /** Whether one path stands in a layer — presence, not value, marks an override. */
@@ -469,11 +519,11 @@ export class SettingsForm {
   }
 
   private sectionValue(field: SettingsField): DocImpactValue | undefined {
-    return pick(this.snapshotOf().value, specOf(field).path);
+    return readOf(specOf(field), this.snapshotOf().value);
   }
 
   private baseValue(field: SettingsField): DocImpactValue | undefined {
-    return pick(this.snapshotOf().base, specOf(field).path);
+    return readOf(specOf(field), this.snapshotOf().base);
   }
 
   private userLayer(): SettingsLayer {
@@ -544,23 +594,23 @@ export class SettingsForm {
   /**
    * One field-granular write. The revision fence is read at the moment of the
    * write, not when the draft was staged, so a stale view cannot overwrite a
-   * newer one; the Host answers whether the write landed.
+   * newer one; the Host answers whether the write landed. The path is copied out
+   * of the spec: the Host takes a mutable `string[]`, and the spec array is
+   * shared by every read of that field.
    */
   private runClear(field: SettingsField): Promise<boolean> {
-    return this.form.mutate(
-      [{ op: "unset", path: specOf(field).path }],
-      this.snapshotOf().revision,
-    );
+    const ops: CardOps = [{ op: "unset", path: [...specOf(field).path] }];
+    return this.form.mutate(ops, this.snapshotOf().revision);
   }
 
   private runSet(
     field: SettingsField,
     value: DocImpactValue,
   ): Promise<boolean> {
-    return this.form.mutate(
-      [{ op: "set", path: specOf(field).path, value: value }],
-      this.snapshotOf().revision,
-    );
+    const ops: CardOps = [
+      { op: "set", path: [...specOf(field).path], value: value },
+    ];
+    return this.form.mutate(ops, this.snapshotOf().revision);
   }
 
   shell(): ShellState {
