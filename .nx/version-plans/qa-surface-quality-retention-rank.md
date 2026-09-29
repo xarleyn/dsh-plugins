@@ -21,17 +21,19 @@ The cut now ranks instead of measuring: a family keeps the newest `cap` rows by
 already holds costs nothing, while a genuine overflow still costs exactly its
 oldest entry. The cut runs on every write and the feedback family grows to
 20 000 rows, so finding the rank reads through an index instead of scanning and
-sorting: schema version 2 adds the `(kind, seq)` index that the cap, the reload
-of one family and the sequence a new row takes are defined by. Those three
-statements are what SQL orders here; the newest-first shape a reader sees is
-built in memory, so the index is not what gives it. What the index removes is
-the sort — from the write that trims and, more often, from the read that opens
-the file again: on twenty thousand rows that reload stopped building a temp
-B-tree and measured about half its former cost. What stays is the traversal:
-finding the rank walks as many index entries as the cap, so the cap bounds it
-rather than a seek, but only of that family's slice of the index, and the delete
-reaches just the rows it removes — a write that does not overflow pays the read
-and nothing else.
+sorting: schema version 2 adds the `(kind, seq)` index that the three
+statements which order this table walk — the cap's lookup of the row at its
+rank, the reload of one family, and the `MAX(seq)` a new row takes its place
+from.
+Those are all of them: the newest-first shape a reader sees is built in memory,
+so no SQL here orders newest-first and the index is not what gives it. What the
+index removes is the sort — from the write that trims and, more often, from the
+read that replays a family after one. Measured locally on a family filled to
+its cap, both stopped building a temp B-tree and the reload cost about half of
+what it did without the index. What stays is the traversal: finding the rank
+walks as many index entries as the cap, so the cap bounds it rather than a
+seek, but only through that family's slice of the index, and the delete reaches
+just the rows it removes — a write that does not overflow pays the read alone.
 
 The tests fill the feedback family to its cap and re-judge one record, and do
 the same to the review family, each time asserting the row count and which
