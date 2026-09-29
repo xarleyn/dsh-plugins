@@ -13,12 +13,16 @@ on serving the withdrawn capability to every account that had connected while it
 was still offered, until each person reconnected. The allowance is now
 intersected with the live provider set as well, and the refusal lands where it
 has to: before the secret is decrypted and before a single byte reaches the
-vendor. The card reports a connection through the same intersection, so a
-withdrawn capability leaves the list the operator sees at the same moment it
-leaves the set a call is served from, instead of sitting there as a switch that
-is only ever a refusal. Writing an allowance goes through it too: a policy for a
-capability the deployment does not offer is refused rather than stored, because
-a row saved while the capability is away would wake up the moment it returns —
+vendor. The card decides through the same intersection, so a withdrawn
+capability stops being offered to the operator at the same moment it stops being
+served to a call. Its row stays in the list the operator sees, because that list
+is drawn from the provider's catalog rather than from this connection's grant,
+but it is shown unchecked, cannot be switched on, and carries no policy entry —
+which is the honest shape of the withdrawal: the operator still sees what the
+provider could do, and sees that this connection may not. Writing an allowance
+goes through it too: a policy for a capability the deployment does not offer is
+refused rather than stored, because a row saved while the capability is away
+would wake up the moment it returns —
 a permission nobody asked for, which is what a newly detected capability is kept
 from by starting denied.
 
@@ -31,7 +35,10 @@ new account's name while its capabilities became the old token's: a list
 describing rights nobody holds any more. The write is now compare-and-swapped
 against the binding the probe started from — the row itself, its revision, its
 secret reference and its service profile together — and a verdict that no longer
-matches is dropped and logged as `credential.validation-stale` instead of stored.
+matches is dropped and logged as `credential.validation-stale` instead of
+stored — under a separate key, `credential.validation-unbound`, when the
+connection has been deleted outright, because whoever reads the log is asking
+two different questions and one key would answer neither.
 Wrapping the write in a transaction would not have helped: the gap the old answer
 falls through is the await in front of it, so only the generation of the
 connection decides which verdict still belongs to the row.
@@ -72,8 +79,10 @@ calls policy declined, and the user is not told to store a token they just
 replaced.
 
 Both are pinned by tests: a stored grant the provider no longer offers is
-refused without unlocking the secret and is gone from the card that describes
-the connection, an allowance for it is refused while it is away and still does
+refused without unlocking the secret and is no longer offered by the card that
+describes the connection — its row stays, drawn from the catalog, with nothing
+granted behind it — an allowance for it is refused while it is away, including
+when the provider itself has left the configuration, and still does
 not serve when it returns, a validation that lands after the account moved is
 discarded — in either completion order, after a re-save of the very profile the
 binding already ran under, and after the binding was disconnected and made again
