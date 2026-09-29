@@ -29,7 +29,14 @@ binding, never opened, or was refused by the policy check is retried in the same
 chat rather than read as another one, and an adoption that finishes after the
 visitor has moved to another chat — the Host listed or refused its session too
 late — belongs to nobody and takes nothing back: the chat on screen keeps its
-identity and its subscriptions, and the next question rides it as usual. A chat
-that takes over the screen — because a persisted chat was refused, or because it
-simply vanished — starts empty and quiet, without the question and the "sending"
-state of the chat it replaced.
+identity, its subscriptions and its own policy proof, and the next question
+rides it as usual. A chat that takes over the screen — because a persisted chat
+was refused, or because it simply vanished — starts empty and quiet, without the
+question and the "sending" state of the chat it replaced.
+
+An identity is never handed out twice, and that is the price: a rebuilt
+controller opens its first chat under a fresh identity too, so an unsent
+question, the files staged with it and the panels that were open are dropped
+even when the very same conversation comes back. Before this the rebuild reused
+its predecessor's identity and the draft did survive — by being shown to a chat
+that had never seen it.

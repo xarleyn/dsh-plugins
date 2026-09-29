@@ -8,6 +8,7 @@ import {
   sessionFace,
   type QaSessionTestWorld,
 } from "../helpers/session-fakes.js";
+import { until } from "../helpers/settle.js";
 
 /**
  * A first send waits for its session twice: for the Host to list it, and for
@@ -67,6 +68,16 @@ describe("QA session controller: an adoption the visitor left behind", () => {
       canSend: true,
       error: null,
     });
+    // The reference this adoption retained while it looked for its session came
+    // back: a Host session counted against by a chat nobody is in stays bound
+    // forever, and nothing else in the page will ever let it go.
+    const orphaned = world.references.filter((ref) => ref.sessionId === late);
+    expect(orphaned).toHaveLength(1);
+    expect(orphaned[0]?.release).toHaveBeenCalledOnce();
+    // The chat on screen keeps the reference it holds.
+    const live = world.references.filter((ref) => ref.sessionId === "other");
+    expect(live).toHaveLength(1);
+    expect(live[0]?.release).not.toHaveBeenCalled();
     // The chat on screen is still a chat: the next question rides its session
     // instead of being told there is no chat to send into.
     expect(await controller.send("Второй вопрос")).toBe(true);
@@ -77,11 +88,11 @@ describe("QA session controller: an adoption the visitor left behind", () => {
     expect(world.faces.get(late)?.prompt).not.toHaveBeenCalled();
     // And it still owns its identity: had the abandoned adoption cleared the
     // name, the next chat this surface bootstraps would have inherited it.
-    // (`harness(["other"])` starts its creation sequence at one, so the
-    // bootstrap above took `created-2` and this one takes `created-3`.)
     await controller.ensureSession();
+    // The newest creation is the head of the list the harness publishes, so this
+    // says "the chat bootstrap opened a session of its own" without naming it.
     expect(controller.getSnapshot()).toMatchObject({
-      sessionId: "created-3",
+      sessionId: String(world.list.getSnapshot().ids[0]),
     });
     expect(controller.getSnapshot().chatKey).not.toBe(liveKey);
     controller.dispose();
@@ -153,10 +164,14 @@ describe("QA session controller: an adoption the visitor left behind", () => {
     });
     await controller.ensureSession();
     await controller.startDraft();
-    const stalled = "created-3";
+    let stalled = "";
     let releaseAttestation!: (
       value: Awaited<ReturnType<typeof world.secureSession>>,
     ) => void;
+    world.createSession.mockImplementationOnce(async () => {
+      stalled = String(await world.create());
+      return { ok: true as const, value: stalled };
+    });
     world.secureSession.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -196,6 +211,69 @@ describe("QA session controller: an adoption the visitor left behind", () => {
     expect(controller.getSnapshot().chatKey).not.toBe(liveKey);
     controller.dispose();
   });
+
+  it("attests nothing on behalf of the adoption the visitor left behind", async () => {
+    // The proof of policy is the last wait an adoption takes, and it is not a
+    // read-only one: it asks about the session the controller holds, and writes
+    // that answer back as whether the chat may send and what error stands over
+    // the composer. An adoption that is no longer the one on screen has to leave
+    // all of it to the chat that replaced it.
+    const world = harness(["other"]);
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
+    });
+    await controller.ensureSession();
+    await controller.startDraft();
+
+    // Parked in the wait for its session to open, subscriptions already taken:
+    // the only step left when that session arrives is the attestation.
+    let stalled = "";
+    world.createSession.mockImplementationOnce(async () => {
+      stalled = String(await world.create());
+      const face = world.faces.get(stalled);
+      face?.source.set({ ...face.source.getSnapshot(), openState: "opening" });
+      return { ok: true as const, value: stalled };
+    });
+    const sending = controller.send("Первый вопрос");
+    await until(
+      () => (world.bindings.get(stalled)?.target.mock.calls.length ?? 0) > 0,
+    );
+
+    await controller.switchTo("other");
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: "other",
+      canSend: true,
+    });
+    // From here the only proof this page needs is the live chat's own.
+    world.secureSession.mockClear();
+
+    // The abandoned session takes as long as it likes to open.
+    const stalledFace = world.faces.get(stalled);
+    stalledFace?.source.set({
+      ...stalledFace.source.getSnapshot(),
+      openState: "open",
+    });
+    expect(await sending).toBe(false);
+    expect(world.secureSession).not.toHaveBeenCalled();
+    const liveKey = controller.getSnapshot().chatKey;
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: "other",
+      chatKey: liveKey,
+      canSend: true,
+      error: null,
+    });
+    expect(await controller.send("Второй вопрос")).toBe(true);
+    expect(world.faces.get("other")?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "Второй вопрос" }],
+      "queue",
+    );
+    expect(world.faces.get(stalled)?.prompt).not.toHaveBeenCalled();
+    controller.dispose();
+  });
 });
 
 /** Publish one session the Host had not listed yet, with a binding to match. */
@@ -217,16 +295,4 @@ function relist(world: QaSessionTestWorld, id: string): void {
       },
     } as SessionListState["byId"],
   });
-}
-
-/**
- * Let the controller's async chain reach its next waiting point: one macrotask
- * per attempt, so every promise it parked in the meantime has settled.
- */
-async function until(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 200; attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    if (predicate()) return;
-  }
-  throw new Error("the controller never reached that state");
 }

@@ -302,13 +302,14 @@ export class QaSessionController {
    * adopt against it, so any path that ends up in another session takes another
    * identity — and a draft adopting its first session keeps the one it holds.
    * It only ever names a session this controller holds: {@link bind} hands it
-   * out when an adoption is whole — opened, attested, tracked — and both a
-   * failed adoption and {@link unbind} take it back. The converse does not hold:
-   * a held session may name nothing, which is the transcript of an attestation
-   * this chat could not pass and whose caller still reads it. So a chat whose
-   * first send fell short keeps its identity while naming no session, and the
-   * retry — which brings a fresh id — stays in the composer the question was
-   * typed into instead of reading as a move to another chat.
+   * out once the adoption has cleared every wait that caller asked it to take —
+   * a chat is opened and attested, a subagent transcript is only opened — and
+   * both a failed adoption and {@link unbind} take it back. The converse does
+   * not hold: a held session may name nothing, which is the transcript of an
+   * attestation this chat could not pass and whose caller still reads it. So a
+   * chat whose first send fell short keeps its identity while naming no session,
+   * and the retry — which brings a fresh id — stays in the composer the question
+   * was typed into instead of reading as a move to another chat.
    */
   private namedSession: string | null = null;
   /**
@@ -1061,7 +1062,6 @@ export class QaSessionController {
     this.openChat();
     this.unbind();
     this.operationError = null;
-    this.admissionPending = false;
     this.policyReady = false;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
@@ -1135,7 +1135,6 @@ export class QaSessionController {
     this.viewingSubagent = null;
     this.unbind();
     this.operationError = null;
-    this.admissionPending = false;
     this.policyReady = false;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
@@ -1203,7 +1202,6 @@ export class QaSessionController {
     this.viewingSubagent = { id, title };
     this.unbind();
     this.operationError = null;
-    this.admissionPending = false;
     this.policyReady = false;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
@@ -1474,7 +1472,6 @@ export class QaSessionController {
     }
     const operation = ++this.generation;
     this.unbind();
-    this.admissionPending = false;
     this.policyReady = false;
     this.state = { ...this.state, phase: "creating" };
     this.emit();
@@ -1545,7 +1542,9 @@ export class QaSessionController {
    * Adopt one Host session as the chat on screen: take its binding, wait for it
    * to open, attest the policy, and only then hand the chat identity to the
    * session, so {@link namedSession} never names one this controller does not
-   * hold.
+   * hold. A caller that asks for no attestation — the subagent view, whose
+   * transcript is read rather than written into — is named once its session is
+   * open.
    *
    * Any of those waits can outlive the operation it belongs to — the user moves
    * to another chat while a first send is still looking for its session — so an
@@ -1651,7 +1650,16 @@ export class QaSessionController {
         throw new Error("Session binding could not be opened.");
       }
       if (attest) {
-        const step = await this.attestPolicy(report);
+        // Attestation both reads and writes the chat on screen: it proves the
+        // session the controller holds and stamps this adoption's verdict onto
+        // it. Ask the two questions before spending a proof on the wrong chat,
+        // and answer only for the session this call took — the one the wait
+        // below could have been replaced under.
+        if (!this.ownsAdoption(operation, binding.session)) return;
+        const step = await this.attestPolicy(report, binding.session);
+        // A chat that moved on during the proof is attested by whichever
+        // adoption holds it now, so this verdict is not this one's to write.
+        if (!this.ownsAdoption(operation, binding.session)) return;
         if (step.kind === "refused") {
           if (
             !allowCompatibilityReadOnly ||
@@ -1664,15 +1672,9 @@ export class QaSessionController {
           // policy-ready: every mutating operation remains disabled.
           this.compatibilityReadOnly = true;
           this.operationError = null;
-        } else if (step.kind !== "ok") {
-          throw new QaPolicyAttestationError();
         }
       }
-      if (
-        this.disposed ||
-        operation !== this.generation ||
-        this.session !== binding.session
-      ) {
+      if (!this.ownsAdoption(operation, binding.session)) {
         // The chat on screen moved on while this adoption waited: what replaced
         // it holds the identity and the binding now, so there is nothing here
         // left to finish, and nothing of theirs to undo.
@@ -1694,23 +1696,34 @@ export class QaSessionController {
       // caller reads the transcript before deciding whether the chat may be
       // replaced. None of this is ours to undo once a newer chat has retired the
       // binding this call took: that chat owns the identity from then on.
-      if (
-        !this.disposed &&
-        operation === this.generation &&
-        this.session === binding.session
-      ) {
+      if (this.ownsAdoption(operation, binding.session)) {
         this.namedSession = null;
         if (!(error instanceof QaPolicyAttestationError)) this.unbind();
       }
       throw error;
     }
-    // Opened, attested, tracked: the adoption is whole only now, and only now
-    // does the chat take this session as its identity.
+    // Every wait this adoption was asked to take is behind it: only now does the
+    // chat take this session as its identity.
     this.namedSession = id;
     this.publish();
     // Deliberately not awaited: the palette is a convenience, and a chat must
     // open at once whether or not the skill and command registries answer.
     void this.refreshSlashCatalog(true);
+  }
+
+  /**
+   * Is this adoption still the one on screen? The generation says whether the
+   * operation that asked for it still owns the page, and the session says
+   * whether anything replaced the binding this call took while it waited —
+   * {@link startDraft} retires a binding without touching the generation, and a
+   * newer chat can bump the generation before it has taken any name.
+   */
+  private ownsAdoption(operation: number, session: SessionFace): boolean {
+    return (
+      !this.disposed &&
+      operation === this.generation &&
+      this.session === session
+    );
   }
 
   private unbind(): void {
@@ -1731,8 +1744,8 @@ export class QaSessionController {
     }
     this.session = undefined;
     // A chat that holds no session names no session: {@link bind} hands the
-    // identity out when an adoption is whole, and leaving a binding is the hand
-    // that takes it back.
+    // identity out only at the end of a finished adoption, and leaving a
+    // binding is the hand that takes it back.
     this.namedSession = null;
     this.hostSources.reset();
     this.hostApprovals.reset();
@@ -1986,19 +1999,20 @@ export class QaSessionController {
   }
 
   /**
-   * Attest the currently bound session. `ok` carries the session id the proof
-   * was issued for; `stale` means the binding changed while the request was
-   * in flight, so nothing was written — the newer binding manages its own
-   * attestation; `refused` is a genuine admission refusal of this binding.
+   * Attest `session`, which defaults to the one currently bound. `ok` carries
+   * the session id the proof was issued for; `stale` means the binding changed
+   * while the request was in flight, so nothing was written — the newer binding
+   * manages its own attestation; `refused` is a genuine admission refusal of
+   * this binding.
    */
   private async attestPolicy(
     reportFailure = true,
+    session = this.session,
   ): Promise<
     | { kind: "ok"; sessionId: string }
     | { kind: "refused"; reason: string | null }
     | { kind: "stale" }
   > {
-    const session = this.session;
     if (session === undefined) return { kind: "refused", reason: null };
     const sessionId = String(session.sessionId);
     if (!this.config.lockdown.enabled && this.accounts === undefined) {
