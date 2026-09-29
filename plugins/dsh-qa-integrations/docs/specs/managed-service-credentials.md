@@ -31,7 +31,7 @@ Implemented:
   boundary editor, and the switch in both directions;
 - the release-blocking security tests of §36 that apply to this milestone
   (`tests/service-credentials.test.ts`, `tests/gitlab-service.test.ts`,
-  `tests/teamcity-service.test.ts`, `tests/service-card.test.tsx`).
+  `tests/teamcity/service.test.ts`, `tests/client/service-card.test.tsx`).
 
 Deviations from this document, and why:
 

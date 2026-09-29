@@ -12,7 +12,7 @@
  * enforce, so the operator sees it next to the switch instead of in a refusal.
  *
  * The client bundle cannot reach into a provider catalog, so the table is
- * written by hand; `tests/operator-service-reach.test.ts` recomputes it from
+ * written by hand; `tests/client/operator-service-reach.test.ts` recomputes it from
  * every catalog and fails the moment the two disagree.
  */
 
@@ -113,7 +113,7 @@ export function serviceReachNote<P extends ServiceReachProvider>(
  * "logsRead"]` — which is how the card reaches it. The card holds no copy of a
  * flag name to mistype: one annotation point reads the table for every switch it
  * renders, so a row this module gains or loses shows on the card by itself, and
- * `tests/operator-card.test.tsx` counts the rendered notes against this table.
+ * `tests/client/operator-card.test.tsx` counts the rendered notes against this table.
  */
 export function serviceReachNoteForPath(
   path: readonly string[],
