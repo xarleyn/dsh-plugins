@@ -21,19 +21,27 @@ The cut now ranks instead of measuring: a family keeps the newest `cap` rows by
 already holds costs nothing, while a genuine overflow still costs exactly its
 oldest entry. The cut runs on every write and the feedback family grows to
 20 000 rows, so finding the rank reads through an index instead of scanning and
-sorting: schema version 2 adds the `(kind, seq)` index that the three
-statements which order this table walk — the cap's lookup of the row at its
-rank, the reload of one family, and the `MAX(seq)` a new row takes its place
-from.
-Those are all of them: the newest-first shape a reader sees is built in memory,
-so no SQL here orders newest-first and the index is not what gives it. What the
-index removes is the sort — from the write that trims and, more often, from the
-read that replays a family after one. Measured locally on a family filled to
-its cap, both stopped building a temp B-tree and the reload cost about half of
-what it did without the index. What stays is the traversal: finding the rank
-walks as many index entries as the cap, so the cap bounds it rather than a
-seek, but only through that family's slice of the index, and the delete reaches
-just the rows it removes — a write that does not overflow pays the read alone.
+sorting: schema version 2 adds a `(kind, seq)` index. Every family-scoped read
+in the store walks it — the cap's lookup of the row at its rank, the `MAX(seq)`
+a write takes its place from, the reload of one family, the ownership sweep's
+read of a family it is emptying, and the row count that verifies a legacy
+import, which runs once. The newest-first shape a reader sees is built in
+memory, so no SQL here orders newest-first and the index is not what gives it.
+
+What the index removes is the sort, and it removes it from two of those reads —
+the rank lookup and the replay. A re-judgement meets both: the write runs the
+cut and the read that follows it replays the family, so what used to sort the
+family once per write and once per read now walks it. It does not cover the
+table: the reads that want nothing but `seq` — the rank lookup, `MAX(seq)` and
+that count — are answered from the index alone, whereas the replay and the sweep
+read `json` too and still reach the row, so they get cheaper without becoming
+flat. Measured locally on a family filled to its cap, the two stopped building a
+temp B-tree and the two reads that want only `seq` went from milliseconds to
+fractions of a millisecond, while a replay cost about a fifth less and a sweep
+read about a tenth. What stays is the traversal: finding the rank walks as many
+index entries as the cap, so the cap bounds it rather than a seek, but only
+through that family's slice of the index, and the delete reaches just the rows it
+removes — a write that does not overflow pays the read alone.
 
 The tests fill the feedback family to its cap and re-judge one record, and do
 the same to the review family, each time asserting the row count and which
@@ -41,5 +49,9 @@ record gave up its place both in the open store and after a reopen. Two more
 fill the queue: one drops an entry from the middle and then pushes past the cap,
 asserting in the open store, and one lets the ownership sweep forget three
 conversations of a full queue before refilling it to the cap, through the reopen
-as well. A last test reads the query plan of the rank lookup and of the reload,
-so the index that bounds this cost is checked rather than assumed.
+as well. A last test reads the query plan of the four statements that read a
+whole family or its end, against a feedback family seeded to its cap and with
+the offset the cap really passes, so the index that bounds this cost is checked
+rather than assumed: each of the four walks it, none of them sorts the family,
+and only the rank lookup and the `MAX(seq)` read are answered from the index
+alone.

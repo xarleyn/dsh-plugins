@@ -4,10 +4,12 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import {
+  FAMILY_MEMBERSHIP_SQL,
   FAMILY_REPLAY_SQL,
   OVERFLOW_CUT_SQL,
   QA_ROW_CAPS,
   QaQualityStore,
+  ROW_PLACEMENT_SQL,
   type QualityRowKind,
 } from "../../src/admin/quality-store.js";
 
@@ -411,7 +413,7 @@ describe("QaQualityStore storage", () => {
   );
 
   it(
-    "reads a family in its own order instead of sorting it",
+    "walks a family through its index instead of sorting it",
     CAP_TIMEOUT,
     () => {
       const { file } = rig();
@@ -422,7 +424,9 @@ describe("QaQualityStore storage", () => {
       seedFeedback(file, cap);
       const db = new DatabaseSync(file);
       let cut: string;
-      let reload: string;
+      let replay: string;
+      let placement: string;
+      let membership: string;
       try {
         const planOf = (
           sql: string,
@@ -434,20 +438,37 @@ describe("QaQualityStore storage", () => {
             .map((row) => row.detail as string)
             .join("\n");
 
-        // The cap reads the row at its rank on every write, and a reload
-        // replays the family in insertion order on every read that follows one.
-        // Sorted instead of walked, either would build a temp B-tree of that
-        // whole family.
+        // The four statements that read a whole family or its end: the cap
+        // reads the row at its rank on every write and a write takes its place
+        // from MAX(seq), while a read of the store replays the family and the
+        // ownership sweep walks it looking for a vanished conversation.
         cut = planOf(OVERFLOW_CUT_SQL, ["feedback", "feedback", cap - 1]);
-        reload = planOf(FAMILY_REPLAY_SQL, ["feedback"]);
+        replay = planOf(FAMILY_REPLAY_SQL, ["feedback"]);
+        placement = planOf(ROW_PLACEMENT_SQL, [
+          "feedback",
+          "c1\u001fm1\u001fu1",
+          "feedback",
+          "{}",
+        ]);
+        membership = planOf(FAMILY_MEMBERSHIP_SQL, ["feedback"]);
       } finally {
         db.close();
       }
 
-      for (const plan of [cut, reload]) {
+      for (const plan of [cut, replay, placement, membership]) {
         expect(plan).toContain("quality_rows_kind_seq");
-        expect(plan).not.toMatch(/TEMP B-TREE/);
+        // Sorted instead of walked, the rank lookup and the replay would build
+        // a temp B-tree of that whole family.
+        expect(plan).not.toMatch(/TEMP B-TREE/u);
       }
+
+      // The index answers the two that want nothing but `seq` on its own; the
+      // two that want `json` too still reach the row, so the claim that this
+      // index makes those reads flat is the one the plans do not support.
+      expect(cut).toMatch(/COVERING INDEX quality_rows_kind_seq/u);
+      expect(placement).toMatch(/COVERING INDEX quality_rows_kind_seq/u);
+      expect(replay).not.toMatch(/COVERING INDEX/u);
+      expect(membership).not.toMatch(/COVERING INDEX/u);
     },
   );
 
