@@ -36,7 +36,12 @@
 // turns them from a document that was aligned once into one that cannot drift
 // unnoticed. §20 states one fact about the repository rather than its
 // configuration — that no `name@version` tag is left to read — so the census
-// behind it is re-run here, and the section dates the half a checkout cannot see.
+// behind it is re-run here. It asks the remotes the checkout points at, because
+// the local ref store records what this clone has seen rather than what the
+// repository holds. Where the read comes back short — this checkout points at no
+// remote, one of them does not answer, or none advertises a `release/*` wave —
+// the case reports itself skipped, because a tag set nobody measured, or
+// measured only in part, is not a tag set that came back empty.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
@@ -619,29 +624,83 @@ test("SPEC.md quotes commands the root package.json declares", () => {
   }
 });
 
-/** The tags a checkout of this repository reaches, matching a `git tag -l` pattern. */
-function tagsMatching(pattern) {
-  const result = git("tag", "-l", pattern);
-  assert.equal(
-    result.status,
-    0,
-    `\`git tag -l ${pattern}\` failed: ${result.output}`,
-  );
-  return result.output.split("\n").filter(Boolean);
+/** The tag names one remote advertises, peeled duplicates folded; `null` where it does not answer. */
+function lsRemoteTags(remote) {
+  const result = spawnSync("git", ["ls-remote", "--tags", remote], {
+    cwd: ROOT,
+    encoding: "utf8",
+    timeout: 20_000,
+    // An https remote wanting credentials would prompt on a terminal nobody
+    // reads, and the gate would hang instead of reporting the census unmeasured.
+    env: { ...process.env, GIT_TERMINAL_PROMPT: "0" },
+  });
+  if (result.status !== 0) return null;
+  return result.stdout
+    .split("\n")
+    .map((line) => /^\S+\trefs\/tags\/(?<name>.+)$/u.exec(line)?.groups.name)
+    .filter((name) => name !== undefined && !name.endsWith("^{}"));
 }
 
-test("SPEC.md §20's tag census still comes back empty", () => {
-  // The section's claim is about the tag set, so the checkout has to carry it:
-  // both workflows fetch with `fetch-depth: 0`, and a run that sees no wave tag
-  // cannot tell an empty census from an empty clone — so that case says so
-  // instead of reporting coverage it does not have.
-  if (tagsMatching("release/*").length === 0) {
-    console.log(
-      "not enforced: this checkout reaches no release/* tag, so it would reach no name@version tag either",
+/**
+ * The tags the repository holds, read from the remotes of this checkout:
+ * `{ names, remotes, unreachable }`.
+ *
+ * The census asks the remotes rather than `git tag -l`, because a local ref
+ * store is not the state of the repository: a tag the remotes rewrote away
+ * stays in a clone until someone runs `git fetch --prune-tags`, and the
+ * housekeeping refs a working clone accumulates (`backup/*`, `pre-rebase*`)
+ * were never part of §20's claim. So a clone older than the rewrite fails
+ * `pnpm test:release` over a tag the section does not speak of, and the reader
+ * is left choosing between rewriting §20 to match a local accident and
+ * weakening the gate. `git ls-remote --tags` answers the same in a fresh clone
+ * and a stale one, which is the answer §20 dates. How deep a CI checkout
+ * fetched has stopped mattering for the same reason: `prepare` fetches with
+ * `fetch-depth: 0` and the `projects` job of `ci.yml` does not, and neither
+ * number bounds what a remote advertises.
+ */
+function remoteCensus() {
+  const remotes = git("remote").output.split("\n").filter(Boolean);
+  const names = new Set();
+  const unreachable = [];
+  for (const remote of remotes) {
+    const advertised = lsRemoteTags(remote);
+    if (advertised === null) {
+      unreachable.push(remote);
+    } else {
+      for (const name of advertised) names.add(name);
+    }
+  }
+  return { names: [...names].sort(), remotes, unreachable };
+}
+
+test("SPEC.md §20's tag census still comes back empty", (t) => {
+  const { names, remotes, unreachable } = remoteCensus();
+  // §20 states a fact about the repository, so this case is a verdict only over a
+  // read that saw every remote of this checkout. A remote that stayed silent may
+  // still carry a `name@version` tag, and asserting over the remotes that did
+  // answer would report a census nobody finished as coverage.
+  if (remotes.length === 0) {
+    return t.skip(
+      "this checkout points at no remote, so its tag set is unmeasured rather than empty",
+    );
+  }
+  if (unreachable.length > 0) {
+    return t.skip(
+      unreachable.length === remotes.length
+        ? `none of the ${remotes.length} remotes this checkout points at answered, so its tag set is unmeasured rather than empty`
+        : `${unreachable.join(", ")} did not answer, so the census cannot say which tags it carries`,
+    );
+  }
+  // The proxy for "the per-package scheme left nothing" is the wave tags: a
+  // remote that carries no `release/*` is a fork or a rewrite, not this
+  // history, and an empty `name@version` half proves nothing about it.
+  if (!names.some((name) => name.startsWith("release/"))) {
+    return t.skip(
+      "no remote of this checkout advertises a release/* tag, so the census cannot tell an empty tag scheme from a history these remotes do not carry",
     );
   }
   assert.deepEqual(
-    tagsMatching("*@*"),
+    names.filter((name) => name.includes("@")),
     [],
     "SPEC.md §20 states that nothing of the per-package tag scheme is left to read; a tag of that shape makes the scheme live again, and `releaseTag.pattern` in §14 with it",
   );
