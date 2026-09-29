@@ -232,7 +232,7 @@ const MIGRATIONS: readonly SqliteMigration[] = [
       -- without becoming flat. Measured locally on a family at the twenty
       -- thousand row feedback cap, the rank lookup and MAX(seq) fell from
       -- milliseconds to fractions of a millisecond, a replay cost about a fifth
-      -- less and a sweep read about a tenth.
+      -- less and a sweep read under a tenth.
       CREATE INDEX IF NOT EXISTS quality_rows_kind_seq
         ON quality_rows (kind, seq);
     `,
