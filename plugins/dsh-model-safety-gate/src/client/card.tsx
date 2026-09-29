@@ -8,9 +8,9 @@
  * read; the status and verdict views poll the Remote while the card is open.
  */
 
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
   InjectFace,
   PropsRuntime,
@@ -48,13 +48,25 @@ import {
 
 const REFRESH_INTERVAL_MS = 3_000;
 
+/** The one-liner this row carries, in the page and in the card's own header. */
+const ROW_SUMMARY =
+  "Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results.";
+
 /** The face the slot entry injects into this card. */
 export interface SafetyGateCardFace {
-  readonly form: ConfigForm<ModelSafetyGateConfig>;
+  /**
+   * The live Config of this plugin's namespace.
+   *
+   * Named `settingsForm`, not `form`: the row seat hands its registrant a
+   * `form` of its own — the page's `ConfigPageForm`, which is only
+   * `{ state, mutate }` and so can neither be subscribed to nor written field
+   * by field — and the renderer spreads that owner prop after this face.
+   */
+  readonly settingsForm: ConfigForm<ModelSafetyGateConfig>;
   inspect(): Promise<RemoteResult<SafetyGateInspect>>;
 }
 
-type CardProps = PropsRuntime<"settings.plugins.tab"> &
+type CardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<SafetyGateCardFace>;
 
 /** Mutation operations as the configuration form declares them. */
@@ -70,8 +82,11 @@ function displayError(error: unknown): string {
   return "The Safety Gate could not complete that request.";
 }
 
-export function SafetyGateCard({ form, inspect }: CardProps) {
-  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
+export function SafetyGateCard({ settingsForm, inspect }: CardProps) {
+  const store = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const settings = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -130,21 +145,21 @@ export function SafetyGateCard({ form, inspect }: CardProps) {
   const write = useCallback(
     (path: readonly string[], value: unknown) => {
       const ops = [{ op: "set", path: [...path], value }] as unknown as FormOps;
-      form.mutate(ops, revision).catch((cause: unknown) => {
+      settingsForm.mutate(ops, revision).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [form, revision],
+    [revision, settingsForm],
   );
 
   const unset = useCallback(
     (path: readonly string[]) => {
       const ops = [{ op: "unset", path: [...path] }] as unknown as FormOps;
-      form.mutate(ops, revision).catch((cause: unknown) => {
+      settingsForm.mutate(ops, revision).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [form, revision],
+    [revision, settingsForm],
   );
 
   const overridden = useCallback(
@@ -158,10 +173,10 @@ export function SafetyGateCard({ form, inspect }: CardProps) {
       op: "unset",
       path: [key],
     })) as unknown as FormOps;
-    form.mutate(ops, revision).catch((cause: unknown) => {
+    settingsForm.mutate(ops, revision).catch((cause: unknown) => {
       setError(displayError(cause));
     });
-  }, [form, overrides, revision]);
+  }, [overrides, revision, settingsForm]);
 
   if (settings.status === "unavailable") return null;
 
@@ -178,12 +193,12 @@ export function SafetyGateCard({ form, inspect }: CardProps) {
   };
 
   return (
-    // This surface is a page the plugin owns, not a seat the host lists, so the
-    // shell keeps its `ul > li` contract inside a list of our own.
+    // The page's configuration section supplies no list of its own, so the
+    // shell keeps its `ul > li` contract inside a list of ours (AGENTS.md).
     <ul className="msg-card-list">
       <CardShell
         title="Model Safety Gate"
-        description="Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results."
+        description={ROW_SUMMARY}
         badge={
           <span
             className="dsh-plugin-card__badge"
@@ -263,4 +278,18 @@ export function SafetyGateCard({ form, inspect }: CardProps) {
       </CardShell>
     </ul>
   );
+}
+
+/**
+ * The entry the Plugins page renders for this bundle's row.
+ *
+ * The page seats the same entry in two views: as the row's `summary` one-liner
+ * wherever the bundle declares no description of its own, and as the `page`
+ * body below it. The summary lands inside the page's own text, so it stays a
+ * sentence — mounting the card there would draw a page within a line and start
+ * a second poll of the Remote.
+ */
+export function SafetyGateEntry(props: CardProps) {
+  if (props.view === "summary") return ROW_SUMMARY;
+  return <SafetyGateCard {...props} />;
 }

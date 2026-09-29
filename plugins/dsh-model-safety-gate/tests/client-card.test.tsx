@@ -22,7 +22,7 @@ import type {
 } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type { ModelSafetyGateConfig } from "../src/config.js";
 import type { SafetyGateInspect } from "../src/types.js";
-import { SafetyGateCard } from "../src/client/card.js";
+import { SafetyGateCard, SafetyGateEntry } from "../src/client/card.js";
 
 /** The form's atomic write, as the card calls it. */
 type FormOps = ConfigForm<ModelSafetyGateConfig>["mutate"];
@@ -153,7 +153,7 @@ function makeForm(
     ...snapshot,
   };
   return {
-    form: {
+    settingsForm: {
       getSnapshot: () => current,
       subscribe: () => () => undefined,
       mutate,
@@ -165,7 +165,15 @@ function makeForm(
 
 /** The slot runtime props do not exist outside the host; only the face does. */
 const Card = SafetyGateCard as unknown as (props: {
-  form: unknown;
+  view: "page" | "summary";
+  settingsForm: unknown;
+  inspect: () => Promise<{ ok: true; value: SafetyGateInspect }>;
+}) => ReactElement;
+
+/** The registered entry, which also answers the page's `summary` view. */
+const Entry = SafetyGateEntry as unknown as (props: {
+  view: "page" | "summary";
+  settingsForm: unknown;
   inspect: () => Promise<{ ok: true; value: SafetyGateInspect }>;
 }) => ReactElement;
 
@@ -176,14 +184,16 @@ async function renderCard(
     inspect?: () => Promise<{ ok: true; value: SafetyGateInspect }>;
   } = {},
 ) {
-  const { form } = makeForm(options.snapshot, options.mutate);
+  const { settingsForm } = makeForm(options.snapshot, options.mutate);
   const inspect =
     options.inspect ?? (async () => ({ ok: true, value: INSPECT }));
   let result: ReturnType<typeof render> | undefined;
   // The card polls once on mount; awaiting inside act keeps that first update
   // inside the test rather than after it.
   await act(async () => {
-    result = render(<Card form={form} inspect={inspect} />);
+    result = render(
+      <Card view="page" settingsForm={settingsForm} inspect={inspect} />,
+    );
     await Promise.resolve();
   });
   return result as ReturnType<typeof render>;
@@ -209,7 +219,8 @@ describe("Safety Gate card", () => {
     const { container } = await renderCard();
     const card = container.querySelector("li.dsh-plugin-card");
     expect(card).not.toBeNull();
-    // A Plugins tab owns its page, so the shell's `li` keeps a list of ours.
+    // The page's configuration section supplies no list of its own, so the
+    // shell's `li` keeps a list of ours.
     expect(card?.parentElement?.tagName).toBe("UL");
     expect(card?.parentElement?.className).toBe("msg-card-list");
     expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
@@ -219,6 +230,26 @@ describe("Safety Gate card", () => {
     expect(container.querySelector(".dsh-plugin-card__badge")).toBe(badge);
     expect(badge.textContent).toBe("Warn");
     expect(container.querySelector(".dsh-plugin-card__chevron")).not.toBeNull();
+  });
+
+  it("answers the page's summary view with the sentence, not a second card", async () => {
+    const { settingsForm } = makeForm();
+    const inspect = vi.fn(async () => ({ ok: true as const, value: INSPECT }));
+    let result: ReturnType<typeof render> | undefined;
+    await act(async () => {
+      result = render(
+        <Entry view="summary" settingsForm={settingsForm} inspect={inspect} />,
+      );
+      await Promise.resolve();
+    });
+    const container = (result as ReturnType<typeof render>).container;
+    // The row's description seat sits inside the page's own text, so it carries
+    // no shell and starts no poll of the Remote.
+    expect(container.querySelector("li.dsh-plugin-card")).toBeNull();
+    expect(container.textContent).toBe(
+      "Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results.",
+    );
+    expect(inspect).not.toHaveBeenCalled();
   });
 
   it("renders nothing when the settings namespace is unavailable", async () => {
