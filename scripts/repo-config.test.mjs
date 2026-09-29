@@ -38,8 +38,9 @@
 // configuration — that no `name@version` tag is left to read — so the census
 // behind it is re-run here. It asks the remotes the checkout points at, because
 // the local ref store records what this clone has seen rather than what the
-// repository holds; and a census that no remote answered, or that one of them
-// stayed silent in, reports itself skipped — a tag set nobody measured, or
+// repository holds. Where the read comes back short — this checkout points at no
+// remote, one of them does not answer, or none advertises a `release/*` wave —
+// the case reports itself skipped, because a tag set nobody measured, or
 // measured only in part, is not a tag set that came back empty.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
