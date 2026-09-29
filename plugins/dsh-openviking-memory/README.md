@@ -54,8 +54,8 @@ recall HTTP request (not "the request is made and the result dropped").
   of silently clamping it. Out-of-range defaults still resolve to the upstream
   behaviour.
 - **A settings card in the web UI.** The plugin ships a browser bundle, so its
-  configuration is editable from **Settings → Plugins** without touching a
-  patch file. See [Settings card](#settings-card).
+  configuration is editable from the **Plugins** page — on this plugin's own row —
+  without touching a patch file. See [Settings card](#settings-card).
 - **Memory per QA account.** On a deployment with QA Surface mounted, each
   account gets its own OpenViking space, and its QA settings dialog shows what
   that space holds about it — read-only, because the switches that decide
@@ -210,8 +210,8 @@ config:
   qaUserScoping: false
 ```
 
-> **Where the settings live.** The configuration card is a tab of the Host's
-> Plugins settings section, and it edits the settings document of the profile
+> **Where the settings live.** The configuration card opens from this plugin's row
+> on the Host's **Plugins** page, and it edits the settings document of the profile
 > that mounts this plugin. A browser reaching the deployment over the network
 > gets a process-local copy of that document instead — `memory` mode, which never
 > writes the Host's file — so the operator configures on the machine that serves
@@ -289,8 +289,8 @@ key is absent, and it matches upstream.
 
 ## Settings card
 
-The package ships a browser bundle, so the plugin gets a card under
-**Settings → Plugins** in the DSH web UI. It edits the plugin's
+The package ships a browser bundle, so the plugin gets a card on the **Plugins**
+page, opened from its own row in the DSH web UI. It edits the plugin's
 `dsh-openviking-memory` settings namespace directly — no patch file required:
 
 - **Sections** follow the reference tables below: automatic context

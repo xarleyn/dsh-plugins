@@ -11,13 +11,13 @@
  * projects the configuration, not live runtime state.
  *
  * The card draws its own shell (the `AGENTS.md` contract) and therefore owns the
- * list it sits in: a `settings.plugins.tab` page hands the registrant a bare
- * panel column, so the `<li>` root is wrapped in a plugin-owned `<ul>`.
+ * list it sits in: the Plugins page hands the row's configuration section an
+ * empty column, so the `<li>` root is wrapped in a plugin-owned `<ul>`.
  */
 
-import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {
   InjectFace,
   PropsRuntime,
@@ -40,11 +40,24 @@ import { badgeText, isOverridden, overriddenKeys } from "./format.js";
 
 /** The face the slot entry injects into this card. */
 export interface OpenVikingCardFace {
-  readonly form: ConfigForm<Config>;
+  /**
+   * The live Config of this plugin's namespace.
+   *
+   * Named `settingsForm`, not `form`: the row seat hands its registrant a `form`
+   * of its own — the Host's `ConfigPageForm`, which is only `{ state, mutate }`
+   * and so can neither be subscribed to nor written field by field. This plugin's
+   * `ConfigForm` therefore arrives through the injected face, where the owner prop
+   * cannot shadow it.
+   */
+  readonly settingsForm: ConfigForm<Config>;
 }
 
-type CardProps = PropsRuntime<"settings.plugins.tab"> &
+type CardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<OpenVikingCardFace>;
+
+/** The one-liner the Plugins page shows for this row in its `summary` view. */
+export const OPENVIKING_MEMORY_ROW_SUMMARY =
+  "Durable memory tools, conversation capture, and automatic profile/recall injection against one OpenViking server.";
 
 /** Mutation operations as the namespace's form declares them. */
 type FormOps = Parameters<ConfigForm<Config>["mutate"]>[0];
@@ -64,8 +77,11 @@ function rangeError(text: string): string {
   return `"${text}" is outside this field's configured range.`;
 }
 
-export function OpenVikingMemoryCard({ form }: CardProps) {
-  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
+export function OpenVikingMemoryCard({ settingsForm }: CardProps) {
+  const store = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const settings = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -78,20 +94,20 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
 
   const write = useCallback(
     (key: string, value: unknown) => {
-      form.set(key, value).catch((cause: unknown) => {
+      settingsForm.set(key, value).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [form],
+    [settingsForm],
   );
 
   const clear = useCallback(
     (key: string) => {
-      form.unset(key).catch((cause: unknown) => {
+      settingsForm.unset(key).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [form],
+    [settingsForm],
   );
 
   const commitText = useCallback(
@@ -142,10 +158,10 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
       op: "unset",
       path: [key],
     })) as unknown as FormOps;
-    form.mutate(ops).catch((cause: unknown) => {
+    settingsForm.mutate(ops).catch((cause: unknown) => {
       setError(displayError(cause));
     });
-  }, [overrides, form]);
+  }, [overrides, settingsForm]);
 
   if (settings.status === "unavailable") return null;
 
@@ -155,7 +171,7 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
     <ul className="ovm-list">
       <CardShell
         title="OpenViking Memory"
-        description="Durable memory tools, conversation capture, and automatic profile/recall injection against one OpenViking server."
+        description={OPENVIKING_MEMORY_ROW_SUMMARY}
         badge={
           <span
             className="dsh-plugin-card__badge"
@@ -781,4 +797,17 @@ export function OpenVikingMemoryCard({ form }: CardProps) {
       </CardShell>
     </ul>
   );
+}
+
+/**
+ * The entry the Plugins page renders for this bundle's row.
+ *
+ * The page renders one entry in two views: as the row's `summary` one-liner
+ * wherever the bundle declares no description of its own, and as the `page` body
+ * below. The summary lands inside the page's own `<p>`, so it stays text and
+ * never a second card.
+ */
+export function OpenVikingMemoryCardEntry(props: CardProps) {
+  if (props.view === "summary") return OPENVIKING_MEMORY_ROW_SUMMARY;
+  return <OpenVikingMemoryCard {...props} />;
 }

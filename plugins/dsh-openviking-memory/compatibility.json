@@ -13,7 +13,7 @@
       "session/flush",
       "tools/pre-execute"
     ],
-    "requiredClientFeatures": ["settings.plugins.tab"]
+    "requiredClientFeatures": ["plugins.row.config"]
   },
   "node": "^22.19.0 || >=24.0.0"
 }

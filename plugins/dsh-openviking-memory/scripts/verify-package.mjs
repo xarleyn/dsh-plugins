@@ -30,8 +30,10 @@ await runVerifyPackage({
       // gateway client up before this entry applies — the same ordering every
       // other Remote plugin in this repository declares.
       "@deepseek-ai/dsh-api-gateway",
+      // The card sits in the configuration section of this bundle's row, so the
+      // Plugins page is an activation dependency of the client half.
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
       "@deepseek-ai/dsh-client-ui-settings",
-      "@deepseek-ai/dsh-client-ui-settings-plugins",
       // The account-scoped page mounts into the QA settings dialog, so the QA
       // client half has to be in the page before this bundle registers it.
       "@yadsh/dsh-qa-surface",
@@ -61,7 +63,7 @@ await runVerifyPackage({
   compatibility: {
     node: "matchesEngines",
     testedReleases: ["0.1.7-rc.2"],
-    clientFeatures: ["settings.plugins.tab"],
+    clientFeatures: ["plugins.row.config"],
   },
   clientBundle: {
     moduleLoaderId: true,
@@ -74,9 +76,10 @@ await runVerifyPackage({
       ],
     },
     matches: [
-      // The card registers in the Plugins settings tab; `settings.plugin.item`
-      // was deleted with the 0.1.7 settings rewrite.
-      /settings\.plugins\.tab/u,
+      // The card opens from the Plugins page, in the keyed seat this bundle's own
+      // row owns: `<package name>#<row id>`.
+      /plugins\.row\.config/u,
+      /@yadsh\/dsh-openviking-memory#/u,
     ],
     notMatches: [
       // The bundle is browser-only: a Node built-in import here would break
@@ -86,6 +89,9 @@ await runVerifyPackage({
       // A bundle still naming the deleted slot loads, registers nothing, and
       // shows no card at all.
       /settings\.plugin\.item/u,
+      // The card left the Settings → Plugins tab; a bundle naming it back renders
+      // a second copy of the page in a surface the cutover is emptying.
+      /settings\.plugins\.tab/u,
     ],
   },
   extra: async ({ manifest, readFile }) => {
@@ -195,8 +201,9 @@ await runVerifyPackage({
   },
 });
 
-// The settings card registers under `settings.plugins.tab`, so the compiled
-// browser bundle has to satisfy the shared card shell contract.
+// The settings card registers in the configuration section of its own row on the
+// Plugins page, so the compiled browser bundle has to satisfy the shared card
+// shell contract.
 verifyPluginCardContract(
   await readFile(
     new URL("lib/client.js", new URL("../", import.meta.url)),
