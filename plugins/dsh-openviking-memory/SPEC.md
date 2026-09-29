@@ -75,21 +75,31 @@ Two mechanisms worth stating:
 
 ### 2.1 Settings namespace and the Web GUI card
 
-The settings namespace is `dsh-openviking-memory` — the Cordis plugin id. The
-package ships a browser client bundle that registers as
-`@yadsh/dsh-openviking-memory` and mounts the card as a tab of the **Settings →
-Plugins** section (`settings.plugins.tab`); the card keeps the canonical
-`dsh-plugin-card` shell, and because that slot hands a registrant an empty
-column, the card owns the `<ul>` its `<li>` root sits in.
+The settings namespace is `dsh-openviking-memory` — the Cordis plugin id, which on
+0.1.7 is also the profile entry the Host serves this plugin's configuration
+under. The package ships a browser client bundle that registers as
+`@yadsh/dsh-openviking-memory` and mounts the card as the configuration of its own
+row on the **Plugins** page — the keyed `plugins.row.config` seat
+`@yadsh/dsh-openviking-memory#dsh-openviking-memory`, the package name joined to
+the row id `cordis.patch.yml` declares. The card keeps the canonical
+`dsh-plugin-card` shell, and because that seat hands a registrant an empty column,
+the card owns the `<ul>` its `<li>` root sits in. The same entry answers the page's
+`summary` view with its one-liner, which is what the row shows where the bundle
+declares no description of its own. The seat moved and the namespace did not, so a
+value saved before the move is read back after it.
 
 Since the 0.1.7 settings rewrite nothing registers a namespace: a field is a
 settings-form field exactly when its schema node is `.volatile()`, every knob of
 `static Config` carries it, and the namespace is the profile entry. The card
 reaches that namespace through `ctx.configForms.get(namespace)`, and the same
 references are the plugin's configuration source — the Host keeps them current
-as the document changes. Because a volatile namespace would otherwise also get a
-generated form page, the plugin registers `configure({ auto: false })` on its
-entry: the card is the one editor of that document.
+as the document changes. It does not take the `form` the row seat hands its
+registrant: that is the Host's page view, `{ state, mutate }` only, which can
+neither be subscribed to nor written field by field, so the resolved `ConfigForm`
+arrives through the injected face under the name `settingsForm`. Because a volatile
+namespace would otherwise also get a generated form page, the plugin registers
+`configure({ auto: false })` on its entry: the card is the one editor of that
+document.
 `refreshConfig()` re-reads the references at the start of an
 operation, and when a value actually moved `reapplySettings()` re-resolves the
 configuration and hands it to the running runtime. Everything the plugin decides
@@ -362,14 +372,16 @@ official plugin; any change to the MCP tool contracts.
     the plugin's own requests for that session keep using the account space.
 17. **Card on the operator face.** On the machine that serves the deployment,
     open its loopback URL — with the QA kiosk overlay off, that port serves the
-    native UI — and look under **Settings → Plugins → Plugin configuration**.
-    → The OpenViking Memory card renders, including its multi-user section. A
-    browser reaching the same deployment over the network gets no card at all:
-    the Host serves its settings directory to a loopback page only, and the QA
-    overlay does not mount the native settings tree — which is why the switches
-    are the operator's and the account face stays read-only (§2.2). Recording
-    the card as "missing on a stand" is therefore a statement about which face
-    was opened, not about the registration: the registration is what §2.1
+    native UI — and open **Plugins → this plugin's row**.
+    → The OpenViking Memory card renders as that row's configuration, including its
+    multi-user section. The seat is the keyed `plugins.row.config` entry of §2.1,
+    not a tab of *Settings → Plugins*, and the document it edits is the same one:
+    a browser reaching the deployment over the network holds a process-local copy
+    of it (`memory` mode, which never writes the Host's file), so the operator still
+    configures on the machine that serves the installation — which is why the
+    switches are the operator's and the account face stays read-only (§2.2).
+    Recording the card as "missing on a stand" is therefore a statement about which
+    face was opened, not about the registration: the registration is what §2.1
     covers, and it is asserted by a test.
 
 ## 7. Implementation status

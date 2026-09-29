@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The OpenViking Memory card: shell contract, configuration controls, the
- * immediate-write path, and the override projection the form feeds it.
+ * immediate-write path, the override projection the form feeds it, and the two
+ * views the Plugins page renders this entry in.
  */
 
 import {
@@ -15,7 +16,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 
 import type { Config } from "../src/config.js";
-import { OpenVikingMemoryCard } from "../src/client/card.js";
+import {
+  OPENVIKING_MEMORY_ROW_SUMMARY,
+  OpenVikingMemoryCard,
+  OpenVikingMemoryCardEntry,
+} from "../src/client/card.js";
 
 const CONFIG: Config = {
   autoInject: true,
@@ -84,11 +89,11 @@ function makeForm(
 
 /** The slot runtime props do not exist outside the host; only the face does. */
 const Card = OpenVikingMemoryCard as unknown as (props: {
-  form: unknown;
+  settingsForm: unknown;
 }) => ReactElement;
 
 function openCard(form: unknown): HTMLElement {
-  const view = render(<Card form={form} />);
+  const view = render(<Card settingsForm={form} />);
   fireEvent.click(
     screen.getByRole("button", { name: "Show settings: OpenViking Memory" }),
   );
@@ -139,7 +144,7 @@ describe("shell contract", () => {
 
   it("renders no body while collapsed and none at all when unavailable", () => {
     const { form } = makeForm();
-    const closed = render(<Card form={form} />);
+    const closed = render(<Card settingsForm={form} />);
     expect(closed.container.querySelector(".dsh-plugin-card__body")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Show settings: OpenViking Memory" }),
@@ -148,7 +153,9 @@ describe("shell contract", () => {
 
     const gone = render(
       <Card
-        form={makeForm({ status: "unavailable", value: undefined }).form}
+        settingsForm={
+          makeForm({ status: "unavailable", value: undefined }).form
+        }
       />,
     );
     expect(gone.container.querySelector("li.dsh-plugin-card")).toBeNull();
@@ -395,5 +402,29 @@ describe("overrides", () => {
         screen.getByTestId("openviking-card-write-error").textContent,
       ).toBe("revision conflict");
     });
+  });
+});
+
+describe("the row entry the Plugins page renders", () => {
+  const Entry = OpenVikingMemoryCardEntry as unknown as (props: {
+    view: "summary" | "page";
+    settingsForm: unknown;
+  }) => ReactElement;
+
+  it("answers the summary view with the row's one-liner, not a second card", () => {
+    const { form } = makeForm();
+    const view = render(<Entry view="summary" settingsForm={form} />);
+
+    // The page puts this inside its own `<p>`, so it has to stay text.
+    expect(view.container.textContent).toBe(OPENVIKING_MEMORY_ROW_SUMMARY);
+    expect(view.container.querySelector("li.dsh-plugin-card")).toBeNull();
+  });
+
+  it("renders the card shell inside its own list for the page view", () => {
+    const { form } = makeForm();
+    const view = render(<Entry view="page" settingsForm={form} />);
+
+    const card = view.container.querySelector("li.dsh-plugin-card");
+    expect(card?.parentElement?.tagName).toBe("UL");
   });
 });

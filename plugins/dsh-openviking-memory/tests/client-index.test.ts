@@ -1,7 +1,7 @@
 /**
  * Client activation: the entry resolves its own configuration form, registers
- * the plugin's page in the Plugins settings tab, and reaches the account-scoped
- * page through the Remote gateway.
+ * the plugin's page in the configuration seat of its own row on the Plugins page,
+ * and reaches the account-scoped page through the Remote gateway.
  *
  * The Remote half of this file runs against a **real Cordis application**, and
  * that is the point of it. On a hand-written context `ctx.remote` is simply
@@ -37,7 +37,7 @@ vi.mock("../src/client/qa-settings.js", async (importOriginal) => {
 
 interface CardRegistration {
   readonly name: string;
-  readonly id: string;
+  readonly key: string;
   readonly inject?: () => unknown;
 }
 
@@ -193,7 +193,7 @@ describe("client activation", () => {
     sectionFaces.length = 0;
   });
 
-  it("resolves the namespace's form and registers the card as a Plugins tab", () => {
+  it("resolves the namespace's form and registers the card in its row's seat", () => {
     let cardFace: (() => unknown) | undefined;
 
     const disposeSlot = vi.fn();
@@ -224,16 +224,19 @@ describe("client activation", () => {
     });
 
     const dispose = apply(ctx as never);
-    const face = cardFace?.() as { form: unknown };
+    const face = cardFace?.() as { settingsForm: unknown };
 
     // The namespace is the profile entry id, and the form is the only way a
     // card reaches the Host's volatile configuration.
     expect(get).toHaveBeenCalledWith("dsh-openviking-memory");
-    expect(face.form).toBe(FORM);
+    expect(face.settingsForm).toBe(FORM);
     expect(ctx.slots.register).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: "settings.plugins.tab",
-        id: "openviking-memory",
+        name: "plugins.row.config",
+        // The keyed seat of this bundle's own row: the package name joined to the
+        // row id `cordis.patch.yml` declares, which is also the namespace above —
+        // so a value saved before the move is read back after it.
+        key: "@yadsh/dsh-openviking-memory#dsh-openviking-memory",
       }),
       expect.anything(),
     );

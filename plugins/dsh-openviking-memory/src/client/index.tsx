@@ -3,18 +3,18 @@
  *
  * The ModuleLoader registration (`window.__ModuleLoader__.load({ id, factory })`
  * with the full package name) is produced by the tsdown banner; this module
- * registers the configuration page the operator edits (a card in the Plugins
- * settings tab, bound to this entry's own settings namespace), and — where a QA
- * surface is mounted — the account-scoped page that a browser reaching the
- * deployment over the network can actually open, which shows what the memory
- * holds about the account.
+ * registers the configuration page the operator edits (the configuration section
+ * of this bundle's own row on the Plugins page, bound to this entry's own
+ * settings namespace), and — where a QA surface is mounted — the account-scoped
+ * page that a browser reaching the deployment over the network can actually open,
+ * which shows what the memory holds about the account.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type { TypertRemoteContribution } from "@deepseek-ai/dsh-typert-protocol";
 import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 import type { QaUserSettingsSections } from "@yadsh/dsh-qa-surface/client/settings";
@@ -22,7 +22,7 @@ import openvikingMemoryRemote from "@yadsh/dsh-openviking-memory/remote";
 
 import type { Config } from "../config.js";
 import { OPENVIKING_MEMORY_SETTINGS_NAMESPACE } from "../shared/settings.js";
-import { OpenVikingMemoryCard } from "./card.js";
+import { OpenVikingMemoryCardEntry } from "./card.js";
 import {
   QA_MEMORY_SECTION_ID,
   QA_MEMORY_SECTION_TITLE,
@@ -63,12 +63,14 @@ export const inject = ["slots", "configForms"] as const;
 const REMOTE_GATEWAY = "remote";
 const REMOTE_NAMESPACE = "remote.openvikingMemory";
 
-/** Where this plugin's page sits among the other Plugins-section tabs. */
-const PLUGIN_TAB = {
-  id: "openviking-memory",
-  label: "OpenViking Memory",
-  order: 30,
-} as const;
+/**
+ * The seat this card takes on the host Plugins page: the `plugins.row.config`
+ * key is the bundle's package name joined to the row id its `cordis.patch.yml`
+ * declares, and that row id is the same `dsh-openviking-memory` the Host resolves
+ * this plugin's volatile Config under, so the namespace a live stand already wrote
+ * is read back unchanged.
+ */
+const ROW_CONFIG_KEY = `@yadsh/dsh-openviking-memory#${OPENVIKING_MEMORY_SETTINGS_NAMESPACE}`;
 
 /** The QA service the account-scoped page mounts into, when it is there. */
 const QA_SERVICES = ["qaUserSettingsSections"] as const;
@@ -91,19 +93,21 @@ export function apply(ctx: Context): () => void {
     OPENVIKING_MEMORY_SETTINGS_NAMESPACE,
   );
 
-  // The Plugins section hands a tab an empty column, so the card keeps its own
-  // shell (the AGENTS.md contract) and the stylesheet that styles it.
+  // The Plugins page hands the row's configuration section an empty column, so the
+  // card keeps its own shell (the AGENTS.md contract) and the stylesheet that
+  // styles it.
   const removeStyles = injectCardStyles("@yadsh/dsh-openviking-memory", styles);
-  const removeCard = ctx.slots.inject("settings.plugins.tab", () =>
+  const removeCard = ctx.slots.inject("plugins.row.config", () =>
     ctx.slots.register(
       {
-        name: "settings.plugins.tab",
-        id: PLUGIN_TAB.id,
-        order: PLUGIN_TAB.order,
-        label: () => PLUGIN_TAB.label,
-        inject: () => ({ form }),
+        name: "plugins.row.config",
+        key: ROW_CONFIG_KEY,
+        // The seat hands the page's own `ConfigPageForm` — `{ state, mutate }`
+        // only — so the card edits the full form this entry resolves, under a name
+        // the owner prop cannot overwrite.
+        inject: () => ({ settingsForm: form }),
       },
-      OpenVikingMemoryCard,
+      OpenVikingMemoryCardEntry,
     ),
   );
 
