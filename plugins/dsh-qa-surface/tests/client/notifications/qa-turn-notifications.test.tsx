@@ -308,6 +308,83 @@ describe("turn completion notices", () => {
     expect(screen.getByText("Чат mine")).toBeTruthy();
   });
 
+  // The two edges a reconnect hands the page — the link back, and the Host's
+  // refreshed list over it — come from two stores and reach a redraw in no
+  // guaranteed order. In the frame between them the sidebar still shows the rows
+  // the page held while the link was down, and a turn that ended offline looks
+  // exactly like one that ended here. Both orders are set by hand (#479).
+  it("keeps a list that refreshed after the link returned off the stack", () => {
+    const held = hostList([
+      { id: "mine", running: true },
+      { id: "second", running: true },
+    ]);
+    const both = { chatIds: ["mine", "second"] };
+    const page = mountPage(held, both);
+    // Both turns end offline, and the link comes back before the Host answers:
+    // the first live frames carry the held list itself.
+    page.redraw({ ...both, list: held, paused: true });
+    page.redraw({ ...both, list: held, paused: false });
+    page.redraw({ ...both, list: held });
+    expect(screen.queryByText("Чат mine")).toBeNull();
+    // The refreshed list lands, and three turns that ended while nobody could
+    // see them arrive as nothing.
+    page.redraw({
+      ...both,
+      list: hostList([
+        { id: "mine", running: false },
+        { id: "second", running: false },
+      ]),
+    });
+    expect(screen.queryByText("Чат mine")).toBeNull();
+    expect(screen.queryByText("Чат second")).toBeNull();
+    expect(FakeNotification.raised).toEqual([]);
+
+    // The next turn this page watches from its start raises one line, once.
+    page.redraw({
+      ...both,
+      list: hostList([
+        { id: "mine", running: true },
+        { id: "second", running: false },
+      ]),
+    });
+    page.redraw({
+      ...both,
+      list: hostList([
+        { id: "mine", running: false },
+        { id: "second", running: false },
+      ]),
+    });
+    expect(screen.getAllByText("Чат mine")).toHaveLength(1);
+    expect(screen.queryByText("Чат second")).toBeNull();
+  });
+
+  it("waits for the restored link's own list when the refresh landed first", () => {
+    const refreshed = hostList([{ id: "mine", running: false }]);
+    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    // The Host's answer arrives while the page is still reconnecting, and the
+    // link-ready edge comes after it: that list is one the new link never
+    // delivered, so the turn it appears to have finished is not this page's news.
+    page.redraw({ list: refreshed, paused: true });
+    page.redraw({ list: refreshed });
+    expect(screen.queryByText("Чат mine")).toBeNull();
+
+    // From here the page watches this generation's turns, and reports one.
+    page.watchTurn();
+    expect(screen.getAllByText("Чат mine")).toHaveLength(1);
+  });
+
+  it("resumes notices on a generation whose refreshed list never lands", () => {
+    const idle = hostList([{ id: "mine", running: false }]);
+    const page = mountPage(idle);
+    page.redraw({ list: idle, paused: true });
+    page.redraw({ list: idle });
+    // Nothing in what the page reads announces a new list: a rule that adopted a
+    // generation by telling its list apart from the one held before would wait
+    // for that difference forever and never report a turn again.
+    page.watchTurn();
+    expect(screen.getAllByText("Чат mine")).toHaveLength(1);
+  });
+
   it("raises nothing on a stand that switched the channel off", () => {
     const page = mountPage(hostList([{ id: "mine", running: false }]));
     page.watchTurn(
