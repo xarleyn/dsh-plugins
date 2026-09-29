@@ -86,11 +86,11 @@ describe("classic browser bundle", () => {
     expect([...exports.inject]).toEqual(["slots", "configForms"]);
   });
 
-  it("mounts the card into a Plugins tab and renders the shell", async () => {
+  it("mounts the card into the row's configuration seat and renders the shell", async () => {
     const { exports } = await loadBundle();
     const registrations: {
       name: string;
-      id?: string;
+      key?: string;
       inject?: () => unknown;
       component?: (props: never) => unknown;
     }[] = [];
@@ -136,20 +136,25 @@ describe("classic browser bundle", () => {
     };
     exports.apply(face);
     expect(registrations).toHaveLength(1);
-    expect(registrations[0]!.name).toBe("settings.plugins.tab");
-    expect(registrations[0]!.id).toBe("dsh-jev-compaction");
+    expect(registrations[0]!.name).toBe("plugins.row.config");
+    // `<package name>#<row id>`: the row id is the namespace the form above was
+    // resolved under, which is what keeps a saved value readable after the move.
+    expect(registrations[0]!.key).toBe(
+      "@yadsh/dsh-jev-compaction#dsh-jev-compaction",
+    );
 
-    const form = registrations[0]!.inject?.();
-    expect(form).toEqual({ form: expect.anything() });
+    const props = registrations[0]!.inject?.();
+    expect(props).toEqual({ settingsForm: expect.anything() });
 
     const Component = registrations[0]!.component;
     expect(Component).toBeDefined();
     // Rendered as an element, not called as a plain function: a direct call
-    // leaves React's hook dispatcher unset.
+    // leaves React's hook dispatcher unset. `view: 'page'` is what the page asks
+    // for when the row's configuration is opened.
     render(
       React.createElement(
         Component as unknown as React.ComponentType<Record<string, unknown>>,
-        form as Record<string, unknown>,
+        { ...(props as Record<string, unknown>), view: "page" },
       ),
     );
     expect(screen.getByText("Jev Compaction")).toBeTruthy();

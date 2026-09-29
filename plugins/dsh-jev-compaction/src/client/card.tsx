@@ -13,11 +13,7 @@
 
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
-import type {
-  InjectFace,
-  PropsRuntime,
-} from "@deepseek-ai/dsh-client-ui-slots";
+import type { InjectFace } from "@deepseek-ai/dsh-client-ui-slots";
 import {
   CardShell,
   bindSettingsExternalStore,
@@ -45,11 +41,33 @@ import {
 
 /** The face the slot entry injects into this card. */
 export interface JevCompactionCardFace {
-  readonly form: ConfigForm<JevCompactionConfig>;
+  /**
+   * The live Config of this plugin's namespace.
+   *
+   * Named `settingsForm`, not `form`: the row seat already hands its registrant a
+   * `form` — the page's `ConfigPageForm`, which is only `{ state, mutate }` and so
+   * can neither be subscribed to nor read through `getSnapshot`. This plugin's own
+   * `ConfigForm` arrives through the injected face instead, where the slot's owner
+   * prop cannot collide with it.
+   */
+  readonly settingsForm: ConfigForm<JevCompactionConfig>;
 }
 
-type CardProps = PropsRuntime<"settings.plugins.tab"> &
-  InjectFace<JevCompactionCardFace>;
+/**
+ * What the card consumes. The row seat renders its registrant with the page's own
+ * `{ view, form }` and the framework's standard kit on top of this face; the entry
+ * in `./index.tsx` takes those and decides what to mount, so the card is typed with
+ * only what it reads.
+ */
+type CardProps = InjectFace<JevCompactionCardFace>;
+
+/**
+ * What this card does, in one line: the shell's own description, and the sentence
+ * the Plugins page shows for this bundle's row when the row declares no
+ * description of its own and asks the entry for its `summary` view.
+ */
+export const JEV_COMPACTION_ROW_SUMMARY =
+  "Semantic result shaping and historical context compaction powered by Jev.";
 
 const PROVIDER_OPTIONS = [
   { value: "typesafe", label: "TypeSafe Jev (hosted System One)" },
@@ -86,8 +104,13 @@ function rangeError(text: string): string {
   return `"${text}" is outside this field's configured range.`;
 }
 
-export function JevCompactionCard({ form }: CardProps): ReactElement | null {
-  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
+export function JevCompactionCard({
+  settingsForm,
+}: CardProps): ReactElement | null {
+  const store = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const settings = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -110,23 +133,23 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
    */
   const write = useCallback(
     (path: string[], value: unknown) => {
-      form.mutate([{ op: "set", path, value }]).catch(fail);
+      settingsForm.mutate([{ op: "set", path, value }]).catch(fail);
     },
-    [form, fail],
+    [settingsForm, fail],
   );
 
   const clear = useCallback(
     (path: string[]) => {
-      form.mutate([{ op: "unset", path }]).catch(fail);
+      settingsForm.mutate([{ op: "unset", path }]).catch(fail);
     },
-    [form, fail],
+    [settingsForm, fail],
   );
 
   const overrides = overriddenKeys(settings.user);
   const resetAll = useCallback(() => {
     const ops = overrides.map((key) => ({ op: "unset", path: [key] }));
-    form.mutate(ops).catch(fail);
-  }, [overrides, form, fail]);
+    settingsForm.mutate(ops).catch(fail);
+  }, [overrides, settingsForm, fail]);
 
   const overridden = useCallback(
     (path: string[]) => isOverridden(settings.user, ...path),
@@ -162,13 +185,13 @@ export function JevCompactionCard({ form }: CardProps): ReactElement | null {
   const apiKeyEnv = config?.jev?.apiKeyEnv ?? "TYPESAFE_API_KEY";
 
   return (
-    // AGENTS.md: a `settings.plugins.tab` card keeps the standard shell, but its
-    // `<li>` root must sit inside a list this plugin owns — the tab panel
-    // supplies no list element of its own.
+    // AGENTS.md: a configuration card keeps the standard shell, but its `<li>`
+    // root must sit inside a list this plugin owns — the Plugins page draws the
+    // row's configuration section without a list element of its own.
     <ul className="jevc-stack">
       <CardShell
         title="Jev Compaction"
-        description="Semantic result shaping and historical context compaction powered by Jev."
+        description={JEV_COMPACTION_ROW_SUMMARY}
         badge={
           <span className="dsh-plugin-card__badge" data-testid="jevc-badge">
             {badgeText(enabled, shapingEnabled)}
