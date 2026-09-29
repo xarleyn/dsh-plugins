@@ -85,7 +85,10 @@ interface TextSpec<F extends TextFields> extends SpecBase<F> {
   readonly requires?: string;
 }
 
-/** kind `number`: an integer the card types. */
+/** kind `number`: an integer the card types. The bounds the schema sets
+ *  (`min`, `step`) are not carried here: a draft is checked for being an integer
+ *  and the Host is the one that refuses a value below its own minimum, so the
+ *  card reports a save that did not land rather than highlighting the field. */
 interface NumberSpec<F extends NumberFields> extends SpecBase<F> {
   readonly kind: "number";
 }
@@ -193,9 +196,19 @@ const SPECS: SpecsByField = {
  */
 export const FIELDS: readonly FieldSpec[] = Object.values(SPECS);
 
-/** The spec of one field, with its kind and value type: the name is checked against the section. */
+/**
+ * The spec of one field, with its kind and value type: the name is checked
+ * against the section. The check is a `throw`, not only the generic argument —
+ * a field name that arrives from the Host or from a string is a card bug, and in
+ * the built bundle the type is gone, so the alternative is a `TypeError` on
+ * `undefined.path` from inside the snapshot read.
+ */
 export function specOf<F extends SettingsField>(field: F): SpecsByField[F] {
-  return SPECS[field];
+  const spec: SpecsByField[F] | undefined = SPECS[field];
+  if (spec === undefined) {
+    throw new Error(`doc-impact card has no field ${String(field)}`);
+  }
+  return spec;
 }
 
 /** A staged reset: drop the user layer so the field follows the composition base. */
@@ -223,8 +236,15 @@ export type Staged<F extends SettingsField = SettingsField> =
       ? ClearDraft | ValueDraft<F>
       : never;
 
-/** What the staged map holds: one draft, its value widened to the document scalars. */
-type Draft = ClearDraft | TextDraft | ValueDraft<ValueField>;
+/**
+ * What the staged map holds: one draft with its value widened to the document
+ * scalars. Storage needs the wide shape because a generic `F` cannot be reduced
+ * by the compiler; the contract a caller is held to is `Staged<F>`.
+ */
+type Draft =
+  | ClearDraft
+  | TextDraft
+  | { readonly op: "set"; readonly value: DocImpactValue };
 
 /**
  * A layer of the namespace document: the Host's JSON, whose shape the field
@@ -311,7 +331,12 @@ export interface CardFace extends CardActions {
   readonly hooks: { readonly docImpactCard: SnapshotStore };
 }
 
-/** One value inside the namespace document. */
+/**
+ * One value inside the namespace document. The document is the Host's JSON and
+ * its shape is only *described* by the field specs, so a node that is not a
+ * scalar the card can show reads as absent rather than being asserted into the
+ * field's value type.
+ */
 function pick(
   source: SettingsLayer,
   path: readonly string[],
@@ -321,7 +346,11 @@ function pick(
     if (node === null || typeof node !== "object") return undefined;
     node = (node as Record<string, unknown>)[key];
   }
-  return node as DocImpactValue | undefined;
+  return typeof node === "string" ||
+    typeof node === "number" ||
+    typeof node === "boolean"
+    ? node
+    : undefined;
 }
 
 /** Whether one path stands in a layer — presence, not value, marks an override. */
@@ -586,13 +615,18 @@ export class SettingsForm {
     };
   }
 
-  /** Stages a reset of any field: the write drops the user layer, it is not a copy of the base. */
-  stage(field: SettingsField, draft: ClearDraft): void;
-  /** Stages a typed draft of a text or number field, parsed at Save. */
-  stage(field: DraftField, draft: TextDraft): void;
-  /** Stages a picked value of a choice or bool field. */
-  stage<F extends ValueField>(field: F, draft: ValueDraft<F>): void;
-  stage(field: SettingsField, draft: Draft): void {
+  /**
+   * Stages one draft on one field: the field's kind decides the draft it can
+   * carry, so a typed text on a picked field and a picked value on a typed field
+   * do not compile. `clear` fits every field and is the reset — the write drops
+   * the user layer, it is not a copy of the base.
+   */
+  stage<F extends SettingsField>(field: F, draft: Staged<F>): void {
+    this.store(field, draft);
+  }
+
+  /** The one place a staged draft lands, holding the wide shape of the map. */
+  private store(field: SettingsField, draft: Draft): void {
     this.staged.set(field, draft);
     this.failed = false;
     this.publish();
@@ -604,7 +638,9 @@ export class SettingsForm {
         this.stage(field, { op: "set", text: text });
       },
       choose: <F extends ValueField>(field: F, value: SettingsValue<F>) => {
-        this.stage(field, { op: "set", value: value });
+        // The same draft `stage` would take; written through `store` because a
+        // generic `F` leaves `Staged<F>` unreducible for the compiler.
+        this.store(field, { op: "set", value: value });
       },
       resetField: (field: SettingsField) => {
         // Every kind resets the same way: drop the user override so the field

@@ -139,7 +139,7 @@ function fakeForm(initial: FormState) {
   };
 }
 
-function makeCtx(form: unknown) {
+function makeCtx(form: unknown, options: { serveNamespace?: boolean } = {}) {
   const registered: SlotEntry[] = [];
   const slotInjections: string[] = [];
   const ctx = {
@@ -155,7 +155,9 @@ function makeCtx(form: unknown) {
     configForms:
       form === undefined
         ? undefined
-        : { get: (namespace: string) => (void namespace, form) },
+        : options.serveNamespace === false
+          ? { get: () => undefined }
+          : { get: (namespace: string) => (void namespace, form) },
     slots: {
       // The card bootstrap registers through a plain factory that returns the
       // register disposer (the shared host contract), not a generator.
@@ -235,6 +237,23 @@ describe("client bundle", () => {
     const bundle = await loadBundle();
     const ctx = makeCtx(undefined);
     bundle.factory(fakeReact).apply(ctx);
+    expect(ctx.registered).toHaveLength(0);
+  });
+
+  it("skips registration when the host serves no form for the namespace", async () => {
+    const bundle = await loadBundle();
+    const ctx = makeCtx(
+      fakeForm({
+        status: "ready",
+        value: {},
+        base: {},
+        user: {},
+        writable: true,
+      }),
+      { serveNamespace: false },
+    );
+    bundle.factory(fakeReact).apply(ctx);
+    expect(ctx.slotInjections).toEqual([]);
     expect(ctx.registered).toHaveLength(0);
   });
 
@@ -377,6 +396,28 @@ describe("client bundle", () => {
     form.setBase(PATHS.maxSnapshotFiles, 200);
     expect(snapshot().fields.maxSnapshotFiles.value).toBe(200);
     expect(snapshot().fields.maxSnapshotFiles.overridden).toBe(false);
+  });
+
+  it("names a field the card does not edit, the way the built bundle has to", async () => {
+    const bundle = await loadBundle();
+    const form = fakeForm({
+      status: "ready",
+      value: {},
+      base: {},
+      user: {},
+      writable: true,
+    });
+    const ctx = makeCtx(form);
+    bundle.factory(fakeReact).apply(ctx);
+    const face = faceOf(ctx);
+
+    // The field name is only checked by the type in the source, and the bundle
+    // carries no types: the guard has to survive the build, otherwise a name the
+    // card does not edit surfaces as a `TypeError` on the snapshot read.
+    face.resetField("reminders");
+    expect(() => face.hooks.docImpactCard.getSnapshot()).toThrow(
+      "doc-impact card has no field reminders",
+    );
   });
 
   it("blocks saving an invalid number and reports the invalid draft", async () => {

@@ -46,9 +46,13 @@ interface LocaleService {
   bind?(namespace: string): Translate;
 }
 
-/** The settings service the card reads its namespace through. */
+/**
+ * The settings service the card reads its namespace through. `get` answers a
+ * namespace the profile does not carry with nothing, and the guard below reads
+ * that as “no card to draw” — the same outcome as an absent service.
+ */
 interface ConfigFormsService {
-  get?(namespace: string): NamespaceForm;
+  get?(namespace: string): NamespaceForm | undefined;
 }
 
 /** The seat the card claims on the Settings → Plugins page. */
@@ -98,7 +102,9 @@ export function apply(ctx: DocImpactClientContext): void {
 
   const configForms = ctx.configForms;
   if (!configForms || typeof configForms.get !== "function") return;
-  const form = new SettingsForm(configForms.get(SETTINGS_NS));
+  const namespace = configForms.get(SETTINGS_NS);
+  if (!namespace) return;
+  const form = new SettingsForm(namespace);
 
   ctx.slots.inject("settings.plugins.tab", function () {
     return ctx.slots.register(

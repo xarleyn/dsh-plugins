@@ -6,7 +6,12 @@ import {
   readLiveConfig,
   resolvePluginConfig,
 } from "../src/dsh/plugin-config.js";
-import { FIELDS } from "../src/client/settings-form.js";
+import { RESOLUTION_MODES } from "../src/config/types.js";
+import {
+  FIELDS,
+  MODE_OPTIONS,
+  ON_LIMIT_OPTIONS,
+} from "../src/client/settings-form.js";
 
 /** One live reference, as the Host hands a `.volatile()` node to `apply()`. */
 function ref<T>(value: T) {
@@ -21,6 +26,11 @@ function nodeAt(path: readonly string[]): any {
     if (node === undefined) return undefined;
   }
   return node;
+}
+
+/** The literal values one schema union node accepts. */
+function vocabularyOf(node: any): unknown[] {
+  return (node?.list ?? []).map((literal: any) => literal.value);
 }
 
 describe("entry config schema", () => {
@@ -42,6 +52,44 @@ describe("entry config schema", () => {
       }
       expect(lived, `${path.join(".")} is not a live field`).toBe(1);
     }
+  });
+
+  // The card repeats the defaults and the vocabularies because the browser
+  // bundle may not import this schema, and `clearedValue` shows that repeat to
+  // the operator as the field's default right after a reset. Drift here is
+  // visible on screen, so it is pinned against the schema node instead.
+  it("falls back to the default the schema declares", () => {
+    for (const spec of FIELDS) {
+      const node = nodeAt(spec.path);
+      expect(node.meta.default, `${spec.field} schema default`).toBe(
+        SETTINGS_DEFAULTS[spec.field],
+      );
+      expect(spec.fallback, `${spec.field} card fallback`).toBe(
+        SETTINGS_DEFAULTS[spec.field],
+      );
+    }
+  });
+
+  it("offers exactly the values the schema accepts", () => {
+    let choices = 0;
+    for (const spec of FIELDS) {
+      if (spec.kind !== "choice") continue;
+      choices += 1;
+      expect(vocabularyOf(nodeAt(spec.path)), spec.field).toEqual([
+        ...spec.options,
+      ]);
+    }
+    expect(choices).toBe(2);
+  });
+
+  it("keeps the card vocabularies equal to the schema's", () => {
+    expect([...MODE_OPTIONS]).toEqual([...RESOLUTION_MODES]);
+    expect(vocabularyOf(nodeAt(["defaults", "mode"]))).toEqual([
+      ...MODE_OPTIONS,
+    ]);
+    expect(vocabularyOf(nodeAt(["safety", "onLimit"]))).toEqual([
+      ...ON_LIMIT_OPTIONS,
+    ]);
   });
 });
 
