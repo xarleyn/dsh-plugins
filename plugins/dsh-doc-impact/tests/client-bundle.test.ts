@@ -23,7 +23,7 @@ interface LoadedBundle {
   factory: (requireFn: (name: string) => unknown) => {
     name: string;
     inject: string[];
-    apply: (ctx: Record<string, unknown>) => void;
+    apply: (ctx: Record<string, unknown>) => () => void;
   };
 }
 
@@ -100,6 +100,10 @@ function fakeForm(initial: FormState) {
   const emit = () => listeners.forEach((listener) => listener());
   return {
     writes,
+    /** How many listeners the card still holds on this controller. */
+    get listenerCount(): number {
+      return listeners.size;
+    },
     getSnapshot: () => ({ ...state, revision, mode: "host" as const }),
     subscribe(listener: () => void) {
       listeners.add(listener);
@@ -181,7 +185,15 @@ function makeCtx(form: unknown, options: { served?: boolean } = {}) {
             ) {
               servedRequests.push([...namespaces]);
               if (!served) return () => undefined;
-              return register(new Set(namespaces));
+              const remove = register(new Set(namespaces));
+              let ended = false;
+              // What the Host's own declaration promises: this disposer ends the
+              // watch *and* drops the registration that is live.
+              return () => {
+                if (ended) return;
+                ended = true;
+                remove();
+              };
             },
           },
     slots: {
@@ -189,13 +201,18 @@ function makeCtx(form: unknown, options: { served?: boolean } = {}) {
       // register disposer (the shared host contract), not a generator.
       inject(slot: string, factory: () => () => unknown) {
         slotInjections.push(slot);
-        factory();
-        return () => undefined;
+        const remove = factory();
+        return () => {
+          remove();
+        };
       },
       register(options: SlotEntry["options"], component: unknown) {
         const entry = { options, component };
         registered.push(entry);
-        return () => undefined;
+        return () => {
+          const at = registered.indexOf(entry);
+          if (at >= 0) registered.splice(at, 1);
+        };
       },
     },
   };
@@ -291,6 +308,34 @@ describe("client bundle", () => {
     expect(ctx.servedRequests).toEqual([["dsh-doc-impact"]]);
     expect(ctx.slotInjections).toEqual([]);
     expect(ctx.registered).toHaveLength(0);
+  });
+
+  it("rolls back what apply did once the entry is disposed", async () => {
+    const bundle = await loadBundle();
+    const form = fakeForm({
+      status: "ready",
+      value: {},
+      base: {},
+      user: {},
+      writable: true,
+    });
+    const ctx = makeCtx(form);
+    const dispose = bundle.factory(fakeReact).apply(ctx);
+    expect(ctx.registered).toHaveLength(1);
+    expect(form.listenerCount).toBe(1);
+
+    dispose();
+    // The tab goes with the watch that registered it, and the listener goes with
+    // the card: `configForms.get` hands out one cached controller per namespace,
+    // so a listener left behind would keep a discarded card alive on every write
+    // the operator makes after a reload.
+    expect(ctx.registered).toEqual([]);
+    expect(form.listenerCount).toBe(0);
+
+    // Teardown is idempotent — a second call must not fall over an ended watch.
+    dispose();
+    expect(ctx.registered).toEqual([]);
+    expect(form.listenerCount).toBe(0);
   });
 
   it("stages edits without writing; save is dirty-gated and commits field-granular writes", async () => {

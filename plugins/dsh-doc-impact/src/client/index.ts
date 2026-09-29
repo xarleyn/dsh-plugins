@@ -91,7 +91,7 @@ export interface DocImpactClientContext {
 export const name = "doc-impact";
 export const inject = ["slots", "configForms", "locale"];
 
-export function apply(ctx: DocImpactClientContext): void {
+export function apply(ctx: DocImpactClientContext): () => void {
   let _t: Translate = fallbackT;
   const locale = ctx.locale;
   if (
@@ -109,13 +109,20 @@ export function apply(ctx: DocImpactClientContext): void {
     typeof configForms.get !== "function" ||
     typeof configForms.whileServed !== "function"
   )
-    return;
+    return function () {};
   const form = new SettingsForm(configForms.get<SettingsDocument>(SETTINGS_NS));
 
   // `whileServed` wraps the injection rather than the card body: it is the slot
   // injection that draws the tab, so a namespace this profile does not serve
   // would otherwise leave an empty tab on the Plugins page.
-  configForms.whileServed([SETTINGS_NS], function () {
+  //
+  // The Host documents the reply as a disposer the caller owns — it ends the
+  // watch and drops whatever registration is live. A client entry owes the
+  // rollback of everything `apply` did (docs/PLUGIN_GUIDELINES.md §3.3.5), so the
+  // two are kept and handed back here rather than thrown away as soon as they
+  // were answered. Whether this host ever calls it is not observed from here —
+  // what is observed is that keeping nothing left the choice to the Host alone.
+  const endWatch = configForms.whileServed([SETTINGS_NS], function () {
     return ctx.slots.inject("settings.plugins.tab", function () {
       return ctx.slots.register(
         {
@@ -134,4 +141,9 @@ export function apply(ctx: DocImpactClientContext): void {
       );
     });
   });
+
+  return function () {
+    endWatch();
+    form.dispose();
+  };
 }
