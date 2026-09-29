@@ -1637,6 +1637,11 @@ export class QaSessionController {
   /** Project one session notification; the running-turn spacing policy
    * (first frame at once, further frames absorbed) lives in the publisher. */
   private publishSessionUpdate(): void {
+    // Read before the spacing, from the notification itself: a frame absorbed
+    // into a running turn's window is dropped rather than replayed, so an
+    // admission landing in such a window would otherwise go unrecorded and the
+    // claim frame after it would draw the ghost row this retires.
+    this.trackAdmittedSubmissions();
     this.streamPublisher.publish(
       this.session?.getSnapshot().running === true,
       () => this.publish(),
@@ -1698,7 +1703,6 @@ export class QaSessionController {
       snapshot.running === true && !this.compatibilityReadOnly,
     );
     const queuedMessages = this.queuedMessages();
-    this.trackAdmittedSubmissions(snapshot, queuedMessages);
     const projectionInput = {
       connected,
       sessionId,
@@ -1779,12 +1783,15 @@ export class QaSessionController {
    * message is the server's own receipt for it, so from that frame on the row
    * belongs to the queue: an echo the claim leaves behind must not read again
    * as a question still crossing the transport.
+   *
+   * Read from the notification, not from the projected frame: the projection of
+   * a running turn is spaced, and an absorbed frame is dropped rather than
+   * replayed, so spacing must not decide whether this browser ever saw the pair.
    */
-  private trackAdmittedSubmissions(
-    snapshot: ReturnType<SessionFace["getSnapshot"]>,
-    queued: readonly UserMessage[],
-  ): void {
-    const echoed = admittedSubmissionIds(queued);
+  private trackAdmittedSubmissions(): void {
+    const snapshot = this.session?.getSnapshot();
+    if (snapshot === undefined) return;
+    const echoed = admittedSubmissionIds(this.queuedMessages());
     const held = new Set<string>();
     for (const item of snapshot.pendingSubmissions) {
       const requestId = String(item.requestId);

@@ -27,6 +27,14 @@ not claimed keeps its three operations. Entries are forgotten when the Host's
 snapshot stops registering them, and the record belongs to the chat that minted the
 request ids, so another chat's queue says nothing about this one's sends.
 
+The receipt is taken from the Host's notification, before the running turn's frame
+spacing, and not from the frame that reaches the screen. A question sent while the
+agent answers is admitted inside a spacing window, and an absorbed window frame is
+dropped rather than replayed: measured on the projected frame, the pair of facts —
+the echo the snapshot registers and the message the queue lists — can reach the
+browser without ever being seen together, and the claim frame then finds nothing to
+settle the send against. That is the row this card reports, restored.
+
 Two limits come with the receipt and are part of this change. It is terminal: the
 row disappears completely rather than fading, so a message the Host takes out of
 its queue without handing it to the turn leaves neither a queue row nor
@@ -35,3 +43,10 @@ the alternative was the permanent buttonless row this card reports. And it lives
 one binding: leaving a chat drops the record, so a re-subscription that still finds
 an echo the Host has not retired shows the row again until the Host retires it — the
 same reason a page reload cleared it on the stand.
+
+Both limits are the shape of a client-side mask, not of a cure. Retiring the echo
+when the queue accepts the message is the Host's own contract, and a Host that keeps
+it registered past its claim is the defect here worked around: the surface can only
+enforce this much on its side, so the strip stops lying to the visitor while the
+Host keeps its promise unmet. The retirement itself belongs to the Host repository
+and is to be raised there; this package does not change it.
