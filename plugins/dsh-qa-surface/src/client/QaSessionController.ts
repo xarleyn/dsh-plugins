@@ -73,7 +73,10 @@ import type { QaApprovalDecision, QaQuestionAnswerItem } from "../types.js";
 import { waitFor } from "./wait-for.js";
 import { QA_REGENERATE_MARKER } from "./QaTranscriptAdapter.js";
 import { readableSubagentName } from "./settlement.js";
-import { projectBoundSessionState } from "./project-session-state.js";
+import {
+  admittedSubmissionIds,
+  projectBoundSessionState,
+} from "./project-session-state.js";
 
 declare module "@deepseek-ai/dsh-api-session-controller/client" {
   interface SessionReferenceSourceMap {
@@ -269,6 +272,13 @@ export class QaSessionController {
   private admissionPending = false;
   private pendingSubmission: PendingSubmission | undefined;
   private pendingSequence = 0;
+  /**
+   * Queued submissions whose message this binding has already seen in the
+   * Host's Inbox. The Host retires a submission echo when its queue occurrence
+   * arrives; an echo that outlives the claim it proved must not put the row
+   * back as a question still crossing the transport.
+   */
+  private readonly admittedSubmissions = new Set<string>();
   private policyReady = false;
   /** Historical transcript retained after the Host classifies policy drift. */
   private compatibilityReadOnly = false;
@@ -1596,6 +1606,9 @@ export class QaSessionController {
     // The next binding probes the Host again even for the same chat.
     this.pendingProbeKey = "";
     this.admissionPending = false;
+    // Request ids are minted per session, so another chat's queue listing says
+    // nothing about this one's submissions still crossing the transport.
+    this.admittedSubmissions.clear();
     // A held-back question belongs to the chat that asked it; another binding
     // answers for its own sends.
     this.requestQueueNotice = null;
@@ -1684,6 +1697,8 @@ export class QaSessionController {
     this.syncPendingPolling(
       snapshot.running === true && !this.compatibilityReadOnly,
     );
+    const queuedMessages = this.queuedMessages();
+    this.trackAdmittedSubmissions(snapshot, queuedMessages);
     const projectionInput = {
       connected,
       sessionId,
@@ -1704,7 +1719,8 @@ export class QaSessionController {
         this.admissionPending || this.pendingSubmission !== undefined,
       chatsRevision: this.chatsRevision,
       viewingSubagent: this.viewingSubagent,
-      queuedMessages: this.queuedMessages(),
+      queuedMessages,
+      admittedSubmissions: this.admittedSubmissions,
       slash: this.slashView(),
       config: this.config,
       subagentNames: this.subagentNames(),
@@ -1753,6 +1769,30 @@ export class QaSessionController {
     const inbox = this.session?.projections.faceOf("inbox").getSnapshot() as
       { readonly "next-turn"?: readonly UserMessage[] } | undefined;
     return inbox?.["next-turn"] ?? [];
+  }
+
+  /**
+   * Record the queued submissions whose message the Host's queue has already
+   * listed, and forget the echoes its snapshot stopped registering. Listing the
+   * message is the server's own receipt for it, so from that frame on the row
+   * belongs to the queue: an echo the claim leaves behind must not read again
+   * as a question still crossing the transport.
+   */
+  private trackAdmittedSubmissions(
+    snapshot: ReturnType<SessionFace["getSnapshot"]>,
+    queued: readonly UserMessage[],
+  ): void {
+    const echoed = admittedSubmissionIds(queued);
+    const held = new Set<string>();
+    for (const item of snapshot.pendingSubmissions) {
+      const requestId = String(item.requestId);
+      held.add(requestId);
+      if (item.placement === "queued" && echoed.has(requestId))
+        this.admittedSubmissions.add(requestId);
+    }
+    for (const requestId of this.admittedSubmissions) {
+      if (!held.has(requestId)) this.admittedSubmissions.delete(requestId);
+    }
   }
 
   /**
