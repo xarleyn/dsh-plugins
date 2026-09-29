@@ -4,8 +4,10 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import {
-  QaQualityStore,
+  FAMILY_REPLAY_SQL,
+  OVERFLOW_CUT_SQL,
   QA_ROW_CAPS,
+  QaQualityStore,
   type QualityRowKind,
 } from "../../src/admin/quality-store.js";
 
@@ -408,41 +410,46 @@ describe("QaQualityStore storage", () => {
     },
   );
 
-  it("reads a family in its own order instead of sorting it", () => {
-    const { file } = rig();
-    createSchema(file);
-    const db = new DatabaseSync(file);
-    let cap: string;
-    let reload: string;
-    try {
-      const planOf = (sql: string): string =>
-        db
-          .prepare(`EXPLAIN QUERY PLAN ${sql}`)
-          .all("feedback")
-          .map((row) => row.detail as string)
-          .join("\n");
+  it(
+    "reads a family in its own order instead of sorting it",
+    CAP_TIMEOUT,
+    () => {
+      const { file } = rig();
+      createSchema(file);
+      const cap = QA_ROW_CAPS.feedback;
+      // Twenty thousand ratings, the size the feedback cap is defined over, so
+      // the plans below are the ones a store at that size actually pays with.
+      seedFeedback(file, cap);
+      const db = new DatabaseSync(file);
+      let cut: string;
+      let reload: string;
+      try {
+        const planOf = (
+          sql: string,
+          params: readonly (string | number)[],
+        ): string =>
+          db
+            .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+            .all(...params)
+            .map((row) => row.detail as string)
+            .join("\n");
 
-      // The two statements that order a family by `seq`. Both run against a
-      // store that holds twenty thousand ratings: the cap reads the row at its
-      // rank on every write, and a reload replays the family in insertion order
-      // on every read that follows one. Sorted instead of walked, either would
-      // build a temp B-tree of that whole family.
-      cap = planOf(
-        `SELECT seq FROM quality_rows WHERE kind = ? ORDER BY seq DESC
-          LIMIT 1 OFFSET 10`,
-      );
-      reload = planOf(
-        "SELECT json FROM quality_rows WHERE kind = ? ORDER BY seq",
-      );
-    } finally {
-      db.close();
-    }
+        // The cap reads the row at its rank on every write, and a reload
+        // replays the family in insertion order on every read that follows one.
+        // Sorted instead of walked, either would build a temp B-tree of that
+        // whole family.
+        cut = planOf(OVERFLOW_CUT_SQL, ["feedback", "feedback", cap - 1]);
+        reload = planOf(FAMILY_REPLAY_SQL, ["feedback"]);
+      } finally {
+        db.close();
+      }
 
-    for (const plan of [cap, reload]) {
-      expect(plan).toContain("quality_rows_kind_seq");
-      expect(plan).not.toMatch(/TEMP B-TREE/);
-    }
-  });
+      for (const plan of [cut, reload]) {
+        expect(plan).toContain("quality_rows_kind_seq");
+        expect(plan).not.toMatch(/TEMP B-TREE/);
+      }
+    },
+  );
 
   it("imports the pre-SQLite file and renames it aside", () => {
     const { dir, file } = rig();
