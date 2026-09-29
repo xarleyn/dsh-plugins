@@ -652,14 +652,21 @@ describe("the account's own channels", () => {
     expect(onSave).not.toHaveBeenCalled();
   });
 
-  it("offers no switch to a fresh browser of a reader whose account says on", () => {
-    // The second carrier of the reader's answer: the account outranks anything
-    // this browser remembers, and an empty store here is not a reader who still
-    // owes one. The action reads «включить» over a channel that is on, and the
-    // answer «не разрешать» would write `desktop: false` back to that account —
-    // so the only way this switch moves is off. What the fresh browser is missing
-    // is its own permission, and the settings section is where that is asked.
+  it("offers no switch where the account says on and this browser says off", () => {
+    // The two carriers of the reader's answer, deliberately disagreeing: the
+    // account says the channel is on and this browser's own record is the one
+    // that says off. The gate reads the channel, not this browser's copy of it,
+    // and that is the whole of the difference — keyed on the stored `osEnabled`
+    // instead, this page would offer «Включить системные уведомления» over a
+    // channel that is on, and the answer «не разрешать» by it would write
+    // `desktop: false` back to an account that already said yes. What the fresh
+    // browser is missing is its own permission, and the settings section is
+    // where that is asked.
     FakeNotification.permission = "default";
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ osEnabled: false, osOffered: false }),
+    );
     const { options, onSave } = signedIn({ inApp: true, desktop: true });
     const page = mountPage(hostList([{ id: "mine", running: true }]), options);
     page.redraw({ list: hostList([{ id: "mine", running: false }]) });
@@ -672,7 +679,7 @@ describe("the account's own channels", () => {
     fireEvent.click(
       screen.getByLabelText(`${QA_TURN_NOTICE_COPY.dismiss}: Чат mine`),
     );
-    expect(storedPrefs()).toBeNull();
+    expect(storedPrefs()).toEqual({ osEnabled: false, osOffered: false });
     expect(onSave).not.toHaveBeenCalled();
   });
 });
