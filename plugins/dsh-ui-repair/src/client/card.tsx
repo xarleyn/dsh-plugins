@@ -22,11 +22,16 @@ import type { UIRepairRuntime } from "./runtime.js";
 import type { RepairIssue } from "./types.js";
 
 export interface CardFace {
-  readonly form: ConfigForm<UIRepairPluginConfig>;
+  /**
+   * The card's own settings form, resolved from `ctx.configForms`. The Plugins
+   * page passes a `form` of its own as owner props, and owner props are spread
+   * over the injected face, so the face keeps a name that page never passes.
+   */
+  readonly settings: ConfigForm<UIRepairPluginConfig>;
   readonly runtime: UIRepairRuntime;
 }
 
-type CardProps = PropsRuntime<"settings.plugins.tab"> & InjectFace<CardFace>;
+type CardProps = PropsRuntime<"plugins.row.config"> & InjectFace<CardFace>;
 
 interface ToggleProps {
   readonly title: string;
@@ -65,7 +70,7 @@ function validSelector(selector: string): boolean {
   }
 }
 
-export function UIRepairCard({ form, runtime }: CardProps) {
+export function UIRepairCard({ view, settings: form, runtime }: CardProps) {
   const store = useMemo(() => bindSettingsExternalStore(form), [form]);
   const snapshot = useSyncExternalStore(
     store.subscribe,
@@ -87,6 +92,19 @@ export function UIRepairCard({ form, runtime }: CardProps) {
   const [repairError, setRepairError] = useState<string | undefined>();
 
   if (snapshot.status === "unavailable") return null;
+
+  /*
+   * The row page asks for this view only when the bundle declares no row
+   * description, and it drops whatever it gets into a one-line paragraph, so the
+   * form must not render here.
+   */
+  if (view === "summary") {
+    return (
+      <span data-dsh-ui-repair-ui data-testid="repair-summary">
+        {config.enabled ? `Repair mode: ${config.mode}` : "Disabled"}
+      </span>
+    );
+  }
 
   const setConfidence = (
     field: "autoConfidence" | "dangerousConfidence",

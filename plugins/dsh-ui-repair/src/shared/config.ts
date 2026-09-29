@@ -3,9 +3,17 @@ import type { Volatile } from "@deepseek-ai/cordis";
 /**
  * Settings namespace of the browser card. In `0.1.7` the Host derives the
  * namespace from the profile entry id in `cordis.patch.yml`, so this constant is
- * both the `ctx.configForms.get()` key and the `settings.plugins.tab` seat id.
+ * the `ctx.configForms.get()` key and the row id of the same patch.
  */
 export const UI_REPAIR_SETTINGS_NAMESPACE = "dsh-ui-repair";
+
+/**
+ * The `plugins.row.config` seat the browser card renders into: the Plugins page
+ * keys that slot by `` `${package name}#${row id}` ``, so the row half of this
+ * key is {@link UI_REPAIR_SETTINGS_NAMESPACE} — the namespace the card writes
+ * through stays the same across the move.
+ */
+export const UI_REPAIR_ROW_CONFIG_KEY = "@yadsh/dsh-ui-repair#dsh-ui-repair";
 
 export const REPAIR_MODES = ["observe", "suggest", "auto"] as const;
 export type RepairMode = (typeof REPAIR_MODES)[number];

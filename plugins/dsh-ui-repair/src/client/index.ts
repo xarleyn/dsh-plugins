@@ -1,10 +1,11 @@
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 import {
   resolvePluginConfig,
+  UI_REPAIR_ROW_CONFIG_KEY,
   UI_REPAIR_SETTINGS_NAMESPACE,
   type UIRepairPluginConfig,
 } from "../shared/config.js";
@@ -64,14 +65,13 @@ export function apply(ctx: Context, options: ClientOptions = {}): () => void {
   const removeService = ctx.provide("uiRepair", runtime);
   runtime.start();
   started = true;
-  const face: CardFace = { form, runtime };
+  const face: CardFace = { settings: form, runtime };
   const removeStyles = injectCardStyles(name, styles);
-  const removeCard = ctx.slots.inject("settings.plugins.tab", () =>
+  const removeCard = ctx.slots.inject("plugins.row.config", () =>
     ctx.slots.register(
       {
-        name: "settings.plugins.tab",
-        id: UI_REPAIR_SETTINGS_NAMESPACE,
-        label: () => "UI Repair",
+        name: "plugins.row.config",
+        key: UI_REPAIR_ROW_CONFIG_KEY,
         inject: () => face,
       },
       UIRepairCard,
