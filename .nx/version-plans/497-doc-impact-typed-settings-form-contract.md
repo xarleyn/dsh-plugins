@@ -41,6 +41,15 @@ land keeps its drafts, and a reset still drops the user layer instead of copying
 the composition base into it — that last one is now pinned for every kind of
 field, and the defaults and vocabularies the card repeats are pinned against the
 plugin's own configuration schema. Which field the card draws is pinned too: every
-spec must reach exactly one control of the kind it declares, so a field that joins
-the schema and the specs without joining the screen is now a failing test rather
-than an invisible gap.
+spec must reach exactly one control of the kind it declares, and a default the card
+repeats by hand has to be the one its spec carries, so a field that joins the
+schema and the specs without joining the screen is now a failing test rather than
+an invisible gap.
+
+One thing the entry owed and did not keep. The Host answers a disposer for the
+watch on a namespace and for the listener on the settings controller, and the entry
+threw both away as soon as they were handed to it, keeping nothing to roll back on
+teardown. It now answers the rollback the client contract asks for: the watch and
+the card's listener are ended together, and a test over the built bundle holds the
+Host to the shape it declares — the tab is gone and the controller has no listener
+left after the entry is disposed.

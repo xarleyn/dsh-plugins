@@ -283,12 +283,13 @@ export type NamespaceForm = ConfigForm<SettingsDocument>;
 export type NamespaceSnapshot = ConfigFormSnapshot<SettingsDocument>;
 
 /** One field-granular path operation the card emits: `set` carries the value,
- *  `unset` drops the override. The Host calls this shape `SettingsPathOpView`,
- *  which the settings package brings in from `@deepseek-ai/dsh-api-remotes` — a
- *  dependency it does not declare, so the name resolves to nothing in this
- *  workspace and the op stays described here. `CardOps` is what keeps that
- *  description answerable: the moment the Host's own list resolves, an operation
- *  this card emits that the Host does not take stops compiling. */
+ *  `unset` drops the override. The Host calls this shape `SettingsPathOpView` and
+ *  takes it in `mutate`, but the settings package brings that name in from
+ *  `@deepseek-ai/dsh-api-remotes` without declaring the dependency, so in this
+ *  workspace the member resolves to nothing and the compiler cannot compare this
+ *  description against the Host's own — `mutate` accepts whatever is handed to it.
+ *  The shape is therefore pinned by the tests that read the operations reaching
+ *  `mutate` (`client-draft.test.ts`, `client-bundle.test.ts`), not by a type. */
 export type NamespaceOp =
   | {
       readonly op: "set";
@@ -296,14 +297,6 @@ export type NamespaceOp =
       readonly value: DocImpactValue;
     }
   | { readonly op: "unset"; readonly path: readonly string[] };
-
-/** The ops the Host's `mutate` takes, as far as it can be read from here. */
-type HostOps = Parameters<NamespaceForm["mutate"]>[0];
-
-/** The card's ops, guarded against the Host's list — `never` if they do not fit. */
-export type CardOps = NamespaceOp extends HostOps[number]
-  ? readonly NamespaceOp[]
-  : never;
 
 /** One field as the card renders it: the draft text its kind shows, the value it
  *  stands on, whether the user layer holds an override, and whether the draft can
@@ -480,6 +473,7 @@ interface PlanEntry {
  */
 export class SettingsForm {
   private readonly form: NamespaceForm;
+  private readonly unsubscribe: () => void;
   private readonly staged = new Map<SettingsField, Draft>();
   private readonly listeners = new Set<() => void>();
   private snapshotCache: CardSnapshot | undefined;
@@ -489,9 +483,18 @@ export class SettingsForm {
   constructor(form: NamespaceForm) {
     this.form = form;
     this.snapshotCache = undefined;
-    form.subscribe(() => {
+    // The Host answers a disposer for the listener it takes, and this one has to
+    // be kept: the controller `configForms.get` hands out is shared and cached by
+    // the provider, so a client entry that drops it keeps calling a card that is
+    // no longer on the page — one more listener per reload.
+    this.unsubscribe = form.subscribe(() => {
       this.publish();
     });
+  }
+
+  /** End the watch on the Host controller. Safe to call twice. */
+  dispose(): void {
+    this.unsubscribe();
   }
 
   getSnapshot(): CardSnapshot {
@@ -599,7 +602,9 @@ export class SettingsForm {
    * shared by every read of that field.
    */
   private runClear(field: SettingsField): Promise<boolean> {
-    const ops: CardOps = [{ op: "unset", path: [...specOf(field).path] }];
+    const ops: readonly NamespaceOp[] = [
+      { op: "unset", path: [...specOf(field).path] },
+    ];
     return this.form.mutate(ops, this.snapshotOf().revision);
   }
 
@@ -607,7 +612,7 @@ export class SettingsForm {
     field: SettingsField,
     value: DocImpactValue,
   ): Promise<boolean> {
-    const ops: CardOps = [
+    const ops: readonly NamespaceOp[] = [
       { op: "set", path: [...specOf(field).path], value: value },
     ];
     return this.form.mutate(ops, this.snapshotOf().revision);
