@@ -1193,6 +1193,7 @@ export function QaSurface(props: QaSurfaceProps) {
               ""
             }
             {...(previewing ? { onExit: exitPreview } : {})}
+            disabled={state.phase === "creating"}
           />
         ) : null}
         {showSidebar ? (
