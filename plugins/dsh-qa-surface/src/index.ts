@@ -44,6 +44,7 @@ import {
 import { QaFileDeleteGate } from "./qa-tools/file-delete-gate.js";
 import { QaQuestionGate } from "./questions.js";
 import { QaSessionOwnership } from "./session-ownership.js";
+import { registerTurnFailureLog } from "./turn-failure-log.js";
 import { entryRedirectRow } from "./entry-redirect.js";
 import { qaKioskDeployment } from "./ui-mode.js";
 import { registerQaNavigationRoute } from "./host-route.js";
@@ -428,6 +429,16 @@ export class QaSurface extends TypertRemoteService {
     this.approvals.install();
     this.userQuestions.install();
     this.fileDeleteGate.install();
+    // A turn the Host ended with a provider failure is written to the plugin's
+    // log with its code and the provider the request was routed to. The chat row
+    // names the code only, and the durable journal that holds the rest is a zstd
+    // archive, so without this line a stand that lost its adapters is diagnosed
+    // by decoding frames.
+    const disposeTurnFailureLog = registerTurnFailureLog(
+      ctx,
+      this.logger,
+      (sessionId) => ownership.rootOf(sessionId) !== undefined,
+    );
     // The identity note and the provenance rule ride the conversation as
     // durable context messages, delegated experts included: the QA preset's
     // complete persona closes the system prompt to plugins, the conversation
@@ -480,6 +491,10 @@ export class QaSurface extends TypertRemoteService {
     ctx.effect(
       () => () => this.personalSkills.dispose(),
       "dsh-qa-surface.personal-skills",
+    );
+    ctx.effect(
+      () => () => disposeTurnFailureLog(),
+      "dsh-qa-surface.turn-failure-log",
     );
     this.warnDocumentsMoved();
     this.warnLegacySlashDefaults();

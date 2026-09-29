@@ -27,6 +27,16 @@ function failureCause(code: string | undefined): string {
   }
 }
 
+/**
+ * The code beside the copy. `UNKNOWN` is what the Host writes for any failure
+ * that is not a provider one, so naming it says nothing the row does not already
+ * say; every other recorded code is worth the reader's time, because it is the
+ * handle an operator greps the plugin log with.
+ */
+function failureCodeSuffix(code: string | undefined): string {
+  return code === undefined || code === "UNKNOWN" ? "" : ` (${code})`;
+}
+
 /** Terminal turn-failure row shown after the work group. */
 export function turnErrorCopy(code: string | undefined): string {
   switch (code) {
@@ -42,8 +52,10 @@ export function turnErrorCopy(code: string | undefined): string {
       return "Провайдер отклонил доступ (ключ или права) — сообщи оператору стенда.";
     case "SERVER":
       return "Провайдер вернул ошибку сервера — попытки исчерпаны. Попробуй ещё раз позже.";
+    case "NO_ADAPTER":
+      return "Адаптер выбранного провайдера не зарегистрирован в хосте (NO_ADAPTER). Повтор запроса не поможет — сообщи оператору стенда: журнал dsh-qa-surface называет провайдера.";
     default:
-      return "Помощнику не удалось завершить ответ.";
+      return `Помощнику не удалось завершить ответ${failureCodeSuffix(code)}.`;
   }
 }
 
