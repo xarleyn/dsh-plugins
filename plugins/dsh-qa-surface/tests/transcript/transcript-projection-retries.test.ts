@@ -127,7 +127,7 @@ describe("transcript projection", () => {
       (message) => message.role === "system" && message.status === "error",
     );
     expect(errorRow).toMatchObject({
-      text: "Обрыв связи с провайдером. Ответ не сохранился — отправь запрос ещё раз.",
+      text: "Обрыв связи с провайдером (TRANSPORT). Ответ не сохранился — отправь запрос ещё раз.",
     });
     expect(JSON.stringify(messages)).not.toContain("/home/secret");
   });
