@@ -38,8 +38,9 @@
 // configuration — that no `name@version` tag is left to read — so the census
 // behind it is re-run here. It asks the remotes the checkout points at, because
 // the local ref store records what this clone has seen rather than what the
-// repository holds; and a census nothing answered reports itself skipped, since
-// an unmeasured tag set is not a tag set that came back empty.
+// repository holds; and a census that no remote answered, or that one of them
+// stayed silent in, reports itself skipped — a tag set nobody measured, or
+// measured only in part, is not a tag set that came back empty.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
@@ -673,18 +674,20 @@ function remoteCensus() {
 
 test("SPEC.md §20's tag census still comes back empty", (t) => {
   const { names, remotes, unreachable } = remoteCensus();
-  if (unreachable.length > 0) {
-    t.diagnostic(
-      `${unreachable.join(", ")} did not answer; the census reads the remotes that did`,
+  // §20 states a fact about the repository, so this case is a verdict only over a
+  // read that saw every remote of this checkout. A remote that stayed silent may
+  // still carry a `name@version` tag, and asserting over the remotes that did
+  // answer would report a census nobody finished as coverage.
+  if (remotes.length === 0) {
+    return t.skip(
+      "this checkout points at no remote, so its tag set is unmeasured rather than empty",
     );
   }
-  // A checkout with no remote, and one whose remotes are all unreachable, are
-  // both cases of nothing having been measured — neither may read as coverage.
-  if (remotes.length === unreachable.length) {
+  if (unreachable.length > 0) {
     return t.skip(
-      remotes.length === 0
-        ? "this checkout points at no remote, so its tag set is unmeasured rather than empty"
-        : `none of the ${remotes.length} remotes this checkout points at answered, so its tag set is unmeasured rather than empty`,
+      unreachable.length === remotes.length
+        ? `none of the ${remotes.length} remotes this checkout points at answered, so its tag set is unmeasured rather than empty`
+        : `${unreachable.join(", ")} did not answer, so the census cannot say which tags it carries`,
     );
   }
   // The proxy for "the per-package scheme left nothing" is the wave tags: a
