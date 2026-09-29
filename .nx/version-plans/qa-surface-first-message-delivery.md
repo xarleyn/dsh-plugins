@@ -40,3 +40,16 @@ question, the files staged with it and the panels that were open are dropped
 even when the very same conversation comes back. Before this the rebuild reused
 its predecessor's identity and the draft did survive — by being shown to a chat
 that had never seen it.
+
+An adoption that steps back now says so. Leaving a chat for a fresh draft —
+choosing another role, or the way out of an administrator's preview — retired
+the binding a first send was waiting on without raising the generation that
+waiting adoption is measured against, and so the adoption resumed as the owner
+of a screen it no longer was. The send took that for a finished adoption and
+reported a draft that had never been adopted: the chat the visitor switched to
+answered every later question with «чат не открыт», and the way out was to press
+«Новый чат» again. Starting a draft raises the generation the way opening another
+chat does, retires the materialization the ending chat was still paying for, and
+`bind` answers whether it adopted, so no caller can read a step back as a
+success. The way out of a preview waits for the same «чат ещё создаётся» moment
+the header's «Новый чат» and the role selector already waited for.

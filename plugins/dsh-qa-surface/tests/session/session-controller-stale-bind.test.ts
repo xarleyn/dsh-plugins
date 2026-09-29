@@ -274,6 +274,147 @@ describe("QA session controller: an adoption the visitor left behind", () => {
     expect(world.faces.get(stalled)?.prompt).not.toHaveBeenCalled();
     controller.dispose();
   });
+
+  it("keeps the draft sendable when a role change retires the binding mid-wait", async () => {
+    // The one departure between chats that used to leave the generation alone is
+    // the draft: "Новый чат" and a role change retire the binding and hand the
+    // screen to nothing. A first send parked in its waits measured itself against
+    // the generation only, so it resumed as the owner of a chat it no longer was,
+    // and the send that asked for it reported a materialized draft that had never
+    // been adopted — after which every question in that draft was answered with
+    // "chat not open" for as long as the page lived.
+    const world = harness(["other"]);
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        session: { policy: "new-on-load" },
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
+    });
+    await controller.ensureSession();
+    await controller.startDraft();
+
+    // Parked past the binding, in the wait for the session to open.
+    let stalled = "";
+    world.createSession.mockImplementationOnce(async () => {
+      stalled = String(await world.create());
+      const face = world.faces.get(stalled);
+      face?.source.set({ ...face.source.getSnapshot(), openState: "opening" });
+      return { ok: true as const, value: stalled };
+    });
+    const sending = controller.send("Первый вопрос");
+    await until(
+      () => (world.bindings.get(stalled)?.target.mock.calls.length ?? 0) > 0,
+    );
+
+    // Leaving the admin preview is a role change, and a role change is a draft.
+    await controller.selectSubrole("role-b");
+    const draft = controller.getSnapshot();
+    expect(draft).toMatchObject({ sessionId: null, canSend: true });
+
+    const abandoned = world.references.filter(
+      (ref) => ref.sessionId === stalled,
+    );
+    expect(abandoned).toHaveLength(1);
+    // From here the draft has no session, so the only proof this page needs is
+    // the one its own next question pays for.
+    world.secureSession.mockClear();
+
+    // The session the abandoned chat was waiting for opens. It proves nothing:
+    // the step back has to be visible to the send that asked for it.
+    const stalledFace = world.faces.get(stalled);
+    stalledFace?.source.set({
+      ...stalledFace.source.getSnapshot(),
+      openState: "open",
+    });
+    expect(await sending).toBe(false);
+    expect(world.secureSession).not.toHaveBeenCalled();
+    expect(abandoned[0]?.release).toHaveBeenCalledOnce();
+    // The draft the role change started is the chat on screen still: same
+    // identity, no session, and sendable.
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: null,
+      chatKey: draft.chatKey,
+      canSend: true,
+      error: null,
+    });
+
+    // And its next question is delivered — into the role the visitor switched to,
+    // not into the session the abandoned question had been waiting for.
+    expect(await controller.send("Второй вопрос")).toBe(true);
+    expect(world.createSession.mock.calls.at(-1)?.[1]).toBe("role-b");
+    const reopened = controller.getSnapshot().sessionId;
+    expect(reopened).not.toBeNull();
+    expect(reopened).not.toBe(stalled);
+    expect(world.faces.get(String(reopened))?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "Второй вопрос" }],
+      "queue",
+    );
+    expect(world.faces.get(stalled)?.prompt).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+
+  it("keeps a draft a given-up-on question cannot take over", async () => {
+    // The other half of the same departure: an adoption parked while it is still
+    // looking for its session has taken nothing, so nothing about the binding
+    // tells it the screen moved. Only the generation does, and the draft is the
+    // path that used to leave it untouched — arriving late, that question would
+    // bind its session under the identity of the draft the visitor had just
+    // started, and list a chat nobody asked for.
+    const world = harness(["other"]);
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        session: { policy: "new-on-load" },
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
+    });
+    await controller.ensureSession();
+    await controller.startDraft();
+
+    const late = "not-listed-yet";
+    world.createSession.mockImplementationOnce(async () => ({
+      ok: true as const,
+      value: late,
+    }));
+    const sending = controller.send("Первый вопрос");
+    await until(() =>
+      world.retain.mock.calls.some(([id]) => String(id) === late),
+    );
+
+    // The header's "Новый чат", taken while that question is still looking.
+    await controller.startDraft();
+    const draft = controller.getSnapshot();
+
+    relist(world, late);
+    expect(await sending).toBe(false);
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: null,
+      chatKey: draft.chatKey,
+      canSend: true,
+      error: null,
+    });
+    // It never became a chat of this browser, and the reference it retained
+    // while looking for the binding came back.
+    expect(controller.chatIds()).not.toContain(late);
+    const orphaned = world.references.filter((ref) => ref.sessionId === late);
+    expect(orphaned).toHaveLength(1);
+    expect(orphaned[0]?.release).toHaveBeenCalledOnce();
+
+    // The draft is still a draft, and its question rides a session of its own.
+    expect(await controller.send("Второй вопрос")).toBe(true);
+    const opened = controller.getSnapshot().sessionId;
+    expect(opened).not.toBeNull();
+    expect(opened).not.toBe(late);
+    expect(world.faces.get(String(opened))?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "Второй вопрос" }],
+      "queue",
+    );
+    expect(world.faces.get(late)?.prompt).not.toHaveBeenCalled();
+    controller.dispose();
+  });
 });
 
 /** Publish one session the Host had not listed yet, with a binding to match. */

@@ -1037,6 +1037,9 @@ export class QaSessionController {
    * session. Nothing appears in the chat list and no Host session is spent
    * until the first prompt is actually sent, which materializes the session
    * lazily ({@link materializeDraft}). Fixed-policy deployments cannot draft.
+   *
+   * A draft is a chat of its own, so entering one takes the screen the way
+   * {@link switchTo} does; see the note where the generation moves.
    */
   async startDraft(policyChange = false): Promise<void> {
     if (
@@ -1058,6 +1061,15 @@ export class QaSessionController {
         console.error("dsh-qa-surface: stop before draft failed", error);
       }
     }
+    // Taking the screen from the chat it was showing moves the generation, as
+    // every other path that retires a binding does: an adoption still looking
+    // for its session measures itself against that generation, and would
+    // otherwise take the screen back for the chat the visitor just left. Its
+    // materialization goes the same way — it belongs to the ending chat, and must
+    // not hold this draft in "chat still being created" until a round-trip nobody
+    // is waiting for answers.
+    this.generation += 1;
+    this.materializing = undefined;
     this.drafting = true;
     this.openChat();
     this.unbind();
@@ -1090,7 +1102,11 @@ export class QaSessionController {
           adminPreview: this.adminPreview,
         });
         if (this.disposed || operation !== this.generation) return false;
-        await this.bind(id, { operation });
+        // A step back is not a materialized draft: this adoption never ended up
+        // holding a session, so the draft has to stay a draft. Calling it done
+        // leaves a chat with neither a session nor a draft behind, and every
+        // later question in it answered with "chat not open".
+        if (!(await this.bind(id, { operation }))) return false;
         if (this.disposed || operation !== this.generation) return false;
         this.drafting = false;
         if (this.config.session.policy === "browser-persistent") {
@@ -1163,10 +1179,14 @@ export class QaSessionController {
         this.forgetChat(sessionId);
         throw new Error("Этот чат больше недоступен.");
       }
-      await this.bind(sessionId, {
+      const adopted = await this.bind(sessionId, {
         operation,
         allowCompatibilityReadOnly: true,
       });
+      // The chat this switch was asked for is on screen only if this adoption
+      // finished: a step back means another chat took the screen in the meantime,
+      // and persisting this id as the open one would reopen it on the next load.
+      if (!adopted) return;
       if (this.disposed || operation !== this.generation) return;
       this.chats.saveActive(sessionId);
     } catch (error) {
@@ -1213,12 +1233,18 @@ export class QaSessionController {
     this.emit();
     try {
       await this.waitForConnection();
-      await this.bind(id, {
-        operation,
-        attest: false,
-        track: false,
-        report: false,
-      });
+      // A step back here is the visitor having left this view for another chat,
+      // which shows its own transcript — there is nothing of ours left to publish
+      // and nothing of theirs to mark as a failed open.
+      if (
+        !(await this.bind(id, {
+          operation,
+          attest: false,
+          track: false,
+          report: false,
+        }))
+      )
+        return;
     } catch (error) {
       // A newer operation superseded this view request: leave its state alone.
       if (this.disposed || operation !== this.generation) return;
@@ -1392,11 +1418,17 @@ export class QaSessionController {
       // replace it. A freshly created session must report a refusal at once —
       // it is the deployment's only chance to learn the reason.
       try {
-        await this.bind(id, {
-          operation,
-          report: !restored,
-          allowCompatibilityReadOnly: existing,
-        });
+        // A step back is not a refusal: another operation owns the screen now,
+        // so this bootstrap must neither run its recovery ladder over it nor
+        // persist a chat it never adopted.
+        if (
+          !(await this.bind(id, {
+            operation,
+            report: !restored,
+            allowCompatibilityReadOnly: existing,
+          }))
+        )
+          return;
       } catch (error) {
         // A stale restore must not start its recovery ladder against a newer
         // operation; rethrow for the generation-guarded outer catch.
@@ -1432,7 +1464,7 @@ export class QaSessionController {
         // identity naming no session, so without this the replacement would
         // adopt the refused chat's.
         this.openChat();
-        await this.bind(id, { operation });
+        if (!(await this.bind(id, { operation }))) return;
       }
       if (this.disposed || operation !== this.generation) return;
       if (this.config.session.policy === "browser-persistent") {
@@ -1478,7 +1510,7 @@ export class QaSessionController {
     try {
       await this.waitForConnection();
       try {
-        await this.bind(id, { operation });
+        if (!(await this.bind(id, { operation }))) return null;
         if (this.disposed || operation !== this.generation) return null;
         if (this.policyReady) return id;
       } catch (error) {
@@ -1503,7 +1535,7 @@ export class QaSessionController {
         adminPreview: this.adminPreview,
       });
       if (this.disposed || operation !== this.generation) return null;
-      await this.bind(created, { operation });
+      if (!(await this.bind(created, { operation }))) return null;
       if (this.disposed || operation !== this.generation) return null;
       this.chats.saveActive(created);
       return this.policyReady ? created : null;
@@ -1546,15 +1578,23 @@ export class QaSessionController {
    * transcript is read rather than written into — is named once its session is
    * open.
    *
+   * Answers whether the adoption happened. `true` is a finished one: this call
+   * holds the session and the chat identity names it, so the caller may publish
+   * what it kept for that chat — the draft it retired, the id it persisted.
+   * `false` is a step back: the chat on screen moved on while this call waited,
+   * it took nothing and undid nothing of the chat that replaced it, and the
+   * caller must keep its own state as unclaimed — a draft that was never
+   * materialized stays a draft, and a chat that was never adopted is not
+   * persisted as the open one.
+   *
    * Any of those waits can outlive the operation it belongs to — the user moves
-   * to another chat while a first send is still looking for its session — so an
-   * adoption that is no longer the one on screen takes nothing back and gives
-   * nothing out: neither the identity, which another chat holds, nor the
-   * binding, whose subscriptions belong to what the visitor is reading. Two
+   * to another chat while a first send is still looking for its session. Two
    * questions decide that at each wait: is this still the generation the caller
-   * owns, and is this still the session this call took? {@link startDraft}
-   * retires a binding without bumping the generation, so neither question alone
-   * answers it.
+   * owns, and is this still the session this call took? The first is the page's
+   * own — every path that takes the screen raises the generation. The second is
+   * kept beside it because a generation only records who was asked to start, not
+   * what the controller holds by the time an adoption resumes: a binding
+   * somebody else retired in between is no more this one's to finish.
    */
   private async bind(
     id: string,
@@ -1566,7 +1606,7 @@ export class QaSessionController {
       track?: boolean;
       allowCompatibilityReadOnly?: boolean;
     },
-  ): Promise<void> {
+  ): Promise<boolean> {
     const {
       operation,
       report = true,
@@ -1606,7 +1646,7 @@ export class QaSessionController {
       // newer operation is showing, so this one gives up before it takes
       // anything; the reference it retained is its own to release.
       reference.release();
-      return;
+      return false;
     }
     // Another session under the identity that named a different one is another
     // chat: it takes its own identity, so nothing the previous chat was holding
@@ -1655,11 +1695,11 @@ export class QaSessionController {
         // it. Ask the two questions before spending a proof on the wrong chat,
         // and answer only for the session this call took — not for whichever
         // one the screen holds by the time the proof comes back.
-        if (!this.ownsAdoption(operation, binding.session)) return;
+        if (!this.ownsAdoption(operation, binding.session)) return false;
         const step = await this.attestPolicy(report, binding.session);
         // A chat that moved on during the proof is attested by whichever
         // adoption holds it now, so this verdict is not this one's to write.
-        if (!this.ownsAdoption(operation, binding.session)) return;
+        if (!this.ownsAdoption(operation, binding.session)) return false;
         if (step.kind === "refused") {
           if (
             !allowCompatibilityReadOnly ||
@@ -1678,7 +1718,7 @@ export class QaSessionController {
         // The chat on screen moved on while this adoption waited: what replaced
         // it holds the identity and the binding now, so there is nothing here
         // left to finish, and nothing of theirs to undo.
-        return;
+        return false;
       }
       if (track) {
         this.chatSessionId = String(binding.session.sessionId);
@@ -1709,14 +1749,16 @@ export class QaSessionController {
     // Deliberately not awaited: the palette is a convenience, and a chat must
     // open at once whether or not the skill and command registries answer.
     void this.refreshSlashCatalog(true);
+    return true;
   }
 
   /**
    * Is this adoption still the one on screen? The generation says whether the
-   * operation that asked for it still owns the page, and the session says
-   * whether anything replaced the binding this call took while it waited —
-   * {@link startDraft} retires a binding without touching the generation, and a
-   * newer chat can bump the generation before it has taken any name.
+   * operation that asked for it still owns the page — every path that takes the
+   * screen raises it, {@link startDraft} among them — and the session says
+   * whether the binding this call took is still the one held, which a generation
+   * alone cannot answer: a newer chat raises it before it has taken any name, and
+   * a caller can retire the binding it holds inside its own generation.
    */
   private ownsAdoption(operation: number, session: SessionFace): boolean {
     return (

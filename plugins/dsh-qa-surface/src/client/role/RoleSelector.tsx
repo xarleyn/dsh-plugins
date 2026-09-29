@@ -93,11 +93,17 @@ export function QaRoleSelector(props: QaRoleSelectorProps) {
  * is hidden — the previewed profile need not be one the account holds — so
  * without a control here the only exit was the browser's Back button, and a new
  * chat meanwhile ran as the previewed profile instead of the account's default.
- * @param props - the previewed role's name, and how to leave the preview.
+ *
+ * Leaving is a new chat, so the way out waits for the same moments the header's
+ * "Новый чат" and the role selector wait for: while a chat is still being
+ * created, this click would take the screen from the question on its way in.
+ * @param props - the previewed role's name, how to leave the preview, and whether
+ * that way is currently blocked by a chat being created.
  */
 export function QaAdminPreviewBanner(props: {
   readonly role: string;
   readonly onExit?: () => void;
+  readonly disabled?: boolean;
 }) {
   return (
     <div
@@ -114,6 +120,7 @@ export function QaAdminPreviewBanner(props: {
           className="dsh-qa-admin-preview__exit"
           data-testid="qa-admin-preview-exit"
           onClick={props.onExit}
+          disabled={props.disabled === true}
           title="Вернуться к своему профилю по умолчанию: просмотр закончится, следующий чат начнётся заново"
         >
           Выйти из просмотра
