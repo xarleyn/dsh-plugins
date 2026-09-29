@@ -35,13 +35,13 @@ family once per write and once per read now walks it. It does not cover the
 table: the reads that want nothing but `seq` — the rank lookup, `MAX(seq)` and
 that count — are answered from the index alone, whereas the replay and the sweep
 read `json` too and still reach the row, so they get cheaper without becoming
-flat. Measured locally on a family filled to its cap, the two stopped building a
-temp B-tree and the two reads that want only `seq` went from milliseconds to
-fractions of a millisecond, while a replay cost about a fifth less and a sweep
-read about a tenth. What stays is the traversal: finding the rank walks as many
-index entries as the cap, so the cap bounds it rather than a seek, but only
-through that family's slice of the index, and the delete reaches just the rows it
-removes — a write that does not overflow pays the read alone.
+flat. Measured locally on a family filled to its cap, the rank lookup and the
+replay stopped building a temp B-tree, the rank lookup and the `MAX(seq)` read
+fell from milliseconds to fractions of a millisecond, a replay cost about a fifth
+less, and a sweep read under a tenth. What stays is the traversal: finding the
+rank walks as many index entries as the cap, so the cap bounds it rather than a
+seek, but only through that family's slice of the index, and the delete reaches
+just the rows it removes — a write that does not overflow pays the read alone.
 
 The tests fill the feedback family to its cap and re-judge one record, and do
 the same to the review family, each time asserting the row count and which
