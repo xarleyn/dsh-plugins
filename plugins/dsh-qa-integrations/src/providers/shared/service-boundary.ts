@@ -38,6 +38,33 @@ export function serviceResourceDenied(): IntegrationError {
 }
 
 /**
+ * What the managed credential never answers, in the words a tool says before it
+ * is called. The model reads this instead of discovering it in a refusal, so it
+ * neither promises a user a log it cannot fetch nor goes looking for a fault in
+ * the stand's own integration.
+ */
+export const SERVICE_CEILING_NOTICE =
+  "Needs a personal connection: under the deployment's managed service token the service ceiling refuses this reading, and the user switches this integration to their own account to get it.";
+
+/**
+ * Whether the ceiling refuses one operation *as a reading* — the case worth
+ * warning about, because the deployment's capability switch stays on while the
+ * answer stays personal. A write needs no warning: it is outside a read-only
+ * credential whatever it returns. An operation the provider never classified is
+ * refused too, and says so, because that is what the lock below will answer.
+ */
+export function serviceCeilingRefusedReading(
+  security: OperationSecurityMetadata | undefined,
+): boolean {
+  if (security === undefined) return true;
+  return (
+    security.effect === "read" &&
+    (security.sensitivity !== "normal" ||
+      security.serviceCredential !== "allow")
+  );
+}
+
+/**
  * Refuse an operation the provider's own catalog does not mark as service-safe.
  * The broker decides this first and with the administrator's narrowing on top;
  * this guard is the second lock, so a caller that reaches a provider directly —
@@ -57,10 +84,23 @@ export function assertServiceOperationAllowed(
   ) {
     return;
   }
+  // The same order of reasons the broker answers with: a write is refused for
+  // being a write, and the sensitive answer is named as what needs a personal
+  // account, because that is the one thing the caller can still do about it.
+  if (security.effect !== "read") {
+    throw new IntegrationError(
+      "OperationNotAllowedWithServiceCredential",
+      `${message}: the service credential performs reads only`,
+    );
+  }
+  if (security.sensitivity !== "normal") {
+    throw new IntegrationError(
+      "SensitiveReadRequiresPersonalCredential",
+      `${message}: it can return text a build or another person produced, so a personal account is required`,
+    );
+  }
   throw new IntegrationError(
-    security.sensitivity === "normal" && security.effect === "read"
-      ? "OperationNotAllowedWithServiceCredential"
-      : "SensitiveReadRequiresPersonalCredential",
+    "OperationNotAllowedWithServiceCredential",
     message,
   );
 }

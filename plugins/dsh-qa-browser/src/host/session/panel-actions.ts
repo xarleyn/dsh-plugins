@@ -15,7 +15,7 @@ import type {
   BrowserSessionInfo,
   BrowserViewport,
 } from "../../types.js";
-import { clampViewport } from "../viewport.js";
+import { clampViewport } from "../../shared/viewport.js";
 import { ensureSession } from "./lifecycle.js";
 import {
   createTab,

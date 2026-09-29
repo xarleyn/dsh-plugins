@@ -154,7 +154,7 @@ test("the PR workflow also builds pull requests that target a release branch", a
   );
 });
 
-test("the CI matrix marks only publishable projects for tarball verification", () => {
+test("the CI matrix marks publishable plugins and shared packages for tarball verification", () => {
   const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
   const script = fileURLToPath(
     new URL("./workspace-packages.mjs", import.meta.url),
@@ -170,6 +170,7 @@ test("the CI matrix marks only publishable projects for tarball verification", (
         DSH_PROJECTS_JSON: JSON.stringify([
           "@yadsh/dsh-config",
           "@yadsh/dsh-cas-results",
+          "@yadsh/dsh-plugin-log",
         ]),
       },
     },
@@ -181,7 +182,11 @@ test("the CI matrix marks only publishable projects for tarball verification", (
       .map((line) => line.split(/=(.*)/su).slice(0, 2)),
   );
 
-  assert.equal(lines.get("count"), "2");
+  assert.equal(lines.get("count"), "3");
+  // A shared package has to reach the matrix the same way a plugin does: the
+  // per-project job is what runs its `verify` gate and `matrix.publishable` is
+  // what runs the packing gate on it. Both would go quiet without a failure if
+  // the enumeration ever narrowed back to `plugins` alone.
   assert.deepEqual(JSON.parse(lines.get("matrix")), {
     include: [
       {
@@ -193,6 +198,11 @@ test("the CI matrix marks only publishable projects for tarball verification", (
         project: "@yadsh/dsh-config",
         publishable: false,
         directory: "",
+      },
+      {
+        project: "@yadsh/dsh-plugin-log",
+        publishable: true,
+        directory: "packages/plugin-log",
       },
     ],
   });

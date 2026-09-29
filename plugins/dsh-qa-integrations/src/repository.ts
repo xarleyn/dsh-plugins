@@ -275,6 +275,37 @@ function policyKey(integrationId: string, operation: string): string {
 }
 
 /**
+ * The identity a binding had when a probe started against it. A verdict is only
+ * worth storing while the row still carries all four: any reconnect bumps the
+ * revision and may swap the secret, a mode switch names another profile, and
+ * either makes the older answer about a credential that is no longer in use.
+ *
+ * The row id is part of that identity because the revision alone does not
+ * separate a replaced connection from a new one: `disconnect` deletes the row
+ * and the next `connect` mints a fresh id with the revision restarted at its
+ * column default. A service binding that holds no personal credential then
+ * matches on every other field — no secret, the same profile, revision 1 — so a
+ * verdict written before the disconnect would land on the healthy connection
+ * that took its place.
+ */
+export interface IntegrationBindingGeneration {
+  readonly bindingId: string;
+  readonly bindingRevision: number;
+  readonly secretRef: string | null;
+  readonly serviceProfileId: string | null;
+}
+
+/**
+ * How a write guarded by a binding generation turned out. `stale` and `missing`
+ * both mean nothing was written, and both are the caller's refusal to make, but
+ * they are two different stories for whoever reads the log afterwards: the
+ * first is a probe that lost the connection to a newer generation of it, the
+ * second is a connection that was disconnected and never made again. Filing
+ * them under one key leaves the reader to work out which race happened.
+ */
+export type IntegrationWriteFate = "applied" | "stale" | "missing";
+
+/**
  * Durable plugin-owned store, as tables. Every lookup starts from principal +
  * provider, which is the pair the unique index covers, so a lookup reads the
  * one row it needs instead of parsing the whole store — including the audit
@@ -373,6 +404,33 @@ export class IntegrationRepository {
     return row === undefined ? undefined : toSecret(row);
   }
 
+  /**
+   * The secret one binding's reference names, for the account that asked for it.
+   * Like every other lookup in this store it starts from principal + provider —
+   * a bare reference would be a way to unlock any account's credential from
+   * anywhere the id is readable — and the reference then picks which generation
+   * of that connection is being unlocked: it is honored only while the live row
+   * still carries it. A probe asked for the credential of the binding it started
+   * from, so looked up by principal and provider alone it would spend whatever
+   * took that binding's place and file a verdict about a connection the
+   * generation guard has no reason to accept.
+   */
+  secretByRef(
+    principal: IntegrationPrincipal,
+    provider: IntegrationProviderId,
+    secretRef: string | null,
+  ): EncryptedSecretRecord | undefined {
+    if (secretRef === null) return undefined;
+    const row = this.storage.db
+      .prepare(
+        `SELECT s.* FROM integration_secrets s
+           JOIN integrations i ON i.secret_ref = s.id
+          WHERE i.owner_user_id = ? AND i.provider = ? AND s.id = ?`,
+      )
+      .get(principal.userId, provider, secretRef) as SecretRow | undefined;
+    return row === undefined ? undefined : toSecret(row);
+  }
+
   policy(
     integration: StoredIntegration,
     operation: IntegrationCapability,
@@ -416,11 +474,14 @@ export class IntegrationRepository {
         credentialSource === "service"
           ? (options.serviceProfileId ?? null)
           : null;
-      // Switching credential mode bumps the binding revision, which is what
-      // everything derived from the previous identity is keyed by.
-      const switched =
-        existing !== undefined &&
-        existing.credentialSource !== credentialSource;
+      // Every reconnect starts a new binding generation, not only one that
+      // changes the credential source. Re-saving the same profile spends a
+      // credential the probes already in flight never saw, so everything
+      // derived from the identity before it — caches, cursors, prepared
+      // actions, a verdict still being waited for — is stale from this moment
+      // on. A revision that moved only on a mode switch left a same-profile
+      // reconnect indistinguishable from the binding it replaced, which is the
+      // one thing the generation guard in `updateValidation` has to catch.
       const integration: StoredIntegration = Object.freeze({
         id: existing?.id ?? randomUUID(),
         ownerUserId: options.principal.userId,
@@ -437,7 +498,7 @@ export class IntegrationRepository {
             : options.secret.id,
         credentialSource,
         serviceProfileId,
-        bindingRevision: (existing?.bindingRevision ?? 1) + (switched ? 1 : 0),
+        bindingRevision: (existing?.bindingRevision ?? 0) + 1,
         serviceSelection:
           serviceProfileId !== null &&
           serviceProfileId === existing?.serviceProfileId
@@ -521,23 +582,35 @@ export class IntegrationRepository {
     });
   }
 
+  /**
+   * Record one validation verdict, optionally with the capabilities the probe
+   * found. `expected` is the binding the probe was started against: a verdict
+   * that lands after a reconnect or a mode switch describes the credential that
+   * used to be there, so the write is compare-and-swapped against that row — its
+   * id, revision, secret reference and profile, read from the same principal and
+   * provider the lookup always starts from — and the answer says whether it
+   * arrived, and if not whether the row had moved on or had gone away.
+   */
   updateValidation(
     principal: IntegrationPrincipal,
     provider: IntegrationProviderId,
     success: boolean,
     errorCode: string | null,
-    capabilities?: readonly IntegrationCapability[],
-  ): void {
-    this.storage.transaction(() => {
+    capabilities: readonly IntegrationCapability[] | undefined,
+    expected: IntegrationBindingGeneration,
+  ): IntegrationWriteFate {
+    return this.storage.transaction(() => {
       const existing = this.find(principal, provider);
-      if (existing === undefined) return;
+      if (existing === undefined) return "missing";
       const now = new Date().toISOString();
-      this.storage.db
+      const written = this.storage.db
         .prepare(
           `UPDATE integrations
               SET status = ?, updated_at = ?, last_validated_at = ?,
                   last_error_code = ?, capabilities_json = ?
-            WHERE id = ?`,
+            WHERE id = ? AND owner_user_id = ? AND provider = ?
+              AND binding_revision = ?
+              AND secret_ref IS ? AND service_profile_id IS ?`,
         )
         .run(
           success ? "connected" : "error",
@@ -549,8 +622,14 @@ export class IntegrationRepository {
               ? [...capabilities]
               : existing.capabilities,
           ),
-          existing.id,
+          expected.bindingId,
+          principal.userId,
+          provider,
+          expected.bindingRevision,
+          expected.secretRef,
+          expected.serviceProfileId,
         );
+      return written.changes > 0 ? "applied" : "stale";
     });
   }
 
@@ -559,6 +638,15 @@ export class IntegrationRepository {
    * binding revision is bumped, so everything derived from the previous identity
    * — caches, cursors, prepared actions — is stale from this moment on; the
    * personal credential, if there is one, stays stored but unused.
+   *
+   * `expected` is the generation the caller read before it reached upstream for
+   * the switch, and the write only lands while that row is still the live one
+   * under the same revision and credential: a reconnect that happened inside the
+   * probe's await would otherwise file the replaced token's identity and grant
+   * onto the connection that took its place. The profile is deliberately not part
+   * of the comparison — naming another one is what this call is for. The answer
+   * is the fate of the write: whoever asked reports a switch that did not happen
+   * either way, and only the log tells a moved binding from a deleted one.
    */
   setCredentialSource(options: {
     principal: IntegrationPrincipal;
@@ -569,14 +657,15 @@ export class IntegrationRepository {
     tenantId: string;
     externalUserId: string;
     displayName: string;
-  }): StoredIntegration | undefined {
+    expected: IntegrationBindingGeneration;
+  }): IntegrationWriteFate {
     return this.storage.transaction(() => {
       const existing = this.find(options.principal, options.provider);
-      if (existing === undefined) return undefined;
+      if (existing === undefined) return "missing";
       const now = new Date().toISOString();
       const profileChanged =
         options.serviceProfileId !== existing.serviceProfileId;
-      this.storage.db
+      const written = this.storage.db
         .prepare(
           `UPDATE integrations
               SET credential_source = ?, service_profile_id = ?,
@@ -585,7 +674,8 @@ export class IntegrationRepository {
                   capabilities_json = ?, external_tenant_id = ?,
                   external_user_id = ?, display_name = ?, updated_at = ?,
                   last_validated_at = ?, last_error_code = NULL
-            WHERE id = ?`,
+            WHERE id = ? AND owner_user_id = ? AND provider = ?
+              AND binding_revision = ? AND secret_ref IS ?`,
         )
         .run(
           options.source,
@@ -598,9 +688,14 @@ export class IntegrationRepository {
           options.displayName,
           now,
           now,
-          existing.id,
+          options.expected.bindingId,
+          options.principal.userId,
+          options.provider,
+          options.expected.bindingRevision,
+          options.expected.secretRef,
         );
-      return this.find(options.principal, options.provider);
+      if (written.changes === 0) return "stale";
+      return "applied";
     });
   }
 

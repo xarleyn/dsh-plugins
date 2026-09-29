@@ -1,7 +1,19 @@
 import type { QaBrowserErrorCode } from "./errors.js";
 
+/**
+ * How the runtime gets its Chromium. `launch` owns a process the plugin starts
+ * and stops; `attach` borrows one that is already running, over its DevTools
+ * endpoint, and leaves it alone when the session ends.
+ */
+export type QaBrowserRuntimeMode = "launch" | "attach";
+
 export type BrowserSessionStatus =
-  "starting" | "ready" | "idle" | "crashed" | "closed";
+  /**
+   * `crashed` is our own browser dying; `disconnected` is an attached browser
+   * we simply stopped being able to reach — it may still be running with the
+   * person's own tabs in it, so the two say different things to an operator.
+   */
+  "starting" | "ready" | "idle" | "crashed" | "disconnected" | "closed";
 
 export interface BrowserViewport {
   readonly width: number;
@@ -212,6 +224,12 @@ export interface BrowserPanelState {
   readonly humanControlLeaseSeconds: number;
   readonly autoRevealOnAgentActivity: boolean;
   readonly focusOnAutoReveal: boolean;
+  /**
+   * Whether the Host starts its own Chromium or joins one that is already
+   * running. The panel words the wait for a first page differently in each:
+   * "запуск" promises a process this deployment owns, and attach mode owns none.
+   */
+  readonly runtimeMode: QaBrowserRuntimeMode;
   /**
    * Whether this deployment forwards pointer input at all. The panel greys its
    * viewport out with a reason instead of failing one click at a time.

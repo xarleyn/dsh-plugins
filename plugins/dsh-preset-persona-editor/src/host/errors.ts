@@ -13,58 +13,43 @@ declare module "@deepseek-ai/dsh-typert-protocol" {
   interface RemoteErrorDetailsMap {
     /** The roster does not know this preset id. */
     "preset-persona/not-found": { agentPreset: string };
-    /** The preset belongs to the deployment and cannot be rewritten. */
-    "preset-persona/read-only": { agentPreset: string; reason: string };
-    /** The composition changed on disk since the editor read it. */
-    "preset-persona/conflict": {
-      agentPreset: string;
-      expectedRevision: string;
-      actualRevision: string;
-    };
-    /** The request would not produce an editable composition. */
+    /** The validation rules refuse a persona draft or a section list. */
     "preset-persona/invalid": { agentPreset: string; reason: string };
     /** The deployment does not mount a service this editor needs. */
     "preset-persona/unavailable": { service: string };
   }
 }
 
-/** The preset is not in the roster. */
+/**
+ * The preset is not in the roster.
+ *
+ * `hostReason` is the registry's own words for the refusal. The page answers a
+ * single not-found code whatever the registry threw, so without the reason kept
+ * here it would be lost before the service logs the failure.
+ */
 export function notFound(
   agentPreset: string,
+  hostReason = "",
 ): RemoteError<"preset-persona/not-found"> {
   return new RemoteError(
     "preset-persona/not-found",
-    `preset-persona-editor: preset "${agentPreset}" is not in the roster`,
+    hostReason === ""
+      ? `preset-persona-editor: preset "${agentPreset}" is not in the roster`
+      : `preset-persona-editor: preset "${agentPreset}" is not in the roster — the registry answered: ${hostReason}`,
     { agentPreset },
   );
 }
 
-/** The preset ships with the deployment (or sits outside the writable root). */
-export function readOnly(
-  agentPreset: string,
-  reason: string,
-): RemoteError<"preset-persona/read-only"> {
-  return new RemoteError(
-    "preset-persona/read-only",
-    `preset-persona-editor: preset "${agentPreset}" cannot be written: ${reason}`,
-    { agentPreset, reason },
-  );
-}
-
-/** The file changed between the read and the write. */
-export function conflict(
-  agentPreset: string,
-  expectedRevision: string,
-  actualRevision: string,
-): RemoteError<"preset-persona/conflict"> {
-  return new RemoteError(
-    "preset-persona/conflict",
-    `preset-persona-editor: preset "${agentPreset}" was modified externally; reload before saving`,
-    { agentPreset, expectedRevision, actualRevision },
-  );
-}
-
-/** The request is refused before anything is written. */
+/**
+ * The validation rules refuse a persona draft or a section list.
+ *
+ * Decision D2 took the write operations out of this namespace, so nothing
+ * inside the plugin raises it any more: `src/host/validation.ts` stays the
+ * package's exported library for the write path `docs/DSH-0.1.7-MIGRATION.md`
+ * §10 describes, and the browser keeps its branch on this code so that whenever
+ * those rules do run, the refusal arrives as its reason rather than as a bare
+ * failure.
+ */
 export function invalid(
   agentPreset: string,
   reason: string,

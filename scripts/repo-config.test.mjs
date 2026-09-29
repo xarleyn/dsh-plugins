@@ -23,6 +23,20 @@
 // last two cases read that config and then prove the behaviour in a throwaway
 // workspace assembled from it, so neither the mistake nor its fix can hide
 // inside nx's own resolution.
+//
+// SPEC.md is read for the opposite reason. It ranks itself below the code it
+// describes, so a line of it that disagrees with `nx.json` is wrong rather than
+// authoritative — but three of its blocks are copied verbatim from configuration,
+// and a copy is the one form of prose that fails silently: the section keeps
+// reading as shipped configuration while the file behind it has moved. Each copy
+// is therefore cut from the section its heading names and not from the first
+// fenced body below it, because an unbounded slice lets the next section answer
+// for this one; the copies in §14, §17 and §22 are then compared to `nx.json`,
+// to the `prepare` job of `ci.yml` and to the root `package.json`. That is what
+// turns them from a document that was aligned once into one that cannot drift
+// unnoticed. §20 states one fact about the repository rather than its
+// configuration — that no `name@version` tag is left to read — so the census
+// behind it is re-run here, and the section dates the half a checkout cannot see.
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
@@ -30,6 +44,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   symlinkSync,
@@ -373,5 +388,261 @@ test("a cached build restores its artifacts, not only its verdict", (t) => {
   assert.ok(
     existsSync(artifact),
     "a cache hit must restore lib/ — replaying only the verdict leaves the tree without the artifacts later tasks import",
+  );
+});
+
+// The coverage contract of `pnpm test:coverage` lives in one preset that every
+// package measures through, so nothing in the build proves it is still wired up:
+// a package can lose its `test:coverage` script, or keep a hand-copied setup
+// that drifts from its own `test`, and every command stays green. These checks
+// hold the three things the number depends on — the preset's shape, the script
+// of each package that runs vitest over a `src` tree, and the merge semantics a
+// package must not fight. A package with no TypeScript under `src` is the one
+// exception: the preset measures `src/**`, so there is no number for it to
+// produce, and the case is named on every run rather than left out silently.
+const PRESET = "packages/config/vitest/vitest.config.ts";
+const WORKSPACE_GROUPS = ["plugins", "packages", "tooling/generators"];
+
+/** Every workspace package directory that carries a manifest. */
+function workspacePackages() {
+  const found = [];
+  for (const group of WORKSPACE_GROUPS) {
+    const groupDir = new URL(`../${group}/`, import.meta.url);
+    if (!existsSync(fileURLToPath(groupDir))) continue;
+    for (const entry of readdirSync(groupDir, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const dir = `${group}/${entry.name}`;
+      const manifest = new URL(`../${dir}/package.json`, import.meta.url);
+      if (!existsSync(fileURLToPath(manifest))) continue;
+      found.push({ dir, scripts: readJson(manifest).scripts ?? {} });
+    }
+  }
+  return found;
+}
+
+function readJson(url) {
+  return JSON.parse(readFileSync(url, "utf8"));
+}
+
+/** The commands a package runs before it hands over to vitest, if any. */
+function setupOf(script) {
+  const at = script.indexOf("vitest run");
+  return at === -1 ? null : script.slice(0, at);
+}
+
+/** Whether the package ships the tree the preset measures: TypeScript under `src`. */
+function hasMeasuredSource(dir) {
+  const root = path.join(ROOT, dir, "src");
+  if (!existsSync(root)) return false;
+  const pending = [root];
+  while (pending.length > 0) {
+    const current = pending.pop();
+    for (const entry of readdirSync(current, { withFileTypes: true })) {
+      if (entry.isDirectory()) pending.push(path.join(current, entry.name));
+      else if (/\.[cm]?tsx?$/.test(entry.name)) return true;
+    }
+  }
+  return false;
+}
+
+test("the shared Vitest preset carries the coverage defaults", async () => {
+  const { baseConfig } = await import(new URL(`../${PRESET}`, import.meta.url));
+  const coverage = baseConfig.test?.coverage ?? {};
+  assert.equal(coverage.provider, "v8", "coverage must stay V8-instrumented");
+  assert.ok(
+    (coverage.reporter ?? []).includes("json-summary"),
+    "the machine-readable summary is what makes the number comparable",
+  );
+  assert.ok(
+    coverage.include?.length > 0 &&
+      coverage.include.every((glob) => glob.startsWith("src/")),
+    "every package measures its own src tree",
+  );
+  assert.equal(
+    coverage.reportOnFailure,
+    true,
+    "a red run still has to report its number",
+  );
+  assert.equal(
+    coverage.thresholds,
+    undefined,
+    "a floor turns the measurement into a gate that competes with the per-file size budget",
+  );
+});
+
+test("every package that runs vitest declares the matching test:coverage", () => {
+  const vitestPackages = workspacePackages().filter(
+    (pkg) => setupOf(pkg.scripts.test ?? "") !== null,
+  );
+  assert.ok(vitestPackages.length > 0, "no package runs vitest at all");
+  const measured = vitestPackages.filter((pkg) => hasMeasuredSource(pkg.dir));
+  for (const { dir } of vitestPackages) {
+    if (hasMeasuredSource(dir)) continue;
+    console.log(
+      `not measured: ${dir} — no TypeScript under src, so the preset has no tree to instrument`,
+    );
+  }
+  assert.ok(
+    measured.length > 0,
+    "no package has a src tree, so test:coverage measures nothing anywhere",
+  );
+  for (const { dir, scripts } of measured) {
+    const coverage = scripts["test:coverage"];
+    assert.ok(
+      coverage,
+      `${dir} runs vitest over its src tree but declares no \`test:coverage\``,
+    );
+    assert.ok(
+      coverage.startsWith(`${setupOf(scripts.test)}vitest run --coverage`),
+      `${dir} \`test:coverage\` must run the same setup as \`test\` and then pass --coverage, got: ${coverage}`,
+    );
+  }
+});
+
+test("no package narrows coverage by re-declaring include", () => {
+  for (const { dir } of workspacePackages()) {
+    const file = new URL(`../${dir}/vitest.config.ts`, import.meta.url);
+    if (!existsSync(fileURLToPath(file))) continue;
+    assert.doesNotMatch(
+      readFileSync(file, "utf8"),
+      /coverage:\s*\{[^{}]*\binclude\s*:/su,
+      `${dir}/vitest.config.ts re-declares coverage.include; mergeConfig concatenates arrays, so it widens the measured tree instead of narrowing it — use coverage.exclude`,
+    );
+  }
+});
+
+const SPEC_MD = read("SPEC.md");
+
+const FENCES = {
+  bash: /^```bash\n(?<body>[\s\S]*?)\n```$/mu,
+  json: /^```json\n(?<body>[\s\S]*?)\n```$/mu,
+};
+
+/**
+ * The body of one section of SPEC.md: the lines between its heading and the next
+ * heading of the file. The heading is matched rather than the block so a renamed
+ * or deleted section fails by name instead of leaving the case silently asserting
+ * nothing, and the slice ends there because one that runs to the end of the file
+ * lets whichever fenced block comes next answer for the section under test — the
+ * drift these cases exist to catch.
+ */
+function specSection(heading) {
+  const marker = `\n## ${heading}\n`;
+  const at = SPEC_MD.indexOf(marker);
+  assert.notEqual(at, -1, `SPEC.md no longer has a "## ${heading}" section`);
+  const body = SPEC_MD.slice(at + marker.length);
+  const boundary = /^#{2,6} /mu.exec(body);
+  return boundary ? body.slice(0, boundary.index) : body;
+}
+
+/** The first fenced `language` block of a section of SPEC.md, as text. */
+function specFence(heading, language) {
+  const block = FENCES[language].exec(specSection(heading));
+  assert.ok(
+    block,
+    `the "## ${heading}" section of SPEC.md no longer carries a \`\`\`${language} block`,
+  );
+  return block.groups.body;
+}
+
+/** The first fenced `json` block of a section of SPEC.md, parsed. */
+function specBlock(heading) {
+  return JSON.parse(specFence(heading, "json"));
+}
+
+test("SPEC.md reproduces the release configuration nx.json ships", () => {
+  const { release } = specBlock("14. Nx release configuration");
+  assert.deepEqual(
+    release,
+    NX_JSON.release,
+    "SPEC.md §14 quotes `release` from nx.json; editing one without the other leaves a Draft describing a configuration nobody runs",
+  );
+});
+
+/**
+ * The commands one job of `ci.yml` runs, in order: every step with a single-line
+ * `run:`, so a block scalar — the step that selects projects rather than gating
+ * them — is not read as a gate. A job ends where the next two-space key begins.
+ */
+function jobCommands(workflow, name) {
+  const marker = `  ${name}:`;
+  const at = workflow.indexOf(marker);
+  assert.notEqual(at, -1, `ci.yml no longer has a "${name}" job`);
+  const body = workflow.slice(at + marker.length);
+  const end = /^ {2}\S/mu.exec(body);
+  const commands = [];
+  for (const line of body.slice(0, end ? end.index : undefined).split("\n")) {
+    const step = /^ {8}run: (?<command>.*)$/u.exec(line);
+    if (step && step.groups.command !== "|") commands.push(step.groups.command);
+  }
+  return commands;
+}
+
+test("SPEC.md reproduces the prepare gates the CI workflow runs", () => {
+  const gates = jobCommands(read(".github/workflows/ci.yml"), "prepare");
+  const block = specFence("17. CI workflow", "bash");
+  const start = block.indexOf("# prepare");
+  const end = block.indexOf("# projects");
+  assert.ok(
+    start !== -1 && end > start,
+    "the §17 block of SPEC.md no longer marks where the prepare gates end and the per-project commands begin",
+  );
+  const listed = block
+    .slice(start, end)
+    .split("\n")
+    .map((line) => line.trim())
+    .filter((line) => line !== "" && !line.startsWith("#"));
+  assert.deepEqual(
+    listed,
+    gates,
+    "SPEC.md §17 lists the prepare gates as ci.yml runs them; a gate added to the workflow, dropped or reordered there and left behind in the section makes the Draft describe a run nobody has",
+  );
+});
+
+test("SPEC.md quotes commands the root package.json declares", () => {
+  const excerpt = specBlock("22. Repository-level scripts").scripts;
+  const shipped = readJson(new URL("../package.json", import.meta.url)).scripts;
+  assert.ok(
+    Object.keys(excerpt).length > 0,
+    "the §22 excerpt names no script at all",
+  );
+  for (const [name, command] of Object.entries(excerpt)) {
+    assert.equal(
+      shipped[name],
+      command,
+      `SPEC.md §22 quotes \`${name}\` as \`${command}\`, but package.json ${
+        name in shipped
+          ? `now runs \`${shipped[name]}\``
+          : "does not declare it"
+      }`,
+    );
+  }
+});
+
+/** The tags a checkout of this repository reaches, matching a `git tag -l` pattern. */
+function tagsMatching(pattern) {
+  const result = git("tag", "-l", pattern);
+  assert.equal(
+    result.status,
+    0,
+    `\`git tag -l ${pattern}\` failed: ${result.output}`,
+  );
+  return result.output.split("\n").filter(Boolean);
+}
+
+test("SPEC.md §20's tag census still comes back empty", () => {
+  // The section's claim is about the tag set, so the checkout has to carry it:
+  // both workflows fetch with `fetch-depth: 0`, and a run that sees no wave tag
+  // cannot tell an empty census from an empty clone — so that case says so
+  // instead of reporting coverage it does not have.
+  if (tagsMatching("release/*").length === 0) {
+    console.log(
+      "not enforced: this checkout reaches no release/* tag, so it would reach no name@version tag either",
+    );
+  }
+  assert.deepEqual(
+    tagsMatching("*@*"),
+    [],
+    "SPEC.md §20 states that nothing of the per-package tag scheme is left to read; a tag of that shape makes the scheme live again, and `releaseTag.pattern` in §14 with it",
   );
 });

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>QA Browser storage fixture</title>
+  </head>
+  <body>
+    <p id="outcome">state: pending</p>
+    <script>
+      // The page reports only what the context it was opened in was left with:
+      // `?set=<marker>` writes into that context's own cookie jar and its own
+      // storage, and reading the same URL without it shows whatever is there.
+      const outcome = document.getElementById("outcome");
+      const params = new URLSearchParams(location.search);
+      if (params.has("set")) {
+        document.cookie = `marker=${params.get("set")}; path=/`;
+        localStorage.setItem("marker", params.get("set"));
+      }
+      const cookie =
+        document.cookie
+          .split("; ")
+          .find((pair) => pair.startsWith("marker="))
+          ?.slice("marker=".length) ?? "none";
+      outcome.textContent = `state: cookie=${cookie} storage=${
+        localStorage.getItem("marker") ?? "none"
+      }`;
+    </script>
+  </body>
+</html>

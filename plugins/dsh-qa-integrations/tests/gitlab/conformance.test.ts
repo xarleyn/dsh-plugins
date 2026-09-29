@@ -1,7 +1,7 @@
 import { resolveConfig } from "../../src/config.js";
 import { GitlabProvider } from "../../src/providers/gitlab/index.js";
 import { GITLAB_COM, INSTANCES, TOKEN } from "./shared.js";
-import { describeProviderConformance } from "../provider-conformance.helpers.js";
+import { describeProviderConformance } from "../helpers/provider-conformance.helpers.js";
 
 describeProviderConformance({
   provider: "gitlab",

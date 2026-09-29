@@ -84,6 +84,13 @@ AGENTS.local.md
 .zcode/
 .freebuff/
 
+# The machine-local notes directory: session checkpoints, the local scanner and
+# its tooling, notes that name a stand's real hosts, ports and accounts. They
+# must stay off this public tree, and a per-checkout `.git/info/exclude` entry
+# is not protection — it exists only in the clone it was written into, so a
+# fresh clone or another machine would take `git add` there as routine.
+.private/
+
 # Leak-scan local state. The marker dictionary lists real internal values, so
 # it must never be committed; the canonical copy lives outside the repository
 # entirely (~/.dsh-leak-markers.txt). The allowlist extension is machine-local.

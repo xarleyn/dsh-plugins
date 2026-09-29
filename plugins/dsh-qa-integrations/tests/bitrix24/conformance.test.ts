@@ -1,6 +1,6 @@
 import { resolveConfig } from "../../src/config.js";
 import { Bitrix24Provider } from "../../src/providers/bitrix24/index.js";
-import { describeProviderConformance } from "../provider-conformance.helpers.js";
+import { describeProviderConformance } from "../helpers/provider-conformance.helpers.js";
 
 const WEBHOOK = "https://company.bitrix24.ru/rest/42/abcdefghijk";
 

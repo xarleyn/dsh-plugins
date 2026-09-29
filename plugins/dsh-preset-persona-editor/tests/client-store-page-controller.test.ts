@@ -1,5 +1,5 @@
 /**
- * The page controller: what the roster and the editor do on every transition,
+ * The page controller: what the roster and the reader do on every transition,
  * including the ones the user only ever sees as a sentence.
  *
  * The Remote face is a stub, so a failure is delivered exactly as the gateway
@@ -13,8 +13,8 @@ import { describe, expect, it, vi } from "vitest";
 import "../src/host/errors.js";
 
 import { strings } from "../src/client/locale.js";
-import { isDirty, PersonaPageController } from "../src/client/store.js";
-import { DRAFT, documentOf, faceOf } from "./client-store.helpers.js";
+import { PersonaPageController } from "../src/client/store.js";
+import { documentOf, faceOf, OK_CATALOG } from "./client-store.helpers.js";
 
 describe("PersonaPageController", () => {
   it("loads the roster", async () => {
@@ -23,7 +23,6 @@ describe("PersonaPageController", () => {
     await controller.load();
     const state = controller.snapshot();
     expect(state.status).toBe("ready");
-    expect(state.authorable).toBe(true);
     expect(state.presets).toHaveLength(1);
   });
 
@@ -41,36 +40,64 @@ describe("PersonaPageController", () => {
     expect(controller.snapshot().error).toBe("boom");
   });
 
-  it("opens a preset and seeds the draft", async () => {
+  it("keeps the roster on screen when a refresh fails, and says so", async () => {
+    const list = vi
+      .fn()
+      .mockResolvedValueOnce(OK_CATALOG)
+      .mockResolvedValue({
+        ok: false as const,
+        error: new RemoteError("gateway/internal", "boom", {}),
+      });
+    const controller = new PersonaPageController(faceOf({ list }));
+    await controller.load();
+    await controller.load();
+    const state = controller.snapshot();
+    expect(state.status).toBe("ready");
+    expect(state.presets).toHaveLength(1);
+    // The refusal is the fact this transition adds, and only the notice slot
+    // reaches the screen a ready roster renders: `error` belongs to the failed
+    // screen, which does not render here, so writing it would hide the message.
+    expect(state.error).toBe("");
+    expect(state.notice).toEqual({
+      kind: "error",
+      text: `${strings.loadFailed} boom`,
+    });
+  });
+
+  it("opens a preset and keeps the document it read", async () => {
     const controller = new PersonaPageController(faceOf());
     await controller.open("demo");
     const open = controller.snapshot().open;
     expect(open?.status).toBe("ready");
-    expect(open?.draft).toEqual({
-      persona: documentOf().persona,
-      sections: [],
-    });
-    expect(isDirty(open)).toBe(false);
+    expect(open?.document).toEqual(documentOf());
   });
 
-  it("closes the editor and refreshes when the preset is gone", async () => {
+  it("closes the reader", async () => {
+    const controller = new PersonaPageController(faceOf());
+    await controller.open("demo");
+    controller.close();
+    expect(controller.snapshot().open).toBeNull();
+  });
+
+  it("refreshes the roster when the preset is gone", async () => {
     const read = vi.fn(async () => ({
       ok: false as const,
       error: new RemoteError("preset-persona/not-found", "gone", {
         agentPreset: "ghost",
       }),
     }));
-    const controller = new PersonaPageController(faceOf({ read }));
+    const face = faceOf({ read });
+    const controller = new PersonaPageController(face);
     await controller.open("ghost");
     expect(controller.snapshot().open).toBeNull();
     expect(controller.snapshot().notice?.text).toBe(strings.gone);
+    expect(vi.mocked(face.list)).toHaveBeenCalledOnce();
   });
 
   it("keeps an unreadable preset open with its reason", async () => {
     const read = vi.fn(async () => ({
       ok: true as const,
       value: documentOf({
-        editable: false,
         readError: "the composition is not valid YAML",
       }),
     }));
@@ -82,190 +109,37 @@ describe("PersonaPageController", () => {
     );
   });
 
-  it("tracks edits and reverts them", async () => {
-    const controller = new PersonaPageController(faceOf());
-    await controller.open("demo");
-    controller.edit({ prefix: "Changed." });
-    expect(isDirty(controller.snapshot().open)).toBe(true);
-    expect(controller.snapshot().open?.draft?.persona.prefix).toBe("Changed.");
-    controller.revert();
-    expect(isDirty(controller.snapshot().open)).toBe(false);
-  });
-
-  it("saves with the revision it read, then re-reads the preset", async () => {
-    const face = faceOf();
-    const controller = new PersonaPageController(face);
-    await controller.load();
-    await controller.open("demo");
-    controller.edit({ prefix: DRAFT.prefix });
-    await controller.save();
-    expect(face.save).toHaveBeenCalledWith(
-      "demo",
-      {
-        persona: { ...documentOf().persona, prefix: DRAFT.prefix },
-        sections: [],
-      },
-      "rev-1",
-    );
-    expect(controller.snapshot().notice?.text).toBe(strings.saved);
-    // The refresh re-read both the roster and the open preset.
-    expect(vi.mocked(face.list).mock.calls.length).toBe(2);
-    expect(vi.mocked(face.read).mock.calls.length).toBe(2);
-  });
-
-  it("says so when there is nothing to save, without calling the host", async () => {
-    const face = faceOf();
-    const controller = new PersonaPageController(face);
-    await controller.open("demo");
-    await controller.save();
-    expect(face.save).not.toHaveBeenCalled();
-    expect(controller.snapshot().notice?.text).toBe(strings.nothingToSave);
-  });
-
-  it("keeps the draft and marks the conflict when the file moved", async () => {
-    const save = vi.fn(async () => ({
+  it("keeps a failed read on screen with the host's message", async () => {
+    const read = vi.fn(async () => ({
       ok: false as const,
-      error: new RemoteError("preset-persona/conflict", "stale", {
-        agentPreset: "demo",
-        expectedRevision: "rev-1",
-        actualRevision: "rev-9",
-      }),
+      error: new RemoteError("gateway/internal", "boom", {}),
     }));
-    const controller = new PersonaPageController(faceOf({ save }));
+    const controller = new PersonaPageController(faceOf({ read }));
     await controller.open("demo");
-    controller.edit({ prefix: "Mine." });
-    await controller.save();
-    const open = controller.snapshot().open;
-    expect(open?.conflict).toBe(true);
-    expect(open?.draft?.persona.prefix).toBe("Mine.");
-    expect(controller.snapshot().notice?.text).toBe(strings.conflict);
+    expect(controller.snapshot().open?.status).toBe("failed");
+    expect(controller.snapshot().open?.error).toBe("boom");
   });
 
-  it("closes the editor when the preset disappears mid-save", async () => {
-    const save = vi.fn(async () => ({
+  it("re-reads the open preset on demand", async () => {
+    const face = faceOf();
+    const controller = new PersonaPageController(face);
+    await controller.open("demo");
+    await controller.reload();
+    expect(vi.mocked(face.read)).toHaveBeenCalledTimes(2);
+    expect(controller.snapshot().open?.status).toBe("ready");
+  });
+
+  it("drops a notice the user has read", async () => {
+    const read = vi.fn(async () => ({
       ok: false as const,
       error: new RemoteError("preset-persona/not-found", "gone", {
-        agentPreset: "demo",
+        agentPreset: "ghost",
       }),
     }));
-    const controller = new PersonaPageController(faceOf({ save }));
-    await controller.open("demo");
-    controller.edit({ prefix: "Mine." });
-    await controller.save();
-    expect(controller.snapshot().open).toBeNull();
-    expect(controller.snapshot().notice?.text).toBe(strings.gone);
-  });
-
-  it("arms the reset before it performs it", async () => {
-    const face = faceOf();
-    const controller = new PersonaPageController(face);
-    await controller.open("demo");
-    await controller.reset();
-    expect(face.reset).not.toHaveBeenCalled();
-    expect(controller.snapshot().open?.pendingReset).toBe(true);
-    await controller.reset();
-    expect(face.reset).toHaveBeenCalledWith("demo", "rev-1");
-    expect(controller.snapshot().open?.document?.hasRow).toBe(true);
-  });
-
-  it("copies a preset, refreshes the roster, and opens the copy", async () => {
-    const copy = vi.fn(async () => ({
-      ok: true as const,
-      value: documentOf({ id: "demo-copy", trust: "user", persona: DRAFT }),
-    }));
-    const face = faceOf({ copy });
-    const controller = new PersonaPageController(face);
-    await controller.open("demo");
-    controller.beginCopy();
-    expect(controller.snapshot().copyDraft?.id).toBe("demo-copy");
-    controller.editCopy({ name: "My copy" });
-    await controller.copy();
-    expect(copy).toHaveBeenCalledWith("demo", "demo-copy", "My copy");
-    expect(controller.snapshot().copyDraft).toBeNull();
-    expect(controller.snapshot().open?.id).toBe("demo-copy");
-  });
-
-  it("reports a refused copy on the form without closing it", async () => {
-    const copy = vi.fn(async () => ({
-      ok: false as const,
-      error: new RemoteError("preset-persona/invalid", "taken", {
-        agentPreset: "demo-copy",
-        reason: 'preset "demo-copy" already exists',
-      }),
-    }));
-    const controller = new PersonaPageController(faceOf({ copy }));
-    await controller.open("demo");
-    controller.beginCopy();
-    await controller.copy();
-    expect(controller.snapshot().copyDraft?.error).toContain("already exists");
-    expect(controller.snapshot().open?.id).toBe("demo");
-  });
-
-  it("drafts sections: add, edit, remove, and clear", async () => {
-    const controller = new PersonaPageController(faceOf());
-    await controller.open("demo");
-    expect(isDirty(controller.snapshot().open)).toBe(false);
-
-    controller.addSection();
-    expect(controller.snapshot().open?.draft?.sections).toEqual([
-      { name: "", order: 5000, text: "", enabled: true },
-    ]);
-    expect(isDirty(controller.snapshot().open)).toBe(true);
-
-    controller.editSection(0, {
-      name: "team:style",
-      order: 2500,
-      text: "Answer briefly.",
-    });
-    expect(controller.snapshot().open?.draft?.sections).toEqual([
-      {
-        name: "team:style",
-        order: 2500,
-        text: "Answer briefly.",
-        enabled: true,
-      },
-    ]);
-
-    controller.addSection();
-    controller.editSection(1, { name: "harness:notes", enabled: false });
-    controller.removeSection(0);
-    expect(controller.snapshot().open?.draft?.sections).toEqual([
-      { name: "harness:notes", order: 5000, text: "", enabled: false },
-    ]);
-
-    controller.clearSections();
-    expect(controller.snapshot().open?.draft?.sections).toEqual([]);
-    expect(isDirty(controller.snapshot().open)).toBe(false);
-  });
-
-  it("sends the sections with the persona in one save", async () => {
-    const face = faceOf();
-    const controller = new PersonaPageController(face);
-    await controller.load();
-    await controller.open("demo");
-    controller.addSection();
-    controller.editSection(0, {
-      name: "team:style",
-      order: 2500,
-      text: "Answer briefly.",
-    });
-    await controller.save();
-    expect(face.save).toHaveBeenCalledWith(
-      "demo",
-      {
-        persona: documentOf().persona,
-        sections: [
-          {
-            name: "team:style",
-            order: 2500,
-            text: "Answer briefly.",
-            enabled: true,
-          },
-        ],
-      },
-      "rev-1",
-    );
-    expect(controller.snapshot().notice?.text).toBe(strings.saved);
+    const controller = new PersonaPageController(faceOf({ read }));
+    await controller.open("ghost");
+    controller.dismissNotice();
+    expect(controller.snapshot().notice).toBeNull();
   });
 
   it("replaces the snapshot only when a fact changed", async () => {

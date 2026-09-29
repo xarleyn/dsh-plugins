@@ -56,7 +56,14 @@ const controlSchema: z.ZodType<BrowserControlState> = z.discriminatedUnion(
 
 const sessionSchema = z.strictObject({
   sessionId: z.string().min(1),
-  status: z.enum(["starting", "ready", "idle", "crashed", "closed"]),
+  status: z.enum([
+    "starting",
+    "ready",
+    "idle",
+    "crashed",
+    "disconnected",
+    "closed",
+  ]),
   selectedTabId: z.string().min(1).nullable(),
   tabIds: z.array(z.string().min(1)),
   control: controlSchema,
@@ -100,6 +107,7 @@ const stateSchema = z.strictObject({
   humanControlLeaseSeconds: z.number().int().min(5).max(300),
   autoRevealOnAgentActivity: z.boolean(),
   focusOnAutoReveal: z.boolean(),
+  runtimeMode: z.enum(["launch", "attach"]),
   coordinateInputEnabled: z.boolean(),
 });
 

@@ -144,8 +144,10 @@ one plan per package, several plans merge into the highest bump; the plan is
 what nx turns into the version bump and CHANGELOG entry — a missing plan means
 your feature silently never appears in the changelog; uncommitted changes are
 invisible to `pnpm release:check` (it reads commits); for `dsh-qa-surface`
-plans, `QaChangelog.tsx` must gain a newer curated entry in the same change
-(the hygiene gate enforces this). Validate with `pnpm verify:packages`.
+plans, `QaChangelog.tsx` must gain a curated entry whose `version:` is exactly
+the version those plans bump to, in the same change (`AGENTS.md` §QA surface
+release notes owns the rule, the hygiene gate enforces it). Validate with
+`pnpm verify:packages`.
 
 ## Commit conventions
 

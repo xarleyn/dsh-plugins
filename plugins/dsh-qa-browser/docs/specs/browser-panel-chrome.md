@@ -114,7 +114,7 @@ needs the lease, and the lease needs a session. The gesture is the human saying
 
 The device row offers a width, a height and four presets (laptop, desktop,
 tablet, phone). The Host clamps every request to the same bounds the agent's
-`browser_viewport` tool uses — `VIEWPORT_BOUNDS` in `src/host/viewport.ts` is
+`browser_viewport` tool uses — `VIEWPORT_BOUNDS` in `src/shared/viewport.ts` is
 the single home for them, and the panel imports it so the two callers cannot
 drift apart. The scale is the panel's own view preference: «По размеру окна»
 fits the whole page into the pane, 100 % (and 75 %, 50 %) draws it at a fixed

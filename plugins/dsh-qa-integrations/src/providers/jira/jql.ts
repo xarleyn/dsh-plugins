@@ -60,6 +60,29 @@ const STATUS_CATEGORIES = ["To Do", "In Progress", "Done"] as const;
 const TEXT_TERMS = 12;
 /** How many custom-field clauses one search may carry. */
 const CUSTOM_FIELD_CLAUSES = 5;
+/** How many history clauses one search may carry. */
+const HISTORY_CLAUSES = 3;
+
+/**
+ * A field Jira keeps a searchable history for, named the way its JQL names it.
+ * `person` marks the fields whose value is a person rather than a word, so the
+ * history filter takes the same identifier the equality filter takes.
+ *
+ * Custom fields are absent on purpose: what one of them holds — and what its
+ * history means — belongs to the instance, and `WAS` over an id the caller
+ * picked from a name would be a guess dressed up as a filter.
+ */
+const HISTORY_FIELDS: readonly {
+  readonly field: string;
+  readonly person: boolean;
+}[] = [
+  { field: "status", person: false },
+  { field: "assignee", person: true },
+  { field: "reporter", person: true },
+  { field: "priority", person: false },
+  { field: "resolution", person: false },
+  { field: "fixVersion", person: false },
+];
 
 /** One JQL string literal: quoted, with the quote and the backslash escaped. */
 export function jqlLiteral(value: string, field: string): string {
@@ -251,6 +274,134 @@ function customFieldClauses(value: unknown): string[] {
   });
 }
 
+/**
+ * One history filter, as the `WAS`/`CHANGED` pair of JQL spells it.
+ *
+ * `op` picks which of the two questions a person asks about the past: the value
+ * was held at some point (`was`) or the field moved (`changed`). Everything else
+ * the entry carries is validated the way an equality filter is — a value is a
+ * quoted literal, a person is the identifier this product filters on, a date is
+ * Jira's own date grammar — so a history filter is no wider a door into JQL than
+ * the filters that were here before it.
+ *
+ * A keyword that cannot belong to the chosen operator is refused rather than
+ * dropped: a bound quietly left out answers a different question than the one
+ * that was asked, and the answer would read as a fact about the issues.
+ */
+function historyClause(entry: unknown, deployment: JiraDeployment): string {
+  if (typeof entry !== "object" || entry === null || Array.isArray(entry)) {
+    invalid("history");
+  }
+  const record = entry as Record<string, unknown>;
+  const wanted = requiredText(
+    record["field"],
+    "history.field",
+    3,
+    16,
+  ).toLowerCase();
+  const shape = HISTORY_FIELDS.find(
+    (candidate) => candidate.field.toLowerCase() === wanted,
+  );
+  if (shape === undefined) {
+    throw new IntegrationError(
+      "InvalidRequest",
+      `history.field accepts ${HISTORY_FIELDS.map((candidate) => candidate.field).join(", ")} — the fields Jira keeps a searchable history for; an instance field is filtered by customFields`,
+    );
+  }
+  const op = requiredText(record["op"], "history.op", 3, 7).toLowerCase();
+  if (op !== "was" && op !== "changed") {
+    throw new IntegrationError(
+      "InvalidRequest",
+      'history.op accepts "was" — the field held this value at some point — or "changed" — it moved',
+    );
+  }
+  const value = historyValue(
+    record["value"],
+    "history.value",
+    shape,
+    deployment,
+  );
+  const by =
+    record["by"] === undefined
+      ? ""
+      : ` BY ${userFilter(record["by"], "history.by", deployment)}`;
+  const bounds = historyBounds(record);
+
+  if (op === "changed") {
+    const from = historyValue(
+      record["from"],
+      "history.from",
+      shape,
+      deployment,
+    );
+    return `${shape.field} CHANGED${from === undefined ? "" : ` FROM ${from}`}${
+      value === undefined ? "" : ` TO ${value}`
+    }${by}${bounds}`;
+  }
+  if (record["from"] !== undefined) {
+    throw new IntegrationError(
+      "InvalidRequest",
+      "history.from names the value a field moved away from, which only history.op changed answers",
+    );
+  }
+  if (value === undefined) {
+    throw new IntegrationError(
+      "InvalidRequest",
+      'history.op "was" needs the value the field held',
+    );
+  }
+  return `${shape.field} WAS ${value}${by}${bounds}`;
+}
+
+/** The value of a history clause: a person identifier, or a quoted literal. */
+function historyValue(
+  raw: unknown,
+  label: string,
+  shape: { readonly person: boolean },
+  deployment: JiraDeployment,
+): string | undefined {
+  if (raw === undefined) return undefined;
+  const text = requiredText(raw, label, 1, 100);
+  return shape.person
+    ? userFilter(text, label, deployment)
+    : jqlLiteral(text, label);
+}
+
+/**
+ * When the history is asked about: one day (`ON`), or the ends of a window
+ * (`AFTER`, `BEFORE`, both inclusive). A day and a window cannot mean one thing
+ * at once, so asking for both is refused.
+ */
+function historyBounds(record: Record<string, unknown>): string {
+  const on = record["on"];
+  const after = record["after"];
+  const before = record["before"];
+  if (on !== undefined && (after !== undefined || before !== undefined)) {
+    throw new IntegrationError(
+      "InvalidRequest",
+      "history.on and history.after / history.before contradict each other",
+    );
+  }
+  return [
+    on === undefined ? "" : ` ON ${jqlDateValue(on, "history.on")}`,
+    after === undefined ? "" : ` AFTER ${jqlDateValue(after, "history.after")}`,
+    before === undefined
+      ? ""
+      : ` BEFORE ${jqlDateValue(before, "history.before")}`,
+  ].join("");
+}
+
+function historyClauses(value: unknown, deployment: JiraDeployment): string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length === 0 ||
+    value.length > HISTORY_CLAUSES
+  ) {
+    invalid("history");
+  }
+  return value.map((entry) => historyClause(entry, deployment));
+}
+
 function statusCategoryClauses(value: unknown): string[] {
   return textValues(value, "statusCategories").map((entry) => {
     const wanted = STATUS_CATEGORIES.find(
@@ -378,6 +529,9 @@ export function buildJql(
       `updated <= ${jqlDateValue(input["updatedBefore"], "updatedBefore")}`,
     );
   }
+  if (input["history"] !== undefined) {
+    clauses.push(...historyClauses(input["history"], deployment));
+  }
   if (input["customFields"] !== undefined) {
     clauses.push(...customFieldClauses(input["customFields"]));
   }
@@ -387,7 +541,7 @@ export function buildJql(
     // site" is not a question this provider answers by default.
     throw new IntegrationError(
       "InvalidRequest",
-      "search needs at least one filter: query, projectKeys, issueTypes, statuses, statusCategories, priorities, resolutions, components, labels, fixVersions, affectedVersions, assignee, reporter, createdAfter, createdBefore, updatedAfter, updatedBefore or customFields",
+      "search needs at least one filter: query, projectKeys, issueTypes, statuses, statusCategories, priorities, resolutions, components, labels, fixVersions, affectedVersions, assignee, reporter, createdAfter, createdBefore, updatedAfter, updatedBefore, history or customFields",
     );
   }
   const jql = `${clauses.join(" AND ")} ORDER BY updated DESC`;
