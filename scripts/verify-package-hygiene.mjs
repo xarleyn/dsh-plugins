@@ -149,6 +149,41 @@ const REQUIRED_PLUGIN_SCRIPTS = [
   "prepack",
 ];
 
+// A publishable shared package is not a Cordis bundle, so it owes the reduced
+// gate `run-verify-package` implements rather than the plugin contract above:
+// without a `verify` script nothing asks whether its declared exports were
+// built or whether its published ranges resolve, which is how the class of
+// "declared subpath with no file" reached a published library.
+const REQUIRED_SHARED_PACKAGE_SCRIPTS = ["verify"];
+
+// The two options a shared gate has to keep turning on. Packing rewrites the
+// ranges and ships whatever `exports` names, so only a source-level read sees
+// either; `docs/VERIFICATION.md` promises both, and an option a refactor drops
+// would quietly narrow the gate while its script still exited 0.
+const REQUIRED_SHARED_GATE_OPTIONS = [
+  "mainTypesMatchRootExport",
+  "publishedDependenciesResolve",
+];
+
+/** Names of `REQUIRED_SHARED_GATE_OPTIONS` a `runVerifyPackage({...})` call turns on. */
+function sharedGateOptions(source) {
+  const enabled = new Set();
+  for (const call of source.matchAll(/\brunVerifyPackage\s*\(/gu)) {
+    const callStart = (call.index ?? 0) + call[0].length;
+    const optionsStart = source.indexOf("{", callStart);
+    if (optionsStart === -1) continue;
+    const optionsEnd = objectEnd(source, optionsStart);
+    if (optionsEnd === -1) continue;
+    const options = source.slice(optionsStart, optionsEnd);
+    for (const name of REQUIRED_SHARED_GATE_OPTIONS) {
+      if (new RegExp(`\\b${name}\\s*:\\s*true\\b`, "u").test(options)) {
+        enabled.add(name);
+      }
+    }
+  }
+  return enabled;
+}
+
 function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
@@ -273,6 +308,51 @@ export function validatePublishablePlugin(directory) {
     }
   }
 
+  return errors;
+}
+
+/**
+ * A publishable shared package keeps a gate of its own, so Nx and CI run its
+ * export and dependency checks instead of skipping the project silently.
+ */
+export function validatePublishableSharedPackage(directory) {
+  const scripts = readJson(path.join(directory, "package.json")).scripts ?? {};
+  const errors = [];
+  for (const name of REQUIRED_SHARED_PACKAGE_SCRIPTS) {
+    if (typeof scripts[name] !== "string") {
+      errors.push(
+        `scripts.${name} is required for every publishable shared package`,
+      );
+    }
+  }
+
+  // The manifest alone would accept a `verify` that checks nothing: a script
+  // exiting 0 while `docs/VERIFICATION.md` describes the two checks it stopped
+  // making. A package with no `verify` at all is reported once, above.
+  const scriptsDirectory = path.join(directory, "scripts");
+  if (typeof scripts.verify === "string") {
+    const enabled = new Set();
+    const gateFiles = existsSync(scriptsDirectory)
+      ? readdirSync(scriptsDirectory, { withFileTypes: true })
+      : [];
+    for (const entry of gateFiles) {
+      if (!entry.isFile() || !entry.name.endsWith(".mjs")) continue;
+      const source = readFileSync(
+        path.join(scriptsDirectory, entry.name),
+        "utf8",
+      );
+      for (const name of sharedGateOptions(source)) enabled.add(name);
+    }
+    const missing = REQUIRED_SHARED_GATE_OPTIONS.filter(
+      (name) => !enabled.has(name),
+    );
+    if (missing.length > 0) {
+      errors.push(
+        `no script under scripts/ calls runVerifyPackage with ${missing.join(" and ")} enabled; ` +
+          "a shared package gate keeps both options on — packing cannot show either",
+      );
+    }
+  }
   return errors;
 }
 
@@ -504,8 +584,8 @@ export function validateDiscoverability(directory, repoRoot = process.cwd()) {
  * The root README is the human entry point to the published set, so its package
  * table is a second catalog beside `plugins.json`: a package missing from it is
  * invisible to a reader who never opens the JSON, and a row that still calls a
- * published package "private" misstates which npm names `dsh plugin add` can
- * install. The gate keeps both catalogs listing the same package set.
+ * published package "private" misstates which npm names are published, and so
+ * installable at all. The gate keeps both catalogs listing the same package set.
  */
 export function findReadmeCatalogGaps(repoRoot = process.cwd()) {
   const readmePath = path.join(repoRoot, "README.md");
@@ -548,6 +628,9 @@ export function verifyPublishablePlugins(repoRoot = process.cwd()) {
       const errors = [
         // Only plugin directories carry the Cordis patch and client contract.
         ...(group === "plugins" ? validatePublishablePlugin(directory) : []),
+        ...(group === "packages"
+          ? validatePublishableSharedPackage(directory)
+          : []),
         ...validateDiscoverability(directory, repoRoot),
         ...validatePublishedContent(directory, repoRoot),
       ];

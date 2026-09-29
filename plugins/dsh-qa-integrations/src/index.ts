@@ -369,9 +369,9 @@ export class QaIntegrations extends TypertRemoteService {
   }
 
   /**
-   * Mount the tools the configuration asks for. The mounted set changes only
-   * when the plugin or its one write capability flips, so an unrelated card
-   * edit never churns the Host tool registry.
+   * Mount the tools the configuration asks for. The mounted surface changes only
+   * when the plugin, its one write capability, or the managed service credential
+   * flips, so an unrelated card edit never churns the Host tool registry.
    */
   private syncTools(config: ResolvedQaIntegrationsConfig): void {
     // The providers this configuration kept: switching one off takes its tools
@@ -380,12 +380,19 @@ export class QaIntegrations extends TypertRemoteService {
     const enabledProviders = this.providerRegistry
       .list()
       .map((provider) => provider.id);
+    const managedCeiling = config.managedServiceCredentials.enabled;
     const toolOptions = {
       bitrix24CrmCommentWrite: config.bitrix24.crmCommentWrite,
       enabledProviders,
+      // Which readings the ceiling refuses is in the tool descriptions, so the
+      // slice decides what the model is told about them.
+      managedServiceCredentialsEnabled: managedCeiling,
     };
     const names = config.enabled ? integrationToolNames(toolOptions) : [];
-    const signature = names.join(",");
+    // The key carries the slice because a description is part of the mounted
+    // surface: without it, toggling the managed credential would leave the old
+    // warnings — or their absence — in the Host registry.
+    const signature = `${names.join(",")}|ceiling=${managedCeiling}`;
     if (signature === this.toolsKey) return;
     for (const remove of this.toolRemovers) remove();
     this.toolRemovers = [];

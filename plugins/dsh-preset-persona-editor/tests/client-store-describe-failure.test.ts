@@ -17,14 +17,8 @@ import { describeFailure } from "../src/client/store.js";
 describe("describeFailure", () => {
   it("uses the page's own words for the editor's codes", () => {
     expect(
-      describeFailure({ code: "preset-persona/conflict", message: "x" }),
-    ).toBe(strings.conflict);
-    expect(
       describeFailure({ code: "preset-persona/not-found", message: "x" }),
     ).toBe(strings.gone);
-    expect(
-      describeFailure({ code: "preset-persona/read-only", message: "x" }),
-    ).toBe(strings.readOnlyShipped);
     expect(
       describeFailure({
         code: "preset-persona/invalid",
@@ -32,6 +26,12 @@ describe("describeFailure", () => {
         details: { reason: "the composition is not valid YAML" },
       }),
     ).toBe("the composition is not valid YAML");
+  });
+
+  it("falls back to the host's message when a code carries no reason", () => {
+    expect(
+      describeFailure({ code: "preset-persona/invalid", message: "refused" }),
+    ).toBe("refused");
   });
 
   it("shows an unknown failure's own message", () => {

@@ -370,6 +370,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     "lint": "eslint src tests scripts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "verify:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs && node scripts/verify-compatibility.mjs",
     "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
@@ -409,13 +410,19 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   репозитория». Генератор нового плагина сразу ставит весь канонический набор.
 - **Каталоги в корне: `plugins.json` и таблица пакетов в `README.md`.** Оба
   генерируются из манифестов (`pnpm plugins:manifest`): `plugins.json`
-  связывает npm-имя, директорию, описание, keywords, команду установки и
-  homepage, а таблица в README описывает весь лэйаут — публичные пакеты
-  с npm-именем, приватная сборка как `private workspace package`.
-  `pnpm verify:packages` падает, пока устарел любой из них, а `plugins.json`
-  дополнительно валидируется по `docs/plugins.schema.json`. После изменения
-  описания/keywords или появления нового пакета их нужно перегенерировать —
-  руками не редактировать. Расширяя схему новым ключевым словом, добавь его в
+  связывает npm-имя, директорию, описание, keywords, вид пакета (`kind`),
+  команду установки и homepage, а таблица в README описывает весь лэйаут —
+  публичные пакеты с npm-именем и видом, приватная сборка как
+  `private workspace package`. Вид выводится из манифеста, а не задаётся
+  вручную: объявленный `dsh.bundle` — это самостоятельный плагин (`plugin`),
+  который Host регистрирует профилем (`dsh plugin --profile <profile> add`);
+  без него пакет — общая библиотека (`library`), которую потребитель ставит
+  как зависимость (`pnpm add`) и которой каталог не вправе предлагать команду
+  регистрации. `pnpm verify:packages` падает, пока устарел любой из них, а
+  `plugins.json` дополнительно валидируется по `docs/plugins.schema.json`
+  (`kind` там закрыт enum-ом). После изменения описания/keywords или появления
+  нового пакета их нужно перегенерировать — руками не редактировать.
+  Расширяя схему новым ключевым словом, добавь его в
   `scripts/json-schema-validate.mjs`: незнакомое ключевое слово там не
   игнорируется, а роняет проверку.
 - **`exports` — исчерпывающая карта публичных входов.** Всё, что не в `exports`,

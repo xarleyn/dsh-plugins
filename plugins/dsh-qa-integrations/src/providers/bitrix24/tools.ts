@@ -9,9 +9,11 @@ import {
   requiredStringList,
   requiredText,
 } from "../../coerce.js";
-import type { IntegrationBroker } from "../../broker.js";
-import type { IntegrationPrincipal } from "../../types.js";
-import { createToolKit } from "../../tool-kit.js";
+import {
+  createToolKit,
+  type ProviderToolFactoryOptions,
+} from "../../tool-kit.js";
+import { BITRIX_OPERATIONS } from "./catalog.js";
 
 export const BITRIX24_TOOL_NAMES = [
   "bitrix_search_crm",
@@ -73,15 +75,17 @@ const START_HINT =
 const SEARCH_STAGE_HINT =
   "To see how long items have sat in their stage, use bitrix_get_crm_stage_history (movedTime) instead of paging through the archive.";
 
-export function createBitrix24Tools(options: {
-  readonly broker: IntegrationBroker;
-  readonly principalForSession: (
-    sessionId: string,
-  ) => IntegrationPrincipal | undefined;
-  /** Mount the timeline-comment write tool; default stays read-only. */
-  readonly crmCommentWrite?: boolean;
-}): readonly ToolDefinition[] {
-  const kit = createToolKit({ ...options, provider: "bitrix24" });
+export function createBitrix24Tools(
+  options: ProviderToolFactoryOptions & {
+    /** Mount the timeline-comment write tool; default stays read-only. */
+    readonly crmCommentWrite?: boolean;
+  },
+): readonly ToolDefinition[] {
+  const kit = createToolKit({
+    ...options,
+    provider: "bitrix24",
+    operations: BITRIX_OPERATIONS,
+  });
   const tool = kit.tool;
 
   const tools: ToolDefinition[] = [

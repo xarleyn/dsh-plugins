@@ -9,7 +9,9 @@ independent layout host.
 The implemented foundation provides:
 
 - a public Host service at `ctx.qaBrowser`;
-- one lazily created Playwright Chromium process per plugin runtime;
+- one lazily created Playwright Chromium per plugin runtime — either a process
+  this plugin starts and stops, or an existing one joined over its DevTools
+  endpoint;
 - one isolated `BrowserContext` per DSH session;
 - opaque, persistent tab identities and per-tab mutation queues;
 - navigation, viewport, screenshot and tab lifecycle Host primitives;
@@ -36,8 +38,9 @@ No Browser code or Playwright dependency is added to `dsh-qa-surface`.
 - a compatible Chromium executable
 
 The plugin never downloads a browser in `postinstall`. Install a managed
-Playwright Chromium explicitly in the deployment image, or set an absolute
-`runtime.executablePath`.
+Playwright Chromium explicitly in the deployment image, set an absolute
+`runtime.executablePath`, or run `runtime.mode: attach` against a Chromium that
+is already up with its DevTools endpoint open.
 
 ## Configuration
 
@@ -47,8 +50,11 @@ Playwright Chromium explicitly in the deployment image, or set an absolute
     enabled: true
     runtime:
       provider: playwright
+      mode: launch
       executablePath: null
       browserChannel: chromium
+      cdpEndpoint: null
+      allowRemoteCdpEndpoint: false
       headless: true
       chromiumSandbox: true
       actionTimeoutMs: 15000
@@ -152,20 +158,142 @@ For a containerized Harness, see the
 [Docker deployment guide](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-browser/docs/DOCKER.md).
 Chromium and its OS libraries must be installed inside the Harness image.
 
+## Joining a browser that is already running
+
+`runtime.mode` decides where the Chromium comes from. `launch` — the default —
+owns one process: the plugin starts it for the first session and closes it when
+the runtime shuts down. `attach` joins a browser that is already running, through
+its DevTools endpoint:
+
+```yaml
+runtime:
+  mode: attach
+  cdpEndpoint: http://127.0.0.1:9222
+```
+
+The endpoint is an `http`/`https` URL for the browser's DevTools server —
+Playwright reads its `webSocketDebuggerUrl` itself — or that `ws`/`wss` URL
+directly. By default it has to name this machine, and the list is read exactly:
+`localhost`, `127.0.0.1`, `::1`, plus the forms the URL parser itself resolves to
+those (`http://127.1`, `http://2130706433`). A `*.localhost` name is not on it
+although it is meant to be local, and neither is `localhost.` with a trailing dot
+— that dot turns the literal into a DNS query. This plugin never resolves the
+endpoint, Playwright dials it through the system resolver, and a resolver with a
+search domain can answer `chrome.localhost` with a machine somewhere else. For an
+`http` or `https` endpoint the gate bounds the address written down, which is the
+first hop: the server there replies with the `ws` URL to dial, and wrapping that
+first request in TLS does not move the answer to the second one, so a deployment
+that needs the dialled address pinned writes a `ws`/`wss` URL. Holding a CDP
+endpoint means holding the browser, its every tab included and past this plugin's
+own policy, so an endpoint beyond loopback — including one that merely looks like
+it — needs `allowRemoteCdpEndpoint: true` written next to it: a decision someone
+made on purpose, not a default.
+
+The gate is this plugin's half of the answer, and the browser keeps its own:
+Chromium checks the `Host` header of a DevTools request and answers an IP address
+or `localhost`, on both hops — the `/json/version` question an `http` endpoint
+asks and the `ws` upgrade that answer names. A container's service name clears
+the gate once the switch is written and is then refused by the browser, before a
+page ever opens, so write the address rather than the name — and not
+`--remote-allow-origins`, which guards the `Origin` of an upgrade instead: the
+opt-in run puts both questions to a live browser, and the name comes back refused
+with that flag set just as it is without it.
+
+The keys that choose and shape a process are refused under `attach` rather than
+ignored: `executablePath`, a `browserChannel` other than `chromium`, and
+`chromiumSandbox: false` all describe a Chromium this plugin starts, and a
+deployment that wrote them would not be getting what it wrote. The refusals run
+both ways: under `launch`, `cdpEndpoint` and
+`allowRemoteCdpEndpoint: true` describe a browser this mode does not join, so
+they are refused as well.
+
+What attach mode changes, and what it deliberately does not:
+
+- The browser is not ours to stop. Closing a session or evicting an idle one
+  releases that session's own context and keeps the link; only shutting the
+  plugin down drops the link along with every context this runtime created. The
+  process — and any page a person has open in it — stay up through all of it.
+- The isolation is the same: every DSH session gets its own browser context
+  rather than the default one the person is looking at, so the agent's cookies,
+  storage and tabs are the session's own. A `Browser` handle reaches the context
+  it came with through one method, `contexts()`, and this runtime never calls it —
+  so it drives no page inside that context and closes nothing it did not build.
+  SPEC §5 keeps existing user tabs a non-goal, and this is the mode that could
+  have broken it. What the CDP connection itself attaches to is Playwright's
+  business, which is why the promise is checked against a real browser: the
+  person's own tab is still listed by that browser after this plugin's teardown,
+  and a page a second driver opens in that same context neither lends its cookies
+  and storage to this plugin's session nor takes the session's.
+- The policy is the same code, on a moved premise: every document, redirect,
+  subrequest and socket of a session still passes the server-side scheme, host,
+  DNS, private-network and metadata gates, a refusal is still listed per tab in
+  the panel, and what those gates let through still reaches its destination — a
+  borrowed context that intercepted requests only to drop them would read as a
+  gated one until the permitted traffic was looked for. What `attach` changes is
+  where those two halves run: the gate resolves and classifies the name in this
+  process, while the browser dials from wherever the deployment started it. On
+  one machine that is the same answer; a browser in another container has its own
+  resolver and its own `/etc/hosts`, so
+  an allow-list written for the Host is a judgment about a name the browser may
+  read differently. The gates stop at this runtime's request path, too: a
+  destination refused for a session of this plugin is served to a page this
+  plugin never built, which the same run reads off the borrowed browser.
+- It is headless-only. In launch mode `headless: false` promises a window a
+  person can watch and click in; attach mode owns no window, so that
+  combination is refused when the config resolves. Whether the browser behind
+  the endpoint has a visible window is that browser's business — and if a person
+  can reach it, they can act in the pages the agent is driving. That is a
+  property of the endpoint you chose, not something this plugin can promise
+  either way.
+- A lost link is not a crash. Dropping the CDP connection reports
+  `BROWSER_CONNECTION_LOST` and the panel says the connection to the browser was
+  lost; a browser this plugin started keeps reporting `BROWSER_CRASHED`. Either
+  way the next agent action rebuilds the session instead of pretending the old
+  tabs are still there.
+
 ## Development
 
 ```bash
 pnpm --filter @yadsh/dsh-qa-browser check
 ```
 
-The real Chromium integration test is opt-in so ordinary CI does not download
-browser binaries:
+The real Chromium integration tests are opt-in so a project that has nothing to
+do with a browser never downloads or spawns one. This project's own CI job is
+not such a project: `ci.yml` sets the variable below for
+`@yadsh/dsh-qa-browser`, so what only a real browser can answer is checked on a
+pull request and on `main` rather than left to whoever remembers to run it. Both
+runtime modes are covered there: the launch case starts its own Chromium, and
+the attach case starts one outside the plugin, points `runtime.cdpEndpoint` at
+it, drives a session through the network gates on that borrowed browser in both
+directions — the destination refused and the one let through to its server — and
+checks that the plugin's teardown left it running. The endpoint is dialled in
+both forms the mode accepts — an `http` one, which asks that server where to
+connect next, and the `ws` one a deployment writes when it must pin the address
+itself. The run also
+puts a second driver on that endpoint, the shape the Harness's own browser tool
+makes of a shared Chromium: the cookies and storage of a page it opened in the
+browser's own context stay out of this plugin's session and the session's stay out
+of it, while a destination that session's policy refuses is served to it. The
+suite looks for a browser the way the launch path looks for one — Playwright's own
+build, then an installed Chrome, Chromium or Edge — so one variable is enough
+wherever any of them exists:
+
+```bash
+DSH_QA_BROWSER_E2E=1 pnpm --filter @yadsh/dsh-qa-browser test:browser
+```
+
+On Windows PowerShell:
 
 ```powershell
 $env:DSH_QA_BROWSER_E2E = "1"
-$env:DSH_QA_BROWSER_EXECUTABLE = "C:\path\to\chrome.exe"
 pnpm --filter @yadsh/dsh-qa-browser test:browser
 ```
+
+`DSH_QA_BROWSER_EXECUTABLE` names the binary instead of leaving it to that
+search — the switch to use when the machine has several, or none findable. A run
+that was asked for and could not find a browser fails rather than skipping: a
+named binary that is not there says so, and a search that came up empty says so
+too.
 
 ## License
 

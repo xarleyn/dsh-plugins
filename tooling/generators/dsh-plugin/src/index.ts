@@ -99,8 +99,10 @@ export default async function generatePlugin(
 
   if (withTests) {
     devDependencies["@yadsh/dsh-test-kit"] = "workspace:^";
+    devDependencies["@vitest/coverage-v8"] = "catalog:tooling";
     devDependencies.vitest = "catalog:tooling";
     scripts.test = "vitest run";
+    scripts["test:coverage"] = "vitest run --coverage";
   }
 
   scripts["verify:package"] = "node scripts/verify-package.mjs";

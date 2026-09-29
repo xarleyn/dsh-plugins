@@ -48,6 +48,7 @@ pnpm typecheck
 | `pnpm build` | Build all packages |
 | `pnpm lint` | Lint repository tooling and all packages |
 | `pnpm test` | Run all tests |
+| `pnpm test:coverage` | Run every package's tests with V8 coverage and print its percentages |
 | `pnpm typecheck` | Type-check all packages |
 | `pnpm check` | Run the complete local validation pipeline |
 | `pnpm format` | Check formatting with the shared Prettier config |

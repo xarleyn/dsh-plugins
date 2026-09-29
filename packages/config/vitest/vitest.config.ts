@@ -32,6 +32,19 @@ import {
  *   },
  * });
  * ```
+ *
+ * Coverage is configured here so every package measures the same denominator:
+ * the TypeScript of its `src` tree, reported as text plus a machine-readable
+ * summary. Because `mergeConfig` concatenates arrays instead of replacing them,
+ * re-declaring `coverage.include` in a package can only widen that tree;
+ * measuring less is `coverage.exclude`'s job, and it costs comparability with
+ * every other package. Leave the default alone unless there is a stated reason.
+ *
+ * No `thresholds` on purpose: a floor would turn the percentage into a gate that
+ * competes with the per-file size budget, and the first response to a red gate is
+ * a test that asserts nothing. Read the number, do not enforce it. Vitest drops
+ * the report of a red run otherwise, so `reportOnFailure` is on — the number is
+ * what the command is for, including on a platform where one suite is red.
  */
 
 /** A decorator always opens its own line; a JSDoc tag opens it with `*`. */
@@ -44,6 +57,9 @@ const DECORATOR_LINE_RE = /^\s*@[A-Za-z_$]/m;
  * JavaScript. Every file that declares a decorator in this repository is a
  * `.ts` host entry, so nothing needs the JSX route today; a decorated `.tsx`
  * would need its own JSX-aware emit, not a widened copy of this expression.
+ * This bounds the transform's scope only. `coverage.include` measures `.tsx` on
+ * purpose — reporting a loaded module needs no lowering, and the client code is
+ * part of the `src` tree every package is expected to measure.
  */
 const TYPESCRIPT_FILE_RE = /\.[cm]?ts$/;
 
@@ -183,6 +199,12 @@ export const baseConfig: ViteUserConfig = {
   test: {
     globals: true,
     environment: "node",
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "json-summary"],
+      include: ["src/**/*.ts", "src/**/*.tsx"],
+      reportOnFailure: true,
+    },
   },
 };
 

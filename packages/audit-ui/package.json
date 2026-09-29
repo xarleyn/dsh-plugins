@@ -50,6 +50,9 @@
     "lint": "eslint src tests",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run verify:package",
     "prepack": "pnpm run build"
   },
   "dependencies": {
@@ -64,7 +67,9 @@
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
     "@types/react-dom": "catalog:frontend-dev",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",
     "jsdom": "catalog:tooling",
     "react": "catalog:frontend-dev",

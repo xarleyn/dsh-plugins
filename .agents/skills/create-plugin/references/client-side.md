@@ -97,6 +97,53 @@ Everything below was confirmed by a broken surface, not by a green gate.
   inside `<button>` is invalid DOM and a keyboard trap — make toggle and
   selection sibling controls.
 
+## Proving the card you just registered
+
+The shell contract lives in AGENTS.md and the gates assert its *text*, so a
+plugin can pass every gate with a card no user ever sees. The bullet above owns
+the bundle half of this — the verify script runs the contract against the built
+`lib/client.js`, and the hygiene gate proves only that the script exists — so
+what follows is the half no gate covers, in order:
+
+1. Rebuild first: a stale `lib/` answers for the previous build.
+2. Prove it live on a stand (`qa-stand-run`): the card is present and it
+   expands. The state comparison AGENTS.md asks for is a browser's job, and no
+   gate gives it.
+
+"Card is not visible" — check in this order, it is almost always one of these:
+
+- **Stale bundle.** Fetch the served URL from §Bundle identity and shape and
+  confirm it is the build you just made.
+- **Wrong extension point.** Apply the entry-point rule above: a card that must
+  answer from the LAN belongs on `settings.plugins.tab`. Misplaced is not
+  broken.
+- **No namespace.** A `settings.plugin.item` card renders nothing while its Host
+  settings namespace is unavailable — and inventing an empty namespace to make a
+  page appear is the forbidden shortcut the same rule names.
+- **Dead loader entry.** See the `inject` contract above: the plugin disappears
+  from the UI and the host log stays clean.
+
+## Proving a UI change beyond the gates
+
+No gate opens the page, so "green" is never evidence about layout:
+
+- **Measure instead of eyeballing.** The overflow check is the one §Settings
+  cards and pages already gives; walk it level by level, including inside the
+  settings dialog that section explains. Add what it does not cover: overlapping
+  rects, and the computed radius and type scale read against the token, not
+  against a memory of the design.
+- **Capture the states that can differ**: the states the card UI section of
+  AGENTS.md asks you to compare against a first-party card — that section names
+  them, this page does not copy the list — plus the empty, loading and refusal
+  states of whatever you added.
+- **Keep the artifacts, do not create them in a package.** Screenshots and
+  measurements are round evidence: they go to the deployment's local notes, and
+  nothing of the kind belongs under `plugins/*/` — §Packaging and docs layout in
+  `release-and-gates.md` says why, and the tarball must not carry them either.
+  Never delete evidence you did not produce (`shared-checkout` §7).
+- **Report the artifact, not the verdict**: which state, which measurement,
+  which file proves it.
+
 ## Styles and design tokens
 
 - Unknown `var(--dsw-…)` invalidates the ENTIRE declaration at computed-value

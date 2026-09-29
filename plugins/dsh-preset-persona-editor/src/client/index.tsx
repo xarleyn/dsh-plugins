@@ -19,12 +19,7 @@ import type {
 import personaRemote from "@yadsh/dsh-preset-persona-editor/remote";
 import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 
-import type {
-  PersonaCatalog,
-  PersonaDocument,
-  PersonaWriteReceipt,
-  PresetDraft,
-} from "../types.js";
+import type { PersonaCatalog, PersonaDocument } from "../types.js";
 import { PersonaPage, type PersonaPageInjected } from "./PersonaPage.js";
 import { strings } from "./locale.js";
 import { PersonaPageController, type PersonaFace } from "./store.js";
@@ -37,20 +32,6 @@ const PLUGIN_PACKAGE_NAME = "@yadsh/dsh-preset-persona-editor";
 interface PresetPersonaRemote {
   list(): Promise<RemoteResult<PersonaCatalog>>;
   read(agentPreset: string): Promise<RemoteResult<PersonaDocument>>;
-  save(
-    agentPreset: string,
-    draft: PresetDraft,
-    expectedRevision: string,
-  ): Promise<RemoteResult<PersonaWriteReceipt>>;
-  reset(
-    agentPreset: string,
-    expectedRevision: string,
-  ): Promise<RemoteResult<PersonaWriteReceipt>>;
-  copy(
-    from: string,
-    id: string,
-    name: string,
-  ): Promise<RemoteResult<PersonaDocument>>;
 }
 
 /** The client Remote face this module drives. */
@@ -85,16 +66,6 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       const face: PersonaFace = {
         list: () => injected.presetPersonaEditor.list(),
         read: (agentPreset) => injected.presetPersonaEditor.read(agentPreset),
-        save: (agentPreset, draft, expectedRevision) =>
-          injected.presetPersonaEditor.save(
-            agentPreset,
-            draft,
-            expectedRevision,
-          ),
-        reset: (agentPreset, expectedRevision) =>
-          injected.presetPersonaEditor.reset(agentPreset, expectedRevision),
-        copy: (from, id, name) =>
-          injected.presetPersonaEditor.copy(from, id, name),
       };
       const registered: PersonaPageInjected = {
         controller: new PersonaPageController(face),
@@ -105,7 +76,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             name: "settings.section",
             id: "preset-persona",
             // Ordered after the deployment's Agent Presets section (20): this
-            // page edits one field of what that page composes.
+            // page reads back one part of what that page composes.
             order: 21,
             label: strings.nav,
             inject: () => registered,

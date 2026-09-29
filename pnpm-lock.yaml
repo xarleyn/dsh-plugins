@@ -22,9 +22,6 @@ catalogs:
     '@deepseek-ai/dsh-agent-preset-registry':
       specifier: 0.1.7-rc.2
       version: 0.1.7-rc.2
-    '@deepseek-ai/dsh-agent-presets':
-      specifier: 0.1.5-rc.2
-      version: 0.1.5-rc.2
     '@deepseek-ai/dsh-api-gateway':
       specifier: 0.1.7-rc.2
       version: 0.1.7-rc.2
@@ -290,9 +287,15 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../plugin-scripts
       eslint:
         specifier: catalog:tooling
         version: 10.9.1
@@ -324,9 +327,15 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../plugin-scripts
       eslint:
         specifier: catalog:tooling
         version: 10.9.1
@@ -379,9 +388,15 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../plugin-scripts
       eslint:
         specifier: catalog:tooling
         version: 10.9.1
@@ -413,9 +428,15 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
+      '@yadsh/dsh-plugin-scripts':
+        specifier: workspace:^
+        version: link:../plugin-scripts
       '@yadsh/dsh-test-kit':
         specifier: workspace:^
         version: link:../test-kit
@@ -443,6 +464,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../config
@@ -474,6 +498,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -511,6 +538,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -566,6 +596,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -642,6 +675,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -736,6 +772,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -876,6 +915,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -952,6 +994,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1001,6 +1046,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1032,6 +1080,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1069,6 +1120,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1154,6 +1208,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1266,6 +1323,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1354,6 +1414,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1394,9 +1457,9 @@ importers:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh-dev
         version: 4.0.4(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
-      '@deepseek-ai/dsh-agent-presets':
+      '@deepseek-ai/dsh-agent-preset-registry':
         specifier: catalog:dsh-dev
-        version: 0.1.5-rc.2(47e8e03d3b3ac99b24b6de0b57442c45)
+        version: 0.1.7-rc.2(22703552badc224afca5967e2c22a287)
       '@deepseek-ai/dsh-api-gateway':
         specifier: catalog:dsh-dev
         version: 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-client-connection@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-scope@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))))
@@ -1418,15 +1481,21 @@ importers:
       '@deepseek-ai/dsh-typert-protocol':
         specifier: catalog:dsh-dev
         version: 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)
-      '@deepseek-ai/schemastery':
-        specifier: catalog:dsh-dev
-        version: 3.18.4
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@types/react-dom':
+        specifier: catalog:frontend-dev
+        version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1448,6 +1517,9 @@ importers:
       react:
         specifier: catalog:frontend-dev
         version: 18.3.1
+      react-dom:
+        specifier: catalog:frontend-dev
+        version: 18.3.1(react@18.3.1)
       tsdown:
         specifier: catalog:tooling
         version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.23.15)(typescript@7.0.2)
@@ -1506,6 +1578,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1591,6 +1666,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1673,6 +1751,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1824,6 +1905,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1918,6 +2002,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -1982,6 +2069,9 @@ importers:
       '@types/react-dom':
         specifier: catalog:frontend-dev
         version: 18.3.7(@types/react@18.3.28)
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2055,6 +2145,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2107,6 +2200,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2156,6 +2252,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2217,6 +2316,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2299,6 +2401,9 @@ importers:
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../packages/config
@@ -2333,6 +2438,9 @@ importers:
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
+      '@vitest/coverage-v8':
+        specifier: catalog:tooling
+        version: 4.1.11(vitest@4.1.11)
       '@yadsh/dsh-config':
         specifier: workspace:^
         version: link:../../../packages/config
@@ -3090,24 +3198,6 @@ packages:
       '@deepseek-ai/dsh-system-prompt': 0.1.7-rc.2
       '@deepseek-ai/dsh-tools': 0.1.7-rc.2
       '@deepseek-ai/dsh-typert-protocol': 0.1.7-rc.2
-
-  '@deepseek-ai/dsh-agent-presets@0.1.5-rc.2':
-    resolution: {integrity: sha512-h0j7IfuHPYh/oJR7SDxh6pzSgUeaHwaaAIg5X0RNL6Z2oQrq0oUmjtArCVVw7nkgt48DjdBwx4EwJ9IdNrHxug==}
-    peerDependencies:
-      '@deepseek-ai/cordis': ^4.0.2
-      '@deepseek-ai/cordis-plugin-include': ^1.0.7
-      '@deepseek-ai/cordis-plugin-loader': ^1.0.3
-      '@deepseek-ai/dsh-agent': ^0.1.5-rc.2
-      '@deepseek-ai/dsh-atomic-write': ^0.1.5-rc.2
-      '@deepseek-ai/dsh-home-paths': ^0.1.5-rc.2
-      '@deepseek-ai/dsh-invariants': ^0.1.5-rc.2
-      '@deepseek-ai/dsh-scope': ^0.1.5-rc.2
-      '@deepseek-ai/dsh-session': ^0.1.5-rc.2
-      '@deepseek-ai/dsh-session-projection': ^0.1.5-rc.2
-      '@deepseek-ai/dsh-settings': ^0.1.5-rc.2
-      '@deepseek-ai/dsh-system-prompt': ^0.1.5-rc.2
-      '@deepseek-ai/dsh-tools': ^0.1.5-rc.2
-      '@deepseek-ai/dsh-typert-protocol': ^0.1.5-rc.2
 
   '@deepseek-ai/dsh-agent@0.1.7-rc.2':
     resolution: {integrity: sha512-9U/zHZvZqRR5S2FD9fjjAuoMh+WfDan+bE/cLBLSLpqftjZ0FhIlEBK99yonUkNkGemyHiH/lL3jCKYw35ahJA==}
@@ -7896,26 +7986,6 @@ snapshots:
       - '@deepseek-ai/cordis-plugin-group'
       - '@deepseek-ai/dsh-home-paths'
       - '@deepseek-ai/dsh-launch-environment'
-
-  '@deepseek-ai/dsh-agent-presets@0.1.5-rc.2(47e8e03d3b3ac99b24b6de0b57442c45)':
-    dependencies:
-      '@deepseek-ai/cordis': 4.0.4(@deepseek-ai/cordis-plugin-include@1.0.9)(@deepseek-ai/cordis-plugin-loader@1.0.5)
-      '@deepseek-ai/cordis-plugin-include': 1.0.9(@deepseek-ai/cordis-plugin-loader@1.0.5)(@deepseek-ai/cordis@4.0.4)
-      '@deepseek-ai/cordis-plugin-loader': 1.0.5(@deepseek-ai/cordis@4.0.4)(node-addon-require-builtin@0.1.6)
-      '@deepseek-ai/dsh-agent': 0.1.7-rc.2(a45a646f3ab086a6b98898d7d7db0630)
-      '@deepseek-ai/dsh-atomic-write': 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)
-      '@deepseek-ai/dsh-home-paths': 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)
-      '@deepseek-ai/dsh-invariants': 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)
-      '@deepseek-ai/dsh-scope': 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))
-      '@deepseek-ai/dsh-session': 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-scope@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)))
-      '@deepseek-ai/dsh-session-projection': 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-session@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-scope@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))))
-      '@deepseek-ai/dsh-settings': 0.1.7-rc.2(e27f754382d4b039489286535994df68)
-      '@deepseek-ai/dsh-system-prompt': 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-llm@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))(@deepseek-ai/dsh-scope@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)))
-      '@deepseek-ai/dsh-tools': 0.1.7-rc.2(d2e08270f2205e73d65e98cfcd910cae)
-      '@deepseek-ai/dsh-typert-protocol': 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)
-      '@deepseek-ai/schemastery': 3.18.4
-      js-yaml: 4.3.2
-      zod: 4.6.5
 
   '@deepseek-ai/dsh-agent@0.1.7-rc.2(a45a646f3ab086a6b98898d7d7db0630)':
     dependencies:

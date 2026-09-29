@@ -22,7 +22,7 @@ import {
   type BrowserDevicePreset,
 } from "./devices.js";
 import { pageLabel } from "./url.js";
-import { VIEWPORT_BOUNDS } from "../host/viewport.js";
+import { VIEWPORT_BOUNDS } from "../shared/viewport.js";
 
 type PanelTab = BrowserPanelTab;
 

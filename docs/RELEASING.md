@@ -9,7 +9,8 @@ again in the release workflow.
 1. Confirm that the `@yadsh` npm organization exists and that maintainers have
    permission to publish every public package in this repository.
 2. Make `main` the repository default branch and protect it with the **CI /
-   Verify affected projects** check.
+   Verify projects** check — the aggregate job at the end of
+   `.github/workflows/ci.yml`, not the per-project matrix jobs.
 3. In npm package settings, configure this GitHub repository and
    `.github/workflows/release.yml` as the Trusted Publisher for every public
    package.
