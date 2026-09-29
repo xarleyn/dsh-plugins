@@ -14,12 +14,14 @@ type QueueWorld = QaSessionTestWorld & { controller: QaSessionController };
 /** The bound chat, plus any further chat the test navigates to. */
 async function ready(
   listed: readonly [string, ...string[]] = ["saved"],
+  streamIntervalMs?: number,
 ): Promise<QueueWorld> {
   const world = harness([...listed]);
   world.stored.set("dsh-qa-surface.session:v1:/qa:session", listed[0]);
   const controller = new QaSessionController({
     ...world,
     config: resolveConfig(),
+    ...(streamIntervalMs === undefined ? {} : { streamIntervalMs }),
   });
   await controller.ensureSession();
   return { ...world, controller };
@@ -234,6 +236,47 @@ describe("QA message queue", () => {
         sending: true,
       },
     ]);
+    controller.dispose();
+  });
+
+  it("settles an admission the stream spacing absorbed", async () => {
+    // The card's own sequence: a question sent while the agent answers is
+    // admitted mid-turn, inside a spacing window, and the turn claims it before
+    // the window closes. Neither of those frames reaches the projection — an
+    // absorbed frame is dropped, not replayed — so the first frame the browser
+    // renders is an empty queue over an echo the Host left behind. Measuring the
+    // receipt on the projected frame would leave the buttonless «отправляется…»
+    // row there, which is the ghost this card reports.
+    const world = await ready(["saved"], 25);
+    const { controller } = world;
+    let projected = 0;
+    controller.subscribe(() => {
+      projected += 1;
+    });
+    // The turn starts: the first frame of a window projects and opens it.
+    setSnapshot(world, { running: true });
+    const windowOpened = projected;
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    setInbox(world, [
+      queuedMessage(
+        "message-1",
+        [{ type: "text", text: "второй вопрос" }],
+        "request-1",
+      ),
+    ]);
+    // The premise of the case: the admission never reached the projection.
+    expect(projected).toBe(windowOpened);
+    // Still inside the window: the turn ends and claims the queue, leaving the
+    // echo registered. This frame projects, and it is the first one the strip
+    // ever shows.
+    setInbox(world, []);
+    setSnapshot(world, {
+      running: false,
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    expect(controller.getSnapshot().queue).toEqual([]);
     controller.dispose();
   });
 
