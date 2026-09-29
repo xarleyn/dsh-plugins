@@ -216,23 +216,27 @@ const MIGRATIONS: readonly SqliteMigration[] = [
   {
     version: 2,
     up: `
-      -- Every family-scoped read walks this index: the cap looks up the row at
-      -- rank cap to know where the overflow starts, a write mints its place
-      -- from the family's MAX(seq), a reload replays the family in insertion
-      -- order, the ownership sweep reads a family for the rows of a vanished
-      -- conversation, and the import verification counts one family, once.
-      -- What the index removes is the sort, and it removes it from two of
-      -- them: without it the rank lookup and the replay sort the whole family
-      -- into a temp B-tree, and the replay runs on every read that follows a
-      -- write, so the 👎 that moves a re-judged rating to the end of the order
-      -- pays for that sort twice over. What it does not do is cover the table:
-      -- the reads that want nothing but seq — the rank lookup, MAX(seq) and the
-      -- count — are answered from the index alone, while the replay and the
-      -- sweep want json as well and still reach the row, so they get cheaper
-      -- without becoming flat. Measured locally on a family at the twenty
-      -- thousand row feedback cap, the rank lookup and MAX(seq) fell from
-      -- milliseconds to fractions of a millisecond, a replay cost about a fifth
-      -- less and a sweep read under a tenth.
+      -- Four family-scoped reads are what this index serves: the cap looks up
+      -- the row at rank cap to know where the overflow starts, a write mints its
+      -- place from the family's MAX(seq), a reload replays the family in
+      -- insertion order, and the ownership sweep reads a family for the rows of
+      -- a vanished conversation. What the index removes is the sort, and it
+      -- removes it from two of them: without it the rank lookup and the replay
+      -- sort the whole family into a temp B-tree, and the replay runs on every
+      -- read that follows a write, so the 👎 that moves a re-judged rating to the
+      -- end of the order pays for that sort twice over. What it does not do is
+      -- cover the table: the two reads that want nothing but seq — the rank
+      -- lookup and MAX(seq) — are answered from the index alone, while the
+      -- replay and the sweep want json as well and still reach the row, so they
+      -- get cheaper without becoming flat. Measured on a feedback family planted
+      -- to its twenty thousand row cap — each statement run the way the store
+      -- prepares it, median of 201 timed calls, SQLite 3.51.3 on node v24.15.0,
+      -- JSON parsing left out — the rank lookup went from 7.3 ms to 0.32 ms and
+      -- MAX(seq) from 3.4 ms to 0.03 ms, the replay from 16 ms to 6.9 ms and the
+      -- sweep from 9.3 ms to 8.4 ms. The row count that verifies a legacy import
+      -- is not among those four: it sorts nothing and was already answered from
+      -- the primary key's covering index, so this one only changed which index
+      -- it reads.
       CREATE INDEX IF NOT EXISTS quality_rows_kind_seq
         ON quality_rows (kind, seq);
     `,
