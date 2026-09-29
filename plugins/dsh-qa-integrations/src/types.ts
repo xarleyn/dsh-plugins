@@ -139,13 +139,17 @@ export interface IntegrationSummary {
   /**
    * What the connection may use as it stands: the stored grant, minus anything
    * this deployment has since withdrawn from the provider. {@link policy} is
-   * built from this list, so a capability the card does not name is one a call
-   * would refuse.
+   * built from this list, so a capability missing here is one a call would
+   * refuse. A withdrawn capability keeps its row on the card, because that list
+   * is drawn from {@link capabilityInfo} — the provider's catalog, not this
+   * grant — but the row is rendered unavailable and carries no switch.
    */
   readonly capabilities: readonly IntegrationCapability[];
   /**
    * Labels and hints for every capability the provider declares, so a client
-   * can render a provider it has never heard of.
+   * can render a provider it has never heard of. This is the catalog, not the
+   * grant: whether a row is offered as usable is decided by
+   * {@link capabilities}.
    */
   readonly capabilityInfo: Readonly<
     Record<IntegrationCapability, IntegrationCapabilityInfo>
