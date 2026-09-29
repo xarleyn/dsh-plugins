@@ -276,11 +276,20 @@ function policyKey(integrationId: string, operation: string): string {
 
 /**
  * The identity a binding had when a probe started against it. A verdict is only
- * worth storing while the row still carries all three: any reconnect bumps the
+ * worth storing while the row still carries all four: any reconnect bumps the
  * revision and may swap the secret, a mode switch names another profile, and
  * either makes the older answer about a credential that is no longer in use.
+ *
+ * The row id is part of that identity because the revision alone does not
+ * separate a replaced connection from a new one: `disconnect` deletes the row
+ * and the next `connect` mints a fresh id with the revision restarted at its
+ * column default. A service binding that holds no personal credential then
+ * matches on every other field — no secret, the same profile, revision 1 — so a
+ * verdict written before the disconnect would land on the healthy connection
+ * that took its place.
  */
 export interface IntegrationBindingGeneration {
+  readonly bindingId: string;
   readonly bindingRevision: number;
   readonly secretRef: string | null;
   readonly serviceProfileId: string | null;
@@ -567,8 +576,10 @@ export class IntegrationRepository {
    * Record one validation verdict, optionally with the capabilities the probe
    * found. `expected` is the binding the probe was started against: a verdict
    * that lands after a reconnect or a mode switch describes the credential that
-   * used to be there, so the write is compare-and-swapped on that identity and
-   * the answer says whether it arrived.
+   * used to be there, so the write is compare-and-swapped against that row — its
+   * id, revision, secret reference and profile, read from the same principal and
+   * provider the lookup always starts from — and the answer says whether it
+   * arrived.
    */
   updateValidation(
     principal: IntegrationPrincipal,
@@ -587,7 +598,8 @@ export class IntegrationRepository {
           `UPDATE integrations
               SET status = ?, updated_at = ?, last_validated_at = ?,
                   last_error_code = ?, capabilities_json = ?
-            WHERE id = ? AND binding_revision = ?
+            WHERE id = ? AND owner_user_id = ? AND provider = ?
+              AND binding_revision = ?
               AND secret_ref IS ? AND service_profile_id IS ?`,
         )
         .run(
@@ -600,7 +612,9 @@ export class IntegrationRepository {
               ? [...capabilities]
               : existing.capabilities,
           ),
-          existing.id,
+          expected.bindingId,
+          principal.userId,
+          provider,
           expected.bindingRevision,
           expected.secretRef,
           expected.serviceProfileId,
@@ -614,6 +628,15 @@ export class IntegrationRepository {
    * binding revision is bumped, so everything derived from the previous identity
    * — caches, cursors, prepared actions — is stale from this moment on; the
    * personal credential, if there is one, stays stored but unused.
+   *
+   * `expected` is the generation the caller read before it reached upstream for
+   * the switch, and the write only lands while that row is still the live one
+   * under the same revision and credential: a reconnect that happened inside the
+   * probe's await would otherwise file the replaced token's identity and grant
+   * onto the connection that took its place. The profile is deliberately not part
+   * of the comparison — naming another one is what this call is for. Returns
+   * nothing when there is no binding to switch, and nothing when the binding has
+   * moved, which the caller reports as a switch that did not happen.
    */
   setCredentialSource(options: {
     principal: IntegrationPrincipal;
@@ -624,6 +647,7 @@ export class IntegrationRepository {
     tenantId: string;
     externalUserId: string;
     displayName: string;
+    expected: IntegrationBindingGeneration;
   }): StoredIntegration | undefined {
     return this.storage.transaction(() => {
       const existing = this.find(options.principal, options.provider);
@@ -631,7 +655,7 @@ export class IntegrationRepository {
       const now = new Date().toISOString();
       const profileChanged =
         options.serviceProfileId !== existing.serviceProfileId;
-      this.storage.db
+      const written = this.storage.db
         .prepare(
           `UPDATE integrations
               SET credential_source = ?, service_profile_id = ?,
@@ -640,7 +664,8 @@ export class IntegrationRepository {
                   capabilities_json = ?, external_tenant_id = ?,
                   external_user_id = ?, display_name = ?, updated_at = ?,
                   last_validated_at = ?, last_error_code = NULL
-            WHERE id = ?`,
+            WHERE id = ? AND owner_user_id = ? AND provider = ?
+              AND binding_revision = ? AND secret_ref IS ?`,
         )
         .run(
           options.source,
@@ -653,8 +678,13 @@ export class IntegrationRepository {
           options.displayName,
           now,
           now,
-          existing.id,
+          options.expected.bindingId,
+          options.principal.userId,
+          options.provider,
+          options.expected.bindingRevision,
+          options.expected.secretRef,
         );
+      if (written.changes === 0) return undefined;
       return this.find(options.principal, options.provider);
     });
   }

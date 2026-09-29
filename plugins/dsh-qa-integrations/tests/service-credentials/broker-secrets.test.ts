@@ -41,6 +41,11 @@ interface Seen {
 function fakeProvider(options: {
   readonly capabilities: readonly string[];
   readonly seen: Seen[];
+  /**
+   * Held open around the credential probe, so a suite can make the answer land
+   * after the binding it was produced from has already been replaced.
+   */
+  readonly gate?: () => Promise<void>;
 }): IntegrationProvider {
   return {
     id: "acme",
@@ -92,6 +97,7 @@ function fakeProvider(options: {
       },
     }),
     validate: async ({ credential }) => {
+      if (options.gate !== undefined) await options.gate();
       if (credential.includes("expired")) {
         throw new IntegrationError(
           "CredentialExpired",
@@ -141,12 +147,53 @@ interface Harness {
   readonly seen: Seen[];
 }
 
+/**
+ * The gate a probe of `buildHarness` passes through: the suite decides when the
+ * credential probe has been entered and when its answer may arrive, which is the
+ * only way to make a verdict land after the binding it started from has gone.
+ */
+function probeGate(): {
+  readonly gate: () => Promise<void>;
+  readonly entered: Promise<void>;
+  hold: () => void;
+  resume: () => void;
+  finish: () => void;
+} {
+  let holding = false;
+  let markEntered: () => void = () => undefined;
+  const entered = new Promise<void>((resolve) => {
+    markEntered = resolve;
+  });
+  let releaseHold: () => void = () => undefined;
+  const held = new Promise<void>((resolve) => {
+    releaseHold = resolve;
+  });
+  return {
+    gate: async () => {
+      if (!holding) return;
+      markEntered();
+      await held;
+    },
+    entered,
+    hold: () => {
+      holding = true;
+    },
+    resume: () => {
+      holding = false;
+    },
+    finish: () => {
+      releaseHold();
+    },
+  };
+}
+
 function buildHarness(
   filePath: string,
   input: ManagedServiceCredentialsInput,
   options: {
     readonly secret?: string;
     readonly capabilities?: readonly string[];
+    readonly providerGate?: () => Promise<void>;
   } = {},
 ): Harness {
   const providers = new IntegrationProviderRegistry();
@@ -160,6 +207,7 @@ function buildHarness(
         "records.write",
       ],
       seen,
+      gate: options.providerGate,
     }),
   );
   const repository = new IntegrationRepository(filePath);
@@ -235,6 +283,58 @@ describe("managed service credentials: broker", () => {
     await expect(
       broker.setCredentialSource(alice, "acme", "personal"),
     ).rejects.toMatchObject({ code: "PersonalCredentialRequired" });
+  });
+
+  it("drops a credential switch whose probe lost the binding to a reconnect", async () => {
+    const probe = probeGate();
+    const { broker } = buildHarness(
+      path.join(root, "switch-race.db"),
+      PROFILE_INPUT(),
+      { providerGate: probe.gate },
+    );
+    const alice = { userId: "alice" };
+    await broker.connect(
+      alice,
+      "acme",
+      { token: "https://acme.example/rest/1/personal-token" },
+      { useServiceCredential: false },
+    );
+    await broker.setCredentialSource(alice, "acme", "service");
+    const repository = repositories.at(-1);
+    expect(repository?.find(alice, "acme")?.credentialSource).toBe("service");
+
+    // Switching back to personal reaches upstream for the stored token, and the
+    // account re-saves the connection as a managed one while that probe is open.
+    probe.hold();
+    const pending = broker.setCredentialSource(alice, "acme", "personal");
+    await probe.entered;
+    probe.resume();
+    await broker.connect(
+      alice,
+      "acme",
+      { token: "" },
+      { useServiceCredential: true },
+    );
+    probe.finish();
+    await expect(pending).rejects.toMatchObject({
+      code: "IntegrationNotConnected",
+    });
+
+    // The identity the probe found belongs to a generation that is gone, so the
+    // live connection keeps what its own reconnect wrote rather than the mode,
+    // the name and the wider grant of a token that has since been replaced.
+    const after = repository?.find(alice, "acme");
+    expect(after?.credentialSource).toBe("service");
+    expect(after?.serviceProfileId).toBe("acme-readonly");
+    expect(after?.displayName).toBe("Acme Read-only");
+    expect(after?.capabilities).toEqual(["identity.read", "records.read"]);
+    expect(after?.bindingRevision).toBe(3);
+    // A switch that was refused is not left in the trail as one that happened.
+    expect(
+      repository
+        ?.read()
+        .audit.filter((entry) => entry.operation === "credential.switch"),
+    ).toHaveLength(1);
   });
 
   it("blocks calls the moment the deployment disables the profile", async () => {

@@ -212,7 +212,9 @@ export interface StoredIntegration {
    * Incremented on every reconnect and on every credential-mode switch. Cache
    * keys, cursors, pending actions and validation verdicts are bound to it, so
    * either move invalidates everything derived from the previous identity —
-   * including a re-save of the profile the binding already ran under.
+   * including a re-save of the profile the binding already ran under. It counts
+   * from one again on a binding made after a disconnect, which is why a write-back
+   * compares the row it names as well (`IntegrationBindingGeneration`).
    */
   readonly bindingRevision: number;
   /** What this binding narrows the profile's allowlist to, if anything. */
