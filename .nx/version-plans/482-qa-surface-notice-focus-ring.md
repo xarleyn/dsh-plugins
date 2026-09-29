@@ -31,3 +31,20 @@ focus is the surface's own business, as it was before. And the remembered place
 goes only with the focus it hands back — a reader who moved the keyboard
 elsewhere, by mouse or into another dialog, is not pulled back, and a dialog that
 owns the keyboard is left to place the focus where it belongs.
+
+Two of the ways a place is handed over are decided rather than left to chance.
+Opening a chat from a line is the one loss that also changes what the surface
+shows: the notice goes, its chat arrives, and the keyboard stays on the stack —
+the composer the switch remounts is disabled while that chat is being bound, so
+it can take no focus, and nothing in the surface moves the keyboard on a switch
+further than it already does. And a page the reader has left to work in another
+window is handed over all the same: `focus()` moves the keyboard inside this page
+and raises no window with it, while skipping the hand-over would leave the Tab
+that follows a return starting from `<body>` and outside the interface.
+
+What the ring counts as a step is what a browser stops on, read off the markup:
+the negative `tabindex` is subtracted from every kind of control, not only from
+the elements that carry the attribute, `hidden` is read along the ancestor chain,
+and a `select` or a `summary` — the role picker of the header and the fold of a
+message — is a step of the way. A ring with no controls in it takes no key at
+all: a Tab prevented with nowhere to hand the focus is a key that sticks.

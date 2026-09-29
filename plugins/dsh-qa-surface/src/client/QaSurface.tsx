@@ -350,7 +350,11 @@ export function QaSurface(props: QaSurfaceProps) {
       ringAnchor.current = {
         element: target,
         line,
-        step: step < 0 ? controls.length - 1 : step,
+        // A control outside every line is the desktop opt-in, and the place it
+        // stands for is the front of the line the stack keeps last. Not its end:
+        // the last control is the cross, which answers the Enter the reader gave
+        // the offer by waving a notification they never aimed at.
+        step: step < 0 ? 0 : step,
         before: adjacentNoticeLine(line, "previous"),
         after: adjacentNoticeLine(line, "next"),
       };
@@ -1048,6 +1052,19 @@ export function QaSurface(props: QaSurfaceProps) {
    * with this render. A dialog that holds the keyboard is not the ring's
    * business, and is left to put the focus wherever it thinks the reader
    * belongs.
+   *
+   * Nor is a blurred page a reason to skip it: what `focus()` moves is the
+   * keyboard inside this page, and no window is raised to go with it. While the
+   * reader works in another window the ring is still the only thing with a claim
+   * on where their next Tab lands, and leaving that Tab to `<body>` is what
+   * walks them out of the interface when they come back.
+   *
+   * Opening a chat from a line is the one path where a line goes and the chat
+   * changes in the same moment. The keyboard stays on the stack — on a
+   * neighbouring line, or back inside `<main>` once none is left — rather than
+   * following the switch: the composer the switch remounts is disabled while the
+   * chat is still being bound, so it can take no focus, and the surface moves
+   * the keyboard on a switch no further than it does anywhere else.
    */
   useEffect(() => {
     const anchor = ringAnchor.current;

@@ -9,6 +9,7 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { KeyboardEvent } from "react";
 import type { SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { SessionId } from "@deepseek-ai/dsh-client-connection/client";
 import { QaRouteController } from "../../../src/client/QaRouteController.js";
@@ -23,6 +24,7 @@ import {
   focusRing,
   focusable,
   isInert,
+  trapKeys,
 } from "../../../src/client/focus-ring.js";
 import { resolveConfig } from "../../../src/resolve-config.js";
 import { QA_WELCOME_NOTICE_VERSION } from "../../../src/client/components/QaWelcomeNotice.js";
@@ -81,6 +83,21 @@ function pressTab(shift = false): void {
   const index = order.indexOf(from);
   const step = shift ? -1 : 1;
   order[(index + step + order.length) % order.length]?.focus();
+}
+
+/**
+ * Give `element` an Enter and report whether the page took the key.
+ *
+ * jsdom implements no activation behaviour — turning an Enter on a focused
+ * button into its click is the browser's work, not the platform's — so the stand
+ * asks whether the ring left the key alone and then performs the click that
+ * Enter would have been. What a keyboard activation is worth here is the answer
+ * to the first question plus the same handler the pointer reaches.
+ */
+function pressEnter(element: HTMLElement): boolean {
+  const passed = fireEvent.keyDown(element, { key: "Enter" });
+  fireEvent.click(element);
+  return passed;
 }
 
 /** Every control of the stack, in the order the ring walks them. */
@@ -354,13 +371,50 @@ describe("the notice stack inside the surface's Tab ring", () => {
           <button type="button" data-testid="under-a-hidden-parent" />
         </div>
         <button type="button" disabled data-testid="disabled-button" />
+        {/* A `select` and a `summary` are what the surface itself paints inside
+            `<main>` — the role picker of the header and the fold of a message —
+            and a browser gives both a place on the path. */}
+        <select data-testid="picker">
+          <option value="a">А</option>
+        </select>
+        <select disabled data-testid="disabled-picker">
+          <option value="a">А</option>
+        </select>
+        <details>
+          <summary data-testid="fold" />
+        </details>
         <div tabIndex={0} data-testid="listed" />
       </div>,
     );
 
     expect(
       focusable(container).map((element) => element.dataset.testid),
-    ).toEqual(["listed"]);
+    ).toEqual(["picker", "fold", "listed"]);
+  });
+
+  it("takes no key when the ring holds no controls", () => {
+    const { container } = render(
+      <div tabIndex={0} data-testid="hollow-ring">
+        <button type="button" hidden />
+      </div>,
+    );
+    const root = container.querySelector<HTMLElement>(
+      "[data-testid='hollow-ring']",
+    );
+    if (root === null) throw new Error("the ring is not mounted");
+    const event = {
+      key: "Tab",
+      shiftKey: false,
+      stopPropagation: vi.fn(),
+      preventDefault: vi.fn(),
+    } as unknown as KeyboardEvent<HTMLElement>;
+
+    // A Tab prevented with no control to hand the focus to is a stuck key. What
+    // the root itself is asked to do stays the browser's: a ring with nothing in
+    // it has no interface to keep the reader inside of, so it answers nothing.
+    trapKeys(event, [root]);
+    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
+    expect(event.preventDefault).not.toHaveBeenCalled();
   });
 
   it("jumps the composer's hidden file picker on the way to the attach button", async () => {
@@ -382,6 +436,35 @@ describe("the notice stack inside the surface's Tab ring", () => {
     composer.focus();
     pressTab();
     expect(focused()).toBe(attach);
+  });
+
+  it("counts the header's role picker as a step the ring walks over", () => {
+    // What the chat header paints once the account offers more than one
+    // profile: a `select` (role/RoleSelector) and the fold of a message
+    // (`summary`). A browser stops on both, so an enumeration that left them out
+    // drew the edge of the ring past a control the reader reaches — and counted
+    // the walk over a page with one step fewer than it has.
+    const { container } = render(
+      <main>
+        <label>
+          Роль ассистента
+          <select data-testid="role-picker">
+            <option value="general">Общий</option>
+            <option value="reviewer">Ревьюер</option>
+          </select>
+        </label>
+        <details>
+          <summary data-testid="message-fold">Инструменты разговора</summary>
+          <p>…</p>
+        </details>
+      </main>,
+    );
+
+    expect(
+      focusRing([container.querySelector("main")]).map(
+        (element) => element.dataset.testid,
+      ),
+    ).toEqual(["role-picker", "message-fold"]);
   });
 
   it("carries Tab from the composer over every control of the stack", async () => {
@@ -612,6 +695,11 @@ describe("the reader left standing when a notice goes away", () => {
     );
     expect(stackRoot()).toBeTruthy();
     expect(focusedLine()).toBe(line(-1));
+    // And on its first control, not its last: the offer is not a line, so the
+    // place read for it is the front of the line the stack keeps last. The last
+    // control is the cross, which would answer the second Enter — the reader
+    // aimed it at the opt-in, not at a notice.
+    expect(focused().dataset.testid).toBe("qa-turn-notice-open");
   });
 
   it("keeps the focus on a control of the surface when the stack goes away", async () => {
@@ -663,5 +751,114 @@ describe("the reader left standing when a notice goes away", () => {
     // and a step handed back from the ring would be a rule this card never
     // promised. What the ring remembers is a step of the notice stack only.
     expect(focused()).toBe(document.body);
+  });
+
+  it("leaves the focus where the reader put it when a line goes after they left the stack", async () => {
+    await mount({ settled: BACKGROUNDS.slice(0, 3) });
+    const dismiss = controlOf(line(1), "qa-turn-notice-dismiss");
+    dismiss.focus();
+
+    // The reader moves on to work inside the interface. That step is what gives
+    // the place back: the ring remembers a stack the reader is standing in, and
+    // a control of `<main>` that holds the focus is nobody's to pull out of it.
+    const composer = screen.getByTestId("qa-composer-input");
+    composer.focus();
+    fireEvent.click(dismiss);
+
+    expect(lines()).toHaveLength(2);
+    expect(focused()).toBe(composer);
+  });
+
+  it("hands the keyboard over while the page is blurred", async () => {
+    const world = await mount({
+      chats: BACKGROUNDS,
+      settled: BACKGROUNDS.slice(0, 3),
+    });
+    const oldest = line(-1);
+    const dismiss = controlOf(oldest, "qa-turn-notice-dismiss");
+    dismiss.focus();
+
+    // The reader works in another window, where turns keep settling and a full
+    // stack still lets the oldest line go. `focus()` moves the keyboard inside
+    // this page and raises no window with it, so the hand-over is what the
+    // returning reader needs: skipped, their next Tab starts from `<body>` and
+    // walks out of the interface.
+    document.hasFocus = () => false;
+    settleTurns(world, [BACKGROUNDS[3]]);
+
+    expect(lines()).toHaveLength(3);
+    expect(focusedLine()).toBe(line(-1));
+    expect(focusedLine()).not.toBe(oldest);
+  });
+});
+
+describe("a notice that opens the chat it names", () => {
+  /** The chat the sidebar marks active, which is what the surface is showing. */
+  function activeChat(): string {
+    const row = screen
+      .getAllByTestId("qa-surface-sidebar-item-open")
+      .find((node) => node.getAttribute("aria-current") === "true");
+    return row?.textContent ?? "";
+  }
+
+  /**
+   * The chat a line names, read from the line's own title rather than from which
+   * index of the stack it sits at: a fresh turn is put in front of the lines the
+   * reader can see, so an index says nothing on its own.
+   */
+  function chatNamed(item: HTMLElement): string {
+    const name = item.querySelector<HTMLElement>(
+      ".dsh-qa-turn-notice__chat",
+    )?.textContent;
+    if (name === undefined) throw new Error("the line names no chat");
+    return name;
+  }
+
+  it("keeps the reader on the stack when a notice opens the chat it names", async () => {
+    await mount({
+      withSessionList: true,
+      chats: BACKGROUNDS,
+      settled: BACKGROUNDS.slice(0, 3),
+    });
+    expect(lines()).toHaveLength(3);
+    const open = controlOf(line(1), "qa-turn-notice-open");
+    const named = chatNamed(line(1));
+    open.focus();
+
+    // Opening is the one way a line leaves the stack that also changes what the
+    // surface shows: the notice goes and its chat arrives underneath it. The
+    // keyboard does not follow the chat — a chat that has just been asked for is
+    // still being bound, and its composer is no control a browser can stop on
+    // yet — so the ring hands the reader to the line the stack keeps next to the
+    // one that went, on the same control of it. Wherever the reader then presses
+    // Tab, the answer is the interface's, not the browser's.
+    fireEvent.click(open);
+    await waitFor(() => expect(activeChat()).toContain(named));
+
+    expect(lines()).toHaveLength(2);
+    expect(focusedLine()).toBe(line(1));
+    expect(focused().dataset.testid).toBe("qa-turn-notice-open");
+  });
+
+  it("keeps the reader on the stack when an Enter opens the chat a notice names", async () => {
+    await mount({
+      withSessionList: true,
+      chats: BACKGROUNDS,
+      settled: BACKGROUNDS.slice(0, 3),
+    });
+    const open = controlOf(line(2), "qa-turn-notice-open");
+    const named = chatNamed(line(2));
+    open.focus();
+
+    // Reached by keyboard, answered the same way: the ring takes Tab and nothing
+    // else, so the Enter the reader gives a notice is theirs and reaches the
+    // button under it — and the chat it names opens the same way the pointer
+    // opens it, with the keyboard left on the stack.
+    expect(pressEnter(open)).toBe(true);
+    await waitFor(() => expect(activeChat()).toContain(named));
+
+    expect(lines()).toHaveLength(2);
+    expect(focusedLine()).toBe(line(1));
+    expect(focused().dataset.testid).toBe("qa-turn-notice-open");
   });
 });

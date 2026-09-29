@@ -3,9 +3,15 @@ import type { KeyboardEvent } from "react";
 /**
  * The tags and states a browser may give a place on the Tab path. What the page
  * has since taken away is read by `focusable`, one condition per function below.
+ *
+ * The tags are those the surface paints: a `select` is the role picker of the
+ * chat header and a `summary` the fold of a message, both inside `<main>`, so an
+ * enumeration that skipped one of them drew the edge of the ring past a control
+ * the reader still reaches. `[tabindex]` is what catches anything else the
+ * markup chose to make reachable.
  */
 const TABABLE_SELECTOR =
-  "button:not([disabled]), textarea:not([disabled]), a[href], input:not([disabled]), [tabindex]";
+  "button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), a[href], summary, [tabindex]";
 
 /**
  * Whether `tabindex` takes this element off the Tab path.
@@ -100,6 +106,10 @@ export function focusRing(
  * the ring used to stop the reader short of the notice. A key typed inside such
  * a portal is trapped by the handler mounted on the portal: the `<main>` above
  * it is not its ancestor and never hears the key.
+ *
+ * A ring with no controls in it answers nothing: there is nothing here to keep
+ * the reader inside, and a key prevented with nowhere to hand the focus is a key
+ * that sticks.
  */
 export function trapKeys(
   event: KeyboardEvent<HTMLElement>,
@@ -108,11 +118,6 @@ export function trapKeys(
   event.stopPropagation();
   if (event.key !== "Tab") return;
   const items = focusRing(roots);
-  if (items.length === 0) {
-    event.preventDefault();
-    event.currentTarget.focus();
-    return;
-  }
   const first = items[0];
   const last = items.at(-1);
   if (event.shiftKey && document.activeElement === first) {
