@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { QaMessage } from "../../src/types.js";
-import { turnErrorCopy } from "../../src/client/failure-copy.js";
+import {
+  retryWorkCopy,
+  turnErrorCopy,
+  type RetryCopySource,
+} from "../../src/client/failure-copy.js";
 import { projectTranscript } from "../../src/client/QaTranscriptAdapter.js";
 import { legacy, snapshot } from "../helpers/conversation-fakes.js";
 
@@ -76,5 +80,29 @@ describe("the terminal turn failure row", () => {
     expect(row?.text).toContain("NO_ADAPTER");
     expect(JSON.stringify(messages)).not.toContain("/home/operator");
     expect(JSON.stringify(messages)).not.toContain("no adapter registered");
+  });
+});
+
+describe("the retry row of the same failure", () => {
+  const node = (failureCode?: string): RetryCopySource => ({
+    mode: "normal",
+    retry: 1,
+    maxRetries: 3,
+    delayMs: 2_000,
+    retryState: "scheduled",
+    ...(failureCode === undefined ? {} : { failureCode }),
+  });
+
+  it("names the code by the same rule as the terminal row", () => {
+    // One failure must not be called two ways inside one transcript: a code is
+    // printed in both rows or in neither, and `UNKNOWN` is the one the Host
+    // records for anything it cannot classify.
+    expect(retryWorkCopy(node("TRANSPORT"))).toContain("(обрыв связи)");
+    expect(retryWorkCopy(node("DEMO_CODE"))).toContain("сбой (DEMO_CODE)");
+    expect(retryWorkCopy(node("UNKNOWN"))).toContain("сбой");
+    expect(retryWorkCopy(node("UNKNOWN"))).not.toContain("UNKNOWN");
+    expect(retryWorkCopy(node())).not.toContain("UNKNOWN");
+    // A code that is not printed in the terminal row is not printed here either.
+    expect(turnErrorCopy("UNKNOWN")).not.toContain("UNKNOWN");
   });
 });

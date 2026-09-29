@@ -5,8 +5,21 @@
  * text here derives from the code alone.
  */
 
+/**
+ * Whether a code the Host recorded is worth printing. `UNKNOWN` is what the Host
+ * writes for any failure that is not a provider one, so naming it says nothing
+ * the row does not already say. Every other code is worth the reader's time in
+ * either row it appears in, because it is the handle an operator greps the plugin
+ * log with — and the log line is per chat while the sentence is the same on every
+ * stand, so the code is what ties the two together.
+ */
+function namesCode(code: string | undefined): code is string {
+  return code !== undefined && code !== "UNKNOWN";
+}
+
 /** Short cause label used inside the retry row copy. */
 function failureCause(code: string | undefined): string {
+  if (!namesCode(code)) return "сбой";
   switch (code) {
     case "TRANSPORT":
       return "обрыв связи";
@@ -20,23 +33,14 @@ function failureCause(code: string | undefined): string {
       return "ошибка провайдера";
     case "EMPTY_RESPONSE":
       return "пустой ответ";
-    case undefined:
-      return "сбой";
     default:
       return `сбой (${code})`;
   }
 }
 
-/**
- * The code beside the copy. `UNKNOWN` is what the Host writes for any failure
- * that is not a provider one, so naming it says nothing the row does not already
- * say; every other recorded code is worth the reader's time, because it is the
- * handle an operator greps the plugin log with. That holds for the failures that
- * have their own sentence too: the sentence is the same on every stand, while
- * the log line is per chat, and the code is what ties the two together.
- */
+/** The code beside the copy, or nothing when the code names no diagnostic. */
 function failureCodeSuffix(code: string | undefined): string {
-  return code === undefined || code === "UNKNOWN" ? "" : ` (${code})`;
+  return namesCode(code) ? ` (${code})` : "";
 }
 
 /** Terminal turn-failure row shown after the work group. */
