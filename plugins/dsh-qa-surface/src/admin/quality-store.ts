@@ -228,15 +228,24 @@ const MIGRATIONS: readonly SqliteMigration[] = [
       -- cover the table: the two reads that want nothing but seq — the rank
       -- lookup and MAX(seq) — are answered from the index alone, while the
       -- replay and the sweep want json as well and still reach the row, so they
-      -- get cheaper without becoming flat. Measured on a feedback family planted
-      -- to its twenty thousand row cap — each statement run the way the store
-      -- prepares it, median of 201 timed calls, SQLite 3.51.3 on node v24.15.0,
-      -- JSON parsing left out — the rank lookup went from 7.3 ms to 0.32 ms and
-      -- MAX(seq) from 3.4 ms to 0.03 ms, the replay from 16 ms to 6.9 ms and the
-      -- sweep from 9.3 ms to 8.4 ms. The row count that verifies a legacy import
-      -- is not among those four: it sorts nothing and was already answered from
-      -- the primary key's covering index, so this one only changed which index
-      -- it reads.
+      -- get cheaper without becoming flat. Measured on a feedback family
+      -- planted to its twenty thousand row cap — those four reads, each bound
+      -- the way the store binds it, median of 201 timed calls, SQLite 3.51.3 on
+      -- node v24.15.0, JSON parsing left out — the rank lookup went from
+      -- 7.0 ms to 0.35 ms and MAX(seq) from 2.9 ms to 0.02 ms, the replay from
+      -- 14 ms to 7.6 ms and the sweep from 9.0 ms to 7.9 ms. Take them again by
+      -- timing the same four reads against a family planted to the cap, once
+      -- with quality_rows_kind_seq dropped and once with it. Of those numbers
+      -- the first pair is the one that travels: read from the index alone,
+      -- milliseconds becoming fractions of a millisecond held on a second
+      -- machine too. The shares the replay and the sweep saved moved between
+      -- the runs taken here — the replay by between 45 % and 54 %, the sweep by
+      -- between 4 % and 12 % — so those last two say a direction, not a ratio.
+      -- The counts that check a legacy import are not among those four: neither
+      -- the emptiness test that runs before the import nor the per-family
+      -- arrival check after it sorts anything, and both were already answered
+      -- from a covering index — the primary key's before, this one after — so
+      -- all that changed is which index they read.
       CREATE INDEX IF NOT EXISTS quality_rows_kind_seq
         ON quality_rows (kind, seq);
     `,

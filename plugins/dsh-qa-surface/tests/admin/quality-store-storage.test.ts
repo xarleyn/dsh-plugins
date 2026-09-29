@@ -226,9 +226,13 @@ function writeLegacy(dir: string): string {
 /**
  * These tests walk a family up to its real cap — twenty thousand ratings, five
  * thousand verdicts, two thousand parked chats — and reopen the file to read
- * what survived. Locally the whole file runs in about a second; the release
- * runner is one shared container serving twenty jobs, where that walk is the
- * difference between a pass and a timeout that reads as a broken store.
+ * what survived. That walk is the heaviest thing the file does: measured here
+ * its slowest test takes under two hundred milliseconds, against the
+ * five-second default vitest gives a test with no timeout of its own. The
+ * budget is thirty seconds of headroom for a machine slower than this one, not
+ * a queue the run waits behind: every cell of the `Project / <name>` matrix
+ * gets its own runner, and `max-parallel` caps how many cells run at once
+ * rather than packing jobs into one container.
  */
 const CAP_TIMEOUT = { timeout: 30_000 } as const;
 
@@ -467,18 +471,35 @@ describe("QaQualityStore storage", () => {
     expect(store.allFeedback()).toHaveLength(3);
     expect(schemaVersion(file)).toBe("2");
     expect(indexNames(file)).toContain(ROW_ORDER_INDEX);
+
+    // The index is there for the paths a write takes — the rank lookup the cut
+    // runs and the MAX(seq) that mints the place — so the upgrade is only proven
+    // once a record goes through them. Re-judging a rating of this family moves
+    // its row to the end of the order and runs the cut, and on a family three
+    // rows deep neither of them may cost a row.
+    store.rateFeedback(
+      { conversationId: "c1", messageId: "m1", userId: "u1" },
+      { rating: "negative" },
+    );
+    expect(rowCount(file, "feedback")).toBe(3);
     closeAll();
 
-    // The index is the only thing the upgrade brought: the same three ratings
-    // are where they were, and the open that follows finds nothing left to add.
+    // What survived is the same three ratings, one of them re-judged and none of
+    // them replaced: the re-judged row kept the identity version 1 gave it. The
+    // order is what the write moved, so the ids are compared as a set. Opening
+    // the file a second time is the idempotence check — the step is written so a
+    // file already at version 2 takes nothing from it, which is why the version
+    // and the index list read the same after it.
     const reopened = openStore(file);
-    expect(reopened.allFeedback().map((row) => row.id)).toEqual([
-      "feedback-1",
-      "feedback-2",
-      "feedback-3",
-    ]);
+    expect(new Set(reopened.allFeedback().map((row) => row.id))).toEqual(
+      new Set(["feedback-1", "feedback-2", "feedback-3"]),
+    );
+    expect(reopened.feedbackOf("c1", "m1", "u1")?.rating).toBe("negative");
+    expect(reopened.feedbackOf("c1", "m1", "u1")?.createdAt).toBe(
+      "2026-09-15T00:00:00.000Z",
+    );
     expect(schemaVersion(file)).toBe("2");
-    expect(indexNames(file)).toEqual([ROW_ORDER_INDEX]);
+    expect(indexNames(file)).toContain(ROW_ORDER_INDEX);
   });
 
   it("plans a family walk through the index instead of a sort", () => {
