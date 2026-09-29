@@ -10,8 +10,9 @@
 
 `dsh-plugin-log-ui` — клиентский плагин-настройщик для
 [`@yadsh/dsh-plugin-log`](../../packages/plugin-log/README.md). Добавляет карточку
-**Plugin logging** табом на страницу *Settings → Plugins* и через
-Typert-сервис применяет политику логирования к уже зарегистрированным и новым
+**Plugin logging** на страницу *Plugins* — в конфигурацию собственной строки списка
+плагинов —
+и через Typert-сервис применяет политику логирования к уже зарегистрированным и новым
 консьюмерам `@yadsh/dsh-plugin-log`, а также панель **Plugin logs** —
 page-тип таба правого сайдбара DSH, показывающий записи вживую.
 
@@ -21,6 +22,10 @@ page-тип таба правого сайдбара DSH, показывающи
 - Settings namespace: id записи профиля `dsh-plugin-log-ui`; поле становится
   редактируемым из браузера, только его узел схемы помечен `.volatile()`
   (`ConfigSchema` в `src/config.ts`).
+- Карточка: keyed-слот `plugins.row.config` под ключом
+  `@yadsh/dsh-plugin-log-ui#dsh-plugin-log-ui` — имя пакета и id строки из
+  `cordis.patch.yml`. Id строки остаётся namespace'ом настроек, поэтому
+  перенос места рендера не трогает сохранённые значения.
 - Cordis-сервис: `ctx.pluginLogUi` (`TypertRemoteService`, namespace
   `pluginLogUi`).
 - Тип таба: `kind: plugin-log`, `id: @yadsh/dsh-plugin-log-ui/panel`,

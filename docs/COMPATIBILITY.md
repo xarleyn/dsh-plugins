@@ -53,7 +53,7 @@ instance.
 | `@yadsh/dsh-lightrag` | tools, schemastery |
 | `@yadsh/dsh-model-safety-gate` | Cordis, schemastery, agent, LLM, session, tools |
 | `@yadsh/dsh-openviking-memory` | Cordis, schemastery, agent, LLM, session, tools, settings, MCP client, skill filesystem, gateway, Typert protocol, React |
-| `@yadsh/dsh-plugin-log-ui` | Cordis, schemastery, gateway, client connection/renderer/settings/settings-plugins/slots, settings, Typert protocol, React |
+| `@yadsh/dsh-plugin-log-ui` | Cordis, schemastery, gateway, client connection/plugin-manager/renderer/settings/slots, settings, Typert protocol, React |
 | `@yadsh/dsh-preset-persona-editor` | Cordis, agent presets, system prompt, gateway, client renderer/settings/slots, Typert protocol, React |
 | `@yadsh/dsh-prompt-firewall` | Cordis, gateway, client renderer/settings/slots, settings, system prompt, Typert protocol |
 | `@yadsh/dsh-qa-browser` | Cordis, schemastery, agent, attachment, gateway, api-session-controller, webserver, tools, client renderer/slots, Typert protocol, React, React DOM |

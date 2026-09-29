@@ -3,10 +3,10 @@
 UI for [`@yadsh/dsh-plugin-log`](https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-log),
 in two places:
 
-- a **Plugin logging** card under **Settings → Plugins → Plugin Configuration**
-  that discovers active logger consumers automatically and provides a default
-  logging level, per-plugin level overrides, and `text` or `json` file output,
-  applied live to already-running and newly registered loggers;
+- a **Plugin logging** card on the host **Plugins** page, opened from this
+  plugin's row, that discovers active logger consumers automatically and provides
+  a default logging level, per-plugin level overrides, and `text` or `json` file
+  output, applied live to already-running and newly registered loggers;
 - a **Plugin logs** panel in the host's right Sidebar, streaming the records the
   host is writing right now.
 
@@ -61,14 +61,16 @@ The default format is `text`, producing lines such as:
 2026-08-30T12:34:56.789Z WARN  [dsh-example/worker] example.retry attempt=2
 ```
 
-Settings are stored under the `plugin-log` namespace in the configured DSH
-settings provider.
+Settings are stored under the plugin's own profile entry namespace,
+`dsh-plugin-log-ui`, in the configured DSH settings provider — the same namespace
+the Plugins page reads, so a value saved before the card moved is read back after it.
 
 ## Compatibility
 
 The log panel needs the right Sidebar of DSH `0.1.7-rc.2` or newer: the
-`sidebarRightTabs` service and the `sidebar.right.pane.tab` seat. Both are
-declared in `compatibility.json` as required client features.
+`sidebarRightTabs` service and the `sidebar.right.pane.tab` seat. The settings
+card needs the Plugins page of the same release and its `plugins.row.config`
+seat. All three are declared in `compatibility.json` as required client features.
 
 ## Development
 
