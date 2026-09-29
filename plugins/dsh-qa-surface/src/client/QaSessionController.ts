@@ -1653,8 +1653,8 @@ export class QaSessionController {
         // Attestation both reads and writes the chat on screen: it proves the
         // session the controller holds and stamps this adoption's verdict onto
         // it. Ask the two questions before spending a proof on the wrong chat,
-        // and answer only for the session this call took — the one the wait
-        // below could have been replaced under.
+        // and answer only for the session this call took — not for whichever
+        // one the screen holds by the time the proof comes back.
         if (!this.ownsAdoption(operation, binding.session)) return;
         const step = await this.attestPolicy(report, binding.session);
         // A chat that moved on during the proof is attested by whichever
