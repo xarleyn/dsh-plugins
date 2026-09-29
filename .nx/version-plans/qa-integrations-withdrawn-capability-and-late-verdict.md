@@ -29,12 +29,28 @@ took its place, and the first answer arrives last. That answer used to be
 written to the row by its id, over whatever it found there, so the card kept the
 new account's name while its capabilities became the old token's: a list
 describing rights nobody holds any more. The write is now compare-and-swapped
-against the binding the probe started from — revision, secret reference and
-service profile together — and a verdict that no longer matches is dropped and
-logged as `credential.validation-stale` instead of stored. Wrapping the write in
-a transaction would not have helped: the gap the old answer falls through is the
-await in front of it, so only the generation of the connection decides which
-verdict still belongs to the row.
+against the binding the probe started from — the row itself, its revision, its
+secret reference and its service profile together — and a verdict that no longer
+matches is dropped and logged as `credential.validation-stale` instead of stored.
+Wrapping the write in a transaction would not have helped: the gap the old answer
+falls through is the await in front of it, so only the generation of the
+connection decides which verdict still belongs to the row.
+
+Comparing the revision is not enough on its own, because a disconnect deletes the
+binding and the connection made afterwards numbers its revisions from one again.
+A service binding that holds no personal credential is then indistinguishable from
+the one it replaced on every field but the id — no secret reference, the same
+profile, revision 1 — so the verdict of a probe started before the disconnect
+landed on the healthy connection that followed it and filed an error status and an
+error code that connection had never earned. The row id is part of the generation
+for that reason: an answer may only touch the binding it was produced from. The
+same window was left open on the way back to a personal credential, which reaches
+upstream before it writes: the account reconnecting inside that probe used to leave
+the replaced token's identity and grant on the live row, moving its revision past
+the reconnect's own and recording a mode switch in the trail that the store never
+applied. That write is compare-and-swapped the same way now, and a switch that
+lost its binding answers `IntegrationNotConnected` and logs
+`credential.switch-stale` — nothing is written, so the trail keeps no success.
 
 Two things had to change for that guard to actually catch a reconnect. Every
 reconnect now opens a new binding generation, not only one that changes the
@@ -59,6 +75,9 @@ Both are pinned by tests: a stored grant the provider no longer offers is
 refused without unlocking the secret and is gone from the card that describes
 the connection, an allowance for it is refused while it is away and still does
 not serve when it returns, a validation that lands after the account moved is
-discarded — in either completion order, and after a re-save of the very profile
-the binding already ran under — and a secret reference resolves only for the
-account and provider whose live binding still carries it.
+discarded — in either completion order, after a re-save of the very profile the
+binding already ran under, and after the binding was disconnected and made again
+with that same profile — a credential switch whose probe outlived its binding is
+refused while the live connection keeps what its own reconnect wrote, and a secret
+reference resolves only for the account and provider whose live binding still
+carries it.
