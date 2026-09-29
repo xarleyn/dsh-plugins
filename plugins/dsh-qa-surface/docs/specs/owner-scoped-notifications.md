@@ -580,7 +580,18 @@ notifications.ts` the wiring. `config.notifications`
   it on a live stand is #479; the silence is written into
   `docs/CONFIGURATION.md` as the shipped promise in the meantime, so a
   stand that needs the notice through a gap is a #479 change rather
-  than an undocumented difference from the docs.
+  than an undocumented difference from the docs. The same reading also
+  covers a chat whose row leaves the sidebar and comes back: while the row
+  is away the differ holds no reading for that chat at all, so its run is
+  found rather than watched, and it ends silently too — which is written
+  into `docs/CONFIGURATION.md` beside the link case.
+  What #479 does not need to build again: the invalidation itself —
+  `readSighting` returning `unwatched` for a frame read during a pause, and
+  the dropping of a reading whose chat left the list. Both are covered by
+  the cold-start and reconnect cases under `tests/client/notifications/`.
+  What stays with #479 is the measurement: the frame ordering a live Host
+  really produces between the link returning and the list refreshing, and
+  an integration test for that ordering.
 - §3.5's five booleans are two: `inApp` and `desktop`. A preference is only
   worth storing if a channel exists to honor it, and the shipped dispatcher has
   two — the line in the page and the notice the page hands to the operating
