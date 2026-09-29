@@ -28,9 +28,9 @@ export interface QaBoundProjectionInput {
    */
   readonly queuedMessages: readonly UserMessage[];
   /**
-   * Queued submissions this browser has already seen in {@link queuedMessages}.
-   * The queue listing them is the server's receipt, so their row is a queue row
-   * from that frame on; see {@link projectQueue}.
+   * Queued submissions this binding has already seen in {@link queuedMessages}
+   * — the mask {@link projectQueue} draws with, and empty against a session
+   * library that retires an echo when its queue occurrence arrives.
    */
   readonly admittedSubmissions: ReadonlySet<string>;
   readonly conversationSnapshot: ConversationSnapshot | undefined;
@@ -102,16 +102,35 @@ export function admittedSubmissionIds(
 /**
  * Messages waiting for the agent's next turn, in the order the Host will claim
  * them. An admitted row comes from the Host's Inbox projection; a row still
- * crossing the transport comes from the echo the Host registered for it, which
- * the Host retires the moment its occurrence appears — so one queued send reads
- * as one row at every moment, and the transcript never shows it twice.
+ * crossing the transport comes from the submission echo registered for it, so
+ * one queued send reads as one row at every moment.
  *
- * The retirement is a Host promise this client cannot enforce: an echo that
- * outlives the claim its own queue occurrence proved leaves the listing empty,
- * and reading such an entry as still crossing the transport would park a
- * buttonless «отправляется…» row over a question the feed already answered. A
- * submission once listed by the queue is therefore settled for good, and only a
- * submission the queue has never named is drawn as crossing.
+ * That echo is the browser's own, and its retirement is the session library's
+ * job. `@deepseek-ai/dsh-api-session-controller` — the harness's
+ * `packages/api/session-controller`, pinned at 0.1.7-rc.2 — documents
+ * `SessionSnapshot.pendingSubmissions` as "Local prompt-submission echoes not
+ * yet observed as durable events or queue occurrences" and `beginSubmission`
+ * as "Queued echoes retire on queue acceptance", that retirement being the
+ * `observed` branch of `PendingSubmissionRetirement`. The card measured a row
+ * that survived the claim its own queue occurrence had proved and left the
+ * screen only on a page reload — under that declaration, an echo outliving the
+ * occurrence that should have retired it: the strip then drew the survivor as a
+ * buttonless «отправляется…» row over a question the transcript had answered.
+ *
+ * So while that contract goes unmet, a submission the Inbox has once listed is
+ * treated as settled and never drawn as crossing. The follow-up belongs to the
+ * retirement named above, not to this package; the mask is a client-side
+ * substitute for it, and carries three limits with it:
+ * - it is terminal, so a message taken out of the queue without being handed
+ * to the turn leaves no row either — the browser cannot tell the two cases;
+ * - it lives for one binding, so re-subscribing a chat whose session object
+ * still registers the echo draws the row again;
+ * - the receipt is dropped by the first frame that stops registering the echo,
+ * which is what a library honouring the contract looks like and also what a
+ * frame carrying no local echoes looks like: such a frame re-draws
+ * «отправляется…» over a message the queue already named.
+ * A release that retires the echo at acceptance leaves this set empty on every
+ * frame, and then the filter is dead code to delete.
  */
 function projectQueue(
   snapshot: QaBoundProjectionInput["sessionSnapshot"],
