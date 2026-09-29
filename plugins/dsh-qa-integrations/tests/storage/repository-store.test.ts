@@ -7,6 +7,7 @@ import { IntegrationRepository } from "../../src/repository.js";
 import type {
   EncryptedSecretRecord,
   IntegrationPrincipal,
+  StoredIntegration,
 } from "../../src/types.js";
 
 const alice: IntegrationPrincipal = { userId: "user-alice" };
@@ -36,6 +37,32 @@ function rig(): {
   const dir = mkdtempSync(path.join(tmpdir(), "qa-integrations-store-"));
   const file = path.join(dir, "qa-integrations.db");
   return { dir, file, repository: new IntegrationRepository(file) };
+}
+
+/** The identity a guarded write compares the live row against. */
+function generationOf(binding: StoredIntegration) {
+  return {
+    bindingId: binding.id,
+    bindingRevision: binding.bindingRevision,
+    secretRef: binding.secretRef,
+    serviceProfileId: binding.serviceProfileId,
+  };
+}
+
+/** File one validation verdict against the generation a probe started from. */
+function verdict(
+  repository: IntegrationRepository,
+  expected: ReturnType<typeof generationOf>,
+  success = false,
+) {
+  return repository.updateValidation(
+    alice,
+    "bitrix24",
+    success,
+    success ? null : "CredentialExpired",
+    undefined,
+    expected,
+  );
 }
 
 /** Read the first column of a query out of the store's own database. */
@@ -143,38 +170,11 @@ describe("IntegrationRepository connections", () => {
     expect(reconnected.secretRef).toBe("secret-1");
 
     // A verdict produced against the generation two reconnects back is refused,
-    // though its secret and profile are still the ones the row carries.
-    expect(
-      repository.updateValidation(
-        alice,
-        "bitrix24",
-        false,
-        "CredentialExpired",
-        undefined,
-        {
-          bindingId: switched.id,
-          bindingRevision: switched.bindingRevision,
-          secretRef: switched.secretRef,
-          serviceProfileId: switched.serviceProfileId,
-        },
-      ),
-    ).toBe(false);
+    // though its secret and profile are still the ones the row carries: the row
+    // is there, it simply belongs to another generation.
+    expect(verdict(repository, generationOf(switched))).toBe("stale");
     expect(repository.find(alice, "bitrix24")?.status).not.toBe("error");
-    expect(
-      repository.updateValidation(
-        alice,
-        "bitrix24",
-        false,
-        "CredentialExpired",
-        undefined,
-        {
-          bindingId: reconnected.id,
-          bindingRevision: reconnected.bindingRevision,
-          secretRef: reconnected.secretRef,
-          serviceProfileId: reconnected.serviceProfileId,
-        },
-      ),
-    ).toBe(true);
+    expect(verdict(repository, generationOf(reconnected))).toBe("applied");
     expect(repository.find(alice, "bitrix24")?.status).toBe("error");
   });
 
@@ -205,34 +205,51 @@ describe("IntegrationRepository connections", () => {
     expect(after.secretRef).toBe(before.secretRef);
     expect(after.serviceProfileId).toBe(before.serviceProfileId);
 
-    expect(
-      repository.updateValidation(
-        alice,
-        "bitrix24",
-        false,
-        "CredentialExpired",
-        undefined,
-        {
-          bindingId: before.id,
-          bindingRevision: before.bindingRevision,
-          secretRef: before.secretRef,
-          serviceProfileId: before.serviceProfileId,
-        },
-      ),
-    ).toBe(false);
+    expect(verdict(repository, generationOf(before))).toBe("stale");
     // The healthy connection is left alone: neither an error status nor an error
     // code it never earned.
     const live = repository.find(alice, "bitrix24")!;
     expect(live.status).toBe("connected");
     expect(live.lastErrorCode).toBeNull();
+    expect(verdict(repository, generationOf(after), true)).toBe("applied");
+  });
+
+  it("separates a verdict with no binding from one that lost its generation", () => {
+    const { repository } = rig();
+    open.push(repository);
+    const binding = repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: null,
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+      credentialSource: "service",
+      serviceProfileId: "acme-readonly",
+    });
+    const generation = generationOf(binding);
+    expect(verdict(repository, generation)).toBe("applied");
+
+    // The account disconnected and nobody took the connection up again, so there
+    // is no row whose generation this verdict could disagree with. Both refusals
+    // reach the caller as one answer, and only the log can tell the person
+    // reading it which of the two races they are chasing.
+    repository.disconnect(alice, "bitrix24");
+    expect(verdict(repository, generation)).toBe("missing");
     expect(
-      repository.updateValidation(alice, "bitrix24", true, null, undefined, {
-        bindingId: after.id,
-        bindingRevision: after.bindingRevision,
-        secretRef: after.secretRef,
-        serviceProfileId: after.serviceProfileId,
+      repository.setCredentialSource({
+        principal: alice,
+        provider: "bitrix24",
+        source: "personal",
+        serviceProfileId: null,
+        capabilities: ["crm.read"],
+        tenantId: "acme.bitrix24.ru",
+        externalUserId: "11",
+        displayName: "Alice",
+        expected: generation,
       }),
-    ).toBe(true);
+    ).toBe("missing");
   });
 
   it("keeps a mode switch from rewriting the binding that replaced its own", () => {
@@ -269,14 +286,9 @@ describe("IntegrationRepository connections", () => {
         tenantId: "acme.bitrix24.ru",
         externalUserId: "service:acme-readonly",
         displayName: "Acme Read-only",
-        expected: {
-          bindingId: personal.id,
-          bindingRevision: personal.bindingRevision,
-          secretRef: personal.secretRef,
-          serviceProfileId: personal.serviceProfileId,
-        },
+        expected: generationOf(personal),
       }),
-    ).toBeUndefined();
+    ).toBe("stale");
     const live = repository.find(alice, "bitrix24")!;
     expect(live.credentialSource).toBe("personal");
     expect(live.secretRef).toBe("secret-2");
@@ -295,14 +307,12 @@ describe("IntegrationRepository connections", () => {
         tenantId: "acme.bitrix24.ru",
         externalUserId: "service:acme-readonly",
         displayName: "Acme Read-only",
-        expected: {
-          bindingId: live.id,
-          bindingRevision: live.bindingRevision,
-          secretRef: live.secretRef,
-          serviceProfileId: live.serviceProfileId,
-        },
-      })?.credentialSource,
-    ).toBe("service");
+        expected: generationOf(live),
+      }),
+    ).toBe("applied");
+    expect(repository.find(alice, "bitrix24")?.credentialSource).toBe(
+      "service",
+    );
   });
 
   it("keeps a secret addressable by the ref its binding named", () => {

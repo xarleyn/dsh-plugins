@@ -296,6 +296,16 @@ export interface IntegrationBindingGeneration {
 }
 
 /**
+ * How a write guarded by a binding generation turned out. `stale` and `missing`
+ * both mean nothing was written, and both are the caller's refusal to make, but
+ * they are two different stories for whoever reads the log afterwards: the
+ * first is a probe that lost the connection to a newer generation of it, the
+ * second is a connection that was disconnected and never made again. Filing
+ * them under one key leaves the reader to work out which race happened.
+ */
+export type IntegrationWriteFate = "applied" | "stale" | "missing";
+
+/**
  * Durable plugin-owned store, as tables. Every lookup starts from principal +
  * provider, which is the pair the unique index covers, so a lookup reads the
  * one row it needs instead of parsing the whole store — including the audit
@@ -579,7 +589,7 @@ export class IntegrationRepository {
    * used to be there, so the write is compare-and-swapped against that row — its
    * id, revision, secret reference and profile, read from the same principal and
    * provider the lookup always starts from — and the answer says whether it
-   * arrived.
+   * arrived, and if not whether the row had moved on or had gone away.
    */
   updateValidation(
     principal: IntegrationPrincipal,
@@ -588,10 +598,10 @@ export class IntegrationRepository {
     errorCode: string | null,
     capabilities: readonly IntegrationCapability[] | undefined,
     expected: IntegrationBindingGeneration,
-  ): boolean {
+  ): IntegrationWriteFate {
     return this.storage.transaction(() => {
       const existing = this.find(principal, provider);
-      if (existing === undefined) return false;
+      if (existing === undefined) return "missing";
       const now = new Date().toISOString();
       const written = this.storage.db
         .prepare(
@@ -619,7 +629,7 @@ export class IntegrationRepository {
           expected.secretRef,
           expected.serviceProfileId,
         );
-      return written.changes > 0;
+      return written.changes > 0 ? "applied" : "stale";
     });
   }
 
@@ -634,9 +644,9 @@ export class IntegrationRepository {
    * under the same revision and credential: a reconnect that happened inside the
    * probe's await would otherwise file the replaced token's identity and grant
    * onto the connection that took its place. The profile is deliberately not part
-   * of the comparison — naming another one is what this call is for. Returns
-   * nothing when there is no binding to switch, and nothing when the binding has
-   * moved, which the caller reports as a switch that did not happen.
+   * of the comparison — naming another one is what this call is for. The answer
+   * is the fate of the write: whoever asked reports a switch that did not happen
+   * either way, and only the log tells a moved binding from a deleted one.
    */
   setCredentialSource(options: {
     principal: IntegrationPrincipal;
@@ -648,10 +658,10 @@ export class IntegrationRepository {
     externalUserId: string;
     displayName: string;
     expected: IntegrationBindingGeneration;
-  }): StoredIntegration | undefined {
+  }): IntegrationWriteFate {
     return this.storage.transaction(() => {
       const existing = this.find(options.principal, options.provider);
-      if (existing === undefined) return undefined;
+      if (existing === undefined) return "missing";
       const now = new Date().toISOString();
       const profileChanged =
         options.serviceProfileId !== existing.serviceProfileId;
@@ -684,8 +694,8 @@ export class IntegrationRepository {
           options.expected.bindingRevision,
           options.expected.secretRef,
         );
-      if (written.changes === 0) return undefined;
-      return this.find(options.principal, options.provider);
+      if (written.changes === 0) return "stale";
+      return "applied";
     });
   }
 
