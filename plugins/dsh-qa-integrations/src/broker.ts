@@ -341,7 +341,7 @@ export class IntegrationBroker {
         });
         return this.summary(principal, providerId);
       }
-      const credential = await this.decrypt(integration);
+      const credential = await this.decrypt(principal, providerId, integration);
       const validation = await this.providers
         .get(providerId)
         .validate({ credential, credentialSource: "personal" });
@@ -683,7 +683,7 @@ export class IntegrationBroker {
     try {
       const credential =
         resolved === undefined
-          ? await this.decrypt(integration)
+          ? await this.decrypt(principal, request.provider, integration)
           : this.buildServiceCredential(request.provider, resolved);
       const boundary =
         resolved === undefined
@@ -1043,14 +1043,24 @@ export class IntegrationBroker {
   }
 
   /**
-   * Unlock the credential of one captured binding. The record is addressed by
-   * the reference that binding carries, never by principal and provider: an
-   * operation that reads the live row spends the credential of whoever holds it
-   * now, while its verdict is filed against the generation it started from, and
-   * those two are only the same object if the reference is the one taken.
+   * Unlock the credential of one captured binding. The lookup starts from the
+   * principal that asked and the provider being reached, as every lookup in the
+   * store does, and the binding's own reference selects the generation of that
+   * connection: an operation that read the live row instead would spend the
+   * credential of whoever holds it now while filing its verdict against the
+   * generation it started from, and those two are only the same object when the
+   * reference is still the one the row carries.
    */
-  private async decrypt(integration: StoredIntegration): Promise<string> {
-    const record = this.repository.secretByRef(integration.secretRef);
+  private async decrypt(
+    principal: IntegrationPrincipal,
+    provider: IntegrationProviderId,
+    integration: StoredIntegration,
+  ): Promise<string> {
+    const record = this.repository.secretByRef(
+      principal,
+      provider,
+      integration.secretRef,
+    );
     if (record === undefined) {
       // The binding named a credential that is no longer stored: it was spent by
       // a reconnect while this read was under way. Refuse it as the missing

@@ -200,15 +200,55 @@ describe("IntegrationRepository connections", () => {
     });
 
     // The live row answers through principal and provider, so a lookup that
-    // starts there follows a reconnect; the reference the binding carried is
-    // the address of the credential it actually spent.
+    // starts there follows a reconnect; the reference the binding carried picks
+    // which credential of that connection is unlocked, and only while the row
+    // still carries it.
     expect(repository.secretFor(alice, "bitrix24")?.id).toBe("secret-new");
     expect(binding.secretRef).toBe("secret-old");
-    // And a reconnect drops the credential it replaced, so the older reference
-    // resolves to nothing rather than to whatever took its place.
-    expect(repository.secretByRef(binding.secretRef)).toBeUndefined();
-    expect(repository.secretByRef("secret-new")?.id).toBe("secret-new");
-    expect(repository.secretByRef(null)).toBeUndefined();
+    expect(
+      repository.secretByRef(alice, "bitrix24", binding.secretRef),
+    ).toBeUndefined();
+    expect(repository.secretByRef(alice, "bitrix24", "secret-new")?.id).toBe(
+      "secret-new",
+    );
+    expect(repository.secretByRef(alice, "bitrix24", null)).toBeUndefined();
+  });
+
+  it("refuses a reference another account or provider carries", () => {
+    const { repository } = rig();
+    open.push(repository);
+    repository.connect({
+      principal: alice,
+      provider: "bitrix24",
+      secret: secret("secret-alice"),
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "11",
+      displayName: "Alice",
+      capabilities: ["crm.read"],
+    });
+    const bob: IntegrationPrincipal = { userId: "user-bob" };
+    repository.connect({
+      principal: bob,
+      provider: "bitrix24",
+      secret: secret("secret-bob"),
+      tenantId: "acme.bitrix24.ru",
+      externalUserId: "12",
+      displayName: "Bob",
+      capabilities: ["crm.read"],
+    });
+
+    // `secret-alice` is a live row of the secrets table, so a read addressed by
+    // the reference alone would unlock it for the account that merely quoted it.
+    expect(repository.secretByRef(bob, "bitrix24", "secret-alice")).toBe(
+      undefined,
+    );
+    expect(repository.secretByRef(alice, "bitrix24", "secret-alice")?.id).toBe(
+      "secret-alice",
+    );
+    // And one account's reference does not reach across to another provider.
+    expect(repository.secretByRef(alice, "jira", "secret-alice")).toBe(
+      undefined,
+    );
   });
 
   it("reads only the rows a lookup asks for", () => {
