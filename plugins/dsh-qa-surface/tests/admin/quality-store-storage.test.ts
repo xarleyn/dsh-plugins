@@ -131,6 +131,44 @@ function createSchema(file: string): void {
   new QaQualityStore(file).close();
 }
 
+/** The index schema version 2 adds. */
+const ROW_ORDER_INDEX = "quality_rows_kind_seq";
+
+/** The indexes the schema declares for the record table. */
+function indexNames(file: string): string[] {
+  return column<string>(
+    file,
+    `SELECT name FROM sqlite_master
+      WHERE type = 'index' AND tbl_name = 'quality_rows'
+        AND name NOT LIKE 'sqlite_autoindex%'`,
+  );
+}
+
+/** The schema version the file records about itself. */
+function schemaVersion(file: string): string | undefined {
+  return column<string>(
+    file,
+    "SELECT value FROM qa_meta WHERE key = 'schema_version'",
+  )[0];
+}
+
+/**
+ * Put a file back where schema version 1 left it: the rows, no index, and the
+ * version number that says so. That is the state a stand upgraded from arrives
+ * in, and no store created from scratch ever holds it.
+ */
+function rewindToSchemaVersion1(file: string): void {
+  const db = new DatabaseSync(file);
+  try {
+    db.exec(`DROP INDEX IF EXISTS ${ROW_ORDER_INDEX}`);
+    db.prepare(
+      "UPDATE qa_meta SET value = '1' WHERE key = 'schema_version'",
+    ).run();
+  } finally {
+    db.close();
+  }
+}
+
 /** A `qa-quality.json` as a pre-0.8.0 release wrote it. */
 function writeLegacy(dir: string): string {
   const file = path.join(dir, "qa-quality.json");
@@ -194,8 +232,8 @@ function writeLegacy(dir: string): string {
  */
 const CAP_TIMEOUT = { timeout: 30_000 } as const;
 
-// A handle left open by a failing expectation keeps `qa-quality.db` locked for
-// the rest of the run, and on Windows its temp directory cannot be removed.
+// A store left open by a failing expectation keeps its connection — and on
+// Windows the file lock that goes with it — held for the rest of the run.
 afterEach(closeAll);
 
 describe("QaQualityStore storage", () => {
@@ -412,65 +450,108 @@ describe("QaQualityStore storage", () => {
     },
   );
 
-  it(
-    "walks a family through its index instead of sorting it",
-    CAP_TIMEOUT,
-    () => {
-      const { file } = rig();
-      createSchema(file);
-      const cap = QA_ROW_CAPS.feedback;
-      // Twenty thousand ratings, the size the feedback cap is defined over, so
-      // the plans below are the ones a store at that size actually pays with.
-      seedFeedback(file, cap);
-      const db = new DatabaseSync(file);
-      let cut: string;
-      let replay: string;
-      let placement: string;
-      let membership: string;
-      try {
-        const planOf = (
-          sql: string,
-          params: readonly (string | number)[],
-        ): string =>
-          db
-            .prepare(`EXPLAIN QUERY PLAN ${sql}`)
-            .all(...params)
-            .map((row) => row.detail as string)
-            .join("\n");
+  it("adds the index to a database that version 1 wrote", () => {
+    const { file } = rig();
+    createSchema(file);
+    seedFeedback(file, 3);
 
-        // The four statements that read a whole family or its end: the cap
-        // reads the row at its rank on every write and a write takes its place
-        // from MAX(seq), while a read of the store replays the family and the
-        // ownership sweep walks it looking for a vanished conversation.
-        cut = planOf(OVERFLOW_CUT_SQL, ["feedback", "feedback", cap - 1]);
-        replay = planOf(FAMILY_REPLAY_SQL, ["feedback"]);
-        placement = planOf(ROW_PLACEMENT_SQL, [
-          "feedback",
-          "c1\u001fm1\u001fu1",
-          "feedback",
-          "{}",
-        ]);
-        membership = planOf(FAMILY_MEMBERSHIP_SQL, ["feedback"]);
-      } finally {
-        db.close();
-      }
+    // Every other test here creates its file from scratch, so the step that
+    // adds the index would only ever run on an empty table. This is the upgrade
+    // a live stand takes instead: a file that arrived at version 1, rows and
+    // all, opened by a build that knows version 2.
+    rewindToSchemaVersion1(file);
+    expect(schemaVersion(file)).toBe("1");
+    expect(indexNames(file)).not.toContain(ROW_ORDER_INDEX);
 
-      for (const plan of [cut, replay, placement, membership]) {
-        expect(plan).toContain("quality_rows_kind_seq");
-        // Sorted instead of walked, the rank lookup and the replay would build
-        // a temp B-tree of that whole family.
-        expect(plan).not.toMatch(/TEMP B-TREE/u);
-      }
+    const store = openStore(file);
+    expect(store.allFeedback()).toHaveLength(3);
+    expect(schemaVersion(file)).toBe("2");
+    expect(indexNames(file)).toContain(ROW_ORDER_INDEX);
+    closeAll();
 
-      // The index answers the two that want nothing but `seq` on its own; the
-      // two that want `json` too still reach the row, so the claim that this
-      // index makes those reads flat is the one the plans do not support.
-      expect(cut).toMatch(/COVERING INDEX quality_rows_kind_seq/u);
-      expect(placement).toMatch(/COVERING INDEX quality_rows_kind_seq/u);
-      expect(replay).not.toMatch(/COVERING INDEX/u);
-      expect(membership).not.toMatch(/COVERING INDEX/u);
-    },
-  );
+    // The index is the only thing the upgrade brought: the same three ratings
+    // are where they were, and the open that follows finds nothing left to add.
+    const reopened = openStore(file);
+    expect(reopened.allFeedback().map((row) => row.id)).toEqual([
+      "feedback-1",
+      "feedback-2",
+      "feedback-3",
+    ]);
+    expect(schemaVersion(file)).toBe("2");
+    expect(indexNames(file)).toEqual([ROW_ORDER_INDEX]);
+  });
+
+  it("plans a family walk through the index instead of a sort", () => {
+    const { file } = rig();
+    createSchema(file);
+    const cap = QA_ROW_CAPS.feedback;
+    // Nothing is seeded: `EXPLAIN QUERY PLAN` is compiled from the statement and
+    // the schema, and the planner only sees how many rows a table holds after
+    // ANALYZE, which this store never runs. Checked against this file empty and
+    // against one planted to the 20 000-row feedback cap: all four plans come
+    // out identical, so the size the cap is defined over would buy this test a
+    // slower run and no stronger claim.
+    const db = new DatabaseSync(file);
+    let cut: string;
+    let replay: string;
+    let placement: string;
+    let membership: string;
+    try {
+      const planOf = (
+        sql: string,
+        params: readonly (string | number)[],
+      ): string =>
+        db
+          .prepare(`EXPLAIN QUERY PLAN ${sql}`)
+          .all(...params)
+          .map((row) => row.detail as string)
+          .join("\n");
+
+      // The four statements the index is for: the cap reads the row at its rank
+      // on every write and a write takes its place from MAX(seq), while a read
+      // of the store replays the family and the ownership sweep walks it looking
+      // for a vanished conversation. Each is bound with the arguments the store
+      // itself passes, so the test follows a change to either side.
+      cut = planOf(OVERFLOW_CUT_SQL, ["feedback", "feedback", cap - 1]);
+      replay = planOf(FAMILY_REPLAY_SQL, ["feedback"]);
+      placement = planOf(ROW_PLACEMENT_SQL, [
+        "feedback",
+        "c1\u001fm1\u001fu1",
+        "feedback",
+        "{}",
+      ]);
+      membership = planOf(FAMILY_MEMBERSHIP_SQL, ["feedback"]);
+    } finally {
+      db.close();
+    }
+
+    // Reaching the family's order is only possible through this index: no other
+    // index of the table holds `seq`. Take it away and the rank lookup and the
+    // replay fall back onto the primary key's index plus a temp B-tree over the
+    // whole family, which is the cost the cap is bounded against.
+    for (const plan of [cut, replay, placement]) {
+      expect(plan).toContain(ROW_ORDER_INDEX);
+    }
+    for (const plan of [cut, replay]) {
+      expect(plan).not.toMatch(/TEMP B-TREE/u);
+    }
+
+    // The index answers the two reads that want nothing but `seq` on its own. No
+    // index holds `json`, so the two that read it cannot come out covering on
+    // any build: the claim that this index leaves them reaching for the row is a
+    // property of the statements, not of the planner's mood.
+    expect(cut).toMatch(/COVERING INDEX quality_rows_kind_seq/u);
+    expect(placement).toMatch(/COVERING INDEX quality_rows_kind_seq/u);
+    expect(replay).not.toMatch(/COVERING INDEX/u);
+
+    // The sweep is claimed no further than that it sorts nothing. Which of the
+    // two same-cost indexes answers a bare `WHERE kind = ?` is a tie the planner
+    // breaks without promising anything, so pinning its choice here would go red
+    // on a build that picks the other one for a reason no SQL here caused; what
+    // the sweep gains is measured, and the comment says so.
+    expect(membership).not.toMatch(/TEMP B-TREE/u);
+    expect(membership).not.toMatch(/COVERING INDEX/u);
+  });
 
   it("imports the pre-SQLite file and renames it aside", () => {
     const { dir, file } = rig();
