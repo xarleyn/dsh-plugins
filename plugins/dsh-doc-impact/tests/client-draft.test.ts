@@ -5,13 +5,20 @@
 import { describe, expect, it } from "vitest";
 import { DEFAULT_REMINDER_TEMPLATE } from "../src/engine/reminder.js";
 import {
+  MODE_OPTIONS,
   SettingsForm,
   type NamespaceForm,
   type NamespaceOp,
   type NamespaceSnapshot,
 } from "../src/client/settings-form.js";
 
-/** A host form over one document, keeping the ops the Save pass commits. */
+/**
+ * A host form over one document, keeping the ops the Save pass commits. The
+ * single-field `set`/`unset` the Host also offers are refused here on purpose:
+ * the card writes field-granular *paths* (`defaults.mode`), and those two take a
+ * flat field name, so a stand that answered them would hide a write that landed
+ * on the wrong member of the namespace.
+ */
 function stubForm(
   writes: NamespaceOp[],
   snapshot: NamespaceSnapshot,
@@ -23,6 +30,12 @@ function stubForm(
     mutate: async (ops: readonly NamespaceOp[]) => {
       writes.push(...ops);
       return landed;
+    },
+    set: async () => {
+      throw new Error("the card writes paths, not flat field names");
+    },
+    unset: async () => {
+      throw new Error("the card writes paths, not flat field names");
     },
   };
 }
@@ -49,6 +62,7 @@ const OVERRIDDEN: NamespaceSnapshot = {
   },
   writable: true,
   revision: 1,
+  mode: "host",
 };
 
 /** A host form that answers every write by throwing, the way a moved-on revision fence does. */
@@ -57,6 +71,12 @@ function rejectingForm(snapshot: NamespaceSnapshot): NamespaceForm {
     getSnapshot: () => snapshot,
     subscribe: () => () => undefined,
     mutate: async () => {
+      throw new Error("revision fence moved on");
+    },
+    set: async () => {
+      throw new Error("revision fence moved on");
+    },
+    unset: async () => {
       throw new Error("revision fence moved on");
     },
   };
@@ -179,6 +199,49 @@ describe("staged settings form", () => {
     // an object where a field promises a scalar stays out of the field's value
     // type instead of being asserted into it.
     expect(form.getSnapshot().fields.mode.value).toBe("remind");
+  });
+
+  it("reads a choice outside its vocabulary as no value", () => {
+    const writes: NamespaceOp[] = [];
+    const form = new SettingsForm(
+      stubForm(writes, {
+        ...OVERRIDDEN,
+        value: { defaults: { mode: "require-attention" } },
+        base: { defaults: { mode: "require-update" } },
+        user: { defaults: { mode: "require-attention" } },
+      }),
+    );
+    // `defaults.mode` is a schema union, and the card repeats it through
+    // `ChoiceSpec.options`. A value outside that union is a string the field
+    // cannot offer, so it reads as no value and the field stands on its
+    // fallback — which is what the select has to show to show anything at all.
+    const mode = form.getSnapshot().fields.mode;
+    expect(MODE_OPTIONS).toContain(mode.value);
+    expect(mode.value).toBe("remind");
+    // The override itself is untouched: presence, not value, is what marks one.
+    expect(mode.overridden).toBe(true);
+    expect(mode.invalid).toBe(false);
+
+    // And a valid member can still be written over it, so the operator is not
+    // stuck looking at a value the card refuses to edit.
+    form.actions().choose("mode", "require-resolution");
+    expect(form.plan().map((entry) => entry.field)).toEqual(["mode"]);
+  });
+
+  it("keeps a vocabulary member the composition layer holds", () => {
+    const writes: NamespaceOp[] = [];
+    const form = new SettingsForm(
+      stubForm(writes, {
+        ...OVERRIDDEN,
+        value: { defaults: { mode: "require-attention" } },
+        base: { defaults: { mode: "require-update" } },
+        user: { defaults: { mode: "require-attention" } },
+      }),
+    );
+    // The same filter reads the base: a member survives, so a reset previews the
+    // layer the write really reveals rather than the schema default.
+    form.actions().resetField("mode");
+    expect(form.getSnapshot().fields.mode.value).toBe("require-update");
   });
 
   it("sends a number the schema refuses, because the card knows only integers", async () => {

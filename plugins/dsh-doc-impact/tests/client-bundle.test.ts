@@ -125,6 +125,18 @@ function fakeForm(initial: FormState) {
       emit();
       return true;
     },
+    /**
+     * The Host's form answers these as well. The card only ever writes
+     * field-granular *paths* through `mutate`, because the namespace document
+     * keeps its nested shape (`defaults.mode`), so a call reaching here means the
+     * card stopped addressing that shape — which is a bug, not a mode of writing.
+     */
+    set: async () => {
+      throw new Error("the card writes paths through mutate");
+    },
+    unset: async () => {
+      throw new Error("the card writes paths through mutate");
+    },
     /** Move the composition layer under the document, the way an entry config edit does. */
     setBase(path: readonly string[], value: unknown) {
       const base = through(state.base, path, value);

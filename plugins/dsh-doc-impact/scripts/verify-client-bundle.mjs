@@ -54,7 +54,7 @@ expectPresent(
   "the form must read the doc-impact settings namespace through the host form",
 );
 expectPresent(
-  'whileServed([SETTINGS_NS],',
+  "whileServed([SETTINGS_NS],",
   "the tab must be claimed only while the Host serves the namespace: the host " +
     "answers get() with a controller for any name, so this is the only reply " +
     "that keeps an unserved namespace off the Plugins page",
