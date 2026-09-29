@@ -24,20 +24,22 @@ prompt to spend; where the origin is granted, the action stands or falls on
 `osEnabled` alone. That is what keeps the line's own cross from being read as a
 refusal of the channel: it clears the stack, and the action returns with the next
 notice instead of taking this stand's only way in away for good. A click that
-asked the browser nothing leaves the mark untouched, so a reader who later revokes
-the permission in the address bar finds the question again rather than a page that
-stopped asking.
+asked the browser nothing leaves the mark untouched.
 
-The branches stay uneven about `osEnabled`, on purpose. Where the browser still
-owes its answer the channel delivers nothing whatever the record says, so the
-record cannot close the offer: after a revoke in the address bar this page's
-question is the only way the channel gets back, and the answer to it is what the
-record keeps — a refusal switches the channel off rather than leaving it claiming
-a delivery the browser will not allow. A write made while the prompt is open is
-merged onto the record this page last wrote, not onto the one the click started
-from, so the answer settles the record instead of rolling it back.
+Both branches stand on the reader's own answer, `!prefs.osEnabled`: where the
+record says the channel is on, there is nothing left for this page to offer, the
+browser having answered or not. The state an address-bar revoke leaves behind is
+the one this rule closes, and it is a pause rather than a dead end: the record
+still says the channel is on, so the next turn that settles while the tab is away
+goes to the desktop as soon as the reader allows the origin again — the missing
+half is the browser's answer, and it is given in the address bar, not on the
+line. A write made while the prompt is open is merged onto the record this page
+last wrote, not onto the one the click started from, so the answer settles the
+record instead of rolling it back.
 
-A signed-in reader is left alone with the settings section: the browser's question
-is still asked where it is unanswered, and the channel itself is not the notice's
-to switch. A denied browser, a page without the notification API and a stand that
-closed the desktop with `notifications.allowOs` get the line and no action.
+A signed-in reader keeps the settings section as the place where the channel is
+decided: while the browser still owes its answer the line asks it, and that answer
+is recorded on the account along with the channel; once the origin has answered
+granted, the line offers no switch and writes nothing on its own. A denied
+browser, a page without the notification API and a stand that closed the desktop
+with `notifications.allowOs` get the line and no action.

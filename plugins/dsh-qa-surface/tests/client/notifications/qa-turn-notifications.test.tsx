@@ -405,10 +405,13 @@ describe("turn completion notices", () => {
     ).toBeTruthy();
   });
 
-  it("asks the browser again once the reader takes a granted permission back", async () => {
-    // Revoking the channel in the address bar returns the browser to `default`.
-    // Because the earlier switch-on never spent a prompt there, the page still
-    // has a question to ask rather than a mark telling it not to ask.
+  it("leaves a permission the reader took back to the address bar", async () => {
+    // The channel was switched on here, then the permission was revoked in the
+    // address bar. The reader's own answer is still on, so this page offers
+    // nothing: what went missing is the browser's answer, and that one is given
+    // in the address bar. Allowing the origin again delivers the next turn
+    // without this page touching the record — which is what makes the state a
+    // pause rather than a dead end.
     FakeNotification.permission = "granted";
     const page = mountPage(hostList([{ id: "mine", running: true }]));
     page.redraw({ list: hostList([{ id: "mine", running: false }]) });
@@ -420,6 +423,7 @@ describe("turn completion notices", () => {
     );
 
     FakeNotification.permission = "default";
+    document.hasFocus = () => false;
     settleSecondChat(
       page,
       hostList([
@@ -427,37 +431,51 @@ describe("turn completion notices", () => {
         { id: "second", running: true },
       ]),
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
-    );
-    await waitFor(() =>
-      expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: true }),
-    );
-    expect(FakeNotification.asked).toBe(1);
+    expect(screen.getByText("Чат second")).toBeTruthy();
+    expect(FakeNotification.raised).toEqual([]);
+    expect(
+      screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    ).toBeNull();
+    expect(FakeNotification.asked).toBe(0);
+
+    // Allowed again in the address bar: the record was never the missing half.
+    FakeNotification.permission = "granted";
+    page.redraw({
+      list: hostList([
+        { id: "mine", running: false },
+        { id: "second", running: false },
+        { id: "third", running: true },
+      ]),
+      chatIds: ["mine", "second", "third"],
+    });
+    page.redraw({
+      list: hostList([
+        { id: "mine", running: false },
+        { id: "second", running: false },
+        { id: "third", running: false },
+      ]),
+      chatIds: ["mine", "second", "third"],
+    });
+    expect(FakeNotification.raised).toEqual(["Чат third"]);
   });
 
-  it("offers the browser's question while the record claims a channel it cannot deliver", async () => {
-    // The state the address bar leaves behind: the reader's own answer is still
-    // on, the browser's is missing. The record cannot close the offer here,
-    // because nothing is delivered with it — and on a stand without accounts
-    // this question is the only way the channel gets back. Answering it with a
-    // refusal moves the record to what the browser will actually do.
+  it("offers no question where the record already says the channel is on", () => {
+    // The same answer of the reader's, reached without any clicking: it closes
+    // the offer in the branch that still owes the browser an answer too. What
+    // this state cannot deliver is the permission, and re-asking for it under a
+    // choice the reader already made is not the line's business.
     FakeNotification.permission = "default";
-    FakeNotification.answer = "denied";
     window.localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify({ osEnabled: true, osOffered: false }),
     );
     const page = mountPage(hostList([{ id: "mine", running: true }]));
     page.redraw({ list: hostList([{ id: "mine", running: false }]) });
-    expect(FakeNotification.raised).toEqual([]);
-    fireEvent.click(
-      screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
-    );
-    await waitFor(() =>
-      expect(storedPrefs()).toEqual({ osEnabled: false, osOffered: true }),
-    );
-    expect(FakeNotification.asked).toBe(1);
+    expect(screen.getByText("Чат mine")).toBeTruthy();
+    expect(
+      screen.queryByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    ).toBeNull();
+    expect(FakeNotification.asked).toBe(0);
   });
 
   it("offers no switch the reader has already thrown", () => {

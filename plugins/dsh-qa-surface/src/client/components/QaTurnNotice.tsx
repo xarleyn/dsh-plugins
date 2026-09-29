@@ -10,10 +10,10 @@ export interface QaTurnNoticeProps {
   /** Take one line out of the stack. */
   readonly onDismiss: (key: string) => void;
   /**
-   * Offer the desktop channel. Omitted when the deployment has closed it, when
-   * the browser has refused it, and when both answers are already in: the
-   * channel is on and this origin has its permission. The line is not a fixture
-   * of the stack, so the offer shows only while one is.
+   * Offer the desktop channel. Omitted where no answer can be collected — the
+   * stand closed the channel, the browser refuses it, the page has no desktop
+   * API — and wherever the reader's own record already says the channel is on.
+   * The line is not a fixture of the stack, so the offer shows only while one is.
    */
   readonly onEnableDesktop?: () => void;
   /**
