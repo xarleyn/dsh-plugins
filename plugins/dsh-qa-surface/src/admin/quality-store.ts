@@ -161,6 +161,26 @@ const CONVERSATION_KINDS: readonly QualityRowKind[] = Object.freeze([
   "queue",
 ]);
 
+// The two statements that order a family by `seq`, named here so the plan test
+// can ask SQLite about the query the store actually prepares: a copy retyped in
+// the test keeps passing after the store's own query has drifted off the index.
+
+/** Give up everything older in rank than the row at the cap, whose position the
+ * caller binds as `QA_ROW_CAPS[kind] - 1`. */
+export const OVERFLOW_CUT_SQL = `
+  DELETE FROM quality_rows
+   WHERE kind = ?
+     AND seq < (
+       SELECT seq FROM quality_rows
+        WHERE kind = ?
+        ORDER BY seq DESC
+        LIMIT 1 OFFSET ?
+     )`;
+
+/** Read a whole family back in the order its records arrived. */
+export const FAMILY_REPLAY_SQL = `
+  SELECT json FROM quality_rows WHERE kind = ? ORDER BY seq`;
+
 const MIGRATIONS: readonly SqliteMigration[] = [
   {
     version: 1,
@@ -733,24 +753,13 @@ export class QaQualityStore {
    */
   private applyCap(kind: QualityRowKind): void {
     this.storage.db
-      .prepare(
-        `DELETE FROM quality_rows
-          WHERE kind = ?
-            AND seq < (
-              SELECT seq FROM quality_rows
-               WHERE kind = ?
-               ORDER BY seq DESC
-               LIMIT 1 OFFSET ?
-            )`,
-      )
+      .prepare(OVERFLOW_CUT_SQL)
       .run(kind, kind, QA_ROW_CAPS[kind] - 1);
   }
 
   private rowsOf(kind: QualityRowKind): readonly unknown[] {
     return asRows<{ json: string }>(
-      this.storage.db
-        .prepare("SELECT json FROM quality_rows WHERE kind = ? ORDER BY seq")
-        .all(kind),
+      this.storage.db.prepare(FAMILY_REPLAY_SQL).all(kind),
     ).map((entry) => JSON.parse(entry.json) as unknown);
   }
 
