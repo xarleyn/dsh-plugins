@@ -99,6 +99,8 @@ interface Harness {
   readonly ctx: Context;
   readonly types: TabType[];
   readonly registrations: Registration[];
+  /** The settings namespaces `apply()` resolved a live form under. */
+  readonly configNamespaces: string[];
   readonly mounted: { readonly count: number };
   readonly disposed: {
     readonly remote: number;
@@ -111,6 +113,7 @@ function harnessOf(): Harness {
   const ctx = new Context();
   const types: TabType[] = [];
   const registrations: Registration[] = [];
+  const configNamespaces: string[] = [];
   const mounted = { count: 0 };
   const disposed = { remote: 0, tabs: 0, slots: 0 };
 
@@ -146,16 +149,19 @@ function harnessOf(): Harness {
   });
   ctx.provide("remote.pluginLogUi", namespace);
   ctx.provide("configForms", {
-    get: () => ({
-      set: () => Promise.resolve(true),
-      subscribe: () => () => undefined,
-      getSnapshot: () => ({
-        status: "unavailable",
-        value: undefined,
-        writable: false,
-        mode: "host",
-      }),
-    }),
+    get: (namespace: string) => {
+      configNamespaces.push(namespace);
+      return {
+        set: () => Promise.resolve(true),
+        subscribe: () => () => undefined,
+        getSnapshot: () => ({
+          status: "unavailable",
+          value: undefined,
+          writable: false,
+          mode: "host",
+        }),
+      };
+    },
   });
   ctx.provide("sidebarRightTabs", {
     register: (definition: TabType) => {
@@ -198,7 +204,7 @@ function harnessOf(): Harness {
     },
   });
 
-  return { ctx, types, registrations, mounted, disposed };
+  return { ctx, types, registrations, configNamespaces, mounted, disposed };
 }
 
 describe("client apply()", () => {
@@ -232,16 +238,21 @@ describe("client apply()", () => {
     expect(typeof body?.props["read"]).toBe("function");
     expect(typeof body?.props["sources"]).toBe("function");
 
-    // The settings card still mounts beside the panel, on the host Plugins page.
+    // The settings card mounts on the host Plugins page, in the keyed seat the
+    // row of this bundle owns.
     const card = harness.registrations.find(
       (registration) =>
-        registration.name === "settings.plugins.tab" &&
-        registration.id !== undefined,
+        registration.name === "plugins.row.config" &&
+        registration.key !== undefined,
     );
-    expect(card?.id).toBe("plugin-log");
-    // The tab seat hands a registrant no props of its own, so the live form the
-    // card edits has to arrive through the injected face.
-    expect(typeof card?.props["form"]).toBe("object");
+    expect(card?.key).toBe("@yadsh/dsh-plugin-log-ui#dsh-plugin-log-ui");
+    // The row id in that key is also the namespace the live form is resolved
+    // under, which is what keeps a value saved before the move readable after it.
+    expect(harness.configNamespaces).toEqual(["dsh-plugin-log-ui"]);
+    // The seat hands the page's own `ConfigPageForm`, which can neither be
+    // subscribed to nor written field by field, so the card's form arrives
+    // through the injected face, under a name the owner prop cannot shadow.
+    expect(typeof card?.props["settingsForm"]).toBe("object");
     expect(typeof card?.props["inspect"]).toBe("function");
 
     await dispose();

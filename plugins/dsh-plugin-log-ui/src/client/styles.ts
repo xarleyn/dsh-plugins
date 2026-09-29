@@ -1,8 +1,8 @@
 import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
 
 export const styles = `${PLUGIN_CARD_SHELL_CSS}
-/* The tab pane supplies no list, so the shell's li is mounted inside this ul, as AGENTS.md requires. */
-.plu-tab{list-style:none;margin:0;padding:0}
+/* The Plugins page section the card renders in supplies no list, so the shell's li is mounted inside this ul, as AGENTS.md requires. */
+.plu-card-list{list-style:none;margin:0;padding:0}
 .plu-body{padding-top:16px;display:flex;flex-direction:column;gap:18px}
 .plu-section{display:flex;flex-direction:column;gap:10px}.plu-section h3{margin:0;font-size:13px;color:var(--dsw-alias-label-primary)}
 .plu-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.plu-field{display:flex;flex-direction:column;gap:6px}.plu-field>span{font-size:12px;font-weight:500;color:var(--dsw-alias-label-secondary)}

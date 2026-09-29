@@ -30,17 +30,27 @@ await runVerifyPackage({
   },
   client: {
     platform: "web",
-    // The panel lives in the right Sidebar, so that package is an activation
-    // dependency of the client half and must be requested from the host.
-    injectIncludes: ["@deepseek-ai/dsh-client-ui-sidebar-right"],
+    // The panel lives in the right Sidebar and the card sits on the Plugins page,
+    // so both packages are activation dependencies of the client half and must be
+    // requested from the host.
+    injectIncludes: [
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
+      "@deepseek-ai/dsh-client-ui-sidebar-right",
+    ],
   },
   compatibility: {
-    clientFeatures: ["sidebar.right.pane.tab", "sidebarRightTabs"],
+    clientFeatures: [
+      "plugins.row.config",
+      "sidebar.right.pane.tab",
+      "sidebarRightTabs",
+    ],
   },
   clientBundle: {
     moduleLoaderId: true,
     includes: [
-      "settings.plugins.tab",
+      "plugins.row.config",
+      // The keyed seat this card occupies: `<package name>#<row id>`.
+      "@yadsh/dsh-plugin-log-ui#",
       "configForms.get(SETTINGS_ENTRY_ID)",
       "pluginLogUi",
       "remote.pluginLogUi",
@@ -70,11 +80,16 @@ await runVerifyPackage({
     assert.equal(name, "plugin-log-ui");
     assert.equal(PluginLogUi.name, "PluginLogUi");
     assert.equal(resolveConfig().format, "text");
-    assert.equal(
-      manifest.peerDependencies["@deepseek-ai/dsh-client-ui-sidebar-right"],
-      "catalog:dsh",
-      "the right Sidebar package must be a peer dependency",
-    );
+    for (const dependency of [
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
+      "@deepseek-ai/dsh-client-ui-sidebar-right",
+    ]) {
+      assert.equal(
+        manifest.peerDependencies[dependency],
+        "catalog:dsh",
+        `${dependency} must be a peer dependency of the client half`,
+      );
+    }
 
     /*
      * Right-Sidebar panel contract.
