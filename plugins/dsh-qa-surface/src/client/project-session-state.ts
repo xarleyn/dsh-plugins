@@ -27,6 +27,12 @@ export interface QaBoundProjectionInput {
    * empty list, which is what a session with no queued work shows anyway.
    */
   readonly queuedMessages: readonly UserMessage[];
+  /**
+   * Queued submissions this browser has already seen in {@link queuedMessages}.
+   * The queue listing them is the server's receipt, so their row is a queue row
+   * from that frame on; see {@link projectQueue}.
+   */
+  readonly admittedSubmissions: ReadonlySet<string>;
   readonly conversationSnapshot: ConversationSnapshot | undefined;
   /** Turn bundles with the Host provenance already merged in (Host wins). */
   readonly sourceBundles: readonly QaTurnSources[];
@@ -78,26 +84,47 @@ function queuePreview(text: string): string {
 }
 
 /**
- * Messages waiting for the agent's next turn, in the order the Host will claim
- * them. An admitted row comes from the Host's Inbox projection; a row still
- * crossing the transport comes from the echo the Host registered for it, which
- * the Host retires the moment its occurrence appears — so one queued send reads
- * as one row at every moment, and the transcript never shows it twice.
+ * The submission echoes the Host's queue carries, keyed by request id. A queued
+ * message lists the echo it answers for, which is what keeps one send from
+ * reading as two rows while it is both in transport and admitted.
  */
-function projectQueue(
-  snapshot: QaBoundProjectionInput["sessionSnapshot"],
-  queued: QaBoundProjectionInput["queuedMessages"],
-): readonly QaQueueRow[] {
-  const echoed = new Set(
+export function admittedSubmissionIds(
+  queued: readonly UserMessage[],
+): Set<string> {
+  return new Set(
     queued.flatMap((message) => {
       const rpcId = (message.source as { readonly rpcId?: unknown }).rpcId;
       return rpcId === undefined ? [] : [String(rpcId)];
     }),
   );
+}
+
+/**
+ * Messages waiting for the agent's next turn, in the order the Host will claim
+ * them. An admitted row comes from the Host's Inbox projection; a row still
+ * crossing the transport comes from the echo the Host registered for it, which
+ * the Host retires the moment its occurrence appears — so one queued send reads
+ * as one row at every moment, and the transcript never shows it twice.
+ *
+ * The retirement is a Host promise this client cannot enforce: an echo that
+ * outlives the claim its own queue occurrence proved leaves the listing empty,
+ * and reading such an entry as still crossing the transport would park a
+ * buttonless «отправляется…» row over a question the feed already answered. A
+ * submission once listed by the queue is therefore settled for good, and only a
+ * submission the queue has never named is drawn as crossing.
+ */
+function projectQueue(
+  snapshot: QaBoundProjectionInput["sessionSnapshot"],
+  queued: QaBoundProjectionInput["queuedMessages"],
+  admitted: QaBoundProjectionInput["admittedSubmissions"],
+): readonly QaQueueRow[] {
+  const echoed = admittedSubmissionIds(queued);
   const sending = snapshot.pendingSubmissions
     .filter(
       (item) =>
-        item.placement === "queued" && !echoed.has(String(item.requestId)),
+        item.placement === "queued" &&
+        !echoed.has(String(item.requestId)) &&
+        !admitted.has(String(item.requestId)),
     )
     .map((item) => ({
       id: String(item.requestId),
@@ -227,7 +254,11 @@ export function projectBoundSessionState(
       snapshot.running &&
       config.ui.showStop &&
       input.compatibilityReadOnly !== true,
-    queue: projectQueue(snapshot, input.queuedMessages),
+    queue: projectQueue(
+      snapshot,
+      input.queuedMessages,
+      input.admittedSubmissions,
+    ),
     canEditQueue: canOperate,
     chatsRevision: input.chatsRevision,
     sources:

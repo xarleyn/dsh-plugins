@@ -182,6 +182,59 @@ describe("QA message queue", () => {
     controller.dispose();
   });
 
+  it("keeps a message the turn has taken out of the strip", async () => {
+    const world = await ready();
+    const { controller } = world;
+    const queued = (requestId: string, text: string) => ({
+      requestId,
+      placement: "queued",
+      time: 1,
+      text,
+      attachments: [],
+    });
+    setInbox(world, [
+      queuedMessage(
+        "message-1",
+        [{ type: "text", text: "второй вопрос" }],
+        "request-1",
+      ),
+    ]);
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "message-1",
+        preview: "второй вопрос",
+        text: "второй вопрос",
+        attachments: 0,
+        sending: false,
+      },
+    ]);
+    // The turn ends and claims the queue: the Inbox goes empty, and the Host
+    // leaves the echo of the message it admitted registered. Another question
+    // is on its way, so the strip must keep exactly that one — a row the server
+    // already answered for must not come back as a question still crossing the
+    // transport, and one that never reached the queue must not be swallowed.
+    setInbox(world, []);
+    setSnapshot(world, {
+      pendingSubmissions: [
+        queued("request-1", "второй вопрос"),
+        queued("request-2", "третий вопрос"),
+      ],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "request-2",
+        preview: "третий вопрос",
+        text: "третий вопрос",
+        attachments: 0,
+        sending: true,
+      },
+    ]);
+    controller.dispose();
+  });
+
   it("sends an edit, a send-now and a removal to the Host queue", async () => {
     const world = await ready();
     const { controller } = world;
