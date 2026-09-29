@@ -136,10 +136,20 @@ export interface IntegrationSummary {
   readonly externalAccountName: string | null;
   readonly credentialConfigured: boolean;
   readonly credentialUpdatedAt: string | null;
+  /**
+   * What the connection may use as it stands: the stored grant, minus anything
+   * this deployment has since withdrawn from the provider. {@link policy} is
+   * built from this list, so a capability missing here is one a call would
+   * refuse. A withdrawn capability keeps its row on the card, because that list
+   * is drawn from {@link capabilityInfo} — the provider's catalog, not this
+   * grant — but the row is rendered unavailable and carries no switch.
+   */
   readonly capabilities: readonly IntegrationCapability[];
   /**
    * Labels and hints for every capability the provider declares, so a client
-   * can render a provider it has never heard of.
+   * can render a provider it has never heard of. This is the catalog, not the
+   * grant: whether a row is offered as usable is decided by
+   * {@link capabilities}.
    */
   readonly capabilityInfo: Readonly<
     Record<IntegrationCapability, IntegrationCapabilityInfo>
@@ -203,8 +213,12 @@ export interface StoredIntegration {
   /** Managed profile this binding resolves to, when it runs in service mode. */
   readonly serviceProfileId: string | null;
   /**
-   * Incremented on every credential-mode switch. Cache keys, cursors and pending
-   * actions are bound to it, so switching modes invalidates them all at once.
+   * Incremented on every reconnect and on every credential-mode switch. Cache
+   * keys, cursors, pending actions and validation verdicts are bound to it, so
+   * either move invalidates everything derived from the previous identity —
+   * including a re-save of the profile the binding already ran under. It counts
+   * from one again on a binding made after a disconnect, which is why a write-back
+   * compares the row it names as well (`IntegrationBindingGeneration`).
    */
   readonly bindingRevision: number;
   /** What this binding narrows the profile's allowlist to, if anything. */

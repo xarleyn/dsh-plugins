@@ -18,11 +18,20 @@ import type {
   OperationSecurityMetadata,
   ServiceCredentialHealth,
 } from "../../src/service-credentials/types.js";
-export function fakeLogger(): PluginLogger {
+import type {
+  EncryptedSecretRecord,
+  IntegrationPrincipal,
+  IntegrationProviderId,
+  ProviderValidation,
+} from "../../src/types.js";
+/** A logger that keeps the warnings a suite wants to read back. */
+export function fakeLogger(warns: string[] = []): PluginLogger {
   const logger = {
     debug: () => undefined,
     info: () => undefined,
-    warn: () => undefined,
+    warn: (event: string) => {
+      warns.push(event);
+    },
     error: () => undefined,
     child: () => logger,
     close: async () => undefined,
@@ -188,7 +197,110 @@ export function fakeProvider(options: {
 
 /* ------------------------------------------------------------------ */
 
+/**
+ * A credential probe a test decides when to finish. The probe still reaches
+ * "upstream" and computes its answer — only the delivery of that answer is
+ * parked — which is what makes the guard around a late write observable: the
+ * verdict is the one the old credential produced, and it arrives after the
+ * connection it was produced from has been replaced.
+ */
+export interface ProbeGate {
+  /** The provider to register: `base` with a parkable credential probe. */
+  readonly provider: IntegrationProvider;
+  /** Resolves once a probe has been parked. */
+  readonly entered: Promise<void>;
+  /** Park the next probe, together with the answer it produced. */
+  hold(): void;
+  /** Stop parking, so a later call — the reconnect — runs straight through. */
+  resume(): void;
+  /** Hand the parked answer over. */
+  release(): void;
+}
+
+export function gatedProbe(base: IntegrationProvider): ProbeGate {
+  let holding = false;
+  let markEntered: () => void = () => undefined;
+  const entered = new Promise<void>((resolve) => {
+    markEntered = resolve;
+  });
+  let deliver: () => void = () => undefined;
+  return {
+    provider: {
+      ...base,
+      validate: async (context) => {
+        const answer = await base.validate(context);
+        if (!holding) return answer;
+        const parked = new Promise<ProviderValidation>((resolve) => {
+          deliver = () => resolve(answer);
+        });
+        markEntered();
+        return await parked;
+      },
+    },
+    entered,
+    hold: () => {
+      holding = true;
+    },
+    resume: () => {
+      holding = false;
+    },
+    release: () => {
+      deliver();
+    },
+  };
+}
+
+/* ------------------------------------------------------------------ */
+
 export const repositories: IntegrationRepository[] = [];
+
+/**
+ * A store that records which credential each unlock was asked for: an operation
+ * has to spend the secret its own binding names, and only the record identity
+ * tells that apart from whatever the row happened to point at when it read.
+ */
+export class RecordingSecretStore extends SecretStore {
+  public readonly unlocked: string[] = [];
+
+  override async decrypt(record: EncryptedSecretRecord): Promise<string> {
+    this.unlocked.push(record.id);
+    return await super.decrypt(record);
+  }
+}
+
+/**
+ * A store that counts its own decrypt calls: a policy refusal has to land before
+ * the credential is unlocked, and only a counter can tell that apart from a
+ * refusal that unlocked the secret first and then changed its mind.
+ */
+export class CountingSecretStore extends SecretStore {
+  public decryptCount = 0;
+
+  override async decrypt(record: EncryptedSecretRecord): Promise<string> {
+    this.decryptCount += 1;
+    return await super.decrypt(record);
+  }
+}
+
+/**
+ * A store that loses the credential a binding names. This is what a reconnect
+ * leaves behind for a read that started before it: the binding still points at a
+ * secret that no longer exists. Nothing in the broker's own flow can be
+ * interleaved between the capture and the unlock, so the state comes from here.
+ */
+export class VanishingSecretRepository extends IntegrationRepository {
+  public secretGone = false;
+
+  override secretByRef(
+    principal: IntegrationPrincipal,
+    provider: IntegrationProviderId,
+    secretRef: string | null,
+  ): EncryptedSecretRecord | undefined {
+    return this.secretGone
+      ? undefined
+      : super.secretByRef(principal, provider, secretRef);
+  }
+}
 
 /**
  * One master key for every store this suite builds: two harnesses have to be
