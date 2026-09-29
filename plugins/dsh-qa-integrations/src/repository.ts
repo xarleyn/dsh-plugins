@@ -386,17 +386,29 @@ export class IntegrationRepository {
   }
 
   /**
-   * The secret one binding named, whether or not the row still points at it.
-   * A probe has to unlock the credential of the binding it started from: looked
-   * up through principal and provider instead, it spends whatever took that
-   * binding's place and its answer is then a verdict about a connection the
+   * The secret one binding's reference names, for the account that asked for it.
+   * Like every other lookup in this store it starts from principal + provider —
+   * a bare reference would be a way to unlock any account's credential from
+   * anywhere the id is readable — and the reference then picks which generation
+   * of that connection is being unlocked: it is honored only while the live row
+   * still carries it. A probe asked for the credential of the binding it started
+   * from, so looked up by principal and provider alone it would spend whatever
+   * took that binding's place and file a verdict about a connection the
    * generation guard has no reason to accept.
    */
-  secretByRef(secretRef: string | null): EncryptedSecretRecord | undefined {
+  secretByRef(
+    principal: IntegrationPrincipal,
+    provider: IntegrationProviderId,
+    secretRef: string | null,
+  ): EncryptedSecretRecord | undefined {
     if (secretRef === null) return undefined;
     const row = this.storage.db
-      .prepare("SELECT * FROM integration_secrets WHERE id = ?")
-      .get(secretRef) as SecretRow | undefined;
+      .prepare(
+        `SELECT s.* FROM integration_secrets s
+           JOIN integrations i ON i.secret_ref = s.id
+          WHERE i.owner_user_id = ? AND i.provider = ? AND s.id = ?`,
+      )
+      .get(principal.userId, provider, secretRef) as SecretRow | undefined;
     return row === undefined ? undefined : toSecret(row);
   }
 

@@ -13,6 +13,8 @@ import { DEFAULT_SERVICE_RATE_LIMIT } from "../../src/service-credentials/config
 import type {
   EncryptedSecretRecord,
   IntegrationCapability,
+  IntegrationPrincipal,
+  IntegrationProviderId,
   ProviderValidation,
 } from "../../src/types.js";
 
@@ -169,9 +171,13 @@ class VanishingSecretRepository extends IntegrationRepository {
   public secretGone = false;
 
   override secretByRef(
+    principal: IntegrationPrincipal,
+    provider: IntegrationProviderId,
     secretRef: string | null,
   ): EncryptedSecretRecord | undefined {
-    return this.secretGone ? undefined : super.secretByRef(secretRef);
+    return this.secretGone
+      ? undefined
+      : super.secretByRef(principal, provider, secretRef);
   }
 }
 
@@ -668,9 +674,15 @@ describe("IntegrationBroker user isolation", () => {
     });
     const second = repository.find(principal, "acme")!;
     expect(second.secretRef).not.toBe(first.secretRef);
-    // The replaced credential is gone from the store, so an operation bound to
-    // it could not spend it even if it wanted to.
-    expect(repository.secretByRef(first.secretRef)).toBeUndefined();
+    // The reference only counts while the live row carries it, so the generation
+    // this read started from reaches nothing — neither the credential it replaced
+    // nor the one that took its place.
+    expect(repository.secretByRef(principal, "acme", first.secretRef)).toBe(
+      undefined,
+    );
+    expect(
+      repository.secretByRef(principal, "acme", second.secretRef)?.id,
+    ).toBe(second.secretRef);
 
     await broker.call(principal, {
       provider: "acme",
