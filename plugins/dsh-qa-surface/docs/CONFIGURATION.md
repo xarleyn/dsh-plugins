@@ -557,14 +557,26 @@ in this browser decides nothing about who signs in today. On a stand without
 accounts there is no account to write to, so the desktop choice stays in the
 browser that made it.
 
-The notice offers its action while either answer is still open, and the action is
-asked for from a click — never on load, never once per turn. A browser that has
-already granted is asked nothing, and only the reader's own choice is open; a
-browser whose permission the reader took back in the address bar is asked again,
-because with no grant the channel delivers nothing whatever the record says, and
-this page is where the channel is switched on. A denial, or a browser that offers
-no such API (which includes a stand served over plain HTTP), leaves the in-page
-line standing.
+The notice offers its action while one of the two answers is still open, and the
+action is asked for from a click — never on load, never once per turn. The
+reader's answer is read from the same record that decides delivery: the account
+once there is one, this browser otherwise. A browser that has already granted is
+asked nothing, and where the reader's answer already says the channel is on, the
+line offers nothing either — a control that turns the channel on must not be the
+way to turn it off. The state an address-bar revoke leaves behind is therefore a
+pause, not a dead end: the record still says on, the missing half is the browser's
+answer, and it is handed back in the address bar, after which the next turn that
+settles while the tab is away goes to the desktop without any clicking on the
+line. A signed-in reader has that half asked for in the settings dialog too,
+which offers its own button while the browser still owes its answer.
+
+The cross beside a line is an answer to the pending browser prompt, because one
+page never asks the same question twice: waving a line off before the prompt was
+answered moves the way in to the browser's own settings. Where the origin is
+already granted the cross clears the stack and nothing else, and the action comes
+back with the next line — on a stand without accounts, that action is the only
+switch the channel has. A denial, or a browser that offers no such API (which
+includes a stand served over plain HTTP), leaves the in-page line standing.
 
 ## Configuration channel over the LAN
 

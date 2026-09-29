@@ -6,10 +6,13 @@ export interface QaNotificationPrefs {
   /** Raise a desktop notice for a finished turn while this page is in the background. */
   readonly osEnabled: boolean;
   /**
-   * This browser's one permission prompt has been spent — answered or waved off
-   * while it was pending — and the page does not ask it a second time. Says
-   * nothing about the channel: with the prompt already granted elsewhere the
-   * choice of the channel is {@link osEnabled} alone.
+   * This page has stopped asking this browser for the desktop channel: the one
+   * question it may ask has been answered, or was waved off while it was still
+   * open. Nothing here claims the prompt ever reached the screen — a line waved
+   * off before the reader saw the question closes it just as well, and from
+   * there the answer is given in the browser's own settings. Says nothing about
+   * the channel either: where the origin is already granted, {@link osEnabled}
+   * is the reader's answer alone.
    */
   readonly osOffered: boolean;
 }

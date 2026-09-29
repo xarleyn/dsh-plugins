@@ -151,26 +151,31 @@ export function useQaTurnNotifications(
 
   // The browser's answer about this origin and the reader's answer about the
   // channel are separate questions, and the switch is for whichever is still
-  // open. An unanswered browser is asked by the click, and `osOffered` marks its
-  // one prompt as spent. A granted browser has no prompt left to spend, and its
-  // answer says nothing about the channel: the reader's own answer is
-  // `osEnabled`, and anonymously this page is the whole record of that channel —
-  // without the action a reader who allowed the prompt elsewhere has no way in.
-  // A signed-in reader has the settings section for that instead.
+  // open. An unanswered browser is asked by the click, and `osOffered` marks that
+  // this page has stopped asking it. A granted browser has no question left to
+  // ask, and its answer says nothing about the channel: the reader's own answer is
+  // the record the click would have to change, and anonymously this page holds all
+  // of it — without the action, a reader who allowed the prompt in another tab has
+  // no way in.
   //
-  // Both branches then stand on the same reader's answer: `!prefs.osEnabled`.
-  // Where the record says the channel is on there is nothing for this page to
-  // offer, whatever the browser's answer is. A permission taken back in the
-  // address bar is the reader's own doing and is put back there — the record
-  // still says on, so delivery resumes the moment the origin is allowed again.
+  // Both branches then stand on the reader's answer, and both read it from
+  // `channels.desktop`: the account's once there is one, this browser's
+  // otherwise — the same record delivery is decided by. Where it says the channel
+  // is on this page has nothing to offer, the browser having answered or not, and
+  // that is what keeps an action labelled «включить» from writing `false` over a
+  // channel the reader already switched on. A permission taken back in the address
+  // bar is the reader's own doing and is put back there: the record still says on,
+  // so delivery resumes the moment the origin is allowed again. A signed-in reader
+  // has the browser asked in the settings section instead, which offers its button
+  // whenever the browser still owes its answer.
   const permission = readNotificationPermission();
   const unansweredBrowser =
-    permission === "default" && !prefs.osOffered && !prefs.osEnabled;
+    permission === "default" && !prefs.osOffered && !channels.desktop;
   const offered =
     notifications.enabled &&
     notifications.allowOs &&
     (unansweredBrowser ||
-      (permission === "granted" && account === undefined && !prefs.osEnabled));
+      (permission === "granted" && account === undefined && !channels.desktop));
 
   // Waving a notice off clears the stack. Where the offer under it is the
   // browser's own unanswered prompt it is also the answer to that prompt: the
@@ -188,17 +193,17 @@ export function useQaTurnNotifications(
 
   // Answering the offer writes the choice where it belongs: on the account once
   // there is one, so it survives into another browser, and in this browser's own
-  // store otherwise. What this browser marks for itself is that its prompt has
-  // been spent, which is a fact about the prompt rather than about the person: a
-  // click that found the origin already granted spends nothing, because there is
-  // nothing there to spend.
+  // store otherwise. What this browser marks for itself is that it stopped
+  // asking, which is a fact about this page's question rather than about the
+  // person: a click that found the origin already granted marks nothing, because
+  // there was no question there to ask.
   const enableDesktop = useCallback(() => {
-    const spendsThePrompt = readNotificationPermission() === "default";
+    const askedTheBrowser = readNotificationPermission() === "default";
     void requestNotificationPermission().then((answer) => {
       const granted = answer === "granted";
       savePrefs((previous) => ({
         osEnabled: granted,
-        osOffered: previous.osOffered || spendsThePrompt,
+        osOffered: previous.osOffered || askedTheBrowser,
       }));
       if (account === undefined) return;
       void account.onSave({
