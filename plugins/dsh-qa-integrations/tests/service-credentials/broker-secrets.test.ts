@@ -24,7 +24,9 @@ import {
   OPERATIONS,
   PROFILE_INPUT,
   fakeLogger,
+  gatedProbe,
   repositories,
+  type ProbeGate,
 } from "./helpers.js";
 /**
  * What the provider's credential probe answers next. The probe's verdict is
@@ -41,11 +43,6 @@ interface Seen {
 function fakeProvider(options: {
   readonly capabilities: readonly string[];
   readonly seen: Seen[];
-  /**
-   * Held open around the credential probe, so a suite can make the answer land
-   * after the binding it was produced from has already been replaced.
-   */
-  readonly gate?: () => Promise<void>;
 }): IntegrationProvider {
   return {
     id: "acme",
@@ -97,7 +94,6 @@ function fakeProvider(options: {
       },
     }),
     validate: async ({ credential }) => {
-      if (options.gate !== undefined) await options.gate();
       if (credential.includes("expired")) {
         throw new IntegrationError(
           "CredentialExpired",
@@ -145,46 +141,7 @@ interface Harness {
   readonly broker: IntegrationBroker;
   readonly registry: ServiceCredentialRegistry;
   readonly seen: Seen[];
-}
-
-/**
- * The gate a probe of `buildHarness` passes through: the suite decides when the
- * credential probe has been entered and when its answer may arrive, which is the
- * only way to make a verdict land after the binding it started from has gone.
- */
-function probeGate(): {
-  readonly gate: () => Promise<void>;
-  readonly entered: Promise<void>;
-  hold: () => void;
-  resume: () => void;
-  finish: () => void;
-} {
-  let holding = false;
-  let markEntered: () => void = () => undefined;
-  const entered = new Promise<void>((resolve) => {
-    markEntered = resolve;
-  });
-  let releaseHold: () => void = () => undefined;
-  const held = new Promise<void>((resolve) => {
-    releaseHold = resolve;
-  });
-  return {
-    gate: async () => {
-      if (!holding) return;
-      markEntered();
-      await held;
-    },
-    entered,
-    hold: () => {
-      holding = true;
-    },
-    resume: () => {
-      holding = false;
-    },
-    finish: () => {
-      releaseHold();
-    },
-  };
+  readonly probe: ProbeGate;
 }
 
 function buildHarness(
@@ -193,12 +150,11 @@ function buildHarness(
   options: {
     readonly secret?: string;
     readonly capabilities?: readonly string[];
-    readonly providerGate?: () => Promise<void>;
   } = {},
 ): Harness {
   const providers = new IntegrationProviderRegistry();
   const seen: Seen[] = [];
-  providers.register(
+  const probe = gatedProbe(
     fakeProvider({
       capabilities: options.capabilities ?? [
         "identity.read",
@@ -207,9 +163,9 @@ function buildHarness(
         "records.write",
       ],
       seen,
-      gate: options.providerGate,
     }),
   );
+  providers.register(probe.provider);
   const repository = new IntegrationRepository(filePath);
   repositories.push(repository);
   const registry = new ServiceCredentialRegistry(
@@ -230,6 +186,7 @@ function buildHarness(
     ),
     registry,
     seen,
+    probe,
   };
 }
 
@@ -286,11 +243,9 @@ describe("managed service credentials: broker", () => {
   });
 
   it("drops a credential switch whose probe lost the binding to a reconnect", async () => {
-    const probe = probeGate();
-    const { broker } = buildHarness(
+    const { broker, probe } = buildHarness(
       path.join(root, "switch-race.db"),
       PROFILE_INPUT(),
-      { providerGate: probe.gate },
     );
     const alice = { userId: "alice" };
     await broker.connect(
@@ -315,7 +270,7 @@ describe("managed service credentials: broker", () => {
       { token: "" },
       { useServiceCredential: true },
     );
-    probe.finish();
+    probe.release();
     await expect(pending).rejects.toMatchObject({
       code: "IntegrationNotConnected",
     });

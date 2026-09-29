@@ -2,7 +2,6 @@ import { randomBytes } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { IntegrationBroker } from "../../src/broker.js";
 import type { IntegrationProvider } from "../../src/providers/contract.js";
 import { IntegrationProviderRegistry } from "../../src/providers/registry.js";
@@ -10,33 +9,21 @@ import { IntegrationRepository } from "../../src/repository.js";
 import { MemoryKeyProvider } from "../../src/secrets/key-provider.js";
 import { SecretStore } from "../../src/secrets/secret-store.js";
 import { DEFAULT_SERVICE_RATE_LIMIT } from "../../src/service-credentials/config.js";
-import type {
-  EncryptedSecretRecord,
-  IntegrationCapability,
-  IntegrationPrincipal,
-  IntegrationProviderId,
-  ProviderValidation,
-} from "../../src/types.js";
+import type { IntegrationCapability } from "../../src/types.js";
+import {
+  CountingSecretStore,
+  RecordingSecretStore,
+  VanishingSecretRepository,
+  fakeLogger,
+  gatedProbe,
+  repositories,
+} from "./helpers.js";
 
 const OPERATION_CAPABILITY: Readonly<Record<string, IntegrationCapability>> = {
   "crm.get": "crm.read",
   "chat.messages": "chat.read",
   "tasks.list": "tasks.read",
 };
-
-function fakeLogger(warns: string[] = []): PluginLogger {
-  const logger = {
-    debug: () => undefined,
-    info: () => undefined,
-    warn: (event: string) => {
-      warns.push(event);
-    },
-    error: () => undefined,
-    child: () => logger,
-    close: async () => undefined,
-  };
-  return logger as unknown as PluginLogger;
-}
 
 /**
  * A made-up provider, so these tests exercise the broker as the generic
@@ -48,13 +35,21 @@ function fakeProvider(options: {
   readonly validated?: () => readonly IntegrationCapability[];
   /** Records every read that actually reached "upstream". */
   readonly executed?: () => void;
+  /**
+   * What the provider's catalog names, which on a real integration is wider
+   * than what the deployment lets it offer: a capability the configuration has
+   * withdrawn stays a row of the card, drawn from here, and only stops being a
+   * grant. Defaults to the offered set, the way a deployment that never
+   * narrowed anything looks.
+   */
+  readonly catalog?: readonly IntegrationCapability[];
 }): IntegrationProvider {
   return {
     id: "acme",
     displayName: "Acme",
     capabilities: options.capabilities,
     capabilityInfo: Object.fromEntries(
-      options.capabilities.map((capability) => [
+      (options.catalog ?? options.capabilities).map((capability) => [
         capability,
         { label: capability, hint: `${capability} hint` },
       ]),
@@ -90,95 +85,6 @@ function fakeProvider(options: {
       };
     },
   };
-}
-
-/**
- * `fakeProvider` whose validation the test decides when to finish, so a verdict
- * can be made to land after the binding it was produced from has gone away.
- */
-function deferrableProvider(options: {
-  readonly capabilities: readonly IntegrationCapability[];
-  readonly validated?: () => readonly IntegrationCapability[];
-}): {
-  provider: IntegrationProvider;
-  defer: boolean;
-  release: ((value: ProviderValidation) => void) | undefined;
-  /** Resolves once a validation has actually been parked. */
-  entered: Promise<void>;
-} {
-  const base = fakeProvider(options);
-  let markEntered: () => void = () => undefined;
-  const entered = new Promise<void>((resolve) => {
-    markEntered = resolve;
-  });
-  const control: {
-    provider: IntegrationProvider;
-    defer: boolean;
-    release: ((value: ProviderValidation) => void) | undefined;
-    entered: Promise<void>;
-  } = { provider: base, defer: false, release: undefined, entered };
-  control.provider = {
-    ...base,
-    validate: (context) =>
-      control.defer
-        ? new Promise<ProviderValidation>((resolve) => {
-            control.release = resolve;
-            markEntered();
-          })
-        : base.validate(context),
-  };
-  return control;
-}
-
-/** Every repository a test built, so the handles are released on cleanup. */
-const repositories: IntegrationRepository[] = [];
-
-/**
- * A store that records which credential each unlock was asked for: an operation
- * has to spend the secret its own binding names, and only the record identity
- * tells that apart from whatever the row happened to point at when it read.
- */
-class RecordingSecretStore extends SecretStore {
-  public readonly unlocked: string[] = [];
-
-  override async decrypt(record: EncryptedSecretRecord): Promise<string> {
-    this.unlocked.push(record.id);
-    return await super.decrypt(record);
-  }
-}
-
-/**
- * A store that counts its own decrypt calls: a policy refusal has to land before
- * the credential is unlocked, and only a counter can tell that apart from a
- * refusal that unlocked the secret first and then changed its mind.
- */
-class CountingSecretStore extends SecretStore {
-  public decryptCount = 0;
-
-  override async decrypt(record: EncryptedSecretRecord): Promise<string> {
-    this.decryptCount += 1;
-    return await super.decrypt(record);
-  }
-}
-
-/**
- * A store that loses the credential a binding names. This is what a reconnect
- * leaves behind for a read that started before it: the binding still points at a
- * secret that no longer exists. Nothing in the broker's own flow can be
- * interleaved between the capture and the unlock, so the state comes from here.
- */
-class VanishingSecretRepository extends IntegrationRepository {
-  public secretGone = false;
-
-  override secretByRef(
-    principal: IntegrationPrincipal,
-    provider: IntegrationProviderId,
-    secretRef: string | null,
-  ): EncryptedSecretRecord | undefined {
-    return this.secretGone
-      ? undefined
-      : super.secretByRef(principal, provider, secretRef);
-  }
 }
 
 function buildBroker(
@@ -407,11 +313,14 @@ describe("IntegrationBroker user isolation", () => {
     ]);
 
     // The operator switches the capability off. The stored grant and its policy
-    // are untouched — that is what a reconnect-free withdrawal leaves behind.
+    // are untouched — that is what a reconnect-free withdrawal leaves behind. The
+    // provider's catalog keeps naming the capability, the way a deployment that
+    // narrows what a provider may offer leaves the catalog itself alone.
     broker.swap(
       registryOf(
         fakeProvider({
           capabilities: [],
+          catalog: ["crm.read"],
           executed: () => {
             executed.push("upstream");
           },
@@ -433,12 +342,16 @@ describe("IntegrationBroker user isolation", () => {
     expect(executed).toEqual(["upstream"]);
     // Denied on the deployment's own withdrawal, ahead of any decryption.
     expect(secrets.decryptCount).toBe(decrypted);
-    // The card reads through the same intersection, so the withdrawn grant
-    // leaves the switches on show at the moment it stops being served — a
-    // listing the next call refuses is its own offer to click it.
+    // The card reads through the same intersection: nothing is granted and no
+    // policy row is offered any more. The catalog row itself stays in the list
+    // the operator reads, because that list is drawn from the provider and not
+    // from this connection — what changes is that it carries no grant, so the
+    // client renders it unavailable instead of offering a switch that only ever
+    // answers a refusal.
     const shown = broker.summary(principal, "acme");
     expect(shown.capabilities).toEqual([]);
     expect(shown.policy).toEqual([]);
+    expect(Object.keys(shown.capabilityInfo)).toEqual(["crm.read"]);
   });
 
   it("keeps a withdrawn capability from collecting a fresh allowance", async () => {
@@ -496,6 +409,47 @@ describe("IntegrationBroker user isolation", () => {
         sourceSessionId: "session-ivan",
       }),
     ).rejects.toMatchObject({ code: "OperationDeniedByPolicy" });
+  });
+
+  it("keeps a policy write from reaching a provider the configuration dropped", async () => {
+    const broker = buildBroker(
+      path.join(root, "dropped-provider.json"),
+      fakeProvider({ capabilities: ["crm.read", "tasks.read"] }),
+    );
+    const principal = { userId: "kate" };
+    await broker.connect(principal, "acme", {
+      token: "https://kate.example/rest/14/kate-token",
+    });
+    broker.patchPolicy(principal, "acme", {
+      operation: "tasks.read",
+      mode: "deny",
+    });
+
+    // The provider has left the configuration; the connection it belongs to is
+    // still stored. Reaching for the provider to decide an allowance is a
+    // request this plugin cannot route, and the answer is the registry's own
+    // refusal — not a row written against a provider nobody can ask anything.
+    broker.swap(registryOf(), undefined, true, DEFAULT_SERVICE_RATE_LIMIT);
+    expect(() =>
+      broker.patchPolicy(principal, "acme", {
+        operation: "tasks.read",
+        mode: "allow",
+      }),
+    ).toThrowError(/provider is unavailable/u);
+
+    // Nothing was stored: the switch stays where its owner left it, so the
+    // provider coming back does not bring a permission with it.
+    broker.swap(
+      registryOf(fakeProvider({ capabilities: ["crm.read", "tasks.read"] })),
+      undefined,
+      true,
+      DEFAULT_SERVICE_RATE_LIMIT,
+    );
+    expect(
+      broker
+        .summary(principal, "acme")
+        .policy.find((entry) => entry.capability === "tasks.read")?.mode,
+    ).toBe("deny");
   });
 
   it("files a credential the read lost to a reconnect as an error, not a refusal", async () => {
@@ -564,13 +518,15 @@ describe("IntegrationBroker user isolation", () => {
   it("drops a validation verdict that lands after the account reconnected", async () => {
     const warns: string[] = [];
     let granted: readonly IntegrationCapability[] = ["crm.read"];
-    const control = deferrableProvider({
-      capabilities: ["crm.read", "chat.read"],
-      validated: () => granted,
-    });
+    const probe = gatedProbe(
+      fakeProvider({
+        capabilities: ["crm.read", "chat.read"],
+        validated: () => granted,
+      }),
+    );
     const broker = buildBroker(
       path.join(root, "late-validation.json"),
-      control.provider,
+      probe.provider,
       warns,
     );
     const principal = { userId: "faith" };
@@ -579,23 +535,19 @@ describe("IntegrationBroker user isolation", () => {
     });
     expect(broker.summary(principal, "acme").externalAccountName).toBe("Alice");
 
-    control.defer = true;
+    probe.hold();
     const pending = broker.validate(principal, "acme");
-    await control.entered;
-    // A second token for the same provider, spent while that probe is open.
-    control.defer = false;
+    await probe.entered;
+    // A second token for the same provider, spent while that probe is open. The
+    // verdict on its way answers for the first credential.
+    probe.resume();
     granted = ["chat.read"];
     await broker.connect(principal, "acme", {
       token: "https://bob.example/rest/7/faith-token-b",
     });
     expect(broker.summary(principal, "acme").externalAccountName).toBe("Bob");
 
-    control.release?.({
-      tenantId: "alice.example",
-      externalUserId: "11",
-      displayName: "Alice",
-      capabilities: ["crm.read"],
-    });
+    probe.release();
     await pending;
 
     const after = broker.summary(principal, "acme");
@@ -604,38 +556,69 @@ describe("IntegrationBroker user isolation", () => {
     expect(warns).toContain("credential.validation-stale");
   });
 
+  it("keeps a verdict of a connection that was closed as its own diagnosis", async () => {
+    const warns: string[] = [];
+    const probe = gatedProbe(fakeProvider({ capabilities: ["crm.read"] }));
+    const broker = buildBroker(
+      path.join(root, "unbound-validation.json"),
+      probe.provider,
+      warns,
+    );
+    const principal = { userId: "zoe" };
+    await broker.connect(principal, "acme", {
+      token: "https://alice.example/rest/13/zoe-token",
+    });
+
+    probe.hold();
+    const pending = broker.validate(principal, "acme");
+    await probe.entered;
+    probe.resume();
+    // The account disconnected and nobody took the connection up again, so there
+    // is no row whose generation this answer could disagree with. A person
+    // reading the log has to be able to tell that race from a verdict that lost
+    // to a newer generation of the same connection.
+    broker.disconnect(principal, "acme");
+    probe.release();
+    await pending;
+
+    expect(warns).toContain("credential.validation-unbound");
+    expect(warns).not.toContain("credential.validation-stale");
+  });
+
   it("stores a validation verdict whose binding is still the live one", async () => {
     const warns: string[] = [];
-    const granted: readonly IntegrationCapability[] = ["crm.read"];
-    const control = deferrableProvider({
-      capabilities: ["crm.read", "chat.read"],
-      validated: () => granted,
-    });
+    let granted: readonly IntegrationCapability[] = ["crm.read"];
+    const probe = gatedProbe(
+      fakeProvider({
+        capabilities: ["crm.read", "chat.read"],
+        validated: () => granted,
+      }),
+    );
     const broker = buildBroker(
       path.join(root, "in-order-validation.json"),
-      control.provider,
+      probe.provider,
       warns,
     );
     const principal = { userId: "gabe" };
     await broker.connect(principal, "acme", {
       token: "https://alice.example/rest/8/gabe-token-a",
     });
+    expect(broker.summary(principal, "acme").capabilities).toEqual([
+      "crm.read",
+    ]);
 
-    control.defer = true;
+    // The scope arrives upstream while nothing else moves the binding, and the
+    // verdict lands on the generation it started from.
+    granted = ["crm.read", "chat.read"];
+    probe.hold();
     const pending = broker.validate(principal, "acme");
-    await control.entered;
-    // The scope arrives upstream while the probe is open, and the verdict lands
-    // before anything else moves the binding.
-    control.release?.({
-      tenantId: "alice.example",
-      externalUserId: "11",
-      displayName: "Alice",
-      capabilities: ["crm.read", "chat.read"],
-    });
+    await probe.entered;
+    probe.release();
     const refreshed = await pending;
 
     expect(refreshed.capabilities).toEqual(["crm.read", "chat.read"]);
     expect(warns).not.toContain("credential.validation-stale");
+    expect(warns).not.toContain("credential.validation-unbound");
   });
 
   it("unlocks the credential the binding it works from names", async () => {

@@ -5,6 +5,7 @@ import type { IntegrationProviderRegistry } from "./providers/registry.js";
 import type {
   IntegrationBindingGeneration,
   IntegrationRepository,
+  IntegrationWriteFate,
 } from "./repository.js";
 import type { SecretStore } from "./secrets/secret-store.js";
 import { DEFAULT_SERVICE_RATE_LIMIT } from "./service-credentials/config.js";
@@ -425,7 +426,7 @@ export class IntegrationBroker {
     errorCode: string | null,
     capabilities?: readonly IntegrationCapability[],
   ): void {
-    const applied = this.repository.updateValidation(
+    const fate = this.repository.updateValidation(
       principal,
       providerId,
       success,
@@ -433,12 +434,20 @@ export class IntegrationBroker {
       capabilities,
       this.bindingGeneration(integration),
     );
-    if (applied) return;
-    this.logger.warn("credential.validation-stale", {
-      provider: providerId,
-      integrationId: integration.id,
-      bindingRevision: integration.bindingRevision,
-    });
+    if (fate === "applied") return;
+    // Two races, two keys: a binding that moved on to another generation and a
+    // binding that was disconnected and never made again read as the same lost
+    // verdict under one key, which is not what the log is for.
+    this.logger.warn(
+      fate === "missing"
+        ? "credential.validation-unbound"
+        : "credential.validation-stale",
+      {
+        provider: providerId,
+        integrationId: integration.id,
+        bindingRevision: integration.bindingRevision,
+      },
+    );
   }
 
   /**
@@ -506,8 +515,8 @@ export class IntegrationBroker {
         displayName: resolved.profile.label,
         expected: this.bindingGeneration(integration),
       });
-      if (switched === undefined) {
-        throw this.refuseStaleSwitch(providerId, integration);
+      if (switched !== "applied") {
+        throw this.refuseStaleSwitch(providerId, integration, switched);
       }
       this.repository.audit({
         ownerUserId: principal.userId,
@@ -525,7 +534,15 @@ export class IntegrationBroker {
       });
       return this.summary(principal, providerId);
     }
-    const secret = this.repository.secretFor(principal, providerId);
+    // Read the credential this binding names, not whatever the live row points
+    // at: the write below is guarded by the generation captured above, and a
+    // probe that spent another generation's token would be answering for a
+    // credential this switch was never asked to install.
+    const secret = this.repository.secretByRef(
+      principal,
+      providerId,
+      integration.secretRef,
+    );
     if (secret === undefined) {
       throw new IntegrationError(
         "PersonalCredentialRequired",
@@ -551,8 +568,8 @@ export class IntegrationBroker {
       displayName: validation.displayName,
       expected: this.bindingGeneration(integration),
     });
-    if (switched === undefined) {
-      throw this.refuseStaleSwitch(providerId, integration);
+    if (switched !== "applied") {
+      throw this.refuseStaleSwitch(providerId, integration, switched);
     }
     this.repository.audit({
       ownerUserId: principal.userId,
@@ -575,17 +592,25 @@ export class IntegrationBroker {
    * request was on its way, so the binding it was asked against is gone and the
    * identity it carries is a token that has already been replaced. Nothing was
    * written, so the answer names the lost generation rather than claiming a
-   * change of mode the store never made.
+   * change of mode the store never made. The log separates the two ways the
+   * guard can refuse — a binding that moved to another generation from a binding
+   * that was disconnected outright — because they are different races to chase.
    */
   private refuseStaleSwitch(
     providerId: IntegrationProviderId,
     integration: StoredIntegration,
+    fate: Exclude<IntegrationWriteFate, "applied">,
   ): IntegrationError {
-    this.logger.warn("credential.switch-stale", {
-      provider: providerId,
-      integrationId: integration.id,
-      bindingRevision: integration.bindingRevision,
-    });
+    this.logger.warn(
+      fate === "missing"
+        ? "credential.switch-unbound"
+        : "credential.switch-stale",
+      {
+        provider: providerId,
+        integrationId: integration.id,
+        bindingRevision: integration.bindingRevision,
+      },
+    );
     return new IntegrationError(
       "IntegrationNotConnected",
       "The connection changed while the credential was being switched",
