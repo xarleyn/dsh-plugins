@@ -31,13 +31,13 @@ await runVerifyPackage({
   exportDefaults: { "./client": "./lib/client.js" },
   client: {
     platform: "web",
-    injectIncludes: ["@deepseek-ai/dsh-client-ui-settings-plugins"],
+    injectIncludes: ["@deepseek-ai/dsh-client-ui-plugin-manager"],
   },
   clientBundle: {
     moduleLoaderId: true,
     includes: [
-      "settings.plugins.tab",
-      "id: SETTINGS_TAB",
+      "plugins.row.config",
+      "@yadsh/dsh-sleev#",
       "dsh-plugin-card__name",
       "m3.5 5.25 3.5 3.5 3.5-3.5",
     ],

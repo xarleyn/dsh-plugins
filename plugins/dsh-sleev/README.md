@@ -42,7 +42,8 @@ The observer never stores prompts, request headers, credentials, or secret value
 
 ## Settings UI
 
-Open **Settings → Plugins → Sleev** to edit:
+Open the **Plugins** panel, choose the Sleev bundle, and press **Configure** on
+its `dsh-sleev` row to edit:
 
 - exact observed provider aliases;
 - observed provider-name prefixes;
