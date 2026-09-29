@@ -3,14 +3,18 @@
  * Boundary coverage for the launch-token pattern of `qa-stand-run` §3.
  *
  * The pattern is the one place the stand skill turns a container log into a
- * credential, and `docs/plans/2026-09-28-skill-candidates.md` records it as
- * re-checked by ad hoc runs in four review rounds in a row (its points 25, 17,
- * 39 and the branch structure of 33) with nothing keeping it pinned afterwards.
- * This suite runs the recipe's own pipeline — lifted out of `SKILL.md`, not
- * copied, so the skill cannot drift away from what is proven here — over the
- * fake log lines §3 names, and asserts what the section promises about each:
- * which joined keys give no capture, where the value stops, and what the
- * greediness of `.*` and `tail -1` yields.
+ * credential, and `docs/plans/2026-09-28-skill-candidates.md` records that part
+ * of §3 as re-checked by ad hoc runs in four separate review rounds of PR #615 —
+ * its points 17, 25, 33 and 39, raised in rounds 5, 7, 8 and 11 — with nothing
+ * keeping it pinned afterwards. This suite runs the recipe's own pipeline —
+ * lifted out of `SKILL.md`, not copied, so the skill cannot drift away from what
+ * is proven here — over the fake log lines §3 names, and asserts what the section
+ * promises about each: which joined keys give no capture, where the value stops,
+ * and what the greediness of `.*` and `tail -1` yields.
+ *
+ * Two of those four rounds were about the `$KIT` guard around this assignment,
+ * not about the assignment, and a guard needs the kit's directory to mean
+ * anything: the cases below cover the capture, not the guard branches.
  *
  * The boot line's real format belongs to the deployment kit and is not
  * checkable from this repository (SKILL.md §0), so no case here feeds a live
