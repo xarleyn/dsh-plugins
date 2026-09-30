@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaSessionController } from "../../src/client/QaSessionController.js";
@@ -624,6 +624,97 @@ describe("QA session controller: an adoption the visitor left behind", () => {
       [{ type: "text", text: "Второй вопрос" }],
       "queue",
     );
+    controller.dispose();
+  });
+
+  it("does not persist as the open chat the one a switch gave up on", async () => {
+    // Opening a chat writes it as the conversation this browser reopens on the
+    // next load. An adoption that stepped back never put its chat on screen, so
+    // writing its id would bring back, on the next load, a chat the visitor was
+    // never shown and never chose — under a draft they were.
+    const world = harness(["other"]);
+    const activeKey = "dsh-qa-surface.session:v1:/qa:session";
+    const late = "binding-late";
+    const listed = world.list.getSnapshot();
+    world.list.set({
+      ...listed,
+      ids: [late as never, ...listed.ids],
+      byId: {
+        ...listed.byId,
+        [late]: {
+          id: late,
+          displayTitle: late,
+          running: false,
+          blank: true,
+          updatedAt: 2,
+        },
+      } as SessionListState["byId"],
+    } as SessionListState);
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        session: { policy: "new-on-load" },
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
+    });
+    await controller.ensureSession();
+
+    // The Host names this chat in its list but has not handed out its binding
+    // yet, so the switch waits for that reference to become ready. This wait is
+    // the one the test leaves behind, so the reference is the switch's own.
+    let showBinding!: () => void;
+    world.retain.mockImplementationOnce((id: unknown) => {
+      const reference = {
+        sessionId: String(id),
+        ready: new Promise((resolve) => {
+          showBinding = () => resolve({});
+        }),
+        release: vi.fn(),
+      };
+      world.references.push(reference);
+      return reference;
+    });
+
+    const switching = controller.switchTo(late);
+    await until(() =>
+      world.retain.mock.calls.some(([id]) => String(id) === late),
+    );
+    // The switch is parked with its reference still held: a binding that arrives
+    // after this point is what the abandonment has to be measured against, not a
+    // lookup that failed while the chat was still on screen.
+    expect(world.references.at(-1)?.release).not.toHaveBeenCalled();
+
+    // The visitor changes their mind and asks for a new chat instead.
+    await controller.startDraft();
+    const draft = controller.getSnapshot();
+
+    // The binding the switch was waiting for arrives, to a screen it no longer
+    // owns.
+    world.faces.set(late, sessionFace(late));
+    world.bindings.set(late, conversationBinding(late));
+    showBinding();
+    await switching;
+
+    // Nothing of the given-up-on chat reached browser storage, and nothing of it
+    // was kept at the Host either.
+    expect(world.stored.has(activeKey)).toBe(false);
+    expect(controller.chatIds()).not.toContain(late);
+    const abandoned = world.references.filter((ref) => ref.sessionId === late);
+    expect(abandoned).toHaveLength(1);
+    expect(abandoned[0]?.release).toHaveBeenCalledOnce();
+    // The draft the visitor asked for is still the chat on screen.
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: null,
+      chatKey: draft.chatKey,
+      canSend: true,
+      error: null,
+    });
+
+    // A switch that does finish is written down — otherwise the assertion above
+    // would only prove that this harness never persists anything.
+    await controller.switchTo("other");
+    expect(world.stored.get(activeKey)).toBe("other");
     controller.dispose();
   });
 });
