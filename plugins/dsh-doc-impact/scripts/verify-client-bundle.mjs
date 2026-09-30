@@ -3,10 +3,14 @@
 // without a browser:
 //   - the ModuleLoader id must stay "@yadsh/dsh-doc-impact" (the served bundle URL
 //     and the plugin inventory both key on the package name);
-//   - the card must claim the `plugins.row.config` seat keyed to this bundle's
-//     row, and that key must join the package name to the profile entry id, which
-//     on this host is also the settings namespace it reads through `ctx.configForms`
-//     (that pairing is what keeps a value saved before the move readable after it);
+//   - the card must claim the `plugins.row.config` seat, keyed from the package name
+//     its own `cordis.patch.yml` declares — the second half of that key, the settings
+//     namespace the form reads through `ctx.configForms`, is a runtime pairing and
+//     belongs to `tests/client-bundle.test.ts`, which derives both halves from the
+//     patch; what is checked here are the values, never the names of the constants
+//     that spell them, so a rename cannot redden this gate on its own;
+//   - the seat it left behind must stay left behind: no `settings.plugins.tab`
+//     registration, which would put a second copy of this card under Settings;
 //   - the bundle must stay pure browser code: react only, no host packages;
 //   - no secrets or telemetry may creep into the settings form.
 import { readFile } from "node:fs/promises";
@@ -16,6 +20,18 @@ const client = await readFile(
   new URL("../lib/client.js", import.meta.url),
   "utf8",
 );
+const patch = await readFile(
+  new URL("../cordis.patch.yml", import.meta.url),
+  "utf8",
+);
+/** The row the Host inventories this bundle under: `<name>#<id>` is the seat key. */
+const patchName = /^\s*name:\s*"?([^"\n]+)"?/mu.exec(patch)?.[1];
+const patchId = /^\s*-?\s*id:\s*"?([\w.-]+)"?/mu.exec(patch)?.[1];
+if (!patchName || !patchId) {
+  throw new Error(
+    "cordis.patch.yml declares no plugin row to key the seat from",
+  );
+}
 
 function expectAbsent(needle, why) {
   if (client.includes(needle)) {
@@ -46,24 +62,20 @@ expectPresent(
   "the card must register as the configuration entry of its own row on the Plugins page",
 );
 expectPresent(
-  "@yadsh/dsh-doc-impact#",
-  "the keyed seat must start from this bundle's package name",
+  `${patchName}#`,
+  "the keyed seat must start from the package name cordis.patch.yml declares",
 );
 expectPresent(
-  "${SETTINGS_NS}",
-  "the keyed seat must end at the settings namespace, which is the row id the patch declares",
+  `"${patchId}"`,
+  "the bundle must carry the row id the patch declares, which is the namespace its form reads",
 );
 expectPresent(
-  "key: ROW_CONFIG_KEY",
-  "the seat must be keyed by that package-and-namespace pair, not by a tab id of its own",
+  "configForms.get(",
+  "the form must be read through the host's settings form service",
 );
-expectPresent(
-  "configForms.get(SETTINGS_NS)",
-  "the form must read the doc-impact settings namespace through the host form",
-);
-expectPresent(
-  'view === "summary"',
-  "the same entry is rendered as the row's one-liner, and that view must not mount the form",
+expectAbsent(
+  '"settings.plugins.tab"',
+  "the card must not keep a tab of the old Settings surface beside its row",
 );
 expectPresent(
   "resetField",

@@ -1409,6 +1409,15 @@ firing and the shell contract becomes unenforced unless the constant is retarget
 `plugins.row.config`, and `settings.plugins.tab` combined with the shell, so enforcement
 held whichever way D1 went. #684 renamed the list to what it decides and added `plugins.bundle.config` as a third name; the tab seat stays the separate `CARD_TAB_SLOT`, which counts only together with `CARD_SHELL_MARKERS`.
 
+**Superseded 30.09 by #657**, which is the wave's first card landed on `plugins.row.config`
+(`dsh-doc-impact`): the keyed seat takes the join §4.2 describes, the namespace stayed put,
+and option 2's other half still holds — the card keeps the `AGENTS.md` shell inside the
+chrome the page draws around the entry, so the two frames nest and §4.3's decision stays
+open rather than settled. The recommendation itself (`AGENTS.md`'s "Plugin configuration card
+UI", `docs/PLUGIN_GUIDELINES.md`, the `create-plugin` skill) is rewritten by #660 once the
+rest of the wave leaves the tab slot; until then this paragraph, not `AGENTS.md`, is where
+a `plugins.row.config` registration is documented.
+
 **D2 — preset authoring (`dsh-preset-persona-editor`) — newly open.** §8.6:
 the copy-to-writable-root capability does not exist at `rc.2`, and neither does
 `modeSelectionEnabled` or `standingKeyFor`. Owner must choose between shipping the

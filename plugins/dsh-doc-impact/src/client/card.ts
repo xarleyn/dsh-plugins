@@ -7,6 +7,7 @@ import {
 } from "@yadsh/dsh-plugin-kit/client";
 import { createElement } from "react";
 import { MODE_OPTIONS, ON_LIMIT_OPTIONS } from "./settings-form.js";
+import { fallbackT } from "./dictionary.js";
 import {
   BoolField,
   ChoiceField,
@@ -46,12 +47,10 @@ const CSS = [
 if (typeof document !== "undefined") injectCardStyles("dsh-doc-impact", CSS);
 
 export function ConfigCard(props: any) {
-  const t = props.t;
-  // The page renders this same entry in two views: the row's `summary` one-liner
-  // where the patch declares no description of its own, and the `page` body. Only
-  // the page may read the settings state — subscribing in the summary would mount
-  // the whole form a second time inside the page's own description line.
-  if (props.view === "summary") return t("cardDescription");
+  // The seat declares its locale namespace and the page hands the entry the
+  // translate function for it; on a profile that provides no such service the
+  // card still speaks the dictionary's own text instead of throwing.
+  const t = typeof props.t === "function" ? props.t : fallbackT;
   const state = props.useDocImpactCard(function (snapshot: any) {
     return snapshot;
   });
@@ -265,6 +264,8 @@ export function ConfigCard(props: any) {
   );
   // The page's configuration section supplies no list of its own, so the shell's
   // `<li>` root sits in a plugin-owned `<ul>` — AGENTS.md keeps the `ul > li` pair
-  // that the shell's own styling is written against.
+  // that the shell's own styling is written against. The Plugins page draws its own
+  // chrome around the entry, so the two frames nest; `docs/DSH-0.1.7-MIGRATION.md`
+  // §4.3 tracks that as the open shell decision and #660 rewrites the recommendation.
   return createElement("ul", { className: "ddi_list" }, card);
 }

@@ -1,10 +1,28 @@
 import { describe, expect, it } from "vitest";
 import { createModuleLoaderStub } from "@yadsh/dsh-test-kit";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import { join } from "node:path";
 
 const CLIENT_BUNDLE_PATH = join(import.meta.dirname, "..", "lib", "client.js");
+
+/**
+ * The plugin row `cordis.patch.yml` declares. Its `name` is the bundle's package
+ * name and its `id` is both the row id the keyed seat ends at and the settings
+ * namespace the Host files this plugin's live Config under — so the card's seat key
+ * and its form read are derived from this pair, never from a literal of their own.
+ */
+function patchRow(): { name: string; id: string } {
+  const patch = readFileSync(
+    join(import.meta.dirname, "..", "cordis.patch.yml"),
+    "utf8",
+  );
+  const id = /^\s*-?\s*id:\s*"?([\w.-]+)"?/mu.exec(patch)?.[1];
+  const name = /^\s*name:\s*"?([^"\n]+)"?/mu.exec(patch)?.[1];
+  if (!id || !name) throw new Error(`cordis.patch.yml declares no plugin row`);
+  return { name, id };
+}
 
 interface SlotEntry {
   options: {
@@ -141,20 +159,28 @@ function fakeForm(initial: FormState) {
 function makeCtx(form: unknown) {
   const registered: SlotEntry[] = [];
   const slotInjections: string[] = [];
+  const namespacesRead: string[] = [];
   const ctx = {
     registered,
     slotInjections,
+    namespacesRead,
     // The client runtime exposes declared inject services as context
     // properties, so the stub mirrors that contract (the former ctx.get
-    // indirection was a 0.1.1 leftover that left the card unregistered).
+    // indirection was a 0.1.1 leftover that left the card unregistered). The
+    // keyed seat declares only its locale namespace and the page hands the entry
+    // the translate function, so `register` is the sole locale method a seat needs.
     locale: {
       register: () => undefined,
-      bind: () => (text: string) => text,
     },
     configForms:
       form === undefined
         ? undefined
-        : { get: (namespace: string) => (void namespace, form) },
+        : {
+            get: (namespace: string) => {
+              namespacesRead.push(namespace);
+              return form;
+            },
+          },
     slots: {
       // The card bootstrap registers through a plain factory that returns the
       // register disposer (the shared host contract), not a generator.
@@ -209,7 +235,8 @@ function faceOf(ctx: ReturnType<typeof makeCtx>): CardFace {
 describe("client bundle", () => {
   it("loads as a ModuleLoader module and registers the card on the Plugins page", async () => {
     const bundle = await loadBundle();
-    expect(bundle.id).toBe("@yadsh/dsh-doc-impact");
+    const row = patchRow();
+    expect(bundle.id).toBe(row.name);
 
     const form = fakeForm({
       status: "ready",
@@ -225,11 +252,14 @@ describe("client bundle", () => {
     expect(ctx.registered).toHaveLength(1);
     expect(ctx.registered[0]!.options.name).toBe("plugins.row.config");
     // The keyed seat joins this bundle's package name to the row id its patch
-    // declares, and that row id *is* the settings namespace — which is how a value
-    // saved before the move is the value this card reads after it.
-    expect(ctx.registered[0]!.options.key).toBe(
-      "@yadsh/dsh-doc-impact#dsh-doc-impact",
-    );
+    // declares, and the page shows the configure control only for a pair that
+    // really exists in the inventory — so both halves are read from the patch here
+    // rather than repeated as a literal, and a drift in the patch reddens the test
+    // instead of silently losing the card.
+    expect(ctx.registered[0]!.options.key).toBe(`${row.name}#${row.id}`);
+    // The same row id is the namespace the form is read through: that pairing is how
+    // a value saved before the move is the value this card reads after it.
+    expect(ctx.namespacesRead).toEqual([row.id]);
     expect(ctx.registered[0]!.options.locale).toBe("dsh-doc-impact");
     // The page titles the row from the plugin's own display name, so the seat
     // carries none of the tab's chrome.
@@ -240,7 +270,48 @@ describe("client bundle", () => {
     expect(ctx.registered[0]!.component).toBeTypeOf("function");
   });
 
-  it("answers the row's summary view with a one-liner and no settings read", async () => {
+  it("mounts the form inside the shared shell for the page view the seat hands", async () => {
+    const bundle = await loadBundle();
+    const form = fakeForm({
+      status: "ready",
+      value: { configFile: ".dsh/doc-impact.yml" },
+      base: {},
+      user: {},
+      writable: true,
+    });
+    const ctx = makeCtx(form);
+    bundle.factory(fakeReact).apply(ctx);
+
+    const entry = ctx.registered[0]!.component as (
+      props: Record<string, unknown>,
+    ) => any;
+    // The page renders this seat as `{ view: 'page', form }` and nothing else
+    // (docs/DSH-0.1.7-MIGRATION.md §4.2), so the entry has exactly one view to draw:
+    // the shell with the live fields, fed by the settings state of this bundle's row.
+    const face = faceOf(ctx) as unknown as Record<string, any>;
+    const reads: string[] = [];
+    const page = entry({
+      view: "page",
+      t: (key: string) => key,
+      useDocImpactCard: () => {
+        reads.push("settings");
+        return face.hooks.docImpactCard.getSnapshot();
+      },
+    });
+
+    // The one view the seat is handed mounts the live form: the shell, then the
+    // fields the snapshot projects.
+    expect(reads).toEqual(["settings"]);
+    expect(page.type).toBe("ul");
+    expect(page.props.className).toBe("ddi_list");
+    const shell = page.children[0];
+    expect(shell.props.title).toBe("cardTitle");
+    expect(shell.props.description).toBe("cardDescription");
+    // Nothing is staged, so the header carries no unsaved badge.
+    expect(shell.props.badge).toBeUndefined();
+  });
+
+  it("falls back to the dictionary's own text when the seat hands no translate function", async () => {
     const bundle = await loadBundle();
     const form = fakeForm({
       status: "ready",
@@ -252,23 +323,20 @@ describe("client bundle", () => {
     const ctx = makeCtx(form);
     bundle.factory(fakeReact).apply(ctx);
 
-    const reads: string[] = [];
     const entry = ctx.registered[0]!.component as (
       props: Record<string, unknown>,
-    ) => unknown;
-    const summary = entry({
-      view: "summary",
-      t: (key: string) => key,
-      useDocImpactCard: () => {
-        reads.push("settings");
-        return { available: true, fields: {} };
-      },
+    ) => any;
+    const face = faceOf(ctx) as unknown as Record<string, any>;
+    const page = entry({
+      view: "page",
+      useDocImpactCard: () => face.hooks.docImpactCard.getSnapshot(),
     });
 
-    // The one-liner lands inside the page's own description line, so it stays
-    // text; reading the settings state there would mount the form a second time.
-    expect(summary).toBe("cardDescription");
-    expect(reads).toEqual([]);
+    // An older or headless profile may hand the seat no `t`; the card then speaks
+    // the Russian text it registered, rather than the key or a thrown call.
+    expect(page.children[0].props.title).toBeTypeOf("string");
+    expect(page.children[0].props.title).not.toBe("cardTitle");
+    expect(page.children[0].props.title.length).toBeGreaterThan(0);
   });
 
   it("skips registration when the configForms service is absent", async () => {
