@@ -129,6 +129,49 @@ describe("turn completion source", () => {
     expect(page.see([chat("a", false)], { now: 4 })).toEqual([]);
   });
 
+  it("does not arm a baseline from an idle the gap left behind", () => {
+    const page = openPage();
+    page.see([chat("a", false)], { now: 1 });
+    // The link returns before the host list does, which is the ordering the page
+    // really gets: `paused` goes back off with the connection, while the rows
+    // are still the ones the drop left. This frame says idle and proves nothing.
+    expect(page.see([chat("a", false)], { now: 2, paused: true })).toEqual([]);
+    expect(page.see([chat("a", false)], { now: 3 })).toEqual([]);
+    // The run this frame is followed by may have begun anywhere inside the gap,
+    // so its end is not this reader's news — and it is not put off either: that
+    // run is never reported.
+    expect(page.see([chat("a", true)], { now: 4 })).toEqual([]);
+    expect(page.see([chat("a", false)], { now: 5 })).toEqual([]);
+    // What the gap took was this page's baseline, not its subscription: the row
+    // has moved since, so the next full turn is watched from its start and is
+    // reported once.
+    expect(page.watchTurn("a", 6)).toEqual([
+      { sessionId: "a", title: "Чат a", at: 8 },
+    ]);
+    expect(page.see([chat("a", false)], { now: 9 })).toEqual([]);
+  });
+
+  it("arms a chat on its own row moving, not on the list waking up", () => {
+    const page = openPage();
+    page.see([chat("a", false), chat("b", false)], { now: 1 });
+    // Both chats are idle across the gap. The list comes back with the other
+    // chat running: that is news about that chat alone, so this one still holds
+    // an idle read through the gap and cannot credit a start.
+    expect(
+      page.see([chat("a", false), chat("b", false)], { now: 2, paused: true }),
+    ).toEqual([]);
+    expect(page.see([chat("a", false), chat("b", true)], { now: 3 })).toEqual(
+      [],
+    );
+    expect(page.watchTurn("a", 4)).toEqual([]);
+    // Moving is what ends the hold, and the run it ends is the one this page
+    // could not account for: the turn after it begins from an idle read over the
+    // live link, and is reported.
+    expect(page.watchTurn("a", 7)).toEqual([
+      { sessionId: "a", title: "Чат a", at: 9 },
+    ]);
+  });
+
   it("loses a watched run across a gap it cannot vouch for", () => {
     const page = openPage();
     page.see([chat("a", false)], { now: 1 });

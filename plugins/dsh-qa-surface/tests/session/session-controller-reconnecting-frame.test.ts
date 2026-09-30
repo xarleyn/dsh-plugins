@@ -11,8 +11,11 @@ import { harness, Source } from "../helpers/session-fakes.js";
  * start, and `docs/CONFIGURATION.md` extends that silence across a gap in the
  * link — which only holds while the page is handed a frame naming the gap. This
  * is where that frame comes from: `QaSurface` reads `phase === "reconnecting"`
- * as the differ's `paused`, and while `paused` stands the differ leaves every
- * chat it holds `unwatched`.
+ * as the differ's `paused`, and while `paused` stands the differ credits no chat
+ * at all — a running row leaves it `unwatched`, an idle one `stale`. The flag
+ * goes back off with the connection, which is sooner than the host list is read
+ * again, so the readings are what carry the gap over the frames whose rows have
+ * not caught up.
  */
 function controllerOn(link: Source<Record<string, unknown> | undefined>) {
   const world = harness(["saved"]);

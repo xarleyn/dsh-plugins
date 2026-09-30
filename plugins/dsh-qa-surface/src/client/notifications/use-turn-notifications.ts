@@ -45,7 +45,12 @@ export interface QaTurnNotificationsInput {
       input: QaAccountNotificationsInput,
     ) => Promise<string | null>;
   };
-  /** The bound chat reports `reconnecting` while the host link is down. */
+  /**
+   * The link is down, so the rows this page holds are the ones the drop left and
+   * no run read among them is this reader's news. The flag goes back off with the
+   * link, which is sooner than the host list is read again; the reading named
+   * `stale` is what carries the rest of that gap.
+   */
   readonly paused: boolean;
   readonly activeSessionId: string | null;
   readonly onSwitch: (sessionId: string) => void;
