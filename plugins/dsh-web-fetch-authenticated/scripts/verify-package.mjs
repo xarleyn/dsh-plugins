@@ -59,6 +59,17 @@ await runVerifyPackage({
       /key:\s*WEB_FETCH_AUTH_ROW_CONFIG_KEY/u,
       /WEB_FETCH_AUTH_SETTINGS_NAMESPACE\s*=\s*"web-fetch-authenticated"/u,
       /configForms\.get\(/u,
+      /*
+       * The page seats this one entry twice, and a row whose patch declares no
+       * description takes its description line from the `summary` seat. Silence
+       * there is not an empty paragraph but a row with nothing said about it,
+       * while mounting the card there puts a page inside a sentence. So: the
+       * entry answers `summary` with the same sentence the card's own shell
+       * shows, and the card is reached only through the page seat.
+       */
+      /WEB_FETCH_AUTH_ROW_SUMMARY = "Per-origin authenticated rules for web_fetch/u,
+      /if \(view === "summary"\) return WEB_FETCH_AUTH_ROW_SUMMARY/u,
+      /description: WEB_FETCH_AUTH_ROW_SUMMARY/u,
     ],
     cardContract: {
       legacyPatterns: [/\.wfa-card\{/u, /\.dsh-plugin-card \*/u],

@@ -51,6 +51,16 @@ const REFRESH_INTERVAL_MS = 5_000;
 // namespace — both facts come from this package's `cordis.patch.yml` row.
 const WEB_FETCH_AUTH_ROW_CONFIG_KEY = `@yadsh/dsh-web-fetch-authenticated#${WEB_FETCH_AUTH_SETTINGS_NAMESPACE}`;
 
+/**
+ * What the row does, in one line: the sentence the card shows under its title,
+ * and the sentence the Plugins page asks this entry for wherever the row needs
+ * a description. A third-party patch row declares no description of its own,
+ * so the page reaches for this entry's `view: 'summary'` and shows whatever it
+ * returns — answering `null` here leaves the row's description empty.
+ */
+const WEB_FETCH_AUTH_ROW_SUMMARY =
+  "Per-origin authenticated rules for web_fetch: credentials, SSRF policy, and diagnostics.";
+
 interface RemoteService {
   status(): Promise<RemoteResult<ProviderStatusReport>>;
   testRule(ruleId: string, url?: string): Promise<RemoteResult<RuleTestReport>>;
@@ -71,6 +81,9 @@ interface ClientRemote {
 type CardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<Omit<CardFace, "form"> & { settingsForm: CardFace["form"] }>;
 
+/** The card body takes the face alone; the owner's `view` stays with the entry. */
+type CardBodyProps = Omit<CardProps, "view">;
+
 function displayError(error: unknown): string {
   if (error instanceof Error) return error.message;
   if (typeof error === "string") return error;
@@ -78,13 +91,12 @@ function displayError(error: unknown): string {
 }
 
 function WebFetchAuthCard({
-  view,
   settingsForm,
   status,
   testRule,
   diagnose,
   credentials,
-}: CardProps) {
+}: CardBodyProps) {
   const settingsStore = useMemo(
     () => bindSettingsExternalStore(settingsForm),
     [settingsForm],
@@ -117,7 +129,6 @@ function WebFetchAuthCard({
   }, [status]);
 
   useEffect(() => {
-    if (view !== "page") return;
     const stopPolling = startVisibilityAwarePolling(
       refresh,
       REFRESH_INTERVAL_MS,
@@ -126,7 +137,7 @@ function WebFetchAuthCard({
       stopPolling();
       activeRequest.current += 1;
     };
-  }, [refresh, view]);
+  }, [refresh]);
 
   const setPath = useCallback(
     (path: string[], value: unknown) => {
@@ -163,9 +174,6 @@ function WebFetchAuthCard({
     [config],
   );
 
-  // The row page also asks this entry for a one-line description fallback;
-  // the form surface belongs to the page view only.
-  if (view !== "page") return null;
   if (settings.status === "unavailable") return null;
 
   // The row page renders the entry inside its own sections column, so the
@@ -174,7 +182,7 @@ function WebFetchAuthCard({
     <ul className="wfa-cards">
       <CardShell
         title="Authenticated Web Fetch"
-        description="Per-origin authenticated rules for web_fetch: credentials, SSRF policy, and diagnostics."
+        description={WEB_FETCH_AUTH_ROW_SUMMARY}
         badge={
           <span
             className="dsh-plugin-card__badge"
@@ -211,6 +219,17 @@ function WebFetchAuthCard({
       </CardShell>
     </ul>
   );
+}
+
+/**
+ * The entry the row page seats for this bundle's own row, in one of two views:
+ * `summary` is the row's description line, `page` the configuration body under
+ * it. The summary answer returns before the card's hooks, so a line of text
+ * never mounts a live settings store nor opens a second poll of the Remote.
+ */
+function WebFetchAuthEntry({ view, ...card }: CardProps) {
+  if (view === "summary") return WEB_FETCH_AUTH_ROW_SUMMARY;
+  return <WebFetchAuthCard {...card} />;
 }
 
 // `remote.credentials` is its own service key (owned by dsh-api-settings-controller),
@@ -252,7 +271,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             key: WEB_FETCH_AUTH_ROW_CONFIG_KEY,
             inject: () => ({ ...faceRest, settingsForm }),
           },
-          WebFetchAuthCard,
+          WebFetchAuthEntry,
         ),
       );
     });
