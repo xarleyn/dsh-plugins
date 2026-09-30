@@ -43,6 +43,14 @@ export const QA_TURN_NOTICE_COPY = Object.freeze({
 export const QA_TURN_NOTICE_LINE_CLASS = "dsh-qa-turn-notice__item";
 export const QA_TURN_NOTICE_LINE_SELECTOR = `.${QA_TURN_NOTICE_LINE_CLASS}`;
 
+/**
+ * The offer block, named the same way. It shares the stack with the lines and is
+ * none of them: the surface reads the desktop opt-in by this class, rather than
+ * by whatever else the stack happens to hold.
+ */
+export const QA_TURN_NOTICE_OFFER_CLASS = "dsh-qa-turn-notice__offer";
+export const QA_TURN_NOTICE_OFFER_SELECTOR = `.${QA_TURN_NOTICE_OFFER_CLASS}`;
+
 function CrossIcon() {
   return (
     <svg viewBox="0 0 14 14" aria-hidden="true">
@@ -101,7 +109,7 @@ export function QaTurnNotice(props: QaTurnNoticeProps) {
         </div>
       ))}
       {onEnableDesktop === undefined ? null : (
-        <div className="dsh-qa-turn-notice__offer">
+        <div className={QA_TURN_NOTICE_OFFER_CLASS}>
           <p>{QA_TURN_NOTICE_COPY.offer}</p>
           <button
             type="button"

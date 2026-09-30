@@ -78,6 +78,7 @@ import { QaRightRail, type QaRailTabModel } from "./components/QaRightRail.js";
 import { QaSourcesPanel } from "./components/QaSourcesPanel.js";
 import {
   QA_TURN_NOTICE_LINE_SELECTOR,
+  QA_TURN_NOTICE_OFFER_SELECTOR,
   QaTurnNotice,
 } from "./components/QaTurnNotice.js";
 import { useQaTurnNotifications } from "./notifications/use-turn-notifications.js";
@@ -214,10 +215,13 @@ function isNearBottom(element: HTMLElement): boolean {
 }
 
 /**
- * The stack line the reader's control stands on, or null when the stack has no
- * lines left. The desktop opt-in is not a line: it is what the stack ends with,
- * so losing it is losing the last control of the last line, and that line is
- * taken as its place.
+ * The stack line the reader's control stands on, or null when the ring has no
+ * place to keep for it. The desktop opt-in is not a line: it is what the stack
+ * ends with, so losing it is losing the last control of the last line, and that
+ * line is taken as its place. The opt-in is read by its own block rather than as
+ * whatever the stack holds that is not a line — the next block the stack grows
+ * (a heading, a «скрыть все») is neither, and handing the reader to a line they
+ * never stood on is worse than handing them nowhere.
  */
 function noticeLineOf(
   target: HTMLElement,
@@ -225,6 +229,9 @@ function noticeLineOf(
 ): HTMLElement | null {
   const line = target.closest<HTMLElement>(QA_TURN_NOTICE_LINE_SELECTOR);
   if (line !== null) return line;
+  if (target.closest<HTMLElement>(QA_TURN_NOTICE_OFFER_SELECTOR) === null) {
+    return null;
+  }
   const lines = stack.querySelectorAll<HTMLElement>(
     QA_TURN_NOTICE_LINE_SELECTOR,
   );
@@ -1096,8 +1103,8 @@ export function QaSurface(props: QaSurfaceProps) {
       candidates.push(controls[Math.min(anchor.step, controls.length - 1)]);
     }
     // The stack has no line left to stand on: back into the interface, onto the
-    // control the ring reaches last, and past it if this width has switched that
-    // one off without saying so in the markup.
+    // control the ring reaches last, and past the first candidate of it that
+    // refuses the keyboard.
     candidates.push(...[...ring].reverse(), surface.current ?? undefined);
     focusFirst(candidates);
   }, [dialogOwnsKeyboard, ringRoots]);

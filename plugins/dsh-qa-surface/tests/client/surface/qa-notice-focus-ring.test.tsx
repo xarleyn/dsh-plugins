@@ -1,360 +1,37 @@
 // @vitest-environment jsdom
 
+import { fireEvent, screen, waitFor } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
-import type { SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
-import type { SessionId } from "@deepseek-ai/dsh-client-connection/client";
-import { QaRouteController } from "../../../src/client/QaRouteController.js";
-import {
-  QaSurface,
-  type QaSurfaceProps,
-} from "../../../src/client/QaSurface.js";
-import { QaAuditController } from "../../../src/client/audit/controller.js";
-import { QaSurfacePanelRegistry } from "../../../src/client/panels/registry.js";
-import type { ResolvedQaSurfaceConfig } from "../../../src/types.js";
-import {
-  focusRing,
   focusable,
+  focusRing,
   isInert,
 } from "../../../src/client/focus-ring.js";
-import { resolveConfig } from "../../../src/resolve-config.js";
-import { QA_WELCOME_NOTICE_VERSION } from "../../../src/client/components/QaWelcomeNotice.js";
-import { qaStorageNamespace } from "../../../src/shared/session-key.js";
 import {
-  harness,
-  type QaSessionTestWorld,
-} from "../../helpers/session-fakes.js";
-import { settle } from "../../helpers/act.js";
-
-// jsdom has no ResizeObserver; the chat surface's width handles observe it.
-globalThis.ResizeObserver ??= class {
-  observe() {}
-  unobserve() {}
-  disconnect() {}
-} as never;
-
-const ACTIVE = "session-active";
-/** The chats that exist in the stand's history; a notice is raised per settled one. */
-const BACKGROUNDS = [
-  "session-background-a",
-  "session-background-b",
-  "session-background-c",
-  "session-background-d",
-] as const;
-const titleOf = (id: string): string => `Фоновый чат ${id.slice(-1)}`;
-const keepFocus = document.hasFocus.bind(document);
-
-// The notice stack is painted into `document.body`, so it is not inside the
-// `<main>` whose key handler keeps Tab inside the QA interface. Were the ring
-// drawn around `<main>` alone, the key would turn back at the surface's last
-// control, and no Tab from the composer would ever reach a notice.
-// What the ring reads off the markup with no surface under it — the enumeration
-// and the trap on their own — is the sibling `qa-focus-ring-markup.test.tsx`.
+  applicationRoot,
+  cleanupNoticeRingWorld,
+  focused,
+  mount,
+  NOTICE_CONTROLS,
+  pressTab,
+  stackRoot,
+  surfaceRoot,
+  switchTheWidthOff,
+  tabbables,
+} from "../../helpers/notice-ring-world.js";
 
 /**
- * The page's tab order as a browser reads it: DOM order over the whole body.
+ * Where the ring is drawn: the notice stack painted in `document.body` joined
+ * the Tab ring of the surface, and a key given inside it is trapped by a handler
+ * mounted on the stack itself — `<main>` is not its ancestor and never hears it.
  *
- * Enumerated by production's own `focusable`, so the order the test steps
- * through and the ring that answers the key cannot drift apart — a selector the
- * trap stopped honouring shows up here as a failure rather than as a test that
- * quietly checks its own model of a browser.
+ * These cases walk the ring through the mounted surface with real key presses.
+ * The stand is `tests/helpers/notice-ring-world.tsx`; what the enumeration and
+ * the trap read off the markup with no surface under them is
+ * `qa-focus-ring-markup.test.tsx`, and what a line's loss does to the keyboard
+ * the reader stood on is `qa-notice-focus-restore.test.tsx`.
  */
-function tabbables(): HTMLElement[] {
-  return focusable(document.body);
-}
-
-/**
- * Press Tab. jsdom moves no focus on its own, so the key goes to the focused
- * element first and only steps to the next tabbable when the surface let it
- * through; a taken key leaves focus where the ring put it.
- */
-function pressTab(shift = false): void {
-  const from = document.activeElement as HTMLElement;
-  const passed = fireEvent.keyDown(from, { key: "Tab", shiftKey: shift });
-  if (!passed) return;
-  const order = tabbables();
-  const index = order.indexOf(from);
-  const step = shift ? -1 : 1;
-  order[(index + step + order.length) % order.length]?.focus();
-}
-
-/**
- * Give `element` an Enter and report whether the page took the key.
- *
- * jsdom implements no activation behaviour — turning an Enter on a focused
- * button into its click is the browser's work, not the platform's — so the stand
- * asks whether the ring left the key alone and then performs the click that
- * Enter would have been. What a keyboard activation is worth here is the answer
- * to the first question plus the same handler the pointer reaches.
- */
-function pressEnter(element: HTMLElement): boolean {
-  const passed = fireEvent.keyDown(element, { key: "Enter" });
-  fireEvent.click(element);
-  return passed;
-}
-
-/** Every control of the stack, in the order the ring walks them. */
-const NOTICE_CONTROLS: readonly string[] = [
-  "qa-turn-notice-open",
-  "qa-turn-notice-dismiss",
-  "qa-turn-notice-offer-action",
-];
-
-function controlOf(
-  item: HTMLElement,
-  testid: (typeof NOTICE_CONTROLS)[number],
-): HTMLElement {
-  const control = item.querySelector<HTMLElement>(`[data-testid="${testid}"]`);
-  if (control === null) throw new Error(`${testid} is not in the line`);
-  return control;
-}
-
-const stackRoot = (): HTMLElement => screen.getByTestId("qa-turn-notice");
-const lines = (): HTMLElement[] => screen.getAllByTestId("qa-turn-notice-item");
-/** The line at this place in the stack; a negative index counts from the end. */
-function line(index: number): HTMLElement {
-  const item = lines().at(index);
-  if (item === undefined) throw new Error(`the stack has no line at ${index}`);
-  return item;
-}
-const surfaceRoot = (): HTMLElement => screen.getByTestId("qa-surface-root");
-const focused = (): HTMLElement => document.activeElement as HTMLElement;
-
-/** The stack's own controls, or null when focus is nowhere in it. */
-function focusedLine(): HTMLElement | null {
-  return focused().closest<HTMLElement>("[data-testid='qa-turn-notice-item']");
-}
-
-function accessApi() {
-  return {
-    current: vi.fn(async () => ({
-      ok: true as const,
-      value: {
-        subroles: [],
-        defaultSubrole: "general",
-        policy: "selectable" as const,
-      },
-    })),
-    session: vi.fn(async () => ({
-      ok: true as const,
-      value: {
-        subrole: {
-          id: "general",
-          name: "Общий",
-          enabled: true,
-          capabilities: {
-            tools: { always: [], skillGrantable: [] },
-            skills: [],
-          },
-        },
-        adminPreview: false,
-      },
-    })),
-  };
-}
-
-/** Publish one host list frame with the chat's turn running or ended. */
-function reportTurn(
-  world: QaSessionTestWorld,
-  id: string,
-  running: boolean,
-): void {
-  const snapshot = world.list.getSnapshot();
-  world.list.set({
-    ...snapshot,
-    byId: {
-      ...snapshot.byId,
-      [id]: {
-        ...snapshot.byId[id as SessionId],
-        blank: false,
-        displayTitle: titleOf(id),
-        running,
-        updatedAt: 2,
-      },
-    },
-  } as SessionListState);
-}
-
-/** End the turns of these chats, so the stack gains one line per each. */
-function settleTurns(world: QaSessionTestWorld, ids: readonly string[]): void {
-  act(() => {
-    for (const id of ids) reportTurn(world, id, true);
-  });
-  act(() => {
-    for (const id of ids) reportTurn(world, id, false);
-  });
-}
-
-let route: QaRouteController | undefined;
-/**
- * The element the application is mounted into. The onboarding gate marks this
- * one inert rather than the surface, and jsdom reflects nothing from an `inert`
- * property into an attribute — so the stand has to give it a node it can find by
- * id, or the gate marks nothing and a test of the gate tests an empty room.
- */
-let appRoot: HTMLDivElement | undefined;
-
-/**
- * The config the surface reads, with the write the deployment's own settings use.
- * Publishing a config that switches a part of the surface off is how a test takes
- * a control of `<main>` out of the page while the reader stands on it, and makes
- * the surface re-render over that loss — the one shape of loss the notice ring is
- * not meant to answer for.
- */
-interface ConfigStore {
-  readonly subscribe: (listener: () => void) => () => void;
-  readonly getSnapshot: () => unknown;
-  /** The config the surface is reading now, the one a test edits against. */
-  readonly current: () => ResolvedQaSurfaceConfig;
-  readonly publish: (config: ResolvedQaSurfaceConfig) => void;
-}
-
-function createConfigStore(initial: ResolvedQaSurfaceConfig): ConfigStore {
-  let snapshot = { status: "ready" as const, config: initial, error: null };
-  const listeners = new Set<() => void>();
-  return {
-    subscribe: (listener) => {
-      listeners.add(listener);
-      return () => listeners.delete(listener);
-    },
-    getSnapshot: () => snapshot,
-    current: () => snapshot.config,
-    publish: (config) => {
-      snapshot = { status: "ready", config, error: null };
-      for (const listener of [...listeners]) listener();
-    },
-  };
-}
-
-let configs: ConfigStore | undefined;
-
-afterEach(() => {
-  cleanup();
-  document.hasFocus = keepFocus;
-  route?.dispose();
-  route = undefined;
-  configs = undefined;
-  appRoot?.remove();
-  appRoot = undefined;
-  vi.unstubAllGlobals();
-  window.localStorage.clear();
-  window.history.replaceState(null, "", "/");
-});
-
-interface MountOptions {
-  /** Background chats in the reader's history. Defaults to the settled ones. */
-  readonly chats?: readonly string[];
-  /** Chats whose turn ends while the surface is open. Defaults to one. */
-  readonly settled?: readonly string[];
-  /** Leave the onboarding gate standing instead of acknowledging it away. */
-  readonly withWelcome?: boolean;
-  /**
-   * Put the chat rail on screen. Its footer is the one control of an anonymous
-   * stand that opens a `QaModal` of the surface, and the dialog case cannot be
-   * read out of a page that holds no dialog to open.
-   */
-  readonly withSessionList?: boolean;
-}
-
-/**
- * Mount the surface with turns that finished in chats the reader is not looking
- * at: the stack appears, and with it the offer the desktop channel has not been
- * answered in yet.
- */
-async function mount(options: MountOptions = {}): Promise<QaSessionTestWorld> {
-  const settled = options.settled ?? [BACKGROUNDS[0]];
-  const chats = options.chats ?? settled;
-  window.history.replaceState(null, "", "/qa");
-  const config = resolveConfig(
-    options.withSessionList === true ? { ui: { showSessionList: true } } : {},
-  );
-  const ns = qaStorageNamespace(config);
-  if (options.withWelcome !== true) {
-    window.localStorage.setItem(
-      `${ns}:welcome-notice`,
-      QA_WELCOME_NOTICE_VERSION,
-    );
-  }
-  window.localStorage.setItem(`${ns}:session`, ACTIVE);
-  window.localStorage.setItem(
-    `${ns}:chats`,
-    JSON.stringify([ACTIVE, ...chats]),
-  );
-  // An unanswered permission question is what puts the opt-in in the stack.
-  class Offered {
-    static permission: NotificationPermission = "default";
-    static async requestPermission(): Promise<NotificationPermission> {
-      return "granted";
-    }
-    addEventListener(): void {}
-    onclick: (() => void) | null = null;
-  }
-  vi.stubGlobal("Notification", Offered);
-  document.hasFocus = () => true;
-
-  route = new QaRouteController();
-  route.configure(config, true);
-  const world = harness([ACTIVE, ...chats]);
-  const face = world.faces.get(ACTIVE);
-  face?.source.set({ ...face.source.getSnapshot(), blank: false });
-
-  const sectionsSnapshot = { sections: [], revision: 0 };
-  configs = createConfigStore(config);
-  appRoot = document.createElement("div");
-  appRoot.id = "root";
-  document.body.append(appRoot);
-  render(
-    <QaSurface
-      {...({
-        route,
-        config: configs,
-        accessApi: accessApi(),
-        sessions: world.sessions,
-        api: world.api,
-        conversation: world.conversation,
-        connection: world.connection,
-        secureSession: world.secureSession,
-        createSession: world.createSession,
-        sourceApi: {
-          sources: vi.fn(async () => ({ ok: true as const, value: [] })),
-        },
-        panels: new QaSurfacePanelRegistry(),
-        audit: new QaAuditController(),
-        settingsSections: {
-          subscribe: () => () => undefined,
-          getSnapshot: () => sectionsSnapshot,
-          register: () => () => undefined,
-        },
-        renderSlot: () => null,
-      } as unknown as QaSurfaceProps)}
-    />,
-    { container: appRoot },
-  );
-  await settle();
-  await screen.findByTestId("qa-composer-input");
-  // The surface asks for the composer's focus on an animation frame of its own
-  // mount, and that frame lands whenever the event loop gets to it. A test that
-  // starts working with the keyboard before it has been burned therefore has its
-  // focus moved under it mid-case, so the stand waits the frame out here.
-  await act(async () => {
-    await new Promise<void>((resolve) => {
-      window.requestAnimationFrame(() => resolve());
-    });
-  });
-
-  // The watcher reports a turn it watched run, so the frame arrives in two.
-  settleTurns(world, settled);
-  await screen.findByTestId("qa-turn-notice");
-  return world;
-}
-
+afterEach(cleanupNoticeRingWorld);
 describe("the notice stack inside the surface's Tab ring", () => {
   it("jumps the composer's hidden file picker on the way to the attach button", async () => {
     await mount();
@@ -418,6 +95,52 @@ describe("the notice stack inside the surface's Tab ring", () => {
     expect(focused()).toBe(screen.getByTestId("qa-turn-notice-offer-action"));
   });
 
+  it("keeps a control the width switched off from marking the edge of the ring", async () => {
+    await mount({ withSessionList: true });
+    const surface = surfaceRoot();
+    // A wide panel starts its walk in the sidebar: the first control of
+    // `qa-surface-root` is the chat list's own, and it is where Shift+Tab from
+    // the header turns back.
+    const wide = focusRing([surface]);
+    const wideFront = wide[0];
+    if (wideFront === undefined) throw new Error("the wide page holds no ring");
+    expect(wideFront.closest(".dsh-qa-sidebar")).not.toBeNull();
+    switchTheWidthOff();
+
+    const ring = focusRing([surface, stackRoot()]);
+    expect(
+      ring.some((element) => element.closest(".dsh-qa-sidebar, .dsh-qa-rail")),
+    ).toBe(false);
+    const front = ring[0];
+    const back = ring.at(-1);
+    if (front === undefined || back === undefined)
+      throw new Error("the narrow page holds no ring");
+    expect(front).not.toBe(wideFront);
+
+    // Shift+Tab at the front of what the width leaves: an edge still drawn at the
+    // sidebar's control would answer no branch here, and the key would be the
+    // browser's — which walks the reader out of the QA interface. That is what a
+    // live Chromium does at 500px against the ring as it stood before this read.
+    front.focus();
+    expect(fireEvent.keyDown(front, { key: "Tab", shiftKey: true })).toBe(
+      false,
+    );
+    expect(focused()).toBe(back);
+
+    // The stack gone, and the ring ends inside the surface. Both the sidebar and
+    // the rail carry no `hidden` for the enumeration to read — a media query took
+    // them — so neither of them is allowed to be the last step of the way.
+    fireEvent.click(screen.getByTestId("qa-turn-notice-dismiss"));
+    expect(screen.queryByTestId("qa-turn-notice")).toBeNull();
+    const bare = focusRing([surface]);
+    const tail = bare.at(-1);
+    if (tail === undefined) throw new Error("the surface holds no controls");
+    expect(tail.closest(".dsh-qa-sidebar, .dsh-qa-rail")).toBeNull();
+    tail.focus();
+    expect(fireEvent.keyDown(tail, { key: "Tab" })).toBe(false);
+    expect(focused()).toBe(bare[0]);
+  });
+
   it("hands a key the ring does not answer to the dialog behind", async () => {
     await mount();
     const dismissed = vi.fn();
@@ -447,7 +170,7 @@ describe("the notice stack inside the surface's Tab ring", () => {
     // reflects it into the attribute and jsdom reflects it into nothing, so a
     // test that set the attribute by hand would be describing a state the page
     // never reaches.
-    expect(appRoot?.inert).toBe(true);
+    expect(applicationRoot()?.inert).toBe(true);
     expect(isInert(surface)).toBe(true);
 
     // A control that cannot take focus is not a step of the ring: an edge that
@@ -531,300 +254,5 @@ describe("the notice stack inside the surface's Tab ring", () => {
     pressTab();
     expect(stackRoot().contains(focused())).toBe(true);
     expect(focused()).toBe(screen.getByTestId("qa-turn-notice-open"));
-  });
-});
-
-describe("the reader left standing when a notice goes away", () => {
-  it("keeps the focus on the line that took a dismissed one's place", async () => {
-    await mount({ settled: BACKGROUNDS.slice(0, 3) });
-    expect(lines()).toHaveLength(3);
-    const dismiss = controlOf(line(1), "qa-turn-notice-dismiss");
-    dismiss.focus();
-
-    fireEvent.click(dismiss);
-    // Waving one line off three leaves the stack standing and the focused cross
-    // out of the page: the count of lines never reaches zero, yet the next Tab
-    // would have been answered by the browser's own order.
-    expect(lines()).toHaveLength(2);
-    expect(focusedLine()).toBe(line(1));
-  });
-
-  it("keeps the focus in the stack when a fourth line pushes the oldest out", async () => {
-    const world = await mount({
-      chats: BACKGROUNDS,
-      settled: BACKGROUNDS.slice(0, 3),
-    });
-    const oldest = line(-1);
-    const dismiss = controlOf(oldest, "qa-turn-notice-dismiss");
-    dismiss.focus();
-
-    // The stack holds three lines and drops what it cannot show, so a fourth
-    // turn changes nothing about its length: the line the reader stood on is
-    // gone all the same, and a check on the number of lines would never notice.
-    settleTurns(world, [BACKGROUNDS[3]]);
-    expect(lines()).toHaveLength(3);
-    expect(focusedLine()).toBe(line(-1));
-    expect(focusedLine()).not.toBe(oldest);
-  });
-
-  it("keeps the focus on the oldest line when a batch of turns lands on it", async () => {
-    const world = await mount({
-      chats: BACKGROUNDS,
-      settled: BACKGROUNDS.slice(0, 2),
-    });
-    expect(lines()).toHaveLength(2);
-    const oldest = line(-1);
-    const dismiss = controlOf(oldest, "qa-turn-notice-dismiss");
-    dismiss.focus();
-
-    // Two turns settle in one tick: the stack puts both in front of what the
-    // reader can see and, capped at three lines, lets go of the line they stand
-    // on. A place counted along the ring slides by exactly the controls the
-    // batch brought and hands the keyboard to one of the fresh lines; what the
-    // reader lost is the last line, and the last line is whichever one is left
-    // standing last.
-    settleTurns(world, BACKGROUNDS.slice(2));
-    expect(lines()).toHaveLength(3);
-    expect(focusedLine()).toBe(line(-1));
-    expect(focusedLine()).not.toBe(oldest);
-    // The same control of it: a cross given back as a cross.
-    expect(focused().dataset.testid).toBe("qa-turn-notice-dismiss");
-  });
-
-  it("keeps the focus in the stack when the opt-in answers itself away", async () => {
-    await mount();
-    const offer = screen.getByTestId("qa-turn-notice-offer-action");
-    offer.focus();
-
-    // The offer is a single question per browser, so answering the permission
-    // prompt takes its button out while the lines stay: the opt-in — the control
-    // this card was raised over — is the one that leaves the page under focus.
-    fireEvent.click(offer);
-    await waitFor(() =>
-      expect(screen.queryByTestId("qa-turn-notice-offer-action")).toBeNull(),
-    );
-    expect(stackRoot()).toBeTruthy();
-    expect(focusedLine()).toBe(line(-1));
-    // And on its first control, not its last: the offer is not a line, so the
-    // place read for it is the front of the line the stack keeps last. The last
-    // control is the cross, which would answer the second Enter — the reader
-    // aimed it at the opt-in, not at a notice.
-    expect(focused().dataset.testid).toBe("qa-turn-notice-open");
-  });
-
-  it("keeps the focus on a control of the surface when the stack goes away", async () => {
-    await mount();
-    const dismiss = screen.getByTestId("qa-turn-notice-dismiss");
-    dismiss.focus();
-    // The place is remembered as focus lands on the stack's control, not as the
-    // reader proves they work it by keyboard — and a Tab given here is nowhere
-    // near the edge of the ring, so the focus stays exactly where it was.
-    fireEvent.keyDown(dismiss, { key: "Tab" });
-    expect(document.activeElement).toBe(dismiss);
-
-    fireEvent.click(dismiss);
-    expect(screen.queryByTestId("qa-turn-notice")).toBeNull();
-    const surface = surfaceRoot();
-    expect(surface.contains(focused())).toBe(true);
-    // Back into the interface, and onto a control of it rather than onto the
-    // surface itself: from a focused root the reader has to press Tab again
-    // before the page answers, and the place they were working is lost twice.
-    expect(focused()).not.toBe(surface);
-    expect(tabbables().some((element) => element === focused())).toBe(true);
-  });
-
-  it("gives a lost stack back to a control that takes the keyboard", async () => {
-    await mount();
-    const dismiss = screen.getByTestId("qa-turn-notice-dismiss");
-    dismiss.focus();
-
-    // The hand-off goes back into the interface at the control the ring reaches
-    // last — and that is the one place a media query can switch off without a
-    // word in the markup the enumeration could read (`.dsh-qa-rail` at ≤900px).
-    // jsdom applies no CSS, so the stand switches the edge off by hand: an edge
-    // that answers `focus()` by moving nothing has to send the keyboard on, not
-    // leave the reader on a control that is no longer on the page.
-    const main = surfaceRoot();
-    const edge = focusRing([main]).at(-1);
-    if (edge === undefined) throw new Error("the surface holds no controls");
-    edge.focus = () => {};
-
-    fireEvent.click(dismiss);
-    expect(screen.queryByTestId("qa-turn-notice")).toBeNull();
-    expect(focused()).not.toBe(edge);
-    expect(focused()).not.toBe(main);
-    expect(focusRing([main])).toContain(focused());
-    expect(focused()).toBe(focusRing([main]).at(-2));
-  });
-
-  it("leaves the focus alone when a control of the surface goes away under it", async () => {
-    await mount();
-    const header = screen.getByTestId("qa-surface-header-files");
-    // A control that already holds the focus gives no focusin when it is asked
-    // for one, so the keyboard is put elsewhere first and walked onto the header
-    // — the only way this case says anything about the place it lands on.
-    screen.getByTestId("qa-composer-input").focus();
-    header.focus();
-
-    // The deployment turned the header off, which is how a control of `<main>`
-    // leaves the page under the reader: the surface itself re-renders over the
-    // loss, so a ring that remembered this place would be able to answer it.
-    const config = configs?.current();
-    if (config === undefined) throw new Error("the surface is not mounted");
-    act(() =>
-      configs?.publish({ ...config, ui: { ...config.ui, showHeader: false } }),
-    );
-    await waitFor(() =>
-      expect(screen.queryByTestId("qa-surface-header")).toBeNull(),
-    );
-
-    // The same shape of loss — a focused control out of the page and nothing
-    // focused after it — read from the surface rather than from the notices. A
-    // row of the queue dock, a transcript action taken back by its message, a
-    // rebuilt chat: the surface decides where its reader goes after any of those,
-    // and a step handed back from the ring would be a rule this card never
-    // promised. What the ring remembers is a step of the notice stack only.
-    expect(focused()).toBe(document.body);
-  });
-
-  it("leaves the focus where the reader put it when a line goes after they left the stack", async () => {
-    await mount({ settled: BACKGROUNDS.slice(0, 3) });
-    const dismiss = controlOf(line(1), "qa-turn-notice-dismiss");
-    dismiss.focus();
-
-    // The reader moves on to work inside the interface. That step is what gives
-    // the place back: the ring remembers a stack the reader is standing in, and
-    // a control of `<main>` that holds the focus is nobody's to pull out of it.
-    const composer = screen.getByTestId("qa-composer-input");
-    composer.focus();
-    fireEvent.click(dismiss);
-
-    expect(lines()).toHaveLength(2);
-    expect(focused()).toBe(composer);
-  });
-
-  it("leaves the keyboard of a blurred page alone and hands the place back when the window returns", async () => {
-    const world = await mount({
-      chats: BACKGROUNDS,
-      settled: BACKGROUNDS.slice(0, 3),
-    });
-    const oldest = line(-1);
-    const dismiss = controlOf(oldest, "qa-turn-notice-dismiss");
-    dismiss.focus();
-
-    // The reader works in another window, where turns keep settling and a full
-    // stack still lets the oldest line go. A page nobody is looking at is not
-    // given a keyboard: `focus()` would move it inside this page while the
-    // reader is typing somewhere else.
-    document.hasFocus = () => false;
-    settleTurns(world, [BACKGROUNDS[3]]);
-
-    expect(lines()).toHaveLength(3);
-    expect(focused()).toBe(document.body);
-    expect(focusedLine()).toBeNull();
-
-    // The place was remembered rather than dropped, so the window coming back is
-    // what pays the hand-over: the reader's first Tab is the interface's, not the
-    // browser's, and it starts where they stood — on the same control of the line
-    // that took the lost one's place. A page back on screen answers
-    // `document.hasFocus()` with true, and that is the state the event brings.
-    document.hasFocus = () => true;
-    fireEvent.focus(window);
-    expect(focusedLine()).toBe(line(-1));
-    expect(focusedLine()).not.toBe(oldest);
-    expect(focused().dataset.testid).toBe("qa-turn-notice-dismiss");
-  });
-
-  it("leaves a blurred hand-over to the reader who comes back into the interface", async () => {
-    const world = await mount({
-      chats: BACKGROUNDS,
-      settled: BACKGROUNDS.slice(0, 3),
-    });
-    const dismiss = controlOf(line(-1), "qa-turn-notice-dismiss");
-    dismiss.focus();
-    document.hasFocus = () => false;
-    settleTurns(world, [BACKGROUNDS[3]]);
-
-    // Returning to the tab and clicking into the composer is the reader stating
-    // where they stand: the place the ring remembers is a stack the reader is
-    // standing in, so it is given up the moment focus reaches `<main>` and the
-    // window coming back has nothing owed to it.
-    const composer = screen.getByTestId("qa-composer-input");
-    composer.focus();
-    document.hasFocus = () => true;
-    fireEvent.focus(window);
-
-    expect(focused()).toBe(composer);
-  });
-});
-
-describe("a notice that opens the chat it names", () => {
-  /** The chat the sidebar marks active, which is what the surface is showing. */
-  function activeChat(): string {
-    const row = screen
-      .getAllByTestId("qa-surface-sidebar-item-open")
-      .find((node) => node.getAttribute("aria-current") === "true");
-    return row?.textContent ?? "";
-  }
-
-  /**
-   * The chat a line names, read from the line's own title rather than from which
-   * index of the stack it sits at: a fresh turn is put in front of the lines the
-   * reader can see, so an index says nothing on its own.
-   */
-  function chatNamed(item: HTMLElement): string {
-    const name = item.querySelector<HTMLElement>(
-      ".dsh-qa-turn-notice__chat",
-    )?.textContent;
-    if (name === undefined) throw new Error("the line names no chat");
-    return name;
-  }
-
-  it("keeps the reader on the stack when a notice opens the chat it names", async () => {
-    await mount({
-      withSessionList: true,
-      chats: BACKGROUNDS,
-      settled: BACKGROUNDS.slice(0, 3),
-    });
-    expect(lines()).toHaveLength(3);
-    const open = controlOf(line(1), "qa-turn-notice-open");
-    const named = chatNamed(line(1));
-    open.focus();
-
-    // Opening is the one way a line leaves the stack that also changes what the
-    // surface shows: the notice goes and its chat arrives underneath it. The
-    // keyboard does not follow the chat — a chat that has just been asked for is
-    // still being bound, and its composer is no control a browser can stop on
-    // yet — so the ring hands the reader to the line the stack keeps next to the
-    // one that went, on the same control of it. Wherever the reader then presses
-    // Tab, the answer is the interface's, not the browser's.
-    fireEvent.click(open);
-    await waitFor(() => expect(activeChat()).toContain(named));
-
-    expect(lines()).toHaveLength(2);
-    expect(focusedLine()).toBe(line(1));
-    expect(focused().dataset.testid).toBe("qa-turn-notice-open");
-  });
-
-  it("keeps the reader on the stack when an Enter opens the chat a notice names", async () => {
-    await mount({
-      withSessionList: true,
-      chats: BACKGROUNDS,
-      settled: BACKGROUNDS.slice(0, 3),
-    });
-    const open = controlOf(line(2), "qa-turn-notice-open");
-    const named = chatNamed(line(2));
-    open.focus();
-
-    // Reached by keyboard, answered the same way: the ring takes Tab and nothing
-    // else, so the Enter the reader gives a notice is theirs and reaches the
-    // button under it — and the chat it names opens the same way the pointer
-    // opens it, with the keyboard left on the stack.
-    expect(pressEnter(open)).toBe(true);
-    await waitFor(() => expect(activeChat()).toContain(named));
-
-    expect(lines()).toHaveLength(2);
-    expect(focusedLine()).toBe(line(1));
-    expect(focused().dataset.testid).toBe("qa-turn-notice-open");
   });
 });

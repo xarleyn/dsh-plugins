@@ -17,10 +17,73 @@ import {
  * control the page has taken off the Tab path is not a step of the ring, and a
  * step the ring hands the keyboard to is a control that takes it. The mounted
  * cases in `qa-notice-focus-ring.test.tsx` walk the same list through a real
- * surface; here the markup is what is under test, because what `focusable` reads
- * — `tabindex`, `hidden`, `inert`, a closed fold — is decided without one.
+ * surface; here the markup and the sheet are what is under test, because what
+ * `focusable` reads — `tabindex`, `hidden`, `inert`, a closed fold, a container
+ * the layout switched off — is decided without one.
  */
 afterEach(cleanup);
+
+/**
+ * A page at a narrow width, shaped the way the surface is shaped: a sidebar at
+ * the front of the path, a chat rail near its end, and the notice stack painted
+ * after `<main>`.
+ *
+ * The two rules are the ones the surface ships — `.dsh-qa-sidebar` yields to the
+ * conversation at ≤600px and `.dsh-qa-rail` goes away at ≤900px (`styles.ts`).
+ * They are written here bare, without the media query around them, because
+ * jsdom resolves a rule that stands on a class and applies no media query at
+ * all: the declarations and the selectors are production's, the width is what
+ * the reader is assumed to have.
+ */
+function renderANarrowWidth(): {
+  main: HTMLElement;
+  stack: HTMLElement;
+  at: (testid: string) => HTMLElement;
+} {
+  const { container } = render(
+    <>
+      <style data-phantom-sheet>{`
+        .dsh-qa-sidebar{display:none}
+        .dsh-qa-rail{display:none}
+      `}</style>
+      <main data-testid="main">
+        <div className="dsh-qa-sidebar">
+          <button type="button" data-testid="new-chat" />
+        </div>
+        <button type="button" data-testid="header-action" />
+        <textarea data-testid="composer" />
+        <div className="dsh-qa-rail">
+          <button type="button" data-testid="turn-mark" />
+        </div>
+      </main>
+      <div data-testid="notice-stack">
+        <button type="button" data-testid="notice-open" />
+      </div>
+    </>,
+  );
+  const at = (testid: string): HTMLElement => {
+    const element = container.querySelector<HTMLElement>(
+      `[data-testid='${testid}']`,
+    );
+    if (element === null) throw new Error(`${testid} is not mounted`);
+    return element;
+  };
+  return { main: at("main"), stack: at("notice-stack"), at };
+}
+
+/** The key the reader gives the page, as the trap sees it. */
+function tabKey(shift: boolean): KeyboardEvent<HTMLElement> & {
+  preventDefault: ReturnType<typeof vi.fn>;
+} {
+  return {
+    key: "Tab",
+    shiftKey: shift,
+    stopPropagation: vi.fn(),
+    preventDefault: vi.fn(),
+  } as unknown as KeyboardEvent<HTMLElement> & {
+    preventDefault: ReturnType<typeof vi.fn>;
+  };
+}
 
 describe("the Tab path the ring reads off the markup", () => {
   it("leaves off the path what a browser leaves off: a negative `tabindex`, a hidden parent", () => {
@@ -160,8 +223,10 @@ describe("the Tab path the ring reads off the markup", () => {
     // What a browser does to a control the page has switched off in a media
     // query rather than in the markup: `.dsh-qa-rail` at ≤900px and
     // `.dsh-qa-sidebar` at ≤600px are two of them, and the front of the ring is
-    // the sidebar. jsdom applies no CSS and a stand at a wide panel has no such
-    // control to trip over, so the refusal is what the test paints.
+    // the sidebar. A test reads the layout through the sheet that switches a
+    // control off — the case above this one — and a stand at a wide panel has no
+    // such control to trip over, so this one paints the refusal itself: what the
+    // hand-off owes a control that answers `focus()` by moving nothing.
     const switchedOff = at("switched-off");
     switchedOff.focus = () => {};
     expect(focusRing([container.querySelector("main")])).toEqual([
@@ -185,5 +250,50 @@ describe("the Tab path the ring reads off the markup", () => {
 
     expect(event.preventDefault).toHaveBeenCalledTimes(1);
     expect(document.activeElement).toBe(at("next-control"));
+  });
+
+  it("keeps a control the layout switched off out of the path the ring walks", () => {
+    const { main, stack } = renderANarrowWidth();
+
+    // What the media query leaves the reader is the path the ring has to draw on:
+    // the sidebar's button and the rail's mark answer no Tab at this width, and a
+    // list that still counts them puts its edges on controls nobody stands on.
+    expect(
+      focusRing([main, stack]).map((element) => element.dataset.testid),
+    ).toEqual(["header-action", "composer", "notice-open"]);
+    expect(focusable(main).map((element) => element.dataset.testid)).toEqual([
+      "header-action",
+      "composer",
+    ]);
+  });
+
+  it("catches Shift+Tab at the front the width leaves, not at a switched-off control", () => {
+    const { main, stack, at } = renderANarrowWidth();
+    const front = at("header-action");
+    front.focus();
+
+    // The reader stands on the first control this width leaves them and asks for
+    // what comes before it. Were the edge the sidebar's button, this key would
+    // belong to no branch of the trap and would walk them out of the interface —
+    // the browser's own order has nothing before a hidden container.
+    const event = tabKey(true);
+    trapKeys(event, [main, stack]);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(at("notice-open"));
+  });
+
+  it("turns Tab back at the last control the width leaves, with no notice to end on", () => {
+    const { main, at } = renderANarrowWidth();
+    const back = at("composer");
+    back.focus();
+
+    // The stack is empty, so the ring ends inside `<main>` — and what the page
+    // paints last there is the rail's mark, which this width switched off. The
+    // key given at the composer is the ring's, and it comes back to the front of
+    // the path rather than leaving for the browser chrome.
+    const event = tabKey(false);
+    trapKeys(event, [main]);
+    expect(event.preventDefault).toHaveBeenCalledTimes(1);
+    expect(document.activeElement).toBe(at("header-action"));
   });
 });
