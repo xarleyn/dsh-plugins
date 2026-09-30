@@ -20,9 +20,11 @@ import type { ResolvedDocumentsConfig } from "../config.js";
 import { DocumentError, asDocumentError } from "../errors.js";
 import { assertBytesWithinBudget } from "../security/limits.js";
 import {
+  assertInsideRoot,
   assertRelativeAssetReference,
   resolveInsideRoot,
   sanitizeFilename,
+  sanitizeStem,
 } from "../security/paths.js";
 import {
   describeBytes,
@@ -57,6 +59,8 @@ const EXTENSION_BY_MIME: Readonly<Record<string, string>> = {
   "image/bmp": "bmp",
   "image/tiff": "tif",
 };
+/** Only a plain token can follow the dot: anything else is caller text. */
+const SAFE_EXTENSION = /^[A-Za-z0-9]{1,8}$/u;
 
 function extensionFor(
   mediaType: string,
@@ -65,8 +69,12 @@ function extensionFor(
   const mapped = EXTENSION_BY_MIME[mediaType];
   if (mapped !== undefined) return mapped;
   const fromName =
-    fallbackName === undefined ? undefined : path.extname(fallbackName);
-  return fromName === undefined || fromName === "" ? "bin" : fromName.slice(1);
+    fallbackName === undefined
+      ? undefined
+      : path.extname(fallbackName).slice(1);
+  return fromName === undefined || !SAFE_EXTENSION.test(fromName)
+    ? "bin"
+    : fromName;
 }
 
 function decodeBase64(payload: string, id: string): Buffer {
@@ -233,25 +241,236 @@ export async function prepareAssets(
       );
     }
 
+    // The stored name is the pipeline's choice, never the caller's: the label
+    // is cleaned by `sanitizeFilename`, whose fallback is cleaned as well, so
+    // neither an id nor a filename can put a separator into the path.
     const fileName = sanitizeFilename(
       asset.filename ??
         (asset.path === undefined ? id : path.basename(asset.path)),
       id,
       `.${extensionFor(mediaType, asset.filename)}`,
     );
-    await writeFile(path.join(options.assetsDir, fileName), bytes);
+    const target = assertInsideRoot(
+      options.assetsDir,
+      path.join(options.assetsDir, fileName),
+      `asset "${id}"`,
+    );
+    await writeFile(target, bytes);
     // Two spellings reach the stored file: the declared path (rewritten to the
     // stored name) and the asset id, so a source that references
     // `assets/<id>.<ext>` lands on the same file as one that references the
-    // final name.
-    const idReference = `assets/${id}${path.extname(fileName)}`;
-    if (!references.includes(idReference)) references.push(idReference);
+    // final name. The id enters as a cleaned stem, so this key can only ever
+    // name a file inside the assets directory.
+    const idStem = sanitizeStem(id);
+    const idReference =
+      idStem === "" ? undefined : `assets/${idStem}${path.extname(fileName)}`;
+    if (idReference !== undefined && !references.includes(idReference))
+      references.push(idReference);
     prepared.push({ id, fileName, mediaType, bytes: bytes.length, references });
   }
   return { assets: prepared, warnings };
 }
 
-const IMAGE_REFERENCE = /!\[[^\]]*\]\(\s*([^)\s]+)(?:\s+"[^"]*")?\s*\)/gu;
+/**
+ * One place in the source where a renderer will look for an image, and the
+ * characters that hold that spelling.
+ *
+ * An image can carry its target at the use site (`![alt](target)`) or in a link
+ * reference definition (`![alt][id]` with `[id]: target`), and the shortcut and
+ * collapsed forms borrow the alt text as the id. Reading only the inline
+ * spelling is what let `![x][image]` with `[image]: https://host/x.png` pass an
+ * audit that a renderer then acted on, so both are resolved to target spans
+ * before anything is checked or rewritten.
+ */
+export interface TargetSpan {
+  readonly target: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+/**
+ * A link reference definition at the start of a line: `[label]: target`, with
+ * the `<target>` spelling accepted and a trailing title ignored. More than three
+ * leading spaces means an indented code block, not a definition.
+ */
+const REFERENCE_DEFINITION =
+  /^[ \t]{0,3}\[([^\]]+)\]:[ \t]*(?:<([^>]*)>|(\S+))/gimu;
+
+/** Whether the character at `index` is escaped by an odd run of backslashes. */
+function isEscaped(text: string, index: number): boolean {
+  let backslashes = 0;
+  for (
+    let cursor = index - 1;
+    cursor >= 0 && text[cursor] === "\\";
+    cursor -= 1
+  ) {
+    backslashes += 1;
+  }
+  return backslashes % 2 === 1;
+}
+
+/**
+ * For every opening delimiter, the index of the `closing` that matches it,
+ * honouring nesting and backslash escapes. One pass over the source: the
+ * content budget is megabytes, and re-scanning from each `![` would turn a
+ * document full of unclosed brackets into a quadratic sweep.
+ */
+function matchedOpeners(
+  text: string,
+  opening: string,
+  closing: string,
+): Map<number, number> {
+  const stack: number[] = [];
+  const pairs = new Map<number, number>();
+  for (let index = 0; index < text.length; index += 1) {
+    const char = text[index];
+    if (char === "\\") {
+      index += 1;
+      continue;
+    }
+    if (char === opening) stack.push(index);
+    else if (char === closing) {
+      const open = stack.pop();
+      if (open !== undefined) pairs.set(open, index);
+    }
+  }
+  return pairs;
+}
+
+/** How CommonMark compares a reference label: case-free, spaces collapsed. */
+function normalizeLabel(value: string): string {
+  return value.trim().replace(/\s+/gu, " ").toLowerCase();
+}
+
+/**
+ * Every definition written for a label, in source order. CommonMark keeps the
+ * first and ignores the rest, but the audit reads them all: a source that hides
+ * a remote target behind a benign duplicate must not be judged by whichever
+ * spelling the renderer happened to pick.
+ */
+function referenceDefinitions(markdown: string): Map<string, TargetSpan[]> {
+  const definitions = new Map<string, TargetSpan[]>();
+  for (const match of markdown.matchAll(REFERENCE_DEFINITION)) {
+    const label = normalizeLabel(match[1] ?? "");
+    const bracketed = match[2];
+    const target = bracketed ?? match[3] ?? "";
+    if (label === "" || target === "") continue;
+    // The target ends the match except in the `<...>` spelling, whose closing
+    // bracket is part of the match but not of the destination.
+    const start =
+      match.index +
+      match[0].length -
+      target.length -
+      (bracketed === undefined ? 0 : 1);
+    const span = { target, start, end: start + target.length };
+    const existing = definitions.get(label);
+    if (existing === undefined) definitions.set(label, [span]);
+    else existing.push(span);
+  }
+  return definitions;
+}
+
+/**
+ * The destination of an inline `(...)`: the `<...>` form verbatim, otherwise up
+ * to the first space or `"` that ends the title, with balanced parentheses kept
+ * as part of the path. `offset` is where the destination begins inside `inner`.
+ */
+function parseInlineTarget(
+  inner: string,
+): { readonly value: string; readonly offset: number } | undefined {
+  const indent = inner.length - inner.trimStart().length;
+  const body = inner.trim();
+  if (body === "") return undefined;
+  if (body.startsWith("<")) {
+    const close = body.indexOf(">");
+    if (close < 1) return undefined;
+    const value = body.slice(1, close);
+    return value === "" ? undefined : { value, offset: indent + 1 };
+  }
+  let index = 0;
+  let depth = 0;
+  while (index < body.length) {
+    const char = body[index] ?? "";
+    if (char === "\\") {
+      index += 2;
+      continue;
+    }
+    if (depth === 0 && /\s/u.test(char)) break;
+    if (char === "(") depth += 1;
+    else if (char === ")") {
+      if (depth === 0) break;
+      depth -= 1;
+    }
+    index += 1;
+  }
+  const value = body.slice(0, index);
+  return value === "" ? undefined : { value, offset: indent };
+}
+
+/**
+ * Every image target the source offers a renderer, in source order and each
+ * span pointing at the text to replace. A reference use with no definition is
+ * literal text and is not a target.
+ */
+export function collectImageTargets(markdown: string): TargetSpan[] {
+  const definitions = referenceDefinitions(markdown);
+  const brackets = matchedOpeners(markdown, "[", "]");
+  const parentheses = matchedOpeners(markdown, "(", ")");
+  const targets: TargetSpan[] = [];
+  const claimed = new Set<string>();
+  let cursor = 0;
+  while (cursor < markdown.length) {
+    const start = markdown.indexOf("![", cursor);
+    if (start === -1) break;
+    // Resuming just after `![` rather than past the whole reference keeps a
+    // nested spelling (`![![a](x.png)](y.png)`) in reach of the audit: the
+    // renderer may ignore it, but the audit never misses a target.
+    cursor = start + 2;
+    if (isEscaped(markdown, start)) continue;
+    const labelEnd = brackets.get(start + 1);
+    if (labelEnd === undefined) continue;
+    const altText = markdown.slice(start + 2, labelEnd);
+    // A renderer accepts up to three spaces between the alt text and the
+    // target, so `![a] [b]` and `![a] (b.png)` are references, not a shortcut
+    // plus stray text. Newlines are not bridged: they end the reference.
+    let next = labelEnd + 1;
+    for (let gap = 0; gap < 3 && next < markdown.length; gap += 1) {
+      const char = markdown[next];
+      if (char !== " " && char !== "\t") break;
+      next += 1;
+    }
+    if (markdown[next] === "(") {
+      const close = parentheses.get(next);
+      if (close === undefined) continue;
+      const parsed = parseInlineTarget(markdown.slice(next + 1, close));
+      if (parsed !== undefined && parsed.value !== "") {
+        const from = next + 1 + parsed.offset;
+        targets.push({
+          target: parsed.value,
+          start: from,
+          end: from + parsed.value.length,
+        });
+      }
+      continue;
+    }
+    let label = altText;
+    if (markdown[next] === "[") {
+      // Full reference: the label is inside the second bracket pair; the
+      // collapsed form (`![alt][]`) borrows the alt text.
+      const close = brackets.get(next);
+      if (close === undefined) continue;
+      const inner = markdown.slice(next + 1, close);
+      if (inner.trim() !== "") label = inner;
+    }
+    const key = normalizeLabel(label);
+    if (key === "" || claimed.has(key)) continue;
+    const definition = definitions.get(key);
+    if (definition === undefined) continue;
+    claimed.add(key);
+    targets.push(...definition);
+  }
+  return targets;
+}
 
 function normalizeReference(value: string): string {
   return value.trim().replace(/\\/gu, "/").replace(/^\.\//u, "");
@@ -284,12 +503,30 @@ function referenceIndex(
   return index;
 }
 
+/** Which provided asset a written target names, if any. */
+function storedNameFor(
+  rawTarget: string,
+  index: Map<string, string>,
+  roots: readonly string[],
+): string | undefined {
+  const direct = index.get(normalizeReference(rawTarget));
+  if (direct !== undefined) return direct;
+  for (const root of roots) {
+    const resolved = index.get(
+      normalizeReference(path.resolve(root, rawTarget)),
+    );
+    if (resolved !== undefined) return resolved;
+  }
+  return undefined;
+}
+
 /**
  * Rewrite the image references that point at a provided asset to the bundle's
  * own `assets/<name>`, keeping every other reference untouched. Matching is
  * whole-reference (never a substring) and resolves relative spellings against
  * the workspace, so an absolute path and a workspace-relative path to the same
- * file both land on the same asset.
+ * file both land on the same asset. A reference-style image is rewritten at its
+ * definition, which is where its target is written.
  */
 export function rewriteAssetReferences(
   markdown: string,
@@ -298,28 +535,25 @@ export function rewriteAssetReferences(
 ): string {
   if (assets.length === 0) return markdown;
   const index = referenceIndex(assets, options.roots);
-  return markdown.replace(
-    IMAGE_REFERENCE,
-    (full: string, reference: string) => {
-      const direct = index.get(normalizeReference(reference));
-      if (direct !== undefined)
-        return full.replace(reference, `assets/${direct}`);
-      for (const root of options.roots) {
-        const resolved = index.get(
-          normalizeReference(path.resolve(root, reference)),
-        );
-        if (resolved !== undefined)
-          return full.replace(reference, `assets/${resolved}`);
-      }
-      return full;
-    },
-  );
+  let output = markdown;
+  // Splicing backwards keeps the offsets of the spans still to come valid.
+  for (const span of [...collectImageTargets(markdown)].sort(
+    (left, right) => right.start - left.start,
+  )) {
+    const stored = storedNameFor(span.target, index, options.roots);
+    if (stored === undefined) continue;
+    output =
+      output.slice(0, span.start) + `assets/${stored}` + output.slice(span.end);
+  }
+  return output;
 }
 
 /**
  * Verify every image reference in the Markdown before a renderer can act on
  * it: local files must exist inside the assets directory, and remote URLs are
- * refused because the renderer would fetch them (§26.5).
+ * refused because the renderer would fetch them (§26.5). Inline, collapsed,
+ * shortcut and full reference spellings are all audited against this one rule,
+ * since a renderer resolves them to the same destination.
  */
 export async function auditAssetReferences(
   markdown: string,
@@ -330,8 +564,7 @@ export async function auditAssetReferences(
 ): Promise<readonly DocumentWarning[]> {
   const warnings: DocumentWarning[] = [];
   const prepared = new Set(options.assets.map((asset) => asset.fileName));
-  for (const match of markdown.matchAll(IMAGE_REFERENCE)) {
-    const rawReference = match[1] ?? "";
+  for (const { target: rawReference } of collectImageTargets(markdown)) {
     // A scheme with an authority is a remote fetch; an absolute path (which on
     // Windows starts with a drive letter and therefore looks like a scheme) is
     // not, and is caught by the containment check below.
