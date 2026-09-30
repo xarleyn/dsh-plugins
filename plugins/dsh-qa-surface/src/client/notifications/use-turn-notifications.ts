@@ -93,18 +93,8 @@ export function useQaTurnNotifications(
     [account, prefs],
   );
 
-  // The record is merged onto what this page last wrote, not onto the snapshot a
-  // callback was built with: the browser answers its prompt on its own schedule,
-  // and the page keeps rendering while it waits. What the ref carries is this
-  // page's own writes — a second tab on the same key still overwrites them, and
-  // settling the two against each other is not this ref's job.
-  const written = useRef(prefs);
   const savePrefs = useCallback(
-    (
-      patch: (previous: QaNotificationPrefs) => Partial<QaNotificationPrefs>,
-    ) => {
-      const next = { ...written.current, ...patch(written.current) };
-      written.current = next;
+    (next: QaNotificationPrefs) => {
       setPrefs(next);
       writeNotificationPrefs(storage, storageKey, next);
     },
@@ -157,77 +147,41 @@ export function useQaTurnNotifications(
     [onSwitch],
   );
 
-  // The browser's answer about this origin and the reader's answer about the
-  // channel are separate questions, and the switch is for whichever is still
-  // open. An unanswered browser is asked by the click, and `osOffered` marks in
-  // this browser's own store that it has been asked once. A granted browser has
-  // no question left to ask, and its answer says nothing about the channel: the
-  // reader's own answer is the record the click would have to change, and
-  // anonymously this browser holds all of it — without the action, a reader who
-  // allowed the prompt in another tab has no way in.
-  //
-  // Both branches then stand on the reader's answer, and both read it from
-  // `channels.desktop`: the account's once there is one, this browser's
-  // otherwise — the same record delivery is decided by. Where it says the channel
-  // is on this page has nothing to offer, the browser having answered or not, and
-  // that is what keeps an action labelled «включить» from writing `false` over a
-  // channel the reader already switched on. A permission taken back in the address
-  // bar is the reader's own doing and is put back there: the record still says on,
-  // so delivery resumes the moment the origin is allowed again. A signed-in reader
-  // has the browser asked in the settings section instead, which offers its button
-  // whenever the browser still owes its answer.
-  //
-  // The browser's half is read per render and subscribed to nowhere, so what
-  // brings the action back is the next line this page renders — not the reader
-  // returning to the tab.
-  const permission = readNotificationPermission();
-  const unansweredBrowser =
-    permission === "default" && !prefs.osOffered && !channels.desktop;
+  // The offer is a single question per browser: asked when the desktop channel
+  // is still allowed by the deployment, unanswered, and the browser has not
+  // decided yet.
   const offered =
     notifications.enabled &&
     notifications.allowOs &&
-    (unansweredBrowser ||
-      (permission === "granted" && account === undefined && !channels.desktop));
+    !prefs.osOffered &&
+    readNotificationPermission() === "default";
 
-  // Waving a notice off clears the stack. Where the offer under it is the
-  // browser's own unanswered prompt it is also the answer to that prompt: the
-  // mark exists so that no tab of this stand asks this browser the same question
-  // twice. Where the origin is already granted the cross says nothing about the
-  // channel, and the action returns with the next line — on a stand without
-  // accounts it is the only way that channel has of being switched on.
+  // Waving a notice off while the offer is on screen is the answer to the
+  // offer too: it never returns to ask a second time.
   const dismiss = useCallback(
     (key: string) => {
       setItems((previous) => previous.filter((item) => item.key !== key));
-      if (offered && unansweredBrowser) savePrefs(() => ({ osOffered: true }));
+      if (offered) savePrefs({ ...prefs, osOffered: true });
     },
-    [offered, unansweredBrowser, savePrefs],
+    [offered, prefs, savePrefs],
   );
 
-  // Answering the offer writes the choice on both carriers that can hold it: on
-  // the account once there is one, so it survives into another browser, and in
-  // this browser's own store always — anonymously that copy is the whole record,
-  // and signed in the account outranks it, see `resolveNoticeChannels`. The copy
-  // here is what an anonymous form reads after a sign-out, consequence and all, and
-  // «carries the switch a signed-in reader threw into the anonymous form» measures
-  // it. What this browser marks for itself is that it stopped being asked, which is
-  // a fact about this browser's question rather than about the person: a click that
-  // found the origin already granted marks nothing, because there was no question
-  // there to ask.
+  // Answering the offer writes the choice where it belongs: on the account once
+  // there is one, so it survives into another browser, and in this browser's own
+  // store otherwise. The browser keeps its own copy either way — what it decides
+  // is that the question has been asked here, which is a fact about this
+  // browser's permission prompt rather than about the person.
   const enableDesktop = useCallback(() => {
-    const askedTheBrowser = readNotificationPermission() === "default";
-    void requestNotificationPermission().then((answer) => {
-      const granted = answer === "granted";
-      savePrefs((previous) => ({
-        osEnabled: granted,
-        osOffered: previous.osOffered || askedTheBrowser,
-      }));
+    void requestNotificationPermission().then((permission) => {
+      const granted = permission === "granted";
+      savePrefs({ ...prefs, osEnabled: granted, osOffered: true });
       if (account === undefined) return;
       void account.onSave({
         inApp: account.notifications.inApp,
         desktop: granted,
       });
     });
-  }, [account, savePrefs]);
+  }, [account, prefs, savePrefs]);
 
   return {
     items,

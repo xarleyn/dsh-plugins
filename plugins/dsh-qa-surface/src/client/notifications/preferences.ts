@@ -5,18 +5,7 @@ import type { StorageLike } from "../types.js";
 export interface QaNotificationPrefs {
   /** Raise a desktop notice for a finished turn while this page is in the background. */
   readonly osEnabled: boolean;
-  /**
-   * This browser has stopped being asked for the desktop channel by this stand's
-   * page: the one question it may get has been answered, or was waved off while it
-   * was still open. The mark is carried by this browser's own store, under a key
-   * that depends on neither the tab nor the account, so it is a fact about the
-   * browser and the stand rather than about one page — a second tab of the same
-   * stand reads it and does not ask again. Nothing here claims the prompt ever
-   * reached the screen: a line waved off before the reader saw the question closes
-   * it just as well, and from there the answer is given in the browser's own
-   * settings. Says nothing about the channel either: where the origin is already
-   * granted, {@link osEnabled} is the reader's answer alone.
-   */
+  /** The offer was answered or waved off: a notice never asks a second time. */
   readonly osOffered: boolean;
 }
 
