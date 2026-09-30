@@ -130,9 +130,9 @@ describe("client registration", () => {
   });
 
   it("answers the summary seat with the one-liner and the page seat with the card", () => {
-    // `plugins.row.config` is rendered twice by the page: as the row's
-    // description fallback (`view: "summary"`, plain text inside the page's own
-    // `<p>`) and as the configuration section (`view: "page"`, with the form).
+    // `slot-contract.ts` renders this seat twice: as `summary`, the row's
+    // description fallback (plain text inside the page's own `<p>`), and as
+    // `page`, the configuration section that carries the form.
     const t = vi.fn((key: string) => `t:${key}`);
     const props = { view: "summary", t } as unknown as Parameters<
       typeof SleevRowConfig
