@@ -187,7 +187,8 @@ export function lowerStandardDecorators(): Plugin {
       }
       return {
         code: emitted.outputText.replace(SOURCE_MAP_COMMENT_RE, "\n"),
-        map,
+        // Vite's `map` is optional, and `exactOptionalPropertyTypes` forbids passing it explicitly as undefined.
+        ...(map ? { map } : {}),
         moduleType: "js",
       };
     },
