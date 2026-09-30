@@ -197,7 +197,13 @@ export class ArtifactStore {
     );
   }
 
-  /** Retention sweep (§41): drop bundles older than `maxAgeDays`. */
+  /**
+   * Retention sweep (§41): drop bundles older than `maxAgeDays`, and the job
+   * temp directories that have been around just as long. A running job's work
+   * directory is written to as it goes, so its own age keeps it; the `.tmp`
+   * root is never removed as a whole, because that would sweep away the fresh
+   * directories of every job in flight next to it.
+   */
   async cleanup(options: {
     readonly maxAgeDays: number;
     readonly now?: Date;
@@ -220,7 +226,6 @@ export class ArtifactStore {
       if (details === undefined || details.mtime.getTime() >= cutoff) continue;
       await rm(dir, { recursive: true, force: true }).catch(() => undefined);
     }
-    await rm(tempRoot, { recursive: true, force: true }).catch(() => undefined);
     return { removed };
   }
 }

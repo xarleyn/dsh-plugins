@@ -1,3 +1,4 @@
+import { stat, utimes } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
@@ -101,6 +102,27 @@ describe("artifact store", () => {
     const swept = await store.cleanup({ maxAgeDays: 30, now: future });
     expect(swept.removed).toContain(result.artifactId);
     expect(await store.exists(result.artifactId)).toBe(false);
+  });
+
+  test("sweeps a stale temp directory without touching a job in flight", async () => {
+    // Retention used to remove the whole `.tmp` root, so a sweep landed on the
+    // fresh working directory of a job that had not finished yet (§47).
+    const store = new (
+      await import("../src/documents/artifacts/store.js")
+    ).ArtifactStore({
+      root: path.join(workspace, "sweep"),
+    });
+    const stale = await store.createWorkDir("stale-job");
+    const active = await store.createWorkDir("active-job");
+    const longAgo = new Date(Date.now() - 40 * 86_400_000);
+    await utimes(stale, longAgo, longAgo);
+
+    const swept = await store.cleanup({ maxAgeDays: 30 });
+    expect(swept.removed).toEqual([]);
+    expect((await stat(active)).isDirectory()).toBe(true);
+    expect(await store.exists(path.join(".tmp", "active-job"))).toBe(true);
+    expect(await store.exists(path.join(".tmp", "stale-job"))).toBe(false);
+    expect(await store.exists(".tmp")).toBe(true);
   });
 
   test("refuses an artifact id that was not issued by this pipeline", async () => {
