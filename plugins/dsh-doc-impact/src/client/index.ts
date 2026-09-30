@@ -7,8 +7,9 @@
 // id `cordis.patch.yml` declares. That row id is also the namespace the Host files
 // this plugin's live Config under (`dsh-doc-impact`), so the values a stand already
 // wrote are read back by this card unchanged — only where it renders moved. The
-// page draws the row's title, icon and crumb around the entry; the card keeps the
-// shared shell inside it.
+// page hands this seat `{ view: 'page', form }` and draws its own chrome around it,
+// while the card keeps the shared shell inside (`docs/DSH-0.1.7-MIGRATION.md` §4.2
+// for the seat contract, §4.3 for the two nested frames).
 //
 // UX contract (mirrors the first-party plugin cards):
 //   - one collapsible card; the header shows an "unsaved" badge while drafts
@@ -24,9 +25,10 @@
 // by the ModuleLoader. The slots / configForms / locale services are declared in
 // `inject` (the client runtime exposes only injected services, so a missing
 // declaration makes `apply` see them as absent and silently skip the card); the
-// method guards below keep headless or older profiles safe. The card's own text
-// arrives as the page's translate seat for the locale namespace this entry
-// declares, which is why the dictionary below is registered before any seat is.
+// method guards below, together with the card's own translate fallback, keep
+// headless or older profiles safe. The card's own text arrives as the page's
+// translate seat for the locale namespace this entry declares, which is why the
+// dictionary below is registered before any seat is.
 
 import { ConfigCard } from "./card.js";
 import { DICT } from "./dictionary.js";

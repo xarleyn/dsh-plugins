@@ -28,13 +28,18 @@ uses (the card-contract gate reads no slot name, so it fires on the new registra
 exactly as it did on the old), the same staged drafts, the same field-granular writes
 fenced by the revision read at the moment of writing, the same unsaved badge and
 per-field reset to the composition layer. Two details follow from the new seat rather
-than from a redesign. The page renders this one entry in two views — `page` for the
-form, and `summary` for the one-liner it shows wherever the bundle declares no
-description of its own — so the entry answers `summary` with the dictionary's
-`cardDescription` and reads no settings state there: mounting the store inside the
-page's description line would hang a second live subscription on it. And the shell's
-`<li>` still needs a list to sit in, which the configuration section does not supply,
-so the plugin-owned `<ul>` stays with it.
+than from a redesign. The seat hands its entry `{ view: 'page', form }` and nothing
+else — `docs/DSH-0.1.7-MIGRATION.md` §4.2 cites the render site at
+`PluginManagerPage.tsx:495` and attributes the `summary` one-liner to the *other* slot,
+`plugins.item` — so this entry has one view to draw, takes no early return before its
+state hook, and reads its settings state exactly once. Its text still arrives through
+the translate function the page binds for the locale namespace this entry declares, and
+where a profile hands the seat no such function the card falls back to the dictionary it
+registered instead of throwing. And the shell's `<li>` still needs a list to sit in,
+which the configuration section does not supply, so the plugin-owned `<ul>` stays with
+it. The page draws its own card chrome around the entry, so the two frames now nest;
+that is the open decision §4.3 records (the shell classes stay mandatory for now), and
+the stand check is where it gets settled.
 
 The manifest needed no new dependency, and that is a property of this entry rather
 than an oversight: the bundle registers through the injected `slots` service by slot
@@ -43,7 +48,12 @@ name and imports no host package, so there is no surface to anchor a peer on
 browser half does now depend on the Plugins page existing, and says so —
 `compatibility.json` lists `plugins.row.config` among the required client features,
 which is why this is `minor` rather than `patch`: a browser on a host without that
-page loses the card. `scripts/verify-client-bundle.mjs` asserts the slot literal,
-both halves of the keyed seat, and that the shipped bundle carries the `summary`
-branch; `tests/client-bundle.test.ts` asserts the keyed registration, that the seat
-kept none of the tab's chrome, and that the summary view mounts no settings read.
+page loses the card. `tests/client-bundle.test.ts` reads the seat key and the settings
+namespace from `cordis.patch.yml` rather than repeating them, so a row id that moves in
+the patch reddens the test instead of quietly dropping the configure control, and it
+drives the entry through the page view it is handed — shell mounted, settings read once,
+and the translate fallback speaking when the seat provides no `t`.
+`scripts/verify-client-bundle.mjs` checks values, not the spellings of the constants
+that spell them: the slot literal, the package-name half of the key as the patch names
+it, the row id the bundle carries, and the absence of the `settings.plugins.tab` seat
+this card vacated.
