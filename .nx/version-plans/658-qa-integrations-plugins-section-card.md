@@ -35,9 +35,14 @@ write — so the operator card keeps resolving its own `ConfigForm` through
 face under the name `settingsForm`, where the owner prop called `form` cannot
 shadow it. And the same entry is dispatched a second time as `view: 'summary'`
 wherever the panel wants a one-liner for a row that declares no description of its
-own, so it returns the sentence and never a second card. The account card needs no
-form at all — it reaches the account through the `qaUserSession` service — so it
-takes the bundle's own seat, and the signed-in user's QA settings section is
+own — the contract the panel ships says so in its header ("`summary` for an
+official card's one-liner or a row's missing-description fallback") and closes the
+row entry with "An absent description falls back to the entry's `view: 'summary'`",
+and the compiled page renders that seat beside the `page` one — so the entry
+returns the sentence and never a second card. The bundle seat is documented as
+`page`-only, which is why the account card has no such branch. The account card
+needs no form at all — it reaches the account through the `qaUserSession` service —
+so it takes the bundle's own seat, and the signed-in user's QA settings section is
 untouched.
 
 The manifest followed the surface: the client half type-imports the Plugins
@@ -48,6 +53,15 @@ entry, and `compatibility.json` names `plugins.row.config` and
 `plugins.bundle.config` among its required client features where it named the tab.
 That is why this is `minor` rather than `patch`: a browser running a host without
 the Plugins panel loses both cards. `scripts/verify-package.mjs` now pins the two
-slot literals and the `@yadsh/dsh-qa-integrations#` key in the shipped bundle and
-refuses the tab, and the client tests assert the keyed registrations, the namespace
-the operator form is resolved under, and the two views of the row entry.
+slot literals in the shipped bundle and refuses the tab, and it glues the seat to
+the patch: the namespace the operator form resolves under, the row id
+`cordis.patch.yml` declares, and the key the row seat is built from must stay one
+string, because a drift there is a seat with no form and a stand that reads its
+saved values back as defaults — with every type check green. The list wrapper the
+two cards share took the neutral name `dsh-qa-integrations__card-list` with the
+mount it now draws (`dsh-qa-integrations__host-tab` named a tab that is gone). The
+client tests assert the keyed registrations, the namespace the operator form is
+resolved under, and the two views of the row entry. `AGENTS.md`, the `create-plugin`
+reference and `docs/DSH-0.1.7-MIGRATION.md` §4.2/§10 follow the move: the panel
+seats are the entry point for a plugin's own configuration card, and §4.2 records
+that the row seat is dispatched twice.

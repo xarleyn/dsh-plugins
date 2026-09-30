@@ -78,7 +78,7 @@ describe("Integrations plugin card", () => {
       session(ANONYMOUS),
     );
     render(<BundleCard />);
-    const list = screen.getByTestId("qa-integrations-host-tab");
+    const list = screen.getByTestId("qa-integrations-bundle-card");
     const shell = list.firstElementChild as HTMLElement;
     expect(shell.tagName).toBe("LI");
     expect(shell.classList.contains("dsh-plugin-card")).toBe(true);

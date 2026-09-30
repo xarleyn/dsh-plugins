@@ -778,9 +778,13 @@ describe("integrations operator card", () => {
 });
 
 /**
- * The seat the Plugins page dispatches: the page asks one entry for two views,
- * so the `summary` seat — which lands inside the page's own `<p>` — stays a
- * sentence, and the `page` seat is the card with the shell it owns.
+ * The seat the Plugins page dispatches. The page asks one `plugins.row.config`
+ * entry for two views — the `summary` one is the row's missing-description
+ * fallback (`slot-contract.d.ts:13,110` and `lib/client.js:1841` of
+ * `@deepseek-ai/dsh-client-ui-plugin-manager` 0.1.7-rc.2), the `page` one is the
+ * form beside its save control (`lib/client.js:1852`) — so the summary seat
+ * stays a sentence, which lands inside the page's own `<p>`, and the page seat
+ * is the card with the shell this plugin owns.
  */
 describe("integrations row entry", () => {
   const Entry = OperatorCardEntry as unknown as ComponentType<{
