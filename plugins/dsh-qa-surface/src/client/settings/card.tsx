@@ -11,8 +11,8 @@
 
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
   InjectFace,
   PropsRuntime,
@@ -64,13 +64,19 @@ const REFRESH_INTERVAL_MS = 5_000;
 const REFUSED_MESSAGE =
   "Хост отклонил изменение: значение не сохранилось. Обычно так отвечает несовместимая комбинация полей — проверьте связанные значения этого раздела. Точную причину хост пишет в свой журнал.";
 
-/** The face the tab entry injects into this card. */
+/**
+ * The face the row page injects into this card. The Plugins page renders the
+ * entry with its own owner `form` seat (a Host-owned `ConfigPageForm`), which
+ * the renderer spreads after this face — so the card's own full `ConfigForm`,
+ * resolved through `ctx.configForms`, crosses the boundary under the distinct
+ * name `settingsForm` and the two forms never collide.
+ */
 export interface QaSettingsCardFace {
-  readonly form: ConfigForm<QaSurfaceConfig>;
+  readonly settingsForm: ConfigForm<QaSurfaceConfig>;
   describe(): Promise<RemoteResult<ResolvedQaSurfaceConfig>>;
 }
 
-type CardProps = PropsRuntime<"settings.plugins.tab"> &
+type CardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<QaSettingsCardFace>;
 
 /** Mutation operations as the bound form declares them. */
@@ -86,8 +92,11 @@ function displayError(error: unknown): string {
   return "Хост отклонил изменение настроек помощника.";
 }
 
-export function QaSettingsCard({ form, describe }: CardProps) {
-  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
+export function QaSettingsCard({ settingsForm, describe, view }: CardProps) {
+  const store = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const settings = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -137,6 +146,7 @@ export function QaSettingsCard({ form, describe }: CardProps) {
   }, [describe]);
 
   useEffect(() => {
+    if (view !== "page") return;
     const stopPolling = startVisibilityAwarePolling(
       refresh,
       REFRESH_INTERVAL_MS,
@@ -145,7 +155,7 @@ export function QaSettingsCard({ form, describe }: CardProps) {
       stopPolling();
       activeRequest.current += 1;
     };
-  }, [refresh]);
+  }, [refresh, view]);
 
   /**
    * Path-addressed writes into the namespace. The form's mutation operations
@@ -164,7 +174,7 @@ export function QaSettingsCard({ form, describe }: CardProps) {
       entries: readonly ConfigEntry[],
       cleared: readonly (readonly string[])[],
     ) => {
-      const before = form.getSnapshot().revision;
+      const before = settingsForm.getSnapshot().revision;
       const ops = [
         ...entries.map((entry) => ({
           op: "set" as const,
@@ -174,19 +184,19 @@ export function QaSettingsCard({ form, describe }: CardProps) {
         ...cleared.map((path) => ({ op: "unset" as const, path: [...path] })),
       ] as unknown as ScopeOps;
       try {
-        await form.mutate(ops);
+        await settingsForm.mutate(ops);
       } catch (cause) {
         setWriteError(displayError(cause));
         return;
       }
-      const after = form.getSnapshot();
+      const after = settingsForm.getSnapshot();
       const landed =
         after.revision !== before || mutationLanded(entries, cleared, after);
       // Held until a later write lands: the message names what to look at, and
       // a timer that clears it would only hide the problem.
       setWriteError(landed ? null : REFUSED_MESSAGE);
     },
-    [form],
+    [settingsForm],
   );
 
   const write = useCallback(
@@ -223,6 +233,10 @@ export function QaSettingsCard({ form, describe }: CardProps) {
     );
   }, [applyMutation, overrides]);
 
+  // The row page asks this entry for a one-line description fallback
+  // (`view: 'summary'`) before it opens the page; the form surface belongs to
+  // the page view only.
+  if (view !== "page") return null;
   if (settings.status === "unavailable") return null;
 
   const enabled = effective?.enabled ?? config?.enabled ?? true;
@@ -323,11 +337,12 @@ export function QaSettingsCard({ form, describe }: CardProps) {
 }
 
 /**
- * The tab page this plugin registers. The card shell's root is an `<li>`, and a
- * tab owns its own content, so the list around it belongs to the plugin
+ * The row configuration page this plugin registers. The card shell's root is
+ * an `<li>`, and the Plugins page renders the entry inside its own sections
+ * column without a list, so the list around the `<li>` stays plugin-owned
  * (AGENTS.md, card-shell contract).
  */
-export function QaSettingsTab(props: CardProps) {
+export function QaSettingsCardPage(props: CardProps) {
   return (
     <ul className="qa-settings-cards">
       <QaSettingsCard {...props} />

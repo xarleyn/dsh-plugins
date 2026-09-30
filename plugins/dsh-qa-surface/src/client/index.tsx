@@ -11,8 +11,8 @@ import type {} from "@deepseek-ai/dsh-agent-preset-registry/remote";
 import type {} from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 import { QaConfigController } from "./QaConfigController.js";
 import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
@@ -103,7 +103,10 @@ import type {
 } from "../types.js";
 import { QA_SURFACE_SETTINGS_NAMESPACE } from "../shared/settings.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
-import { QaSettingsTab, type QaSettingsCardFace } from "./settings/card.js";
+import {
+  QaSettingsCardPage,
+  type QaSettingsCardFace,
+} from "./settings/card.js";
 import { QA_SETTINGS_STYLES } from "./settings/styles.js";
 import { QaSurfacePanelRegistry } from "./panels/registry.js";
 import { QaUserSettingsSectionRegistry } from "./settings-extensions/index.js";
@@ -851,33 +854,35 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         // declarations during an incremental source typecheck.
         return described.value as unknown as ResolvedQaSurfaceConfig;
       });
-      // The operator edits this deployment from its own tab in the Plugins
-      // settings section: the same namespace the page reads, plus the Host's own
+      // The operator edits this deployment from the plugin's own row in the
+      // Plugins panel: the same namespace the page reads, plus the Host's own
       // answer about what it resolved. Its stylesheet is the card shell, not the
       // QA page's palette, and the card keeps drawing its own shell.
+      // The Plugins page keys a row's configuration by `<package name>#<row id>`
+      // and resolves the Host form for the row id as the settings namespace —
+      // both the package name and the row id come from this bundle's patch.
+      const rowConfigKey = `@yadsh/dsh-qa-surface#${QA_SURFACE_SETTINGS_NAMESPACE}`;
       ctx.effect(() => {
         const cardFace: QaSettingsCardFace = {
-          form: configForm,
+          settingsForm: configForm,
           describe: () => policyRemote.describe(),
         };
         const removeStyles = injectCardStyles(
           "@yadsh/dsh-qa-surface",
           QA_SETTINGS_STYLES,
         );
-        const removeTab = ctx.slots.inject("settings.plugins.tab", () =>
+        const removeRowConfig = ctx.slots.inject("plugins.row.config", () =>
           ctx.slots.register(
             {
-              name: "settings.plugins.tab",
-              id: QA_SURFACE_SETTINGS_NAMESPACE,
-              order: 30,
-              label: () => "Помощник QA",
+              name: "plugins.row.config",
+              key: rowConfigKey,
               inject: () => cardFace,
             },
-            QaSettingsTab,
+            QaSettingsCardPage,
           ),
         );
         return () => {
-          removeTab();
+          removeRowConfig();
           removeStyles();
         };
       }, "dsh-qa-surface: settings-card");
