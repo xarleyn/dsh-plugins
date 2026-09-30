@@ -156,11 +156,11 @@ test("the PR workflow also builds pull requests that target a release branch", a
 
 test("the tooling test command still names every tooling test that exists", async () => {
   // CI runs `pnpm test:release`, whose value is a list of files written out one by
-  // one, while `docs/VERIFICATION.md` describes that series by its mask. A test
-  // file added under one of these directories and left out of the list is a gate
-  // no run ever executes, and the mask is exactly what hides the difference — so
-  // the list and the directories are compared here rather than trusted to the
-  // attention of whoever adds the next file.
+  // one. A test file added under one of these directories and left out of the list
+  // is a gate no run ever executes, and describing the series by its mask — the way
+  // `docs/VERIFICATION.md` put it until this check existed — is what hides the
+  // difference, so the list and the directories are compared here rather than
+  // trusted to the attention of whoever adds the next file.
   const manifest = JSON.parse(
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );
