@@ -53,3 +53,20 @@ chat does, retires the materialization the ending chat was still paying for, and
 `bind` answers whether it adopted, so no caller can read a step back as a
 success. The way out of a preview waits for the same «чат ещё создаётся» moment
 the header's «Новый чат» and the role selector already waited for.
+
+A step back now also takes itself back. Past the binding an adoption has already
+installed a chat of its own — the retained reference, the session, and the three
+subscriptions that answer every frame of it with a publish — and until now it
+undid none of that when it stepped back. That was safe whenever the screen moved
+to a chat that retires the binding itself, and it was not safe when the screen
+moved to the bootstrap, which raises the generation while deliberately keeping the
+transcript on screen until its own session exists: a bootstrap that then failed
+left the abandoned adoption holding a Host session nobody is in and republishing
+that chat's frames into the surface, and each frame cleared the «не удалось начать
+чат» the stand had just published — the silence this card is about, arriving a
+second time as a reason that vanishes. An adoption that steps back or falls over
+while the screen is no longer its own now releases what it took, and only its own:
+the chat that replaced it keeps its identity, its subscriptions and its policy
+proof. Entering a draft is held to the same rule across its own round-trip —
+stopping a running turn is a request, and a chat opened through it keeps the
+screen, because the draft was asked for before that click.
