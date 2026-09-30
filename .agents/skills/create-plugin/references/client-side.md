@@ -63,24 +63,71 @@ Everything below was confirmed by a broken surface, not by a green gate.
   silent whole-plugin death. Gate idea: regex the built bundle for the inject
   array (done in web-fetch-authenticated's verify-package).
 - Slot registration goes through `ctx.slots.inject(key, () =>
-  ctx.slots.register({name, id, order, label, inject}, Component))`; the slot
-  exists only while the parent section is declared — `register` on an
-  undeclared slot throws.
+  ctx.slots.register({name, …}, Component))`; the slot exists only while the
+  parent section is declared — `register` on an undeclared slot throws. A *list*
+  seat is addressed by `{id, order, label}`, a *keyed* seat by `{key}` instead of
+  that half; `locale` and `inject` travel with either. Passing the wrong half is
+  a silent misplacement, not an error.
 
-## Settings cards and pages
+## Configuration cards on the Plugins panel
 
-- Entry point decision (AGENTS.md): `settings.plugin.item` ONLY for a card
-  editing a real Host settings namespace (host settings directory is
-  unavailable to non-loopback browsers — no card without a namespace);
-  `settings.plugins.tab` for feature-owned pages backed by custom Remote
-  services or UI that must work from a non-loopback browser.
-- Cards registered in `settings.plugin.item` must use the shared shell: root
-  is a direct `<li>` child of the host list with classes `dsh-plugin-card`,
-  `--open` modifier, `__header` (full-width `<button type="button">` with
-  `aria-expanded`), `__head-text`, `__name`, `__description`, `__badge`,
-  `__chevron`, `__body`. The canonical shell CSS is in AGENTS.md — copy it
-  verbatim, no plugin-specific borders/shadows/icons. Render the body only
-  while open; no card if the settings namespace is unavailable.
+- Entry point (AGENTS.md): a plugin's configuration card registers on the Host
+  Plugins page, in the `plugins.row.config` seat of its own bundle row. The seat
+  is keyed `@yadsh/dsh-<name>#<row id>`, where the row id is the `id` this
+  bundle's `cordis.patch.yml` declares — and that id is also the settings
+  namespace the Host resolves the volatile Config under, so the key invents no
+  name and a value saved before the seat existed still reads back.
+  `settings.plugin.item` was deleted at `0.1.7`; `settings.plugins.tab` is not a
+  card's registration point any more.
+- The shape, registered inside `ctx.inject(['slots', 'configForms', …], …)` so a
+  revoked/re-granted namespace re-registers instead of stacking:
+
+  ```tsx
+  const ROW_CONFIG_KEY = `@yadsh/dsh-<name>#${SETTINGS_NAMESPACE}`;
+
+  ctx.slots.inject("plugins.row.config", () =>
+    ctx.slots.register(
+      { name: "plugins.row.config", key: ROW_CONFIG_KEY, inject: () => face },
+      MyEntry,
+    ),
+  );
+  ```
+
+  The panel titles the row from the package manifest, so no `label` is handed to
+  the seat and a keyed seat has no `order`.
+- From `@yadsh/dsh-plugin-kit/client` the shell survives the move: `CardShell`,
+  `PLUGIN_CARD_SHELL_CSS`, `ChevronDown`, `injectCardStyles` and
+  `bindSettingsExternalStore` are what the card is built from. But
+  `registerSettingsCard` / `SETTINGS_PLUGIN_ITEM_SLOT` default to the slot the
+  Host deleted at `0.1.7` — pass `slotName: "plugins.row.config"` with the row
+  `key`, or drive `ctx.slots.inject`/`register` yourself, which is what every
+  migrated plugin of this repository does.
+- The page seats the same entry under two `view`s: `summary` — a one-liner
+  wherever a row declares no description of its own — and `page`, the card.
+  Export an entry that answers `summary` with the sentence and mounts the card
+  only for `page`; a card inside a line of text draws a page within a paragraph
+  and starts a second poll of the Remote.
+- The seat passes its own owner prop `form`: a `ConfigPageForm` of
+  `{ state, mutate }` only — no subscription, no single-field `set`/`unset`, and
+  `undefined` when no Config field carries `.volatile()`. The renderer spreads
+  the owner props AFTER the injected face, so a face member named `form` is
+  overwritten and the card dies against a `mutate` that is not a `ConfigForm`.
+  Resolve what the card really needs through `ctx.configForms.get<T>(namespace)`
+  and pass it in the face under another name (`settingsForm`, what the migrated
+  plugins settled on).
+- The shell contract (AGENTS.md) survives the move: canonical CSS, the
+  `dsh-plugin-card` classes, the inline chevron. The panel's configuration
+  section supplies no list, so the `<li>` root stays inside a `<ul>` the plugin
+  owns. Render no card while the namespace answers `unavailable`, and disable
+  writes from `state.writable` instead of hiding the card — a LAN browser does
+  reach the Plugins page, which is not the loopback-gated settings directory.
+- The manifest follows the surface. The client half type-imports the slot
+  contract of `@deepseek-ai/dsh-client-ui-plugin-manager`, so that package
+  replaces `@deepseek-ai/dsh-client-ui-settings-plugins` in `peerDependencies`,
+  in `devDependencies` (both through the `dsh` / `dsh-dev` catalogs) and in
+  `dsh.client.inject`; `compatibility.json` names `plugins.row.config` among its
+  `requiredClientFeatures`. A host without the Plugins page loses the card, so
+  the bump is a `minor`, not a patch.
 - Chevron: inline SVG `viewBox="0 0 14 14"`, path `m3.5 5.25 3.5 3.5 3.5-3.5`,
   `currentColor`, round caps/joins, 180° rotation when open. Font glyphs
   (`⌄`, `▾`) are forbidden everywhere in the bundle — the card-contract gate
@@ -88,11 +135,12 @@ Everything below was confirmed by a broken surface, not by a green gate.
   `verify-package.mjs`) rejects them.
 - A card plugin owes a verify script that runs the card contract against the
   BUILT bundle (hygiene gate checks the script's existence; see
-  `plugins/dsh-doc-impact/scripts/verify-client-bundle.mjs` for the pattern).
-- Settings pages render inside an 800px dialog with a ~556px content column:
-  viewport media queries do not fire. Lay out from the container
-  (`display:flex; flex-wrap:wrap` + `flex: 1 1 Npx` columns) and test by
-  measuring `el.scrollWidth > el.clientWidth` at every level.
+  `plugins/dsh-model-safety-gate/scripts/verify-package.mjs` for the pattern).
+- A page mounted in the native settings tree (`settings.section`, as
+  `dsh-preset-persona-editor` does) renders inside an 800px dialog with a
+  ~556px content column: viewport media queries do not fire. Lay out from the
+  container (`display:flex; flex-wrap:wrap` + `flex: 1 1 Npx` columns) and test
+  by measuring `el.scrollWidth > el.clientWidth` at every level.
 - No interactive control inside the card header button: a `role="switch"`
   inside `<button>` is invalid DOM and a keyboard trap — make toggle and
   selection sibling controls.
@@ -114,12 +162,19 @@ what follows is the half no gate covers, in order:
 
 - **Stale bundle.** Fetch the served URL from §Bundle identity and shape and
   confirm it is the build you just made.
-- **Wrong extension point.** Apply the entry-point rule above: a card that must
-  answer from the LAN belongs on `settings.plugins.tab`. Misplaced is not
-  broken.
-- **No namespace.** A `settings.plugin.item` card renders nothing while its Host
-  settings namespace is unavailable — and inventing an empty namespace to make a
-  page appear is the forbidden shortcut the same rule names.
+- **Wrong seat.** Apply the entry-point rule above: a configuration card is the
+  `plugins.row.config` seat of its own row, and a key that is not
+  `<package name>#<row id>` — a short id, a missing `@yadsh/` scope, a row id
+  that does not match the `id` in `cordis.patch.yml` — seats the card where the
+  page never renders it. Misplaced is not broken.
+- **Summary, not page.** The page may be holding your entry as the row's
+  `summary` one-liner until the row is opened. An entry that answers `summary`
+  with a sentence shows nothing until then; that is the seat working as
+  documented, not a dead card.
+- **No namespace.** The seat hands no `form` while the Config declares no
+  `.volatile()` field, and the card renders nothing while the namespace answers
+  `unavailable` — inventing a field to make a surface appear is the forbidden
+  shortcut the entry-point rule names.
 - **Dead loader entry.** See the `inject` contract above: the plugin disappears
   from the UI and the host log stays clean.
 
@@ -127,9 +182,10 @@ what follows is the half no gate covers, in order:
 
 No gate opens the page, so "green" is never evidence about layout:
 
-- **Measure instead of eyeballing.** The overflow check is the one §Settings
-  cards and pages already gives; walk it level by level, including inside the
-  settings dialog that section explains. Add what it does not cover: overlapping
+- **Measure instead of eyeballing.** The overflow check is the one
+  §Configuration cards on the Plugins panel already gives; walk it level by
+  level, including inside the 800px settings dialog a `settings.section` page
+  renders into. Add what it does not cover: overlapping
   rects, and the computed radius and type scale read against the token, not
   against a memory of the design.
 - **Capture the states that can differ**: the states the card UI section of

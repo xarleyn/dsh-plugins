@@ -287,6 +287,14 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   для человека. Коды не переиспользуются под другой смысл.
 - **Опциональные протоколы фиксируйте в `compatibility.json`**
   (`requiredClientFeatures`, `optionalClientProtocols`).
+- **Карточка конфигурации плагина регистрируется в панели Plugins** — в слоте
+  `plugins.row.config` собственного ряда бандла, с ключом
+  `<npm-имя>#<id строки из cordis.patch.yml>`. Диалог настроек для этой цели не
+  служит: слот `settings.plugin.item` удалён в 0.1.7, а `settings.plugins.tab`
+  больше не точка регистрации карточки (хост слот сохранил). Оболочка карточки,
+  её CSS и проверка — `AGENTS.md` §Plugin configuration card UI; ключ ряда,
+  две вью посадочного места (`page` и `summary`) и форма, которую ряд отдаёт, —
+  `docs/DSH-0.1.7-MIGRATION.md` §4.2.
 - **Не блокируйте загрузку**: тяжёлая инициализация — после первого кадра или
   лениво по событию.
 
@@ -475,6 +483,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   `id` не участвует в URL клиентского бандла — тот собирается из полного
   npm-имени (`/plugins/@yadsh/dsh-<name>/client.js`, см. §1) — но `id`
   адресует строку из patch-слоёв, поэтому держите его без `/`, `@` и пробелов.
+  Тот же `id` — неймспейс live-настроек и вторая половина ключа ряда панели
+  Plugins (§3.6): хост резолвит по нему volatile `Config`, поэтому смена `id`
+  отпускает и сохранённые значения, и карточку, которая их читает.
 - **`name` = точное npm-имя `"@yadsh/dsh-<name>"`** — по нему хост резолвит
   пакет (package.json → `dsh.bundle.patch`, `dsh.client`, exports) и сверяет
   строку при override-патчах: патч с `name`, не совпавшим со строкой,
