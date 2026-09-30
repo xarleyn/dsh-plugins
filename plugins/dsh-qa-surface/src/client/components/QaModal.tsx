@@ -7,6 +7,16 @@ import { useEffect, useRef, type ReactNode } from "react";
  */
 const openDialogs: symbol[] = [];
 
+/**
+ * Whether a dialog of this shell is on screen. The keyboard belongs to it: the
+ * page under it, and anything painted beside it — the notice stack is such a
+ * neighbour — have to stop steering Tab while it holds, or a reader working in
+ * the dialog is turned back into a page under the scrim.
+ */
+export function isQaModalOpen(): boolean {
+  return openDialogs.length > 0;
+}
+
 export interface QaModalProps {
   readonly open: boolean;
   /** Dialog title; also the dialog's accessible name. */
