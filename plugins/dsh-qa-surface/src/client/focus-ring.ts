@@ -69,15 +69,67 @@ export function isInert(element: HTMLElement): boolean {
 }
 
 /**
+ * Whether a closed fold keeps this element off the Tab path: it stands inside a
+ * `<details>` whose body the page has not opened.
+ *
+ * The fold's own `summary` stays on the path — it is the control the reader uses
+ * to open the block — while everything under a closed fold is not. A collapsed
+ * system notice of the transcript is that body: it is rendered markdown, and
+ * markdown paints its source chips as buttons, which a browser never stops on
+ * until the reader opens the fold. Nested folds are read the same way, so the
+ * walk gives its answer at the first closed one.
+ */
+function isFolded(element: HTMLElement): boolean {
+  for (
+    let node: HTMLElement | null = element.parentElement;
+    node !== null;
+    node = node.parentElement
+  ) {
+    if (!(node instanceof HTMLDetailsElement)) continue;
+    if (element.tagName === "SUMMARY" && element.parentElement === node) {
+      continue;
+    }
+    if (!node.open) return true;
+  }
+  return false;
+}
+
+/**
  * Every control of `root` the keyboard can still reach, in DOM order: what the
- * page has not hidden, what still carries a place in the tab order, and what no
- * `inert` ancestor has handed to a dialog.
+ * page has not hidden, what still carries a place in the tab order, what no
+ * `inert` ancestor has handed to a dialog, and what no closed fold keeps out of
+ * sight.
  */
 export function focusable(root: HTMLElement): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(TABABLE_SELECTOR)].filter(
     (element) =>
-      !isHidden(element) && !isTabbedOut(element) && !isInert(element),
+      !isHidden(element) &&
+      !isTabbedOut(element) &&
+      !isInert(element) &&
+      !isFolded(element),
   );
+}
+
+/**
+ * Hand the keyboard to the first candidate that takes it.
+ *
+ * What `focusable` reads is the markup, and a page can take a control off the
+ * Tab path by other means: the chat rail and the sidebar of the surface are
+ * switched off by a media query (`styles.ts`), and a browser stops on a
+ * `display:none` control no more than on a `hidden` one. Neither this file nor a
+ * test can see that — jsdom applies no CSS, and a stand at a wide panel has no
+ * such control to trip over — so each candidate is checked at the moment it is
+ * asked: a control that leaves `document.activeElement` where it was is passed
+ * over, instead of leaving the reader on the same control they pressed Tab from.
+ */
+export function focusFirst(
+  candidates: readonly (HTMLElement | null | undefined)[],
+): void {
+  for (const element of candidates) {
+    if (element === null || element === undefined) continue;
+    element.focus();
+    if (document.activeElement === element) return;
+  }
 }
 
 /**
@@ -122,9 +174,12 @@ export function trapKeys(
   const last = items.at(-1);
   if (event.shiftKey && document.activeElement === first) {
     event.preventDefault();
-    last?.focus();
+    // The reader stands on the front of the ring and asks for what comes before
+    // it: the back edge, then whatever stands in front of that edge, since the
+    // edge itself may be a control this width has switched off.
+    focusFirst([...items].reverse());
   } else if (!event.shiftKey && document.activeElement === last) {
     event.preventDefault();
-    first?.focus();
+    focusFirst(items);
   }
 }
