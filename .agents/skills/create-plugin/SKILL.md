@@ -52,8 +52,9 @@ and prefer the newer rule.
 - `dsh.client` is scaffolded as `{ platform: "web" }` only. Real plugins also
   declare (see `plugins/dsh-model-safety-gate/package.json` as the reference):
   - `inject`: harness client packages whose face the plugin's client code
-    imports (e.g. `@deepseek-ai/dsh-client-ui-settings` for a settings card,
-    `@deepseek-ai/dsh-client-connection`);
+    imports (e.g. `@deepseek-ai/dsh-client-ui-plugin-manager` for a card on the
+    Plugins panel, `@deepseek-ai/dsh-client-ui-settings` for the `ConfigForm`
+    types, `@deepseek-ai/dsh-client-connection`);
   - `external`: packages that stay out of the bundle because the host page
     provides them (React, `@deepseek-ai/dsh-client-ui-slots`) — mirror the
     same ids in `tsdown.config.ts` `deps.neverBundle`.
@@ -166,7 +167,8 @@ release notes owns the rule, the hygiene gate enforces it). Validate with
 - `references/host-side.md` — cordis semantics, config, tools, storage,
   subagents, typert/Remote, testing recipes.
 - `references/client-side.md` — ModuleLoader bundle identity, platform
-  limits, remote namespaces, slots, settings cards, design tokens.
+  limits, remote namespaces, slots, configuration cards on the Plugins panel,
+  design tokens.
 - `references/release-and-gates.md` — gates map, build order, pre-push
   command set, packaging/docs layout, release mechanics.
 - Canonical docs: `docs/PLUGIN_GUIDELINES.md`, `docs/VERIFICATION.md`,

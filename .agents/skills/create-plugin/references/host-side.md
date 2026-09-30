@@ -39,9 +39,16 @@ incidents. Canonical narrative: `docs/PLUGIN_GUIDELINES.md` §3.
   JSDoc on every field, and a `resolve…Config` function that normalizes raw
   values into fully defaulted, clamped data, so consumers never handle
   optional fields or unsafe limits.
-- Optional plugin settings section: `ctx.settings.installSection(...)` via
-  `ctx.inject(['settings'], …)` — then the plugin still works (on its
-  composition entry) when the settings service is absent.
+- Live, browser-editable config is a `.volatile()` field of the profile `Config`
+  (0.1.7): the settings namespace **is** the composition entry id, so there is no
+  section registration to make — `ctx.settings.installSection(...)` is gone.
+  `settings` is an optional service: reach it per call (`ctx.inject(["settings"],
+  …)`) so the plugin still works on its composition entry when the service is
+  absent, and write from the plugin with `ctx.get("settings").update(entryId,
+  patch)`. Read a field as `config.<field>.get()` at the start of each
+  operation. The browser half is `references/client-side.md`
+  §Configuration cards on the Plugins panel; the full recipe is
+  `docs/DSH-0.1.7-MIGRATION.md` §4.1.
 
 ## Tools
 
