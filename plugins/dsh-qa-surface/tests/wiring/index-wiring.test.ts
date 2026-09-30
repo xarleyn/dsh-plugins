@@ -481,3 +481,99 @@ describe("wiring: agent lookup and refusal reasons", () => {
     await dispose();
   });
 });
+
+describe("wiring: the failed turn reaches the operator's log", () => {
+  /**
+   * The console mirror is what `docker compose logs` shows, so the host logger
+   * object the plugin's sink was handed is read here instead of the log file.
+   * What one line carries is decided by the wiring in `src/index.ts`: the unit
+   * test feeds its own ownership resolver, so only here does a regression back
+   * to a boolean predicate — or a seam that stopped installing the ownership
+   * listener — show up as a wrong or missing line.
+   */
+  function mirrorErrors(ctx: Context): string[] {
+    const lines: string[] = [];
+    const host = ctx.logger;
+    host.error = ((message: unknown) => {
+      lines.push(String(message));
+    }) as typeof host.error;
+    return lines;
+  }
+
+  /** One turn the Host closed with the registry refusal of the report. */
+  function failedTurn(sessionId: string, turn: number): [unknown, unknown] {
+    return [
+      { id: sessionId, requestHeader: () => undefined },
+      {
+        type: "turn/end",
+        data: {
+          turn,
+          reason: {
+            kind: "error",
+            error: {
+              code: "NO_ADAPTER",
+              message: 'pi-ai adapter does not own provider "local-dev"',
+            },
+          },
+        },
+      },
+    ];
+  }
+
+  function turnLines(lines: string[]): string[] {
+    return lines.filter((line) => line.includes("session.turn-failed"));
+  }
+
+  it("writes the failure of an attested chat with its code and provider", async () => {
+    const { ctx, chat, surface, dispose } = await world();
+    chat("chat-1", WORKSPACE);
+    await surface.secureSession("", "chat-1");
+    const lines = mirrorErrors(ctx);
+    ctx.events.emit("session/event", ...failedTurn("chat-1", 3));
+    expect(turnLines(lines)).toEqual([
+      expect.stringMatching(
+        /sessionId=chat-1 turn=3 code=NO_ADAPTER provider=local-dev/u,
+      ),
+    ]);
+    await dispose();
+  });
+
+  it("files the death of a delegated expert under the chat that owns it", async () => {
+    const { ctx, chat, surface, dispose } = await world();
+    chat("chat-1", WORKSPACE);
+    await surface.secureSession("", "chat-1");
+    // The expert is created under the chat, which is how the ownership map —
+    // installed by the approval, question and delete seams — learns the pair.
+    // The shape is the one the Host gives a child, because the other listeners
+    // of `session/created` read the conversation through it too.
+    ctx.events.emit("session/created", {
+      id: "expert-7",
+      header: {
+        id: "expert-7",
+        createdAt: Date.now(),
+        parentSession: "chat-1",
+      },
+      surface: { nodes: [] },
+      snapshotEvents: () => [],
+      eventAt: () => undefined,
+    });
+    const lines = mirrorErrors(ctx);
+    ctx.events.emit("session/event", ...failedTurn("expert-7", 3));
+    expect(turnLines(lines)).toEqual([
+      expect.stringMatching(
+        /sessionId=chat-1 failedSessionId=expert-7 turn=3 code=NO_ADAPTER/u,
+      ),
+    ]);
+    await dispose();
+  });
+
+  it("keeps a session this deployment does not claim out of the log", async () => {
+    const { ctx, chat, surface, dispose } = await world();
+    chat("chat-1", WORKSPACE);
+    await surface.secureSession("", "chat-1");
+    const lines = mirrorErrors(ctx);
+    ctx.events.emit("session/event", ...failedTurn("foreign-1", 1));
+    expect(turnLines(lines)).toEqual([]);
+    await dispose();
+  });
+});
