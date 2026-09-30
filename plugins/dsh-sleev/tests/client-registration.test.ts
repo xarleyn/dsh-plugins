@@ -130,9 +130,10 @@ describe("client registration", () => {
   });
 
   it("answers the summary seat with the one-liner and the page seat with the card", () => {
-    // `slot-contract.ts` renders this seat twice: as `summary`, the row's
-    // description fallback (plain text inside the page's own `<p>`), and as
-    // `page`, the configuration section that carries the form.
+    // The contract of `@deepseek-ai/dsh-client-ui-plugin-manager` asks this seat
+    // for one of two views: `summary` as the row's description fallback, plain
+    // text inside the page's own `<p>`, and `page` as the configuration section
+    // that carries the form.
     const t = vi.fn((key: string) => `t:${key}`);
     const props = { view: "summary", t } as unknown as Parameters<
       typeof SleevRowConfig
@@ -143,9 +144,13 @@ describe("client registration", () => {
 
     const page = SleevRowConfig({ ...props, view: "page" }) as ReactElement<{
       "data-testid": string;
+      className: string;
       children: ReactElement;
     }>;
     expect(page.props["data-testid"]).toBe("sleev-row-config");
+    // The class the card's own styles key off: a rename here would leave the
+    // plugin-owned list, which the shell contract requires, unstyled and unfixed.
+    expect(page.props.className).toBe("dsh-sleev-config");
     expect(page.props.children.type).toBe(SleevSettingsCard);
   });
 });

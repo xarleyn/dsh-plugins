@@ -345,14 +345,17 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
 export const inject = ["slots", "configForms", "locale"];
 
 /**
- * Configuration seat of the Sleev bundle row on the Host Plugins page. The page
- * renders this slot twice: as `page`, the card — whose `<li>` shell needs the
- * plugin-owned `<ul>` the card contract assumes — and as `summary`, which
- * `slot-contract.ts` documents as the row's one-liner ("An absent description
- * falls back to the entry's `view: 'summary'`"; both sites are in the rc.2
- * bundle at `lib/client.js:1841` and `:1852`). The card resolves the `dsh-sleev`
- * namespace itself instead of taking the `form` this page hands it, which is what
- * keeps values stored before the move readable after it.
+ * Configuration seat of the Sleev bundle row on the Host Plugins page. The
+ * contract of the declared peer dependency —
+ * `@deepseek-ai/dsh-client-ui-plugin-manager`, `lib/types/client/slot-contract`
+ * — names the slot and hands it `PluginConfigViewProps`, whose `view` is the
+ * union `'summary' | 'page'`, and records that an absent row description falls
+ * back to the entry's `summary`. So `summary`, asked for only where the Host
+ * brings no description of its own, is answered with the one-liner and never
+ * with the form; `page` is the card, whose `<li>` shell needs the plugin-owned
+ * `<ul>` the card contract assumes. The card resolves the `dsh-sleev` namespace
+ * itself instead of taking the `form` this page hands it, which is what keeps
+ * values stored before the move readable after it.
  */
 export function SleevRowConfig(props: SleevSettingsCardProps): ReactNode {
   if (props.view === "summary") return props.t("description");

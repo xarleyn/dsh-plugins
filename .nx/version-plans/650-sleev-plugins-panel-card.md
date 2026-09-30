@@ -17,9 +17,10 @@ after it. The four fields keep staging edits, marking the overridden ones, reset
 field to its composition default, and refusing a value the schema would reject. The card
 keeps the shared shell, and the list element the plugin owns still holds its `<li>` root.
 
-The row's page fills two seats, as `packages/client/ui-plugin-manager/src/client/slot-contract.ts`
-defines them: where the Host has no description for the row, the page takes its
-one-liner from the card, and the form with its save control renders as the page body.
+The seat's contract comes from `@deepseek-ai/dsh-client-ui-plugin-manager`: its
+`plugins.row.config` entry is handed a `view` of `summary` or `page`, takes the
+one-liner where the page has no description of its own, and renders the form with
+its save control as the page body. Both answers are pinned by the package's tests.
 Reaching the new surface is a host-side requirement, so
 `compatibility.json` now names `plugins.row.config` as the client feature the browser half
 needs, and `dsh.client.inject` names the module that declares the slot.
