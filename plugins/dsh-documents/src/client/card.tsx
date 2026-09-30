@@ -72,11 +72,16 @@ const OCR_MODES = [
   { value: "force", label: "Всегда" },
 ] as const;
 
-/**
- * What this row of the Plugins page is: the sentence under the card's title, and
- * the one-liner the page shows in place of a description the patch does not
- * declare. One string owns both, so the row and the opened card cannot drift.
- */
+// The card's title and the one sentence under it. The row these belong to is
+// titled and described by this package's exported locale `meta`
+// (`locale/en.json`), which carries the same two strings — a test pins the pair,
+// so the row and the opened card cannot drift. The summary is also what the page
+// falls back to as the row's one-liner when the row has no display description.
+
+/** The title the card draws and the row is named by. */
+export const DOCUMENTS_CARD_TITLE = "Документы";
+
+/** The sentence the card states under its title and the row states beside it. */
 export const DOCUMENTS_CARD_SUMMARY =
   "Конвейер документов: Markdown ↔ DOCX/PDF, извлечение текста, онлайн-источники.";
 
@@ -170,7 +175,7 @@ export function DocumentsCard({
     // (AGENTS.md).
     <ul className="dsh-docs-list">
       <CardShell
-        title="Документы"
+        title={DOCUMENTS_CARD_TITLE}
         description={DOCUMENTS_CARD_SUMMARY}
         badge={
           <span className="dsh-plugin-card__badge">

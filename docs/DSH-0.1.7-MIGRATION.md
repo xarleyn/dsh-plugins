@@ -426,6 +426,28 @@ scope.subscribe(listener)             →    (not needed — the page owns the s
 survives untouched: it is structural over `subscribe`/`getSnapshot`, which
 `ConfigForm` still provides.
 
+**[rc.2 addendum, #656 — verified against the published `0.1.7-rc.2` bundle]** Two
+things this recipe understates, both found when `dsh-documents` landed the first
+card on `plugins.row.config` (key `@yadsh/dsh-documents#documents`):
+
+- The row seat renders **two** views, not one. `client.js:1841` renders it as
+  `{ view: 'summary' }` for the row's one-liner, and `:1852` as
+  `{ view: 'page', form }` for the body — so the bullet above ("rendered with
+  `{ view: 'page', form }`") is a half-truth. A registrant that returns its card
+  for every view paints a card inside the page's own `<p>`.
+- The page draws the row's **title and description itself**, from this package's
+  exported display metadata: the Host reads `<package>/locale/en.json`
+  (`meta.title`, `meta.description`) without activating the plugin, then falls
+  back — title to the package/module name (Plugin Manager keeps the *complete*
+  name; only Settings shortens it), description to `package.json#description`,
+  and only when both are absent does it ask this slot for `summary`
+  (`adding-a-package.md` §5, "A row configuration page can use its registered
+  summary when the plugin has no display description"). A card moving off
+  `settings.plugins.tab` therefore **loses its `label`** unless the package ships
+  `locale/en.json` and exports `./locale/en.json`: the row would otherwise be
+  named `@yadsh/<package>`. Pin the metadata against the strings the card itself
+  renders, or the row drifts away from the card it opens.
+
 ### 4.3 The card-shell contract, decided for option 1
 
 **[decided 2026-10-01, option 1]** The maintainer chose to follow the Host chrome:

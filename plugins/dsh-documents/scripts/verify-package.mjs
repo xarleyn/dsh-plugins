@@ -18,7 +18,7 @@ await runVerifyPackage({
   packageRoot: root,
   packageName: "@yadsh/dsh-documents",
   license: "MIT",
-  exports: [".", "./client", "./types", "./package.json"],
+  exports: [".", "./client", "./types", "./locale/en.json", "./package.json"],
   exportsBuilt: true,
   client: {
     platform: "web",
@@ -29,6 +29,7 @@ await runVerifyPackage({
   },
   files: [
     "skills",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
@@ -40,6 +41,9 @@ await runVerifyPackage({
     "lib/types/index.d.ts",
     "lib/types/client/index.d.ts",
     "cordis.patch.yml",
+    // The Host reads the row's title and description from this file; a package
+    // that publishes without it falls back to the full package name.
+    "locale/en.json",
   ],
   patch: { id: "documents", name: "@yadsh/dsh-documents" },
   compatibility: {
@@ -76,6 +80,24 @@ await runVerifyPackage({
       "catalog:dsh",
       "the Plugins page package must be a peer dependency of the client half",
     );
+
+    // The row's title and description on that page come from this file, which the
+    // Host reads without activating the plugin. An empty or non-string field is
+    // not a fallback but a metadata diagnostic, and the row then names itself by
+    // the full package name.
+    const meta = JSON.parse(await readFromRoot("locale/en.json")).meta;
+    for (const field of ["title", "description"]) {
+      assert.equal(
+        typeof meta?.[field],
+        "string",
+        `locale/en.json meta.${field} must be a string`,
+      );
+      assert.notEqual(
+        meta[field].trim(),
+        "",
+        `locale/en.json meta.${field} must not be empty`,
+      );
+    }
 
     // Host entry: the pipeline installs itself, the five semantic tools and the
     // comparison pair come from it, and the skill ships with it.
