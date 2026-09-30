@@ -549,12 +549,19 @@ saying, and a run that began inside the gap would look exactly like the turn tha
 follows. So the first turn of a chat after a gap ends unreported with the rest,
 and the silence stops there: the run that ends it is one this page could not
 account for, and the turn after it is watched from its start. Which of those the
-stale list was showing is not something this page can tell, and the silence is
-the honest answer until a browser can vouch for the host list across a gap. A
-chat this page stops reading is the same gap in the same evidence: while its row
-is away from the sidebar there is no frame naming it at all, so a run that
-returns to the list is found running again rather than watched beginning, and it
-ends unreported too.
+stale list was showing is not something this page can tell, and nothing the host
+client publishes would tell it either: the list the page subscribes to carries no
+mark of having been read again, so the chat's own row moving is the only arrival
+it can be given, and the silence is bounded by that row rather than by the link.
+A gap the page was never shown is the one case this rule does not cover. The
+silence is assembled from the frames the page was handed while it reported itself
+reconnecting, and a loss of the link that came and went between two screen
+updates hands over none of them — a chat that was idle before that blink is then
+credited with a start nobody saw, so a turn that began inside it arrives as one
+you had been waiting for, while a turn you watched begin only arrives late. A chat this page stops reading is the same gap in the same
+evidence: while its row is away from the sidebar there is no frame naming it at
+all, so a run that returns to the list is found running again rather than watched
+beginning, and it ends unreported too.
 
 A turn that ends in the chat already on screen, with this window active,
 produces nothing: the answer is in front of the reader.

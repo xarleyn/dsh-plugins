@@ -439,7 +439,17 @@ under `plugins/dsh-qa-surface/tests/`:
   reconnect, error, unmount, cold-start projection of an already
   running chat, or on the *first* frame of a session that started
   before the tab opened (the shipped gate is the per-chat reading in
-  `turn-completion-source.ts`; §3.1, §12).
+  `turn-completion-source.ts`; §3.1, §12). The cases drawn across a
+  gap enter with the reading the paused frame is asked to re-project
+  — a still-running row for the `unwatched` half, a trusted idle for
+  the `stale` half — and §12 names, by mutation, what removing either
+  half costs.
+- `session-controller-reconnecting-frame.test.ts` — the two edges a
+  reconnect hands the page are set by hand in both orders (#479):
+  the link's return is published on the strength of the link alone,
+  while the rows still say what the gap left them saying, and a
+  refreshed list that arrives over a down link does not retire the
+  frame that names the gap.
 - `background-completion-source.test.ts` — non-bound owned chat
   running→idle fires once; non-owned chat running→idle does not fire;
   admin-visible foreign chat does not fire when
@@ -587,10 +597,10 @@ notifications.ts` the wiring. `config.notifications`
   when its own row moves, which bounds the cost at one turn per chat —
   the run the page could not account for, then normal service.
   Whether the host list lets a browser vouch for anything across a gap at
-  all is R2, and settling it on a live stand is #479; the silence is
-  written into `docs/CONFIGURATION.md` as the shipped promise in the
-  meantime, so a stand that needs the notice through a gap is a #479
-  change rather than an undocumented difference from the docs. The same
+  all is measured below, and the answer is that it does not; the silence is
+  written into `docs/CONFIGURATION.md` as the shipped promise, so a stand that
+  needs the notice through a gap is a change of the rule rather than an
+  undocumented difference from the docs. The same
   reading also covers a chat whose row leaves the sidebar and comes back:
   while the row is away the differ holds no reading for that chat at all,
   so its run is found rather than watched, and it ends silently too —
@@ -604,10 +614,65 @@ notifications.ts` the wiring. `config.notifications`
   to what it read, the refusal to arm a baseline on a row that has not
   moved since, and the dropping of a reading whose chat left the list.
   All three are covered by the cold-start and reconnect cases under
-  `tests/client/notifications/`. What stays with #479 is the measurement:
-  the frame ordering a live Host really produces between the link
-  returning and the list refreshing, and an integration test for that
-  ordering.
+  `tests/client/notifications/`, and measured rather than asserted: taking out
+  either half of the `stale` transition — the paused idle that leaves it, or the
+  live frame whose row has not moved keeping it — fails the same eight cases,
+  five of them written by #479 (two in the differ, three at page level) and
+  three by the cases #483 added with the fourth reading. The ordering half is
+  settled by hand rather than assumed: `tests/session/session-controller-reconnecting-frame.test.ts`
+  draws both orders at the seam where the page picks the two edges up — the
+  link's return published on the strength of the link alone, with the rows
+  still the ones the gap left, and the refreshed list arriving while the page
+  still reports itself reconnecting without retiring that frame. What the stand
+  still owes is narrower than the ordering: whether a live Host can fit a drop
+  and its return into the space between two renders, which is the next bullet.
+- **The silence covers a gap the page was shown (#479).** Every sentence above
+  is about frames the differ was handed, and one frame carries the whole gap:
+  the differ's `paused` input is the page's own
+  `state.phase === "reconnecting"` (`QaSurface`, where it builds
+  `useQaTurnNotifications`), and the controller reaches that phase only where a
+  connection was once established and then went (`connectedOnce`, read in
+  `QaSessionController.publish`). So the rule as shipped reads: every frame
+  taken while the page reports itself reconnecting is worth nothing, and what
+  the restored link delivers is adopted only as its rows move. Turn that round
+  and it is the boundary: a gap that produced no such frame produces no silence
+  either. If a drop and its return fit between two renders, the reading the page
+  held before the gap crosses it untouched, and each reading fares differently:
+  a chat that was `idle` is credited with a start it never saw, so a turn that
+  began inside the blink is reported as one the reader had been waiting for,
+  while a chat that was `watched` keeps the evidence it had and is reported late
+  rather than never. No case in this package can rule that out, because the differ
+  only ever receives what the page rendered, and the seam cases above draw two
+  publishes, not one merged render. The primitive that would close the boundary
+  without measuring is already in the component: `QaSurface` holds
+  `props.connection`, a `ConnectionGenerationState` whose `getSnapshot()` names
+  the active generation and reads `undefined` before readiness and while
+  reconnecting, and that generation moves at connect — independently of React's
+  batching and of the identity of a foreign store. Two consecutive frames whose
+  generations differ are then known to straddle a gap the page never displayed,
+  which is what no rendered `reconnecting` frame can tell the differ. Re-aiming
+  the rule from the rendered phase onto that counter would cost more than it
+  buys: a generation can be replaced while the screen keeps showing the same
+  rows, so every run that began just before one would go uncredited even where
+  the page did see it start. It is named here, and the live pass decides whether
+  the merged render it protects against is a thing the stand produces.
+- **What a browser may vouch for across a gap is measured, not assumed (#479).**
+  The option this section left open — clearing `stale` on the fact that the list
+  was re-read rather than on a row moving — has no signal to stand on. The
+  installed host client publishes the list as
+  `{ ids, byId, phase, projectionsBySession }`
+  (`@deepseek-ai/dsh-api-session-controller`, the dependency
+  `docs/COMPATIBILITY.md` names): `phase` is `pending | ready` and monotone, so
+  a re-pull after a reconnect does not take it back to `pending`; the client's
+  own in-flight flag is dropped by the projection that builds the store the page
+  subscribes to; and `ids`/`byId` are rebuilt as fresh objects on every publish,
+  including the one that happens before the answer arrives, so a changed
+  reference says only that something was published, not that the Host answered.
+  A reconnect's re-pull is fire-and-forget, unawaited, which is what makes the
+  live-then-stale-rows window normal rather than exceptional. So arming a
+  baseline on the chat's own row moving is not a stand-in for a better signal
+  this page has not been given yet: on this contract the row is the signal, and
+  the one-turn silence it costs is the price of the promise §3.1 makes.
 - §3.5's five booleans are two: `inApp` and `desktop`. A preference is only
   worth storing if a channel exists to honor it, and the shipped dispatcher has
   two — the line in the page and the notice the page hands to the operating
