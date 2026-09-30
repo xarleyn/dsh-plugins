@@ -91,9 +91,16 @@ describe("bundle composition (SPEC §17)", () => {
     expect(row.config).toBeUndefined();
     // The row declaring nothing but `id` and `name` is also what keeps the
     // Plugins page asking `plugins.row.config` for the row's one-liner: the page
-    // falls back to the entry's `view: 'summary'` only where `row.meta.description`
-    // is absent (`dsh-client-ui-plugin-manager` `lib/client.js:1841,211-215`), so a
-    // `description` added here silently retires that branch of `src/client/card.tsx`.
+    // falls back to the entry's `view: 'summary'` only where the row metadata
+    // carries no description — "An absent description falls back to the entry's
+    // `view: 'summary'`", `dsh-client-ui-plugin-manager`
+    // `lib/types/client/slot-contract.d.ts:105-116`, at the site in `lib/client.js:1841`.
+    // So this assertion, not a comment, is the guard: add a `description` to the row
+    // and it goes red here, which is the moment to decide whether the summary branch
+    // of `src/client/card.tsx` still earns its keep. `id` and `name` are also exactly
+    // what the row page prints above the card — the `<h3>` falls back to the module
+    // specifier, `rowText` in `lib/client.js:211-215` — so this pair pins the heading
+    // a live stand will show as well.
     expect(Object.keys(row).sort()).toEqual(["id", "name"]);
   });
 

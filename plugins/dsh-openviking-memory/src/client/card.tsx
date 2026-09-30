@@ -44,10 +44,12 @@ export interface OpenVikingCardFace {
    * The live Config of this plugin's namespace.
    *
    * Named `settingsForm`, not `form`: the row seat hands its registrant a `form`
-   * of its own — the Host's `ConfigPageForm`, which is only `{ state, mutate }`
-   * and so can neither be subscribed to nor written field by field. This plugin's
-   * `ConfigForm` therefore arrives through the injected face, where the owner prop
-   * cannot shadow it.
+   * of its own — the Host's `ConfigPageForm`, `{ state, mutate }` and nothing
+   * else (`packages/client/ui-plugin-manager/src/client/slot-contract.ts:124-130`
+   * at tag `dsh-v0.1.7-rc.2`, delivered as the owner prop at `:24-27`). That form
+   * can neither be subscribed to nor written field by field, so this plugin's
+   * `ConfigForm` arrives through the injected face, where the owner prop cannot
+   * shadow it.
    */
   readonly settingsForm: ConfigForm<Config>;
 }
@@ -802,16 +804,27 @@ export function OpenVikingMemoryCard({ settingsForm }: CardProps) {
 /**
  * The entry the Plugins page renders for this bundle's row, seated twice.
  *
- * Measured against the shipped `@deepseek-ai/dsh-client-ui-plugin-manager`
- * `0.1.7-rc.2` client bundle: `RowDetail` sets the row's description line from
- * `description ?? renderSlot("plugins.row.config", { view: "summary" }, …)`
- * (`lib/client.js:1841`) and renders the same entry again as the configuration
- * body, `{ view: "page", form }` (`:1852`). The `description` there is
- * `row.meta?.description` and nothing else (`rowText`, `:211-215`) — the row
- * metadata a profile gets from the bundle's patch, which this `cordis.patch.yml`
- * declares no key for, and which `tests/bundle.test.ts` holds at `id` + `name`.
- * So this row's line really is asked of this entry, and the page seats the answer
- * inside its own `<p>` — text, never a second card.
+ * Host source, tag `dsh-v0.1.7-rc.2`: `RowDetail` fills the row's description
+ * line with `description ?? renderSlot('plugins.row.config', { view: 'summary' },
+ * { entryKey: key })` (`packages/client/ui-plugin-manager/src/client/PluginManagerPage.tsx:491`)
+ * and renders the same entry again as the configuration body with
+ * `{ view: 'page', form }` (`:495`). The slot contract says it in prose — "An
+ * absent description falls back to the entry's `view: 'summary'`"
+ * (`slot-contract.ts:100`) — and the shipped types repeat that sentence
+ * (`lib/types/client/slot-contract.d.ts:105-116`), so the second seat is a
+ * documented half of the slot rather than an accident of one build.
+ * `docs/DSH-0.1.7-MIGRATION.md` §4.2 lists only `:495`, because the point that
+ * section makes is which site carries a `form`; SPEC §7.1 of this package carries
+ * the commands that print both.
+ *
+ * For this row the fallback is live, not merely possible. `description` there
+ * comes from `rowText`, which reads `row.meta?.title ?? row.moduleName` and
+ * `row.meta?.description` and nothing else (`presentation.ts:126-132`), and
+ * `row.meta` is whatever the Host's inventory handed over — no `package.json`
+ * field is folded into it. This bundle's `cordis.patch.yml` gives its row
+ * `id` + `name` only, which `tests/bundle.test.ts` holds it at. So the page does
+ * ask this entry for the line, and seats the answer inside its own `<p>`: text,
+ * never a second card.
  */
 export function OpenVikingMemoryCardEntry(props: CardProps) {
   if (props.view === "summary") return OPENVIKING_MEMORY_ROW_SUMMARY;
