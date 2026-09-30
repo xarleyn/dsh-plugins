@@ -129,27 +129,72 @@ afterEach(() => {
   window.history.replaceState(null, "", "/");
 });
 
+/**
+ * Mount the surface over one harness world: a signed-in visitor who opens a new
+ * chat on a route that restores a persisted conversation. Resolves once the
+ * surface is live and its "New chat" button answers.
+ */
+async function mountSurface(world: ReturnType<typeof harness>) {
+  window.history.replaceState(null, "", "/qa");
+  const config = resolveConfig({
+    accounts: { enabled: true },
+    ui: { showReset: true },
+    lockdown: { allowSessionReset: true },
+  });
+  window.localStorage.setItem(
+    `${qaStorageNamespace(config)}:welcome-notice`,
+    QA_WELCOME_NOTICE_VERSION,
+  );
+  window.localStorage.setItem(
+    "dsh-qa-surface.session:v1:/qa:session",
+    SAVED_SESSION,
+  );
+
+  route = new QaRouteController();
+  route.configure(config, true);
+  const accounts = liveAccounts();
+  const access = accessApi();
+  const configSnapshot = { status: "ready" as const, config, error: null };
+  const sectionsSnapshot = { sections: [], revision: 0 };
+
+  render(
+    <QaSurface
+      {...({
+        route,
+        config: {
+          subscribe: () => () => undefined,
+          getSnapshot: () => configSnapshot,
+        },
+        accounts: accounts.controller,
+        accessApi: access,
+        sessions: world.sessions,
+        api: world.api,
+        conversation: world.conversation,
+        connection: world.connection,
+        secureSession: world.secureSession,
+        createSession: world.createSession,
+        sourceApi: {
+          sources: vi.fn(async () => ({ ok: true as const, value: [] })),
+        },
+        panels: new QaSurfacePanelRegistry(),
+        audit: new QaAuditController(),
+        settingsSections: {
+          subscribe: () => () => undefined,
+          getSnapshot: () => sectionsSnapshot,
+          register: () => () => undefined,
+        },
+        renderSlot: () => null,
+      } as unknown as QaSurfaceProps)}
+    />,
+  );
+
+  const newChat = await screen.findByRole("button", { name: "Новый чат" });
+  await waitFor(() => expect(newChat).toHaveProperty("disabled", false));
+  return { accounts, access, newChat };
+}
+
 describe("first send from a new QA chat", () => {
   it("survives the ownership claim and reaches the new session prompt", async () => {
-    window.history.replaceState(null, "", "/qa");
-    const config = resolveConfig({
-      accounts: { enabled: true },
-      ui: { showReset: true },
-      lockdown: { allowSessionReset: true },
-    });
-    window.localStorage.setItem(
-      `${qaStorageNamespace(config)}:welcome-notice`,
-      QA_WELCOME_NOTICE_VERSION,
-    );
-    window.localStorage.setItem(
-      "dsh-qa-surface.session:v1:/qa:session",
-      SAVED_SESSION,
-    );
-
-    route = new QaRouteController();
-    route.configure(config, true);
-    const accounts = liveAccounts();
-    const access = accessApi();
     const world = harness([SAVED_SESSION]);
     let secureCalls = 0;
     let releaseFirstSend!: () => void;
@@ -179,42 +224,7 @@ describe("first send from a new QA chat", () => {
         },
       };
     });
-    const configSnapshot = { status: "ready" as const, config, error: null };
-    const sectionsSnapshot = { sections: [], revision: 0 };
-
-    render(
-      <QaSurface
-        {...({
-          route,
-          config: {
-            subscribe: () => () => undefined,
-            getSnapshot: () => configSnapshot,
-          },
-          accounts: accounts.controller,
-          accessApi: access,
-          sessions: world.sessions,
-          api: world.api,
-          conversation: world.conversation,
-          connection: world.connection,
-          secureSession: world.secureSession,
-          createSession: world.createSession,
-          sourceApi: {
-            sources: vi.fn(async () => ({ ok: true as const, value: [] })),
-          },
-          panels: new QaSurfacePanelRegistry(),
-          audit: new QaAuditController(),
-          settingsSections: {
-            subscribe: () => () => undefined,
-            getSnapshot: () => sectionsSnapshot,
-            register: () => () => undefined,
-          },
-          renderSlot: () => null,
-        } as unknown as QaSurfaceProps)}
-      />,
-    );
-
-    const newChat = await screen.findByRole("button", { name: "Новый чат" });
-    await waitFor(() => expect(newChat).toHaveProperty("disabled", false));
+    const { accounts, access, newChat } = await mountSurface(world);
     fireEvent.click(newChat);
     // Re-read the field on every check: a remount replaces the element, and a
     // detached one keeps its own value.
@@ -280,5 +290,56 @@ describe("first send from a new QA chat", () => {
       landDurableUserRow(world.bindings.get("created-2"), "Первый вопрос");
     });
     expect(renderedQuestion()).toBe(1);
+  });
+
+  it("keeps the composer of the chat whose first session never opened", async () => {
+    // The identity the fix protects is a React key: the composer, the text it
+    // holds and the per-chat panels hang off `state.chatKey`. A chat whose
+    // session could not be opened must keep that key, or the field holding a
+    // question nobody admitted is replaced by an empty one; and a real move to
+    // another chat must still drop it, or the next chat shows a text it never
+    // received. Only the pair separates the key from its absence.
+    const world = harness([SAVED_SESSION]);
+    world.createSession.mockImplementationOnce(async () => {
+      const id = String(await world.create());
+      const face = world.faces.get(id);
+      face?.source.set({ ...face.source.getSnapshot(), openState: "error" });
+      return { ok: true as const, value: id };
+    });
+    const { newChat } = await mountSurface(world);
+    fireEvent.click(newChat);
+    const promptField = () => screen.getByRole("combobox");
+    const mounted = promptField();
+    fireEvent.change(mounted, { target: { value: "Первый вопрос" } });
+    fireEvent.click(screen.getByRole("button", { name: "Отправить" }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId("qa-surface-error").textContent).toMatch(
+        /Не удалось начать чат/u,
+      ),
+    );
+    // The very same element still carries the question: the session this chat
+    // could not open did not take its identity, so nothing remounted the field.
+    expect(promptField()).toBe(mounted);
+    expect(promptField()).toHaveProperty("value", "Первый вопрос");
+
+    fireEvent.click(screen.getByRole("button", { name: "Отправить" }));
+    await waitFor(() => {
+      expect(world.faces.get("created-3")?.prompt).toHaveBeenCalledWith(
+        [{ type: "text", text: "Первый вопрос" }],
+        "queue",
+      );
+    });
+    expect(promptField()).toBe(mounted);
+    await waitFor(() => expect(promptField()).toHaveProperty("value", ""));
+
+    // A real move to another chat is a new identity, and the field comes back
+    // empty: the chat being left keeps its text, the next one gets none.
+    const secondNewChat = await screen.findByRole("button", {
+      name: "Новый чат",
+    });
+    fireEvent.click(secondNewChat);
+    await waitFor(() => expect(promptField()).not.toBe(mounted));
+    expect(promptField()).toHaveProperty("value", "");
   });
 });

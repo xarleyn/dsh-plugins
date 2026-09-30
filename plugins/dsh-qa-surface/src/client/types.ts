@@ -707,6 +707,8 @@ export interface StorageLike {
 export const QA_SESSION_IDLE_STATE: QaSessionState = Object.freeze({
   phase: "idle",
   sessionId: null,
+  // Reserved for "no chat": the controller's chat identities come from a
+  // sequence that starts at 1, so this snapshot never collides with one.
   chatKey: 0,
   messages: Object.freeze([]),
   pendingMessage: null,

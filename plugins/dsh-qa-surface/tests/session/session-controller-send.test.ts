@@ -13,6 +13,7 @@ import {
   landDurableUserRow,
   publishChatSlice,
 } from "../helpers/session-fakes.js";
+import { until } from "../helpers/settle.js";
 import { legacy } from "../helpers/conversation-fakes.js";
 
 describe("QA session controller", () => {
@@ -578,63 +579,44 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("keeps the chat identity across the session a draft creates on first send", async () => {
+  it("keeps an in-flight send out of the chat that replaces the vanished one", async () => {
     const world = harness();
     const controller = new QaSessionController({
       ...world,
-      config: resolveConfig({
-        ui: { showReset: true },
-        lockdown: { allowSessionReset: true },
-      }),
+      config: resolveConfig(),
     });
     await controller.ensureSession();
-    await controller.startDraft();
-    const draftKey = controller.getSnapshot().chatKey;
-
-    let releaseAttestation!: (
-      value: Awaited<ReturnType<typeof world.secureSession>>,
-    ) => void;
-    world.secureSession.mockImplementationOnce(
+    const leaving = world.faces.get("created-1");
+    let releasePrompt!: (value: {
+      ok: true;
+      value: { accepted: true };
+    }) => void;
+    leaving?.prompt.mockImplementationOnce(
       () =>
         new Promise((resolve) => {
-          releaseAttestation = resolve;
+          releasePrompt = resolve;
         }),
     );
-    const sending = controller.send("Первый вопрос");
-    // The draft's session is already bound while its proof is pending. This is
-    // the moment the surface used to hand the composer a new key, which
-    // discarded a question nothing had accepted yet.
-    await until(() => controller.getSnapshot().sessionId === "created-2");
-    expect(controller.getSnapshot()).toMatchObject({
-      chatKey: draftKey,
-      pendingMessage: { text: "Первый вопрос" },
+    const sending = controller.send("Вопрос в полёте");
+    await until(() => (leaving?.prompt.mock.calls.length ?? 0) > 0);
+    expect(controller.getSnapshot().pendingMessage).toMatchObject({
+      text: "Вопрос в полёте",
     });
 
-    releaseAttestation({
-      ok: true,
-      value: {
-        sessionId: "created-2",
-        enabled: true,
-        agentPresetMatches: true,
-        workspaceMatches: true,
-        modelMatches: true,
-        sandboxModeMatches: true,
-        approvalIsNever: true,
-        permissionPreset: "qa-read-only",
-        toolPolicyLoaded: true,
-        toolAllowList: [],
-      },
+    // The Host stopped listing the chat this send rides, and the surface
+    // bootstraps another one underneath: bind() takes a new identity for it, so
+    // the optimistic row and the busy flag of the abandoned chat have to end
+    // with that identity rather than be shown by the chat that replaced it.
+    world.list.set({ ...world.list.getSnapshot(), ids: [], byId: {} });
+    await controller.ensureSession();
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: "created-2",
+      pendingMessage: null,
+      canSend: true,
     });
-    expect(await sending).toBe(true);
-    expect(world.faces.get("created-2")?.prompt).toHaveBeenCalledWith(
-      [{ type: "text", text: "Первый вопрос" }],
-      "queue",
-    );
-    expect(controller.getSnapshot().chatKey).toBe(draftKey);
-    // A real move to another chat does change the identity: that composer must
-    // not carry the previous conversation's text.
-    await controller.switchTo("created-1");
-    expect(controller.getSnapshot().chatKey).toBe(draftKey + 1);
+
+    releasePrompt({ ok: true, value: { accepted: true } });
+    expect(await sending).toBe(false);
     controller.dispose();
   });
 
@@ -674,11 +656,3 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 });
-
-/** Let the controller's async chain run to its next waiting point. */
-async function until(predicate: () => boolean): Promise<void> {
-  for (let attempt = 0; attempt < 200 && !predicate(); attempt += 1) {
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  }
-  if (!predicate()) throw new Error("the controller never reached that state");
-}

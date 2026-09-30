@@ -175,8 +175,17 @@ export interface QaSessionTestWorld {
   createSession: Mock;
   selectAgentPreset: Mock;
   retain: Mock;
+  /** Every reference `retain` handed out, in the order it asked for them. */
+  references: SessionReferenceFake[];
   list: Source<SessionListState>;
   secureSession: Mock;
+}
+
+/** One Host session reference, as `sessions.retain` hands it out. */
+export interface SessionReferenceFake {
+  sessionId: string;
+  ready: Promise<unknown>;
+  release: Mock;
 }
 
 /**
@@ -245,10 +254,16 @@ export function harness(
   });
   // `rc.2` has no Host navigation: binding a chat means retaining it, and the
   // reference is what a test proves the controller holds and releases.
-  const retain = vi.fn(() => ({
-    ready: Promise.resolve({}),
-    release: vi.fn(),
-  }));
+  const references: SessionReferenceFake[] = [];
+  const retain = vi.fn((id: unknown) => {
+    const reference: SessionReferenceFake = {
+      sessionId: String(id),
+      ready: Promise.resolve({}),
+      release: vi.fn(),
+    };
+    references.push(reference);
+    return reference;
+  });
   const sessions = {
     list,
     retain,
@@ -333,6 +348,7 @@ export function harness(
     createSession,
     selectAgentPreset,
     retain,
+    references,
     list,
     secureSession,
   };
