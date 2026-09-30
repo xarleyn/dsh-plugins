@@ -34,6 +34,10 @@ all three of which this cutover deleted, so the result does not compile.
 Reversing D2 is a revert of the whole #518 series, which is the cost issue #605
 has to budget and what §10 says where it will be read. The rest still holds.
 
+One caveat on that contract, from #356: the guard under 5 is stated as it was
+built, and as built it was measured losing an update. What returns has to meet 5
+with its correction, not the guard alone.
+
 ## 1. Product contract
 
 Numbered, testable guarantees:
@@ -56,7 +60,16 @@ Numbered, testable guarantees:
    nothing.
 5. ~~**Revision guard.**~~ **Withdrawn** — no write to guard. Every read used to
    return a content revision (a hash of the file's bytes), a save had to present
-   it back, and a race was refused with both revisions.
+   it back, and a race was refused with both revisions. **#356 measured that the
+   guard as built did not hold two saves of one revision**: it compared a
+   snapshot revision, not the absence of another writer, so both passed the check
+   before either renamed the file, both answered a success receipt, and the disk
+   kept one variant. The atomic rename made one file's swap atomic, not the
+   read → check → write transaction around it. So the guard returns only with a
+   transaction that holds the composition's canonical path exclusively across its
+   whole read, check, registrar and write; what a revision does still settle — an
+   editor outside this process, a second Host process — is a contract #605 has to
+   state beside it, not one that serialization covers.
 6. ~~**A refusal writes nothing.**~~ Withdrawn as a write guarantee. The rules
    still answer, through the exported validators and the reader's disclosures:
    malformed YAML, a persona row whose managed key is an expression, more than
