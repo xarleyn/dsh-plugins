@@ -23,7 +23,7 @@ function gateCopy(stage: QaUserSessionSnapshot["stage"]): string {
 }
 
 /**
- * The Integrations card shown inside the plugin-owned host settings tab.
+ * The Integrations card shown on this bundle's page on the Plugins surface.
  *
  * A connection belongs to a QA account, and the token of that account is the
  * only credential the principal-scoped remotes accept, so the card renders the
@@ -76,14 +76,18 @@ export function createIntegrationsCard(
   };
 }
 
-/** Host tab wrapper that preserves the card shell's direct ul > li contract. */
-export function createIntegrationsHostTab(
+/**
+ * The wrapper the bundle's configuration section renders: the page hands that
+ * section an empty column, so the card shell's `<li>` keeps a list this plugin
+ * owns.
+ */
+export function createIntegrationsBundleCard(
   remote: IntegrationsClientRemote,
   providers: readonly string[],
   session: QaUserSession,
 ) {
   const IntegrationsCard = createIntegrationsCard(remote, providers, session);
-  return function IntegrationsHostTab(): ReactElement {
+  return function IntegrationsBundleCard(): ReactElement {
     return (
       <ul
         className="dsh-qa-integrations__host-tab"

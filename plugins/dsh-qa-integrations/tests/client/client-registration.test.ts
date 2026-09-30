@@ -1,12 +1,14 @@
 // @vitest-environment jsdom
 
 /**
- * The client entry's wiring: the operator card, the QA page and the
- * feature-owned Host tab. The operator card edits the plugin's own profile
- * entry through the settings form the Host serves for it, and mounts without
- * waiting for the Remote to describe the deployment — an operator's first act
- * may be enabling the plugin; the two user surfaces mount only for an enabled
- * one. All three sit in surfaces a non-loopback browser can reach.
+ * The client entry's wiring: the operator card, the QA page and the account
+ * card. The operator card edits the plugin's own profile entry through the
+ * settings form the Host serves for it, and mounts without waiting for the
+ * Remote to describe the deployment — an operator's first act may be enabling
+ * the plugin; the two user surfaces mount only for an enabled one. The cards
+ * take their seats on the Plugins page — the operator in the configuration
+ * section of this bundle's own row, the account in the bundle's own section —
+ * and the QA page stays in the signed-in user's settings dialog.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
@@ -19,6 +21,7 @@ interface SlotRegistration {
   readonly order?: number;
   readonly label?: string;
   readonly inject?: unknown;
+  readonly injected?: { readonly settingsForm?: unknown };
 }
 
 interface Stub {
@@ -92,12 +95,16 @@ function stub(enabled: boolean): Stub {
         id?: string;
         order?: number;
         label?: () => string;
-        inject?: () => unknown;
+        inject?: () => { readonly settingsForm?: unknown };
       }) => {
-        slots.push({ ...options, label: options.label?.() });
         // The host calls the slot's inject factory when it dispatches a card;
-        // calling it here is what resolves the entry's settings form.
-        options.inject?.();
+        // calling it here is what resolves the entry's settings form, and what
+        // the card is handed under which name is part of the seat's contract.
+        slots.push({
+          ...options,
+          label: options.label?.(),
+          injected: options.inject?.(),
+        });
         return () => {};
       },
     },
@@ -135,21 +142,21 @@ describe("integrations client entry", () => {
       title: "Интеграции",
       order: 40,
     });
-    // The operator card tab first — it does not wait for `describe()` — then
-    // the account tab the deployment answer mounts.
+    // The operator card first — it does not wait for `describe()` — then the
+    // account card the deployment answer mounts on the bundle's own page. The
+    // row key is the package name joined to the row id the patch declares, and
+    // that id is the settings namespace, so the values a stand saved under the
+    // old seat are the values this seat reads.
     expect(slots).toEqual([
       {
-        name: "settings.plugins.tab",
-        id: "qa-integrations-config",
-        order: 30,
-        label: "Интеграции — конфигурация",
+        name: "plugins.row.config",
+        key: "@yadsh/dsh-qa-integrations#qa-integrations",
         inject: expect.any(Function),
+        injected: { settingsForm: expect.anything() },
       },
       {
-        name: "settings.plugins.tab",
-        id: "qa-integrations",
-        order: 40,
-        label: "Интеграции",
+        name: "plugins.bundle.config",
+        key: "@yadsh/dsh-qa-integrations",
       },
     ]);
     expect(boundNamespaces).toEqual(["qa-integrations"]);
@@ -164,11 +171,10 @@ describe("integrations client entry", () => {
     // regardless of the deployment's answer; the user surfaces do not.
     expect(slots).toEqual([
       {
-        name: "settings.plugins.tab",
-        id: "qa-integrations-config",
-        order: 30,
-        label: "Интеграции — конфигурация",
+        name: "plugins.row.config",
+        key: "@yadsh/dsh-qa-integrations#qa-integrations",
         inject: expect.any(Function),
+        injected: { settingsForm: expect.anything() },
       },
     ]);
     // The stylesheet is mounted with the injection, not with the answer.
