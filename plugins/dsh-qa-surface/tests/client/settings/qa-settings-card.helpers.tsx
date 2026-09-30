@@ -128,10 +128,12 @@ function makeForm(
 export type DescribeResult =
   { ok: true; value: typeof EFFECTIVE } | { ok: false; error: unknown };
 
-/** The slot runtime props do not exist outside the host; only the face does. */
+/** The slot runtime props do not exist outside the host; the row page hands its
+ * own `settingsForm` and a `view`, which the card only renders as `page`. */
 const Card = QaSettingsCard as unknown as (props: {
-  form: unknown;
+  settingsForm: unknown;
   describe: () => Promise<DescribeResult>;
+  view: "summary" | "page";
 }) => ReactElement;
 
 export async function renderCard(
@@ -151,7 +153,9 @@ export async function renderCard(
   // The card polls once on mount; awaiting inside act keeps that first update
   // inside the test rather than after it.
   await act(async () => {
-    result = render(<Card form={form} describe={describe} />);
+    result = render(
+      <Card settingsForm={form} describe={describe} view="page" />,
+    );
     await Promise.resolve();
   });
   return {

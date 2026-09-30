@@ -107,9 +107,9 @@ assert(
 );
 assert(
   manifest.dsh.client.inject.includes(
-    "@deepseek-ai/dsh-client-ui-settings-plugins",
+    "@deepseek-ai/dsh-client-ui-plugin-manager",
   ),
-  "the settings card needs the plugin-cards tab in the client inject manifest",
+  "the settings card opens from the plugin's row in the Plugins panel, so its slot contract must arrive in the client inject manifest",
 );
 assert(
   manifest.dsh.client.inject.includes("@deepseek-ai/dsh-agent-preset-registry"),
@@ -518,12 +518,12 @@ for (const builtin of ["process", "buffer", "node:fs", "node:path"]) {
 assert.doesNotMatch(client, /node_modules\/yaml/u, "yaml stays on the Host");
 
 // The settings card (AGENTS.md shell contract): the canonical shell rules and
-// chevron path, the tab this plugin owns in the Plugins settings section, and
-// the plugin's own body classes.
+// chevron path, the row-configuration slot the card registers into on the
+// Plugins panel, and the plugin's own body classes.
 verifyPluginCardContract(client, {
   legacyPatterns: [/dsh-plugin-card\s*\*/u, /\.qa-panel\b/u],
 });
-assert.match(client, /settings\.plugins\.tab/u);
+assert.match(client, /plugins\.row\.config/u);
 assert.match(client, /Помощник QA/u);
 // The toggle's accessible label is assembled from the open state and the card
 // name, so the bundle carries the two halves rather than one sentence.
