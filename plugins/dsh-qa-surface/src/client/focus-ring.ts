@@ -44,6 +44,34 @@ function isHidden(element: HTMLElement): boolean {
 }
 
 /**
+ * Whether the page has taken this element out of the layout by a rule rather
+ * than by its markup: `display: none` stands on the element or on an ancestor
+ * of it, and a browser gives such a control no place on the Tab path.
+ *
+ * This is the part of what a page hides that the markup does not say: the chat
+ * rail is switched off at ≤900px and the sidebar at ≤600px (`styles.ts`), and
+ * neither carries a `hidden` or a `tabindex` to read. Both are containers, so
+ * the walk has to reach the ancestor — a control of a switched-off subtree
+ * answers for its own `display` exactly as it does when it is on screen, which
+ * a live Chromium measured on the two production rules.
+ *
+ * The edge of the ring is what this is for. A phantom kept in the list is an
+ * edge the reader never stands on: the key they press at the last control the
+ * width leaves them is not the one the trap answers, and it walks them out of
+ * the interface instead of around it.
+ */
+function isSwitchedOff(element: HTMLElement): boolean {
+  for (
+    let node: HTMLElement | null = element;
+    node !== null;
+    node = node.parentElement
+  ) {
+    if (window.getComputedStyle(node).display === "none") return true;
+  }
+  return false;
+}
+
+/**
  * Whether a modal gate has taken this element away from the keyboard: the
  * element itself or an ancestor of it is marked inert.
  *
@@ -96,14 +124,15 @@ function isFolded(element: HTMLElement): boolean {
 
 /**
  * Every control of `root` the keyboard can still reach, in DOM order: what the
- * page has not hidden, what still carries a place in the tab order, what no
- * `inert` ancestor has handed to a dialog, and what no closed fold keeps out of
- * sight.
+ * page has not hidden, in its markup or in its layout, what still carries a
+ * place in the tab order, what no `inert` ancestor has handed to a dialog, and
+ * what no closed fold keeps out of sight.
  */
 export function focusable(root: HTMLElement): HTMLElement[] {
   return [...root.querySelectorAll<HTMLElement>(TABABLE_SELECTOR)].filter(
     (element) =>
       !isHidden(element) &&
+      !isSwitchedOff(element) &&
       !isTabbedOut(element) &&
       !isInert(element) &&
       !isFolded(element),
@@ -113,14 +142,13 @@ export function focusable(root: HTMLElement): HTMLElement[] {
 /**
  * Hand the keyboard to the first candidate that takes it.
  *
- * What `focusable` reads is the markup, and a page can take a control off the
- * Tab path by other means: the chat rail and the sidebar of the surface are
- * switched off by a media query (`styles.ts`), and a browser stops on a
- * `display:none` control no more than on a `hidden` one. Neither this file nor a
- * test can see that — jsdom applies no CSS, and a stand at a wide panel has no
- * such control to trip over — so each candidate is checked at the moment it is
- * asked: a control that leaves `document.activeElement` where it was is passed
- * over, instead of leaving the reader on the same control they pressed Tab from.
+ * `focusable` reads the layout as well as the markup, so the candidates are
+ * already the controls the width leaves in the path. This is the post-condition
+ * for a refusal that no read predicts: a page can keep a control from taking
+ * focus in ways its own styles do not say, and a test environment applies no CSS
+ * at all, so each candidate is checked at the moment it is asked — a control that
+ * leaves `document.activeElement` where it was is passed over, instead of leaving
+ * the reader on the same control they pressed Tab from.
  */
 export function focusFirst(
   candidates: readonly (HTMLElement | null | undefined)[],
@@ -162,6 +190,10 @@ export function focusRing(
  * A ring with no controls in it answers nothing: there is nothing here to keep
  * the reader inside, and a key prevented with nowhere to hand the focus is a key
  * that sticks.
+ *
+ * The two ends the key is caught at are ends of the *walked* path, so a control
+ * the current width has switched off is neither of them: it holds no focus for
+ * the reader to stand on, and an edge drawn at it is an edge no Tab arrives at.
  */
 export function trapKeys(
   event: KeyboardEvent<HTMLElement>,
@@ -175,8 +207,8 @@ export function trapKeys(
   if (event.shiftKey && document.activeElement === first) {
     event.preventDefault();
     // The reader stands on the front of the ring and asks for what comes before
-    // it: the back edge, then whatever stands in front of that edge, since the
-    // edge itself may be a control this width has switched off.
+    // it: the back edge, then whatever stands in front of that edge, in case this
+    // page refuses the focus in a way neither the markup nor the layout said.
     focusFirst([...items].reverse());
   } else if (!event.shiftKey && document.activeElement === last) {
     event.preventDefault();
