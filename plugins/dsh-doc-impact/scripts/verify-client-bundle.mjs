@@ -3,10 +3,10 @@
 // without a browser:
 //   - the ModuleLoader id must stay "@yadsh/dsh-doc-impact" (the served bundle URL
 //     and the plugin inventory both key on the package name);
-//   - the card must claim the `settings.plugins.tab` seat under the profile
-//     entry id, which on this host is also the settings namespace it reads
-//     through `ctx.configForms` (that pairing is what the Plugins page
-//     dispatches on);
+//   - the card must claim the `plugins.row.config` seat keyed to this bundle's
+//     row, and that key must join the package name to the profile entry id, which
+//     on this host is also the settings namespace it reads through `ctx.configForms`
+//     (that pairing is what keeps a value saved before the move readable after it);
 //   - the bundle must stay pure browser code: react only, no host packages;
 //   - no secrets or telemetry may creep into the settings form.
 import { readFile } from "node:fs/promises";
@@ -42,22 +42,28 @@ expectPresent(
   "the ModuleLoader factory id keys the served bundle",
 );
 expectPresent(
-  '"settings.plugins.tab"',
-  "the card must register as a tab of the Plugins settings page",
+  '"plugins.row.config"',
+  "the card must register as the configuration entry of its own row on the Plugins page",
 );
 expectPresent(
-  "id: SETTINGS_NS",
-  "the tab seat must be keyed by the settings namespace",
+  "@yadsh/dsh-doc-impact#",
+  "the keyed seat must start from this bundle's package name",
+);
+expectPresent(
+  "${SETTINGS_NS}",
+  "the keyed seat must end at the settings namespace, which is the row id the patch declares",
+);
+expectPresent(
+  "key: ROW_CONFIG_KEY",
+  "the seat must be keyed by that package-and-namespace pair, not by a tab id of its own",
 );
 expectPresent(
   "configForms.get(SETTINGS_NS)",
   "the form must read the doc-impact settings namespace through the host form",
 );
 expectPresent(
-  "whileServed([SETTINGS_NS],",
-  "the tab must be claimed only while the Host serves the namespace: the host " +
-    "answers get() with a controller for any name, so this is the only reply " +
-    "that keeps an unserved namespace off the Plugins page",
+  'view === "summary"',
+  "the same entry is rendered as the row's one-liner, and that view must not mount the form",
 );
 expectPresent(
   "resetField",

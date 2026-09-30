@@ -6,23 +6,14 @@ import {
   injectCardStyles,
 } from "@yadsh/dsh-plugin-kit/client";
 import { createElement } from "react";
-import {
-  MODE_OPTIONS,
-  ON_LIMIT_OPTIONS,
-  type CardFace,
-  type CardSnapshot,
-  type ModeOption,
-  type OnLimitOption,
-} from "./settings-form.js";
+import { MODE_OPTIONS, ON_LIMIT_OPTIONS } from "./settings-form.js";
 import {
   BoolField,
   ChoiceField,
   NumberField,
   TextAreaField,
   TextField,
-  type ChoiceProps,
 } from "./fields.js";
-import type { Translate } from "./dictionary.js";
 
 const CSS = [
   PLUGIN_CARD_SHELL_CSS.trim(),
@@ -54,20 +45,17 @@ const CSS = [
 ].join("\n");
 if (typeof document !== "undefined") injectCardStyles("dsh-doc-impact", CSS);
 
-/** The props the Host hands the tab component: the injected face plus the locale binding. */
-export interface ConfigCardProps extends CardFace {
-  readonly t: Translate;
-  readonly useDocImpactCard: (
-    select: (snapshot: CardSnapshot) => CardSnapshot,
-  ) => CardSnapshot;
-}
-
-export function ConfigCard(props: ConfigCardProps) {
-  const state = props.useDocImpactCard(function (snapshot) {
+export function ConfigCard(props: any) {
+  const t = props.t;
+  // The page renders this same entry in two views: the row's `summary` one-liner
+  // where the patch declares no description of its own, and the `page` body. Only
+  // the page may read the settings state — subscribing in the summary would mount
+  // the whole form a second time inside the page's own description line.
+  if (props.view === "summary") return t("cardDescription");
+  const state = props.useDocImpactCard(function (snapshot: any) {
     return snapshot;
   });
   if (!state.available) return null;
-  const t = props.t;
   const blocked = !state.dirty || state.invalid || state.saving;
   const disabled = !state.writable || state.saving;
   const fields = state.fields;
@@ -102,7 +90,7 @@ export function ConfigCard(props: ConfigCardProps) {
       fallback: true,
       state: fields.enabled,
       disabled: disabled,
-      onChoose: function (value: boolean) {
+      onChoose: function (value: unknown) {
         props.choose("enabled", value);
       },
       onReset: function () {
@@ -117,7 +105,7 @@ export function ConfigCard(props: ConfigCardProps) {
       fallback: true,
       state: fields.steer,
       disabled: disabled,
-      onChoose: function (value: boolean) {
+      onChoose: function (value: unknown) {
         props.choose("steer", value);
       },
       onReset: function () {
@@ -138,7 +126,7 @@ export function ConfigCard(props: ConfigCardProps) {
         props.resetField("configFile");
       },
     }),
-    createElement<ChoiceProps<ModeOption>>(ChoiceField, {
+    createElement(ChoiceField, {
       t: t,
       id: "doc-impact-mode",
       labelKey: "modeLabel",
@@ -147,7 +135,7 @@ export function ConfigCard(props: ConfigCardProps) {
       fallback: "remind",
       state: fields.mode,
       disabled: disabled,
-      onChoose: function (value: ModeOption) {
+      onChoose: function (value: unknown) {
         props.choose("mode", value);
       },
       onReset: function () {
@@ -168,7 +156,7 @@ export function ConfigCard(props: ConfigCardProps) {
         props.resetField("maxReminderRounds");
       },
     }),
-    createElement<ChoiceProps<OnLimitOption>>(ChoiceField, {
+    createElement(ChoiceField, {
       t: t,
       id: "doc-impact-on-limit",
       labelKey: "onLimitLabel",
@@ -177,7 +165,7 @@ export function ConfigCard(props: ConfigCardProps) {
       fallback: "allow",
       state: fields.onLimit,
       disabled: disabled,
-      onChoose: function (value: OnLimitOption) {
+      onChoose: function (value: unknown) {
         props.choose("onLimit", value);
       },
       onReset: function () {
@@ -236,7 +224,7 @@ export function ConfigCard(props: ConfigCardProps) {
       fallback: false,
       state: fields.debug,
       disabled: disabled,
-      onChoose: function (value: boolean) {
+      onChoose: function (value: unknown) {
         props.choose("debug", value);
       },
       onReset: function () {
@@ -275,8 +263,8 @@ export function ConfigCard(props: ConfigCardProps) {
       ),
     ),
   );
-  // The tab supplies no list of its own, so the shell's `<li>` root sits in a
-  // plugin-owned `<ul>` (AGENTS.md: a `settings.plugins.tab` page keeps its own
-  // list element around the standard card shell).
+  // The page's configuration section supplies no list of its own, so the shell's
+  // `<li>` root sits in a plugin-owned `<ul>` — AGENTS.md keeps the `ul > li` pair
+  // that the shell's own styling is written against.
   return createElement("ul", { className: "ddi_list" }, card);
 }
