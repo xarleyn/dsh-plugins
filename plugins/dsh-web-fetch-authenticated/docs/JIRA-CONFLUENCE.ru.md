@@ -66,8 +66,9 @@ patch профиля `$DSH_HOME/profiles/web/cordis.patch.yml` следующи�
 на его имя. После изменения перезапустите DSH Host, если профиль не применил
 patch или новый browser bundle автоматически.
 
-Откройте **Settings → Plugins → Plugin Configuration → Authenticated Web
-Fetch**. В секции **Provider** должно быть написано:
+Откройте страницу **Plugins**, выберите строку `web-fetch-authenticated` этого
+пакета и откройте её конфигурацию (**Authenticated Web Fetch**). В секции
+**Provider** должно быть написано:
 
 ```text
 ctx.web fetchProvider: pinned to "authenticated"
