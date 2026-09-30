@@ -17,3 +17,56 @@ the prompt.
 A submission that cannot be sent is said out loud instead of being dropped: a
 chat still being created and a chat that is no longer open both answer with the
 reason, and the draft stays in the field to be sent again.
+
+Chat identities are now drawn once for the whole page and handed to a session
+only where that session is actually adopted. The surface re-creates this
+controller whenever the account, the configuration or the route changes, and a
+rebuilt controller used to name its first chat exactly as its predecessor had
+named its last — so an unsent question, its attachments and the per-chat panels
+outlived the chat they belonged to and were shown by the next one. Adopting a
+session is the whole of it now: a first send whose session never reached a
+binding, never opened, or was refused by the policy check is retried in the same
+chat rather than read as another one, and an adoption that finishes after the
+visitor has moved to another chat — the Host listed or refused its session too
+late — belongs to nobody and takes nothing back: the chat on screen keeps its
+identity, its subscriptions and its own policy proof, and the next question
+rides it as usual. A chat that takes over the screen — because a persisted chat
+was refused, or because it simply vanished — starts empty and quiet, without the
+question and the "sending" state of the chat it replaced.
+
+An identity is never handed out twice, and that is the price: a rebuilt
+controller opens its first chat under a fresh identity too, so an unsent
+question, the files staged with it and the panels that were open are dropped
+even when the very same conversation comes back. Before this the rebuild reused
+its predecessor's identity and the draft did survive — by being shown to a chat
+that had never seen it.
+
+An adoption that steps back now says so. Leaving a chat for a fresh draft —
+choosing another role, or the way out of an administrator's preview — retired
+the binding a first send was waiting on without raising the generation that
+waiting adoption is measured against, and so the adoption resumed as the owner
+of a screen it no longer was. The send took that for a finished adoption and
+reported a draft that had never been adopted: the chat the visitor switched to
+answered every later question with «чат не открыт», and the way out was to press
+«Новый чат» again. Starting a draft raises the generation the way opening another
+chat does, retires the materialization the ending chat was still paying for, and
+`bind` answers whether it adopted, so no caller can read a step back as a
+success. The way out of a preview waits for the same «чат ещё создаётся» moment
+the header's «Новый чат» and the role selector already waited for.
+
+A step back now also takes itself back. Past the binding an adoption has already
+installed a chat of its own — the retained reference, the session, and the three
+subscriptions that answer every frame of it with a publish — and until now it
+undid none of that when it stepped back. That was safe whenever the screen moved
+to a chat that retires the binding itself, and it was not safe when the screen
+moved to the bootstrap, which raises the generation while deliberately keeping the
+transcript on screen until its own session exists: a bootstrap that then failed
+left the abandoned adoption holding a Host session nobody is in and republishing
+that chat's frames into the surface, and each frame cleared the «не удалось начать
+чат» the stand had just published — the silence this card is about, arriving a
+second time as a reason that vanishes. An adoption that steps back or falls over
+while the screen is no longer its own now releases what it took, and only its own:
+the chat that replaced it keeps its identity, its subscriptions and its policy
+proof. Entering a draft is held to the same rule across its own round-trip —
+stopping a running turn is a request, and a chat opened through it keeps the
+screen, because the draft was asked for before that click.

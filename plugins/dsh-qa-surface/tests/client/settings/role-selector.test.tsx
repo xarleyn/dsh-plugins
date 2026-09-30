@@ -77,4 +77,16 @@ describe("administrator preview banner", () => {
     fireEvent.click(screen.getByRole("button", { name: "Выйти из просмотра" }));
     expect(onExit).toHaveBeenCalledTimes(1);
   });
+
+  it("holds the way out while a chat is still being created", () => {
+    // Leaving the preview starts a chat, so clicking it mid-creation would take
+    // the screen from the question on its way in — the one departure between
+    // chats that the surface cannot undo once it has happened.
+    const onExit = vi.fn();
+    render(<QaAdminPreviewBanner role="Аналитик" onExit={onExit} disabled />);
+    const exit = screen.getByRole("button", { name: "Выйти из просмотра" });
+    expect((exit as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(exit);
+    expect(onExit).not.toHaveBeenCalled();
+  });
 });

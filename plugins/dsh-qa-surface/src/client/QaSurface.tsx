@@ -1401,6 +1401,7 @@ export function QaSurface(props: QaSurfaceProps) {
               ""
             }
             {...(previewing ? { onExit: exitPreview } : {})}
+            disabled={state.phase === "creating"}
           />
         ) : null}
         {showSidebar ? (
@@ -1711,9 +1712,11 @@ export function QaSurface(props: QaSurfaceProps) {
                     />
                     {/* Keyed by chat: the composer's draft text is chat-local, so a
                     switch remounts it empty instead of carrying text across. The
-                    chat key survives a draft creating its session on the first
-                    prompt — that is the same chat, and remounting here would drop
-                    the question the Host has not accepted yet. */}
+                    identity is never reused — a controller rebuilt for another chat
+                    hands out a new one — and a draft keeps its own identity while it
+                    creates its session on the first prompt: that is the same chat, and
+                    remounting here would drop the question the Host has not admitted
+                    yet. */}
                     <QaComposer
                       key={state.chatKey}
                       placeholder={config.branding.placeholder}
