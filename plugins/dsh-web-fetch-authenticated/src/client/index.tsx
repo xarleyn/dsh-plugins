@@ -46,20 +46,36 @@ import {
 
 const REFRESH_INTERVAL_MS = 5_000;
 
-// The Plugins page keys a row's configuration by `<package name>#<row id>`,
-// and the page resolves the Host form for the row id as the settings
-// namespace — both facts come from this package's `cordis.patch.yml` row.
+/**
+ * The seat this bundle takes on the Host Plugins page. The page keys a row's
+ * configuration by `` `${package name}#${row id}` `` and builds that key for the
+ * row it is drawing (`@deepseek-ai/dsh-client-ui-plugin-manager` `0.1.7-rc.2`,
+ * `lib/client.js:27`, used at `:1797`), and the row id is the settings namespace
+ * the Host files this plugin's live Config under — one string, both roles,
+ * declared by this package's `cordis.patch.yml` row. So a value saved before the
+ * move is read back after it.
+ */
 const WEB_FETCH_AUTH_ROW_CONFIG_KEY = `@yadsh/dsh-web-fetch-authenticated#${WEB_FETCH_AUTH_SETTINGS_NAMESPACE}`;
 
 /**
- * What the row does, in one line: the sentence the card shows under its title,
- * and the sentence the Plugins page asks this entry for wherever the row needs
- * a description. A third-party patch row declares no description of its own,
- * so the page reaches for this entry's `view: 'summary'` and shows whatever it
- * returns — answering `null` here leaves the row's description empty.
+ * The row's description line. The page renders this entry's `summary` view into
+ * the paragraph under the row heading, but only as the fallback for a
+ * description the row's Host metadata does not carry
+ * (`lib/client.js:1841`, `description ?? renderSlot("plugins.row.config",
+ * { view: "summary" }, …)`, where `description` comes from `row.meta` at
+ * `:214`). A third-party patch row declares no `row.meta.description`, so this
+ * answer is the only sentence the row gets; answering `null` leaves it empty.
  */
 const WEB_FETCH_AUTH_ROW_SUMMARY =
   "Per-origin authenticated rules for web_fetch: credentials, SSRF policy, and diagnostics.";
+
+/**
+ * What the card's own header promises to open. Deliberately not {@link
+ * WEB_FETCH_AUTH_ROW_SUMMARY}: the page prints that sentence one line above this
+ * card, so a header repeating it shows the same text twice.
+ */
+const WEB_FETCH_AUTH_CARD_DESCRIPTION =
+  "Open the rule list, its write-only credential fields, the default policy and limits, and the diagnostic runner.";
 
 interface RemoteService {
   status(): Promise<RemoteResult<ProviderStatusReport>>;
@@ -73,11 +89,24 @@ interface ClientRemote {
   credentials: CredentialsRemote;
 }
 
-// The row page renders `plugins.row.config` with its own owner `form` seat,
-// and the renderer spreads owner props after the injected face — so this
-// card's full ConfigForm rides under `settingsForm`, a name the owner never
-// occupies. The host seat is read but unused: the card keeps its own live
-// store binding over the same namespace.
+/*
+ * The page hands the `page` view an owner `form` of its own:
+ * `formFor(row.rowId)` (`lib/client.js:2862`), which resolves the row id as the
+ * settings namespace — the join that keeps a saved value readable after the move —
+ * and returns `{ state, mutate }` for a namespace the page lists, or nothing at
+ * all when it does not (`:2688-2694`). That is not the `ConfigForm` this card
+ * binds, which needs `getSnapshot`/`set`/`subscribe`; so the card keeps its own
+ * handle on the same document (`ctx.configForms.get(ns)`) and the renderer, which
+ * spreads owner props after the injected face, carries it renamed to
+ * `settingsForm` — a name the owner never occupies.
+ *
+ * Nothing the Host generates lands beside the card either: the configuration
+ * column holds only this slot's return and the `plugins.detail.section` slot
+ * (`:1852`). Whether the card should take the namespace away from the Host's
+ * generated editor at all — `settings.configure({ auto: false })`, the lever
+ * `dsh-documents` and `dsh-sleev` claim for cards that own their page — is the
+ * parent card #646's call for the whole series, not this branch's.
+ */
 type CardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<Omit<CardFace, "form"> & { settingsForm: CardFace["form"] }>;
 
@@ -176,13 +205,14 @@ function WebFetchAuthCard({
 
   if (settings.status === "unavailable") return null;
 
-  // The row page renders the entry inside its own sections column, so the
-  // list the shell's `<li>` root belongs to stays ours (AGENTS.md contract).
+  // The page's configuration section supplies a plain `<div>` (`lib/client.js:1852`),
+  // not a list, so the list the shell's `<li>` root belongs to stays ours
+  // (AGENTS.md contract).
   return (
-    <ul className="wfa-cards">
+    <ul className="wfa-cards" data-testid="wfa-card-list">
       <CardShell
         title="Authenticated Web Fetch"
-        description={WEB_FETCH_AUTH_ROW_SUMMARY}
+        description={WEB_FETCH_AUTH_CARD_DESCRIPTION}
         badge={
           <span
             className="dsh-plugin-card__badge"
@@ -222,10 +252,13 @@ function WebFetchAuthCard({
 }
 
 /**
- * The entry the row page seats for this bundle's own row, in one of two views:
- * `summary` is the row's description line, `page` the configuration body under
- * it. The summary answer returns before the card's hooks, so a line of text
- * never mounts a live settings store nor opens a second poll of the Remote.
+ * The entry the page seats for this bundle's own row, in the two views it asks
+ * for: `{ view: "summary" }` as the row's description line (`lib/client.js:1841`)
+ * and `{ view: "page", form }` as the configuration body below it (`:1852`); the
+ * contract shipped beside the bundle says the same in prose
+ * (`lib/types/client/slot-contract.d.ts:12,110`). The summary answer returns
+ * before the card's hooks, so a line of text never mounts a live settings store
+ * nor opens a second poll of the Remote.
  */
 function WebFetchAuthEntry({ view, ...card }: CardProps) {
   if (view === "summary") return WEB_FETCH_AUTH_ROW_SUMMARY;

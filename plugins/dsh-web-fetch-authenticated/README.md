@@ -61,7 +61,11 @@ web_fetch(url)
 
 Everything is editable from the DSH Web UI — the configuration of this
 plugin's row on the host **Plugins** page: rules, credential write-only fields,
-network policy, redirects, limits, connection tester, and diagnostics.
+network policy, redirects, limits, connection tester, and diagnostics. That page
+is built from the host's plugin inventory, so a deployment that keeps the
+plugin-manager services to the operator's own session shows no Plugins page to a
+remote browser; the declarative profile config below edits the same document and
+is available wherever the host is.
 Declarative config stays available:
 
 ```yaml
