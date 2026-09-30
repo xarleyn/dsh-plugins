@@ -255,6 +255,27 @@ describe("turn completion notices", () => {
     expect(screen.queryByText("Чат mine")).toBeNull();
   });
 
+  it("does not arm a baseline from the idle a gap left behind", () => {
+    const page = mountPage(hostList([{ id: "mine", running: false }]));
+    // The link comes back before the host list does — the page is told about the
+    // connection, not about the rows — so the first live frames still carry the
+    // list the drop left. An idle read through the gap is not a start the reader
+    // watched, and the turn that follows it is not news.
+    page.redraw({
+      list: hostList([{ id: "mine", running: false }]),
+      paused: true,
+    });
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    page.redraw({ list: hostList([{ id: "mine", running: true }]) });
+    page.redraw({ list: hostList([{ id: "mine", running: false }]) });
+    expect(screen.queryByText("Чат mine")).toBeNull();
+    expect(FakeNotification.raised).toEqual([]);
+    // The row has moved twice since, so the page holds a baseline again, and the
+    // next turn beginning under a live link is reported.
+    page.watchTurn();
+    expect(screen.getByText("Чат mine")).toBeTruthy();
+  });
+
   it("loses the turn a reconnect found still running", () => {
     const page = mountPage(hostList([{ id: "mine", running: false }]));
     page.redraw({ list: hostList([{ id: "mine", running: true }]) });

@@ -540,13 +540,21 @@ rule runs across a gap in the link. A frame read while the browser was
 reconnecting vouches for nothing, so it neither reports a run it appears to have
 finished nor credits a run the first live frame shows under way: a turn still
 running when the link dropped, and the reader's own question that was queued
-before the drop and went out only as the link returned, both end unreported.
-Which of those the stale list was showing is not something this page can tell,
-and the silence is the honest answer until a browser can vouch for the host list
-across a gap. A chat this page stops reading is the same gap in the same
-evidence: while its row is away from the sidebar there is no frame naming it at
-all, so a run that returns to the list is found running again rather than watched
-beginning, and it ends unreported too.
+before the drop and went out only as the link returned, both end unreported. The
+link is back before the list is, too — the page learns about the connection
+first, and the host list it holds is still the one the drop left — so an idle
+read through a gap arms nothing either. A chat is credited again once its own row
+has moved, since a row that has not moved says only what the gap already left it
+saying, and a run that began inside the gap would look exactly like the turn that
+follows. So the first turn of a chat after a gap ends unreported with the rest,
+and the silence stops there: the run that ends it is one this page could not
+account for, and the turn after it is watched from its start. Which of those the
+stale list was showing is not something this page can tell, and the silence is
+the honest answer until a browser can vouch for the host list across a gap. A
+chat this page stops reading is the same gap in the same evidence: while its row
+is away from the sidebar there is no frame naming it at all, so a run that
+returns to the list is found running again rather than watched beginning, and it
+ends unreported too.
 
 A turn that ends in the chat already on screen, with this window active,
 produces nothing: the answer is in front of the reader.

@@ -557,41 +557,57 @@ notifications.ts` the wiring. `config.notifications`
 **Where this departs from the design above.**
 
 - **§3.1's observed start is the gate, and it holds for the whole run
-  (#483).** The differ keeps a per-chat reading with three states —
-  `idle`, `watched`, `unwatched` — and reports a turn only
+  (#483).** The differ keeps a per-chat reading with four states —
+  `idle`, `watched`, `unwatched`, `stale` — and reports a turn only
   where a `watched` run is seen ending in a frame the browser could
   vouch for. Before this, the first frame that found a chat running was
   re-projected in silence and the frame after it reported that run's
   end: the promise of §3.1 and `docs/CONFIGURATION.md` held for one
   frame and was broken by the next, so a turn that began before the tab
-  opened was still attributed to the reader who opened it. What the
-  link going down does to that evidence is the same rule rather than a
-  new one — a stale frame vouches for neither fact a reading is made
-  of, so it leaves the chat `unwatched` whichever way `running` pointed
-  in it: a run watched before the drop and still under way after the
-  link returns ends unreported, because this page cannot tell that run
-  from one that started and finished inside the gap, and so does a chat
-  that read idle through the gap and running in the first live frame,
-  which is how the reader's own queued question leaves at the moment
-  the link is back. No fourth label earns its keep here — the gap and
-  the unwitnessed start settle the same question the same way — so the
-  reading names the evidence, not its cause. Whether the host list lets
-  a browser vouch for anything across a gap at all is R2, and settling
-  it on a live stand is #479; the silence is written into
-  `docs/CONFIGURATION.md` as the shipped promise in the meantime, so a
-  stand that needs the notice through a gap is a #479 change rather
-  than an undocumented difference from the docs. The same reading also
-  covers a chat whose row leaves the sidebar and comes back: while the row
-  is away the differ holds no reading for that chat at all, so its run is
-  found rather than watched, and it ends silently too — which is written
-  into `docs/CONFIGURATION.md` beside the link case.
+  opened was still attributed to the reader who opened it.
+  What the link going down does to that evidence is the same rule
+  rather than a new one, and it is why the fourth state exists. A frame
+  read through a gap vouches for neither fact a reading is made of, but
+  which way `running` pointed in it still decides what the page is short
+  of: the start of a run it cannot account for (`unwatched`), or an idle
+  reading it cannot yet trust (`stale`). These are not the same hole,
+  because only one of them closes by itself — the unaccounted run ends,
+  its row moves, and the page reads the chat idle over a live link.
+  `stale` is the missing half of that evidence named. `paused` goes back
+  off with the connection, while the rows are rewritten by a re-pull the
+  host client starts once the link is up (`SessionManager.handleConnected`
+  → `refreshList`, an RPC), so the frames between the two carry the list
+  the drop left. Reading one of those as a live idle armed the baseline
+  and credited the run after it: measured on the built differ, `idle` →
+  `paused+idle` → `live+idle` → `live+running` → `idle` raised a notice
+  for a turn that might have begun anywhere inside the gap, against the
+  promise `docs/CONFIGURATION.md` makes. A row that has not moved since
+  the gap is the reading the gap left behind, so it now arms nothing, and
+  that turn is silent with the others: the chat earns its baseline back
+  when its own row moves, which bounds the cost at one turn per chat —
+  the run the page could not account for, then normal service.
+  Whether the host list lets a browser vouch for anything across a gap at
+  all is R2, and settling it on a live stand is #479; the silence is
+  written into `docs/CONFIGURATION.md` as the shipped promise in the
+  meantime, so a stand that needs the notice through a gap is a #479
+  change rather than an undocumented difference from the docs. The same
+  reading also covers a chat whose row leaves the sidebar and comes back:
+  while the row is away the differ holds no reading for that chat at all,
+  so its run is found rather than watched, and it ends silently too —
+  which is written into `docs/CONFIGURATION.md` beside the link case. One
+  corner of that case stays with #479: a row that leaves the list for a
+  local reason (this browser's own index, not the host) and returns idle
+  inside an unvouched window arms its baseline the way a cold start does,
+  because the differ has no reading left to compare it against.
   What #479 does not need to build again: the invalidation itself —
-  `readSighting` returning `unwatched` for a frame read during a pause, and
-  the dropping of a reading whose chat left the list. Both are covered by
-  the cold-start and reconnect cases under `tests/client/notifications/`.
-  What stays with #479 is the measurement: the frame ordering a live Host
-  really produces between the link returning and the list refreshing, and
-  an integration test for that ordering.
+  `readSighting` leaving a paused frame `unwatched` or `stale` according
+  to what it read, the refusal to arm a baseline on a row that has not
+  moved since, and the dropping of a reading whose chat left the list.
+  All three are covered by the cold-start and reconnect cases under
+  `tests/client/notifications/`. What stays with #479 is the measurement:
+  the frame ordering a live Host really produces between the link
+  returning and the list refreshing, and an integration test for that
+  ordering.
 - §3.5's five booleans are two: `inApp` and `desktop`. A preference is only
   worth storing if a channel exists to honor it, and the shipped dispatcher has
   two — the line in the page and the notice the page hands to the operating
