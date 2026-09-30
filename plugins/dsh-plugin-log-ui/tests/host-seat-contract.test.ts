@@ -77,6 +77,24 @@ describe("the host's plugins.row.config seat", () => {
     expect(page[0]).toMatch(/\bform\b/u);
   });
 
+  it("asks the entry for a summary only when the row declares no description", () => {
+    /*
+     * This is what makes the `summary` branch a fallback rather than the row's
+     * normal line: the page writes `description ?? renderSlot(…)` into the `<p>`, so
+     * a bundle whose manifest declares a `description` is read from the manifest and
+     * the seat is never asked. Pinned against the artifact because a host that
+     * dropped the guard would silently replace every row's manifest sentence with the
+     * registrant's, and one that dropped the unconditional `page` call would leave
+     * this card's form with no seat at all.
+     */
+    expect(CLIENT_BUNDLE).toMatch(
+      /description\s*\?\?\s*renderSlot\(\s*["']plugins\.row\.config["']\s*,\s*\{\s*view:\s*["']summary["']/u,
+    );
+    expect(CLIENT_BUNDLE).toMatch(
+      /children:\s*\[\s*renderSlot\(\s*["']plugins\.row\.config["']\s*,\s*\{\s*view:\s*["']page["']/u,
+    );
+  });
+
   it("is keyed by the package name joined to the row id", () => {
     // The join this card's registration key is built from; a different join would
     // park the card under a key the page never asks about, and the settings

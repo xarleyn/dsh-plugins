@@ -139,6 +139,52 @@ afterEach(() => {
 });
 
 describe("the row-config card", () => {
+  /*
+   * The state the deployed page shows before anyone touches the card. The owner's
+   * `rc.2` pass on #646 found the configuration section mounted with this card
+   * closed — its title, its own line and the live count, and nothing else until the
+   * header is clicked. That is the shell's "render the body only while open" meeting
+   * a host that mounts the seat eagerly, so it is pinned here rather than left to a
+   * stand nobody can re-run from CI.
+   */
+  it("arrives collapsed, and reveals the form only when its header is opened", async () => {
+    const writes: Write[] = [];
+    const harness = harnessOf({ settingsForm: storedForm(writes) });
+    await apply(harness.ctx);
+    const seat = rowConfigRegistration(harness);
+    if (!seat) throw new Error("the card lost its seat registration");
+
+    render(
+      createElement(seat.component, {
+        ...seat.props,
+        view: "page",
+        form: PAGE_FORM,
+      }),
+    );
+
+    const header = screen.getByRole("button", {
+      name: "Show settings: Plugin logging",
+    });
+    expect(header.getAttribute("aria-expanded")).toBe("false");
+    /*
+     * A closed card that still mounted its fields would put two editors on the page
+     * at once and let a stray change event write a level nobody chose.
+     */
+    expect(screen.queryByTestId("log-card-default-level")).toBeNull();
+    expect(screen.queryByTestId("log-card-format")).toBeNull();
+    expect(screen.queryByTestId("log-card-plugin-row")).toBeNull();
+
+    fireEvent.click(header);
+    await waitFor(() =>
+      expect(screen.getByTestId("log-card-default-level")).toBeDefined(),
+    );
+    expect(
+      screen.getByRole("button", { name: "Hide settings: Plugin logging" }),
+    ).toBeDefined();
+    // Opening the card is not an edit: the stand records what the card wrote.
+    expect(writes).toEqual([]);
+  });
+
   it("reads back the level and format stored under the row's namespace", async () => {
     await openCard([]);
 
