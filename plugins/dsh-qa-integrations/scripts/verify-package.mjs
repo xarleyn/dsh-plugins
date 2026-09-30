@@ -200,23 +200,41 @@ for (const address of [
   );
 }
 
-// Both cards are seats of the Plugins page now, so neither depends on the
-// Host settings directory or on the Settings surface: the operator card opens
-// from the configuration section of this bundle's own row — keyed by the package
-// name joined to the row id `cordis.patch.yml` declares, which is the settings
-// namespace the card reads — and the account card from the bundle's own section,
-// reaching the same QA session through `qaUserSession`. Each reuses the standard
-// card shell inside a list it owns, because the page hands a seat an empty column.
+// Both cards are seats of the Plugins page now, so neither depends on the Host
+// settings directory or on the Settings surface: the operator card opens from
+// the configuration section of this bundle's own row and the account card from
+// the bundle's own section, reaching the same QA session through
+// `qaUserSession`. Each reuses the standard card shell inside a list it owns,
+// because the page hands a seat an empty column.
+//
+// The row seat is keyed `<package name>#<row id>`, with the row id as the
+// bundle's patch declares it (`slot-contract.d.ts:106-110` of
+// `@deepseek-ai/dsh-client-ui-plugin-manager` 0.1.7-rc.2, `rowConfigKey` at
+// `lib/client.js:27`), and that row id is also the namespace the Host resolves
+// this plugin's volatile Config under. So one string is both the render address
+// and the place the saved values live: a patch row that moves while the card
+// binds the old one leaves a seat with no form and a stand that reads its
+// settings back as defaults, with every type check green. Pin the pair the way
+// `dsh-model-safety-gate` pins its namespace and entry id.
 verifyPluginCardContract(client);
 assert.match(client, /"plugins\.row\.config"/u);
 assert.match(client, /"plugins\.bundle\.config"/u);
+assert.equal(
+  /QA_INTEGRATIONS_SETTINGS_NAMESPACE\s*=\s*"([^"]+)"/u.exec(client)?.[1],
+  /id:\s*([A-Za-z0-9_-]+)/u.exec(patch)?.[1],
+  "the namespace the operator card binds must be the row id cordis.patch.yml declares",
+);
 assert.match(
   client,
-  /@yadsh\/dsh-qa-integrations#/u,
-  "the operator card must key its row seat to this bundle's package name",
+  /const ROW_CONFIG_KEY\s*=\s*`@yadsh\/dsh-qa-integrations#\$\{QA_INTEGRATIONS_SETTINGS_NAMESPACE\}`/u,
+  "the row seat must be keyed by this bundle's package name joined to the namespace constant, not to a second literal that can drift from the patch",
+);
+assert.match(
+  client,
+  /configForms\.get\(QA_INTEGRATIONS_SETTINGS_NAMESPACE\)/u,
+  "the operator form must resolve under the same constant that builds the seat key",
 );
 assert.match(client, /"configForms"/u);
-assert.match(client, /"qa-integrations"/u);
 assert.doesNotMatch(
   client,
   /settings\.plugin\.item/u,
@@ -225,9 +243,9 @@ assert.doesNotMatch(
 assert.doesNotMatch(
   client,
   /settings\.plugins\.tab/u,
-  "both cards left the Plugins settings tab; a bundle naming it back renders a second copy in a surface the cutover is emptying",
+  "both cards sit on the Plugins page now (AGENTS.md, `Choosing the settings extension point`); naming the tab back renders a second copy in the surface the #646 cutover is emptying",
 );
-assert.match(client, /dsh-qa-integrations__host-tab/u);
+assert.match(client, /dsh-qa-integrations__card-list/u);
 assert.match(client, /Развернуть настройки интеграций/u);
 assert.match(client, /Свернуть настройки интеграций/u);
 assert.match(client, /Развернуть конфигурацию интеграций/u);

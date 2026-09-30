@@ -90,8 +90,8 @@ export function createIntegrationsBundleCard(
   return function IntegrationsBundleCard(): ReactElement {
     return (
       <ul
-        className="dsh-qa-integrations__host-tab"
-        data-testid="qa-integrations-host-tab"
+        className="dsh-qa-integrations__card-list"
+        data-testid="qa-integrations-bundle-card"
       >
         <IntegrationsCard />
       </ul>

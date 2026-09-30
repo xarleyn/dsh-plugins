@@ -76,7 +76,17 @@ type ScopeOps = Parameters<ConfigForm<QaIntegrationsConfig>["mutate"]>[0];
 
 /**
  * The one-liner the Plugins page shows for this bundle's row in its `summary`
- * view, which it asks for wherever the row declares no description of its own.
+ * view.
+ *
+ * The row seat is dispatched twice, and the host says so where the contract
+ * ships (`@deepseek-ai/dsh-client-ui-plugin-manager` 0.1.7-rc.2):
+ * `lib/types/client/slot-contract.d.ts:13` admits `summary` "for an official
+ * card's one-liner or a row's missing-description fallback", `:110` closes the
+ * `plugins.row.config` entry with "An absent description falls back to the
+ * entry's `view: 'summary'`", and `lib/client.js:1841` renders exactly that —
+ * `description ?? renderSlot("plugins.row.config", { view: "summary" }, …)`,
+ * beside the `{ view: "page", form }` seat at `:1852`. Without this branch the
+ * page would drop a whole card into its own `<p>`.
  */
 export const QA_INTEGRATIONS_ROW_SUMMARY =
   "Конфигурация подключений стенда: провайдеры, адреса, возможности и сервисные доступы.";
@@ -99,7 +109,7 @@ export function OperatorCardEntry(props: CardProps): ReactElement | string {
  */
 export function OperatorCardTab(props: CardProps): ReactElement | null {
   return (
-    <ul className="dsh-qa-integrations__host-tab">
+    <ul className="dsh-qa-integrations__card-list">
       <OperatorCard {...props} />
     </ul>
   );
