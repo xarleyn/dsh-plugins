@@ -218,7 +218,15 @@ the running turn, drop it — addressed by the occurrence id the Host's queue
 frame carried, so the strip never claims a row the server does not have. The
 queue is Host state read through the session snapshot: the stand keeps no queue
 of its own, and a message waiting in the queue is absent from the transcript
-until the agent claims it.
+until the agent claims it. The one thing the stand keeps about the queue is the
+list of sends the Host has already named — in its Inbox or as a durable
+transcript row — held for the bound chat and dropped by the unbinding that
+leaving a chat, a subagent view, a policy re-bind or entering a draft runs. That
+record hides nothing the session library would still draw: the removal is latched
+the moment the Inbox lists the echo, so what differs is the frame the library
+waits on, not the row that ends up on screen. What it keeps from the visitor is
+the ghost this plugin measured — a claimed question staying above the composer as
+an unsent one.
 
 ---
 

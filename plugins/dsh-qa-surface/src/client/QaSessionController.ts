@@ -73,7 +73,10 @@ import type { QaApprovalDecision, QaQuestionAnswerItem } from "../types.js";
 import { waitFor } from "./wait-for.js";
 import { QA_REGENERATE_MARKER } from "./QaTranscriptAdapter.js";
 import { readableSubagentName } from "./settlement.js";
-import { projectBoundSessionState } from "./project-session-state.js";
+import {
+  hostNamedSubmissionIds,
+  projectBoundSessionState,
+} from "./project-session-state.js";
 
 declare module "@deepseek-ai/dsh-api-session-controller/client" {
   interface SessionReferenceSourceMap {
@@ -269,6 +272,18 @@ export class QaSessionController {
   private admissionPending = false;
   private pendingSubmission: PendingSubmission | undefined;
   private pendingSequence = 0;
+  /**
+   * Request ids this binding has seen the Host name — in the Inbox queue or as a
+   * durable transcript row. The mask that keeps an echo the session library
+   * failed to retire from coming back as a question still crossing the
+   * transport: the retirement is `@deepseek-ai/dsh-api-session-controller`'s own
+   * contract, deferred to an animation frame that a surface with no frame clock
+   * never runs, and `projectQueue` in project-session-state.ts carries the
+   * citation, what the substitute costs and does not cost, and the point where
+   * this set is dead code. Kept for the whole binding: a request id is minted per
+   * submission, so an id the Host has named can never belong to a later send.
+   */
+  private readonly admittedSubmissions = new Set<string>();
   private policyReady = false;
   /** Historical transcript retained after the Host classifies policy drift. */
   private compatibilityReadOnly = false;
@@ -1596,6 +1611,9 @@ export class QaSessionController {
     // The next binding probes the Host again even for the same chat.
     this.pendingProbeKey = "";
     this.admissionPending = false;
+    // Request ids are minted per submission, so another chat's queue listing
+    // says nothing about this one's submissions still crossing the transport.
+    this.admittedSubmissions.clear();
     // A held-back question belongs to the chat that asked it; another binding
     // answers for its own sends.
     this.requestQueueNotice = null;
@@ -1624,6 +1642,11 @@ export class QaSessionController {
   /** Project one session notification; the running-turn spacing policy
    * (first frame at once, further frames absorbed) lives in the publisher. */
   private publishSessionUpdate(): void {
+    // Read before the spacing, from the notification itself: a frame absorbed
+    // into a running turn's window is dropped rather than replayed, so an
+    // admission landing in such a window would otherwise go unrecorded and the
+    // claim frame after it would draw the ghost row this retires.
+    this.trackAdmittedSubmissions();
     this.streamPublisher.publish(
       this.session?.getSnapshot().running === true,
       () => this.publish(),
@@ -1684,6 +1707,7 @@ export class QaSessionController {
     this.syncPendingPolling(
       snapshot.running === true && !this.compatibilityReadOnly,
     );
+    const queuedMessages = this.queuedMessages();
     const projectionInput = {
       connected,
       sessionId,
@@ -1704,7 +1728,10 @@ export class QaSessionController {
         this.admissionPending || this.pendingSubmission !== undefined,
       chatsRevision: this.chatsRevision,
       viewingSubagent: this.viewingSubagent,
-      queuedMessages: this.queuedMessages(),
+      queuedMessages,
+      // The live set, not a copy: `projectQueue` only asks it `has` and keeps no
+      // reference, so nothing here could go stale by the next frame.
+      admittedSubmissions: this.admittedSubmissions,
       slash: this.slashView(),
       config: this.config,
       subagentNames: this.subagentNames(),
@@ -1753,6 +1780,47 @@ export class QaSessionController {
     const inbox = this.session?.projections.faceOf("inbox").getSnapshot() as
       { readonly "next-turn"?: readonly UserMessage[] } | undefined;
     return inbox?.["next-turn"] ?? [];
+  }
+
+  /**
+   * Record the submissions this binding has seen the Host name — the queue rows
+   * it holds and the durable input rows it has written. Naming the message is the
+   * server's own receipt for it, so from that notification on the row belongs to
+   * the chat, not to the transport: an echo the claim leaves behind must not read
+   * again as a question still crossing. The scan is only paid for while some
+   * queued echo still waits for its name.
+   *
+   * Both lists are read because neither is reliable alone, and the transcript is
+   * the durable one: a send admitted and claimed between two notifications never
+   * appears in a queue frame this browser is handed, but its row stays in the
+   * transcript, so the next frame names it. And the receipt is never dropped
+   * while the binding lives — an id the server has named belongs to the submission
+   * that minted it (`beginSubmission` returns a fresh `randomUUID`), so no later
+   * send can need the row this hides, whereas forgetting the receipt re-draws the
+   * ghost the moment the snapshot registers the echo again.
+   *
+   * Read from the notification, not from the projected frame: the projection of a
+   * running turn is spaced, and an absorbed frame is dropped rather than
+   * replayed, so spacing must not decide whether this browser ever saw the name.
+   */
+  private trackAdmittedSubmissions(): void {
+    const snapshot = this.session?.getSnapshot();
+    if (snapshot === undefined) return;
+    // Only an echo still waiting can draw a row, so a chat whose queued sends are
+    // all settled costs no scan of the transcript — and a browser registers the
+    // echo before it sends, so an id with no echo there has nothing to settle.
+    const unsettled = snapshot.pendingSubmissions.some(
+      (item) =>
+        item.placement === "queued" &&
+        !this.admittedSubmissions.has(String(item.requestId)),
+    );
+    if (!unsettled) return;
+    for (const requestId of hostNamedSubmissionIds(
+      this.queuedMessages(),
+      this.conversationBinding?.snapshot.getSnapshot(),
+    )) {
+      this.admittedSubmissions.add(requestId);
+    }
   }
 
   /**
