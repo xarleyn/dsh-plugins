@@ -90,8 +90,8 @@ describe("JevCompactionCard shell", () => {
     const { container } = renderCard();
     const root = container.querySelector("li.dsh-plugin-card");
     expect(root).not.toBeNull();
-    // The tab panel supplies no list of its own, so the card owns the `<ul>`
-    // that keeps the shell's `<li>` a list item (AGENTS.md).
+    // The row's configuration section supplies no list of its own, so the card
+    // owns the `<ul>` that keeps the shell's `<li>` a list item (AGENTS.md).
     expect(root!.parentElement?.tagName).toBe("UL");
     expect(root!.querySelector(".dsh-plugin-card__header")).not.toBeNull();
     expect(root!.querySelector(".dsh-plugin-card__name")!.textContent).toBe(

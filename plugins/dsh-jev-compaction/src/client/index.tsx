@@ -69,16 +69,26 @@ interface ClientFace {
   };
 }
 
-type EntryProps = PropsRuntime<"plugins.row.config"> &
+/**
+ * What the entry consumes. The seat's own `form` is deliberately not declared:
+ * it is the page's `ConfigPageForm` — `{ state, mutate }`, with no subscription
+ * and no single-field read — and this card cannot be built from it, so the entry
+ * resolves the full `ConfigForm` below. Declaring a prop and ignoring it would
+ * read as a card that binds to the page's values but does not.
+ */
+type EntryProps = Omit<PropsRuntime<"plugins.row.config">, "form"> &
   InjectFace<JevCompactionCardFace>;
 
 /**
- * The entry the Plugins page renders for this bundle's row.
+ * The entry the Plugins page renders for this bundle's row: the row's configure
+ * control opens a configuration section under the row on the bundle's page, and
+ * that section is this card.
  *
- * The page asks for two views of one entry: the row's `summary` one-liner, shown
- * wherever the bundle declares no description of its own, and the `page` body
- * below. The summary lands inside the page's own text, so it returns the sentence
- * and never a second card.
+ * The page asks the one entry for two views. `page` is the body of the section
+ * above. `summary` is the row's one-liner, which the page falls back to the entry
+ * for when the bundle declares no description of its own (the seat contract in
+ * `@deepseek-ai/dsh-client-ui-plugin-manager`); it lands inside the page's own
+ * text, so it returns the sentence and never a second card.
  */
 function JevCompactionEntry(props: EntryProps) {
   if (props.view === "summary") return JEV_COMPACTION_ROW_SUMMARY;

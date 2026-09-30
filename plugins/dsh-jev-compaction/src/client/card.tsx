@@ -44,11 +44,11 @@ export interface JevCompactionCardFace {
   /**
    * The live Config of this plugin's namespace.
    *
-   * Named `settingsForm`, not `form`: the row seat already hands its registrant a
-   * `form` — the page's `ConfigPageForm`, which is only `{ state, mutate }` and so
-   * can neither be subscribed to nor read through `getSnapshot`. This plugin's own
-   * `ConfigForm` arrives through the injected face instead, where the slot's owner
-   * prop cannot collide with it.
+   * Named `settingsForm`, not `form`: the row seat hands its registrant a `form`
+   * of its own — the page's `ConfigPageForm`, which is only `{ state, mutate }`
+   * and so can neither be subscribed to nor read field by field. This plugin's
+   * `ConfigForm` arrives through the injected face instead, under a name the
+   * slot's owner prop cannot collide with.
    */
   readonly settingsForm: ConfigForm<JevCompactionConfig>;
 }
@@ -56,8 +56,8 @@ export interface JevCompactionCardFace {
 /**
  * What the card consumes. The row seat renders its registrant with the page's own
  * `{ view, form }` and the framework's standard kit on top of this face; the entry
- * in `./index.tsx` takes those and decides what to mount, so the card is typed with
- * only what it reads.
+ * in `./index.tsx` takes those and decides what to mount, and the card is typed
+ * with only what it reads.
  */
 type CardProps = InjectFace<JevCompactionCardFace>;
 
@@ -186,8 +186,10 @@ export function JevCompactionCard({
 
   return (
     // AGENTS.md: a configuration card keeps the standard shell, but its `<li>`
-    // root must sit inside a list this plugin owns — the Plugins page draws the
-    // row's configuration section without a list element of its own.
+    // root must sit inside a list this plugin owns — the section this bundle's row
+    // opens on the Plugins page hands its content to a plain container, with no
+    // list and no border of its own (measured on the `0.1.7-rc.2` host, epic `#646`),
+    // so the card brings the list with it.
     <ul className="jevc-stack">
       <CardShell
         title="Jev Compaction"
