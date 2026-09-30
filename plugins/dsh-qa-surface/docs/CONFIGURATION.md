@@ -570,13 +570,14 @@ settles while the tab is away goes to the desktop without any clicking on the
 line. A signed-in reader has that half asked for in the settings dialog too,
 which offers its own button while the browser still owes its answer.
 
-The cross beside a line is an answer to the pending browser prompt, because one
-page never asks the same question twice: waving a line off before the prompt was
-answered moves the way in to the browser's own settings. Where the origin is
-already granted the cross clears the stack and nothing else, and the action comes
-back with the next line — on a stand without accounts, that action is the only
-switch the channel has. A denial, or a browser that offers no such API (which
-includes a stand served over plain HTTP), leaves the in-page line standing.
+The cross beside a line closes the question this browser still owes, whether or
+not the prompt ever reached the screen — one page never asks the same question
+twice — so waving a line off moves the way in to the browser's own settings.
+Where the origin is already granted the cross clears the stack and nothing
+else, and the action comes back with the next line — on a stand without
+accounts, that action is the only switch the channel has. A denial, or a
+browser that offers no such API (which includes a stand served over plain HTTP),
+leaves the in-page line standing.
 
 ## Configuration channel over the LAN
 
