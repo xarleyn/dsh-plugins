@@ -89,7 +89,9 @@ export function useQaTurnNotifications(
 
   // The record is merged onto what this page last wrote, not onto the snapshot a
   // callback was built with: the browser answers its prompt on its own schedule,
-  // and the page keeps rendering while it waits.
+  // and the page keeps rendering while it waits. What the ref carries is this
+  // page's own writes — a second tab on the same key still overwrites them, and
+  // settling the two against each other is not this ref's job.
   const written = useRef(prefs);
   const savePrefs = useCallback(
     (
@@ -168,6 +170,10 @@ export function useQaTurnNotifications(
   // so delivery resumes the moment the origin is allowed again. A signed-in reader
   // has the browser asked in the settings section instead, which offers its button
   // whenever the browser still owes its answer.
+  //
+  // The browser's half is read per render and subscribed to nowhere, so what
+  // brings the action back is the next line this page renders — not the reader
+  // returning to the tab.
   const permission = readNotificationPermission();
   const unansweredBrowser =
     permission === "default" && !prefs.osOffered && !channels.desktop;
@@ -191,12 +197,14 @@ export function useQaTurnNotifications(
     [offered, unansweredBrowser, savePrefs],
   );
 
-  // Answering the offer writes the choice where it belongs: on the account once
-  // there is one, so it survives into another browser, and in this browser's own
-  // store otherwise. What this browser marks for itself is that it stopped
-  // asking, which is a fact about this page's question rather than about the
-  // person: a click that found the origin already granted marks nothing, because
-  // there was no question there to ask.
+  // Answering the offer writes the choice on both carriers that can hold it: on
+  // the account once there is one, so it survives into another browser, and in
+  // this browser's own store always — anonymously that copy is the whole record,
+  // and signed in the account outranks it, see `resolveNoticeChannels`, while the
+  // copy here is what an anonymous form reads after a sign-out. What this browser
+  // marks for itself is that it stopped asking, which is a fact about this page's
+  // question rather than about the person: a click that found the origin already
+  // granted marks nothing, because there was no question there to ask.
   const enableDesktop = useCallback(() => {
     const askedTheBrowser = readNotificationPermission() === "default";
     void requestNotificationPermission().then((answer) => {
