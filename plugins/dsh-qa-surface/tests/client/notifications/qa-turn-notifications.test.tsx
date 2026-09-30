@@ -312,21 +312,31 @@ describe("turn completion notices", () => {
   // refreshed list over it — come from two stores and reach a redraw in no
   // guaranteed order. In the frame between them the sidebar still shows the rows
   // the page held while the link was down, and a turn that ended offline looks
-  // exactly like one that ended here. Both orders are set by hand (#479).
+  // exactly like one that ended here. Both orders are set by hand, and both hold
+  // the runs watched before the gap — cold chats would pass for the cold start
+  // alone and say nothing about the stale frame (#479).
   it("keeps a list that refreshed after the link returned off the stack", () => {
     const held = hostList([
       { id: "mine", running: true },
       { id: "second", running: true },
     ]);
     const both = { chatIds: ["mine", "second"] };
-    const page = mountPage(held, both);
+    const page = mountPage(
+      hostList([
+        { id: "mine", running: false },
+        { id: "second", running: false },
+      ]),
+      both,
+    );
+    // Both runs are seen beginning while the link holds.
+    page.redraw({ ...both, list: held });
     // Both turns end offline, and the link comes back before the Host answers:
     // the first live frames carry the held list itself.
     page.redraw({ ...both, list: held, paused: true });
     page.redraw({ ...both, list: held, paused: false });
     page.redraw({ ...both, list: held });
     expect(screen.queryByText("Чат mine")).toBeNull();
-    // The refreshed list lands, and three turns that ended while nobody could
+    // The refreshed list lands, and the two turns that ended while nobody could
     // see them arrive as nothing.
     page.redraw({
       ...both,
@@ -359,14 +369,21 @@ describe("turn completion notices", () => {
   });
 
   it("waits for the restored link's own list when the refresh landed first", () => {
-    const refreshed = hostList([{ id: "mine", running: false }]);
-    const page = mountPage(hostList([{ id: "mine", running: true }]));
+    const idle = hostList([{ id: "mine", running: false }]);
+    const running = hostList([{ id: "mine", running: true }]);
+    const page = mountPage(idle);
+    page.redraw({ list: running });
     // The Host's answer arrives while the page is still reconnecting, and the
     // link-ready edge comes after it: that list is one the new link never
-    // delivered, so the turn it appears to have finished is not this page's news.
-    page.redraw({ list: refreshed, paused: true });
-    page.redraw({ list: refreshed });
+    // delivered, so it neither settles the turn it appears to have finished nor
+    // leaves an idle a following run could be credited as starting from.
+    page.redraw({ list: idle, paused: true });
     expect(screen.queryByText("Чат mine")).toBeNull();
+    // The run the first live frame shows under way is still the one the gap took.
+    page.redraw({ list: running });
+    page.redraw({ list: idle });
+    expect(screen.queryByText("Чат mine")).toBeNull();
+    expect(FakeNotification.raised).toEqual([]);
 
     // From here the page watches this generation's turns, and reports one.
     page.watchTurn();
