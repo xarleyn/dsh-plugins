@@ -51,11 +51,16 @@ await runVerifyPackage({
       // the keyed `settings.plugins.tab` seat of the old settings section is
       // gone, and the entry registers into `plugins.row.config`.
       /"plugins\.row\.config"/u,
-      // The row page opens the entry by `<package name>#<row id>`, and the
-      // Host derives the row id from the `cordis.patch.yml` row — the same
-      // string as the `ctx.configForms` namespace, so a value saved before
-      // the move keeps reading under it.
-      /WEB_FETCH_AUTH_ROW_CONFIG_KEY = `@yadsh\/dsh-web-fetch-authenticated#\$\{WEB_FETCH_AUTH_SETTINGS_NAMESPACE\}`/u,
+      /*
+       * The page opens a seat by `<package name>#<row id>`, and the row id is the
+       * `cordis.patch.yml` row — the same string as the `ctx.configForms`
+       * namespace, so a value saved before the move keeps reading under it. Only
+       * the two halves are asserted: how the source spells them (a template, a
+       * literal, one line or two) is the bundler's and the editor's business, and
+       * `client-registration.test.ts` pins the assembled runtime key against
+       * `package.json` and `cordis.patch.yml` instead.
+       */
+      /@yadsh\/dsh-web-fetch-authenticated#/u,
       /key:\s*WEB_FETCH_AUTH_ROW_CONFIG_KEY/u,
       /WEB_FETCH_AUTH_SETTINGS_NAMESPACE\s*=\s*"web-fetch-authenticated"/u,
       /configForms\.get\(/u,
@@ -63,13 +68,15 @@ await runVerifyPackage({
        * The page seats this one entry twice, and a row whose patch declares no
        * description takes its description line from the `summary` seat. Silence
        * there is not an empty paragraph but a row with nothing said about it,
-       * while mounting the card there puts a page inside a sentence. So: the
-       * entry answers `summary` with the same sentence the card's own shell
-       * shows, and the card is reached only through the page seat.
+       * while mounting the card there puts a page inside a sentence. So the entry
+       * answers `summary` with the row's sentence, and the card it draws under it
+       * heads itself with a different one — the page prints the summary one
+       * paragraph above the card. Which text lands where is asserted rendered, in
+       * `client-card.test.tsx`.
        */
-      /WEB_FETCH_AUTH_ROW_SUMMARY = "Per-origin authenticated rules for web_fetch/u,
-      /if \(view === "summary"\) return WEB_FETCH_AUTH_ROW_SUMMARY/u,
-      /description: WEB_FETCH_AUTH_ROW_SUMMARY/u,
+      /WEB_FETCH_AUTH_ROW_SUMMARY\s*=\s*"Per-origin authenticated rules for web_fetch/u,
+      /if \(view === "summary"\)\s*return WEB_FETCH_AUTH_ROW_SUMMARY/u,
+      /description:\s*WEB_FETCH_AUTH_CARD_DESCRIPTION/u,
     ],
     cardContract: {
       legacyPatterns: [/\.wfa-card\{/u, /\.dsh-plugin-card \*/u],
