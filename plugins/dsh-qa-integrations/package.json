@@ -58,8 +58,8 @@
       ],
       "inject": [
         "@deepseek-ai/dsh-api-gateway",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
         "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-settings-plugins",
         "@yadsh/dsh-qa-surface"
       ],
       "platform": "web"
@@ -105,8 +105,8 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
     "@deepseek-ai/dsh-tools": "catalog:dsh",
     "@deepseek-ai/dsh-typert-protocol": "catalog:dsh",
     "@deepseek-ai/schemastery": "catalog:dsh",
@@ -115,9 +115,9 @@
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
     "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
     "@deepseek-ai/dsh-typert-generator": "catalog:dsh-dev",

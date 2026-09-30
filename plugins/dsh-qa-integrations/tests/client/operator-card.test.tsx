@@ -9,16 +9,20 @@
  */
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
-import type { ReactElement } from "react";
+import type { ComponentType, ReactElement } from "react";
 import { describe, expect, it } from "vitest";
-import { OperatorCard } from "../../src/client/operator-card.js";
+import {
+  OperatorCard,
+  OperatorCardEntry,
+  QA_INTEGRATIONS_ROW_SUMMARY,
+} from "../../src/client/operator-card.js";
 import { SERVICE_REACH } from "../../src/client/operator-service-reach.js";
 import { GitlabSection } from "../../src/client/operator-sections/gitlab.js";
 import type { OperatorForm } from "../../src/client/operator-sections/shared.js";
 
-/** The slot props the Host supplies are outside this test's concern. */
+/** The slot props the Plugins page supplies are outside this test's concern. */
 const Card = OperatorCard as unknown as (props: {
-  form: unknown;
+  settingsForm: unknown;
 }) => ReactElement;
 
 interface ScopeOp {
@@ -37,7 +41,7 @@ function scopeStub(initial: {
   user?: unknown;
   writable?: boolean;
   status?: "ready" | "unavailable";
-}): { form: never; stub: ScopeStub } {
+}): { settingsForm: never; stub: ScopeStub } {
   let snapshot = {
     status: (initial.status ?? "ready") as "ready" | "unavailable",
     value: initial.value,
@@ -84,7 +88,7 @@ function scopeStub(initial: {
     unset: async () => {},
   };
   return {
-    form: scope as never,
+    settingsForm: scope as never,
     stub: {
       writes,
       setStatus(status) {
@@ -101,8 +105,8 @@ function renderCard(initial: {
   writable?: boolean;
   status?: "ready" | "unavailable";
 }): ScopeStub {
-  const { form, stub } = scopeStub(initial);
-  render(<Card form={form} />);
+  const { settingsForm, stub } = scopeStub(initial);
+  render(<Card settingsForm={settingsForm} />);
   return stub;
 }
 
@@ -270,7 +274,7 @@ const RESOLVED = {
 describe("integrations operator card", () => {
   it("stays hidden when the namespace is not exposed to this browser", () => {
     const { container } = render(
-      <Card form={scopeStub({ status: "unavailable" }).form} />,
+      <Card settingsForm={scopeStub({ status: "unavailable" }).settingsForm} />,
     );
     // The card renders null while the form reports the namespace absent.
     expect(container.childElementCount).toBe(0);
@@ -770,5 +774,33 @@ describe("integrations operator card", () => {
         ],
       },
     ]);
+  });
+});
+
+/**
+ * The seat the Plugins page dispatches: the page asks one entry for two views,
+ * so the `summary` seat — which lands inside the page's own `<p>` — stays a
+ * sentence, and the `page` seat is the card with the shell it owns.
+ */
+describe("integrations row entry", () => {
+  const Entry = OperatorCardEntry as unknown as ComponentType<{
+    view: "summary" | "page";
+    settingsForm: unknown;
+  }>;
+
+  it("answers the summary seat with the row's one-liner, not a second card", () => {
+    const { container } = render(
+      <Entry view="summary" settingsForm={undefined} />,
+    );
+    expect(container.querySelector("li")).toBeNull();
+    expect(container.textContent).toBe(QA_INTEGRATIONS_ROW_SUMMARY);
+  });
+
+  it("renders the card shell for the page seat", () => {
+    const { settingsForm } = scopeStub({ value: RESOLVED });
+    const { container } = render(
+      <Entry view="page" settingsForm={settingsForm} />,
+    );
+    expect(container.querySelector("ul > li.dsh-plugin-card")).not.toBeNull();
   });
 });

@@ -139,6 +139,7 @@ describe("classic browser bundle", () => {
         register: (
           options: {
             name: string;
+            key?: string;
             id?: string;
             order?: number;
             label?: () => string;
@@ -166,21 +167,18 @@ describe("classic browser bundle", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     expect(sections.map((section) => section.id)).toEqual(["integrations"]);
-    // Two tabs leave the bundle: the operator card over the plugin's own entry
-    // (first — it does not wait for `describe()`) and the account tab.
+    // Two cards leave the bundle: the operator card over the plugin's own entry
+    // (first — it does not wait for `describe()`) and the account card, each in
+    // the keyed seat the Plugins page gives this bundle.
     expect(slots).toHaveLength(2);
     expect(slots[0]).toMatchObject({
-      name: "settings.plugins.tab",
-      id: "qa-integrations-config",
-      order: 30,
-      label: "Интеграции — конфигурация",
+      name: "plugins.row.config",
+      key: "@yadsh/dsh-qa-integrations#qa-integrations",
     });
     expect(slots[0]?.component).toBeDefined();
     expect(slots[1]).toMatchObject({
-      name: "settings.plugins.tab",
-      id: "qa-integrations",
-      order: 40,
-      label: "Интеграции",
+      name: "plugins.bundle.config",
+      key: "@yadsh/dsh-qa-integrations",
     });
     expect(slots[1]?.component).toBeDefined();
     // The section the bundle registered mounts the provider the Host named.

@@ -15,9 +15,9 @@ import { describe, expect, it } from "vitest";
 import { OperatorCard } from "../../src/client/operator-card.js";
 import { testIdOf } from "../../src/client/operator-controls.js";
 
-/** The slot props the Host supplies are outside this test's concern. */
+/** The slot props the Plugins page supplies are outside this test's concern. */
 const Card = OperatorCard as unknown as (props: {
-  form: unknown;
+  settingsForm: unknown;
 }) => ReactElement;
 
 /** The card, mounted open over one stored configuration. */
@@ -33,7 +33,7 @@ function renderOpen(value: unknown): void {
   };
   render(
     <Card
-      form={{
+      settingsForm={{
         getSnapshot: () => snapshot,
         subscribe: () => () => {},
         mutate: async () => {},

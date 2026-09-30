@@ -200,22 +200,33 @@ for (const address of [
   );
 }
 
-// Both cards are pages of the Plugins settings tab strip, so neither depends on
-// the loopback-only Host settings directory, and each reuses the standard card
-// shell inside a list it owns. The operator card edits the plugin's own profile
-// entry — on a 0.1.7 host the entry id *is* the settings namespace, and the
-// card reads the form the settings provider serves for it — while the account
-// tab reaches the same QA session through `qaUserSession`.
+// Both cards are seats of the Plugins page now, so neither depends on the
+// Host settings directory or on the Settings surface: the operator card opens
+// from the configuration section of this bundle's own row — keyed by the package
+// name joined to the row id `cordis.patch.yml` declares, which is the settings
+// namespace the card reads — and the account card from the bundle's own section,
+// reaching the same QA session through `qaUserSession`. Each reuses the standard
+// card shell inside a list it owns, because the page hands a seat an empty column.
 verifyPluginCardContract(client);
-assert.match(client, /"settings\.plugins\.tab"/u);
+assert.match(client, /"plugins\.row\.config"/u);
+assert.match(client, /"plugins\.bundle\.config"/u);
+assert.match(
+  client,
+  /@yadsh\/dsh-qa-integrations#/u,
+  "the operator card must key its row seat to this bundle's package name",
+);
+assert.match(client, /"configForms"/u);
+assert.match(client, /"qa-integrations"/u);
 assert.doesNotMatch(
   client,
   /settings\.plugin\.item/u,
   "the bundle must not register the settings slot the 0.1.7 host deleted",
 );
-assert.match(client, /"qa-integrations-config"/u);
-assert.match(client, /"configForms"/u);
-assert.match(client, /"qa-integrations"/u);
+assert.doesNotMatch(
+  client,
+  /settings\.plugins\.tab/u,
+  "both cards left the Plugins settings tab; a bundle naming it back renders a second copy in a surface the cutover is emptying",
+);
 assert.match(client, /dsh-qa-integrations__host-tab/u);
 assert.match(client, /Развернуть настройки интеграций/u);
 assert.match(client, /Свернуть настройки интеграций/u);

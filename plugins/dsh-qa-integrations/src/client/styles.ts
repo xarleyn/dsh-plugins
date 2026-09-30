@@ -5,9 +5,9 @@ import {
 
 /**
  * The canonical settings-card shell and the shared credential-help note come
- * from the kit (AGENTS.md pins the shell), and only the tab list and what lives
- * inside the card body are this plugin's own: the provider cards the dialog page
- * and the host tab both mount.
+ * from the kit (AGENTS.md pins the shell), and only the card list and what lives
+ * inside the card body are this plugin's own: the provider cards the QA dialog
+ * page and the Plugins page card both mount.
  */
 export const styles = `${PLUGIN_CARD_SHELL_CSS}${CREDENTIAL_HELP_CSS}${String.raw`
 .dsh-qa-integrations__host-tab{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}

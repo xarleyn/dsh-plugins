@@ -13,8 +13,8 @@
  * a new provider adds one of those instead of copying this card's form.
  */
 
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
   InjectFace,
   PropsRuntime,
@@ -56,20 +56,46 @@ import { ServiceAccessSection } from "./operator-sections/service-profiles.js";
 
 /** The face the slot entry injects into this card. */
 export interface OperatorCardFace {
-  readonly form: ConfigForm<QaIntegrationsConfig>;
+  /**
+   * The live Config of this plugin's namespace.
+   *
+   * Named `settingsForm`, not `form`: the row seat hands its registrant a `form`
+   * of its own — the Plugins page's `ConfigPageForm`, which is only
+   * `{ state, mutate }` and so can neither be subscribed to nor written field by
+   * field. This card's `ConfigForm` therefore arrives through the injected face,
+   * where the owner prop cannot shadow it.
+   */
+  readonly settingsForm: ConfigForm<QaIntegrationsConfig>;
 }
 
-type CardProps = PropsRuntime<"settings.plugins.tab"> &
+type CardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<OperatorCardFace>;
 
 /** Mutation operations as the bound form declares them. */
 type ScopeOps = Parameters<ConfigForm<QaIntegrationsConfig>["mutate"]>[0];
 
 /**
- * The card as the Host's Plugins settings render it: one entry of
- * `settings.plugins.tab`, whose `<li>` shell therefore sits in a list this
- * plugin owns. The panel supplies no list of its own, and a bare `<li>` under
- * a `<div>` is what the shell contract on the account tab already avoids.
+ * The one-liner the Plugins page shows for this bundle's row in its `summary`
+ * view, which it asks for wherever the row declares no description of its own.
+ */
+export const QA_INTEGRATIONS_ROW_SUMMARY =
+  "Конфигурация подключений стенда: провайдеры, адреса, возможности и сервисные доступы.";
+
+/**
+ * The card as the Plugins page renders this bundle's row: the page asks one
+ * entry for two views, so the `summary` seat stays a sentence — it lands inside
+ * the page's own `<p>` — and the `page` seat is the card below.
+ */
+export function OperatorCardEntry(props: CardProps): ReactElement | string {
+  if (props.view === "summary") return QA_INTEGRATIONS_ROW_SUMMARY;
+  return <OperatorCardTab {...props} />;
+}
+
+/**
+ * The card as its seat renders it: the Plugins page hands the row's
+ * configuration section an empty column, so the `<li>` shell keeps a list this
+ * plugin owns — a bare `<li>` under a `<div>` is what the shell contract on the
+ * account card already avoids.
  */
 export function OperatorCardTab(props: CardProps): ReactElement | null {
   return (
@@ -79,8 +105,11 @@ export function OperatorCardTab(props: CardProps): ReactElement | null {
   );
 }
 
-export function OperatorCard({ form }: CardProps): ReactElement | null {
-  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
+export function OperatorCard({ settingsForm }: CardProps): ReactElement | null {
+  const store = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const settings = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -95,20 +124,20 @@ export function OperatorCard({ form }: CardProps): ReactElement | null {
       const ops = [
         { op: "set", path: [...path], value },
       ] as unknown as ScopeOps;
-      form.mutate(ops).catch((cause: unknown) => {
+      settingsForm.mutate(ops).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [form],
+    [settingsForm],
   );
   const unset = useCallback(
     (path: readonly string[]) => {
       const ops = [{ op: "unset", path: [...path] }] as unknown as ScopeOps;
-      form.mutate(ops).catch((cause: unknown) => {
+      settingsForm.mutate(ops).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [form],
+    [settingsForm],
   );
   const overridden = useCallback(
     (path: readonly string[]) => isOverridden(settings.user, path),
@@ -120,10 +149,10 @@ export function OperatorCard({ form }: CardProps): ReactElement | null {
       op: "unset",
       path: [key],
     })) as unknown as ScopeOps;
-    form.mutate(ops).catch((cause: unknown) => {
+    settingsForm.mutate(ops).catch((cause: unknown) => {
       setError(displayError(cause));
     });
-  }, [form, keys]);
+  }, [settingsForm, keys]);
 
   if (settings.status === "unavailable") return null;
 

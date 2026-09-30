@@ -6,8 +6,8 @@ import type {
 } from "@yadsh/dsh-qa-surface/client/settings";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import {
+  createIntegrationsBundleCard,
   createIntegrationsCard,
-  createIntegrationsHostTab,
 } from "../../src/client/card.js";
 import type { IntegrationsClientRemote } from "../../src/client/integrations.js";
 import { GITLAB_CAPABILITY_INFO } from "../../src/providers/gitlab/catalog.js";
@@ -71,13 +71,13 @@ function remote(calls: string[]): IntegrationsClientRemote {
 }
 
 describe("Integrations plugin card", () => {
-  it("keeps the card as a direct child of its host-tab list", () => {
-    const HostTab = createIntegrationsHostTab(
+  it("keeps the card as a direct child of the list the section hands it", () => {
+    const BundleCard = createIntegrationsBundleCard(
       remote([]),
       ["gitlab"],
       session(ANONYMOUS),
     );
-    render(<HostTab />);
+    render(<BundleCard />);
     const list = screen.getByTestId("qa-integrations-host-tab");
     const shell = list.firstElementChild as HTMLElement;
     expect(shell.tagName).toBe("LI");
