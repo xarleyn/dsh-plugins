@@ -58,7 +58,9 @@ export interface QaTurnCompletionOptions {
    * link returns would otherwise read as a batch of finished turns. This flag
    * goes back off with the link, which is sooner than the host list is read
    * again, so what a pause costs this page is carried by the readings rather
-   * than by the flag — see `stale`.
+   * than by the flag — see `stale`. A gap that left no frame with this flag set
+   * is named as a rule of `docs/specs/owner-scoped-notifications.md` §12, not
+   * as a detail of this file.
    */
   readonly paused?: boolean;
   readonly now?: number;
