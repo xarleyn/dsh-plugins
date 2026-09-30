@@ -25,9 +25,19 @@ page-тип таба правого сайдбара DSH, показывающи
 - Карточка: keyed-слот `plugins.row.config` под ключом
   `@yadsh/dsh-plugin-log-ui#dsh-plugin-log-ui` — имя пакета и id строки из
   `cordis.patch.yml`. Id строки остаётся namespace'ом настроек, поэтому
-  перенос места рендера не трогает сохранённые значения.
+  перенос места рендера не трогает сохранённые значения. Страница зовёт этот же
+  entry дважды: `{ view: 'page', form }` в секции конфигурации и
+  `{ view: 'summary' }` как описание строки, когда у строки своего описания нет
+  (`@deepseek-ai/dsh-client-ui-plugin-manager@0.1.7-rc.2`, `lib/client.js:1852` и
+  `:1841`) — поэтому на summary карточка отдаёт одну фразу текстом, а не второе
+  тело. Абзац `AGENTS.md` §"Choosing the settings extension point" перечисляет
+  только `settings.*`-места: он написан до слотов страницы Plugins и говорит о
+  доступности нативного каталога настроек, а не об этом месте рендера. Его
+  переформулировка — задача родителя (#646), не этой карточки.
 - Cordis-сервис: `ctx.pluginLogUi` (`TypertRemoteService`, namespace
-  `pluginLogUi`).
+  `pluginLogUi`). Панель живого потока остаётся в правом сайдбаре; карточка читает
+  у сервиса только снимок реестра, поэтому перенос места её рендера сервиса не
+  трогает.
 - Тип таба: `kind: plugin-log`, `id: @yadsh/dsh-plugin-log-ui/panel`,
   body — в keyed-слоте `sidebar.right.pane.tab` под тем же `id`.
 

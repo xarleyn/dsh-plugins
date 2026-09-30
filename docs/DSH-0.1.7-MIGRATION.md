@@ -303,6 +303,21 @@ now at `:579`; `plugins.row.config` is still rendered **with** `form`, now at
 `formFor(id)` (`:1151-1155`) still calls `props.configForm(id)` with the **row id
 as the namespace**, so the join-key insight below survives `rc.2` untouched.
 
+[rc.2 fix] **[verified]** and one render site this document never listed, which
+makes the bullet above ("rendered with `{ view: 'page', form }`") understate the
+seat: `RowDetail` writes the row's description into a `<p>` and, when the row
+declares none, asks `plugins.row.config` for that sentence under
+`{ view: 'summary' }`. Measured on the **shipped bundle** rather than the source
+file — `@deepseek-ai/dsh-client-ui-plugin-manager@0.1.7-rc.2`, `lib/client.js:1841`
+for the summary seat against `:1852` for the page seat — because
+`PluginManagerPage.tsx` is not in this repository, so no source line for the
+summary seat is claimed here. `slot-contract.d.ts:110` agrees in prose: "An absent
+description falls back to the entry's `view: 'summary'`." A card that owns a row is
+therefore rendered **twice**, and its `summary` pass must return text rather than
+its shell — the page puts it inside its own `<p>`, so a card there would nest an
+`<li>` in a paragraph. `dsh-plugin-log-ui` (#651) registers this seat and answers
+both shapes; the wave (#646) moves further cards onto it.
+
 Three refinements the `rc.1` pass missed, all **[verified]** at both tags (so
 they were never `rc.2` changes — they were gaps in this document):
 
@@ -447,6 +462,15 @@ inventory, because the configure control is gated on
 **[unverified]** remains one narrower thing: that fixture's card ignores `form`
 entirely (hardcoded `defaultValue`, no read or write), so nothing in the harness
 proves the *wired* read/write path end to end. One live stand still settles that.
+**Updated by #651**, which registers this seat in this repository:
+`plugins/dsh-plugin-log-ui/tests/client-card.test.tsx` mounts the component that
+plugin's `apply()` actually registered, with the two prop shapes `RowDetail` passes
+(`{ view: 'page', form }` and `{ view: 'summary' }`), and holds a stored level,
+format and per-plugin override in the stand for `ctx.configForms.get(rowId)` — so
+the read-back of a value written before the move, and the write of a change through
+that same namespace's form, are now measured rather than assumed. **[unverified]**
+shrinks to what a test cannot reach: the deployed Host page occupying the seat and
+answering the row's configure control. That row is #646's, not this document's.
 
 **2. [verified] the host chrome moved off our `AGENTS.md` shell contract between
 `rc.1` and `rc.2`.** The structure is the same (`CardHead` at
@@ -1390,9 +1414,11 @@ whose version-plan arithmetic can silently drift.
 3. §7 step 8's release half must **read the 39 existing plans first** and pair a
    new qa-surface plan with `0.14.1`/`0.15.0`, not `0.12.x` (§6).
 4. New step 6 stands, none of which `nx test` covers: (a) one `plugins.row.config`
-   card with a **real** read/write wired (the harness fixture ignores `form`, §4.3a
-   item 1); (b) one `agent/created` listener that throws, to watch creation roll
-   back; (c) one qa lockdown stand with `lockdown.permissionPreset = "auto"` (D3);
+   card with a **real** read/write wired on a deployed page — #651 registered such a
+   card in this repository and its suite pins the client half of that wire, so what
+   the stand still owes is the Host's own seat occupancy (§4.3a item 1); (b) one
+   `agent/created` listener that throws, to watch creation roll back; (c) one qa
+   lockdown stand with `lockdown.permissionPreset = "auto"` (D3);
    (d) one session that triggers a dynamic tool update, then check every
    `block.type` switch for the emitted `tool-addition`/`tool-removal` (§8.4);
    (e) a focused-card check after a mouse click for the `focus.css` outranking

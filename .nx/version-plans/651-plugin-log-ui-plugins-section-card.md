@@ -30,9 +30,11 @@ hands its registrant a `ConfigPageForm`, which is `{ state, mutate }` — no
 subscription, no single-field write — so the card keeps resolving its own
 `ConfigForm` and that form now arrives through the injected face under the name
 `settingsForm`, where the owner prop called `form` cannot shadow it. And the same
-entry is rendered a second time, as `view: 'summary'`, wherever the page wants a
-one-liner for a row that declares no description of its own; that lands inside the
-page's `<p>`, so it returns the sentence and never a second card. The shell's `<li>`
+entry is rendered a second time, as `view: 'summary'`: `RowDetail` puts the row's
+description into a `<p>` and asks this seat for the sentence when the row declares
+none (`@deepseek-ai/dsh-client-ui-plugin-manager@0.1.7-rc.2`, `lib/client.js:1841`,
+against `:1852` for the `page` body). The summary therefore lands inside the page's
+`<p>`, so it returns the sentence and never a second card. The shell's `<li>`
 still needs a list to sit in, which the section does not supply, so the plugin-owned
 `<ul>` stays with it — renamed for what it is now (`plu-tab` was a name for a pane
 this card no longer renders in).
@@ -46,6 +48,9 @@ without the Plugins page loses the card, and `compatibility.json` says so, its
 required client features naming `plugins.row.config` where it named
 `settings.plugins.tab`. `scripts/verify-package.mjs` asserts the new pair (the slot
 literal and the `@yadsh/dsh-plugin-log-ui#` key prefix in the shipped bundle, the
-new package in the inject list and on the peer list), and the client test asserts
-the keyed registration, the resolved namespace, and the form arriving under a name
-the slot cannot overwrite.
+new package in the inject list and on the peer list). The client tests now cover
+both halves of the seat: the wiring suite asserts the keyed registration, the one
+resolved namespace and the form arriving under a name the slot cannot overwrite,
+and a rendering suite mounts the component `apply()` registered with the page's own
+two prop shapes, so a level and a format stored before the move are read back and a
+change is written through that namespace's form.
