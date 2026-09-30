@@ -1,6 +1,8 @@
 import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
 
 export const styles = `${PLUGIN_CARD_SHELL_CSS}
+/* The Plugins page seats the card in an empty section, so its <li> brings its own list. */
+.uir-list{margin:0;padding:0;list-style:none;display:grid;gap:12px}
 .uir-body,.uir-body *{box-sizing:border-box}
 .uir-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .uir-section{display:grid;gap:10px}

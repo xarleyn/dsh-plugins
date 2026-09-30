@@ -37,16 +37,22 @@ assert.match(client, /data-dsh-ui-repair-contain/u);
 assert.match(client, /Applying\.\.\./u);
 assert.match(client, /ResizeObserver/u);
 assert.match(client, /"plugins\.row\.config"/u);
-// The seat key is `<package name>#<row id>`, and the row id half of it is the
-// `ctx.configForms` namespace the Host derives from the `cordis.patch.yml` row.
-// The namespace itself is untouched by the move, which is what keeps a value
-// saved before the upgrade readable after it.
+// The seat key is `<package name>#<row id>`, joined from the namespace the card
+// reads its ConfigForm through, so the row half cannot drift away from it. The
+// namespace itself is untouched by the move, which is what keeps a value saved
+// before the upgrade readable after it; `verify-package.mjs` pins both halves
+// against `package.json` and `cordis.patch.yml`.
 assert.match(client, /key:\s*UI_REPAIR_ROW_CONFIG_KEY/u);
-assert.match(
-  client,
-  /UI_REPAIR_ROW_CONFIG_KEY\s*=\s*"@yadsh\/dsh-ui-repair#dsh-ui-repair"/u,
+assert.ok(
+  client.includes(
+    "const UI_REPAIR_ROW_CONFIG_KEY = `@yadsh/dsh-ui-repair#${UI_REPAIR_SETTINGS_NAMESPACE}`",
+  ),
+  "the row-config key must join the package name to the settings namespace",
 );
 assert.match(client, /UI_REPAIR_SETTINGS_NAMESPACE\s*=\s*"dsh-ui-repair"/u);
+// The page seats this entry twice, and the list the shell's `<li>` needs is the
+// entry's own, not the page's.
+assert.match(client, /className:\s*"uir-list"/u);
 assert.match(client, /dsh-plugin-card__name/u);
 assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u);
 verifyPluginCardContract(client, { legacyPatterns: [/uir-card/u] });
