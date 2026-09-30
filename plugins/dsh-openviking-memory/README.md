@@ -212,19 +212,18 @@ config:
 
 > **Where the settings live.** The configuration card opens from this plugin's row
 > on the Host's **Plugins** page, and it edits the settings document of the profile
-> that mounts this plugin. A browser reaching the deployment over the network
-> gets a process-local copy of that document instead — `memory` mode, which never
-> writes the Host's file — so the operator configures on the machine that serves
-> the installation. The card is not kept from that browser, though: the tab it
-> left was the surface meant to stay reachable without loopback, and the Plugins
-> page that took it asks nothing about the face — a network browser opening the
-> row sees the card and writes a copy that dies with its tab. So the card stays the
-> operator's surface in effect rather than in access: the QA page above is the face
-> a network browser is meant to use, and it only reports what the memory holds.
-> Whether the deployed page serves that row to a non-loopback connection at all is
-> the half no client bundle answers, and §6.17 of
+> that mounts this plugin. A browser reaching the deployment over the network is
+> served that document in `memory` mode — the Host's own contract calls it
+> process-local and never writable — and the card renders nothing while its form
+> reports that state, so the operator configures on the machine that serves the
+> installation. That is how the tab this card left behaved too: the provider that
+> decides it is shared, and §6.17 of
 > [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-openviking-memory/SPEC.md)
-> leaves it to a live stand.
+> carries the citations, plus the one thing a live stand still owes — whether the
+> deployed page serves that row to a non-loopback connection at all. So the card is
+> the operator's surface in access as well as in effect: the QA page above is the
+> face a network browser is meant to use, and it only reports what the memory
+> holds.
 >
 > There is no namespace for the card to register. Since 0.1.7 a field is an
 > editable form field exactly when its schema node is volatile, and the profile
@@ -319,17 +318,14 @@ page, opened from its own row in the DSH web UI. It edits the plugin's
   plugin log under `<$DSH_HOME>/logs/dsh-openviking-memory/`.
 - **The card edits the Host's document from loopback.** The settings document a
   card writes is the profile the Host serves, and a page that reaches the
-  deployment over the network is handed a process-local `memory` copy instead —
-  one nothing outside that browser tab reads. So the operator sets these switches
-  on the machine that serves the installation, including a stand through its
-  loopback port. The card is not gated on that face either — it sits on the
-  **Plugins** page, which asks nothing about where the browser came from — so a
-  network browser can open it; its click only lands in that throwaway copy and
-  changes nobody else's memory. The surface a network browser is meant to use is
-  the read-only account page described in §Per-account memory. The split is
-  deliberate: the switches below change one shared deployment (endpoint,
-  credentials, which memory is injected), so they belong to the operator, not to
-  whoever opens a chat.
+  deployment over the network is served it in `memory` mode — process-local, and
+  never writable, in the Host contract's own words — which this card reports as an
+  empty render rather than a disabled form. So the operator sets these switches on
+  the machine that serves the installation, including a stand through its loopback
+  port; the surface a network browser is meant to use is the read-only account page
+  described in §Per-account memory. The split is deliberate: the switches below
+  change one shared deployment (endpoint, credentials, which memory is injected),
+  so they belong to the operator, not to whoever opens a chat.
 
 ### Injection
 
