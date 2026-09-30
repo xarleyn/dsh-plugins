@@ -118,8 +118,8 @@ fallback to a shell and no request that the model compare the documents itself.
 
 ## Configuration
 
-The namespace is `documents`, edited in the plugin's own card (Settings →
-Plugins → Документы) or declaratively:
+The namespace is `documents`, edited in the plugin's own card — the configuration
+of this plugin's row on the host **Plugins** page — or declaratively:
 
 ```yaml
 - id: documents

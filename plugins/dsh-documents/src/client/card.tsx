@@ -11,9 +11,9 @@
  * instead of freezing a copy of today's value.
  */
 
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
   InjectFace,
   PropsRuntime,
@@ -72,16 +72,38 @@ const OCR_MODES = [
   { value: "force", label: "Всегда" },
 ] as const;
 
-/** The face the tab entry injects into this card. */
+/**
+ * What this row of the Plugins page is: the sentence under the card's title, and
+ * the one-liner the page shows in place of a description the patch does not
+ * declare. One string owns both, so the row and the opened card cannot drift.
+ */
+export const DOCUMENTS_CARD_SUMMARY =
+  "Конвейер документов: Markdown ↔ DOCX/PDF, извлечение текста, онлайн-источники.";
+
+/** The face the row entry injects into this card. */
 export interface DocumentsCardFace {
-  readonly form: ConfigForm<DocumentsConfig>;
+  /**
+   * The live `ConfigForm` of this plugin's namespace.
+   *
+   * Named `settingsForm`, not `form`: the row seat hands its registrant a `form`
+   * of its own — the Host's `ConfigPageForm`, which is only `{ state, mutate }`
+   * and so can neither be subscribed to nor written field by field. This plugin's
+   * form comes through the injected face, where that owner prop cannot shadow it.
+   */
+  readonly settingsForm: ConfigForm<DocumentsConfig>;
 }
 
-type CardProps = PropsRuntime<"settings.plugins.tab"> &
+/** The props the Plugins page renders this card with. */
+export type DocumentsCardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<DocumentsCardFace>;
 
-export function DocumentsCard({ form }: CardProps): ReactElement {
-  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
+export function DocumentsCard({
+  settingsForm,
+}: DocumentsCardProps): ReactElement {
+  const store = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const snapshot = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -94,7 +116,7 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
   /** Write one value; `undefined` clears the field back to the default. */
   const write = useCallback(
     (path: readonly string[], value: unknown) => {
-      void form.mutate(
+      void settingsForm.mutate(
         [
           value === undefined
             ? { op: "unset" as const, path: [...path] }
@@ -103,10 +125,10 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
         // The revision is re-read at write time rather than captured with the
         // rendered snapshot: a stale fence would refuse a write the Host would
         // otherwise accept.
-        form.getSnapshot().revision,
+        settingsForm.getSnapshot().revision,
       );
     },
-    [form],
+    [settingsForm],
   );
 
   /** Whether the user layer carries any of these paths (i.e. has an override). */
@@ -128,9 +150,9 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
         data-testid={testId}
         disabled={disabled || !dirty}
         onClick={() => {
-          void form.mutate(
+          void settingsForm.mutate(
             paths.map((path) => ({ op: "unset" as const, path: [...path] })),
-            form.getSnapshot().revision,
+            settingsForm.getSnapshot().revision,
           );
         }}
       >
@@ -143,12 +165,13 @@ export function DocumentsCard({ form }: CardProps): ReactElement {
   const fieldDisabled = disabled || !enabled;
 
   return (
-    // The tab renders this card inside its own panel, so the shell's `<li>` root
-    // is stacked here in a list this plugin owns (AGENTS.md).
+    // The configuration section this card renders in supplies no list of its own,
+    // so the shell's `<li>` root is stacked here in a list this plugin owns
+    // (AGENTS.md).
     <ul className="dsh-docs-list">
       <CardShell
         title="Документы"
-        description="Конвейер документов: Markdown ↔ DOCX/PDF, извлечение текста, онлайн-источники."
+        description={DOCUMENTS_CARD_SUMMARY}
         badge={
           <span className="dsh-plugin-card__badge">
             {enabled ? "Включён" : "Выключен"}
