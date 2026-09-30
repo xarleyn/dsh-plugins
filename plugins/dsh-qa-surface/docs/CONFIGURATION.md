@@ -557,6 +557,15 @@ in this browser decides nothing about who signs in today. On a stand without
 accounts there is no account to write to, so the desktop choice stays in the
 browser that made it.
 
+Answering the line's action writes that choice on both carriers that can hold it: on
+the account once there is one, and in this browser's own store always. Signed in,
+the account's copy is the one that decides. After a sign-out the browser still holds
+what the last reader switched on, and the anonymous form reads that copy as its own
+record — which is why the line then offers it no switch: the record says the channel
+is on, and a control labelled «turn on» is not how a channel is turned off. The next
+reader at this browser puts the choice back by signing in and answering in the
+«Уведомления» section, or by clearing this stand's storage.
+
 The notice offers its action while one of the two answers is still open, and the
 action is asked for from a click — never on load, never once per turn. The
 reader's answer is read from the same record that decides delivery: the account

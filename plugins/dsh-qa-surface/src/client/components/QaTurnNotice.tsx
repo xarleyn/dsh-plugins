@@ -10,10 +10,15 @@ export interface QaTurnNoticeProps {
   /** Take one line out of the stack. */
   readonly onDismiss: (key: string) => void;
   /**
-   * Offer the desktop channel. Omitted where no answer can be collected — the
-   * stand closed the channel, the browser refuses it, the page has no desktop
-   * API — and wherever the reader's own record already says the channel is on.
-   * The line is not a fixture of the stack, so the offer shows only while one is.
+   * Offer the desktop channel, present while an answer is still outstanding.
+   * Hidden where nothing can be collected — the stand closed the channel with
+   * `notifications.allowOs`, the browser refuses it, the page has no desktop API
+   * — where the reader's own record already says the channel is on, and where the
+   * question this browser was asked has been spent: `osOffered` alongside a still
+   * unanswered permission is what a waved-off line leaves behind, and from there
+   * the answer belongs to the browser's own settings. The offer is no standing
+   * part of the stack — it is drawn under a notice, and only while the stack has
+   * a notice to draw.
    */
   readonly onEnableDesktop?: () => void;
   /**

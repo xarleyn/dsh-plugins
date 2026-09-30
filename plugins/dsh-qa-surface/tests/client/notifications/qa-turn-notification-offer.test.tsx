@@ -15,7 +15,11 @@ import {
 } from "../../../src/client/components/QaTurnNotice.js";
 import { useQaTurnNotifications } from "../../../src/client/notifications/use-turn-notifications.js";
 import type { QaChatActivity } from "../../../src/client/notifications/turn-completion-source.js";
-import type { ResolvedQaSurfaceConfig } from "../../../src/types.js";
+import type {
+  QaAccountNotifications,
+  QaAccountNotificationsInput,
+  ResolvedQaSurfaceConfig,
+} from "../../../src/types.js";
 
 const STORAGE_KEY = "dsh-qa-surface.session:v1:/qa:notifications";
 const SWITCHES: ResolvedQaSurfaceConfig["notifications"] = {
@@ -23,12 +27,22 @@ const SWITCHES: ResolvedQaSurfaceConfig["notifications"] = {
   allowOs: true,
 };
 
+/** The signed-in reader's channels and the write that changes them. */
+interface Account {
+  readonly notifications: QaAccountNotifications;
+  readonly onSave: (
+    input: QaAccountNotificationsInput,
+  ) => Promise<string | null>;
+}
+
 function chat(id: string, running: boolean): QaChatActivity {
   return { id, title: `Чат ${id}`, running };
 }
 
 class FakeNotification {
   static permission: NotificationPermission = "default";
+  /** What the reader answers the browser's prompt with, once it is asked. */
+  static answer: NotificationPermission = "granted";
   static raised: string[] = [];
   static asked = 0;
 
@@ -42,6 +56,8 @@ class FakeNotification {
 
   static async requestPermission(): Promise<NotificationPermission> {
     FakeNotification.asked += 1;
+    // The reader answered the browser's prompt, one way or the other.
+    FakeNotification.permission = FakeNotification.answer;
     return FakeNotification.permission;
   }
 }
@@ -51,7 +67,10 @@ class FakeNotification {
  * cases below are about which answers this page still owes, and the rows are the
  * least machinery that can produce a finished turn to offer them under.
  */
-function Probe(props: { readonly chats: readonly QaChatActivity[] }) {
+function Probe(props: {
+  readonly chats: readonly QaChatActivity[];
+  readonly account?: Account;
+}) {
   const notices = useQaTurnNotifications({
     chats: props.chats,
     notifications: SWITCHES,
@@ -60,6 +79,7 @@ function Probe(props: { readonly chats: readonly QaChatActivity[] }) {
     paused: false,
     activeSessionId: null,
     onSwitch: () => {},
+    ...(props.account === undefined ? {} : { account: props.account }),
   });
   return (
     <QaTurnNotice
@@ -73,12 +93,15 @@ function Probe(props: { readonly chats: readonly QaChatActivity[] }) {
   );
 }
 
-function mountPage(chats: readonly QaChatActivity[]) {
-  const view = render(<Probe chats={chats} />);
+function mountPage(
+  chats: readonly QaChatActivity[],
+  options: { account?: Account } = {},
+) {
+  const view = render(<Probe chats={chats} {...options} />);
   return {
     /** One observation of the rows: a running chat that stops has finished a turn. */
-    settle(next: readonly QaChatActivity[]) {
-      view.rerender(<Probe chats={next} />);
+    settle(next: readonly QaChatActivity[], account?: Account) {
+      view.rerender(<Probe chats={next} {...(account ? { account } : {})} />);
     },
   };
 }
@@ -98,6 +121,7 @@ beforeEach(() => {
   document.hasFocus = () => true;
   window.localStorage.clear();
   FakeNotification.permission = "default";
+  FakeNotification.answer = "granted";
   FakeNotification.raised = [];
   FakeNotification.asked = 0;
   vi.stubGlobal("Notification", FakeNotification);
@@ -182,5 +206,41 @@ describe("the desktop switch a notice offers", () => {
     });
     expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: true });
     expect(FakeNotification.asked).toBe(0);
+  });
+
+  it("carries the switch a signed-in reader threw into the anonymous form", async () => {
+    // The answer writes the choice on both carriers that can hold it: on the
+    // account, so it follows the reader to another browser, and in this browser's
+    // own store, always. Signed in the account outranks that copy, so nothing here
+    // decides anything; once nobody is signed in the copy is the whole record
+    // again. So the channel this reader switched on stands switched on for the
+    // anonymous form the same browser then shows — and the rule that keeps an
+    // action labelled «включить» from being the way to switch an already-on channel
+    // off leaves that form without a switch of its own to undo it with. The way
+    // back is the account's section, not this line. This case is the consequence
+    // written down rather than left inside a comment.
+    const onSave = vi.fn(async (_input: QaAccountNotificationsInput) => null);
+    const account: Account = {
+      notifications: { inApp: true, desktop: false },
+      onSave,
+    };
+    FakeNotification.permission = "default";
+    const page = mountPage([chat("mine", true)], { account });
+    page.settle([chat("mine", false)], account);
+    fireEvent.click(
+      screen.getByRole("button", { name: QA_TURN_NOTICE_COPY.offerAction }),
+    );
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({ inApp: true, desktop: true }),
+    );
+    expect(storedPrefs()).toEqual({ osEnabled: true, osOffered: true });
+
+    // Signing out takes the account's record off the page; the browser's copy is
+    // what the anonymous form is left with.
+    page.settle([chat("mine", false), chat("second", true)]);
+    document.hasFocus = () => false;
+    page.settle([chat("mine", false), chat("second", false)]);
+    expect(FakeNotification.raised).toEqual(["Чат second"]);
+    expect(offerButton()).toBeNull();
   });
 });
