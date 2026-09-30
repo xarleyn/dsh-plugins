@@ -60,6 +60,7 @@ function liveAccounts() {
     stage: "authed",
     user: accountUser(),
     ownedIds: [SAVED_SESSION],
+    ownIds: [SAVED_SESSION],
     ownership: [],
     ownedRevision: 0,
   };

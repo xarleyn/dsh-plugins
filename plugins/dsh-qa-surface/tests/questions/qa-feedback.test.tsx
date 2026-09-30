@@ -51,6 +51,7 @@ function accounts(): QaAccountsController {
       starters: { items: [], hideDefaults: false },
     },
     ownedIds: [SESSION],
+    ownIds: [SESSION],
     ownership: [],
     ownedRevision: 0,
   };
