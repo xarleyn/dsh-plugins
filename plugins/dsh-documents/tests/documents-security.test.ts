@@ -34,6 +34,11 @@ import {
   assertBytesWithinBudget,
 } from "../src/documents/security/limits.js";
 import { applyDirectives } from "../src/documents/markdown/directives.js";
+import {
+  collectImageTargets,
+  rewriteAssetReferences,
+  type PreparedAsset,
+} from "../src/documents/orchestrator/assets.js";
 import { docxBytes, pdfBytes, pngBytes } from "./helpers/document-fixtures.js";
 
 let root: string;
@@ -149,6 +154,123 @@ describe("filename hygiene", () => {
     expect(sanitizeFilename(long, "stem", ".docx").length).toBeLessThanOrEqual(
       85,
     );
+    expect(
+      sanitizeFilename(undefined, "b".repeat(500), ".docx").length,
+    ).toBeLessThanOrEqual(85);
+  });
+
+  test("cleans the fallback stem instead of returning it raw", () => {
+    // The fallback used to be handed back verbatim, which turned an
+    // asset id into a path: `../../escaped` reached the filesystem as a name.
+    expect(sanitizeFilename("...", "../../escaped", ".png")).toBe(
+      "escaped.png",
+    );
+    expect(sanitizeFilename(undefined, "..\\..\\secrets", ".png")).toBe(
+      "secrets.png",
+    );
+    expect(sanitizeFilename(undefined, "C:\\evil.exe", ".docx")).toBe(
+      "evil.docx",
+    );
+    expect(sanitizeFilename(undefined, "/abs/other/name", ".md")).toBe(
+      "name.md",
+    );
+  });
+
+  test("still names the file when nothing usable survives at all", () => {
+    expect(sanitizeFilename("...", "...", ".png")).toBe("document.png");
+    expect(sanitizeFilename(undefined, "___", ".png")).toBe("document.png");
+  });
+});
+
+describe("image reference spellings", () => {
+  const targetsOf = (markdown: string): string[] =>
+    collectImageTargets(markdown).map((span) =>
+      markdown.slice(span.start, span.end),
+    );
+
+  test("every reference spelling resolves to the same target", () => {
+    for (const use of [
+      "![x](assets/shot.png)",
+      '![x]( assets/shot.png "Скриншот")',
+      "![x](<assets/shot.png>)",
+      "![x] (assets/shot.png)",
+      "![x][image]",
+      "![x] [image]",
+      "![image][]",
+      "![image]",
+      "![Image]",
+      "![x][IMAGE]",
+    ]) {
+      expect(targetsOf(`${use}\n\n[image]: assets/shot.png\n`)).toEqual([
+        "assets/shot.png",
+      ]);
+    }
+  });
+
+  test("a use without a definition, and a definition without an image, are text", () => {
+    expect(targetsOf("![x][missing]\n\n[image]: https://host/x.png\n")).toEqual(
+      [],
+    );
+    expect(
+      targetsOf("see [the report][r]\n\n[r]: https://host/report\n"),
+    ).toEqual([]);
+    expect(targetsOf("\\![x](https://host/x.png)\n")).toEqual([]);
+  });
+
+  test("reads every definition written for a label an image uses", () => {
+    // CommonMark keeps the first definition of a label, but the audit cannot
+    // know which spelling a renderer picked, so the hidden second one is read
+    // too and the source is refused.
+    expect(
+      targetsOf(
+        "![x][image]\n\n[image]: assets/shot.png\n[image]: https://host/x.png\n",
+      ),
+    ).toEqual(["assets/shot.png", "https://host/x.png"]);
+  });
+
+  test("stray unclosed image markers do not hide a real reference", () => {
+    const noisy = "![a ![b ".repeat(2000);
+    expect(targetsOf(`${noisy}\n\n![x](assets/shot.png)\n`)).toEqual([
+      "assets/shot.png",
+    ]);
+    expect(targetsOf(noisy)).toEqual([]);
+  });
+
+  test("reads an angle-bracketed target at either spelling", () => {
+    expect(targetsOf("![x](<assets/shot.png>)\n")).toEqual(["assets/shot.png"]);
+    expect(targetsOf("![x][image]\n\n[image]: <assets/shot.png>\n")).toEqual([
+      "assets/shot.png",
+    ]);
+    expect(
+      targetsOf('![x][image]\n\n[image]: <assets/shot.png> "Shot"\n'),
+    ).toEqual(["assets/shot.png"]);
+  });
+
+  test("rewrites a reference-style image at its definition", () => {
+    const prepared: PreparedAsset[] = [
+      {
+        id: "shot",
+        fileName: "shot.png",
+        mediaType: "image/png",
+        bytes: 8,
+        references: ["screens/shot.png"],
+      },
+    ];
+    expect(
+      rewriteAssetReferences("![x][s]\n\n[s]: screens/shot.png\n", prepared, {
+        roots: [],
+      }),
+    ).toContain("[s]: assets/shot.png");
+    // Only the destination is replaced: the brackets and the title stay.
+    expect(
+      rewriteAssetReferences(
+        '![x][s]\n\n[s]: <screens/shot.png> "Shot"',
+        prepared,
+        {
+          roots: [],
+        },
+      ),
+    ).toBe('![x][s]\n\n[s]: <assets/shot.png> "Shot"');
   });
 });
 
