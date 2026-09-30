@@ -800,12 +800,18 @@ export function OpenVikingMemoryCard({ settingsForm }: CardProps) {
 }
 
 /**
- * The entry the Plugins page renders for this bundle's row.
+ * The entry the Plugins page renders for this bundle's row, seated twice.
  *
- * The page renders one entry in two views: as the row's `summary` one-liner
- * wherever the bundle declares no description of its own, and as the `page` body
- * below. The summary lands inside the page's own `<p>`, so it stays text and
- * never a second card.
+ * Measured against the shipped `@deepseek-ai/dsh-client-ui-plugin-manager`
+ * `0.1.7-rc.2` client bundle: `RowDetail` sets the row's description line from
+ * `description ?? renderSlot("plugins.row.config", { view: "summary" }, …)`
+ * (`lib/client.js:1841`) and renders the same entry again as the configuration
+ * body, `{ view: "page", form }` (`:1852`). The `description` there is
+ * `row.meta?.description` and nothing else (`rowText`, `:211-215`) — the row
+ * metadata a profile gets from the bundle's patch, which this `cordis.patch.yml`
+ * declares no key for, and which `tests/bundle.test.ts` holds at `id` + `name`.
+ * So this row's line really is asked of this entry, and the page seats the answer
+ * inside its own `<p>` — text, never a second card.
  */
 export function OpenVikingMemoryCardEntry(props: CardProps) {
   if (props.view === "summary") return OPENVIKING_MEMORY_ROW_SUMMARY;

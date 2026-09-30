@@ -31,10 +31,14 @@ the new seat rather than from a redesign. The page hands its registrant a
 write, no clear-back-to-inherited — so the card keeps resolving its own `ConfigForm`
 through `ctx.configForms.get(namespace)` and that form now arrives through the
 injected face under the name `settingsForm`, where the owner prop called `form`
-cannot shadow it. And the same entry is rendered a second time, as `view: 'summary'`,
-wherever the page wants a one-liner for a row that declares no description of its
-own; that lands inside the page's `<p>`, so it returns the sentence and never a
-second card. The shell's `<li>` still needs a list to sit in, which the page's
+cannot shadow it. And the same entry is seated a second time, as `view: 'summary'`,
+for the row's description line: the page fills that line from
+`description ?? renderSlot("plugins.row.config", { view: "summary" }, …)` and reads
+`description` off the row metadata alone (`@deepseek-ai/dsh-client-ui-plugin-manager`
+`0.1.7-rc.2`: `lib/client.js:1841`, `rowText` at `:211-215`), which this bundle's
+`cordis.patch.yml` declares no key for — so the sentence is asked of this entry, and
+it lands inside the page's `<p>`, which is why it returns text and never a second
+card. The shell's `<li>` still needs a list to sit in, which the page's
 configuration section does not supply, so the plugin-owned `<ul>` stays with it.
 
 The account-scoped page is untouched: it is a feature-owned QA page reached by a

@@ -89,6 +89,11 @@ describe("bundle composition (SPEC §17)", () => {
     expect(row.group).toBeUndefined();
     expect(row.isolate).toBeUndefined();
     expect(row.config).toBeUndefined();
+    // The row declaring nothing but `id` and `name` is also what keeps the
+    // Plugins page asking `plugins.row.config` for the row's one-liner: the page
+    // falls back to the entry's `view: 'summary'` only where `row.meta.description`
+    // is absent (`dsh-client-ui-plugin-manager` `lib/client.js:1841,211-215`), so a
+    // `description` added here silently retires that branch of `src/client/card.tsx`.
     expect(Object.keys(row).sort()).toEqual(["id", "name"]);
   });
 
