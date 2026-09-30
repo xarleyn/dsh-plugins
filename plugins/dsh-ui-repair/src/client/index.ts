@@ -9,7 +9,7 @@ import {
   UI_REPAIR_SETTINGS_NAMESPACE,
   type UIRepairPluginConfig,
 } from "../shared/config.js";
-import { UIRepairCard, type CardFace } from "./card.js";
+import { UIRepairCardEntry, type CardFace } from "./card.js";
 import { UIRepairRuntime, type ClientLogger } from "./runtime.js";
 import { styles } from "./styles.js";
 import type { UIRepairConfig, UIRepairService } from "./types.js";
@@ -74,7 +74,7 @@ export function apply(ctx: Context, options: ClientOptions = {}): () => void {
         key: UI_REPAIR_ROW_CONFIG_KEY,
         inject: () => face,
       },
-      UIRepairCard,
+      UIRepairCardEntry,
     ),
   );
   let disposed = false;

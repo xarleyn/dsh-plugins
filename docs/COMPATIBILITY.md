@@ -63,7 +63,7 @@ instance.
 | `@yadsh/dsh-session-scope` | filesystem, sandbox, session |
 | `@yadsh/dsh-sleev` | Cordis, client locale/plugin-manager/renderer/store/settings/slots, LLM, settings |
 | `@yadsh/dsh-tool-offload` | Cordis, schemastery, tools, subagent |
-| `@yadsh/dsh-ui-repair` | Cordis, schemastery, client renderer/settings/settings-plugins/slots, settings |
+| `@yadsh/dsh-ui-repair` | Cordis, schemastery, client plugin-manager/renderer/settings/slots, settings |
 | `@yadsh/dsh-user-correction-miner` | Cordis, schemastery, LLM, session, session-query, storage-domain |
 | `@yadsh/dsh-web-fetch-authenticated` | Cordis, schemastery, credentials, web, settings, client connection/plugin-manager/renderer/settings/slots, Typert protocol, React |
 | `@yadsh/dsh-audit-core` | none |

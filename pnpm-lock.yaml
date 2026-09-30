@@ -2261,12 +2261,18 @@ importers:
       '@deepseek-ai/schemastery':
         specifier: catalog:dsh-dev
         version: 3.18.4
+      '@testing-library/react':
+        specifier: ^16.3.0
+        version: 16.3.3(@testing-library/dom@10.4.2)(@types/react-dom@18.3.7(@types/react@18.3.28))(@types/react@18.3.28)(react-dom@18.3.1(react@18.3.1))(react@18.3.1)
       '@types/node':
         specifier: catalog:tooling
         version: 26.6.3
       '@types/react':
         specifier: catalog:frontend-dev
         version: 18.3.28
+      '@types/react-dom':
+        specifier: catalog:frontend-dev
+        version: 18.3.7(@types/react@18.3.28)
       '@vitest/coverage-v8':
         specifier: catalog:tooling
         version: 4.1.11(vitest@4.1.11)
@@ -2291,6 +2297,9 @@ importers:
       react:
         specifier: catalog:frontend-dev
         version: 18.3.1
+      react-dom:
+        specifier: catalog:frontend-dev
+        version: 18.3.1(react@18.3.1)
       tsdown:
         specifier: catalog:tooling
         version: 0.22.14(oxc-resolver@11.24.2)(tsx@4.23.15)(typescript@7.0.2)

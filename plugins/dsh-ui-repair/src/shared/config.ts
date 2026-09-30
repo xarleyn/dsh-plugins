@@ -11,9 +11,12 @@ export const UI_REPAIR_SETTINGS_NAMESPACE = "dsh-ui-repair";
  * The `plugins.row.config` seat the browser card renders into: the Plugins page
  * keys that slot by `` `${package name}#${row id}` ``, so the row half of this
  * key is {@link UI_REPAIR_SETTINGS_NAMESPACE} — the namespace the card writes
- * through stays the same across the move.
+ * through stays the same across the move. `scripts/verify-package.mjs` pins both
+ * halves against `package.json` and the row `cordis.patch.yml` declares, because
+ * the Host gates the row's configure control on this exact key and renaming
+ * either half would drop the card off the panel without an error.
  */
-export const UI_REPAIR_ROW_CONFIG_KEY = "@yadsh/dsh-ui-repair#dsh-ui-repair";
+export const UI_REPAIR_ROW_CONFIG_KEY = `@yadsh/dsh-ui-repair#${UI_REPAIR_SETTINGS_NAMESPACE}`;
 
 export const REPAIR_MODES = ["observe", "suggest", "auto"] as const;
 export type RepairMode = (typeof REPAIR_MODES)[number];

@@ -70,7 +70,7 @@ function validSelector(selector: string): boolean {
   }
 }
 
-export function UIRepairCard({ view, settings: form, runtime }: CardProps) {
+export function UIRepairCard({ settings: form, runtime }: CardProps) {
   const store = useMemo(() => bindSettingsExternalStore(form), [form]);
   const snapshot = useSyncExternalStore(
     store.subscribe,
@@ -92,19 +92,6 @@ export function UIRepairCard({ view, settings: form, runtime }: CardProps) {
   const [repairError, setRepairError] = useState<string | undefined>();
 
   if (snapshot.status === "unavailable") return null;
-
-  /*
-   * The row page asks for this view only when the bundle declares no row
-   * description, and it drops whatever it gets into a one-line paragraph, so the
-   * form must not render here.
-   */
-  if (view === "summary") {
-    return (
-      <span data-dsh-ui-repair-ui data-testid="repair-summary">
-        {config.enabled ? `Repair mode: ${config.mode}` : "Disabled"}
-      </span>
-    );
-  }
 
   const setConfidence = (
     field: "autoConfidence" | "dangerousConfidence",
@@ -445,5 +432,54 @@ export function UIRepairCard({ view, settings: form, runtime }: CardProps) {
         </section>
       </div>
     </CardShell>
+  );
+}
+
+/**
+ * The line the Plugins page puts under the row heading: the current policy in
+ * words, and nothing but words — the page seats this view inside its own `<p>`,
+ * so an element here would nest a block into a paragraph and restyle the row.
+ */
+function UIRepairRowSummary({ settings }: Pick<CardFace, "settings">) {
+  const store = useMemo(() => bindSettingsExternalStore(settings), [settings]);
+  const snapshot = useSyncExternalStore(
+    store.subscribe,
+    store.getSnapshot,
+    store.getSnapshot,
+  );
+  const config = resolvePluginConfig(snapshot.value ?? {});
+  return <>{config.enabled ? `Repair mode: ${config.mode}` : "Disabled"}</>;
+}
+
+/**
+ * The entry the Plugins page seats twice for this bundle's row, measured against
+ * the installed `@deepseek-ai/dsh-client-ui-plugin-manager` `0.1.7-rc.2`:
+ *
+ * - the row's description line is `description ?? renderSlot(… { view: "summary"
+ *   } …)` (`lib/client.js:1841`), where that `description` is `row.meta?.description`
+ *   and nothing else (`rowText`, `:211-215`) — and `cordis.patch.yml` declares no
+ *   description for this row, so the page really does ask this entry for the line;
+ * - the configuration body below it is `{ view: "page", form }` (`:1852`).
+ *
+ * The contract shipped beside that bundle says the same in prose: `summary` is
+ * "a row's missing-description fallback", and for this slot "An absent description
+ * falls back to the entry's `view: 'summary'`"
+ * (`lib/types/client/slot-contract.d.ts`).
+ *
+ * The page hands the row's configuration section an empty container, so the entry
+ * owns the `<ul>` that the shell's `<li>` needs (the AGENTS.md card contract). It
+ * also heads the page with the row's display title, which for a row carrying no
+ * Host-side metadata is the module specifier (`lib/client.js:213`) — the card
+ * keeps its own readable name and chevron for that reason, which is how decision
+ * D1 of `docs/DSH-0.1.7-MIGRATION.md` §10 landed for this package.
+ */
+export function UIRepairCardEntry(props: CardProps) {
+  if (props.view === "summary") {
+    return <UIRepairRowSummary settings={props.settings} />;
+  }
+  return (
+    <ul className="uir-list">
+      <UIRepairCard {...props} />
+    </ul>
   );
 }
