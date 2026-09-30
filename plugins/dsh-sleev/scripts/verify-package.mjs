@@ -28,6 +28,7 @@ await runVerifyPackage({
     "cordis.patch.yml",
   ],
   patch: { id: "dsh-sleev" },
+  compatibility: { clientFeatures: ["plugins.row.config"] },
   exportDefaults: { "./client": "./lib/client.js" },
   client: {
     platform: "web",
@@ -46,14 +47,40 @@ await runVerifyPackage({
     // The attribute is asserted, not the bare value — `dsh-sleev-save` is a
     // class name too, so the string alone would pass with the id gone.
     matches: [/["']data-testid["']\s*:\s*["']sleev-save["']/u],
-    notMatches: [/dsw-alias-border-label-dimmed/u, /⌄/u],
+    notMatches: [
+      /dsw-alias-border-label-dimmed/u,
+      /⌄/u,
+      // The card left this section, so a registration returning to it is a
+      // regression the bundle itself has to reject.
+      /settings\.plugins\.tab/u,
+    ],
     cardContract: { legacyPatterns: [/\.dsh-sleev-card\{/u] },
   },
-  extra: () => {
+  extra: async ({ patch, readFile }) => {
     assert.equal(name, "dsh-sleev");
     assert.equal(SleevIntegrationService.name, "SleevIntegrationService");
     assert.equal(DEFAULT_SLEEV_GATEWAY_URL, "http://127.0.0.1:17321/v1");
     assert.equal(EXPERIMENTAL_DSH_HARNESS_ID, "pi");
+    // The seat key joins the package name to the row id, and since 0.1.7 the row
+    // id is the settings namespace, so the two are one fact. The bundler folds
+    // the join away, so no `includes` can read the shipped key as a literal, and
+    // each half is gate-checked on its own elsewhere: rename either one and every
+    // other gate still passes while the row's configure control stops appearing.
+    // `dsh-model-safety-gate` pins the same pair against its patch.
+    const rowId = /^\s*- id: (\S+)$/mu.exec(patch ?? "")?.[1];
+    const seat = await readFile("src/shared/settings.ts");
+    // Read on its own: two failed extractions would otherwise compare equal.
+    assert.ok(rowId, "cordis.patch.yml must declare the row id");
+    assert.equal(
+      /SLEEV_SETTINGS_NAMESPACE_ID\s*=\s*"([^"]+)"/u.exec(seat)?.[1],
+      rowId,
+      `the settings namespace must be the profile entry id ${rowId} that cordis.patch.yml declares`,
+    );
+    assert.match(
+      seat,
+      /SLEEV_ROW_CONFIG_KEY = `@yadsh\/dsh-sleev#\$\{SLEEV_SETTINGS_NAMESPACE_ID\}`/u,
+      "the seat key must join the package name to the namespace constant, not to a second literal",
+    );
     assert.deepEqual(resolveConfig().routePrefixes, ["sleev-"]);
     assert.deepEqual(
       buildSleevHeaders({
