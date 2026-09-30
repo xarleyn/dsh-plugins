@@ -67,26 +67,51 @@
 
 ## Plugin configuration card UI
 
-### Choosing the settings extension point
+### Choosing the registration point
 
-- Use `settings.plugin.item` only for a card that edits a real Host settings
-  namespace. The Host discovers these cards from the settings directory, which
-  is intentionally unavailable to non-loopback browsers; do not create an
-  empty namespace merely to make a feature-owned page appear there.
-- Use `settings.plugins.tab` for feature-owned pages backed by custom Remote
-  services, account/session state, or any UI that must remain available from a
-  non-loopback browser. Such a tab may reuse the standard card shell, but its
-  `<li>` root must still be rendered inside a plugin-owned `<ul>`.
+- A plugin's configuration card registers in the Host's **Plugins** panel, on
+  the `plugins.row.config` seat of this bundle's own row. The seat is keyed
+  `<package name>#<row id>`, where the row id is the `id` the bundle's
+  `cordis.patch.yml` declares. That row id is also the settings namespace the
+  Host resolves the volatile Config under, so a seat move never orphans a saved
+  value.
+- A feature-owned page — backed by custom Remote services or account/session
+  state rather than by this bundle's settings namespace — takes the panel's
+  bundle-level seat, `plugins.bundle.config`, keyed by the package name. That
+  seat renders no form at all, which is why a configuration card uses the row
+  seat and resolves its own form.
+- Do not register a configuration card in the Settings dialog. The
+  `settings.plugin.item` slot was deleted in `0.1.7`, and `settings.plugins.tab`
+  — a tab of the native Plugins settings section — is not a registration point a
+  plugin of this repository adds to, even though the Host still ships that slot.
+- The Plugins panel is not the settings directory, so a card seated there keeps
+  answering from a non-loopback browser, where the settings directory is
+  intentionally unavailable. Read `state.status` and `state.writable` off the
+  form and disable the write controls instead of hiding the card.
+- The seat hands its registrant two views: `view: 'page'` is the card, and the
+  same entry is seated as `view: 'summary'` wherever the page wants a one-liner
+  for a row that declares no description. Answer the summary with that sentence
+  and mount the card only for `page` — a card inside a line of text draws a page
+  within a line and polls its Remote twice.
+- Alongside the injected face the seat passes its own owner prop named `form`: a
+  `ConfigPageForm` of `{ state, mutate }` only, which can neither be subscribed
+  to nor written field by field, and which is `undefined` when the Config
+  declares no `.volatile()` field — a page that edits nothing says so, it does
+  not invent a field to make a surface appear. The renderer spreads the owner
+  props after the face, so a card that needs the full `ConfigForm` resolves it
+  through `ctx.configForms.get<T>(namespace)` and passes it in its face under a
+  name other than `form`.
 - Use `settings.section` for a page that is mounted inside the native settings
   tree, as `dsh-preset-persona-editor` does. It is a placement choice, not an
   availability guarantee: a page that must keep working without the native
-  settings surface belongs in `settings.plugins.tab`. A page registered here
+  settings surface belongs on the Plugins panel. A page registered here
   that reuses the standard card shell keeps its `<li>` root inside a
   plugin-owned `<ul>`.
 
-- Cards registered in `settings.plugin.item` must use the same outer shell as
-  the first-party DSH plugin cards. The root is a direct `<li>` child of the
-  host list, not an `<article>` or a permanently expanded custom panel.
+- Cards registered in `plugins.row.config` must use the same outer shell as
+  the first-party DSH plugin cards. The root is a `<li>` rendered inside a
+  plugin-owned `<ul>` — the page's configuration section supplies no list of its
+  own — not an `<article>` or a permanently expanded custom panel.
 - Use the shared BEM class contract for the shell:
   `dsh-plugin-card`, `dsh-plugin-card--open`,
   `dsh-plugin-card__header`, `dsh-plugin-card__head-text`,
@@ -115,7 +140,7 @@
 - The header is a full-width `<button type="button">` with `aria-expanded`, an
   accessible show/hide label, the title and description stack, an optional
   status badge, and the chevron in that order. Render the body only while open.
-  If the settings namespace is unavailable, render no card.
+  While the row's namespace answers `unavailable`, render no card.
 - Use a 14 by 14 inline SVG chevron with `viewBox="0 0 14 14"` and the path
   `m3.5 5.25 3.5 3.5 3.5-3.5`, stroked with `currentColor`, round caps, and
   round joins. Do not use font glyphs such as `⌄` or `▾`; their shape and
