@@ -202,7 +202,7 @@ findings for the backend entry (loader mechanics, exactly-one-engine rule,
 ## Configuration (defaults)
 
 Every value below is also editable from the settings card (the **Plugins** page,
-opened from this plugin's row) without editing YAML; the full reference, including
+under this plugin's row) without editing YAML; the full reference, including
 the result-shaping and archive sections, is in
 [docs/configuration.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-jev-compaction/docs/configuration.md).
 
@@ -281,10 +281,11 @@ Without a resolvable model context window the automatic trigger falls back to
 
 ## Settings card
 
-The card sits on the host **Plugins** page, opened from this plugin's row, and
-edits the same configuration through the host settings service: every control
-writes as it is made and applies to
-the running plugin without a restart. The card shows which values your user
+The card is the configuration section of this plugin's own row on the host
+**Plugins** page: open the bundle, and the configure control of the row opens the
+card under it. It edits the same configuration through the host settings service:
+every control writes as it is made and applies to the running plugin without a
+restart. The card shows which values your user
 layer overrides, resets them back to the deployment default, and never renders
 an API key — the provider section edits the _name_ of the environment variable
 holding it and the key itself stays on the host. The configuration lives under
@@ -348,7 +349,7 @@ retained.
   replacing `dsh-compaction-basic` through the official capability seam;
   `/compact` keeps working unchanged.
 - **0.1 — immediate result shaping and the settings card (shipped, off by
-  default):** the `tools/post-execute` shaper plus the Plugins settings card.
+  default):** the `tools/post-execute` shaper plus the card on the Plugins page.
   Phase 0 API findings:
   [docs/RESULT_SHAPING_SPIKE.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-jev-compaction/docs/RESULT_SHAPING_SPIKE.md).
 - **Offline evaluation:** the twelve-scenario corpus runs in-repo via

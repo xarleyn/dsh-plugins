@@ -8,7 +8,7 @@
  */
 
 import type { Context } from "@deepseek-ai/cordis";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { createElement } from "react";
 import type { ComponentType } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -29,6 +29,13 @@ interface SlotRegistration {
   readonly component?: unknown;
 }
 
+/** One write the card issues against a form. */
+interface WriteOp {
+  readonly op: string;
+  readonly path: readonly string[];
+  readonly value?: unknown;
+}
+
 const resolvedNamespaces: string[] = [];
 
 beforeEach(() => {
@@ -37,16 +44,30 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-function stub(options: { withForms?: boolean } = {}) {
+function stub(options: { withForms?: boolean; writes?: WriteOp[] } = {}) {
   const slots: SlotRegistration[] = [];
   const face = {
     configForms: {
       get: (entryId: string) => {
         resolvedNamespaces.push(entryId);
+        // One stable snapshot object: the card reads it through
+        // `useSyncExternalStore`, which re-renders on every identity change.
+        const snapshot = {
+          status: "ready",
+          value: { enabled: true },
+          base: {},
+          // One override, so the reset control the write test clicks exists.
+          user: { enabled: true },
+          revision: 1,
+          writable: true,
+          mode: "host",
+        };
         return {
-          getSnapshot: () => ({ status: "ready", value: {}, writable: true }),
+          getSnapshot: () => snapshot,
           subscribe: () => () => {},
-          mutate: async () => {},
+          mutate: async (ops: WriteOp[]) => {
+            options.writes?.push(...ops);
+          },
           set: async () => {},
           unset: async () => {},
         };
@@ -74,6 +95,38 @@ function registeredCard(): SlotRegistration {
   apply(ctx);
   expect(slots).toHaveLength(1);
   return slots[0]!;
+}
+
+/**
+ * The `ConfigPageForm` the row seat hands its registrant: `{ state, mutate }`,
+ * beside the form this plugin resolved for itself.
+ */
+function pageForm(writes: WriteOp[]) {
+  return {
+    state: { status: "ready", value: {}, revision: 1, writable: true },
+    mutate: async (ops: WriteOp[]) => {
+      writes.push(...ops);
+    },
+  };
+}
+
+/** The entry as the row's configuration section renders it, with the page's form beside it. */
+function mountRowSection(settingsWrites: WriteOp[]) {
+  const { ctx, slots } = stub({ writes: settingsWrites });
+  apply(ctx);
+  const registration = slots[0]!;
+  const Component = registration.component as ComponentType<
+    Record<string, unknown>
+  >;
+  const pageWrites: WriteOp[] = [];
+  const result = render(
+    createElement(Component, {
+      ...(registration.inject?.() as Record<string, unknown>),
+      view: "page",
+      form: pageForm(pageWrites),
+    }),
+  );
+  return { ...result, pageWrites };
 }
 
 describe("client entry registration", () => {
@@ -121,6 +174,28 @@ describe("client entry registration", () => {
     // here would nest a second shell under the row.
     expect(container.textContent).toBe(JEV_COMPACTION_ROW_SUMMARY);
     expect(container.querySelector("li.dsh-plugin-card")).toBeNull();
+    // And no control of the form reaches the collapsed row.
+    expect(container.querySelector("input, select, button")).toBeNull();
+  });
+
+  it("mounts the card in the row's section and writes through the injected form", () => {
+    const settingsWrites: WriteOp[] = [];
+    const { container, pageWrites } = mountRowSection(settingsWrites);
+    // The seat really renders the card: the shell the configuration contract
+    // asserts, kept inside the list this plugin owns.
+    const root = container.querySelector("li.dsh-plugin-card");
+    expect(root).not.toBeNull();
+    expect(root!.parentElement?.tagName).toBe("UL");
+    // Opened the way a user opens it, then one write.
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show settings: Jev Compaction" }),
+    );
+    fireEvent.click(screen.getByTestId("jevc-reset-overrides"));
+    // The card binds to the form it resolved for its own namespace — the one that
+    // can be subscribed to and read field by field — and never to the page's
+    // `{ state, mutate }`, whatever the seat passes beside it.
+    expect(settingsWrites).toEqual([{ op: "unset", path: ["enabled"] }]);
+    expect(pageWrites).toEqual([]);
   });
 
   it("renders no card when the page exposes no settings forms", () => {
