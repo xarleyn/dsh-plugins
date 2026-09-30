@@ -222,56 +222,66 @@ describe("turn completion source", () => {
   // A reconnect splits into two edges the page is told about separately: the
   // link coming back, and the Host's refreshed list arriving over it. The order
   // between them is the Host's business, not the page's, so both of them are
-  // set by hand here, one each way (#479).
+  // set by hand here, one each way (#479). Every case below holds the run
+  // watched before the gap: a chat the page only found running is silent for a
+  // different reason — `unwatched` from the cold start — so a scenario that
+  // enters that way measures nothing of what a stale frame is worth.
   it("stays silent however late the refreshed list lands after an offline ending", () => {
     const page = openPage();
-    page.see([chat("a", true)], { now: 1 });
-    page.see([chat("a", true)], { now: 2, paused: true });
+    page.see([chat("a", false)], { now: 1 });
+    page.see([chat("a", true)], { now: 2 });
+    page.see([chat("a", true)], { now: 3, paused: true });
     // The link is back first and the answer follows it, so the list the page
     // already held goes by in more than one frame. No fixed count of frames
     // marks this generation's first list, and none of them may settle a turn
     // the page did not watch end.
-    for (const now of [3, 4, 5, 6]) {
+    for (const now of [4, 5, 6, 7]) {
       expect(page.see([chat("a", true)], { now })).toEqual([]);
       expect(page.seen.get("a")).toBe("unwatched");
     }
     // The refreshed list does land, and even it owes nothing.
-    expect(page.see([chat("a", false)], { now: 7 })).toEqual([]);
+    expect(page.see([chat("a", false)], { now: 8 })).toEqual([]);
   });
 
   it("keeps a delayed refresh of several offline endings off the stack", () => {
     const page = openPage();
-    const running = [chat("a", true), chat("b", true), chat("c", true)];
     const idle = [chat("a", false), chat("b", false), chat("c", false)];
-    // All three turns end while the page cannot reach the Host, and every frame
-    // it holds during the gap still says they are running.
-    page.see(running, { now: 1 });
-    page.see(running, { now: 2, paused: true });
+    const running = [chat("a", true), chat("b", true), chat("c", true)];
+    // Every run is seen beginning while the link holds, and every one of them
+    // ends while the page cannot reach the Host.
+    page.see(idle, { now: 1 });
+    page.see(running, { now: 2 });
+    page.see(running, { now: 3, paused: true });
     // The link returns carrying the held list; the refresh of the three endings
     // lands after it. Answering one late list must not read as three finished
     // turns.
-    expect(page.see(running, { now: 3 })).toEqual([]);
-    expect(page.see(idle, { now: 4 })).toEqual([]);
+    expect(page.see(running, { now: 4 })).toEqual([]);
+    expect(page.see(idle, { now: 5 })).toEqual([]);
     // The page is watching this generation now, so the next turn it sees begin
     // is reported — once, and only for that chat.
-    expect(page.watchTurn("b", 5)).toEqual([
-      { sessionId: "b", title: "Чат b", at: 7 },
+    expect(page.watchTurn("b", 6)).toEqual([
+      { sessionId: "b", title: "Чат b", at: 8 },
     ]);
   });
 
   it("waits for the restored link's own list when the refresh landed first", () => {
     const page = openPage();
-    page.see([chat("a", true)], { now: 1 });
+    page.see([chat("a", false)], { now: 1 });
+    page.see([chat("a", true)], { now: 2 });
     // The Host's answer reaches the page while it still reports itself
     // reconnecting: the link-ready edge comes after it, so that list is one this
-    // generation never delivered.
-    expect(page.see([chat("a", false)], { now: 2, paused: true })).toEqual([]);
-    expect(page.see([chat("a", false)], { now: 3 })).toEqual([]);
+    // generation never delivered — and it leaves no idle to credit a start from.
+    expect(page.see([chat("a", false)], { now: 3, paused: true })).toEqual([]);
+    expect(page.seen.get("a")).toBe("unwatched");
+    // A run reading as new in the first live frame afterwards is still the one
+    // the gap took, so its end is not this page's news either.
+    expect(page.see([chat("a", true)], { now: 4 })).toEqual([]);
+    expect(page.see([chat("a", false)], { now: 5 })).toEqual([]);
+    // That live idle is the baseline this generation adopts: from here the run
+    // the page sees start is the run whose end it reports.
     expect(page.seen.get("a")).toBe("idle");
-    // From here the page is watching: the run it sees start is the run whose end
-    // it reports.
-    expect(page.watchTurn("a", 4)).toEqual([
-      { sessionId: "a", title: "Чат a", at: 6 },
+    expect(page.watchTurn("a", 6)).toEqual([
+      { sessionId: "a", title: "Чат a", at: 8 },
     ]);
   });
 
