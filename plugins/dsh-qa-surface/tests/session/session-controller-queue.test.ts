@@ -372,6 +372,62 @@ describe("QA message queue", () => {
     controller.dispose();
   });
 
+  it("leaves nothing of a message the Host took out of its queue", async () => {
+    // The case the mask is charged with losing: the queue listed the message and
+    // then dropped it without ever handing it to the turn, so no durable row names
+    // it and the only thing the strip could draw is the echo the claim left behind.
+    // Hiding it costs nothing, because the removal is already decided: the Inbox
+    // frame that lists a queued echo latches the library's retirement at that very
+    // moment (`observeSubmissionMessage` hands it to `scheduleObservedRetirement`),
+    // whether the message is claimed afterwards or taken out. So the record hides a
+    // row whose retirement is latched and only waits on a frame — never a send the
+    // Host has not named, which stays on screen with its honest status, as the last
+    // step of this test shows.
+    const world = await ready();
+    const { controller } = world;
+    setInbox(world, [
+      queuedMessage(
+        "message-1",
+        [{ type: "text", text: "второй вопрос" }],
+        "request-1",
+      ),
+    ]);
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "message-1",
+        preview: "второй вопрос",
+        text: "второй вопрос",
+        attachments: 0,
+        sending: false,
+      },
+    ]);
+    // Gone from the queue, never claimed: the row disappears instead of staying
+    // above the composer as a question that has not been sent.
+    setInbox(world, []);
+    expect(controller.getSnapshot().queue).toEqual([]);
+    // And it swallows only what the Host named. A send this browser registered
+    // after that, which no queue frame has ever listed, keeps its honest status.
+    setSnapshot(world, {
+      pendingSubmissions: [
+        queued("request-1", "второй вопрос"),
+        queued("request-2", "третий вопрос"),
+      ],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "request-2",
+        preview: "третий вопрос",
+        text: "третий вопрос",
+        attachments: 0,
+        sending: true,
+      },
+    ]);
+    controller.dispose();
+  });
+
   it("keeps one chat's receipt from swallowing another chat's row", async () => {
     // Request ids are minted per submission inside one session, so an id one
     // chat's queue has named says nothing about a send another chat still has

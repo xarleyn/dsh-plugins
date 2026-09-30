@@ -43,13 +43,28 @@ claimed between two notifications is named by no queue frame this browser is
 handed, and only its durable row — which outlives the claim and arrives with the
 next frame — settles it.
 
-Two limits come with the receipt and are part of this change. It is terminal: the
-row disappears completely rather than fading, so a message the Host takes out of
-its queue without handing it to the turn leaves neither a queue row nor
-«отправляется…» behind. The browser cannot tell that case from a delivered one, and
-the alternative was the permanent buttonless row this card reports. It lives for
-one binding: leaving a chat drops the record, so a re-subscription whose session
-still registers the echo shows the row again until that echo is retired.
+What the record costs and what it does not are both the mask's, not the Host's.
+It costs no row the contract would have drawn, because the library has already
+committed to the removal by the time either Host list can name the send: the Inbox
+frame that lists a queued echo latches the retirement there and then, and so does
+the durable row that opens the turn (`client.js:2201` and `:2213`, both handing the
+request to `scheduleObservedRetirement` at `:2233`). A message the Host takes out of
+its queue without handing it to the turn is therefore not a case the record
+swallows — its removal was latched the moment the Inbox listed it, and only the
+frame is missing. The retirements the library runs with no frame are the ones for a
+send the Host never named at all: the abandon path and a failed prompt
+(`client.js:1704`, `:1753`), and the splice reporting `outcome === "canceled"` for a
+settlement tracked by insertion receipt, which a queued echo never is
+(`client.js:2164`, `:2186`, `:2245`). So the mask differs from the contract by the
+clock, never by the outcome. What it costs is the binding:
+`unbind()` drops the record, and that runs not only on leaving a chat but also for
+a subagent view, a policy re-bind and entering a draft. Only a rebind of the same
+Session object could draw a survivor again, and this surface retains under one
+source — releasing its reference makes the manager withdraw the instance and
+dispose it (`client.js:2413`), so the next binding holds a session with no echoes
+at all. Where another holder keeps that object alive, the next Host frame names the
+send again and re-earns the record, so the row returns for a frame rather than for
+good.
 
 None of this is a cure, and the cure is not in this package. The echo is the
 browser's own: `@deepseek-ai/dsh-api-session-controller` — the harness's
