@@ -3,19 +3,23 @@
  * Boundary coverage for the launch-token pattern of `qa-stand-run` §3.
  *
  * The pattern is the one place the stand skill turns a container log into a
- * credential, and `docs/plans/2026-09-28-skill-candidates.md` records that part
- * of §3 as re-checked by ad hoc runs in four separate review rounds of PR #615 —
- * its points 17, 25, 33 and 39, raised in rounds 5, 7, 8 and 11 — with nothing
- * keeping it pinned afterwards. This suite runs the recipe's own pipeline —
- * lifted out of `SKILL.md`, not copied, so the skill cannot drift away from what
- * is proven here — over the fake log lines §3 names, and asserts what the section
- * promises about each: which joined keys give no capture, where the value stops,
- * and what the greediness of `.*` and `tail -1` yields.
+ * credential, and `docs/plans/2026-09-28-skill-candidates.md` records it as
+ * re-checked on fake lines by ad hoc runs in six review rounds of PR #615 — its
+ * points 6, 11, 17, 25, 33 and 39, raised in rounds 3, 4, 5, 7, 8 and 11 — with
+ * nothing keeping it pinned afterwards.
  *
- * Two of those four — points 17 and 39 — were about the `$KIT` the recipe runs
- * in rather than about this assignment, and a directory guard only means
- * something next to a kit: the cases below cover the capture, not the guard
- * branches around it.
+ * Pinned here is the capture: the suite runs the recipe's own pipeline — lifted
+ * out of `SKILL.md`, not copied, so the skill cannot drift away from what is
+ * proven here — over the fake log lines §3 names, and asserts what the section
+ * promises about each: which joined keys give no capture, where the value stops,
+ * that a `token=` opening the line matches, and what the greediness of `.*` and
+ * `tail -1` yields. That is what points 6 and 25 argue over, plus the boundary
+ * miss point 11 names.
+ *
+ * Not pinned is the shell around the assignment: the `$KIT` the recipe runs in
+ * and the guard that refuses an unset one (points 17 and 39), and which of the
+ * empty-answer branches prints which diagnosis — the `else` wording points 6 and
+ * 11 added, and the whole of point 33. No case below speaks for those.
  *
  * The boot line's real format belongs to the deployment kit and is not
  * checkable from this repository (SKILL.md §0), so no case here feeds a live
