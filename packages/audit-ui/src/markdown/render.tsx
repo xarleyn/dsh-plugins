@@ -126,6 +126,33 @@ interface HeadingCounter {
   n: number;
 }
 
+/**
+ * Every heading of the tree, in the order `renderBlock` reaches it.
+ *
+ * A heading's anchor is positional, so both passes must descend the same tree:
+ * a quote or a list item holding a heading consumes a number in the body, and
+ * skipping that descent here shifts every anchor after the first nested one.
+ */
+function* walkHeadings(
+  blocks: readonly MarkdownBlock[],
+): Generator<Extract<MarkdownBlock, { kind: "heading" }>> {
+  for (const block of blocks) {
+    switch (block.kind) {
+      case "heading":
+        yield block;
+        break;
+      case "quote":
+        yield* walkHeadings(block.blocks);
+        break;
+      case "list":
+        for (const item of block.items) {
+          yield* walkHeadings(item.blocks);
+        }
+        break;
+    }
+  }
+}
+
 /** Render one block; headings consume the counter so their anchors match the TOC. */
 function renderBlock(
   block: MarkdownBlock,
@@ -263,12 +290,11 @@ export function parseReport(source: string): ParsedReport {
   const blocks = parseBlocks(source);
   const headings: MarkdownHeading[] = [];
   let counter = 0;
-  for (const block of blocks) {
-    if (block.kind !== "heading") continue;
-    const id = headingAnchor(block.text, counter);
+  for (const heading of walkHeadings(blocks)) {
+    const id = headingAnchor(heading.text, counter);
     counter += 1;
-    if (block.depth <= 3)
-      headings.push({ id, text: block.text, depth: block.depth });
+    if (heading.depth <= 3)
+      headings.push({ id, text: heading.text, depth: heading.depth });
   }
   return { blocks, headings };
 }
