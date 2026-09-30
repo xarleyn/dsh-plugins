@@ -72,6 +72,16 @@ The log panel needs the right Sidebar of DSH `0.1.7-rc.2` or newer: the
 card needs the Plugins page of the same release and its `plugins.row.config`
 seat. All three are declared in `compatibility.json` as required client features.
 
+The two sentences above name which surface needs which feature, not what survives
+without it: card and panel ship as one client bundle, and a bundle lists the host
+packages it registers into as activation dependencies (`dsh.client.inject`), so a
+host missing either page loses the whole client half, panel included.
+
+On the Plugins page the host draws the row's own header — its title falls back to
+the installed package name, and its one-liner to this package's `description` — so
+the row is headed `@yadsh/dsh-plugin-log-ui` and **Plugin logging** is the heading
+of the card you open from it.
+
 ## Development
 
 ```bash

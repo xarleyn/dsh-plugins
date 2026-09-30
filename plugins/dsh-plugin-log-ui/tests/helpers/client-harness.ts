@@ -1,4 +1,6 @@
 import { Context } from "@deepseek-ai/cordis";
+import type { PluginConfigViewProps } from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
+import type { ReactNode } from "react";
 import type { PluginLogTail } from "../../src/types.js";
 
 /**
@@ -31,16 +33,16 @@ interface TabType {
   }[];
 }
 
-/** Props the host's Plugins page renders a `plugins.row.config` entry with. */
-export interface SeatProps {
-  readonly view: "summary" | "page";
-  /** The page's own `ConfigPageForm`, keyed by the row's namespace. */
-  readonly form?: unknown;
-  readonly [injected: string]: unknown;
-}
+/**
+ * Props the host's Plugins page renders a `plugins.row.config` entry with, read
+ * off the page's own contract instead of restated here: `view` is the host's
+ * `'summary' | 'page'` union, so a seat that stops being called with `summary`
+ * breaks this suite's typecheck rather than leaving the branch quietly dead.
+ */
+export type SeatProps = PluginConfigViewProps & Record<string, unknown>;
 
 /** A registered entry, as the host's page calls it. */
-export type SeatComponent = (props: SeatProps) => unknown;
+export type SeatComponent = (props: SeatProps) => ReactNode;
 
 export interface Registration {
   readonly name: string;

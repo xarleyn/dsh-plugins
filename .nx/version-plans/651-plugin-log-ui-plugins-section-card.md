@@ -29,12 +29,15 @@ behavior. Two details follow from the new seat rather than from a redesign. The 
 hands its registrant a `ConfigPageForm`, which is `{ state, mutate }` — no
 subscription, no single-field write — so the card keeps resolving its own
 `ConfigForm` and that form now arrives through the injected face under the name
-`settingsForm`, where the owner prop called `form` cannot shadow it. And the same
-entry is rendered a second time, as `view: 'summary'`: `RowDetail` puts the row's
-description into a `<p>` and asks this seat for the sentence when the row declares
-none (`@deepseek-ai/dsh-client-ui-plugin-manager@0.1.7-rc.2`, `lib/client.js:1841`,
-against `:1852` for the `page` body). The summary therefore lands inside the page's
-`<p>`, so it returns the sentence and never a second card. The shell's `<li>`
+`settingsForm`, where the owner prop called `form` cannot shadow it. The same entry
+is also *offered* a second render, as `view: 'summary'`: the contract lets a row
+that declares no description fall back to its seat for the page's one-liner
+(`PluginManagerPage.tsx:491` against `:495` for the `page` body, at the tag
+`dsh-v0.1.7-rc.2`). This bundle never takes that offer — the row's description
+comes from the installed manifest's `description`, which the package declares — so
+the answer is kept equal to that field, and the card's own header line is now a
+sentence of its own instead of the row's one-liner repeated under the page's.
+The shell's `<li>`
 still needs a list to sit in, which the section does not supply, so the plugin-owned
 `<ul>` stays with it — renamed for what it is now (`plu-tab` was a name for a pane
 this card no longer renders in).
@@ -43,14 +46,20 @@ The manifest followed the surface: the client half type-imports the Plugins page
 slot contract instead of the settings-plugins one, so
 `@deepseek-ai/dsh-client-ui-plugin-manager` replaces
 `@deepseek-ai/dsh-client-ui-settings-plugins` as peer, dev and `dsh.client.inject`
-entry — which is why this is `minor` rather than `patch`: a browser running a host
-without the Plugins page loses the card, and `compatibility.json` says so, its
-required client features naming `plugins.row.config` where it named
-`settings.plugins.tab`. `scripts/verify-package.mjs` asserts the new pair (the slot
+entry — which is why this is `minor` rather than `patch`. The `inject` entry is an
+activation dependency of the whole client bundle, not of the card alone: a host
+without the Plugins page loses the panel too, exactly as the settings-plugins entry
+it replaced coupled both to that page. `compatibility.json` says which feature is
+required, naming `plugins.row.config` where it named `settings.plugins.tab`.
+`scripts/verify-package.mjs` asserts the new pair (the slot
 literal and the `@yadsh/dsh-plugin-log-ui#` key prefix in the shipped bundle, the
 new package in the inject list and on the peer list). The client tests now cover
 both halves of the seat: the wiring suite asserts the keyed registration, the one
 resolved namespace and the form arriving under a name the slot cannot overwrite,
 and a rendering suite mounts the component `apply()` registered with the page's own
 two prop shapes, so a level and a format stored before the move are read back and a
-change is written through that namespace's form.
+change is written through that namespace's form. A third suite reads the seat out of
+the installed host package — both of its call sites, the `view` union and the
+key join — so the card's `summary` answer is pinned to the host that asks for it
+rather than to a test that hands it the shape itself.
+

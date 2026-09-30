@@ -6,14 +6,17 @@
  * registered entry twice, in two shapes: `RowDetail` puts the row's description in
  * a `<p>`, falling back to `{ view: "summary" }` for a row that declares none, and
  * mounts the configuration section with `{ view: "page", form }`
- * (`@deepseek-ai/dsh-client-ui-plugin-manager@0.1.7-rc.2`, `lib/client.js:1841`
- * and `:1852`). Both shapes are driven here against the component `apply()`
- * actually registered, so the read and the write of this plugin's namespace are
- * proven rather than asserted in prose: a level and a format stored by an earlier
- * build come back into the selects, and a change leaves through the form resolved
- * for that namespace.
+ * (`PluginManagerPage.tsx:491` and `:495` at `dsh-v0.1.7-rc.2`; the shapes
+ * themselves are pinned to the installed package by `host-seat-contract.test.ts`).
+ * Both shapes are driven here against the component `apply()` actually registered,
+ * so the read and the write of this plugin's namespace are proven rather than
+ * asserted in prose: a level and a format stored by an earlier build come back into
+ * the selects, and a change leaves through the form resolved for that namespace.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   cleanup,
   fireEvent,
@@ -27,6 +30,21 @@ import * as clientModule from "../src/client/index.js";
 import { harnessOf, rowConfigRegistration } from "./helpers/client-harness.js";
 
 const { apply } = clientModule;
+
+/*
+ * The row's one-liner as the host reads it: the installed manifest's
+ * `description`, which fills the page's `<p>` before the seat is ever asked for it.
+ * Resolved through `fileURLToPath` because the jsdom environment replaces the
+ * global `URL`, and Node's `readFileSync` only recognises its own.
+ */
+const MANIFEST_DESCRIPTION = (
+  JSON.parse(
+    readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"),
+      "utf8",
+    ),
+  ) as { description?: string }
+).description;
 
 /** What one `set` call carried. */
 interface Write {
@@ -75,10 +93,19 @@ function storedForm(writes: Write[]) {
  * mutate }`, no subscription and no single-field write. It rides along on purpose —
  * were the card ever to read `props.form` instead of its own, this object has no
  * `set` to call and no level to show, so the assertions below fail loudly rather
- * than writing somewhere quiet.
+ * than writing somewhere quiet. The empty `value` is the tell: nothing here is a
+ * level the card could display.
  */
 const PAGE_FORM = {
-  state: { status: "ready", value: {}, revision: 0, writable: true },
+  state: {
+    status: "ready" as const,
+    value: {},
+    base: undefined,
+    user: {},
+    revision: 0,
+    writable: true,
+    mode: "host" as const,
+  },
   mutate: () => Promise.resolve(true),
 };
 
@@ -155,7 +182,7 @@ describe("the row-config card", () => {
     );
   });
 
-  it("answers the summary seat with the one-liner, and no second card", async () => {
+  it("answers the summary seat with the row's one-liner, and no second card", async () => {
     const harness = harnessOf();
     await apply(harness.ctx);
     const seat = rowConfigRegistration(harness);
@@ -164,10 +191,30 @@ describe("the row-config card", () => {
     const { container } = render(
       createElement(seat.component, { ...seat.props, view: "summary" }),
     );
-    expect(container.textContent).toBe(
-      "Levels and readable file output for registered server plugins.",
-    );
+    /*
+     * The host fills the row's sentence from the installed manifest's `description`
+     * and only asks this seat when the row declares none, so the two must be the
+     * same sentence — read here rather than repeated, since a manifest edit cannot
+     * be caught by a literal in a test.
+     */
+    expect(container.textContent).toBe(MANIFEST_DESCRIPTION);
     // A card here would nest an `li` inside the page's own `<p>`.
     expect(container.querySelector(".dsh-plugin-card")).toBeNull();
+  });
+
+  it("keeps the card's own line out of the row's one-liner", async () => {
+    await openCard([]);
+
+    /*
+     * The page draws the row's title and one-liner above this card, so the card
+     * header that repeats them puts one sentence on the screen twice. The card's
+     * line is its own, and saying so here is what keeps the two from collapsing
+     * back into one sentence.
+     */
+    const description = screen
+      .getByRole("button", { name: /settings: Plugin logging/ })
+      .querySelector(".dsh-plugin-card__description");
+    expect(description?.textContent).not.toBe(MANIFEST_DESCRIPTION);
+    expect(description?.textContent).toBeTruthy();
   });
 });
