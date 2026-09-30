@@ -1036,10 +1036,13 @@ export function QaSurface(props: QaSurfaceProps) {
   );
   // A turn that ends in one of this browser's own chats gets a notice: the
   // sidebar dot going out is otherwise the only sign, and it is easy to miss
-  // from behind another window. These are the sidebar's own rows, so a chat
-  // this page would not list can never raise one.
+  // from behind another window. The account's own list, not the sidebar's, is
+  // what bounds it: an admin's shared history is a wider read than ownership,
+  // and another account's turn is not this reader's news.
   const turnNotices = useQaTurnNotifications({
     chats: chatRows,
+    ownChatIds:
+      accountsSnapshot.stage === "authed" ? accountsSnapshot.ownIds : undefined,
     notifications: config.notifications,
     storage: window.localStorage,
     storageKey: `${stateKey}:notifications`,

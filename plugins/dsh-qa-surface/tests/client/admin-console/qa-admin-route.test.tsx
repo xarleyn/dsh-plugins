@@ -180,6 +180,7 @@ function accounts(): QaAccountsController {
       starters: { items: [], hideDefaults: false },
     },
     ownedIds: [],
+    ownIds: [],
     ownership: [],
     ownedRevision: 0,
   };

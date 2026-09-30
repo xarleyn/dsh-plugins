@@ -69,10 +69,11 @@ export interface QaTurnCompletionOptions {
 /**
  * Report the turns that ended since the previous observation of `chats`.
  *
- * The input is the sidebar's own rows — this browser's chat index projected
- * onto the host list — which is what scopes a notice to the person who owns
- * the chat. The host list is the whole deployment's, so anything wider than
- * these rows would tell one user that another user's turn had stopped.
+ * The input is this reader's own rows — see {@link scopeNoticesToOwnChats},
+ * which is what keeps an admin's shared history out of them — because a notice
+ * is an outward report about the chat it names. The host list is the whole
+ * deployment's, so anything wider than these rows would tell one user that
+ * another user's turn had stopped.
  *
  * `seen` is the caller's per-page map of the last reading, and a chat is
  * reported only when a `watched` run is seen ending in a frame the browser
@@ -124,4 +125,24 @@ function readSighting(
   return previous === "idle" || previous === "watched"
     ? "watched"
     : "unwatched";
+}
+
+/**
+ * Keep the rows a notice may be raised for: the sidebar's rows down to the
+ * chats this account owns outright.
+ *
+ * The sidebar is a *read* surface, and an admin's shared view is deliberately
+ * wider than ownership — the same opt-in that shows another account's chat
+ * must not decide whose activity this browser reports outward. A notice is
+ * that outward report, and it names a chat by title, so it takes the narrow
+ * list. `undefined` is the deployment with no accounts, where the browser's own
+ * index already is the owned set and there is nothing narrower to ask for.
+ */
+export function scopeNoticesToOwnChats(
+  chats: readonly QaChatActivity[],
+  ownIds: readonly string[] | undefined,
+): readonly QaChatActivity[] {
+  if (ownIds === undefined) return chats;
+  const owned = new Set(ownIds);
+  return chats.filter((chat) => owned.has(chat.id));
 }
