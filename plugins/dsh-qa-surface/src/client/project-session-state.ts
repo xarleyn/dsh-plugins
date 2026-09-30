@@ -154,13 +154,32 @@ export function hostNamedSubmissionIds(
  * So while that removal waits on a clock the surface may not have, a submission
  * the Host has once named is never drawn as crossing. The follow-up belongs to
  * `scheduleObservedRetirement` / `scheduleFrame` in that package: retire a
- * settlement that a delivered notification already proved without a frame. Two
- * limits come with the substitute, and both are the mask's, not the Host's:
- * - it is terminal, so a message taken out of the queue without being handed to
- * the turn leaves no row either — the browser cannot tell the two cases, and the
- * alternative is the permanent buttonless row this card reports;
- * - it lives for one binding, so re-subscribing a chat whose session object
- * still registers the echo draws the row again until that echo is retired.
+ * settlement a delivered notification already proved without a frame.
+ *
+ * The substitute costs no row the contract would have drawn, because the library
+ * has already committed to the removal by the time either Host list can name the
+ * send: an Inbox frame that lists a queued echo latches the retirement there and
+ * then, and so does the durable row that opens the turn (`observeSubmissionMessage`
+ * hands the request to `scheduleObservedRetirement`, `lib/client.js:2201` and
+ * `:2213`, both landing at `:2233`). A message the Host takes out of its queue
+ * without handing it to the turn is therefore not a case this record swallows — its
+ * removal was latched the moment the Inbox listed it, and only the frame is
+ * missing. The retirements the library runs without a frame are the ones for a send
+ * the Host never named at all: the abandon path and a failed prompt
+ * (`lib/client.js:1704`, `:1753`), and the splice reporting `outcome === "canceled"`
+ * for a settlement it tracked by insertion receipt, which a queued echo never is
+ * (`lib/client.js:2164`, `:2186`, `:2245`). So the mask differs from the contract
+ * by the clock, never by the outcome.
+ *
+ * What it costs is the binding rather than a row. `unbind()` drops the record —
+ * leaving a chat, opening a subagent view, a policy re-bind and entering a draft
+ * all run it — and only a rebind of the same Session object could draw a survivor
+ * again. This surface retains under one source, so releasing its reference makes
+ * the manager withdraw the instance and dispose it (`lib/client.js:2413`), and the
+ * next binding holds a session with no echoes at all; where another holder keeps
+ * that object alive, the next Host frame names the send again and re-earns the
+ * record, so the row returns for a frame rather than for good.
+ *
  * Where the frame clock does run, the library retires the echo on the frame after
  * the claim, so this filter has nothing left to hide; a release that retired at
  * acceptance rather than on a frame would leave it hiding nothing at all, and the

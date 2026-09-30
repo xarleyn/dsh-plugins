@@ -279,8 +279,8 @@ export class QaSessionController {
    * transport: the retirement is `@deepseek-ai/dsh-api-session-controller`'s own
    * contract, deferred to an animation frame that a surface with no frame clock
    * never runs, and `projectQueue` in project-session-state.ts carries the
-   * citation, the two limits the mask inherits from it, and the point where this
-   * set is dead code. Kept for the whole binding: a request id is minted per
+   * citation, what the substitute costs and does not cost, and the point where
+   * this set is dead code. Kept for the whole binding: a request id is minted per
    * submission, so an id the Host has named can never belong to a later send.
    */
   private readonly admittedSubmissions = new Set<string>();
