@@ -23,7 +23,7 @@ interface LoadedBundle {
   factory: (requireFn: (name: string) => unknown) => {
     name: string;
     inject: string[];
-    apply: (ctx: Record<string, unknown>) => void;
+    apply: (ctx: Record<string, unknown>) => () => void;
   };
 }
 
@@ -100,6 +100,10 @@ function fakeForm(initial: FormState) {
   const emit = () => listeners.forEach((listener) => listener());
   return {
     writes,
+    /** How many listeners the card still holds on this controller. */
+    get listenerCount(): number {
+      return listeners.size;
+    },
     getSnapshot: () => ({ ...state, revision, mode: "host" as const }),
     subscribe(listener: () => void) {
       listeners.add(listener);
@@ -125,6 +129,18 @@ function fakeForm(initial: FormState) {
       emit();
       return true;
     },
+    /**
+     * The Host's form answers these as well. The card only ever writes
+     * field-granular *paths* through `mutate`, because the namespace document
+     * keeps its nested shape (`defaults.mode`), so a call reaching here means the
+     * card stopped addressing that shape — which is a bug, not a mode of writing.
+     */
+    set: async () => {
+      throw new Error("the card writes paths through mutate");
+    },
+    unset: async () => {
+      throw new Error("the card writes paths through mutate");
+    },
     /** Move the composition layer under the document, the way an entry config edit does. */
     setBase(path: readonly string[], value: unknown) {
       const base = through(state.base, path, value);
@@ -139,12 +155,15 @@ function fakeForm(initial: FormState) {
   };
 }
 
-function makeCtx(form: unknown) {
+function makeCtx(form: unknown, options: { served?: boolean } = {}) {
   const registered: SlotEntry[] = [];
   const slotInjections: string[] = [];
+  const servedRequests: string[][] = [];
+  const served = options.served !== false;
   const ctx = {
     registered,
     slotInjections,
+    servedRequests,
     // The client runtime exposes declared inject services as context
     // properties, so the stub mirrors that contract (the former ctx.get
     // indirection was a 0.1.1 leftover that left the card unregistered).
@@ -152,21 +171,48 @@ function makeCtx(form: unknown) {
       register: () => undefined,
       bind: () => (text: string) => text,
     },
+    // The shape of the real Host service: `get` always answers a controller,
+    // even for a name the profile does not carry, and whether the namespace is
+    // served at all is what `whileServed` answers.
     configForms:
       form === undefined
         ? undefined
-        : { get: (namespace: string) => (void namespace, form) },
+        : {
+            get: (namespace: string) => (void namespace, form),
+            whileServed(
+              namespaces: readonly string[],
+              register: (servedNamespaces: ReadonlySet<string>) => () => void,
+            ) {
+              servedRequests.push([...namespaces]);
+              if (!served) return () => undefined;
+              const remove = register(new Set(namespaces));
+              let ended = false;
+              // What the Host's own declaration promises: this disposer ends the
+              // watch *and* drops the registration that is live.
+              return () => {
+                if (ended) return;
+                ended = true;
+                remove();
+              };
+            },
+          },
     slots: {
       // The card bootstrap registers through a plain factory that returns the
       // register disposer (the shared host contract), not a generator.
       inject(slot: string, factory: () => () => unknown) {
         slotInjections.push(slot);
-        factory();
+        const remove = factory();
+        return () => {
+          remove();
+        };
       },
       register(options: SlotEntry["options"], component: unknown) {
         const entry = { options, component };
         registered.push(entry);
-        return () => undefined;
+        return () => {
+          const at = registered.indexOf(entry);
+          if (at >= 0) registered.splice(at, 1);
+        };
       },
     },
   };
@@ -223,6 +269,8 @@ describe("client bundle", () => {
     bundle.factory(fakeReact).apply(ctx);
 
     expect(ctx.slotInjections).toEqual(["settings.plugins.tab"]);
+    // The seat is claimed only for a namespace the card reads, asked for by name.
+    expect(ctx.servedRequests).toEqual([["dsh-doc-impact"]]);
     expect(ctx.registered).toHaveLength(1);
     expect(ctx.registered[0]!.options.name).toBe("settings.plugins.tab");
     // The seat id and the settings namespace are one string: the profile entry id.
@@ -235,7 +283,59 @@ describe("client bundle", () => {
     const bundle = await loadBundle();
     const ctx = makeCtx(undefined);
     bundle.factory(fakeReact).apply(ctx);
+    expect(ctx.slotInjections).toEqual([]);
     expect(ctx.registered).toHaveLength(0);
+  });
+
+  it("claims no tab while the host does not serve the namespace", async () => {
+    const bundle = await loadBundle();
+    // The Host answers `get` with a controller for any name, served or not; an
+    // unserved namespace is told by `whileServed` alone. A stand where `get`
+    // answers nothing would pin a reply the Host never sends, and could not go
+    // red on the regression it claims to guard — the empty tab comes from the
+    // slot injection, so it is the injection that must not happen.
+    const ctx = makeCtx(
+      fakeForm({
+        status: "ready",
+        value: {},
+        base: {},
+        user: {},
+        writable: true,
+      }),
+      { served: false },
+    );
+    bundle.factory(fakeReact).apply(ctx);
+    expect(ctx.servedRequests).toEqual([["dsh-doc-impact"]]);
+    expect(ctx.slotInjections).toEqual([]);
+    expect(ctx.registered).toHaveLength(0);
+  });
+
+  it("rolls back what apply did once the entry is disposed", async () => {
+    const bundle = await loadBundle();
+    const form = fakeForm({
+      status: "ready",
+      value: {},
+      base: {},
+      user: {},
+      writable: true,
+    });
+    const ctx = makeCtx(form);
+    const dispose = bundle.factory(fakeReact).apply(ctx);
+    expect(ctx.registered).toHaveLength(1);
+    expect(form.listenerCount).toBe(1);
+
+    dispose();
+    // The tab goes with the watch that registered it, and the listener goes with
+    // the card: `configForms.get` hands out one cached controller per namespace,
+    // so a listener left behind would keep a discarded card alive on every write
+    // the operator makes after a reload.
+    expect(ctx.registered).toEqual([]);
+    expect(form.listenerCount).toBe(0);
+
+    // Teardown is idempotent — a second call must not fall over an ended watch.
+    dispose();
+    expect(ctx.registered).toEqual([]);
+    expect(form.listenerCount).toBe(0);
   });
 
   it("stages edits without writing; save is dirty-gated and commits field-granular writes", async () => {
@@ -377,6 +477,41 @@ describe("client bundle", () => {
     form.setBase(PATHS.maxSnapshotFiles, 200);
     expect(snapshot().fields.maxSnapshotFiles.value).toBe(200);
     expect(snapshot().fields.maxSnapshotFiles.overridden).toBe(false);
+  });
+
+  it("names a field the card does not edit, the way the built bundle has to", async () => {
+    const bundle = await loadBundle();
+    const form = fakeForm({
+      status: "ready",
+      value: {},
+      base: {},
+      user: {},
+      writable: true,
+    });
+    const ctx = makeCtx(form);
+    bundle.factory(fakeReact).apply(ctx);
+    const face = faceOf(ctx);
+
+    // The field name is only checked by the type in the source, and the bundle
+    // carries no types: the guard has to survive the build, otherwise a name the
+    // card does not edit surfaces as a `TypeError` on the snapshot read.
+    // The inherited keys matter as much as the unknown one — the specs are a
+    // plain object literal, so `SPECS["toString"]` answers the native function,
+    // whose `path` is undefined, and the same `TypeError` comes back through it.
+    for (const name of [
+      "reminders",
+      "toString",
+      "constructor",
+      "prototype",
+      "__proto__",
+      "hasOwnProperty",
+    ]) {
+      face.resetField(name);
+      expect(() => face.hooks.docImpactCard.getSnapshot(), name).toThrow(
+        `doc-impact card has no field ${name}`,
+      );
+      face.discard();
+    }
   });
 
   it("blocks saving an invalid number and reports the invalid draft", async () => {

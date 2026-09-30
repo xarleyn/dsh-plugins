@@ -1,6 +1,9 @@
 // Localized strings of the doc-impact settings card; used directly by the
 // fallback dictionary and registered into the host locale service.
 
+/** One bound translator of this card's locale namespace. */
+export type Translate = (key: string) => string;
+
 export const DICT: Record<string, Record<string, string>> = {
   zh: {
     cardTitle: "Doc Impact 文档联动",
