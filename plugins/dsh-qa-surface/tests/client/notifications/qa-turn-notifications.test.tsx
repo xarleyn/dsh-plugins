@@ -358,7 +358,11 @@ describe("turn completion notices", () => {
     // The browser answers on its own schedule and the page keeps rendering while
     // it waits: a reader who waves the line off before the prompt has answered
     // gets one settled record out of the two answers, rather than the last
-    // answer erasing the first.
+    // answer erasing the first. What this holds is the gate, not the merge: the
+    // click here spends a prompt, so `askedTheBrowser` is true and merging onto
+    // the render snapshot would settle `osOffered` either way. The merge itself is
+    // caught by «settles a cross and an answer that asked nothing into one
+    // record» in qa-turn-notification-offer.test.tsx, where the prompt is not held.
     FakeNotification.permission = "default";
     let answerThePrompt!: (answer: NotificationPermission) => void;
     FakeNotification.heldPrompt = new Promise((resolve) => {
