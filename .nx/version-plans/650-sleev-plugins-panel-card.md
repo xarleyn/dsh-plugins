@@ -17,8 +17,9 @@ after it. The four fields keep staging edits, marking the overridden ones, reset
 field to its composition default, and refusing a value the schema would reject. The card
 keeps the shared shell, and the list element the plugin owns still holds its `<li>` root.
 
-The page asks a configuration entry for one of two views, and the card answers both: the
-row's one-liner is the card's own description, and the form with its save control is
-rendered only for the page view. Reaching the new surface is a host-side requirement, so
+The row's page fills two seats, as `packages/client/ui-plugin-manager/src/client/slot-contract.ts`
+defines them: where the Host has no description for the row, the page takes its
+one-liner from the card, and the form with its save control renders as the page body.
+Reaching the new surface is a host-side requirement, so
 `compatibility.json` now names `plugins.row.config` as the client feature the browser half
 needs, and `dsh.client.inject` names the module that declares the slot.
