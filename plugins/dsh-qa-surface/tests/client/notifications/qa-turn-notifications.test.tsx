@@ -368,6 +368,50 @@ describe("turn completion notices", () => {
     expect(screen.queryByText("Чат second")).toBeNull();
   });
 
+  it("keeps a late refresh of several unseen endings off the stack", () => {
+    const both = { chatIds: ["mine", "second"] };
+    const idle = hostList([
+      { id: "mine", running: false },
+      { id: "second", running: false },
+    ]);
+    const running = hostList([
+      { id: "mine", running: true },
+      { id: "second", running: true },
+    ]);
+    const page = mountPage(idle, both);
+    // Both chats sit idle under a link the page vouches for, then the link goes.
+    // Either of them may have run and finished inside the gap, and its row reads
+    // idle either way — the ending the card names, which must not arrive as a
+    // stack of notices.
+    page.redraw({ ...both, list: idle, paused: true });
+    // The link comes back first and the Host's answer follows it, saying idle
+    // again. Two unseen turns settle into nothing.
+    page.redraw({ ...both, list: idle });
+    page.redraw({ ...both, list: idle });
+    expect(screen.queryByText("Чат mine")).toBeNull();
+    expect(screen.queryByText("Чат second")).toBeNull();
+    expect(FakeNotification.raised).toEqual([]);
+    // A turn that starts under the restored link is still one the page did not
+    // see begin, and its end is silent with the others.
+    page.redraw({ ...both, list: running });
+    page.redraw({ ...both, list: idle });
+    expect(screen.queryByText("Чат mine")).toBeNull();
+    expect(screen.queryByText("Чат second")).toBeNull();
+    // That is the whole of what the gap costs: one turn per chat. The rows moved
+    // over a link the page vouches for, so the next turn beginning is watched
+    // from its start and raises one line, for that chat alone.
+    page.redraw({
+      ...both,
+      list: hostList([
+        { id: "mine", running: true },
+        { id: "second", running: false },
+      ]),
+    });
+    page.redraw({ ...both, list: idle });
+    expect(screen.getAllByText("Чат mine")).toHaveLength(1);
+    expect(screen.queryByText("Чат second")).toBeNull();
+  });
+
   it("waits for the restored link's own list when the refresh landed first", () => {
     const idle = hostList([{ id: "mine", running: false }]);
     const running = hostList([{ id: "mine", running: true }]);
@@ -379,7 +423,11 @@ describe("turn completion notices", () => {
     // leaves an idle a following run could be credited as starting from.
     page.redraw({ list: idle, paused: true });
     expect(screen.queryByText("Чат mine")).toBeNull();
-    // The run the first live frame shows under way is still the one the gap took.
+    // The link is back and the row has not moved since, so this live frame still
+    // says what the gap left it saying.
+    page.redraw({ list: idle });
+    expect(screen.queryByText("Чат mine")).toBeNull();
+    // The run the next frame shows under way is still the one the gap took.
     page.redraw({ list: running });
     page.redraw({ list: idle });
     expect(screen.queryByText("Чат mine")).toBeNull();
@@ -390,14 +438,20 @@ describe("turn completion notices", () => {
     expect(screen.getAllByText("Чат mine")).toHaveLength(1);
   });
 
-  it("resumes notices on a generation whose refreshed list never lands", () => {
+  it("bounds the silence left by a gap whose list never moved to one turn", () => {
     const idle = hostList([{ id: "mine", running: false }]);
     const page = mountPage(idle);
     page.redraw({ list: idle, paused: true });
     page.redraw({ list: idle });
     // Nothing in what the page reads announces a new list: a rule that adopted a
     // generation by telling its list apart from the one held before would wait
-    // for that difference forever and never report a turn again.
+    // for that difference forever and never report a turn again. So the hold ends
+    // on the row moving, and what it costs is the turn that moves it.
+    page.watchTurn();
+    expect(screen.queryByText("Чат mine")).toBeNull();
+    expect(FakeNotification.raised).toEqual([]);
+    // The next turn is seen beginning from the reading that row left behind, and
+    // raises one line, once.
     page.watchTurn();
     expect(screen.getAllByText("Чат mine")).toHaveLength(1);
   });
