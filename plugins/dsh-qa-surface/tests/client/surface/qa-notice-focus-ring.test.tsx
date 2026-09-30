@@ -9,7 +9,6 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { KeyboardEvent } from "react";
 import type { SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { SessionId } from "@deepseek-ai/dsh-client-connection/client";
 import { QaRouteController } from "../../../src/client/QaRouteController.js";
@@ -24,7 +23,6 @@ import {
   focusRing,
   focusable,
   isInert,
-  trapKeys,
 } from "../../../src/client/focus-ring.js";
 import { resolveConfig } from "../../../src/resolve-config.js";
 import { QA_WELCOME_NOTICE_VERSION } from "../../../src/client/components/QaWelcomeNotice.js";
@@ -57,6 +55,8 @@ const keepFocus = document.hasFocus.bind(document);
 // `<main>` whose key handler keeps Tab inside the QA interface. Were the ring
 // drawn around `<main>` alone, the key would turn back at the surface's last
 // control, and no Tab from the composer would ever reach a notice.
+// What the ring reads off the markup with no surface under it — the enumeration
+// and the trap on their own — is the sibling `qa-focus-ring-markup.test.tsx`.
 
 /**
  * The page's tab order as a browser reads it: DOM order over the whole body.
@@ -356,67 +356,6 @@ async function mount(options: MountOptions = {}): Promise<QaSessionTestWorld> {
 }
 
 describe("the notice stack inside the surface's Tab ring", () => {
-  it("leaves off the path what a browser leaves off: a negative `tabindex`, a hidden parent", () => {
-    const { container } = render(
-      <div>
-        {/* What makes these unreachable is the `-1`, and a browser reads it
-            before it asks what element the `-1` stands on. */}
-        <button type="button" tabIndex={-1} data-testid="off-path-button" />
-        <input type="file" tabIndex={-1} data-testid="off-path-input" />
-        <pre tabIndex={-1} data-testid="off-path-pre" />
-        <button type="button" hidden data-testid="hidden-button" />
-        {/* A panel body the surface keeps mounted and hides rather than unmounts:
-            the browser takes its controls off the path along with it. */}
-        <div hidden>
-          <button type="button" data-testid="under-a-hidden-parent" />
-        </div>
-        <button type="button" disabled data-testid="disabled-button" />
-        {/* A `select` and a `summary` are what the surface itself paints inside
-            `<main>` — the role picker of the header and the fold of a message —
-            and a browser gives both a place on the path. */}
-        <select data-testid="picker">
-          <option value="a">А</option>
-        </select>
-        <select disabled data-testid="disabled-picker">
-          <option value="a">А</option>
-        </select>
-        <details>
-          <summary data-testid="fold" />
-        </details>
-        <div tabIndex={0} data-testid="listed" />
-      </div>,
-    );
-
-    expect(
-      focusable(container).map((element) => element.dataset.testid),
-    ).toEqual(["picker", "fold", "listed"]);
-  });
-
-  it("takes no key when the ring holds no controls", () => {
-    const { container } = render(
-      <div tabIndex={0} data-testid="hollow-ring">
-        <button type="button" hidden />
-      </div>,
-    );
-    const root = container.querySelector<HTMLElement>(
-      "[data-testid='hollow-ring']",
-    );
-    if (root === null) throw new Error("the ring is not mounted");
-    const event = {
-      key: "Tab",
-      shiftKey: false,
-      stopPropagation: vi.fn(),
-      preventDefault: vi.fn(),
-    } as unknown as KeyboardEvent<HTMLElement>;
-
-    // A Tab prevented with no control to hand the focus to is a stuck key. What
-    // the root itself is asked to do stays the browser's: a ring with nothing in
-    // it has no interface to keep the reader inside of, so it answers nothing.
-    trapKeys(event, [root]);
-    expect(event.stopPropagation).toHaveBeenCalledTimes(1);
-    expect(event.preventDefault).not.toHaveBeenCalled();
-  });
-
   it("jumps the composer's hidden file picker on the way to the attach button", async () => {
     await mount();
     const picker = screen.getByTestId("qa-composer-file-input");
@@ -436,35 +375,6 @@ describe("the notice stack inside the surface's Tab ring", () => {
     composer.focus();
     pressTab();
     expect(focused()).toBe(attach);
-  });
-
-  it("counts the header's role picker as a step the ring walks over", () => {
-    // What the chat header paints once the account offers more than one
-    // profile: a `select` (role/RoleSelector) and the fold of a message
-    // (`summary`). A browser stops on both, so an enumeration that left them out
-    // drew the edge of the ring past a control the reader reaches — and counted
-    // the walk over a page with one step fewer than it has.
-    const { container } = render(
-      <main>
-        <label>
-          Роль ассистента
-          <select data-testid="role-picker">
-            <option value="general">Общий</option>
-            <option value="reviewer">Ревьюер</option>
-          </select>
-        </label>
-        <details>
-          <summary data-testid="message-fold">Инструменты разговора</summary>
-          <p>…</p>
-        </details>
-      </main>,
-    );
-
-    expect(
-      focusRing([container.querySelector("main")]).map(
-        (element) => element.dataset.testid,
-      ),
-    ).toEqual(["role-picker", "message-fold"]);
   });
 
   it("carries Tab from the composer over every control of the stack", async () => {
@@ -723,6 +633,30 @@ describe("the reader left standing when a notice goes away", () => {
     expect(tabbables().some((element) => element === focused())).toBe(true);
   });
 
+  it("gives a lost stack back to a control that takes the keyboard", async () => {
+    await mount();
+    const dismiss = screen.getByTestId("qa-turn-notice-dismiss");
+    dismiss.focus();
+
+    // The hand-off goes back into the interface at the control the ring reaches
+    // last — and that is the one place a media query can switch off without a
+    // word in the markup the enumeration could read (`.dsh-qa-rail` at ≤900px).
+    // jsdom applies no CSS, so the stand switches the edge off by hand: an edge
+    // that answers `focus()` by moving nothing has to send the keyboard on, not
+    // leave the reader on a control that is no longer on the page.
+    const main = surfaceRoot();
+    const edge = focusRing([main]).at(-1);
+    if (edge === undefined) throw new Error("the surface holds no controls");
+    edge.focus = () => {};
+
+    fireEvent.click(dismiss);
+    expect(screen.queryByTestId("qa-turn-notice")).toBeNull();
+    expect(focused()).not.toBe(edge);
+    expect(focused()).not.toBe(main);
+    expect(focusRing([main])).toContain(focused());
+    expect(focused()).toBe(focusRing([main]).at(-2));
+  });
+
   it("leaves the focus alone when a control of the surface goes away under it", async () => {
     await mount();
     const header = screen.getByTestId("qa-surface-header-files");
@@ -769,7 +703,7 @@ describe("the reader left standing when a notice goes away", () => {
     expect(focused()).toBe(composer);
   });
 
-  it("hands the keyboard over while the page is blurred", async () => {
+  it("leaves the keyboard of a blurred page alone and hands the place back when the window returns", async () => {
     const world = await mount({
       chats: BACKGROUNDS,
       settled: BACKGROUNDS.slice(0, 3),
@@ -779,16 +713,48 @@ describe("the reader left standing when a notice goes away", () => {
     dismiss.focus();
 
     // The reader works in another window, where turns keep settling and a full
-    // stack still lets the oldest line go. `focus()` moves the keyboard inside
-    // this page and raises no window with it, so the hand-over is what the
-    // returning reader needs: skipped, their next Tab starts from `<body>` and
-    // walks out of the interface.
+    // stack still lets the oldest line go. A page nobody is looking at is not
+    // given a keyboard: `focus()` would move it inside this page while the
+    // reader is typing somewhere else.
     document.hasFocus = () => false;
     settleTurns(world, [BACKGROUNDS[3]]);
 
     expect(lines()).toHaveLength(3);
+    expect(focused()).toBe(document.body);
+    expect(focusedLine()).toBeNull();
+
+    // The place was remembered rather than dropped, so the window coming back is
+    // what pays the hand-over: the reader's first Tab is the interface's, not the
+    // browser's, and it starts where they stood — on the same control of the line
+    // that took the lost one's place. A page back on screen answers
+    // `document.hasFocus()` with true, and that is the state the event brings.
+    document.hasFocus = () => true;
+    fireEvent.focus(window);
     expect(focusedLine()).toBe(line(-1));
     expect(focusedLine()).not.toBe(oldest);
+    expect(focused().dataset.testid).toBe("qa-turn-notice-dismiss");
+  });
+
+  it("leaves a blurred hand-over to the reader who comes back into the interface", async () => {
+    const world = await mount({
+      chats: BACKGROUNDS,
+      settled: BACKGROUNDS.slice(0, 3),
+    });
+    const dismiss = controlOf(line(-1), "qa-turn-notice-dismiss");
+    dismiss.focus();
+    document.hasFocus = () => false;
+    settleTurns(world, [BACKGROUNDS[3]]);
+
+    // Returning to the tab and clicking into the composer is the reader stating
+    // where they stand: the place the ring remembers is a stack the reader is
+    // standing in, so it is given up the moment focus reaches `<main>` and the
+    // window coming back has nothing owed to it.
+    const composer = screen.getByTestId("qa-composer-input");
+    composer.focus();
+    document.hasFocus = () => true;
+    fireEvent.focus(window);
+
+    expect(focused()).toBe(composer);
   });
 });
 

@@ -96,7 +96,13 @@ import { VariantSwitcher } from "./components/VariantSwitcher.js";
 import { QaWelcomeNotice } from "./components/QaWelcomeNotice.js";
 import { statusText, titleFromMessages } from "./components/surface-utils.js";
 import { useThinkingPhrase } from "./components/thinking-phrases.js";
-import { focusRing, focusable, isInert, trapKeys } from "./focus-ring.js";
+import {
+  focusFirst,
+  focusRing,
+  focusable,
+  isInert,
+  trapKeys,
+} from "./focus-ring.js";
 import {
   QaUserSettingsDialog,
   type QaSettingsSectionId,
@@ -1053,11 +1059,13 @@ export function QaSurface(props: QaSurfaceProps) {
    * business, and is left to put the focus wherever it thinks the reader
    * belongs.
    *
-   * Nor is a blurred page a reason to skip it: what `focus()` moves is the
-   * keyboard inside this page, and no window is raised to go with it. While the
-   * reader works in another window the ring is still the only thing with a claim
-   * on where their next Tab lands, and leaving that Tab to `<body>` is what
-   * walks them out of the interface when they come back.
+   * A page the reader is not looking at keeps its keyboard where it is: while
+   * `document.hasFocus()` is false nothing here is moved. The hand-off is owed
+   * rather than skipped — the anchor stands until the window comes back, and the
+   * `focus` event of this page is what pays it — because the reader who returns
+   * to a stack that dropped a line under them is exactly the reader this place
+   * was remembered for, while a control of a page no one is looking at has no
+   * claim on the keyboard of the page they are working in.
    *
    * Opening a chat from a line is the one path where a line goes and the chat
    * changes in the same moment. The keyboard stays on the stack — on a
@@ -1066,13 +1074,14 @@ export function QaSurface(props: QaSurfaceProps) {
    * chat is still being bound, so it can take no focus, and the surface moves
    * the keyboard on a switch no further than it does anywhere else.
    */
-  useEffect(() => {
+  const restoreRingFocus = useCallback(() => {
     const anchor = ringAnchor.current;
     if (anchor === null || anchor.element.isConnected) return;
     if (dialogOwnsKeyboard()) {
       ringAnchor.current = null;
       return;
     }
+    if (!document.hasFocus()) return;
     const ring = focusRing(ringRoots());
     const active = document.activeElement;
     if (active !== null && ring.includes(active as HTMLElement)) return;
@@ -1080,18 +1089,29 @@ export function QaSurface(props: QaSurfaceProps) {
     // The line itself first, for a control that left while its line stayed:
     // then whichever neighbour is still on screen, the one after the reader
     // taking the place the stack still lists in that order.
+    const candidates: (HTMLElement | undefined)[] = [];
     for (const line of [anchor.line, anchor.after, anchor.before]) {
       if (line === null || !line.isConnected) continue;
       const controls = focusable(line);
-      const target = controls[Math.min(anchor.step, controls.length - 1)];
-      if (target === undefined) continue;
-      target.focus();
-      return;
+      candidates.push(controls[Math.min(anchor.step, controls.length - 1)]);
     }
     // The stack has no line left to stand on: back into the interface, onto the
-    // control the ring reaches last.
-    (ring.at(-1) ?? surface.current)?.focus();
+    // control the ring reaches last, and past it if this width has switched that
+    // one off without saying so in the markup.
+    candidates.push(...[...ring].reverse(), surface.current ?? undefined);
+    focusFirst(candidates);
+  }, [dialogOwnsKeyboard, ringRoots]);
+  useEffect(() => {
+    restoreRingFocus();
   });
+  useEffect(() => {
+    // The hand-off a blurred page owed, read again at the moment the reader
+    // comes back: whoever holds the keyboard then keeps it, and a control of the
+    // ring they reached on their own is not taken away from them.
+    const onWindowFocus = (): void => restoreRingFocus();
+    window.addEventListener("focus", onWindowFocus);
+    return () => window.removeEventListener("focus", onWindowFocus);
+  }, [restoreRingFocus]);
 
   // The audit provider is optional: `auditSnapshot.api` is null until the
   // audit plugin's client bundle is loaded, and the badge is absent until

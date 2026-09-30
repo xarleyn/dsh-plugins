@@ -38,13 +38,33 @@ shows: the notice goes, its chat arrives, and the keyboard stays on the stack �
 the composer the switch remounts is disabled while that chat is being bound, so
 it can take no focus, and nothing in the surface moves the keyboard on a switch
 further than it already does. And a page the reader has left to work in another
-window is handed over all the same: `focus()` moves the keyboard inside this page
-and raises no window with it, while skipping the hand-over would leave the Tab
-that follows a return starting from `<body>` and outside the interface.
+window is left alone: while `document.hasFocus()` is false nothing here touches
+the keyboard, because a control of a page nobody is looking at has no claim on
+the page the reader is typing in. The hand-over is owed rather than dropped —
+the remembered place stands until the window's own `focus` event pays it, so the
+reader who comes back to a stack that dropped a line under them finds their place
+and their next Tab is the interface's.
 
 What the ring counts as a step is what a browser stops on, read off the markup:
 the negative `tabindex` is subtracted from every kind of control, not only from
-the elements that carry the attribute, `hidden` is read along the ancestor chain,
-and a `select` or a `summary` — the role picker of the header and the fold of a
-message — is a step of the way. A ring with no controls in it takes no key at
-all: a Tab prevented with nowhere to hand the focus is a key that sticks.
+the elements that carry the attribute, `hidden` is read along the ancestor
+chain, a `select` or a `summary` — the role picker of the header and the fold of
+a message — is a step of the way, and the body of a fold the reader has not
+opened is not. A ring with no controls in it takes no key at all: a Tab
+prevented with nowhere to hand the focus is a key that sticks.
+
+The markup is not the whole of what a page hides, and the ring says so where it
+hands the keyboard over: the chat rail is switched off at ≤900px and the sidebar
+at ≤600px by a media query, which leaves neither a `hidden` nor a `tabindex` to
+read, so a candidate that answers `focus()` by moving nothing is passed over and
+the key is spent on the next control of the way. The refusal itself was measured
+in Chromium on a fixture carrying those two production rules and a pair of folds:
+at 500px the rail's and the sidebar's buttons refuse the focus while their own
+computed `display` still reads `inline-block` — what is hidden is their ancestor,
+so no per-control style read would have said so either — and a button under a
+closed fold refuses while the fold's `summary` takes the focus. That is why the
+check belongs at the hand-off and why the enumeration leaves a closed fold's body
+out of the path. What the stand still owes is the walk of the mounted surface:
+Tab from the composer and Shift+Tab from the first control at ≤600px and ≤900px,
+not run because the browser panel is collapsed (`viewport=0x0`) and gives no real
+key presses to observe.
