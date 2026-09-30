@@ -9,6 +9,9 @@
 //     belongs to `tests/client-bundle.test.ts`, which derives both halves from the
 //     patch; what is checked here are the values, never the names of the constants
 //     that spell them, so a rename cannot redden this gate on its own;
+//   - the entry must answer both views the page asks this seat for: the row's
+//     one-liner (`view: 'summary'`, taken because this patch declares no description
+//     of its own) and the configuration page (`view: 'page', form`);
 //   - the seat it left behind must stay left behind: no `settings.plugins.tab`
 //     registration, which would put a second copy of this card under Settings;
 //   - the bundle must stay pure browser code: react only, no host packages;
@@ -72,6 +75,10 @@ expectPresent(
 expectPresent(
   "configForms.get(",
   "the form must be read through the host's settings form service",
+);
+expectPresent(
+  'view === "summary"',
+  "the page asks this seat for the row's one-liner when the patch declares no description, and this patch declares none",
 );
 expectAbsent(
   '"settings.plugins.tab"',

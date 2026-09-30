@@ -27,19 +27,22 @@ What the card renders is the same card: the same shell every DSH configuration c
 uses (the card-contract gate reads no slot name, so it fires on the new registration
 exactly as it did on the old), the same staged drafts, the same field-granular writes
 fenced by the revision read at the moment of writing, the same unsaved badge and
-per-field reset to the composition layer. Two details follow from the new seat rather
-than from a redesign. The seat hands its entry `{ view: 'page', form }` and nothing
-else — `docs/DSH-0.1.7-MIGRATION.md` §4.2 cites the render site at
-`PluginManagerPage.tsx:495` and attributes the `summary` one-liner to the *other* slot,
-`plugins.item` — so this entry has one view to draw, takes no early return before its
-state hook, and reads its settings state exactly once. Its text still arrives through
-the translate function the page binds for the locale namespace this entry declares, and
-where a profile hands the seat no such function the card falls back to the dictionary it
-registered instead of throwing. And the shell's `<li>` still needs a list to sit in,
-which the configuration section does not supply, so the plugin-owned `<ul>` stays with
-it. The page draws its own card chrome around the entry, so the two frames now nest;
-that is the open decision §4.3 records (the shell classes stay mandatory for now), and
-the stand check is where it gets settled.
+per-field reset to the composition layer. Three details follow from the new seat rather
+than from a redesign. The seat is asked for two views: `{ view: 'page', form }` for the
+configuration section, and `{ view: 'summary' }` for the row's one-liner — which the page
+asks this seat for because the patch declares no description of its own, as
+`docs/DSH-0.1.7-MIGRATION.md` §4.2 now records at both render sites
+(`PluginManagerPage.tsx:495` and `:491`). So the entry chooses a component per view where
+it registers, rather than returning early inside the card: that is what keeps each view
+its own hook order, and what keeps the one-liner a line of text that reads no settings
+state instead of a second live copy of the form mounted in the page's heading. Its text
+still arrives through the translate function the page binds for the locale namespace this
+entry declares, and where a profile hands the seat no such function both views fall back
+to the dictionary this bundle registered instead of throwing. And the shell's `<li>`
+still needs a list to sit in, which the configuration section does not supply, so the
+plugin-owned `<ul>` stays with the page view. The page draws its own card chrome around
+the entry, so the two frames now nest; that is the open decision §4.3 records (the shell
+classes stay mandatory for now), and the stand check is where it gets settled.
 
 The manifest needed no new dependency, and that is a property of this entry rather
 than an oversight: the bundle registers through the injected `slots` service by slot
@@ -51,9 +54,10 @@ which is why this is `minor` rather than `patch`: a browser on a host without th
 page loses the card. `tests/client-bundle.test.ts` reads the seat key and the settings
 namespace from `cordis.patch.yml` rather than repeating them, so a row id that moves in
 the patch reddens the test instead of quietly dropping the configure control, and it
-drives the entry through the page view it is handed — shell mounted, settings read once,
-and the translate fallback speaking when the seat provides no `t`.
+drives the entry through both views the page asks this seat for — the page view mounting
+the shell and reading settings exactly once, the summary view answering as text with no
+settings read at all — and covers the translate fallback in each.
 `scripts/verify-client-bundle.mjs` checks values, not the spellings of the constants
 that spell them: the slot literal, the package-name half of the key as the patch names
-it, the row id the bundle carries, and the absence of the `settings.plugins.tab` seat
-this card vacated.
+it, the row id the bundle carries, the `view === "summary"` branch the page depends on,
+and the absence of the `settings.plugins.tab` seat this card vacated.
