@@ -531,11 +531,40 @@ and — once the reader allowed it — the same line from the operating system.
 The scope is the browser's own chat history, not the stand's session list. A
 notice exists only for a chat this page would have listed in its sidebar, so
 another account's turn ends silently here even on a stand where an
-administrator can read those chats. A chat that was already running when the
-page opened is not attributed to this reader, and frames a reconnecting browser
-cannot vouch for are re-projected without notices. A turn that ends in the chat
-already on screen, with this window active, produces nothing: the answer is in
-front of the reader.
+administrator can read those chats.
+
+The notice is for a turn this page saw begin. A chat found already running when
+the page opened is not attributed to this reader: that run ends in silence, and
+the same chat's next turn, whose start the page does see, notifies again. The
+rule runs across a gap in the link. A frame read while the browser was
+reconnecting vouches for nothing, so it neither reports a run it appears to have
+finished nor credits a run the first live frame shows under way: a turn still
+running when the link dropped, and the reader's own question that was queued
+before the drop and went out only as the link returned, both end unreported. The
+link is back before the list is, too — the page learns about the connection
+first, and the host list it holds is still the one the drop left — so an idle
+read through a gap arms nothing either. A chat is credited again once its own row
+has moved, since a row that has not moved says only what the gap already left it
+saying, and a run that began inside the gap would look exactly like the turn that
+follows. So the first turn of a chat after a gap ends unreported with the rest,
+and the silence stops there: the run that ends it is one this page could not
+account for, and the turn after it is watched from its start. Which of those the
+stale list was showing is not something this page can tell, and nothing the host
+client publishes would tell it either: the list the page subscribes to carries no
+mark of having been read again, so the chat's own row moving is the only arrival
+it can be given, and the silence is bounded by that row rather than by the link.
+A gap the page was never shown is the one case this rule does not cover. The
+silence is assembled from the frames the page was handed while it reported itself
+reconnecting, and a loss of the link that came and went between two screen
+updates hands over none of them — a chat that was idle before that blink is then
+credited with a start nobody saw, so a turn that began inside it arrives as one
+you had been waiting for, while a turn you watched begin only arrives late. A chat this page stops reading is the same gap in the same
+evidence: while its row is away from the sidebar there is no frame naming it at
+all, so a run that returns to the list is found running again rather than watched
+beginning, and it ends unreported too.
+
+A turn that ends in the chat already on screen, with this window active,
+produces nothing: the answer is in front of the reader.
 
 What a notice may carry is the chat's own title and the fact that the turn
 ended — never the answer, a path, an account or a session id. The operating
