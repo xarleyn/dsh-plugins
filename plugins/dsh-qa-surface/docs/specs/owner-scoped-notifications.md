@@ -673,6 +673,15 @@ notifications.ts` the wiring. `config.notifications`
   baseline on the chat's own row moving is not a stand-in for a better signal
   this page has not been given yet: on this contract the row is the signal, and
   the one-turn silence it costs is the price of the promise §3.1 makes.
+  The same reading narrows the boundary above without a stand: the rows the
+  re-pull brings back reach the page only when the Remote call resolves, which is
+  a frame of its own, later than the connection edge that cleared `paused` — and
+  the publish the client makes in that same turn still carries the rows the gap
+  left. So a render cannot merge the link's return with an answer that has not
+  arrived; what it can merge is the pair of *connection* notifications, a link
+  that went and came back before the page was drawn once. That, and only that, is
+  the case the boundary names, and it is the one number the live pass still has
+  to produce.
 - §3.5's five booleans are two: `inApp` and `desktop`. A preference is only
   worth storing if a channel exists to honor it, and the shipped dispatcher has
   two — the line in the page and the notice the page hands to the operating
