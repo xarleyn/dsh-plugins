@@ -222,10 +222,13 @@ describe("turn completion source", () => {
   // A reconnect splits into two edges the page is told about separately: the
   // link coming back, and the Host's refreshed list arriving over it. The order
   // between them is the Host's business, not the page's, so both of them are
-  // set by hand here, one each way (#479). Every case below holds the run
-  // watched before the gap: a chat the page only found running is silent for a
-  // different reason — `unwatched` from the cold start — so a scenario that
-  // enters that way measures nothing of what a stale frame is worth.
+  // set by hand here, one each way (#479). What each case holds across the gap is
+  // the reading the paused frame is asked to re-project: the cases below enter
+  // with the run `watched`, which is the half that reads a still-running row, and
+  // the last one enters from an idle the page trusted, which is the half that
+  // reads a row that never moved. A chat the page only found running is silent
+  // for the cold start alone, so a scenario entering that way measures nothing of
+  // what the gap is worth.
   it("stays silent however late the refreshed list lands after an offline ending", () => {
     const page = openPage();
     page.see([chat("a", false)], { now: 1 });
@@ -264,24 +267,59 @@ describe("turn completion source", () => {
     ]);
   });
 
-  it("waits for the restored link's own list when the refresh landed first", () => {
+  it("keeps a late refresh of several unseen endings off the stack when no row moved", () => {
+    const page = openPage();
+    const idle = [chat("a", false), chat("b", false), chat("c", false)];
+    const running = [chat("a", true), chat("b", true), chat("c", true)];
+    // The page holds an idle it trusts for every chat, then loses the link. Each
+    // of these chats may have run and finished inside the gap, and its row says
+    // idle either way: that is the ending the card names, and it must not reach
+    // the reader as news.
+    page.see(idle, { now: 1 });
+    expect(page.see(idle, { now: 2, paused: true })).toEqual([]);
+    // The link comes back first and the re-pull follows it, so the first live
+    // frames carry the rows the gap left. They are live and they are the same
+    // reading, which is the whole of what this page has to go on.
+    for (const now of [3, 4]) {
+      expect(page.see(idle, { now })).toEqual([]);
+      for (const id of ["a", "b", "c"]) expect(page.seen.get(id)).toBe("stale");
+    }
+    // The refreshed list lands and still says idle. Three turns may have ended
+    // where nobody could see them, and the stack stays empty.
+    expect(page.see(running, { now: 5 })).toEqual([]);
+    expect(page.see(idle, { now: 6 })).toEqual([]);
+    // What the gap held back is one turn per chat, not the reader's attention:
+    // the row moving over a vouched link rebuilds the baseline, and the next turn
+    // this page sees begin is reported — once, and for that chat alone.
+    expect(page.watchTurn("b", 7)).toEqual([
+      { sessionId: "b", title: "Чат b", at: 9 },
+    ]);
+    expect(page.see(idle, { now: 10 })).toEqual([]);
+  });
+
+  it("waits for the restored link's rows to move when the refresh landed first", () => {
     const page = openPage();
     page.see([chat("a", false)], { now: 1 });
     page.see([chat("a", true)], { now: 2 });
     // The Host's answer reaches the page while it still reports itself
     // reconnecting: the link-ready edge comes after it, so that list is one this
-    // generation never delivered — and it leaves no idle to credit a start from.
+    // generation never delivered. Idle read through the gap, it leaves a reading
+    // the page cannot vouch for rather than an idle to credit a start from.
     expect(page.see([chat("a", false)], { now: 3, paused: true })).toEqual([]);
-    expect(page.seen.get("a")).toBe("unwatched");
-    // A run reading as new in the first live frame afterwards is still the one
-    // the gap took, so its end is not this page's news either.
-    expect(page.see([chat("a", true)], { now: 4 })).toEqual([]);
-    expect(page.see([chat("a", false)], { now: 5 })).toEqual([]);
-    // That live idle is the baseline this generation adopts: from here the run
-    // the page sees start is the run whose end it reports.
+    expect(page.seen.get("a")).toBe("stale");
+    // The link is back and the row has not moved since, so the live frame says
+    // what the gap already left it saying — and the run that follows may have
+    // begun inside the gap.
+    expect(page.see([chat("a", false)], { now: 4 })).toEqual([]);
+    expect(page.seen.get("a")).toBe("stale");
+    expect(page.see([chat("a", true)], { now: 5 })).toEqual([]);
+    expect(page.see([chat("a", false)], { now: 6 })).toEqual([]);
+    // The row moving is what this page reads as the list arriving: that live idle
+    // is the baseline this generation adopts, and from here the run the page sees
+    // start is the run whose end it reports.
     expect(page.seen.get("a")).toBe("idle");
-    expect(page.watchTurn("a", 6)).toEqual([
-      { sessionId: "a", title: "Чат a", at: 8 },
+    expect(page.watchTurn("a", 7)).toEqual([
+      { sessionId: "a", title: "Чат a", at: 9 },
     ]);
   });
 
