@@ -306,10 +306,13 @@ export const inject = ["slots", "configForms", "remote", "sidebarRightTabs"];
  * list of its own, so the card is mounted inside a plugin-owned `<ul>` — AGENTS.md
  * keeps the `ul > li` pair that the shell's own styling is written against.
  *
- * The page renders this one entry in two views: as the row's `summary` one-liner
- * wherever the bundle declares no description of its own, and as the `page` body
- * below. The summary lands inside the page's own `<p>`, so it stays text and never
- * a second card.
+ * The page renders this one entry in two views, and both call sites are the
+ * host's own: `RowDetail` puts the row's description into a `<p>`, falling back to
+ * this entry under `{ view: "summary" }` when the row declares none
+ * (`@deepseek-ai/dsh-client-ui-plugin-manager@0.1.7-rc.2`, `lib/client.js:1841`),
+ * and renders it under `{ view: "page", form }` in the configuration section below
+ * (`:1852`). The summary therefore lands inside the page's `<p>`, so it returns the
+ * sentence as text and never a second card.
  */
 function PluginLogSettingsEntry(props: CardProps) {
   if (props.view === "summary") return ROW_SUMMARY;
