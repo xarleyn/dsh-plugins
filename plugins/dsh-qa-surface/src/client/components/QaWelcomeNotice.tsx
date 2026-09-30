@@ -7,6 +7,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { SettingsOnboardingOwnerProps } from "@deepseek-ai/dsh-client-ui-settings/client";
+import { focusable } from "../focus-ring.js";
 import type { StorageLike } from "../types.js";
 
 /** Bump when the notice changes materially and must be acknowledged again. */
@@ -42,14 +43,6 @@ function acknowledged(storage: StorageLike, key: string): boolean {
   } catch {
     return false;
   }
-}
-
-function focusable(root: HTMLElement): HTMLElement[] {
-  return [
-    ...root.querySelectorAll<HTMLElement>(
-      "button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex='-1'])",
-    ),
-  ].filter((element) => !element.hidden);
 }
 
 /** Route-scoped replacement for DSH's stock `welcome-notice` onboarding step. */
