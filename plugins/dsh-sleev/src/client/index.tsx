@@ -345,13 +345,14 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
 export const inject = ["slots", "configForms", "locale"];
 
 /**
- * Configuration seat of the Sleev bundle row on the Host Plugins page: `summary`
- * is the row page's one-liner — the fallback the slot declares for a row whose
- * patch carries no description (`slot-contract.ts`, `PluginConfigViewProps`) —
- * and `page` the card, whose `<li>` shell needs the plugin-owned `<ul>` the card
- * contract assumes. The card resolves the `dsh-sleev` namespace itself instead of
- * taking the `form` this page hands it, which is what keeps values stored before
- * the move readable after it.
+ * Configuration seat of the Sleev bundle row on the Host Plugins page. The page
+ * renders this slot twice: as `page`, the card — whose `<li>` shell needs the
+ * plugin-owned `<ul>` the card contract assumes — and as `summary`, which
+ * `slot-contract.ts` documents as the row's one-liner ("An absent description
+ * falls back to the entry's `view: 'summary'`"; both sites are in the rc.2
+ * bundle at `lib/client.js:1841` and `:1852`). The card resolves the `dsh-sleev`
+ * namespace itself instead of taking the `form` this page hands it, which is what
+ * keeps values stored before the move readable after it.
  */
 export function SleevRowConfig(props: SleevSettingsCardProps): ReactNode {
   if (props.view === "summary") return props.t("description");
