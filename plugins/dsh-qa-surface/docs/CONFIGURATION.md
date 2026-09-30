@@ -578,44 +578,14 @@ the one a hidden or backgrounded tab can use. With it off a finished turn stays
 inside the page, which is the answer for a shared laptop, where a personal
 notice is everybody's notice.
 
-Two answers stand behind the desktop channel, and each keeps its own record: what
-the browser allows for this origin, and what the reader chose for the channel.
-The reader's answer about both channels lives in the settings dialog, on the
+The reader's own answer about both channels lives in the settings dialog, on the
 account: it follows the person to another browser, and what they chose yesterday
 in this browser decides nothing about who signs in today. On a stand without
 accounts there is no account to write to, so the desktop choice stays in the
-browser that made it.
-
-Answering the line's action writes that choice on both carriers that can hold it: on
-the account once there is one, and in this browser's own store always. Signed in,
-the account's copy is the one that decides. After a sign-out the browser still holds
-what the last reader switched on, and the anonymous form reads that copy as its own
-record — which is why the line then offers it no switch: the record says the channel
-is on, and a control labelled «turn on» is not how a channel is turned off. The next
-reader at this browser puts the choice back by signing in and answering in the
-«Уведомления» section, or by clearing this stand's storage.
-
-The notice offers its action while one of the two answers is still open, and the
-action is asked for from a click — never on load, never once per turn. The
-reader's answer is read from the same record that decides delivery: the account
-once there is one, this browser otherwise. A browser that has already granted is
-asked nothing, and where the reader's answer already says the channel is on, the
-line offers nothing either — a control that turns the channel on must not be the
-way to turn it off. The state an address-bar revoke leaves behind is therefore a
-pause, not a dead end: the record still says on, the missing half is the browser's
-answer, and it is handed back in the address bar, after which the next turn that
-settles while the tab is away goes to the desktop without any clicking on the
-line. A signed-in reader has that half asked for in the settings dialog too,
-which offers its own button while the browser still owes its answer.
-
-The cross beside a line closes the question this browser still owes, whether or
-not the prompt ever reached the screen — one page never asks the same question
-twice — so waving a line off moves the way in to the browser's own settings.
-Where the origin is already granted the cross clears the stack and nothing
-else, and the action comes back with the next line — on a stand without
-accounts, that action is the only switch the channel has. A denial, or a
-browser that offers no such API (which includes a stand served over plain HTTP),
-leaves the in-page line standing.
+browser that made it. Either way the answer is asked for once — from a click,
+never on load or once per turn — and a denial, or a browser that offers no such
+API (which includes a stand served over plain HTTP), leaves the in-page line
+standing.
 
 ## Configuration channel over the LAN
 
