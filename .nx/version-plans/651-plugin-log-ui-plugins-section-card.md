@@ -57,9 +57,12 @@ new package in the inject list and on the peer list). The client tests now cover
 both halves of the seat: the wiring suite asserts the keyed registration, the one
 resolved namespace and the form arriving under a name the slot cannot overwrite,
 and a rendering suite mounts the component `apply()` registered with the page's own
-two prop shapes, so a level and a format stored before the move are read back and a
-change is written through that namespace's form. A third suite reads the seat out of
-the installed host package — both of its call sites, the `view` union and the
-key join — so the card's `summary` answer is pinned to the host that asks for it
-rather than to a test that hands it the shape itself.
+two prop shapes, so a level and a format stored before the move are read back, a
+change is written through that namespace's form, and the card is caught arriving
+closed — its fields appear only after its own header is opened, which is what the
+deployed page at `rc.2` shows. A third suite reads the seat out of the installed host
+package — both of its call sites, the `view` union, the key join, and the
+`description ?? …` guard that makes the `summary` call a fallback rather than the
+row's normal line — so the card's answers are pinned to the host that owns the seat
+instead of to a test that hands it the shape itself.
 

@@ -498,7 +498,8 @@ inventory, because the configure control is gated on
 `ledger.rows.has(rowConfigKey(…))` (`PluginManagerPage.tsx:1191`).
 **[unverified]** remains one narrower thing: that fixture's card ignores `form`
 entirely (hardcoded `defaultValue`, no read or write), so nothing in the harness
-proves the *wired* read/write path end to end. One live stand still settles that.
+proves the *wired* read/write path end to end. The stand pass recorded below settles
+that.
 **Updated by #651**, which registers this seat in this repository:
 `plugins/dsh-plugin-log-ui/tests/client-card.test.tsx` mounts the component that
 plugin's `apply()` actually registered, with the two prop shapes `RowDetail` passes
@@ -514,10 +515,45 @@ twice, once with `view: 'summary'` and no `form`, once with `view: 'page'` and t
 `form`, and that `view`'s union still names both. That is a CI-visible pin: a host
 release that changes the seat fails the suite on the version bump instead of
 leaving a `summary` branch quietly dead.
-**[unverified]** shrinks to what neither test can reach: the deployed Host page
-occupying the seat and answering the row's configure control, the row's heading as
-the manifest supplies it, and the focus ring of §4.3 item 3. That pass is #646's,
-not this document's.
+**[verified]** — that pass happened, on the deployed page at `0.1.7-rc.2` and on a
+build of this branch (#646, 2026-09-30): the row's configure control opens the detail
+page, this plugin's seat renders inside its configuration section, and all three
+controls read and write the live Config (levels `trace…silent`, format Text/JSON, the
+registered-plugins list) with nothing in the console. Two further things the page
+showed are worth keeping, because neither is visible from the contract:
+
+- the card arrives **closed**. The section is mounted eagerly and shows the header's
+  title, its own line and the live count; the fields appear only after a click on our
+  header. Pinned by
+  `plugins/dsh-plugin-log-ui/tests/client-card.test.tsx`.
+- the `view: 'summary'` site is reached only as a fallback. The page writes
+  `description ?? renderSlot(…)` into the row's `<p>` (`PluginManagerPage.tsx:491`
+  against `:495`), so a row whose manifest declares a `description` is read from the
+  manifest and its seat is never asked for the one-liner. Pinned against the installed
+  bundle by `plugins/dsh-plugin-log-ui/tests/host-seat-contract.test.ts`, which also
+  asserts the `page` call stayed unconditional.
+
+§4.3's duplication premise measured away in the same pass: the ancestors of our
+`.dsh-plugin-card` on that page (`ul.plu-card-list` → `div` → `detailSections` →
+`detail` → `section.page`) carry `border: 0` and a transparent background, so the host
+draws its title, icon and crumb **above** the content rather than a frame around it —
+no second rounded rectangle, and so no host 20px corner sitting over our 12px one at
+`rc.2`.
+
+**What stays open is the page's availability, not the seat.** On a locked QA stand the
+Plugins page needs `POST /api/pluginInventory/list` plus `pluginManager/listBundles`
+and `pluginManager/listPlugins`, and all three answer 403. Opening them means opening
+`pluginManager` wholesale, and its remote methods are not read-only: `inspect(spec)`
+takes "a registry name, an absolute path, a git address, or a tarball" beside
+`installBundle(spec, options)` and `setPluginEnabled`
+(`packages/extensions/tool-cordis/src/api-catalog.ts:1644,1661`). A LAN visitor with
+a remote installer is not a trade this repository makes for a settings page, so for
+that deployment **D1 option 2 stays the operative decision** (§10): the card series
+#647–#660 is parked with its `plugins.row.config` pattern proven on its branches, and
+nothing merges onto it until the allow-list question is answered somewhere else. The
+focus ring of item 3 below is untouched by that pass and still needs its browser
+check; the old section's own defect — a tab strip clipping 332px of an 881px row — is
+#675, which does not depend on this choice.
 
 **2. [verified] the host chrome moved off our `AGENTS.md` shell contract between
 `rc.1` and `rc.2`.** The structure is the same (`CardHead` at

@@ -329,11 +329,16 @@ export const inject = ["slots", "configForms", "remote", "sidebarRightTabs"];
  * this branch dead. The summary lands inside the page's `<p>`, so it returns the
  * sentence as text and never a second card.
  *
- * For this bundle the summary call is not currently reached: the row's description
- * comes from the installed manifest's `description` field, which this package
- * declares (`packages/boot/app-boot/src/package-meta.ts:156`), so the page's `<p>`
- * is filled before it would ask. The answer is kept because the seat is entitled to
- * give it, and `ROW_SUMMARY` is kept equal to that manifest field.
+ * For this bundle the summary call is not currently reached: that site sits behind
+ * the row's own description (`description ?? renderSlot(…)`), which the page takes
+ * from the installed manifest's `description` field
+ * (`packages/boot/app-boot/src/package-meta.ts:156`) and this package declares it —
+ * so the `<p>` is filled before the seat would be asked, and the guard itself is now
+ * pinned by that same suite. What the deployed page does render is the `page` call,
+ * and it renders this card closed: the owner's `rc.2` pass on #646 saw the header's
+ * title, line and live count with no fields until the header was clicked, which
+ * `tests/client-card.test.tsx` pins. The summary answer is kept because the seat is
+ * entitled to give it, and `ROW_SUMMARY` is kept equal to that manifest field.
  */
 function PluginLogSettingsEntry(props: CardProps) {
   if (props.view === "summary") return ROW_SUMMARY;
