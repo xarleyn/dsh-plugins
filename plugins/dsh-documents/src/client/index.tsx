@@ -48,11 +48,14 @@ const ROW_CONFIG_KEY = `@yadsh/dsh-documents#${DOCUMENTS_SETTINGS_NAMESPACE}`;
 /**
  * The entry the Plugins page renders for this bundle's row.
  *
- * The page renders this one entry in two views: as the row's `summary`
- * one-liner — the patch declares no description of its own, so the page asks the
- * entry for it — and as the `page` body below. The summary lands inside the
- * page's own `<p>` and therefore stays text, never a second card; the card keeps
- * the plugin-owned `<ul>` its `<li>` shell is written against (AGENTS.md).
+ * The page renders this entry as the `page` body, and asks it for `view:
+ * 'summary'` as the row's one-liner only when the row carries no display
+ * description — the page takes that from this package's exported locale `meta`
+ * (`locale/en.json`), which the Host reads without activating the plugin. The
+ * summary lands inside the page's own `<p>` and therefore stays text: without
+ * this branch a row that lost its description would be handed a whole card. The
+ * card keeps the plugin-owned `<ul>` its `<li>` shell is written against
+ * (AGENTS.md).
  */
 function DocumentsSettingsEntry(
   props: DocumentsCardProps,

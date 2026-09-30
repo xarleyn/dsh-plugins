@@ -91,12 +91,29 @@ seat moved and the stored values did not: what an older build saved under
 operation is reachable from the UI. Its controls use the shared card shell and the
 `--dsw-alias-*` design tokens (AGENTS.md).
 
-The page renders the one entry in two views: as the row's `summary` one-liner
-(the patch declares no description of its own) and as the `page` body, and both
-carry the same sentence. The keyed seat hands its registrant the Host's
-`ConfigPageForm` — `{ state, mutate }`, nothing to subscribe to — so the card
-edits the live `ConfigForm` it resolves for its own namespace, injected under
-`settingsForm` where that owner prop cannot shadow it.
+The page draws the row's own title and one-liner, not the card's: it reads them as
+display metadata from `locale/en.json`, which this package exports at
+`@yadsh/dsh-documents/locale/en.json`, and without it the Plugins page names the
+row by its full module name. The file carries the same two strings the card draws
+(`DOCUMENTS_CARD_TITLE`, `DOCUMENTS_CARD_SUMMARY`) and a test pins the pair, so
+the row and the card it opens cannot drift. The card's copy is Russian in every
+UI language, as the tab's label was before the move: `en.json` is the discovery
+entry the Host falls back to for any language chain, and no other language file is
+shipped.
+
+The entry answers the page's two views. As `page` it is the card; as `summary` it
+is the one-liner, which the page asks for only where the row has no display
+description — so a package that stopped shipping `locale/en.json` gets text there,
+never a second card inside the page's own `<p>`. The keyed seat also hands its
+registrant the Host's `ConfigPageForm` — `{ state, mutate }`, nothing to subscribe
+to — which is why the card edits the live `ConfigForm` it resolves for its own
+namespace instead, injected under `settingsForm` where that owner prop cannot
+shadow it.
+
+Reach follows the surface: the Plugins page is unavailable on a Host without a
+managed profile and reads its inventory through `api-remotes`, so this card is
+reached from there rather than from the Settings → Plugins tab, which a
+non-loopback browser could open (AGENTS.md).
 
 ## 5. Session scope
 

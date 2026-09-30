@@ -2,23 +2,36 @@
  * Wiring guard for the client entry of the settings card.
  *
  * The card sits in the configuration seat that this bundle's own row on the
- * Plugins page owns. Two halves of that join are easy to get individually right
- * and wrong together: the seat key names `<package name>#<row id>`, and the row
- * id is also the namespace the live form is resolved under. A key that names a
- * row the patch does not declare leaves the row without a configure control, and
- * a form resolved under any other namespace edits values nobody reads — so this
- * drives the real `apply()` against a bare cordis context and checks the pair.
+ * Plugins page owns. Three things are easy to get individually right and wrong
+ * together: the seat key names `<package name>#<row id>` and the row id comes
+ * from `cordis.patch.yml`, not from the constant this package reads the live
+ * form under; and the row is titled and described by this package's exported
+ * locale `meta`, not by the card. A key that names a row the patch does not
+ * declare leaves the row without a configure control, a form resolved under any
+ * other namespace edits values nobody reads, and a drifted `meta` renames the
+ * row away from the card it opens — so this drives the real `apply()` against a
+ * bare cordis context and checks all three against the shipped files.
  */
 
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { Context } from "@deepseek-ai/cordis";
 import { isValidElement } from "react";
+import { parse as parseYaml } from "yaml";
 import { describe, expect, it } from "vitest";
 
-import { DOCUMENTS_CARD_SUMMARY, DocumentsCard } from "../src/client/card.js";
+import {
+  DOCUMENTS_CARD_SUMMARY,
+  DOCUMENTS_CARD_TITLE,
+  DocumentsCard,
+} from "../src/client/card.js";
 import * as clientModule from "../src/client/index.js";
 import { DOCUMENTS_SETTINGS_NAMESPACE } from "../src/shared/settings.js";
 
 const { apply } = clientModule;
+
+const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 
 /** One `ctx.slots.register` call, as the harness saw it. */
 interface Registration {
@@ -26,6 +39,28 @@ interface Registration {
   readonly key: string | undefined;
   readonly props: Record<string, unknown>;
   readonly component: (props: never) => unknown;
+}
+
+/** The row this bundle's patch declares — the half of the key the Host owns. */
+async function declaredRow(): Promise<{ id: string; name: string }> {
+  const document = parseYaml(
+    await readFile(join(packageRoot, "cordis.patch.yml"), "utf8"),
+  ) as { insert?: { id?: string; name?: string }[] }[];
+  const row = document.flatMap((part) => part.insert ?? [])[0] ?? {};
+  if (typeof row.id !== "string" || typeof row.name !== "string") {
+    throw new Error("the patch declares no row id and name");
+  }
+  return { id: row.id, name: row.name };
+}
+
+/** The display copy the Host reads for this package's row, without activating it. */
+async function exportedMeta(): Promise<
+  Record<string, string | undefined> | undefined
+> {
+  const locale = JSON.parse(
+    await readFile(join(packageRoot, "locale/en.json"), "utf8"),
+  ) as { meta?: Record<string, string | undefined> };
+  return locale.meta;
 }
 
 /** The `plugins.row.config` key the row of this bundle owns. */
@@ -100,17 +135,32 @@ describe("client apply()", () => {
     expect(card?.key).toBe(ROW_CONFIG_KEY);
   });
 
-  it("resolves the live form under the row id its own seat key names", async () => {
+  it("keys the seat and resolves the form under the row id its patch declares", async () => {
     const harness = harnessOf();
     await apply(harness.ctx);
 
-    // The key is `<package name>#<row id>`; the row id is the namespace the Host
-    // serves this plugin's volatile Config under, so a value written before the
-    // card moved to this seat is the value the card reads after it.
-    expect(harness.namespaces).toEqual([DOCUMENTS_SETTINGS_NAMESPACE]);
-    expect(harness.registrations[0]?.key?.split("#")[1]).toBe(
-      DOCUMENTS_SETTINGS_NAMESPACE,
-    );
+    // The key is `<package name>#<row id>` and the row id is the namespace the
+    // Host serves this plugin's volatile Config under, so a value written before
+    // the card moved to this seat is the value the card reads after it. Neither
+    // half is taken on trust from this package's own literal: both are read back
+    // from `cordis.patch.yml`, which is what the page keys on. Renaming the
+    // namespace or the row id therefore fails here instead of leaving the row
+    // without a configure control.
+    const row = await declaredRow();
+    expect(harness.registrations[0]?.key).toBe(`${row.name}#${row.id}`);
+    expect(harness.registrations[0]?.key?.split("#")[1]).toBe(row.id);
+    expect(harness.namespaces).toEqual([row.id]);
+    expect(row.id).toBe(DOCUMENTS_SETTINGS_NAMESPACE);
+  });
+
+  it("titles the row with the copy the opened card carries", async () => {
+    // The page draws the row's title and description itself, from this package's
+    // exported locale `meta` — a registrant cannot hand it the card's own
+    // heading. The two files therefore hold one surface contract, and a drift
+    // would rename the row away from the card it opens.
+    const meta = await exportedMeta();
+    expect(meta?.["title"]).toBe(DOCUMENTS_CARD_TITLE);
+    expect(meta?.["description"]).toBe(DOCUMENTS_CARD_SUMMARY);
   });
 
   it("hands the card the form under a name the seat cannot overwrite", async () => {
@@ -132,7 +182,9 @@ describe("client apply()", () => {
     const entry = registration?.component;
     const settingsForm = registration?.props["settingsForm"];
 
-    // The `summary` view lands inside the page's own `<p>`: it stays text.
+    // The page asks for this view only where the row needs a one-liner it has no
+    // display description for; the answer lands inside the page's own `<p>`, so
+    // it stays text and never becomes a second card.
     expect(entry?.({ view: "summary", settingsForm } as never)).toBe(
       DOCUMENTS_CARD_SUMMARY,
     );

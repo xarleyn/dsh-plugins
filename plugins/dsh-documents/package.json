@@ -39,6 +39,7 @@
     "./types": {
       "types": "./lib/types/documents/types.d.ts"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "files": [
@@ -46,6 +47,7 @@
     "lib/**/*.js.map",
     "lib/**/*.d.ts",
     "skills",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
