@@ -49,9 +49,20 @@ const SETTINGS_ENTRY_ID = "dsh-plugin-log-ui";
  * under, so the namespace a live stand already wrote is read back unchanged.
  */
 const ROW_CONFIG_KEY = `@yadsh/dsh-plugin-log-ui#${SETTINGS_ENTRY_ID}`;
-/** The one-liner the page shows for this row in its `summary` view. */
+/**
+ * The one-liner of this plugin's row. Kept equal to the `description` field of
+ * `package.json` — the host reads the row's sentence from there, so the row reads
+ * the same whichever way the sentence reaches the page. Pinned by a test.
+ */
 const ROW_SUMMARY =
-  "Levels and readable file output for registered server plugins.";
+  "DSH settings UI for shared plugin logging levels and file format";
+/**
+ * The card header's own line, deliberately not {@link ROW_SUMMARY}: the page above
+ * this card already shows the row's one-liner, and a card that repeats it puts one
+ * sentence on the screen twice.
+ */
+const CARD_SUMMARY =
+  "Default level, file format, and a per-plugin override, applied live.";
 const REFRESH_INTERVAL_MS = 2_000;
 const LEVELS: readonly ManagedPluginLogLevel[] = [
   "trace",
@@ -188,7 +199,7 @@ function PluginLogSettingsCard({ settingsForm, inspect }: CardProps) {
   return (
     <CardShell
       title="Plugin logging"
-      description={ROW_SUMMARY}
+      description={CARD_SUMMARY}
       badge={
         <span className="dsh-plugin-card__badge">
           {snapshot.consumers.length} active
@@ -306,13 +317,23 @@ export const inject = ["slots", "configForms", "remote", "sidebarRightTabs"];
  * list of its own, so the card is mounted inside a plugin-owned `<ul>` — AGENTS.md
  * keeps the `ul > li` pair that the shell's own styling is written against.
  *
- * The page renders this one entry in two views, and both call sites are the
- * host's own: `RowDetail` puts the row's description into a `<p>`, falling back to
- * this entry under `{ view: "summary" }` when the row declares none
- * (`@deepseek-ai/dsh-client-ui-plugin-manager@0.1.7-rc.2`, `lib/client.js:1841`),
- * and renders it under `{ view: "page", form }` in the configuration section below
- * (`:1852`). The summary therefore lands inside the page's `<p>`, so it returns the
+ * The page calls this one entry in two views, and both call sites are the host's:
+ * `RowDetail` writes the row's description into a `<p>` and asks this seat for it
+ * under `{ view: 'summary' }` when the row declares none
+ * (`PluginManagerPage.tsx:491`), and renders the configuration section under
+ * `{ view: 'page', form }` (`:495`) — at the tag `dsh-v0.1.7-rc.2`. The contract
+ * agrees: `view` carries exactly those two values (`slot-contract.ts:22`) and the
+ * row seat's own docblock promises the missing-description fallback (`:100`).
+ * `tests/host-seat-contract.test.ts` reads both sites out of the installed package,
+ * so a host that stops asking for the summary fails the suite rather than leaving
+ * this branch dead. The summary lands inside the page's `<p>`, so it returns the
  * sentence as text and never a second card.
+ *
+ * For this bundle the summary call is not currently reached: the row's description
+ * comes from the installed manifest's `description` field, which this package
+ * declares (`packages/boot/app-boot/src/package-meta.ts:156`), so the page's `<p>`
+ * is filled before it would ask. The answer is kept because the seat is entitled to
+ * give it, and `ROW_SUMMARY` is kept equal to that manifest field.
  */
 function PluginLogSettingsEntry(props: CardProps) {
   if (props.view === "summary") return ROW_SUMMARY;

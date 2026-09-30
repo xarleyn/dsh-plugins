@@ -307,16 +307,41 @@ as the namespace**, so the join-key insight below survives `rc.2` untouched.
 makes the bullet above ("rendered with `{ view: 'page', form }`") understate the
 seat: `RowDetail` writes the row's description into a `<p>` and, when the row
 declares none, asks `plugins.row.config` for that sentence under
-`{ view: 'summary' }`. Measured on the **shipped bundle** rather than the source
-file — `@deepseek-ai/dsh-client-ui-plugin-manager@0.1.7-rc.2`, `lib/client.js:1841`
-for the summary seat against `:1852` for the page seat — because
-`PluginManagerPage.tsx` is not in this repository, so no source line for the
-summary seat is claimed here. `slot-contract.d.ts:110` agrees in prose: "An absent
-description falls back to the entry's `view: 'summary'`." A card that owns a row is
-therefore rendered **twice**, and its `summary` pass must return text rather than
-its shell — the page puts it inside its own `<p>`, so a card there would nest an
-`<li>` in a paragraph. `dsh-plugin-log-ui` (#651) registers this seat and answers
-both shapes; the wave (#646) moves further cards onto it.
+`{ view: 'summary' }`. Measured in the host's own source at the target tag
+(`packages/client/ui-plugin-manager/src/client/PluginManagerPage.tsx:491` for the
+summary seat against `:495` for the page seat, `dsh-v0.1.7-rc.2`) and declared in
+`slot-contract.ts` in prose: `view` is `'summary' | 'page'` (`:22`), and the row
+seat's docblock says "An absent description falls back to the entry's
+`view: 'summary'`" (`:100`). A card that owns a row is therefore rendered
+**twice**, and its `summary` pass must return text rather than its shell — the
+page puts it inside its own `<p>`, so a card there would nest an `<li>` in a
+paragraph. `dsh-plugin-log-ui` (#651) registers this seat and answers both
+shapes; the wave (#646) moves further cards onto it.
+
+[verified] **and the summary pass is not reached by a bundle that declares a
+`description` in its manifest.** The row's `meta` is read from the *installed
+package.json* (`packages/boot/app-boot/src/package-meta.ts:148-156`, joined onto
+the row at `packages/boot/plugin-manager/src/index.ts:650-652`): the title falls
+back to the manifest's `name`, its description to the manifest's `description`
+(`packages/client/ui-plugin-manager/src/client/presentation.ts:127-131`). Our
+bundles all declare a `description`, so `PluginManagerPage.tsx:491`'s `??` never
+asks the seat — the row's one-liner on a live stand is the manifest field, and an
+entry that returns text from its `summary` view is answering a call the page does
+not make for these bundles. Keep the answer anyway (the contract entitles a row
+that declares nothing to it) but make it *equal to the manifest field*, or the
+same row reads one way from the manifest and another from its card.
+**What the manifest cannot give you is a human title**: with no
+`locale/<lang>.json` beside the manifest, the row's heading *is* the package name
+(`@yadsh/<pkg>`), and our card's own header is the only place a phrase like
+"Plugin logging" appears. The host mechanism for that is a `locale/en.json`
+carrying `{"meta": {"title": …}}`, exported as `./locale/en.json` and listed in
+`files` — first-party plugins do exactly this
+(`packages/experimental/inspector/`). No package in this repository ships one
+yet, and the export must name the concrete file: the host resolves
+`<specifier>/locale/en.json` as an address, and this repository's package gate can
+stat every `exports` target (`packages/plugin-scripts/run-verify-package.mjs:154-166`,
+opt-in through `exportsBuilt`, which a wildcard target would fail). Needs its own
+card and one browser check.
 
 Three refinements the `rc.1` pass missed, all **[verified]** at both tags (so
 they were never `rc.2` changes — they were gaps in this document):
@@ -364,14 +389,26 @@ so the namespace `dsh-ui-repair` is unchanged, and the join key becomes
 join key") survives through the row id — we do not have to invent anything.
 
 ```tsx
-export const inject = ["slots", "locale", "configForms"];   // was ["slots", "settingsScope"]
+export const inject = ["slots", "configForms"];   // was ["slots", "settingsScope"]
 
 ctx.slots.inject("plugins.row.config", () => ctx.slots.register({
   name: "plugins.row.config",
   key: "@yadsh/dsh-ui-repair#dsh-ui-repair",
-  locale: "dsh-ui-repair",
 }, UIRepairCard));
 ```
+
+[verified] **and the register payload takes `key`, not `label`.** The option
+shape is chosen by the slot's kind (`@deepseek-ai/dsh-client-ui-slots`,
+`KindOptions`, `lib/types/index.d.ts:560-583`): `keyed` cells carry `key` and an
+optional `priority`, while `id`, `order` and `label` belong to `list` cells — so
+`label` is available on `plugins.item` (whose docblock says "`label` is the
+card's title") and is *not a legal option* on `plugins.row.config`. `locale` is
+optional on every kind and does something narrower than a title: declaring a
+dictionary namespace synthesises the `t` seat onto the component props, and
+"rendering requires an installed locale face — fails loud otherwise"
+(`index.d.ts:604-610`). A card whose copy is inline English gains nothing from it
+and risks the loud failure. Where the row's *display* name comes from instead is
+the manifest question above.
 
 `ConfigFormSnapshot<T>` is `{ status: 'loading'|'ready'|'unavailable', value, base,
 user, revision, writable, mode: 'host'|'memory' }` — same three layers
@@ -468,9 +505,19 @@ plugin's `apply()` actually registered, with the two prop shapes `RowDetail` pas
 (`{ view: 'page', form }` and `{ view: 'summary' }`), and holds a stored level,
 format and per-plugin override in the stand for `ctx.configForms.get(rowId)` — so
 the read-back of a value written before the move, and the write of a change through
-that same namespace's form, are now measured rather than assumed. **[unverified]**
-shrinks to what a test cannot reach: the deployed Host page occupying the seat and
-answering the row's configure control. That row is #646's, not this document's.
+that same namespace's form, are now measured rather than assumed. The shapes those
+tests hand over are no longer the tests' own invention either:
+`plugins/dsh-plugin-log-ui/tests/host-seat-contract.test.ts` reads the installed
+`@deepseek-ai/dsh-client-ui-plugin-manager` bundle and its published
+`slot-contract.d.ts` and asserts that the page still calls the row seat exactly
+twice, once with `view: 'summary'` and no `form`, once with `view: 'page'` and the
+`form`, and that `view`'s union still names both. That is a CI-visible pin: a host
+release that changes the seat fails the suite on the version bump instead of
+leaving a `summary` branch quietly dead.
+**[unverified]** shrinks to what neither test can reach: the deployed Host page
+occupying the seat and answering the row's configure control, the row's heading as
+the manifest supplies it, and the focus ring of §4.3 item 3. That pass is #646's,
+not this document's.
 
 **2. [verified] the host chrome moved off our `AGENTS.md` shell contract between
 `rc.1` and `rc.2`.** The structure is the same (`CardHead` at
@@ -712,6 +759,14 @@ Also **[source]**, no compile error but runtime-relevant:
   non-loopback browser already got read-only settings at 0.1.5, which is why
   `AGENTS.md` routes must-work-without-loopback UI to `settings.plugins.tab`.
   **No availability regression** — do not treat this as a 0.1.7 blocker.
+  **[verified] and moving a card onto `plugins.row.config` does not change it
+  either:** the memory/host split sits on the *namespace*, which the move carries
+  over untouched, and `writable` is false in memory mode by definition
+  (`packages/client/ui-settings/src/client/config-form-types.ts:30-34`). A
+  non-loopback browser reads the same values on the Plugins page as it did on the
+  tab, and may not persist them from either. What a stand still has to confirm is
+  that the page itself is *reachable* to that session, not that its form is
+  writable.
 - **[verified] new at `rc.2`, and the sharpest item in this document — no compile
   error anywhere.** `tool-addition` / `tool-removal` blocks **started being
   emitted**: the types existed at `rc.1` but nothing produced them, whereas
@@ -1415,8 +1470,14 @@ whose version-plan arithmetic can silently drift.
    new qa-surface plan with `0.14.1`/`0.15.0`, not `0.12.x` (§6).
 4. New step 6 stands, none of which `nx test` covers: (a) one `plugins.row.config`
    card with a **real** read/write wired on a deployed page — #651 registered such a
-   card in this repository and its suite pins the client half of that wire, so what
-   the stand still owes is the Host's own seat occupancy (§4.3a item 1); (b) one
+   card in this repository, its suite pins the client half of that wire, and
+   `host-seat-contract.test.ts` pins the seat's two call sites against the installed
+   host package, so what the stand still owes is the Host's own seat occupancy
+   (§4.3a item 1) and the three things only a rendered page answers: the row's
+   configure control opening this entry, the row's heading being the installed
+   package's `name` while the human title lives inside our card (§4.2), and the
+   page's `<p>` carrying the manifest `description` rather than the entry's
+   `summary`; (b) one
    `agent/created` listener that throws, to watch creation roll back; (c) one qa
    lockdown stand with `lockdown.permissionPreset = "auto"` (D3);
    (d) one session that triggers a dynamic tool update, then check every
