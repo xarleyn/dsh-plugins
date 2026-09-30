@@ -213,6 +213,19 @@ describe("parseReport", () => {
     expect(parsed.headings.map((heading) => heading.text)).toEqual(["A"]);
   });
 
+  it("collects a heading nested in a quote or a list item, in body order", () => {
+    const parsed = parseReport(
+      "## First\n\n> ## Quoted\n\n- item\n  ## Listed\n\n## Last\n",
+    );
+
+    expect(parsed.headings.map((heading) => heading.id)).toEqual([
+      "audit-h-0-first",
+      "audit-h-1-quoted",
+      "audit-h-2-listed",
+      "audit-h-3-last",
+    ]);
+  });
+
   it("gives headings a deterministic anchor even for punctuation-only text", () => {
     const parsed = parseReport("# ***\n");
 
