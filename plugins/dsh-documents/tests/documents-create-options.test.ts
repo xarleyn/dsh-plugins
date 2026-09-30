@@ -139,6 +139,131 @@ describe("document_create", () => {
     ).rejects.toMatchObject({ code: "PATH_NOT_ALLOWED" });
   });
 
+  test("keeps an asset whose id traverses inside the assets directory", async () => {
+    // The probe from the audit: id `../../escaped` with a filename that cleans
+    // to nothing used to fall back to the raw id, so the bytes landed beside the
+    // artifact root instead of inside `assets/`.
+    const result = await runtime().create(
+      {
+        content: "# Report",
+        formats: ["docx"],
+        filename: "report",
+        assets: [
+          { id: "../../escaped", filename: "...", dataRef: pngDataUri() },
+        ],
+      },
+      scope(),
+    );
+    const bundle = path.dirname(result.manifestPath);
+    expect(await readdir(path.join(bundle, "assets"))).toEqual(["escaped.png"]);
+    expect(
+      (await readdir(path.dirname(bundle))).filter((name) =>
+        name.endsWith(".png"),
+      ),
+    ).toEqual([]);
+  });
+
+  test("names an asset after a cleaned id, whatever the id spells", async () => {
+    const cases: readonly (readonly [string, string])[] = [
+      ["..\\..\\secrets", "secrets.png"],
+      ["/etc/passwd", "passwd.png"],
+      ["C:\\evil.exe", "evil.png"],
+      ["...", "document.png"],
+    ];
+    for (const [id, storedName] of cases) {
+      const result = await runtime().create(
+        {
+          content: "# Report",
+          formats: ["docx"],
+          filename: "report",
+          assets: [{ id, dataRef: pngDataUri() }],
+        },
+        scope(),
+      );
+      const bundle = path.dirname(result.manifestPath);
+      expect(await readdir(path.join(bundle, "assets"))).toEqual([storedName]);
+      expect(
+        (await readdir(path.dirname(bundle))).filter((name) =>
+          name.endsWith(".png"),
+        ),
+      ).toEqual([]);
+    }
+  });
+
+  test("audits a reference-style image against the rule the inline form meets", async () => {
+    for (const content of [
+      "![x][image]\n\n[image]: https://example.invalid/demo.png\n",
+      "![image][]\n\n[image]: https://example.invalid/demo.png\n",
+      "![image]\n\n[image]: https://example.invalid/demo.png\n",
+      "![image]\n\n[image]: <https://example.invalid/demo.png>\n",
+      "![image]\n\n   [IMAGE]: https://example.invalid/demo.png\n",
+      "![x] [image]\n\n[image]: https://example.invalid/demo.png\n",
+      "![x](<https://example.invalid/demo.png>)\n",
+    ]) {
+      await expect(
+        runtime().create({ content, formats: ["docx"] }, scope()),
+      ).rejects.toThrow(/remote image/u);
+    }
+  });
+
+  test("refuses a remote target hidden behind a benign duplicate definition", async () => {
+    // The renderer may keep the first definition of a label or the last; the
+    // audit reads both, so neither spelling slips past it into a network fetch.
+    await expect(
+      runtime().create(
+        {
+          content:
+            "![x][image]\n\n[image]: assets/shot.png\n[image]: https://example.invalid/demo.png\n",
+          formats: ["docx"],
+          assets: [{ id: "shot", dataRef: pngDataUri() }],
+        },
+        scope(),
+      ),
+    ).rejects.toThrow(/remote image/u);
+  });
+
+  test("refuses a reference-style image that leaves the assets directory", async () => {
+    for (const content of [
+      "![x][image]\n\n[image]: ../../secret.png\n",
+      "![image]\n\n[image]: assets/../other.png\n",
+    ]) {
+      await expect(
+        runtime().create({ content, formats: ["docx"] }, scope()),
+      ).rejects.toMatchObject({ code: "INVALID_ASSET" });
+    }
+  });
+
+  test("rewrites a reference-style image to the stored asset", async () => {
+    const assetPath = path.join(workspace, "screens", "shot.png");
+    await mkdir(path.dirname(assetPath), { recursive: true });
+    await writeFile(assetPath, pngBytes());
+    const result = await runtime().create(
+      {
+        content: "# Report\n\n![Shot][s]\n\n[s]: screens/shot.png\n",
+        formats: ["docx"],
+        filename: "report",
+        assets: [{ id: "shot", path: "screens/shot.png" }],
+      },
+      scope(),
+    );
+    const source = await readFile(result.source?.path ?? "", "utf8");
+    expect(source).toContain("[s]: assets/shot.png");
+  });
+
+  test("leaves a reference-style link untouched — only images are fetched", async () => {
+    const result = await runtime().create(
+      {
+        content:
+          "See [the report][r].\n\n[r]: https://example.invalid/report\n",
+        formats: ["docx"],
+        filename: "report",
+      },
+      scope(),
+    );
+    const source = await readFile(result.source?.path ?? "", "utf8");
+    expect(source).toContain("[r]: https://example.invalid/report");
+  });
+
   test("refuses raw markup unless the deployment opts in", async () => {
     await expect(
       runtime().create(

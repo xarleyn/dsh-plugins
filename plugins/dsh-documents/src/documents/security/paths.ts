@@ -97,6 +97,32 @@ export async function resolveInsideRoot(
 }
 
 /**
+ * Turn one caller-supplied string into a file-name stem: a label, never a path
+ * (§32). Returns `""` when nothing usable is left, which is the caller's signal
+ * to fall back.
+ */
+export function sanitizeStem(value: string): string {
+  // A Windows-style separator survives `path.basename` on POSIX, so both are
+  // cut explicitly before any further normalization.
+  const basename = value.split(/[\\/]+/u).pop() ?? "";
+  return (
+    basename
+      .replace(/\.[A-Za-z0-9]{1,8}$/u, "")
+      .normalize("NFC")
+      /* eslint-disable-next-line no-control-regex -- control characters are the point */
+      .replace(/[\u0000-\u001F\u007F]/gu, "")
+      .replace(/[<>:"|?*]+/gu, "")
+      .replace(/[\s._]+/gu, "-")
+      .replace(/-{2,}/gu, "-")
+      .replace(/^[-.]+|[-.]+$/gu, "")
+  );
+}
+
+/** Used when even the fallback stem holds nothing a file can be named after. */
+const LAST_RESORT_STEM = "document";
+const MAX_STEM_CHARS = 80;
+
+/**
  * Turn a caller-supplied filename into a safe file name (§32).
  * `../../foo report?.docx` becomes `foo-report.docx`.
  */
@@ -112,22 +138,15 @@ export function sanitizeFilename(
         ? extension
         : `.${extension}`;
   const source = (requested ?? "").trim();
-  let stem = "";
-  if (source !== "") {
-    // A Windows-style separator survives `path.basename` on POSIX, so both are
-    // cut explicitly before any further normalization.
-    const basename = source.split(/[\\/]+/u).pop() ?? "";
-    const withoutExtension = basename.replace(/\.[A-Za-z0-9]{1,8}$/u, "");
-    stem = withoutExtension
-      .normalize("NFC")
-      /* eslint-disable-next-line no-control-regex -- control characters are the point */
-      .replace(/[\u0000-\u001F\u007F]/gu, "")
-      .replace(/[<>:"|?*]+/gu, "")
-      .replace(/[\s._]+/gu, "-")
-      .replace(/-{2,}/gu, "-")
-      .replace(/^[-.]+|[-.]+$/gu, "");
-  }
-  const safeStem = stem === "" ? fallbackStem : stem.slice(0, 80);
+  const stem = source === "" ? "" : sanitizeStem(source);
+  // The fallback is caller-supplied as well, so it is cleaned by the same rule
+  // rather than returned raw: handing back `../../escaped` verbatim is how a
+  // caller-controlled id reached the filesystem as a path.
+  const safeStem =
+    (stem === "" ? sanitizeStem(fallbackStem) : stem).slice(
+      0,
+      MAX_STEM_CHARS,
+    ) || LAST_RESORT_STEM;
   return `${safeStem}${suffix}`;
 }
 
