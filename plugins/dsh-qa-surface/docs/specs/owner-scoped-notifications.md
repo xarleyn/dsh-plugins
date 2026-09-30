@@ -111,9 +111,11 @@ has:
 - Fires on the transition `phase: "running" → "ready"` **for a chat the
   client has ever bound or listed** — that is, an id in
   `chatIds()` — and where the previous running snapshot had
-  `running === true` **and** the client saw the turn start
-  (`pendingSubmission?.sawRunning` at `QaSessionController.ts:1440-1457`
-  is the precedent). A chat that never ran in this browser is not a
+  `running === true` **and** the client saw the turn start. The
+  controller's `pendingSubmission?.sawRunning` was the precedent for
+  that gate; the flag is gone from `QaSessionController` and the
+  shipped source keeps its own per-chat reading of it instead (§12).
+  A chat that never ran in this browser is not a
   completed turn; a chat that started before the tab opened is not
   attributed to this user.
 - Does **not** fire on reconnect (`phase: "reconnecting"`), on error
@@ -436,8 +438,18 @@ under `plugins/dsh-qa-surface/tests/`:
   `running: true → false` for the bound chat; does not fire on
   reconnect, error, unmount, cold-start projection of an already
   running chat, or on the *first* frame of a session that started
-  before the tab opened (mirrors `sawRunning` in
-  `QaSessionController.ts:1440-1457`).
+  before the tab opened (the shipped gate is the per-chat reading in
+  `turn-completion-source.ts`; §3.1, §12). The cases drawn across a
+  gap enter with the reading the paused frame is asked to re-project
+  — a still-running row for the `unwatched` half, a trusted idle for
+  the `stale` half — and §12 names, by mutation, what removing either
+  half costs.
+- `session-controller-reconnecting-frame.test.ts` — the two edges a
+  reconnect hands the page are set by hand in both orders (#479):
+  the link's return is published on the strength of the link alone,
+  while the rows still say what the gap left them saying, and a
+  refreshed list that arrives over a down link does not retire the
+  frame that names the gap.
 - `background-completion-source.test.ts` — non-bound owned chat
   running→idle fires once; non-owned chat running→idle does not fire;
   admin-visible foreign chat does not fire when
@@ -482,8 +494,14 @@ AGENTS.md §QA surface release notes.
    Deferred — likely needs the same source, different filter.
 4. **What is the correct cold-start behaviour for the background
    source when several owned chats are already running when the page
-   loads?** The initial projection must set the "was running" baseline
-   without emitting completions. Call out in implementation.
+   loads?** Answered (#483): the initial projection sets a baseline of
+   *running, and this page did not see it start* — not plain *running*,
+   which the next frame would report as a finished turn. §3.1 asks for
+   the start to be watched and `docs/CONFIGURATION.md` promises that a
+   chat already running when the page opened is not attributed to the
+   reader, so the run a page merely found under way ends in silence,
+   and the first turn this page watches begin is reported once. What
+   the same rule does to the frames around a reconnect is §12.
 5. **Should the sidebar `running` dot gain a "was completed since you
    last looked" dot with a click-to-clear?** UI only, no new
    plumbing; likely worth pairing with Phase 2.
@@ -548,6 +566,122 @@ notifications.ts` the wiring. `config.notifications`
 
 **Where this departs from the design above.**
 
+- **§3.1's observed start is the gate, and it holds for the whole run
+  (#483).** The differ keeps a per-chat reading with four states —
+  `idle`, `watched`, `unwatched`, `stale` — and reports a turn only
+  where a `watched` run is seen ending in a frame the browser could
+  vouch for. Before this, the first frame that found a chat running was
+  re-projected in silence and the frame after it reported that run's
+  end: the promise of §3.1 and `docs/CONFIGURATION.md` held for one
+  frame and was broken by the next, so a turn that began before the tab
+  opened was still attributed to the reader who opened it.
+  What the link going down does to that evidence is the same rule
+  rather than a new one, and it is why the fourth state exists. A frame
+  read through a gap vouches for neither fact a reading is made of, but
+  which way `running` pointed in it still decides what the page is short
+  of: the start of a run it cannot account for (`unwatched`), or an idle
+  reading it cannot yet trust (`stale`). These are not the same hole,
+  because only one of them closes by itself — the unaccounted run ends,
+  its row moves, and the page reads the chat idle over a live link.
+  `stale` is the missing half of that evidence named. `paused` goes back
+  off with the connection, while the rows are rewritten by a re-pull the
+  host client starts once the link is up (`SessionManager.handleConnected`
+  → `refreshList`, an RPC), so the frames between the two carry the list
+  the drop left. Reading one of those as a live idle armed the baseline
+  and credited the run after it: measured on the built differ, `idle` →
+  `paused+idle` → `live+idle` → `live+running` → `idle` raised a notice
+  for a turn that might have begun anywhere inside the gap, against the
+  promise `docs/CONFIGURATION.md` makes. A row that has not moved since
+  the gap is the reading the gap left behind, so it now arms nothing, and
+  that turn is silent with the others: the chat earns its baseline back
+  when its own row moves, which bounds the cost at one turn per chat —
+  the run the page could not account for, then normal service.
+  Whether the host list lets a browser vouch for anything across a gap at
+  all is measured below, and the answer is that it does not; the silence is
+  written into `docs/CONFIGURATION.md` as the shipped promise, so a stand that
+  needs the notice through a gap is a change of the rule rather than an
+  undocumented difference from the docs. The same
+  reading also covers a chat whose row leaves the sidebar and comes back:
+  while the row is away the differ holds no reading for that chat at all,
+  so its run is found rather than watched, and it ends silently too —
+  which is written into `docs/CONFIGURATION.md` beside the link case. One
+  corner of that case stays with #479: a row that leaves the list for a
+  local reason (this browser's own index, not the host) and returns idle
+  inside an unvouched window arms its baseline the way a cold start does,
+  because the differ has no reading left to compare it against.
+  What #479 does not need to build again: the invalidation itself —
+  `readSighting` leaving a paused frame `unwatched` or `stale` according
+  to what it read, the refusal to arm a baseline on a row that has not
+  moved since, and the dropping of a reading whose chat left the list.
+  All three are covered by the cold-start and reconnect cases under
+  `tests/client/notifications/`, and measured rather than asserted: taking out
+  either half of the `stale` transition — the paused idle that leaves it, or the
+  live frame whose row has not moved keeping it — fails the same eight cases,
+  five of them written by #479 (two in the differ, three at page level) and
+  three by the cases #483 added with the fourth reading. The ordering half is
+  settled by hand rather than assumed: `tests/session/session-controller-reconnecting-frame.test.ts`
+  draws both orders at the seam where the page picks the two edges up — the
+  link's return published on the strength of the link alone, with the rows
+  still the ones the gap left, and the refreshed list arriving while the page
+  still reports itself reconnecting without retiring that frame. What the stand
+  still owes is narrower than the ordering: whether a live Host can fit a drop
+  and its return into the space between two renders, which is the next bullet.
+- **The silence covers a gap the page was shown (#479).** Every sentence above
+  is about frames the differ was handed, and one frame carries the whole gap:
+  the differ's `paused` input is the page's own
+  `state.phase === "reconnecting"` (`QaSurface`, where it builds
+  `useQaTurnNotifications`), and the controller reaches that phase only where a
+  connection was once established and then went (`connectedOnce`, read in
+  `QaSessionController.publish`). So the rule as shipped reads: every frame
+  taken while the page reports itself reconnecting is worth nothing, and what
+  the restored link delivers is adopted only as its rows move. Turn that round
+  and it is the boundary: a gap that produced no such frame produces no silence
+  either. If a drop and its return fit between two renders, the reading the page
+  held before the gap crosses it untouched, and each reading fares differently:
+  a chat that was `idle` is credited with a start it never saw, so a turn that
+  began inside the blink is reported as one the reader had been waiting for,
+  while a chat that was `watched` keeps the evidence it had and is reported late
+  rather than never. No case in this package can rule that out, because the differ
+  only ever receives what the page rendered, and the seam cases above draw two
+  publishes, not one merged render. The primitive that would close the boundary
+  without measuring is already in the component: `QaSurface` holds
+  `props.connection`, a `ConnectionGenerationState` whose `getSnapshot()` names
+  the active generation and reads `undefined` before readiness and while
+  reconnecting, and that generation moves at connect — independently of React's
+  batching and of the identity of a foreign store. Two consecutive frames whose
+  generations differ are then known to straddle a gap the page never displayed,
+  which is what no rendered `reconnecting` frame can tell the differ. Re-aiming
+  the rule from the rendered phase onto that counter would cost more than it
+  buys: a generation can be replaced while the screen keeps showing the same
+  rows, so every run that began just before one would go uncredited even where
+  the page did see it start. It is named here, and the live pass decides whether
+  the merged render it protects against is a thing the stand produces.
+- **What a browser may vouch for across a gap is measured, not assumed (#479).**
+  The option this section left open — clearing `stale` on the fact that the list
+  was re-read rather than on a row moving — has no signal to stand on. The
+  installed host client publishes the list as
+  `{ ids, byId, phase, projectionsBySession }`
+  (`@deepseek-ai/dsh-api-session-controller`, the dependency
+  `docs/COMPATIBILITY.md` names): `phase` is `pending | ready` and monotone, so
+  a re-pull after a reconnect does not take it back to `pending`; the client's
+  own in-flight flag is dropped by the projection that builds the store the page
+  subscribes to; and `ids`/`byId` are rebuilt as fresh objects on every publish,
+  including the one that happens before the answer arrives, so a changed
+  reference says only that something was published, not that the Host answered.
+  A reconnect's re-pull is fire-and-forget, unawaited, which is what makes the
+  live-then-stale-rows window normal rather than exceptional. So arming a
+  baseline on the chat's own row moving is not a stand-in for a better signal
+  this page has not been given yet: on this contract the row is the signal, and
+  the one-turn silence it costs is the price of the promise §3.1 makes.
+  The same reading narrows the boundary above without a stand: the rows the
+  re-pull brings back reach the page only when the Remote call resolves, which is
+  a frame of its own, later than the connection edge that cleared `paused` — and
+  the publish the client makes in that same turn still carries the rows the gap
+  left. So a render cannot merge the link's return with an answer that has not
+  arrived; what it can merge is the pair of *connection* notifications, a link
+  that went and came back before the page was drawn once. That, and only that, is
+  the case the boundary names, and it is the one number the live pass still has
+  to produce.
 - §3.5's five booleans are two: `inApp` and `desktop`. A preference is only
   worth storing if a channel exists to honor it, and the shipped dispatcher has
   two — the line in the page and the notice the page hands to the operating

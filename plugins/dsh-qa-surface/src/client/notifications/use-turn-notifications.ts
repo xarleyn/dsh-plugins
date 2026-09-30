@@ -22,6 +22,7 @@ import {
 import {
   settleTurnCompletions,
   type QaChatActivity,
+  type QaTurnSighting,
 } from "./turn-completion-source.js";
 
 /** Lines the stack holds; an older one is dropped rather than pushed away. */
@@ -44,7 +45,12 @@ export interface QaTurnNotificationsInput {
       input: QaAccountNotificationsInput,
     ) => Promise<string | null>;
   };
-  /** The bound chat reports `reconnecting` while the host link is down. */
+  /**
+   * The link is down, so the rows this page holds are the ones the drop left and
+   * no run read among them is this reader's news. The flag goes back off with the
+   * link, which is sooner than the host list is read again; the reading named
+   * `stale` is what carries the rest of that gap.
+   */
   readonly paused: boolean;
   readonly activeSessionId: string | null;
   readonly onSwitch: (sessionId: string) => void;
@@ -59,8 +65,8 @@ export interface QaTurnNotifications {
 
 /**
  * Turn-completion notices for the chats this page owns: watch the sidebar's
- * rows, and when one of them stops running, say so in the channels the reader
- * and the deployment allow.
+ * rows, and when one of them stops running after this page watched that run
+ * begin, say so in the channels the reader and the deployment allow.
  */
 export function useQaTurnNotifications(
   input: QaTurnNotificationsInput,
@@ -75,7 +81,7 @@ export function useQaTurnNotifications(
     activeSessionId,
     onSwitch,
   } = input;
-  const seen = useRef(new Map<string, boolean>());
+  const seen = useRef(new Map<string, QaTurnSighting>());
   const [items, setItems] = useState<readonly QaTurnNoticeItem[]>([]);
   const [prefs, setPrefs] = useState<QaNotificationPrefs>(() =>
     readNotificationPrefs(storage, storageKey),

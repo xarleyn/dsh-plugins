@@ -13,11 +13,54 @@ export interface QaTurnCompletion {
   readonly at: number;
 }
 
+/**
+ * What this page last read about one chat's turn. Four readings, because two
+ * facts decide whether the end of a run is this reader's news: whether the chat
+ * was running, and whether the frame that said so was one the browser could
+ * vouch for. A frame read while the link was down settles neither fact, but the
+ * way `running` pointed in it still decides what this page is short of: the
+ * start of a run it cannot account for, or an idle reading it cannot yet trust.
+ */
+export type QaTurnSighting =
+  /**
+   * Not running, read while the link held — so a run seen next is one this
+   * page watches begin.
+   */
+  | "idle"
+  /**
+   * Running, and this page saw this very run begin: it held `idle` in the first
+   * frame that found the chat running. The frames after that keep the reading —
+   * the evidence is the witnessed start, so a run does not lose it by lasting
+   * longer than one frame.
+   */
+  | "watched"
+  /**
+   * Running, with no evidence of where the run began: the page found the chat
+   * running without seeing it start — which is how the page opens, and how a run
+   * that outlived the link looks once the link is back. A run ending here is not
+   * this reader's news.
+   */
+  | "unwatched"
+  /**
+   * Not running, but read only in frames the browser cannot vouch for: the link
+   * was down when this was read, or it has returned and the chat's row has not
+   * moved since. A row that has not moved is still the reading taken before the
+   * gap and says nothing about now: it arms no baseline, because a run that
+   * began inside the gap would leave it exactly as it is. Only the row moving
+   * ends it.
+   */
+  | "stale";
+
 export interface QaTurnCompletionOptions {
   /**
    * Re-project the baseline and report nothing. While the browser is
    * reconnecting the list it holds is stale, and the first frame after the
-   * link returns would otherwise read as a batch of finished turns.
+   * link returns would otherwise read as a batch of finished turns. This flag
+   * goes back off with the link, which is sooner than the host list is read
+   * again, so what a pause costs this page is carried by the readings rather
+   * than by the flag — see `stale`. A gap that left no frame with this flag set
+   * is named as a rule of `docs/specs/owner-scoped-notifications.md` §12, not
+   * as a detail of this file.
    */
   readonly paused?: boolean;
   readonly now?: number;
@@ -31,13 +74,22 @@ export interface QaTurnCompletionOptions {
  * the chat. The host list is the whole deployment's, so anything wider than
  * these rows would tell one user that another user's turn had stopped.
  *
- * `seen` is the caller's per-page map of the last state read. A chat is
- * reported only after this page watched it run and then watched it stop, so a
- * turn that started before the tab opened is not attributed to this user by
- * its first frame, and a chat that leaves the list leaves no notice behind.
+ * `seen` is the caller's per-page map of the last reading, and a chat is
+ * reported only when a `watched` run is seen ending in a frame the browser
+ * could vouch for. So the notice always tells the reader about a turn they were
+ * waiting for, and never about one that was already under way when they could
+ * not see it: a chat found running on the page's first frame, or in the frames
+ * around a reconnect, is `unwatched`, and its end passes in silence. The end of
+ * the first run after a gap passes in silence too, in a chat whose row never
+ * moved across it — the only idle this page holds for that chat was read
+ * through the gap, and a run that began inside the gap would look exactly like
+ * it; this reading arms nothing until the chat's own row moves. The run the page
+ * watches start is its own: the next turn of the same chat is seen beginning
+ * from the idle reading that closed this one, so a page that stays open keeps
+ * notifying — once per turn.
  */
 export function settleTurnCompletions(
-  seen: Map<string, boolean>,
+  seen: Map<string, QaTurnSighting>,
   chats: readonly QaChatActivity[],
   options: QaTurnCompletionOptions = {},
 ): QaTurnCompletion[] {
@@ -48,10 +100,28 @@ export function settleTurnCompletions(
   }
   const completions: QaTurnCompletion[] = [];
   for (const chat of chats) {
-    const wasRunning = seen.get(chat.id);
-    seen.set(chat.id, chat.running);
-    if (wasRunning !== true || chat.running || paused) continue;
-    completions.push({ sessionId: chat.id, title: chat.title, at: now });
+    const previous = seen.get(chat.id);
+    if (!paused && !chat.running && previous === "watched") {
+      completions.push({ sessionId: chat.id, title: chat.title, at: now });
+    }
+    seen.set(chat.id, readSighting(previous, chat.running, paused));
   }
   return completions;
+}
+
+function readSighting(
+  previous: QaTurnSighting | undefined,
+  running: boolean,
+  paused: boolean,
+): QaTurnSighting {
+  // A frame the browser cannot vouch for settles neither fact, but which way it
+  // pointed decides what this page is waiting for.
+  if (paused) return running ? "unwatched" : "stale";
+  if (!running) {
+    // The same row the gap left behind is not new information about now.
+    return previous === "stale" ? "stale" : "idle";
+  }
+  return previous === "idle" || previous === "watched"
+    ? "watched"
+    : "unwatched";
 }
