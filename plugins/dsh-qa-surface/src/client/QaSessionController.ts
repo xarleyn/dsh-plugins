@@ -1039,7 +1039,10 @@ export class QaSessionController {
    * lazily ({@link materializeDraft}). Fixed-policy deployments cannot draft.
    *
    * A draft is a chat of its own, so entering one takes the screen the way
-   * {@link switchTo} does; see the note where the generation moves.
+   * {@link switchTo} does; see the note where the generation moves. Stopping the
+   * turn that was running first takes a round-trip, and a chat opened through it
+   * keeps the screen: the draft is what the visitor asked for before that click,
+   * so this call gives up rather than taking the chat back from under them.
    */
   async startDraft(policyChange = false): Promise<void> {
     if (
@@ -1051,6 +1054,7 @@ export class QaSessionController {
     )
       return;
     const previous = this.session;
+    const owned = this.generation;
     if (
       !this.compatibilityReadOnly &&
       previous?.getSnapshot().running === true
@@ -1060,6 +1064,13 @@ export class QaSessionController {
       } catch (error) {
         console.error("dsh-qa-surface: stop before draft failed", error);
       }
+      // Asking the Host to stop a running turn is a round-trip, and the visitor
+      // reaches the chat list through it. Whoever took the screen during that
+      // window owns it: a draft asked for before the trip would otherwise take
+      // the screen back, unbind the chat that had just been adopted, and answer
+      // its send with nothing — the same takeover this method's own generation
+      // raise exists to stop.
+      if (this.disposed || this.generation !== owned) return;
     }
     // Taking the screen from the chat it was showing moves the generation, as
     // every other path that retires a binding does: an adoption still looking
@@ -1582,10 +1593,10 @@ export class QaSessionController {
    * holds the session and the chat identity names it, so the caller may publish
    * what it kept for that chat — the draft it retired, the id it persisted.
    * `false` is a step back: the chat on screen moved on while this call waited,
-   * it took nothing and undid nothing of the chat that replaced it, and the
-   * caller must keep its own state as unclaimed — a draft that was never
-   * materialized stays a draft, and a chat that was never adopted is not
-   * persisted as the open one.
+   * it undoes nothing of the chat that replaced it and leaves the screen holding
+   * nothing of this one ({@link stepBack}), and the caller must keep its own
+   * state as unclaimed — a draft that was never materialized stays a draft, and a
+   * chat that was never adopted is not persisted as the open one.
    *
    * Any of those waits can outlive the operation it belongs to — the user moves
    * to another chat while a first send is still looking for its session. Two
@@ -1695,11 +1706,11 @@ export class QaSessionController {
         // it. Ask the two questions before spending a proof on the wrong chat,
         // and answer only for the session this call took — not for whichever
         // one the screen holds by the time the proof comes back.
-        if (!this.ownsAdoption(operation, binding.session)) return false;
+        if (this.stepBack(operation, binding.session)) return false;
         const step = await this.attestPolicy(report, binding.session);
         // A chat that moved on during the proof is attested by whichever
         // adoption holds it now, so this verdict is not this one's to write.
-        if (!this.ownsAdoption(operation, binding.session)) return false;
+        if (this.stepBack(operation, binding.session)) return false;
         if (step.kind === "refused") {
           if (
             !allowCompatibilityReadOnly ||
@@ -1714,10 +1725,11 @@ export class QaSessionController {
           this.operationError = null;
         }
       }
-      if (!this.ownsAdoption(operation, binding.session)) {
+      if (this.stepBack(operation, binding.session)) {
         // The chat on screen moved on while this adoption waited: what replaced
-        // it holds the identity and the binding now, so there is nothing here
-        // left to finish, and nothing of theirs to undo.
+        // it holds the identity now, so there is nothing here left to finish —
+        // and this call gives back the binding it installed, which is all the
+        // screen ever took from it.
         return false;
       }
       if (track) {
@@ -1734,11 +1746,17 @@ export class QaSessionController {
       // again. A session that never opened is not one this controller holds, so
       // it goes too; a session whose attestation was refused stays, because its
       // caller reads the transcript before deciding whether the chat may be
-      // replaced. None of this is ours to undo once a newer chat has retired the
-      // binding this call took: that chat owns the identity from then on.
+      // replaced. Once a newer chat has retired the binding this call took, none
+      // of it is ours to undo — that chat owns the identity from then on, and
+      // there is nothing of ours left installed.
       if (this.ownsAdoption(operation, binding.session)) {
         this.namedSession = null;
         if (!(error instanceof QaPolicyAttestationError)) this.unbind();
+      } else if (this.session === binding.session) {
+        // Left behind, and the failure is not a caller's to read any more: the
+        // hand that took the screen was the bootstrap, which retires nothing, so
+        // this adoption's own binding and subscriptions go with this throw.
+        this.unbind();
       }
       throw error;
     }
@@ -1749,6 +1767,29 @@ export class QaSessionController {
     // Deliberately not awaited: the palette is a convenience, and a chat must
     // open at once whether or not the skill and command registries answer.
     void this.refreshSlashCatalog(true);
+    return true;
+  }
+
+  /**
+   * Give up on an adoption the chat on screen has outgrown, and answer whether
+   * that is what happened (`true` — the caller has nothing left to publish).
+   *
+   * Past the binding this call installed a session of its own: the retained
+   * reference, the three subscriptions beside it, and whatever those
+   * subscriptions write on every frame. The path that took the screen usually
+   * retired all of that with its own {@link unbind} — but the bootstrap raises the
+   * generation while keeping the transcript readable until its own session
+   * exists, and an adoption left behind by it would otherwise go on holding a
+   * Host session nobody is in and publishing that chat's frames into the surface:
+   * each frame clears the error the bootstrap published and answers for a binding
+   * the page has given up on. Undoing the install is therefore this call's own
+   * hand — and only its own: the chat that already replaced this one holds the
+   * name, the subscriptions and the policy proof, and emptying its screen is the
+   * failure this method exists to prevent.
+   */
+  private stepBack(operation: number, session: SessionFace): boolean {
+    if (this.ownsAdoption(operation, session)) return false;
+    if (this.session === session) this.unbind();
     return true;
   }
 

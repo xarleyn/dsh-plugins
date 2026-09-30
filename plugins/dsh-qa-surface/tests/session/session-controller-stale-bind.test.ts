@@ -415,6 +415,217 @@ describe("QA session controller: an adoption the visitor left behind", () => {
     expect(world.faces.get(late)?.prompt).not.toHaveBeenCalled();
     controller.dispose();
   });
+
+  it("leaves nothing of its own behind when a bootstrap it cannot wait for takes the screen", async () => {
+    // Past the binding an adoption has installed a chat of its own: the retained
+    // reference, and the three subscriptions that answer every frame of that
+    // session with a publish. The hand that takes the screen here is the
+    // bootstrap, which raises the generation while deliberately keeping whatever
+    // transcript is on screen until its own session exists — so it retires
+    // nothing. If that bootstrap then fails, nothing ever unbinds this adoption:
+    // it would go on holding a Host session nobody is in, and each frame of that
+    // abandoned chat would clear the error the stand published.
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        session: { policy: "new-on-load" },
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
+    });
+    await controller.ensureSession();
+    await controller.startDraft();
+
+    let stalled = "";
+    let releaseAttestation!: (
+      value: Awaited<ReturnType<typeof world.secureSession>>,
+    ) => void;
+    world.createSession.mockImplementationOnce(async () => {
+      stalled = String(await world.create());
+      return { ok: true as const, value: stalled };
+    });
+    world.secureSession.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseAttestation = resolve;
+        }),
+    );
+    const sending = controller.send("Первый вопрос");
+    // Past the binding and inside the proof: the session is installed, so this is
+    // the abandonment that has something of its own to take back.
+    await until(() =>
+      world.secureSession.mock.calls.some(([, id]) => String(id) === stalled),
+    );
+
+    // The surface re-boots — another account, configuration or route — and the
+    // stand refuses to create the session this bootstrap is after.
+    world.createSession.mockImplementationOnce(async () => ({
+      ok: false as const,
+      error: {
+        code: "qa.session_create_refused",
+        message: "preset unavailable",
+      },
+    }));
+    const bootstrapping = controller.ensureSession();
+    releaseAttestation({
+      ok: true,
+      value: {
+        sessionId: stalled,
+        enabled: true,
+        agentPresetMatches: true,
+        workspaceMatches: true,
+        modelMatches: true,
+        sandboxModeMatches: true,
+        approvalIsNever: true,
+        permissionPreset: "qa-read-only",
+        toolPolicyLoaded: true,
+        toolAllowList: [],
+      },
+    });
+    expect(await sending).toBe(false);
+    await bootstrapping;
+
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: null,
+      error: expect.stringMatching(/Не удалось начать чат/u),
+    });
+    // The proof came back saying the session was fine, and it still owns nothing:
+    // the reference it retained is back with the Host.
+    const abandoned = world.references.filter(
+      (ref) => ref.sessionId === stalled,
+    );
+    expect(abandoned).toHaveLength(1);
+    expect(abandoned[0]?.release).toHaveBeenCalledOnce();
+
+    // And its subscriptions went with it: a frame of the abandoned chat reaches
+    // nobody, so the reason the stand gave stays over the composer instead of
+    // being wiped by a chat the visitor is not in.
+    const published = vi.fn();
+    controller.subscribe(published);
+    const stalledFace = world.faces.get(stalled);
+    stalledFace?.source.set({
+      ...stalledFace.source.getSnapshot(),
+      running: true,
+    });
+    expect(published).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().error).toMatch(/Не удалось начать чат/u);
+    controller.dispose();
+  });
+
+  it("leaves no binding behind when a subagent view is left on screen too", async () => {
+    // The same abandonment one wait earlier, on the only caller that asks for no
+    // attestation: a transcript the visitor opened and then walked away from.
+    // The session opens late, after the bootstrap has taken the screen and
+    // failed, and this is the last wait that adoption passes — so it is the only
+    // place its own install can still be taken back.
+    const world = harness(["sub-1"]);
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        session: { policy: "new-on-load" },
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
+    });
+    const subagent = world.faces.get("sub-1");
+    subagent?.source.set({
+      ...subagent.source.getSnapshot(),
+      openState: "opening",
+    });
+    const viewing = controller.viewSubagent("sub-1", "Транскрипт субагента");
+    await until(
+      () => (world.bindings.get("sub-1")?.target.mock.calls.length ?? 0) > 0,
+    );
+
+    world.createSession.mockImplementationOnce(async () => ({
+      ok: false as const,
+      error: {
+        code: "qa.session_create_refused",
+        message: "preset unavailable",
+      },
+    }));
+    const bootstrapping = controller.ensureSession();
+
+    // The transcript the visitor already left arrives, and proves nothing about
+    // the screen it would have taken over.
+    subagent?.source.set({
+      ...subagent.source.getSnapshot(),
+      openState: "open",
+    });
+    await viewing;
+    await bootstrapping;
+
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: null,
+      error: expect.stringMatching(/Не удалось начать чат/u),
+    });
+    const abandoned = world.references.filter(
+      (ref) => ref.sessionId === "sub-1",
+    );
+    expect(abandoned).toHaveLength(1);
+    expect(abandoned[0]?.release).toHaveBeenCalledOnce();
+    // A chat this browser never asked for was not added to its list either.
+    expect(controller.chatIds()).not.toContain("sub-1");
+    controller.dispose();
+  });
+
+  it("keeps the chat a switch opened during the stop of a running turn", async () => {
+    // Entering a draft stops the turn that is running first, and that is a
+    // round-trip — the one wait between chats that lets another chat be opened
+    // underneath it. The draft was asked for before the click that opened this
+    // one, so it has to give the screen back rather than resume as its owner:
+    // unbinding a session that had just been adopted leaves a visitor looking at
+    // an empty chat they never chose, whose every question then goes nowhere.
+    const world = harness(["other"]);
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig({
+        session: { policy: "new-on-load" },
+        ui: { showReset: true },
+        lockdown: { allowSessionReset: true },
+      }),
+    });
+    await controller.ensureSession();
+    const open = controller.getSnapshot().sessionId;
+    expect(open).not.toBeNull();
+    const openFace = world.faces.get(String(open));
+    openFace?.source.set({
+      ...openFace.source.getSnapshot(),
+      running: true,
+    });
+    let releaseCancel!: () => void;
+    openFace?.cancel.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          releaseCancel = () =>
+            resolve({ ok: true as const, value: { accepted: true as const } });
+        }),
+    );
+
+    const drafting = controller.startDraft();
+    await until(() => (openFace?.cancel.mock.calls.length ?? 0) > 0);
+
+    // The visitor changes their mind mid-round-trip and opens another chat.
+    await controller.switchTo("other");
+    const liveKey = controller.getSnapshot().chatKey;
+    releaseCancel();
+    await drafting;
+
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: "other",
+      chatKey: liveKey,
+      canSend: true,
+      error: null,
+    });
+    // The chat that won the screen is still a chat the next question rides.
+    expect(await controller.send("Второй вопрос")).toBe(true);
+    expect(world.faces.get("other")?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "Второй вопрос" }],
+      "queue",
+    );
+    controller.dispose();
+  });
 });
 
 /** Publish one session the Host had not listed yet, with a binding to match. */
