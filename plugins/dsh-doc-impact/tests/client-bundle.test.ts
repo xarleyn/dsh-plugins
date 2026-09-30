@@ -232,6 +232,21 @@ function faceOf(ctx: ReturnType<typeof makeCtx>): CardFace {
   return ctx.registered[0]!.options.inject!() as CardFace;
 }
 
+/**
+ * The seat's entry is a wrapper that picks the component for the view the page
+ * asked for, so a test calls one level down: the wrapper hands back the element,
+ * and rendering that element's component is what produces the view's own output.
+ */
+function renderEntry(
+  entry: (props: Record<string, unknown>) => any,
+  props: Record<string, unknown>,
+): any {
+  const element = entry(props);
+  return typeof element?.type === "function"
+    ? element.type(element.props)
+    : element;
+}
+
 describe("client bundle", () => {
   it("loads as a ModuleLoader module and registers the card on the Plugins page", async () => {
     const bundle = await loadBundle();
@@ -285,12 +300,12 @@ describe("client bundle", () => {
     const entry = ctx.registered[0]!.component as (
       props: Record<string, unknown>,
     ) => any;
-    // The page renders this seat as `{ view: 'page', form }` and nothing else
-    // (docs/DSH-0.1.7-MIGRATION.md §4.2), so the entry has exactly one view to draw:
-    // the shell with the live fields, fed by the settings state of this bundle's row.
+    // The page's configuration section asks this seat for `{ view: 'page', form }`
+    // (PluginManagerPage.tsx:495), and that view is the live form: the shell, then
+    // the fields the snapshot projects, read through this bundle's row namespace.
     const face = faceOf(ctx) as unknown as Record<string, any>;
     const reads: string[] = [];
-    const page = entry({
+    const page = renderEntry(entry, {
       view: "page",
       t: (key: string) => key,
       useDocImpactCard: () => {
@@ -299,8 +314,6 @@ describe("client bundle", () => {
       },
     });
 
-    // The one view the seat is handed mounts the live form: the shell, then the
-    // fields the snapshot projects.
     expect(reads).toEqual(["settings"]);
     expect(page.type).toBe("ul");
     expect(page.props.className).toBe("ddi_list");
@@ -309,6 +322,41 @@ describe("client bundle", () => {
     expect(shell.props.description).toBe("cardDescription");
     // Nothing is staged, so the header carries no unsaved badge.
     expect(shell.props.badge).toBeUndefined();
+  });
+
+  it("answers the summary view with the one-liner as text, touching no settings state", async () => {
+    const bundle = await loadBundle();
+    const form = fakeForm({
+      status: "ready",
+      value: {},
+      base: {},
+      user: {},
+      writable: true,
+    });
+    const ctx = makeCtx(form);
+    bundle.factory(fakeReact).apply(ctx);
+
+    const entry = ctx.registered[0]!.component as (
+      props: Record<string, unknown>,
+    ) => any;
+    const face = faceOf(ctx) as unknown as Record<string, any>;
+    const reads: string[] = [];
+    // The row's page takes its heading from this seat's `view: 'summary'` whenever
+    // the patch declares no description — and `cordis.patch.yml` declares none, so
+    // this view is what an operator reads first. The page puts it inside its own
+    // `<p>`, so it owes the page text: no shell, no list, no second form mount.
+    const summary = renderEntry(entry, {
+      view: "summary",
+      t: (key: string) => key,
+      useDocImpactCard: () => {
+        reads.push("settings");
+        return face.hooks.docImpactCard.getSnapshot();
+      },
+    });
+
+    expect(reads).toEqual([]);
+    expect(typeof summary).toBe("string");
+    expect(summary).toBe("cardDescription");
   });
 
   it("falls back to the dictionary's own text when the seat hands no translate function", async () => {
@@ -327,16 +375,21 @@ describe("client bundle", () => {
       props: Record<string, unknown>,
     ) => any;
     const face = faceOf(ctx) as unknown as Record<string, any>;
-    const page = entry({
+    const page = renderEntry(entry, {
       view: "page",
       useDocImpactCard: () => face.hooks.docImpactCard.getSnapshot(),
     });
+    const summary = renderEntry(entry, {
+      view: "summary",
+      useDocImpactCard: () => face.hooks.docImpactCard.getSnapshot(),
+    });
 
-    // An older or headless profile may hand the seat no `t`; the card then speaks
-    // the Russian text it registered, rather than the key or a thrown call.
+    // An older or headless profile may hand the seat no `t`; both views then speak
+    // the Russian text this bundle registered, rather than the key or a thrown call.
     expect(page.children[0].props.title).toBeTypeOf("string");
     expect(page.children[0].props.title).not.toBe("cardTitle");
     expect(page.children[0].props.title.length).toBeGreaterThan(0);
+    expect(summary).toBe(page.children[0].props.description);
   });
 
   it("skips registration when the configForms service is absent", async () => {

@@ -6,10 +6,10 @@
 // the keyed seat `plugins.row.config`, whose key joins the package name to the row
 // id `cordis.patch.yml` declares. That row id is also the namespace the Host files
 // this plugin's live Config under (`dsh-doc-impact`), so the values a stand already
-// wrote are read back by this card unchanged — only where it renders moved. The
-// page hands this seat `{ view: 'page', form }` and draws its own chrome around it,
-// while the card keeps the shared shell inside (`docs/DSH-0.1.7-MIGRATION.md` §4.2
-// for the seat contract, §4.3 for the two nested frames).
+// wrote are read back by this card unchanged — only where it renders moved. The page
+// draws its own chrome around the entry and asks this seat for two views, the row's
+// one-liner and the page with the form (`docs/DSH-0.1.7-MIGRATION.md` §4.2 for the
+// seat contract and its render sites, §4.3 for the two nested frames).
 //
 // UX contract (mirrors the first-party plugin cards):
 //   - one collapsible card; the header shows an "unsaved" badge while drafts
@@ -30,7 +30,8 @@
 // translate seat for the locale namespace this entry declares, which is why the
 // dictionary below is registered before any seat is.
 
-import { ConfigCard } from "./card.js";
+import { createElement } from "react";
+import { CardSummary, ConfigCard } from "./card.js";
 import { DICT } from "./dictionary.js";
 import { SettingsForm } from "./settings-form.js";
 
@@ -44,6 +45,22 @@ const LOCALE_NS = "dsh-doc-impact";
  * own display name.
  */
 const ROW_CONFIG_KEY = `@yadsh/dsh-doc-impact#${SETTINGS_NS}`;
+
+/**
+ * The seat's entry. The page asks this seat for two views and both are live for
+ * this bundle: `{ view: 'summary' }` for the row's one-liner, which the page takes
+ * whenever the patch declares no description of its own (and `cordis.patch.yml`
+ * declares none), and `{ view: 'page', form }` for the configuration section.
+ * Picking the component here rather than returning early inside `ConfigCard` is
+ * what keeps each view's own hook order: the page reads the settings state, the
+ * one-liner reads none, so no second copy of the form mounts in a `<p>`.
+ */
+function RowConfigEntry(props: any) {
+  return createElement(
+    props.view === "summary" ? CardSummary : ConfigCard,
+    props,
+  );
+}
 
 export const name = "doc-impact";
 export const inject = ["slots", "configForms", "locale"];
@@ -68,7 +85,7 @@ export function apply(ctx: any): void {
           return form.inject();
         },
       },
-      ConfigCard,
+      RowConfigEntry,
     );
   });
 }

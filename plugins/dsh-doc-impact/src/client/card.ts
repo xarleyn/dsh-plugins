@@ -46,11 +46,27 @@ const CSS = [
 ].join("\n");
 if (typeof document !== "undefined") injectCardStyles("dsh-doc-impact", CSS);
 
+/**
+ * The translate seat the page binds for the locale namespace this entry declares.
+ * A profile that hands the seat no such service must still get text, so the
+ * dictionary this bundle registered is the fallback rather than a thrown call.
+ */
+function translator(props: any) {
+  return typeof props.t === "function" ? props.t : fallbackT;
+}
+
+/**
+ * The row's one-liner, for the `view: 'summary'` the Plugins page requests when
+ * the patch declares no description of its own. It is text and nothing else: the
+ * page puts it inside its own `<p>`, and it reads no settings state, so no second
+ * copy of the form mounts.
+ */
+export function CardSummary(props: any): string {
+  return translator(props)("cardDescription");
+}
+
 export function ConfigCard(props: any) {
-  // The seat declares its locale namespace and the page hands the entry the
-  // translate function for it; on a profile that provides no such service the
-  // card still speaks the dictionary's own text instead of throwing.
-  const t = typeof props.t === "function" ? props.t : fallbackT;
+  const t = translator(props);
   const state = props.useDocImpactCard(function (snapshot: any) {
     return snapshot;
   });
