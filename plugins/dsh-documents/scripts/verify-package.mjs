@@ -20,7 +20,13 @@ await runVerifyPackage({
   license: "MIT",
   exports: [".", "./client", "./types", "./package.json"],
   exportsBuilt: true,
-  client: { platform: "web" },
+  client: {
+    platform: "web",
+    // The card is the configuration seat of this bundle's row on the Plugins
+    // page, so that page's package is an activation dependency of the client
+    // half and must be requested from the host.
+    injectIncludes: ["@deepseek-ai/dsh-client-ui-plugin-manager"],
+  },
   files: [
     "skills",
     "cordis.patch.yml",
@@ -40,10 +46,16 @@ await runVerifyPackage({
     range: true,
     testedReleases: true,
     node: "matchesEngines",
+    clientFeatures: ["plugins.row.config"],
   },
   clientBundle: {
     moduleLoaderId: true,
-    // A card registers its tab through the declared client services, and the
+    includes: [
+      "plugins.row.config",
+      // The keyed seat this card occupies: `<package name>#<row id>`.
+      "@yadsh/dsh-documents#",
+    ],
+    // A card registers its seat through the declared client services, and the
     // settings form it edits is one of them.
     matches: [/const inject = \[[^\]]*"configForms"[^\]]*\]/u],
     // The browser has no module table for Node builtins: one `require("node:…")`
@@ -55,7 +67,16 @@ await runVerifyPackage({
       legacyPatterns: [/\.dsh-docs-card\{/u, /\.dsh-plugin-card \*/u],
     },
   },
-  extra: async ({ readFile: readFromRoot }) => {
+  extra: async ({ manifest, readFile: readFromRoot }) => {
+    // The card's seat is drawn by the Plugins page, so that page's package is
+    // both an activation dependency of the client half (`dsh.client.inject`,
+    // checked above) and a peer a consumer can install against.
+    assert.equal(
+      manifest.peerDependencies["@deepseek-ai/dsh-client-ui-plugin-manager"],
+      "catalog:dsh",
+      "the Plugins page package must be a peer dependency of the client half",
+    );
+
     // Host entry: the pipeline installs itself, the five semantic tools and the
     // comparison pair come from it, and the skill ships with it.
     const entry = await readFromRoot("lib/index.js");

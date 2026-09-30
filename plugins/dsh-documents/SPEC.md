@@ -82,11 +82,21 @@ without a `changeId` does not exist.
 
 ### 4.3 Settings card
 
-A self-contained browser bundle registering a card as a tab of the Plugins
-settings page (`settings.plugins.tab`), keyed by the namespace. It edits
-configuration only — no document operation is reachable from the UI. Its
-controls use the shared card shell and the `--dsw-alias-*` design tokens
-(AGENTS.md).
+A self-contained browser bundle registering the card as the configuration of this
+bundle's own row on the Plugins page: the keyed seat `plugins.row.config` under
+`@yadsh/dsh-documents#documents` — the package name joined to the row id
+`cordis.patch.yml` declares. That row id remains the settings namespace, so the
+seat moved and the stored values did not: what an older build saved under
+`documents` this card reads back. It edits configuration only — no document
+operation is reachable from the UI. Its controls use the shared card shell and the
+`--dsw-alias-*` design tokens (AGENTS.md).
+
+The page renders the one entry in two views: as the row's `summary` one-liner
+(the patch declares no description of its own) and as the `page` body, and both
+carry the same sentence. The keyed seat hands its registrant the Host's
+`ConfigPageForm` — `{ state, mutate }`, nothing to subscribe to — so the card
+edits the live `ConfigForm` it resolves for its own namespace, injected under
+`settingsForm` where that owner prop cannot shadow it.
 
 ## 5. Session scope
 
@@ -126,7 +136,8 @@ kept: renaming it would orphan existing artifacts for no functional gain.
 
 `compatibility.json` states the supported harness range and the host features
 the plugin relies on (`tools/register`, `settings`, `skills/provider`), plus the
-client feature (`settings.plugins.tab`). Nothing here needs a Remote service, so
+client feature the card's seat needs (`plugins.row.config`, the configuration
+control of a row on the Plugins page). Nothing here needs a Remote service, so
 the package ships no generated Typert face.
 
 ### 7.1 The host service sibling plugins convert through

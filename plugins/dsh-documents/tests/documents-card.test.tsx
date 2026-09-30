@@ -24,7 +24,11 @@ interface Mutation {
 }
 
 /**
- * A stand for the Host-owned `ConfigForm` the settings tab hands the card.
+ * A stand for the live `ConfigForm` the card edits.
+ *
+ * The Plugins page hands a `plugins.row.config` registrant a `form` of its own —
+ * the Host's `ConfigPageForm`, `{ state, mutate }` only — and the card's form
+ * arrives beside it under `settingsForm`, so this stand is passed under that name.
  * `fences`, when given, collects the revision each write arrived fenced with.
  */
 function makeForm(
@@ -66,7 +70,7 @@ function renderCard(
   const rendered = render(
     <DocumentsCard
       {...({} as never)}
-      form={makeForm(mutations, writable, fences) as never}
+      settingsForm={makeForm(mutations, writable, fences) as never}
     />,
   );
   fireEvent.click(screen.getByRole("button", { expanded: false }));
@@ -137,15 +141,15 @@ describe("the comparison section", () => {
   });
 });
 
-describe("the Plugins tab surface", () => {
+describe("the Plugins page card", () => {
   it("stacks its shell inside a list the plugin owns", () => {
     renderCard([]);
     const card = screen
       .getByRole("button", { expanded: true })
       .closest("li") as HTMLLIElement | null;
     expect(card?.className).toContain("dsh-plugin-card");
-    // The tab renders no list of its own, and AGENTS.md keeps the `<li>` shell
-    // root inside a list the plugin declares.
+    // The configuration section renders no list of its own, and AGENTS.md keeps
+    // the `<li>` shell root inside a list the plugin declares.
     expect(card?.parentElement?.tagName).toBe("UL");
   });
 
