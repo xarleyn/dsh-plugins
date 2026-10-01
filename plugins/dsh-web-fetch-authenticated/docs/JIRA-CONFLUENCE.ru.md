@@ -67,11 +67,10 @@ patch профиля `$DSH_HOME/profiles/web/cordis.patch.yml` следующи�
 patch или новый browser bundle автоматически.
 
 Откройте страницу **Plugins**, выберите на ней строку `web-fetch-authenticated`
-этого пакета и откройте её конфигурацию (кнопка «Configure …»; самой строке хост
-даёт заголовок из своих метаданных, а для стороннего патча без таких метаданных
-остаётся имя модуля `@yadsh/dsh-web-fetch-authenticated`). Карточка внутри
-страницы называется **Authenticated Web Fetch**. В секции **Provider** должно
-быть написано:
+этого пакета и откройте её конфигурацию (кнопка «Configure …»; заголовок и
+описание строки хост берёт из манифеста пакета, поэтому строка озаглавлена
+`@yadsh/dsh-web-fetch-authenticated`). Карточка внутри страницы называется
+**Authenticated Web Fetch**. В секции **Provider** должно быть написано:
 
 ```text
 ctx.web fetchProvider: pinned to "authenticated"

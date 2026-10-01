@@ -65,14 +65,15 @@ await runVerifyPackage({
       /WEB_FETCH_AUTH_SETTINGS_NAMESPACE\s*=\s*"web-fetch-authenticated"/u,
       /configForms\.get\(/u,
       /*
-       * The page seats this one entry twice, and a row whose patch declares no
-       * description takes its description line from the `summary` seat. Silence
-       * there is not an empty paragraph but a row with nothing said about it,
-       * while mounting the card there puts a page inside a sentence. So the entry
-       * answers `summary` with the row's sentence, and the card it draws under it
-       * heads itself with a different one — the page prints the summary one
-       * paragraph above the card. Which text lands where is asserted rendered, in
-       * `client-card.test.tsx`.
+       * The page seats this one entry twice, and the seat contract asks an entry
+       * to answer both views (`slot-contract.ts`). The summary answer has to stay
+       * a sentence: mounting the card there puts a page inside a line of text and
+       * opens a second poll of the Remote. It is the fallback for the row's
+       * description line — for this row the page prints the `description` read
+       * off the bundle's manifest instead (`@deepseek-ai/dsh-app-boot`
+       * `src/package-meta.ts:157`) — so the card header keeps its own copy rather
+       * than repeating the line printed one paragraph above it. Which text lands
+       * where is asserted rendered, in `client-card.test.tsx`.
        */
       /WEB_FETCH_AUTH_ROW_SUMMARY\s*=\s*"Per-origin authenticated rules for web_fetch/u,
       /if \(view === "summary"\)\s*return WEB_FETCH_AUTH_ROW_SUMMARY/u,
