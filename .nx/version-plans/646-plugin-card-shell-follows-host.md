@@ -1,5 +1,6 @@
 ---
 "@yadsh/dsh-model-safety-gate": patch
+"@yadsh/dsh-plugin-kit": patch
 ---
 
 The Safety Gate settings card now takes the frame the Plugins page already draws.
@@ -28,3 +29,9 @@ still reads back and writes to the same path.
 Decided by the maintainer on 2026-10-01 as option 1 of the card-shell question in
 `docs/DSH-0.1.7-MIGRATION.md` §4.3; the same change is being applied to the other plugin
 cards that register on this row.
+
+`@yadsh/dsh-plugin-kit` ships unchanged code — its shell and chevron stay for the cards
+that still own one — but its package gate now calls `verifyCanonicalShell` instead of the
+seat-aware dispatcher, because the kit publishes the shell that others inline and
+registers on no seat itself. The bump is for that gate change, matching how
+`shared-package-verify-gates` treated the same situation.

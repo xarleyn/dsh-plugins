@@ -247,11 +247,18 @@ describe("Safety Gate card", () => {
     expect(inspect).not.toHaveBeenCalled();
   });
 
-  it("renders nothing when the settings namespace is unavailable", async () => {
+  it("explains rather than vanishes when the settings namespace is unavailable", async () => {
     const { container } = await renderCard({
       snapshot: { status: "unavailable", value: undefined },
     });
-    expect(container.innerHTML).toBe("");
+    // The row's frame is the page's, so an empty return would leave an opened row with
+    // no section and no reason — a card that owns its shell may stay invisible, this
+    // one owes a sentence.
+    expect(container.querySelector("li.dsh-plugin-card")).toBeNull();
+    expect(screen.getByTestId("safety-card-unavailable").textContent).toContain(
+      "not available in this session",
+    );
+    expect(screen.queryByTestId("safety-section-status")).toBeNull();
   });
 
   it("opens into the configuration and status sections", async () => {

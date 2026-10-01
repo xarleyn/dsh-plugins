@@ -374,7 +374,7 @@ scope.subscribe(listener)             →    (not needed — the page owns the s
 survives untouched: it is structural over `subscribe`/`getSnapshot`, which
 `ConfigForm` still provides.
 
-### 4.3 The card-shell contract is the open decision
+### 4.3 The card-shell contract, decided for option 1
 
 **[decided 2026-10-01, option 1]** The maintainer chose to follow the Host chrome:
 `CardShell` is dropped from the `plugins.row.config` path, `AGENTS.md` and
@@ -384,10 +384,18 @@ declaration. The remaining open question in this section is therefore closed; wh
 survives is the choice itself, kept here because the second half of the series (twelve
 card components) is carried out against it. §4.3a item 3 — the focus ring — is resolved
 the same way: cards inside the panel chrome take `--dsw-focus-ring-width` /
-`--dsw-focus-ring-color` and never a hard-coded outline, which is what the new gate
-asserts.
+`--dsw-focus-ring-color` (with a fallback length on the width, or the shorthand is
+dropped where the token is undefined) and never a hard-coded outline, which is what the
+new gate asserts.
 
-**This is the one thing that needs a maintainer call, not an edit.** Our cards
+What follows is the question **as it stood before the call**, kept verbatim because the
+series is being executed against the reasoning. The framing "needs a maintainer call"
+and the description of `settings.plugins.tab` as the point `AGENTS.md` prescribes are
+both superseded by the decision above: the tab remains a placement the repository is
+moving away from, and its cards keep the shell only because nothing around them draws
+a frame.
+
+**This was the one thing that needed a maintainer call, not an edit.** Our cards
 draw their own `dsh-plugin-card` shell (`CardShell`, the `<li>` root, the 14×14
 chevron) because on 0.1.5 the host gave each card a bare keyed slot seat. On
 0.1.7 the Plugins page **draws the chrome itself** — `<li className={css.card}>`
@@ -405,9 +413,11 @@ Options:
    idiomatic; touches the shared gate in
    `packages/plugin-scripts/verify-plugin-card-contract.mjs`.
 2. **Keep our shell** and register on `settings.plugins.tab` instead (that slot
-   survives, and is what `AGENTS.md` already prescribes for feature-owned
+   survives, and was at the time what `AGENTS.md` prescribed for feature-owned
    pages). Smallest diff and preserves every gate verbatim; costs us the
    first-party Plugins-page integration and puts plugin config under Settings.
+   **Not chosen** — see the decision above; `AGENTS.md` now treats the tab as a
+   placement the repository is leaving, not the target for a new card.
 
 Option 2 is strictly less work and fully legal on 0.1.7; option 1 is where the
 platform is going. Choose before starting, because it decides whether ~12 card
