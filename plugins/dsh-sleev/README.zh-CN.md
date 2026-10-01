@@ -49,7 +49,7 @@ dsh plugin --profile web remove @yadsh/dsh-sleev
 - 最近调用历史的数量上限；
 - `off`、`info` 或 `debug` 级别的结构化遥测日志。
 
-修改会暂存到点击**保存**时才写入。卡片会标记未保存的修改，并允许每个已覆盖字段单独恢复 composition 默认值。保存后的值从下一次匹配调用开始生效，无需重启 Host。
+修改会暂存到点击**保存**时才写入。卡片会标记未保存的修改，并允许每个已覆盖字段单独恢复 composition 默认值。保存后的值从下一次匹配调用开始生效，无需重启 Host。当 Host 尚未提供 `dsh-sleev` 命名空间时，页面会直接说明当前没有可编辑的内容，而不是打开一个空白区块。
 
 这些设置只决定插件观测哪些请求。模型 endpoint 和 Sleev routing header 仍在 DSH model settings 的 `llm-pi-ai.providers` 下配置。
 
