@@ -528,10 +528,12 @@ either side may perform the exchange and the other becomes a no-op.
 A chat whose turn has just ended says so: one line in the page naming the chat,
 and — once the reader allowed it — the same line from the operating system.
 
-The scope is the browser's own chat history, not the stand's session list. A
-notice exists only for a chat this page would have listed in its sidebar, so
-another account's turn ends silently here even on a stand where an
-administrator can read those chats.
+The scope is what this reader owns, not what the stand holds. A notice exists
+only for a chat the signed-in account owns outright — and on a stand without
+accounts, for this browser's own chat history. An administrator's shared history
+(`accounts.showOtherUsersChats`) puts other accounts' chats in the sidebar to be
+*read*, and the turn of such a chat is that other account's business: reading it
+is not being told when it stops, so another account's turn ends silently here.
 
 The notice is for a turn this page saw begin. A chat found already running when
 the page opened is not attributed to this reader: that run ends in silence, and
