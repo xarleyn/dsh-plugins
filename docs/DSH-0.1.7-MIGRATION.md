@@ -547,12 +547,15 @@ and `pluginManager/listPlugins`, and all three answer 403. Opening them means op
 takes "a registry name, an absolute path, a git address, or a tarball" beside
 `installBundle(spec, options)` and `setPluginEnabled`
 (`packages/extensions/tool-cordis/src/api-catalog.ts:1644,1661`). A LAN visitor with
-a remote installer is not a trade this repository makes for a settings page, so for
-that deployment **D1 option 2 stays the operative decision** (§10): the card series
-#647–#660 is parked with its `plugins.row.config` pattern proven on its branches, and
-nothing merges onto it until the allow-list question is answered somewhere else. The
-focus ring of item 3 below is untouched by that pass and still needs its browser
-check; the old section's own defect — a tab strip clipping 332px of an 881px row — is
+a remote installer is not a trade this repository makes for a settings page, so that
+deployment bounds **what a locked stand can show**, not whether the seat move ships:
+the card series #647–#660 is not parked — #653 landed `plugins.row.config` on this
+line under the shell §10 records, and #651 registers the same seat the same way. What
+the stand does settle for this card is item 1 above: the wired read/write path the
+harness fixture never exercised. The allow-list question stays open on the stand's
+side, and the focus ring of item 3 below is untouched by that pass and still needs its
+browser check; the old section's own defect — a tab strip clipping 332px of an 881px
+row — is
 #675, which does not depend on this choice.
 
 **2. [verified] the host chrome moved off our `AGENTS.md` shell contract between
