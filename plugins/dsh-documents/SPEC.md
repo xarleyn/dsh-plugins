@@ -110,10 +110,10 @@ to — which is why the card edits the live `ConfigForm` it resolves for its own
 namespace instead, injected under `settingsForm` where that owner prop cannot
 shadow it.
 
-Reach follows the surface: the Plugins page is unavailable on a Host without a
-managed profile and reads its inventory through `api-remotes`, so this card is
-reached from there rather than from the Settings → Plugins tab, which a
-non-loopback browser could open (AGENTS.md).
+Reach follows the surface: the card is now reached from the **Plugins** page,
+which reads its inventory through `api-remotes` and shows itself unavailable on a
+Host without a managed profile. That page is not the loopback-gated settings
+directory, so a browser on the LAN still reaches the card (AGENTS.md).
 
 ## 5. Session scope
 
