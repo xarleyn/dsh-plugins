@@ -656,13 +656,16 @@ one is ever built.
   to what it read, the refusal to arm a baseline on a row that has not
   moved since, and the dropping of a reading whose chat left the list.
   All three are covered by the cold-start and reconnect cases under
-  `tests/client/notifications/`, and measured rather than asserted. The two
-  halves of the `stale` transition are not symmetric, and their price was read
-  off a run with each half taken out in turn: the paused idle that leaves it,
-  taken out, fails eleven cases — six in the differ, five at page level; the live
-  frame whose row has not moved keeping it, taken out, fails nine — five in the
-  differ, four at page level. Two of the differ cases and three of the page cases
-  in each set are #479's ordering scenarios, the rest are #483's, and
+  `tests/client/notifications/`, and measured rather than asserted. Their price
+  was read off a full-suite run with each half of the `stale` transition taken
+  out in turn, and the two halves cost the same: taking out the paused idle that
+  leaves it, and taking out the live frame whose row has not moved keeping it,
+  each fail the same nine cases — five in the differ, four at page level — and
+  nothing else in the suite. That is not a coincidence of the tests but of the
+  guarantee, which holds only where both halves hold: with either half gone the
+  idle row the gap left behind arms the baseline, and the nine are the cases that
+  read that arming. Two of the differ cases and three of the page cases in each
+  set are #479's ordering scenarios, the rest are #483's, and
   `spends the turn that rebuilds the baseline after a gap on that gap` fails
   under both, which is the case that pays for the gap. The ordering half is
   settled by hand rather than assumed: `tests/session/session-controller-reconnecting-frame.test.ts`
