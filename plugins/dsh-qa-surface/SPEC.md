@@ -1909,7 +1909,8 @@ Register the `qa-surface` settings namespace so values are manageable through no
 
 ### Phase C
 
-Optionally contribute a settings card under the DSH Plugins settings section.
+Optionally contribute a settings card, seated in the plugin's own row on the
+Host's Plugins panel.
 
 Fields suitable for UI editing:
 
