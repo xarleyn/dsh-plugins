@@ -6,6 +6,8 @@
 // carry. These are the pins for that, plus the two for a choice whose stored value
 // is outside its vocabulary — the select then has no option to mark selected,
 // which reads on screen as an empty box, and the card answers it with its default.
+// The last pair runs the same checks one level up, through the entry the Plugins
+// row seat registers, so the view dispatch cannot drop a prop in silence.
 import { describe, expect, it, vi } from "vitest";
 
 interface Rendered {
@@ -28,7 +30,7 @@ vi.mock("react", () => ({
   },
 }));
 
-import { ConfigCard } from "../src/client/card.js";
+import { CardSummary, ConfigCard, RowConfigEntry } from "../src/client/card.js";
 import {
   BoolField,
   ChoiceField,
@@ -226,5 +228,65 @@ describe("doc-impact card render", () => {
     ).toBe(false);
     const select = selectOf(controlOf(elements, snapshot, "mode"));
     expect(select.offered).toContain(String(select.value));
+  });
+});
+
+/**
+ * Draws one of the two views the way the seat does: the registered entry picks a
+ * component, and that component renders. `client-bundle.test.ts` pins the same
+ * dispatch on the built bundle; this pins it on the source, where an entry that
+ * stopped forwarding the props its card needs shows up as a missing control rather
+ * than as an assertion nobody made.
+ */
+function renderView(
+  view: "page" | "summary",
+  host: NamespaceSnapshot = HOSTILE,
+): {
+  readonly snapshot: CardSnapshot;
+  readonly elements: Rendered[];
+  /** What the component the entry picked returned: an element for the page, text for the summary. */
+  readonly drawn: unknown;
+} {
+  const form = new SettingsForm(readOnlyForm(host));
+  const snapshot = form.getSnapshot();
+  tree.length = 0;
+  const element = RowConfigEntry({
+    ...form.inject(),
+    t: (key: string) => key,
+    useDocImpactCard: () => snapshot,
+    view: view,
+    // What the page really spreads over the face. The card takes nothing from it;
+    // the bundle test is where a card that started reading it would go red.
+    form: { state: { status: "unavailable" }, mutate: async () => false },
+  });
+  const component = element.type as (props: never) => unknown;
+  const drawn = component(element.props as never);
+  return { snapshot, elements: tree.slice(), drawn };
+}
+
+describe("doc-impact seat entry", () => {
+  it("forwards the seat's props to a card that still draws every field", () => {
+    const { snapshot, elements, drawn } = renderView("page");
+    expect((drawn as Rendered).type).toBe("ul");
+    const controls = elements.filter((entry) =>
+      Object.hasOwn(entry.props, "state"),
+    );
+    expect(controls, "one control per spec, through the entry").toHaveLength(
+      FIELDS.length,
+    );
+    for (const spec of FIELDS) {
+      const control = controlOf(controls, snapshot, spec.field);
+      expect(control.type, `${spec.field} renderer`).toBe(rendererFor(spec));
+    }
+  });
+
+  it("mounts nothing behind the row's one-liner", () => {
+    const { elements, drawn } = renderView("summary");
+    // The entry is the only element created on this path: the page puts the reply
+    // inside its own `<p>`, so a shell, a list, or a subscribed store here would be
+    // a second live copy of the form in a line of heading text.
+    expect(elements).toHaveLength(1);
+    expect(elements[0]!.type).toBe(CardSummary);
+    expect(drawn).toBe("cardDescription");
   });
 });

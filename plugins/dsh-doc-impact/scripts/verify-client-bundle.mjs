@@ -85,6 +85,15 @@ expectAbsent(
   "the card must not keep a tab of the old Settings surface beside its row",
 );
 expectPresent(
+  "whileServed(",
+  "the seat must be claimed only while the Host serves the namespace: the host " +
+    "answers get() with a controller for any name, so this is the only call that " +
+    "keeps an unserved namespace off the row. Which namespace that watch names is a " +
+    "runtime pairing and belongs to tests/client-bundle.test.ts, which compares it " +
+    "with the row id the patch declares; naming the bundle's constant here would " +
+    "redden this gate on a rename instead of on a regression.",
+);
+expectPresent(
   "resetField",
   "every field needs the composition-layer reset action",
 );
