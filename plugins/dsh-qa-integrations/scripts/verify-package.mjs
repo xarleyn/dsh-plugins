@@ -240,17 +240,15 @@ assert.match(
   "the operator form must resolve under the same constant that builds the seat key",
 );
 assert.match(client, /"configForms"/u);
-// The one-liner is not decoration. The panel dispatches `view: 'summary'` for a
-// row that carries no description of its own, and this bundle's patch row declares
-// none — so the sentence is what the row's description line renders, and a card
-// returned there would drop an `<li>` into the page's `<p>`. Both halves are
-// pinned: a patch row that grows a description would silently retire the summary
-// seat, and a summary branch that returns the shell would corrupt the row.
-assert.doesNotMatch(
-  patch,
-  /^[ \t-]*description:[ \t]*\S/mu,
-  "the patch row must keep no description of its own, or the row seat stops being dispatched for its summary view",
-);
+// The one-liner is not decoration, but whether the live page reaches it is not
+// this bundle's to prove. The row's detail renders
+// `description ?? renderSlot("plugins.row.config", { view: "summary" })`, and that
+// description comes from the Host-supplied `row.meta` text — `rowText(row)` in the
+// installed `0.1.7-rc.2` client — not from `cordis.patch.yml`, whose rows carry no
+// description field at all. A pin on the patch would assert a mechanism the page
+// does not have. What this artifact can answer is what kind of reply the entry
+// gives whenever the Host does dispatch the summary: a sentence, never a second
+// card, because a card there drops an `<li>` into the page's own `<p>`.
 assert.match(
   client,
   /"Конфигурация подключений стенда: провайдеры, адреса, возможности и сервисные доступы\."/u,

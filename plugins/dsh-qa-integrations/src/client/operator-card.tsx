@@ -75,31 +75,37 @@ type CardProps = PropsRuntime<"plugins.row.config"> &
 type ScopeOps = Parameters<ConfigForm<QaIntegrationsConfig>["mutate"]>[0];
 
 /**
- * The one-liner the Plugins page shows for this bundle's row.
+ * The one-liner the Plugins page asks this row's entry for.
  *
  * The seat is keyed `@yadsh/dsh-qa-integrations#qa-integrations` and the page
- * dispatches that one entry under two views. `view: 'page'` is the form with its
- * own save control; `view: 'summary'` is what the page puts in the row's
- * description line, and the contract the installed
- * `@deepseek-ai/dsh-client-ui-plugin-manager` ships makes it conditional:
- * `lib/types/client/slot-contract.d.ts` admits `summary` "for an official card's
- * one-liner or a row's missing-description fallback" and closes the
- * `plugins.row.config` entry with "An absent description falls back to the
- * entry's `view: 'summary'`". The row this bundle declares in
- * `cordis.patch.yml` declares no description of its own, so this sentence is the
- * row's description line — and a card mounted there would drop a whole `<li>`
- * into the page's `<p>`. `scripts/verify-package.mjs` pins that the row stays
- * description-free, because a row that grows a description stops dispatching
- * this view and the branch below becomes unreachable.
+ * dispatches that one entry under two views: `view: 'page'` is the form with its
+ * own save control, `view: 'summary'` is the row's description line. The
+ * contract the installed `@deepseek-ai/dsh-client-ui-plugin-manager` ships makes
+ * the second a fallback — `lib/types/client/slot-contract.d.ts` admits `summary`
+ * "for an official card's one-liner or a row's missing-description fallback" and
+ * closes the `plugins.row.config` entry with "An absent description falls back to
+ * the entry's `view: 'summary'`".
+ *
+ * Whether a live page reaches that fallback is not this bundle's to know, and it
+ * is not `cordis.patch.yml` that decides it: the row's detail renders
+ * `description ?? renderSlot("plugins.row.config", { view: "summary" })`, and
+ * that `description` comes from `rowText(row)` over the Host-supplied `row.meta`
+ * localized text — measured on the installed `rc.2` client, where the patch's own
+ * rows carry no description field at all. A published bundle normally does
+ * resolve to package text, so this sentence is what the entry answers with when
+ * it does not, and it has to stay a sentence in that case either way: a card
+ * mounted there drops a whole `<li>` into the page's `<p>`.
+ * `scripts/verify-package.mjs` therefore pins only what this artifact can prove —
+ * the string and the branch that returns it ship — and not the reachability the
+ * Host decides.
  */
 export const QA_INTEGRATIONS_ROW_SUMMARY =
   "Конфигурация подключений стенда: провайдеры, адреса, возможности и сервисные доступы.";
 
 /**
- * The card as the Plugins page renders this bundle's row. The page dispatches
- * the keyed entry with `view: 'page'` for the form and, because this row declares
- * no description, with `view: 'summary'` for its description line: answer the
- * summary with the sentence and mount the card only for the page.
+ * The card as the Plugins page renders this bundle's row: `view: 'page'` mounts
+ * the form below, and the `summary` fallback is answered with the sentence rather
+ * than with a second card.
  */
 export function OperatorCardEntry(props: CardProps): ReactElement | string {
   if (props.view === "summary") return QA_INTEGRATIONS_ROW_SUMMARY;
