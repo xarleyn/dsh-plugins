@@ -18,6 +18,10 @@ import * as jsxRuntime from "react/jsx-runtime";
 import { describe, expect, it } from "vitest";
 import { createModuleLoaderStub } from "@yadsh/dsh-test-kit";
 
+// The expected sentence comes from the source on purpose: the bundle test then
+// fails when the compiled answer drifts from what the card's shell describes.
+import { JEV_COMPACTION_ROW_SUMMARY } from "../../src/client/card.js";
+
 const PACKAGE_NAME = "@yadsh/dsh-jev-compaction";
 
 interface ClientExports {
@@ -161,6 +165,56 @@ describe("classic browser bundle", () => {
     expect(document.querySelector("li.dsh-plugin-card")?.className).toContain(
       "dsh-plugin-card",
     );
+  });
+
+  it("answers the row's summary fallback from the compiled bundle", async () => {
+    const { exports } = await loadBundle();
+    const registrations: {
+      key?: string;
+      inject?: () => unknown;
+      component?: unknown;
+    }[] = [];
+    exports.apply({
+      configForms: {
+        // The Host section behind this row serves no values, so the card would
+        // render nothing: any text the page sees here can only be the summary
+        // answer.
+        get: () => ({
+          getSnapshot: () => ({ status: "unavailable", value: undefined }),
+          subscribe: () => () => {},
+          mutate: async () => {},
+          set: async () => {},
+          unset: async () => {},
+        }),
+      },
+      slots: {
+        inject: (_name: string, factory: () => unknown) => {
+          factory();
+          return () => {};
+        },
+        register: (
+          options: Omit<(typeof registrations)[number], "component">,
+          component: unknown,
+        ) => {
+          registrations.push({ ...options, component });
+          return () => {};
+        },
+      },
+    });
+    // Whether the page ever asks is the Host's inventory to decide; what the
+    // bundle owns is that the fallback survived compilation and stays a sentence.
+    const Component = registrations[0]!.component as React.ComponentType<
+      Record<string, unknown>
+    >;
+    const { container } = render(
+      React.createElement(Component, {
+        ...(registrations[0]!.inject?.() as Record<string, unknown>),
+        view: "summary",
+      }),
+    );
+    expect(container.textContent).toBe(JEV_COMPACTION_ROW_SUMMARY);
+    expect(container.querySelector("li.dsh-plugin-card")).toBeNull();
+    expect(container.querySelector("input, select, button")).toBeNull();
   });
 
   it("injects its stylesheet once, tagged with the package name", async () => {

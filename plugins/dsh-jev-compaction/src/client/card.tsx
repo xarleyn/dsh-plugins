@@ -63,8 +63,8 @@ type CardProps = InjectFace<JevCompactionCardFace>;
 
 /**
  * What this card does, in one line: the shell's own description, and the sentence
- * the Plugins page shows for this bundle's row when the row declares no
- * description of its own and asks the entry for its `summary` view.
+ * the Plugins page shows for this bundle's row when the row carries no display
+ * description of its own and asks the seated entry for its `summary` view.
  */
 export const JEV_COMPACTION_ROW_SUMMARY =
   "Semantic result shaping and historical context compaction powered by Jev.";

@@ -110,7 +110,12 @@ function pageForm(writes: WriteOp[]) {
   };
 }
 
-/** The entry as the row's configuration section renders it, with the page's form beside it. */
+/**
+ * The entry as the row's configuration section renders it. The page's `form` is
+ * passed after the injected face because that is the order the seat spreads its own
+ * owner props in: a face key named `form` would be shadowed here, and silently —
+ * only a live host shows it, which is why the decoy belongs in the test.
+ */
 function mountRowSection(settingsWrites: WriteOp[]) {
   const { ctx, slots } = stub({ writes: settingsWrites });
   apply(ctx);
