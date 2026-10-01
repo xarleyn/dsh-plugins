@@ -96,9 +96,10 @@ does it — the row's description line is `description ?? renderSlot('plugins.ro
 configuration body renders the same entry with `{ view: 'page', form }` (`:495`).
 §4.2 of [`docs/DSH-0.1.7-MIGRATION.md`](../../docs/DSH-0.1.7-MIGRATION.md) cites
 `:495` only, because the point that section makes is which site carries a `form`;
-`:491` is the site this card's `summary` branch answers, and §7.1 gives two ways to
-see it — one against the host source at the tag, one against the installed package,
-so nothing here rests on a line number a reader cannot reach.
+`:491` is the site this card's `summary` branch answers. Those paths are files of the
+harness repository at that tag, not of this checkout; §7.1 is the route a reader of
+*this* repository can run, and it prints the same three sites from the package this
+plugin installs.
 
 For this row the fallback is live, not merely possible. `description` there comes
 from `rowText`, which returns `row.meta?.title ?? row.moduleName` and
@@ -454,7 +455,7 @@ official plugin; any change to the MCP tool contracts.
 | Per-account scoping and the account-scoped QA settings page (read-only overview) | Implemented (unit + request-level tests; the `mcp__openviking__*` bridge keeps the deployment space by design, §2.2; no live multi-account run yet) |
 | Upstream-sync tooling | Deferred |
 | Live OpenViking E2E | Deferred |
-| Visual/browser verification of the settings card on a rig | Deferred (jsdom tests + bundle gates pass; no live click-through yet). What that pass will see is named from the shipped page, not guessed, and §7.1 gives the commands that show it. Above the card the row page draws: an `<h3>` from `rowText`'s title, which for this row is the module specifier `@yadsh/dsh-openviking-memory` and not the card's own `OpenViking Memory` (`lib/client.js:1826-1828`, `rowText` at `:211-215` — `row.meta?.title ?? row.moduleName`, and this patch declares no `title`), so the two headings are two different names of the same thing rather than one string twice; then `<p><code>` lines of the row id and the module specifier (`:1831-1838`, the first skipped only when the title already *is* the row id); then the description line (`:1839-1841`), which is this entry's `summary` answer — so the one string the page and the card header both print is the sentence from `OPENVIKING_MEMORY_ROW_SUMMARY`. That repetition is what seating a self-shelled card on a page that draws its own chrome costs, and it is the live pass that decides whether it reads as a defect. §4.3a's two remaining items come with it: our 12px/1px shell against the host card's `--dsw-radius-xl` 20px and `0.5px` settings stroke, and `focus.css`'s `html[data-input-modality='pointer'] body :focus-visible:not(:read-write)` at 0-3-2, able to paint our 0-2-0 ring transparent after a mouse click. Removing the outer shell is D1 option 1 — it rewrites `AGENTS.md`'s card rules and `packages/plugin-scripts/verify-plugin-card-contract.mjs` for every card of the wave at once, so it is #646's call, not this card's to pre-empt by diverging one package. |
+| Visual/browser verification of the settings card on a rig | Deferred for the render half — the jsdom tests and the bundle gates pass, and no live click-through has happened yet. The stored-value half of the acceptance needs no browser and the diff settles it: the branch touches no host-side source and nothing under `src/shared/`, so the namespace an older build wrote under (`OPENVIKING_MEMORY_SETTINGS_NAMESPACE`, still `dsh-openviking-memory`) and the schema read back through it are the same ones, and only the render site moved. The browser pass did not run because the only rig reachable on this machine installs the released `0.4.0` bundle, which still registers the tab this card left; seating this build there is a spec-line swap plus a restart of a stand this lane did not bring up, and `qa-stand-run` §1 hands that step to the rig's owner rather than taking it. What that pass will see is named from the shipped page, not guessed, and §7.1 gives the commands that show it. Above the card the row page draws: an `<h3>` from `rowText`'s title, which for this row is the module specifier `@yadsh/dsh-openviking-memory` and not the card's own `OpenViking Memory` (`lib/client.js:1826-1828`, `rowText` at `:211-215` — `row.meta?.title ?? row.moduleName`, and this patch declares no `title`), so the two headings are two different names of the same thing rather than one string twice; then `<p><code>` lines of the row id and the module specifier (`:1831-1838`, the first skipped only when the title already *is* the row id); then the description line (`:1839-1841`), which is this entry's `summary` answer — so the one string the page and the card header both print is the sentence from `OPENVIKING_MEMORY_ROW_SUMMARY`. That repetition is what seating a self-shelled card on a page that draws its own chrome costs, and it is the live pass that decides whether it reads as a defect. §4.3a's two remaining items come with it: our 12px/1px shell against the host card's `--dsw-radius-xl` 20px and `0.5px` settings stroke, and `focus.css`'s `html[data-input-modality='pointer'] body :focus-visible:not(:read-write)` at 0-3-2, able to paint our 0-2-0 ring transparent after a mouse click. Removing the outer shell is D1 option 1 — it rewrites `AGENTS.md`'s card rules and `packages/plugin-scripts/verify-plugin-card-contract.mjs` for every card of the wave at once, so it is #646's call, not this card's to pre-empt by diverging one package. |
 
 ### 7.1 Reading the seat, and the rulebook that has not caught up
 
@@ -483,6 +484,11 @@ connection, and `writable` false because "memory mode never" accepts writes — 
 the fifth its implementation: the persistence choice from the face at `:1509`, the
 controller that opens at `unavailable` and only subscribes when the mode is `host`
 (`:1118`, `:1126`), and `enqueue` refusing every write in `memory` mode (`:1213`).
+Both routes were walked on 2026-10-01 against the `0.1.7-rc.2` install: the commands
+above printed every line quoted here, and the harness repository at tag
+`dsh-v0.1.7-rc.2` carries each of those statements at the source line §2.1 names
+(`PluginManagerPage.tsx:491` and `:495`, `slot-contract.ts:100`,
+`presentation.ts:126-132`).
 
 Two rulebooks still describe the old seat and neither is this card's to rewrite:
 `AGENTS.md` §"Choosing the settings extension point" sends a page that must work
