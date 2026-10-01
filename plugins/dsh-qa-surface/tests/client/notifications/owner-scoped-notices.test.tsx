@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { render, screen } from "@testing-library/react";
+import { act, render, screen } from "@testing-library/react";
 import type { SessionListState } from "@deepseek-ai/dsh-api-session-controller/client";
 import { useMemo, useSyncExternalStore } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -273,7 +273,10 @@ describe("a notice speaks for the owner's chats only", () => {
     const page = mountPage(accounts, IDLE);
     page.redraw(RUNNING);
     owned.length = 0;
-    await accounts.refreshOwned();
+    // The re-pull publishes a new snapshot, and the page is subscribed to it.
+    await act(async () => {
+      await accounts.refreshOwned();
+    });
     expect(accounts.ownedIds()).toEqual([OWN, FOREIGN]);
     expect(accounts.ownIds()).toEqual([]);
     page.redraw(IDLE);
