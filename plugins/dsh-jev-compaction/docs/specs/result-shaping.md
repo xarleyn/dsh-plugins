@@ -1292,8 +1292,9 @@ ctx.slots.inject("plugins.row.config", () =>
 );
 ```
 
-The seat renders the same entry twice — as `view: 'page'`, which is the card, and as
-`view: 'summary'`, which is the row's one-liner — and it passes its own owner prop
+The seat accepts two views of the same entry — `view: 'page'`, which is the card, and
+`view: 'summary'`, the row's one-liner the page asks the entry for only when the row
+carries no display description of its own — and it passes its own owner prop
 named `form`, so the card's full `ConfigForm` enters through the injected face under
 another name. `AGENTS.md`, §Plugin configuration card UI, carries both traps.
 

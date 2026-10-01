@@ -85,10 +85,12 @@ type EntryProps = Omit<PropsRuntime<"plugins.row.config">, "form"> &
  * that section is this card.
  *
  * The page asks the one entry for two views. `page` is the body of the section
- * above. `summary` is the row's one-liner, which the page falls back to the entry
- * for when the bundle declares no description of its own (the seat contract in
- * `@deepseek-ai/dsh-client-ui-plugin-manager`); it lands inside the page's own
- * text, so it returns the sentence and never a second card.
+ * above. `summary` is the row's one-liner, which the page asks the entry for only
+ * when the row carries no display description of its own (the seat contract in
+ * `@deepseek-ai/dsh-client-ui-plugin-manager`; the row's description is Host
+ * inventory data, so nothing in this bundle decides whether the fallback fires —
+ * the entry answers it because the contract names it). The view lands inside the
+ * page's own text, so it returns the sentence and never a second card.
  */
 function JevCompactionEntry(props: EntryProps) {
   if (props.view === "summary") return JEV_COMPACTION_ROW_SUMMARY;
