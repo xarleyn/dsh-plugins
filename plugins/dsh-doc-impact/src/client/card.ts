@@ -285,3 +285,40 @@ export function ConfigCard(props: any) {
   // §4.3 tracks that as the open shell decision and #660 rewrites the recommendation.
   return createElement("ul", { className: "ddi_list" }, card);
 }
+
+/**
+ * What the row seat renders its entry with: what {@link ConfigCard} takes, plus
+ * the two owner props the Plugins page spreads over the injected face.
+ *
+ * `view` picks the view. `form` is the page's own `ConfigPageForm` — `{ state,
+ * mutate }`, whose `state` is the single `getSnapshot()` the page took while it
+ * rendered, and the page re-renders when the roster of served namespaces moves,
+ * not when this document is written. This card has to follow a write it did not
+ * make (an entry config edited elsewhere, the same namespace open in another
+ * surface), so it reads and fences the document through the `ConfigForm` the
+ * bootstrap resolves and takes nothing from this prop. `tests/client-bundle.test.ts`
+ * hands the entry a live page form, so the non-use stays a decision someone can
+ * see fail rather than an unread prop. The prop is also why {@link CardFace} must
+ * not carry a member named `form`: the renderer spreads the owner props after the
+ * face, and the page's narrower form would shadow the card's own.
+ */
+export interface RowEntryProps extends ConfigCardProps {
+  readonly view: "page" | "summary";
+  readonly form?: unknown;
+}
+
+/**
+ * The entry `plugins.row.config` registers. The seat answers two views: the
+ * configuration section as `{ view: 'page', form }`, and the row's heading line as
+ * `{ view: 'summary' }` whenever the bundle's patch declares no description of its
+ * own. Choosing the component here, rather than returning early inside
+ * {@link ConfigCard}, is what keeps each view its own hook order — the card reads
+ * the settings state, the one-liner reads none and mounts no shell, so a line of
+ * heading text never gets a second live copy of the form inside it.
+ */
+export function RowConfigEntry(props: RowEntryProps) {
+  if (props.view === "summary") {
+    return createElement(CardSummary, props);
+  }
+  return createElement(ConfigCard, props);
+}

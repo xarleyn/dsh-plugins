@@ -19,9 +19,10 @@ Config under since `#530`, so the namespace the page derives its form from and t
 namespace this card reads are one namespace. **Nothing about where values are stored
 changed**, and a mode, a template or a cap saved through the old tab is read back by
 this build. What did leave are the names of the surface the card stopped occupying:
-the tab's seat id, its `order` and its `label` — a keyed seat carries none of them,
-and the page titles the row from the plugin's display name, so the label this entry
-used to hand the tab is now dead weight rather than a second title.
+the tab's seat id, its `order` and its `label` — a keyed seat carries a `key` and
+those three belong to list seats — and the page titles the row from the row's own
+metadata (its `meta.title`, else the module name the patch names), so the label this
+entry used to hand the tab is now dead weight rather than a second title.
 
 What the card renders is the same card: the same shell every DSH configuration card
 uses (the card-contract gate reads no slot name, so it fires on the new registration
@@ -37,17 +38,19 @@ it registers, rather than returning early inside the card: that is what keeps ea
 its own hook order, and what keeps the one-liner a line of text that reads no settings
 state instead of a second live copy of the form mounted in the page's heading. Its text
 still arrives through the translate function the page binds for the locale namespace this
-entry declares, and where a profile hands the seat no such function both views fall back
-to the dictionary this bundle registered instead of throwing. And the shell's `<li>`
-still needs a list to sit in, which the configuration section does not supply, so the
-plugin-owned `<ul>` stays with the page view. The page draws its own card chrome around
-the entry, so the two frames now nest; that is the open decision §4.3 records (the shell
-classes stay mandatory for now), and the stand check is where it gets settled.
+entry declares — and that is the only copy this entry used to hold itself: the tab's
+`label` was the one string this bundle translated outside the card, so the bundle stopped
+binding its own translator and the fallback dictionary it kept for that label went with
+it. And the shell's `<li>` still needs a list to sit in, which the configuration section
+does not supply, so the plugin-owned `<ul>` stays with the page view. The page puts its
+own title, icon and crumb *above* the entry and draws no box around the configuration
+section, so our card keeps its own frame rather than nesting inside a host one.
 
 The manifest needed no new dependency, and that is a property of this entry rather
 than an oversight: the bundle registers through the injected `slots` service by slot
-name and imports no host package, so there is no surface to anchor a peer on
-(`dsh.client.inject` names exactly the packages whose surfaces a client imports). The
+name and reaches the settings surface as a type only, so there is no new runtime
+surface to anchor a peer on (`dsh.client.inject` names exactly the packages whose
+surfaces a client imports). The
 browser half does now depend on the Plugins page existing, and says so —
 `compatibility.json` lists `plugins.row.config` among the required client features,
 which is why this is `minor` rather than `patch`: a browser on a host without that
@@ -56,8 +59,16 @@ namespace from `cordis.patch.yml` rather than repeating them, so a row id that m
 the patch reddens the test instead of quietly dropping the configure control, and it
 drives the entry through both views the page asks this seat for — the page view mounting
 the shell and reading settings exactly once, the summary view answering as text with no
-settings read at all — and covers the translate fallback in each.
+settings read at all. The page view is rendered with the page's own `form` prop present
+and poisoned on both of its halves, because the card deliberately takes nothing from it:
+the seat hands a `{ state, mutate }` whose `state` is one snapshot the page took while it
+rendered, and a card that has to follow a write it did not make reads and fences the
+document through the `ConfigForm` it resolves itself. `tests/client-render.test.ts` runs
+its field-by-field render through that registered entry as well as through the card, so
+an entry that stopped forwarding the props the card draws with is a missing control on a
+screen, not a comment.
 `scripts/verify-client-bundle.mjs` checks values, not the spellings of the constants
 that spell them: the slot literal, the package-name half of the key as the patch names
 it, the row id the bundle carries, the `view === "summary"` branch the page depends on,
-and the absence of the `settings.plugins.tab` seat this card vacated.
+the seat being claimed inside a served-namespace watch, and the absence of the
+`settings.plugins.tab` seat this card vacated.

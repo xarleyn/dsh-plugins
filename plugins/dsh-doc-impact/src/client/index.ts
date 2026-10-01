@@ -31,8 +31,7 @@
 // entry declares, which is why the dictionary below is registered before any seat is.
 
 import type { ConfigForms } from "@deepseek-ai/dsh-client-ui-settings/client";
-import { createElement } from "react";
-import { CardSummary, ConfigCard, type ConfigCardProps } from "./card.js";
+import { RowConfigEntry, type RowEntryProps } from "./card.js";
 import { DICT } from "./dictionary.js";
 import {
   SettingsForm,
@@ -76,35 +75,6 @@ interface RowSeat {
   key: string;
   locale: string;
   inject: () => CardFace;
-}
-
-/**
- * What the seat renders its entry with: the injected face, the page's translate
- * seat, and the two owner props the page spreads over them. `view` picks the view;
- * `form` is the page's own narrowed `{ state, mutate }`, which this card ignores
- * because it resolves the full `ConfigForm` through `ctx.configForms` — and it is
- * the reason the face must not carry a member named `form`.
- */
-interface RowEntryProps extends ConfigCardProps {
-  readonly view: "page" | "summary";
-  readonly form?: unknown;
-}
-
-/**
- * The entry the seat registers. The page asks this one seat for two views: the
- * configuration section as `{ view: 'page', form }`, and the row's heading line as
- * `{ view: 'summary' }` whenever the patch declares no description of its own —
- * and `cordis.patch.yml` declares none, so that view is what an operator reads
- * first. Picking the component here, where the seat is registered, rather than
- * returning early inside `ConfigCard` is what keeps each view its own hook order:
- * the card reads the settings state, the one-liner reads none and mounts no shell,
- * so a line of heading text never gets a second live copy of the form in it.
- */
-function RowConfigEntry(props: RowEntryProps) {
-  if (props.view === "summary") {
-    return createElement(CardSummary, props);
-  }
-  return createElement(ConfigCard, props);
 }
 
 /** The slot service that turns the seat and the component into a page. */
