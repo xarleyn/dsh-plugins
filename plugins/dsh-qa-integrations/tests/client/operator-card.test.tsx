@@ -272,18 +272,14 @@ const RESOLVED = {
 };
 
 describe("integrations operator card", () => {
-  it("says the settings are not live when the namespace is not served", () => {
+  it("stays hidden when the namespace is not exposed to this browser", () => {
     const { container } = render(
       <Card settingsForm={scopeStub({ status: "unavailable" }).settingsForm} />,
     );
-    // Rendering nothing was enough on a tab strip, where an empty tab hid
-    // itself: inside the row's configuration section the page has already
-    // opened the column, so a silent card leaves a blank section behind.
-    const note = screen.getByTestId("qa-integrations-no-settings");
-    expect(note.textContent).toMatch("qa-integrations");
-    // ...and it is a sentence, not a form the operator cannot use.
-    expect(container.querySelector("input")).toBeNull();
-    expect(container.querySelector(".dsh-plugin-card")).toBeNull();
+    // The card renders null while the form reports the namespace absent — the
+    // answer `AGENTS.md` prescribes for a panel seat, where the row's own
+    // `Configure` control comes from the inventory and stays clickable.
+    expect(container.childElementCount).toBe(0);
   });
 
   it("renders the deployment configuration sections", () => {
@@ -784,32 +780,37 @@ describe("integrations operator card", () => {
 });
 
 /**
- * The seat the Plugins page dispatches. The page asks one `plugins.row.config`
- * entry for two views: `summary` is the row's missing-description fallback and
- * `page` is the form beside its own save control — the contract shipped by
- * `@deepseek-ai/dsh-client-ui-plugin-manager`
- * (`lib/types/client/slot-contract.d.ts`: "`summary` for an official card's
- * one-liner or a row's missing-description fallback", "An absent description
- * falls back to the entry's `view: 'summary'`"), and the owner walked both
- * dispatches on a live `rc.2` stand (#646, 11:34). So the summary seat stays a
- * sentence — the page puts it in its own `<p>` — while the page seat is the card
- * with the shell this plugin owns. No line numbers of the compiled page are
- * quoted: that build artifact belongs to the host and renumbers between release
- * candidates.
+ * The seat the Plugins page dispatches.
+ *
+ * One keyed entry of `plugins.row.config` can be rendered under two views, and
+ * the contract the installed `@deepseek-ai/dsh-client-ui-plugin-manager` ships
+ * says when each arrives (`lib/types/client/slot-contract.d.ts`): "`summary` for
+ * an official card's one-liner or a row's missing-description fallback", and the
+ * row entry closes on "An absent description falls back to the entry's
+ * `view: 'summary'`". This bundle's row declares no description, so the page puts
+ * that view in its own description `<p>` and the answer is the sentence, never a
+ * card. The `page` view is the form
+ * seat, and the page hands it a `form` of its own — a `ConfigPageForm` of
+ * `{ state, mutate }` — which the renderer spreads *after* the injected face, so
+ * the card edits the `ConfigForm` it resolved under a name that prop cannot
+ * reach. Line numbers of the compiled page are not quoted here: that artifact
+ * belongs to the host and renumbers between release candidates.
  */
 describe("integrations row entry", () => {
-  const Entry = OperatorCardEntry as unknown as ComponentType<{
+  interface EntryProps {
     view: "summary" | "page";
     settingsForm: unknown;
-  }>;
+    form?: unknown;
+  }
+  const Entry = OperatorCardEntry as unknown as ComponentType<EntryProps>;
 
   it("answers the summary seat with the row's one-liner, not a second card", () => {
     const { container } = render(
       <Entry view="summary" settingsForm={undefined} />,
     );
     expect(container.querySelector("li")).toBeNull();
-    // A seat dispatched for a sentence must not resolve a form either: the
-    // collapsed row is the whole of the page's ask, `{ view: "summary" }`.
+    // A seat dispatched for a sentence must not mount a form either: the page's
+    // ask is `{ view: "summary" }` and nothing else.
     expect(container.querySelector("input")).toBeNull();
     expect(container.textContent).toBe(QA_INTEGRATIONS_ROW_SUMMARY);
   });
@@ -822,18 +823,42 @@ describe("integrations row entry", () => {
     expect(container.querySelector("ul > li.dsh-plugin-card")).not.toBeNull();
   });
 
-  it("keeps the section from going blank when the namespace is gone", () => {
+  it("writes through the injected face, not through the seat's own form prop", () => {
+    const { settingsForm, stub } = scopeStub({ value: RESOLVED });
+    const pageWrites: unknown[] = [];
+    const ownerForm = {
+      state: { status: "ready", value: {}, revision: 99, writable: true },
+      mutate: async (ops: unknown) => {
+        pageWrites.push(ops);
+      },
+    };
+    render(<Entry view="page" settingsForm={settingsForm} form={ownerForm} />);
+    expand();
+    fireEvent.click(controlAt("qa-integrations-enabled", "Плагин включён"));
+    // The `{ state, mutate }` the page spreads over the entry's props can neither
+    // be subscribed to nor written field by field; had it shadowed the face, the
+    // operator's click would have landed on `pageWrites` and the card would have
+    // kept showing the revision it never wrote.
+    expect(stub.writes).toEqual([
+      { op: "set", path: ["enabled"], value: true },
+    ]);
+    expect(pageWrites).toEqual([]);
+  });
+
+  it("renders no card when the Host stops serving the namespace", () => {
     const { container } = render(
       <Entry
         view="page"
         settingsForm={scopeStub({ status: "unavailable" }).settingsForm}
       />,
     );
+    // `AGENTS.md`: while the row's namespace answers `unavailable`, render no
+    // card. The list the plugin owns stays, so the seat keeps a root to mount
+    // into when the namespace comes back.
     expect(
-      container.querySelector(
-        "ul > [data-testid='qa-integrations-no-settings']",
-      ),
+      container.querySelector("ul.dsh-qa-integrations__card-list"),
     ).not.toBeNull();
+    expect(container.querySelector(".dsh-plugin-card")).toBeNull();
     expect(container.querySelector("input")).toBeNull();
   });
 });

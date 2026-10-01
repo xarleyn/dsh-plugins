@@ -31,7 +31,6 @@ import {
   type ReactElement,
 } from "react";
 import type { QaIntegrationsConfig } from "../config.js";
-import { QA_INTEGRATIONS_SETTINGS_NAMESPACE } from "../shared/settings.js";
 import { Toggle, type ControlProps } from "./operator-controls.js";
 import { serviceReachNoteForPath } from "./operator-service-reach.js";
 import { Bitrix24Section } from "./operator-sections/bitrix24.js";
@@ -76,30 +75,31 @@ type CardProps = PropsRuntime<"plugins.row.config"> &
 type ScopeOps = Parameters<ConfigForm<QaIntegrationsConfig>["mutate"]>[0];
 
 /**
- * The one-liner the Plugins page shows for this bundle's row in its `summary`
- * view.
+ * The one-liner the Plugins page shows for this bundle's row.
  *
- * The row seat is dispatched twice, and the host says so where its contract
- * ships: `@deepseek-ai/dsh-client-ui-plugin-manager`'s
+ * The seat is keyed `@yadsh/dsh-qa-integrations#qa-integrations` and the page
+ * dispatches that one entry under two views. `view: 'page'` is the form with its
+ * own save control; `view: 'summary'` is what the page puts in the row's
+ * description line, and the contract the installed
+ * `@deepseek-ai/dsh-client-ui-plugin-manager` ships makes it conditional:
  * `lib/types/client/slot-contract.d.ts` admits `summary` "for an official card's
- * one-liner or a row's missing-description fallback", and the
- * `plugins.row.config` entry closes with "An absent description falls back to
- * the entry's `view: 'summary'`". The owner reproduced both dispatches on a
- * live `rc.2` stand (#646, 11:34): the row opens collapsed, showing this
- * sentence, and expands on the card's own header. Without the branch the page
- * would drop a whole `<li>` card into its own description `<p>`.
- *
- * No line numbers of the compiled page are quoted here on purpose: that file is
- * a build artifact of another repository, and `docs/DSH-0.1.7-MIGRATION.md` §4.2
- * records the numbers shifting between release candidates.
+ * one-liner or a row's missing-description fallback" and closes the
+ * `plugins.row.config` entry with "An absent description falls back to the
+ * entry's `view: 'summary'`". The row this bundle declares in
+ * `cordis.patch.yml` declares no description of its own, so this sentence is the
+ * row's description line — and a card mounted there would drop a whole `<li>`
+ * into the page's `<p>`. `scripts/verify-package.mjs` pins that the row stays
+ * description-free, because a row that grows a description stops dispatching
+ * this view and the branch below becomes unreachable.
  */
 export const QA_INTEGRATIONS_ROW_SUMMARY =
   "Конфигурация подключений стенда: провайдеры, адреса, возможности и сервисные доступы.";
 
 /**
- * The card as the Plugins page renders this bundle's row: the page asks one
- * entry for two views, so the `summary` seat stays a sentence — it lands inside
- * the page's own `<p>` — and the `page` seat is the card below.
+ * The card as the Plugins page renders this bundle's row. The page dispatches
+ * the keyed entry with `view: 'page'` for the form and, because this row declares
+ * no description, with `view: 'summary'` for its description line: answer the
+ * summary with the sentence and mount the card only for the page.
  */
 export function OperatorCardEntry(props: CardProps): ReactElement | string {
   if (props.view === "summary") return QA_INTEGRATIONS_ROW_SUMMARY;
@@ -120,7 +120,7 @@ export function OperatorCardTab(props: CardProps): ReactElement {
   );
 }
 
-export function OperatorCard({ settingsForm }: CardProps): ReactElement {
+export function OperatorCard({ settingsForm }: CardProps): ReactElement | null {
   const store = useMemo(
     () => bindSettingsExternalStore(settingsForm),
     [settingsForm],
@@ -172,20 +172,13 @@ export function OperatorCard({ settingsForm }: CardProps): ReactElement {
   if (settings.status === "unavailable") {
     /**
      * The namespace left the Host's `describe()` view after this seat mounted —
-     * a Config with no `.volatile()` field, or a Host that dropped the entry. On
-     * the old tab surface rendering nothing hid the tab; a configuration seat is
-     * inside a section the page already opened, so nothing renders an empty
-     * column instead. Say it out loud (`docs/DSH-0.1.7-MIGRATION.md` §4.2).
+     * a Config with no `.volatile()` field, or a Host that dropped the entry.
+     * `AGENTS.md` is explicit about the answer on a panel seat: render no card.
+     * What the operator keeps is the row's own `Configure` control, drawn from
+     * the inventory rather than from this entry, so the seat stays reachable and
+     * the column shows an empty list instead of a form with nothing behind it.
      */
-    return (
-      <li
-        className="dsh-qa-integrations__no-settings"
-        data-testid="qa-integrations-no-settings"
-      >
-        Хост не отдаёт конфигурацию `{QA_INTEGRATIONS_SETTINGS_NAMESPACE}` в
-        этот браузер — живой настройки нет.
-      </li>
-    );
+    return null;
   }
 
   const control: ControlProps = {

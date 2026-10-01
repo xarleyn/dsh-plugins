@@ -205,9 +205,10 @@ for (const address of [
 // opens from the configuration section of this bundle's own row and the account
 // card from the bundle's own section, reaching the same QA session through
 // `qaUserSession`. Each reuses the standard card shell inside a list it owns,
-// because the page hands a seat an empty column. Which seat a card of ours
-// belongs on is #646's open question, and this bundle answers it one way on
-// purpose: both seats registered would show two copies of one card.
+// because the page hands a seat an empty column. Which shell a card of ours
+// wears on those seats is #646's open question; which seat it takes is not —
+// `AGENTS.md` names the panel seats and refuses the Settings dialog, and a bundle
+// that registered both would show two copies of one card.
 //
 // The row seat is keyed `<package name>#<row id>` — `rowConfigKey` in the
 // contract the installed `@deepseek-ai/dsh-client-ui-plugin-manager` ships — and
@@ -236,6 +237,27 @@ assert.match(
   "the operator form must resolve under the same constant that builds the seat key",
 );
 assert.match(client, /"configForms"/u);
+// The one-liner is not decoration. The panel dispatches `view: 'summary'` for a
+// row that carries no description of its own, and this bundle's patch row declares
+// none — so the sentence is what the row's description line renders, and a card
+// returned there would drop an `<li>` into the page's `<p>`. Both halves are
+// pinned: a patch row that grows a description would silently retire the summary
+// seat, and a summary branch that returns the shell would corrupt the row.
+assert.doesNotMatch(
+  patch,
+  /^[ \t-]*description:[ \t]*\S/mu,
+  "the patch row must keep no description of its own, or the row seat stops being dispatched for its summary view",
+);
+assert.match(
+  client,
+  /"Конфигурация подключений стенда: провайдеры, адреса, возможности и сервисные доступы\."/u,
+  "the row's summary one-liner ships in the bundle the panel reads",
+);
+assert.match(
+  client,
+  /props\.view\s*===\s*"summary"/u,
+  "the row entry answers the summary view instead of mounting the card for it",
+);
 assert.doesNotMatch(
   client,
   /settings\.plugin\.item/u,

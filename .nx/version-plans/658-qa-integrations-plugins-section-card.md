@@ -3,7 +3,10 @@
 ---
 
 Both Integrations cards open from the Plugins panel now, beside the plugin they
-configure.
+configure. What is proven here is the registration against the contract the panel
+ships and the bundle's own renders; the click-through on a live stand stays #646's
+acceptance item, because the locked QA stand answers the panel's own
+`pluginManager/list*` reads with 403.
 
 The plugin drew two cards in *Settings → Plugins* (`settings.plugins.tab`): the
 operator's configuration card and the account card that holds the user's own
@@ -61,13 +64,23 @@ saved values back as defaults — with every type check green. The list wrapper 
 two cards share took the neutral name `dsh-qa-integrations__card-list` with the
 mount it now draws (`dsh-qa-integrations__host-tab` named a tab that is gone). The
 client tests assert the keyed registrations, the namespace the operator form is
-resolved under, and the two views of the row entry. A row whose namespace the Host
-does not serve now says so inside its own configuration section instead of leaving
-the column empty: on a tab strip an absent card hid the tab, on a panel seat the
-section is already open. `docs/DSH-0.1.7-MIGRATION.md` follows the diff — §4.2
-records that the row seat is dispatched twice, §10 marks this package as the first
-registration on the panel seats — both against the installed contract and the
-owner's live stand. **The seat and the shell a card wears on it are not decided
-here:** #646 asks the maintainer to choose between adopting the host surface and
-staying on `settings.plugins.tab`, D1 option 2 stands until that answer, so
-`AGENTS.md` and the `create-plugin` reference are left untouched.
+resolved under, and both views of the row entry — and now render the components the
+two seats register out of `lib/client.js`, so a card that mounts in the source tree
+but not from the bundle fails here. One of those renders answers the question the
+first draft left implicit: the Plugins page spreads its own `form` *after* the
+injected face, so a test clicks a switch with a decoy `{ state, mutate }` in place
+and asserts the write lands on the form this entry resolved, not on the page's.
+While the Host stops serving the namespace the seat renders no card, which is what
+`AGENTS.md` prescribes for a panel seat — the row's own `Configure` control comes
+from the inventory and stays clickable, and the plugin-owned `<ul>` remains for the
+namespace to come back into. `docs/DSH-0.1.7-MIGRATION.md` follows the diff: §4.2
+now says the `summary` dispatch is **conditional** on the row carrying no
+description (the page renders `description ?? renderSlot(… "summary" …)`), and §10
+credits `dsh-model-safety-gate` (#653) with the first landing on the panel seats and
+puts this package after it. `scripts/verify-package.mjs` pins the pair the summary
+answer depends on: the patch row declares no description, and the bundle carries
+both the sentence and the branch that returns it. **The shell a card wears on that
+row seat is still #646's to decide** — this plugin's 12 px card against the page's
+20 px surface — and D1 option 2 holds it ours until the owner answers. The seat is
+not part of that question any more: #660 landed and `AGENTS.md` names the panel
+seats itself, so this change follows the file and leaves it alone.

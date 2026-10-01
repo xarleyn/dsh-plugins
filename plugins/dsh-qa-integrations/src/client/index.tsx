@@ -37,7 +37,8 @@ const ROW_CONFIG_KEY = `@yadsh/dsh-qa-integrations#${QA_INTEGRATIONS_SETTINGS_NA
  * Where the account card sits: the bundle's own configuration section, keyed by
  * the npm name this bundle is installed under. That contract gives the bundle
  * section `view: 'page'` only, so it needs no summary branch — unlike the row
- * seat, whose entry the page also asks for a one-liner.
+ * seat, which the page also dispatches for its description line while the row
+ * declares none of its own.
  */
 const BUNDLE_CONFIG_KEY = "@yadsh/dsh-qa-integrations";
 
