@@ -103,7 +103,7 @@ describe("client activation", () => {
     // drawn by the Plugins page, so the canonical shell must not arrive with us.
     expect(style.textContent).not.toContain(".dsh-plugin-card");
     expect(style.textContent).toContain(".msg-body");
-    expect(style.textContent).toContain("var(--dsw-focus-ring-width)");
+    expect(style.textContent).toContain("var(--dsw-focus-ring-width, 2px)");
     expect(style.dataset.plugin).toBe("@yadsh/dsh-model-safety-gate");
 
     await dispose();

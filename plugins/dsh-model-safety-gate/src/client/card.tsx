@@ -177,7 +177,20 @@ export function SafetyGateCard({ settingsForm, inspect }: CardProps) {
     });
   }, [overrides, revision, settingsForm]);
 
-  if (settings.status === "unavailable") return null;
+  // The frame here is the page's, so returning nothing would leave the reader inside
+  // an opened row with no section at all and no reason. A card that draws its own
+  // shell can stay invisible; this one owes a sentence.
+  if (settings.status === "unavailable") {
+    return (
+      <div className="msg-body">
+        <p className="msg-muted" data-testid="safety-card-unavailable">
+          The Safety Gate settings are not available in this session, so nothing
+          here can be read or changed yet. The running gate keeps the last
+          configuration it accepted.
+        </p>
+      </div>
+    );
+  }
 
   const sectionProps: ConfigProps = {
     config,

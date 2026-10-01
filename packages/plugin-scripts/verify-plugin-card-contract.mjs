@@ -50,10 +50,27 @@ const CHEVRON_PATH = /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u;
  * the Host's tokens or hands the control over.
  */
 const HOST_RING_TOKEN = "--dsw-focus-ring";
-const FOCUS_OUTLINE = /:focus-visible[^{}]*\{[^}]*outline:\s*([^;}]+)/gu;
+// A width token that is not declared on the surface makes the whole `outline`
+// shorthand invalid and the ring vanishes — the exact case the tokens were taken
+// for — so every ring declaration needs a fallback width, not only a fallback color.
+const RING_WIDTH_FALLBACK = /--dsw-focus-ring-width\s*,\s*\S+/u;
+const FOCUS_OUTLINE = /:focus(?:-visible)?[^{}]*\{[^}]*outline:\s*([^;}]+)/gu;
+
+/*
+ * Which contract applies is read off the *registration*, not off any occurrence of
+ * the seat string: a help line, an error message, or a comment carried from `src/`
+ * would otherwise switch the contract on a bundle that never registered there. The
+ * shape is what `slots.register({ name: … })` compiles to, and `name` is a property
+ * the Host reads at runtime, so it survives minification.
+ */
+const REGISTRATION =
+  /\bname:\s*["']((?:plugins\.row|plugins\.bundle)\.config|settings\.(?:section|plugins\.tab))["']/gu;
 
 function namedSeats(client, candidates) {
-  return candidates.filter((seat) => client.includes(seat));
+  const seats = new Set(
+    [...client.matchAll(REGISTRATION)].map((match) => match[1]),
+  );
+  return candidates.filter((seat) => seats.has(seat));
 }
 
 function checkSharedBans(client, { legacyPatterns }) {
@@ -131,13 +148,23 @@ function verifyHostChrome(client, options) {
   );
 
   for (const [, outline] of client.matchAll(FOCUS_OUTLINE)) {
-    // `outline: none` hands the ring to the Host, which is the other correct answer.
     const value = outline.trim();
+    // `:focus` is checked as well as `:focus-visible`: a hard-coded ring under the
+    // plain selector wins the same fight and is only invisible to this gate.
     const handedOver = /^(none|0|unset|revert|inherit)$/i.test(value);
+    if (handedOver) continue;
     assert.ok(
-      handedOver || value.includes(HOST_RING_TOKEN),
+      value.includes(HOST_RING_TOKEN),
       `a card inside the panel's chrome must take the Host's focus ring tokens ` +
         `(${HOST_RING_TOKEN}-width/-color), not a hard-coded outline (${value})`,
+    );
+    // An undeclared `--dsw-focus-ring-width` invalidates the whole shorthand, and the
+    // ring disappears instead of falling back — so the width needs a fallback too.
+    assert.ok(
+      !value.includes("--dsw-focus-ring-width") ||
+        RING_WIDTH_FALLBACK.test(value),
+      `a ring built from ${HOST_RING_TOKEN}-width must give it a fallback length, ` +
+        `or the declaration is dropped where the token is not defined (${value})`,
     );
   }
 

@@ -33,7 +33,7 @@ const ROW_REGISTRATION = `slots.register({ name: "plugins.row.config", key: "@ya
 const ROW_BODY_ONLY = [
   ROW_REGISTRATION,
   `const RowEntry = () => jsx("section", { className: "demo-body" });`,
-  `.demo-body button:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))}`,
+  `.demo-body button:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))}`,
 ].join("\n");
 
 test("accepts a settings card that renders the canonical shell", () => {
@@ -158,7 +158,7 @@ test("requires a card inside the panel chrome to take the Host's focus ring toke
   assert.throws(() => {
     verifyPluginCardContract(
       ROW_BODY_ONLY.replace(
-        "var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))",
+        "var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))",
         "2px solid var(--dsw-alias-brand-primary)",
       ),
     );
@@ -169,6 +169,41 @@ test("requires a card inside the panel chrome to take the Host's focus ring toke
       ROW_BODY_ONLY.replace(/outline:[^}]+/u, "outline:none"),
     );
   });
+});
+
+test("requires a fallback length on the Host's ring width", () => {
+  // An undefined `--dsw-focus-ring-width` invalidates the whole `outline` shorthand,
+  // so a ring without a fallback disappears exactly where the token is missing.
+  assert.throws(() => {
+    verifyPluginCardContract(
+      ROW_BODY_ONLY.replace(
+        "var(--dsw-focus-ring-width, 2px)",
+        "var(--dsw-focus-ring-width)",
+      ),
+    );
+  }, /fallback length/u);
+});
+
+test("catches a hard-coded ring under the plain focus selector", () => {
+  // `:focus` wins the same fight as `:focus-visible` and is invisible to a gate that
+  // reads only the latter.
+  assert.throws(() => {
+    verifyPluginCardContract(
+      `${ROW_REGISTRATION}\nconst RowEntry = () => jsx("section");\n.demo-input:focus{outline:2px solid var(--dsw-alias-brand-primary)}`,
+    );
+  }, /focus ring tokens/u);
+});
+
+test("does not switch the contract on a seat string that is not a registration", () => {
+  // A help line mentions the panel row; the bundle is still a settings card and still
+  // owes the shell. Only `slots.register({ name: … })` names a seat.
+  const prose = [
+    SETTINGS_REGISTRATION,
+    `const help = "Plugins → plugins.row.config is where the Host seats a row card";`,
+  ].join("\n");
+  assert.throws(() => {
+    verifyPluginCardContract(prose);
+  }, /canonical shell rule/u);
 });
 
 test("keeps the shared bans on the row seat", () => {

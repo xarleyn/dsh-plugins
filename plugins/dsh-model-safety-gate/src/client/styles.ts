@@ -18,7 +18,7 @@ export const styles: string = `.msg-body,.msg-body *{box-sizing:border-box}
 .msg-field{display:grid;gap:6px}
 .msg-field>span{font-size:11px;color:var(--dsw-alias-label-secondary);font-weight:600}
 .msg-control{width:100%;height:36px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);padding:0 10px;font:inherit;font-size:12px;outline:none}
-.msg-control:focus-visible{border-color:var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
+.msg-control:focus-visible{border-color:var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .msg-control:disabled{cursor:default;opacity:.45}
 .msg-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px}
 .msg-toggle-copy{display:grid;gap:2px}
