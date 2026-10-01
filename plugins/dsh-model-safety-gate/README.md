@@ -171,12 +171,15 @@ browser. The `safetyGate` Remote projection redacts it as well.
 
 ## Settings card
 
-`Settings → Plugins → Model Safety Gate` edits this plugin's configuration
-through the live fields of its own profile entry — the settings namespace of a
-plugin is its entry id, `dsh-model-safety-gate`. Every field the card writes is
-declared `.volatile()` in the config schema, so a committed change re-resolves
-the running gate on the spot: turning the gate off stops the next check, and
-switching the mode to `enforce` blocks the next matching prompt.
+The plugin's row in the Plugins panel carries the card: opening the row's
+configure control edits this plugin's configuration through the live fields of
+its own profile entry — the settings namespace of a plugin is its entry id,
+`dsh-model-safety-gate`, and it is also the row id the bundle's patch declares,
+which is why moving the card off the old Settings tab changed nothing about
+where a stored value lives. Every field the card writes is declared
+`.volatile()` in the config schema, so a committed change re-resolves the running
+gate on the spot: turning the gate off stops the next check, and switching the
+mode to `enforce` blocks the next matching prompt.
 
 The Host validates a write against the schema and nothing more, so a
 combination the schema cannot express (a `dsh` backend without a provider, an

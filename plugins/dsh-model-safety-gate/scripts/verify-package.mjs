@@ -29,8 +29,8 @@ await runVerifyPackage({
     injectEquals: [
       "@deepseek-ai/dsh-api-gateway",
       "@deepseek-ai/dsh-client-connection",
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
       "@deepseek-ai/dsh-client-ui-settings",
-      "@deepseek-ai/dsh-client-ui-settings-plugins",
     ],
   },
   files: [
@@ -69,6 +69,14 @@ await runVerifyPackage({
   },
   clientBundle: {
     moduleLoaderId: true,
+    includes: [
+      // The card mounts on the Plugins page, in the keyed seat of this bundle's
+      // own row; the seat moved out of the Settings "Built-in plugins" section.
+      "plugins.row.config",
+      // That key is `<package name>#<row id>`, and the row id is the settings
+      // namespace, so a value saved before the move keeps reading under it.
+      "@yadsh/dsh-model-safety-gate#",
+    ],
     matches: [
       // Browser bundle identity (AGENTS.md): the registration id is the full
       // package name.
@@ -77,6 +85,11 @@ await runVerifyPackage({
       // redacted host-side, and the bundle itself never carries a literal key
       // field name pair.
       /apiKeyConfigured/u,
+    ],
+    notMatches: [
+      // The old tab seat of the Plugins settings section must not come back:
+      // one render site, or the card shows twice.
+      /"settings\.plugins\.tab"/u,
     ],
     cardContract: {
       legacyPatterns: [
