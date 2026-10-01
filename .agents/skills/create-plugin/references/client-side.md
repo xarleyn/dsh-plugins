@@ -95,9 +95,12 @@ Everything below was confirmed by a broken surface, not by a green gate.
 
   The panel titles the row from the package manifest, so no `label` is handed to
   the seat and a keyed seat has no `order`.
-- From `@yadsh/dsh-plugin-kit/client` the shell survives the move: `CardShell`,
-  `PLUGIN_CARD_SHELL_CSS`, `ChevronDown`, `injectCardStyles` and
-  `bindSettingsExternalStore` are what the card is built from. But
+- From `@yadsh/dsh-plugin-kit/client` a row card keeps `bindSettingsExternalStore`,
+  `startVisibilityAwarePolling` and `injectCardStyles`. `CardShell`,
+  `PLUGIN_CARD_SHELL_CSS` and `ChevronDown` belong to a card that owns its shell —
+  a `settings.section` or `settings.plugins.tab` page — and must NOT be imported by
+  a row card: the Plugins page draws the frame, the heading and the expand control,
+  so ours would be a second card inside the Host's one.
   `registerSettingsCard` / `SETTINGS_PLUGIN_ITEM_SLOT` default to the slot the
   Host deleted at `0.1.7` — pass `slotName: "plugins.row.config"` with the row
   `key`, or drive `ctx.slots.inject`/`register` yourself, which is what every
@@ -115,11 +118,16 @@ Everything below was confirmed by a broken surface, not by a green gate.
   Resolve what the card really needs through `ctx.configForms.get<T>(namespace)`
   and pass it in the face under another name (`settingsForm`, what the migrated
   plugins settled on).
-- The shell contract (AGENTS.md) survives the move: canonical CSS, the
-  `dsh-plugin-card` classes, the inline chevron. The panel's configuration
-  section supplies no list, so the `<li>` root stays inside a `<ul>` the plugin
-  owns. Render no card while the namespace answers `unavailable`, and disable
-  writes from `state.writable` instead of hiding the card — a LAN browser does
+- The shell contract (AGENTS.md) is decided by the seat, and the gate reads the seat
+  off the built bundle. On `plugins.row.config` the canonical CSS, the
+  `dsh-plugin-card` classes and the inline chevron are what the gate **rejects**: the
+  page supplies the frame, the title, the row id and the description line, and mounts
+  the `page` view inside them. Take the focus ring from the Host's tokens
+  (`--dsw-focus-ring-width` / `--dsw-focus-ring-color`, with a fallback length on the
+  width) instead of writing your own `outline`. Keep answering `unavailable` visible:
+  a card that owns its shell may render nothing, but a body inside the page's card
+  owes a sentence, or the reader gets an empty section; disable writes from
+  `state.writable` rather than hiding the controls — a LAN browser does
   reach the Plugins page, which is not the loopback-gated settings directory.
 - The manifest follows the surface. The client half type-imports the slot
   contract of `@deepseek-ai/dsh-client-ui-plugin-manager`, so that package

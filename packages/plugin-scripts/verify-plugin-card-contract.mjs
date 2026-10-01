@@ -55,6 +55,11 @@ const HOST_RING_TOKEN = "--dsw-focus-ring";
 // for — so every ring declaration needs a fallback width, not only a fallback color.
 const RING_WIDTH_FALLBACK = /--dsw-focus-ring-width\s*,\s*\S+/u;
 const FOCUS_OUTLINE = /:focus(?:-visible)?[^{}]*\{[^}]*outline:\s*([^;}]+)/gu;
+// At least one rule must actually put the Host's ring on a control — as an outline, or
+// as the inset shadow the Host itself uses where an outline would shift layout. A gate
+// that only forbids a hard-coded outline is satisfied by deleting every focus rule,
+// which is how a ring disappears while the check stays green.
+const RING_APPLIED = /:focus(?:-visible)?[^{}]*\{[^}]*--dsw-focus-ring[^;}]*/u;
 
 /*
  * Which contract applies is read off the *registration*, not off any occurrence of
@@ -167,6 +172,16 @@ function verifyHostChrome(client, options) {
         `or the declaration is dropped where the token is not defined (${value})`,
     );
   }
+
+  // A body whose controls keep no ring at all is the same user-visible failure as a
+  // hard-coded one, and deleting the rules is the cheaper way to reach it.
+  assert.match(
+    client,
+    RING_APPLIED,
+    "the row card must put a ring on at least one of its own controls with " +
+      `${HOST_RING_TOKEN}-width/-color — the Host's focus.css dresses its own elements, ` +
+      "not the ones a plugin renders inside the section",
+  );
 
   checkSharedBans(client, options);
 }

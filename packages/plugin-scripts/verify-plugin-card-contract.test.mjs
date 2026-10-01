@@ -163,10 +163,22 @@ test("requires a card inside the panel chrome to take the Host's focus ring toke
       ),
     );
   }, /focus ring tokens/u);
-  // Handing the ring to the Host is the other right answer.
-  assert.doesNotThrow(() => {
+  // `outline: none` is not an answer on its own: `focus.css` of the Host dresses the
+  // Host's own elements, not a control a plugin renders inside the section, so a body
+  // that hands the ring over and gives nothing has simply lost the ring.
+  assert.throws(() => {
     verifyPluginCardContract(
       ROW_BODY_ONLY.replace(/outline:[^}]+/u, "outline:none"),
+    );
+  }, /at least one of its own controls/u);
+  // What the Host itself does where an outline would shift layout — an inset shadow
+  // built from the same tokens — passes.
+  assert.doesNotThrow(() => {
+    verifyPluginCardContract(
+      ROW_BODY_ONLY.replace(
+        "outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))",
+        "outline:none;box-shadow:inset 0 0 0 2px var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))",
+      ),
     );
   });
 });
@@ -192,6 +204,37 @@ test("catches a hard-coded ring under the plain focus selector", () => {
       `${ROW_REGISTRATION}\nconst RowEntry = () => jsx("section");\n.demo-input:focus{outline:2px solid var(--dsw-alias-brand-primary)}`,
     );
   }, /focus ring tokens/u);
+});
+
+test("requires the row card to leave a ring on its own controls", () => {
+  // The cheapest way to satisfy a gate that only forbids a hard-coded outline is to
+  // delete every focus rule; the reader then has no ring at all.
+  assert.throws(() => {
+    verifyPluginCardContract(
+      ROW_BODY_ONLY.replace(
+        /^\.demo-body button:focus.*$/mu,
+        ".demo-body button{color:red}",
+      ),
+    );
+  }, /at least one of its own controls/u);
+});
+
+test("holds the bundle-level panel seat to the same chrome rule", () => {
+  // A feature-owned page is mounted in the panel's page too, so the second-frame rule
+  // is about the surface, not about which of the two panel seats registered it.
+  const bundleBody = [
+    `slots.register({ name: "plugins.bundle.config", key: "@yadsh/demo" }, BundleEntry);`,
+    `const BundleEntry = () => jsx("section", { className: "demo-body" });`,
+    `.demo-body button:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))}`,
+  ].join("\n");
+  assert.doesNotThrow(() => {
+    verifyPluginCardContract(bundleBody);
+  });
+  assert.throws(() => {
+    verifyPluginCardContract(
+      `${bundleBody}\nconst cls = open ? "dsh-plugin-card dsh-plugin-card--open" : "dsh-plugin-card";`,
+    );
+  }, /second frame/u);
 });
 
 test("does not switch the contract on a seat string that is not a registration", () => {
