@@ -36,7 +36,10 @@ has to budget and what §10 says where it will be read. The rest still holds.
 
 One caveat on that contract, from #356: the guard under 5 is stated as it was
 built, and as built it was measured losing an update. What returns has to meet 5
-with its correction, not the guard alone.
+with its correction, not the guard alone. The correction is restated in §10's D2
+in `docs/DSH-0.1.7-MIGRATION.md`, because that is where the paragraph above sends
+the reader of #605: a cost quoted from one document and corrected only in the
+other is how the defect survives the return.
 
 ## 1. Product contract
 
@@ -59,17 +62,28 @@ Numbered, testable guarantees:
    roster's own criterion, never by guessing a path — and the page still guesses
    nothing.
 5. ~~**Revision guard.**~~ **Withdrawn** — no write to guard. Every read used to
-   return a content revision (a hash of the file's bytes), a save had to present
-   it back, and a race was refused with both revisions. **#356 measured that the
-   guard as built did not hold two saves of one revision**: it compared a
-   snapshot revision, not the absence of another writer, so both passed the check
-   before either renamed the file, both answered a success receipt, and the disk
-   kept one variant. The atomic rename made one file's swap atomic, not the
-   read → check → write transaction around it. So the guard returns only with a
-   transaction that holds the composition's canonical path exclusively across its
-   whole read, check, registrar and write; what a revision does still settle — an
-   editor outside this process, a second Host process — is a contract #605 has to
-   state beside it, not one that serialization covers.
+   return a content revision (a hash of the file's bytes) and a save had to
+   present it back. That check refused one shape of the collision and not the
+   other: a save whose revision had already diverged from the file was refused
+   with both revisions, while two saves presenting the *same* revision never
+   diverged from it, so nothing refused them and the disk silently kept one of
+   the two. **#356 measured the second shape going unanswered**: the guard
+   compared a snapshot revision, not the absence of another writer, so both saves
+   passed the check before either renamed the file, both answered a success
+   receipt, and one variant was lost. The atomic rename made one file's swap
+   atomic, not the read → check → write transaction around it. So the guard
+   returns only with a transaction that holds one composition exclusively across
+   its whole read, check, registrar and write. Its key is the file the write lands
+   in, which is not something this page can name today — the cutover deleted the
+   roster's `path` together with the writer, and the reader addresses a
+   composition by preset id through `readDocument(id)`
+   (`src/host/preset-reader.ts`): the key arrives with whatever file IO a return
+   brings. What a revision does still settle — an editor outside this process, a
+   second Host process — is a contract #605 has to state beside it, not one that
+   serialization covers. And 5 is met only once the suite races the write against
+   itself in both shapes: save against save, and save against reset. §5 carries
+   neither, because there is nothing to race yet, and a guard restored without
+   those two cases is the guard #356 measured.
 6. ~~**A refusal writes nothing.**~~ Withdrawn as a write guarantee. The rules
    still answer, through the exported validators and the reader's disclosures:
    malformed YAML, a persona row whose managed key is an expression, more than
