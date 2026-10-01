@@ -4,8 +4,9 @@
  * `client-card.test.tsx` (what the browser draws from it).
  *
  * Both need the same stand for the browser runtime — a bare Cordis context, a
- * mounted Remote namespace, the Host `ConfigForm`, and a slot registry that keeps
- * the registration instead of rendering it. One copy is the point: a stub shaped
+ * mounted Remote namespace, the Host `ConfigForm`, the page's `{ state, mutate }`
+ * view of the same namespace, and a slot registry that keeps the registration
+ * instead of rendering it. One copy is the point: a stub shaped
  * for only one of the two lets the pair drift apart, and this seat fails by
  * disappearing rather than by throwing.
  */
@@ -27,6 +28,12 @@ export interface FormWrite {
   readonly value: unknown;
 }
 
+/** One write the page's own `form` was asked to make, had the card used it. */
+export interface PageMutation {
+  readonly ops: unknown;
+  readonly revision: unknown;
+}
+
 /**
  * What the entrypoint handed `ctx.slots.register`, with the writes the rendered
  * card makes against the stand form riding along.
@@ -37,6 +44,9 @@ export interface Seat {
   readonly face: Record<string, unknown>;
   readonly component: (props: Record<string, unknown>) => ReactElement;
   readonly writes: readonly FormWrite[];
+  readonly mutations: readonly PageMutation[];
+  /** The owner `form` the page renders the `page` view with. */
+  readonly pageForm: unknown;
 }
 
 /** One synthetic rule, so the opened card has a row of its own to draw. */
@@ -116,13 +126,15 @@ const credentialsStub = {
  * its identity across the slot boundary; `client-card.test.tsx` has the card read
  * its snapshot through the store binding and writes through `set`, so the value
  * here is the configuration under test, `writes` is the record of what the card
- * asked the Host to store, and `settingsStatus` stands for the Host being
- * unreachable.
+ * asked the Host to store, `settingsStatus` stands for the Host being
+ * unreachable, and `writable` for a namespace the Host shows but refuses to
+ * let this browser edit.
  */
 function formStub(
   config: WebFetchAuthConfig,
   settingsStatus: "ready" | "unavailable",
   writes: FormWrite[],
+  writable: boolean,
 ) {
   const snapshot = {
     status: settingsStatus,
@@ -130,7 +142,7 @@ function formStub(
     base: undefined,
     user: config,
     revision: 1,
-    writable: settingsStatus === "ready",
+    writable,
     mode: "host" as const,
   };
   return {
@@ -157,10 +169,26 @@ function formStub(
 export async function registeredSeat(
   config: WebFetchAuthConfig = demoConfig(),
   settingsStatus: "ready" | "unavailable" = "ready",
+  writable = settingsStatus === "ready",
 ): Promise<Seat> {
-  const seats: Omit<Seat, "writes">[] = [];
+  const seats: Omit<Seat, "writes" | "mutations" | "pageForm">[] = [];
   const writes: FormWrite[] = [];
-  const form = formStub(config, settingsStatus, writes);
+  const mutations: PageMutation[] = [];
+  const form = formStub(config, settingsStatus, writes, writable);
+  /*
+   * The owner `form` the page renders its row seat with: `formFor(row.rowId)`
+   * (`PluginManagerPage.tsx:1151`) answers `{ state, mutate }` for the same
+   * namespace the page lists. The card must not take it for its own form, so the
+   * stand hands over exactly what the page hands over, and keeps its own record
+   * of any write that reached it.
+   */
+  const pageForm = {
+    state: form.getSnapshot(),
+    mutate: (ops: unknown, revision: unknown) => {
+      mutations.push({ ops, revision });
+      return Promise.resolve(true);
+    },
+  };
   const ctx = new Context();
   ctx.provide("remote", {
     webFetchAuth: remoteStub,
@@ -199,13 +227,20 @@ export async function registeredSeat(
   await apply(ctx);
   const [seat] = seats;
   if (seat === undefined) throw new Error("apply() registered no seat");
-  return { ...seat, writes };
+  return { ...seat, writes, mutations, pageForm };
 }
 
-/** The props the page renders the seat with: its view plus the injected face. */
+/**
+ * The props the page renders the seat with: the injected face first, then the
+ * owner props, which the renderer spreads over it — `view` for either call, and
+ * the page's own `form` for the `page` view only
+ * (`PluginManagerPage.tsx:491`, `:495`). A stand that hands no `form` cannot see
+ * it shadowing the face.
+ */
 export function seatProps(
   seat: Seat,
   view: "page" | "summary",
 ): Record<string, unknown> {
-  return { ...seat.face, view };
+  const owner = view === "page" ? { view, form: seat.pageForm } : { view };
+  return { ...seat.face, ...owner };
 }

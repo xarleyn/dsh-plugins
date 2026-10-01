@@ -12,10 +12,12 @@
  *    namespace the card reads and writes under, because one string is both.
  * 2. The page spreads its own owner props over the injected face, and two of
  *    them are `view` and `form`. A face occupying either name is overwritten
- *    without a trace, so the full `ConfigForm` crosses as `settingsForm` and
- *    neither owner name is claimed.
+ *    without a trace, so the full `ConfigForm` crosses as `settingsForm`, neither
+ *    owner name is claimed, and the entry stops the page's `form` at its own
+ *    door: `{ state, mutate }` cannot subscribe and writes no single field, so
+ *    the body must never see it beside the form it does write through.
  *
- * The same entry is seated twice — once as the row's description line, once as
+ * The same entry is seated twice — once for the row's description line, once for
  * its configuration body — which is what the last three cases pin. What the page
  * *draws* from those answers is `client-card.test.tsx`.
  */
@@ -23,7 +25,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { WEB_FETCH_AUTH_SETTINGS_NAMESPACE } from "../src/types.js";
-import { registeredSeat } from "./client-seat.helpers.js";
+import { registeredSeat, seatProps } from "./client-seat.helpers.js";
 
 /** The package this bundle publishes under, read from its own manifest. */
 const packageJson = JSON.parse(
@@ -93,21 +95,27 @@ describe("plugins row configuration seat", () => {
 
   it("mounts the card only for the page seat, over the same form", async () => {
     const seat = await registeredSeat();
-    const page = seat.component({ ...seat.face, view: "page" }) as {
+    const page = seat.component({
+      ...seatProps(seat, "page"),
+    }) as {
       type: unknown;
       props: Record<string, unknown>;
     };
 
     expect(typeof page.type).toBe("function");
     expect(page.props.settingsForm).toBe(seat.face.settingsForm);
+    // The page's `{ state, mutate }` view stops at the entry: a body holding two
+    // forms for one namespace is a body that can read one and write the other.
+    expect(page.props).not.toHaveProperty("form");
   });
 
   it("seats the row's sentence and the card's own copy as two separate answers", () => {
     /*
-     * The page prints the summary view as the row's description line one paragraph
-     * above the card this same entry draws, so the header needs its own sentence —
-     * one shared literal is how the two screens start repeating themselves. Which
-     * text lands where is asserted in the rendered card.
+     * The page renders one entry in both views, and puts whichever sentence the
+     * row carries — its manifest `description`, or this entry's summary answer
+     * where a row declares none — one paragraph above the card the same entry
+     * draws. One shared literal is how the two screens start repeating
+     * themselves. Which text lands where is asserted in the rendered card.
      */
     expect(clientSource).toMatch(
       /if \(view === "summary"\) return WEB_FETCH_AUTH_ROW_SUMMARY;/u,
