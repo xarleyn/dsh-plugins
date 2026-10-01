@@ -10,12 +10,21 @@ import {
 } from "./verify-plugin-card-contract.mjs";
 
 const canonicalClient = [
+  // Which contract applies is read off the seat the bundle registers on, so the
+  // fixture has to name one — here the settings surface that owes us the shell.
+  'slots.register({ name: "settings.plugins.tab" }, FixtureCard);',
   ...CANONICAL_SHELL_RULES,
   '<path d="m3.5 5.25 3.5 3.5 3.5-3.5"/>',
   // The sheet above only proves the shell is styled; the contract also reads
   // the two strings only the code that renders the shell produces.
   'const card = open ? "dsh-plugin-card dsh-plugin-card--open" : "dsh-plugin-card";',
   'jsx("button", { className: "dsh-plugin-card__header", "aria-expanded": open });',
+].join("\n");
+
+/** A card seated on the Plugins panel row, where the Host draws the chrome. */
+const rowClient = [
+  'slots.register({ name: "plugins.row.config", key: "@yadsh/dsh-fixture#fixture" }, RowCard);',
+  'const RowCard = () => jsx("section", { className: "fixture-body" });',
 ].join("\n");
 
 test("the CI workflow fans the projects it verifies out into a bounded matrix", async () => {
@@ -263,5 +272,17 @@ test("the shared card gate rejects font-glyph chevrons", () => {
   assert.throws(
     () => verifyPluginCardContract(`${canonicalClient}\n⌄`),
     /font glyphs must not be used as disclosure chevrons/u,
+  );
+});
+
+test("the shared card gate forbids our own shell on the Plugins panel row", () => {
+  // The maintainer's word of 2026-10-01 (§4.3 option 1): a row card is drawn by the
+  // Host, so the class names this gate requires of a settings card are what it
+  // rejects here. Pinned in the CI wiring test because the same module is what every
+  // package's `verify` target runs.
+  assert.doesNotThrow(() => verifyPluginCardContract(rowClient));
+  assert.throws(
+    () => verifyPluginCardContract(`${rowClient}\n${CANONICAL_SHELL_RULES[0]}`),
+    /second frame/u,
   );
 });

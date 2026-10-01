@@ -108,19 +108,42 @@
   that reuses the standard card shell keeps its `<li>` root inside a
   plugin-owned `<ul>`.
 
-- Cards registered in `plugins.row.config` must use the same outer shell as
-  the first-party DSH plugin cards. The root is a `<li>` rendered inside a
-  plugin-owned `<ul>` — the page's configuration section supplies no list of its
-  own — not an `<article>` or a permanently expanded custom panel.
-- Use the shared BEM class contract for the shell:
+### Two kinds of card: who owns the chrome
+
+- On the Plugins panel, `plugins.row.config` seats the card inside the Host's own
+  row-detail page. The page draws the card surface (a `--dsw-radius-xl`, 20 px
+  radius), the row title, the row id, the module name and the description line, and
+  only then mounts the registrant's `page` view under the page's configuration
+  section. A card seated here renders **the body only**: no outer border, no
+  background of its own, no `<li>` root, none of the `dsh-plugin-card*` classes and
+  no chevron of ours. Repeating the chrome inside the Host's card draws a second
+  frame and a second heading next to the first-party rows, which is what this rule
+  exists to prevent.
+- The same bundle still answers the `summary` view of its own seat, and that answer
+  lands inside the Host's description paragraph: one plain sentence, never a card.
+- Focus treatment on this surface is the Host's, from its ring tokens:
+  `outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))`.
+  A `:focus-visible` rule of our own with a hard-coded outline loses to the Host's
+  `focus.css` (specificity 0-3-2 against 0-2-0) under pointer modality, so raising
+  our specificity is the wrong repair — take the tokens.
+- The seat key `<package name>#<row id>` and the settings namespace it resolves are
+  not part of the chrome. Moving them orphans the values a user already saved, so a
+  chrome change never touches them.
+- A page mounted in the native settings tree (`settings.section`), or in a tab of
+  the native settings surface (`settings.plugins.tab`) — a placement this repository
+  is moving away from, not one a new card chooses — still owns its whole card:
+  nothing around it draws a frame. Such a card's root is a `<li>` rendered inside a
+  plugin-owned `<ul>` — not an `<article>` and not a permanently expanded custom
+  panel.
+- For a card that owns its shell, use the shared BEM class contract:
   `dsh-plugin-card`, `dsh-plugin-card--open`,
   `dsh-plugin-card__header`, `dsh-plugin-card__head-text`,
   `dsh-plugin-card__name`, `dsh-plugin-card__description`,
   `dsh-plugin-card__badge`, `dsh-plugin-card__chevron`, and
   `dsh-plugin-card__body`. Keep plugin-specific class names inside the body.
-- Keep the shell rules identical in every self-contained client bundle. Do not
-  add a plugin-specific border, shadow, gradient, header icon, title size, or
-  hover treatment. The canonical shell CSS is:
+- Keep the shell rules identical in every self-contained client bundle that owns its
+  shell. Do not add a plugin-specific border, shadow, gradient, header icon, title
+  size, or hover treatment. The canonical shell CSS is:
 
   ```css
   .dsh-plugin-card{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-3);border-radius:12px;list-style:none;transition:border-color .16s,background .16s}
@@ -137,22 +160,30 @@
   .dsh-plugin-card__body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}
   ```
 
-- The header is a full-width `<button type="button">` with `aria-expanded`, an
-  accessible show/hide label, the title and description stack, an optional
-  status badge, and the chevron in that order. Render the body only while open.
-  While the row's namespace answers `unavailable`, render no card.
-- Use a 14 by 14 inline SVG chevron with `viewBox="0 0 14 14"` and the path
+- The header of a card that owns its shell is a full-width `<button type="button">`
+  with `aria-expanded`, an accessible show/hide label, the title and description
+  stack, an optional status badge, and the chevron in that order. Render the body
+  only while open. While the row's namespace answers `unavailable`, render no card.
+- A card that owns its shell uses a 14 by 14 inline SVG chevron with
+  `viewBox="0 0 14 14"` and the path
   `m3.5 5.25 3.5 3.5 3.5-3.5`, stroked with `currentColor`, round caps, and
   round joins. Do not use font glyphs such as `⌄` or `▾`; their shape and
   baseline vary by font and encoding.
 - Build plugin-specific controls from `--dsw-alias-*` design tokens so light,
   dark, and system themes stay coherent. Hard-coded colors may communicate a
   narrow semantic state, but must not define the card surface or typography.
-- Package verification for a configuration card must assert the standard shell
-  class and SVG path in the built client bundle and reject legacy outer-shell
-  classes, font chevrons, and non-standard shell tokens. When a local DSH web
-  app is available, visually compare closed, hovered, focused, and open states
-  with a first-party card before completion.
+- Package verification for a configuration card is decided by the seat, and the gate
+  takes it as an explicit argument. A card that owns its shell (`settings.section`,
+  `settings.plugins.tab`) must show the standard shell class and the SVG path in the
+  built client bundle, and must reject legacy outer-shell classes, font chevrons and
+  non-standard shell tokens. A card seated on the Plugins panel row
+  (`plugins.row.config`) must show **neither** — any `dsh-plugin-card*` class or our
+  chevron path there is the second frame this rule forbids — and the gate proves the
+  exemption by requiring the bundle to name that seat, so claiming it while still
+  registered in the settings surface fails instead of dodging the check. When a local
+  DSH web app is available, visually compare the card with a first-party one: closed,
+  hovered, focused and open for a card that owns its shell, and the row's own states —
+  collapsed, expanded, focused after a mouse click — for a card that does not.
 
 ## No internal identifiers in public content
 

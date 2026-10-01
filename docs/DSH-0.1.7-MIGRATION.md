@@ -376,6 +376,17 @@ survives untouched: it is structural over `subscribe`/`getSnapshot`, which
 
 ### 4.3 The card-shell contract is the open decision
 
+**[decided 2026-10-01, option 1]** The maintainer chose to follow the Host chrome:
+`CardShell` is dropped from the `plugins.row.config` path, `AGENTS.md` and
+`packages/plugin-scripts/verify-plugin-card-contract.mjs` were rewritten to match, and
+the gate now reads the seat off the built bundle rather than trusting the plugin's
+declaration. The remaining open question in this section is therefore closed; what
+survives is the choice itself, kept here because the second half of the series (twelve
+card components) is carried out against it. §4.3a item 3 — the focus ring — is resolved
+the same way: cards inside the panel chrome take `--dsw-focus-ring-width` /
+`--dsw-focus-ring-color` and never a hard-coded outline, which is what the new gate
+asserts.
+
 **This is the one thing that needs a maintainer call, not an edit.** Our cards
 draw their own `dsh-plugin-card` shell (`CardShell`, the `<li>` root, the 14×14
 chevron) because on 0.1.5 the host gave each card a bare keyed slot seat. On

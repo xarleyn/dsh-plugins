@@ -99,7 +99,11 @@ describe("client activation", () => {
       }),
       expect.anything(),
     );
-    expect(style.textContent).toContain(".dsh-plugin-card{");
+    // The sheet this bundle injects is its body styling only: the row's card is
+    // drawn by the Plugins page, so the canonical shell must not arrive with us.
+    expect(style.textContent).not.toContain(".dsh-plugin-card");
+    expect(style.textContent).toContain(".msg-body");
+    expect(style.textContent).toContain("var(--dsw-focus-ring-width)");
     expect(style.dataset.plugin).toBe("@yadsh/dsh-model-safety-gate");
 
     await dispose();
