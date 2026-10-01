@@ -18,29 +18,28 @@ and what makes it safe: the row id is the same string the Host resolved this
 plugin's volatile Config under since `#521`, so the namespace the page derives its
 form from and the namespace this plugin reads are one namespace. **Nothing about
 where values are stored changed**, and a level or format saved by an older build is
-read back by this one; the tab's own seat id `plugin-log` was the only name left
-behind, and it named nothing but the seat.
+read back by this one. The tab left three names behind — its seat id `plugin-log`,
+the `<ul>`'s class `plu-tab`, and its test id `log-tab`, now `log-card-section` — and
+none of them named a stored value.
 
-What the card renders is the same card: the same shell every DSH configuration card
-uses (decision D1 of the cutover keeps it ours, and the card-contract gate does not
-read slot names, so it fires on the new registration exactly as it did on the old),
-the same three controls, the same live consumer count, the same write-on-change
-behavior. Two details follow from the new seat rather than from a redesign. The page
-hands its registrant a `ConfigPageForm`, which is `{ state, mutate }` — no
+What the card renders is the same card: the same shell `AGENTS.md` requires of a card
+on this seat, which the card-contract gate asserts without reading slot names, so it
+fires on the new registration exactly as it did on the old; the same three controls,
+the same live consumer count, the same write-on-change behavior. Two details follow
+from the new seat rather than from a redesign. The page hands its registrant a
+`ConfigPageForm`, which is `{ state, mutate }` — no
 subscription, no single-field write — so the card keeps resolving its own
 `ConfigForm` and that form now arrives through the injected face under the name
 `settingsForm`, where the owner prop called `form` cannot shadow it. The same entry
 is also *offered* a second render, as `view: 'summary'`: the contract lets a row
-that declares no description fall back to its seat for the page's one-liner
-(`PluginManagerPage.tsx:491` against `:495` for the `page` body, at the tag
-`dsh-v0.1.7-rc.2`). This bundle never takes that offer — the row's description
+that declares no description fall back to its seat for the page's one-liner, and the
+seat's published contract names exactly the two `view` values this card answers. This
+bundle never takes that offer — the row's description
 comes from the installed manifest's `description`, which the package declares — so
 the answer is kept equal to that field, and the card's own header line is now a
-sentence of its own instead of the row's one-liner repeated under the page's.
-The shell's `<li>`
-still needs a list to sit in, which the section does not supply, so the plugin-owned
-`<ul>` stays with it — renamed for what it is now (`plu-tab` was a name for a pane
-this card no longer renders in).
+sentence of its own instead of the row's one-liner repeated under the page's. The
+shell's `<li>` still needs a list to sit in, which the section does not supply, so the
+plugin-owned `<ul>` stays with it.
 
 The manifest followed the surface: the client half type-imports the Plugins page's
 slot contract instead of the settings-plugins one, so
