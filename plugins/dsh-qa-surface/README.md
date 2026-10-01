@@ -590,10 +590,6 @@ take effect. Like the starter messages, none of this reaches the agent prompt, a
 a notice never carries the answer itself — only the chat's title and the fact that
 its turn ended.
 
-A notice is bounded by ownership, not by what the reader may open: an admin's
-shared history (`accounts.showOtherUsersChats`) deliberately lists chats that
-belong to other accounts, and the turn of such a chat raises nothing here.
-
 ### Integration tokens
 
 The same `Настройки` dialog carries an «Интеграционные токены» section, so the
@@ -896,16 +892,16 @@ export function apply(ctx: Context) {
 
 ### The signed-in account outside the dialog
 
-A card seated on the Host's Plugins panel — the keyed `plugins.row.config` seat
-of its own bundle row — has no panel props to read the account from, so the same
-contract also publishes the session as the `qaUserSession` client service:
-`checking`, `anonymous` or `authed` with the bearer credential the
-principal-scoped QA remotes authorize with. It follows the same account
-controller the pages use, so a card and the dialog never disagree. Subscribe to
-it with `useSyncExternalStore` and render account-bound controls only for
-`authed` — without an account every call would be refused, and the credential is
-transport authentication only: never persist it, log it, or put it in a URL, a
-tool argument or any model-visible value.
+A card mounted outside the QA dialog — in the plugin's own row on the Host's
+Plugins panel (`plugins.row.config`) — has no panel props to read the account
+from, so the same contract also publishes the session
+as the `qaUserSession` client service: `checking`, `anonymous` or `authed` with
+the bearer credential the principal-scoped QA remotes authorize with. It follows
+the same account controller the pages use, so a card and the dialog never
+disagree. Subscribe to it with `useSyncExternalStore` and render account-bound
+controls only for `authed` — without an account every call would be refused, and
+the credential is transport authentication only: never persist it, log it, or
+put it in a URL, a tool argument or any model-visible value.
 
 ```ts
 import type { Context } from "@deepseek-ai/cordis";
@@ -916,7 +912,8 @@ export function apply(ctx: Context) {
   ctx.effect(() =>
     ctx.slots.inject("plugins.row.config", () =>
       ctx.slots.register(
-        { name: "plugins.row.config", key: "@yadsh/dsh-<name>#<row id>" },
+        // `<package name>#<row id>`, the row id being the settings namespace.
+        { name: "plugins.row.config", key: "@yadsh/dsh-my-plugin#my-namespace" },
         MyCard,
       ),
     ),

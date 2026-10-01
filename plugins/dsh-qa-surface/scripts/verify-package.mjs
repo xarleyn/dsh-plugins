@@ -524,6 +524,13 @@ verifyPluginCardContract(client, {
   legacyPatterns: [/dsh-plugin-card\s*\*/u, /\.qa-panel\b/u],
 });
 assert.match(client, /plugins\.row\.config/u);
+// The seat key is `<package name>#<row id>`, and a key that drifts from that
+// pair says nothing when it fails: the row keeps its place on the page and
+// never gains the control that opens the card. So the bundle carries the join.
+assert.match(client, /@yadsh\/dsh-qa-surface#/u);
+// One render site: the tab seat of the Plugins settings section must not come
+// back beside the row, or the card shows twice.
+assert.doesNotMatch(client, /settings\.plugins\.tab/u);
 assert.match(client, /Помощник QA/u);
 // The toggle's accessible label is assembled from the open state and the card
 // name, so the bundle carries the two halves rather than one sentence.

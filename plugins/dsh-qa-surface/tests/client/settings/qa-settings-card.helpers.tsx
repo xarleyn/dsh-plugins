@@ -11,7 +11,7 @@ import type { ReactElement } from "react";
 
 import type { QaSurfaceConfig } from "../../../src/types.js";
 import { resolveConfig } from "../../../src/resolve-config.js";
-import { QaSettingsCard } from "../../../src/client/settings/card.js";
+import { QaSettingsCardEntry } from "../../../src/client/settings/card.js";
 
 export const BASE = resolveConfig({});
 
@@ -76,7 +76,7 @@ function unsetPath(
  * the revision alone, and a refused write (`refuse`) does neither — while the
  * promise still settles, which is exactly what the card has to survive.
  */
-function makeForm(
+export function makeForm(
   snapshot: Partial<ScopeSnapshot> = {},
   refuse = false,
 ): { form: unknown; mutate: ReturnType<typeof vi.fn> } {
@@ -128,12 +128,17 @@ function makeForm(
 export type DescribeResult =
   { ok: true; value: typeof EFFECTIVE } | { ok: false; error: unknown };
 
-/** The slot runtime props do not exist outside the host; the row page hands its
- * own `settingsForm` and a `view`, which the card only renders as `page`. */
-const Card = QaSettingsCard as unknown as (props: {
+/**
+ * The component the row seat registers. The slot runtime props do not exist
+ * outside the host: the seat hands the face (`settingsForm`, `describe`) and
+ * spreads its own owner props (`view`, and a `form` of `{ state, mutate }`)
+ * after it.
+ */
+export const Entry = QaSettingsCardEntry as unknown as (props: {
   settingsForm: unknown;
   describe: () => Promise<DescribeResult>;
-  view: "summary" | "page";
+  view?: "summary" | "page";
+  form?: unknown;
 }) => ReactElement;
 
 export async function renderCard(
@@ -154,7 +159,7 @@ export async function renderCard(
   // inside the test rather than after it.
   await act(async () => {
     result = render(
-      <Card settingsForm={form} describe={describe} view="page" />,
+      <Entry settingsForm={form} describe={describe} view="page" />,
     );
     await Promise.resolve();
   });

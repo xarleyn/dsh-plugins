@@ -101,10 +101,13 @@ import type {
   QaReviewQueueRow,
   QaUserQuery,
 } from "../types.js";
-import { QA_SURFACE_SETTINGS_NAMESPACE } from "../shared/settings.js";
+import {
+  QA_SURFACE_ROW_CONFIG_KEY,
+  QA_SURFACE_SETTINGS_NAMESPACE,
+} from "../shared/settings.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
 import {
-  QaSettingsCardPage,
+  QaSettingsCardEntry,
   type QaSettingsCardFace,
 } from "./settings/card.js";
 import { QA_SETTINGS_STYLES } from "./settings/styles.js";
@@ -858,10 +861,11 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       // Plugins panel: the same namespace the page reads, plus the Host's own
       // answer about what it resolved. Its stylesheet is the card shell, not the
       // QA page's palette, and the card keeps drawing its own shell.
-      // The Plugins page keys a row's configuration by `<package name>#<row id>`
-      // and resolves the Host form for the row id as the settings namespace —
-      // both the package name and the row id come from this bundle's patch.
-      const rowConfigKey = `@yadsh/dsh-qa-surface#${QA_SURFACE_SETTINGS_NAMESPACE}`;
+      // The seat is keyed `<package name>#<row id>`, and the row id is the
+      // namespace above, so the move never orphans a saved value. The seat hands
+      // its registrant a `ConfigPageForm` for that namespace — `{ state, mutate }`
+      // only, unsubscribable and unable to write one field — which is why the
+      // card reads the `configForm` resolved above rather than the page's view.
       ctx.effect(() => {
         const cardFace: QaSettingsCardFace = {
           settingsForm: configForm,
@@ -875,10 +879,10 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           ctx.slots.register(
             {
               name: "plugins.row.config",
-              key: rowConfigKey,
+              key: QA_SURFACE_ROW_CONFIG_KEY,
               inject: () => cardFace,
             },
-            QaSettingsCardPage,
+            QaSettingsCardEntry,
           ),
         );
         return () => {
