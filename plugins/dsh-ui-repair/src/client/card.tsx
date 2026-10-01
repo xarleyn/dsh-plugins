@@ -21,11 +21,24 @@ import {
 import type { UIRepairRuntime } from "./runtime.js";
 import type { RepairIssue } from "./types.js";
 
+/** The row's one-liner, in the page's line and in the card's own header. */
+const ROW_SUMMARY =
+  "Observe layout defects and apply reversible, scoped repairs.";
+
 export interface CardFace {
   /**
-   * The card's own settings form, resolved from `ctx.configForms`. The Plugins
-   * page passes a `form` of its own as owner props, and owner props are spread
-   * over the injected face, so the face keeps a name that page never passes.
+   * The card's own settings form, resolved through `ctx.configForms` and named
+   * `settings`, not `form`.
+   *
+   * The seat hands its registrant a `form` of its own: a `ConfigPageForm` of
+   * `{ state, mutate }` only (`lib/types/client/slot-contract.d.ts`, built at
+   * `lib/client.js:2688` of the installed `0.1.7-rc.2` bundle). That view can
+   * neither be subscribed to nor written field by field, and every control here
+   * writes one named field, so the card reads and writes through the full
+   * `ConfigForm` the face carries instead — under a name the page never passes,
+   * because the renderer spreads its owner props after the face. `form` is
+   * `undefined` for a Config that declares no `.volatile()` field, so nothing the
+   * card draws or refuses to draw may depend on it either.
    */
   readonly settings: ConfigForm<UIRepairPluginConfig>;
   readonly runtime: UIRepairRuntime;
@@ -70,8 +83,8 @@ function validSelector(selector: string): boolean {
   }
 }
 
-export function UIRepairCard({ settings: form, runtime }: CardProps) {
-  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
+export function UIRepairCard({ settings, runtime }: CardProps) {
+  const store = useMemo(() => bindSettingsExternalStore(settings), [settings]);
   const snapshot = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -98,7 +111,7 @@ export function UIRepairCard({ settings: form, runtime }: CardProps) {
     event: ChangeEvent<HTMLInputElement>,
   ) => {
     const percent = Number(event.currentTarget.value);
-    if (Number.isFinite(percent)) void form.set(field, percent / 100);
+    if (Number.isFinite(percent)) void settings.set(field, percent / 100);
   };
   const scan = async () => {
     setScanning(true);
@@ -115,11 +128,11 @@ export function UIRepairCard({ settings: form, runtime }: CardProps) {
       return;
     }
     setSelectorError(undefined);
-    void form.set("ignore", [...config.ignore, { selector: value }]);
+    void settings.set("ignore", [...config.ignore, { selector: value }]);
     setSelector("");
   };
   const removeIgnore = (index: number) => {
-    void form.set(
+    void settings.set(
       "ignore",
       config.ignore.filter((_rule, ruleIndex) => ruleIndex !== index),
     );
@@ -141,7 +154,7 @@ export function UIRepairCard({ settings: form, runtime }: CardProps) {
   };
   const ignoreIssue = (issue: RepairIssue) => {
     const target = validSelector(issue.target) ? issue.target : undefined;
-    void form.set("ignore", [
+    void settings.set("ignore", [
       ...config.ignore,
       {
         ...(issue.plugin === undefined ? {} : { plugin: issue.plugin }),
@@ -154,7 +167,7 @@ export function UIRepairCard({ settings: form, runtime }: CardProps) {
   return (
     <CardShell
       title="UI Repair"
-      description="Observe layout defects and apply reversible, scoped repairs."
+      description={ROW_SUMMARY}
       badge={
         <span className="dsh-plugin-card__badge" data-dsh-ui-repair-ui>
           {config.enabled ? config.mode : "disabled"}
@@ -172,7 +185,7 @@ export function UIRepairCard({ settings: form, runtime }: CardProps) {
             checked={config.enabled}
             disabled={!writable}
             testId="repair-toggle-enabled"
-            onChange={(checked) => void form.set("enabled", checked)}
+            onChange={(checked) => void settings.set("enabled", checked)}
           />
           <div className="uir-grid">
             <label className="uir-field">
@@ -183,7 +196,7 @@ export function UIRepairCard({ settings: form, runtime }: CardProps) {
                 disabled={!writable}
                 data-testid="repair-mode"
                 onChange={(event) =>
-                  void form.set(
+                  void settings.set(
                     "mode",
                     event.currentTarget.value as UIRepairPluginConfig["mode"],
                   )
@@ -233,7 +246,7 @@ export function UIRepairCard({ settings: form, runtime }: CardProps) {
             checked={config.scanOnStartup}
             disabled={!writable}
             testId="repair-toggle-scan-startup"
-            onChange={(checked) => void form.set("scanOnStartup", checked)}
+            onChange={(checked) => void settings.set("scanOnStartup", checked)}
           />
           <Toggle
             title="Scan after DOM changes"
@@ -241,7 +254,9 @@ export function UIRepairCard({ settings: form, runtime }: CardProps) {
             checked={config.scanAfterMutation}
             disabled={!writable}
             testId="repair-toggle-scan-mutation"
-            onChange={(checked) => void form.set("scanAfterMutation", checked)}
+            onChange={(checked) =>
+              void settings.set("scanAfterMutation", checked)
+            }
           />
           <Toggle
             title="Scan after layout resize"
@@ -249,7 +264,9 @@ export function UIRepairCard({ settings: form, runtime }: CardProps) {
             checked={config.scanAfterResize}
             disabled={!writable}
             testId="repair-toggle-scan-resize"
-            onChange={(checked) => void form.set("scanAfterResize", checked)}
+            onChange={(checked) =>
+              void settings.set("scanAfterResize", checked)
+            }
           />
         </section>
 
@@ -436,47 +453,37 @@ export function UIRepairCard({ settings: form, runtime }: CardProps) {
 }
 
 /**
- * The line the Plugins page puts under the row heading: the current policy in
- * words, and nothing but words — the page seats this view inside its own `<p>`,
- * so an element here would nest a block into a paragraph and restyle the row.
- */
-function UIRepairRowSummary({ settings }: Pick<CardFace, "settings">) {
-  const store = useMemo(() => bindSettingsExternalStore(settings), [settings]);
-  const snapshot = useSyncExternalStore(
-    store.subscribe,
-    store.getSnapshot,
-    store.getSnapshot,
-  );
-  const config = resolvePluginConfig(snapshot.value ?? {});
-  return <>{config.enabled ? `Repair mode: ${config.mode}` : "Disabled"}</>;
-}
-
-/**
- * The entry the Plugins page seats twice for this bundle's row, measured against
- * the installed `@deepseek-ai/dsh-client-ui-plugin-manager` `0.1.7-rc.2`:
+ * The entry the Plugins page seats on this bundle's row, measured against the
+ * installed `@deepseek-ai/dsh-client-ui-plugin-manager` `0.1.7-rc.2`:
  *
- * - the row's description line is `description ?? renderSlot(… { view: "summary"
- *   } …)` (`lib/client.js:1841`), where that `description` is `row.meta?.description`
- *   and nothing else (`rowText`, `:211-215`) — and `cordis.patch.yml` declares no
- *   description for this row, so the page really does ask this entry for the line;
- * - the configuration body below it is `{ view: "page", form }` (`:1852`).
+ * - the configuration body of the row's page is `{ view: "page", form }`
+ *   (`lib/client.js:1852`), and that is the view this card is drawn for;
+ * - the same entry is asked for `view: "summary"` only where the page has no
+ *   description of its own: the line is `description ?? renderSlot(… { view:
+ *   "summary" } …)` (`:1841`), with `description` read off `row.meta` alone
+ *   (`rowText`, `:211-215`).
  *
- * The contract shipped beside that bundle says the same in prose: `summary` is
- * "a row's missing-description fallback", and for this slot "An absent description
- * falls back to the entry's `view: 'summary'`"
- * (`lib/types/client/slot-contract.d.ts`).
+ * **[measured]** For this bundle the summary arm is a fallback that never shows.
+ * The Host builds `row.meta` from the plugin's exported locale files and falls
+ * back to that same address's `package.json` `name` and `description`
+ * (`readPluginMeta`, `@deepseek-ai/dsh-app-boot` `lib/index.js:1968-1978`), and a
+ * published bundle always carries a description — so the row arrives with one and
+ * the page never asks this entry for the line. It still has to answer the seat:
+ * the contract shipped beside that bundle calls `summary` "a row's
+ * missing-description fallback" (`lib/types/client/slot-contract.d.ts`), and
+ * AGENTS.md requires a sentence rather than the card there — a card inside a line
+ * of text draws a page within a line.
  *
- * The page hands the row's configuration section an empty container, so the entry
- * owns the `<ul>` that the shell's `<li>` needs (the AGENTS.md card contract). It
- * also heads the page with the row's display title, which for a row carrying no
- * Host-side metadata is the module specifier (`lib/client.js:213`) — the card
- * keeps its own readable name and chevron for that reason, which is how decision
- * D1 of `docs/DSH-0.1.7-MIGRATION.md` §10 landed for this package.
+ * So the answer is the same plain sentence the card's own header carries, and the
+ * fallback reads no store at all. The page hands the row's configuration section
+ * an empty container (`div[data-plugin-config]`, `:1851`), so the entry owns the
+ * `<ul>` the shell's `<li>` needs, and the card keeps its readable name and
+ * chevron because the page heads itself with the row's display title, which the
+ * Host fills from `package.json` — a technical name. That is how decision D1 of
+ * `docs/DSH-0.1.7-MIGRATION.md` §10 landed for this package.
  */
 export function UIRepairCardEntry(props: CardProps) {
-  if (props.view === "summary") {
-    return <UIRepairRowSummary settings={props.settings} />;
-  }
+  if (props.view === "summary") return ROW_SUMMARY;
   return (
     <ul className="uir-list">
       <UIRepairCard {...props} />
