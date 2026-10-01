@@ -46,10 +46,15 @@ export interface OpenVikingCardFace {
    * Named `settingsForm`, not `form`: the row seat hands its registrant a `form`
    * of its own — the Host's `ConfigPageForm`, `{ state, mutate }` and nothing
    * else (`packages/client/ui-plugin-manager/src/client/slot-contract.ts:124-130`
-   * at tag `dsh-v0.1.7-rc.2`, delivered as the owner prop at `:24-27`). That form
-   * can neither be subscribed to nor written field by field, so this plugin's
-   * `ConfigForm` arrives through the injected face, where the owner prop cannot
-   * shadow it.
+   * at tag `dsh-v0.1.7-rc.2`, delivered as the owner prop at `:24-27`) — and the
+   * renderer spreads that owner prop after this face, so a face member called
+   * `form` would be overwritten by it. What the page's form cannot do is carry a
+   * subscription: its `state` is one snapshot, refreshed when the page owner
+   * renders, so the card follows the resolved `ConfigForm` for the values it
+   * displays. Writes are different — the page's `mutate` is the very same form's
+   * `mutate`, reached through the row id the seat is keyed by — so the card hands
+   * them to the page's form whenever the seat supplies one, and to this form only
+   * on a seat that supplies none.
    */
   readonly settingsForm: ConfigForm<Config>;
 }
@@ -57,7 +62,7 @@ export interface OpenVikingCardFace {
 type CardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<OpenVikingCardFace>;
 
-/** The one-liner the Plugins page shows for this row in its `summary` view. */
+/** The sentence the row's `summary` seat answers with, and the card header's own line. */
 export const OPENVIKING_MEMORY_ROW_SUMMARY =
   "Durable memory tools, conversation capture, and automatic profile/recall injection against one OpenViking server.";
 
@@ -79,7 +84,7 @@ function rangeError(text: string): string {
   return `"${text}" is outside this field's configured range.`;
 }
 
-export function OpenVikingMemoryCard({ settingsForm }: CardProps) {
+export function OpenVikingMemoryCard({ form, settingsForm }: CardProps) {
   const store = useMemo(
     () => bindSettingsExternalStore(settingsForm),
     [settingsForm],
@@ -94,22 +99,37 @@ export function OpenVikingMemoryCard({ settingsForm }: CardProps) {
 
   const [error, setError] = useState<string | null>(null);
 
+  // One write path for every change the card makes: the page's own form when the
+  // seat supplies one, the form this entry resolved when it does not. The two are
+  // the same object — the seat resolves `configForms.get(rowId)` and the row id is
+  // this namespace — and `set`/`unset` are one-op `mutate`s, so routing a scalar
+  // write through `mutate` keeps the revision fence, the ordering and the recovery
+  // read of the path it replaces.
+  const commit = useCallback(
+    (ops: FormOps) => (form ?? settingsForm).mutate(ops),
+    [form, settingsForm],
+  );
+
   const write = useCallback(
     (key: string, value: unknown) => {
-      settingsForm.set(key, value).catch((cause: unknown) => {
-        setError(displayError(cause));
-      });
+      commit([{ op: "set", path: [key], value }] as unknown as FormOps).catch(
+        (cause: unknown) => {
+          setError(displayError(cause));
+        },
+      );
     },
-    [settingsForm],
+    [commit],
   );
 
   const clear = useCallback(
     (key: string) => {
-      settingsForm.unset(key).catch((cause: unknown) => {
-        setError(displayError(cause));
-      });
+      commit([{ op: "unset", path: [key] }] as unknown as FormOps).catch(
+        (cause: unknown) => {
+          setError(displayError(cause));
+        },
+      );
     },
-    [settingsForm],
+    [commit],
   );
 
   const commitText = useCallback(
@@ -160,10 +180,10 @@ export function OpenVikingMemoryCard({ settingsForm }: CardProps) {
       op: "unset",
       path: [key],
     })) as unknown as FormOps;
-    settingsForm.mutate(ops).catch((cause: unknown) => {
+    commit(ops).catch((cause: unknown) => {
       setError(displayError(cause));
     });
-  }, [overrides, settingsForm]);
+  }, [commit, overrides]);
 
   if (settings.status === "unavailable") return null;
 
@@ -804,27 +824,27 @@ export function OpenVikingMemoryCard({ settingsForm }: CardProps) {
 /**
  * The entry the Plugins page renders for this bundle's row, seated twice.
  *
- * Host source, tag `dsh-v0.1.7-rc.2`: `RowDetail` fills the row's description
- * line with `description ?? renderSlot('plugins.row.config', { view: 'summary' },
- * { entryKey: key })` (`packages/client/ui-plugin-manager/src/client/PluginManagerPage.tsx:491`)
- * and renders the same entry again as the configuration body with
- * `{ view: 'page', form }` (`:495`). The slot contract says it in prose — "An
- * absent description falls back to the entry's `view: 'summary'`"
- * (`slot-contract.ts:100`) — and the shipped types repeat that sentence
- * (`lib/types/client/slot-contract.d.ts:105-116`), so the second seat is a
- * documented half of the slot rather than an accident of one build.
- * `docs/DSH-0.1.7-MIGRATION.md` §4.2 lists only `:495`, because the point that
- * section makes is which site carries a `form`; SPEC §7.1 of this package carries
- * the commands that print both.
+ * `RowDetail` fills the row's description line with `description ??
+ * renderSlot('plugins.row.config', { view: 'summary' }, { entryKey: key })` and
+ * renders the same entry again as the configuration body with
+ * `{ view: 'page', form }` — `@deepseek-ai/dsh-client-ui-plugin-manager`
+ * `0.1.7-rc.2` at `lib/client.js:1841` and `:1852`, the fallback documented in the
+ * shipped contract at `lib/types/client/slot-contract.d.ts:105-116`. SPEC §7.1
+ * carries the commands that print both sites from the installed package.
  *
- * For this row the fallback is live, not merely possible. `description` there
- * comes from `rowText`, which reads `row.meta?.title ?? row.moduleName` and
- * `row.meta?.description` and nothing else (`presentation.ts:126-132`), and
- * `row.meta` is whatever the Host's inventory handed over — no `package.json`
- * field is folded into it. This bundle's `cordis.patch.yml` gives its row
- * `id` + `name` only, which `tests/bundle.test.ts` holds it at. So the page does
- * ask this entry for the line, and seats the answer inside its own `<p>`: text,
- * never a second card.
+ * Answering the second seat with a sentence rather than with the card is what
+ * `AGENTS.md` requires of a row card: the fallback lands inside the page's own
+ * `<p>`, so mounting the form there would draw a page within a line of text.
+ *
+ * Whether the page asks *this* row for the line is the Host's inventory, not
+ * something this checkout can read. `description` comes from `rowText`, which
+ * folds in `row.meta?.description` and nothing else (`lib/client.js:211-215`); the
+ * patch declares its row as `id` + `name` — no description — and
+ * `tests/bundle.test.ts` holds it there, so adding a row description is what would
+ * close this branch. The reader that fills `row.meta` lives in
+ * `@deepseek-ai/dsh-package-manifest`, which no package of this repository
+ * installs, so the branch stands on the seat's contract rather than on a measured
+ * render, and the live pass SPEC §7 names is what sees the line.
  */
 export function OpenVikingMemoryCardEntry(props: CardProps) {
   if (props.view === "summary") return OPENVIKING_MEMORY_ROW_SUMMARY;
