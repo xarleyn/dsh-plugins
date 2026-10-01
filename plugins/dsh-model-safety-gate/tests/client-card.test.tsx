@@ -199,12 +199,6 @@ async function renderCard(
   return result as ReturnType<typeof render>;
 }
 
-function openCard(): void {
-  fireEvent.click(
-    screen.getByRole("button", { name: /Show settings: Model Safety Gate/u }),
-  );
-}
-
 afterEach(async () => {
   // The status poll settles after the assertions; flush it inside act so the
   // update is not reported as an unwrapped state change.
@@ -215,21 +209,22 @@ afterEach(async () => {
 });
 
 describe("Safety Gate card", () => {
-  it("renders the canonical shell closed with the running mode as its badge", async () => {
+  it("renders the body without a shell of its own, because the page draws the card", async () => {
     const { container } = await renderCard();
-    const card = container.querySelector("li.dsh-plugin-card");
-    expect(card).not.toBeNull();
-    // The page's configuration section supplies no list of its own, so the
-    // shell's `li` keeps a list of ours.
-    expect(card?.parentElement?.tagName).toBe("UL");
-    expect(card?.parentElement?.className).toBe("msg-card-list");
-    expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
-    expect(screen.getByText("Model Safety Gate")).toBeTruthy();
-    const badge = screen.getByTestId("safety-card-badge");
-    // The shell contract still holds: the badge is the host's own element.
-    expect(container.querySelector(".dsh-plugin-card__badge")).toBe(badge);
-    expect(badge.textContent).toBe("Warn");
-    expect(container.querySelector(".dsh-plugin-card__chevron")).not.toBeNull();
+    // The Plugins page seats this bundle inside its own row card: the frame, the
+    // heading and the expand control are the page's, so the body arrives with no
+    // shell class and no chevron of ours (AGENTS.md, the owner's word of 01.10).
+    expect(container.querySelector("[class*='dsh-plugin-card']")).toBeNull();
+    expect(container.querySelector("ul.msg-card-list")).toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /Show settings: Model Safety Gate/u,
+      }),
+    ).toBeNull();
+    // Nothing folds the body away, so the live status section is mounted directly —
+    // and it, not a header badge, is where the running mode reads.
+    expect(screen.getByTestId("safety-section-status")).toBeTruthy();
+    expect(container.querySelector(".msg-body")).not.toBeNull();
   });
 
   it("answers the page's summary view with the sentence, not a second card", async () => {
@@ -261,7 +256,6 @@ describe("Safety Gate card", () => {
 
   it("opens into the configuration and status sections", async () => {
     await renderCard();
-    openCard();
     for (const [plane, title] of [
       ["status", "Status"],
       ["gate", "Gate"],
@@ -302,13 +296,17 @@ describe("Safety Gate card", () => {
       const node = within(screen.getByTestId(group)).getByTestId(tile);
       expect(node.querySelector("b")?.textContent).toBe(value);
     }
-    expect(screen.getByRole("button", { name: /Hide settings/u })).toBeTruthy();
+    // The body belongs to the page's card, which draws its own expand control: the
+    // bundle has no show/hide button of its own, open or closed.
+    expect(
+      screen.queryByRole("button", { name: /Hide settings|Show settings/u }),
+    ).toBeNull();
+    expect(screen.getByTestId("safety-status-counters")).toBeTruthy();
   });
 
   it("writes a path-addressed mutation when a control changes", async () => {
     const mutate = vi.fn(() => Promise.resolve(true));
     await renderCard({ mutate });
-    openCard();
 
     const gate = screen.getByTestId("safety-section-gate");
     const enabled = within(gate).getByTestId("safety-gate-enabled");
@@ -335,7 +333,6 @@ describe("Safety Gate card", () => {
         },
       }),
     });
-    openCard();
     expect(
       screen.getByTestId("safety-card-config-rejected").textContent,
     ).toContain("is unknown");
@@ -354,7 +351,6 @@ describe("Safety Gate card", () => {
         },
       },
     });
-    openCard();
     const notice = screen.getByTestId("safety-classifier-notice-remote");
     expect(notice.textContent).toContain("https://moderator.example/v1");
   });
@@ -365,7 +361,6 @@ describe("Safety Gate card", () => {
         value: { ...CONFIG, audit: { enabled: true, includeRawContent: true } },
       },
     });
-    openCard();
     expect(
       screen.getByTestId("safety-audit-notice-raw-content").textContent,
     ).toContain("Raw content is on.");
@@ -377,7 +372,6 @@ describe("Safety Gate card", () => {
       snapshot: { user: { mode: "enforce", output: { mode: "observe" } } },
       mutate,
     });
-    openCard();
 
     expect(screen.getByTestId("safety-section-gate-modified")).toBeTruthy();
     expect(screen.getByTestId("safety-section-output-modified")).toBeTruthy();
@@ -398,7 +392,6 @@ describe("Safety Gate card", () => {
 
   it("disables the controls while a remote browser cannot write", async () => {
     await renderCard({ snapshot: { writable: false } });
-    openCard();
     const gate = screen.getByTestId("safety-section-gate");
     const enabled = within(gate).getByTestId("safety-gate-enabled");
     expect(within(gate).getByRole("checkbox", { name: /Gate enabled/u })).toBe(
@@ -409,7 +402,6 @@ describe("Safety Gate card", () => {
 
   it("shows a loading note until the first section arrives", async () => {
     await renderCard({ snapshot: { status: "loading", value: undefined } });
-    openCard();
     expect(screen.getByTestId("safety-card-loading")).toBeTruthy();
     expect(screen.queryByTestId("safety-section-verdicts")).toBeNull();
     expect(screen.queryAllByRole("heading", { level: 3 })).toHaveLength(0);
@@ -417,7 +409,6 @@ describe("Safety Gate card", () => {
 
   it("surfaces recent verdicts with their decision and channel", async () => {
     await renderCard();
-    openCard();
     await waitFor(() => {
       expect(screen.queryByTestId("safety-verdicts-table")).not.toBeNull();
     });

@@ -17,7 +17,6 @@ import type {
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import {
-  CardShell,
   bindSettingsExternalStore,
   startVisibilityAwarePolling,
 } from "@yadsh/dsh-plugin-kit/client";
@@ -32,7 +31,7 @@ import {
 
 import type { ModelSafetyGateConfig } from "../config.js";
 import type { SafetyGateInspect } from "../types.js";
-import { badgeText, isOverridden, overriddenKeys } from "./format.js";
+import { isOverridden, overriddenKeys } from "./format.js";
 import {
   AdvancedSection,
   AuditSection,
@@ -48,7 +47,7 @@ import {
 
 const REFRESH_INTERVAL_MS = 3_000;
 
-/** The one-liner this row carries, in the page and in the card's own header. */
+/** The one-liner this row carries: the page draws it as the row's description. */
 const ROW_SUMMARY =
   "Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results.";
 
@@ -180,9 +179,6 @@ export function SafetyGateCard({ settingsForm, inspect }: CardProps) {
 
   if (settings.status === "unavailable") return null;
 
-  const enabled = snapshot?.enabled ?? config?.enabled ?? true;
-  const mode = snapshot?.mode ?? config?.mode;
-
   const sectionProps: ConfigProps = {
     config,
     classifierState: snapshot?.classifier ?? null,
@@ -193,90 +189,73 @@ export function SafetyGateCard({ settingsForm, inspect }: CardProps) {
   };
 
   return (
-    // The page's configuration section supplies no list of its own, so the
-    // shell keeps its `ul > li` contract inside a list of ours (AGENTS.md).
-    <ul className="msg-card-list">
-      <CardShell
-        title="Model Safety Gate"
-        description={ROW_SUMMARY}
-        badge={
-          <span
-            className="dsh-plugin-card__badge"
-            data-testid="safety-card-badge"
-          >
-            {badgeText(enabled, mode)}
-          </span>
-        }
-        label={(open) =>
-          `${open ? "Hide" : "Show"} settings: Model Safety Gate`
-        }
-        bodyClassName="msg-body"
-      >
-        {settings.status === "loading" ? (
-          <p className="msg-muted" data-testid="safety-card-loading">
-            Loading the Safety Gate configuration…
-          </p>
-        ) : (
-          <>
-            {error !== null ? (
-              <div className="msg-error" data-testid="safety-card-error">
-                {error}
-              </div>
-            ) : null}
-            {snapshot?.configRejected ? (
-              <div
-                className="msg-error"
-                data-testid="safety-card-config-rejected"
-              >
-                The gate is still running its last workable configuration:{" "}
-                {snapshot.configRejected}
-              </div>
-            ) : null}
-            <StatusSection
-              inspect={snapshot}
-              refreshing={refreshing}
-              now={now}
-              onRefresh={() => {
-                void refresh();
-              }}
-            />
-            <GateSection {...sectionProps} />
-            <InputSection {...sectionProps} />
-            <OutputSection {...sectionProps} />
-            <ToolsSection {...sectionProps} />
-            <ClassifierSection {...sectionProps} />
-            <AuditSection {...sectionProps} />
-            <VerdictsSection inspect={snapshot} />
-            <AdvancedSection {...sectionProps} />
-            <div className="msg-footer">
-              <p className="msg-footer-note">
-                Changes apply to the running gate immediately. Chat moderation
-                banners and the per-session override control are not built yet
-                (design SPEC Phase 6), so the{" "}
-                <span className="msg-mono">ui.*</span> keys and{" "}
-                <span className="msg-mono">allowSessionOverride</span> are
-                accepted but have no effect today. The gate is a decision layer,
-                not a sandbox: it does not replace the permission system.
-              </p>
-              {overrides.length > 0 ? (
-                <button
-                  type="button"
-                  className="msg-btn"
-                  data-testid="safety-card-reset-overrides"
-                  disabled={!writable}
-                  onClick={resetAll}
-                >
-                  Reset{" "}
-                  {overrides.length === 1
-                    ? "1 override"
-                    : `${String(overrides.length)} overrides`}
-                </button>
-              ) : null}
+    // The Plugins page draws this card's frame, its heading and its expand
+    // control, so the bundle renders the body and nothing around it (AGENTS.md).
+    <div className="msg-body">
+      {settings.status === "loading" ? (
+        <p className="msg-muted" data-testid="safety-card-loading">
+          Loading the Safety Gate configuration…
+        </p>
+      ) : (
+        <>
+          {error !== null ? (
+            <div className="msg-error" data-testid="safety-card-error">
+              {error}
             </div>
-          </>
-        )}
-      </CardShell>
-    </ul>
+          ) : null}
+          {snapshot?.configRejected ? (
+            <div
+              className="msg-error"
+              data-testid="safety-card-config-rejected"
+            >
+              The gate is still running its last workable configuration:{" "}
+              {snapshot.configRejected}
+            </div>
+          ) : null}
+          <StatusSection
+            inspect={snapshot}
+            refreshing={refreshing}
+            now={now}
+            onRefresh={() => {
+              void refresh();
+            }}
+          />
+          <GateSection {...sectionProps} />
+          <InputSection {...sectionProps} />
+          <OutputSection {...sectionProps} />
+          <ToolsSection {...sectionProps} />
+          <ClassifierSection {...sectionProps} />
+          <AuditSection {...sectionProps} />
+          <VerdictsSection inspect={snapshot} />
+          <AdvancedSection {...sectionProps} />
+          <div className="msg-footer">
+            <p className="msg-footer-note">
+              Changes apply to the running gate immediately. Chat moderation
+              banners and the per-session override control are not built yet
+              (design SPEC Phase 6), so the{" "}
+              <span className="msg-mono">ui.*</span> keys and{" "}
+              <span className="msg-mono">allowSessionOverride</span> are
+              accepted but have no effect today. The gate is a decision layer,
+              not a sandbox: it does not replace the permission system.
+            </p>
+            {overrides.length > 0 ? (
+              <button
+                type="button"
+                className="msg-btn"
+                data-testid="safety-card-reset-overrides"
+                disabled={!writable}
+                onClick={resetAll}
+              >
+                Reset{" "}
+                {overrides.length === 1
+                  ? "1 override"
+                  : `${String(overrides.length)} overrides`}
+              </button>
+            ) : null}
+          </div>
+        </>
+      )}
+    </div>
   );
 }
 
