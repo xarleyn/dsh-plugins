@@ -197,10 +197,14 @@ function SettingsField(props: {
 
 /** Settings card for the Sleev bundle row of the Host Plugins page. */
 export function SleevSettingsCard(props: SleevSettingsCardProps) {
+  // The seat hands its registrant a `form` owner prop of its own — the page's
+  // `ConfigPageForm`, only `{ state, mutate }`, which can be neither subscribed
+  // to nor written field by field. The card never reads it: the live `ConfigForm`
+  // for the namespace arrives through this injected face instead.
   const state = props.useSleevSettings((snapshot) => snapshot);
   if (!state.available) {
     /*
-     * Not a card: the card contract asks for none while the namespace does not
+     * Not a card: the contract says to render none while the namespace does not
      * answer. Silence was affordable on the Settings tab, which simply stayed
      * shut; the row's Configure control is drawn from the inventory, so an
      * empty page is what the visitor of this seat would have gotten.
@@ -369,14 +373,16 @@ export const inject = ["slots", "configForms", "locale"];
  * contract of the declared peer dependency —
  * `@deepseek-ai/dsh-client-ui-plugin-manager`, `lib/types/client/slot-contract`
  * — names the slot and hands it `PluginConfigViewProps`, whose `view` is the
- * union `'summary' | 'page'`, and records that an absent row description falls
- * back to the entry's `summary`. So `summary`, asked for only where the Host
- * brings no description of its own, is answered with the one-liner and never
- * with the form; `page` is the card, which sits as an `<li>` in the
- * plugin-owned `<ul>` the card contract assumes, and while the namespace has
- * not been served it is the line that says so instead. The card resolves the
- * `dsh-sleev` namespace itself instead of taking the `form` this page hands it,
- * which is what keeps values stored before the move readable after it.
+ * union `'summary' | 'page'` and whose `form` is only the page's `ConfigPageForm`
+ * (`{ state, mutate }`). Because this bundle's `cordis.patch.yml` gives the row
+ * no description, the contract's fallback — an absent description falls back to
+ * the entry's `view: 'summary'` — is the path this row actually takes: `summary`
+ * is answered with the one-liner and never with the form, and `page` is the card,
+ * which sits as an `<li>` in the plugin-owned `<ul>` the card contract assumes,
+ * or as the line saying the namespace has not been served. The card resolves the
+ * full `ConfigForm` for the `dsh-sleev` namespace through its injected face rather
+ * than through the seat's shallow `form`, which is what keeps values stored before
+ * the move readable after it.
  */
 export function SleevRowConfig(props: SleevSettingsCardProps): ReactNode {
   if (props.view === "summary") return props.t("description");
