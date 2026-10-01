@@ -9,6 +9,12 @@
  * row's description and once as the configuration under its heading. So the
  * calls are measured here, in the build the operator runs, rather than quoted
  * from a document that can drift from it.
+ *
+ * Which of the two the page reaches for is the page's question, not this
+ * bundle's: `PackageRow.meta` is supplied by the Host's inventory, so no file a
+ * package owns decides whether an installation shows the row a description. What
+ * a package does own is the answer for both views, and that half is rendered in
+ * `qa-settings-card-seat.test.tsx`.
  */
 
 import { readFileSync } from "node:fs";
@@ -32,9 +38,9 @@ const rowSeatCall = (view: string): RegExp =>
   );
 
 describe("QA Surface row seat views", () => {
-  it("renders the seat as the row's summary where the description is absent", () => {
-    // `description ?? renderSlot(...)` — the seat is the fallback, not a second
-    // rendering of the form, so the entry answers it with a sentence.
+  it("seats the entry as the row's description where the Host supplies none", () => {
+    // `description ?? renderSlot(...)` — the seat is the fallback for the
+    // description text, not a second rendering of the form.
     expect(managerClient).toMatch(
       new RegExp(
         `description\\s*\\?\\?\\s*${rowSeatCall("summary").source}`,
@@ -43,21 +49,11 @@ describe("QA Surface row seat views", () => {
     );
   });
 
-  it("renders the same seat as the page, with the host's form beside the view", () => {
+  it("seats the same entry as the page, with the host's form beside the view", () => {
     // The page view is the one that carries `form`, and that prop is the page's
     // own `ConfigPageForm` — a snapshot and a bulk `mutate` — rather than the
     // `ConfigForm` this card writes through.
     const page = rowSeatCall("page").exec(managerClient)?.[0] ?? "";
     expect(page).toMatch(/[{,]\s*form\s*[,}]/u);
-  });
-
-  it("leaves this bundle's row without a description, so the fallback is asked of us", () => {
-    const patch = readFileSync(
-      new URL("../../cordis.patch.yml", import.meta.url),
-      "utf8",
-    );
-    // Only a key at the profile entry's own indentation would name the row:
-    // anything deeper belongs to the Config the entry carries.
-    expect(patch).not.toMatch(/^ {6}description:/mu);
   });
 });
