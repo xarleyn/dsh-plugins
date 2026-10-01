@@ -13,7 +13,11 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { DocumentsConfig } from "../src/documents/config.js";
 import { resolveDocumentsConfig } from "../src/documents/config.js";
-import { DocumentsCard } from "../src/client/card.js";
+import {
+  DOCUMENTS_CARD_SUMMARY,
+  DOCUMENTS_CARD_TITLE,
+  DocumentsCard,
+} from "../src/client/card.js";
 
 const CONFIG = resolveDocumentsConfig({}) as unknown as DocumentsConfig;
 
@@ -67,14 +71,23 @@ function renderCard(
   writable = true,
   fences?: (number | undefined)[],
 ) {
-  const rendered = render(
+  const rendered = renderClosed(mutations, writable, fences);
+  fireEvent.click(screen.getByRole("button", { expanded: false }));
+  return rendered;
+}
+
+/** Render the card the way the row page first mounts it: closed. */
+function renderClosed(
+  mutations: Mutation[],
+  writable = true,
+  fences?: (number | undefined)[],
+) {
+  return render(
     <DocumentsCard
       {...({} as never)}
       settingsForm={makeForm(mutations, writable, fences) as never}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { expanded: false }));
-  return rendered;
 }
 
 afterEach(() => {
@@ -138,6 +151,49 @@ describe("the comparison section", () => {
     expect(
       screen.getByText(/Числа, проценты, валюты, даты и отрицания/u),
     ).toBeDefined();
+  });
+});
+
+describe("the card shell", () => {
+  // The bundle gate asserts the shell's *text* — the canonical CSS, the open-state
+  // class pair — and nothing in the gate set renders it, so the two states the
+  // contract names are asserted here against the DOM the row page first sees.
+  it("mounts closed, naming itself with the row's own two strings", () => {
+    const { container } = renderClosed([]);
+    expect(container.querySelector("li.dsh-plugin-card")?.className).toBe(
+      "dsh-plugin-card",
+    );
+    expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
+    expect(container.querySelector(".dsh-plugin-card__badge")).not.toBeNull();
+    expect(container.querySelector(".dsh-plugin-card__chevron")).not.toBeNull();
+    // The header stack carries the same title and sentence the row is named and
+    // described by: another test pins the exported locale `meta` to these two, so
+    // the row and the card it opens cannot drift apart.
+    expect(
+      screen.getByRole("button", {
+        name: "Показать настройки: Документы",
+        expanded: false,
+      }),
+    ).toBeTruthy();
+    expect(screen.getByText(DOCUMENTS_CARD_TITLE)).toBeDefined();
+    expect(screen.getByText(DOCUMENTS_CARD_SUMMARY)).toBeDefined();
+  });
+
+  it("renders the body only while open, and closes again on the same control", () => {
+    const { container } = renderClosed([]);
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    expect(container.querySelector("li.dsh-plugin-card--open")).not.toBeNull();
+    expect(container.querySelector(".dsh-plugin-card__body")).not.toBeNull();
+    expect(
+      screen.getByRole("button", {
+        name: "Скрыть настройки: Документы",
+        expanded: true,
+      }),
+    ).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { expanded: true }));
+    expect(container.querySelector("li.dsh-plugin-card--open")).toBeNull();
+    expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
   });
 });
 

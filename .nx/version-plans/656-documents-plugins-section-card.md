@@ -51,13 +51,14 @@ both catalogs — replaces `@deepseek-ai/dsh-client-ui-settings-plugins` as peer
 dev and `dsh.client.inject` entry, and `locale/en.json` is exported and published
 so the Host can read it without activating the plugin. This is `minor` rather
 than `patch` for two reasons. A browser running a host without the Plugins page
-loses the card; and the card is now reached *from that page*, which reports itself
-unavailable on a Host without a managed profile and reads its inventory through
-`api-remotes`, where the Settings → Plugins tab kept a configuration card
-reachable from a non-loopback browser (AGENTS.md). `compatibility.json` names the
-first: its required client features say `plugins.row.config` where they named the
-tab, and its range already starts at the release that grew the seat. The second is
-a consequence of the seat, not of a version a consumer can fence on.
+loses the card; and the card is now reached *from that page*, which reads its
+inventory through `api-remotes` and reports itself unavailable on a Host without
+a managed profile — a condition the Settings → Plugins tab never imposed. The
+page is not the loopback-gated settings directory, so a browser on the LAN still
+reaches the card. `compatibility.json` names the first: its required client
+features say `plugins.row.config` where they named the tab, and its range already
+starts at the release that grew the seat. The second is a consequence of the seat,
+not of a version a consumer can fence on.
 `scripts/verify-package.mjs` asserts the new pair (the slot literal and the
 `@yadsh/dsh-documents#` key prefix in the shipped bundle, the new package in the
 inject list and on the peer list, `plugins.row.config` among the declared client
