@@ -272,12 +272,18 @@ const RESOLVED = {
 };
 
 describe("integrations operator card", () => {
-  it("stays hidden when the namespace is not exposed to this browser", () => {
+  it("says the settings are not live when the namespace is not served", () => {
     const { container } = render(
       <Card settingsForm={scopeStub({ status: "unavailable" }).settingsForm} />,
     );
-    // The card renders null while the form reports the namespace absent.
-    expect(container.childElementCount).toBe(0);
+    // Rendering nothing was enough on a tab strip, where an empty tab hid
+    // itself: inside the row's configuration section the page has already
+    // opened the column, so a silent card leaves a blank section behind.
+    const note = screen.getByTestId("qa-integrations-no-settings");
+    expect(note.textContent).toMatch("qa-integrations");
+    // ...and it is a sentence, not a form the operator cannot use.
+    expect(container.querySelector("input")).toBeNull();
+    expect(container.querySelector(".dsh-plugin-card")).toBeNull();
   });
 
   it("renders the deployment configuration sections", () => {
@@ -779,12 +785,17 @@ describe("integrations operator card", () => {
 
 /**
  * The seat the Plugins page dispatches. The page asks one `plugins.row.config`
- * entry for two views — the `summary` one is the row's missing-description
- * fallback (`slot-contract.d.ts:13,110` and `lib/client.js:1841` of
- * `@deepseek-ai/dsh-client-ui-plugin-manager` 0.1.7-rc.2), the `page` one is the
- * form beside its save control (`lib/client.js:1852`) — so the summary seat
- * stays a sentence, which lands inside the page's own `<p>`, and the page seat
- * is the card with the shell this plugin owns.
+ * entry for two views: `summary` is the row's missing-description fallback and
+ * `page` is the form beside its own save control — the contract shipped by
+ * `@deepseek-ai/dsh-client-ui-plugin-manager`
+ * (`lib/types/client/slot-contract.d.ts`: "`summary` for an official card's
+ * one-liner or a row's missing-description fallback", "An absent description
+ * falls back to the entry's `view: 'summary'`"), and the owner walked both
+ * dispatches on a live `rc.2` stand (#646, 11:34). So the summary seat stays a
+ * sentence — the page puts it in its own `<p>` — while the page seat is the card
+ * with the shell this plugin owns. No line numbers of the compiled page are
+ * quoted: that build artifact belongs to the host and renumbers between release
+ * candidates.
  */
 describe("integrations row entry", () => {
   const Entry = OperatorCardEntry as unknown as ComponentType<{
@@ -797,6 +808,9 @@ describe("integrations row entry", () => {
       <Entry view="summary" settingsForm={undefined} />,
     );
     expect(container.querySelector("li")).toBeNull();
+    // A seat dispatched for a sentence must not resolve a form either: the
+    // collapsed row is the whole of the page's ask, `{ view: "summary" }`.
+    expect(container.querySelector("input")).toBeNull();
     expect(container.textContent).toBe(QA_INTEGRATIONS_ROW_SUMMARY);
   });
 
@@ -806,5 +820,20 @@ describe("integrations row entry", () => {
       <Entry view="page" settingsForm={settingsForm} />,
     );
     expect(container.querySelector("ul > li.dsh-plugin-card")).not.toBeNull();
+  });
+
+  it("keeps the section from going blank when the namespace is gone", () => {
+    const { container } = render(
+      <Entry
+        view="page"
+        settingsForm={scopeStub({ status: "unavailable" }).settingsForm}
+      />,
+    );
+    expect(
+      container.querySelector(
+        "ul > [data-testid='qa-integrations-no-settings']",
+      ),
+    ).not.toBeNull();
+    expect(container.querySelector("input")).toBeNull();
   });
 });

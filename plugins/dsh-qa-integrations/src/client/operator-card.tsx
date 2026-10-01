@@ -31,6 +31,7 @@ import {
   type ReactElement,
 } from "react";
 import type { QaIntegrationsConfig } from "../config.js";
+import { QA_INTEGRATIONS_SETTINGS_NAMESPACE } from "../shared/settings.js";
 import { Toggle, type ControlProps } from "./operator-controls.js";
 import { serviceReachNoteForPath } from "./operator-service-reach.js";
 import { Bitrix24Section } from "./operator-sections/bitrix24.js";
@@ -78,15 +79,19 @@ type ScopeOps = Parameters<ConfigForm<QaIntegrationsConfig>["mutate"]>[0];
  * The one-liner the Plugins page shows for this bundle's row in its `summary`
  * view.
  *
- * The row seat is dispatched twice, and the host says so where the contract
- * ships (`@deepseek-ai/dsh-client-ui-plugin-manager` 0.1.7-rc.2):
- * `lib/types/client/slot-contract.d.ts:13` admits `summary` "for an official
- * card's one-liner or a row's missing-description fallback", `:110` closes the
- * `plugins.row.config` entry with "An absent description falls back to the
- * entry's `view: 'summary'`", and `lib/client.js:1841` renders exactly that —
- * `description ?? renderSlot("plugins.row.config", { view: "summary" }, …)`,
- * beside the `{ view: "page", form }` seat at `:1852`. Without this branch the
- * page would drop a whole card into its own `<p>`.
+ * The row seat is dispatched twice, and the host says so where its contract
+ * ships: `@deepseek-ai/dsh-client-ui-plugin-manager`'s
+ * `lib/types/client/slot-contract.d.ts` admits `summary` "for an official card's
+ * one-liner or a row's missing-description fallback", and the
+ * `plugins.row.config` entry closes with "An absent description falls back to
+ * the entry's `view: 'summary'`". The owner reproduced both dispatches on a
+ * live `rc.2` stand (#646, 11:34): the row opens collapsed, showing this
+ * sentence, and expands on the card's own header. Without the branch the page
+ * would drop a whole `<li>` card into its own description `<p>`.
+ *
+ * No line numbers of the compiled page are quoted here on purpose: that file is
+ * a build artifact of another repository, and `docs/DSH-0.1.7-MIGRATION.md` §4.2
+ * records the numbers shifting between release candidates.
  */
 export const QA_INTEGRATIONS_ROW_SUMMARY =
   "Конфигурация подключений стенда: провайдеры, адреса, возможности и сервисные доступы.";
@@ -107,7 +112,7 @@ export function OperatorCardEntry(props: CardProps): ReactElement | string {
  * plugin owns — a bare `<li>` under a `<div>` is what the shell contract on the
  * account card already avoids.
  */
-export function OperatorCardTab(props: CardProps): ReactElement | null {
+export function OperatorCardTab(props: CardProps): ReactElement {
   return (
     <ul className="dsh-qa-integrations__card-list">
       <OperatorCard {...props} />
@@ -115,7 +120,7 @@ export function OperatorCardTab(props: CardProps): ReactElement | null {
   );
 }
 
-export function OperatorCard({ settingsForm }: CardProps): ReactElement | null {
+export function OperatorCard({ settingsForm }: CardProps): ReactElement {
   const store = useMemo(
     () => bindSettingsExternalStore(settingsForm),
     [settingsForm],
@@ -164,7 +169,24 @@ export function OperatorCard({ settingsForm }: CardProps): ReactElement | null {
     });
   }, [settingsForm, keys]);
 
-  if (settings.status === "unavailable") return null;
+  if (settings.status === "unavailable") {
+    /**
+     * The namespace left the Host's `describe()` view after this seat mounted —
+     * a Config with no `.volatile()` field, or a Host that dropped the entry. On
+     * the old tab surface rendering nothing hid the tab; a configuration seat is
+     * inside a section the page already opened, so nothing renders an empty
+     * column instead. Say it out loud (`docs/DSH-0.1.7-MIGRATION.md` §4.2).
+     */
+    return (
+      <li
+        className="dsh-qa-integrations__no-settings"
+        data-testid="qa-integrations-no-settings"
+      >
+        Хост не отдаёт конфигурацию `{QA_INTEGRATIONS_SETTINGS_NAMESPACE}` в
+        этот браузер — живой настройки нет.
+      </li>
+    );
+  }
 
   const control: ControlProps = {
     disabled: !writable,
