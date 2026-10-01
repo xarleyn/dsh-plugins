@@ -22,27 +22,24 @@ where values are stored changed**, and an endpoint, a peer rule or a recall budg
 saved by an older build is read back by this one; the tab's own seat id
 `openviking-memory` was the only name left behind, and it named nothing but the seat.
 
-What the card renders is the same card: the same shell every DSH configuration card
-uses (decision D1 of the cutover keeps it ours, and the card-contract gate does not
-read slot names, so it fires on the new registration exactly as it did on the old),
-the same six sections, the same write-on-change behavior. Two details follow from
-the new seat rather than from a redesign. The page hands its registrant a
-`ConfigPageForm`, which is `{ state, mutate }` — no subscription, no single-field
-write, no clear-back-to-inherited — so the card keeps resolving its own `ConfigForm`
-through `ctx.configForms.get(namespace)` and that form now arrives through the
-injected face under the name `settingsForm`, where the owner prop called `form`
-cannot shadow it. And the same entry is seated a second time, as `view: 'summary'`,
-for the row's description line: the published contract of the Plugins page says the
-row's heading takes "An absent description falls back to the entry's
-`view: 'summary'`" (`@deepseek-ai/dsh-client-ui-plugin-manager` `0.1.7-rc.2`,
-`lib/types/client/slot-contract.d.ts:105-116`), and its `RowDetail` fills that line
-from `description ?? renderSlot("plugins.row.config", { view: "summary" }, …)`
-(`lib/client.js:1841`), reading `description` off the row metadata alone (`rowText`
-at `:211-215`) — which this bundle's `cordis.patch.yml` declares no key for, a pair
-`tests/bundle.test.ts` holds at `id` + `name`. So the sentence is asked of this
-entry, and it lands inside the page's `<p>`, which is why it returns text and never a
-second card. The shell's `<li>` still needs a list to sit in, which the page's
-configuration section does not supply, so the plugin-owned `<ul>` stays with it.
+What the card renders is the same card: the same shell the rulebook in force gives
+every configuration card of this repository (the card-contract gate reads the bundle,
+not the slot name, so it fires on the new registration exactly as it did on the old),
+the same six sections, the same write-on-change behavior. Two details follow from the
+new seat rather than from a redesign. The seat spreads its own owner prop `form` after
+the injected face: a `ConfigPageForm` of `{ state, mutate }`, this same namespace's
+form seen through two members (`state` is one snapshot, refreshed when the page owner
+renders, and there is no subscription to take). So the full `ConfigForm` this entry
+resolves enters the card as `settingsForm`, where that prop cannot overwrite it, and it
+is what the card follows for the values it shows — while the writes themselves go
+through the page's `mutate` wherever the seat supplies one, and through the resolved
+form on a seat that supplies none. `set` and `unset` are one-op `mutate`s, so a field
+change keeps the revision fence, the ordering and the recovery read it had. And the
+seat hands the same entry two views: `page` is the card, `summary` is the row's
+one-liner, which the entry answers with the sentence rather than with the card, because
+the fallback lands inside a line of the page's own text. The shell's `<li>` still needs
+a list to sit in, which the page's configuration section does not supply, so the
+plugin-owned `<ul>` stays with it.
 
 The account-scoped page is untouched: it is a feature-owned QA page reached by a
 browser over the network, so it keeps mounting through `qaUserSettingsSections` and
@@ -58,5 +55,5 @@ required client features naming `plugins.row.config` where it named
 `settings.plugins.tab`. `scripts/verify-package.mjs` asserts the new pair (the slot
 literal and the `@yadsh/dsh-openviking-memory#` key prefix in the shipped bundle, the
 new package in the inject list) and refuses the old slot name, and the client tests
-assert the keyed registration, the namespace the form is resolved under, and the two
-views of the entry.
+assert the keyed registration, the namespace the form is resolved under, the two views
+of the entry, and which `mutate` a field change reaches the Host through.

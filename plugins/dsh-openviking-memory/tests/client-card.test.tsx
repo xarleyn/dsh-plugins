@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 /**
  * The OpenViking Memory card: shell contract, configuration controls, the
- * immediate-write path, the override projection the form feeds it, and the two
- * views the Plugins page renders this entry in.
+ * immediate-write path and whose `mutate` it uses, the override projection the
+ * form feeds it, and the two views the Plugins page renders this entry in.
  */
 
 import {
@@ -62,38 +62,66 @@ type FormSnapshot = {
   mode: "host" | "memory";
 };
 
+const READY: FormSnapshot = {
+  status: "ready",
+  value: CONFIG,
+  base: undefined,
+  user: undefined,
+  revision: 1,
+  writable: true,
+  mode: "host",
+};
+
+/** The namespace form this entry resolves and hands the card through its face. */
 function makeForm(
   snapshot: Partial<FormSnapshot> = {},
-  mutate: (ops: unknown) => Promise<void> = () => Promise.resolve(),
+  mutate: (ops: unknown) => Promise<boolean> = () => Promise.resolve(true),
 ) {
-  const current: FormSnapshot = {
-    status: "ready",
-    value: CONFIG,
-    base: undefined,
-    user: undefined,
-    revision: 1,
-    writable: true,
-    mode: "host",
-    ...snapshot,
-  };
+  const current: FormSnapshot = { ...READY, ...snapshot };
   return {
     form: {
       getSnapshot: () => current,
       subscribe: () => () => undefined,
       mutate: vi.fn(mutate),
-      set: vi.fn(() => Promise.resolve()),
-      unset: vi.fn(() => Promise.resolve()),
+      set: vi.fn(() => Promise.resolve(true)),
+      unset: vi.fn(() => Promise.resolve(true)),
     },
   };
 }
 
-/** The slot runtime props do not exist outside the host; only the face does. */
+/**
+ * The owner prop the row seat spreads over the face: the page's `{ state, mutate }`
+ * view of the same namespace, which carries no subscription and no `set`/`unset`.
+ */
+function makePageForm(snapshot: Partial<FormSnapshot> = {}) {
+  return {
+    state: { ...READY, ...snapshot },
+    mutate: vi.fn(() => Promise.resolve(true)),
+  };
+}
+
+/** A field write, in the one-op shape the Host's own `set` expands to. */
+const setOp = (field: string, value: unknown) => [
+  { op: "set", path: [field], value },
+];
+
+/** A field clear, in the one-op shape the Host's own `unset` expands to. */
+const unsetOp = (field: string) => [{ op: "unset", path: [field] }];
+
+/** The slot runtime props do not exist outside the host, so tests pass them by hand. */
 const Card = OpenVikingMemoryCard as unknown as (props: {
   settingsForm: unknown;
+  form?: unknown;
 }) => ReactElement;
 
-function openCard(form: unknown): HTMLElement {
-  const view = render(<Card settingsForm={form} />);
+const Entry = OpenVikingMemoryCardEntry as unknown as (props: {
+  view: "summary" | "page";
+  settingsForm: unknown;
+  form?: unknown;
+}) => ReactElement;
+
+function openCard(settingsForm: unknown, pageForm?: unknown): HTMLElement {
+  const view = render(<Card settingsForm={settingsForm} form={pageForm} />);
   fireEvent.click(
     screen.getByRole("button", { name: "Show settings: OpenViking Memory" }),
   );
@@ -225,7 +253,7 @@ describe("controls and writes", () => {
       labeledInput("autoInject", "openviking-card-presentation-auto-inject"),
     );
     await waitFor(() => {
-      expect(form.set).toHaveBeenCalledWith("autoInject", false);
+      expect(form.mutate).toHaveBeenCalledWith(setOp("autoInject", false));
     });
   });
 
@@ -241,7 +269,7 @@ describe("controls and writes", () => {
 
     fireEvent.click(toggle);
     await waitFor(() => {
-      expect(form.set).toHaveBeenCalledWith("qaUserScoping", true);
+      expect(form.mutate).toHaveBeenCalledWith(setOp("qaUserScoping", true));
     });
   });
 
@@ -267,16 +295,15 @@ describe("controls and writes", () => {
     fireEvent.change(endpoint, { target: { value: "http://ov.example:1933" } });
     fireEvent.blur(endpoint);
     await waitFor(() => {
-      expect(form.set).toHaveBeenCalledWith(
-        "endpoint",
-        "http://ov.example:1933",
+      expect(form.mutate).toHaveBeenCalledWith(
+        setOp("endpoint", "http://ov.example:1933"),
       );
     });
 
     fireEvent.change(endpoint, { target: { value: "   " } });
     fireEvent.blur(endpoint);
     await waitFor(() => {
-      expect(form.unset).toHaveBeenCalledWith("endpoint");
+      expect(form.mutate).toHaveBeenCalledWith(unsetOp("endpoint"));
     });
   });
 
@@ -291,13 +318,15 @@ describe("controls and writes", () => {
     fireEvent.change(budget, { target: { value: "4096" } });
     fireEvent.blur(budget);
     await waitFor(() => {
-      expect(form.set).toHaveBeenCalledWith("recallTokenBudget", 4096);
+      expect(form.mutate).toHaveBeenCalledWith(
+        setOp("recallTokenBudget", 4096),
+      );
     });
 
     fireEvent.change(budget, { target: { value: "" } });
     fireEvent.blur(budget);
     await waitFor(() => {
-      expect(form.unset).toHaveBeenCalledWith("recallTokenBudget");
+      expect(form.mutate).toHaveBeenCalledWith(unsetOp("recallTokenBudget"));
     });
 
     fireEvent.change(budget, { target: { value: "999999" } });
@@ -307,7 +336,9 @@ describe("controls and writes", () => {
         screen.getByTestId("openviking-card-write-error").textContent,
       ).toMatch(/outside this field's configured range/u);
     });
-    expect(form.set).not.toHaveBeenCalledWith("recallTokenBudget", 999999);
+    expect(form.mutate).not.toHaveBeenCalledWith(
+      setOp("recallTokenBudget", 999999),
+    );
   });
 
   it("selects an enum value and clears back to inherit", async () => {
@@ -321,12 +352,14 @@ describe("controls and writes", () => {
     }
     fireEvent.change(peerScope, { target: { value: "actor" } });
     await waitFor(() => {
-      expect(form.set).toHaveBeenCalledWith("recallPeerScope", "actor");
+      expect(form.mutate).toHaveBeenCalledWith(
+        setOp("recallPeerScope", "actor"),
+      );
     });
 
     fireEvent.change(peerScope, { target: { value: "" } });
     await waitFor(() => {
-      expect(form.unset).toHaveBeenCalledWith("recallPeerScope");
+      expect(form.mutate).toHaveBeenCalledWith(unsetOp("recallPeerScope"));
     });
   });
 
@@ -340,16 +373,15 @@ describe("controls and writes", () => {
     fireEvent.change(area, { target: { value: "s/x/y/\n\nd|noise|" } });
     fireEvent.blur(area);
     await waitFor(() => {
-      expect(form.set).toHaveBeenCalledWith("captureFilters", [
-        "s/x/y/",
-        "d|noise|",
-      ]);
+      expect(form.mutate).toHaveBeenCalledWith(
+        setOp("captureFilters", ["s/x/y/", "d|noise|"]),
+      );
     });
 
     fireEvent.change(area, { target: { value: "  \n " } });
     fireEvent.blur(area);
     await waitFor(() => {
-      expect(form.unset).toHaveBeenCalledWith("captureFilters");
+      expect(form.mutate).toHaveBeenCalledWith(unsetOp("captureFilters"));
     });
   });
 });
@@ -389,9 +421,9 @@ describe("overrides", () => {
   });
 
   it("surfaces a failed write as an error line", async () => {
-    const { form } = makeForm();
-    const set = form.set as unknown as ReturnType<typeof vi.fn>;
-    set.mockReturnValueOnce(Promise.reject(new Error("revision conflict")));
+    const { form } = makeForm({}, () =>
+      Promise.reject(new Error("revision conflict")),
+    );
     openCard(form);
 
     fireEvent.click(
@@ -405,15 +437,96 @@ describe("overrides", () => {
   });
 });
 
-describe("the row entry the Plugins page renders", () => {
-  const Entry = OpenVikingMemoryCardEntry as unknown as (props: {
-    view: "summary" | "page";
-    settingsForm: unknown;
-  }) => ReactElement;
+describe("whose form the card writes through", () => {
+  it("takes the page's `mutate` for every write while the seat supplies a form", async () => {
+    const { form } = makeForm();
+    const page = makePageForm();
+    openCard(form, page);
 
+    fireEvent.click(
+      labeledInput("autoInject", "openviking-card-presentation-auto-inject"),
+    );
+    await waitFor(() => {
+      expect(page.mutate).toHaveBeenCalledWith(setOp("autoInject", false));
+    });
+
+    const endpoint = labeledInput(
+      "endpoint",
+      "openviking-card-connection-endpoint",
+    );
+    fireEvent.change(endpoint, { target: { value: "" } });
+    fireEvent.blur(endpoint);
+    await waitFor(() => {
+      expect(page.mutate).toHaveBeenCalledWith(unsetOp("endpoint"));
+    });
+
+    // The per-field `set`/`unset` of the resolved form are not the write path any
+    // more, and neither is its `mutate`: the page's form fences the namespace.
+    expect(form.set).not.toHaveBeenCalled();
+    expect(form.unset).not.toHaveBeenCalled();
+    expect(form.mutate).not.toHaveBeenCalled();
+  });
+
+  it("resets every override in the bulk mutation the page's form takes", async () => {
+    const { form } = makeForm({
+      user: { apiKey: "secret-token", syncTurns: true },
+    });
+    const page = makePageForm();
+    openCard(form, page);
+
+    fireEvent.click(screen.getByTestId("openviking-card-reset-all"));
+    await waitFor(() => {
+      expect(page.mutate).toHaveBeenCalledWith([
+        { op: "unset", path: ["apiKey"] },
+        { op: "unset", path: ["syncTurns"] },
+      ]);
+    });
+  });
+
+  it("still writes when the seat hands no form at all", async () => {
+    // `form` is `undefined` on a Host that does not serve this namespace as a page
+    // form, and a card that only knew how to write through the seat would go dead.
+    const { form } = makeForm();
+    const view = render(
+      <Entry view="page" settingsForm={form} form={undefined} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show settings: OpenViking Memory" }),
+    );
+    fireEvent.click(
+      labeledInput("autoInject", "openviking-card-presentation-auto-inject"),
+    );
+    await waitFor(() => {
+      expect(form.mutate).toHaveBeenCalledWith(setOp("autoInject", false));
+    });
+    expect(view.container.querySelector("li.dsh-plugin-card")).not.toBeNull();
+  });
+
+  it("surfaces a refusal the page's form answers with as an error line", async () => {
+    const { form } = makeForm();
+    const page = makePageForm();
+    page.mutate.mockImplementationOnce(() =>
+      Promise.reject(new Error("the Host refused that write")),
+    );
+    openCard(form, page);
+
+    fireEvent.click(
+      labeledInput("autoInject", "openviking-card-presentation-auto-inject"),
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("openviking-card-write-error").textContent,
+      ).toBe("the Host refused that write");
+    });
+  });
+});
+
+describe("the row entry the Plugins page renders", () => {
   it("answers the summary view with the row's one-liner, not a second card", () => {
     const { form } = makeForm();
-    const view = render(<Entry view="summary" settingsForm={form} />);
+    const view = render(
+      <Entry view="summary" settingsForm={form} form={makePageForm()} />,
+    );
 
     // The page puts this inside its own `<p>`, so it has to stay text.
     expect(view.container.textContent).toBe(OPENVIKING_MEMORY_ROW_SUMMARY);
@@ -422,9 +535,28 @@ describe("the row entry the Plugins page renders", () => {
 
   it("renders the card shell inside its own list for the page view", () => {
     const { form } = makeForm();
-    const view = render(<Entry view="page" settingsForm={form} />);
+    const view = render(
+      <Entry view="page" settingsForm={form} form={makePageForm()} />,
+    );
 
     const card = view.container.querySelector("li.dsh-plugin-card");
     expect(card?.parentElement?.tagName).toBe("UL");
+  });
+
+  it("keeps the face's form while the seat spreads its own `form` over it", () => {
+    // The renderer passes the owner props after the injected face, so a face member
+    // named `form` would be overwritten by the seat's `ConfigPageForm`; the entry
+    // has to read the resolved form from `settingsForm` to subscribe at all.
+    const { form } = makeForm();
+    const page = makePageForm();
+    const view = render(<Entry view="page" settingsForm={form} form={page} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show settings: OpenViking Memory" }),
+    );
+
+    expect(view.container.querySelector("li.dsh-plugin-card")).not.toBeNull();
+    expect(
+      labeledInput("endpoint", "openviking-card-connection-endpoint").value,
+    ).toBe("http://127.0.0.1:1933");
   });
 });

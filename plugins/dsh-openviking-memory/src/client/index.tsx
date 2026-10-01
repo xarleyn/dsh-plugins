@@ -102,9 +102,9 @@ export function apply(ctx: Context): () => void {
       {
         name: "plugins.row.config",
         key: ROW_CONFIG_KEY,
-        // The seat hands the page's own `ConfigPageForm` — `{ state, mutate }`
-        // only — so the card edits the full form this entry resolves, under a name
-        // the owner prop cannot overwrite.
+        // The seat passes its own owner prop `form` — the page's `ConfigPageForm`,
+        // `{ state, mutate }` — after this face, so the resolved `ConfigForm`,
+        // which is the half that carries a subscription, enters under another name.
         inject: () => ({ settingsForm: form }),
       },
       OpenVikingMemoryCardEntry,
