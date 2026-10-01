@@ -80,6 +80,13 @@ await runVerifyPackage({
       // row owns: `<package name>#<row id>`.
       /plugins\.row\.config/u,
       /@yadsh\/dsh-openviking-memory#/u,
+      // The seat hands the same entry two views, and the `summary` half answers with
+      // the sentence rather than with the card — a build that lost the branch would
+      // mount a whole card inside the page's own `<p>`. Whether the page asks this row
+      // for the line is the Host's inventory and SPEC §2.1 says so; that the answer
+      // ships is measurable here.
+      /\.view === "summary"/u,
+      /Durable memory tools, conversation capture/u,
     ],
     notMatches: [
       // The bundle is browser-only: a Node built-in import here would break
