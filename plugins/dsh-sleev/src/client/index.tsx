@@ -47,6 +47,7 @@ type SleevLocaleKey =
   | "logInfo"
   | "logDebug"
   | "invalidNumber"
+  | "noSettings"
   | "readOnly"
   | "saveFailed"
   | "discard"
@@ -79,6 +80,8 @@ const en: Record<SleevLocaleKey, string> = {
   logInfo: "Completed calls",
   logDebug: "Call starts and completions",
   invalidNumber: "Enter a positive whole number.",
+  noSettings:
+    "This deployment has not served Sleev's settings yet, so there is nothing to edit.",
   readOnly: "This deployment stores settings read-only.",
   saveFailed: "The deployment did not accept these values.",
   discard: "Discard",
@@ -106,6 +109,7 @@ const zh: Record<SleevLocaleKey, string> = {
   logInfo: "仅完成的调用",
   logDebug: "调用开始和完成",
   invalidNumber: "请输入正整数。",
+  noSettings: "当前部署尚未提供 Sleev 的设置，因此没有可编辑的内容。",
   readOnly: "此部署的设置为只读。",
   saveFailed: "部署未接受这些值。",
   discard: "放弃修改",
@@ -115,6 +119,8 @@ const zh: Record<SleevLocaleKey, string> = {
 
 const CARD_STYLES = `${PLUGIN_CARD_SHELL_CSS}
 .dsh-sleev-config{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
+.dsh-sleev-no-settings{padding:12px 0;list-style:none}
+.dsh-sleev-no-settings p{margin:0;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .dsh-sleev-button:focus-visible,.dsh-sleev-reset:focus-visible,.dsh-sleev-input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
 .dsh-sleev-read-only{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .dsh-sleev-pill{border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px;font-weight:500;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);white-space:nowrap}
@@ -192,7 +198,21 @@ function SettingsField(props: {
 /** Settings card for the Sleev bundle row of the Host Plugins page. */
 export function SleevSettingsCard(props: SleevSettingsCardProps) {
   const state = props.useSleevSettings((snapshot) => snapshot);
-  if (!state.available) return null;
+  if (!state.available) {
+    /*
+     * Not a card: the card contract asks for none while the namespace does not
+     * answer. Silence was affordable on the Settings tab, which simply stayed
+     * shut; the row's Configure control is drawn from the inventory, so an
+     * empty page is what the visitor of this seat would have gotten.
+     */
+    return (
+      <li className="dsh-sleev-no-settings">
+        <p role="status" data-testid="sleev-no-settings">
+          {props.t("noSettings")}
+        </p>
+      </li>
+    );
+  }
   const blocked =
     !state.dirty || state.invalid || state.saving || !state.writable;
   const edit =
@@ -352,10 +372,11 @@ export const inject = ["slots", "configForms", "locale"];
  * union `'summary' | 'page'`, and records that an absent row description falls
  * back to the entry's `summary`. So `summary`, asked for only where the Host
  * brings no description of its own, is answered with the one-liner and never
- * with the form; `page` is the card, whose `<li>` shell needs the plugin-owned
- * `<ul>` the card contract assumes. The card resolves the `dsh-sleev` namespace
- * itself instead of taking the `form` this page hands it, which is what keeps
- * values stored before the move readable after it.
+ * with the form; `page` is the card, which sits as an `<li>` in the
+ * plugin-owned `<ul>` the card contract assumes, and while the namespace has
+ * not been served it is the line that says so instead. The card resolves the
+ * `dsh-sleev` namespace itself instead of taking the `form` this page hands it,
+ * which is what keeps values stored before the move readable after it.
  */
 export function SleevRowConfig(props: SleevSettingsCardProps): ReactNode {
   if (props.view === "summary") return props.t("description");

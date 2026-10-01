@@ -11,6 +11,7 @@ import {
   apply,
   inject,
   type SleevSettings,
+  type SleevSettingsCardState,
 } from "../src/client/index.js";
 
 const SNAPSHOT: ConfigFormSnapshot<SleevSettings> = {
@@ -152,5 +153,45 @@ describe("client registration", () => {
     // plugin-owned list, which the shell contract requires, unstyled and unfixed.
     expect(page.props.className).toBe("dsh-sleev-config");
     expect(page.props.children.type).toBe(SleevSettingsCard);
+  });
+
+  it("says so when the row's namespace has not been served", () => {
+    /*
+     * The seat moved a silence into a page. On the Settings tab a namespace that
+     * does not answer simply left the tab shut; here the row's Configure control
+     * comes from the inventory, so the same `status !== "ready"` snapshot used to
+     * open an empty section. The card contract still forbids a card while the
+     * namespace is not ready, so this is a stated line, not the shell.
+     */
+    const notReady = {
+      available: false,
+      writable: false,
+      dirty: false,
+      invalid: false,
+      saving: false,
+      failed: false,
+    } as unknown as SleevSettingsCardState;
+    const props = {
+      view: "page",
+      t: (key: string) => `t:${key}`,
+      useSleevSettings: () => notReady,
+    } as unknown as Parameters<typeof SleevSettingsCard>[0];
+
+    const notice = SleevSettingsCard(props) as ReactElement<{
+      className: string;
+      children: ReactElement<{
+        role: string;
+        "data-testid": string;
+        children: string;
+      }>;
+    }>;
+
+    expect(notice.props.className).toBe("dsh-sleev-no-settings");
+    expect(notice.props.className).not.toContain("dsh-plugin-card");
+    expect(notice.props.children.props).toMatchObject({
+      role: "status",
+      "data-testid": "sleev-no-settings",
+    });
+    expect(notice.props.children.props.children).toBe("t:noSettings");
   });
 });

@@ -16,6 +16,10 @@ a stand that saved `sleev-a` as an observed route before this release reads `sle
 after it. The four fields keep staging edits, marking the overridden ones, resetting one
 field to its composition default, and refusing a value the schema would reject. The card
 keeps the shared shell, and the list element the plugin owns still holds its `<li>` root.
+One thing the new seat does change: on the Settings tab a namespace that had not been
+served left the tab shut, while the row's **Configure** control is drawn from the
+inventory, so the same moment now answers with a line saying there is nothing to edit
+instead of an empty page.
 
 The seat's contract comes from `@deepseek-ai/dsh-client-ui-plugin-manager`: its
 `plugins.row.config` entry is handed a `view` of `summary` or `page`, takes the
