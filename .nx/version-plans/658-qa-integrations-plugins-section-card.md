@@ -36,13 +36,16 @@ from the new seats rather than from a redesign. The row seat hands its registran
 write — so the operator card keeps resolving its own `ConfigForm` through
 `ctx.configForms.get(namespace)` and that form now arrives through the injected
 face under the name `settingsForm`, where the owner prop called `form` cannot
-shadow it. And the same entry is dispatched a second time as `view: 'summary'`
-wherever the panel wants a one-liner for a row that declares no description of its
-own — the contract the panel ships says so in its header ("`summary` for an
-official card's one-liner or a row's missing-description fallback") and closes the
-row entry with "An absent description falls back to the entry's `view: 'summary'`",
-and the compiled page renders that seat beside the `page` one — so the entry
-returns the sentence and never a second card. The bundle seat is documented as
+shadow it. And the same entry answers `view: 'summary'` with a sentence rather than
+with a card, because that is where the panel puts the answer: the row's description
+paragraph. The contract the panel ships names it a fallback ("`summary` for an
+official card's one-liner or a row's missing-description fallback", closing the row
+entry with "An absent description falls back to the entry's `view: 'summary'`"), and
+which side of the fallback a live row sits on is the Host's to decide, not this
+bundle's: the page takes the description from `rowText(row)` over the `row.meta` the
+Host reports, so a published bundle whose package text the Host does resolve shows a
+description and never dispatches the view. The branch stays for the case where
+nothing resolves, and it stays a sentence there too. The bundle seat is documented as
 `page`-only, which is why the account card has no such branch. The account card
 needs no form at all — it reaches the account through the `qaUserSession` service —
 so it takes the bundle's own seat, and the signed-in user's QA settings section is
@@ -74,12 +77,18 @@ While the Host stops serving the namespace the seat renders no card, which is wh
 `AGENTS.md` prescribes for a panel seat — the row's own `Configure` control comes
 from the inventory and stays clickable, and the plugin-owned `<ul>` remains for the
 namespace to come back into. `docs/DSH-0.1.7-MIGRATION.md` follows the diff: §4.2
-now says the `summary` dispatch is **conditional** on the row carrying no
-description (the page renders `description ?? renderSlot(… "summary" …)`), and §10
-credits `dsh-model-safety-gate` (#653) with the first landing on the panel seats and
-puts this package after it. `scripts/verify-package.mjs` pins the pair the summary
-answer depends on: the patch row declares no description, and the bundle carries
-both the sentence and the branch that returns it. **The shell this card wears on that
+now says the `summary` dispatch is **conditional** on the description the Host
+reports for the row — the page renders `description ?? renderSlot(… "summary" …)`,
+and that description is `rowText(row)` over `row.meta`, the Host's inventory, not
+`cordis.patch.yml` — and §10 credits `dsh-model-safety-gate` (#653) with the first
+landing on the panel seats and puts this package after it.
+`scripts/verify-package.mjs` keeps the two pins the built artifact can answer for:
+the sentence and the branch that returns it both ship in `lib/client.js`. It drops
+the third one: an earlier draft of this card refused a `description:` key on the
+patch row on the reading that the patch is where the page looks, and since it is
+not, that assertion refused a mechanism the host does not have — it would have gone
+red over a change that leaves the dispatch untouched, and stayed green over the one
+that retires the view. **The shell this card wears on that
 row seat is no longer an open question, and this change does not settle it either:**
 the owner answered #646 on 01.10 — a card on the panel's row seat takes the page's own
 chrome (20 px radius, the page's focus tokens), so the plugin-owned shell stays only on

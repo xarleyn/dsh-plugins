@@ -787,9 +787,11 @@ describe("integrations operator card", () => {
  * says when each arrives (`lib/types/client/slot-contract.d.ts`): "`summary` for
  * an official card's one-liner or a row's missing-description fallback", and the
  * row entry closes on "An absent description falls back to the entry's
- * `view: 'summary'`". This bundle's row declares no description, so the page puts
- * that view in its own description `<p>` and the answer is the sentence, never a
- * card. The `page` view is the form
+ * `view: 'summary'`". Whether a live page takes that fallback is the Host's, not
+ * this bundle's — the page asks `rowText(row)` over the `row.meta` the Host
+ * reports for the row, not `cordis.patch.yml` — and whenever it does, the answer
+ * lands in the page's own description `<p>`, so the entry returns the sentence and
+ * never a card. The `page` view is the form
  * seat, and the page hands it a `form` of its own — a `ConfigPageForm` of
  * `{ state, mutate }` — which the renderer spreads *after* the injected face, so
  * the card edits the `ConfigForm` it resolved under a name that prop cannot
