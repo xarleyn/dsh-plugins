@@ -397,9 +397,12 @@ describe("turn completion notices", () => {
     page.redraw({ ...both, list: idle });
     expect(screen.queryByText("Чат mine")).toBeNull();
     expect(screen.queryByText("Чат second")).toBeNull();
-    // That is the whole of what the gap costs: one turn per chat. The rows moved
-    // over a link the page vouches for, so the next turn beginning is watched
-    // from its start and raises one line, for that chat alone.
+    // What this gap spends here is the turn the page only found running. A turn
+    // that finished inside the gap is lost with it — no frame after the gap names
+    // it — which is the second half of the price §12 of
+    // `docs/specs/owner-scoped-notifications.md` counts. The rows moved over a
+    // link the page vouches for, so the next turn beginning is watched from its
+    // start and raises one line, for that chat alone.
     page.redraw({
       ...both,
       list: hostList([
