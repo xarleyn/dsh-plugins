@@ -21,12 +21,22 @@ import type {
   WebFetchAuthConfig,
 } from "../src/types.js";
 
-/** What the entrypoint handed `ctx.slots.register`. */
+/** One write the card sent to the stand form, in the order it sent it. */
+export interface FormWrite {
+  readonly field: string;
+  readonly value: unknown;
+}
+
+/**
+ * What the entrypoint handed `ctx.slots.register`, with the writes the rendered
+ * card makes against the stand form riding along.
+ */
 export interface Seat {
   readonly name: string;
   readonly key: string | undefined;
   readonly face: Record<string, unknown>;
   readonly component: (props: Record<string, unknown>) => ReactElement;
+  readonly writes: readonly FormWrite[];
 }
 
 /** One synthetic rule, so the opened card has a row of its own to draw. */
@@ -104,12 +114,15 @@ const credentialsStub = {
 /**
  * The Host `ConfigForm` for the namespace. `client-registration.test.ts` asserts
  * its identity across the slot boundary; `client-card.test.tsx` has the card read
- * its snapshot through the store binding, so the value here is the configuration
- * under test, and `settingsStatus` stands for the Host being unreachable.
+ * its snapshot through the store binding and writes through `set`, so the value
+ * here is the configuration under test, `writes` is the record of what the card
+ * asked the Host to store, and `settingsStatus` stands for the Host being
+ * unreachable.
  */
 function formStub(
   config: WebFetchAuthConfig,
   settingsStatus: "ready" | "unavailable",
+  writes: FormWrite[],
 ) {
   const snapshot = {
     status: settingsStatus,
@@ -123,7 +136,10 @@ function formStub(
   return {
     get: () => config,
     getSnapshot: () => snapshot,
-    set: () => Promise.resolve(true),
+    set: (field: string, value: unknown) => {
+      writes.push({ field, value });
+      return Promise.resolve(true);
+    },
     unset: () => Promise.resolve(true),
     mutate: () => Promise.resolve(true),
     subscribe: () => () => undefined,
@@ -142,8 +158,9 @@ export async function registeredSeat(
   config: WebFetchAuthConfig = demoConfig(),
   settingsStatus: "ready" | "unavailable" = "ready",
 ): Promise<Seat> {
-  const seats: Seat[] = [];
-  const form = formStub(config, settingsStatus);
+  const seats: Omit<Seat, "writes">[] = [];
+  const writes: FormWrite[] = [];
+  const form = formStub(config, settingsStatus, writes);
   const ctx = new Context();
   ctx.provide("remote", {
     webFetchAuth: remoteStub,
@@ -182,7 +199,7 @@ export async function registeredSeat(
   await apply(ctx);
   const [seat] = seats;
   if (seat === undefined) throw new Error("apply() registered no seat");
-  return seat;
+  return { ...seat, writes };
 }
 
 /** The props the page renders the seat with: its view plus the injected face. */

@@ -6,9 +6,10 @@
  * face, the prop names — and cannot see the markup. Every way the move can fail
  * quietly lives in that markup: the entry answering `null` where the page asked
  * for the row's sentence, the shell's `<li>` losing the `<ul>` AGENTS.md styles it
- * against, the body mounting over a form that never reached it, and the card
- * header repeating the sentence the page already printed one line above. This
- * package shipped without a DOM-rendering test on purpose (epic #453 addressed the
+ * against, the body mounting over a form that never reached it, an edit whose
+ * write never reaches that form, and the card header repeating the sentence the
+ * page already printed one line above. This package shipped without a
+ * DOM-rendering test on purpose (epic #453 addressed the
  * card from a browser instead); the seat made that gap load-bearing.
  */
 
@@ -91,6 +92,33 @@ describe("plugins row configuration entry, rendered", () => {
     // so the report the status section prints is the second proof of the props.
     const status = await screen.findByTestId("wfa-status-section");
     expect(status.textContent).toContain("1 rule(s), 1 enabled");
+  });
+
+  it("saves an edit to the Host form as one field of the namespace", async () => {
+    /*
+     * The clause the move cannot prove by rendering: a card seated on the row page
+     * still has to reach the same Host form the old tab wrote through. `set`
+     * addresses a scalar field inside the namespace section, so a knob nested
+     * under `audit` travels as its whole container — a dotted path is something
+     * the Host does not accept, and a card that looked right while sending one
+     * would have lost every write silently.
+     */
+    const seat = await registeredSeat();
+    await renderSeat(seat, "page");
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: /show settings: authenticated web fetch/iu,
+      }),
+    );
+    await screen.findByTestId("wfa-global-section");
+
+    fireEvent.click(screen.getByTestId("wfa-global-provider-enabled"));
+    fireEvent.click(screen.getByTestId("wfa-global-audit-enabled"));
+
+    expect(seat.writes).toEqual([
+      { field: "enabled", value: false },
+      { field: "audit", value: { enabled: false } },
+    ]);
   });
 
   it("draws no card while the Host configuration is unavailable", async () => {
