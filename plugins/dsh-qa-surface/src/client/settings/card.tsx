@@ -76,11 +76,14 @@ const ROW_SUMMARY =
  *
  * The live form is named `settingsForm`, not `form`: the seat hands its
  * registrant a `form` of its own — the page's `ConfigPageForm`, which is only
- * `{ state, mutate }`, so it can neither be subscribed to nor written field by
- * field, and which the page leaves `undefined` for a Config declaring no
- * volatile field — and the renderer spreads that owner prop after this face.
- * The card therefore keeps resolving the full `ConfigForm` of its own namespace
- * through `ctx.configForms` and takes no copy of the page's view.
+ * `{ state, mutate }` (`formFor` in
+ * `@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js` snapshots the same
+ * namespace's form and forwards `mutate` and nothing else), so it can neither be
+ * subscribed to nor written field by field, and which the page leaves
+ * `undefined` for a Config declaring no volatile field — and the renderer
+ * spreads that owner prop after this face. The card therefore keeps resolving
+ * the full `ConfigForm` of its own namespace through `ctx.configForms` and takes
+ * no copy of the page's view.
  */
 export interface QaSettingsCardFace {
   readonly settingsForm: ConfigForm<QaSurfaceConfig>;
@@ -349,12 +352,16 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
 /**
  * The entry this plugin registers in the row's configuration seat.
  *
- * The Plugins page seats one entry in two views: as the card (`view: 'page'`)
- * below the row's heading, and as the row's one-liner (`view: 'summary'`)
- * wherever the page wants a sentence — the fallback for a row that declares no
- * description of its own. The summary lands inside the page's own text, so it
- * stays a sentence: a card mounted there would draw a page within a line and
- * start a second poll of the `qaSurface/describe` Remote.
+ * The Plugins page seats one entry in two views, and both of them are calls this
+ * bundle's own host build performs: `RowDetail` in
+ * `@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js` renders the entry
+ * once with `view: 'summary'` as the row's description and once with
+ * `view: 'page'` in the configuration column under the row's heading. The page
+ * asks for the summary only where a row declares no description of its own
+ * (contract header, `types/client/slot-contract.d.ts`), and the row this bundle
+ * inserts declares none. The summary lands inside a line of the page's own
+ * text, so it stays a sentence: a card seated there would draw a page within a
+ * line and start a second poll of the `qaSurface/describe` Remote.
  *
  * The card shell's root is an `<li>` and the page's configuration column
  * supplies no list of its own, so the list around it stays plugin-owned
