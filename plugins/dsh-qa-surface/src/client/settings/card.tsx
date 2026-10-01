@@ -356,10 +356,12 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
  * bundle's own host build performs: `RowDetail` in
  * `@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js` renders the entry
  * once with `view: 'summary'` as the row's description and once with
- * `view: 'page'` in the configuration column under the row's heading. The page
- * asks for the summary only where a row declares no description of its own
- * (contract header, `types/client/slot-contract.d.ts`), and the row this bundle
- * inserts declares none. The summary lands inside a line of the page's own
+ * `view: 'page'` in the configuration column under the row's heading. Which of
+ * the two the page reaches for is the page's question — the summary is the
+ * fallback for a row the Host's inventory supplies no description for
+ * (`PackageRow.meta`, and the contract header of
+ * `types/client/slot-contract.d.ts`) — so nothing in this bundle decides that
+ * the entry answers both. The summary lands inside a line of the page's own
  * text, so it stays a sentence: a card seated there would draw a page within a
  * line and start a second poll of the `qaSurface/describe` Remote.
  *
