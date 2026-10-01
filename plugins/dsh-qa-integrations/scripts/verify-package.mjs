@@ -205,10 +205,13 @@ for (const address of [
 // opens from the configuration section of this bundle's own row and the account
 // card from the bundle's own section, reaching the same QA session through
 // `qaUserSession`. Each reuses the standard card shell inside a list it owns,
-// because the page hands a seat an empty column. Which shell a card of ours
-// wears on those seats is #646's open question; which seat it takes is not —
-// `AGENTS.md` names the panel seats and refuses the Settings dialog, and a bundle
-// that registered both would show two copies of one card.
+// because the page hands a seat an empty column. Which shell a card of ours wears
+// there the owner settled on 01.10 — the row seat takes the page's own chrome — but
+// the retarget runs contract-first (AGENTS.md and the card-contract gate, then the
+// packages in one graph), so this bundle still ships the shell above, and which seat
+// it takes was never part of that question: `AGENTS.md` names the panel seats and
+// refuses the Settings dialog, and a bundle that registered both would show two
+// copies of one card.
 //
 // The row seat is keyed `<package name>#<row id>` — `rowConfigKey` in the
 // contract the installed `@deepseek-ai/dsh-client-ui-plugin-manager` ships — and
