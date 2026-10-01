@@ -50,8 +50,13 @@ assert.ok(
   "the row-config key must join the package name to the settings namespace",
 );
 assert.match(client, /UI_REPAIR_SETTINGS_NAMESPACE\s*=\s*"dsh-ui-repair"/u);
-// The page seats this entry twice, and the list the shell's `<li>` needs is the
-// entry's own, not the page's.
+// The seat asks for `view: "summary"` wherever the page has no description of its
+// own (`lib/client.js:1841` of the installed bundle, with that description read
+// off the Host's `row.meta`), and the entry answers it with the sentence the card's
+// header carries — mounting the form there would draw a page inside a line of
+// text. The list the shell's `<li>` needs belongs to the entry, because the row's
+// configuration section supplies none (`:1851`).
+assert.match(client, /if \(props\.view === "summary"\) return ROW_SUMMARY;/u);
 assert.match(client, /className:\s*"uir-list"/u);
 assert.match(client, /dsh-plugin-card__name/u);
 assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u);
