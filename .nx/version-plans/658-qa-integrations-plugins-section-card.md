@@ -79,8 +79,13 @@ description (the page renders `description ?? renderSlot(… "summary" …)`), a
 credits `dsh-model-safety-gate` (#653) with the first landing on the panel seats and
 puts this package after it. `scripts/verify-package.mjs` pins the pair the summary
 answer depends on: the patch row declares no description, and the bundle carries
-both the sentence and the branch that returns it. **The shell a card wears on that
-row seat is still #646's to decide** — this plugin's 12 px card against the page's
-20 px surface — and D1 option 2 holds it ours until the owner answers. The seat is
-not part of that question any more: #660 landed and `AGENTS.md` names the panel
-seats itself, so this change follows the file and leaves it alone.
+both the sentence and the branch that returns it. **The shell this card wears on that
+row seat is no longer an open question, and this change does not settle it either:**
+the owner answered #646 on 01.10 — a card on the panel's row seat takes the page's own
+chrome (20 px radius, the page's focus tokens), so the plugin-owned shell stays only on
+`settings.section` and `settings.plugins.tab` — and the order of that edit is the
+contract first (`AGENTS.md` and the card-contract gate's asserts), then the packages in
+one graph. This change therefore ships the 12 px shell it already had, unchanged, and
+leaves the retarget to that graph rather than pre-empting it from one branch. The seat
+is not part of the question at all: #660 landed and `AGENTS.md` names the panel seats
+itself, so this change follows the file and leaves it alone.
