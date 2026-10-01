@@ -25,6 +25,9 @@ const canonicalClient = [
 const rowClient = [
   'slots.register({ name: "plugins.row.config", key: "@yadsh/dsh-fixture#fixture" }, RowCard);',
   'const RowCard = () => jsx("section", { className: "fixture-body" });',
+  // A row card takes its ring from the Host's tokens; a bundle that ships none has
+  // deleted the indicator rather than handed it over.
+  ".fixture-body button:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))}",
 ].join("\n");
 
 test("the CI workflow fans the projects it verifies out into a bounded matrix", async () => {

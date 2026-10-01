@@ -34,6 +34,9 @@ const canonicalClient = [
 const rowClient = [
   'slots.register({ name: "plugins.row.config", key: "@yadsh/dsh-fixture#fixture" }, RowCard);',
   'const RowCard = () => jsx("section", { className: "fixture-body" });',
+  // The ring of a row card comes from the Host's tokens; with no focus rule at all the
+  // card has lost the indicator, which is the failure this half of the gate exists for.
+  ".fixture-body button:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))}",
   'window.__ModuleLoader__.load({ id: "@yadsh/dsh-fixture"',
 ].join("\n");
 
