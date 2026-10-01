@@ -23,6 +23,12 @@ describe("QA Surface card", () => {
   it("renders the canonical shell closed, badged with the served route", async () => {
     const { container } = await renderCard();
     expect(container.querySelector("li.dsh-plugin-card")).not.toBeNull();
+    // The Plugins page's configuration column supplies no list of its own, so
+    // the shell's `li` keeps a list of ours (AGENTS.md, card-shell contract).
+    expect(container.querySelector("ul.qa-settings-cards")).not.toBeNull();
+    expect(
+      container.querySelector("li.dsh-plugin-card")?.parentElement?.tagName,
+    ).toBe("UL");
     expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
     expect(screen.getByText("Помощник QA")).toBeTruthy();
     // The badge names what the Host serves, not what the form says.
@@ -32,11 +38,14 @@ describe("QA Surface card", () => {
     expect(container.querySelector(".dsh-plugin-card__chevron")).not.toBeNull();
   });
 
-  it("renders nothing when the settings namespace is unavailable", async () => {
+  it("renders no card while the row's namespace answers unavailable", async () => {
     const { container } = await renderCard({
       snapshot: { status: "unavailable", value: undefined },
     });
-    expect(container.innerHTML).toBe("");
+    // The page's own heading and configure control are the Host's and stay;
+    // what the plugin holds back is the card, and with it every control.
+    expect(container.querySelector("li.dsh-plugin-card")).toBeNull();
+    expect(container.textContent).toBe("");
   });
 
   it("opens into every configuration section", async () => {

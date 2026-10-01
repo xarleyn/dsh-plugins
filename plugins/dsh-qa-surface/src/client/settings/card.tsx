@@ -65,11 +65,22 @@ const REFUSED_MESSAGE =
   "Хост отклонил изменение: значение не сохранилось. Обычно так отвечает несовместимая комбинация полей — проверьте связанные значения этого раздела. Точную причину хост пишет в свой журнал.";
 
 /**
- * The face the row page injects into this card. The Plugins page renders the
- * entry with its own owner `form` seat (a Host-owned `ConfigPageForm`), which
- * the renderer spreads after this face — so the card's own full `ConfigForm`,
- * resolved through `ctx.configForms`, crosses the boundary under the distinct
- * name `settingsForm` and the two forms never collide.
+ * The one-liner of this row, carried by the card header and by the seat the
+ * Plugins page asks it for as `summary`.
+ */
+const ROW_SUMMARY =
+  "Страница вопросов и ответов на сессиях DeepSeek Harness: маршрут, оформление, сессия, политика запуска, аккаунты и источники.";
+
+/**
+ * The face the row seat injects into this card.
+ *
+ * The live form is named `settingsForm`, not `form`: the seat hands its
+ * registrant a `form` of its own — the page's `ConfigPageForm`, which is only
+ * `{ state, mutate }`, so it can neither be subscribed to nor written field by
+ * field, and which the page leaves `undefined` for a Config declaring no
+ * volatile field — and the renderer spreads that owner prop after this face.
+ * The card therefore keeps resolving the full `ConfigForm` of its own namespace
+ * through `ctx.configForms` and takes no copy of the page's view.
  */
 export interface QaSettingsCardFace {
   readonly settingsForm: ConfigForm<QaSurfaceConfig>;
@@ -92,7 +103,7 @@ function displayError(error: unknown): string {
   return "Хост отклонил изменение настроек помощника.";
 }
 
-export function QaSettingsCard({ settingsForm, describe, view }: CardProps) {
+export function QaSettingsCard({ settingsForm, describe }: CardProps) {
   const store = useMemo(
     () => bindSettingsExternalStore(settingsForm),
     [settingsForm],
@@ -146,7 +157,6 @@ export function QaSettingsCard({ settingsForm, describe, view }: CardProps) {
   }, [describe]);
 
   useEffect(() => {
-    if (view !== "page") return;
     const stopPolling = startVisibilityAwarePolling(
       refresh,
       REFRESH_INTERVAL_MS,
@@ -155,7 +165,7 @@ export function QaSettingsCard({ settingsForm, describe, view }: CardProps) {
       stopPolling();
       activeRequest.current += 1;
     };
-  }, [refresh, view]);
+  }, [refresh]);
 
   /**
    * Path-addressed writes into the namespace. The form's mutation operations
@@ -233,10 +243,10 @@ export function QaSettingsCard({ settingsForm, describe, view }: CardProps) {
     );
   }, [applyMutation, overrides]);
 
-  // The row page asks this entry for a one-line description fallback
-  // (`view: 'summary'`) before it opens the page; the form surface belongs to
-  // the page view only.
-  if (view !== "page") return null;
+  // A namespace the Host does not serve has no values to edit, so the card stays
+  // out of the row's configuration column (AGENTS.md, card-shell contract). A
+  // namespace that serves values but refuses writes is the other case: the card
+  // renders and disables its controls on `writable` instead of hiding itself.
   if (settings.status === "unavailable") return null;
 
   const enabled = effective?.enabled ?? config?.enabled ?? true;
@@ -255,7 +265,7 @@ export function QaSettingsCard({ settingsForm, describe, view }: CardProps) {
   return (
     <CardShell
       title="Помощник QA"
-      description="Страница вопросов и ответов на сессиях DeepSeek Harness: маршрут, оформление, сессия, политика запуска, аккаунты и источники."
+      description={ROW_SUMMARY}
       badge={
         <span className="dsh-plugin-card__badge">
           {badgeText(enabled, routePath)}
@@ -337,12 +347,21 @@ export function QaSettingsCard({ settingsForm, describe, view }: CardProps) {
 }
 
 /**
- * The row configuration page this plugin registers. The card shell's root is
- * an `<li>`, and the Plugins page renders the entry inside its own sections
- * column without a list, so the list around the `<li>` stays plugin-owned
+ * The entry this plugin registers in the row's configuration seat.
+ *
+ * The Plugins page seats one entry in two views: as the card (`view: 'page'`)
+ * below the row's heading, and as the row's one-liner (`view: 'summary'`)
+ * wherever the page wants a sentence — the fallback for a row that declares no
+ * description of its own. The summary lands inside the page's own text, so it
+ * stays a sentence: a card mounted there would draw a page within a line and
+ * start a second poll of the `qaSurface/describe` Remote.
+ *
+ * The card shell's root is an `<li>` and the page's configuration column
+ * supplies no list of its own, so the list around it stays plugin-owned
  * (AGENTS.md, card-shell contract).
  */
-export function QaSettingsCardPage(props: CardProps) {
+export function QaSettingsCardEntry(props: CardProps) {
+  if (props.view === "summary") return ROW_SUMMARY;
   return (
     <ul className="qa-settings-cards">
       <QaSettingsCard {...props} />
