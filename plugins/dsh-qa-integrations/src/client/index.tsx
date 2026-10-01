@@ -24,19 +24,20 @@ import { QA_INTEGRATIONS_SETTINGS_NAMESPACE } from "../shared/settings.js";
 
 /**
  * Where the operator card sits: the `plugins.row.config` key is the bundle's
- * package name joined to the row id its `cordis.patch.yml` declares
- * (`slot-contract.d.ts:106-110` of `@deepseek-ai/dsh-client-ui-plugin-manager`
- * 0.1.7-rc.2), and that row id is the same `qa-integrations` the Host resolves
- * this plugin's Config under — so the seat moves while the namespace a live
- * stand already wrote stays. `verify-package.mjs` pins the pair.
+ * package name joined to the row id its `cordis.patch.yml` declares — the join
+ * `rowConfigKey` in the slot contract the installed
+ * `@deepseek-ai/dsh-client-ui-plugin-manager` ships — and that row id is the
+ * same `qa-integrations` the Host resolves this plugin's Config under, so the
+ * seat moves while the namespace a live stand already wrote stays.
+ * `verify-package.mjs` pins the pair.
  */
 const ROW_CONFIG_KEY = `@yadsh/dsh-qa-integrations#${QA_INTEGRATIONS_SETTINGS_NAMESPACE}`;
 
 /**
  * Where the account card sits: the bundle's own configuration section, keyed by
- * the npm name this bundle is installed under. That seat renders `view: 'page'`
- * only (`slot-contract.d.ts:96-98`), so it needs no summary branch — unlike the
- * row seat, whose entry the page also asks for a one-liner.
+ * the npm name this bundle is installed under. That contract gives the bundle
+ * section `view: 'page'` only, so it needs no summary branch — unlike the row
+ * seat, whose entry the page also asks for a one-liner.
  */
 const BUNDLE_CONFIG_KEY = "@yadsh/dsh-qa-integrations";
 

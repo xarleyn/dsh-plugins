@@ -11,6 +11,7 @@ import {
  */
 export const styles = `${PLUGIN_CARD_SHELL_CSS}${CREDENTIAL_HELP_CSS}${String.raw`
 .dsh-qa-integrations__card-list{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
+.dsh-qa-integrations__no-settings{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.55;padding:2px 0;list-style:none}
 .dsh-qa-integrations__body{display:flex;flex-direction:column;gap:16px;padding:16px 0 8px}
 .dsh-qa-integrations{display:flex;flex-direction:column;gap:20px;max-width:760px;color:var(--dsw-alias-label-primary)}
 .dsh-qa-integrations__heading{margin:0;font-size:22px;line-height:1.3}

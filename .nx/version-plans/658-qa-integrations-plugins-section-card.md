@@ -61,7 +61,13 @@ saved values back as defaults — with every type check green. The list wrapper 
 two cards share took the neutral name `dsh-qa-integrations__card-list` with the
 mount it now draws (`dsh-qa-integrations__host-tab` named a tab that is gone). The
 client tests assert the keyed registrations, the namespace the operator form is
-resolved under, and the two views of the row entry. `AGENTS.md`, the `create-plugin`
-reference and `docs/DSH-0.1.7-MIGRATION.md` §4.2/§10 follow the move: the panel
-seats are the entry point for a plugin's own configuration card, and §4.2 records
-that the row seat is dispatched twice.
+resolved under, and the two views of the row entry. A row whose namespace the Host
+does not serve now says so inside its own configuration section instead of leaving
+the column empty: on a tab strip an absent card hid the tab, on a panel seat the
+section is already open. `docs/DSH-0.1.7-MIGRATION.md` follows the diff — §4.2
+records that the row seat is dispatched twice, §10 marks this package as the first
+registration on the panel seats — both against the installed contract and the
+owner's live stand. **The seat and the shell a card wears on it are not decided
+here:** #646 asks the maintainer to choose between adopting the host surface and
+staying on `settings.plugins.tab`, D1 option 2 stands until that answer, so
+`AGENTS.md` and the `create-plugin` reference are left untouched.
