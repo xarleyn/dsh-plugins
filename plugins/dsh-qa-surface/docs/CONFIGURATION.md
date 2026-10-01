@@ -535,35 +535,67 @@ accounts, for this browser's own chat history. An administrator's shared history
 *read*, and the turn of such a chat is that other account's business: reading it
 is not being told when it stops, so another account's turn ends silently here.
 
-The notice is for a turn this page saw begin. A chat found already running when
-the page opened is not attributed to this reader: that run ends in silence, and
-the same chat's next turn, whose start the page does see, notifies again. The
-rule runs across a gap in the link. A frame read while the browser was
-reconnecting vouches for nothing, so it neither reports a run it appears to have
-finished nor credits a run the first live frame shows under way: a turn still
-running when the link dropped, and the reader's own question that was queued
-before the drop and went out only as the link returned, both end unreported. The
-link is back before the list is, too — the page learns about the connection
-first, and the host list it holds is still the one the drop left — so an idle
-read through a gap arms nothing either. A chat is credited again once its own row
-has moved, since a row that has not moved says only what the gap already left it
-saying, and a run that began inside the gap would look exactly like the turn that
-follows. So the first turn of a chat after a gap ends unreported with the rest,
-and the silence stops there: the run that ends it is one this page could not
-account for, and the turn after it is watched from its start. Which of those the
-stale list was showing is not something this page can tell, and nothing the host
-client publishes would tell it either: the list the page subscribes to carries no
-mark of having been read again, so the chat's own row moving is the only arrival
-it can be given, and the silence is bounded by that row rather than by the link.
+The notice is for a turn this page saw the whole of: the idle its run began
+from, the run, and its end, each read in a frame the browser could vouch for. A
+chat found already running when the page opened is not attributed to this
+reader: that run ends in silence, and the same chat's next turn, whose start the
+page does see, notifies again.
+
+The rule runs across a gap in the link, and there it costs more than the turn
+the gap falls inside. A frame read while the browser was reconnecting vouches
+for nothing, and however short the gap is it puts at least one such frame in
+front of the page, so every turn a dropped link interrupts ends unreported —
+including one whose start this page did watch. While the link was down that chat
+may have run a different turn, and the rows that come back do not say which of
+the two this is; claiming the watched start anyway would announce a turn the page
+never saw begin. A run the first live frame shows under way is found rather than
+watched, so it passes silently too — which is also the fate of a question the
+reader queued before the drop and that went out only as the link returned.
+
+A chat whose row never moved across the gap is short of that evidence still. The
+page learns about the connection from the connection itself, while its chat rows
+come from the host list store, and the re-pull that store makes once the link is
+back is not awaited — measured on the installed host client in #479: its answer
+lands in a frame later than the one that cleared the flag, so the live frames
+right after a gap carry — normally — the rows the drop left. An idle row that has
+not moved since the gap therefore says only what the gap left it saying, and arms
+nothing.
+
+What a gap takes back is a baseline, and a baseline is given back by a turn, not
+by a frame: the chat is credited again once its own row moves, and the move that
+does it is a run this page watches end without reporting it. So the silence
+reaches from the gap to the end of the first turn that finishes on the recovered
+link, whether or not that turn was the interrupted one — read on the built
+differ, a live idle, a paused idle, a live idle, then a full live run that ends
+live raises nothing although both of its frames sit on the live link, and the
+turn after it raises the notice. A turn that ended while the link was down is
+lost on top of that, since no frame after the gap names it, and that chat then
+passes two turns in silence. Which of those readings the stale list was showing
+is not something this page can tell, and nothing the host client publishes would
+tell it either: the list the page subscribes to carries no mark of having been
+read again, so the chat's own row moving is the only arrival it can be given,
+and the silence is bounded by that row rather than by the link. The promise is
+therefore not one silent turn per chat: on a stand whose link drops inside every
+long turn, every turn there pays for its own drop and none is announced. That is
+the honest price of a page that claims no start it did not watch and credits no
+idle it could not vouch for.
+
 A gap the page was never shown is the one case this rule does not cover. The
-silence is assembled from the frames the page was handed while it reported itself
-reconnecting, and a loss of the link that came and went between two screen
+silence is assembled from the frames the page was handed while it reported
+itself reconnecting, and a loss of the link that came and went between two screen
 updates hands over none of them — a chat that was idle before that blink is then
 credited with a start nobody saw, so a turn that began inside it arrives as one
-you had been waiting for, while a turn you watched begin only arrives late. A chat this page stops reading is the same gap in the same
-evidence: while its row is away from the sidebar there is no frame naming it at
-all, so a run that returns to the list is found running again rather than watched
-beginning, and it ends unreported too.
+you had been waiting for, while a turn you watched begin only arrives late.
+
+A chat this page stops reading is the same gap in the same evidence: while its
+row is away from the sidebar there is no frame naming it at all, so a run that
+returns to the list is found running again rather than watched beginning, and it
+ends unreported too. A row that comes back saying idle is the corner this page
+cannot see: with no reading left to compare it against, that idle is credited the
+way a cold start credits it, and the run after it is announced even though it may
+have begun back inside the gap. Closing the corner needs evidence the host list
+does not carry, and #479 measured that it does not, so a test pins it as
+measured behaviour rather than as a rule that holds.
 
 A turn that ends in the chat already on screen, with this window active,
 produces nothing: the answer is in front of the reader.

@@ -55,10 +55,10 @@ export interface QaTurnNotificationsInput {
     ) => Promise<string | null>;
   };
   /**
-   * The link is down, so the rows this page holds are the ones the drop left and
-   * no run read among them is this reader's news. The flag goes back off with the
-   * link, which is sooner than the host list is read again; the reading named
-   * `stale` is what carries the rest of that gap.
+   * The link is down, so no run read among these rows is this reader's news. The
+   * flag says nothing about the rows: it goes back off with the link, while the
+   * host list is re-read after it and unawaited, so the reading named `stale` is
+   * what carries the gap over a live frame whose row has not moved since.
    */
   readonly paused: boolean;
   readonly activeSessionId: string | null;
