@@ -87,13 +87,31 @@ always report a leak**, so a real hostname dressed in a placeholder family
 - After a scrub, verify with patterns that are **not** the dictionary. A post-check
   that reuses the dictionary proves nothing about what the dictionary forgot.
 
-The allowlist, which is public, holds only synthetic families and public hosts: the
-placeholder key `PROJ-123`, `jira.example.corp`, `git.example.com`, the documentation
-address range `198.51.100.0/24`, the person names `Алиса` and `Боб`, an example
-address such as `i.ivanov@example.com`, the private-use ranges the SSRF tests aim at,
-and the obviously-fake redaction tokens (`glpat-…`, `sk-ant-…`, each
-one character class). Keep new examples inside those families and no allowlist entry
-is needed.
+The allowlist holds no real value: it is a list of **placeholder shapes**, and it is
+read after the dictionary, so it can never hide a marker. What belongs in it:
+
+- reserved documentation domains and pseudo-TLDs — `example.com` and its siblings,
+  `*.example.*`, `*.test`, `*.invalid`, `*.localhost`, the `*.corp` / `*.internal` /
+  `*.local` families, and `127.0.0.1`;
+- public service hosts that appear as tool links in docs (a VCS host, a package
+  registry, a vendor's API domain);
+- the synthetic ticket convention: a made-up prefix **and** a made-up number,
+  `PROJ-123`;
+- the placeholder product name the repository's own rules prescribe, `Демо-продукт`;
+- RFC 5737 documentation addresses — both `198.51.100.0/24` and `203.0.113.0/24`,
+  because the tests were written against the second one more often than the first;
+- the private-use ranges and the link-local metadata address (`169.254.169.254`) that
+  the SSRF fixtures deliberately aim at;
+- person placeholders, recorded **by exact value**.
+
+Everything else needs an exact allowlist entry with a comment saying why. **A
+credential fixture is allowlisted by its exact value, never by a family or a
+pattern**: `glpat-` and `sk-ant-` prefixes are shared with the real thing, so
+"anything that looks like a token of this shape" is a mask that would also swallow a
+leaked one. Keep fake tokens visibly fake (`glpat-abcdefghij0123456789`,
+`sk-ant-very-secret-value`) and list each of them; a new fixture is a new exact entry.
+
+Staying inside these families means no allowlist edit is needed at all.
 
 ## Routine
 
