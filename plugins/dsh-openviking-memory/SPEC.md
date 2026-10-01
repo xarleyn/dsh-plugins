@@ -105,7 +105,10 @@ that fills `row.meta` lives in `@deepseek-ai/dsh-package-manifest` — a package
 of this repository's plugins installs. What this bundle controls is the patch: it
 declares its row as `id` + `name`, no description, and `tests/bundle.test.ts` holds
 it there, so closing this branch would take a row description, and that is the edit
-the test turns red on. The live pass §7 names is what sees the line rendered.
+the test turns red on. The live pass §7 names is what sees the line rendered. What
+*this* checkout can prove is the other half — that the answer ships — and
+`scripts/verify-package.mjs` holds it: the built bundle has to carry both the
+`view === "summary"` branch and the sentence it returns.
 
 Seating a self-shelled card on that page costs it one repeated string, if the row
 does reach the fallback: the description sentence, which the page prints from this

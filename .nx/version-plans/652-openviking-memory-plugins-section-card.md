@@ -54,6 +54,7 @@ without the Plugins page loses the card, and `compatibility.json` says so, its
 required client features naming `plugins.row.config` where it named
 `settings.plugins.tab`. `scripts/verify-package.mjs` asserts the new pair (the slot
 literal and the `@yadsh/dsh-openviking-memory#` key prefix in the shipped bundle, the
-new package in the inject list) and refuses the old slot name, and the client tests
-assert the keyed registration, the namespace the form is resolved under, the two views
-of the entry, and which `mutate` a field change reaches the Host through.
+new package in the inject list), asserts the `summary` answer ships in the same bundle,
+and refuses the old slot name, and the client
+tests assert the keyed registration, the namespace the form is resolved under, the two
+views of the entry, and which `mutate` a field change reaches the Host through.
