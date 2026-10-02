@@ -1,25 +1,37 @@
-// The doc-impact settings card: canonical shell (from the client kit) plus the
-// plugin field components, and the one-time stylesheet injection.
-import {
-  CardShell,
-  PLUGIN_CARD_SHELL_CSS,
-  injectCardStyles,
-} from "@yadsh/dsh-plugin-kit/client";
+// The doc-impact settings card: the body the Plugins row page mounts, the plugin
+// field components, and the one-time stylesheet injection.
+//
+// The frame around this view is not ours (AGENTS.md, "Two kinds of card"): the row
+// page draws the card surface, the row title and the expand control before it mounts
+// what the `page` view returns, so this file renders no outer shell, no heading and
+// no toggle of its own. That also decides the focus treatment — the Host's
+// `focus.css` suppresses a hard-coded outline under pointer modality at a higher
+// specificity than a rule of ours can reach without fighting it, so every control
+// drawn here takes the Host's ring tokens instead, each with a fallback: an undeclared
+// token would invalidate the whole `outline` shorthand and drop the ring entirely.
+import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 import { createElement } from "react";
-import { MODE_OPTIONS, ON_LIMIT_OPTIONS } from "./settings-form.js";
-import { fallbackT } from "./dictionary.js";
+import {
+  MODE_OPTIONS,
+  ON_LIMIT_OPTIONS,
+  type CardFace,
+  type CardSnapshot,
+  type ModeOption,
+  type OnLimitOption,
+} from "./settings-form.js";
 import {
   BoolField,
   ChoiceField,
   NumberField,
   TextAreaField,
   TextField,
+  type ChoiceProps,
 } from "./fields.js";
+import type { Translate } from "./dictionary.js";
 
 const CSS = [
-  PLUGIN_CARD_SHELL_CSS.trim(),
-  ".ddi_list{list-style:none;margin:0;padding:0;display:grid;gap:12px}",
-  ".ddi_readOnly{color:var(--dsw-alias-label-tertiary);margin:12px 0 0;font-size:12px;line-height:1.5}",
+  ".ddi_body{color:var(--dsw-alias-label-primary)}",
+  ".ddi_notice{color:var(--dsw-alias-label-tertiary);margin:12px 0 0;font-size:12px;line-height:1.5}",
   ".ddi_footer{border-top:1px solid var(--dsw-alias-border-l2);justify-content:flex-end;align-items:center;gap:8px;padding:12px 0 4px;display:flex}",
   ".ddi_failed{min-width:0;color:var(--dsw-alias-label-error);flex:1;margin:0;font-size:12px;line-height:1.5}",
   ".ddi_save,.ddi_discard{appearance:none;font:inherit;cursor:pointer;border:1px solid transparent;border-radius:8px;padding:5px 14px;font-size:13px;line-height:1.5}",
@@ -27,7 +39,7 @@ const CSS = [
   ".ddi_discard:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-dimmed)}",
   ".ddi_save{background:var(--dsw-alias-label-primary);color:var(--dsw-alias-bg-layer-3)}",
   ".ddi_discard:disabled,.ddi_save:disabled{opacity:.4;cursor:default}",
-  ".ddi_discard:focus-visible,.ddi_save:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}",
+  ".ddi_save:focus-visible,.ddi_discard:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:1px}",
   ".ddi_field{margin:14px 0}",
   ".ddi_head{align-items:center;gap:8px;margin-bottom:6px;display:flex}",
   ".ddi_label{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:500}",
@@ -36,9 +48,10 @@ const CSS = [
   ".ddi_reset{appearance:none;cursor:pointer;font:inherit;color:var(--dsw-alias-label-secondary);background:0 0;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px}",
   ".ddi_reset:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-dimmed)}",
   ".ddi_reset:disabled{opacity:.4;cursor:default}",
+  ".ddi_reset:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}",
   ".ddi_input,.ddi_select{appearance:none;font:inherit;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:6px 10px;font-size:13px;line-height:1.5;width:100%;box-sizing:border-box}",
   ".ddi_textarea{resize:vertical;min-height:132px;font-family:inherit}",
-  ".ddi_input:focus-visible,.ddi_select:focus-visible,.ddi_textarea:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}",
+  ".ddi_input:focus-visible,.ddi_select:focus-visible,.ddi_textarea:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}",
   ".ddi_input:disabled,.ddi_select:disabled,.ddi_textarea:disabled{opacity:.5;cursor:default}",
   ".ddi_inputInvalid{border-color:var(--dsw-alias-label-error)}",
   ".ddi_hint{color:var(--dsw-alias-label-tertiary);margin:6px 0 0;font-size:12px;line-height:1.5}",
@@ -46,54 +59,49 @@ const CSS = [
 ].join("\n");
 if (typeof document !== "undefined") injectCardStyles("dsh-doc-impact", CSS);
 
-/**
- * The translate seat the page binds for the locale namespace this entry declares.
- * A profile that hands the seat no such service must still get text, so the
- * dictionary this bundle registered is the fallback rather than a thrown call.
- */
-function translator(props: any) {
-  return typeof props.t === "function" ? props.t : fallbackT;
+/** The props the page hands the card: the injected face plus the locale binding. */
+export interface ConfigCardProps extends CardFace {
+  readonly t: Translate;
+  readonly useDocImpactCard: (
+    select: (snapshot: CardSnapshot) => CardSnapshot,
+  ) => CardSnapshot;
 }
 
 /**
- * The row's one-liner, for the `view: 'summary'` the Plugins page requests when
- * the patch declares no description of its own. It is text and nothing else: the
- * page puts it inside its own `<p>`, and it reads no settings state, so no second
- * copy of the form mounts.
+ * The row's heading line, for the `view: 'summary'` the Plugins page asks this
+ * seat for when the patch declares no description of its own. It answers with text
+ * and nothing else — the page puts the entry inside its own `<p>` — and it reads no
+ * settings state, so no second copy of the form mounts in a line of text.
  */
-export function CardSummary(props: any): string {
-  return translator(props)("cardDescription");
+export function CardSummary(props: { readonly t: Translate }): string {
+  return props.t("cardDescription");
 }
 
-export function ConfigCard(props: any) {
-  const t = translator(props);
-  const state = props.useDocImpactCard(function (snapshot: any) {
+export function ConfigCard(props: ConfigCardProps) {
+  const state = props.useDocImpactCard(function (snapshot) {
     return snapshot;
   });
-  if (!state.available) return null;
+  const t = props.t;
+  // The page owns the frame, so returning nothing here would leave the reader inside
+  // an opened row with no section at all and no reason. A card that draws its own
+  // shell can stay invisible; a body mounted in the Host's chrome owes a sentence.
+  if (!state.available) {
+    return createElement(
+      "p",
+      { className: "ddi_notice", role: "status" },
+      t("unavailable"),
+    );
+  }
   const blocked = !state.dirty || state.invalid || state.saving;
   const disabled = !state.writable || state.saving;
   const fields = state.fields;
-  const card = createElement(
-    CardShell,
-    {
-      title: t("cardTitle"),
-      description: t("cardDescription"),
-      label: function (open: boolean) {
-        return t(open ? "collapse" : "expand") + ": " + t("cardTitle");
-      },
-      badge: state.dirty
-        ? createElement(
-            "span",
-            { className: "dsh-plugin-card__badge" },
-            t("unsaved"),
-          )
-        : undefined,
-    },
+  return createElement(
+    "div",
+    { className: "ddi_body" },
     !state.writable
       ? createElement(
           "p",
-          { className: "ddi_readOnly", role: "status" },
+          { className: "ddi_notice", role: "status" },
           t("readOnly"),
         )
       : null,
@@ -105,7 +113,7 @@ export function ConfigCard(props: any) {
       fallback: true,
       state: fields.enabled,
       disabled: disabled,
-      onChoose: function (value: unknown) {
+      onChoose: function (value: boolean) {
         props.choose("enabled", value);
       },
       onReset: function () {
@@ -120,7 +128,7 @@ export function ConfigCard(props: any) {
       fallback: true,
       state: fields.steer,
       disabled: disabled,
-      onChoose: function (value: unknown) {
+      onChoose: function (value: boolean) {
         props.choose("steer", value);
       },
       onReset: function () {
@@ -141,7 +149,7 @@ export function ConfigCard(props: any) {
         props.resetField("configFile");
       },
     }),
-    createElement(ChoiceField, {
+    createElement<ChoiceProps<ModeOption>>(ChoiceField, {
       t: t,
       id: "doc-impact-mode",
       labelKey: "modeLabel",
@@ -150,7 +158,7 @@ export function ConfigCard(props: any) {
       fallback: "remind",
       state: fields.mode,
       disabled: disabled,
-      onChoose: function (value: unknown) {
+      onChoose: function (value: ModeOption) {
         props.choose("mode", value);
       },
       onReset: function () {
@@ -171,7 +179,7 @@ export function ConfigCard(props: any) {
         props.resetField("maxReminderRounds");
       },
     }),
-    createElement(ChoiceField, {
+    createElement<ChoiceProps<OnLimitOption>>(ChoiceField, {
       t: t,
       id: "doc-impact-on-limit",
       labelKey: "onLimitLabel",
@@ -180,7 +188,7 @@ export function ConfigCard(props: any) {
       fallback: "allow",
       state: fields.onLimit,
       disabled: disabled,
-      onChoose: function (value: unknown) {
+      onChoose: function (value: OnLimitOption) {
         props.choose("onLimit", value);
       },
       onReset: function () {
@@ -239,7 +247,7 @@ export function ConfigCard(props: any) {
       fallback: false,
       state: fields.debug,
       disabled: disabled,
-      onChoose: function (value: unknown) {
+      onChoose: function (value: boolean) {
         props.choose("debug", value);
       },
       onReset: function () {
@@ -255,6 +263,11 @@ export function ConfigCard(props: any) {
             { className: "ddi_failed", role: "status" },
             t("saveFailed"),
           )
+        : null,
+      // The header that used to carry this marker is the page's now, so the draft
+      // count travels with the controls it enables instead.
+      state.dirty
+        ? createElement("span", { className: "ddi_badge" }, t("unsaved"))
         : null,
       createElement(
         "button",
@@ -278,12 +291,6 @@ export function ConfigCard(props: any) {
       ),
     ),
   );
-  // The page's configuration section supplies no list of its own, so the shell's
-  // `<li>` root sits in a plugin-owned `<ul>` — AGENTS.md keeps the `ul > li` pair
-  // that the shell's own styling is written against. The Plugins page draws its own
-  // chrome around the entry, so the two frames nest; `docs/DSH-0.1.7-MIGRATION.md`
-  // §4.3 tracks that as the open shell decision and #660 rewrites the recommendation.
-  return createElement("ul", { className: "ddi_list" }, card);
 }
 
 /**

@@ -205,7 +205,7 @@ Per package:
 | `dsh-user-correction-miner` | code | ✔ **done in #528** (10 insertions, 18 deletions across three files — not the 25 estimated). `tool-result` block gone; `SessionHeader` fixture; `SESSION_QUERY_CORRUPT_SESSION` needed no code — the historical scan's per-session `catch` already counts it as one failed session | landed: `src/mining/message-text.ts:5` **[verified]** (dead branch dropped, so `blockText` stops recursing); `tests/fixtures/sessions.ts:9-10` (header from `SESSION_FORMAT_VERSION` + `SessionId`, cast gone), `:20,30` (`plugin` source kind is absent from both axes → `system-prompt`; the fixture's own label became `injected`, which also moved `tests/context-extractor.test.ts:73` — a site this map missed), `:77-81` (`tool`-role result message, `toolCallId` beside it). Checked and kept: `src/mining/context-extractor.ts:39,92`, `src/types.ts:34`, `src/dsh/storage.ts:44` (the map named it `src/storage.ts`, which never existed — own `tool-result` **label**, not the block), `src/mining/engine.ts:127` (`snapshotEvents()` alive); `compatibility.json` → #511 | 25 | `tests/{context-extractor,engine,storage,sessions}.test.ts` — 65 pass |
 | `dsh-domain-experts` | ✔ **done in #529** (no card decision — D1 never gated it) | 2, both `installSection` | volatile entry `Config`; the browser half is a management page, not a configuration card, so it survived untouched | landed: `src/config.ts:111` `ConfigSchema: z<Config, LiveConfig>` with all ten leaves `.volatile()`, `:60` `LiveConfig`, `:74` `snapshotConfig` (+ `:89` the structural reference probe), `:6` **`SETTINGS_NAMESPACE` deleted** — the namespace of a profile is its entry id `dsh-domain-experts` now and this plugin never writes config back, so the constant named a section that no longer exists; `src/index.ts:2-4` the loader type anchor in place of the `dsh-settings` import, `:122` one `entry` field where `entry` and `source` were (the map's `:152-153`), `:205-208` one `loader/volatile-update` effect where the `installSection` block stood (the map's `:231`, verified on the pre-#598 entry), `:229-230` `config()` takes one snapshot per operation, `:522-532` the surface re-exports — **every `src/index.ts` ref here is the #598 layout**: the card was cut once against the 1019-line entry, then #598 split that file (catalog to `src/catalog.ts`, verdicts to `src/validate.ts`), which moved the settings registration nowhere — it stayed in the entry — but renumbered it by ~390 lines and conflicted the first patch; `compatibility.json:13`; `package.json` `@deepseek-ai/cordis-plugin-loader` peer + dev (`catalog:dsh` / `catalog:dsh-dev`, already in both catalogs — the pattern `dsh-documents` set). Checked and kept: `src/client/index.tsx:47` registers `settings.plugins.tab`, which survives, and `scripts/verify-package.mjs:74` still requires **no** card shell in the bundle; `settings.configure({ auto: false })` deliberately **not** called — the ten volatile fields are the successor of the old section and nothing in `src/client` reads `ctx.configForms` (grep: zero hits), so the generated page is their only editor; `dsh-sleev` and `dsh-documents` take the lever because their own card draws the form. `defaultMemoryProvider`, `memoryDbPath` and `auditLimit` stay built-once facts, as their descriptions already promised | 20 estimated, ~45 landed | `tests/config.test.ts` +4 (every leaf answers `get()`; a snapshot of the schema resolves to the documented defaults; a committed value is followed without a remount; a knob that resolves to nothing is dropped), `tests/wiring.test.ts` +2 (the `enabled` flip through `loader/volatile-update`, and an unrelated knob leaving the tool surface alone) — 34 files / 332 tests green; `wiring.test.ts` still cannot load under §13.3 (reproduced on untouched `HEAD` in this package: `SyntaxError: Invalid or unexpected token` at import), so its 23 assertions were run against the compiled `lib/` entry instead, the way #514 did |
 | `dsh-preset-persona-editor` | ✔ **done in #518** (decision D2, option 1) | `AgentPresetRegistry` lost `authorable`/`copy` — the `TS2739` at `src/host/service.ts:114` is gone because the write half that hit it is gone; §11's row carries the landed shape |
-| `dsh-doc-impact` | ✔ **done in #530** (347 insertions, 277 deletions over `src` + `scripts`; the 35 the row promised was the card half alone — the host half it did not name is the volume) | volatile entry `Config`; card is a Plugins tab under our own shell (D1 option 2); own message source kind | landed: `src/dsh/plugin-config.ts:71` `ConfigSchema` (every card node `.volatile()`, nested groups marked at the container) with `plainEntryConfig` `:310` and `readLiveConfig` `:364` replacing `declaredSettingsBase`/`fromSettingsSection`; **`src/dsh/settings.ts` deleted** (133 lines of `settings.register`/`settings.get` that rc.2 answers to nothing — it typed itself through a self-declared `SettingsService`, which is why it cost zero compile errors); `src/dsh/plugin.ts:26` `export const Config`, `:107` `settings.configure({ auto: false })` (§4.1 taken, not deferred — this plugin owns its page); `src/client/index.ts:33,55` tab seat `settings.plugins.tab` keyed by the namespace, form through `ctx.configForms.get`; `src/client/settings-form.ts` writes `mutate([{op,path,value}], revision)` against the **nested** document (`defaults.mode`, `safety.*`, `changeDetection.maxSnapshotFiles`); `src/client/card.ts:264` `<ul>` around the shell (AGENTS.md `settings.plugins.tab`), shell and badge unchanged; `src/dsh/lifecycle.ts:13,94` kind `doc-impact` via a `MessageSourceMap` augmentation; `scripts/verify-client-bundle.mjs:43-55`. **The namespace moved `doc-impact` → `dsh-doc-impact`** — it is the profile entry id now (§4.2), so values saved through the old card do not carry over while the profile patch line does. Checked and kept: `src/dsh/{commands.ts:14,67,tools.ts:47,lifecycle.ts:39}` `snapshotEvents` folds (§5/#531: no replacement for a whole-log fold); `compatibility.json:4-5` → #511 | 35 → **≈350** | `tests/client-bundle.test.ts` 8 (nested fake `ConfigForm`, seat↔namespace pair), `tests/settings.test.ts` 10 (schema↔card path pairing pinned: every card field is under exactly one volatile node), `tests/e2e.test.ts` 4 — 87 pass |
+| `dsh-doc-impact` | ✔ **done in #530** (347 insertions, 277 deletions over `src` + `scripts`; the 35 the row promised was the card half alone — the host half it did not name is the volume) | volatile entry `Config`; card is a Plugins tab under our own shell (D1 option 2); own message source kind | landed: `src/dsh/plugin-config.ts:71` `ConfigSchema` (every card node `.volatile()`, nested groups marked at the container) with `plainEntryConfig` `:310` and `readLiveConfig` `:364` replacing `declaredSettingsBase`/`fromSettingsSection`; **`src/dsh/settings.ts` deleted** (133 lines of `settings.register`/`settings.get` that rc.2 answers to nothing — it typed itself through a self-declared `SettingsService`, which is why it cost zero compile errors); `src/dsh/plugin.ts:26` `export const Config`, `:107` `settings.configure({ auto: false })` (§4.1 taken, not deferred — this plugin owns its page); `src/client/index.ts:33,55` tab seat `settings.plugins.tab` keyed by the namespace, form through `ctx.configForms.get`; `src/client/settings-form.ts` writes `mutate([{op,path,value}], revision)` against the **nested** document (`defaults.mode`, `safety.*`, `changeDetection.maxSnapshotFiles`); `src/client/card.ts:264` `<ul>` around the shell (AGENTS.md `settings.plugins.tab`), shell and badge unchanged; **[superseded by #657, which moved this card to `plugins.row.config` and dropped the shell with the `<ul>` — the seat, both of its views and the body-only chrome are D1 option 1, and the settings namespace this row names did not move]**; `src/dsh/lifecycle.ts:13,94` kind `doc-impact` via a `MessageSourceMap` augmentation; `scripts/verify-client-bundle.mjs:43-55`. **The namespace moved `doc-impact` → `dsh-doc-impact`** — it is the profile entry id now (§4.2), so values saved through the old card do not carry over while the profile patch line does. Checked and kept: `src/dsh/{commands.ts:14,67,tools.ts:47,lifecycle.ts:39}` `snapshotEvents` folds (§5/#531: no replacement for a whole-log fold); `compatibility.json:4-5` → #511 | 35 → **≈350** | `tests/client-bundle.test.ts` 8 (nested fake `ConfigForm`, seat↔namespace pair), `tests/settings.test.ts` 10 (schema↔card path pairing pinned: every card field is under exactly one volatile node), `tests/e2e.test.ts` 4 — 87 pass |
 | `dsh-answer-review-gate` | 1 | message role `'plugin'` removed |
 
 Error-class frequency (top): `'settings' is of type 'unknown'` ×57, `ProviderCardProps`
@@ -303,9 +303,10 @@ now at `:579`; `plugins.row.config` is still rendered **with** `form`, now at
 `formFor(id)` (`:1151-1155`) still calls `props.configForm(id)` with the **row id
 as the namespace**, so the join-key insight below survives `rc.2` untouched.
 
-[rc.2 fix] **[verified at `rc.2` by #657]** the bullet above reads this seat as
-having one view; it has **two**. Besides `{ view: 'page', form }` at `:495`, the page
-renders `plugins.row.config` as `{ view: 'summary' }` at `:491` — `description ??
+[rc.2 fix] **[verified at `rc.2`: the two render sites below, the stand probe in #646,
+and `AGENTS.md` since #660]** the bullet above reads this seat as having one view; it
+has **two**. Besides `{ view: 'page', form }` at `:495`, the page renders
+`plugins.row.config` as `{ view: 'summary' }` at `:491` — `description ??
 renderSlot('plugins.row.config', { view: 'summary' }, …)`, so the one-liner is asked
 for whenever `rowText` yields no description because the patch declares no
 `meta.description` (`presentation.ts:131`). A bundle that registers here and declares
@@ -387,9 +388,28 @@ scope.subscribe(listener)             →    (not needed — the page owns the s
 survives untouched: it is structural over `subscribe`/`getSnapshot`, which
 `ConfigForm` still provides.
 
-### 4.3 The card-shell contract is the open decision
+### 4.3 The card-shell contract, decided for option 1
 
-**This is the one thing that needs a maintainer call, not an edit.** Our cards
+**[decided 2026-10-01, option 1]** The maintainer chose to follow the Host chrome:
+`CardShell` is dropped from the `plugins.row.config` path, `AGENTS.md` and
+`packages/plugin-scripts/verify-plugin-card-contract.mjs` were rewritten to match, and
+the gate now reads the seat off the built bundle rather than trusting the plugin's
+declaration. The remaining open question in this section is therefore closed; what
+survives is the choice itself, kept here because the second half of the series (twelve
+card components) is carried out against it. §4.3a item 3 — the focus ring — is resolved
+the same way: cards inside the panel chrome take `--dsw-focus-ring-width` /
+`--dsw-focus-ring-color` (with a fallback length on the width, or the shorthand is
+dropped where the token is undefined) and never a hard-coded outline, which is what the
+new gate asserts.
+
+What follows is the question **as it stood before the call**, kept verbatim because the
+series is being executed against the reasoning. The framing "needs a maintainer call"
+and the description of `settings.plugins.tab` as the point `AGENTS.md` prescribes are
+both superseded by the decision above: the tab remains a placement the repository is
+moving away from, and its cards keep the shell only because nothing around them draws
+a frame.
+
+**This was the one thing that needed a maintainer call, not an edit.** Our cards
 draw their own `dsh-plugin-card` shell (`CardShell`, the `<li>` root, the 14×14
 chevron) because on 0.1.5 the host gave each card a bare keyed slot seat. On
 0.1.7 the Plugins page **draws the chrome itself** — `<li className={css.card}>`
@@ -407,9 +427,11 @@ Options:
    idiomatic; touches the shared gate in
    `packages/plugin-scripts/verify-plugin-card-contract.mjs`.
 2. **Keep our shell** and register on `settings.plugins.tab` instead (that slot
-   survives, and is what `AGENTS.md` already prescribes for feature-owned
+   survives, and was at the time what `AGENTS.md` prescribed for feature-owned
    pages). Smallest diff and preserves every gate verbatim; costs us the
    first-party Plugins-page integration and puts plugin config under Settings.
+   **Not chosen** — see the decision above; `AGENTS.md` now treats the tab as a
+   placement the repository is leaving, not the target for a new card.
 
 Option 2 is strictly less work and fully legal on 0.1.7; option 1 is where the
 platform is going. Choose before starting, because it decides whether ~12 card
@@ -1218,58 +1240,77 @@ as baseline breakage.
 
 ## 10. Open owner decisions
 
-**D1 — the settings card shell (§4.3, §4.3a) — settled 26.09 in #508, option 2.**
-**D1 — the settings card shell (§4.3, §4.3a) — CLOSED as of 26.09, option 2.**
-Option 1 (accept host chrome): delete `CardShell` from the `plugins.row.config`
-path, rewrite `AGENTS.md`'s canonical shell CSS block and the shared gate
-`packages/plugin-scripts/verify-plugin-card-contract.mjs:4-15,39,44-45`, and lose
-~12 cards' outer shell. Option 2 (keep our shell on `settings.plugins.tab`):
-smallest diff, every gate survives verbatim, but as of `rc.2` our 12px/1px/2px
-shell sits next to host cards that are 20px/0.5px/`--dsw-focus-ring-*`, and the
-new `focus.css` modality rule can silence our focus ring (§4.3a item 3).
-**The owner chose option 2: the shell stays ours, neither `settings.plugins.tab`
-nor `plugins.row.config` is restyled to the host chrome, `AGENTS.md`'s canonical
-CSS and the card-contract gate are not edited, and the cutover carries only
-broken types and APIs.**
-**New fact for either branch:** `scripts/verify-package-hygiene.mjs:49,816-835`
-keys the *entire* card-contract enforcement off a source file containing the
-literal `settings.plugin.item`; once plugins register `plugins.row.config`, that
-gate stops firing and the shell contract becomes unenforced unless the constant is
-retargeted. **[verified]** line 49 and the block at 816-835. **Retargeted by #510:**
-the gate now fires on `settings.plugin.item`, `plugins.row.config`, and
-`settings.plugins.tab` combined with the shell, so enforcement survives whichever
-way D1 goes.
-**[decided 2026-09-26, #508] Option 2.** The card shell stays ours, the
-canonical `AGENTS.md` CSS and `verify-plugin-card-contract.mjs` are not edited,
-and neither `settings.plugins.tab` nor `plugins.row.config` is rewritten onto the
-host chrome; the migration is "only broken types and broken APIs". First landing:
-`dsh-qa-surface` (#513), which registers its card as a `settings.plugins.tab`
-entry and keeps the `<li>` root inside a plugin-owned `<ul>`, as `AGENTS.md`
-already requires of a tab.
-way D1 goes. **Resolved by the owner on 26.09 (from #508): option 2.** The card
-shell stays ours, `settings.plugins.tab` and `plugins.row.config` are not
-re-styled to the host chrome, and neither the `AGENTS.md` canonical CSS nor
-`verify-plugin-card-contract.mjs` moves — so for the 12 rows above this is a
-migration of broken types and APIs only. Item 3 below (the `focus.css` ring) stays
-unaddressed by that choice and is now a separate card.
-**Resolved 26.09 in #508 as option 2**, and #521 is the first card landed on that
-reading: the shell stays ours, `AGENTS.md`'s canonical CSS and
-`verify-plugin-card-contract.mjs` are untouched, and a card whose old seat was
-`settings.plugin.item` registers on `settings.plugins.tab` instead — a *list* slot
-that hands its registrant no props, so the card resolves its own `ConfigForm`
-through `ctx.configForms.get<T>(ns)` and wraps its `<li>` in a plugin-owned `<ul>`
-(the `AGENTS.md` rule for this slot, already what `dsh-domain-experts` and
-`dsh-qa-integrations` do). `plugins.row.config` is therefore **not** used by this
-wave; §4.2's recipe stands as the record of where the platform is going.
+**D1 — the settings card shell (§4.3, §4.3a) — reopened and REDECIDED 01.10: option 1.**
 
-**Superseded 30.09 by #657**, which is the wave's first card landed on `plugins.row.config`
-(`dsh-doc-impact`): the keyed seat takes the join §4.2 describes, the namespace stayed put,
-and option 2's other half still holds — the card keeps the `AGENTS.md` shell inside the
-chrome the page draws around the entry, so the two frames nest and §4.3's decision stays
-open rather than settled. The recommendation itself (`AGENTS.md`'s "Plugin configuration card
-UI", `docs/PLUGIN_GUIDELINES.md`, the `create-plugin` skill) is rewritten by #660 once the
-rest of the wave leaves the tab slot; until then this paragraph, not `AGENTS.md`, is where
-a `plugins.row.config` registration is documented.
+The owner's word of 26.09 (#508) was option 2: our shell stayed ours, `AGENTS.md`'s
+canonical CSS and `verify-plugin-card-contract.mjs` were not edited, and neither
+`settings.plugins.tab` nor `plugins.row.config` was re-styled to the host chrome. Twelve
+cards landed on that reading, and `dsh-qa-surface` (#513) and `dsh-plugin-log-ui` (#521)
+registered `settings.plugins.tab` with the `<li>` inside a plugin-owned `<ul>` because a
+list slot hands its registrant no props — that shape is still what those seats require.
+On 01.10, seeing the 12px/1px/2px shell next to `rc.2`'s 20px/0.5px first-party rows on a
+live stand, the owner reversed it: **"as the host does" — option 1.** The history above is
+kept because it explains why the twelve rows read the way they do; it is not an
+instruction.
+
+What option 1 means in this repository now:
+
+- On `plugins.row.config` and `plugins.bundle.config` the bundle renders **the body
+  only**. The page draws the card surface, the title, the row id and the description, so
+  our `dsh-plugin-card*` classes, our 14×14 chevron and our `<li>` root are forbidden
+  there — a second frame beside a first-party row is the defect this decision removes.
+- `AGENTS.md` and the shared gate **are** edited, against the 26.09 wording: the contract
+  is now derived from the seat the bundle registers on, so the same file that once
+  required the shell rejects it on the panel seats (§4.3a, §4.3).
+- Focus treatment comes from the Host's `--dsw-focus-ring-*` tokens with fallback lengths,
+  never from a hard-coded outline: `focus.css` wins on specificity (0-3-2 against 0-2-0)
+  under pointer modality, so a ring of our own is invisible after a mouse click, and
+  raising specificity is the wrong repair.
+- The seat key `<package name>#<row id>` and the settings namespace it resolves are not
+  chrome and stay untouched — moving them orphans the values a user already saved.
+- Cards seated in `settings.section` and `settings.plugins.tab` still own their whole
+  card; those seats keep the canonical shell.
+
+Scope as of 01.10: one of the thirteen series packages is seated on the row today
+(`dsh-model-safety-gate`, #653), so the contract landed with that one migrated and the
+other twelve — still on `settings.plugins.tab` — are named in the epic (#646) as the
+second step, each on its own card. **As of #657 it is two and eleven**: the second
+package crossed to the row and to the body-only chrome in the same change, so the
+contract has now been exercised by a bundle that reached the seat from the tab.
+
+**Fact that survives either branch:** `scripts/verify-package-hygiene.mjs:49,816-835`
+keyed the *entire* card-contract enforcement off a source file containing the literal
+`settings.plugin.item`; once plugins register `plugins.row.config`, that gate stops
+firing and the shell contract becomes unenforced unless the constant is retargeted.
+**[verified]** line 49 and the block at 816-835. **Retargeted by #510:** the gate now
+fires on `settings.plugin.item`, `plugins.row.config`, and `settings.plugins.tab`
+combined with the shell, so enforcement survives whichever way D1 goes.
+
+**Superseded on both halves by #653 (`dsh-model-safety-gate`, landed) and #657
+(`dsh-doc-impact`, the second card on this seat)**, which register on
+`plugins.row.config`: the keyed seat takes
+the join §4.2 describes, the settings namespace stayed where it was, and — with option 1
+in force — neither bundle keeps option 2's frame any more. Both render the body the page
+mounts inside its own card.
+
+The probe that argument rested on is still what `rc.2` measures: the page titles the row
+and puts its heading, icon and crumb **above** the entry, and the ancestors of a row's
+configuration section carry no border and no background of their own. Read the other way
+round, that is exactly the defect — the section supplies no box, so the bundle's 12px
+rectangle was a second card nested in the page's 20px one, standing beside first-party
+rows that draw only the page's frame. The recommendation now says the same thing the code does —
+`AGENTS.md` ("Choosing the registration point", rewritten by #660), `docs/PLUGIN_GUIDELINES.md`
+and the `create-plugin` skill all route a configuration card to the row seat and tell it
+not to register in the Settings dialog.
+
+**What #657 could not close is the availability of that page.** The Plugins page reads
+`pluginInventory/list` and `pluginManager/listBundles|listPlugins`, and on the locked QA
+stand all three answer 403 because `pluginManager` also exposes `inspect`/`installBundle`/
+`setPluginEnabled` to the remote surface; adding it to `DSH_REMOTE_API_SERVICES` is the
+owner's call, not a plugin's (§4.3, #646's 30.09 measurement). So the acceptance
+"the card opens from the Plugins panel and saves" is proven for #657 by the bundle test —
+the seat key, both views, one settings read — and by the read of a value written under the
+same namespace before the move, not by a click on the operator's stand.
 
 **D2 — preset authoring (`dsh-preset-persona-editor`) — newly open.** §8.6:
 the copy-to-writable-root capability does not exist at `rc.2`, and neither does

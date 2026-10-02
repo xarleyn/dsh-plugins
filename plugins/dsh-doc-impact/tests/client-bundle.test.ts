@@ -326,7 +326,7 @@ describe("client bundle", () => {
     expect(ctx.registered[0]!.component).toBeTypeOf("function");
   });
 
-  it("mounts the card in the shared shell for the page view", async () => {
+  it("mounts the settings body for the page view, with no frame of ours", async () => {
     const bundle = await loadBundle();
     const form = fakeForm({
       status: "ready",
@@ -344,8 +344,9 @@ describe("client bundle", () => {
     const face = faceOf(ctx) as unknown as Record<string, any>;
     const reads: string[] = [];
     // The configuration section asks this seat for `{ view: 'page', form }`
-    // (PluginManagerPage.tsx:495), and that view is the live form: the shell, then
-    // the fields the snapshot projects, read through this bundle's row namespace.
+    // (PluginManagerPage.tsx:495), and that view is the live form: the body the page
+    // mounts inside the card it drew, then the fields the snapshot projects, read
+    // through this bundle's row namespace.
     const page = renderEntry(entry, {
       view: "page",
       t: (key: string) => key,
@@ -356,13 +357,26 @@ describe("client bundle", () => {
     });
 
     expect(reads).toEqual(["settings"]);
-    expect(page.type).toBe("ul");
-    expect(page.props.className).toBe("ddi_list");
-    const shell = page.children[0];
-    expect(shell.props.title).toBe("cardTitle");
-    expect(shell.props.description).toBe("cardDescription");
-    // Nothing is staged, so the header carries no unsaved badge.
-    expect(shell.props.badge).toBeUndefined();
+    expect(page.type).toBe("div");
+    expect(page.props.className).toBe("ddi_body");
+    // The frame, the heading and the expand control are the page's. A list root, or a
+    // child that carries a title or an `aria-expanded`, is our own card nested inside
+    // the Host's — the second frame the row contract exists to prevent.
+    const mounted = page.children.filter(Boolean);
+    expect(
+      mounted.some((child: any) => child.type === "ul" || child.type === "li"),
+      "no list root around the body",
+    ).toBe(false);
+    expect(
+      mounted.some(
+        (child: any) =>
+          child.props?.title !== undefined ||
+          child.props?.["aria-expanded"] !== undefined,
+      ),
+      "no heading or toggle of ours",
+    ).toBe(false);
+    // Nothing is staged, so the write controls carry no unsaved marker.
+    expect(JSON.stringify(mounted)).not.toContain("unsaved");
   });
 
   it("reads and fences the document through its own form, never the page's", async () => {
@@ -409,9 +423,11 @@ describe("client bundle", () => {
       useDocImpactCard: () => face.hooks.docImpactCard.getSnapshot(),
     });
 
-    // The view the card draws is the namespace it resolved, not the prop.
-    expect(page.type).toBe("ul");
-    expect(page.children[0].props.title).toBe("cardTitle");
+    // The view the card draws is the namespace it resolved, not the prop: had it read
+    // the page's `state`, the poisoned `unavailable` would have replaced this body
+    // with the sentence an unresolved namespace answers with.
+    expect(page.type).toBe("div");
+    expect(page.props.className).toBe("ddi_body");
     expect(face.hooks.docImpactCard.getSnapshot().available).toBe(true);
 
     face.choose("debug", true);
@@ -761,12 +777,26 @@ describe("client bundle", () => {
     });
   });
 
-  it("renders nothing while the namespace is unavailable", async () => {
+  it("answers a namespace the Host has not resolved with a sentence", async () => {
     const bundle = await loadBundle();
     const form = fakeForm({ status: "loading", writable: false });
     const ctx = makeCtx(form);
     bundle.factory(fakeReact).apply(ctx);
     const face = faceOf(ctx);
     expect(face.hooks.docImpactCard.getSnapshot().available).toBe(false);
+
+    const entry = ctx.registered[0]!.component as (
+      props: Record<string, unknown>,
+    ) => any;
+    const page = renderEntry(entry, {
+      view: "page",
+      t: (key: string) => key,
+      useDocImpactCard: () => face.hooks.docImpactCard.getSnapshot(),
+    });
+    // The frame is the page's, so a view that renders nothing would leave the reader
+    // inside an opened row with no section and no reason: the body owes a sentence.
+    expect(page.type).toBe("p");
+    expect(page.props.role).toBe("status");
+    expect(page.children.flat()).toContain("unavailable");
   });
 });

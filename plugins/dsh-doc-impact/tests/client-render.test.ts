@@ -100,6 +100,17 @@ const BASE_ONLY: NamespaceSnapshot = {
   mode: "host",
 };
 
+/** A namespace the Host has not resolved: no document, so no field to show. */
+const PENDING: NamespaceSnapshot = {
+  status: "unavailable",
+  value: {},
+  base: {},
+  user: {},
+  writable: false,
+  revision: 0,
+  mode: "host",
+};
+
 /** The renderer the spec's kind prescribes. */
 function rendererFor(spec: FieldSpec): unknown {
   switch (spec.kind) {
@@ -229,6 +240,24 @@ describe("doc-impact card render", () => {
     const select = selectOf(controlOf(elements, snapshot, "mode"));
     expect(select.offered).toContain(String(select.value));
   });
+
+  it("answers a namespace the Host has not resolved with a sentence", () => {
+    // The row page owns the frame, so this view cannot stay invisible the way a card
+    // that draws its own shell can: an opened row would show nothing and say nothing.
+    const form = new SettingsForm(readOnlyForm(PENDING));
+    const snapshot = form.getSnapshot();
+    expect(snapshot.available).toBe(false);
+    tree.length = 0;
+    const drawn = ConfigCard({
+      ...form.inject(),
+      t: (key: string) => key,
+      useDocImpactCard: () => snapshot,
+    }) as unknown as Rendered;
+    expect(tree).toHaveLength(1);
+    expect(drawn.type).toBe("p");
+    expect(drawn.props.role).toBe("status");
+    expect(drawn.children.flat()).toContain("unavailable");
+  });
 });
 
 /**
@@ -265,9 +294,13 @@ function renderView(
 }
 
 describe("doc-impact seat entry", () => {
-  it("forwards the seat's props to a card that still draws every field", () => {
+  it("forwards the seat's props to a body that still draws every field", () => {
     const { snapshot, elements, drawn } = renderView("page");
-    expect((drawn as Rendered).type).toBe("ul");
+    // The row page supplies the frame, so the view is a plain body element: an
+    // entry that grew a list or a shell of its own nests a second card inside the
+    // page's one.
+    expect((drawn as Rendered).type).toBe("div");
+    expect((drawn as Rendered).props.className).toBe("ddi_body");
     const controls = elements.filter((entry) =>
       Object.hasOwn(entry.props, "state"),
     );
