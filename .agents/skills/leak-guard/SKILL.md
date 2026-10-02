@@ -41,7 +41,7 @@ why a family is a mask, and which surface a leak ships through.
 | Tracker keys **and their numbers** | a project prefix plus an id, or a real id behind a placeholder prefix | examples, fixtures, JSDoc, specs |
 | Internal hosts | a corporate FQDN or an internal service name | README, docs, provider config, tests |
 | Private addresses | a private-network address with a port, an internal stand URL | tests, specs, deployment notes |
-| People | a real name, a login, an author in a fixture | fixtures, docs, review transcripts |
+| People | a real name, a login used as a person, an author in a fixture (a login inside this project's own repository URL is an address, not a name) | fixtures, docs, review transcripts |
 | Products and systems | a real product, system, module or database name | prose, tool descriptions, error strings |
 | Internal code identifiers | domain class or field names lifted from real code | fixtures, examples |
 | Credentials | any token, password, key or URL carrying userinfo | fixtures, docs, changelogs |
@@ -134,15 +134,20 @@ matters when a sweep behaves differently from this text:
   the older fixtures were written against `203.0.113.x`. Saying "both" here once made
   the next reader wonder about the third.
 - public service hosts that appear as tool links in docs (a VCS host, a package
-  registry, a vendor's API domain);
+  registry, a vendor's API domain). This includes the repository's own canonical URL,
+  whose path segment is the owner's login: a login inside a URL that names this project
+  is an address, not a person marker, and reading it as one makes the whole tree shout.
+  The in-tree gate already takes that position for an author's homepage host
+  (`scripts/verify-testids.mjs`), and the sweep owes the reader the same rule;
 - the synthetic ticket convention: a made-up prefix **and** a made-up number,
   `PROJ-123`;
 - the placeholder product name the repository's own rules prescribe, `Демо-продукт`;
 - person placeholders, recorded **by exact value**.
 
 A host under `.localhost` is worth naming exactly: the scanner's own entry is the bare
-`localhost`, so `http://svc.localhost:8080` arrives as a review finding until someone
-decides whether that host is a placeholder or a real machine on the network.
+`localhost`, so a service host like `svc.localhost` (with or without a port) arrives as a
+review finding until someone decides whether that host is a placeholder or a real machine
+on the network.
 
 Everything else needs an exact allowlist entry with a comment saying why. **A
 credential fixture is allowlisted against the list of fake values, never against the
