@@ -211,7 +211,26 @@ function WebFetchAuthCard({
     [config],
   );
 
-  if (settings.status === "unavailable") return null;
+  /*
+   * The frame around this body is the page's, so returning nothing here would
+   * leave the reader inside an opened row with an empty section and no reason
+   * for it. Staying invisible is what a card that draws its own shell may do, on
+   * a settings surface where its row then simply does not appear; this seat is on
+   * the Plugins panel, which is not the settings directory and so keeps answering
+   * from a browser the directory is not served to (AGENTS.md). There is no
+   * configuration here to render read-only, so the body owes that reader one
+   * sentence instead of a blank.
+   */
+  if (settings.status === "unavailable") {
+    return (
+      <div className="wfa-body">
+        <p className="wfa-muted" data-testid="wfa-card-unavailable">
+          The authenticated web fetch settings are not available in this
+          session, so nothing here can be read or changed yet.
+        </p>
+      </div>
+    );
+  }
 
   // This seat is the body of the page's own card: the panel draws the surface,
   // the row title, the row id and the description line, and expands the section
