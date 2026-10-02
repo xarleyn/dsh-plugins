@@ -96,9 +96,9 @@ slot contract instead of the settings-plugins one, so
 entry — which is why this is `minor` rather than `patch`: a browser running a host
 without the Plugins page loses the card, and `compatibility.json` says so, its
 required client features naming `plugins.row.config` where it named
-`settings.plugins.tab`. `scripts/verify-package.mjs` asserts the new pair (the slot
-literal and the `@yadsh/dsh-jev-compaction#` key prefix in the shipped bundle, the
-new package in the inject list) and then runs the shared card contract over
+`settings.plugins.tab`. `scripts/verify-package.mjs` asserts the new pair (the seat named
+inside the bundle's `name:` and the `@yadsh/dsh-jev-compaction#` key prefix in the shipped
+bundle, the new package in the inject list) and then runs the shared card contract over
 `lib/client.js`, which on this seat means the bundle must carry no `dsh-plugin-card`
 class, no chevron path, and a ring built from both Host tokens. The client tests now
 cover the seat from both sides: the keyed registration and the namespace it resolves, the

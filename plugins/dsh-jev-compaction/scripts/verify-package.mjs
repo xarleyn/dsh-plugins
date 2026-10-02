@@ -72,6 +72,12 @@ await runVerifyPackage({
       "@yadsh/dsh-jev-compaction#",
       "dsh-jev-compaction",
     ],
+    matches: [
+      // The shared contract decides which half of itself applies from the seat it
+      // reads off this bundle's registration, so the seat has to be named there in
+      // text — not only quoted somewhere in the bundle.
+      /name:\s*"plugins\.row\.config"/u,
+    ],
     notMatches: [
       // The bundle is browser-only: a Node built-in import here would break
       // the host page's module table (client-bundle purity).
