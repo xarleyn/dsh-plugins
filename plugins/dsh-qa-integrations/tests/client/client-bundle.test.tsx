@@ -21,7 +21,7 @@ import vm from "node:vm";
 import * as React from "react";
 import * as jsxRuntime from "react/jsx-runtime";
 import type { ComponentType } from "react";
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render, screen } from "@testing-library/react";
 import type { RemoteFailure } from "@deepseek-ai/dsh-typert-protocol";
 import { createModuleLoaderStub } from "@yadsh/dsh-test-kit";
 import { QA_INTEGRATIONS_ROW_SUMMARY } from "../../src/client/operator-card.js";
@@ -258,17 +258,18 @@ describe("classic browser bundle", () => {
     expect(row?.key).toBe("@yadsh/dsh-qa-integrations#qa-integrations");
     expect(row?.injected?.settingsForm).toBeDefined();
 
-    // `view: 'page'` is the form seat. The shell and a knob inside it come out of
-    // the bundle, which is what the source tests cannot show.
+    // `view: 'page'` is the form seat. The body and a knob inside it come out of
+    // the bundle, which is what the source tests cannot show — and nothing that
+    // would frame it does: the row-detail page draws the surface, the heading and
+    // the disclosure, so a shell class or a toggle of ours here is the second
+    // card the panel contract forbids.
     const page = render(<RowEntry view="page" {...row?.injected} />);
     expect(
-      page.container.querySelector("ul > li.dsh-plugin-card"),
-    ).not.toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: "Развернуть конфигурацию интеграций",
-      }),
-    );
+      page.container.querySelector("[class*='dsh-plugin-card']"),
+    ).toBeNull();
+    // A `div` root, not the `ul`/`li` a card that owns its shell needs.
+    expect(page.container.firstElementChild?.tagName).toBe("DIV");
+    expect(page.container.querySelector("div.qai-op__body")).not.toBeNull();
     expect(screen.getByTestId("qa-integrations-enabled")).toBeDefined();
     page.unmount();
 
@@ -289,8 +290,13 @@ describe("classic browser bundle", () => {
     // account card reaches the session service, so it renders with no props.
     const BundleCard = bundle?.component as ComponentType;
     const rendered = render(<BundleCard />);
+    // Same rule on the bundle seat: the page wraps this view in its own
+    // `data-plugin-config` section, so the bundle contributes a body and no frame.
     expect(
-      rendered.container.querySelector("ul > li.dsh-plugin-card"),
+      rendered.container.querySelector("[class*='dsh-plugin-card']"),
+    ).toBeNull();
+    expect(
+      rendered.container.querySelector("div.dsh-qa-integrations__body"),
     ).not.toBeNull();
     rendered.unmount();
   });

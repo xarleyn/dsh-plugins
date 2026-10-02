@@ -1,5 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
-import { CredentialHelpNote } from "@yadsh/dsh-plugin-kit/client";
+import { CredentialHelpNote } from "./credential-help-note.js";
 import { useState } from "react";
 import type {
   CredentialSource,

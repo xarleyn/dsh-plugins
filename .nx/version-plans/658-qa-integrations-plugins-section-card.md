@@ -25,13 +25,16 @@ service-credential profile saved by an older build is read back by this one. The
 only names left behind are the tab's own seat ids, `qa-integrations-config` and
 `qa-integrations`, which named nothing but the seat.
 
-What the cards render is the same two cards: the same shell every DSH
-configuration card uses (decision D1 of the cutover keeps it ours, and the
-card-contract gate does not read slot names, so it fires on the new registrations
-exactly as it did on the old), the same sections, the same write-on-change
-behavior, and the same plugin-owned `<ul>` — the panel hands a configuration seat
-an empty column, so the `<li>` still needs a list to sit in. Two details follow
-from the new seats rather than from a redesign. The row seat hands its registrant a
+What the cards render is the body of the same two cards — the same sections, the
+same write-on-change behavior — and nothing around it. Decision D1 of the cutover
+was reversed on 01.10 and the contract has landed since (#684): on a panel seat the
+row-detail page draws the card surface, the row title, the row id and the
+description line before it mounts the registrant's `page` view, so our shell, our
+`<li>` in a plugin-owned `<ul>`, our header with its chevron and its show/hide
+label were a second frame and a second heading beside the first-party rows. They are
+gone; the override marker moved from the header into the section's own toolbar,
+where the reset button already counts the same keys. Two details follow from the new
+seats rather than from a redesign. The row seat hands its registrant a
 `ConfigPageForm` — `{ state, mutate }` only, no subscription and no single-field
 write — so the operator card keeps resolving its own `ConfigForm` through
 `ctx.configForms.get(namespace)` and that form now arrives through the injected
@@ -51,6 +54,32 @@ needs no form at all — it reaches the account through the `qaUserSession` serv
 so it takes the bundle's own seat, and the signed-in user's QA settings section is
 untouched.
 
+One answer the old chrome used to give is now the plugin's own work. The
+credential-help note comes from `@yadsh/dsh-plugin-kit`, and its disclosure is the
+card shell's inline chevron — the same path the panel contract forbids a row bundle
+to carry, and the same block whose focus rules state a hard-coded outline that
+`focus.css` out-specifies under pointer modality. Both halves therefore moved here:
+the note renders from a local component that reuses the kit's
+`credentialHelpView`, so the metadata shaping and the second pass over every
+address stay shared and only the markup is repeated, with the disclosure drawn as
+the border triangle this card's own collapsibles already use; its stylesheet is the
+plugin's copy with the rings retargeted. A migrated plugin that wants the shared
+note has to do the same until the kit gives the note a glyph of its own — the
+twelve rows still on a settings seat are unaffected either way.
+
+The rings are the Host's pair written out with a fallback on each half —
+`--dsw-focus-ring-width` as well as `--dsw-focus-ring-color`, because a `var()` that
+resolves to nothing invalidates the whole `outline` shorthand and the ring vanishes
+instead of degrading — and they are on every control this bundle draws itself: the
+provider fields and buttons, the service-credential checkboxes, the capability
+checkboxes under their own label class, the list rows' remove buttons, the section
+and group summaries, and the note's trigger and links. Nothing raises specificity
+to win a ring fight. The body also stops being silent when the Host takes the
+namespace away: a card that owns its shell may render nothing, but inside the page's
+card an empty section is a reader with no answer, so it says so, and the row's own
+`Configure` control — drawn from the inventory, not from this entry — stays
+clickable.
+
 The manifest followed the surface: the client half type-imports the Plugins
 panel's slot contract instead of the settings-plugins one, so
 `@deepseek-ai/dsh-client-ui-plugin-manager` (new to both catalogs) replaces
@@ -63,38 +92,25 @@ slot literals in the shipped bundle and refuses the tab, and it glues the seat t
 the patch: the namespace the operator form resolves under, the row id
 `cordis.patch.yml` declares, and the key the row seat is built from must stay one
 string, because a drift there is a seat with no form and a stand that reads its
-saved values back as defaults — with every type check green. The list wrapper the
-two cards share took the neutral name `dsh-qa-integrations__card-list` with the
-mount it now draws (`dsh-qa-integrations__host-tab` named a tab that is gone). The
-client tests assert the keyed registrations, the namespace the operator form is
-resolved under, and both views of the row entry — and now render the components the
-two seats register out of `lib/client.js`, so a card that mounts in the source tree
-but not from the bundle fails here. One of those renders answers the question the
-first draft left implicit: the Plugins page spreads its own `form` *after* the
-injected face, so a test clicks a switch with a decoy `{ state, mutate }` in place
-and asserts the write lands on the form this entry resolved, not on the page's.
-While the Host stops serving the namespace the seat renders no card, which is what
-`AGENTS.md` prescribes for a panel seat — the row's own `Configure` control comes
-from the inventory and stays clickable, and the plugin-owned `<ul>` remains for the
-namespace to come back into. `docs/DSH-0.1.7-MIGRATION.md` follows the diff: §4.2
-now says the `summary` dispatch is **conditional** on the description the Host
-reports for the row — the page renders `description ?? renderSlot(… "summary" …)`,
-and that description is `rowText(row)` over `row.meta`, the Host's inventory, not
-`cordis.patch.yml` — and §10 credits `dsh-model-safety-gate` (#653) with the first
-landing on the panel seats and puts this package after it.
-`scripts/verify-package.mjs` keeps the two pins the built artifact can answer for:
-the sentence and the branch that returns it both ship in `lib/client.js`. It drops
-the third one: an earlier draft of this card refused a `description:` key on the
-patch row on the reading that the patch is where the page looks, and since it is
-not, that assertion refused a mechanism the host does not have — it would have gone
-red over a change that leaves the dispatch untouched, and stayed green over the one
-that retires the view. **The shell this card wears on that
-row seat is no longer an open question, and this change does not settle it either:**
-the owner answered #646 on 01.10 — a card on the panel's row seat takes the page's own
-chrome (20 px radius, the page's focus tokens), so the plugin-owned shell stays only on
-`settings.section` and `settings.plugins.tab` — and the order of that edit is the
-contract first (`AGENTS.md` and the card-contract gate's asserts), then the packages in
-one graph. This change therefore ships the 12 px shell it already had, unchanged, and
-leaves the retarget to that graph rather than pre-empting it from one branch. The seat
-is not part of the question at all: #660 landed and `AGENTS.md` names the panel seats
-itself, so this change follows the file and leaves it alone.
+saved values back as defaults — with every type check green. The client tests
+assert the keyed registrations, the namespace the operator form is resolved under,
+and both views of the row entry — and render the components the two seats register
+out of `lib/client.js`, so a card that mounts in the source tree but not from the
+bundle fails here. One of those renders answers the question the first draft left
+implicit: the Plugins page spreads its own `form` *after* the injected face, so a
+test clicks a switch with a decoy `{ state, mutate }` in place and asserts the write
+lands on the form this entry resolved, not on the page's. The chrome is pinned the
+same way it is refused: the bundle must name both seats at its `register` calls —
+the contract reads the place off the registration, and a positional or
+helper-passed seat leaves it only the bundle's scattered citations to decide from —
+and the script now refuses the shell's show/hide labels and the plugin-owned card
+list outright. What the shared gate cannot see is a control left with no focus rule
+at all, which is the same user-visible failure as a hard-coded outline and a cheaper
+way to reach it, so the selector list above is pinned here too, selector by
+selector. `docs/DSH-0.1.7-MIGRATION.md` follows the diff: §4.2 says the `summary`
+dispatch is **conditional** on the description the Host reports for the row — the
+page renders `description ?? renderSlot(… "summary" …)`, and that description is
+`rowText(row)` over `row.meta`, the Host's inventory, not `cordis.patch.yml` — §3's
+row for this package stops describing a shell it no longer draws, and §10 carries
+the line's own D1 as option 1, with `dsh-model-safety-gate` (#653) and this package
+named as the two rows that landed on the panel seats.

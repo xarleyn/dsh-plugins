@@ -110,13 +110,6 @@ function renderCard(initial: {
   return stub;
 }
 
-/** The shell mounts collapsed; every section test expands it first. */
-function expand(): void {
-  fireEvent.click(
-    screen.getByRole("button", { name: "Развернуть конфигурацию интеграций" }),
-  );
-}
-
 /** The caption an element carries, normalised the way the queries compare it. */
 function captionOf(node: Element): string {
   return (node.textContent ?? "").replace(/\s+/gu, " ").trim();
@@ -272,19 +265,22 @@ const RESOLVED = {
 };
 
 describe("integrations operator card", () => {
-  it("stays hidden when the namespace is not exposed to this browser", () => {
+  it("says so when the namespace is not exposed to this browser", () => {
     const { container } = render(
       <Card settingsForm={scopeStub({ status: "unavailable" }).settingsForm} />,
     );
-    // The card renders null while the form reports the namespace absent — the
-    // answer `AGENTS.md` prescribes for a panel seat, where the row's own
-    // `Configure` control comes from the inventory and stays clickable.
-    expect(container.childElementCount).toBe(0);
+    // A card that owns its shell could render nothing here. This one sits inside
+    // the page's own card, so it owes the reader a sentence — an empty section
+    // with no reason is what a `null` body leaves behind on this seat. The row's
+    // own `Configure` control comes from the inventory and stays clickable.
+    expect(
+      screen.getByTestId("qa-integrations-unavailable").textContent,
+    ).toContain("Настройки интеграций в этом сеансе недоступны");
+    expect(container.querySelector("input")).toBeNull();
   });
 
   it("renders the deployment configuration sections", () => {
     renderCard({ value: RESOLVED });
-    expand();
     expect(screen.getByTestId("qa-integrations-general")).toBeDefined();
     expect(screen.getByTestId("qa-integrations-bitrix24")).toBeDefined();
     expect(screen.getByTestId("qa-integrations-gitlab")).toBeDefined();
@@ -314,7 +310,6 @@ describe("integrations operator card", () => {
 
   it("summarises each collapsed provider in its header", () => {
     renderCard({ value: RESOLVED });
-    expand();
     // GitLab: on, one instance, all eight capabilities on by default — CI
     // counts as the two halves the resolver actually answers with.
     expect(
@@ -326,7 +321,6 @@ describe("integrations operator card", () => {
 
   it("groups a provider into labelled blocks with the knobs folded away", () => {
     renderCard({ value: RESOLVED });
-    expand();
     openSection("gitlab");
     const section = sectionOf("gitlab");
     const titles = [...section.querySelectorAll(".qai-op__group-title")].map(
@@ -367,7 +361,6 @@ describe("integrations operator card", () => {
 
   it("keeps every deployment knob reachable after the regrouping", () => {
     renderCard({ value: RESOLVED });
-    expand();
     for (const zone of [
       "confluence",
       "gitlab",
@@ -444,7 +437,6 @@ describe("integrations operator card", () => {
 
   it("writes a capability toggle as one path-addressed set", () => {
     const stub = renderCard({ value: RESOLVED });
-    expand();
     // The Bitrix24 section is collapsed until opened.
     openSection("bitrix24");
     const crm = controlAt(
@@ -460,7 +452,6 @@ describe("integrations operator card", () => {
 
   it("enables the plugin from the always-open general section", () => {
     const stub = renderCard({ value: RESOLVED });
-    expand();
     fireEvent.click(controlAt("qa-integrations-enabled", "Плагин включён"));
     expect(stub.writes).toEqual([
       { op: "set", path: ["enabled"], value: true },
@@ -475,7 +466,6 @@ describe("integrations operator card", () => {
     expect(
       captionOf(screen.getByTestId("qa-integrations-override-badge")),
     ).toBe("переопределено: 1");
-    expand();
     fireEvent.click(
       buttonAt(
         "qa-integrations-reset-overrides",
@@ -487,7 +477,6 @@ describe("integrations operator card", () => {
 
   it("shows read-only copy when the Host document takes no writes", () => {
     renderCard({ value: RESOLVED, writable: false });
-    expand();
     // The banner is named by what it reports, so it no longer has to be told
     // apart from the list editors that repeat the same words about a row they
     // could not commit; the copy it shows is still what the check reads.
@@ -513,7 +502,6 @@ describe("integrations operator card", () => {
         },
       },
     });
-    expand();
     const select = screen.getByTestId(
       "qa-integrations-jira-sites-deployment-select",
     ) as HTMLSelectElement;
@@ -555,7 +543,6 @@ describe("integrations operator card", () => {
         },
       },
     });
-    expand();
     // The row the fixture stores is the one keyed `wiki`, not "the first row".
     const row = rowOf("qa-integrations-confluence-instances", "wiki");
     const select = within(row).getByTestId(
@@ -606,7 +593,6 @@ describe("integrations operator card", () => {
         },
       },
     });
-    expand();
     for (const zone of ["confluence", "jira", "gitlab"]) {
       openSection(zone);
     }
@@ -634,7 +620,6 @@ describe("integrations operator card", () => {
     const stub = renderCard({
       value: { ...RESOLVED, jira: { enabled: true, sites: [] } },
     });
-    expand();
     // The add button of this editor, named by the path its rows write: the
     // field-alias record editor further down carries one of its own.
     fireEvent.click(screen.getByTestId("qa-integrations-jira-sites-add"));
@@ -648,7 +633,6 @@ describe("integrations operator card", () => {
 
   it("keeps an unfinished instance draft local when the stored row is removed", () => {
     const stub = renderCard({ value: RESOLVED });
-    expand();
     fireEvent.click(screen.getByTestId("qa-integrations-gitlab-instances-add"));
     const rows = () =>
       screen.getAllByTestId("qa-integrations-gitlab-instances-row");
@@ -681,7 +665,6 @@ describe("integrations operator card", () => {
         },
       },
     });
-    expand();
     // This render is the one with managed credentials on, so it also answers
     // issue #285: the operator ticked «Логи сборок: чтение», the stand really
     // does grant it, and a tester on the read-only service account is still
@@ -742,7 +725,6 @@ describe("integrations operator card", () => {
         },
       },
     });
-    expand();
     openSection("service-access");
     const id = screen
       .getByTestId("qa-integrations-service-access-profile-0")
@@ -817,12 +799,24 @@ describe("integrations row entry", () => {
     expect(container.textContent).toBe(QA_INTEGRATIONS_ROW_SUMMARY);
   });
 
-  it("renders the card shell for the page seat", () => {
+  it("renders the body, and only the body, for the page seat", () => {
     const { settingsForm } = scopeStub({ value: RESOLVED });
     const { container } = render(
       <Entry view="page" settingsForm={settingsForm} />,
     );
-    expect(container.querySelector("ul > li.dsh-plugin-card")).not.toBeNull();
+    // The row-detail page draws the card surface, the title, the row id and the
+    // description before it mounts this view, so a frame, a list root or a
+    // disclosure of ours here would be a second card inside the Host's one.
+    expect(container.querySelector("[class*='dsh-plugin-card']")).toBeNull();
+    // The root is the body itself: a card that owns its shell would hand the seat
+    // a plugin-owned `ul` with an `li` inside, and the page already draws the
+    // surface this would frame.
+    expect(container.firstElementChild?.className).toBe("qai-op__body");
+    expect(container.querySelector("svg")).toBeNull();
+    // The body is mounted at once: what the page owns is the disclosure, so the
+    // controls are reachable without any click of ours.
+    expect(container.querySelector("div.qai-op__body")).not.toBeNull();
+    expect(container.querySelector("button")).not.toBeNull();
   });
 
   it("writes through the injected face, not through the seat's own form prop", () => {
@@ -835,7 +829,6 @@ describe("integrations row entry", () => {
       },
     };
     render(<Entry view="page" settingsForm={settingsForm} form={ownerForm} />);
-    expand();
     fireEvent.click(controlAt("qa-integrations-enabled", "Плагин включён"));
     // The `{ state, mutate }` the page spreads over the entry's props can neither
     // be subscribed to nor written field by field; had it shadowed the face, the
@@ -847,20 +840,17 @@ describe("integrations row entry", () => {
     expect(pageWrites).toEqual([]);
   });
 
-  it("renders no card when the Host stops serving the namespace", () => {
+  it("answers an unserved namespace with a sentence, not an empty section", () => {
     const { container } = render(
       <Entry
         view="page"
         settingsForm={scopeStub({ status: "unavailable" }).settingsForm}
       />,
     );
-    // `AGENTS.md`: while the row's namespace answers `unavailable`, render no
-    // card. The list the plugin owns stays, so the seat keeps a root to mount
-    // into when the namespace comes back.
-    expect(
-      container.querySelector("ul.dsh-qa-integrations__card-list"),
-    ).not.toBeNull();
-    expect(container.querySelector(".dsh-plugin-card")).toBeNull();
+    // The frame of this seat is the page's, so rendering nothing would leave the
+    // reader inside an opened row with no section at all and no reason.
+    expect(screen.getByTestId("qa-integrations-unavailable")).not.toBeNull();
     expect(container.querySelector("input")).toBeNull();
+    expect(container.querySelector("button")).toBeNull();
   });
 });

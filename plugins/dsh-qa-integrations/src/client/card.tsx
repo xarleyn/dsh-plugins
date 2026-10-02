@@ -2,7 +2,6 @@ import type {
   QaUserSession,
   QaUserSessionSnapshot,
 } from "@yadsh/dsh-qa-surface/client/settings";
-import { CardShell } from "@yadsh/dsh-plugin-kit/client";
 import { useSyncExternalStore, type ReactElement } from "react";
 import {
   createProviderCards,
@@ -23,12 +22,20 @@ function gateCopy(stage: QaUserSessionSnapshot["stage"]): string {
 }
 
 /**
- * The Integrations card shown on this bundle's page on the Plugins surface.
+ * The Integrations section shown on this bundle's page on the Plugins surface.
  *
  * A connection belongs to a QA account, and the token of that account is the
- * only credential the principal-scoped remotes accept, so the card renders the
+ * only credential the principal-scoped remotes accept, so the section renders the
  * provider cards only once the QA session service reports a signed-in account —
  * and says so instead of showing forms that could only fail.
+ *
+ * The body is all this draws. The page supplies the card surface, the package
+ * title and the `data-plugin-config` section this lands in, so the frame, the
+ * expand control and the shell classes are the Host's (AGENTS.md, "Two kinds of
+ * card: who owns the chrome"). The one heading is the section's own name: the
+ * bundle page gives this section no title the way it titles its sibling rows
+ * section, so without it the provider cards would sit under the package
+ * description unlabeled.
  */
 export function createIntegrationsCard(
   remote: IntegrationsClientRemote,
@@ -43,16 +50,14 @@ export function createIntegrationsCard(
       session.getSnapshot,
     );
     return (
-      <CardShell
-        title="Интеграции"
-        description="Свои рабочие сервисы: подключения принадлежат вашему аккаунту QA."
-        label={(open) =>
-          open
-            ? "Свернуть настройки интеграций"
-            : "Развернуть настройки интеграций"
-        }
-        bodyClassName="dsh-qa-integrations__body"
+      <div
+        className="dsh-qa-integrations__body"
+        data-testid="qa-integrations-bundle-card"
       >
+        <h3 className="dsh-qa-integrations__body-title">Интеграции</h3>
+        <p className="dsh-qa-integrations__lead">
+          Свои рабочие сервисы: подключения принадлежат вашему аккаунту QA.
+        </p>
         {snapshot.stage === "authed" ? (
           <>
             <ProviderCards token={snapshot.token} providers={providers} />
@@ -71,30 +76,7 @@ export function createIntegrationsCard(
             {gateCopy(snapshot.stage)}
           </p>
         )}
-      </CardShell>
-    );
-  };
-}
-
-/**
- * The wrapper the bundle's configuration section renders: the page hands that
- * section an empty column, so the card shell's `<li>` keeps a list this plugin
- * owns.
- */
-export function createIntegrationsBundleCard(
-  remote: IntegrationsClientRemote,
-  providers: readonly string[],
-  session: QaUserSession,
-) {
-  const IntegrationsCard = createIntegrationsCard(remote, providers, session);
-  return function IntegrationsBundleCard(): ReactElement {
-    return (
-      <ul
-        className="dsh-qa-integrations__card-list"
-        data-testid="qa-integrations-bundle-card"
-      >
-        <IntegrationsCard />
-      </ul>
+      </div>
     );
   };
 }

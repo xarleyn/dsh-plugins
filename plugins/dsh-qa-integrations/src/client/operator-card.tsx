@@ -19,10 +19,7 @@ import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import {
-  CardShell,
-  bindSettingsExternalStore,
-} from "@yadsh/dsh-plugin-kit/client";
+import { bindSettingsExternalStore } from "@yadsh/dsh-plugin-kit/client";
 import {
   useCallback,
   useMemo,
@@ -93,8 +90,9 @@ type ScopeOps = Parameters<ConfigForm<QaIntegrationsConfig>["mutate"]>[0];
  * localized text — measured on the installed `rc.2` client, where the patch's own
  * rows carry no description field at all. A published bundle normally does
  * resolve to package text, so this sentence is what the entry answers with when
- * it does not, and it has to stay a sentence in that case either way: a card
- * mounted there drops a whole `<li>` into the page's `<p>`.
+ * it does not, and it has to stay a sentence in that case either way: the page
+ * puts the answer inside its own description paragraph, where a mounted form
+ * would be a page of controls inside a line of text.
  * `scripts/verify-package.mjs` therefore pins only what this artifact can prove —
  * the string and the branch that returns it ship — and not the reachability the
  * Host decides.
@@ -104,29 +102,15 @@ export const QA_INTEGRATIONS_ROW_SUMMARY =
 
 /**
  * The card as the Plugins page renders this bundle's row: `view: 'page'` mounts
- * the form below, and the `summary` fallback is answered with the sentence rather
- * than with a second card.
+ * the body below, and the `summary` fallback is answered with the sentence rather
+ * than with a second render of it.
  */
 export function OperatorCardEntry(props: CardProps): ReactElement | string {
   if (props.view === "summary") return QA_INTEGRATIONS_ROW_SUMMARY;
-  return <OperatorCardTab {...props} />;
+  return <OperatorCard {...props} />;
 }
 
-/**
- * The card as its seat renders it: the Plugins page hands the row's
- * configuration section an empty column, so the `<li>` shell keeps a list this
- * plugin owns — a bare `<li>` under a `<div>` is what the shell contract on the
- * account card already avoids.
- */
-export function OperatorCardTab(props: CardProps): ReactElement {
-  return (
-    <ul className="dsh-qa-integrations__card-list">
-      <OperatorCard {...props} />
-    </ul>
-  );
-}
-
-export function OperatorCard({ settingsForm }: CardProps): ReactElement | null {
+export function OperatorCard({ settingsForm }: CardProps): ReactElement {
   const store = useMemo(
     () => bindSettingsExternalStore(settingsForm),
     [settingsForm],
@@ -178,13 +162,22 @@ export function OperatorCard({ settingsForm }: CardProps): ReactElement | null {
   if (settings.status === "unavailable") {
     /**
      * The namespace left the Host's `describe()` view after this seat mounted —
-     * a Config with no `.volatile()` field, or a Host that dropped the entry.
-     * `AGENTS.md` is explicit about the answer on a panel seat: render no card.
-     * What the operator keeps is the row's own `Configure` control, drawn from
-     * the inventory rather than from this entry, so the seat stays reachable and
-     * the column shows an empty list instead of a form with nothing behind it.
+     * a Config with no `.volatile()` field, or a Host that dropped the entry. A
+     * card that owns its shell could render nothing here; this one sits inside
+     * the page's own card, so rendering nothing would leave the reader in an
+     * opened row with an empty section and no reason. The sentence is the answer,
+     * and the row's own `Configure` control — drawn from the inventory, not from
+     * this entry — stays clickable.
      */
-    return null;
+    return (
+      <div className="qai-op__body">
+        <p className="qai-op__muted" data-testid="qa-integrations-unavailable">
+          Настройки интеграций в этом сеансе недоступны, поэтому здесь нечего
+          читать и нечего менять. Запущенный сервис сохраняет конфигурацию,
+          которую принял последней.
+        </p>
+      </div>
+    );
   }
 
   const control: ControlProps = {
@@ -231,26 +224,11 @@ export function OperatorCard({ settingsForm }: CardProps): ReactElement | null {
   const sections: OperatorForm = { config, control, toggle };
 
   return (
-    <CardShell
-      title="Интеграции — конфигурация"
-      description="Операторские настройки подключений: провайдеры, адреса, возможности и сервисные доступы. Правка применяется к запущенному сервису сразу."
-      badge={
-        <span
-          className="dsh-plugin-card__badge"
-          data-testid="qa-integrations-override-badge"
-        >
-          {keys.length === 0
-            ? "по умолчанию"
-            : `переопределено: ${keys.length}`}
-        </span>
-      }
-      label={(open) =>
-        open
-          ? "Свернуть конфигурацию интеграций"
-          : "Развернуть конфигурацию интеграций"
-      }
-      bodyClassName="qai-op__body"
-    >
+    // The Plugins page draws this card's frame, its title and its expand control,
+    // so the bundle renders the body and nothing around it (AGENTS.md). The
+    // override marker is the body's own: it states what this section holds, which
+    // the page's chrome does not know.
+    <div className="qai-op__body">
       {settings.status === "loading" ? (
         <p className="qai-op__muted" data-testid="qa-integrations-loading">
           Загружаем конфигурацию интеграций…
@@ -281,6 +259,14 @@ export function OperatorCard({ settingsForm }: CardProps): ReactElement | null {
             <span className="qai-op__hint">
               Слой правок поверх конфигурации профиля: очищенная настройка
               возвращается к значению из yaml.
+            </span>
+            <span
+              className="qai-op__override-state"
+              data-testid="qa-integrations-override-badge"
+            >
+              {keys.length === 0
+                ? "по умолчанию"
+                : `переопределено: ${keys.length}`}
             </span>
             <button
               type="button"
@@ -321,6 +307,6 @@ export function OperatorCard({ settingsForm }: CardProps): ReactElement | null {
           </Section>
         </>
       )}
-    </CardShell>
+    </div>
   );
 }

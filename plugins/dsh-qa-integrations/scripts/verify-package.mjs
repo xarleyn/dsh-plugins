@@ -204,14 +204,13 @@ for (const address of [
 // the Host settings directory or on the Settings surface: the operator card
 // opens from the configuration section of this bundle's own row and the account
 // card from the bundle's own section, reaching the same QA session through
-// `qaUserSession`. Each reuses the standard card shell inside a list it owns,
-// because the page hands a seat an empty column. Which shell a card of ours wears
-// there the owner settled on 01.10 — the row seat takes the page's own chrome — but
-// the retarget runs contract-first (AGENTS.md and the card-contract gate, then the
-// packages in one graph), so this bundle still ships the shell above, and which seat
-// it takes was never part of that question: `AGENTS.md` names the panel seats and
-// refuses the Settings dialog, and a bundle that registered both would show two
-// copies of one card.
+// `qaUserSession`. Neither draws a frame: on these seats the page supplies the
+// card surface, the title and the disclosure, which is what the card-contract
+// gate below enforces from the seat it reads off this bundle (`AGENTS.md`, "Two
+// kinds of card: who owns the chrome"). Which seat a configuration card takes was
+// never part of that question: `AGENTS.md` names the panel seats and refuses the
+// Settings dialog, and a bundle that registered both would show two copies of one
+// card.
 //
 // The row seat is keyed `<package name>#<row id>` — `rowConfigKey` in the
 // contract the installed `@deepseek-ai/dsh-client-ui-plugin-manager` ships — and
@@ -224,6 +223,20 @@ for (const address of [
 verifyPluginCardContract(client);
 assert.match(client, /"plugins\.row\.config"/u);
 assert.match(client, /"plugins\.bundle\.config"/u);
+// The seat is named at the registration, not only quoted in prose: the contract
+// reads the place off `name:`, and a positional or helper-passed seat leaves the
+// gate only the citations scattered over the bundle to decide from.
+assert.match(
+  client,
+  /name:\s*"plugins\.row\.config",\s*key:/u,
+  "the row seat must be a literal at the register call, so the gate reads the place off the registration",
+);
+assert.match(
+  client,
+  /name:\s*"plugins\.bundle\.config",\s*key:/u,
+  "the bundle seat must name itself at its register call for the same reason",
+);
+
 assert.equal(
   /QA_INTEGRATIONS_SETTINGS_NAMESPACE\s*=\s*"([^"]+)"/u.exec(client)?.[1],
   /id:\s*([A-Za-z0-9_-]+)/u.exec(patch)?.[1],
@@ -269,14 +282,68 @@ assert.doesNotMatch(
   /settings\.plugins\.tab/u,
   "this bundle registers both cards on the Plugins page, so naming the tab back would render a second copy of each card",
 );
-assert.match(client, /dsh-qa-integrations__card-list/u);
-assert.match(client, /Развернуть настройки интеграций/u);
-assert.match(client, /Свернуть настройки интеграций/u);
-assert.match(client, /Развернуть конфигурацию интеграций/u);
-assert.match(client, /Свернуть конфигурацию интеграций/u);
+// What the two bodies are made of, now that nothing frames them: each seat's
+// registrant contributes one element and the page wraps it. The show/hide labels
+// the shell used to carry are gone with the shell — a disclosure inside the
+// page's own expanded section is a card inside a card — and so is the plugin-owned
+// list that used to hold their `<li>` roots.
+assert.match(client, /qai-op__body/u);
+assert.match(client, /dsh-qa-integrations__body/u);
+assert.doesNotMatch(
+  client,
+  /dsh-qa-integrations__card-list/u,
+  "the plugin-owned card list existed to hold the shell's li root",
+);
+for (const label of [
+  "Развернуть настройки интеграций",
+  "Свернуть настройки интеграций",
+  "Развернуть конфигурацию интеграций",
+  "Свернуть конфигурацию интеграций",
+]) {
+  assert.doesNotMatch(
+    client,
+    new RegExp(label, "u"),
+    `the bundle still carries the shell's own disclosure label ${label}`,
+  );
+}
 assert.match(client, /Сбросить переопределения/u);
-assert.match(client, /dsh-plugin-card__header/u);
-assert.match(client, /dsh-plugin-card__chevron/u);
+// The rings belong to the Host's tokens and the gate checks them, but the sheet
+// the note dresses is this bundle's own copy: the shared block states a
+// hard-coded outline, and one rule with it anywhere in the bundle loses the ring
+// under pointer modality and takes the gate red.
+assert.match(
+  client,
+  /\.dsh-credential-help__trigger:focus-visible\{outline:var\(--dsw-focus-ring-width,/u,
+  "the credential-help trigger must ring from the Host's tokens, not the shared block's outline",
+);
+// The gate refuses a hard-coded outline and asks that at least one control take
+// the Host's ring; what it cannot see is a control dressed by no rule at all,
+// which is the same failure reached by deleting the rules. Every focusable thing
+// this bundle draws has to be named, so the list is pinned selector by selector.
+for (const selector of [
+  ".dsh-credential-help__trigger:focus-visible",
+  ".dsh-credential-help__link:focus-visible",
+  ".dsh-qa-integrations__input:focus-visible",
+  ".dsh-qa-integrations__button:focus-visible",
+  ".dsh-qa-integrations__check input:focus-visible",
+  ".dsh-qa-integrations__permission input:focus-visible",
+  ".qai-op__input:focus-visible",
+  ".qai-op__button:focus-visible",
+  ".qai-op__row-remove:focus-visible",
+  ".qai-op__toggle:focus-visible",
+  ".qai-op__section-summary:focus-visible",
+  ".qai-op__group-summary:focus-visible",
+]) {
+  assert.ok(
+    client.includes(selector),
+    `the bundle dresses no focus ring on ${selector}`,
+  );
+}
+assert.doesNotMatch(
+  client,
+  /outline:2px solid var\(--dsw-alias-brand-primary\)/u,
+  "a hard-coded outline in this bundle is a ring the Host's focus.css suppresses",
+);
 assert.doesNotMatch(client, /⌄|▾/u);
 // The browser has no module table for Node builtins: one `require("node:…")`
 // left in the bundle is a card that never mounts.
@@ -320,6 +387,7 @@ const DESIGN_TOKENS = new Set([
   "label-primary-foreground",
   "label-secondary",
   "label-tertiary",
+  "state-business-primary",
   "state-error-primary",
   "state-success-primary",
 ]);
