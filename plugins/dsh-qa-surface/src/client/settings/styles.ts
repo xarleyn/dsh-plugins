@@ -1,14 +1,15 @@
-import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
-
 /**
- * Card stylesheet: the canonical shell (AGENTS.md contract) plus body rules
- * for this plugin's own controls. Every surface, border, and colour comes from
- * `--dsw-alias-*` tokens so light, dark, and system themes stay coherent; the
- * QA page's own palette stays out of the settings page.
+ * Card stylesheet: body rules for this plugin's own controls.
+ *
+ * The shell is not here — this card sits on the Plugins panel row, where the
+ * page draws the frame, the heading and the expand control (AGENTS.md). Every
+ * colour, border, and surface comes from `--dsw-alias-*` tokens so light, dark,
+ * and system themes stay coherent, and the focus ring is the Host's own token
+ * pair rather than a hard-coded outline: the Host's `focus.css` suppresses an
+ * outline under pointer modality at a specificity our rule cannot win, so a
+ * hard-coded ring is one that goes missing rather than one that degrades.
  */
-export const QA_SETTINGS_STYLES: string = `${PLUGIN_CARD_SHELL_CSS}
-.qa-settings-cards{list-style:none;margin:0;padding:16px 0;display:grid;gap:12px}
-.qa-card-body,.qa-card-body *{box-sizing:border-box}
+export const QA_SETTINGS_STYLES: string = `.qa-card-body,.qa-card-body *{box-sizing:border-box}
 .qa-card-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .qa-card-section{display:grid;gap:12px}
 .qa-card-section__title{display:flex;justify-content:space-between;align-items:center;gap:12px}
@@ -25,7 +26,7 @@ export const QA_SETTINGS_STYLES: string = `${PLUGIN_CARD_SHELL_CSS}
 .qa-card-field>span{font-size:13px;color:var(--dsw-alias-label-primary);font-weight:500}
 .qa-card-control{width:100%;height:34px;border:.5px solid var(--dsw-alias-border-l4);border-radius:8px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);padding:0 12px;font:inherit;font-size:13px;line-height:1.5;outline:none}
 textarea.qa-card-control{height:auto;padding:8px 12px;line-height:1.5;resize:vertical}
-.qa-card-control:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}
+.qa-card-control:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .qa-card-control:disabled{cursor:default;opacity:.45}
 .qa-card-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .qa-card-toggle-copy{display:grid;gap:2px;min-width:0}
@@ -36,8 +37,10 @@ textarea.qa-card-control{height:auto;padding:8px 12px;line-height:1.5;resize:ver
 .qa-card-toggle:checked{background:var(--dsw-alias-brand-primary)}
 .qa-card-toggle:checked:after{transform:translateX(15px)}
 .qa-card-toggle:disabled{cursor:default;opacity:.45}
+.qa-card-toggle:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}
 .qa-card-btn{height:34px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);padding:0 12px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
 .qa-card-btn:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed);background:var(--dsw-alias-interactive-bg-hover)}
+.qa-card-btn:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .qa-card-btn:disabled{cursor:default;opacity:.45}
 .qa-card-btn.link{height:27px;padding:0 8px;background:transparent}
 .qa-card-status{display:flex;flex-wrap:wrap;gap:8px}
@@ -49,6 +52,7 @@ textarea.qa-card-control{height:auto;padding:8px 12px;line-height:1.5;resize:ver
 .qa-card-error{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-error);color:var(--dsw-alias-label-error);font-size:11px;line-height:1.5}
 .qa-card-advanced{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:0 12px}
 .qa-card-advanced summary{cursor:pointer;padding:11px 0;font-size:12px;font-weight:600}
+.qa-card-advanced summary:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .qa-card-advanced-content{padding:2px 0 13px;display:grid;gap:10px}
 .qa-card-rows{display:grid;gap:6px}
 .qa-card-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:9px;align-items:center;padding:7px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;font-size:11px}

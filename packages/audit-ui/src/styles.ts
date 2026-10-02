@@ -34,7 +34,7 @@ export const AUDIT_UI_STYLES = String.raw`
 .dsh-audit-tabs__tab{appearance:none;border:0;background:0 0;font:inherit;font-size:13px;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:10px 12px;border-bottom:2px solid transparent;transition:color .16s,border-color .16s}
 .dsh-audit-tabs__tab:hover{color:var(--dsw-alias-label-primary)}
 .dsh-audit-tabs__tab--active{color:var(--dsw-alias-label-primary);border-bottom-color:var(--dsw-alias-brand-primary)}
-.dsh-audit-tabs__tab:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+.dsh-audit-tabs__tab:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-brand-primary));outline-offset:-2px}
 .dsh-audit-section{margin:0 0 20px}
 .dsh-audit-section--quiet{margin-bottom:8px}
 .dsh-audit-section__title{margin:0 0 10px;font-size:13px;font-weight:600;letter-spacing:.02em;text-transform:uppercase;color:var(--dsw-alias-label-tertiary)}

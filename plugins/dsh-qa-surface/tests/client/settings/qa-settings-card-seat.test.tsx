@@ -25,7 +25,6 @@ import {
   EFFECTIVE,
   Entry,
   makeForm,
-  openCard,
   section,
   settle,
 } from "./qa-settings-card.helpers.js";
@@ -81,35 +80,29 @@ afterEach(async () => {
 });
 
 describe("QA Surface row seat", () => {
-  it("answers the summary view with the row's one-liner, not a second card", async () => {
-    const page = await renderEntry("page");
-    const header =
-      page.container.querySelector(".dsh-plugin-card__description")
-        ?.textContent ?? "";
-    expect(header).not.toBe("");
-    cleanup();
-
+  it("answers the summary view with the row's one-liner and no markup", async () => {
     const summary = await renderEntry("summary");
-    // The line carries exactly the sentence the card header carries, and nothing
-    // more: no shell, no list around it, and no poll of the Remote.
-    expect(summary.container.textContent).toBe(header);
-    expect(summary.container.querySelector("li.dsh-plugin-card")).toBeNull();
-    expect(summary.container.querySelector("ul")).toBeNull();
+    // The line is the row's description: plain text the page drops into its own
+    // paragraph — no body, no element, and no second poll of the Remote.
+    expect(summary.container.textContent).toMatch(/\S/u);
+    expect(summary.container.firstElementChild).toBeNull();
     expect(summary.polls).toBe(0);
+
+    const page = await renderEntry("page");
+    // The page view is the one that carries controls, and it is the same entry.
+    expect(page.container.firstElementChild?.className).toBe("qa-card-body");
+    expect(page.polls).toBeGreaterThan(0);
   });
 
   it("mounts the card when the seat passes no view", async () => {
     // An entry the page renders without asking for a view is the page, not an
     // empty column: the form surface is the default and the one-liner the opt-in.
     const entry = await renderEntry();
-    expect(entry.container.querySelector("li.dsh-plugin-card")).not.toBeNull();
+    expect(entry.container.firstElementChild?.className).toBe("qa-card-body");
   });
 
   it("writes through its own form while the seat holds a `form` of its own", async () => {
     const entry = await renderEntry("page");
-    expect(entry.container.querySelector("li.dsh-plugin-card")).not.toBeNull();
-
-    openCard();
     fireEvent.click(
       within(section("qa-settings-access")).getByRole("checkbox", {
         name: /Страница включена/u,

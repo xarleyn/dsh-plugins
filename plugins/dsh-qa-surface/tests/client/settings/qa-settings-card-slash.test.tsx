@@ -10,12 +10,7 @@ import {
 } from "@testing-library/react";
 
 import { resolveConfig } from "../../../src/resolve-config.js";
-import {
-  openCard,
-  renderCard,
-  section,
-  settle,
-} from "./qa-settings-card.helpers.js";
+import { renderCard, section, settle } from "./qa-settings-card.helpers.js";
 
 afterEach(async () => {
   // The status poll settles after the assertions; flush it inside act so the
@@ -28,7 +23,6 @@ describe("QA Surface card", () => {
   describe("slash section", () => {
     it("states that nothing below has an effect while the switch is off", async () => {
       await renderCard();
-      openCard();
       expect(
         screen.getByTestId("qa-settings-slash-notice-disabled").textContent,
       ).toMatch(/Слэш-действия выключены/u);
@@ -36,7 +30,6 @@ describe("QA Surface card", () => {
 
     it("writes the master switch through the lockdown path", async () => {
       const { mutate } = await renderCard();
-      openCard();
       const slash = section("qa-settings-slash");
       fireEvent.click(
         within(slash).getByRole("checkbox", {
@@ -51,7 +44,6 @@ describe("QA Surface card", () => {
 
     it("keeps the allow list inert until its mode asks for one", async () => {
       await renderCard();
-      openCard();
       // The default skills mode is allow-list, so its field is live; commands
       // default to deny-all and theirs is not.
       expect(
@@ -79,7 +71,6 @@ describe("QA Surface card", () => {
           } as never),
         }),
       });
-      openCard();
       await waitFor(() => {
         expect(
           screen.getByTestId("qa-settings-slash-notice-legacy-defaults")

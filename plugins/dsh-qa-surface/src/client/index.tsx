@@ -859,8 +859,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       });
       // The operator edits this deployment from the plugin's own row in the
       // Plugins panel: the same namespace the page reads, plus the Host's own
-      // answer about what it resolved. Its stylesheet is the card shell, not the
-      // QA page's palette, and the card keeps drawing its own shell.
+      // answer about what it resolved. The row's page draws the card surface,
+      // the heading and the expand control, so this bundle supplies the body
+      // only (AGENTS.md, card-shell contract).
       // The seat is keyed `<package name>#<row id>`, and the row id is the
       // namespace above, so the move never orphans a saved value. The seat hands
       // its registrant a `ConfigPageForm` for that namespace — `{ state, mutate }`

@@ -517,9 +517,10 @@ for (const builtin of ["process", "buffer", "node:fs", "node:path"]) {
 }
 assert.doesNotMatch(client, /node_modules\/yaml/u, "yaml stays on the Host");
 
-// The settings card (AGENTS.md shell contract): the canonical shell rules and
-// chevron path, the row-configuration slot the card registers into on the
-// Plugins panel, and the plugin's own body classes.
+// The settings card (AGENTS.md card-shell contract). The seat is read off this
+// bundle by the contract, and it is the Plugins panel row, so the contract held
+// here is the host-chrome half: no shell classes, no chevron of ours, and every
+// focus ring built from the Host's `--dsw-focus-ring-*` token pair.
 verifyPluginCardContract(client, {
   legacyPatterns: [/dsh-plugin-card\s*\*/u, /\.qa-panel\b/u],
 });
@@ -531,11 +532,14 @@ assert.match(client, /@yadsh\/dsh-qa-surface#/u);
 // One render site: the tab seat of the Plugins settings section must not come
 // back beside the row, or the card shows twice.
 assert.doesNotMatch(client, /settings\.plugins\.tab/u);
-assert.match(client, /Помощник QA/u);
-// The toggle's accessible label is assembled from the open state and the card
-// name, so the bundle carries the two halves rather than one sentence.
-assert.match(client, /Скрыть/u);
-assert.match(client, /настройки: Помощник QA/u);
+// The row's one-liner is this entry's answer for the `summary` view, and the
+// page paints it as the row's description: lost in bundling, the row reads as
+// a row of some other plugin.
+assert.match(client, /Страница вопросов и ответов/u);
+// The heading and the expand control belong to the page, so the bundle carries
+// neither of their halves any more — a surviving label here means the shell
+// came back inside the Host's card.
+assert.doesNotMatch(client, /настройки: Помощник QA/u);
 assert.match(client, /qa-card-body/u);
 assert.match(client, /qa-card-notice/u);
 // The sources section carries the reported-source validation switch, so a
