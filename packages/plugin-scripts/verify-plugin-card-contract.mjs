@@ -38,8 +38,28 @@ export const CANONICAL_SHELL_RULES = [
   ".dsh-plugin-card__body{border-top:1px solid var(--dsw-alias-border-l2);margin:0 16px;padding-bottom:8px}",
 ];
 
-const SHELL_CLASS = /dsh-plugin-card/u;
+/*
+ * A shell class counts where CSS or JSX would read it: as a selector (`.dsh-plugin-card{`)
+ * or as a class value (a string that opens with the token). esbuild carries `src/`
+ * comments into `lib/client.js`, so a body that documents what it removed — "no
+ * dsh-plugin-card shell here, the page draws the frame" — is prose, not a second frame,
+ * and banning the bare word would make the next migrated plugin delete a correct
+ * comment to get green.
+ */
+const SHELL_CLASS = /["'`]\s*(?:[\w-]+\s+)*dsh-plugin-card|\.dsh-plugin-card/u;
 const CHEVRON_PATH = /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u;
+
+/*
+ * The rules the shell is made of, counted in the bundle. Presence of these is what
+ * "this bundle draws its own frame" means, and it is the fallback the seat resolver
+ * uses when the seat cannot be read statically.
+ */
+function drawsCanonicalShell(client) {
+  return (
+    CANONICAL_SHELL_RULES.some((rule) => client.includes(rule)) ||
+    SHELL_CLASS.test(client)
+  );
+}
 
 /*
  * The Host's `focus.css` suppresses an outline under pointer modality with
@@ -67,15 +87,46 @@ const RING_APPLIED = /:focus(?:-visible)?[^{}]*\{[^}]*--dsw-focus-ring[^;}]*/u;
  * would otherwise switch the contract on a bundle that never registered there. The
  * shape is what `slots.register({ name: … })` compiles to, and `name` is a property
  * the Host reads at runtime, so it survives minification.
+ *
+ * The *value* does not survive as a literal, and requiring it did break a landed
+ * plugin: `dsh-jev-compaction` and `dsh-qa-browser` register `name: SETTINGS_CARD_SLOT`,
+ * and `plugin-kit`'s own helper compiles to `name: slotName`. So a seat is read from
+ * the literal, and failing that from the constant the `name:` identifier is bound to.
+ * Where neither reaches — a seat passed as an option into an inlined helper — the
+ * bundle decides by whether it draws the canonical shell at all.
  */
-const REGISTRATION =
-  /\bname:\s*["']((?:plugins\.row|plugins\.bundle)\.config|settings\.(?:section|plugins\.tab))["']/gu;
+const SEAT_TOKENS =
+  /(?:plugins\.row|plugins\.bundle)\.config|settings\.(?:section|plugins\.tab)/u;
+const NAME_LITERAL = new RegExp(
+  `\\bname:\\s*["'](${SEAT_TOKENS.source})["']`,
+  "gu",
+);
+const NAME_IDENTIFIER = /\bname:\s*([A-Za-z_$][\w$]*)/gu;
+const SEAT_BINDING = new RegExp(
+  `\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*["'](${SEAT_TOKENS.source})["']`,
+  "gu",
+);
 
-function namedSeats(client, candidates) {
-  const seats = new Set(
-    [...client.matchAll(REGISTRATION)].map((match) => match[1]),
-  );
-  return candidates.filter((seat) => seats.has(seat));
+function seatMentions(client) {
+  const quoted = new RegExp(`["'](${SEAT_TOKENS.source})["']`, "gu");
+  return new Set([...client.matchAll(quoted)].map(([, seat]) => seat));
+}
+
+function readSeats(client) {
+  const seats = new Set();
+  const bound = new Set();
+  for (const [, seat] of client.matchAll(NAME_LITERAL)) seats.add(seat);
+
+  const bindings = new Map();
+  for (const [, ident, seat] of client.matchAll(SEAT_BINDING)) {
+    bindings.set(ident, seat);
+  }
+  for (const [, ident] of client.matchAll(NAME_IDENTIFIER)) {
+    const seat = bindings.get(ident);
+    if (seat) seats.add(seat);
+    else bound.add(ident);
+  }
+  return { seats, unbound: bound };
 }
 
 function checkSharedBans(client, { legacyPatterns }) {
@@ -193,8 +244,9 @@ function verifyHostChrome(client, options) {
  */
 export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
   const options = { legacyPatterns };
-  const onPanel = namedSeats(client, HOST_CHROME_SEATS);
-  const onSettings = namedSeats(client, OWN_SHELL_SEATS);
+  const { seats, unbound } = readSeats(client);
+  const onPanel = HOST_CHROME_SEATS.filter((seat) => seats.has(seat));
+  const onSettings = OWN_SHELL_SEATS.filter((seat) => seats.has(seat));
 
   if (onPanel.length > 0 && onSettings.length > 0) {
     throw new assert.AssertionError({
@@ -208,15 +260,31 @@ export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
   if (onPanel.length > 0) return verifyHostChrome(client, options);
   if (onSettings.length > 0) return verifyCanonicalShell(client, options);
 
-  throw new assert.AssertionError({
-    message:
-      `client bundle names no card seat this contract knows (${[
-        ...HOST_CHROME_SEATS,
-        ...OWN_SHELL_SEATS,
-      ].join(
-        ", ",
-      )}) — a configuration card must declare the seat it renders in; a ` +
-      "package that only ships the shell for others calls verifyCanonicalShell instead",
-    operator: "seat",
-  });
+  /*
+   * A seat handed to an inlined helper compiles to `name: slotName` and no regex can
+   * follow it, so ask the call site instead: the bundle still quotes the seat it passes.
+   * Only one of the two surfaces may be named there, or the next rule is a guess.
+   */
+  if (unbound.size > 0) {
+    const mentioned = seatMentions(client);
+    const panel = HOST_CHROME_SEATS.filter((seat) => mentioned.has(seat));
+    const settings = OWN_SHELL_SEATS.filter((seat) => mentioned.has(seat));
+    if (panel.length > 0 && settings.length === 0) {
+      return verifyHostChrome(client, options);
+    }
+    if (settings.length > 0 && panel.length === 0) {
+      return verifyCanonicalShell(client, options);
+    }
+  }
+
+  /*
+   * Nothing named the seat at all. The bundle still says what it is: a card that owns
+   * its frame carries the shell classes, and one seated inside the Host's card carries
+   * none. Deciding from that is weaker than a declaration, but refusing to decide
+   * reddens a plugin that registered correctly.
+   */
+  if (drawsCanonicalShell(client)) {
+    return verifyCanonicalShell(client, options);
+  }
+  return verifyHostChrome(client, options);
 }

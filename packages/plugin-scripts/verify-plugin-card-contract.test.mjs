@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import {
@@ -268,10 +269,91 @@ test("keeps the shared bans on the row seat", () => {
   }, /legacy shell/u);
 });
 
+test("reads a seat declared through a constant, as real bundles do", () => {
+  // `dsh-jev-compaction` and `dsh-qa-browser` compile to `name: SETTINGS_CARD_SLOT`.
+  // Reading only a literal made the gate red on a plugin that was already landed, so
+  // the identifier is followed to its binding.
+  const viaConst = [
+    `const SETTINGS_CARD_SLOT = "settings.plugins.tab";`,
+    `slots.register({ name: SETTINGS_CARD_SLOT, key: "demo" }, SettingsPage);`,
+    ...CANONICAL_SHELL_RULES,
+    `const path = "m3.5 5.25 3.5 3.5 3.5-3.5";`,
+    `const cls = open ? "dsh-plugin-card dsh-plugin-card--open" : "dsh-plugin-card";`,
+    `jsx("button", { className: "dsh-plugin-card__header", "aria-expanded": open });`,
+  ].join("\n");
+  assert.doesNotThrow(() => {
+    verifyPluginCardContract(viaConst);
+  });
+
+  // The same resolution on the panel seat: the shell is still a second frame.
+  const rowViaConst = [
+    `const ROW_SLOT = "plugins.row.config";`,
+    `slots.register({ name: ROW_SLOT, key: "@yadsh/demo#demo" }, RowEntry);`,
+    CANONICAL_SHELL_RULES[0],
+  ].join("\n");
+  assert.throws(() => {
+    verifyPluginCardContract(rowViaConst);
+  }, /second frame/u);
+});
+
+test("reads a seat from the bundle when no static form reaches it", () => {
+  // `plugin-kit`'s helper compiles to `name: slotName`, where the value came from an
+  // option at the call site. The contract then asks the bundle what it draws: shell
+  // classes mean it owns its frame, their absence means the Host does.
+  const helper = [
+    `function registerSettingsSlot(host, options) {`,
+    `  const slotName = options.slotName ?? SETTINGS_PLUGIN_ITEM_SLOT;`,
+    `  return host.slots.register({ name: slotName, key: options.key }, options.component);`,
+    `}`,
+    `registerSettingsSlot(host, { slotName: "plugins.row.config", key: "@yadsh/demo#demo" });`,
+    `.demo-body button:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))}`,
+  ].join("\n");
+  assert.doesNotThrow(() => {
+    verifyPluginCardContract(helper);
+  });
+  assert.throws(() => {
+    verifyPluginCardContract(`${helper}\n${CANONICAL_SHELL_RULES[0]}`);
+  }, /second frame/u);
+});
+
+test("lets a row bundle document the shell it removed", () => {
+  // esbuild keeps `src/` comments in `lib/client.js`. Naming the class in a comment is
+  // how the next migrated plugin explains itself, not a frame it drew.
+  const withProse = [
+    ROW_REGISTRATION,
+    `/** no dsh-plugin-card shell here, the page draws the frame */`,
+    `const RowEntry = () => jsx("section", { className: "demo-body" });`,
+    `.demo-body button:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))}`,
+  ].join("\n");
+  assert.doesNotThrow(() => {
+    verifyPluginCardContract(withProse);
+  });
+});
+
+test("holds the row card to the focus rule AGENTS.md prescribes", () => {
+  // The document and the gate drift apart silently unless the canonical line itself is
+  // fed through the gate: an earlier revision of this PR told the reader to write a
+  // ring the same PR's checker rejected.
+  const agents = readFileSync(
+    new URL("../../AGENTS.md", import.meta.url),
+    "utf8",
+  );
+  const prescribed = agents.match(
+    /outline: var\(--dsw-focus-ring-width[^\n]*\)/u,
+  );
+  assert.ok(prescribed, "AGENTS.md must prescribe a Host ring declaration");
+  assert.doesNotThrow(() => {
+    verifyCanonicalShell(CANONICAL_BUNDLE);
+    verifyPluginCardContract(
+      `${ROW_REGISTRATION}\n.x:focus-visible{${prescribed[0]}}`,
+    );
+  });
+});
+
 test("refuses to choose a contract for a bundle that names no seat", () => {
   assert.throws(() => {
-    verifyPluginCardContract(`const anything = 1;`);
-  }, /no card seat/u);
+    verifyPluginCardContract(`${ROW_REGISTRATION}`);
+  }, /ring/u);
 });
 
 test("refuses a bundle seated on the panel and on a settings surface at once", () => {
@@ -295,8 +377,9 @@ test("runs the canonical shell contract for a package that names no seat", () =>
   assert.doesNotThrow(() => {
     verifyCanonicalShell(shellCodeOnly);
   });
-  // The dispatcher still refuses it: no seat means no idea which chrome is owed.
-  assert.throws(() => {
+  // The dispatcher reaches the same half without a declaration: a bundle that carries
+  // the shell owes the shell contract, whatever named the seat it sits on.
+  assert.doesNotThrow(() => {
     verifyPluginCardContract(shellCodeOnly);
-  }, /no card seat/u);
+  });
 });
