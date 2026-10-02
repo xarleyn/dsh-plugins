@@ -122,8 +122,10 @@
 - The same bundle still answers the `summary` view of its own seat, and that answer
   lands inside the Host's description paragraph: one plain sentence, never a card.
 - Focus treatment on this surface is the Host's, from its ring tokens:
-  `outline: var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))`.
-  A `:focus-visible` rule of our own with a hard-coded outline loses to the Host's
+  `outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))`.
+  Both tokens need a fallback: where `--dsw-focus-ring-width` is undeclared, the whole
+  `outline` shorthand is invalid and the ring disappears instead of degrading. A
+  `:focus-visible` rule of our own with a hard-coded outline loses to the Host's
   `focus.css` (specificity 0-3-2 against 0-2-0) under pointer modality, so raising
   our specificity is the wrong repair — take the tokens.
 - The seat key `<package name>#<row id>` and the settings namespace it resolves are
