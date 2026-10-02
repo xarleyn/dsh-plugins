@@ -181,8 +181,11 @@
   reject legacy outer-shell classes, font chevrons and non-standard shell tokens. A
   card seated on the Plugins panel row (`plugins.row.config`) must show **neither** —
   any `dsh-plugin-card*` class or our chevron path there is the second frame this rule
-  forbids. Only a registration names a seat: a mention in a tooltip, an error string or
-  a surviving comment must not switch the contract. A package that publishes the shell
+  forbids. A registration is the strongest statement of a seat, and where the bundle
+  carries none — the seat reached as an option, or the registration is positional — the
+  contract reads the seat names the bundle quotes, so a mention in a tooltip or a
+  surviving comment can reach the decision after all. Name the seat at the registration
+  and keep seat strings out of prose. A package that publishes the shell
   for others to inline, and registers nothing itself, is held to the canonical shell
   half directly (`verifyCanonicalShell`). When a local DSH web app is available,
   visually compare the card with a first-party one: closed, hovered, focused and open
