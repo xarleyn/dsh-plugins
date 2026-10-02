@@ -37,22 +37,34 @@ await runVerifyPackage({
   clientBundle: {
     moduleLoaderId: true,
     includes: [
+      // The seat is named at the registration, not merely quoted: this is the
+      // literal the card contract reads the place off, and the row card must
+      // carry none of the shell it used to own (verify-plugin-card-contract).
       "plugins.row.config",
+      // That key is `<package name>#<row id>`, and the row id is the settings
+      // namespace, so a value saved before the move keeps reading under it.
       "@yadsh/dsh-sleev#",
-      "dsh-plugin-card__name",
-      "m3.5 5.25 3.5 3.5 3.5-3.5",
     ],
-    // One test id of the epic #453 pass is pinned as the representative of the
-    // rest: an id no gate reads can be renamed away without anything noticing.
-    // The attribute is asserted, not the bare value — `dsh-sleev-save` is a
-    // class name too, so the string alone would pass with the id gone.
-    matches: [/["']data-testid["']\s*:\s*["']sleev-save["']/u],
+    matches: [
+      // One test id of the epic #453 pass is pinned as the representative of the
+      // rest: an id no gate reads can be renamed away without anything noticing.
+      // The attribute is asserted, not the bare value — `dsh-sleev-save` is a
+      // class name too, so the string alone would pass with the id gone.
+      /["']data-testid["']\s*:\s*["']sleev-save["']/u,
+      // The ring of every control the body draws comes from the Host's token
+      // pair, each half with a fallback. Pinned here because the contract reads
+      // a focus rule that exists: deleting the rules would satisfy its bans.
+      /--dsw-focus-ring-width\s*,\s*\S+[^;]*--dsw-focus-ring-color\s*,\s*\S+/u,
+    ],
     notMatches: [
       /dsw-alias-border-label-dimmed/u,
       /⌄/u,
       // The card left this section, so a registration returning to it is a
       // regression the bundle itself has to reject.
       /settings\.plugins\.tab/u,
+      // And no shell came with it: the panel draws the frame and the expand
+      // control, so our chevron path in this bundle is a second card.
+      /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u,
     ],
     cardContract: { legacyPatterns: [/\.dsh-sleev-card\{/u] },
   },
