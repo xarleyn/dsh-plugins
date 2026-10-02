@@ -163,6 +163,38 @@ describe("client apply()", () => {
     expect(panel?.textContent).toContain(".plu-log{");
     expect(card?.textContent).toContain(".plu-grid{");
   });
+
+  /*
+   * Both sheets now dress their controls with the Host's ring pair rather than an
+   * outline of their own: `focus.css` of the Host outranks a hard-coded
+   * `outline: 2px solid …` under pointer modality (0-3-2 against 0-2-0), so a ring
+   * written by hand is one a mouse click erases. Each half of the pair needs its
+   * fallback too — where a token is undeclared the whole `outline` shorthand is
+   * invalid, and the ring vanishes instead of degrading. Read off the sheets the
+   * plugin actually injects, so a rule deleted to satisfy the gate is caught here.
+   */
+  it("rings every control it draws with the Host's focus tokens, each with a fallback", async () => {
+    const dom = installDom();
+    await apply(harnessOf().ctx);
+
+    const rules = dom.tags.flatMap((tag) => [
+      ...tag.textContent.matchAll(
+        /:focus(?:-visible)?[^{}]*\{[^}]*outline:\s*([^;}]+)/gu,
+      ),
+    ]);
+    // The card's selects, and the panel's level chips, action buttons, source
+    // filter and search field — four rules, one per control family.
+    expect(rules).toHaveLength(4);
+    for (const [, value] of rules) {
+      for (const token of [
+        "--dsw-focus-ring-width",
+        "--dsw-focus-ring-color",
+      ]) {
+        expect(value).toContain(token);
+        expect(value).toMatch(new RegExp(`${token}\\s*,\\s*\\S+`, "u"));
+      }
+    }
+  });
 });
 
 describe("log panel definition", () => {

@@ -19,6 +19,17 @@ export const EMPTY_TAIL: PluginLogTail = {
   capacity: 10,
 };
 
+/**
+ * The snapshot a namespace answers with when the settings service is out of reach —
+ * one object, handed back on every call.
+ */
+const UNAVAILABLE_SNAPSHOT = {
+  status: "unavailable",
+  value: undefined,
+  writable: false,
+  mode: "host",
+};
+
 interface TabType {
   readonly id: string;
   readonly kind: string;
@@ -73,8 +84,9 @@ export interface Harness {
 export interface HarnessOptions {
   /**
    * The `ConfigForm` the stand hands `configForms.get`. The default snapshot is
-   * `unavailable`, which is what the wiring suite needs; a suite that renders the
-   * card passes a ready form so the values it reads are the test's own.
+   * `unavailable`, which is what the wiring suite needs and what the card suite
+   * renders to pin the sentence an unreachable namespace owes; a suite that reads
+   * and writes values passes a ready form so the values are the test's own.
    */
   readonly settingsForm?: unknown;
 }
@@ -107,18 +119,14 @@ export function harnessOf(options: HarnessOptions = {}): Harness {
   const mounted = { count: 0 };
   const disposed = { remote: 0, tabs: 0, slots: 0 };
 
-  const settingsForm =
-    options.settingsForm ??
-    ({
-      set: () => Promise.resolve(true),
-      subscribe: () => () => undefined,
-      getSnapshot: () => ({
-        status: "unavailable",
-        value: undefined,
-        writable: false,
-        mode: "host",
-      }),
-    } as unknown);
+  // One snapshot object for every call, the way the Host's form answers: a fresh
+  // object each call would spin `useSyncExternalStore` into an update loop.
+  const unavailableForm = {
+    set: () => Promise.resolve(true),
+    subscribe: () => () => undefined,
+    getSnapshot: () => UNAVAILABLE_SNAPSHOT,
+  };
+  const settingsForm = options.settingsForm ?? unavailableForm;
 
   // The namespace is a service of its own: `ctx.inject(['remote.pluginLogUi'])`
   // resolves the key, the code under test reads the property beside it.

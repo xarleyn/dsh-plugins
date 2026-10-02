@@ -3,8 +3,8 @@
 UI for [`@yadsh/dsh-plugin-log`](https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-log),
 in two places:
 
-- a **Plugin logging** card on the host **Plugins** page, opened from this
-  plugin's row, that discovers active logger consumers automatically and provides
+- the settings of this plugin's own row on the host **Plugins** page, which
+  discovers active logger consumers automatically and provides
   a default logging level, per-plugin level overrides, and `text` or `json` file
   output, applied live to already-running and newly registered loggers;
 - a **Plugin logs** panel in the host's right Sidebar, streaming the records the
@@ -77,10 +77,12 @@ without it: card and panel ship as one client bundle, and a bundle lists the hos
 packages it registers into as activation dependencies (`dsh.client.inject`), so a
 host missing either page loses the whole client half, panel included.
 
-On the Plugins page the host draws the row's own header — its title falls back to
-the installed package name, and its one-liner to this package's `description` — so
-the row is headed `@yadsh/dsh-plugin-log-ui` and **Plugin logging** is the heading
-of the card you open from it.
+On the Plugins page the host owns the chrome: it draws the row's surface and its
+heading, where the title falls back to the installed package name and the
+one-liner to this package's `description`, and it mounts this plugin's settings
+under the page's own configuration section. So the row is headed
+`@yadsh/dsh-plugin-log-ui` and the bundle contributes the body — no card frame, no
+header and no chevron of ours, which would be a second frame inside the page's one.
 
 ## Development
 

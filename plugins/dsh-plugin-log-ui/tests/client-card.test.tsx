@@ -5,13 +5,17 @@
  * The seat is the card's only route to a stored value, and the page calls the
  * registered entry twice, in two shapes: `RowDetail` puts the row's description in
  * a `<p>`, falling back to `{ view: "summary" }` for a row that declares none, and
- * mounts the configuration section with `{ view: "page", form }`
- * (`PluginManagerPage.tsx:491` and `:495` at `dsh-v0.1.7-rc.2`; the shapes
- * themselves are pinned to the installed package by `host-seat-contract.test.ts`).
- * Both shapes are driven here against the component `apply()` actually registered,
- * so the read and the write of this plugin's namespace are proven rather than
- * asserted in prose: a level and a format stored by an earlier build come back into
- * the selects, and a change leaves through the form resolved for that namespace.
+ * mounts the configuration section with `{ view: "page", form }` (the shapes are
+ * pinned to the installed package by `host-seat-contract.test.ts`). Both shapes are
+ * driven here against the component `apply()` actually registered, so the read and
+ * the write of this plugin's namespace are proven rather than asserted in prose: a
+ * level and a format stored by an earlier build come back into the selects, and a
+ * change leaves through the form resolved for that namespace.
+ *
+ * The page draws the chrome on this surface — the surface, the heading and the
+ * expand control — so what is pinned here besides the data path is that the bundle
+ * brings a body and no frame of its own (decision D1 of §10, reversed to "as the
+ * host does" and landed through #684).
  */
 
 import { readFileSync } from "node:fs";
@@ -110,9 +114,10 @@ const PAGE_FORM = {
 };
 
 /**
- * Mount the seat's entry as the page's configuration section does, and open the
- * card. Also waits for the registry snapshot, which the card reads on mount rather
- * than receiving as a prop.
+ * Mount the seat's entry as the page's configuration section does. The section is
+ * mounted when the row opens, so there is nothing to click here: the body is the
+ * whole of what this bundle answers. Also waits for the registry snapshot, which
+ * the card reads on mount rather than receiving as a prop.
  */
 async function openCard(writes: Write[]) {
   const harness = harnessOf({ settingsForm: storedForm(writes) });
@@ -127,7 +132,6 @@ async function openCard(writes: Write[]) {
       form: PAGE_FORM,
     }),
   );
-  fireEvent.click(screen.getByRole("button", { name: /Show settings/ }));
   await waitFor(() =>
     expect(screen.getByTestId("log-card-plugin-row")).toBeDefined(),
   );
@@ -140,14 +144,14 @@ afterEach(() => {
 
 describe("the row-config card", () => {
   /*
-   * The state the deployed page shows before anyone touches the card. The owner's
-   * `rc.2` pass on #646 found the configuration section mounted with this card
-   * closed — its title, its own line and the live count, and nothing else until the
-   * header is clicked. That is the shell's "render the body only while open" meeting
-   * a host that mounts the seat eagerly, so it is pinned here rather than left to a
-   * stand nobody can re-run from CI.
+   * The state the page shows the moment the row opens. The configuration section is
+   * mounted eagerly and the Host's own control is what expands it, so a body that
+   * waited for a click of ours would park the reader inside an opened row with a
+   * second disclosure to find. The surface, the heading and the chevron this card
+   * used to draw are the page's now: repeating them is the second frame that
+   * decision D1 of §10 forbids, so what the bundle owes is the body alone.
    */
-  it("arrives collapsed, and reveals the form only when its header is opened", async () => {
+  it("mounts the form under the page's chrome and draws no frame of its own", async () => {
     const writes: Write[] = [];
     const harness = harnessOf({ settingsForm: storedForm(writes) });
     await apply(harness.ctx);
@@ -162,26 +166,26 @@ describe("the row-config card", () => {
       }),
     );
 
-    const header = screen.getByRole("button", {
-      name: "Show settings: Plugin logging",
-    });
-    expect(header.getAttribute("aria-expanded")).toBe("false");
+    const root = screen.getByTestId("log-card-section");
+    // A `div` body, not the `li` of a card that owns its shell inside a list.
+    expect(root.tagName).toBe("DIV");
+    expect(root.querySelector("li")).toBeNull();
     /*
-     * A closed card that still mounted its fields would put two editors on the page
-     * at once and let a stray change event write a level nobody chose.
+     * The fields are on the page before anyone clicks. A closed-but-mounted body
+     * would put two editors on the page at once; a body that stayed hidden behind a
+     * header of ours would leave the opened row with nothing in it.
      */
-    expect(screen.queryByTestId("log-card-default-level")).toBeNull();
-    expect(screen.queryByTestId("log-card-format")).toBeNull();
-    expect(screen.queryByTestId("log-card-plugin-row")).toBeNull();
-
-    fireEvent.click(header);
+    expect(screen.getByTestId("log-card-default-level")).toBeDefined();
+    expect(screen.getByTestId("log-card-format")).toBeDefined();
     await waitFor(() =>
-      expect(screen.getByTestId("log-card-default-level")).toBeDefined(),
+      expect(screen.getByTestId("log-card-plugin-row")).toBeDefined(),
     );
-    expect(
-      screen.getByRole("button", { name: "Hide settings: Plugin logging" }),
-    ).toBeDefined();
-    // Opening the card is not an edit: the stand records what the card wrote.
+    // Nothing here invites a click, and nothing here draws the expand control.
+    expect(screen.queryAllByRole("button")).toEqual([]);
+    expect(root.querySelector("svg")).toBeNull();
+    expect(root.className).not.toContain("dsh-plugin-card");
+    expect(root.querySelector("[class*='dsh-plugin-card']")).toBeNull();
+    // Mounting the section is not an edit: the stand records what the card wrote.
     expect(writes).toEqual([]);
   });
 
@@ -213,22 +217,21 @@ describe("the row-config card", () => {
     );
   });
 
-  it("keeps the shell contract: an li card inside the plugin's own ul", async () => {
+  it("keeps the live consumer count inside the body it draws", async () => {
     await openCard([]);
 
-    const header = screen.getByRole("button", {
-      name: /settings: Plugin logging/,
-    });
-    const root = header.closest("li");
-    expect(root?.className).toContain("dsh-plugin-card");
-    // The page's configuration section supplies no list, so the entry brings one.
-    expect(root?.parentElement?.tagName).toBe("UL");
-    expect(root?.parentElement?.getAttribute("data-testid")).toBe(
-      "log-card-section",
-    );
+    /*
+     * The count rode the card header's badge, and the header is the page's now.
+     * Deleting it along with the chrome would drop the only number in the section
+     * that says how many loggers these settings are applied to, so it sits with the
+     * list it counts.
+     */
+    expect(
+      screen.getByTestId<HTMLSpanElement>("log-card-active-count").textContent,
+    ).toBe("1 active");
   });
 
-  it("answers the summary seat with the row's one-liner, and no second card", async () => {
+  it("answers the summary seat with the row's one-liner, and no body", async () => {
     const harness = harnessOf();
     await apply(harness.ctx);
     const seat = rowConfigRegistration(harness);
@@ -244,23 +247,38 @@ describe("the row-config card", () => {
      * be caught by a literal in a test.
      */
     expect(container.textContent).toBe(MANIFEST_DESCRIPTION);
-    // A card here would nest an `li` inside the page's own `<p>`.
-    expect(container.querySelector(".dsh-plugin-card")).toBeNull();
+    // The sentence lands inside the page's own `<p>`: a form there is a page in a line.
+    expect(container.querySelector("select")).toBeNull();
+    expect(
+      container.querySelector("[data-testid='log-card-section']"),
+    ).toBeNull();
   });
 
-  it("keeps the card's own line out of the row's one-liner", async () => {
-    await openCard([]);
+  it("says what is unavailable instead of leaving the opened row silent", async () => {
+    const harness = harnessOf();
+    await apply(harness.ctx);
+    const seat = rowConfigRegistration(harness);
+    if (!seat) throw new Error("the card lost its seat registration");
+
+    render(
+      createElement(seat.component, {
+        ...seat.props,
+        view: "page",
+        form: PAGE_FORM,
+      }),
+    );
 
     /*
-     * The page draws the row's title and one-liner above this card, so the card
-     * header that repeats them puts one sentence on the screen twice. The card's
-     * line is its own, and saying so here is what keeps the two from collapsing
-     * back into one sentence.
+     * A card that owns its shell can stay invisible while its namespace answers
+     * `unavailable` — there is no frame to explain. Inside the page's chrome the
+     * row is already open, so silence reads as a broken section and the body owes
+     * the reason.
      */
-    const description = screen
-      .getByRole("button", { name: /settings: Plugin logging/ })
-      .querySelector(".dsh-plugin-card__description");
-    expect(description?.textContent).not.toBe(MANIFEST_DESCRIPTION);
-    expect(description?.textContent).toBeTruthy();
+    expect(screen.getByTestId("log-card-unavailable").textContent).toContain(
+      "not reachable",
+    );
+    expect(screen.queryByTestId("log-card-default-level")).toBeNull();
+    // The read-only notice is for a connection that can read but not write.
+    expect(screen.queryByTestId("log-card-read-only")).toBeNull();
   });
 });
