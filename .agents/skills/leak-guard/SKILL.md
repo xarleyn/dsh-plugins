@@ -13,15 +13,21 @@ description: Keep this public repository and its npm packages free of internal
 
 # Leak guard
 
-This repository is public and every package under `plugins/` and `packages/` is
-published to npm. Anything committed, packed or reachable from a ref is
-disclosed, and a disclosure cannot be quietly taken back: deleting a branch does
-not retract a tarball, an npm version, or a commit still reachable by its SHA.
+This repository is public, and thirty of its thirty-three workspace packages are
+published to npm (`packages/config`, `packages/plugin-scripts` and `packages/test-kit`
+are `private` — they ship in git and never reach the registry). Anything committed,
+packed or reachable from a ref is disclosed, and a disclosure cannot be quietly taken
+back: deleting a branch does not retract a tarball, an npm version, or a commit still
+reachable by its SHA.
 
 This skill is the **method**. The sweep itself runs from tooling that is not part
 of the public tree, and the list of values that must never appear here is itself
 sensitive, so it lives outside the repository and is passed to the scanner rather
-than committed to it. Where this text repeats a rule another document owns, that
+than committed to it. One marker check does live in the tree:
+`scripts/verify-testids.mjs` refuses a `data-testid` value carrying a task number, a
+Cyrillic segment, or an author name the workspace's own manifests declare — because
+those strings reach a published bundle and a test screenshot (`docs/VERIFICATION.md`).
+Where this text repeats a rule another document owns, that
 document stays normative: the synthetic-identifier conventions (`PROJ-123`,
 `jira.example.corp`, `Демо-продукт`, and the ban on a release note that names what was
 removed) are `AGENTS.md` §No internal identifiers, and the sweep that runs before a
@@ -39,7 +45,7 @@ why a family is a mask, and which surface a leak ships through.
 | Products and systems | a real product, system, module or database name | prose, tool descriptions, error strings |
 | Internal code identifiers | domain class or field names lifted from real code | fixtures, examples |
 | Credentials | any token, password, key or URL carrying userinfo | fixtures, docs, changelogs |
-| Shipped prose | specs and notes under `docs/` that the package manifest packs | npm tarball |
+| Shipped prose | the package `README.md`, notices, and any `docs/` file a manifest starts packing | npm tarball |
 
 Two habits matter more than any pattern.
 
@@ -59,15 +65,22 @@ Two habits matter more than any pattern.
 2. **The git history** — every blob reachable from any ref, with ref attribution.
    A fixture removed yesterday is still public today.
 3. **The packed tarball** — the file list npm would publish for each package. A
-   manifest can grow a `files` entry nobody re-read, and `docs/` prose and `lib/`
-   strings ship inside it.
+   manifest can grow a `files` entry nobody re-read. What ships today is the package
+   `README.md` (thirty of them), the notices, and built `lib/` strings including
+   `*.js.map`; `docs/` reaches a tarball only where a manifest names it — as of this
+   writing that is `docs/images/*.png|*.jpg` in one package — so a spec that leaks is
+   a git-history leak first and a package leak only after somebody widens the list.
 
 A sweep reports two severities. A **leak** is a known value that must never appear
 and fails the run. A **review** finding is a shape that is usually internal — an
 unknown host, a private-network address, a name-shaped phrase, prose that will be
-packed — and is reported for a human to judge. Review findings that are legitimate
-fixtures are recorded individually in the allowlist; they are never silenced with a
-wildcard that would also hide a real value.
+packed — and is reported for a human to judge. A review finding that is a real value
+stays a real value: it is fixed, not allowlisted. One legitimate fixture is recorded
+by its exact value rather than by a wildcard, because a wildcard that silences the
+fixture also silences whatever else wears that shape — including the unknown real host
+that only the dictionary would have caught. Family entries exist in the allowlist too
+(the reserved TLDs below), and their cost should be read the same way: nothing but the
+dictionary protects a hostname inside an allowlisted family.
 
 ## Marker dictionary and allowlist
 
@@ -90,7 +103,7 @@ form.
 
 Order matters and is the whole point: **markers are checked before the allowlist and
 always report a leak**, so a real hostname dressed in a placeholder family
-(`*.corp`, `*.lan`) is still caught. Consequences worth remembering:
+(`*.corp`, `*.internal`, `*.local`) is still caught. Consequences worth remembering:
 
 - Case matters. Record **both cases** of a short token: a case-sensitive sweep misses
   the lowercase mention of a value whose uppercase form was caught.
@@ -114,9 +127,12 @@ matters when a sweep behaves differently from this text:
 - reserved documentation domains and pseudo-TLDs — `example.com` and its siblings,
   `*.example.*`, `*.test`, `*.invalid`, the `*.corp` / `*.internal` / `*.local`
   families, and `127.0.0.1`;
-- RFC 5737 documentation addresses — both `198.51.100.0/24` and `203.0.113.0/24`,
-  because the tests were written against the second one more often than the first;
-  these are *not* covered by the private-use rule and do need entries;
+- RFC 5737 documentation addresses — all three ranges, `192.0.2.0/24`,
+  `198.51.100.0/24` and `203.0.113.0/24`. They pass because the private-use rule does
+  not reach them, not because they are allowlisted, and the tree does use all three:
+  the CDP example lives on `192.0.2.10`, the SSRF policy tests the `/24` itself, and
+  the older fixtures were written against `203.0.113.x`. Saying "both" here once made
+  the next reader wonder about the third.
 - public service hosts that appear as tool links in docs (a VCS host, a package
   registry, a vendor's API domain);
 - the synthetic ticket convention: a made-up prefix **and** a made-up number,
@@ -175,3 +191,12 @@ Matching is textual. A description, a diagram or a changelog line can reveal int
 process, org structure or a customer without containing any dictionary value. Read the
 diff of anything user-visible with that question in mind: the sweep narrows the
 surface, it does not replace the read.
+
+The second thing it cannot do is protect a value it has never been told about. Every
+allowlisted *family* is a mask: a real host under `*.internal` that the dictionary does
+not name is silenced by the family, and only the dictionary would have caught it. That
+is the price of a family entry, and the reason families are kept to shapes no real
+value can wear — reserved TLDs, reserved address ranges, a made-up prefix **with** a
+made-up number. When a family has to be widened, widen it around the synthetic form
+(`*.corp`, not `internal.example-services.com`), and treat a sweep that went quiet on a
+new host as a question about the dictionary rather than about the noise.
