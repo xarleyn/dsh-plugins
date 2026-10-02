@@ -49,10 +49,17 @@ const QA_CHANGELOG_SOURCE = path.join(
 // The Host renamed the card slot to `plugins.row.config` in `0.1.7`, so the
 // gate reads every name a card registration can arrive under — keying it on
 // one literal made enforcement quietly disappear the moment that literal left
-// the sources. `settings.plugins.tab` is also the slot of feature-owned pages
-// that render no card at all, so it only counts with the shell the contract
-// asserts (see `findSettingsCardSlot`).
-const CARD_SHELL_SLOTS = ["settings.plugin.item", "plugins.row.config"];
+// the sources. The name says what it decides (this package owns a card), not
+// what the contract then asks of it: on the panel seats the card contract
+// forbids our own shell, because the page draws it, while a settings-surface
+// card must carry it. `settings.plugins.tab` is also the slot of feature-owned
+// pages that render no card at all, so it only counts with the shell the
+// contract asserts (see `findSettingsCardSlot`).
+const CARD_SEAT_SLOTS = [
+  "settings.plugin.item",
+  "plugins.row.config",
+  "plugins.bundle.config",
+];
 const CARD_TAB_SLOT = "settings.plugins.tab";
 const CARD_SHELL_MARKERS = [
   "dsh-plugin-card",
@@ -874,15 +881,16 @@ export function validateQaChangelogCoverage(repoRoot, plans) {
 
 /**
  * The client slot a package mounts its configuration card under, or `null` when
- * its sources register no card. A slot the Host only ever renders as a shell
- * card fires on its own; `settings.plugins.tab` fires only together with the
- * shell, because that slot also carries feature-owned pages that render no card
- * and would be asked to assert a shell they never claim.
+ * its sources register no card. A slot only a card can be seated on fires on its
+ * own — the panel seats included, whose contract is that the bundle carries *no*
+ * shell of ours; `settings.plugins.tab` fires only together with the shell, because
+ * that slot also carries feature-owned pages that render no card and would be asked
+ * to assert a shell they never claim.
  */
 function findSettingsCardSlot(sources) {
   const texts = walkFiles(sources).map((file) => readFileSync(file, "utf8"));
   const mentions = (needle) => texts.some((text) => text.includes(needle));
-  const cardSlot = CARD_SHELL_SLOTS.find(mentions);
+  const cardSlot = CARD_SEAT_SLOTS.find(mentions);
   if (cardSlot !== undefined) return cardSlot;
   return mentions(CARD_TAB_SLOT) && CARD_SHELL_MARKERS.some(mentions)
     ? CARD_TAB_SLOT

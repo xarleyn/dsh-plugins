@@ -374,9 +374,28 @@ scope.subscribe(listener)             →    (not needed — the page owns the s
 survives untouched: it is structural over `subscribe`/`getSnapshot`, which
 `ConfigForm` still provides.
 
-### 4.3 The card-shell contract is the open decision
+### 4.3 The card-shell contract, decided for option 1
 
-**This is the one thing that needs a maintainer call, not an edit.** Our cards
+**[decided 2026-10-01, option 1]** The maintainer chose to follow the Host chrome:
+`CardShell` is dropped from the `plugins.row.config` path, `AGENTS.md` and
+`packages/plugin-scripts/verify-plugin-card-contract.mjs` were rewritten to match, and
+the gate now reads the seat off the built bundle rather than trusting the plugin's
+declaration. The remaining open question in this section is therefore closed; what
+survives is the choice itself, kept here because the second half of the series (twelve
+card components) is carried out against it. §4.3a item 3 — the focus ring — is resolved
+the same way: cards inside the panel chrome take `--dsw-focus-ring-width` /
+`--dsw-focus-ring-color` (with a fallback length on the width, or the shorthand is
+dropped where the token is undefined) and never a hard-coded outline, which is what the
+new gate asserts.
+
+What follows is the question **as it stood before the call**, kept verbatim because the
+series is being executed against the reasoning. The framing "needs a maintainer call"
+and the description of `settings.plugins.tab` as the point `AGENTS.md` prescribes are
+both superseded by the decision above: the tab remains a placement the repository is
+moving away from, and its cards keep the shell only because nothing around them draws
+a frame.
+
+**This was the one thing that needed a maintainer call, not an edit.** Our cards
 draw their own `dsh-plugin-card` shell (`CardShell`, the `<li>` root, the 14×14
 chevron) because on 0.1.5 the host gave each card a bare keyed slot seat. On
 0.1.7 the Plugins page **draws the chrome itself** — `<li className={css.card}>`
@@ -394,9 +413,11 @@ Options:
    idiomatic; touches the shared gate in
    `packages/plugin-scripts/verify-plugin-card-contract.mjs`.
 2. **Keep our shell** and register on `settings.plugins.tab` instead (that slot
-   survives, and is what `AGENTS.md` already prescribes for feature-owned
+   survives, and was at the time what `AGENTS.md` prescribed for feature-owned
    pages). Smallest diff and preserves every gate verbatim; costs us the
    first-party Plugins-page integration and puts plugin config under Settings.
+   **Not chosen** — see the decision above; `AGENTS.md` now treats the tab as a
+   placement the repository is leaving, not the target for a new card.
 
 Option 2 is strictly less work and fully legal on 0.1.7; option 1 is where the
 platform is going. Choose before starting, because it decides whether ~12 card
@@ -1205,49 +1226,49 @@ as baseline breakage.
 
 ## 10. Open owner decisions
 
-**D1 — the settings card shell (§4.3, §4.3a) — settled 26.09 in #508, option 2.**
-**D1 — the settings card shell (§4.3, §4.3a) — CLOSED as of 26.09, option 2.**
-Option 1 (accept host chrome): delete `CardShell` from the `plugins.row.config`
-path, rewrite `AGENTS.md`'s canonical shell CSS block and the shared gate
-`packages/plugin-scripts/verify-plugin-card-contract.mjs:4-15,39,44-45`, and lose
-~12 cards' outer shell. Option 2 (keep our shell on `settings.plugins.tab`):
-smallest diff, every gate survives verbatim, but as of `rc.2` our 12px/1px/2px
-shell sits next to host cards that are 20px/0.5px/`--dsw-focus-ring-*`, and the
-new `focus.css` modality rule can silence our focus ring (§4.3a item 3).
-**The owner chose option 2: the shell stays ours, neither `settings.plugins.tab`
-nor `plugins.row.config` is restyled to the host chrome, `AGENTS.md`'s canonical
-CSS and the card-contract gate are not edited, and the cutover carries only
-broken types and APIs.**
-**New fact for either branch:** `scripts/verify-package-hygiene.mjs:49,816-835`
-keys the *entire* card-contract enforcement off a source file containing the
-literal `settings.plugin.item`; once plugins register `plugins.row.config`, that
-gate stops firing and the shell contract becomes unenforced unless the constant is
-retargeted. **[verified]** line 49 and the block at 816-835. **Retargeted by #510:**
-the gate now fires on `settings.plugin.item`, `plugins.row.config`, and
-`settings.plugins.tab` combined with the shell, so enforcement survives whichever
-way D1 goes.
-**[decided 2026-09-26, #508] Option 2.** The card shell stays ours, the
-canonical `AGENTS.md` CSS and `verify-plugin-card-contract.mjs` are not edited,
-and neither `settings.plugins.tab` nor `plugins.row.config` is rewritten onto the
-host chrome; the migration is "only broken types and broken APIs". First landing:
-`dsh-qa-surface` (#513), which registers its card as a `settings.plugins.tab`
-entry and keeps the `<li>` root inside a plugin-owned `<ul>`, as `AGENTS.md`
-already requires of a tab.
-way D1 goes. **Resolved by the owner on 26.09 (from #508): option 2.** The card
-shell stays ours, `settings.plugins.tab` and `plugins.row.config` are not
-re-styled to the host chrome, and neither the `AGENTS.md` canonical CSS nor
-`verify-plugin-card-contract.mjs` moves — so for the 12 rows above this is a
-migration of broken types and APIs only. Item 3 below (the `focus.css` ring) stays
-unaddressed by that choice and is now a separate card.
-**Resolved 26.09 in #508 as option 2**, and #521 is the first card landed on that
-reading: the shell stays ours, `AGENTS.md`'s canonical CSS and
-`verify-plugin-card-contract.mjs` are untouched, and a card whose old seat was
-`settings.plugin.item` registers on `settings.plugins.tab` instead — a *list* slot
-that hands its registrant no props, so the card resolves its own `ConfigForm`
-through `ctx.configForms.get<T>(ns)` and wraps its `<li>` in a plugin-owned `<ul>`
-(the `AGENTS.md` rule for this slot, already what `dsh-domain-experts` and
-`dsh-qa-integrations` do). `plugins.row.config` is therefore **not** used by this
-wave; §4.2's recipe stands as the record of where the platform is going.
+**D1 — the settings card shell (§4.3, §4.3a) — reopened and REDECIDED 01.10: option 1.**
+
+The owner's word of 26.09 (#508) was option 2: our shell stayed ours, `AGENTS.md`'s
+canonical CSS and `verify-plugin-card-contract.mjs` were not edited, and neither
+`settings.plugins.tab` nor `plugins.row.config` was re-styled to the host chrome. Twelve
+cards landed on that reading, and `dsh-qa-surface` (#513) and `dsh-plugin-log-ui` (#521)
+registered `settings.plugins.tab` with the `<li>` inside a plugin-owned `<ul>` because a
+list slot hands its registrant no props — that shape is still what those seats require.
+On 01.10, seeing the 12px/1px/2px shell next to `rc.2`'s 20px/0.5px first-party rows on a
+live stand, the owner reversed it: **"as the host does" — option 1.** The history above is
+kept because it explains why the twelve rows read the way they do; it is not an
+instruction.
+
+What option 1 means in this repository now:
+
+- On `plugins.row.config` and `plugins.bundle.config` the bundle renders **the body
+  only**. The page draws the card surface, the title, the row id and the description, so
+  our `dsh-plugin-card*` classes, our 14×14 chevron and our `<li>` root are forbidden
+  there — a second frame beside a first-party row is the defect this decision removes.
+- `AGENTS.md` and the shared gate **are** edited, against the 26.09 wording: the contract
+  is now derived from the seat the bundle registers on, so the same file that once
+  required the shell rejects it on the panel seats (§4.3a, §4.3).
+- Focus treatment comes from the Host's `--dsw-focus-ring-*` tokens with fallback lengths,
+  never from a hard-coded outline: `focus.css` wins on specificity (0-3-2 against 0-2-0)
+  under pointer modality, so a ring of our own is invisible after a mouse click, and
+  raising specificity is the wrong repair.
+- The seat key `<package name>#<row id>` and the settings namespace it resolves are not
+  chrome and stay untouched — moving them orphans the values a user already saved.
+- Cards seated in `settings.section` and `settings.plugins.tab` still own their whole
+  card; those seats keep the canonical shell.
+
+Scope as of 01.10: one of the thirteen series packages is seated on the row today
+(`dsh-model-safety-gate`, #653), so the contract landed with that one migrated and the
+other twelve — still on `settings.plugins.tab` — are named in the epic (#646) as the
+second step, each on its own card.
+
+**Fact that survives either branch:** `scripts/verify-package-hygiene.mjs:49,816-835`
+keyed the *entire* card-contract enforcement off a source file containing the literal
+`settings.plugin.item`; once plugins register `plugins.row.config`, that gate stops
+firing and the shell contract becomes unenforced unless the constant is retargeted.
+**[verified]** line 49 and the block at 816-835. **Retargeted by #510:** the gate now
+fires on `settings.plugin.item`, `plugins.row.config`, and `settings.plugins.tab`
+combined with the shell, so enforcement survives whichever way D1 goes.
 
 **D2 — preset authoring (`dsh-preset-persona-editor`) — newly open.** §8.6:
 the copy-to-writable-root capability does not exist at `rc.2`, and neither does

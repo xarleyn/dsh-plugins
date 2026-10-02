@@ -1,10 +1,12 @@
 // Package gate for @yadsh/dsh-plugin-kit. The package publishes no Cordis patch
-// and no self-registering browser bundle, but every plugin's settings card is
-// built from its `./client` surface, so the shell contract AGENTS.md states once
-// is asserted here against the code each plugin's bundle inlines.
+// and no self-registering browser bundle, but every settings card of this repository
+// is built from its `./client` surface, so the shell contract AGENTS.md states once is
+// asserted here against the code each plugin's bundle inlines. A kit bundle names no
+// seat of its own, so it is held to the canonical shell half directly rather than
+// through the seat-aware dispatcher a plugin bundle goes through.
 import assert from "node:assert/strict";
 import { runVerifyPackage } from "@yadsh/dsh-plugin-scripts/run-verify-package";
-import { verifyPluginCardContract } from "@yadsh/dsh-plugin-scripts/verify-plugin-card-contract";
+import { verifyCanonicalShell } from "@yadsh/dsh-plugin-scripts/verify-plugin-card-contract";
 
 await runVerifyPackage({
   packageRoot: new URL("../", import.meta.url),
@@ -27,7 +29,7 @@ await runVerifyPackage({
     // The three modules that make one card: the sheet, the chevron and the
     // shell that renders them. Checked together because the contract reads a
     // stylesheet and a render for what a single file cannot carry.
-    verifyPluginCardContract(
+    verifyCanonicalShell(
       [
         await readFile("lib/client/plugin-card-css.js"),
         await readFile("lib/client/chevron.js"),

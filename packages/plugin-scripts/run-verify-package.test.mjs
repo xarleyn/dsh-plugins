@@ -18,12 +18,25 @@ const PATCH = `# The DSH plugin manager discovers this bundle through package.js
 `;
 
 const canonicalClient = [
+  // The seat is part of the contract: the gate reads the card's chrome obligation
+  // off the registration the bundle actually carries.
+  'slots.register({ name: "settings.plugins.tab" }, FixtureCard);',
   ...CANONICAL_SHELL_RULES,
   '<path d="m3.5 5.25 3.5 3.5 3.5-3.5"/>',
   // The stylesheet above only says the shell is styled. The contract also reads
   // the two strings only the code that *renders* the shell can produce.
   'const card = open ? "dsh-plugin-card dsh-plugin-card--open" : "dsh-plugin-card";',
   'jsx("button", { className: "dsh-plugin-card__header", "aria-expanded": open });',
+  'window.__ModuleLoader__.load({ id: "@yadsh/dsh-fixture"',
+].join("\n");
+
+/** A card seated on the Plugins panel row: the Host draws its frame. */
+const rowClient = [
+  'slots.register({ name: "plugins.row.config", key: "@yadsh/dsh-fixture#fixture" }, RowCard);',
+  'const RowCard = () => jsx("section", { className: "fixture-body" });',
+  // The ring of a row card comes from the Host's tokens; with no focus rule at all the
+  // card has lost the indicator, which is the failure this half of the gate exists for.
+  ".fixture-body button:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))}",
   'window.__ModuleLoader__.load({ id: "@yadsh/dsh-fixture"',
 ].join("\n");
 
@@ -368,6 +381,34 @@ test("the client bundle gate runs the canonical card contract", async () => {
       }),
     ),
     /font glyphs must not be used/u,
+  );
+
+  // The same gate, seated on the panel row: no shell of ours is wanted there, and
+  // one is what fails it.
+  await writeFixture(directory, { clientBundle: rowClient });
+  await runVerifyPackage(
+    baseOptions(directory, {
+      clientBundle: {
+        file: "lib-client.js",
+        moduleLoaderId: true,
+        cardContract: {},
+      },
+    }),
+  );
+  await writeFixture(directory, {
+    clientBundle: `${rowClient}\n${CANONICAL_SHELL_RULES[0]}`,
+  });
+  await assert.rejects(
+    runVerifyPackage(
+      baseOptions(directory, {
+        clientBundle: {
+          file: "lib-client.js",
+          moduleLoaderId: true,
+          cardContract: {},
+        },
+      }),
+    ),
+    /second frame/u,
   );
 });
 
