@@ -52,10 +52,10 @@ const ROW_CONFIG_KEY = `@yadsh/dsh-documents#${DOCUMENTS_SETTINGS_NAMESPACE}`;
  * 'summary'` as the row's one-liner only when the row carries no display
  * description — the page takes that from this package's exported locale `meta`
  * (`locale/en.json`), which the Host reads without activating the plugin. The
- * summary lands inside the page's own `<p>` and therefore stays text: without
- * this branch a row that lost its description would be handed a whole card. The
- * card keeps the plugin-owned `<ul>` its `<li>` shell is written against
- * (AGENTS.md).
+ * summary lands inside the page's own description paragraph and therefore stays
+ * text: without this branch a row that lost its description would be handed a
+ * whole card. The `page` view is the body alone — the panel draws the frame, the
+ * heading and the expand control around it (AGENTS.md).
  */
 function DocumentsSettingsEntry(
   props: DocumentsCardProps,

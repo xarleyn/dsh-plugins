@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 /**
- * The settings card: the shell contract, and the comparison section it edits.
+ * The settings card: the body the Plugins page mounts, and the comparison
+ * section it edits.
  *
  * The card is the only place an operator meets the comparison configuration, so
  * the paths it writes are the contract between the browser and the resolver. A
@@ -13,11 +14,8 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import type { DocumentsConfig } from "../src/documents/config.js";
 import { resolveDocumentsConfig } from "../src/documents/config.js";
-import {
-  DOCUMENTS_CARD_SUMMARY,
-  DOCUMENTS_CARD_TITLE,
-  DocumentsCard,
-} from "../src/client/card.js";
+import { DocumentsCard } from "../src/client/card.js";
+import { styles } from "../src/client/styles.js";
 
 const CONFIG = resolveDocumentsConfig({}) as unknown as DocumentsConfig;
 
@@ -63,21 +61,10 @@ function makeForm(
 }
 
 /**
- * Render the card and open it. The shell renders its body only while open, so
- * every assertion about a control happens after this.
+ * Render the card the way the row page mounts it: as the body, expanded by the
+ * page rather than by a control of its own.
  */
 function renderCard(
-  mutations: Mutation[],
-  writable = true,
-  fences?: (number | undefined)[],
-) {
-  const rendered = renderClosed(mutations, writable, fences);
-  fireEvent.click(screen.getByRole("button", { expanded: false }));
-  return rendered;
-}
-
-/** Render the card the way the row page first mounts it: closed. */
-function renderClosed(
   mutations: Mutation[],
   writable = true,
   fences?: (number | undefined)[],
@@ -154,59 +141,39 @@ describe("the comparison section", () => {
   });
 });
 
-describe("the card shell", () => {
-  // The bundle gate asserts the shell's *text* — the canonical CSS, the open-state
-  // class pair — and nothing in the gate set renders it, so the two states the
-  // contract names are asserted here against the DOM the row page first sees.
-  it("mounts closed, naming itself with the row's own two strings", () => {
-    const { container } = renderClosed([]);
-    expect(container.querySelector("li.dsh-plugin-card")?.className).toBe(
-      "dsh-plugin-card",
+describe("the body the Plugins page mounts", () => {
+  // The page draws the card surface, the row title, the row id and the
+  // description line, and only then mounts this view under its configuration
+  // section, so a frame of our own here is the second card the contract forbids.
+  it("mounts its controls straight away, under no card of our own", () => {
+    const { container } = renderCard([]);
+    expect(container.querySelector("li")).toBeNull();
+    expect(container.querySelector("ul")).toBeNull();
+    expect(container.querySelector('[class*="dsh-plugin-card"]')).toBeNull();
+    // No disclosure of ours: the page owns the chevron and the open state, so the
+    // body is there from the first render rather than behind a click.
+    expect(container.querySelectorAll("svg")).toHaveLength(0);
+    expect(screen.queryByRole("button", { expanded: false })).toBeNull();
+    expect(screen.getByTestId("docs-pipeline-enabled")).toBeDefined();
+    expect(screen.getByTestId("docs-templates-max-pages")).toBeDefined();
+  });
+
+  it("rings every control it draws with the Host's tokens and both fallbacks", () => {
+    // The Host's `focus.css` suppresses a hard-coded outline under pointer
+    // modality (0-3-2 against a plain class rule's 0-2-0), and a token that is
+    // not declared on the surface invalidates the whole `outline` shorthand. So
+    // each ring names both tokens, each with its fallback length or colour.
+    const rings = [...styles.matchAll(/[^{}]+:focus-visible\{[^}]*\}/gu)].map(
+      ([rule]) => rule,
     );
-    expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
-    expect(container.querySelector(".dsh-plugin-card__badge")).not.toBeNull();
-    expect(container.querySelector(".dsh-plugin-card__chevron")).not.toBeNull();
-    // The header stack carries the same title and sentence the row is named and
-    // described by: another test pins the exported locale `meta` to these two, so
-    // the row and the card it opens cannot drift apart.
-    expect(
-      screen.getByRole("button", {
-        name: "Показать настройки: Документы",
-        expanded: false,
-      }),
-    ).toBeTruthy();
-    expect(screen.getByText(DOCUMENTS_CARD_TITLE)).toBeDefined();
-    expect(screen.getByText(DOCUMENTS_CARD_SUMMARY)).toBeDefined();
-  });
-
-  it("renders the body only while open, and closes again on the same control", () => {
-    const { container } = renderClosed([]);
-    fireEvent.click(screen.getByRole("button", { expanded: false }));
-    expect(container.querySelector("li.dsh-plugin-card--open")).not.toBeNull();
-    expect(container.querySelector(".dsh-plugin-card__body")).not.toBeNull();
-    expect(
-      screen.getByRole("button", {
-        name: "Скрыть настройки: Документы",
-        expanded: true,
-      }),
-    ).toBeTruthy();
-
-    fireEvent.click(screen.getByRole("button", { expanded: true }));
-    expect(container.querySelector("li.dsh-plugin-card--open")).toBeNull();
-    expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
-  });
-});
-
-describe("the Plugins page card", () => {
-  it("stacks its shell inside a list the plugin owns", () => {
-    renderCard([]);
-    const card = screen
-      .getByRole("button", { expanded: true })
-      .closest("li") as HTMLLIElement | null;
-    expect(card?.className).toContain("dsh-plugin-card");
-    // The configuration section renders no list of its own, and AGENTS.md keeps
-    // the `<li>` shell root inside a list the plugin declares.
-    expect(card?.parentElement?.tagName).toBe("UL");
+    // A text/number/select field, a switch and a button: the controls this
+    // package renders itself, not the ones the page draws around them.
+    expect(rings.length).toBeGreaterThanOrEqual(3);
+    for (const rule of rings) {
+      const outline = /outline:([^;}]+)/u.exec(rule)?.[1] ?? "";
+      expect(/--dsw-focus-ring-width\s*,\s*\S+/u.test(outline)).toBe(true);
+      expect(/--dsw-focus-ring-color\s*,\s*\S+/u.test(outline)).toBe(true);
+    }
   });
 
   it("fences every write with the revision the form reports", () => {
