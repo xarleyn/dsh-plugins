@@ -350,7 +350,38 @@ test("holds the row card to the focus rule AGENTS.md prescribes", () => {
   });
 });
 
-test("refuses to choose a contract for a bundle that names no seat", () => {
+test("requires a ring only of the seat that renders controls", () => {
+  // `plugins.bundle.config` is a Remote-owned page (AGENTS.md), so asking it for a focus
+  // rule buys a CSS declaration written for the gate.
+  const bundleSeat = [
+    `slots.register({ name: "plugins.bundle.config", key: "@yadsh/demo" }, BundleEntry);`,
+    `const BundleEntry = () => jsx("section", { className: "demo-body" });`,
+  ].join("\n");
+  assert.doesNotThrow(() => {
+    verifyPluginCardContract(bundleSeat);
+  });
+  // The same bundle with our shell is still the second frame.
+  assert.throws(() => {
+    verifyPluginCardContract(`${bundleSeat}\n${CANONICAL_SHELL_RULES[0]}`);
+  }, /second frame/u);
+});
+
+test("reads a positional registration as the seat it names", () => {
+  // `slots.inject("plugins.row.config", Comp)` carries no `name:` property at all. Before
+  // the quoted seat was read bundle-wide, this bundle fell through to "what does it
+  // draw" and a row card that kept its shell was judged by the half that requires it.
+  const positional = [
+    `slots.inject("plugins.row.config", (host) => new RowEntry(host));`,
+    CANONICAL_SHELL_RULES[0],
+  ].join("\n");
+  assert.throws(() => {
+    verifyPluginCardContract(positional);
+  }, /second frame/u);
+});
+
+test("asks the bundle what it draws when it names no seat anywhere", () => {
+  // A package that publishes the shell for others registers nothing at all; what it must
+  // not be is judged by a rule it never satisfied.
   assert.throws(() => {
     verifyPluginCardContract(`${ROW_REGISTRATION}`);
   }, /ring/u);

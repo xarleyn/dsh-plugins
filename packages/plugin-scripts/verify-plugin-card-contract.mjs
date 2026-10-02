@@ -120,7 +120,6 @@ function seatMentions(client) {
 
 function readSeats(client) {
   const seats = new Set();
-  const bound = new Set();
   for (const [, seat] of client.matchAll(NAME_LITERAL)) seats.add(seat);
 
   const bindings = new Map();
@@ -130,9 +129,8 @@ function readSeats(client) {
   for (const [, ident] of client.matchAll(NAME_IDENTIFIER)) {
     const seat = bindings.get(ident);
     if (seat) seats.add(seat);
-    else bound.add(ident);
   }
-  return { seats, unbound: bound };
+  return seats;
 }
 
 function checkSharedBans(client, { legacyPatterns }) {
@@ -236,16 +234,20 @@ function verifyHostChrome(client, options) {
   }
 
   // A body whose controls keep no ring at all is the same user-visible failure as a
-  // hard-coded one, and deleting the rules is the cheaper way to reach it.
-  assert.match(
-    client,
-    RING_APPLIED,
-    "the row card must put a ring on at least one of its own controls with " +
-      `${HOST_RING_TOKEN}-width/-color — the Host's focus.css dresses its own elements, ` +
-      "not the ones a plugin renders inside the section. A bundle that reaches this " +
-      "message without naming a seat is either a card that lost its registration or a " +
-      "package that owes no card contract and should call verifyCanonicalShell instead",
-  );
+  // hard-coded one, and deleting the rules is the cheaper way to reach it. Asked of a
+  // seat that renders no form, though, this becomes a CSS rule written for the gate —
+  // so it is asked of the row, where the plugin does render controls.
+  if (options.ringOwed !== false) {
+    assert.match(
+      client,
+      RING_APPLIED,
+      "the row card must put a ring on at least one of its own controls with " +
+        `${HOST_RING_TOKEN}-width/-color — the Host's focus.css dresses its own elements, ` +
+        "not the ones a plugin renders inside the section. A bundle that reaches this " +
+        "message without naming a seat is either a card that lost its registration or a " +
+        "package that owes no card contract and should call verifyCanonicalShell instead",
+    );
+  }
 
   checkSharedBans(client, options);
 }
@@ -257,7 +259,7 @@ function verifyHostChrome(client, options) {
  */
 export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
   const options = { legacyPatterns };
-  const { seats, unbound } = readSeats(client);
+  const seats = readSeats(client);
   const onPanel = HOST_CHROME_SEATS.filter((seat) => seats.has(seat));
   const onSettings = OWN_SHELL_SEATS.filter((seat) => seats.has(seat));
 
@@ -270,21 +272,27 @@ export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
       operator: "seat",
     });
   }
-  if (onPanel.length > 0) return verifyHostChrome(client, options);
+  if (onPanel.length > 0)
+    return verifyHostChrome(client, {
+      ...options,
+      // `plugins.bundle.config` is a page the Remote owns, not a settings form
+      // (AGENTS.md), so a focus ring there would be a rule written for the gate.
+      ringOwed: onPanel.includes("plugins.row.config"),
+    });
   if (onSettings.length > 0) return verifyCanonicalShell(client, options);
 
   /*
-   * A seat handed to an inlined helper compiles to `name: slotName`, where the value came
-   * from an option at the call site, and no regex can follow it. Ask the bundle what it
-   * quotes instead — the call site `slotName: "plugins.row.config"` is the declaration
-   * left behind. The same rule as above applies: two surfaces named is not a choice, it
-   * is a contradiction. Without it a row card that kept its shell and cites
-   * `"settings.plugins.tab"` in a surviving comment would be judged by the canonical half,
-   * which *requires* that shell — the second frame would pass by leaning on prose.
-   * What remains, and cannot be closed from a bundle: prose naming exactly one wrong
-   * family. A card seated on the panel should name its seat at the registration.
+   * Nothing resolved at a `name:` — because the seat reached as an option (`name:
+   * slotName`, how plugin-kit's helper compiles), or because the bundle registers
+   * positionally (`slots.inject("plugins.row.config", Comp)`). Ask the bundle what it
+   * quotes, everywhere. The same rule as above: two surfaces named is a contradiction,
+   * not a choice — otherwise a row card that kept its shell and cites
+   * `"settings.plugins.tab"` in a surviving comment would be judged by the canonical
+   * half, which *requires* that shell, and the second frame would pass by leaning on
+   * prose. What this cannot rule out is prose quoting exactly one, wrong family; a card
+   * seated on the panel should name its seat the way the registration reads.
    */
-  const mentions = unbound.size > 0 ? seatMentions(client) : new Set();
+  const mentions = seatMentions(client);
   const panelMentioned = HOST_CHROME_SEATS.filter((seat) => mentions.has(seat));
   const settingsMentioned = OWN_SHELL_SEATS.filter((seat) =>
     mentions.has(seat),
@@ -292,7 +300,7 @@ export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
   if (panelMentioned.length > 0 && settingsMentioned.length > 0) {
     throw new assert.AssertionError({
       message:
-        `client bundle passes its seat through an option and quotes both the panel ` +
+        `client bundle names no seat at its registration yet quotes both the panel ` +
         `(${panelMentioned.join(", ")}) and a settings surface ` +
         `(${settingsMentioned.join(", ")}) — the contract cannot tell which chrome this ` +
         "bundle owns, so name the seat at the registration or leave the other citation out",
