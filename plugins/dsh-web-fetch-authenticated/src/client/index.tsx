@@ -12,7 +12,6 @@ import type {
 } from "@deepseek-ai/dsh-typert-protocol";
 import webFetchAuthRemote from "@yadsh/dsh-web-fetch-authenticated/remote";
 import {
-  CardShell,
   bindSettingsExternalStore,
   injectCardStyles,
   startVisibilityAwarePolling,
@@ -78,16 +77,6 @@ const WEB_FETCH_AUTH_ROW_CONFIG_KEY = `@yadsh/dsh-web-fetch-authenticated#${WEB_
  */
 const WEB_FETCH_AUTH_ROW_SUMMARY =
   "Per-origin authenticated rules for web_fetch: credentials, SSRF policy, and diagnostics.";
-
-/**
- * What the card's own header promises to open. Deliberately not {@link
- * WEB_FETCH_AUTH_ROW_SUMMARY}, and deliberately not this package's
- * `description` field either: the page prints one of those two as the row's
- * line one paragraph above the card, so a header repeating it shows the same
- * text twice.
- */
-const WEB_FETCH_AUTH_CARD_DESCRIPTION =
-  "Open the rule list, its write-only credential fields, the default policy and limits, and the diagnostic runner.";
 
 interface RemoteService {
   status(): Promise<RemoteResult<ProviderStatusReport>>;
@@ -224,49 +213,33 @@ function WebFetchAuthCard({
 
   if (settings.status === "unavailable") return null;
 
-  // The page's configuration section is a plain `<div>`
-  // (`PluginManagerPage.tsx:494`, `detailSections`), not a list, so the list the
-  // shell's `<li>` root belongs to stays ours (AGENTS.md contract).
+  // This seat is the body of the page's own card: the panel draws the surface,
+  // the row title, the row id and the description line, and expands the section
+  // itself (AGENTS.md). A shell of ours here would be a second frame and a
+  // second heading inside the first, so the configuration mounts straight away.
   return (
-    <ul className="wfa-cards" data-testid="wfa-card-list">
-      <CardShell
-        title="Authenticated Web Fetch"
-        description={WEB_FETCH_AUTH_CARD_DESCRIPTION}
-        badge={
-          <span
-            className="dsh-plugin-card__badge"
-            data-testid="wfa-card-enabled-state"
-          >
-            {(config?.enabled ?? true) ? "Enabled" : "Disabled"}
-          </span>
-        }
-        label={(open) =>
-          `${open ? "Hide" : "Show"} settings: Authenticated Web Fetch`
-        }
-        bodyClassName="wfa-body"
-      >
-        {error !== null && (
-          <div className="wfa-error" data-testid="wfa-card-error">
-            {error}
-          </div>
-        )}
-        <StatusSection status={report} warnings={warnings} />
-        <RulesSection
-          config={config}
-          writable={writable}
-          setRules={setRules}
-          face={{
-            form: settingsForm,
-            status,
-            testRule,
-            diagnose,
-            credentials,
-          }}
-        />
-        <GlobalSection config={config} writable={writable} setPath={setPath} />
-        <DiagnosticsSection diagnose={diagnose} />
-      </CardShell>
-    </ul>
+    <div className="wfa-body">
+      {error !== null && (
+        <div className="wfa-error" data-testid="wfa-card-error">
+          {error}
+        </div>
+      )}
+      <StatusSection status={report} warnings={warnings} />
+      <RulesSection
+        config={config}
+        writable={writable}
+        setRules={setRules}
+        face={{
+          form: settingsForm,
+          status,
+          testRule,
+          diagnose,
+          credentials,
+        }}
+      />
+      <GlobalSection config={config} writable={writable} setPath={setPath} />
+      <DiagnosticsSection diagnose={diagnose} />
+    </div>
   );
 }
 

@@ -67,20 +67,25 @@ await runVerifyPackage({
       /*
        * The page seats this one entry twice, and the seat contract asks an entry
        * to answer both views (`slot-contract.ts`). The summary answer has to stay
-       * a sentence: mounting the card there puts a page inside a line of text and
+       * a sentence: mounting the body there puts a page inside a line of text and
        * opens a second poll of the Remote. It is the fallback for the row's
        * description line — for this row the page prints the `description` read
        * off the bundle's manifest instead (`@deepseek-ai/dsh-app-boot`
-       * `src/package-meta.ts:157`) — so the card header keeps its own copy rather
-       * than repeating the line printed one paragraph above it. Which text lands
-       * where is asserted rendered, in `client-card.test.tsx`.
+       * `src/package-meta.ts:157`) — and the `page` answer prints neither that
+       * line nor a heading of its own, since the page already drew both above the
+       * body. Which text lands where is asserted rendered, in
+       * `client-card.test.tsx`.
        */
       /WEB_FETCH_AUTH_ROW_SUMMARY\s*=\s*"Per-origin authenticated rules for web_fetch/u,
       /if \(view === "summary"\)\s*return WEB_FETCH_AUTH_ROW_SUMMARY/u,
-      /description:\s*WEB_FETCH_AUTH_CARD_DESCRIPTION/u,
     ],
     cardContract: {
-      legacyPatterns: [/\.wfa-card\{/u, /\.dsh-plugin-card \*/u],
+      legacyPatterns: [
+        /\.wfa-card\{/u,
+        /\.dsh-plugin-card \*/u,
+        // The body sits in the page's own section: no list wrapper of ours.
+        /["']wfa-cards/u,
+      ],
     },
   },
   extra: async ({ client, readFile }) => {
