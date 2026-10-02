@@ -35,6 +35,13 @@ button, switch and fold of the body takes its ring from the Host's
 fallback: where a token is undeclared the whole `outline` shorthand would
 otherwise be dropped, which is the ring vanishing rather than a plain one.
 
+An unavailable configuration now explains itself. The Plugins page is not the
+settings directory, so it keeps answering from a browser the directory is not
+served to; there the card used to render nothing, which on the old tab was an
+absent row but on the page's frame is an opened section that is blank for no
+stated reason. The card answers that state with a sentence instead, and with no
+controls, because there is no configuration here to present read-only.
+
 What the card shows is unchanged: the rule list, its write-only credential
 fields, the network policy and limits, the connection tester, and the diagnostic
 runner.

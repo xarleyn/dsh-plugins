@@ -168,11 +168,24 @@ describe("plugins row configuration entry, rendered", () => {
     expect(await screen.findByTestId("wfa-rules-list")).toBeTruthy();
   });
 
-  it("draws nothing while the Host configuration is unavailable", async () => {
+  it("says why the body is empty while the Host configuration is unavailable", async () => {
+    /*
+     * The panel answers from a browser the settings directory is not served to, so
+     * this state is normal here rather than an error. The page owns the frame, and
+     * a card that owns its shell may stay invisible; this one drawing nothing would
+     * leave the opened row with a blank section and no reason, which reads as a
+     * broken card. So the seat answers the state with a sentence and no controls.
+     */
     const seat = await registeredSeat(demoConfig(), "unavailable");
     const { container } = await renderSeat(seat, "page");
 
-    expect(container.textContent).toBe("");
+    const note = screen.getByTestId("wfa-card-unavailable");
+    expect(note.textContent).toContain("not available in this session");
+    expect(note.textContent).toContain("read or changed");
+    expect(
+      container.querySelectorAll("button, input, textarea, select"),
+    ).toHaveLength(0);
+    expect(screen.queryByTestId("wfa-rules-list")).toBeNull();
   });
 
   it("keeps the body and disables its writes while the namespace is read-only", async () => {
