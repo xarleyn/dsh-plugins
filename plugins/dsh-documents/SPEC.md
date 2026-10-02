@@ -88,18 +88,26 @@ bundle's own row on the Plugins page: the keyed seat `plugins.row.config` under
 `cordis.patch.yml` declares. That row id remains the settings namespace, so the
 seat moved and the stored values did not: what an older build saved under
 `documents` this card reads back. It edits configuration only — no document
-operation is reachable from the UI. Its controls use the shared card shell and the
-`--dsw-alias-*` design tokens (AGENTS.md).
+operation is reachable from the UI.
+
+The card renders the **body** and nothing around it. The page draws the card
+surface, the heading and the expand control before it mounts this view, so the
+bundle carries no shell of its own: no `dsh-plugin-card*` class, no `<li>` root,
+no chevron (AGENTS.md, "Two kinds of card"). The body's own controls are built
+from `--dsw-alias-*` design tokens, and the focus ring of each one comes from the
+Host's `--dsw-focus-ring-width` / `--dsw-focus-ring-color` with a fallback on both
+halves — a hard-coded outline loses to the Host's `focus.css` under pointer
+modality, and an undeclared token would drop the whole `outline` shorthand.
 
 The page draws the row's own title and one-liner, not the card's: it reads them as
 display metadata from `locale/en.json`, which this package exports at
 `@yadsh/dsh-documents/locale/en.json`, and without it the Plugins page names the
-row by its full module name. The file carries the same two strings the card draws
-(`DOCUMENTS_CARD_TITLE`, `DOCUMENTS_CARD_SUMMARY`) and a test pins the pair, so
-the row and the card it opens cannot drift. The card's copy is Russian in every
-UI language, as the tab's label was before the move: `en.json` is the discovery
-entry the Host falls back to for any language chain, and no other language file is
-shipped.
+row by its full module name. The title lives only in that file; its `description`
+is the same sentence the entry answers its `summary` view with, and a test pins
+the pair, so the row cannot describe something other than the page it opens. The
+card's copy is Russian in every UI language, as the tab's label was before the
+move: `en.json` is the discovery entry the Host falls back to for any language
+chain, and no other language file is shipped.
 
 The entry answers the page's two views. As `page` it is the card; as `summary` it
 is the one-liner, which the page asks for only where the row has no display

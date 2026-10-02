@@ -63,11 +63,18 @@ await runVerifyPackage({
     // settings form it edits is one of them.
     matches: [/const inject = \[[^\]]*"configForms"[^\]]*\]/u],
     // The browser has no module table for Node builtins: one `require("node:…")`
-    // left in the bundle is a card that never mounts.
+    // left in the bundle is a card that never mounts. The old tab of the Plugins
+    // settings section is banned for the same reason in reverse: a second render
+    // site would show this card twice.
     notMatches: [
       /require\("node:(?:path|fs|fs\/promises|zlib|os|child_process)"\)/u,
+      /"settings\.plugins\.tab"/u,
     ],
     cardContract: {
+      // This bundle registers on the Plugins panel row, so the shared card-contract
+      // gate holds it to the host-chrome half: no `dsh-plugin-card*` class, no
+      // chevron of ours, and the ring built from the Host's focus tokens. What is
+      // left here is the shell this package drew before the seat existed.
       legacyPatterns: [/\.dsh-docs-card\{/u, /\.dsh-plugin-card \*/u],
     },
   },

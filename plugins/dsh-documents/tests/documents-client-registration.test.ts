@@ -21,11 +21,7 @@ import { isValidElement } from "react";
 import { parse as parseYaml } from "yaml";
 import { describe, expect, it } from "vitest";
 
-import {
-  DOCUMENTS_CARD_SUMMARY,
-  DOCUMENTS_CARD_TITLE,
-  DocumentsCard,
-} from "../src/client/card.js";
+import { DOCUMENTS_CARD_SUMMARY, DocumentsCard } from "../src/client/card.js";
 import * as clientModule from "../src/client/index.js";
 import { DOCUMENTS_SETTINGS_NAMESPACE } from "../src/shared/settings.js";
 
@@ -153,13 +149,16 @@ describe("client apply()", () => {
     expect(row.id).toBe(DOCUMENTS_SETTINGS_NAMESPACE);
   });
 
-  it("titles the row with the copy the opened card carries", async () => {
+  it("names and describes the row from this package's exported meta", async () => {
     // The page draws the row's title and description itself, from this package's
-    // exported locale `meta` — a registrant cannot hand it the card's own
-    // heading. The two files therefore hold one surface contract, and a drift
-    // would rename the row away from the card it opens.
+    // exported locale `meta` — the seat hands its registrant no `label`, and the
+    // body draws no heading of its own. A bundle without this file is named by its
+    // full package name, which is not a name an operator would recognise.
     const meta = await exportedMeta();
-    expect(meta?.["title"]).toBe(DOCUMENTS_CARD_TITLE);
+    expect(meta?.["title"]).toBe("Документы");
+    // The row's description and the one-liner this entry answers its `summary`
+    // view with are one string: the panel falls back to that answer, and a drift
+    // would show the row describing something other than the page it opens.
     expect(meta?.["description"]).toBe(DOCUMENTS_CARD_SUMMARY);
   });
 
@@ -189,7 +188,7 @@ describe("client apply()", () => {
       DOCUMENTS_CARD_SUMMARY,
     );
 
-    // The `page` view is the card, which is what draws the shell.
+    // The `page` view is the body the page mounts under its own chrome.
     const body = entry?.({ view: "page", settingsForm } as never);
     expect(isValidElement(body)).toBe(true);
     expect((body as { type: unknown }).type).toBe(DocumentsCard);
