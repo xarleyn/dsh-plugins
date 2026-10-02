@@ -9,7 +9,7 @@
  * id that answers twice is a selector `getByTestId` throws on.
  */
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import { OperatorCard } from "../../src/client/operator-card.js";
@@ -20,7 +20,7 @@ const Card = OperatorCard as unknown as (props: {
   settingsForm: unknown;
 }) => ReactElement;
 
-/** The card, mounted open over one stored configuration. */
+/** The card, mounted over one stored configuration. */
 function renderOpen(value: unknown): void {
   const snapshot = {
     status: "ready" as const,
@@ -41,9 +41,6 @@ function renderOpen(value: unknown): void {
         unset: async () => {},
       }}
     />,
-  );
-  fireEvent.click(
-    screen.getByRole("button", { name: "Развернуть конфигурацию интеграций" }),
   );
 }
 

@@ -13,7 +13,7 @@ import type {
 } from "@yadsh/dsh-qa-surface/client/settings";
 import type { QaIntegrationsConfig } from "../config.js";
 import type { IntegrationSummary, PolicyPatch } from "../types.js";
-import { createIntegrationsBundleCard } from "./card.js";
+import { createIntegrationsCard } from "./card.js";
 import {
   createIntegrationsPage,
   type IntegrationsClientRemote,
@@ -75,9 +75,10 @@ export const inject = [
  * plugin's own profile entry through the settings form the Host serves for it,
  * the page of the signed-in user's QA settings dialog, where the account gate
  * lives, and the account card the Plugins page shows on this bundle's own page,
- * which reaches the same account through the `qaUserSession` service. Both cards
- * draw the shared shell themselves, so neither depends on the Host settings
- * directory or on the Settings surface at all.
+ * which reaches the same account through the `qaUserSession` service. The two
+ * panel cards draw the body only — the page supplies their frame, title and
+ * expand control — so neither depends on the Host settings directory or on the
+ * Settings surface at all.
  */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const disposeRemote = await (ctx as ClientFace).remote.$mount(
@@ -144,7 +145,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               providers,
             ),
           });
-          const BundleCard = createIntegrationsBundleCard(
+          const BundleCard = createIntegrationsCard(
             face.remote.qaIntegrations,
             providers,
             face.qaUserSession,
