@@ -214,8 +214,9 @@ config:
 > on the Host's **Plugins** page, and it edits the settings document of the profile
 > that mounts this plugin. A browser reaching the deployment over the network is
 > served that document in `memory` mode — the Host's own contract calls it
-> process-local and never writable — and the card renders nothing while its form
-> reports that state, so the operator configures on the machine that serves the
+> process-local and never writable — and while its form reports that state the card
+> says so in one sentence instead of drawing controls, so the operator configures on
+> the machine that serves the
 > installation. That is how the tab this card left behaved too: the provider that
 > decides it is shared, and §6.17 of
 > [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-openviking-memory/SPEC.md)
@@ -313,14 +314,18 @@ page, opened from its own row in the DSH web UI. It edits the plugin's
   because they are a child process whose transport is fixed when it starts.
 - **Overrides are visible.** A field the profile's user layer carries is
   marked, and a reset action clears every override in one step.
-- **The badge is configuration, not status.** It shows `Auto-inject` or
-  `Manual recall` from the master switch. Runtime diagnostics live in the
-  plugin log under `<$DSH_HOME>/logs/dsh-openviking-memory/`.
+- **The card draws no chrome of its own.** The Plugins page draws the row's card —
+  its surface, heading, description line and expand control — and this bundle
+  mounts the body inside it. The master switch therefore reads from its own
+  `autoInject` toggle rather than from a header badge. Runtime diagnostics live in
+  the plugin log under `<$DSH_HOME>/logs/dsh-openviking-memory/`; the card shows
+  the configuration and nothing else, because it has no Remote face.
 - **The card edits the Host's document from loopback.** The settings document a
   card writes is the profile the Host serves, and a page that reaches the
   deployment over the network is served it in `memory` mode — process-local, and
-  never writable, in the Host contract's own words — which this card reports as an
-  empty render rather than a disabled form. So the operator sets these switches on
+  never writable, in the Host contract's own words — which this card reports as one
+  sentence naming the state, not as a disabled form and not as an empty section.
+  So the operator sets these switches on
   the machine that serves the installation, including a stand through its loopback
   port; the surface a network browser is meant to use is the read-only account page
   described in §Per-account memory. The split is deliberate: the switches below

@@ -69,10 +69,10 @@ await runVerifyPackage({
     moduleLoaderId: true,
     cardContract: {
       legacyPatterns: [
-        // The card never had an older shell, but pin the rule against the
-        // plugin-specific outer shells the guidelines forbid.
+        // Pin the rule against a plugin-specific outer shell: on this seat the
+        // page draws the frame, so any shell of ours is the second one. The
+        // `dsh-plugin-card` family itself is banned outright in `notMatches`.
         /\.ovm-card\b/u,
-        /dsh-plugin-card\s*\*/u,
       ],
     },
     matches: [
@@ -99,6 +99,12 @@ await runVerifyPackage({
       // The card left the Settings → Plugins tab; a bundle naming it back renders
       // a second copy of the page in a surface the cutover is emptying.
       /settings\.plugins\.tab/u,
+      // The row's card is drawn by the Plugins page, so this bundle carries no
+      // shell of its own — not the classes, not the stylesheet that styles them.
+      // The shared gate reaches the same conclusion through the seat it reads;
+      // this is the acceptance the card states directly.
+      /dsh-plugin-card/u,
+      /PLUGIN_CARD_SHELL_CSS/u,
     ],
   },
   extra: async ({ manifest, readFile }) => {

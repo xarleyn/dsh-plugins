@@ -22,24 +22,37 @@ where values are stored changed**, and an endpoint, a peer rule or a recall budg
 saved by an older build is read back by this one; the tab's own seat id
 `openviking-memory` was the only name left behind, and it named nothing but the seat.
 
-What the card renders is the same card: the same shell the rulebook in force gives
-every configuration card of this repository (the card-contract gate reads the bundle,
-not the slot name, so it fires on the new registration exactly as it did on the old),
-the same six sections, the same write-on-change behavior. Two details follow from the
-new seat rather than from a redesign. The seat spreads its own owner prop `form` after
-the injected face: a `ConfigPageForm` of `{ state, mutate }`, this same namespace's
-form seen through two members (`state` is one snapshot, refreshed when the page owner
-renders, and there is no subscription to take). So the full `ConfigForm` this entry
-resolves enters the card as `settingsForm`, where that prop cannot overwrite it, and it
-is what the card follows for the values it shows — while the writes themselves go
-through the page's `mutate` wherever the seat supplies one, and through the resolved
-form on a seat that supplies none. `set` and `unset` are one-op `mutate`s, so a field
-change keeps the revision fence, the ordering and the recovery read it had. And the
-seat hands the same entry two views: `page` is the card, `summary` is the row's
-one-liner, which the entry answers with the sentence rather than with the card, because
-the fallback lands inside a line of the page's own text. The shell's `<li>` still needs
-a list to sit in, which the page's configuration section does not supply, so the
-plugin-owned `<ul>` stays with it.
+The card keeps its six sections and its write-on-change behavior, and gives up the
+frame around them. Its row is seated inside the page's own card: the page paints the
+surface, the heading, the row id, the description line and the expand control, and only
+then mounts this body. Until now the bundle drew a second card inside that one — a 12 px
+rounded rectangle with our chevron, our open state and a badge repeating the master
+switch, all of it inside the page's 20 px surface — so this plugin's row read as a
+nested panel next to first-party rows. The body arrives directly now, and with the
+header gone the description sentence is printed once, by the page, from this entry's
+`summary` answer. The focus ring on each control the bundle draws comes from the Host's
+`--dsw-focus-ring-width` / `--dsw-focus-ring-color` tokens, each with its fallback,
+because `focus.css` of the Host suppresses a hard-coded outline under pointer modality
+at a higher specificity than our rule had. A row whose namespace is not served to the
+client says so in a sentence rather than leaving the opened section blank: a card that
+owns its shell may stay invisible, one inside the page's frame may not. The owner
+settled this on 2026-10-01 in #646, it landed as the contract in #684, and the
+card-contract gate reads the seat off the built bundle and holds a card seated on the
+row to that half.
+
+Two details follow from the new seat rather than from a redesign. The seat spreads its
+own owner prop `form` after the injected face: a `ConfigPageForm` of
+`{ state, mutate }`, this same namespace's form seen through two members (`state` is
+one snapshot, refreshed when the page owner renders, and there is no subscription to
+take). So the full `ConfigForm` this entry resolves enters the card as `settingsForm`,
+where that prop cannot overwrite it, and it is what the card follows for the values it
+shows — while the writes themselves go through the page's `mutate` wherever the seat
+supplies one, and through the resolved form on a seat that supplies none. `set` and
+`unset` are one-op `mutate`s, so a field change keeps the revision fence, the ordering
+and the recovery read it had. And the seat hands the same entry two views: `page` is
+the body, `summary` is the row's one-liner, which the entry answers with the sentence
+rather than with the card, because the fallback lands inside a line of the page's own
+text.
 
 The account-scoped page is untouched: it is a feature-owned QA page reached by a
 browser over the network, so it keeps mounting through `qaUserSettingsSections` and
@@ -54,7 +67,10 @@ without the Plugins page loses the card, and `compatibility.json` says so, its
 required client features naming `plugins.row.config` where it named
 `settings.plugins.tab`. `scripts/verify-package.mjs` asserts the new pair (the slot
 literal and the `@yadsh/dsh-openviking-memory#` key prefix in the shipped bundle, the
-new package in the inject list), asserts the `summary` answer ships in the same bundle,
-and refuses the old slot name, and the client
+new package in the inject list), asserts the `summary` answer ships in the same
+bundle, refuses the old slot name, and refuses the shell: a built bundle that still
+carries a `dsh-plugin-card` class or the shell stylesheet fails the gate. The client
 tests assert the keyed registration, the namespace the form is resolved under, the two
-views of the entry, and which `mutate` a field change reaches the Host through.
+views of the entry, which `mutate` a field change reaches the Host through, and that
+every control this body draws takes the Host's ring from both tokens with their
+fallbacks.

@@ -240,8 +240,30 @@ describe("client activation", () => {
       }),
       expect.anything(),
     );
-    // Canonical shell travels with the card.
-    expect(style.textContent).toContain(".dsh-plugin-card{");
+    // The sheet this bundle injects styles its own body and nothing else: the
+    // row's card is drawn by the Plugins page, so the canonical shell must not
+    // travel with us.
+    expect(style.textContent).not.toContain("dsh-plugin-card");
+    expect(style.textContent).toContain(".ovm-body{");
+    // Every control the body draws itself takes the Host's ring, both halves of
+    // the token pair each with its fallback — a declared-without-fallback token
+    // invalidates the whole `outline` shorthand and the ring vanishes.
+    const ring =
+      "outline:var(--dsw-focus-ring-width, 2px) solid " +
+      "var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))";
+    for (const rule of [
+      ".ovm-control:focus-visible",
+      ".ovm-area:focus-visible",
+      ".ovm-toggle:focus-visible",
+      ".ovm-btn:focus-visible",
+    ]) {
+      const line = style.textContent
+        .split("\n")
+        .find((sheetLine) => sheetLine.startsWith(`${rule}{`));
+      expect(line, `${rule} is missing from the sheet`).toContain(ring);
+      expect(line).toContain("outline-offset");
+    }
+    expect(style.textContent).not.toMatch(/outline:\s*\d/u);
     expect(style.dataset.plugin).toBe("@yadsh/dsh-openviking-memory");
 
     dispose();

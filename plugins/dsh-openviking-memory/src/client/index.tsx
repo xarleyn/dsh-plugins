@@ -93,9 +93,9 @@ export function apply(ctx: Context): () => void {
     OPENVIKING_MEMORY_SETTINGS_NAMESPACE,
   );
 
-  // The Plugins page hands the row's configuration section an empty column, so the
-  // card keeps its own shell (the AGENTS.md contract) and the stylesheet that
-  // styles it.
+  // The row's card is drawn by the Plugins page — the surface, the heading and the
+  // expand control — so this bundle injects only the stylesheet of its body and the
+  // card renders the body itself (AGENTS.md).
   const removeStyles = injectCardStyles("@yadsh/dsh-openviking-memory", styles);
   const removeCard = ctx.slots.inject("plugins.row.config", () =>
     ctx.slots.register(

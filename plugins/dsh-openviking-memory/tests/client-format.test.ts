@@ -1,24 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  badgeText,
   filtersToText,
   isOverridden,
   overriddenKeys,
   parseNumberDraft,
   textToFilters,
 } from "../src/client/format.js";
-
-describe("badge text", () => {
-  it("projects the master switch", () => {
-    expect(badgeText(true)).toBe("Auto-inject");
-    expect(badgeText(undefined)).toBe("Auto-inject");
-  });
-
-  it("says manual recall only when auto-inject is explicitly off", () => {
-    expect(badgeText(false)).toBe("Manual recall");
-  });
-});
 
 describe("override detection", () => {
   it("marks presence, not difference", () => {

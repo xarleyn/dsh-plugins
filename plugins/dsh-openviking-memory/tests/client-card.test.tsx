@@ -1,8 +1,9 @@
 // @vitest-environment jsdom
 /**
- * The OpenViking Memory card: shell contract, configuration controls, the
- * immediate-write path and whose `mutate` it uses, the override projection the
- * form feeds it, and the two views the Plugins page renders this entry in.
+ * The OpenViking Memory card: the body the Plugins page seats inside its own
+ * chrome, configuration controls, the immediate-write path and whose `mutate` it
+ * uses, the override projection the form feeds it, and the two views the page
+ * renders this entry in.
  */
 
 import {
@@ -120,12 +121,12 @@ const Entry = OpenVikingMemoryCardEntry as unknown as (props: {
   form?: unknown;
 }) => ReactElement;
 
-function openCard(settingsForm: unknown, pageForm?: unknown): HTMLElement {
-  const view = render(<Card settingsForm={settingsForm} form={pageForm} />);
-  fireEvent.click(
-    screen.getByRole("button", { name: "Show settings: OpenViking Memory" }),
-  );
-  return view.container;
+/**
+ * The body the row seat mounts: the page draws the card and expands it, so the
+ * render is the open state and there is no toggle of ours to click.
+ */
+function renderBody(settingsForm: unknown, pageForm?: unknown): HTMLElement {
+  return render(<Card settingsForm={settingsForm} form={pageForm} />).container;
 }
 
 function labeledInput(label: string, testId: string): HTMLInputElement {
@@ -141,75 +142,67 @@ function labeledInput(label: string, testId: string): HTMLInputElement {
 
 afterEach(cleanup);
 
-describe("shell contract", () => {
-  it("renders the canonical card shell with the SVG chevron", () => {
+describe("the chrome belongs to the Plugins page", () => {
+  it("renders the body with no shell, header, badge or chevron of ours", () => {
     const { form } = makeForm();
-    const container = openCard(form);
+    const container = renderBody(form);
 
-    const card = container.querySelector("li.dsh-plugin-card");
-    expect(card).not.toBeNull();
-    expect(card?.className).toBe("dsh-plugin-card dsh-plugin-card--open");
+    // The row's card is the page's: the surface, the heading and the expand
+    // control are drawn above this body, so a shell here would be a second frame
+    // inside the first (AGENTS.md, the owner's word of 01.10 in #646).
+    expect(container.querySelector("[class*='dsh-plugin-card']")).toBeNull();
+    expect(container.querySelector("ul")).toBeNull();
+    expect(container.querySelector(".ovm-body")).not.toBeNull();
+    expect(
+      screen.queryByRole("button", {
+        name: /Show settings: OpenViking Memory|Hide settings/u,
+      }),
+    ).toBeNull();
 
-    const header = container.querySelector<HTMLButtonElement>(
-      "button.dsh-plugin-card__header",
-    );
-    expect(header).not.toBeNull();
-    expect(header?.getAttribute("aria-expanded")).toBe("true");
-    expect(header?.getAttribute("aria-label")).toBe(
-      "Hide settings: OpenViking Memory",
-    );
-
-    const chevron = container.querySelector<SVGPathElement>(
-      "svg.dsh-plugin-card__chevron path",
-    );
-    expect(chevron?.getAttribute("d")).toBe("m3.5 5.25 3.5 3.5 3.5-3.5");
-
-    // The badge projects the master switch, not live state.
-    expect(screen.getByTestId("openviking-card-badge").textContent).toBe(
-      "Auto-inject",
-    );
+    // Nothing folds the body away, so the first section is mounted on render —
+    // and the master switch reads there, not from a header badge.
+    expect(screen.getByTestId("openviking-card-presentation")).toBeTruthy();
+    expect(
+      labeledInput("autoInject", "openviking-card-presentation-auto-inject")
+        .checked,
+    ).toBe(true);
   });
 
-  it("renders no body while collapsed and none at all when unavailable", () => {
-    const { form } = makeForm();
-    const closed = render(<Card settingsForm={form} />);
-    expect(closed.container.querySelector(".dsh-plugin-card__body")).toBeNull();
+  it("explains rather than vanishes when the settings namespace is unavailable", () => {
+    const { form } = makeForm({ status: "unavailable", value: undefined });
+    const container = renderBody(form);
+    // A card that owns its shell can stay invisible; inside the page's frame an
+    // empty return leaves an opened row with no section and no reason.
+    expect(container.querySelector(".ovm-body")).not.toBeNull();
     expect(
-      screen.getByRole("button", { name: "Show settings: OpenViking Memory" }),
-    ).not.toBeNull();
-    cleanup();
-
-    const gone = render(
-      <Card
-        settingsForm={
-          makeForm({ status: "unavailable", value: undefined }).form
-        }
-      />,
-    );
-    expect(gone.container.querySelector("li.dsh-plugin-card")).toBeNull();
+      screen.getByTestId("openviking-card-unavailable").textContent,
+    ).toMatch(/not available in this session/u);
+    expect(screen.queryByTestId("openviking-card-presentation")).toBeNull();
   });
 
   it("shows the loading text before the first accepted section", () => {
     const { form } = makeForm({ status: "loading", value: undefined });
-    openCard(form);
+    renderBody(form);
     expect(screen.getByTestId("openviking-card-loading").textContent).toMatch(
       /Loading the OpenViking Memory configuration/u,
     );
   });
 
-  it("projects the manual-recall badge when auto-inject is off", () => {
+  it("reads an explicit autoInject off as off", () => {
+    // The header badge used to project this; the switch is the only surface now.
     const { form } = makeForm({ value: { ...CONFIG, autoInject: false } });
-    openCard(form);
-    expect(screen.getByTestId("openviking-card-badge").textContent).toBe(
-      "Manual recall",
-    );
+    renderBody(form);
+    expect(
+      labeledInput("autoInject", "openviking-card-presentation-auto-inject")
+        .checked,
+    ).toBe(false);
   });
 });
 
 describe("controls and writes", () => {
   it("renders configured values and placeholders", () => {
     const { form } = makeForm();
-    openCard(form);
+    renderBody(form);
 
     expect(
       labeledInput("endpoint", "openviking-card-connection-endpoint").value,
@@ -232,7 +225,7 @@ describe("controls and writes", () => {
 
   it("disables every control while the namespace is read-only", () => {
     const { form } = makeForm({ writable: false });
-    openCard(form);
+    renderBody(form);
 
     for (const input of document.querySelectorAll("input")) {
       expect(input.disabled).toBe(true);
@@ -247,7 +240,7 @@ describe("controls and writes", () => {
 
   it("writes a toggle flip immediately", async () => {
     const { form } = makeForm();
-    openCard(form);
+    renderBody(form);
 
     fireEvent.click(
       labeledInput("autoInject", "openviking-card-presentation-auto-inject"),
@@ -259,7 +252,7 @@ describe("controls and writes", () => {
 
   it("switches per-account memory scoping from the card", async () => {
     const { form } = makeForm({ value: { ...CONFIG, qaUserScoping: false } });
-    openCard(form);
+    renderBody(form);
 
     const toggle = labeledInput(
       "qaUserScoping",
@@ -277,7 +270,7 @@ describe("controls and writes", () => {
     // `qaUserScoping` defaults to on, and the card must not read an unset value
     // as "off" — that would show the switch flipped the wrong way round.
     const { form } = makeForm();
-    openCard(form);
+    renderBody(form);
     expect(
       labeledInput("qaUserScoping", "openviking-card-multi-user-scoping")
         .checked,
@@ -286,7 +279,7 @@ describe("controls and writes", () => {
 
   it("commits a text draft on blur and clears an emptied one", async () => {
     const { form } = makeForm();
-    openCard(form);
+    renderBody(form);
 
     const endpoint = labeledInput(
       "endpoint",
@@ -309,7 +302,7 @@ describe("controls and writes", () => {
 
   it("commits a number on blur, clears when emptied, rejects out of range", async () => {
     const { form } = makeForm();
-    openCard(form);
+    renderBody(form);
 
     const budget = labeledInput(
       "recallTokenBudget",
@@ -343,7 +336,7 @@ describe("controls and writes", () => {
 
   it("selects an enum value and clears back to inherit", async () => {
     const { form } = makeForm();
-    openCard(form);
+    renderBody(form);
 
     const peerScope = screen.getByTestId("openviking-card-recall-peer-scope");
     expect(screen.getByLabelText("recallPeerScope")).toBe(peerScope);
@@ -365,7 +358,7 @@ describe("controls and writes", () => {
 
   it("commits the filter list line by line and clears when empty", async () => {
     const { form } = makeForm();
-    openCard(form);
+    renderBody(form);
 
     const area = screen.getByTestId("openviking-card-capture-filters");
     expect(screen.getByLabelText("captureFilters")).toBe(area);
@@ -391,7 +384,7 @@ describe("overrides", () => {
     const { form } = makeForm({
       user: { apiKey: "secret-token", syncTurns: true },
     });
-    openCard(form);
+    renderBody(form);
 
     expect(screen.getAllByTestId(/-override$/u)).toHaveLength(2);
     expect(
@@ -415,7 +408,7 @@ describe("overrides", () => {
 
   it("offers no reset when nothing is overridden", () => {
     const { form } = makeForm();
-    openCard(form);
+    renderBody(form);
     expect(screen.queryByTestId("openviking-card-reset-all")).toBeNull();
     expect(screen.queryByRole("button", { name: /Reset/u })).toBeNull();
   });
@@ -424,7 +417,7 @@ describe("overrides", () => {
     const { form } = makeForm({}, () =>
       Promise.reject(new Error("revision conflict")),
     );
-    openCard(form);
+    renderBody(form);
 
     fireEvent.click(
       labeledInput("autoInject", "openviking-card-presentation-auto-inject"),
@@ -441,7 +434,7 @@ describe("whose form the card writes through", () => {
   it("takes the page's `mutate` for every write while the seat supplies a form", async () => {
     const { form } = makeForm();
     const page = makePageForm();
-    openCard(form, page);
+    renderBody(form, page);
 
     fireEvent.click(
       labeledInput("autoInject", "openviking-card-presentation-auto-inject"),
@@ -472,7 +465,7 @@ describe("whose form the card writes through", () => {
       user: { apiKey: "secret-token", syncTurns: true },
     });
     const page = makePageForm();
-    openCard(form, page);
+    renderBody(form, page);
 
     fireEvent.click(screen.getByTestId("openviking-card-reset-all"));
     await waitFor(() => {
@@ -491,15 +484,12 @@ describe("whose form the card writes through", () => {
       <Entry view="page" settingsForm={form} form={undefined} />,
     );
     fireEvent.click(
-      screen.getByRole("button", { name: "Show settings: OpenViking Memory" }),
-    );
-    fireEvent.click(
       labeledInput("autoInject", "openviking-card-presentation-auto-inject"),
     );
     await waitFor(() => {
       expect(form.mutate).toHaveBeenCalledWith(setOp("autoInject", false));
     });
-    expect(view.container.querySelector("li.dsh-plugin-card")).not.toBeNull();
+    expect(view.container.querySelector(".ovm-body")).not.toBeNull();
   });
 
   it("surfaces a refusal the page's form answers with as an error line", async () => {
@@ -508,7 +498,7 @@ describe("whose form the card writes through", () => {
     page.mutate.mockImplementationOnce(() =>
       Promise.reject(new Error("the Host refused that write")),
     );
-    openCard(form, page);
+    renderBody(form, page);
 
     fireEvent.click(
       labeledInput("autoInject", "openviking-card-presentation-auto-inject"),
@@ -530,17 +520,19 @@ describe("the row entry the Plugins page renders", () => {
 
     // The page puts this inside its own `<p>`, so it has to stay text.
     expect(view.container.textContent).toBe(OPENVIKING_MEMORY_ROW_SUMMARY);
-    expect(view.container.querySelector("li.dsh-plugin-card")).toBeNull();
+    expect(view.container.querySelector(".ovm-body")).toBeNull();
   });
 
-  it("renders the card shell inside its own list for the page view", () => {
+  it("mounts the body directly for the page view, with no list of ours", () => {
     const { form } = makeForm();
     const view = render(
       <Entry view="page" settingsForm={form} form={makePageForm()} />,
     );
 
-    const card = view.container.querySelector("li.dsh-plugin-card");
-    expect(card?.parentElement?.tagName).toBe("UL");
+    // The configuration section this entry is seated in is the page's own; the
+    // body arrives as it is, without a `<ul>` or an `<li>` of ours around it.
+    expect(view.container.firstElementChild?.className).toBe("ovm-body");
+    expect(view.container.querySelector("ul")).toBeNull();
   });
 
   it("keeps the face's form while the seat spreads its own `form` over it", () => {
@@ -550,11 +542,8 @@ describe("the row entry the Plugins page renders", () => {
     const { form } = makeForm();
     const page = makePageForm();
     const view = render(<Entry view="page" settingsForm={form} form={page} />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Show settings: OpenViking Memory" }),
-    );
 
-    expect(view.container.querySelector("li.dsh-plugin-card")).not.toBeNull();
+    expect(view.container.querySelector(".ovm-body")).not.toBeNull();
     expect(
       labeledInput("endpoint", "openviking-card-connection-endpoint").value,
     ).toBe("http://127.0.0.1:1933");
