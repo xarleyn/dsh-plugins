@@ -9,7 +9,6 @@ import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { ChangeEvent, ReactNode } from "react";
-import { CardShell, PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
 import {
   SleevSettingsController,
   type SleevSettings,
@@ -28,10 +27,7 @@ const LOCALE_NAMESPACE = "dsh-sleev";
 const SETTINGS_NAMESPACE = SLEEV_SETTINGS_NAMESPACE_ID;
 
 type SleevLocaleKey =
-  | "title"
   | "description"
-  | "expand"
-  | "collapse"
   | "unsaved"
   | "overridden"
   | "reset"
@@ -61,10 +57,7 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
 }
 
 const en: Record<SleevLocaleKey, string> = {
-  title: "Sleev",
   description: "Observed routes and telemetry retention.",
-  expand: "Show settings",
-  collapse: "Hide settings",
   unsaved: "Unsaved",
   overridden: "Overridden",
   reset: "Reset to default",
@@ -90,10 +83,7 @@ const en: Record<SleevLocaleKey, string> = {
 };
 
 const zh: Record<SleevLocaleKey, string> = {
-  title: "Sleev",
   description: "观测路由和遥测保留设置。",
-  expand: "展开设置",
-  collapse: "收起设置",
   unsaved: "未保存",
   overridden: "已覆盖",
   reset: "恢复默认值",
@@ -117,12 +107,17 @@ const zh: Record<SleevLocaleKey, string> = {
   saving: "保存中…",
 };
 
-const CARD_STYLES = `${PLUGIN_CARD_SHELL_CSS}
-.dsh-sleev-config{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
-.dsh-sleev-no-settings{padding:12px 0;list-style:none}
-.dsh-sleev-no-settings p{margin:0;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
-.dsh-sleev-button:focus-visible,.dsh-sleev-reset:focus-visible,.dsh-sleev-input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
-.dsh-sleev-read-only{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
+/*
+ * Body rules only. The Plugins panel page draws this card's frame, its heading
+ * and its expand control, so the bundle ships no shell of its own (AGENTS.md);
+ * the ring on every control the package renders is the Host's token pair, each
+ * half with a fallback, because a hard-coded outline loses to `focus.css` and an
+ * undeclared token would drop the whole `outline` shorthand.
+ */
+const CARD_STYLES = `.dsh-sleev-config{display:flex;flex-direction:column;gap:12px}
+.dsh-sleev-no-settings{margin:0;padding:12px 0;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
+.dsh-sleev-button:focus-visible,.dsh-sleev-reset:focus-visible,.dsh-sleev-input:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}
+.dsh-sleev-read-only{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .dsh-sleev-pill{border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px;font-weight:500;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);white-space:nowrap}
 .dsh-sleev-field{display:flex;flex-direction:column;gap:6px;padding:12px 0}
 .dsh-sleev-field+.dsh-sleev-field{border-top:1px solid var(--dsw-alias-border-l2)}
@@ -133,7 +128,7 @@ const CARD_STYLES = `${PLUGIN_CARD_SHELL_CSS}
 .dsh-sleev-reset:disabled{opacity:.4;cursor:default}
 .dsh-sleev-input{box-sizing:border-box;width:100%;min-height:34px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);font:inherit;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-primary)}
 textarea.dsh-sleev-input{height:64px;min-height:48px;padding:8px 12px;resize:vertical}
-.dsh-sleev-input:focus{border-color:var(--dsw-alias-border-brand);outline:none}
+.dsh-sleev-input:focus{border-color:var(--dsw-alias-border-brand)}
 .dsh-sleev-input:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}
 .dsh-sleev-input[aria-invalid=true]{border-color:var(--dsw-alias-border-error)}
 .dsh-sleev-hint,.dsh-sleev-error{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
@@ -195,7 +190,7 @@ function SettingsField(props: {
   );
 }
 
-/** Settings card for the Sleev bundle row of the Host Plugins page. */
+/** Body of the Sleev bundle row's configuration page on the Host Plugins panel. */
 export function SleevSettingsCard(props: SleevSettingsCardProps) {
   // The seat hands its registrant a `form` owner prop of its own — the page's
   // `ConfigPageForm`, only `{ state, mutate }`, which can be neither subscribed
@@ -204,17 +199,20 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
   const state = props.useSleevSettings((snapshot) => snapshot);
   if (!state.available) {
     /*
-     * Not a card: the contract says to render none while the namespace does not
-     * answer. Silence was affordable on the Settings tab, which simply stayed
-     * shut; the row's Configure control is drawn from the inventory, so an
-     * empty page is what the visitor of this seat would have gotten.
+     * No form to edit: the contract says a card seated on the row renders none
+     * while the namespace does not answer. Silence was affordable on the Settings
+     * tab, which simply stayed shut; the row's Configure control is drawn from the
+     * inventory, so the visitor of this seat gets one stated line instead of an
+     * empty section.
      */
     return (
-      <li className="dsh-sleev-no-settings">
-        <p role="status" data-testid="sleev-no-settings">
-          {props.t("noSettings")}
-        </p>
-      </li>
+      <p
+        className="dsh-sleev-no-settings"
+        role="status"
+        data-testid="sleev-no-settings"
+      >
+        {props.t("noSettings")}
+      </p>
     );
   }
   const blocked =
@@ -236,16 +234,11 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
   });
 
   return (
-    <CardShell
-      title={props.t("title")}
-      description={props.t("description")}
-      label={(open) => `${props.t(open ? "collapse" : "expand")}: Sleev`}
-      badge={
-        state.dirty ? (
-          <span className="dsh-plugin-card__badge">{props.t("unsaved")}</span>
-        ) : undefined
-      }
-    >
+    // The page draws the frame, the heading and the expand control around what
+    // this returns, so the body is mounted straight away and carries no shell,
+    // no badge of the header's, and no chevron of ours (AGENTS.md). The unsaved
+    // marker the old header held moves into the footer beside the write controls.
+    <div className="dsh-sleev-config" data-testid="sleev-row-config">
       {!state.writable ? (
         <p
           className="dsh-sleev-read-only"
@@ -343,6 +336,11 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
             {props.t("saveFailed")}
           </p>
         ) : null}
+        {state.dirty ? (
+          <span className="dsh-sleev-pill" data-testid="sleev-unsaved">
+            {props.t("unsaved")}
+          </span>
+        ) : null}
         <button
           type="button"
           className="dsh-sleev-button dsh-sleev-discard"
@@ -362,7 +360,7 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
           {props.t(state.saving ? "saving" : "save")}
         </button>
       </div>
-    </CardShell>
+    </div>
   );
 }
 
@@ -377,20 +375,18 @@ export const inject = ["slots", "configForms", "locale"];
  * (`{ state, mutate }`). Because this bundle's `cordis.patch.yml` gives the row
  * no description, the contract's fallback — an absent description falls back to
  * the entry's `view: 'summary'` — is the path this row actually takes: `summary`
- * is answered with the one-liner and never with the form, and `page` is the card,
- * which sits as an `<li>` in the plugin-owned `<ul>` the card contract assumes,
- * or as the line saying the namespace has not been served. The card resolves the
- * full `ConfigForm` for the `dsh-sleev` namespace through its injected face rather
+ * answers with the one-liner that lands in the page's own description paragraph,
+ * so a card there would draw a page within a line, and `page` is the form body.
+ * The body carries no frame of its own: the row-detail page draws the surface,
+ * the row title and the expand control before it is mounted, and a shell here
+ * would be a second card inside the Host's. The card resolves the full
+ * `ConfigForm` for the `dsh-sleev` namespace through its injected face rather
  * than through the seat's shallow `form`, which is what keeps values stored before
  * the move readable after it.
  */
 export function SleevRowConfig(props: SleevSettingsCardProps): ReactNode {
   if (props.view === "summary") return props.t("description");
-  return (
-    <ul className="dsh-sleev-config" data-testid="sleev-row-config">
-      <SleevSettingsCard {...props} />
-    </ul>
-  );
+  return <SleevSettingsCard {...props} />;
 }
 
 /** Register Sleev's localized settings card as its bundle row's configuration page. */

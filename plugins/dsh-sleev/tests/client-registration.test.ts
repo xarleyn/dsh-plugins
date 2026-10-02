@@ -143,16 +143,11 @@ describe("client registration", () => {
     expect(SleevRowConfig(props)).toBe("t:description");
     expect(t).toHaveBeenCalledWith("description");
 
-    const page = SleevRowConfig({ ...props, view: "page" }) as ReactElement<{
-      "data-testid": string;
-      className: string;
-      children: ReactElement;
-    }>;
-    expect(page.props["data-testid"]).toBe("sleev-row-config");
-    // The class the card's own styles key off: a rename here would leave the
-    // plugin-owned list, which the shell contract requires, unstyled and unfixed.
-    expect(page.props.className).toBe("dsh-sleev-config");
-    expect(page.props.children.type).toBe(SleevSettingsCard);
+    // The page view is the body and nothing around it: the row's detail page
+    // draws the frame, the heading and the expand control, so the entry hands
+    // over the card element rather than a list or a shell of our own.
+    const page = SleevRowConfig({ ...props, view: "page" }) as ReactElement;
+    expect(page.type).toBe(SleevSettingsCard);
   });
 
   it("says so when the row's namespace has not been served", () => {
@@ -161,7 +156,7 @@ describe("client registration", () => {
      * does not answer simply left the tab shut; here the row's Configure control
      * comes from the inventory, so the same `status !== "ready"` snapshot used to
      * open an empty section. The card contract still forbids a card while the
-     * namespace is not ready, so this is a stated line, not the shell.
+     * namespace is not ready, so this is one stated sentence, not a frame.
      */
     const notReady = {
       available: false,
@@ -179,19 +174,18 @@ describe("client registration", () => {
 
     const notice = SleevSettingsCard(props) as ReactElement<{
       className: string;
-      children: ReactElement<{
-        role: string;
-        "data-testid": string;
-        children: string;
-      }>;
+      role: string;
+      "data-testid": string;
+      children: string;
     }>;
 
+    expect(notice.type).toBe("p");
     expect(notice.props.className).toBe("dsh-sleev-no-settings");
     expect(notice.props.className).not.toContain("dsh-plugin-card");
-    expect(notice.props.children.props).toMatchObject({
+    expect(notice.props).toMatchObject({
       role: "status",
       "data-testid": "sleev-no-settings",
     });
-    expect(notice.props.children.props.children).toBe("t:noSettings");
+    expect(notice.props.children).toBe("t:noSettings");
   });
 });

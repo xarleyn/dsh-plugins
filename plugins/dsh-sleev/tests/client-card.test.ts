@@ -1,13 +1,12 @@
-// Shallow render tests of the Sleev settings card. The shell the card leans on
-// (its `dsh-plugin-card` classes, the chevron, `aria-expanded`) is the CardShell
-// component's contract and is pinned statically in the built bundle by the
-// package's card-contract gate; what these cover is the Sleev-specific
-// composition around it: that the card draws its four fields from the injected
-// face, ignores the seat's shallow `form` owner prop, and reflects each state
+// Shallow render tests of the Sleev settings body. The card sits on the Plugins
+// panel row, where the page draws the frame, the heading and the expand control,
+// so what these cover is the body the bundle owns: that it mounts without a shell
+// of its own (no `dsh-plugin-card*` class, no header toggle, no chevron), draws
+// its four fields from the injected face, ignores the seat's shallow `form` owner
+// prop, marks staged edits beside the write controls, and reflects each state
 // (read-only, dirty, invalid, failed) the way the contract requires.
 import { isValidElement, type ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { CardShell } from "@yadsh/dsh-plugin-kit/client";
 import {
   SleevRowConfig,
   SleevSettingsCard,
@@ -45,7 +44,9 @@ function field(
   return { text, overridden: false, invalid: false, ...over };
 }
 
-function cardState(over: Partial<SleevSettingsCardState> = {}): SleevSettingsCardState {
+function cardState(
+  over: Partial<SleevSettingsCardState> = {},
+): SleevSettingsCardState {
   return {
     available: true,
     writable: true,
@@ -62,10 +63,12 @@ function cardState(over: Partial<SleevSettingsCardState> = {}): SleevSettingsCar
 }
 
 /** The props the seat hands the card: runtime + locale + the injected face. */
-function cardProps(over: {
-  readonly state?: SleevSettingsCardState;
-  readonly form?: unknown;
-} = {}) {
+function cardProps(
+  over: {
+    readonly state?: SleevSettingsCardState;
+    readonly form?: unknown;
+  } = {},
+) {
   const state = over.state ?? cardState();
   return {
     view: "page",
@@ -112,12 +115,32 @@ function button(card: ReactElement, testId: string): ReactElement {
   return node as ReactElement;
 }
 
+/** Every element the body renders, including the nested ones it draws itself. */
+function elementsOf(node: ReactElement): ReactElement[] {
+  return [node, ...childrenOf(node).flatMap(elementsOf)];
+}
+
+function classesOf(node: ReactElement): string[] {
+  return elementsOf(node)
+    .map((element) => element.props.className)
+    .filter((name): name is string => typeof name === "string");
+}
+
 describe("Sleev settings card render", () => {
-  it("mounts the canonical shell with the four Sleev fields", () => {
+  it("mounts the panel body with the four Sleev fields and no shell of ours", () => {
+    // The row's detail page draws the card surface, the heading and the expand
+    // control, so the body is a plain container with no frame, no header toggle
+    // and none of the shell classes a card that owns its chrome carries.
     const card = render();
-    expect(card.type).toBe(CardShell);
-    expect(card.props.title).toBe("t:title");
-    expect(card.props.description).toBe("t:description");
+    expect(card.type).toBe("div");
+    expect(card.props["data-testid"]).toBe("sleev-row-config");
+    expect(card.props.className).toBe("dsh-sleev-config");
+    expect(
+      classesOf(card).filter((name) => name.includes("dsh-plugin-card")),
+    ).toEqual([]);
+    expect(
+      elementsOf(card).filter((element) => "aria-expanded" in element.props),
+    ).toEqual([]);
     const testIds = childrenOf(card)
       .map((child) => child.props.testId)
       .filter((id): id is string => typeof id === "string")
@@ -138,11 +161,12 @@ describe("Sleev settings card render", () => {
 
   it("draws each control's value from the state the injected face projects", () => {
     const card = render();
-    expect(fieldNode(card, "sleev-routes-field").props.children.props.value).toBe(
-      "sleev-a",
-    );
     expect(
-      fieldNode(card, "sleev-max-recent-calls-field").props.children.props.value,
+      fieldNode(card, "sleev-routes-field").props.children.props.value,
+    ).toBe("sleev-a");
+    expect(
+      fieldNode(card, "sleev-max-recent-calls-field").props.children.props
+        .value,
     ).toBe("100");
     expect(
       fieldNode(card, "sleev-log-level-field").props.children.props.value,
@@ -165,9 +189,9 @@ describe("Sleev settings card render", () => {
       state: cardState({ routes: field("FACE-ROUTE") }),
       form: decoyForm,
     });
-    expect(fieldNode(card, "sleev-routes-field").props.children.props.value).toBe(
-      "FACE-ROUTE",
-    );
+    expect(
+      fieldNode(card, "sleev-routes-field").props.children.props.value,
+    ).toBe("FACE-ROUTE");
     expect(decoyForm.mutate).not.toHaveBeenCalled();
   });
 
@@ -200,18 +224,25 @@ describe("Sleev settings card render", () => {
         .props.disabled,
     ).toBe(true);
     expect(
-      button(render({ state: { ...staged, saving: true } }), "sleev-save")
-        .props.children,
+      button(render({ state: { ...staged, saving: true } }), "sleev-save").props
+        .children,
     ).toBe("t:saving");
   });
 
-  it("marks the card unsaved only while edits are staged", () => {
-    const badge = render({ state: cardState({ dirty: true }) }).props.badge as
-      | ReactElement
-      | undefined;
-    expect(badge?.props.className).toBe("dsh-plugin-card__badge");
-    expect(badge?.props.children).toBe("t:unsaved");
-    expect(render().props.badge).toBeUndefined();
+  it("marks staged edits beside the write controls, where the body can draw them", () => {
+    // The old header held the unsaved badge; the page draws this row's heading,
+    // so the marker moved into the footer next to the buttons it describes.
+    const staged = render({ state: cardState({ dirty: true }) });
+    const pill = childrenOf(footer(staged)).find(
+      (child) => child.props["data-testid"] === "sleev-unsaved",
+    );
+    expect(pill?.props.className).toBe("dsh-sleev-pill");
+    expect(pill?.props.children).toBe("t:unsaved");
+    expect(
+      childrenOf(footer(render())).find(
+        (child) => child.props["data-testid"] === "sleev-unsaved",
+      ),
+    ).toBeUndefined();
   });
 
   it("plumbs an invalid field and reports a failed save in the footer", () => {
