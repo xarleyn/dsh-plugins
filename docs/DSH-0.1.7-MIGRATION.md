@@ -1385,18 +1385,22 @@ What option 1 means in this repository now:
 - Cards seated in `settings.section` and `settings.plugins.tab` still own their whole
   card; those seats keep the canonical shell.
 
-Scope as of 01.10: one of the thirteen series packages is seated on the row today
-(`dsh-model-safety-gate`, #653), so the contract landed with that one migrated and the
-other twelve — still on `settings.plugins.tab` — are named in the epic (#646) as the
-second step, each on its own card.
+Scope, and how to read it: the contract landed while one of the thirteen series packages
+was seated on the row (`dsh-model-safety-gate`, #653); the other twelve moved onto the row
+under their own cards, tracked in the epic (#646). **Which packages sit on the row today is
+the epic's list, not this paragraph's** — a migrating card must not append itself here. The
+first lane that did made the sentence above false on its own line, and twelve edits to one
+paragraph is twelve merge conflicts over a fact the tracker already keeps.
 
-**Fact that survives either branch:** `scripts/verify-package-hygiene.mjs:49,816-835`
+**Fact that had to survive the decision:** `scripts/verify-package-hygiene.mjs:49,816-835`
 keyed the *entire* card-contract enforcement off a source file containing the literal
 `settings.plugin.item`; once plugins register `plugins.row.config`, that gate stops
 firing and the shell contract becomes unenforced unless the constant is retargeted.
 **[verified]** line 49 and the block at 816-835. **Retargeted by #510:** the gate now
 fires on `settings.plugin.item`, `plugins.row.config`, and `settings.plugins.tab`
-combined with the shell, so enforcement survives whichever way D1 goes.
+combined with the shell, so enforcement held whichever way D1 went. #684 renamed the list
+to what it decides (`CARD_SEAT_SLOTS`) and added `plugins.bundle.config`, the other seat
+whose contract forbids our shell.
 
 **D2 — preset authoring (`dsh-preset-persona-editor`) — newly open.** §8.6:
 the copy-to-writable-root capability does not exist at `rc.2`, and neither does
