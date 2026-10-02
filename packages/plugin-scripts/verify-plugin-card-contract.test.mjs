@@ -366,6 +366,48 @@ test("requires a ring only of the seat that renders controls", () => {
   }, /second frame/u);
 });
 
+/*
+ * The ring follows the seat, not the form the seat reached the bundle in. An earlier
+ * revision set `ringOwed` only where a `name:` carried a literal or a constant, so the
+ * very same bundle seat registered positionally fell into the quote path and was told to
+ * put a ring on controls it does not render.
+ */
+const HOST_RING_RULE = `.demo-body button:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))}`;
+const PANEL_SEAT_FORMS = [
+  { seat: "plugins.row.config", key: "@yadsh/demo#demo", owesRing: true },
+  { seat: "plugins.bundle.config", key: "@yadsh/demo", owesRing: false },
+];
+
+test("owes the ring to the seat in both registration forms", () => {
+  const body = `const Card = () => jsx("section", { className: "demo-body" });`;
+  for (const { seat, key, owesRing } of PANEL_SEAT_FORMS) {
+    for (const registration of [
+      `slots.register({ name: "${seat}", key: "${key}" }, Card);`,
+      `slots.inject("${seat}", (host) => new Card(host));`,
+    ]) {
+      const bundle = `${registration}\n${body}`;
+      // Without a focus rule the row is refused and the bundle seat is accepted, whichever
+      // of the two forms carried the seat.
+      if (owesRing) {
+        assert.throws(
+          () => verifyPluginCardContract(bundle),
+          /at least one of its own controls/u,
+          `${seat} owes the ring however it is registered`,
+        );
+      } else {
+        assert.doesNotThrow(
+          () => verifyPluginCardContract(bundle),
+          `${seat} must not be asked for a ring it does not owe`,
+        );
+      }
+      assert.doesNotThrow(
+        () => verifyPluginCardContract(`${bundle}\n${HOST_RING_RULE}`),
+        `a ring on a control must satisfy ${seat} in either form`,
+      );
+    }
+  }
+});
+
 test("reads a positional registration as the seat it names", () => {
   // `slots.inject("plugins.row.config", Comp)` carries no `name:` property at all. Before
   // the quoted seat was read bundle-wide, this bundle fell through to "what does it
