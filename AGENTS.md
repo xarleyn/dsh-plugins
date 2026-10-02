@@ -208,3 +208,8 @@
   marker classes: ticket keys `[A-Z]{3,10}-[0-9]+`, corporate hosts,
   RFC1918 addresses with real ports, person names and logins.
 - Exempt: `qa-deploy/`, `qa-deploy-docker/`, `.portable/` kits.
+- The audit method behind these rules — what counts as a leak, which surfaces a sweep
+  covers, how the marker dictionary and the allowlist interact, and what to do after
+  something shipped — is written up in `.agents/skills/leak-guard/SKILL.md`. The report
+  of an actual sweep stays out of the public tree: the method is reproducible, the
+  findings are not a public artifact.
