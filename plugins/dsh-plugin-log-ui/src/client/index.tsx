@@ -15,7 +15,6 @@ import type {
 } from "@deepseek-ai/dsh-typert-protocol";
 import pluginLogUiRemote from "@yadsh/dsh-plugin-log-ui/remote";
 import {
-  CardShell,
   bindSettingsExternalStore,
   injectCardStyles,
   startVisibilityAwarePolling,
@@ -56,13 +55,6 @@ const ROW_CONFIG_KEY = `@yadsh/dsh-plugin-log-ui#${SETTINGS_ENTRY_ID}`;
  */
 const ROW_SUMMARY =
   "DSH settings UI for shared plugin logging levels and file format";
-/**
- * The card header's own line, deliberately not {@link ROW_SUMMARY}: the page above
- * this card already shows the row's one-liner, and a card that repeats it puts one
- * sentence on the screen twice.
- */
-const CARD_SUMMARY =
-  "Default level, file format, and a per-plugin override, applied live.";
 const REFRESH_INTERVAL_MS = 2_000;
 const LEVELS: readonly ManagedPluginLogLevel[] = [
   "trace",
@@ -161,8 +153,11 @@ function PluginLogSettingsCard({ settingsForm, inspect }: CardProps) {
   }, [inspect]);
 
   useEffect(() => {
+    // While the namespace answers `unavailable` the body renders the reason and no
+    // registry data, so the poll would be timer work whose result nothing reads.
+    if (settings.status === "unavailable") return undefined;
     return startVisibilityAwarePolling(refresh, REFRESH_INTERVAL_MS);
-  }, [refresh]);
+  }, [refresh, settings.status]);
 
   const write = useCallback(
     async (field: keyof PluginLogUiConfig, value: unknown) => {
@@ -194,20 +189,28 @@ function PluginLogSettingsCard({ settingsForm, inspect }: CardProps) {
     [levels, write],
   );
 
-  if (settings.status === "unavailable") return null;
+  /*
+   * The frame of this surface is the page's, so an unavailable namespace still
+   * owes a sentence: rendering nothing would leave the reader inside an opened row
+   * with no section and no reason. Only a card that draws its own shell can stay
+   * invisible while it has nothing to edit.
+   */
+  if (settings.status === "unavailable") {
+    return (
+      <div className="plu-body" data-testid="log-card-section">
+        <p className="plu-status" data-testid="log-card-unavailable">
+          Plugin logging settings are not reachable over this connection, so
+          nothing here can be read or changed yet. The running loggers keep the
+          last values the Host accepted.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <CardShell
-      title="Plugin logging"
-      description={CARD_SUMMARY}
-      badge={
-        <span className="dsh-plugin-card__badge">
-          {snapshot.consumers.length} active
-        </span>
-      }
-      label={(open) => `${open ? "Hide" : "Show"} settings: Plugin logging`}
-      bodyClassName="plu-body"
-    >
+    // The Plugins page draws this card's frame, its heading and its expand
+    // control, so the bundle renders the body and nothing around it (AGENTS.md).
+    <div className="plu-body" data-testid="log-card-section">
       {error !== null ? (
         <p className="plu-error" role="status" data-testid="log-card-error">
           {error}
@@ -266,7 +269,12 @@ function PluginLogSettingsCard({ settingsForm, inspect }: CardProps) {
       </section>
 
       <section className="plu-section">
-        <h3>Registered plugins</h3>
+        <h3>
+          Registered plugins
+          <span className="plu-count" data-testid="log-card-active-count">
+            {snapshot.consumers.length} active
+          </span>
+        </h3>
         {snapshot.consumers.length === 0 ? (
           <p className="plu-empty" data-testid="log-card-empty">
             No active plugin logger consumers yet.
@@ -304,7 +312,7 @@ function PluginLogSettingsCard({ settingsForm, inspect }: CardProps) {
           </div>
         )}
       </section>
-    </CardShell>
+    </div>
   );
 }
 
@@ -313,40 +321,34 @@ export const inject = ["slots", "configForms", "remote", "sidebarRightTabs"];
 /**
  * The entry the Plugins page renders for this bundle's row.
  *
- * The shell's root is an `<li>`, and the page's configuration section supplies no
- * list of its own, so the card is mounted inside a plugin-owned `<ul>` — AGENTS.md
- * keeps the `ul > li` pair that the shell's own styling is written against.
+ * The page owns the chrome on this surface: it draws the card surface, the row
+ * title, the row id and the description line, and only then mounts this entry under
+ * the section it calls configuration. So the bundle returns the settings body and
+ * nothing around it — the shell this card used to draw, with its own header, badge
+ * and chevron, would put a second frame and a second heading inside the Host's one.
+ * That is decision D1 of §10 of `docs/DSH-0.1.7-MIGRATION.md`, reversed to "as the
+ * host does" on 01.10 and landed through #684.
  *
  * The page calls this one entry in two views, and both call sites are the host's:
- * `RowDetail` writes the row's description into a `<p>` and asks this seat for it
- * under `{ view: 'summary' }` when the row declares none
- * (`PluginManagerPage.tsx:491`), and renders the configuration section under
- * `{ view: 'page', form }` (`:495`) — at the tag `dsh-v0.1.7-rc.2`. The contract
- * agrees: `view` carries exactly those two values (`slot-contract.ts:22`) and the
- * row seat's own docblock promises the missing-description fallback (`:100`).
- * `tests/host-seat-contract.test.ts` reads both sites out of the installed package,
- * so a host that stops asking for the summary fails the suite rather than leaving
- * this branch dead. The summary lands inside the page's `<p>`, so it returns the
- * sentence as text and never a second card.
+ * `RowDetail` writes the row's description into a `<p>` and asks this seat for the
+ * sentence under `{ view: 'summary' }` when the row declares none, and renders the
+ * configuration section under `{ view: 'page', form }`. The contract agrees: `view`
+ * carries exactly those two values, and the row seat's own docblock promises the
+ * missing-description fallback. `tests/host-seat-contract.test.ts` reads both sites
+ * out of the installed `@deepseek-ai/dsh-client-ui-plugin-manager` package rather
+ * than restating them here, so a host that stops asking for the summary fails the
+ * suite instead of leaving this branch dead. The summary lands inside the page's
+ * `<p>`, so it returns the sentence as text and never the body.
  *
- * For this bundle the summary call is not currently reached: that site sits behind
- * the row's own description (`description ?? renderSlot(…)`), which the page takes
- * from the installed manifest's `description` field
- * (`packages/boot/app-boot/src/package-meta.ts:156`) and this package declares it —
- * so the `<p>` is filled before the seat would be asked, and the guard itself is now
- * pinned by that same suite. What the deployed page does render is the `page` call,
- * and it renders this card closed: the owner's `rc.2` pass on #646 saw the header's
- * title, line and live count with no fields until the header was clicked, which
- * `tests/client-card.test.tsx` pins. The summary answer is kept because the seat is
- * entitled to give it, and `ROW_SUMMARY` is kept equal to that manifest field.
+ * For this bundle that call is a fallback rather than the row's normal line: the
+ * site sits behind the row's own description, which the page takes from the
+ * installed manifest's `description` field and this package declares — so the `<p>`
+ * is filled before the seat would be asked, and `ROW_SUMMARY` is kept equal to that
+ * manifest field.
  */
 function PluginLogSettingsEntry(props: CardProps) {
   if (props.view === "summary") return ROW_SUMMARY;
-  return (
-    <ul className="plu-card-list" data-testid="log-card-section">
-      <PluginLogSettingsCard {...props} />
-    </ul>
-  );
+  return <PluginLogSettingsCard {...props} />;
 }
 
 /**

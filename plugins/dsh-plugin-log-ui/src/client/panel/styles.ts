@@ -62,7 +62,10 @@ function chipRules(): string {
  * column at the pane's full height, a header band flush under the strip, and one
  * scroller below it. Type and surfaces come from the shared tokens, so light,
  * dark, and system themes stay coherent; only severity ink is hard-coded, and
- * only through the state tokens.
+ * only through the state tokens. Every control this sheet dresses takes the
+ * Host's `--dsw-focus-ring-*` pair with a fallback on each half, the same ring the
+ * card's controls use — the Host's `focus.css` outranks a hard-coded outline of
+ * ours, so the tokens are the only way the ring survives a mouse click.
  */
 export const PANEL_STYLES = `
 .plu-log{display:flex;flex:1 1 auto;flex-direction:column;height:100%;min-height:0;color:var(--dsw-alias-label-primary);font-size:var(--dsh-content-font-size-secondary,13px)}
@@ -71,17 +74,17 @@ export const PANEL_STYLES = `
 .plu-log-chip{appearance:none;font:inherit;font-size:11px;line-height:17px;padding:1px 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:999px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer}
 .plu-log-chip:hover{border-color:var(--dsw-alias-label-dimmed);color:var(--dsw-alias-label-secondary)}
 .plu-log-chip[data-plu-level-on]{background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary)}
-.plu-log-chip:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:1px}
+.plu-log-chip:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:1px}
 ${chipRules()}
 .plu-log-actions{display:flex;gap:4px;align-items:center}
 .plu-log-action{appearance:none;font:inherit;font-size:12px;padding:3px 8px;border:1px solid transparent;border-radius:6px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer}
 .plu-log-action:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.plu-log-action:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+.plu-log-action:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-2px}
 .plu-log-filters{display:flex;flex:0 0 auto;gap:6px;align-items:center;box-sizing:border-box;padding:6px 12px 8px 16px;border-bottom:0.5px solid var(--dsw-alias-border-l3)}
-.plu-log-search,.plu-log-source{box-sizing:border-box;height:28px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px}
+.plu-log-search,.plu-log-source{box-sizing:border-box;height:28px;padding:0 8px;border:1px solid var(--dsw-alias-border-l2);border-radius:6px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);font:inherit;font-size:12px;outline:none}
 .plu-log-search{flex:1 1 auto;min-width:0}
 .plu-log-source{flex:0 1 auto;max-width:46%;padding:0 4px 0 6px}
-.plu-log-search:focus,.plu-log-source:focus{outline:none;border-color:var(--dsw-alias-border-brand)}
+.plu-log-search:focus-visible,.plu-log-source:focus-visible{border-color:var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .plu-log-count{flex:none;font-size:11px;color:var(--dsw-alias-label-tertiary);white-space:nowrap}
 .plu-log-note{margin:0;padding:6px 12px 0 16px;font-size:12px;color:var(--dsw-alias-label-tertiary)}
 .plu-log-note--drop{color:var(--dsw-alias-state-warn-label)}
