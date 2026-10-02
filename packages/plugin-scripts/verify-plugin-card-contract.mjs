@@ -39,14 +39,16 @@ export const CANONICAL_SHELL_RULES = [
 ];
 
 /*
- * A shell class counts where CSS or JSX would read it: as a selector (`.dsh-plugin-card{`)
- * or as a class value (a string that opens with the token). esbuild carries `src/`
- * comments into `lib/client.js`, so a body that documents what it removed — "no
- * dsh-plugin-card shell here, the page draws the frame" — is prose, not a second frame,
- * and banning the bare word would make the next migrated plugin delete a correct
- * comment to get green.
+ * A shell class counts where CSS or JSX would read it: as a selector that is *used* as
+ * one (`.dsh-plugin-card__header{`), or as a class value (a string opening with the
+ * token). esbuild carries `src/` comments into `lib/client.js`, so a body that documents
+ * what it removed — "the page, not us, draws .dsh-plugin-card__header" — is prose, not a
+ * second frame; requiring the selector to be followed by `{` or `,` keeps the grouped CSS
+ * form and lets the sentence stand. Banning the bare word instead would make the next
+ * migrated plugin delete a correct comment to get green.
  */
-const SHELL_CLASS = /["'`]\s*(?:[\w-]+\s+)*dsh-plugin-card|\.dsh-plugin-card/u;
+const SHELL_CLASS =
+  /["'`]\s*(?:[\w-]+\s+)*dsh-plugin-card|\.dsh-plugin-card[\w-]*(?=\s*[,{])/u;
 const CHEVRON_PATH = /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u;
 
 /*
@@ -70,10 +72,11 @@ function drawsCanonicalShell(client) {
  * the Host's tokens or hands the control over.
  */
 const HOST_RING_TOKEN = "--dsw-focus-ring";
-// A width token that is not declared on the surface makes the whole `outline`
-// shorthand invalid and the ring vanishes — the exact case the tokens were taken
-// for — so every ring declaration needs a fallback width, not only a fallback color.
+// A token that is not declared on the surface makes the whole `outline` shorthand invalid
+// and the ring vanishes — the exact case the tokens were taken for — so *both* halves of
+// the pair need a fallback, not only the width, as `AGENTS.md` prescribes.
 const RING_WIDTH_FALLBACK = /--dsw-focus-ring-width\s*,\s*\S+/u;
+const RING_COLOR_FALLBACK = /--dsw-focus-ring-color\s*,\s*\S+/u;
 const FOCUS_OUTLINE = /:focus(?:-visible)?[^{}]*\{[^}]*outline:\s*([^;}]+)/gu;
 // At least one rule must actually put the Host's ring on a control — as an outline, or
 // as the inset shadow the Host itself uses where an outline would shift layout. A gate
@@ -97,18 +100,21 @@ const RING_APPLIED = /:focus(?:-visible)?[^{}]*\{[^}]*--dsw-focus-ring[^;}]*/u;
  */
 const SEAT_TOKENS =
   /(?:plugins\.row|plugins\.bundle)\.config|settings\.(?:section|plugins\.tab)/u;
+// The alternation is grouped on purpose: ungrouped, `["']a|b["']` reads as
+// `(["']a) | (b["'])`, which lets a seat string anywhere in the bundle count as a
+// registration and stops requiring the quote that opens it.
 const NAME_LITERAL = new RegExp(
-  `\\bname:\\s*["'](${SEAT_TOKENS.source})["']`,
+  `\\bname:\\s*["']((?:${SEAT_TOKENS.source}))["']`,
   "gu",
 );
 const NAME_IDENTIFIER = /\bname:\s*([A-Za-z_$][\w$]*)/gu;
 const SEAT_BINDING = new RegExp(
-  `\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*["'](${SEAT_TOKENS.source})["']`,
+  `\\b(?:const|let|var)\\s+([A-Za-z_$][\\w$]*)\\s*=\\s*["']((?:${SEAT_TOKENS.source}))["']`,
   "gu",
 );
 
 function seatMentions(client) {
-  const quoted = new RegExp(`["'](${SEAT_TOKENS.source})["']`, "gu");
+  const quoted = new RegExp(`["']((?:${SEAT_TOKENS.source}))["']`, "gu");
   return new Set([...client.matchAll(quoted)].map(([, seat]) => seat));
 }
 
@@ -209,19 +215,24 @@ function verifyHostChrome(client, options) {
     // plain selector wins the same fight and is only invisible to this gate.
     const handedOver = /^(none|0|unset|revert|inherit)$/i.test(value);
     if (handedOver) continue;
-    assert.ok(
-      value.includes(HOST_RING_TOKEN),
-      `a card inside the panel's chrome must take the Host's focus ring tokens ` +
-        `(${HOST_RING_TOKEN}-width/-color), not a hard-coded outline (${value})`,
-    );
-    // An undeclared `--dsw-focus-ring-width` invalidates the whole shorthand, and the
-    // ring disappears instead of falling back — so the width needs a fallback too.
-    assert.ok(
-      !value.includes("--dsw-focus-ring-width") ||
-        RING_WIDTH_FALLBACK.test(value),
-      `a ring built from ${HOST_RING_TOKEN}-width must give it a fallback length, ` +
-        `or the declaration is dropped where the token is not defined (${value})`,
-    );
+    // Both halves of the pair, each with its fallback: a ring that hard-codes the width
+    // and takes only the colour still loses the fight `focus.css` starts, and the
+    // substring `--dsw-focus-ring` alone would call that "taking the Host's tokens".
+    for (const [token, fallback, what] of [
+      [`${HOST_RING_TOKEN}-width`, RING_WIDTH_FALLBACK, "length"],
+      [`${HOST_RING_TOKEN}-color`, RING_COLOR_FALLBACK, "colour"],
+    ]) {
+      assert.ok(
+        value.includes(token),
+        `a card inside the panel's chrome must build its ring from the Host's ` +
+          `${token} (${value})`,
+      );
+      assert.ok(
+        fallback.test(value),
+        `${token} must carry a fallback ${what}, or the declaration is dropped where ` +
+          `the token is not defined (${value})`,
+      );
+    }
   }
 
   // A body whose controls keep no ring at all is the same user-visible failure as a
@@ -231,7 +242,9 @@ function verifyHostChrome(client, options) {
     RING_APPLIED,
     "the row card must put a ring on at least one of its own controls with " +
       `${HOST_RING_TOKEN}-width/-color — the Host's focus.css dresses its own elements, ` +
-      "not the ones a plugin renders inside the section",
+      "not the ones a plugin renders inside the section. A bundle that reaches this " +
+      "message without naming a seat is either a card that lost its registration or a " +
+      "package that owes no card contract and should call verifyCanonicalShell instead",
   );
 
   checkSharedBans(client, options);
@@ -261,27 +274,38 @@ export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
   if (onSettings.length > 0) return verifyCanonicalShell(client, options);
 
   /*
-   * A seat handed to an inlined helper compiles to `name: slotName` and no regex can
-   * follow it, so ask the call site instead: the bundle still quotes the seat it passes.
-   * Only one of the two surfaces may be named there, or the next rule is a guess.
+   * A seat handed to an inlined helper compiles to `name: slotName`, where the value came
+   * from an option at the call site, and no regex can follow it. Ask the bundle what it
+   * quotes instead — the call site `slotName: "plugins.row.config"` is the declaration
+   * left behind. The same rule as above applies: two surfaces named is not a choice, it
+   * is a contradiction. Without it a row card that kept its shell and cites
+   * `"settings.plugins.tab"` in a surviving comment would be judged by the canonical half,
+   * which *requires* that shell — the second frame would pass by leaning on prose.
+   * What remains, and cannot be closed from a bundle: prose naming exactly one wrong
+   * family. A card seated on the panel should name its seat at the registration.
    */
-  if (unbound.size > 0) {
-    const mentioned = seatMentions(client);
-    const panel = HOST_CHROME_SEATS.filter((seat) => mentioned.has(seat));
-    const settings = OWN_SHELL_SEATS.filter((seat) => mentioned.has(seat));
-    if (panel.length > 0 && settings.length === 0) {
-      return verifyHostChrome(client, options);
-    }
-    if (settings.length > 0 && panel.length === 0) {
-      return verifyCanonicalShell(client, options);
-    }
+  const mentions = unbound.size > 0 ? seatMentions(client) : new Set();
+  const panelMentioned = HOST_CHROME_SEATS.filter((seat) => mentions.has(seat));
+  const settingsMentioned = OWN_SHELL_SEATS.filter((seat) =>
+    mentions.has(seat),
+  );
+  if (panelMentioned.length > 0 && settingsMentioned.length > 0) {
+    throw new assert.AssertionError({
+      message:
+        `client bundle passes its seat through an option and quotes both the panel ` +
+        `(${panelMentioned.join(", ")}) and a settings surface ` +
+        `(${settingsMentioned.join(", ")}) — the contract cannot tell which chrome this ` +
+        "bundle owns, so name the seat at the registration or leave the other citation out",
+      operator: "seat",
+    });
   }
+  if (panelMentioned.length > 0) return verifyHostChrome(client, options);
+  if (settingsMentioned.length > 0)
+    return verifyCanonicalShell(client, options);
 
   /*
-   * Nothing named the seat at all. The bundle still says what it is: a card that owns
-   * its frame carries the shell classes, and one seated inside the Host's card carries
-   * none. Deciding from that is weaker than a declaration, but refusing to decide
-   * reddens a plugin that registered correctly.
+   * Nothing named the seat at all. The bundle still says what it is: a card that owns its
+   * frame carries the shell classes, and one seated inside the Host's card carries none.
    */
   if (drawsCanonicalShell(client)) {
     return verifyCanonicalShell(client, options);

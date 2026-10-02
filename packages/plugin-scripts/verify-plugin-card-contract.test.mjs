@@ -163,7 +163,7 @@ test("requires a card inside the panel chrome to take the Host's focus ring toke
         "2px solid var(--dsw-alias-brand-primary)",
       ),
     );
-  }, /focus ring tokens/u);
+  }, /must build its ring from/u);
   // `outline: none` is not an answer on its own: `focus.css` of the Host dresses the
   // Host's own elements, not a control a plugin renders inside the section, so a body
   // that hands the ring over and gives nothing has simply lost the ring.
@@ -204,7 +204,7 @@ test("catches a hard-coded ring under the plain focus selector", () => {
     verifyPluginCardContract(
       `${ROW_REGISTRATION}\nconst RowEntry = () => jsx("section");\n.demo-input:focus{outline:2px solid var(--dsw-alias-brand-primary)}`,
     );
-  }, /focus ring tokens/u);
+  }, /must build its ring from/u);
 });
 
 test("requires the row card to leave a ring on its own controls", () => {
@@ -360,6 +360,68 @@ test("refuses a bundle seated on the panel and on a settings surface at once", (
   assert.throws(() => {
     verifyPluginCardContract(`${ROW_BODY_ONLY}\n${SETTINGS_REGISTRATION}`);
   }, /one card, one seat/u);
+});
+
+test("refuses the same contradiction when the seat only reaches as an option", () => {
+  // The unbound path is where a row card that kept its shell can hide: the helper erases
+  // the declaration, and a `"settings.plugins.tab"` citation from a surviving comment
+  // would otherwise push the bundle into the canonical half — which *requires* the shell.
+  const helper = [
+    `function registerSettingsSlot(host, options) {`,
+    `  return host.slots.register({ name: options.slotName }, options.component);`,
+    `}`,
+    `registerSettingsSlot(host, { slotName: "plugins.row.config" });`,
+    `const note = 'moved off \"settings.plugins.tab\" in rc.2';`,
+    CANONICAL_SHELL_RULES[0],
+  ].join("\n");
+  assert.throws(() => {
+    verifyPluginCardContract(helper);
+  }, /cannot tell which chrome/u);
+});
+
+test("counts a dotted class in prose as prose", () => {
+  // Documentation and migration notes always write the class with a leading dot, so a
+  // selector that is never used as one must not read as a frame.
+  const prose = [
+    ROW_REGISTRATION,
+    `/** the page, not us, draws .dsh-plugin-card__header */`,
+    `.demo-body button:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))}`,
+  ].join("\n");
+  assert.doesNotThrow(() => {
+    verifyPluginCardContract(prose);
+  });
+  // A real selector still counts, grouped form included.
+  assert.throws(() => {
+    verifyPluginCardContract(
+      `${ROW_REGISTRATION}\n.a,.dsh-plugin-card__header{border:1px solid red}` +
+        `\n.x:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, red)}`,
+    );
+  }, /second frame/u);
+});
+
+test("requires both halves of the ring pair, each with a fallback", () => {
+  const ring = (value) =>
+    `${ROW_REGISTRATION}\n.x:focus-visible{outline:${value}}`;
+  // A hard-coded width with only the colour token taken still loses against focus.css.
+  assert.throws(() => {
+    verifyPluginCardContract(
+      ring("2px solid var(--dsw-focus-ring-color, red)"),
+    );
+  }, /--dsw-focus-ring-width/u);
+  assert.throws(() => {
+    verifyPluginCardContract(
+      ring(
+        "var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color)",
+      ),
+    );
+  }, /fallback colour/u);
+  assert.throws(() => {
+    verifyPluginCardContract(
+      ring(
+        "var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color, red)",
+      ),
+    );
+  }, /fallback length/u);
 });
 
 /*
