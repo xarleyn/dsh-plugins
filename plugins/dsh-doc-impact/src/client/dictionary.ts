@@ -6,16 +6,15 @@ export type Translate = (key: string) => string;
 
 export const DICT: Record<string, Record<string, string>> = {
   zh: {
-    cardTitle: "Doc Impact 文档联动",
     cardDescription: "文档影响检查插件的运行设置",
     unsaved: "未保存",
     readOnly: "当前连接为只读，无法修改设置。",
+    unavailable:
+      "设置暂不可用：Host 尚未返回该插件的配置，因此这里既读不到也改不了任何值。",
     save: "保存",
     saving: "保存中…",
     discard: "放弃更改",
     saveFailed: "保存未生效，草稿已保留，请重试。",
-    expand: "展开",
-    collapse: "收起",
     overridden: "已覆盖",
     reset: "重置",
     invalidNumber: "请输入正整数",
@@ -48,16 +47,15 @@ export const DICT: Record<string, Record<string, string>> = {
     invalidTemplate: "模板缺少必填占位符，请保留后保存。",
   },
   en: {
-    cardTitle: "Doc Impact",
     cardDescription: "Settings of the documentation impact plugin",
     unsaved: "Unsaved",
     readOnly: "This connection is read-only; settings cannot be changed.",
+    unavailable:
+      "The settings are not available yet: this profile has not returned the plugin's configuration, so nothing here can be read or changed.",
     save: "Save",
     saving: "Saving…",
     discard: "Discard",
     saveFailed: "The save did not land; drafts kept — please retry.",
-    expand: "Expand",
-    collapse: "Collapse",
     overridden: "Overridden",
     reset: "Reset",
     invalidNumber: "Enter a positive integer",

@@ -12,9 +12,18 @@
 // titles the row itself and asks this one seat for two views, the heading line and
 // the form (`docs/DSH-0.1.7-MIGRATION.md` §4.2).
 //
-// UX contract (mirrors the first-party plugin cards):
-//   - one collapsible card; the header shows an "unsaved" badge while drafts
-//     exist;
+// Both halves of the seat are spelled as literals in the call below, not reached
+// through a constant: the card contract (`verify-plugin-card-contract.mjs`) reads
+// which surface a bundle sits on off the built bundle, and a registration that names
+// its seat in the call is the statement it can read. `tests/client-bundle.test.ts`
+// is where the two halves stay joined to `cordis.patch.yml`.
+//
+// The row page draws the card surface, the heading and the expand control before it
+// mounts this entry, so the bundle renders a body (AGENTS.md, "Two kinds of card").
+//
+// UX contract (the body's own, since the page supplies the chrome):
+//   - the fields mount as soon as the row opens; an "unsaved" marker stands by the
+//     Save and Discard controls while drafts exist;
 //   - every field shows whether saving would leave a user-layer override and,
 //     when one stands, a reset that stages a clear back to the composition
 //     layer;
@@ -42,13 +51,6 @@ import {
 /** The profile entry id of `cordis.patch.yml`, which on this host *is* the namespace. */
 const SETTINGS_NS = "dsh-doc-impact";
 const LOCALE_NS = "dsh-doc-impact";
-/**
- * The seat's key: this package's name joined to the row id the patch declares,
- * which is the namespace above. The page shows the row's configure control only
- * for a key its inventory carries, so `tests/client-bundle.test.ts` derives both
- * halves from `cordis.patch.yml` rather than repeating this line.
- */
-const ROW_CONFIG_KEY = `@yadsh/dsh-doc-impact#${SETTINGS_NS}`;
 
 /** The locale service, which an older or headless profile may keep to itself. */
 interface LocaleService {
@@ -128,10 +130,14 @@ export function apply(ctx: DocImpactClientContext): () => void {
   // what is observed is that keeping nothing left the choice to the Host alone.
   const endWatch = configForms.whileServed([SETTINGS_NS], function () {
     return ctx.slots.inject("plugins.row.config", function () {
+      // The key joins this package's name to the row id the patch declares, which is
+      // the namespace the form above reads — the two halves are spelled out here so
+      // the built bundle states its seat and its row without a constant to resolve,
+      // and `tests/client-bundle.test.ts` holds both against `cordis.patch.yml`.
       return ctx.slots.register(
         {
           name: "plugins.row.config",
-          key: ROW_CONFIG_KEY,
+          key: "@yadsh/dsh-doc-impact#dsh-doc-impact",
           locale: LOCALE_NS,
           inject: function () {
             return form.inject();

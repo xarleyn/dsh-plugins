@@ -14,6 +14,12 @@
 //     of its own) and the configuration page (`view: 'page', form`);
 //   - the seat it left behind must stay left behind: no `settings.plugins.tab`
 //     registration, which would put a second copy of this card under Settings;
+//   - the card is a body, not a card: the row page draws the frame, the heading and
+//     the expand control, so a bundle that grew a shell of its own again would nest a
+//     second frame inside the Host's. That is the shared contract's rule, and it reads
+//     the seat off this bundle to decide it (`verify-plugin-card-contract.mjs` holds a
+//     card seated on the row to no shell class, no chevron, and the Host's focus ring);
+//     this file only adds the retired class names this package owns;
 //   - the bundle must stay pure browser code: react only, no host packages;
 //   - no secrets or telemetry may creep into the settings form.
 import { readFile } from "node:fs/promises";
@@ -97,25 +103,30 @@ expectPresent(
   "resetField",
   "every field needs the composition-layer reset action",
 );
-expectPresent('"unsaved"', "the header must carry the unsaved-changes badge");
 expectPresent(
-  "dsh-plugin-card__name",
-  "custom cards must share the standard card shell",
+  '"unsaved"',
+  "the write controls must carry the unsaved-drafts marker the row's header no longer offers",
 );
 expectPresent(
-  "m3.5 5.25 3.5 3.5 3.5-3.5",
-  "the header must use the standard SVG chevron",
+  "--dsw-focus-ring-width",
+  "the ring of a control inside the Host's chrome comes from the Host's focus tokens, not a hard-coded outline the Host would suppress under pointer modality",
 );
+// The shell and the chevron are the shared contract's to reject, and it does: reading
+// the seat off this bundle, a `dsh-plugin-card` class used as one or our chevron path
+// fails as the second frame. This package adds no bare-word ban of its own, because the
+// contract deliberately lets a comment name the class it stopped drawing — a stricter
+// local rule would make the next agent delete a correct sentence to get green. What is
+// local knowledge, and so checked below, is this bundle's own retired class names.
 verifyPluginCardContract(client, {
   legacyPatterns: [/ddi_card/u],
 });
 expectAbsent(
   "ddi_card",
-  "the outer card shell must use the shared class contract",
+  "the bundle must not keep the pre-contract outer shell class",
 );
 expectAbsent(
-  "▾",
-  "font-dependent disclosure glyphs must not replace the SVG chevron",
+  "ddi_list",
+  "the body mounts directly, so the plugin-owned list element the shell needed is gone with it",
 );
 
 // The bundle runs in the browser and may only require what the ModuleLoader
