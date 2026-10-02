@@ -20,6 +20,7 @@ import {
   type QaNotificationPrefs,
 } from "./preferences.js";
 import {
+  scopeNoticesToOwnChats,
   settleTurnCompletions,
   type QaChatActivity,
   type QaTurnSighting,
@@ -29,8 +30,16 @@ import {
 const MAX_NOTICES = 3;
 
 export interface QaTurnNotificationsInput {
-  /** The sidebar's own rows: this browser's chats with their running state. */
+  /** The sidebar's rows: this browser's chats with their running state. */
   readonly chats: readonly QaChatActivity[];
+  /**
+   * The chats this account owns outright, which is narrower than the rows: an
+   * admin's shared history lists chats it only reads, and the turn of such a
+   * chat is that other account's business. Absent where there is no account to
+   * be narrower than — a stand without accounts, whose rows are the browser's
+   * own index.
+   */
+  readonly ownChatIds?: readonly string[];
   readonly notifications: ResolvedQaSurfaceConfig["notifications"];
   readonly storage: StorageLike | undefined;
   readonly storageKey: string;
@@ -64,15 +73,17 @@ export interface QaTurnNotifications {
 }
 
 /**
- * Turn-completion notices for the chats this page owns: watch the sidebar's
- * rows, and when one of them stops running after this page watched that run
- * begin, say so in the channels the reader and the deployment allow.
+ * Turn-completion notices for the chats this reader owns. Of the rows the
+ * sidebar shows, only the ones this account owns outright are watched, and when
+ * one of them stops running after this page watched that run begin, the reader
+ * is told in the channels they and the deployment allow.
  */
 export function useQaTurnNotifications(
   input: QaTurnNotificationsInput,
 ): QaTurnNotifications {
   const {
     chats,
+    ownChatIds,
     notifications,
     storage,
     storageKey,
@@ -92,6 +103,12 @@ export function useQaTurnNotifications(
     () => resolveNoticeChannels({ account: account?.notifications, prefs }),
     [account, prefs],
   );
+  // Also memoized for the watcher's sake: the rows are the sidebar's, so a
+  // render that changed nothing about them must not read the list again.
+  const ownedChats = useMemo(
+    () => scopeNoticesToOwnChats(chats, ownChatIds),
+    [chats, ownChatIds],
+  );
 
   const savePrefs = useCallback(
     (next: QaNotificationPrefs) => {
@@ -102,7 +119,9 @@ export function useQaTurnNotifications(
   );
 
   useEffect(() => {
-    const completions = settleTurnCompletions(seen.current, chats, { paused });
+    const completions = settleTurnCompletions(seen.current, ownedChats, {
+      paused,
+    });
     if (completions.length === 0) return;
     const focused = isPageFocused();
     const permission = readNotificationPermission();
@@ -123,7 +142,7 @@ export function useQaTurnNotifications(
     setItems((previous) =>
       [...added.reverse(), ...previous].slice(0, MAX_NOTICES),
     );
-  }, [channels, activeSessionId, chats, notifications, paused]);
+  }, [channels, activeSessionId, ownedChats, notifications, paused]);
 
   // Opening a chat by any other means is an answer to its notice.
   useEffect(() => {

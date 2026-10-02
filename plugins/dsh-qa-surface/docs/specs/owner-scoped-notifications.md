@@ -555,14 +555,29 @@ differ over the sidebar's own rows
 scopes §3.1 separated, because `buildChatRows` is already the
 projection §3.2 asks for — `chatIds()` (the account's owned list with
 accounts on, this browser's own index without them) intersected with
-the host list. The bound chat is in it, and no foreign chat ever is;
-the admin's read of other users' chats never widens it, because
-`chatIds()` does not. `notification-dispatcher.ts`
+the host list. The bound chat is in it. `notification-dispatcher.ts`
 applies §3.1's channel rules (nothing for the chat on screen while the
 window is active; the desktop only for a page that is hidden or behind
 another window); `QaTurnNotice.tsx` is the in-app line, `use-turn-
 notifications.ts` the wiring. `config.notifications`
 (`enabled`, `allowOs`) is §3.5's host block.
+
+**§3.2, as the admin case was wrong until #477.** The claim above that the
+admin's read never widens the rows it was based on is false: `chatIds()` answers
+the account's `ownedIds`, and that list is the union of the account's own chats
+and the whole ownership map as soon as `showOtherUsersChats` is on — so one
+operator switch decided both what an admin may read and whose activity this
+browser announces, and the desktop channel carried a foreign chat's title into
+the operating system's own log. §3.2 asks for a *read* permission and no more,
+and that is what the code now does: the account keeps `ownIds` (its own chats
+alone, claim included) beside `ownedIds` (the sidebar's list, unmoved), and the
+notifier is bounded by `ownIds` — `scopeNoticesToOwnChats` in
+`turn-completion-source.ts`, fed by `use-turn-notifications.ts`. A chat the
+reader does not own never reaches the differ, so it is not even in the baseline.
+The opt-in §3.5 named `allowAdminCrossUser` is still not implemented, and still
+has nothing to consume: with delivery decoupled from the read there is no
+cross-user notice to allow, and §4 keeps the requirement for its two sides if
+one is ever built.
 
 **Where this departs from the design above.**
 

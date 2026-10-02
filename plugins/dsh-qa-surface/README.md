@@ -590,6 +590,10 @@ take effect. Like the starter messages, none of this reaches the agent prompt, a
 a notice never carries the answer itself — only the chat's title and the fact that
 its turn ended.
 
+A notice is bounded by ownership, not by what the reader may open: an admin's
+shared history (`accounts.showOtherUsersChats`) deliberately lists chats that
+belong to other accounts, and the turn of such a chat raises nothing here.
+
 ### Integration tokens
 
 The same `Настройки` dialog carries an «Интеграционные токены» section, so the
