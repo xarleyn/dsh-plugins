@@ -23,6 +23,8 @@ own live configuration through the settings domain rather than taking the page's
 field; that form arrives as `settingsForm` now, since the page hands its
 registrant a prop called `form`.
 
-The card keeps its shell — the standard plugin-card border, chevron and open
-state — with the panel's own heading sitting above it, and the shell contract the
-package gate asserts is unchanged.
+The card renders the body only: the row page already draws the card surface, the
+heading and the expand control, so the plugin's own shell — border, chevron and open
+state — is gone rather than nested inside the Host's, and the focus ring now comes
+from the Host's `--dsw-focus-ring-*` tokens. The package gate reads the seat from the
+built bundle and holds a card seated here to that rule.

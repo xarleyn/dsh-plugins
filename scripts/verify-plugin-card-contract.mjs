@@ -9,5 +9,8 @@
  */
 export {
   CANONICAL_SHELL_RULES,
+  HOST_CHROME_SEATS,
+  OWN_SHELL_SEATS,
+  verifyCanonicalShell,
   verifyPluginCardContract,
 } from "@yadsh/dsh-plugin-scripts/verify-plugin-card-contract";
