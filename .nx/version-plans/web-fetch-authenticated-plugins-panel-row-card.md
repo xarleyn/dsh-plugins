@@ -20,10 +20,20 @@ settings either. The tab strip in Settings loses the tab this card added.
 
 The chrome above the card belongs to the page. It reads the row's display
 metadata from this bundle's own manifest, so the row is headed
-`@yadsh/dsh-web-fetch-authenticated` with this package's description under it.
-The card keeps its shell — the standard plugin-card border, chevron and open
-state — and, because the page's configuration section supplies no list of its
-own, its `<li>` root still rides in a list this bundle owns.
+`@yadsh/dsh-web-fetch-authenticated` with this package's description under it,
+and the page draws the surface and the control that expands the section. The
+card stopped drawing a second one: its border, header, chevron and open state
+went, so the seat's page view is the configuration body, mounted as soon as the
+page opens the row. The one fact the header's badge carried — whether the
+provider is enabled — stays readable in the status section, where the provider
+report states it.
+
+The keyboard still reaches every control this card draws. The page dresses its
+own elements and leaves a plugin's to the plugin, so each field, button, icon
+button, switch and fold of the body takes its ring from the Host's
+`--dsw-focus-ring-width` and `--dsw-focus-ring-color`. Both halves carry a
+fallback: where a token is undeclared the whole `outline` shorthand would
+otherwise be dropped, which is the ring vanishing rather than a plain one.
 
 What the card shows is unchanged: the rule list, its write-only credential
 fields, the network policy and limits, the connection tester, and the diagnostic

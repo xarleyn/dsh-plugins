@@ -4,14 +4,17 @@
  *
  * `client-registration.test.ts` pins what `apply()` hands the slot — the key, the
  * face, the prop names — and cannot see the markup. Every way the move can fail
- * quietly lives in that markup: the entry answering markup where the page wanted
- * a line of text, the shell's `<li>` losing the `<ul>` AGENTS.md styles it
- * against, the body mounting over a form that never reached it, an edit whose
- * write never reaches that form, a write landing in the page's own `{ state,
- * mutate }` view instead of the `ConfigForm` that stores it, and the card header
- * repeating the sentence the page already printed one line above. This package
- * shipped without a DOM-rendering test on purpose (epic #453 addressed the
- * card from a browser instead); the seat made that gap load-bearing.
+ * quietly lives in that markup: the entry answering markup where the page wanted a
+ * line of text, a frame of our own drawn inside the page's card, the body mounting
+ * over a form that never reached it, an edit whose write never reaches that form,
+ * and a write landing in the page's own `{ state, mutate }` view instead of the
+ * `ConfigForm` that stores it. This package shipped without a DOM-rendering test on
+ * purpose (epic #453 addressed the card from a browser instead); the seat made that
+ * gap load-bearing.
+ *
+ * The page owns the chrome — the surface, the row title, the row id, the
+ * description line and the expansion of the section — so the `page` view is the
+ * configuration body and it is mounted with no click of ours (AGENTS.md).
  *
  * The page renders each view with its own props (`PluginManagerPage.tsx:491`,
  * `:495`), so every case here goes through `seatProps`, which spreads those owner
@@ -30,6 +33,7 @@ import {
 } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
+import { styles } from "../src/client/styles.js";
 import {
   demoConfig,
   registeredSeat,
@@ -55,6 +59,19 @@ const rowDescription =
     ) as { description: string }
   ).description;
 
+/** The Host's ring, with a fallback on each half of the pair. */
+const HOST_RING =
+  "outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary))";
+
+/** Every control class the sheet draws itself, rather than inheriting from the page. */
+const OWN_CONTROLS = [
+  ".wfa-control",
+  ".wfa-btn",
+  ".wfa-icon-btn",
+  ".wfa-toggle",
+  ".wfa-advanced summary",
+];
+
 /** The page renders the seat; the card polls the Remote on mount, inside `act`. */
 async function renderSeat(
   seat: { component: (props: Record<string, unknown>) => ReactElement },
@@ -78,47 +95,34 @@ afterEach(async () => {
 });
 
 describe("plugins row configuration entry, rendered", () => {
-  it("draws the canonical shell in a list of its own, and opens the live body on click", async () => {
+  it("mounts the live configuration body with no frame of its own", async () => {
     const seat = await registeredSeat();
     const { container } = await renderSeat(seat, "page");
 
-    const card = container.querySelector(".dsh-plugin-card");
-    expect(card).toBeTruthy();
-    // The shell renders its body only while open, so a closed card proves the
-    // click is what reveals the configuration rather than a permanent panel.
-    expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
+    // The page's card is the only frame here: no shell class, no `<li>` root, and
+    // no expand control of ours — the page expands the section it seated us in.
+    expect(container.querySelector('[class*="dsh-plugin-card"]')).toBeNull();
+    expect(container.querySelector("li")).toBeNull();
+    expect(container.querySelector("button[aria-expanded]")).toBeNull();
+    expect(container.firstElementChild?.tagName).toBe("DIV");
 
-    /*
-     * The AGENTS.md pair, not one node: the shell is an `<li>` under rules written
-     * against a list parent, and the row page's configuration column is a plain
-     * `<div>` (`PluginManagerPage.tsx:494`, `detailSections`). Nothing but a
-     * rendered card notices the wrapper going away.
-     */
-    const list = screen.getByTestId("wfa-card-list");
-    expect(list.tagName).toBe("UL");
-    expect(card?.parentElement).toBe(list);
-
-    const header = screen.getByRole("button", {
-      name: /show settings: authenticated web fetch/iu,
-    });
-    expect(header.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(header);
-
-    expect(container.querySelector(".dsh-plugin-card--open")).toBeTruthy();
-    // The opened body is the live card, not a placeholder: the rule the stand
-    // form carries is what proves the configuration reached it.
+    // Mounted straight away, and live: the rule the stand form carries is what
+    // proves the configuration reached the body without a click of ours.
     expect(await screen.findByTestId("wfa-rules-list")).toBeTruthy();
     expect(screen.getByTestId("wfa-rule-row").textContent).toContain(
       "Demo product",
     );
-    expect(screen.getByTestId("wfa-card-enabled-state").textContent).toBe(
-      "Enabled",
-    );
 
-    // The mount-time poll reaches the Remote through the face the slot injected,
-    // so the report the status section prints is the second proof of the props.
+    /*
+     * The page's chrome gives the row's title and id but not its enablement, so
+     * the body still answers that — from the provider report, in the status
+     * section the shell's header badge used to duplicate.
+     */
     const status = await screen.findByTestId("wfa-status-section");
     expect(status.textContent).toContain("1 rule(s), 1 enabled");
+    expect(screen.getByTestId("wfa-status-enabled-state").textContent).toBe(
+      "Enabled",
+    );
   });
 
   it("saves an edit to the Host form as one field of the namespace", async () => {
@@ -132,11 +136,6 @@ describe("plugins row configuration entry, rendered", () => {
      */
     const seat = await registeredSeat();
     await renderSeat(seat, "page");
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /show settings: authenticated web fetch/iu,
-      }),
-    );
     await screen.findByTestId("wfa-global-section");
 
     fireEvent.click(screen.getByTestId("wfa-global-provider-enabled"));
@@ -152,36 +151,31 @@ describe("plugins row configuration entry, rendered", () => {
     expect(seat.mutations).toEqual([]);
   });
 
-  it("answers the row's own description and keeps its header off it", async () => {
+  it("leaves the row's title and description line to the page", async () => {
     /*
-     * The line above the card is this package's `description`, which the Host
-     * reads off the manifest; the entry's summary answer is the fallback for a
-     * row whose metadata carries none. Either of the two, copied into the card
-     * header, prints the same sentence twice on one screen.
+     * The page prints this package's manifest `description` above the body, and
+     * the entry's summary answer is the fallback for a row whose metadata carries
+     * none. Either one copied into the body would show the same sentence twice on
+     * one screen, which is what a heading inside the Host's card amounts to.
      */
     const seat = await registeredSeat();
     const page = await renderSeat(seat, "page");
-    const summary = await renderSeat(seat, "summary");
 
-    const cardDescription = page.container.querySelector(
-      ".dsh-plugin-card__description",
+    expect(page.container.textContent).not.toContain(rowDescription);
+    expect(page.container.textContent).not.toContain(
+      "Per-origin authenticated rules for web_fetch",
     );
-    expect(cardDescription?.textContent).toBeTruthy();
-    expect(cardDescription?.textContent).not.toBe(rowDescription);
-    expect(cardDescription?.textContent).not.toBe(
-      summary.container.textContent,
-    );
+    expect(await screen.findByTestId("wfa-rules-list")).toBeTruthy();
   });
 
-  it("draws no card while the Host configuration is unavailable", async () => {
+  it("draws nothing while the Host configuration is unavailable", async () => {
     const seat = await registeredSeat(demoConfig(), "unavailable");
     const { container } = await renderSeat(seat, "page");
 
-    expect(container.querySelector(".dsh-plugin-card")).toBeNull();
     expect(container.textContent).toBe("");
   });
 
-  it("keeps the card and disables its writes while the namespace is read-only", async () => {
+  it("keeps the body and disables its writes while the namespace is read-only", async () => {
     /*
      * The other half of the seat's availability story: a row page the Host does
      * serve, for a Config it will not let this browser edit. AGENTS.md asks for
@@ -190,14 +184,9 @@ describe("plugins row configuration entry, rendered", () => {
      */
     const seat = await registeredSeat(demoConfig(), "ready", false);
     const { container } = await renderSeat(seat, "page");
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: /show settings: authenticated web fetch/iu,
-      }),
-    );
     await screen.findByTestId("wfa-global-section");
 
-    expect(container.querySelector(".dsh-plugin-card")).toBeTruthy();
+    expect(container.textContent).not.toBe("");
     const toggle = screen.getByTestId(
       "wfa-global-provider-enabled",
     ) as HTMLInputElement;
@@ -208,20 +197,42 @@ describe("plugins row configuration entry, rendered", () => {
     ).toBe(true);
   });
 
-  it("answers the summary view with one line of text and no second card", async () => {
+  it("answers the summary view with one line of text and no second body", async () => {
     /*
      * The view the page asks for when a row's metadata carries no description
      * (`PluginManagerPage.tsx:491`); for this row the manifest supplies one, so
      * this answer is the fallback. Either way it lands inside the page's own
-     * paragraph, so it stays text — a card here would mount a live settings store
-     * and poll the Remote a second time for a line of prose.
+     * paragraph, so it stays text — mounting the body here would open a live
+     * settings store and poll the Remote a second time for a line of prose.
      */
     const seat = await registeredSeat();
     const { container } = await renderSeat(seat, "summary");
 
-    expect(container.querySelector(".dsh-plugin-card")).toBeNull();
     expect(container.textContent).toBe(
       "Per-origin authenticated rules for web_fetch: credentials, SSRF policy, and diagnostics.",
     );
+    expect(container.querySelector("[data-testid]")).toBeNull();
   });
+
+  it.each(OWN_CONTROLS)(
+    "dresses the ring of %s from the Host's tokens",
+    (control) => {
+      /*
+       * The Host's `focus.css` dresses its own elements, not the ones a plugin
+       * renders inside its section, and under pointer modality it beats a rule of
+       * ours that hard-codes the outline (0-3-2 against 0-2-0). Raising
+       * specificity is the wrong repair: each control this sheet draws takes the
+       * Host's tokens, with a fallback on both halves — where
+       * `--dsw-focus-ring-width` is undeclared the whole `outline` shorthand is
+       * invalid and the ring disappears rather than degrading. `verifyHostChrome`
+       * reads the same rule off the built bundle; this pins that no control was
+       * left out of the selector list.
+       */
+      const ringRule = styles
+        .split("\n")
+        .find((line) => line.includes(HOST_RING));
+      expect(ringRule).toBeTruthy();
+      expect(ringRule).toContain(`${control}:focus-visible`);
+    },
+  );
 });

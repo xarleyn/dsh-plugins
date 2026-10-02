@@ -109,22 +109,19 @@ describe("plugins row configuration seat", () => {
     expect(page.props).not.toHaveProperty("form");
   });
 
-  it("seats the row's sentence and the card's own copy as two separate answers", () => {
+  it("seats the row's sentence apart from the body the same entry draws", () => {
     /*
      * The page renders one entry in both views, and puts whichever sentence the
      * row carries — its manifest `description`, or this entry's summary answer
-     * where a row declares none — one paragraph above the card the same entry
-     * draws. One shared literal is how the two screens start repeating
-     * themselves. Which text lands where is asserted in the rendered card.
+     * where a row declares none — one paragraph above the body the same entry
+     * draws. Repeating it in that body is how the screen starts showing one
+     * sentence twice. Which text lands where is asserted in the rendered card.
      */
     expect(clientSource).toMatch(
       /if \(view === "summary"\) return WEB_FETCH_AUTH_ROW_SUMMARY;/u,
     );
-    expect(clientSource).toMatch(
-      /description=\{WEB_FETCH_AUTH_CARD_DESCRIPTION\}/u,
-    );
-    expect(clientSource).not.toMatch(
-      /description=\{WEB_FETCH_AUTH_ROW_SUMMARY\}/u,
-    );
+    // The page answer is the configuration body itself, mounted at the root of
+    // the section the page drew: no shell, no heading, no badge of ours.
+    expect(clientSource).toMatch(/<div className="wfa-body">/u);
   });
 });
