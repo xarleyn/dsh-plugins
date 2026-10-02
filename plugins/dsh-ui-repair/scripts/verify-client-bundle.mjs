@@ -50,16 +50,68 @@ assert.ok(
   "the row-config key must join the package name to the settings namespace",
 );
 assert.match(client, /UI_REPAIR_SETTINGS_NAMESPACE\s*=\s*"dsh-ui-repair"/u);
-// The seat asks for `view: "summary"` wherever the page has no description of its
-// own (`lib/client.js:1841` of the installed bundle, with that description read
-// off the Host's `row.meta`), and the entry answers it with the sentence the card's
-// header carries — mounting the form there would draw a page inside a line of
-// text. The list the shell's `<li>` needs belongs to the entry, because the row's
-// configuration section supplies none (`:1851`).
+// The seat also asks this entry for `view: "summary"`, and the page prints that
+// answer into its own description paragraph, so the arm returns the row's sentence
+// and reads no store — mounting the body there would draw a page inside a line.
 assert.match(client, /if \(props\.view === "summary"\) return ROW_SUMMARY;/u);
-assert.match(client, /className:\s*"uir-list"/u);
-assert.match(client, /dsh-plugin-card__name/u);
-assert.match(client, /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u);
+/*
+ * The row's page is the card: it draws the surface, the heading and the expand
+ * control before mounting this bundle's body (`div[data-plugin-config]`,
+ * `lib/client.js:1851-1852` of the installed panel bundle). So a frame of ours in
+ * this bundle is a second card, not a style choice, and these lines name the half
+ * `verifyPluginCardContract` below derives from the seat. Reverting the shell here
+ * fails with the reason attached rather than as an unreadable contract message.
+ */
+assert.doesNotMatch(
+  client,
+  /dsh-plugin-card(?:__[\w-]+|--open)/u,
+  "the Plugins panel draws this card's frame, so the bundle carries no shell element class",
+);
+assert.doesNotMatch(
+  client,
+  /\.dsh-plugin-card(?=\s*[,{])/u,
+  "the Plugins panel draws this card's frame, so the bundle carries no shell CSS rule",
+);
+assert.doesNotMatch(
+  client,
+  /uir-list/u,
+  "the configuration section supplies no list for a shell <li> any more, so the body mounts directly",
+);
+assert.doesNotMatch(
+  client,
+  /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u,
+  "the panel draws the disclosure control, so the bundle carries no chevron path",
+);
+/*
+ * The one surviving citation of the shell class is the scanner's own repair root
+ * (`src/client/dom.ts`): plugin cards that still own a frame — the settings
+ * surfaces this series is migrating away from — are surfaces the repair scans, and
+ * that selector is how they are found. It names somebody else's markup, and the
+ * card contract reads the seat off the registration above rather than off any
+ * mention, so it is pinned here rather than grepped away.
+ */
+assert.match(
+  client,
+  /"li\.dsh-plugin-card"/u,
+  "the scanner still walks other plugins' own-shell cards as repair roots",
+);
+/*
+ * Every control this body draws dresses its focus ring from the Host's token pair,
+ * and both halves carry a fallback: a hard-coded outline loses to the Host's
+ * `focus.css` under pointer modality, and an undeclared `--dsw-focus-ring-width`
+ * invalidates the whole `outline` shorthand instead of degrading it.
+ */
+assert.match(
+  client,
+  /outline:var\(--dsw-focus-ring-width, 2px\) solid var\(--dsw-focus-ring-color, var\(--dsw-alias-state-business-primary\)\)/u,
+  "the card's controls take the Host's focus ring with fallbacks on both halves",
+);
+for (const control of ["uir-control", "uir-toggle", "uir-button"]) {
+  assert.ok(
+    client.includes(`.${control}:focus-visible{`),
+    `${control} renders no focus ring of its own`,
+  );
+}
 verifyPluginCardContract(client, { legacyPatterns: [/uir-card/u] });
 assert.doesNotMatch(client, /[⌄▾]/u);
 assert.doesNotMatch(client, /require\(["']@deepseek-ai\//u);

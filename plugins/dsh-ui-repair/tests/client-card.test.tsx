@@ -3,12 +3,13 @@
 /**
  * The card as the Plugins page mounts it.
  *
- * The bundle gate reads the built client as a string, so it can prove the shell
- * CSS is shipped but not that anything renders: an `<li>` left without the list it
- * needs, a card drawn over a namespace the Host cannot read, or a write that
- * lands on the page's own `{ state, mutate }` instead of the `ConfigForm` would
- * keep every string check green. These cases mount the component the entry
- * actually registers, with the owner props the seat spreads over the face.
+ * The bundle gate reads the built client as a string, so it can prove which
+ * classes are shipped but not that anything renders: a body left wrapped in the
+ * list a shell used to need, a card drawn over a namespace the Host cannot read,
+ * a write landing on the page's own `{ state, mutate }` instead of the
+ * `ConfigForm`, or a second heading repeating the row's own title would keep every
+ * string check green. These cases mount the component the entry actually
+ * registers, with the owner props the seat spreads over the face.
  */
 
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
@@ -37,7 +38,7 @@ interface Snapshot {
   readonly writable: boolean;
 }
 
-/** The one-liner the page seats under the row heading, in its own `<p>`. */
+/** The row's one-liner, which the page prints into its own description `<p>`. */
 function summaryLine(props: {
   readonly Entry: Entry;
   readonly face: Record<string, unknown>;
@@ -114,6 +115,15 @@ function pageForm(value: UIRepairPluginConfig) {
   };
 }
 
+/** The page hands this section an empty container, so nothing wraps the body. */
+function pageView(props: {
+  readonly Entry: Entry;
+  readonly face: Record<string, unknown>;
+  readonly form?: ReturnType<typeof pageForm> | undefined;
+}) {
+  return render(<props.Entry {...props.face} view="page" form={props.form} />);
+}
+
 describe("plugins.row.config seat", () => {
   let mounted: Mounted | undefined;
 
@@ -134,52 +144,48 @@ describe("plugins.row.config seat", () => {
     const paragraphs = container.querySelectorAll("p");
     expect(paragraphs).toHaveLength(1);
     expect(paragraphs[0]?.textContent).toBe(ROW_SUMMARY);
-    expect(container.querySelector(".dsh-plugin-card")).toBeNull();
+    expect(container.querySelector("button")).toBeNull();
     expect(container.querySelector('[data-testid="repair-ui"]')).toBeNull();
     expect(subscribe.mock.calls).toHaveLength(before);
   });
 
-  it("renders the shell inside the list it owns for the page view", () => {
+  it("mounts the settings body with no frame, heading or disclosure of its own", async () => {
     mounted = mountEntry();
     const { Entry, face } = mounted;
-    const { container } = render(<Entry {...face} view="page" />);
-    act(() => undefined);
-
-    const list = container.querySelector("ul.uir-list");
-    const card = container.querySelector(".dsh-plugin-card");
-    expect(list).not.toBeNull();
-    expect(list?.firstElementChild).toBe(card);
-    expect(card?.tagName).toBe("LI");
-    expect(
-      card?.querySelector(".dsh-plugin-card__name")?.textContent,
-    ).toContain("UI Repair");
-    expect(
-      card?.querySelector(".dsh-plugin-card__description")?.textContent,
-    ).toBe(ROW_SUMMARY);
-  });
-
-  it("opens the form on its header and writes the field the operator flips", async () => {
-    mounted = mountEntry();
-    const { Entry, face, set } = mounted;
-    const { container } = render(<Entry {...face} view="page" />);
+    const { container } = pageView({ Entry, face });
     await act(async () => {
       await Promise.resolve();
     });
 
-    const header = container.querySelector("button.dsh-plugin-card__header");
-    if (header === null) throw new Error("the shell renders no header button");
-    expect(header.getAttribute("aria-expanded")).toBe("false");
+    const body = container.querySelector('[data-testid="repair-ui"]');
+    expect(body).not.toBeNull();
+    expect(body?.className).toBe("uir-body");
+    // The body is what the section mounts, not a card item inside a list of ours.
+    expect(container.firstElementChild).toBe(body);
+    // The page is the card, so the body arrives already open: nothing to expand.
+    expect(container.querySelector("[aria-expanded]")).toBeNull();
+    expect(container.querySelector("svg")).toBeNull();
+    // The row's title is the page's heading; repeating it here is the second
+    // heading the contract forbids.
+    expect(container.textContent).not.toContain("UI Repair");
+    expect(
+      container.querySelector('[data-testid="repair-mode"]'),
+    ).not.toBeNull();
+  });
 
-    fireEvent.click(header);
-    expect(container.querySelector(".dsh-plugin-card")?.className).toContain(
-      "dsh-plugin-card--open",
-    );
-    expect(container.querySelector(".uir-body")).not.toBeNull();
+  it("writes the field the operator flips through the injected ConfigForm", async () => {
+    mounted = mountEntry();
+    const { Entry, face, set } = mounted;
+    const { container } = pageView({ Entry, face });
+    await act(async () => {
+      await Promise.resolve();
+    });
 
     const enabled = container.querySelector(
       '[data-testid="repair-toggle-enabled"]',
     ) as HTMLInputElement | null;
     if (enabled === null) throw new Error("the form renders no enable toggle");
+    expect(enabled.checked).toBe(true);
     fireEvent.click(enabled);
     await act(async () => {
       await Promise.resolve();
@@ -193,20 +199,22 @@ describe("plugins.row.config seat", () => {
     // What the page passes at `lib/client.js:1852`, and the only thing it can
     // pass: `{ state, mutate }`. Its values are a different policy on purpose.
     const page = pageForm({ enabled: false, mode: "suggest" });
-    const { container } = render(<Entry {...face} view="page" form={page} />);
+    const { container } = pageView({ Entry, face, form: page });
     await act(async () => {
       await Promise.resolve();
     });
 
-    const header = container.querySelector("button.dsh-plugin-card__header");
-    if (header === null) throw new Error("the shell renders no header button");
-    fireEvent.click(header);
     const enabled = container.querySelector(
       '[data-testid="repair-toggle-enabled"]',
     ) as HTMLInputElement | null;
     if (enabled === null) throw new Error("the form renders no enable toggle");
     // The drawn policy is the namespace's, not the owner prop's snapshot.
     expect(enabled.checked).toBe(true);
+    const mode = container.querySelector(
+      '[data-testid="repair-mode"]',
+    ) as HTMLSelectElement | null;
+    if (mode === null) throw new Error("the form renders no mode control");
+    expect(mode.value).toBe("observe");
     fireEvent.click(enabled);
     await act(async () => {
       await Promise.resolve();
@@ -215,38 +223,35 @@ describe("plugins.row.config seat", () => {
     expect(page.mutate).not.toHaveBeenCalled();
   });
 
-  it("renders the same card when the seat passes no form at all", async () => {
+  it("renders the same body when the seat passes no form at all", async () => {
     mounted = mountEntry();
     const { Entry, face } = mounted;
     // `formFor` answers undefined for a Config that declares no volatile field
     // (`lib/client.js:2688`), so the card may not read the prop to decide to draw.
-    const { container } = render(
-      <Entry {...face} view="page" form={undefined} />,
-    );
+    const { container } = pageView({ Entry, face, form: undefined });
     await act(async () => {
       await Promise.resolve();
     });
 
-    expect(container.querySelector(".dsh-plugin-card")).not.toBeNull();
-    const header = container.querySelector("button.dsh-plugin-card__header");
-    if (header === null) throw new Error("the shell renders no header button");
-    fireEvent.click(header);
     expect(container.querySelector('[data-testid="repair-ui"]')).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="repair-scan"]'),
+    ).not.toBeNull();
   });
 
-  it("disables the write controls, not the card, when the namespace is read-only", () => {
+  it("disables the write controls, not the body, when the namespace is read-only", async () => {
     mounted = mountEntry({
       status: "ready",
       value: { enabled: true, mode: "observe" },
       writable: false,
     });
     const { Entry, face } = mounted;
-    const { container } = render(<Entry {...face} view="page" />);
+    const { container } = pageView({ Entry, face });
+    await act(async () => {
+      await Promise.resolve();
+    });
 
-    expect(container.querySelector(".dsh-plugin-card")).not.toBeNull();
-    const header = container.querySelector("button.dsh-plugin-card__header");
-    if (header === null) throw new Error("the shell renders no header button");
-    fireEvent.click(header);
+    expect(container.querySelector('[data-testid="repair-ui"]')).not.toBeNull();
     const enabled = container.querySelector(
       '[data-testid="repair-toggle-enabled"]',
     ) as HTMLInputElement | null;
@@ -259,7 +264,7 @@ describe("plugins.row.config seat", () => {
     expect(add.disabled).toBe(true);
   });
 
-  it("draws no card when the Host reports no settings for the namespace", () => {
+  it("draws no body when the Host reports no settings for the namespace", async () => {
     mounted = mountEntry();
     const { Entry, face } = mounted;
     // A store must hand back the same snapshot object until it changes, or React
@@ -278,7 +283,9 @@ describe("plugins.row.config seat", () => {
         view="page"
       />,
     );
-    expect(container.querySelector(".dsh-plugin-card")).toBeNull();
-    expect(container.querySelector("ul.uir-list")?.children).toHaveLength(0);
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(container.children).toHaveLength(0);
   });
 });

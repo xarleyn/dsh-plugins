@@ -1,9 +1,16 @@
-import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
-
-export const styles = `${PLUGIN_CARD_SHELL_CSS}
-/* The Plugins page seats the card in an empty section, so its <li> brings its own list. */
-.uir-list{margin:0;padding:0;list-style:none;display:grid;gap:12px}
-.uir-body,.uir-body *{box-sizing:border-box}
+/**
+ * Card stylesheet: body rules for this plugin's own controls.
+ *
+ * The shell is not here — this card sits on the Plugins panel row, where the page
+ * draws the frame, the heading and the expand control (AGENTS.md). Every colour,
+ * border and surface comes from `--dsw-alias-*` tokens so light, dark and system
+ * themes stay coherent, and the ring on each control this file draws is the Host's
+ * own token pair with a fallback on both halves: the Host's `focus.css` beats a
+ * hard-coded outline of ours on specificity, and an undeclared
+ * `--dsw-focus-ring-width` would invalidate the whole `outline` shorthand instead
+ * of degrading it.
+ */
+export const styles: string = `.uir-body,.uir-body *{box-sizing:border-box}
 .uir-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .uir-section{display:grid;gap:10px}
 .uir-section-title{margin:0;font-size:13px;font-weight:600;line-height:20px}
@@ -12,13 +19,14 @@ export const styles = `${PLUGIN_CARD_SHELL_CSS}
 .uir-field{display:grid;gap:6px;min-width:0}
 .uir-field>span{color:var(--dsw-alias-label-secondary);font-size:11px;font-weight:600}
 .uir-control{width:100%;min-height:36px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);padding:7px 10px;font:inherit;font-size:12px;outline:none}
-.uir-control:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}
+.uir-control:focus-visible{border-color:var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .uir-control:disabled{cursor:default;opacity:.45}
 .uir-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px}
 .uir-toggle-copy{display:grid;gap:2px}
 .uir-toggle-copy strong{font-size:12px;font-weight:500}
 .uir-toggle-copy span{color:var(--dsw-alias-label-tertiary);font-size:10px;line-height:15px}
 .uir-toggle{appearance:none;position:relative;width:34px;height:19px;border:0;border-radius:999px;background:var(--dsw-alias-label-dimmed);cursor:pointer;flex:none;transition:background .18s}
+.uir-toggle:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}
 .uir-toggle:after{content:'';position:absolute;top:3px;left:3px;width:13px;height:13px;border-radius:50%;background:var(--dsw-alias-bg-layer-3);transition:transform .18s}
 .uir-toggle:checked{background:var(--dsw-alias-brand-primary)}
 .uir-toggle:checked:after{transform:translateX(15px)}
@@ -26,7 +34,7 @@ export const styles = `${PLUGIN_CARD_SHELL_CSS}
 .uir-actions{display:flex;flex-wrap:wrap;gap:8px}
 .uir-button{min-height:34px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);padding:0 12px;font:inherit;font-size:11px;font-weight:600;cursor:pointer}
 .uir-button:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed);background:var(--dsw-alias-interactive-bg-hover)}
-.uir-button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
+.uir-button:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}
 .uir-button:disabled{cursor:default;opacity:.45}
 .uir-report{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:7px}
 .uir-metric{display:grid;gap:2px;padding:9px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px}
