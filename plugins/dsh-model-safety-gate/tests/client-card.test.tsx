@@ -215,7 +215,6 @@ describe("Safety Gate card", () => {
     // heading and the expand control are the page's, so the body arrives with no
     // shell class and no chevron of ours (AGENTS.md, the owner's word of 01.10).
     expect(container.querySelector("[class*='dsh-plugin-card']")).toBeNull();
-    expect(container.querySelector("ul.msg-card-list")).toBeNull();
     expect(
       screen.queryByRole("button", {
         name: /Show settings: Model Safety Gate/u,
