@@ -14,18 +14,22 @@ published to npm.
 | `@yadsh/dsh-config/tsconfig/browser` | Packages with a browser/client entrypoint |
 | `@yadsh/dsh-config/vitest` | Default Vitest config for plugin test suites |
 
-`tsconfig/base` is the one preset that reaches outside this package: it extends the
-repository's `tsconfig.base.json`. Vite's transform resolves `extends` through the
-`node_modules/@yadsh/dsh-config` workspace link and folds a relative hop against
-that link rather than against its target, so a package inheriting `base` by its
-subpath sends the search to `node_modules/tsconfig.base.json` and every one of its
-test files fails to compile (#687). `tsc` canonicalises and never sees it, which is
-why `build` and `typecheck` stay green over a red suite, and a POSIX resolver folds
-`..` along the resolved path, so the difference only shows on Windows. Inherit that
-preset by its path inside the workspace — `"extends": "../config/tsconfig/base.json"`
-— as `packages/plugin-kit`, `packages/test-kit` and the plugin generator do.
+`tsconfig/base` is the preset that reaches outside this package — it extends the
+repository's `tsconfig.base.json` — and `tsconfig/browser` inherits `base`, so the
+two escape together while `node` and `client` declare no `extends` at all. Vite's
+transform resolves `extends` through the `node_modules/@yadsh/dsh-config` workspace
+link and folds a relative hop against that link rather than against its target, so
+a package inheriting `base` or `browser` by its subpath sends the search for the
+root config to `node_modules/tsconfig.base.json` and every one of its test files
+fails to compile (#687). `tsc` canonicalises and never sees it, which is why
+`build` and `typecheck` stay green over a red suite, and a POSIX resolver folds
+`..` along the already-resolved path, so the difference only shows on Windows.
+Inherit those two presets by their path inside the workspace —
+`"extends": "../config/tsconfig/base.json"` — as `packages/plugin-kit`,
+`packages/test-kit` and the plugin generator do.
 `tests/tsconfig-extends.test.ts` reads every workspace config through the same
-un-canonicalised walk, so the rule holds for a preset that gains an escape later.
+un-canonicalised walk, so the rule holds for `browser` the moment a consumer
+inherits it by subpath, and for a preset that gains an escape later.
 
 ## Usage
 
