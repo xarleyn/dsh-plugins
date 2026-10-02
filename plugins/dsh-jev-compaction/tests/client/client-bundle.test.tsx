@@ -19,7 +19,7 @@ import { describe, expect, it } from "vitest";
 import { createModuleLoaderStub } from "@yadsh/dsh-test-kit";
 
 // The expected sentence comes from the source on purpose: the bundle test then
-// fails when the compiled answer drifts from what the card's shell describes.
+// fails when the compiled answer drifts from the line the card describes.
 import { JEV_COMPACTION_ROW_SUMMARY } from "../../src/client/card.js";
 
 const PACKAGE_NAME = "@yadsh/dsh-jev-compaction";
@@ -33,6 +33,7 @@ async function loadBundle(): Promise<{
   exports: ClientExports;
   requested: string[];
   ids: string[];
+  source: string;
 }> {
   const source = await readFile(
     join(import.meta.dirname, "..", "..", "lib", "client.js"),
@@ -71,6 +72,7 @@ async function loadBundle(): Promise<{
     exports,
     requested: [...new Set(requested)].sort(),
     ids: loader.registrations.map((entry) => entry.id),
+    source,
   };
 }
 
@@ -90,7 +92,7 @@ describe("classic browser bundle", () => {
     expect([...exports.inject]).toEqual(["slots", "configForms"]);
   });
 
-  it("mounts the card into the row's configuration seat and renders the shell", async () => {
+  it("mounts the card into the row's configuration seat as a bare body", async () => {
     const { exports } = await loadBundle();
     const registrations: {
       name: string;
@@ -161,9 +163,25 @@ describe("classic browser bundle", () => {
         { ...(props as Record<string, unknown>), view: "page" },
       ),
     );
-    expect(screen.getByText("Jev Compaction")).toBeTruthy();
-    expect(document.querySelector("li.dsh-plugin-card")?.className).toContain(
-      "dsh-plugin-card",
+    // The compiled bundle mounts the settings body straight into the section the
+    // page expanded: no disclosure step, and no card markup of ours around it.
+    expect(document.querySelector(".jevc-body")).not.toBeNull();
+    expect(screen.getByTestId("jevc-enabled")).toBeTruthy();
+    expect(document.querySelector("svg")).toBeNull();
+  });
+
+  it("names its seat in the registration and carries no shell", async () => {
+    const { source } = await loadBundle();
+    // The card contract reads the surface off the bundle text, so the seat has to
+    // sit in the registration call itself rather than behind a constant.
+    expect(source).toMatch(/\{\s*name:\s*"plugins\.row\.config"\s*,\s*key:/u);
+    // The Plugins page draws this card's frame, heading and expand control: a
+    // shared shell or our chevron inside that frame is a second card (AGENTS.md).
+    expect(source).not.toMatch(/dsh-plugin-card/u);
+    expect(source).not.toMatch(/m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u);
+    // The surface the card was moved off is not registered, named, or described.
+    expect(source).not.toMatch(
+      /settings\.plugins\.tab|settings\.plugin\.item/u,
     );
   });
 
@@ -176,9 +194,9 @@ describe("classic browser bundle", () => {
     }[] = [];
     exports.apply({
       configForms: {
-        // The Host section behind this row serves no values, so the card would
-        // render nothing: any text the page sees here can only be the summary
-        // answer.
+        // The Host section behind this row serves no values, so the body view
+        // would answer with the line about an unavailable session: any other
+        // text the page sees here can only be the summary answer.
         get: () => ({
           getSnapshot: () => ({ status: "unavailable", value: undefined }),
           subscribe: () => () => {},
@@ -213,7 +231,7 @@ describe("classic browser bundle", () => {
       }),
     );
     expect(container.textContent).toBe(JEV_COMPACTION_ROW_SUMMARY);
-    expect(container.querySelector("li.dsh-plugin-card")).toBeNull();
+    expect(container.querySelector(".jevc-body")).toBeNull();
     expect(container.querySelector("input, select, button")).toBeNull();
   });
 
@@ -241,6 +259,30 @@ describe("classic browser bundle", () => {
       `style[data-plugin="${PACKAGE_NAME}"]`,
     );
     expect(tags).toHaveLength(1);
-    expect(tags[0]!.textContent).toContain(".dsh-plugin-card{");
+    const css = tags[0]!.textContent ?? "";
+    expect(css).toContain(".jevc-body{");
+    expect(css).not.toContain(".dsh-plugin-card");
+    // Every control this plugin renders dresses its ring from the Host's token
+    // pair, each half with a fallback: an undeclared token drops the whole
+    // `outline` shorthand, and a hard-coded outline loses to the Host's focus.css.
+    const declarationsOf = (selector: string): string => {
+      const start = css.indexOf(selector);
+      expect(start, `${selector} keeps a rule`).toBeGreaterThanOrEqual(0);
+      const open = css.indexOf("{", start);
+      return css.slice(open + 1, css.indexOf("}", open));
+    };
+    for (const selector of [
+      ".jevc-input:focus-visible",
+      ".jevc-toggle:focus-visible",
+      ".jevc-tag-remove:focus-visible",
+      ".jevc-button:focus-visible",
+      ".jevc-details>summary:focus-visible",
+    ]) {
+      const declarations = declarationsOf(selector);
+      expect(declarations).toContain("var(--dsw-focus-ring-width, 2px)");
+      expect(declarations).toContain(
+        "var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))",
+      );
+    }
   });
 });

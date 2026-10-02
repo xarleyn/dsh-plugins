@@ -13,12 +13,7 @@ import { createElement } from "react";
 import type { ComponentType } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import {
-  CLIENT_PLUGIN_NAME,
-  SETTINGS_CARD_SLOT,
-  apply,
-  inject,
-} from "../../src/client/index.js";
+import { CLIENT_PLUGIN_NAME, apply, inject } from "../../src/client/index.js";
 import { JEV_COMPACTION_ROW_SUMMARY } from "../../src/client/card.js";
 import { JEV_COMPACTION_SETTINGS_NAMESPACE } from "../../src/shared/settings.js";
 
@@ -142,7 +137,6 @@ describe("client entry registration", () => {
   it("registers one card on the Plugins page row seat", () => {
     const registration = registeredCard();
     expect(registration.name).toBe("plugins.row.config");
-    expect(SETTINGS_CARD_SLOT).toBe("plugins.row.config");
     expect(typeof registration.inject).toBe("function");
   });
 
@@ -167,7 +161,7 @@ describe("client entry registration", () => {
     });
   });
 
-  it("answers the summary view with the one-liner, not a second card", () => {
+  it("answers the summary view with the one-liner, not a second body", () => {
     const component = registeredCard().component;
     expect(component).toBeDefined();
     const { container } = render(
@@ -175,10 +169,10 @@ describe("client entry registration", () => {
         view: "summary",
       }),
     );
-    // The page puts this view inside its own text, so it stays a sentence: a card
-    // here would nest a second shell under the row.
+    // The page puts this view inside its own text, so it stays a sentence: a body
+    // here would nest the card under the row's description.
     expect(container.textContent).toBe(JEV_COMPACTION_ROW_SUMMARY);
-    expect(container.querySelector("li.dsh-plugin-card")).toBeNull();
+    expect(container.querySelector(".jevc-body")).toBeNull();
     // And no control of the form reaches the collapsed row.
     expect(container.querySelector("input, select, button")).toBeNull();
   });
@@ -186,15 +180,11 @@ describe("client entry registration", () => {
   it("mounts the card in the row's section and writes through the injected form", () => {
     const settingsWrites: WriteOp[] = [];
     const { container, pageWrites } = mountRowSection(settingsWrites);
-    // The seat really renders the card: the shell the configuration contract
-    // asserts, kept inside the list this plugin owns.
-    const root = container.querySelector("li.dsh-plugin-card");
-    expect(root).not.toBeNull();
-    expect(root!.parentElement?.tagName).toBe("UL");
-    // Opened the way a user opens it, then one write.
-    fireEvent.click(
-      screen.getByRole("button", { name: "Show settings: Jev Compaction" }),
-    );
+    // The seat really renders the body. The Plugins page draws this card's frame,
+    // heading and expand control, so the bundle mounts the controls directly and
+    // brings no surface of its own (AGENTS.md).
+    expect(container.querySelector(".jevc-body")).not.toBeNull();
+    expect(container.querySelector("input, select, button")).not.toBeNull();
     fireEvent.click(screen.getByTestId("jevc-reset-overrides"));
     // The card binds to the form it resolved for its own namespace — the one that
     // can be subscribed to and read field by field — and never to the page's

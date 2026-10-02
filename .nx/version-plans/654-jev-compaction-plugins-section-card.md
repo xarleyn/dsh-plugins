@@ -31,20 +31,43 @@ saved by an older build is read back by this one; the tab's own seat id
 `dsh-jev-compaction` and its `label`/`order` were the only names left behind, and
 they named nothing but the seat.
 
-What the card renders is the same card: the same shell every DSH configuration card
-uses, the same controls, the same write-on-change behavior, the same rule that the API
-key never crosses to the browser. The shell is not restyled, which is what decision D1
-(option 2: our shell stays ours) recorded; what the shell should look like inside a
-section the host decorates is `#646`'s to settle, and this change settles nothing about
-it. Which seat a configuration card belongs in is answered — `AGENTS.md` names the row
+What the card renders is the body of a card the page frames, and the same controls, the
+same write-on-change behavior and the same rule that the API key never crosses to the
+browser. A row on the Plugins panel sits inside the page's own card: the page paints the
+surface (a 20 px `--dsw-radius-xl` one), the row title, the row id, the module name and
+the description line, and mounts the registrant's `page` view under them. This bundle
+drew a second card inside that — a 12 px rounded rectangle with our heading, our
+chevron and a show/hide button duplicating the page's own toggle — which is the nesting
+`#646` was opened for and the maintainer settled on 01.10 as option 1 of
+`docs/DSH-0.1.7-MIGRATION.md` §4.3, in the line as `#684`. `CardShell` and the
+plugin-owned `<ul>` that kept its `<li>` a list item are gone, the header badge that
+summarized the same enabled and shaping state the status block carries went with the
+header, and the configuration sections mount directly.
+
+The focus rings of the controls this plugin paints come from the Host's design system
+(`--dsw-focus-ring-width` / `--dsw-focus-ring-color`) rather than a hard-coded outline,
+and each half carries its own fallback: an undeclared token invalidates the whole
+`outline` shorthand, so the ring would disappear instead of degrading, while a hard-coded
+outline of our own loses to the Host's `focus.css` under pointer modality at 0-3-2 against
+our 0-2-0 — raising specificity to win that fight is the wrong repair, and no rule here
+raises it. Every control the bundle renders gets the ring, not one of them: the fields,
+the toggle, the chip-remove button, the buttons, and the Advanced disclosure.
+
+Which seat a configuration card belongs in is answered — `AGENTS.md` names the row
 seat as the registration point since `#660`, and this card had been sent
 to the Settings dialog by the rule that text replaced. What the move does prove is that
-enforcement survives it: the gate that decides whether the card contract applies reads
-the slot names a card registers under and has listed `plugins.row.config` alongside
-`settings.plugin.item` since `#510`, so
-it fires on the new seat for the same reason it fired on the old one. That is the
-failure `docs/DSH-0.1.7-MIGRATION.md` §10 records and `#510` closed: a card that
-renamed its seat used to fall out of the contract quietly.
+enforcement survives it: `scripts/verify-package-hygiene.mjs` has fired the card contract
+on `plugins.row.config` since `#510`, and since `#684` the half that contract applies is
+decided by the seat the *built bundle* registers on — the shell it requires of a
+settings-surface card is exactly what it forbids on the row. That is why the seat is now
+stated as a literal inside the `slots.register` call instead of behind the
+`SETTINGS_CARD_SLOT` constant it used to sit in front of: a constant still resolves, but a
+positional registration leaves the gate falling back on every seat name the bundle quotes,
+where a surviving comment could decide the contract after all. Stating it in the call is
+what keeps the row's half of the contract in charge of this bundle. The failure
+`docs/DSH-0.1.7-MIGRATION.md` §10 records — enforcement keyed off one slot literal, so a
+card that renamed its seat used to fall out of the contract quietly — was closed by `#510`
+and is now closed by the seat-aware gate itself.
 
 Three details follow from the new seat rather than from a redesign. The page hands its
 registrant a `ConfigPageForm`, which is `{ state, mutate }` — no subscription, no
@@ -57,13 +80,14 @@ as `view: 'summary'`, the row's one-liner, and asks for it only when the row car
 display description of its own: that description is Host inventory data, resolved out of
 the row's supplied metadata (`presentation.d.ts`, `rowText`), so nothing in this bundle
 decides whether the fallback ever fires and this change neither claims nor needs that
-answer. What the bundle owns is the answer's shape — the sentence, never a second card —
+answer. What the bundle owns is the answer's shape — the sentence, never a second body —
 and two tests pin it, one against the entry and one against the compiled bundle. The
-sentence is the shell's own description, hoisted to `JEV_COMPACTION_ROW_SUMMARY` so the
-two cannot drift. And the shell's `<li>` still needs a list to sit in: measured on the
-`0.1.7-rc.2` host in `#646`, the section a row opens hands its content to a plain
-container with no list and no border or radius of its own, so the plugin-owned `<ul>`
-stays with the card and the only shell on screen is the one the card draws.
+sentence lives in `JEV_COMPACTION_ROW_SUMMARY`, exported so the bundle test compares the
+compiled answer against the source rather than against a copy of it. And with no header of
+ours left to hide, an unavailable namespace no longer renders nothing: a card that owns its
+shell can stay invisible, while this one sits inside a row the page has already expanded,
+so leaving its section empty would tell the reader nothing. It answers with the line that
+says why no values show.
 
 The manifest followed the surface: the client half type-imports the Plugins page's
 slot contract instead of the settings-plugins one, so
@@ -74,13 +98,18 @@ without the Plugins page loses the card, and `compatibility.json` says so, its
 required client features naming `plugins.row.config` where it named
 `settings.plugins.tab`. `scripts/verify-package.mjs` asserts the new pair (the slot
 literal and the `@yadsh/dsh-jev-compaction#` key prefix in the shipped bundle, the
-new package in the inject list). The client tests now cover the seat from both sides:
-the keyed registration and the namespace it resolves, the card rendered out of the
-registration with a decoy `form` handed to the seat whose `mutate` is watched — arriving
-after the injected face, which is the order the seat really renders its owner props in —
-which pins that the writes go to the injected `settingsForm` and not to the page's form,
-and the `summary` view answering with the sentence and no card, once out of the entry and
-once out of the compiled `lib/client.js` against a section that serves no values at all.
+new package in the inject list) and then runs the shared card contract over
+`lib/client.js`, which on this seat means the bundle must carry no `dsh-plugin-card`
+class, no chevron path, and a ring built from both Host tokens. The client tests now
+cover the seat from both sides: the keyed registration and the namespace it resolves, the
+card rendered out of the registration with a decoy `form` handed to the seat whose `mutate`
+is watched — arriving after the injected face, which is the order the seat really renders
+its owner props in — which pins that the writes go to the injected `settingsForm` and not
+to the page's form, the body mounted with no expand step and no list item or disclosure
+control of ours around it, the `summary` view answering with the sentence and no body, once
+out of the entry and once out of the compiled `lib/client.js` against a section that serves
+no values at all, and — against that compiled text — the seat named inside the registration
+and the shell and chevron absent from it.
 The plugin's own design docs moved with the card: `docs/specs/result-shaping.md` and
 `docs/RESULT_SHAPING_SPIKE.md` still described the browser seat as
 `settings.plugin.item` — a slot `0.1.7` deleted, so a reader following them registers
