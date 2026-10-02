@@ -159,7 +159,7 @@ function JsonNode(props: NodeProps): ReactNode {
             focusable="false"
           >
             <path
-              d="m3.5 5.25 3.5 3.5 3.5-3.5"
+              d="m3 5 4 4 4-4"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.5"

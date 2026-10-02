@@ -1,11 +1,21 @@
 // @vitest-environment jsdom
+/**
+ * The body the Plugins page mounts for this seat.
+ *
+ * The row's page owns the chrome: it paints the card surface, the heading, the
+ * row id and the expand control, and mounts the registrant's `page` view under
+ * its configuration section. What this bundle supplies is therefore the body
+ * alone — a shell of ours would draw a second frame and a second heading inside
+ * the first (AGENTS.md, card-shell contract). The assertions below are the
+ * renderable half of that rule; the built bundle is held to it by the package
+ * gate, which reads the seat off `lib/client.js`.
+ */
 
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 
 import { resolveConfig } from "../../../src/resolve-config.js";
 import {
-  openCard,
   renderCard,
   section,
   sectionHeading,
@@ -19,38 +29,28 @@ afterEach(async () => {
   cleanup();
 });
 
-describe("QA Surface card", () => {
-  it("renders the canonical shell closed, badged with the served route", async () => {
+describe("QA Surface card body", () => {
+  it("mounts the configuration as the page's body, with no shell of ours", async () => {
     const { container } = await renderCard();
-    expect(container.querySelector("li.dsh-plugin-card")).not.toBeNull();
-    // The Plugins page's configuration column supplies no list of its own, so
-    // the shell's `li` keeps a list of ours (AGENTS.md, card-shell contract).
-    expect(container.querySelector("ul.qa-settings-cards")).not.toBeNull();
+    // The body is the root: no list around it, no card frame inside the page's
+    // own card, and no toggle duplicating the row's expand control.
+    expect(container.firstElementChild?.className).toBe("qa-card-body");
+    expect(container.querySelector("ul,li,article")).toBeNull();
+    expect(container.querySelector("[class*='dsh-plugin-card']")).toBeNull();
+    expect(container.querySelector("svg")).toBeNull();
     expect(
-      container.querySelector("li.dsh-plugin-card")?.parentElement?.tagName,
-    ).toBe("UL");
-    expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
-    expect(screen.getByText("Помощник QA")).toBeTruthy();
-    // The badge names what the Host serves, not what the form says.
+      container.querySelector("[aria-expanded], [class*='chevron']"),
+    ).toBeNull();
+    // The heading and the badge the shell used to carry are the page's and the
+    // status section's: the route the Host serves is still named, once.
+    expect(screen.queryByText("Помощник QA")).toBeNull();
     expect(
-      container.querySelector(".dsh-plugin-card__badge")?.textContent,
-    ).toBe("/assistant");
-    expect(container.querySelector(".dsh-plugin-card__chevron")).not.toBeNull();
+      screen.getByTestId("qa-settings-status-route").textContent,
+    ).toContain("/assistant");
   });
 
-  it("renders no card while the row's namespace answers unavailable", async () => {
-    const { container } = await renderCard({
-      snapshot: { status: "unavailable", value: undefined },
-    });
-    // The page's own heading and configure control are the Host's and stay;
-    // what the plugin holds back is the card, and with it every control.
-    expect(container.querySelector("li.dsh-plugin-card")).toBeNull();
-    expect(container.textContent).toBe("");
-  });
-
-  it("opens into every configuration section", async () => {
+  it("opens into every configuration section without an expand step", async () => {
     await renderCard();
-    openCard();
     const sections: ReadonlyArray<readonly [string, string]> = [
       ["qa-settings-status", "Состояние"],
       ["qa-settings-access", "Доступ и маршрут"],
@@ -67,14 +67,20 @@ describe("QA Surface card", () => {
     for (const [testId, title] of sections) {
       expect(sectionHeading(testId, title)).toBeTruthy();
     }
-    expect(
-      screen.getByRole("button", { name: /Скрыть настройки/u }),
-    ).toBeTruthy();
+  });
+
+  it("renders nothing while the row's namespace answers unavailable", async () => {
+    const { container } = await renderCard({
+      snapshot: { status: "unavailable", value: undefined },
+    });
+    // The page's own heading and configure control are the Host's and stay;
+    // what the plugin holds back is its body, and with it every control.
+    expect(container.firstElementChild).toBeNull();
+    expect(container.textContent).toBe("");
   });
 
   it("shows the route, policy, and account gate the Host answered with", async () => {
     await renderCard();
-    openCard();
     await waitFor(() => {
       expect(
         screen.getByTestId("qa-settings-status-route").textContent,
@@ -94,7 +100,6 @@ describe("QA Surface card", () => {
     await renderCard({
       describe: async () => ({ ok: false, error: new Error("нет связи") }),
     });
-    openCard();
     await waitFor(() => {
       expect(
         screen.getByTestId("qa-settings-status-notice-host-silent").textContent,
@@ -116,7 +121,6 @@ describe("QA Surface card", () => {
         }),
       }),
     });
-    openCard();
     await waitFor(() => {
       expect(
         screen.getByTestId("qa-settings-status-questions").textContent,
@@ -140,7 +144,6 @@ describe("QA Surface card", () => {
         }),
       }),
     });
-    openCard();
     await waitFor(() => {
       expect(
         screen.getByTestId("qa-settings-status-questions").textContent,
@@ -162,7 +165,6 @@ describe("QA Surface card", () => {
         }),
       }),
     });
-    openCard();
     await waitFor(() => {
       expect(
         screen.getByTestId("qa-settings-status-questions").textContent,

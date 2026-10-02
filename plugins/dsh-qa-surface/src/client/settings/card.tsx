@@ -19,7 +19,6 @@ import type {
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import {
-  CardShell,
   bindSettingsExternalStore,
   startVisibilityAwarePolling,
 } from "@yadsh/dsh-plugin-kit/client";
@@ -35,7 +34,6 @@ import {
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../../types.js";
 import type { ConfigEntry } from "./fields.js";
 import {
-  badgeText,
   isOverridden,
   mutationLanded,
   overriddenKeys,
@@ -65,8 +63,8 @@ const REFUSED_MESSAGE =
   "Хост отклонил изменение: значение не сохранилось. Обычно так отвечает несовместимая комбинация полей — проверьте связанные значения этого раздела. Точную причину хост пишет в свой журнал.";
 
 /**
- * The one-liner of this row, carried by the card header and by the seat the
- * Plugins page asks it for as `summary`.
+ * The one-liner of this row, carried by the `summary` view the Plugins page
+ * asks this seat for.
  */
 const ROW_SUMMARY =
   "Страница вопросов и ответов на сессиях DeepSeek Harness: маршрут, оформление, сессия, политика запуска, аккаунты и источники.";
@@ -246,14 +244,11 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
     );
   }, [applyMutation, overrides]);
 
-  // A namespace the Host does not serve has no values to edit, so the card stays
-  // out of the row's configuration column (AGENTS.md, card-shell contract). A
-  // namespace that serves values but refuses writes is the other case: the card
+  // A namespace the Host does not serve has no values to edit, so nothing of ours
+  // mounts in the row's configuration column (AGENTS.md, card-shell contract). A
+  // namespace that serves values but refuses writes is the other case: the body
   // renders and disables its controls on `writable` instead of hiding itself.
   if (settings.status === "unavailable") return null;
-
-  const enabled = effective?.enabled ?? config?.enabled ?? true;
-  const routePath = effective?.route.path ?? config?.route?.path;
 
   const sectionProps: ConfigProps = {
     config,
@@ -266,17 +261,9 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
   };
 
   return (
-    <CardShell
-      title="Помощник QA"
-      description={ROW_SUMMARY}
-      badge={
-        <span className="dsh-plugin-card__badge">
-          {badgeText(enabled, routePath)}
-        </span>
-      }
-      label={(open) => `${open ? "Скрыть" : "Показать"} настройки: Помощник QA`}
-      bodyClassName="qa-card-body"
-    >
+    // The Plugins page draws this card's frame, its heading and its expand
+    // control, so the bundle renders the body and nothing around it (AGENTS.md).
+    <div className="qa-card-body">
       {settings.status === "loading" ? (
         <p className="qa-card-muted" data-testid="qa-settings-loading">
           Загружаю настройки помощника…
@@ -345,7 +332,7 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
           </div>
         </>
       )}
-    </CardShell>
+    </div>
   );
 }
 
@@ -363,17 +350,12 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
  * `types/client/slot-contract.d.ts`) — so nothing in this bundle decides that
  * the entry answers both. The summary lands inside a line of the page's own
  * text, so it stays a sentence: a card seated there would draw a page within a
- * line and start a second poll of the `qaSurface/describe` Remote.
- *
- * The card shell's root is an `<li>` and the page's configuration column
- * supplies no list of its own, so the list around it stays plugin-owned
- * (AGENTS.md, card-shell contract).
+ * line and start a second poll of the `qaSurface/describe` Remote. The page view
+ * is the body alone — the row's page already draws the card surface, the
+ * heading and the expand control, so a shell of ours would be a second frame
+ * inside the first (AGENTS.md, card-shell contract).
  */
 export function QaSettingsCardEntry(props: CardProps) {
   if (props.view === "summary") return ROW_SUMMARY;
-  return (
-    <ul className="qa-settings-cards">
-      <QaSettingsCard {...props} />
-    </ul>
-  );
+  return <QaSettingsCard {...props} />;
 }

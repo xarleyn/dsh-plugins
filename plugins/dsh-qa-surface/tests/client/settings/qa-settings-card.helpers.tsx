@@ -1,11 +1,12 @@
 // @vitest-environment jsdom
 /**
- * The QA Surface settings card: the shell contract, the path-addressed writes
- * behind the controls, the paired writes the Host's cross-checks force, and
- * the state the `qaSurface/describe` Remote feeds the status view.
+ * The QA Surface settings card: the body the row seat mounts without a shell of
+ * ours, the path-addressed writes behind the controls, the paired writes the
+ * Host's cross-checks force, and the state the `qaSurface/describe` Remote feeds
+ * the status view.
  */
 
-import { act, fireEvent, render, screen, within } from "@testing-library/react";
+import { act, render, screen, within } from "@testing-library/react";
 import { vi } from "vitest";
 import type { ReactElement } from "react";
 
@@ -167,12 +168,6 @@ export async function renderCard(
     container: (result as ReturnType<typeof render>).container,
     mutate,
   };
-}
-
-export function openCard(): void {
-  fireEvent.click(
-    screen.getByRole("button", { name: /Показать настройки: Помощник QA/u }),
-  );
 }
 
 /**

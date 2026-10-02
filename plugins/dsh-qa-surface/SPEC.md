@@ -1038,14 +1038,15 @@ row still reads back. The seat hands its registrant a `form` of its own —
 the injected face, so the card resolves the full `ConfigForm` through
 `ctx.configForms` and passes it in its face under another name.
 
-The card uses the canonical plugin-card shell of `@yadsh/dsh-plugin-kit/client`
-(the AGENTS.md contract: a `<li>` inside a plugin-owned `<ul>`, since the page's
-configuration column supplies no list of its own, a full-width header button
-with `aria-expanded`, the title/description stack, an optional status badge, and
-the 14×14 SVG chevron), and renders nothing when the namespace is unavailable —
-a deployment that does not compose the plugin shows no trace of it. Where the
-page seats the same entry as the row's one-liner (`view: 'summary'`), it answers
-with that sentence rather than with a card.
+The row's page owns the chrome: it paints the card surface, the heading, the row
+id and the expand control, so the bundle renders the configuration body and
+nothing around it (the AGENTS.md card-shell contract — no `dsh-plugin-card*`
+class, no `<li>` root, no chevron of ours, and a focus ring built from the
+Host's `--dsw-focus-ring-*` tokens rather than a hard-coded outline). It renders
+nothing when the namespace is unavailable — a deployment that does not compose
+the plugin shows no trace of it. Where the page seats the same entry as the
+row's one-liner (`view: 'summary'`), it answers with that sentence rather than
+with a card.
 
 Responsibilities:
 

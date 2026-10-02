@@ -7,7 +7,6 @@ import type { QaSurfaceConfig } from "../../../src/types.js";
 import {
   BASE,
   errorPlate,
-  openCard,
   renderCard,
   section,
   settle,
@@ -23,7 +22,6 @@ afterEach(async () => {
 describe("QA Surface card", () => {
   it("writes a path-addressed mutation when a control changes", async () => {
     const { mutate } = await renderCard();
-    openCard();
 
     const access = section("qa-settings-access");
     fireEvent.click(
@@ -38,7 +36,6 @@ describe("QA Surface card", () => {
 
   it("surfaces a refusal the scope settles silently", async () => {
     await renderCard({ refuse: true });
-    openCard();
 
     const access = section("qa-settings-access");
     fireEvent.click(
@@ -65,7 +62,6 @@ describe("QA Surface card", () => {
 
   it("treats a write that changed nothing as the no-op it is", async () => {
     await renderCard();
-    openCard();
 
     const enabled = within(section("qa-settings-access")).getByRole(
       "checkbox",
@@ -82,7 +78,6 @@ describe("QA Surface card", () => {
 
   it("writes a provider and its model in one mutation", async () => {
     const { mutate } = await renderCard();
-    openCard();
 
     const session = section("qa-settings-session");
     const model = within(session).getByLabelText(/Модель/u);
@@ -104,7 +99,6 @@ describe("QA Surface card", () => {
         } as QaSurfaceConfig,
       },
     });
-    openCard();
 
     const accounts = section("qa-settings-accounts");
     fireEvent.click(
@@ -126,7 +120,6 @@ describe("QA Surface card", () => {
 
   it("lists what per-user workspaces still need", async () => {
     await renderCard();
-    openCard();
     expect(
       screen.getByTestId("qa-settings-accounts-notice-per-user-gaps")
         .textContent,
@@ -135,7 +128,6 @@ describe("QA Surface card", () => {
 
   it("refuses the reset button the lockdown cross-check would reject", async () => {
     await renderCard();
-    openCard();
     const ui = section("qa-settings-interface");
     const showReset = within(ui).getByRole("checkbox", {
       name: /Кнопка нового чата/u,
@@ -153,7 +145,6 @@ describe("QA Surface card", () => {
         } as QaSurfaceConfig,
       },
     });
-    openCard();
     expect(
       screen.getByTestId("qa-settings-lockdown-notice-disabled").textContent,
     ).toMatch(/Блокировка выключена/u);
