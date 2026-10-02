@@ -1,9 +1,9 @@
 // @vitest-environment jsdom
 
 /**
- * The settings card itself (result-shaping SPEC §51, §56): the shell contract,
- * the values it projects, the writes it issues, and the two safety
- * affordances — the archive warning and the read-only state.
+ * The settings card itself (result-shaping SPEC §51, §56): the markup the Plugins
+ * page leaves to this bundle, the values it projects, the writes it issues, and the
+ * two safety affordances — the archive warning and the read-only state.
  *
  * A control reached through its own markup is addressed by `data-testid`, so a
  * reworded caption cannot break the test; the helper behind those lookups keeps
@@ -64,13 +64,6 @@ function renderCard(options: Parameters<typeof stubForm>[0] = {}) {
   return { ...result, ops };
 }
 
-/** Expand the card the way a user does, through its own header button. */
-function expand(): void {
-  fireEvent.click(
-    screen.getByRole("button", { name: "Show settings: Jev Compaction" }),
-  );
-}
-
 /**
  * The control a test id names, with the assertion that its accessible name is
  * still wired: the id keeps a browser test alive across a reworded caption, and
@@ -85,48 +78,36 @@ function controlById<T extends HTMLElement = HTMLElement>(
   return node;
 }
 
-describe("JevCompactionCard shell", () => {
-  it("renders the canonical shell as a list item child", () => {
+describe("JevCompactionCard frame", () => {
+  it("renders the body directly, with no card of its own around it", () => {
     const { container } = renderCard();
-    const root = container.querySelector("li.dsh-plugin-card");
-    expect(root).not.toBeNull();
-    // The row's configuration section supplies no list of its own, so the card
-    // owns the `<ul>` that keeps the shell's `<li>` a list item (AGENTS.md).
-    expect(root!.parentElement?.tagName).toBe("UL");
-    expect(root!.querySelector(".dsh-plugin-card__header")).not.toBeNull();
-    expect(root!.querySelector(".dsh-plugin-card__name")!.textContent).toBe(
-      "Jev Compaction",
-    );
+    // The Plugins page draws this card's frame, its heading and its expand
+    // control, so the bundle mounts the controls and nothing around them
+    // (AGENTS.md): no list item, no disclosure button, no chevron.
+    const root = container.querySelector(".jevc-body")!;
+    expect(root.tagName).toBe("DIV");
+    expect(root.parentElement?.tagName).not.toBe("LI");
+    expect(container.querySelector("ul")).toBeNull();
+    expect(container.querySelector("svg")).toBeNull();
     expect(
-      root!.querySelector(".dsh-plugin-card__description")!.textContent,
-    ).toContain("Semantic result shaping and historical context compaction");
-    expect(root!.querySelector(".dsh-plugin-card__chevron")).not.toBeNull();
-    // The body only exists while the card is open.
-    expect(root!.querySelector(".dsh-plugin-card__body")).toBeNull();
+      screen.queryByRole("button", { name: /settings: Jev Compaction/u }),
+    ).toBeNull();
   });
 
-  it("opens and closes through the header button", () => {
-    const { container } = renderCard();
-    expand();
-    const root = container.querySelector("li.dsh-plugin-card")!;
-    expect(root.classList.contains("dsh-plugin-card--open")).toBe(true);
-    expect(root.querySelector(".dsh-plugin-card__body")).not.toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Hide settings: Jev Compaction" }),
-    ).toBeTruthy();
+  it("mounts the controls without an expand step", () => {
+    renderCard();
+    // The page opens the row; the body is there the moment it does.
+    expect(controlById("jevc-enabled", "Enable Jev Compaction")).toBeTruthy();
   });
 
-  it("uses no font-glyph chevron", () => {
-    const { container } = renderCard();
-    expect(container.textContent).not.toMatch(/[\u2304\u25be]/u);
-    expect(container.querySelector("svg path")!.getAttribute("d")).toBe(
-      "m3.5 5.25 3.5 3.5 3.5-3.5",
-    );
-  });
-
-  it("renders nothing when the namespace is unavailable", () => {
+  it("explains an unavailable namespace instead of vanishing", () => {
     const { container } = renderCard({ status: "unavailable" });
-    expect(container.childElementCount).toBe(0);
+    // Rendering nothing inside a row the page just expanded would leave the
+    // reader with an empty section and no reason.
+    expect(container.querySelector(".jevc-body")?.textContent).toContain(
+      "not available in this session",
+    );
+    expect(container.querySelector("input, select, button")).toBeNull();
   });
 });
 
@@ -143,7 +124,6 @@ describe("JevCompactionCard content", () => {
         resultShaping: { enabled: false, thresholdChars: 15000 },
       },
     });
-    expand();
     expect(screen.getByTestId("jevc-status-model").textContent).toBe(
       "jev-latest",
     );
@@ -178,7 +158,6 @@ describe("JevCompactionCard content", () => {
         },
       },
     });
-    expand();
     expect(screen.getByText(/never reaches this page/u)).toBeTruthy();
     // No password-style input exists on the card at all.
     expect(document.querySelector('input[type="password"]')).toBeNull();
@@ -186,7 +165,6 @@ describe("JevCompactionCard content", () => {
 
   it("writes an enable toggle as one path-addressed set", () => {
     const { ops } = renderCard({ value: { enabled: false } });
-    expand();
     fireEvent.click(controlById("jevc-enabled", "Enable Jev Compaction"));
     expect(ops).toEqual([{ op: "set", path: ["enabled"], value: true }]);
   });
@@ -195,7 +173,6 @@ describe("JevCompactionCard content", () => {
     const { ops } = renderCard({
       value: { resultShaping: { enabled: false } },
     });
-    expand();
     fireEvent.click(
       controlById(
         "jevc-shaping-enabled",
@@ -211,7 +188,6 @@ describe("JevCompactionCard content", () => {
     renderCard({
       value: { resultShaping: { enabled: true }, archive: { enabled: false } },
     });
-    expand();
     expect(screen.getByTestId("jevc-shaping-warning")).toBeTruthy();
     expect(screen.getByTestId("jevc-archive-warning")).toBeTruthy();
   });
@@ -220,14 +196,12 @@ describe("JevCompactionCard content", () => {
     renderCard({
       value: { resultShaping: { enabled: true }, archive: { enabled: true } },
     });
-    expand();
     expect(screen.queryByTestId("jevc-shaping-warning")).toBeNull();
     expect(screen.queryByTestId("jevc-archive-warning")).toBeNull();
   });
 
   it("marks a field the user layer overrides", () => {
     renderCard({ value: { enabled: true }, user: { enabled: true } });
-    expand();
     expect(screen.getByTestId("jevc-enabled-chip")).toBeTruthy();
     // The mark belongs to the field the user layer owns, and to no other.
     expect(screen.getByLabelText(/Enable Jev Compaction/u)).toBeTruthy();
@@ -239,7 +213,6 @@ describe("JevCompactionCard content", () => {
       value: { enabled: true, resultShaping: { enabled: true } },
       user: { enabled: true, resultShaping: { enabled: false } },
     });
-    expand();
     const reset = screen.getByTestId("jevc-reset-overrides");
     expect(screen.getByRole("button", { name: /Reset overrides/u })).toBe(
       reset,
@@ -253,7 +226,6 @@ describe("JevCompactionCard content", () => {
 
   it("disables every control on a read-only profile", () => {
     renderCard({ writable: false, value: { enabled: true } });
-    expand();
     expect(
       controlById<HTMLInputElement>("jevc-enabled", "Enable Jev Compaction")
         .disabled,
@@ -265,7 +237,6 @@ describe("JevCompactionCard content", () => {
     const { ops } = renderCard({
       value: { resultShaping: { includeTools: ["bash"] } },
     });
-    expand();
     const input = controlById("jevc-include-tools", "Eligible tools");
     fireEvent.change(input, { target: { value: "cargo" } });
     // The two lists own one Add button each, so the id picks this field's own.
@@ -283,7 +254,6 @@ describe("JevCompactionCard content", () => {
     const { ops } = renderCard({
       value: { resultShaping: { includeTools: ["bash", "pwsh"] } },
     });
-    expand();
     fireEvent.click(screen.getByRole("button", { name: "Remove bash" }));
     expect(ops).toEqual([
       { op: "set", path: ["resultShaping", "includeTools"], value: ["pwsh"] },

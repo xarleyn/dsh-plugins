@@ -7,17 +7,18 @@
  * drops the user-layer override and re-inherits the deployment default);
  * text-like controls keep a local draft so keystrokes never produce
  * intermediate writes. The card has no Remote face — the plugin is host-only —
- * so the header projects the configuration, not live runtime state, and the
+ * so it projects the configuration rather than live runtime state, and the
  * status block never claims a health check it did not perform.
+ *
+ * This is the body of a card the Plugins page frames: the page draws the
+ * surface, the heading and the expand control, so the bundle renders the body
+ * and nothing around it (AGENTS.md).
  */
 
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type { InjectFace } from "@deepseek-ai/dsh-client-ui-slots";
-import {
-  CardShell,
-  bindSettingsExternalStore,
-} from "@yadsh/dsh-plugin-kit/client";
+import { bindSettingsExternalStore } from "@yadsh/dsh-plugin-kit/client";
 import type { ReactElement } from "react";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 
@@ -30,7 +31,6 @@ import {
   Toggle,
 } from "./controls.js";
 import {
-  badgeText,
   formatBytes,
   isOverridden,
   overriddenKeys,
@@ -62,8 +62,8 @@ export interface JevCompactionCardFace {
 type CardProps = InjectFace<JevCompactionCardFace>;
 
 /**
- * What this card does, in one line: the shell's own description, and the sentence
- * the Plugins page shows for this bundle's row when the row carries no display
+ * What this card does, in one line: the sentence the Plugins page puts into the
+ * description paragraph of this bundle's row when the row carries no display
  * description of its own and asks the seated entry for its `summary` view.
  */
 export const JEV_COMPACTION_ROW_SUMMARY =
@@ -172,7 +172,20 @@ export function JevCompactionCard({
     [clear, write],
   );
 
-  if (settings.status === "unavailable") return null;
+  // The frame here is the page's, so rendering nothing would leave the reader
+  // inside an opened row with no section and no reason. A card that draws its own
+  // shell can stay invisible; this one owes a sentence.
+  if (settings.status === "unavailable") {
+    return (
+      <div className="jevc-body">
+        <p className="jevc-muted" data-testid="jevc-unavailable">
+          The Jev Compaction settings are not available in this session, so
+          nothing here can be read or changed yet. The plugin keeps running with
+          the last configuration the Host accepted.
+        </p>
+      </div>
+    );
+  }
 
   const enabled = config?.enabled ?? true;
   const shaping = config?.resultShaping;
@@ -185,627 +198,601 @@ export function JevCompactionCard({
   const apiKeyEnv = config?.jev?.apiKeyEnv ?? "TYPESAFE_API_KEY";
 
   return (
-    // AGENTS.md: a configuration card keeps the standard shell, but its `<li>`
-    // root must sit inside a list this plugin owns — the section this bundle's row
-    // opens on the Plugins page hands its content to a plain container, with no
-    // list and no border of its own (measured on the `0.1.7-rc.2` host, epic `#646`),
-    // so the card brings the list with it.
-    <ul className="jevc-stack">
-      <CardShell
-        title="Jev Compaction"
-        description={JEV_COMPACTION_ROW_SUMMARY}
-        badge={
-          <span className="dsh-plugin-card__badge" data-testid="jevc-badge">
-            {badgeText(enabled, shapingEnabled)}
-          </span>
-        }
-        label={(open) => `${open ? "Hide" : "Show"} settings: Jev Compaction`}
-        bodyClassName="jevc-body"
-      >
-        {settings.status === "loading" || config === undefined ? (
-          <p className="jevc-muted" data-testid="jevc-loading">
-            Loading the Jev Compaction configuration…
-          </p>
-        ) : (
-          <>
-            {error !== null ? (
-              <div className="jevc-error" role="alert" data-testid="jevc-error">
-                {error}
+    <div className="jevc-body">
+      {settings.status === "loading" || config === undefined ? (
+        <p className="jevc-muted" data-testid="jevc-loading">
+          Loading the Jev Compaction configuration…
+        </p>
+      ) : (
+        <>
+          {error !== null ? (
+            <div className="jevc-error" role="alert" data-testid="jevc-error">
+              {error}
+            </div>
+          ) : null}
+
+          <section className="jevc-section" data-testid="jevc-status-section">
+            <div className="jevc-status" data-testid="jevc-status">
+              <span>
+                Status:{" "}
+                <span
+                  className="jevc-status-value"
+                  data-testid="jevc-status-enabled"
+                >
+                  <span
+                    className={
+                      enabled ? "jevc-status-dot--on" : "jevc-status-dot--off"
+                    }
+                  >
+                    ●
+                  </span>{" "}
+                  {enabled ? "Enabled" : "Disabled"}
+                </span>
+              </span>
+              <span>
+                Provider:{" "}
+                <span
+                  className="jevc-status-value"
+                  data-testid="jevc-status-provider"
+                >
+                  {provider}
+                </span>
+              </span>
+              <span>
+                Model:{" "}
+                <span
+                  className="jevc-status-value"
+                  data-testid="jevc-status-model"
+                >
+                  {config.jev?.model ?? ""}
+                </span>
+              </span>
+              <span>
+                Mode:{" "}
+                <span
+                  className="jevc-status-value"
+                  data-testid="jevc-status-mode"
+                >
+                  {settings.mode}
+                </span>
+              </span>
+            </div>
+            <Toggle
+              testId="jevc-enabled"
+              label="Enable Jev Compaction"
+              description="Turns semantic context management on or off without uninstalling the plugin."
+              checked={enabled}
+              disabled={!writable}
+              overridden={overridden(["enabled"])}
+              onToggle={(checked) => {
+                write(["enabled"], checked);
+              }}
+            />
+          </section>
+
+          <section className="jevc-section" data-testid="jevc-shaping-section">
+            <div className="jevc-section-title">Immediate result shaping</div>
+            <p className="jevc-hint">
+              Semantically compress large repetitive tool outputs before they
+              are written to conversation history. Runs on the tool-execution
+              path, so the original rendered result is not recoverable from
+              session replay unless the archive below is on.
+            </p>
+            <Toggle
+              testId="jevc-shaping-enabled"
+              label="Shape tool results before they are persisted"
+              description="Off by default: this changes durable model-visible content."
+              checked={shapingEnabled}
+              disabled={!writable}
+              overridden={overridden(["resultShaping", "enabled"])}
+              onToggle={(checked) => {
+                write(["resultShaping", "enabled"], checked);
+              }}
+            />
+            {shapingEnabled && !archiveEnabled ? (
+              <div
+                className="jevc-warning"
+                role="status"
+                data-testid="jevc-shaping-warning"
+              >
+                Shaped output may not be recoverable from session replay: the
+                original-output archive is off.
               </div>
             ) : null}
 
-            <section className="jevc-section" data-testid="jevc-status-section">
-              <div className="jevc-status" data-testid="jevc-status">
-                <span>
-                  Status:{" "}
-                  <span
-                    className="jevc-status-value"
-                    data-testid="jevc-status-enabled"
-                  >
-                    <span
-                      className={
-                        enabled ? "jevc-status-dot--on" : "jevc-status-dot--off"
-                      }
-                    >
-                      ●
-                    </span>{" "}
-                    {enabled ? "Enabled" : "Disabled"}
-                  </span>
-                </span>
-                <span>
-                  Provider:{" "}
-                  <span
-                    className="jevc-status-value"
-                    data-testid="jevc-status-provider"
-                  >
-                    {provider}
-                  </span>
-                </span>
-                <span>
-                  Model:{" "}
-                  <span
-                    className="jevc-status-value"
-                    data-testid="jevc-status-model"
-                  >
-                    {config.jev?.model ?? ""}
-                  </span>
-                </span>
-                <span>
-                  Mode:{" "}
-                  <span
-                    className="jevc-status-value"
-                    data-testid="jevc-status-mode"
-                  >
-                    {settings.mode}
-                  </span>
-                </span>
-              </div>
-              <Toggle
-                testId="jevc-enabled"
-                label="Enable Jev Compaction"
-                description="Turns semantic context management on or off without uninstalling the plugin."
-                checked={enabled}
-                disabled={!writable}
-                overridden={overridden(["enabled"])}
-                onToggle={(checked) => {
-                  write(["enabled"], checked);
-                }}
-              />
-            </section>
+            <TagListField
+              testId="jevc-include-tools"
+              label="Eligible tools"
+              description="Only these tools may be shaped. Unknown tools are kept unchanged."
+              values={shaping?.includeTools ?? []}
+              disabled={!writable}
+              overridden={overridden(["resultShaping", "includeTools"])}
+              onCommit={(values) => {
+                commitList(["resultShaping", "includeTools"], values);
+              }}
+            />
+            <TagListField
+              testId="jevc-exclude-tools"
+              label="Never shape these tools"
+              description="Exclusions win over the eligible list."
+              values={shaping?.excludeTools ?? []}
+              placeholder="add an excluded tool"
+              disabled={!writable}
+              overridden={overridden(["resultShaping", "excludeTools"])}
+              onCommit={(values) => {
+                commitList(["resultShaping", "excludeTools"], values);
+              }}
+            />
 
-            <section
-              className="jevc-section"
-              data-testid="jevc-shaping-section"
-            >
-              <div className="jevc-section-title">Immediate result shaping</div>
-              <p className="jevc-hint">
-                Semantically compress large repetitive tool outputs before they
-                are written to conversation history. Runs on the tool-execution
-                path, so the original rendered result is not recoverable from
-                session replay unless the archive below is on.
-              </p>
-              <Toggle
-                testId="jevc-shaping-enabled"
-                label="Shape tool results before they are persisted"
-                description="Off by default: this changes durable model-visible content."
-                checked={shapingEnabled}
-                disabled={!writable}
-                overridden={overridden(["resultShaping", "enabled"])}
-                onToggle={(checked) => {
-                  write(["resultShaping", "enabled"], checked);
-                }}
-              />
-              {shapingEnabled && !archiveEnabled ? (
-                <div
-                  className="jevc-warning"
-                  role="status"
-                  data-testid="jevc-shaping-warning"
-                >
-                  Shaped output may not be recoverable from session replay: the
-                  original-output archive is off.
-                </div>
-              ) : null}
+            <NumberField
+              testId="jevc-shaping-threshold"
+              label="Minimum result size"
+              unit="characters"
+              value={shaping?.thresholdChars ?? 12000}
+              min={0}
+              disabled={!writable}
+              overridden={overridden(["resultShaping", "thresholdChars"])}
+              onCommit={(value) => {
+                commitScalar(["resultShaping", "thresholdChars"], value);
+              }}
+              onInvalid={(text) => {
+                setError(rangeError(text));
+              }}
+            />
+            <NumberField
+              testId="jevc-shaping-max-per-turn"
+              label="Maximum shaped results per turn"
+              value={shaping?.maxPerTurn ?? 2}
+              min={0}
+              disabled={!writable}
+              overridden={overridden(["resultShaping", "maxPerTurn"])}
+              onCommit={(value) => {
+                commitScalar(["resultShaping", "maxPerTurn"], value);
+              }}
+              onInvalid={(text) => {
+                setError(rangeError(text));
+              }}
+            />
+            <Toggle
+              testId="jevc-preserve-errors"
+              label="Preserve errors"
+              description="Keep failed tool results unchanged. Recommended."
+              checked={shaping?.preserveErrors ?? true}
+              disabled={!writable}
+              overridden={overridden(["resultShaping", "preserveErrors"])}
+              onToggle={(checked) => {
+                write(["resultShaping", "preserveErrors"], checked);
+              }}
+            />
 
-              <TagListField
-                testId="jevc-include-tools"
-                label="Eligible tools"
-                description="Only these tools may be shaped. Unknown tools are kept unchanged."
-                values={shaping?.includeTools ?? []}
-                disabled={!writable}
-                overridden={overridden(["resultShaping", "includeTools"])}
-                onCommit={(values) => {
-                  commitList(["resultShaping", "includeTools"], values);
-                }}
-              />
-              <TagListField
-                testId="jevc-exclude-tools"
-                label="Never shape these tools"
-                description="Exclusions win over the eligible list."
-                values={shaping?.excludeTools ?? []}
-                placeholder="add an excluded tool"
-                disabled={!writable}
-                overridden={overridden(["resultShaping", "excludeTools"])}
-                onCommit={(values) => {
-                  commitList(["resultShaping", "excludeTools"], values);
-                }}
-              />
-
-              <NumberField
-                testId="jevc-shaping-threshold"
-                label="Minimum result size"
-                unit="characters"
-                value={shaping?.thresholdChars ?? 12000}
-                min={0}
-                disabled={!writable}
-                overridden={overridden(["resultShaping", "thresholdChars"])}
-                onCommit={(value) => {
-                  commitScalar(["resultShaping", "thresholdChars"], value);
-                }}
-                onInvalid={(text) => {
-                  setError(rangeError(text));
-                }}
-              />
-              <NumberField
-                testId="jevc-shaping-max-per-turn"
-                label="Maximum shaped results per turn"
-                value={shaping?.maxPerTurn ?? 2}
-                min={0}
-                disabled={!writable}
-                overridden={overridden(["resultShaping", "maxPerTurn"])}
-                onCommit={(value) => {
-                  commitScalar(["resultShaping", "maxPerTurn"], value);
-                }}
-                onInvalid={(text) => {
-                  setError(rangeError(text));
-                }}
-              />
-              <Toggle
-                testId="jevc-preserve-errors"
-                label="Preserve errors"
-                description="Keep failed tool results unchanged. Recommended."
-                checked={shaping?.preserveErrors ?? true}
-                disabled={!writable}
-                overridden={overridden(["resultShaping", "preserveErrors"])}
-                onToggle={(checked) => {
-                  write(["resultShaping", "preserveErrors"], checked);
-                }}
-              />
-
-              <NumberField
-                testId="jevc-shaping-min-savings-ratio"
-                label="Minimum savings ratio"
-                unit="(0-1)"
-                value={shaping?.minSavingsRatio ?? 0.3}
-                min={0}
-                max={1}
-                step={0.05}
-                description="A shaping that saves less than this is discarded."
-                disabled={!writable}
-                overridden={overridden(["resultShaping", "minSavingsRatio"])}
-                onCommit={(value) => {
-                  commitScalar(["resultShaping", "minSavingsRatio"], value);
-                }}
-                onInvalid={(text) => {
-                  setError(rangeError(text));
-                }}
-              />
-              <NumberField
-                testId="jevc-shaping-min-savings"
-                label="Minimum savings"
-                unit="characters"
-                value={shaping?.minSavingsChars ?? 4000}
-                min={0}
-                disabled={!writable}
-                overridden={overridden(["resultShaping", "minSavingsChars"])}
-                onCommit={(value) => {
-                  commitScalar(["resultShaping", "minSavingsChars"], value);
-                }}
-                onInvalid={(text) => {
-                  setError(rangeError(text));
-                }}
-              />
-              <p className="jevc-hint">
-                Trigger:{" "}
-                {triggerSummary(
-                  shaping?.thresholdChars ?? 12000,
-                  shaping?.minLines ?? 80,
-                )}
-                .
-              </p>
-            </section>
-
-            <section
-              className="jevc-section"
-              data-testid="jevc-archive-section"
-            >
-              <div className="jevc-section-title">Original output archive</div>
-              <p className="jevc-hint">
-                Immediate shaping happens before DSH persists the final tool
-                result. Archiving keeps a local copy of the original rendered
-                output for diagnostics and future recovery.
-              </p>
-              <Toggle
-                testId="jevc-archive-enabled"
-                label="Archive the original output"
-                description="Save the full rendered result locally before immediate shaping so it can be inspected later."
-                checked={archiveEnabled}
-                disabled={!writable}
-                overridden={overridden(["archive", "enabled"])}
-                onToggle={(checked) => {
-                  write(["archive", "enabled"], checked);
-                }}
-              />
-              {!archiveEnabled ? (
-                <div
-                  className="jevc-warning"
-                  role="status"
-                  data-testid="jevc-archive-warning"
-                >
-                  Shaped output may not be recoverable from session replay.
-                </div>
-              ) : null}
-              <NumberField
-                testId="jevc-archive-retention"
-                label="Retention"
-                unit="days (0 = keep)"
-                value={archive?.retentionDays ?? 14}
-                min={0}
-                disabled={!writable}
-                overridden={overridden(["archive", "retentionDays"])}
-                onCommit={(value) => {
-                  commitScalar(["archive", "retentionDays"], value);
-                }}
-                onInvalid={(text) => {
-                  setError(rangeError(text));
-                }}
-              />
-              <NumberField
-                testId="jevc-archive-max-bytes"
-                label="Maximum archive size"
-                unit={archiveSize.unit}
-                value={archiveSize.value}
-                min={0}
-                step={0.5}
-                description={`Currently ${formatBytes(archive?.maxBytes ?? 1_073_741_824)}. 0 disables the size cap.`}
-                disabled={!writable}
-                overridden={overridden(["archive", "maxBytes"])}
-                onCommit={(value) => {
-                  commitScalar(
-                    ["archive", "maxBytes"],
-                    value === null ? null : toBytes(value, archiveSize.unit),
-                  );
-                }}
-                onInvalid={(text) => {
-                  setError(rangeError(text));
-                }}
-              />
-              <SelectField
-                testId="jevc-archive-on-failure"
-                label="If archiving fails"
-                description="Fail-open by default: an unarchived result is never shaped."
-                value={archive?.onFailure ?? "keep-original"}
-                options={ARCHIVE_FAILURE_OPTIONS}
-                disabled={!writable}
-                overridden={overridden(["archive", "onFailure"])}
-                onCommit={(value) => {
-                  write(["archive", "onFailure"], value);
-                }}
-              />
-              <TextField
-                testId="jevc-archive-root"
-                label="Archive root"
-                value={archiveRoot}
-                placeholder="default: $DSH_HOME/data/dsh-jev-compaction/originals"
-                description="Absolute path, or empty for the harness home. Changing it needs a restart."
-                disabled={!writable}
-                overridden={overridden(["archive", "rootPath"])}
-                onCommit={(value) => {
-                  commitScalar(["archive", "rootPath"], value);
-                }}
-              />
-            </section>
-
-            <section
-              className="jevc-section"
-              data-testid="jevc-compaction-section"
-            >
-              <div className="jevc-section-title">Historical compaction</div>
-              <p className="jevc-hint">
-                When context grows, semantically prune stale historical tool
-                results before falling back to ordinary summary compaction.
-              </p>
-              <NumberField
-                testId="jevc-trigger-context-ratio"
-                label="Start semantic pruning at"
-                unit="% of model context"
-                value={Math.round((config.trigger?.contextRatio ?? 0.7) * 100)}
-                min={0}
-                max={100}
-                disabled={!writable}
-                overridden={overridden(["trigger", "contextRatio"])}
-                onCommit={(value) => {
-                  commitScalar(
-                    ["trigger", "contextRatio"],
-                    value === null ? null : value / 100,
-                  );
-                }}
-                onInvalid={(text) => {
-                  setError(rangeError(text));
-                }}
-              />
-              <NumberField
-                testId="jevc-trigger-min-surface-tokens"
-                label="Minimum surface tokens"
-                value={config.trigger?.minSurfaceTokens ?? 32000}
-                min={1}
-                disabled={!writable}
-                overridden={overridden(["trigger", "minSurfaceTokens"])}
-                onCommit={(value) => {
-                  commitScalar(["trigger", "minSurfaceTokens"], value);
-                }}
-                onInvalid={(text) => {
-                  setError(rangeError(text));
-                }}
-              />
-              <NumberField
-                testId="jevc-preserve-recent-messages"
-                label="Preserve recent messages"
-                value={config.preserve?.recentMessages ?? 6}
-                min={0}
-                disabled={!writable}
-                overridden={overridden(["preserve", "recentMessages"])}
-                onCommit={(value) => {
-                  commitScalar(["preserve", "recentMessages"], value);
-                }}
-                onInvalid={(text) => {
-                  setError(rangeError(text));
-                }}
-              />
-              <NumberField
-                testId="jevc-preserve-recent-tokens"
-                label="Preserve recent tokens"
-                value={config.preserve?.recentTokens ?? 12000}
-                min={0}
-                disabled={!writable}
-                overridden={overridden(["preserve", "recentTokens"])}
-                onCommit={(value) => {
-                  commitScalar(["preserve", "recentTokens"], value);
-                }}
-                onInvalid={(text) => {
-                  setError(rangeError(text));
-                }}
-              />
-              <NumberField
-                testId="jevc-decisions-full-threshold"
-                label="Full-keep threshold"
-                unit="(0-1)"
-                value={config.decisions?.fullThreshold ?? 0.7}
-                min={0}
-                max={1}
-                step={0.05}
-                description="Above this retention score a result stays full."
-                disabled={!writable}
-                overridden={overridden(["decisions", "fullThreshold"])}
-                onCommit={(value) => {
-                  commitScalar(["decisions", "fullThreshold"], value);
-                }}
-                onInvalid={(text) => {
-                  setError(rangeError(text));
-                }}
-              />
-              <NumberField
-                testId="jevc-decisions-truncate-threshold"
-                label="Truncate threshold"
-                unit="(0-1)"
-                value={config.decisions?.truncateThreshold ?? 0.45}
-                min={0}
-                max={1}
-                step={0.05}
-                description="Above this a result keeps a truncated head and tail instead of a stub."
-                disabled={!writable}
-                overridden={overridden(["decisions", "truncateThreshold"])}
-                onCommit={(value) => {
-                  commitScalar(["decisions", "truncateThreshold"], value);
-                }}
-                onInvalid={(text) => {
-                  setError(rangeError(text));
-                }}
-              />
-            </section>
-
-            <section
-              className="jevc-section"
-              data-testid="jevc-backend-section"
-            >
-              <div className="jevc-section-title">Decision backend</div>
-              <p className="jevc-hint">
-                Jev/System One endpoint used for semantic retention decisions.
-              </p>
-              <SelectField
-                testId="jevc-provider"
-                label="Provider"
-                value={provider}
-                options={PROVIDER_OPTIONS}
-                disabled={!writable}
-                overridden={overridden(["decision", "provider"])}
-                onCommit={(value) => {
-                  write(["decision", "provider"], value);
-                }}
-              />
-              <TextField
-                testId="jevc-endpoint"
-                label="Endpoint"
-                value={config.jev?.baseUrl ?? ""}
-                placeholder="https://api.typesafe.ai/v1/systemone"
-                disabled={!writable}
-                overridden={overridden(["jev", "baseUrl"])}
-                onCommit={(value) => {
-                  commitScalar(["jev", "baseUrl"], value);
-                }}
-              />
-              <TextField
-                testId="jevc-model"
-                label="Model"
-                value={config.jev?.model ?? ""}
-                disabled={!writable}
-                overridden={overridden(["jev", "model"])}
-                onCommit={(value) => {
-                  commitScalar(["jev", "model"], value);
-                }}
-              />
-              <TextField
-                testId="jevc-api-key-env"
-                label="API key environment variable"
-                value={apiKeyEnv}
-                placeholder="TYPESAFE_API_KEY"
-                description="Only the variable name is stored and shown. The key itself is read on the Host and never reaches this page."
-                disabled={!writable}
-                overridden={overridden(["jev", "apiKeyEnv"])}
-                onCommit={(value) => {
-                  commitScalar(["jev", "apiKeyEnv"], value);
-                }}
-              />
-            </section>
-
-            <details className="jevc-details" data-testid="jevc-advanced">
-              <summary>Advanced</summary>
-              <div className="jevc-details-body">
-                <NumberField
-                  testId="jevc-timeout"
-                  label="Request timeout"
-                  unit="ms"
-                  value={config.jev?.timeoutMs ?? 2500}
-                  min={500}
-                  max={60000}
-                  disabled={!writable}
-                  overridden={overridden(["jev", "timeoutMs"])}
-                  onCommit={(value) => {
-                    commitScalar(["jev", "timeoutMs"], value);
-                  }}
-                  onInvalid={(text) => {
-                    setError(rangeError(text));
-                  }}
-                />
-                <NumberField
-                  testId="jevc-max-concurrency"
-                  label="Concurrent Jev requests"
-                  value={config.jev?.maxConcurrency ?? 4}
-                  min={1}
-                  max={8}
-                  disabled={!writable}
-                  overridden={overridden(["jev", "maxConcurrency"])}
-                  onCommit={(value) => {
-                    commitScalar(["jev", "maxConcurrency"], value);
-                  }}
-                  onInvalid={(text) => {
-                    setError(rangeError(text));
-                  }}
-                />
-                <NumberField
-                  testId="jevc-max-state-tokens"
-                  label="Jev state token ceiling"
-                  value={config.state?.maxStateTokens ?? 25000}
-                  min={1000}
-                  disabled={!writable}
-                  overridden={overridden(["state", "maxStateTokens"])}
-                  onCommit={(value) => {
-                    commitScalar(["state", "maxStateTokens"], value);
-                  }}
-                  onInvalid={(text) => {
-                    setError(rangeError(text));
-                  }}
-                />
-                <NumberField
-                  testId="jevc-keep-head-lines"
-                  label="Head lines kept per shaped result"
-                  value={shaping?.keepHeadLines ?? 8}
-                  min={0}
-                  disabled={!writable}
-                  overridden={overridden(["resultShaping", "keepHeadLines"])}
-                  onCommit={(value) => {
-                    commitScalar(["resultShaping", "keepHeadLines"], value);
-                  }}
-                  onInvalid={(text) => {
-                    setError(rangeError(text));
-                  }}
-                />
-                <NumberField
-                  testId="jevc-keep-tail-lines"
-                  label="Tail lines kept per shaped result"
-                  value={shaping?.keepTailLines ?? 12}
-                  min={0}
-                  disabled={!writable}
-                  overridden={overridden(["resultShaping", "keepTailLines"])}
-                  onCommit={(value) => {
-                    commitScalar(["resultShaping", "keepTailLines"], value);
-                  }}
-                  onInvalid={(text) => {
-                    setError(rangeError(text));
-                  }}
-                />
-                <NumberField
-                  testId="jevc-min-classification-confidence"
-                  label="Minimum classification confidence"
-                  unit="(0-1)"
-                  value={shaping?.minClassificationConfidence ?? 0.6}
-                  min={0}
-                  max={1}
-                  step={0.05}
-                  description="Below this the group is kept."
-                  disabled={!writable}
-                  overridden={overridden([
-                    "resultShaping",
-                    "minClassificationConfidence",
-                  ])}
-                  onCommit={(value) => {
-                    commitScalar(
-                      ["resultShaping", "minClassificationConfidence"],
-                      value,
-                    );
-                  }}
-                  onInvalid={(text) => {
-                    setError(rangeError(text));
-                  }}
-                />
-                <SelectField
-                  testId="jevc-log-level"
-                  label="Log level"
-                  value={config.diagnostics?.logLevel ?? "info"}
-                  options={LOG_LEVEL_OPTIONS}
-                  disabled={!writable}
-                  overridden={overridden(["diagnostics", "logLevel"])}
-                  onCommit={(value) => {
-                    write(["diagnostics", "logLevel"], value);
-                  }}
-                />
-              </div>
-            </details>
-
-            {writable ? null : (
-              <p className="jevc-hint" data-testid="jevc-read-only">
-                This profile exposes the settings read-only.
-              </p>
-            )}
-
-            <div className="jevc-actions">
-              <button
-                type="button"
-                className="jevc-button"
-                data-testid="jevc-reset-overrides"
-                disabled={!writable || overrides.length === 0}
-                onClick={resetAll}
-              >
-                Reset overrides ({overrides.length})
-              </button>
-            </div>
-
+            <NumberField
+              testId="jevc-shaping-min-savings-ratio"
+              label="Minimum savings ratio"
+              unit="(0-1)"
+              value={shaping?.minSavingsRatio ?? 0.3}
+              min={0}
+              max={1}
+              step={0.05}
+              description="A shaping that saves less than this is discarded."
+              disabled={!writable}
+              overridden={overridden(["resultShaping", "minSavingsRatio"])}
+              onCommit={(value) => {
+                commitScalar(["resultShaping", "minSavingsRatio"], value);
+              }}
+              onInvalid={(text) => {
+                setError(rangeError(text));
+              }}
+            />
+            <NumberField
+              testId="jevc-shaping-min-savings"
+              label="Minimum savings"
+              unit="characters"
+              value={shaping?.minSavingsChars ?? 4000}
+              min={0}
+              disabled={!writable}
+              overridden={overridden(["resultShaping", "minSavingsChars"])}
+              onCommit={(value) => {
+                commitScalar(["resultShaping", "minSavingsChars"], value);
+              }}
+              onInvalid={(text) => {
+                setError(rangeError(text));
+              }}
+            />
             <p className="jevc-hint">
-              Changes are written to the Host settings service as they are made
-              and apply to the running plugin without a restart.
+              Trigger:{" "}
+              {triggerSummary(
+                shaping?.thresholdChars ?? 12000,
+                shaping?.minLines ?? 80,
+              )}
+              .
             </p>
-          </>
-        )}
-      </CardShell>
-    </ul>
+          </section>
+
+          <section className="jevc-section" data-testid="jevc-archive-section">
+            <div className="jevc-section-title">Original output archive</div>
+            <p className="jevc-hint">
+              Immediate shaping happens before DSH persists the final tool
+              result. Archiving keeps a local copy of the original rendered
+              output for diagnostics and future recovery.
+            </p>
+            <Toggle
+              testId="jevc-archive-enabled"
+              label="Archive the original output"
+              description="Save the full rendered result locally before immediate shaping so it can be inspected later."
+              checked={archiveEnabled}
+              disabled={!writable}
+              overridden={overridden(["archive", "enabled"])}
+              onToggle={(checked) => {
+                write(["archive", "enabled"], checked);
+              }}
+            />
+            {!archiveEnabled ? (
+              <div
+                className="jevc-warning"
+                role="status"
+                data-testid="jevc-archive-warning"
+              >
+                Shaped output may not be recoverable from session replay.
+              </div>
+            ) : null}
+            <NumberField
+              testId="jevc-archive-retention"
+              label="Retention"
+              unit="days (0 = keep)"
+              value={archive?.retentionDays ?? 14}
+              min={0}
+              disabled={!writable}
+              overridden={overridden(["archive", "retentionDays"])}
+              onCommit={(value) => {
+                commitScalar(["archive", "retentionDays"], value);
+              }}
+              onInvalid={(text) => {
+                setError(rangeError(text));
+              }}
+            />
+            <NumberField
+              testId="jevc-archive-max-bytes"
+              label="Maximum archive size"
+              unit={archiveSize.unit}
+              value={archiveSize.value}
+              min={0}
+              step={0.5}
+              description={`Currently ${formatBytes(archive?.maxBytes ?? 1_073_741_824)}. 0 disables the size cap.`}
+              disabled={!writable}
+              overridden={overridden(["archive", "maxBytes"])}
+              onCommit={(value) => {
+                commitScalar(
+                  ["archive", "maxBytes"],
+                  value === null ? null : toBytes(value, archiveSize.unit),
+                );
+              }}
+              onInvalid={(text) => {
+                setError(rangeError(text));
+              }}
+            />
+            <SelectField
+              testId="jevc-archive-on-failure"
+              label="If archiving fails"
+              description="Fail-open by default: an unarchived result is never shaped."
+              value={archive?.onFailure ?? "keep-original"}
+              options={ARCHIVE_FAILURE_OPTIONS}
+              disabled={!writable}
+              overridden={overridden(["archive", "onFailure"])}
+              onCommit={(value) => {
+                write(["archive", "onFailure"], value);
+              }}
+            />
+            <TextField
+              testId="jevc-archive-root"
+              label="Archive root"
+              value={archiveRoot}
+              placeholder="default: $DSH_HOME/data/dsh-jev-compaction/originals"
+              description="Absolute path, or empty for the harness home. Changing it needs a restart."
+              disabled={!writable}
+              overridden={overridden(["archive", "rootPath"])}
+              onCommit={(value) => {
+                commitScalar(["archive", "rootPath"], value);
+              }}
+            />
+          </section>
+
+          <section
+            className="jevc-section"
+            data-testid="jevc-compaction-section"
+          >
+            <div className="jevc-section-title">Historical compaction</div>
+            <p className="jevc-hint">
+              When context grows, semantically prune stale historical tool
+              results before falling back to ordinary summary compaction.
+            </p>
+            <NumberField
+              testId="jevc-trigger-context-ratio"
+              label="Start semantic pruning at"
+              unit="% of model context"
+              value={Math.round((config.trigger?.contextRatio ?? 0.7) * 100)}
+              min={0}
+              max={100}
+              disabled={!writable}
+              overridden={overridden(["trigger", "contextRatio"])}
+              onCommit={(value) => {
+                commitScalar(
+                  ["trigger", "contextRatio"],
+                  value === null ? null : value / 100,
+                );
+              }}
+              onInvalid={(text) => {
+                setError(rangeError(text));
+              }}
+            />
+            <NumberField
+              testId="jevc-trigger-min-surface-tokens"
+              label="Minimum surface tokens"
+              value={config.trigger?.minSurfaceTokens ?? 32000}
+              min={1}
+              disabled={!writable}
+              overridden={overridden(["trigger", "minSurfaceTokens"])}
+              onCommit={(value) => {
+                commitScalar(["trigger", "minSurfaceTokens"], value);
+              }}
+              onInvalid={(text) => {
+                setError(rangeError(text));
+              }}
+            />
+            <NumberField
+              testId="jevc-preserve-recent-messages"
+              label="Preserve recent messages"
+              value={config.preserve?.recentMessages ?? 6}
+              min={0}
+              disabled={!writable}
+              overridden={overridden(["preserve", "recentMessages"])}
+              onCommit={(value) => {
+                commitScalar(["preserve", "recentMessages"], value);
+              }}
+              onInvalid={(text) => {
+                setError(rangeError(text));
+              }}
+            />
+            <NumberField
+              testId="jevc-preserve-recent-tokens"
+              label="Preserve recent tokens"
+              value={config.preserve?.recentTokens ?? 12000}
+              min={0}
+              disabled={!writable}
+              overridden={overridden(["preserve", "recentTokens"])}
+              onCommit={(value) => {
+                commitScalar(["preserve", "recentTokens"], value);
+              }}
+              onInvalid={(text) => {
+                setError(rangeError(text));
+              }}
+            />
+            <NumberField
+              testId="jevc-decisions-full-threshold"
+              label="Full-keep threshold"
+              unit="(0-1)"
+              value={config.decisions?.fullThreshold ?? 0.7}
+              min={0}
+              max={1}
+              step={0.05}
+              description="Above this retention score a result stays full."
+              disabled={!writable}
+              overridden={overridden(["decisions", "fullThreshold"])}
+              onCommit={(value) => {
+                commitScalar(["decisions", "fullThreshold"], value);
+              }}
+              onInvalid={(text) => {
+                setError(rangeError(text));
+              }}
+            />
+            <NumberField
+              testId="jevc-decisions-truncate-threshold"
+              label="Truncate threshold"
+              unit="(0-1)"
+              value={config.decisions?.truncateThreshold ?? 0.45}
+              min={0}
+              max={1}
+              step={0.05}
+              description="Above this a result keeps a truncated head and tail instead of a stub."
+              disabled={!writable}
+              overridden={overridden(["decisions", "truncateThreshold"])}
+              onCommit={(value) => {
+                commitScalar(["decisions", "truncateThreshold"], value);
+              }}
+              onInvalid={(text) => {
+                setError(rangeError(text));
+              }}
+            />
+          </section>
+
+          <section className="jevc-section" data-testid="jevc-backend-section">
+            <div className="jevc-section-title">Decision backend</div>
+            <p className="jevc-hint">
+              Jev/System One endpoint used for semantic retention decisions.
+            </p>
+            <SelectField
+              testId="jevc-provider"
+              label="Provider"
+              value={provider}
+              options={PROVIDER_OPTIONS}
+              disabled={!writable}
+              overridden={overridden(["decision", "provider"])}
+              onCommit={(value) => {
+                write(["decision", "provider"], value);
+              }}
+            />
+            <TextField
+              testId="jevc-endpoint"
+              label="Endpoint"
+              value={config.jev?.baseUrl ?? ""}
+              placeholder="https://api.typesafe.ai/v1/systemone"
+              disabled={!writable}
+              overridden={overridden(["jev", "baseUrl"])}
+              onCommit={(value) => {
+                commitScalar(["jev", "baseUrl"], value);
+              }}
+            />
+            <TextField
+              testId="jevc-model"
+              label="Model"
+              value={config.jev?.model ?? ""}
+              disabled={!writable}
+              overridden={overridden(["jev", "model"])}
+              onCommit={(value) => {
+                commitScalar(["jev", "model"], value);
+              }}
+            />
+            <TextField
+              testId="jevc-api-key-env"
+              label="API key environment variable"
+              value={apiKeyEnv}
+              placeholder="TYPESAFE_API_KEY"
+              description="Only the variable name is stored and shown. The key itself is read on the Host and never reaches this page."
+              disabled={!writable}
+              overridden={overridden(["jev", "apiKeyEnv"])}
+              onCommit={(value) => {
+                commitScalar(["jev", "apiKeyEnv"], value);
+              }}
+            />
+          </section>
+
+          <details className="jevc-details" data-testid="jevc-advanced">
+            <summary>Advanced</summary>
+            <div className="jevc-details-body">
+              <NumberField
+                testId="jevc-timeout"
+                label="Request timeout"
+                unit="ms"
+                value={config.jev?.timeoutMs ?? 2500}
+                min={500}
+                max={60000}
+                disabled={!writable}
+                overridden={overridden(["jev", "timeoutMs"])}
+                onCommit={(value) => {
+                  commitScalar(["jev", "timeoutMs"], value);
+                }}
+                onInvalid={(text) => {
+                  setError(rangeError(text));
+                }}
+              />
+              <NumberField
+                testId="jevc-max-concurrency"
+                label="Concurrent Jev requests"
+                value={config.jev?.maxConcurrency ?? 4}
+                min={1}
+                max={8}
+                disabled={!writable}
+                overridden={overridden(["jev", "maxConcurrency"])}
+                onCommit={(value) => {
+                  commitScalar(["jev", "maxConcurrency"], value);
+                }}
+                onInvalid={(text) => {
+                  setError(rangeError(text));
+                }}
+              />
+              <NumberField
+                testId="jevc-max-state-tokens"
+                label="Jev state token ceiling"
+                value={config.state?.maxStateTokens ?? 25000}
+                min={1000}
+                disabled={!writable}
+                overridden={overridden(["state", "maxStateTokens"])}
+                onCommit={(value) => {
+                  commitScalar(["state", "maxStateTokens"], value);
+                }}
+                onInvalid={(text) => {
+                  setError(rangeError(text));
+                }}
+              />
+              <NumberField
+                testId="jevc-keep-head-lines"
+                label="Head lines kept per shaped result"
+                value={shaping?.keepHeadLines ?? 8}
+                min={0}
+                disabled={!writable}
+                overridden={overridden(["resultShaping", "keepHeadLines"])}
+                onCommit={(value) => {
+                  commitScalar(["resultShaping", "keepHeadLines"], value);
+                }}
+                onInvalid={(text) => {
+                  setError(rangeError(text));
+                }}
+              />
+              <NumberField
+                testId="jevc-keep-tail-lines"
+                label="Tail lines kept per shaped result"
+                value={shaping?.keepTailLines ?? 12}
+                min={0}
+                disabled={!writable}
+                overridden={overridden(["resultShaping", "keepTailLines"])}
+                onCommit={(value) => {
+                  commitScalar(["resultShaping", "keepTailLines"], value);
+                }}
+                onInvalid={(text) => {
+                  setError(rangeError(text));
+                }}
+              />
+              <NumberField
+                testId="jevc-min-classification-confidence"
+                label="Minimum classification confidence"
+                unit="(0-1)"
+                value={shaping?.minClassificationConfidence ?? 0.6}
+                min={0}
+                max={1}
+                step={0.05}
+                description="Below this the group is kept."
+                disabled={!writable}
+                overridden={overridden([
+                  "resultShaping",
+                  "minClassificationConfidence",
+                ])}
+                onCommit={(value) => {
+                  commitScalar(
+                    ["resultShaping", "minClassificationConfidence"],
+                    value,
+                  );
+                }}
+                onInvalid={(text) => {
+                  setError(rangeError(text));
+                }}
+              />
+              <SelectField
+                testId="jevc-log-level"
+                label="Log level"
+                value={config.diagnostics?.logLevel ?? "info"}
+                options={LOG_LEVEL_OPTIONS}
+                disabled={!writable}
+                overridden={overridden(["diagnostics", "logLevel"])}
+                onCommit={(value) => {
+                  write(["diagnostics", "logLevel"], value);
+                }}
+              />
+            </div>
+          </details>
+
+          {writable ? null : (
+            <p className="jevc-hint" data-testid="jevc-read-only">
+              This profile exposes the settings read-only.
+            </p>
+          )}
+
+          <div className="jevc-actions">
+            <button
+              type="button"
+              className="jevc-button"
+              data-testid="jevc-reset-overrides"
+              disabled={!writable || overrides.length === 0}
+              onClick={resetAll}
+            >
+              Reset overrides ({overrides.length})
+            </button>
+          </div>
+
+          <p className="jevc-hint">
+            Changes are written to the Host settings service as they are made
+            and apply to the running plugin without a restart.
+          </p>
+        </>
+      )}
+    </div>
   );
 }

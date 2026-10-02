@@ -117,9 +117,10 @@ dependency-free module so the card bundle inlines a string and not Schemastery.
 `dsh.client = { platform: "web", inject: [...], external: [...] }` plus an
 `exports["./client"]` entry; the artifact is a classic bundle that calls
 `window.__ModuleLoader__.load({ id, factory })` with the **full package name**
-as `id`. `@yadsh/dsh-plugin-kit/client` supplies the canonical card shell, so
-the bundle stays inside the AGENTS.md card contract; `verify:package` asserts
-it.
+as `id`. The card is seated on the Plugins panel row, where the page draws the frame,
+the heading and the expand control, so the bundle ships the body and no shell of its
+own; `verify:package` asserts the card contract of the seat the built bundle
+registers on.
 
 ## 7. Decisions taken from these findings
 

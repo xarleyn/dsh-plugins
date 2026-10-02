@@ -34,14 +34,6 @@ import { styles } from "./styles.js";
 export const CLIENT_PLUGIN_NAME = "@yadsh/dsh-jev-compaction";
 
 /**
- * The slot this card occupies. `settings.plugin.item` was removed with the
- * 0.1.7 settings rewrite, and the Plugins tab of the settings page is not where
- * a card that edits this bundle's own Config belongs either: the Plugins page
- * owns a seat for the configuration of one row a bundle declares.
- */
-export const SETTINGS_CARD_SLOT = "plugins.row.config";
-
-/**
  * The seat key: the package name joined to the row id as `cordis.patch.yml`
  * declares it. That row id is also the namespace the Host resolves this plugin's
  * volatile Config under, so the move changes where the card renders and nothing
@@ -80,17 +72,18 @@ type EntryProps = Omit<PropsRuntime<"plugins.row.config">, "form"> &
   InjectFace<JevCompactionCardFace>;
 
 /**
- * The entry the Plugins page renders for this bundle's row: the row's configure
- * control opens a configuration section under the row on the bundle's page, and
- * that section is this card.
+ * The entry the Plugins page renders for this bundle's row: the page draws the
+ * row's own card — surface, title, row id, module name, description line — and
+ * mounts this registrant's body inside it, so the bundle contributes the body
+ * and nothing around it (AGENTS.md).
  *
- * The page asks the one entry for two views. `page` is the body of the section
- * above. `summary` is the row's one-liner, which the page asks the entry for only
+ * The page asks the one entry for two views. `page` is the body mounted above.
+ * `summary` is the row's one-liner, which the page asks the entry for only
  * when the row carries no display description of its own (the seat contract in
  * `@deepseek-ai/dsh-client-ui-plugin-manager`; the row's description is Host
  * inventory data, so nothing in this bundle decides whether the fallback fires —
  * the entry answers it because the contract names it). The view lands inside the
- * page's own text, so it returns the sentence and never a second card.
+ * page's own text, so it returns the sentence and never a second body.
  */
 function JevCompactionEntry(props: EntryProps) {
   if (props.view === "summary") return JEV_COMPACTION_ROW_SUMMARY;
@@ -120,10 +113,13 @@ export function apply(ctx: Context): () => void {
     JEV_COMPACTION_SETTINGS_NAMESPACE,
   );
   const removeStyles = injectCardStyles(CLIENT_PLUGIN_NAME, styles);
-  const disposeSlot = slots.inject(SETTINGS_CARD_SLOT, () =>
+  // The seat is named as a literal in the call rather than through a constant:
+  // the card contract reads the surface this bundle registers on off the built
+  // bundle, and the registration is the statement it reads.
+  const disposeSlot = slots.inject("plugins.row.config", () =>
     slots.register(
       {
-        name: SETTINGS_CARD_SLOT,
+        name: "plugins.row.config",
         key: ROW_CONFIG_KEY,
         inject: () => ({ settingsForm: form }),
       },
