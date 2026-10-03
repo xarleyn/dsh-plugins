@@ -2,7 +2,8 @@
 
 Every field below can be set in the profile's `cordis.patch.yml` (or the
 deployment's `cordis.yml`) and, unless marked **deployment-only**, edited at
-runtime from the settings card (**Settings → Plugins → Jev Compaction**).
+runtime from the settings card (the **Plugins** page, under this plugin's
+row).
 
 Settings layer in this order, each overriding the one before it:
 

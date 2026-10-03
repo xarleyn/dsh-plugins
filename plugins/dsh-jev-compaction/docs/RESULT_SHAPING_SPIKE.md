@@ -100,12 +100,16 @@ its base layer and hands back the resolved scope as the active source; the
 `onChange` hook fires at attach, at detach and on every committed change, which
 is what makes the settings card live rather than restart-scoped.
 
-Browser: the `settings.plugin.item` keyed slot, **keyed by the namespace**
-(`settings.plugins.tab` is the containing tab, not a registration target), and
-`ctx.settingsScope.bind({ namespace })` for reads and writes. Overrides are
-detected by presence in the raw user layer, not by comparing values.
+Browser: the `plugins.row.config` seat of this bundle's own row on the Host's
+Plugins panel, **keyed `<package name>#<row id>`** — the row id being the entry id
+`cordis.patch.yml` declares and the settings namespace at the same time. The card
+resolves its own `ConfigForm` through `ctx.configForms`, because the `form` the seat
+passes is only `{ state, mutate }`. Overrides are detected by presence in the raw
+user layer, not by comparing values. `settings.plugin.item` was deleted in `0.1.7`,
+and `settings.plugins.tab` is a tab of the native Plugins section rather than a
+registration point a card of this plugin adds to.
 
-The namespace `jev-compaction` is declared once in `src/shared/settings.ts`, a
+The namespace `dsh-jev-compaction` is declared once in `src/shared/settings.ts`, a
 dependency-free module so the card bundle inlines a string and not Schemastery.
 
 ## 6. Client packaging
@@ -113,9 +117,10 @@ dependency-free module so the card bundle inlines a string and not Schemastery.
 `dsh.client = { platform: "web", inject: [...], external: [...] }` plus an
 `exports["./client"]` entry; the artifact is a classic bundle that calls
 `window.__ModuleLoader__.load({ id, factory })` with the **full package name**
-as `id`. `@yadsh/dsh-plugin-kit/client` supplies the canonical card shell, so
-the bundle stays inside the AGENTS.md card contract; `verify:package` asserts
-it.
+as `id`. The card is seated on the Plugins panel row, where the page draws the frame,
+the heading and the expand control, so the bundle ships the body and no shell of its
+own; `verify:package` asserts the card contract of the seat the built bundle
+registers on.
 
 ## 7. Decisions taken from these findings
 

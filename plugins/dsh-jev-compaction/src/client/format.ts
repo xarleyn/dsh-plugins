@@ -1,6 +1,6 @@
 /**
- * Read-only helpers for the card: the badge, override detection on the raw
- * user layer, and byte formatting for the archive limit.
+ * Read-only helpers for the card: override detection on the raw user layer, and
+ * byte formatting for the archive limit.
  *
  * Overrides are detected by *presence* in the user layer (the settings
  * contract's own rule), never by comparing values: a user who re-saves the
@@ -29,12 +29,6 @@ export function isOverridden(user: unknown, ...path: string[]): boolean {
 export function overriddenKeys(user: unknown): string[] {
   const record = asRecord(user);
   return record === undefined ? [] : Object.keys(record);
-}
-
-/** Header badge: on/off plus why it is off. */
-export function badgeText(enabled: boolean, shapingEnabled: boolean): string {
-  if (!enabled) return "disabled";
-  return shapingEnabled ? "on · shaping" : "on";
 }
 
 const BYTE_UNITS = ["B", "KB", "MB", "GB"] as const;

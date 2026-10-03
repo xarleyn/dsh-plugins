@@ -26,8 +26,8 @@ await runVerifyPackage({
   client: {
     platform: "web",
     injectEquals: [
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
       "@deepseek-ai/dsh-client-ui-settings",
-      "@deepseek-ai/dsh-client-ui-settings-plugins",
     ],
   },
   files: [
@@ -54,7 +54,7 @@ await runVerifyPackage({
   compatibility: {
     node: "matchesEngines",
     testedReleases: ["0.1.7-rc.2"],
-    clientFeatures: ["settings.plugins.tab"],
+    clientFeatures: ["plugins.row.config"],
   },
   clientBundle: {
     moduleLoaderId: true,
@@ -66,7 +66,18 @@ await runVerifyPackage({
         /dsh-plugin-card\s*\*/u,
       ],
     },
-    includes: ["settings.plugins.tab", "dsh-jev-compaction"],
+    includes: [
+      "plugins.row.config",
+      // The keyed seat this card occupies: `<package name>#<row id>`.
+      "@yadsh/dsh-jev-compaction#",
+      "dsh-jev-compaction",
+    ],
+    matches: [
+      // The shared contract decides which half of itself applies from the seat it
+      // reads off this bundle's registration, so the seat has to be named there in
+      // text — not only quoted somewhere in the bundle.
+      /name:\s*"plugins\.row\.config"/u,
+    ],
     notMatches: [
       // The bundle is browser-only: a Node built-in import here would break
       // the host page's module table (client-bundle purity).
@@ -160,9 +171,10 @@ await runVerifyPackage({
   },
 });
 
-// The settings card registers under `settings.plugins.tab` and keeps our own
-// shell (decision D1 of the 0.1.7 cutover), so the compiled browser bundle has
-// to satisfy the shared card shell contract.
+// The settings card registers under `plugins.row.config`, the keyed seat the
+// Plugins page gives the row this bundle declares, and keeps our own shell
+// (decision D1 of the 0.1.7 cutover), so the compiled browser bundle has to
+// satisfy the shared card shell contract.
 verifyPluginCardContract(
   await readFile(
     new URL("lib/client.js", new URL("../", import.meta.url)),
