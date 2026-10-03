@@ -3,13 +3,18 @@
  *
  * Two kinds of rule live here and both are this plugin's own copy on purpose.
  *
- * The credential-help note's rules come from `@yadsh/dsh-plugin-kit` for a card
- * that owns its shell; this bundle is seated on the Plugins panel, where a rule
- * with a hard-coded outline loses to the Host's focus.css under pointer
- * modality (specificity 0-3-2 against 0-2-0), so the shared block cannot be
- * appended as it stands. It is copied with its rings retargeted instead of
- * forked selector by selector, and this is the sheet the note component in
- * credential-help-note.tsx dresses.
+ * The credential-help note's rules are this bundle's copy of the block
+ * `@yadsh/dsh-plugin-kit` ships for a card that owns its shell, retargeted ring by
+ * ring rather than dropped in as it stands: on the Plugins panel a hard-coded
+ * outline loses to the Host's focus.css under pointer modality (specificity 0-3-2
+ * against 0-2-0). The block is renamed to `dsh-qa-integrations-help*` for the same
+ * reason the rings are retargeted — the kit's `.dsh-credential-help*` selectors are
+ * public, so a copy wearing them would inject rules that fight the kit's own sheet
+ * for the same elements at equal specificity, settled only by the order two
+ * bundles happen to append their `<style>` tags. This is the sheet the note
+ * component in credential-help-note.tsx dresses; what the note *says* stays the
+ * kit's (`credentialHelpView`), and a test keeps the two renderings equal in
+ * content.
  *
  * The card shell is not here at all: on the row and bundle seats the page draws
  * the frame, the title and the expand control, so a shell class or a 12 px radius
@@ -23,21 +28,21 @@
  * Host keeps that, and scripts/verify-package.mjs reads these declarations the
  * way the card-contract gate does, so the value stays a literal in one string.
  */
-export const styles: string = String.raw`.dsh-credential-help{margin:0;font-size:12px;line-height:1.55;display:flex;flex-direction:column;gap:8px}
-.dsh-credential-help__trigger{appearance:none;width:fit-content;padding:0;border:0;background:0 0;color:var(--dsw-alias-brand-primary);font:inherit;font-size:12px;line-height:1.55;text-align:left;text-decoration:underline;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
-.dsh-credential-help__trigger:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px;border-radius:4px}
-.dsh-credential-help__chevron{width:7px;height:7px;flex:none;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .16s}
-.dsh-credential-help__trigger[aria-expanded="true"] .dsh-credential-help__chevron{transform:rotate(45deg)}
-.dsh-credential-help__panel{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;color:var(--dsw-alias-label-secondary)}
-.dsh-credential-help__title{margin:0;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600}
-.dsh-credential-help__text{margin:0}
-.dsh-credential-help__steps,.dsh-credential-help__list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
-.dsh-credential-help__steps{list-style:decimal}
-.dsh-credential-help__group{display:flex;flex-direction:column;gap:5px}
-.dsh-credential-help__label{color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:600}
-.dsh-credential-help__links{display:flex;flex-wrap:wrap;gap:12px}
-.dsh-credential-help__links a,.dsh-credential-help__link{color:var(--dsw-alias-brand-primary);text-decoration:underline}
-.dsh-credential-help__links a:focus-visible,.dsh-credential-help__link:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px;border-radius:4px}
+export const styles: string = String.raw`.dsh-qa-integrations-help{margin:0;font-size:12px;line-height:1.55;display:flex;flex-direction:column;gap:8px}
+.dsh-qa-integrations-help__trigger{appearance:none;width:fit-content;padding:0;border:0;background:0 0;color:var(--dsw-alias-brand-primary);font:inherit;font-size:12px;line-height:1.55;text-align:left;text-decoration:underline;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.dsh-qa-integrations-help__trigger:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px;border-radius:4px}
+.dsh-qa-integrations-help__chevron{width:7px;height:7px;flex:none;border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(-45deg);transition:transform .16s}
+.dsh-qa-integrations-help__trigger[aria-expanded="true"] .dsh-qa-integrations-help__chevron{transform:rotate(45deg)}
+.dsh-qa-integrations-help__panel{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-layer-2);border-radius:10px;padding:12px;display:flex;flex-direction:column;gap:10px;color:var(--dsw-alias-label-secondary)}
+.dsh-qa-integrations-help__title{margin:0;color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600}
+.dsh-qa-integrations-help__text{margin:0}
+.dsh-qa-integrations-help__steps,.dsh-qa-integrations-help__list{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.dsh-qa-integrations-help__steps{list-style:decimal}
+.dsh-qa-integrations-help__group{display:flex;flex-direction:column;gap:5px}
+.dsh-qa-integrations-help__label{color:var(--dsw-alias-label-tertiary);font-size:11px;font-weight:600}
+.dsh-qa-integrations-help__links{display:flex;flex-wrap:wrap;gap:12px}
+.dsh-qa-integrations-help__links a,.dsh-qa-integrations-help__link{color:var(--dsw-alias-brand-primary);text-decoration:underline}
+.dsh-qa-integrations-help__links a:focus-visible,.dsh-qa-integrations-help__link:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px;border-radius:4px}
 .dsh-qa-integrations__body{display:flex;flex-direction:column;gap:16px}
 .dsh-qa-integrations__body-title{margin:0;font-size:15px;font-weight:600;line-height:1.4;color:var(--dsw-alias-label-primary)}
 .dsh-qa-integrations{display:flex;flex-direction:column;gap:20px;max-width:760px;color:var(--dsw-alias-label-primary)}

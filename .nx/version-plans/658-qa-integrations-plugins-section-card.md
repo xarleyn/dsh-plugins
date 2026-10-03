@@ -1,5 +1,6 @@
 ---
 "@yadsh/dsh-qa-integrations": minor
+"@yadsh/dsh-plugin-log-ui": patch
 ---
 
 Both Integrations cards open from the Plugins panel now, beside the plugin they
@@ -67,9 +68,17 @@ the note renders from a local component that reuses the kit's
 `credentialHelpView`, so the metadata shaping and the second pass over every
 address stay shared and only the markup is repeated, with the disclosure drawn as
 the border triangle this card's own collapsibles already use; its stylesheet is the
-plugin's copy with the rings retargeted. A migrated plugin that wants the shared
-note has to do the same until the kit gives the note a glyph of its own — the
-twelve rows still on a settings seat are unaffected either way.
+plugin's copy with the rings retargeted. The copy dresses **its own** class names
+(`dsh-qa-integrations-help*`) rather than the kit's, because the kit's
+`.dsh-credential-help*` rules are a public selector: two bundles injecting equal
+specificity for one element settle whose ring and whose glyph win by the order their
+`<style>` tags happen to reach `document.head`, which no gate can see. That the two
+copies still *say* the same thing is pinned by a test that renders the kit's note and
+this one over the same metadata and compares text, element order and link targets, so
+a drift in the wording — including the labels the copy repeats — goes red in the
+suite rather than silently. A migrated plugin that wants the shared note has to do the
+same until the kit gives the note a glyph of its own — the twelve rows still on a
+settings seat are unaffected either way.
 
 The rings are the Host's pair written out with a fallback on each half —
 `--dsw-focus-ring-width` as well as `--dsw-focus-ring-color`, because a `var()` that
@@ -103,28 +112,57 @@ out of `lib/client.js`, so a card that mounts in the source tree but not from th
 bundle fails here. One of those renders answers the question the first draft left
 implicit: the Plugins page spreads its own `form` *after* the injected face, so a
 test clicks a switch with a decoy `{ state, mutate }` in place and asserts the write
-lands on the form this entry resolved, not on the page's. The chrome is pinned the
-same way it is refused: the bundle must name both seats at its `register` calls —
-the contract reads the place off the registration, and a positional or
-helper-passed seat leaves it only the bundle's scattered citations to decide from —
-and the script now refuses the shell's show/hide labels and the plugin-owned card
-list outright. What the shared gate cannot see is a control left with no focus rule
-at all, which is the same user-visible failure as a hard-coded outline and a cheaper
-way to reach it, so the selector list above is pinned here too, selector by
-selector. The seat facts themselves are read off the installed
-`@deepseek-ai/dsh-client-ui-plugin-manager` rather than restated in a comment: a new
-`tests/client/host-seat-contract.test.ts` takes the row seat's two call sites and their
-props, the `description ??` guard that makes the `summary` view a fallback, the
-`rowConfigKey` join, and the bundle seat's single `page`-only site with no `form` out of
-that artifact and its published contract. `tests/client/*.test.tsx` can prove this bundle
-answers a `view` well; only the host's own bytes prove the page still asks for it — a
-branch nobody dispatches passes every test written against it, and a host that stopped
-passing `form` would leave the operator card resolving a namespace its seat never
-mentions. So a host that moves either seat fails this suite on the version bump instead
-of in a browser. `docs/DSH-0.1.7-MIGRATION.md` follows the diff: §4.2 says the `summary`
-dispatch is **conditional** on the description the Host reports for the row — the
-page renders `description ?? renderSlot(… "summary" …)`, and that description is
-`rowText(row)` over `row.meta`, the Host's inventory, not `cordis.patch.yml` — §3's
-row for this package stops describing a shell it no longer draws, and §10 carries
-the line's own D1 as option 1, with `dsh-model-safety-gate` (#653) and this package
-named as the two rows that landed on the panel seats.
+lands on the form this entry resolved, not on the page's. The chrome is pinned the same way it is refused: the bundle must name both seats at
+its `register` calls **and** the key each seat is registered under, as literals in the
+call rather than as constants the module assembles. The contract reads the place off
+`name:`, a positional or helper-passed seat leaves it only the bundle's scattered
+citations to decide from, and a pin that reaches for an identifier —
+`const ROW_CONFIG_KEY = ...` — proves a bundler's choice to keep a name rather than
+anything about the card, so the gate reads strings now. The pair it cannot read off the
+artifact, the settings namespace and the row id the patch declares, is read off
+`src/shared/settings.ts` and `cordis.patch.yml` the way #653 reads its own, which keeps
+the join that protects a stand's saved values pinned without parsing source syntax out
+of a build. The script also refuses the shell's show/hide labels and the plugin-owned
+card list outright, and refuses the kit's `.dsh-credential-help*` selectors in this
+bundle's sheet.
+
+What the shared gate cannot see is a control left with no focus rule at all, which is
+the same user-visible failure as a hard-coded outline and a cheaper way to reach it. A
+hand-written list of selectors would promise more than it proves — a control missing
+from the list passes while the comment claims everything is named — so both sides are
+read instead: every `:focus-visible` rule of the plugin's stylesheet has to reach the
+artifact with its selector intact, and every ring rule the artifact carries has to
+state the Host's token pair with a fallback on each half.
+
+The seat facts themselves are read off the installed
+`@deepseek-ai/dsh-client-ui-plugin-manager` rather than restated in a comment, and they
+are read in one place now: `@yadsh/dsh-test-kit` exposes `readHostSeats` with
+`expectRowSeatContract`, `expectRowSeatKeyJoin`, `expectBundleSeatContract` and
+`expectBundleSectionUntitled`, and this package's
+`tests/client/host-seat-contract.test.ts` is a thin consumer that adds only what
+belongs to this bundle — that its row entry answers both views, and that its bundle
+body is the only heading of a section the page leaves untitled. `dsh-plugin-log-ui`
+(#651) carried the same probe as its own file; it reads the helper now, which is why
+its package is in this plan. The point of reading them once is that one host move
+produces one diagnosis rather than one red file per migrated card.
+`tests/client/*.test.tsx` can prove this bundle answers a `view` well; only the host's
+own bytes prove the page still asks for it — a branch nobody dispatches passes every
+test written against it, and a host that stopped passing `form` would leave the
+operator card resolving a namespace its seat never mentions. So a host that moves
+either seat fails this suite on the version bump instead of in a browser.
+
+`docs/DSH-0.1.7-MIGRATION.md` follows the diff: §4.2 says the `summary` dispatch is
+**conditional** on the description the Host reports for the row — the page renders
+`description ?? renderSlot(… "summary" …)`, and that description is `rowText(row)` over
+`row.meta`, the Host's inventory, not `cordis.patch.yml` — and names each of those
+sites by the expression that holds it rather than by a line number, since the artifact
+renumbers between release candidates and a citation would rot while the fact it
+describes holds. §3's row for this package, which the same paragraph sits in, is back
+on **one** physical line: split across thirteen, GFM ends the table at the first
+unpiped row and the rest of «Per package» renders as prose, and no gate covers `.md`
+because prettier is told to leave it alone. §10 carries the line's own D1 as option 1.
+The comments in `src/client/index.tsx` and in the package gate no longer claim the
+panel cards dropped their dependence on the settings *service*: `configForms` is
+`@deepseek-ai/dsh-client-ui-settings`, which stays a peer, an injection and a line of
+`docs/COMPATIBILITY.md`, and what the move left behind is the Settings *surface* — the
+dialog and the loopback-only directory — not the module that hands a card its form.

@@ -178,10 +178,19 @@ assert.match(client, /Инстанс Weblate/u);
 assert.match(client, /Оператор не настроил ни одного инстанса Weblate/u);
 assert.doesNotMatch(client, /ограничен одним проектом/u);
 
-// The credential help renders from metadata: the bundle carries the shared note
-// (and its sanitizer), never the addresses themselves, which belong to the
-// deployment and are replaced per provider.
-assert.match(client, /dsh-credential-help__trigger/u);
+// The credential help renders from metadata: the bundle carries the note (and its
+// sanitizer), never the addresses themselves, which belong to the deployment and
+// are replaced per provider. The block is this bundle's own name, not the kit's —
+// the shared note's selectors would collide with our copy at equal specificity.
+assert.match(client, /dsh-qa-integrations-help__trigger/u);
+// A *rule* for the kit's selector, not a mention of it: the copy and this bundle's
+// sheet must not claim the same elements at equal specificity, where the winner is
+// the order two `<style>` tags reach `document.head`.
+assert.doesNotMatch(
+  client,
+  /\.dsh-credential-help\w*\s*\{/u,
+  "the bundle ships a rule for the kit's credential-help selectors, and the two sheets then fight over one element by <style> order",
+);
 assert.match(client, /noopener noreferrer/u);
 assert.match(client, /\.home\.arpa/u);
 for (const address of [
@@ -200,57 +209,77 @@ for (const address of [
   );
 }
 
-// Both cards are seats of the Plugins page in this build, so neither depends on
-// the Host settings directory or on the Settings surface: the operator card
-// opens from the configuration section of this bundle's own row and the account
-// card from the bundle's own section, reaching the same QA session through
-// `qaUserSession`. Neither draws a frame: on these seats the page supplies the
-// card surface, the title and the disclosure, which is what the card-contract
-// gate below enforces from the seat it reads off this bundle (`AGENTS.md`, "Two
-// kinds of card: who owns the chrome"). Which seat a configuration card takes was
-// never part of that question: `AGENTS.md` names the panel seats and refuses the
-// Settings dialog, and a bundle that registered both would show two copies of one
-// card.
+// Both cards are seats of the Plugins page in this build, so neither draws a frame
+// of its own and neither needs the Settings dialog or the loopback-only settings
+// directory: the operator card opens from the configuration section of this
+// bundle's own row and the account card from the bundle's own section, reaching the
+// same QA session through `qaUserSession`. What the move did not remove is the
+// settings *service* — `configForms` is `@deepseek-ai/dsh-client-ui-settings`, still
+// a peer, still in `dsh.client.inject`, and still named in
+// `docs/COMPATIBILITY.md`. A seat says where a card renders, not which module hands
+// it a form.
 //
-// The row seat is keyed `<package name>#<row id>` — `rowConfigKey` in the
-// contract the installed `@deepseek-ai/dsh-client-ui-plugin-manager` ships — and
-// that row id is also the namespace the Host resolves this plugin's volatile
-// Config under. So one string is both the render address and the place the saved
-// values live: a patch row that moves while the card binds the old one leaves a
-// seat with no form and a stand that reads its settings back as defaults, with
-// every type check green. Pin the pair the way `dsh-model-safety-gate` pins its
-// namespace and entry id.
+// Which seat a configuration card takes is a different question from the chrome, and
+// the panel answers it per section: the row seat is this plugin's own configuration,
+// the bundle seat is the account page the bundle adds to its own package section.
+// Two registrations of one *card* would be the defect; two cards of one bundle, each
+// on the section it belongs to, is what the page is built to hold.
+//
+// The row seat is keyed `<package name>#<row id>` — `rowConfigKey` in the contract
+// the installed `@deepseek-ai/dsh-client-ui-plugin-manager` ships — and that row id is
+// also the namespace the Host resolves this plugin's volatile Config under. So one
+// string is both the render address and the place the saved values live: a patch row
+// that moves while the card binds the old one leaves a seat with no form and a stand
+// that reads its settings back as defaults, with every type check green.
 verifyPluginCardContract(client);
 assert.match(client, /"plugins\.row\.config"/u);
 assert.match(client, /"plugins\.bundle\.config"/u);
-// The seat is named at the registration, not only quoted in prose: the contract
-// reads the place off `name:`, and a positional or helper-passed seat leaves the
-// gate only the citations scattered over the bundle to decide from.
+// The seat is named at the registration and so is its key: the contract reads the
+// place off `name:` and the page asks for this entry by that key, while a
+// positional or helper-passed seat leaves the gate only the citations scattered over
+// the bundle to decide from. The key is one literal, which also means nothing here
+// depends on an identifier surviving the bundler.
 assert.match(
   client,
-  /name:\s*"plugins\.row\.config",\s*key:/u,
-  "the row seat must be a literal at the register call, so the gate reads the place off the registration",
+  /name:\s*"plugins\.row\.config",\s*key:\s*"@yadsh\/dsh-qa-integrations#qa-integrations"/u,
+  "the row seat must name itself and its key at the register call",
 );
 assert.match(
   client,
-  /name:\s*"plugins\.bundle\.config",\s*key:/u,
-  "the bundle seat must name itself at its register call for the same reason",
+  /name:\s*"plugins\.bundle\.config",\s*key:\s*"@yadsh\/dsh-qa-integrations"/u,
+  "the bundle seat must name itself and its key at its register call",
 );
 
+// The join is one fact, so it is checked as one: the row id the patch declares, the
+// namespace the card resolves its form under, and the suffix of the seat key have to
+// agree. The namespace is read off `src/shared/settings.ts` rather than off the
+// artifact — the precedent #653 sets — because what the artifact proves is the
+// literal, and a source value it happens to inline is not a string to parse syntax
+// out of.
+const settingsSource = await readFile(
+  new URL("src/shared/settings.ts", root),
+  "utf8",
+);
+const namespace = /QA_INTEGRATIONS_SETTINGS_NAMESPACE\s*=\s*"([^"]+)"/u.exec(
+  settingsSource,
+)?.[1];
 assert.equal(
-  /QA_INTEGRATIONS_SETTINGS_NAMESPACE\s*=\s*"([^"]+)"/u.exec(client)?.[1],
+  namespace,
   /id:\s*([A-Za-z0-9_-]+)/u.exec(patch)?.[1],
   "the namespace the operator card binds must be the row id cordis.patch.yml declares",
 );
+const ROW_SEAT_KEY = `@yadsh/dsh-qa-integrations#${namespace}`;
 assert.match(
   client,
-  /const ROW_CONFIG_KEY\s*=\s*`@yadsh\/dsh-qa-integrations#\$\{QA_INTEGRATIONS_SETTINGS_NAMESPACE\}`/u,
-  "the row seat must be keyed by this bundle's package name joined to the namespace constant, not to a second literal that can drift from the patch",
+  new RegExp(
+    `key:\\s*"${ROW_SEAT_KEY.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}"`,
+    "u",
+  ),
+  "the row seat's key literal must be this bundle joined to the namespace the card resolves under",
 );
-assert.match(
-  client,
-  /configForms\.get\(QA_INTEGRATIONS_SETTINGS_NAMESPACE\)/u,
-  "the operator form must resolve under the same constant that builds the seat key",
+assert.ok(
+  client.includes(`"${namespace}"`),
+  "the namespace the seat key names must be the one the bundle resolves its form under",
 );
 assert.match(client, /"configForms"/u);
 // The one-liner is not decoration, but whether the live page reaches it is not
@@ -270,7 +299,7 @@ assert.ok(
 );
 assert.match(
   client,
-  /props\.view\s*===\s*"summary"/u,
+  /\.view\s*===\s*"summary"/u,
   "the row entry answers the summary view instead of mounting the card for it",
 );
 assert.doesNotMatch(
@@ -308,36 +337,51 @@ for (const label of [
   );
 }
 assert.match(client, /Сбросить переопределения/u);
-// The rings belong to the Host's tokens and the gate checks them, but the sheet
-// the note dresses is this bundle's own copy: the shared block states a
-// hard-coded outline, and one rule with it anywhere in the bundle loses the ring
-// under pointer modality and takes the gate red.
-assert.match(
-  client,
-  /\.dsh-credential-help__trigger:focus-visible\{outline:var\(--dsw-focus-ring-width,/u,
-  "the credential-help trigger must ring from the Host's tokens, not the shared block's outline",
+// The rings belong to the Host's tokens, and the sheet the note dresses is this
+// bundle's own copy of the kit's block: the shared one states a hard-coded outline,
+// and a single rule with it anywhere in the bundle loses the ring under pointer
+// modality.
+//
+// Which controls carry a ring is not a list restated here. A hand-written list proves
+// only that those strings survive the build, so a control missing from the list passes
+// unnoticed while the comment claims every focusable thing is named. Both sides are
+// read instead: every `:focus-visible` rule of `src/client/styles.ts` has to reach the
+// artifact with its selector intact, and every ring rule the artifact carries has to
+// state the Host's pair with a fallback on each half. What neither check reaches is a
+// control the sheet never names at all — that stays a review question, and the shared
+// card-contract gate weighs these same rules against the seat it reads off the bundle.
+const RING =
+  /outline:var\(--dsw-focus-ring-width,\s*2px\)\s*solid\s*var\(--dsw-focus-ring-color,\s*var\(--dsw-alias-state-business-primary\)\)\s*;?/u;
+/** The `:focus-visible` rules of a sheet, as `{ selector, body }` per comma part. */
+function focusRules(css) {
+  const rules = [];
+  for (const [, selector, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/gu)) {
+    if (!selector.includes(":focus-visible")) continue;
+    for (const part of selector.split(",")) {
+      const name = part.replace(/\s+/gu, " ").trim();
+      if (name !== "") rules.push({ selector: name, body: body ?? "" });
+    }
+  }
+  return rules;
+}
+
+const sheetRules = focusRules(
+  await readFile(new URL("src/client/styles.ts", root), "utf8"),
 );
-// The gate refuses a hard-coded outline and asks that at least one control take
-// the Host's ring; what it cannot see is a control dressed by no rule at all,
-// which is the same failure reached by deleting the rules. Every focusable thing
-// this bundle draws has to be named, so the list is pinned selector by selector.
-for (const selector of [
-  ".dsh-credential-help__trigger:focus-visible",
-  ".dsh-credential-help__link:focus-visible",
-  ".dsh-qa-integrations__input:focus-visible",
-  ".dsh-qa-integrations__button:focus-visible",
-  ".dsh-qa-integrations__check input:focus-visible",
-  ".dsh-qa-integrations__permission input:focus-visible",
-  ".qai-op__input:focus-visible",
-  ".qai-op__button:focus-visible",
-  ".qai-op__row-remove:focus-visible",
-  ".qai-op__toggle:focus-visible",
-  ".qai-op__section-summary:focus-visible",
-  ".qai-op__group-summary:focus-visible",
-]) {
+const bundleRules = focusRules(client);
+const built = new Set(bundleRules.map((rule) => rule.selector));
+assert.ok(sheetRules.length >= 12, "the sheet lost its focus rules");
+for (const rule of sheetRules) {
   assert.ok(
-    client.includes(selector),
-    `the bundle dresses no focus ring on ${selector}`,
+    built.has(rule.selector),
+    `the ring rule ${rule.selector} never reaches the built bundle`,
+  );
+}
+for (const rule of bundleRules) {
+  assert.match(
+    rule.body,
+    RING,
+    `${rule.selector} states a ring the Host's focus.css can out-specify`,
   );
 }
 assert.doesNotMatch(
@@ -394,7 +438,7 @@ const DESIGN_TOKENS = new Set([
 ]);
 assert.match(
   client,
-  /dsh-credential-help__trigger\{[^}]*color:var\(--dsw-alias-brand-primary\)/u,
+  /dsh-qa-integrations-help__trigger\{[^}]*color:var\(--dsw-alias-brand-primary\)/u,
 );
 for (const [, token] of client.matchAll(/var\(--dsw-alias-([a-z0-9-]+)\)/gu)) {
   assert(

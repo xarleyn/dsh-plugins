@@ -84,12 +84,12 @@ describe("Integrations credential help", () => {
     // all, and the rotate hook is the `aria-expanded` the styles read.
     expect(trigger.querySelector("svg")).toBeNull();
     expect(
-      trigger.querySelector(".dsh-credential-help__chevron"),
+      trigger.querySelector(".dsh-qa-integrations-help__chevron"),
     ).not.toBeNull();
     fireEvent.click(trigger);
     expect(trigger.getAttribute("aria-expanded")).toBe("true");
     expect(
-      container.querySelector(".dsh-credential-help__title")?.textContent,
+      container.querySelector(".dsh-qa-integrations-help__title")?.textContent,
     ).toBe("Personal access token GitLab");
     expect(screen.getByText("read_api — всё читаемое")).toBeDefined();
     const link = screen.getByRole("link", { name: "Создать токен" });

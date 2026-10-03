@@ -84,6 +84,15 @@ describe("Integrations plugin card", () => {
     expect(container.querySelector("li")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
     expect(container.querySelector("svg")).toBeNull();
+    // The one heading names this section, at the level the page gives its section
+    // titles: the host's bundle section carries no heading of its own —
+    // `host-seat-contract.test.ts` reads that fact out of the installed page — while
+    // the rows section beside it signs itself with an `<h4>` under an `<h3>` package
+    // title. An `<h3>` of ours would sit beside the package name, not under it.
+    expect(
+      screen.getByRole("heading", { level: 4, name: "Интеграции" }),
+    ).not.toBeNull();
+    expect(container.querySelector("h3")).toBeNull();
     // The body is mounted at once — the page expands the section, not us.
     expect(screen.getByTestId("qa-integrations-bundle-card").className).toBe(
       "dsh-qa-integrations__body",
