@@ -117,7 +117,11 @@ The card opens from this bundle's row on the Host's Plugins page and exposes
 activation, mode, normal and risky confidence thresholds, startup, mutation, and
 resize scanning, manual scan/apply/ignore/rollback actions, session health
 counters, and persistent ignored selectors. Risky overflow/clipping repairs can
-never be configured below 98% confidence.
+never be configured below 98% confidence. The row answers every state of its
+namespace: while the Host has no settings for this session the card says so and
+keeps the scan panel and the rollback action, rather than leaving the section
+blank or drawing its defaults as the saved policy — the Plugins page stays
+reachable from a browser the settings directory is intentionally closed to.
 
 ## Development
 

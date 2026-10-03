@@ -38,6 +38,39 @@ interface Snapshot {
   readonly writable: boolean;
 }
 
+/*
+ * `ConfigFormSnapshot.status` is `loading | ready | unavailable`
+ * (`@deepseek-ai/dsh-client-ui-settings` `lib/types/client/config-form-types.d.ts:12`),
+ * and `value` is undefined until the first accepted section, so neither
+ * non-ready fixture carries one.
+ */
+const LOADING: Snapshot = Object.freeze({
+  status: "loading",
+  value: undefined,
+  writable: false,
+});
+const UNAVAILABLE: Snapshot = Object.freeze({
+  status: "unavailable",
+  value: undefined,
+  writable: false,
+});
+
+/**
+ * The same namespace read in another state: a store must hand back the same
+ * snapshot object until it changes, or React treats every read as an update, so
+ * the fixture is frozen and the writes keep the identity the face came with.
+ */
+function faceForm(
+  snapshot: Snapshot,
+  original: unknown,
+): Record<string, unknown> {
+  return {
+    ...(original as Record<string, unknown>),
+    getSnapshot: () => snapshot,
+    subscribe: () => () => undefined,
+  };
+}
+
 /** The row's one-liner, which the page prints into its own description `<p>`. */
 function summaryLine(props: {
   readonly Entry: Entry;
@@ -116,12 +149,27 @@ function pageForm(value: UIRepairPluginConfig) {
 }
 
 /** The page hands this section an empty container, so nothing wraps the body. */
-function pageView(props: {
-  readonly Entry: Entry;
-  readonly face: Record<string, unknown>;
-  readonly form?: ReturnType<typeof pageForm> | undefined;
-}) {
-  return render(<props.Entry {...props.face} view="page" form={props.form} />);
+function pageView(
+  props: {
+    readonly Entry: Entry;
+    readonly face: Record<string, unknown>;
+    readonly form?: ReturnType<typeof pageForm> | undefined;
+  },
+  /** A namespace state to answer with, in place of the activation's. */
+  snapshot?: Snapshot,
+) {
+  return render(
+    <props.Entry
+      {...props.face}
+      view="page"
+      form={props.form}
+      settings={
+        snapshot === undefined
+          ? props.face["settings"]
+          : faceForm(snapshot, props.face["settings"])
+      }
+    />,
+  );
 }
 
 describe("plugins.row.config seat", () => {
@@ -264,28 +312,71 @@ describe("plugins.row.config seat", () => {
     expect(add.disabled).toBe(true);
   });
 
-  it("draws no body when the Host reports no settings for the namespace", async () => {
+  it("answers an unavailable namespace instead of leaving the row empty", async () => {
     mounted = mountEntry();
     const { Entry, face } = mounted;
-    // A store must hand back the same snapshot object until it changes, or React
-    // treats every read as an update.
-    const unavailable = Object.freeze({ status: "unavailable" });
-    const { container } = render(
-      <Entry
-        {...face}
-        settings={{
-          getSnapshot: () => unavailable,
-          subscribe: () => () => undefined,
-          set: vi.fn(),
-          unset: vi.fn(),
-          mutate: vi.fn(),
-        }}
-        view="page"
-      />,
-    );
+    const { container } = pageView({ Entry, face }, UNAVAILABLE);
     await act(async () => {
       await Promise.resolve();
     });
-    expect(container.children).toHaveLength(0);
+
+    // The page drew the frame and already opened the section, so the card owes a
+    // sentence rather than the silence a self-framed card could afford.
+    const body = container.querySelector('[data-testid="repair-ui"]');
+    expect(body).not.toBeNull();
+    const note = container.querySelector(
+      '[data-testid="repair-settings-unavailable"]',
+    );
+    expect(note?.textContent).toContain(
+      "are not exposed to this browser session",
+    );
+    // It promises nothing it cannot honour: no field, no write control.
+    expect(container.querySelector('[data-testid="repair-mode"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="repair-ignore-add"]'),
+    ).toBeNull();
+    // What the settings cannot reach stays reachable: rolling back temporary
+    // repairs is a runtime call, and a locked stand is exactly where it matters.
+    const rollback = container.querySelector(
+      '[data-testid="repair-rollback"]',
+    ) as HTMLButtonElement | null;
+    if (rollback === null) {
+      throw new Error("the body renders no rollback control");
+    }
+    expect(rollback.disabled).toBe(false);
+  });
+
+  it("names the wait instead of drawing defaults while the Host loads", async () => {
+    mounted = mountEntry();
+    const { Entry, face } = mounted;
+    const { container } = pageView({ Entry, face }, LOADING);
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    const body = container.querySelector('[data-testid="repair-ui"]');
+    expect(body).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="repair-settings-loading"]'),
+    ).not.toBeNull();
+    // A resolved default is not the saved policy, so the settings fields wait.
+    expect(container.querySelector('[data-testid="repair-mode"]')).toBeNull();
+    expect(
+      container.querySelector('[data-testid="repair-toggle-enabled"]'),
+    ).toBeNull();
+    // The scan panel reads the runtime rather than the settings, so it stays;
+    // only a scan under a policy nobody has read is withheld.
+    const scan = container.querySelector(
+      '[data-testid="repair-scan"]',
+    ) as HTMLButtonElement | null;
+    if (scan === null) throw new Error("the body renders no scan control");
+    expect(scan.disabled).toBe(true);
+    const rollback = container.querySelector(
+      '[data-testid="repair-rollback"]',
+    ) as HTMLButtonElement | null;
+    if (rollback === null) {
+      throw new Error("the body renders no rollback control");
+    }
+    expect(rollback.disabled).toBe(false);
   });
 });

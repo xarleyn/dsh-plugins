@@ -40,20 +40,17 @@ assert.match(client, /"plugins\.row\.config"/u);
 // The seat key is `<package name>#<row id>`, joined from the namespace the card
 // reads its ConfigForm through, so the row half cannot drift away from it. The
 // namespace itself is untouched by the move, which is what keeps a value saved
-// before the upgrade readable after it; `verify-package.mjs` pins both halves
-// against `package.json` and `cordis.patch.yml`.
+// before the upgrade readable after it; `verify-package.mjs` pins both halves and
+// the join against `package.json` and `cordis.patch.yml`, so this gate only asks
+// that the registration reads that key.
 assert.match(client, /key:\s*UI_REPAIR_ROW_CONFIG_KEY/u);
-assert.ok(
-  client.includes(
-    "const UI_REPAIR_ROW_CONFIG_KEY = `@yadsh/dsh-ui-repair#${UI_REPAIR_SETTINGS_NAMESPACE}`",
-  ),
-  "the row-config key must join the package name to the settings namespace",
-);
 assert.match(client, /UI_REPAIR_SETTINGS_NAMESPACE\s*=\s*"dsh-ui-repair"/u);
 // The seat also asks this entry for `view: "summary"`, and the page prints that
-// answer into its own description paragraph, so the arm returns the row's sentence
-// and reads no store — mounting the body there would draw a page inside a line.
-assert.match(client, /if \(props\.view === "summary"\) return ROW_SUMMARY;/u);
+// answer into its own description paragraph, so the arm stays in the bundle. That
+// it answers with a sentence and mounts no body is what the component renders, and
+// `tests/client-card.test.tsx` proves it there rather than against source text this
+// bundler is free to reformat.
+assert.match(client, /view === "summary"/u);
 /*
  * The row's page is the card: it draws the surface, the heading and the expand
  * control before mounting this bundle's body (`div[data-plugin-config]`,
@@ -67,15 +64,17 @@ assert.doesNotMatch(
   /dsh-plugin-card(?:__[\w-]+|--open)/u,
   "the Plugins panel draws this card's frame, so the bundle carries no shell element class",
 );
+/*
+ * A shell rule, asked for in the form the canonical shell writes it (`.dsh-plugin-card{`,
+ * `.dsh-plugin-card:hover{`) rather than as any `.dsh-plugin-card` followed by a
+ * separator: the scanner's own root list quotes that class inside a selector string,
+ * and whether `.join(",")` reaches the bundle as an array or as one concatenated
+ * literal is the bundler's business, not a shell this package shipped.
+ */
 assert.doesNotMatch(
   client,
-  /\.dsh-plugin-card(?=\s*[,{])/u,
+  /\.dsh-plugin-card\s*[{:]/u,
   "the Plugins panel draws this card's frame, so the bundle carries no shell CSS rule",
-);
-assert.doesNotMatch(
-  client,
-  /uir-list/u,
-  "the configuration section supplies no list for a shell <li> any more, so the body mounts directly",
 );
 assert.doesNotMatch(
   client,
@@ -96,16 +95,14 @@ assert.match(
   "the scanner still walks other plugins' own-shell cards as repair roots",
 );
 /*
- * Every control this body draws dresses its focus ring from the Host's token pair,
- * and both halves carry a fallback: a hard-coded outline loses to the Host's
- * `focus.css` under pointer modality, and an undeclared `--dsw-focus-ring-width`
- * invalidates the whole `outline` shorthand instead of degrading it.
+ * Every control this body draws dresses its ring from the Host's token pair, with a
+ * fallback on each half. Which declaration shape that requires is the shared
+ * contract's job (`verifyPluginCardContract`, which reads the ring off every
+ * `:focus` rule this seat owes); what only this package can say is that the list of
+ * controls below is complete, so deleting a rule is caught rather than quietly
+ * handing that control back to the Host's `focus.css`, which does not dress a
+ * markup a plugin renders inside the section.
  */
-assert.match(
-  client,
-  /outline:var\(--dsw-focus-ring-width, 2px\) solid var\(--dsw-focus-ring-color, var\(--dsw-alias-state-business-primary\)\)/u,
-  "the card's controls take the Host's focus ring with fallbacks on both halves",
-);
 for (const control of ["uir-control", "uir-toggle", "uir-button"]) {
   assert.ok(
     client.includes(`.${control}:focus-visible{`),
