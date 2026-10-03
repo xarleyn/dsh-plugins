@@ -69,14 +69,16 @@ await runVerifyPackage({
        * to answer both views (`slot-contract.ts`). The summary answer has to stay
        * a sentence: mounting the body there puts a page inside a line of text and
        * opens a second poll of the Remote. It is the fallback for the row's
-       * description line — for this row the page prints the `description` read
-       * off the bundle's manifest instead (`@deepseek-ai/dsh-app-boot`
-       * `src/package-meta.ts:157`) — and the `page` answer prints neither that
+       * description line — for this row the page prints the `description` read off
+       * the bundle's manifest instead (`@deepseek-ai/dsh-app-boot`
+       * `src/package-meta.ts:157`) — and it is held to that same sentence, so one
+       * row never carries two descriptions and an edit of `package.json` alone
+       * cannot leave the fallback behind. The `page` answer prints neither that
        * line nor a heading of its own, since the page already drew both above the
        * body. Which text lands where is asserted rendered, in
        * `client-card.test.tsx`.
        */
-      /WEB_FETCH_AUTH_ROW_SUMMARY\s*=\s*"Per-origin authenticated rules for web_fetch/u,
+      /WEB_FETCH_AUTH_ROW_SUMMARY\s*=\s*"Authenticated, policy-gated WebFetchProvider/u,
       /if \(view === "summary"\)\s*return WEB_FETCH_AUTH_ROW_SUMMARY/u,
     ],
     cardContract: {

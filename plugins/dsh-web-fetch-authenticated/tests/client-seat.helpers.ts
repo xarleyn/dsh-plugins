@@ -64,7 +64,9 @@ export function demoConfig(): WebFetchAuthConfig {
 }
 
 /** The provider projection the card's status section shows. */
-export function demoStatus(): ProviderStatusReport {
+export function demoStatus(
+  overrides?: Partial<ProviderStatusReport>,
+): ProviderStatusReport {
   return {
     enabled: true,
     registered: true,
@@ -75,6 +77,7 @@ export function demoStatus(): ProviderStatusReport {
     configErrors: [],
     lastTests: [],
     unmatchedPolicy: "block",
+    ...overrides,
   };
 }
 
@@ -106,13 +109,17 @@ const DEMO_DIAGNOSIS: DiagnoseReport = {
 /**
  * The Remote answers. Nothing in these two files clicks the tester or the
  * diagnostic runner, so the payloads only have to be well-typed — the calls the
- * card does make on mount are `status()`, and that one returns the real report.
+ * card does make on mount are `status()`, and that one returns the report the
+ * case asked for.
  */
-const remoteStub = {
-  status: () => Promise.resolve({ ok: true as const, value: demoStatus() }),
-  testRule: () => Promise.resolve({ ok: true as const, value: DEMO_TEST }),
-  diagnose: () => Promise.resolve({ ok: true as const, value: DEMO_DIAGNOSIS }),
-};
+function remoteStub(report: ProviderStatusReport) {
+  return {
+    status: () => Promise.resolve({ ok: true as const, value: report }),
+    testRule: () => Promise.resolve({ ok: true as const, value: DEMO_TEST }),
+    diagnose: () =>
+      Promise.resolve({ ok: true as const, value: DEMO_DIAGNOSIS }),
+  };
+}
 
 /** Credential facts only — a value never rides this face (SPEC §21). */
 const credentialsStub = {
@@ -165,16 +172,22 @@ function formStub(
  * face, which the code under test reads, and as a service key of its own, which
  * `ctx.inject(["remote.webFetchAuth"])` resolves. A bare context stands in for the
  * browser runner, whose gateway isolate map answers that key.
+ *
+ * `report` is the projection the provider answers with, kept separate from
+ * `config` on purpose: the two disagree for a while after a write, and a stand
+ * that pins them to the same value cannot see which of them a control reads.
  */
 export async function registeredSeat(
   config: WebFetchAuthConfig = demoConfig(),
   settingsStatus: "ready" | "unavailable" = "ready",
   writable = settingsStatus === "ready",
+  report = demoStatus(),
 ): Promise<Seat> {
   const seats: Omit<Seat, "writes" | "mutations" | "pageForm">[] = [];
   const writes: FormWrite[] = [];
   const mutations: PageMutation[] = [];
   const form = formStub(config, settingsStatus, writes, writable);
+  const remote = remoteStub(report);
   /*
    * The owner `form` the page renders its row seat with: `formFor(row.rowId)`
    * (`PluginManagerPage.tsx:1151`) answers `{ state, mutate }` for the same
@@ -191,11 +204,11 @@ export async function registeredSeat(
   };
   const ctx = new Context();
   ctx.provide("remote", {
-    webFetchAuth: remoteStub,
+    webFetchAuth: remote,
     credentials: credentialsStub,
     $mount: () => Promise.resolve(() => Promise.resolve()),
   });
-  ctx.provide("remote.webFetchAuth", remoteStub);
+  ctx.provide("remote.webFetchAuth", remote);
   ctx.provide("configForms", { get: () => form });
   ctx.provide("slots", {
     inject: (_key: string, callback: () => (() => void) | void) => {
