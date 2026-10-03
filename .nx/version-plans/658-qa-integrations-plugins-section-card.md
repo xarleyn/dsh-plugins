@@ -111,7 +111,17 @@ and the script now refuses the shell's show/hide labels and the plugin-owned car
 list outright. What the shared gate cannot see is a control left with no focus rule
 at all, which is the same user-visible failure as a hard-coded outline and a cheaper
 way to reach it, so the selector list above is pinned here too, selector by
-selector. `docs/DSH-0.1.7-MIGRATION.md` follows the diff: §4.2 says the `summary`
+selector. The seat facts themselves are read off the installed
+`@deepseek-ai/dsh-client-ui-plugin-manager` rather than restated in a comment: a new
+`tests/client/host-seat-contract.test.ts` takes the row seat's two call sites and their
+props, the `description ??` guard that makes the `summary` view a fallback, the
+`rowConfigKey` join, and the bundle seat's single `page`-only site with no `form` out of
+that artifact and its published contract. `tests/client/*.test.tsx` can prove this bundle
+answers a `view` well; only the host's own bytes prove the page still asks for it — a
+branch nobody dispatches passes every test written against it, and a host that stopped
+passing `form` would leave the operator card resolving a namespace its seat never
+mentions. So a host that moves either seat fails this suite on the version bump instead
+of in a browser. `docs/DSH-0.1.7-MIGRATION.md` follows the diff: §4.2 says the `summary`
 dispatch is **conditional** on the description the Host reports for the row — the
 page renders `description ?? renderSlot(… "summary" …)`, and that description is
 `rowText(row)` over `row.meta`, the Host's inventory, not `cordis.patch.yml` — §3's
