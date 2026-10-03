@@ -32,10 +32,13 @@ function gateCopy(stage: QaUserSessionSnapshot["stage"]): string {
  * The body is all this draws. The page supplies the card surface, the package
  * title and the `data-plugin-config` section this lands in, so the frame, the
  * expand control and the shell classes are the Host's (AGENTS.md, "Two kinds of
- * card: who owns the chrome"). The one heading is the section's own name: the
- * bundle page gives this section no title the way it titles its sibling rows
- * section, so without it the provider cards would sit under the package
- * description unlabeled.
+ * card: who owns the chrome"). The one heading is the section's own name, and it
+ * is not a second heading: the Host's bundle page wraps this seat in a section
+ * that carries no title element, while the rows section beside it titles itself —
+ * `tests/client/host-seat-contract.test.ts` reads both halves out of the installed
+ * page and fails if the untitled section ever gains one. It is an `<h4>` for the
+ * same reason: on that page the package name is an `<h3>` and the section beside
+ * this one is an `<h4>`, so a section heading of ours takes the section level.
  */
 export function createIntegrationsCard(
   remote: IntegrationsClientRemote,
@@ -54,7 +57,7 @@ export function createIntegrationsCard(
         className="dsh-qa-integrations__body"
         data-testid="qa-integrations-bundle-card"
       >
-        <h3 className="dsh-qa-integrations__body-title">Интеграции</h3>
+        <h4 className="dsh-qa-integrations__body-title">Интеграции</h4>
         <p className="dsh-qa-integrations__lead">
           Свои рабочие сервисы: подключения принадлежат вашему аккаунту QA.
         </p>

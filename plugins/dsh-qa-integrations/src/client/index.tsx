@@ -23,24 +23,23 @@ import { styles } from "./styles.js";
 import { QA_INTEGRATIONS_SETTINGS_NAMESPACE } from "../shared/settings.js";
 
 /**
- * Where the operator card sits: the `plugins.row.config` key is the bundle's
- * package name joined to the row id its `cordis.patch.yml` declares — the join
- * `rowConfigKey` in the slot contract the installed
- * `@deepseek-ai/dsh-client-ui-plugin-manager` ships — and that row id is the
- * same `qa-integrations` the Host resolves this plugin's Config under, so the
- * seat moves while the namespace a live stand already wrote stays.
- * `verify-package.mjs` pins the pair.
- */
-const ROW_CONFIG_KEY = `@yadsh/dsh-qa-integrations#${QA_INTEGRATIONS_SETTINGS_NAMESPACE}`;
-
-/**
- * Where the account card sits: the bundle's own configuration section, keyed by
- * the npm name this bundle is installed under. That contract gives the bundle
- * section `view: 'page'` only, so it needs no summary branch — unlike the row
- * seat, which the page also dispatches for its description line whenever the
+ * The two seats this bundle registers, written as literals inside their
+ * `slots.register` calls rather than built from constants.
+ *
+ * The operator card sits on the row of its own plugin: `plugins.row.config`,
+ * keyed `package name#row id` — the join `rowConfigKey` performs in the slot
+ * contract the installed `@deepseek-ai/dsh-client-ui-plugin-manager` ships —
+ * where the row id is the `qa-integrations` this `cordis.patch.yml` declares and
+ * the same namespace the Host resolves the volatile Config under. So the seat can
+ * move without orphaning the values a stand already saved, and `verify-package.mjs`
+ * pins the pair against `src/shared/settings.ts` and the patch.
+ *
+ * The account card sits on the bundle's own configuration section,
+ * `plugins.bundle.config`, keyed by the npm name alone. That contract hands the
+ * bundle section `view: 'page'` only, so it needs no summary branch — unlike the
+ * row seat, which the page also dispatches for its description line whenever the
  * Host has no description to resolve for the row.
  */
-const BUNDLE_CONFIG_KEY = "@yadsh/dsh-qa-integrations";
 
 /**
  * What this bundle reads off its client context.
@@ -75,10 +74,16 @@ export const inject = [
  * plugin's own profile entry through the settings form the Host serves for it,
  * the page of the signed-in user's QA settings dialog, where the account gate
  * lives, and the account card the Plugins page shows on this bundle's own page,
- * which reaches the same account through the `qaUserSession` service. The two
- * panel cards draw the body only — the page supplies their frame, title and
- * expand control — so neither depends on the Host settings directory or on the
- * Settings surface at all.
+ * which reaches the same account through the `qaUserSession` service.
+ *
+ * The two panel cards draw the body only — the page supplies their frame, title
+ * and expand control. What they leave behind is the Settings *surface*: neither
+ * needs the settings directory (loopback-only, and the card keeps answering from
+ * a browser on the LAN) nor a tab of the Settings dialog. What neither can drop
+ * is the settings *service*: `configForms` is
+ * `@deepseek-ai/dsh-client-ui-settings`, which stays a peer, an injection and a
+ * documented dependency (`docs/COMPATIBILITY.md`) — a seat decides where the card
+ * renders, not which module hands it a form.
  */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const disposeRemote = await (ctx as ClientFace).remote.$mount(
@@ -116,7 +121,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               face.slots.register(
                 {
                   name: "plugins.row.config",
-                  key: ROW_CONFIG_KEY,
+                  key: "@yadsh/dsh-qa-integrations#qa-integrations",
                   // The seat hands the page's own `ConfigPageForm` — `{ state,
                   // mutate }` only — so the card edits the full form this entry
                   // resolves, under a name the owner prop cannot overwrite.
@@ -154,7 +159,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             face.slots.register(
               {
                 name: "plugins.bundle.config",
-                key: BUNDLE_CONFIG_KEY,
+                key: "@yadsh/dsh-qa-integrations",
               },
               BundleCard,
             ),
