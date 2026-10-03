@@ -11,7 +11,6 @@ import {
   apply,
   inject,
   type SleevSettings,
-  type SleevSettingsCardState,
 } from "../src/client/index.js";
 
 const SNAPSHOT: ConfigFormSnapshot<SleevSettings> = {
@@ -26,24 +25,10 @@ const SNAPSHOT: ConfigFormSnapshot<SleevSettings> = {
 
 // The card's controller builds its store on the Host snapshot-store package,
 // which the browser bundle carries and this Node suite does not resolve.
-vi.mock("@deepseek-ai/dsh-client-store", () => ({
-  createSnapshotStore: <T>(initial: T) => {
-    let value = initial;
-    const listeners = new Set<() => void>();
-    return {
-      getSnapshot: () => value,
-      subscribe: (listener: () => void) => {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
-      },
-      set: (next: T) => {
-        value = next;
-        for (const listener of listeners) listener();
-      },
-      update: () => {},
-    };
-  },
-}));
+vi.mock("@deepseek-ai/dsh-client-store", async () => {
+  const { createSnapshotStore } = await import("./helpers/snapshot-store.js");
+  return { createSnapshotStore };
+});
 
 /** One `slots.register` call, narrowed to what the card claims. */
 interface Registration {
@@ -148,44 +133,7 @@ describe("client registration", () => {
     // over the card element rather than a list or a shell of our own.
     const page = SleevRowConfig({ ...props, view: "page" }) as ReactElement;
     expect(page.type).toBe(SleevSettingsCard);
-  });
-
-  it("says so when the row's namespace has not been served", () => {
-    /*
-     * The seat moved a silence into a page. On the Settings tab a namespace that
-     * does not answer simply left the tab shut; here the row's Configure control
-     * comes from the inventory, so the same `status !== "ready"` snapshot used to
-     * open an empty section. The card contract still forbids a card while the
-     * namespace is not ready, so this is one stated sentence, not a frame.
-     */
-    const notReady = {
-      available: false,
-      writable: false,
-      dirty: false,
-      invalid: false,
-      saving: false,
-      failed: false,
-    } as unknown as SleevSettingsCardState;
-    const props = {
-      view: "page",
-      t: (key: string) => `t:${key}`,
-      useSleevSettings: () => notReady,
-    } as unknown as Parameters<typeof SleevSettingsCard>[0];
-
-    const notice = SleevSettingsCard(props) as ReactElement<{
-      className: string;
-      role: string;
-      "data-testid": string;
-      children: string;
-    }>;
-
-    expect(notice.type).toBe("p");
-    expect(notice.props.className).toBe("dsh-sleev-no-settings");
-    expect(notice.props.className).not.toContain("dsh-plugin-card");
-    expect(notice.props).toMatchObject({
-      role: "status",
-      "data-testid": "sleev-no-settings",
-    });
-    expect(notice.props.children).toBe("t:noSettings");
+    // What the page body renders for each state of the namespace is the render
+    // suite's subject (`tests/client-card.test.ts`); this suite keeps the seat.
   });
 });
