@@ -12,6 +12,9 @@
  * a test.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   act,
@@ -28,6 +31,29 @@ import {
   section,
   settle,
 } from "./qa-settings-card.helpers.js";
+
+/*
+ * The row's one-liner as the host reads it: the installed manifest's
+ * `description`, which fills the page's paragraph before this seat is ever asked.
+ * Read rather than repeated, because a manifest edit has nothing to fail in a test
+ * that quotes the same words. Resolved through `fileURLToPath` because the jsdom
+ * environment replaces the global `URL`, and Node's `readFileSync` only
+ * recognises its own.
+ */
+const MANIFEST_DESCRIPTION = (
+  JSON.parse(
+    readFileSync(
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "..",
+        "..",
+        "package.json",
+      ),
+      "utf8",
+    ),
+  ) as { description?: string }
+).description;
 
 /** One recorded call of a stub, as the assertions below read it. */
 type Spy = ReturnType<typeof vi.fn>;
@@ -82,9 +108,14 @@ afterEach(async () => {
 describe("QA Surface row seat", () => {
   it("answers the summary view with the row's one-liner and no markup", async () => {
     const summary = await renderEntry("summary");
-    // The line is the row's description: plain text the page drops into its own
-    // paragraph — no body, no element, and no second poll of the Remote.
-    expect(summary.container.textContent).toMatch(/\S/u);
+    /*
+     * The line is the row's description: plain text the page drops into its own
+     * paragraph — no body, no element, and no second poll of the Remote. The host
+     * fills that paragraph from the manifest and asks this seat only for a row that
+     * declares none, so the two answers must be one sentence (§4.2 of
+     * `docs/DSH-0.1.7-MIGRATION.md`).
+     */
+    expect(summary.container.textContent).toBe(MANIFEST_DESCRIPTION);
     expect(summary.container.firstElementChild).toBeNull();
     expect(summary.polls).toBe(0);
 

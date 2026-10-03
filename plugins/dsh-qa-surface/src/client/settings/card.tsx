@@ -63,11 +63,15 @@ const REFUSED_MESSAGE =
   "Хост отклонил изменение: значение не сохранилось. Обычно так отвечает несовместимая комбинация полей — проверьте связанные значения этого раздела. Точную причину хост пишет в свой журнал.";
 
 /**
- * The one-liner of this row, carried by the `summary` view the Plugins page
- * asks this seat for.
+ * The one-liner of this row, carried by the `summary` view the Plugins page asks
+ * this seat for. Kept equal to the `description` field of `package.json`, which
+ * is where the host reads the row's sentence from: the two answers reach the same
+ * paragraph, so a drift makes one row read two ways. Pinned by a test that reads
+ * the manifest rather than repeating this literal (AGENTS.md card-shell contract,
+ * `docs/DSH-0.1.7-MIGRATION.md` §4.2).
  */
 const ROW_SUMMARY =
-  "Страница вопросов и ответов на сессиях DeepSeek Harness: маршрут, оформление, сессия, политика запуска, аккаунты и источники.";
+  "A focused end-user QA surface backed by native DeepSeek Harness sessions";
 
 /**
  * The face the row seat injects into this card.
@@ -353,21 +357,19 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
 /**
  * The entry this plugin registers in the row's configuration seat.
  *
- * The Plugins page seats one entry in two views, and both of them are calls this
- * bundle's own host build performs: `RowDetail` in
- * `@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js` renders the entry
- * once with `view: 'summary'` as the row's description and once with
- * `view: 'page'` in the configuration column under the row's heading. Which of
- * the two the page reaches for is the page's question — the summary is the
- * fallback for a row the Host's inventory supplies no description for
- * (`PackageRow.meta`, and the contract header of
- * `types/client/slot-contract.d.ts`) — so nothing in this bundle decides that
- * the entry answers both. The summary lands inside a line of the page's own
+ * `RowDetail` in `@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js` can
+ * ask this seat for two shapes of the same entry: `view: 'summary'` as the row's
+ * one-liner and `view: 'page'` in the configuration column under the row's
+ * heading. Which of the two it asks for is the page's decision and §4.2 of
+ * `docs/DSH-0.1.7-MIGRATION.md` is where that is measured and stated — the row's
+ * description comes from the installed manifest, and the summary seat is the
+ * fallback for a row that declares none — so this bundle answers both without
+ * claiming either call is its own. The summary lands inside a line of the page's
  * text, so it stays a sentence: a card seated there would draw a page within a
  * line and start a second poll of the `qaSurface/describe` Remote. The page view
- * is the body alone — the row's page already draws the card surface, the
- * heading and the expand control, so a shell of ours would be a second frame
- * inside the first (AGENTS.md, card-shell contract).
+ * is the body alone — the row's page already draws the card surface, the heading
+ * and the expand control, so a shell of ours would be a second frame inside the
+ * first (AGENTS.md, card-shell contract).
  */
 export function QaSettingsCardEntry(props: CardProps) {
   if (props.view === "summary") return ROW_SUMMARY;

@@ -148,18 +148,21 @@ function JsonNode(props: NodeProps): ReactNode {
           aria-label={isOpen ? `Collapse ${name}` : `Expand ${name}`}
           onClick={() => onToggle(path)}
         >
+          {/* Drawn on the 16 by 16 grid the other arrows of this suite share: the
+              14 by 14 one belongs to the plugin-card shell, whose chevron a bundle
+              seated on the Plugins row must not carry. Pinned by the tree's test. */}
           <svg
             className={
               isOpen
                 ? "dsh-audit-json__chevron dsh-audit-json__chevron--open"
                 : "dsh-audit-json__chevron"
             }
-            viewBox="0 0 14 14"
+            viewBox="0 0 16 16"
             aria-hidden="true"
             focusable="false"
           >
             <path
-              d="m3 5 4 4 4-4"
+              d="m4 6 4 4 4-4"
               fill="none"
               stroke="currentColor"
               strokeWidth="1.5"
