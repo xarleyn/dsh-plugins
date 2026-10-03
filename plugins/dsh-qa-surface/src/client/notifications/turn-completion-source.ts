@@ -83,21 +83,24 @@ export interface QaTurnCompletionOptions {
  * waiting for, and never about one that was already under way when they could
  * not see it: a chat found running on the page's first frame, or in the frames
  * around a reconnect, is `unwatched`, and its end passes in silence. Nor does a
- * gap spare a run it lands inside: the paused frame takes back the evidence that
- * this page watched that run begin, because while the link was down the chat may
- * have run another turn and the rows that come back name neither. The first run
- * to end after a gap passes in silence too, in a chat whose row never moved
- * across it — the only idle this page holds for that chat was read through the
- * gap, and a run that began inside the gap would look exactly like it. That
- * reading arms nothing until the chat's own row moves, and the move that arms it
- * is a run ending: the very one this page then keeps silent about. So a turn is
- * reported only when no gap falls between the idle reading that armed this page
- * and the frame that sees the run end, which is why a run begun and finished on
- * the recovered link can still pass unreported, and why a gap costs a chat one
- * turn — or two, where a turn ended inside the gap. The turn that a link which
- * held carries from an armed idle to its end is the page's own, so a page that
- * stays open notifies again once the turn paying for the gap has ended — once
- * per turn from there.
+ * gap the page was shown spare a run it lands inside: the paused frame takes
+ * back the evidence that this page watched that run begin, because while the
+ * link was down the chat may have run another turn and the rows that come back
+ * name neither. The first run to end after a gap passes in silence too, in a
+ * chat whose row never moved across it — the only idle this page holds for that
+ * chat was read through the gap, and a run that began inside the gap would look
+ * exactly like it. That reading arms nothing until the chat's own row moves, and
+ * the move that arms it is a run ending: the very one this page then keeps
+ * silent about. So a turn is reported only when no gap falls between the idle
+ * reading that armed this page and the frame that sees the run end, which is why
+ * a run begun and finished on the recovered link can still pass unreported, and
+ * why a gap the page was shown costs a chat one turn — or two, where a turn
+ * ended inside the gap. A gap that reached no committed frame hands this function
+ * nothing to go silent about, and §12 of
+ * `docs/specs/owner-scoped-notifications.md` owns that case. The turn that a link
+ * which held carries from an armed idle to its end is the page's own, so a page
+ * that stays open notifies again once the turn paying for the gap has ended —
+ * once per turn from there.
  */
 export function settleTurnCompletions(
   seen: Map<string, QaTurnSighting>,

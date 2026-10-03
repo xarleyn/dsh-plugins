@@ -543,7 +543,7 @@ page does see, notifies again.
 
 The rule runs across a gap in the link, and there it costs more than the turn
 the gap falls inside. A frame read while the browser was reconnecting vouches
-for nothing, and however short the gap is it puts at least one such frame in
+for nothing, and the gaps this rule counts are the ones that put such a frame in
 front of the page, so every turn a dropped link interrupts ends unreported —
 including one whose start this page did watch. While the link was down that chat
 may have run a different turn, and the rows that come back do not say which of
@@ -576,9 +576,9 @@ tell it either: the list the page subscribes to carries no mark of having been
 read again, so the chat's own row moving is the only arrival it can be given,
 and the silence is bounded by that row rather than by the link. The promise is
 therefore not one silent turn per chat: on a stand whose link drops inside every
-long turn, every turn there pays for its own drop and none is announced. That is
-the honest price of a page that claims no start it did not watch and credits no
-idle it could not vouch for.
+long turn, and whose screen reflects each of those drops, every turn there pays
+for its own drop and none is announced. That is the honest price of a page that
+claims no start it did not watch and credits no idle it could not vouch for.
 
 A gap the page was never shown is the one case this rule does not cover. The
 silence is assembled from the frames the page was handed while it reported
@@ -591,11 +591,17 @@ A chat this page stops reading is the same gap in the same evidence: while its
 row is away from the sidebar there is no frame naming it at all, so a run that
 returns to the list is found running again rather than watched beginning, and it
 ends unreported too. A row that comes back saying idle is the corner this page
-cannot see: with no reading left to compare it against, that idle is credited the
-way a cold start credits it, and the run after it is announced even though it may
-have begun back inside the gap. Closing the corner needs evidence the host list
-does not carry, and #479 measured that it does not, so a test pins it as
-measured behaviour rather than as a rule that holds.
+cannot see: the differ drops the reading of a row that leaves the list, so the
+returning idle is credited the way a cold start credits it, and the run after it
+is announced even though it may have begun back inside the gap. Nothing the host
+list fails to carry keeps this corner open — the page drops the reading itself,
+and keeping it across the absence, as `stale`, is a decision of this page, not
+the evidence question #479 measured. It is left unmade on purpose: dropping is
+the rule the differ was built on, it keeps the readings bounded to the rows on
+screen, and it is what makes a chat that comes back running a run found rather
+than watched. Keeping the row instead would cost it a silent turn on every
+return and go on naming chats this page no longer lists. So a test pins the
+corner as measured behaviour rather than as a rule that holds.
 
 A turn that ends in the chat already on screen, with this window active,
 produces nothing: the answer is in front of the reader.

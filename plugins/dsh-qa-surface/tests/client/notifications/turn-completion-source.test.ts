@@ -193,8 +193,10 @@ describe("turn completion source", () => {
     expect(page.see([chat("a", false)], { now: 6 })).toEqual([
       { sessionId: "a", title: "Чат a", at: 6 },
     ]);
-    // Pinned as measured, not as intended: closing it needs evidence the host
-    // list does not carry, which is what #479 measured it does not carry.
+    // Pinned as measured, not as intended. Closing it is this page's own call,
+    // not a host-list gap: the differ deletes the reading above, so keeping the
+    // row on as `stale` while it is away would close the corner at the price of
+    // a silent turn on every return — the trade §12 of the spec names unmade.
   });
 
   it("spends the turn that rebuilds the baseline after a gap on that gap", () => {
