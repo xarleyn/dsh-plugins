@@ -37,13 +37,14 @@ function makeForm(
   mutations: Mutation[],
   writable = true,
   fences?: (number | undefined)[],
+  status: "ready" | "unavailable" = "ready",
 ) {
   const snapshot = {
-    status: "ready" as const,
-    value: CONFIG,
+    status,
+    value: status === "ready" ? CONFIG : undefined,
     base: undefined,
     user: {},
-    revision: 1,
+    revision: status === "ready" ? 1 : undefined,
     writable,
     mode: "host" as const,
   };
@@ -68,11 +69,12 @@ function renderCard(
   mutations: Mutation[],
   writable = true,
   fences?: (number | undefined)[],
+  status: "ready" | "unavailable" = "ready",
 ) {
   return render(
     <DocumentsCard
       {...({} as never)}
-      settingsForm={makeForm(mutations, writable, fences) as never}
+      settingsForm={makeForm(mutations, writable, fences, status) as never}
     />,
   );
 }
@@ -185,5 +187,27 @@ describe("the body the Plugins page mounts", () => {
     // Every write carries the revision the form reports, read at write time: a
     // document another browser moved in between is refused instead of overwritten.
     expect(fences).toEqual([1]);
+  });
+
+  it("keeps the body on the page with its writes off when the settings directory is unavailable", () => {
+    // The Plugins panel is not the settings directory: it answers from a browser
+    // that cannot reach it, where the form comes back `unavailable` and carries no
+    // value at all. Hiding the card there would read as a plugin with no
+    // configuration, so the body stays and every control is switched off rather
+    // than hidden, while the values fall back to the composition defaults.
+    const { container } = renderCard([], false, undefined, "unavailable");
+
+    expect(screen.getByTestId("docs-settings-unavailable")).toBeDefined();
+    for (const testId of [
+      "docs-pipeline-enabled",
+      "docs-pipeline-pdf-mode",
+      "docs-templates-max-pages",
+    ]) {
+      const control = screen.getByTestId(testId) as HTMLInputElement;
+      expect(control.disabled).toBe(true);
+    }
+    // Still a body, not a card of our own: the unavailable state changes what the
+    // controls accept, not who draws the frame around them.
+    expect(container.querySelector('[class*="dsh-plugin-card"]')).toBeNull();
   });
 });
