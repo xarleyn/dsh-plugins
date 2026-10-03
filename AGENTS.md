@@ -8,6 +8,15 @@
   combined check command when it covers the affected code.
 - Do not claim that a task is complete while a relevant check is failing.
   If a check cannot be run, state which check was skipped and why.
+- Re-counting the head of a branch after a batch of merges includes lint of the
+  whole line — `pnpm lint:workspace` and
+  `NX_DAEMON=false pnpm nx run-many -t lint --skip-nx-cache` — because a
+  tooling package of this repository declares a `lint` target only, so a set of
+  build/test/verify passes over it without running a task and still exits 0.
+  Judge that run by its `Successfully ran target lint for N projects` line, not
+  by its exit code. The set, its reason and the ban on widening the
+  `no-useless-escape` exemption are in `docs/VERIFICATION.md`, §Re-counting the
+  line after a batch of merges.
 - Report the exact verification commands and their results in the final
   handoff.
 
