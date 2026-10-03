@@ -321,8 +321,8 @@ assert.match(client, /qai-op__body/u);
 assert.match(client, /dsh-qa-integrations__body/u);
 assert.doesNotMatch(
   client,
-  /dsh-qa-integrations__card-list/u,
-  "the plugin-owned card list existed to hold the shell's li root",
+  /dsh-qa-integrations__host-tab/u,
+  "the plugin-owned host-tab list existed to hold the shell's li root, and the page frames the body now",
 );
 for (const label of [
   "Развернуть настройки интеграций",
@@ -346,10 +346,14 @@ assert.match(client, /Сбросить переопределения/u);
 // only that those strings survive the build, so a control missing from the list passes
 // unnoticed while the comment claims every focusable thing is named. Both sides are
 // read instead: every `:focus-visible` rule of `src/client/styles.ts` has to reach the
-// artifact with its selector intact, and every ring rule the artifact carries has to
-// state the Host's pair with a fallback on each half. What neither check reaches is a
-// control the sheet never names at all — that stays a review question, and the shared
-// card-contract gate weighs these same rules against the seat it reads off the bundle.
+// artifact with its selector intact, and every ring rule of the sheet the artifact
+// ships has to state the Host's pair with a fallback on each half. The sheet is read
+// out of the bundle rather than the bundle out of the sheet, because the JS around it
+// is full of braces and colons that are not CSS: scanning the whole artifact would
+// score a `querySelector(":focus-visible")` as a rule missing its ring. What neither
+// check reaches is a control the sheet never names at all — that stays a review
+// question, and the shared card-contract gate weighs these same rules against the seat
+// it reads off the bundle.
 const RING =
   /outline:var\(--dsw-focus-ring-width,\s*2px\)\s*solid\s*var\(--dsw-focus-ring-color,\s*var\(--dsw-alias-state-business-primary\)\)\s*;?/u;
 /** The `:focus-visible` rules of a sheet, as `{ selector, body }` per comma part. */
@@ -364,11 +368,20 @@ function focusRules(css) {
   }
   return rules;
 }
+/** The stylesheet as the build ships it — the `String.raw` template the sheet becomes. */
+function builtSheet(artifact) {
+  const [, css] = /String\.raw`([\s\S]*?)`/u.exec(artifact) ?? [];
+  assert.ok(
+    css,
+    "the bundle ships its sheet in a form this gate cannot read out; retarget the ring scan instead of letting it weigh the JS around it as CSS",
+  );
+  return css;
+}
 
 const sheetRules = focusRules(
   await readFile(new URL("src/client/styles.ts", root), "utf8"),
 );
-const bundleRules = focusRules(client);
+const bundleRules = focusRules(builtSheet(client));
 const built = new Set(bundleRules.map((rule) => rule.selector));
 assert.ok(sheetRules.length >= 12, "the sheet lost its focus rules");
 for (const rule of sheetRules) {
