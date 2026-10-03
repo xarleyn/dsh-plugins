@@ -1,5 +1,6 @@
 ---
 "@yadsh/dsh-plugin-kit": minor
+"@yadsh/dsh-qa-surface": patch
 ---
 
 A settings card routed through the kit's helper reaches the Plugins panel row now.
@@ -25,8 +26,21 @@ Host's.
 The row seat is keyed `<package name>#<row id>` rather than by a bare namespace,
 and `SettingsCardOptions.key` now says so — the same string is the namespace the
 Host resolves the plugin's volatile Config under, so a value saved before this
-change still reads back through it.
+change still reads back through it. Moving the seat without checking the key
+would have left the same silent failure one field over, so both registration
+helpers now throw at the call when the row seat is handed a key that is not that
+composite, or styles that declare the `dsh-plugin-card` shell next to the frame
+the panel already draws. A consumer that hit either case drew no card and said
+nothing; it now says what the seat asks for.
 
 The bump is `minor`, not `major`: below `1.0` that is the step this repository
 takes for a break, since `major` on a `0.4.0` package publishes `1.0.0` rather
 than announcing anything.
+
+`@yadsh/dsh-qa-surface` carries the same story in its spec. Section 12.3 told a
+reader to register the settings card into the keyed slot this release deleted,
+with the settings namespace as a bare `key`; the section now names the seat the
+bundle actually takes — a `settings.plugins.tab` page identified by that
+namespace — and says what a card seated on the Plugins panel row does instead.
+`SPEC.md` is outside the package's `files`, so nothing an install reads changes,
+which is why that half is `patch`.

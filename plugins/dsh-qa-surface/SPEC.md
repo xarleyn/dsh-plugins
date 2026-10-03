@@ -1024,18 +1024,26 @@ Do not register into `root`, `sidebar`, or `conversation` as the default impleme
 ### 12.3 Settings card
 
 The same namespace the page reads is editable in place from the Host settings
-page. Register one card into the shared keyed slot:
+page. Register one card into the Plugins tab of the native settings surface:
 
 ```text
-settings.plugin.item    (key = the `qa-surface` settings namespace)
+settings.plugins.tab    (id = the `qa-surface` settings namespace)
 ```
 
-The card uses the canonical plugin-card shell of `@yadsh/dsh-plugin-kit/client`
-(the AGENTS.md contract: a direct `<li>` child of the host list, a full-width
-header button with `aria-expanded`, the title/description stack, an optional
-status badge, and the 14×14 SVG chevron), and renders nothing when the
-namespace is unavailable — a deployment that does not compose the plugin shows
-no trace of it.
+The keyed card slot this section named until `0.1.7` is gone with the release, so
+a configuration card is seated either on a tab of that surface, as this plugin
+ships it, or on the `plugins.row.config` seat of the bundle's own row on the
+Host's Plugins panel — where the row draws the frame and the card draws the body
+only.
+
+This plugin keeps the tab, and with it the whole card: beside the form it writes,
+the card reports what the running Host resolved, read through a QA remote while
+the card is visible. So it uses the canonical plugin-card shell of
+`@yadsh/dsh-plugin-kit/client` (the AGENTS.md contract: a direct `<li>` child of
+the host list, a full-width header button with `aria-expanded`, the
+title/description stack, an optional status badge, and the 14×14 SVG chevron),
+and renders nothing when the namespace is unavailable — a deployment that does
+not compose the plugin shows no trace of it.
 
 Responsibilities:
 
