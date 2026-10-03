@@ -1,9 +1,9 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-api-gateway/client";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {} from "@deepseek-ai/dsh-client-ui-sidebar-right/client";
 import type {
   InjectFace,
@@ -15,7 +15,6 @@ import type {
 } from "@deepseek-ai/dsh-typert-protocol";
 import pluginLogUiRemote from "@yadsh/dsh-plugin-log-ui/remote";
 import {
-  CardShell,
   bindSettingsExternalStore,
   injectCardStyles,
   startVisibilityAwarePolling,
@@ -42,8 +41,20 @@ import { styles } from "./styles.js";
 
 /** The profile entry id the Host files this plugin's live Config under. */
 const SETTINGS_ENTRY_ID = "dsh-plugin-log-ui";
-/** The seat this card takes on the host Plugins settings page. */
-const SETTINGS_TAB_ID = "plugin-log";
+/**
+ * The seat this card takes on the host Plugins page: the `plugins.row.config`
+ * key is the bundle's package name joined to the row id its `cordis.patch.yml`
+ * declares, and that row id is the same `dsh-plugin-log-ui` the Config lives
+ * under, so the namespace a live stand already wrote is read back unchanged.
+ */
+const ROW_CONFIG_KEY = `@yadsh/dsh-plugin-log-ui#${SETTINGS_ENTRY_ID}`;
+/**
+ * The one-liner of this plugin's row. Kept equal to the `description` field of
+ * `package.json` — the host reads the row's sentence from there, so the row reads
+ * the same whichever way the sentence reaches the page. Pinned by a test.
+ */
+const ROW_SUMMARY =
+  "DSH settings UI for shared plugin logging levels and file format";
 const REFRESH_INTERVAL_MS = 2_000;
 const LEVELS: readonly ManagedPluginLogLevel[] = [
   "trace",
@@ -66,11 +77,20 @@ interface ClientRemote {
 }
 
 interface CardFace {
-  readonly form: ConfigForm<PluginLogUiConfig>;
+  /**
+   * The live Config of this plugin's namespace.
+   *
+   * Named `settingsForm`, not `form`: the row seat already hands its registrant
+   * a `form` — the Host's `ConfigPageForm`, which is only `{ state, mutate }` and
+   * so can neither be subscribed to nor written field by field. This plugin's own
+   * `ConfigForm` arrives through the injected face instead, where the slot's owner
+   * prop cannot collide with it.
+   */
+  readonly settingsForm: ConfigForm<PluginLogUiConfig>;
   readonly inspect: InspectorRemote["inspect"];
 }
 
-type CardProps = PropsRuntime<"settings.plugins.tab"> & InjectFace<CardFace>;
+type CardProps = PropsRuntime<"plugins.row.config"> & InjectFace<CardFace>;
 
 function errorText(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -97,8 +117,11 @@ function LevelOptions({
   );
 }
 
-function PluginLogSettingsCard({ form, inspect }: CardProps) {
-  const settingsStore = useMemo(() => bindSettingsExternalStore(form), [form]);
+function PluginLogSettingsCard({ settingsForm, inspect }: CardProps) {
+  const settingsStore = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const settings = useSyncExternalStore(
     settingsStore.subscribe,
     settingsStore.getSnapshot,
@@ -130,8 +153,11 @@ function PluginLogSettingsCard({ form, inspect }: CardProps) {
   }, [inspect]);
 
   useEffect(() => {
+    // While the namespace answers `unavailable` the body renders the reason and no
+    // registry data, so the poll would be timer work whose result nothing reads.
+    if (settings.status === "unavailable") return undefined;
     return startVisibilityAwarePolling(refresh, REFRESH_INTERVAL_MS);
-  }, [refresh]);
+  }, [refresh, settings.status]);
 
   const write = useCallback(
     async (field: keyof PluginLogUiConfig, value: unknown) => {
@@ -140,7 +166,7 @@ function PluginLogSettingsCard({ form, inspect }: CardProps) {
       try {
         // `set` settles false when the Host refuses or supersedes the write;
         // only a transport failure rejects, so the refusal needs saying here.
-        if (!(await form.set(field, value))) {
+        if (!(await settingsForm.set(field, value))) {
           throw new TypeError("The Host refused the settings write.");
         }
         await refresh();
@@ -150,7 +176,7 @@ function PluginLogSettingsCard({ form, inspect }: CardProps) {
         setSaving(false);
       }
     },
-    [form, refresh],
+    [refresh, settingsForm],
   );
 
   const setOverride = useCallback(
@@ -163,20 +189,28 @@ function PluginLogSettingsCard({ form, inspect }: CardProps) {
     [levels, write],
   );
 
-  if (settings.status === "unavailable") return null;
+  /*
+   * The frame of this surface is the page's, so an unavailable namespace still
+   * owes a sentence: rendering nothing would leave the reader inside an opened row
+   * with no section and no reason. Only a card that draws its own shell can stay
+   * invisible while it has nothing to edit.
+   */
+  if (settings.status === "unavailable") {
+    return (
+      <div className="plu-body" data-testid="log-card-section">
+        <p className="plu-status" data-testid="log-card-unavailable">
+          Plugin logging settings are not reachable over this connection, so
+          nothing here can be read or changed yet. The running loggers keep the
+          last values the Host accepted.
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <CardShell
-      title="Plugin logging"
-      description="Levels and readable file output for registered server plugins."
-      badge={
-        <span className="dsh-plugin-card__badge">
-          {snapshot.consumers.length} active
-        </span>
-      }
-      label={(open) => `${open ? "Hide" : "Show"} settings: Plugin logging`}
-      bodyClassName="plu-body"
-    >
+    // The Plugins page draws this card's frame, its heading and its expand
+    // control, so the bundle renders the body and nothing around it (AGENTS.md).
+    <div className="plu-body" data-testid="log-card-section">
       {error !== null ? (
         <p className="plu-error" role="status" data-testid="log-card-error">
           {error}
@@ -235,7 +269,12 @@ function PluginLogSettingsCard({ form, inspect }: CardProps) {
       </section>
 
       <section className="plu-section">
-        <h3>Registered plugins</h3>
+        <h3>
+          Registered plugins
+          <span className="plu-count" data-testid="log-card-active-count">
+            {snapshot.consumers.length} active
+          </span>
+        </h3>
         {snapshot.consumers.length === 0 ? (
           <p className="plu-empty" data-testid="log-card-empty">
             No active plugin logger consumers yet.
@@ -273,25 +312,43 @@ function PluginLogSettingsCard({ form, inspect }: CardProps) {
           </div>
         )}
       </section>
-    </CardShell>
+    </div>
   );
 }
 
 export const inject = ["slots", "configForms", "remote", "sidebarRightTabs"];
 
 /**
- * The seat on the host Plugins page.
+ * The entry the Plugins page renders for this bundle's row.
  *
- * The shell's root is an `<li>`, and the tab pane supplies no list of its own,
- * so the card is mounted inside a plugin-owned `<ul>` — AGENTS.md keeps the
- * `ul > li` pair that the shell's own styling is written against.
+ * The page owns the chrome on this surface: it draws the card surface, the row
+ * title, the row id and the description line, and only then mounts this entry under
+ * the section it calls configuration. So the bundle returns the settings body and
+ * nothing around it — the shell this card used to draw, with its own header, badge
+ * and chevron, would put a second frame and a second heading inside the Host's one.
+ * That is decision D1 of §10 of `docs/DSH-0.1.7-MIGRATION.md`, reversed to "as the
+ * host does" on 01.10 and landed through #684.
+ *
+ * The page calls this one entry in two views, and both call sites are the host's:
+ * `RowDetail` writes the row's description into a `<p>` and asks this seat for the
+ * sentence under `{ view: 'summary' }` when the row declares none, and renders the
+ * configuration section under `{ view: 'page', form }`. The contract agrees: `view`
+ * carries exactly those two values, and the row seat's own docblock promises the
+ * missing-description fallback. `tests/host-seat-contract.test.ts` reads both sites
+ * out of the installed `@deepseek-ai/dsh-client-ui-plugin-manager` package rather
+ * than restating them here, so a host that stops asking for the summary fails the
+ * suite instead of leaving this branch dead. The summary lands inside the page's
+ * `<p>`, so it returns the sentence as text and never the body.
+ *
+ * For this bundle that call is a fallback rather than the row's normal line: the
+ * site sits behind the row's own description, which the page takes from the
+ * installed manifest's `description` field and this package declares — so the `<p>`
+ * is filled before the seat would be asked, and `ROW_SUMMARY` is kept equal to that
+ * manifest field.
  */
-function PluginLogSettingsTab(props: CardProps) {
-  return (
-    <ul className="plu-tab" data-testid="log-tab">
-      <PluginLogSettingsCard {...props} />
-    </ul>
-  );
+function PluginLogSettingsEntry(props: CardProps) {
+  if (props.view === "summary") return ROW_SUMMARY;
+  return <PluginLogSettingsCard {...props} />;
 }
 
 /**
@@ -318,8 +375,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   );
 
   // The live form of this plugin's Config, keyed by the profile entry id the
-  // Host resolved the volatile schema under. `settings.plugins.tab` hands a
-  // registrant no form of its own, so the card resolves it here.
+  // Host resolved the volatile schema under. The row seat hands a `ConfigPageForm`
+  // for the same namespace, but that view is `{ state, mutate }` only — it cannot
+  // be subscribed to and writes no single field — so the card resolves its own.
   const form = ctx.configForms.get<PluginLogUiConfig>(SETTINGS_ENTRY_ID);
 
   const remote = ctx.remote as unknown as ClientRemote;
@@ -356,16 +414,17 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           LogPanel,
         ),
       );
-      return remoteCtx.slots.inject("settings.plugins.tab", () =>
+      return remoteCtx.slots.inject("plugins.row.config", () =>
         remoteCtx.slots.register(
           {
-            name: "settings.plugins.tab",
-            id: SETTINGS_TAB_ID,
-            order: 30,
-            label: () => "Plugin logging",
-            inject: () => ({ form, inspect: () => inspector.inspect() }),
+            name: "plugins.row.config",
+            key: ROW_CONFIG_KEY,
+            inject: () => ({
+              settingsForm: form,
+              inspect: () => inspector.inspect(),
+            }),
           },
-          PluginLogSettingsTab,
+          PluginLogSettingsEntry,
         ),
       );
     });
