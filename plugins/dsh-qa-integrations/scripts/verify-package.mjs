@@ -256,16 +256,17 @@ assert.match(client, /"configForms"/u);
 // The one-liner is not decoration, but whether the live page reaches it is not
 // this bundle's to prove. The row's detail renders
 // `description ?? renderSlot("plugins.row.config", { view: "summary" })`, and that
-// description comes from the Host-supplied `row.meta` text — `rowText(row)` in the
-// installed `0.1.7-rc.2` client — not from `cordis.patch.yml`, whose rows carry no
-// description field at all. A pin on the patch would assert a mechanism the page
-// does not have. What this artifact can answer is what kind of reply the entry
-// gives whenever the Host does dispatch the summary: a sentence, never a second
-// card, because a card there drops an `<li>` into the page's own `<p>`.
-assert.match(
-  client,
-  /"Конфигурация подключений стенда: провайдеры, адреса, возможности и сервисные доступы\."/u,
-  "the row's summary one-liner ships in the bundle the panel reads",
+// description comes from `rowText(row)` over the Host-supplied `row.meta` text —
+// measured on the installed `0.1.7-rc.2` client — not from `cordis.patch.yml`,
+// whose rows carry no description field at all. A pin on the patch would assert a
+// mechanism the page does not have. What this artifact can answer is what kind of
+// reply the entry gives whenever the Host does dispatch the summary: a sentence,
+// never a second body, because the page mounts its answer inside a paragraph.
+// The sentence is read off this manifest rather than restated here: the Host fills
+// the row's line from `description`, so the two must not drift (§4.2).
+assert.ok(
+  client.includes(JSON.stringify(manifest.description)),
+  "the row's summary one-liner ships in the bundle the panel reads, equal to the manifest description",
 );
 assert.match(
   client,
