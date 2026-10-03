@@ -1388,10 +1388,12 @@ What option 1 means in this repository now:
 Scope, and how to read it: the contract arrived with exactly one series package seated on
 the row (`dsh-model-safety-gate`, #653). The remaining packages of the epic (#646) migrate
 onto it under their own cards, and **which ones have done so is the epic's list, not this
-paragraph's** — the built bundles answer it too, since the contract reads the seat out of
-`lib/client.js` rather than out of a declaration, but a source grep goes quiet exactly where
-a card registers through a helper and passes no seat literal. A migrating card that appends
-itself here only makes the sentence above false. A shared paragraph that every migration
+paragraph's** — the two gates that could answer it do not: the card-contract gate reads the
+seat out of the built `lib/client.js`, which git does not carry, and the hygiene gate's
+seat list is about *which seats* a card may sit on, not about who sits there. A migrating
+card must not add a present-tense count here: this paragraph records what the contract
+arrived with, and an appended sentence reads as a claim about today. A shared paragraph that
+every migration
 edits is also a guaranteed conflict between branches that touch nothing else in common.
 
 **Fact that had to survive the decision:** `scripts/verify-package-hygiene.mjs` keyed the
@@ -1467,8 +1469,8 @@ excluding the shared 2-line `compatibility.json` wave each row also carries.
 | Package | class | what changes | our files (line refs) | ~lines | covering tests |
 | --- | --- | --- | --- | --- | --- |
 | `@yadsh/dsh-plugin-kit` | **decision → do first** | `SETTINGS_PLUGIN_ITEM_SLOT` → `plugins.row.config` helper (**still owed — #694**: the default still names the deleted slot, so a card routed through the helper without `slotName` lands nowhere); `ConfigForm`-shaped binding (`ctx.configForms.get<T>(ns)`); `card-shell.tsx`/`chevron.tsx`/`plugin-card-css.ts` survive D1 option 1 — they are the shell of the `settings.section` / `settings.plugins.tab` seats, and only a row-seat registrant must not use them | `src/client/register-settings-card.tsx:56,93,116` **[verified]**, `src/client/settings-store.ts:3` (survives — structural over `subscribe`/`getSnapshot`), `src/client/card-shell.tsx:34-57`, `src/client/chevron.tsx:13`, `src/client/index.ts:17,19-21` — **note from #513:** under D1 option 2 a tab registration takes `id`/`order`/`label` and no `key`, which `SettingsCardOptions` does not carry, so `dsh-qa-surface` calls `ctx.slots.inject/register` directly and uses only `injectCardStyles` + `bindSettingsExternalStore` from this kit; the shell CSS and `CardShell` survive untouched | 60 | none of its own (4 files pass today); exercised by every plugin client test |
-| `@yadsh/dsh-plugin-scripts` | **decision** | canonical shell CSS + chevron assertions; `deepEqual` capability | `verify-plugin-card-contract.mjs:4-15,39,44-45` **[verified]**, `run-verify-package.mjs:45,169-174`, `run-verify-package.test.mjs:58-59` (version literal) | 25 | `run-verify-package.test.mjs` |
-| repo root `scripts/` | **decision** | The seat list the gate reads must follow D1 or the gate goes blind (§4.3a) | `verify-package-hygiene.mjs` — `CARD_SEAT_SLOTS` and its reader `findSettingsCardSlot` (symbol names, not line numbers: #684 renamed the constant and shifted them) **[verified 03.10]**; `package-hygiene.test.mjs`; `check-dependencies.test.mjs:67,69,131` | 15 | `package-hygiene.test.mjs` |
+| `@yadsh/dsh-plugin-scripts` | **decision** | canonical shell CSS + chevron assertions; `deepEqual` capability | `verify-plugin-card-contract.mjs` — `HOST_CHROME_SEATS`, `OWN_SHELL_SEATS`, `verifyCanonicalShell` and `verifyPluginCardContract` **[verified 03.10, by symbol]**, `run-verify-package.mjs` (`cardContract` option), `run-verify-package.test.mjs` | 25 | `run-verify-package.test.mjs` |
+| repo root `scripts/` | **decision** | The seat list the gate reads must follow D1 or the gate goes blind (§4.3a) | `verify-package-hygiene.mjs` — `CARD_SEAT_SLOTS` and its reader `findSettingsCardSlot` (symbol names, not line numbers: #684 renamed the constant and shifted them) **[verified 03.10]**; `package-hygiene.test.mjs`; `check-dependencies.test.mjs` | 15 | `package-hygiene.test.mjs` |
 | `@yadsh/dsh-test-kit` | code | host **one** `MemorySettings` conforming to `SettingsForms` (accessor `writable`, no stray `override`) so 3 plugins share it — no error of its own today | new/changed fake in `packages/test-kit/src/**`; current copies at `dsh-model-safety-gate/tests/integration/settings.test.ts:19-30`, `dsh-plugin-log-ui/tests/integration.test.ts:14-25`, `dsh-prompt-firewall/tests/settings.test.ts:14-25` **[verified]** | 30 | `dsh-test-kit` 3 files pass today |
 | `dsh-session-scope` | **mechanical**, debt blocked | **[verified] no mandatory edit** — clean at `rc.2`: build, typecheck, lint and 17 test files (98 pass / 1 skip) green, no `TS2742`, and `src`+`tests` have zero hits for any removed identifier (`settings.plugin.item`, `SettingsScope`, `installSection`, `standingKeyFor`, `agent/session-start`, …). It registers no settings card (so D1 does not gate it), reads no `block.type` (so §5's emitted `tool-addition`/`tool-removal` cannot reach it) and never touches `approvalPolicy`/`permissionPreset` (so D3 does not either) | The 10 `src` refs the row already listed are **8 calls + 2 declarations in our own structures** (`host-api.ts:24`, `scope-delegation.ts:22`) — the old prose "8 calls" counted the calls only; `tests/` adds **18** more (§13.2). All 10 line refs verified exact. Blocked as a unit by §5's "no replacement at `rc.2`" finding: `src/{host-api.ts:24,57,index.ts:141,497,scope-delegation.ts:22,49,57,84,scope-fs.ts:121,140}` | 0 mandatory; 2 if only the `seq` slice is taken | `tests/{host-api,scope-delegation,scope-fs,scope-remote,tool-guard-*}.test.ts` (17 pass today) |
 | `dsh-tool-offload` | **mechanical** | shell/sandbox untouched §8.5; one fixture source kind | `compatibility.json:4-5`; `tests/unit/parent-context.test.ts:29` `kind:"plugin"` | 5 | `tests/unit/parent-context.test.ts` (14 files pass today) |
@@ -1485,8 +1487,7 @@ than estimated — `grep -rl "settings.plugin.item" plugins/*/src` names
 `dsh-openviking-memory`, `dsh-plugin-log-ui`, `dsh-prompt-firewall`,
 `dsh-qa-integrations`, `dsh-qa-surface`, `dsh-sleev`, `dsh-ui-repair`,
 `dsh-web-fetch-authenticated`. That is §4.3's "~12 card components lose their
-outer shell", now as a list, and it is the set the shared gate
-`scripts/verify-package-hygiene.mjs` (the seat list `CARD_SEAT_SLOTS`) keys enforcement off.
+outer shell", now as a list, and it is the set of packages whose card the shared gate guards — the gate's own list `CARD_SEAT_SLOTS` is about seats, and is wider than this set of packages.
 **[re-measured after #520]** the same grep names **11**: `dsh-sleev` left the set
 by taking D1 option 2 — it registers on `settings.plugins.tab` and kept the
 shell, so the literal left its sources while the gate still guards it (the tab
@@ -1520,7 +1521,7 @@ whose version-plan arithmetic can silently drift.
    `scripts/verify-package-hygiene.mjs` (`CARD_SEAT_SLOTS`, with its reader
    `findSettingsCardSlot`) — otherwise the shell contract quietly stops being
    enforced the moment the slot string disappears from our sources. Both halves are
-   **done**, and they do not agree with each other in the older paragraphs below: the
+   **done**, and they do not agree with each other in the older paragraphs above (the §5 per-package table, §4.3a, the §11 registry): the
    retarget landed in #510 and was extended by #684, while **D1 was reopened and
    redecided on 01.10 as option 1** (§10), so the migrating cards move onto
    `plugins.row.config` and **drop** the shell — not onto `settings.plugins.tab` with
