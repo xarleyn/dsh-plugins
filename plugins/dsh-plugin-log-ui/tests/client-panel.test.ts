@@ -1,12 +1,15 @@
-import { Context } from "@deepseek-ai/cordis";
 import { afterEach, describe, expect, it } from "vitest";
-import type { PluginLogTail } from "../src/types.js";
 import * as clientModule from "../src/client/index.js";
 import {
   logPanelDefinition,
   LOG_PANEL_ID,
   LOG_PANEL_KIND,
 } from "../src/client/panel/definition.js";
+import {
+  EMPTY_TAIL,
+  harnessOf,
+  rowConfigRegistration,
+} from "./helpers/client-harness.js";
 
 const { apply } = clientModule;
 
@@ -19,6 +22,9 @@ const { apply } = clientModule;
  * wrong together — a body registered under the wrong key is never dispatched
  * and the tab draws the "nothing can view this" notice — so this drives the
  * real `apply()` against a bare cordis context and checks the pair.
+ *
+ * The card's own rendering is in `client-card.test.tsx`, which mounts the
+ * component captured here rather than a copy of it.
  */
 
 /** One injected `<style>` tag, as `injectCardStyles` creates it. */
@@ -65,142 +71,6 @@ afterEach(() => {
   delete (globalThis as unknown as { document?: unknown }).document;
 });
 
-const EMPTY_TAIL: PluginLogTail = {
-  records: [],
-  cursor: 0,
-  dropped: 0,
-  buffered: 0,
-  capacity: 10,
-};
-
-interface TabType {
-  readonly id: string;
-  readonly kind: string;
-  readonly priority: string | undefined;
-  readonly patterns: readonly string[] | undefined;
-  /** Read at open time: the chip's text is the registry's capture, not a prop. */
-  readonly title: (address: string) => string;
-  readonly guide: readonly {
-    readonly id: string;
-    readonly order: number;
-    readonly title: () => string;
-  }[];
-}
-
-interface Registration {
-  readonly name: string;
-  readonly key: string | undefined;
-  readonly id: string | undefined;
-  readonly locale: string | undefined;
-  readonly props: Record<string, unknown>;
-}
-
-interface Harness {
-  readonly ctx: Context;
-  readonly types: TabType[];
-  readonly registrations: Registration[];
-  readonly mounted: { readonly count: number };
-  readonly disposed: {
-    readonly remote: number;
-    readonly tabs: number;
-    readonly slots: number;
-  };
-}
-
-function harnessOf(): Harness {
-  const ctx = new Context();
-  const types: TabType[] = [];
-  const registrations: Registration[] = [];
-  const mounted = { count: 0 };
-  const disposed = { remote: 0, tabs: 0, slots: 0 };
-
-  const namespace = {
-    inspect: () =>
-      Promise.resolve({
-        ok: true as const,
-        value: {
-          consumers: [
-            {
-              pluginId: "dsh-sample",
-              level: "info" as const,
-              format: "text" as const,
-              instances: 1,
-            },
-          ],
-        },
-      }),
-    tail: () => Promise.resolve({ ok: true as const, value: EMPTY_TAIL }),
-  };
-
-  // The namespace is a service of its own: `ctx.inject(['remote.pluginLogUi'])`
-  // resolves the key, the code under test reads the property beside it.
-  ctx.provide("remote", {
-    pluginLogUi: namespace,
-    $mount: () => {
-      mounted.count += 1;
-      return Promise.resolve(() => {
-        disposed.remote += 1;
-        return Promise.resolve();
-      });
-    },
-  });
-  ctx.provide("remote.pluginLogUi", namespace);
-  ctx.provide("configForms", {
-    get: () => ({
-      set: () => Promise.resolve(true),
-      subscribe: () => () => undefined,
-      getSnapshot: () => ({
-        status: "unavailable",
-        value: undefined,
-        writable: false,
-        mode: "host",
-      }),
-    }),
-  });
-  ctx.provide("sidebarRightTabs", {
-    register: (definition: TabType) => {
-      types.push(definition);
-      return () => {
-        disposed.tabs += 1;
-      };
-    },
-  });
-  ctx.provide("slots", {
-    inject: (name: string, callback: () => (() => void) | void) => {
-      registrations.push({
-        name,
-        key: undefined,
-        id: undefined,
-        locale: undefined,
-        props: {},
-      });
-      const dispose = callback();
-      return () => {
-        disposed.slots += 1;
-        if (typeof dispose === "function") dispose();
-      };
-    },
-    register: (options: {
-      name: string;
-      key?: string;
-      id?: string;
-      locale?: string;
-      inject?: () => Record<string, unknown>;
-    }) => {
-      registrations.push({
-        name: options.name,
-        key: options.key,
-        id: options.id,
-        locale: options.locale,
-        props: options.inject?.() ?? {},
-      });
-      return () => undefined;
-    },
-  });
-
-  return { ctx, types, registrations, mounted, disposed };
-}
-
 describe("client apply()", () => {
   it("registers the panel type and its body under the same id", async () => {
     const harness = harnessOf();
@@ -232,16 +102,20 @@ describe("client apply()", () => {
     expect(typeof body?.props["read"]).toBe("function");
     expect(typeof body?.props["sources"]).toBe("function");
 
-    // The settings card still mounts beside the panel, on the host Plugins page.
-    const card = harness.registrations.find(
-      (registration) =>
-        registration.name === "settings.plugins.tab" &&
-        registration.id !== undefined,
+    // The settings card mounts on the host Plugins page, in the keyed seat the
+    // row of this bundle owns.
+    const card = rowConfigRegistration(harness);
+    expect(card?.key).toBe("@yadsh/dsh-plugin-log-ui#dsh-plugin-log-ui");
+    // The row id in that key is also the namespace the live form is resolved
+    // under, which is what keeps a value saved before the move readable after it.
+    expect(harness.configNamespaces).toEqual(["dsh-plugin-log-ui"]);
+    // The seat hands the page's own `ConfigPageForm`, which can neither be
+    // subscribed to nor written field by field, so the card's form arrives
+    // through the injected face, under a name the owner prop cannot shadow — and
+    // it is the same form the stand resolved for that one namespace.
+    expect(card?.props["settingsForm"]).toBe(
+      harness.forms.get("dsh-plugin-log-ui"),
     );
-    expect(card?.id).toBe("plugin-log");
-    // The tab seat hands a registrant no props of its own, so the live form the
-    // card edits has to arrive through the injected face.
-    expect(typeof card?.props["form"]).toBe("object");
     expect(typeof card?.props["inspect"]).toBe("function");
 
     await dispose();
@@ -288,6 +162,38 @@ describe("client apply()", () => {
     const [card, panel] = dom.tags;
     expect(panel?.textContent).toContain(".plu-log{");
     expect(card?.textContent).toContain(".plu-grid{");
+  });
+
+  /*
+   * Both sheets now dress their controls with the Host's ring pair rather than an
+   * outline of their own: `focus.css` of the Host outranks a hard-coded
+   * `outline: 2px solid …` under pointer modality (0-3-2 against 0-2-0), so a ring
+   * written by hand is one a mouse click erases. Each half of the pair needs its
+   * fallback too — where a token is undeclared the whole `outline` shorthand is
+   * invalid, and the ring vanishes instead of degrading. Read off the sheets the
+   * plugin actually injects, so a rule deleted to satisfy the gate is caught here.
+   */
+  it("rings every control it draws with the Host's focus tokens, each with a fallback", async () => {
+    const dom = installDom();
+    await apply(harnessOf().ctx);
+
+    const rules = dom.tags.flatMap((tag) => [
+      ...tag.textContent.matchAll(
+        /:focus(?:-visible)?[^{}]*\{[^}]*outline:\s*([^;}]+)/gu,
+      ),
+    ]);
+    // The card's selects, and the panel's level chips, action buttons, source
+    // filter and search field — four rules, one per control family.
+    expect(rules).toHaveLength(4);
+    for (const [, value] of rules) {
+      for (const token of [
+        "--dsw-focus-ring-width",
+        "--dsw-focus-ring-color",
+      ]) {
+        expect(value).toContain(token);
+        expect(value).toMatch(new RegExp(`${token}\\s*,\\s*\\S+`, "u"));
+      }
+    }
   });
 });
 

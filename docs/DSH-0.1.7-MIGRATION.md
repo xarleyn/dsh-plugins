@@ -195,7 +195,7 @@ Per package:
 | `dsh-qa-browser` | 24 | card surface, client slots |
 | `dsh-openviking-memory` | ✔ **done in #516** (D1 took option 2) | volatile Config replaced the settings-section registration; the card moved to `settings.plugins.tab` with our shell; `agent/session-start` → `agent/created` under a non-throwing listener; the plugin declares its own producer kind; the `tool-addition`/`tool-removal` taxonomy is pinned at runtime | landed: `src/config.ts:302` every knob `.volatile()` (`z<Config, LiveConfig>`), `:266` `LiveConfig`, `:279` `snapshotConfig`; `src/index.ts:208` the `agent/created` listener, `:337` `refreshConfig()`, `:402` its call from `activeScoping()`; `src/settings.ts` **deleted** (82 lines; `installSection` is gone from the Host); `src/capture.ts:45` the `openviking-memory` source-kind augmentation, `:61` the captured-kind whitelist (`user`/`model`/`tool`), which is also the default branch §5 demands of a non-exhaustive `switch (source.kind)`; `src/runtime.ts:793` the own kind on injected messages, `:828` `isStartupProfile` matching **both** kinds for one release; `src/client/index.tsx:49` `inject = ["slots", "configForms"]`, `:90` `ctx.configForms.get(ns)`, `:97-103` the tab registration; `src/client/card.tsx:46` `PropsRuntime<"settings.plugins.tab">` over `ConfigForm<Config>`, `:155` the `<li>` inside a plugin-owned `<ul>`; `compatibility.json:9,16`; `scripts/verify-package.mjs:64,76-88`. Checked and kept: `package.json:49-52` — the `dsh.client.inject` list already names every client module the bundle reads, no edit; `src/openviking/capture-utils.ts:151,327,350,457` — **no edit**: a generated fork file whose loose extractor already drops both blocks (`normalizeType("tool-addition")` matches no set, `blockToText` returns `""`, `.filter(Boolean)` discards it), so the rule is pinned by `tests/block-taxonomy.test.ts` rather than by editing the vendored code; `src/capture.ts:93,143` became the whitelist and the own-kind filter; `scripts/smoke-packed-dsh.mjs` **does not exist in this package** — the stale `"0.1.1-rc.2"` default of §6 is `dsh-sleev`'s | ~230 | `tests/settings-live.test.ts` (replaces `settings-install.test.ts`: the schema-volatile namespace pin, and a committed change reaching a session that is already open), `tests/block-taxonomy.test.ts`, `tests/config.test.ts:44-53` (`requireValue` snapshots the live refs), `tests/helpers/harness.ts:82,115` (`createLiveConfig`, `writeConfig`), `tests/runtime-context.test.ts:192,200,277` (both profile attributions), `tests/client-card.test.tsx`, `tests/client-index.test.ts:193-241`, plus the 15 renamed `agent/created` emit sites. Measured on this tree: 31 files / 283 tests pass |
 | `dsh-model-safety-gate` | ✔ **done in #517** (D1 option 2) | volatile Config; card; own `"tool-result"` **label** channel is ours, kept verbatim | landed: `src/config.ts` — twelve top-level nodes `.volatile()` (**nothing volatile may sit under a volatile node**, so each group is one live field), `SAFETY_GATE_LIVE_NODES` + `snapshotSafetyGateConfig`, schema cast retargeted to the live view — the row named no config file, and the migration is mostly there; `src/service.ts` — `installSection`/`SettingsInstallFace`/`configSource` deleted, one `loader/volatile-update` listener re-snapshots per reload (the old `structuredClone(config)` would have cloned the references, not the values); `src/shared/settings.ts` — the namespace is the profile entry id now, `model-safety-gate` is gone, and `scripts/verify-package.mjs` pins the pair against `cordis.patch.yml`; `src/client/index.tsx` — `settingsScope` → `configForms`, registered on `settings.plugins.tab` with `{id, order, label}` (the kit's `registerSettingsCard` still defaults to the deleted keyed seat and passes `key`, not `id`/`label`, so a tab cannot route through it yet); `src/client/card.tsx` — `ConfigForm`, `mutate(ops, revision)`, `<li>` inside a plugin-owned `<ul>`; `src/types.ts` — `configRejected` on the Remote, because the Host enforces only the schema and a `validate` hook no longer exists | 55 estimated, **≈340 landed** | `tests/integration/settings.test.ts` rewritten (the `MemorySettings` fake cannot survive — §11's promote-to-`test-kit` item now has one fewer copy), `tests/integration/service.test.ts` (live-commit tests replace the install-face ones), `tests/client-card.test.tsx`, `tests/client-index.test.ts`, `tests/unit/config.test.ts` |
-| `dsh-plugin-log-ui` | decision + code | ✔ **done in #521** under D1 option 2 (shell kept, card moved to `settings.plugins.tab`). volatile Config; card; typert-driven panel. **No `MemorySettings` fake left to share**: with `installSection` gone the plugin touches no settings service at all, so this package contributes nothing to `dsh-test-kit`. **`scripts/verify-client-bundle.mjs` does not exist here** — the gate is `scripts/verify-package.mjs:43` (the slot literal), `:47-48` (`dsh-plugin-card__name`, chevron path), `:50-56` (`notMatches`, `cardContract.legacyPatterns`) | landed: `src/config.ts:33-52` all three fields `.volatile()`; `src/types.ts:1-25` `VolatilePluginLogUiConfig`; `src/index.ts:26-33` `PLUGIN_LOG_ENTRY_ID`, `:50-95` `installSection` + `configSource` gone, `getConfig()` reads each `.get()` at call time; `src/client/index.tsx:4,44-47,67-71,115-155,268-287,309,345-360`; `src/client/panel/definition.tsx:63-66` guide `id` (`SidebarRightGuideEntry` gained a required `id`, un-itemised in §8.2); `src/client/styles.ts:4-5` the `<ul>` the shell's `<li>` needs on a tab seat; `compatibility.json:7`; `scripts/verify-package.mjs:43-44` | 60 | `tests/client-panel.test.ts:229-243`, `tests/client-settings-store.test.ts`, `tests/integration.test.ts` — 7 files / 41 tests, but see §13.1: the integration file cannot load under the repo's current `vite` |
+| `dsh-plugin-log-ui` | decision + code | ✔ **done in #521** under D1 option 2 (shell kept, card moved to `settings.plugins.tab`), **and moved again by #651**: the card now registers `plugins.row.config` under the keyed seat of its own row, and once D1 reopened to option 1 the shell came off — the page draws the frame, the heading and the expander, so the bundle answers with the body. volatile Config; card; typert-driven panel. **No `MemorySettings` fake left to share**: with `installSection` gone the plugin touches no settings service at all, so this package contributes nothing to `dsh-test-kit`. **`scripts/verify-client-bundle.mjs` does not exist here** — the gate is `scripts/verify-package.mjs`: the seat literal and the keyed join in `includes`, `dsh-plugin-card`, the chevron path and the old tab seat in `notMatches`, and `cardContract.legacyPatterns` | landed: `src/config.ts:33-52` all three fields `.volatile()`; `src/types.ts:1-25` `VolatilePluginLogUiConfig`; `src/index.ts:26-33` `PLUGIN_LOG_ENTRY_ID`, `:50-95` `installSection` + `configSource` gone, `getConfig()` reads each `.get()` at call time; `src/client/index.tsx` the keyed row registration, the two `view` answers and the body; `src/client/panel/definition.tsx:63-66` guide `id` (`SidebarRightGuideEntry` gained a required `id`, un-itemised in §8.2); `src/client/styles.ts` body rules only — no shell sheet; `compatibility.json:7`; `scripts/verify-package.mjs` | 60 | `tests/client-panel.test.ts` (the panel pair, both injected sheets, and the Host's ring on every control the bundle draws), `tests/client-card.test.tsx` (the seat's two views, and the read/write through the namespace's own form), `tests/client-settings-store.test.ts`, `tests/integration.test.ts` — 9 files / 53 tests, but see §13.1: the integration file cannot load under the repo's current `vite` |
 | `dsh-draft-sessions` | 13 | client conversation/controller types |
 | `dsh-sleev` | ✔ **done in #520** | volatile Config; card on `settings.plugins.tab` under our own shell (D1 option 2, so `registerSettingsSlot` is dropped and the slot call is direct); the smoke-script bug folded in | landed: `src/shared/config.ts:7,33,50` (`Config` fields are `Volatile<T>`, `.volatile()` on every editable node, one `snapshotConfig` per operation) and `:75` (`resolveConfig` stays pure over a raw `ConfigSnapshot`, so `tests/config.test.ts` needed no edit); `src/shared/settings.ts:6,9` (the namespace is the profile entry id `dsh-sleev`, the tab id stays `sleev`); `src/index.ts:47,72,103` (`installSection` gone, `configure({ auto: false })`, and the logger level re-applied by the read that first sees a new value — `loader/volatile-update` is not nameable here: its `Events` merge lives in `@deepseek-ai/cordis-plugin-loader`, which we do not depend on); `src/client/index.tsx:12,146,326,334,356,359` (the kit supplies the shell only; the form comes from `ctx.configForms`; the `<li>` sits in a plugin-owned `<ul>`); `src/client/settings-controller.ts:5,95` (`ConfigForm<SleevSettings>`, `set`/`unset` answer `boolean`); `compatibility.json:7`; `scripts/verify-package.mjs:39,40`; `scripts/smoke-packed-dsh.mjs:20-29`; `scripts/smoke-neuraldeep.ts:38,55,226-231` (user source kind, assistant source without a restated `kind`, `tool`-role result message); `tests/settings-controller.test.ts:1-5,35-59` (`FakeScope implements SettingsScope` → `FakeForm implements ConfigForm`) | 45 estimated, 184+/118− | `tests/settings-controller.test.ts`, `tests/config.test.ts`, and `tests/llm-integration.test.ts`, which loads the volatile schema for real |
 | `dsh-prompt-firewall` | ✔ **done in #522** (D1 = option 2: our shell stays ours, the card moves to `settings.plugins.tab`) | volatile Config; card; settings fake rewritten in place | landed: `src/config.ts:49-80` every editable field `.volatile()` (`audit`/`metrics` as whole containers, which is what the card writes), new `readVolatileConfig` `src/config.ts:88`; `src/types.ts:26-64` `PromptFirewallVolatileConfig` beside the flat view, list fields `readonly … \| undefined` — the `\| undefined` is forced, not stylistic, because the typert generator compiles the package with `exactOptionalPropertyTypes` (`packages/plugin-scripts/generate-typert.mjs:112`); `src/index.ts:52` namespace = the **entry id** `dsh-prompt-firewall` (was the Cordis plugin id), `:54` `Config` = the volatile view, `installSection` (was `:89-104`) deleted, one `snapshot()` per operation `:119`, and `reloadRules()` gone from the class and from `PromptFirewallService`; client `src/client/index.tsx:4,64,69,157,199,206,221`. Checked and kept: `compatibility.json:4-5` (#511), `:7` → `settings.plugins.tab`; `scripts/verify-package.mjs` needed no edit and **the row's `scripts/verify-client-bundle.mjs:34` never existed in this package**; the only shell CSS change is the plugin-owned `<ul>` (`src/client/styles.ts:4`). The settings fake: `tests/settings.test.ts` no longer subclasses `SettingsForms` — its constructor reaches `ctx.root.loader` and its `static inject` is `['configEditor','profileContext']`, neither of which a bare cordis context has — so the test provides a structural stand-in under the `settings` name and asserts the write; the shared promotion §11 wanted (one `MemorySettings` in `@yadsh/dsh-test-kit` for three plugins) is **still owed**, the other two copies are untouched. 40 estimated / ≈120 actual, of which ≈60 is the test file | `tests/settings.test.ts` (8), `tests/client-index.test.ts`, `tests/client-settings-store.test.ts` — 8 files / 36 tests green, but only through a `tsc`-emitted build: see §13.1 |
@@ -303,6 +303,46 @@ now at `:579`; `plugins.row.config` is still rendered **with** `form`, now at
 `formFor(id)` (`:1151-1155`) still calls `props.configForm(id)` with the **row id
 as the namespace**, so the join-key insight below survives `rc.2` untouched.
 
+[rc.2 fix] **[verified]** and one render site this document never listed, which
+makes the bullet above ("rendered with `{ view: 'page', form }`") understate the
+seat: `RowDetail` writes the row's description into a `<p>` and, when the row
+declares none, asks `plugins.row.config` for that sentence under
+`{ view: 'summary' }`. Measured in the host's own source at the target tag
+(`packages/client/ui-plugin-manager/src/client/PluginManagerPage.tsx:491` for the
+summary seat against `:495` for the page seat, `dsh-v0.1.7-rc.2`) and declared in
+`slot-contract.ts` in prose: `view` is `'summary' | 'page'` (`:22`), and the row
+seat's docblock says "An absent description falls back to the entry's
+`view: 'summary'`" (`:100`). A card that owns a row is therefore rendered
+**twice**, and its `summary` pass must return text rather than its shell — the
+page puts it inside its own `<p>`, so a card there would nest an `<li>` in a
+paragraph. `dsh-plugin-log-ui` (#651) registers this seat and answers both
+shapes; the wave (#646) moves further cards onto it.
+
+[verified] **and the summary pass is not reached by a bundle that declares a
+`description` in its manifest.** The row's `meta` is read from the *installed
+package.json* (`packages/boot/app-boot/src/package-meta.ts:148-156`, joined onto
+the row at `packages/boot/plugin-manager/src/index.ts:650-652`): the title falls
+back to the manifest's `name`, its description to the manifest's `description`
+(`packages/client/ui-plugin-manager/src/client/presentation.ts:127-131`). Our
+bundles all declare a `description`, so `PluginManagerPage.tsx:491`'s `??` never
+asks the seat — the row's one-liner on a live stand is the manifest field, and an
+entry that returns text from its `summary` view is answering a call the page does
+not make for these bundles. Keep the answer anyway (the contract entitles a row
+that declares nothing to it) but make it *equal to the manifest field*, or the
+same row reads one way from the manifest and another from its card.
+**What the manifest cannot give you is a human title**: with no
+`locale/<lang>.json` beside the manifest, the row's heading *is* the package name
+(`@yadsh/<pkg>`), and our card's own header is the only place a phrase like
+"Plugin logging" appears. The host mechanism for that is a `locale/en.json`
+carrying `{"meta": {"title": …}}`, exported as `./locale/en.json` and listed in
+`files` — first-party plugins do exactly this
+(`packages/experimental/inspector/`). No package in this repository ships one
+yet, and the export must name the concrete file: the host resolves
+`<specifier>/locale/en.json` as an address, and this repository's package gate can
+stat every `exports` target (`packages/plugin-scripts/run-verify-package.mjs:154-166`,
+opt-in through `exportsBuilt`, which a wildcard target would fail). Needs its own
+card and one browser check.
+
 Three refinements the `rc.1` pass missed, all **[verified]** at both tags (so
 they were never `rc.2` changes — they were gaps in this document):
 
@@ -349,14 +389,26 @@ so the namespace `dsh-ui-repair` is unchanged, and the join key becomes
 join key") survives through the row id — we do not have to invent anything.
 
 ```tsx
-export const inject = ["slots", "locale", "configForms"];   // was ["slots", "settingsScope"]
+export const inject = ["slots", "configForms"];   // was ["slots", "settingsScope"]
 
 ctx.slots.inject("plugins.row.config", () => ctx.slots.register({
   name: "plugins.row.config",
   key: "@yadsh/dsh-ui-repair#dsh-ui-repair",
-  locale: "dsh-ui-repair",
 }, UIRepairCard));
 ```
+
+[verified] **and the register payload takes `key`, not `label`.** The option
+shape is chosen by the slot's kind (`@deepseek-ai/dsh-client-ui-slots`,
+`KindOptions`, `lib/types/index.d.ts:560-583`): `keyed` cells carry `key` and an
+optional `priority`, while `id`, `order` and `label` belong to `list` cells — so
+`label` is available on `plugins.item` (whose docblock says "`label` is the
+card's title") and is *not a legal option* on `plugins.row.config`. `locale` is
+optional on every kind and does something narrower than a title: declaring a
+dictionary namespace synthesises the `t` seat onto the component props, and
+"rendering requires an installed locale face — fails loud otherwise"
+(`index.d.ts:604-610`). A card whose copy is inline English gains nothing from it
+and risks the loud failure. Where the row's *display* name comes from instead is
+the manifest question above.
 
 `ConfigFormSnapshot<T>` is `{ status: 'loading'|'ready'|'unavailable', value, base,
 user, revision, writable, mode: 'host'|'memory' }` — same three layers
@@ -446,7 +498,75 @@ inventory, because the configure control is gated on
 `ledger.rows.has(rowConfigKey(…))` (`PluginManagerPage.tsx:1191`).
 **[unverified]** remains one narrower thing: that fixture's card ignores `form`
 entirely (hardcoded `defaultValue`, no read or write), so nothing in the harness
-proves the *wired* read/write path end to end. One live stand still settles that.
+proves the *wired* read/write path end to end. The stand pass recorded below settles
+that.
+**Updated by #651**, which registers this seat in this repository:
+`plugins/dsh-plugin-log-ui/tests/client-card.test.tsx` mounts the component that
+plugin's `apply()` actually registered, with the two prop shapes `RowDetail` passes
+(`{ view: 'page', form }` and `{ view: 'summary' }`), and holds a stored level,
+format and per-plugin override in the stand for `ctx.configForms.get(rowId)` — so
+the read-back of a value written before the move, and the write of a change through
+that same namespace's form, are now measured rather than assumed. The shapes those
+tests hand over are no longer the tests' own invention either:
+`plugins/dsh-plugin-log-ui/tests/host-seat-contract.test.ts` reads the installed
+`@deepseek-ai/dsh-client-ui-plugin-manager` bundle and its published
+`slot-contract.d.ts` and asserts that the page still calls the row seat exactly
+twice, once with `view: 'summary'` and no `form`, once with `view: 'page'` and the
+`form`, and that `view`'s union still names both. That is a CI-visible pin: a host
+release that changes the seat fails the suite on the version bump instead of
+leaving a `summary` branch quietly dead.
+**[verified]** — that pass happened, on the deployed page at `0.1.7-rc.2` and on a
+build of this branch (#646, 2026-09-30): the row's configure control opens the detail
+page, this plugin's seat renders inside its configuration section, and all three
+controls read and write the live Config (levels `trace…silent`, format Text/JSON, the
+registered-plugins list) with nothing in the console. Two further things the page
+showed are worth keeping, because neither is visible from the contract:
+
+- the configuration section is mounted eagerly, and so is the body this bundle
+  answers with. What the stand saw under the shell was a second disclosure: our own
+  header carrying the title, a line and the live count, with the fields hidden until
+  that header was clicked. Decision D1 then went to option 1 (§10), and the header is
+  gone — `plugins/dsh-plugin-log-ui/tests/client-card.test.tsx` now pins the fields
+  mounted with no button, no chevron and no shell class of ours anywhere in the
+  section.
+- the `view: 'summary'` site is reached only as a fallback. The page writes
+  `description ?? renderSlot(…)` into the row's `<p>` (`PluginManagerPage.tsx:491`
+  against `:495`), so a row whose manifest declares a `description` is read from the
+  manifest and its seat is never asked for the one-liner. Pinned against the installed
+  bundle by `plugins/dsh-plugin-log-ui/tests/host-seat-contract.test.ts`, which also
+  asserts the `page` call stayed unconditional.
+
+§4.3's duplication premise measured away in the same pass: the ancestors of our
+`.dsh-plugin-card` on that page (`ul.plu-card-list` → `div` → `detailSections` →
+`detail` → `section.page`) carry `border: 0` and a transparent background, so the host
+draws its title, icon and crumb **above** the content rather than a frame around it —
+no second rounded rectangle, and so no host 20px corner sitting over our 12px one at
+`rc.2`. That is what one deployment of one host version showed, and it did not carry
+the decision: D1 reopened on 01.10 and went to option 1 (§10), which is that the row's
+chrome belongs to the page. `#651` took the shell, the plugin-owned
+`ul.plu-card-list` and the header out of this bundle with it, so the measurement above
+describes a shape the tree no longer has.
+
+**What stays open is the page's availability, not the seat.** On a locked QA stand the
+Plugins page needs `POST /api/pluginInventory/list` plus `pluginManager/listBundles`
+and `pluginManager/listPlugins`, and all three answer 403. Opening them means opening
+`pluginManager` wholesale, and its remote methods are not read-only: `inspect(spec)`
+takes "a registry name, an absolute path, a git address, or a tarball" beside
+`installBundle(spec, options)` and `setPluginEnabled`
+(`packages/extensions/tool-cordis/src/api-catalog.ts:1644,1661`). A LAN visitor with
+a remote installer is not a trade this repository makes for a settings page, so that
+deployment bounds **what a locked stand can show**, not whether the seat move ships:
+the card series #647–#660 is not parked — #653 landed `plugins.row.config` on this
+line, #684 landed the chrome contract that goes with it, and #651 registers the same
+seat under that contract, shell removed. What
+the stand does settle for this card is item 1 above: the wired read/write path the
+harness fixture never exercised. The allow-list question stays open on the stand's
+side; item 3's ring is answered in code by #651 — every control this bundle draws takes
+the `--dsw-focus-ring-*` pair with a fallback on each half — and a browser still has to
+confirm it, which is the same bound as the one above. The old section's own defect — a
+tab strip clipping 332px of an 881px
+row — is
+#675, which does not depend on this choice.
 
 **2. [verified] the host chrome moved off our `AGENTS.md` shell contract between
 `rc.1` and `rc.2`.** The structure is the same (`CardHead` at
@@ -688,6 +808,14 @@ Also **[source]**, no compile error but runtime-relevant:
   non-loopback browser already got read-only settings at 0.1.5, which is why
   `AGENTS.md` routes must-work-without-loopback UI to `settings.plugins.tab`.
   **No availability regression** — do not treat this as a 0.1.7 blocker.
+  **[verified] and moving a card onto `plugins.row.config` does not change it
+  either:** the memory/host split sits on the *namespace*, which the move carries
+  over untouched, and `writable` is false in memory mode by definition
+  (`packages/client/ui-settings/src/client/config-form-types.ts:30-34`). A
+  non-loopback browser reads the same values on the Plugins page as it did on the
+  tab, and may not persist them from either. What a stand still has to confirm is
+  that the page itself is *reachable* to that session, not that its form is
+  writable.
 - **[verified] new at `rc.2`, and the sharpest item in this document — no compile
   error anywhere.** `tool-addition` / `tool-removal` blocks **started being
   emitted**: the types existed at `rc.1` but nothing produced them, whereas
@@ -1390,9 +1518,17 @@ whose version-plan arithmetic can silently drift.
 3. §7 step 8's release half must **read the 39 existing plans first** and pair a
    new qa-surface plan with `0.14.1`/`0.15.0`, not `0.12.x` (§6).
 4. New step 6 stands, none of which `nx test` covers: (a) one `plugins.row.config`
-   card with a **real** read/write wired (the harness fixture ignores `form`, §4.3a
-   item 1); (b) one `agent/created` listener that throws, to watch creation roll
-   back; (c) one qa lockdown stand with `lockdown.permissionPreset = "auto"` (D3);
+   card with a **real** read/write wired on a deployed page — #651 registered such a
+   card in this repository, its suite pins the client half of that wire, and
+   `host-seat-contract.test.ts` pins the seat's two call sites against the installed
+   host package, so what the stand still owes is the Host's own seat occupancy
+   (§4.3a item 1) and the three things only a rendered page answers: the row's
+   configure control opening this entry, the row's heading being the installed
+   package's `name` while the human title lives inside our card (§4.2), and the
+   page's `<p>` carrying the manifest `description` rather than the entry's
+   `summary`; (b) one
+   `agent/created` listener that throws, to watch creation roll back; (c) one qa
+   lockdown stand with `lockdown.permissionPreset = "auto"` (D3);
    (d) one session that triggers a dynamic tool update, then check every
    `block.type` switch for the emitted `tool-addition`/`tool-removal` (§8.4);
    (e) a focused-card check after a mouse click for the `focus.css` outranking
