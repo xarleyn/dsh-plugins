@@ -30,7 +30,12 @@ vi.mock("react", () => ({
   },
 }));
 
-import { CardSummary, ConfigCard, RowConfigEntry } from "../src/client/card.js";
+import {
+  CardSummary,
+  ConfigCard,
+  RowConfigEntry,
+  type RowEntryProps,
+} from "../src/client/card.js";
 import {
   BoolField,
   ChoiceField,
@@ -136,8 +141,7 @@ function renderCard(host: NamespaceSnapshot = HOSTILE): {
   ConfigCard({
     ...form.inject(),
     t: (key: string) => key,
-    useDocImpactCard: (select: (s: CardSnapshot) => CardSnapshot) =>
-      select(snapshot),
+    useDocImpactCard: <S>(select: (s: CardSnapshot) => S) => select(snapshot),
   });
   return { snapshot, elements: tree.slice() };
 }
@@ -251,7 +255,7 @@ describe("doc-impact card render", () => {
     const drawn = ConfigCard({
       ...form.inject(),
       t: (key: string) => key,
-      useDocImpactCard: () => snapshot,
+      useDocImpactCard: <S>(select: (s: CardSnapshot) => S) => select(snapshot),
     }) as unknown as Rendered;
     expect(tree).toHaveLength(1);
     expect(drawn.type).toBe("p");
@@ -267,6 +271,15 @@ describe("doc-impact card render", () => {
  * stopped forwarding the props its card needs shows up as a missing control rather
  * than as an assertion nobody made.
  */
+/**
+ * The entry is typed against the whole composed seat, and `PropsRuntime` folds in
+ * the Host's global share — `usePanelInfo`, a hook only a running Host can hand
+ * over. Every share this file is about is supplied in full and typed: the injected
+ * face, the `t` seat, and the page's own `view` and `form`. What is dropped is the
+ * Host's panel hook, which neither view of this entry reads.
+ */
+type EntryProps = Omit<RowEntryProps, "usePanelInfo">;
+
 function renderView(
   view: "page" | "summary",
   host: NamespaceSnapshot = HOSTILE,
@@ -279,15 +292,17 @@ function renderView(
   const form = new SettingsForm(readOnlyForm(host));
   const snapshot = form.getSnapshot();
   tree.length = 0;
-  const element = RowConfigEntry({
+  const seatProps: EntryProps = {
     ...form.inject(),
     t: (key: string) => key,
-    useDocImpactCard: () => snapshot,
+    useDocImpactCard: <S>(select: (s: CardSnapshot) => S) => select(snapshot),
     view: view,
-    // What the page really spreads over the face. The card takes nothing from it;
-    // the bundle test is where a card that started reading it would go red.
-    form: { state: { status: "unavailable" }, mutate: async () => false },
-  });
+    // What the page really spreads over the face: its own snapshot of this
+    // namespace and its own write path. The card takes nothing from either; the
+    // bundle test is where a card that started reading it would go red.
+    form: { state: host, mutate: async () => false },
+  };
+  const element = RowConfigEntry(seatProps as RowEntryProps);
   const component = element.type as (props: never) => unknown;
   const drawn = component(element.props as never);
   return { snapshot, elements: tree.slice(), drawn };
