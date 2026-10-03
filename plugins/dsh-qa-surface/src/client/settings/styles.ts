@@ -10,7 +10,7 @@
  * hard-coded ring is one that goes missing rather than one that degrades.
  */
 export const QA_SETTINGS_STYLES: string = `.qa-card-body,.qa-card-body *{box-sizing:border-box}
-.qa-card-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
+.qa-card-body{display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .qa-card-section{display:grid;gap:12px}
 .qa-card-section__title{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .qa-card-section__title h3{font-size:13px;margin:0;display:flex;align-items:center;gap:7px}

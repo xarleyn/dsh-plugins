@@ -1047,7 +1047,10 @@ namespace answers `unavailable` it says so in one sentence rather than mounting
 nothing: the page has already drawn the row's heading and its configure
 control, so an empty column would carry no reason. Where the page seats the
 same entry as the row's one-liner (`view: 'summary'`), it answers with that
-sentence rather than with a card.
+sentence rather than with a card — and with the manifest's `description`
+verbatim: the page fills the row's paragraph from that field and asks this seat
+only for a row that declares none, so two different sentences would make one row
+read two ways (pinned by the seat's test and by the package gate).
 
 Responsibilities:
 

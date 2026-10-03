@@ -38,7 +38,15 @@ describe("QA Surface card body", () => {
     expect(container.firstElementChild?.className).toBe("qa-card-body");
     expect(container.querySelector("ul,li,article")).toBeNull();
     expect(container.querySelector("[class*='dsh-plugin-card']")).toBeNull();
-    expect(container.querySelector("svg")).toBeNull();
+    /*
+     * What the row's contract forbids is the page's own disclosure control, not every
+     * icon: the host's chevron path is a second expander inside the first, while a
+     * glyph a section draws for its notice is content the page says nothing about. A
+     * ban on `svg` would be wider than the contract and fail the first legal icon.
+     */
+    expect(
+      container.querySelector("path[d='m3.5 5.25 3.5 3.5 3.5-3.5']"),
+    ).toBeNull();
     expect(
       container.querySelector("[aria-expanded], [class*='chevron']"),
     ).toBeNull();

@@ -532,13 +532,26 @@ assert.match(client, /name:\s*"plugins\.row\.config"/u);
 // pair says nothing when it fails: the row keeps its place on the page and
 // never gains the control that opens the card. So the bundle carries the join.
 assert.match(client, /@yadsh\/dsh-qa-surface#/u);
-// One render site: the tab seat of the Plugins settings section must not come
-// back beside the row, or the card shows twice.
-assert.doesNotMatch(client, /settings\.plugins\.tab/u);
-// The row's one-liner is this entry's answer for the `summary` view, and the
-// page paints it as the row's description: lost in bundling, the row reads as
-// a row of some other plugin.
-assert.match(client, /Страница вопросов и ответов/u);
+// One render site: the card must not register a second time on the tab seat of the
+// Plugins settings section, or it shows twice. The registration is what fails, the
+// way the shared contract reads a seat — esbuild carries `src/` comments into this
+// bundle, and a sentence about the seat this card left is prose, not a second seat.
+assert.doesNotMatch(
+  client,
+  /\bname:\s*["']settings\.plugins\.tab["']|\b(?:const|let|var)\s+[\w$]+\s*=\s*["']settings\.plugins\.tab["']/u,
+);
+// The row's one-liner is this entry's answer for the `summary` view, and the host
+// paints the same paragraph from the manifest's `description`. Read from there
+// rather than repeated here: a manifest edit must move this sentence with it, and
+// only the bundle would have gone stale.
+assert.ok(
+  typeof manifest.description === "string" && manifest.description.length > 0,
+  "the row's summary is the manifest description, so the manifest must declare one",
+);
+assert.ok(
+  client.includes(manifest.description),
+  "client bundle must carry the row's one-liner equal to the manifest description",
+);
 // The heading and the expand control belong to the page, so the bundle carries
 // neither of their halves any more — a surviving label here means the shell
 // came back inside the Host's card.
