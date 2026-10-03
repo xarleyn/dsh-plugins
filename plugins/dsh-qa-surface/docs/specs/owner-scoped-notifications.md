@@ -614,24 +614,31 @@ one is ever built.
   is the reading the gap left behind, so it now arms nothing — and the move that
   arms it back is a run of that chat ending, which therefore passes silently even
   where this page watched that run begin over the recovered link. So the silence
-  is bounded by the gap rather than by the turns it falls inside, and what it
-  costs a chat is one turn, or two where a turn finished inside the gap: the
-  sequence above raises nothing while the full live turn after it raises one
+  is bounded by the gap rather than by the turns it falls inside, and what a gap
+  the page was shown costs a chat is one turn, or two where a turn finished inside
+  the gap: the sequence above raises nothing while the full live turn after it
+  raises one
   notice (`does not arm a baseline from an idle the gap left behind`), and
   `idle` → `running` → `paused+running` → `paused+idle` → `live+idle` → a full
   live turn leaves two turns silent before the notices come back
-  (`spends the turn that rebuilds the baseline after a gap on that gap`). The first
-  untrusted frame is unavoidable rather than a matter of luck: `paused` stands in
-  the dependencies of the effect that raises notices
-  (`src/client/notifications/use-turn-notifications.ts:126`), so a gap of any
-  length contributes at least one frame the page cannot vouch for, and one such
-  frame is enough to drop a `watched` run to `unwatched` — `idle` → `running` →
-  `paused+running` → `live+running` → `live+idle` raises nothing on the built
-  differ. Hence `stays silent on a stand whose link drops inside every turn`:
-  three turns begun on the live link and interrupted each by their own gap raise
+  (`spends the turn that rebuilds the baseline after a gap on that gap`). One
+  untrusted frame is enough to drop a `watched` run to `unwatched` — `idle` →
+  `running` → `paused+running` → `live+running` → `live+idle` raises nothing on
+  the built differ — which is what
+  `stays silent on a stand whose link drops inside every turn` measures: three
+  turns begun on the live link and interrupted each by their own gap raise
   nothing between them. So `docs/CONFIGURATION.md`, the version plan and the
-  0.14.0 changelog entry say so: a stand whose link drops inside long turns pays
-  for every one of those drops and gets no notice there at all.
+  0.14.0 changelog entry say so, of the gaps the screen reflected: a stand whose
+  link drops inside long turns pays for every one of those drops and gets no
+  notice there at all. That every gap reaches the screen is no proof, though:
+  `paused` arrives at the differ as the page's committed
+  `state.phase === "reconnecting"`, and the effect that raises notices lists it
+  in its dependencies (`src/client/notifications/use-turn-notifications.ts:145`)
+  — and an effect runs on committed values only, so a link that went and came
+  back inside one batch hands it no frame with the flag set at all. The next
+  bullet
+  names that case as the boundary of the rule rather than letting the absolute
+  swallow it.
   Whether the host list lets a browser vouch for anything across a gap at
   all is measured below, and the answer is that it does not; the silence is
   written into `docs/CONFIGURATION.md` as the shipped promise, so a stand that
@@ -641,11 +648,19 @@ one is ever built.
   while the row is away the differ holds no reading for that chat at all,
   so its run is found rather than watched, and it ends silently too —
   which is written into `docs/CONFIGURATION.md` beside the link case. One
-  corner of that case stays with #479: a row that leaves the list for a
-  local reason (this browser's own index, not the host) and returns idle
-  inside an unvouched window arms its baseline the way a cold start does,
-  because the differ has no reading left to compare it against — and the run
-  that follows is then reported although it may have begun back inside the gap.
+  corner of that case belongs to this page rather than to #479: a row that
+  leaves the list for a local reason (this browser's own index, not the host)
+  and returns idle inside an unvouched window arms its baseline the way a cold
+  start does, because the differ drops the reading as soon as the row is gone
+  (`src/client/notifications/turn-completion-source.ts:111-114`) and so has
+  nothing left to compare that idle against — and the run that follows is then
+  reported although it may have begun back inside the gap.
+  No host signal closes it: holding the reading across the absence, as `stale`,
+  is a decision inside this page, and #479 measured the host side only. The
+  decision is left unmade on purpose — dropping is the rule the differ was built
+  on, it bounds the map to the rows on screen, and it is what makes a chat that
+  comes back running a run found rather than watched — while keeping the reading
+  would cost that chat a silent turn on every return.
   That leak is pinned as measured, not as intended, by
   `tests/client/notifications/turn-completion-source.test.ts`
   (“arms a row that comes back idle inside an unvouched window, and pays for
@@ -657,7 +672,8 @@ one is ever built.
   moved since, and the dropping of a reading whose chat left the list.
   All three are covered by the cold-start and reconnect cases under
   `tests/client/notifications/`, and measured rather than asserted. Their price
-  was read off a full-suite run with each half of the `stale` transition taken
+  was read off a full-suite run of the tree this ships on — 249 files,
+  1907 tests green — with each half of the `stale` transition taken
   out in turn, and the two halves cost the same: taking out the paused idle that
   leaves it, and taking out the live frame whose row has not moved keeping it,
   each fail the same nine cases — five in the differ, four at page level — and
