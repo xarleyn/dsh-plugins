@@ -50,10 +50,7 @@ function content(html: string): string {
     .trim();
 }
 
-function rendered(
-  Note: typeof KitNote,
-  help: CredentialHelp,
-): string {
+function rendered(Note: typeof KitNote, help: CredentialHelp): string {
   const { container } = render(<Note help={help} />);
   const trigger = container.querySelector("button");
   if (trigger !== null) fireEvent.click(trigger);

@@ -23,25 +23,6 @@ import { styles } from "./styles.js";
 import { QA_INTEGRATIONS_SETTINGS_NAMESPACE } from "../shared/settings.js";
 
 /**
- * The two seats this bundle registers, written as literals inside their
- * `slots.register` calls rather than built from constants.
- *
- * The operator card sits on the row of its own plugin: `plugins.row.config`,
- * keyed `package name#row id` — the join `rowConfigKey` performs in the slot
- * contract the installed `@deepseek-ai/dsh-client-ui-plugin-manager` ships —
- * where the row id is the `qa-integrations` this `cordis.patch.yml` declares and
- * the same namespace the Host resolves the volatile Config under. So the seat can
- * move without orphaning the values a stand already saved, and `verify-package.mjs`
- * pins the pair against `src/shared/settings.ts` and the patch.
- *
- * The account card sits on the bundle's own configuration section,
- * `plugins.bundle.config`, keyed by the npm name alone. That contract hands the
- * bundle section `view: 'page'` only, so it needs no summary branch — unlike the
- * row seat, which the page also dispatches for its description line whenever the
- * Host has no description to resolve for the row.
- */
-
-/**
  * What this bundle reads off its client context.
  *
  * The remote registry is declared structurally and reached through one cast:

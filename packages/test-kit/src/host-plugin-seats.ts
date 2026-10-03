@@ -46,7 +46,9 @@ export const BUNDLE_CONFIG_SEAT = "plugins.bundle.config";
 export function readHostSeats(fromUrl: string): HostSeatProbe {
   const hostRequire = createRequire(fromUrl);
   const root = dirname(
-    hostRequire.resolve("@deepseek-ai/dsh-client-ui-plugin-manager/package.json"),
+    hostRequire.resolve(
+      "@deepseek-ai/dsh-client-ui-plugin-manager/package.json",
+    ),
   );
   return {
     clientBundle: readFileSync(join(root, "lib/client.js"), "utf8"),
@@ -117,9 +119,7 @@ export function expectRowSeatContract(seats: HostSeatProbe): void {
 
   const sites = seatCallSites(seats, ROW_CONFIG_SEAT);
   expect(sites).toHaveLength(2);
-  const summary = sites.filter((site) =>
-    /view:\s*["']summary["']/u.test(site),
-  );
+  const summary = sites.filter((site) => /view:\s*["']summary["']/u.test(site));
   const page = sites.filter((site) => /view:\s*["']page["']/u.test(site));
   expect(summary).toHaveLength(1);
   expect(page).toHaveLength(1);

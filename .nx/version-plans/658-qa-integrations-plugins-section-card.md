@@ -123,16 +123,19 @@ artifact, the settings namespace and the row id the patch declares, is read off
 `src/shared/settings.ts` and `cordis.patch.yml` the way #653 reads its own, which keeps
 the join that protects a stand's saved values pinned without parsing source syntax out
 of a build. The script also refuses the shell's show/hide labels and the plugin-owned
-card list outright, and refuses the kit's `.dsh-credential-help*` selectors in this
-bundle's sheet.
+`host-tab` list that used to hold the shell's `li` root outright, and refuses the kit's
+`.dsh-credential-help*` selectors in this bundle's sheet.
 
 What the shared gate cannot see is a control left with no focus rule at all, which is
 the same user-visible failure as a hard-coded outline and a cheaper way to reach it. A
 hand-written list of selectors would promise more than it proves — a control missing
 from the list passes while the comment claims everything is named — so both sides are
 read instead: every `:focus-visible` rule of the plugin's stylesheet has to reach the
-artifact with its selector intact, and every ring rule the artifact carries has to
-state the Host's token pair with a fallback on each half.
+artifact with its selector intact, and every ring rule of the sheet the build ships has
+to state the Host's token pair with a fallback on each half. The sheet is read out of
+the artifact rather than the artifact out of the sheet, because the JavaScript around it
+is full of braces and colons that are not CSS, and scoring those as rules would fail the
+package for a `querySelector` string.
 
 The seat facts themselves are read off the installed
 `@deepseek-ai/dsh-client-ui-plugin-manager` rather than restated in a comment, and they
