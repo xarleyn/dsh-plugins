@@ -11,6 +11,7 @@ import {
   fakeReact,
   loadBundle,
   makeCtx,
+  MANIFEST_DESCRIPTION,
   PATCH_PATH,
   renderEntry,
   PATHS,
@@ -64,6 +65,42 @@ describe("client bundle", () => {
     >;
     expect("form" in face).toBe(false);
     expect(ctx.registered[0]!.component).toBeTypeOf("function");
+  });
+
+  it("files its dictionary under the namespace the seat declares, before the seat", async () => {
+    const bundle = await loadBundle();
+    const form = fakeForm({
+      status: "ready",
+      value: {},
+      base: {},
+      user: {},
+      writable: true,
+    });
+    const ctx = makeCtx(form);
+    bundle.factory(fakeReact).apply(ctx);
+
+    // The card draws its text from the `t` the renderer synthesizes for the locale
+    // namespace the registration declares, and it holds no fallback of its own — so
+    // the dictionary reaching the locale service is the only thing standing between
+    // this card and a screen of raw keys for the operator. Both halves of that are
+    // checked here: the entry filing it under exactly the namespace it claims, and
+    // filing it *before* the seat is handed over, since the translator is assembled
+    // off the namespace at registration time. Neither is visible from the bundle
+    // text, which is why this is the one invariant a dropped or reordered
+    // `locale.register(…)` used to survive every gate with.
+    expect(ctx.localeRegistrations).toHaveLength(1);
+    const filed = ctx.localeRegistrations[0]!;
+    expect(filed.namespace).toBe(ctx.registered[0]!.options.locale);
+    expect(Object.keys(filed.dictionaries)).toEqual(["en", "zh"]);
+    // A dictionary that answers for both locales but carries none of what the body
+    // asks for would render the same raw keys, so one real string is read back.
+    expect(filed.dictionaries["en"]?.["save"]).toBeTypeOf("string");
+    expect(filed.dictionaries["zh"]?.["save"]).toBeTypeOf("string");
+    expect(ctx.calls).toEqual([
+      `locale:${filed.namespace}`,
+      "inject:plugins.row.config",
+      "register:plugins.row.config",
+    ]);
   });
 
   it("mounts the settings body for the page view, with no frame of ours", async () => {
@@ -177,7 +214,7 @@ describe("client bundle", () => {
     ]);
   });
 
-  it("answers the summary view with the one-liner as text, reading no settings state", async () => {
+  it("answers the summary view with the row's one-liner, reading no settings state", async () => {
     const bundle = await loadBundle();
     const form = fakeForm({
       status: "ready",
@@ -194,11 +231,13 @@ describe("client bundle", () => {
     ) => any;
     const face = faceOf(ctx) as unknown as Record<string, any>;
     const reads: string[] = [];
-    // The row's heading line comes from `{ view: 'summary' }` (the same page at
-    // :491) whenever the patch declares no description of its own — and
-    // `cordis.patch.yml` declares none, so this is what an operator reads first.
-    // The page puts the entry inside its own `<p>`, so it owes the page text: no
-    // shell, no list, and no second copy of the form subscribed in a heading.
+    // `{ view: 'summary' }` is the second call site of this seat (the same page at
+    // :491) and a fallback: the page writes `description ?? renderSlot(…)` into the
+    // row's `<p>`, and for a published bundle that description is the manifest field
+    // — so this answer is what a row that declares none reads, not the sentence an
+    // operator of this build sees first. It still has to be right, and it still has
+    // to be only text: the page puts it inside its own paragraph, so a shell, a list,
+    // or a subscribed store here is a second copy of the form in a line of heading.
     const summary = renderEntry(entry, {
       view: "summary",
       t: (key: string) => key,
@@ -209,8 +248,10 @@ describe("client bundle", () => {
     });
 
     expect(reads).toEqual([]);
-    expect(typeof summary).toBe("string");
-    expect(summary).toBe("cardDescription");
+    // Read off the manifest rather than repeated as a literal here: the two must be
+    // the same sentence, or the row reads one way from the inventory and another from
+    // its own card.
+    expect(summary).toBe(MANIFEST_DESCRIPTION);
   });
 
   it("skips registration when the configForms service is absent", async () => {

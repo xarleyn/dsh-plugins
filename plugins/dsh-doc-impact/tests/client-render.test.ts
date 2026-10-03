@@ -31,7 +31,6 @@ vi.mock("react", () => ({
 }));
 
 import {
-  CardSummary,
   ConfigCard,
   RowConfigEntry,
   type RowEntryProps,
@@ -51,6 +50,7 @@ import {
   type NamespaceForm,
   type NamespaceSnapshot,
 } from "../src/client/settings-form.js";
+import { MANIFEST_DESCRIPTION } from "./helpers/client-seat.js";
 
 /**
  * A namespace document whose two choice fields hold a value the vocabulary does
@@ -265,13 +265,6 @@ describe("doc-impact card render", () => {
 });
 
 /**
- * Draws one of the two views the way the seat does: the registered entry picks a
- * component, and that component renders. `client-bundle.test.ts` pins the same
- * dispatch on the built bundle; this pins it on the source, where an entry that
- * stopped forwarding the props its card needs shows up as a missing control rather
- * than as an assertion nobody made.
- */
-/**
  * The entry is typed against the whole composed seat, and `PropsRuntime` folds in
  * the Host's global share — `usePanelInfo`, a hook only a running Host can hand
  * over. Every share this file is about is supplied in full and typed: the injected
@@ -280,13 +273,21 @@ describe("doc-impact card render", () => {
  */
 type EntryProps = Omit<RowEntryProps, "usePanelInfo">;
 
+/**
+ * Draws one of the two views the way the seat does: the registered entry answers
+ * with the card's element or with the row's sentence, and the element is then
+ * rendered one level down. `client-bundle.test.ts` pins the same dispatch on the
+ * built bundle; this pins it on the source, where an entry that stopped forwarding
+ * the props its card needs shows up as a missing control rather than as an
+ * assertion nobody made.
+ */
 function renderView(
   view: "page" | "summary",
   host: NamespaceSnapshot = HOSTILE,
 ): {
   readonly snapshot: CardSnapshot;
   readonly elements: Rendered[];
-  /** What the component the entry picked returned: an element for the page, text for the summary. */
+  /** What the entry handed the page: the body's element for `page`, its sentence for `summary`. */
   readonly drawn: unknown;
 } {
   const form = new SettingsForm(readOnlyForm(host));
@@ -302,9 +303,14 @@ function renderView(
     // bundle test is where a card that started reading it would go red.
     form: { state: host, mutate: async () => false },
   };
-  const element = RowConfigEntry(seatProps as RowEntryProps);
-  const component = element.type as (props: never) => unknown;
-  const drawn = component(element.props as never);
+  const answered = RowConfigEntry(seatProps as RowEntryProps);
+  // The summary view answers as text, so it is returned as drawn: a path that
+  // rendered it through a component would be inventing the element this entry
+  // stopped creating.
+  const drawn =
+    typeof answered === "string"
+      ? answered
+      : (answered.type as (props: never) => unknown)(answered.props as never);
   return { snapshot, elements: tree.slice(), drawn };
 }
 
@@ -330,11 +336,13 @@ describe("doc-impact seat entry", () => {
 
   it("mounts nothing behind the row's one-liner", () => {
     const { elements, drawn } = renderView("summary");
-    // The entry is the only element created on this path: the page puts the reply
-    // inside its own `<p>`, so a shell, a list, or a subscribed store here would be
-    // a second live copy of the form in a line of heading text.
-    expect(elements).toHaveLength(1);
-    expect(elements[0]!.type).toBe(CardSummary);
-    expect(drawn).toBe("cardDescription");
+    // The page puts this reply inside its own `<p>`, so the entry answers with text
+    // and creates no element at all: a shell, a list, or a subscribed store here
+    // would be a second live copy of the form in a line of heading text.
+    expect(elements).toHaveLength(0);
+    // Kept equal to the manifest's `description`, which is what the page puts here
+    // whenever the row carries a description at all — read off the manifest so a
+    // drift between the two shows up as a failure, not as two matching literals.
+    expect(drawn).toBe(MANIFEST_DESCRIPTION);
   });
 });

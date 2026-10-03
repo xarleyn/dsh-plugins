@@ -42,14 +42,21 @@ pointer modality at a specificity a rule of ours cannot answer without fighting 
 raising ours is the wrong repair.
 
 Three further details follow from the new seat rather than from a redesign. The seat is
-asked for two views: `{ view: 'page', form }` for the
-configuration section, and `{ view: 'summary' }` for the row's one-liner — which the page
-asks this seat for because the patch declares no description of its own, as
-`docs/DSH-0.1.7-MIGRATION.md` §4.2 now records at both render sites
-(`PluginManagerPage.tsx:495` and `:491`). So the entry chooses a component per view where
-it registers, rather than returning early inside the card: that is what keeps each view
-its own hook order, and what keeps the one-liner a line of text that reads no settings
-state instead of a second live copy of the form mounted in the page's heading. Its text
+entitled to two views: `{ view: 'page', form }` for the
+configuration section, and `{ view: 'summary' }` for the row's one-liner. The second is a
+fallback, and for a published bundle it is normally not reached: the page writes
+`description ?? renderSlot(…)` into the row's `<p>`, and the row's description comes from
+the installed manifest's `description` field, which this package declares — as
+`docs/DSH-0.1.7-MIGRATION.md` §4.2 records at both render sites
+(`PluginManagerPage.tsx:495` and `:491`). The answer is kept because a row that declares
+nothing is owed one, and it is kept *equal to that manifest field*, so the same row cannot
+read one way from the inventory and another from its card; the two tests that drive this
+entry compare the reply against the manifest rather than against a copied literal, so a
+manifest edit reddens them instead of leaving the two sentences apart. What the entry does
+with the page view is pick a component per view where it registers, rather than returning
+early inside the card: that is what keeps each view its own hook order, and what keeps the
+one-liner a line of text that reads no settings state and mounts no element instead of a
+second live copy of the form in the page's heading. The card's own text
 still arrives through the translate function the page binds for the locale namespace this
 entry declares — and that is the only copy this entry used to hold itself: the tab's
 `label` was the one string this bundle translated outside the card, so the bundle stopped
@@ -100,7 +107,13 @@ document through the `ConfigForm` it resolves itself. The same test asserts the 
 face carries no member named `form`, which is the sentence the previous paragraph
 argued for and nothing pinned until now: the renderer spreads the owner props after the
 face, so a face member of that name would be shadowed by the page's narrower form and
-the card would stop seeing its own without going red anywhere.
+the card would stop seeing its own without going red anywhere. The same file now records
+the calls the entry makes against the Host's services and holds that the dictionary is
+filed with the locale service under exactly the namespace the registration declares, and
+*before* the seat is handed over: the card keeps no fallback translator, so a
+`locale.register(…)` that went missing or moved behind the registration would show the
+operator raw keys — `enabledLabel`, `saveFailed` — while every string the bundle gates on
+still matched.
 `tests/client-render.test.ts` runs
 its field-by-field render through that registered entry as well as through the card, so
 an entry that stopped forwarding the props the card draws with is a missing control on a
@@ -134,3 +147,15 @@ id, and the form's own snapshot says whether a document stands under it, which i
 the body already answers — a status line for a namespace nothing resolved, disabled
 controls for a connection that keeps preferences process-local. `tests/client-bundle.test.ts`
 holds this by never serving the namespace and expecting the seat anyway.
+
+What the acceptance rests on, and what it does not. "The card opens from the Plugins panel
+and saves" is proven by the built bundle and by the two tests that drive the entry it
+registers — the seat key, both views, one settings read — and by a value read back under
+the same namespace it was written in before the move. It is not proven by a click on the
+operator's stand, and on a locked QA stand it cannot be: that page calls
+`pluginInventory/list` and `pluginManager/listBundles|listPlugins`, and all three answer
+403 there, because `pluginManager` also exposes `inspect`/`installBundle`/
+`setPluginEnabled` to the remote surface, and opening those is the owner's call rather
+than a plugin's (`docs/DSH-0.1.7-MIGRATION.md` §4.3). The focus ring is answered the same
+way — in code, every control this bundle draws taking the Host's token pair with a
+fallback on each half — and a browser still has to confirm it.
