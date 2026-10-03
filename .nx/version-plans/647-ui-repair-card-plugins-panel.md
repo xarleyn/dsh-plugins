@@ -32,5 +32,14 @@ the page hands its registrant a prop called `form`. The `summary` view is answer
 with one plain sentence and no store read, since the page prints it into the row's
 description paragraph — a card there would draw a page within a line of text.
 
+The row answers every state its namespace reports. Returning nothing was the right
+answer for a card that drew its own frame; inside a frame the page drew, silence left
+an opened row with an empty configuration section and no reason attached. So an
+unavailable namespace now says the settings are not exposed to this browser session,
+and a namespace that has not answered yet says so — instead of drawing the plugin's
+built-in defaults as if they were the saved policy. The scan panel keeps its place in
+either case: it reads the runtime rather than the settings, and rolling back temporary
+repairs is the action an operator has left on a stand whose settings are closed.
+
 Nothing else moved: the runtime, the scans, the repair actions and the write path of
 every field are untouched.
