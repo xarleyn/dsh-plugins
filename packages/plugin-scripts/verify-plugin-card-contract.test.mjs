@@ -302,7 +302,7 @@ test("reads a seat from the bundle when no static form reaches it", () => {
   // classes mean it owns its frame, their absence means the Host does.
   const helper = [
     `function registerSettingsSlot(host, options) {`,
-    `  const slotName = options.slotName ?? SETTINGS_PLUGIN_ITEM_SLOT;`,
+    `  const slotName = options.slotName ?? KIT_DEFAULT_SLOT;`,
     `  return host.slots.register({ name: slotName, key: options.key }, options.component);`,
     `}`,
     `registerSettingsSlot(host, { slotName: "plugins.row.config", key: "@yadsh/demo#demo" });`,

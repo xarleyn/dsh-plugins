@@ -16,7 +16,7 @@ export {
 } from "./credential-help.js";
 export { CardShell, type CardShellProps } from "./card-shell.js";
 export {
-  SETTINGS_PLUGIN_ITEM_SLOT,
+  PLUGIN_ROW_CONFIG_SLOT,
   injectCardStyles,
   registerSettingsCard,
   registerSettingsSlot,
