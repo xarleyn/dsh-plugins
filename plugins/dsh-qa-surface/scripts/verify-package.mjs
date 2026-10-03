@@ -524,7 +524,10 @@ assert.doesNotMatch(client, /node_modules\/yaml/u, "yaml stays on the Host");
 verifyPluginCardContract(client, {
   legacyPatterns: [/dsh-plugin-card\s*\*/u, /\.qa-panel\b/u],
 });
-assert.match(client, /plugins\.row\.config/u);
+// The shared contract picks which half of itself applies from the seat named at
+// the registration, so the pin is the registration's own text rather than the
+// bare slot name — a comment or a leftover constant would answer the latter.
+assert.match(client, /name:\s*"plugins\.row\.config"/u);
 // The seat key is `<package name>#<row id>`, and a key that drifts from that
 // pair says nothing when it fails: the row keeps its place on the page and
 // never gains the control that opens the card. So the bundle carries the join.

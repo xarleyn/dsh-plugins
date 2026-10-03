@@ -1042,11 +1042,12 @@ The row's page owns the chrome: it paints the card surface, the heading, the row
 id and the expand control, so the bundle renders the configuration body and
 nothing around it (the AGENTS.md card-shell contract — no `dsh-plugin-card*`
 class, no `<li>` root, no chevron of ours, and a focus ring built from the
-Host's `--dsw-focus-ring-*` tokens rather than a hard-coded outline). It renders
-nothing when the namespace is unavailable — a deployment that does not compose
-the plugin shows no trace of it. Where the page seats the same entry as the
-row's one-liner (`view: 'summary'`), it answers with that sentence rather than
-with a card.
+Host's `--dsw-focus-ring-*` tokens rather than a hard-coded outline). When the
+namespace answers `unavailable` it says so in one sentence rather than mounting
+nothing: the page has already drawn the row's heading and its configure
+control, so an empty column would carry no reason. Where the page seats the
+same entry as the row's one-liner (`view: 'summary'`), it answers with that
+sentence rather than with a card.
 
 Responsibilities:
 
