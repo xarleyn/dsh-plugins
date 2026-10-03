@@ -93,18 +93,24 @@ Everything below was confirmed by a broken surface, not by a green gate.
   );
   ```
 
-  The panel titles the row from the package manifest, so no `label` is handed to
-  the seat and a keyed seat has no `order`.
+  A keyed seat has no `order`, and the seat is handed no `label` — the panel names
+  the row itself from `row.meta`, falling back to the module name. That meta is the
+  package's exported display metadata, so a bundle that wants its row titled ships
+  `locale/en.json` with `meta.title` and `meta.description`, exported at
+  `./locale/en.json` and kept in `files`; without it the list and the row page read
+  `@yadsh/dsh-<name>` and the page never asks your entry for a `summary`. Ship it
+  when the package name is not a name a user would read — `plugins/dsh-documents`
+  is the landed reference.
 - From `@yadsh/dsh-plugin-kit/client` a row card keeps `bindSettingsExternalStore`,
   `startVisibilityAwarePolling` and `injectCardStyles`. `CardShell`,
   `PLUGIN_CARD_SHELL_CSS` and `ChevronDown` belong to a card that owns its shell —
   a `settings.section` or `settings.plugins.tab` page — and must NOT be imported by
   a row card: the Plugins page draws the frame, the heading and the expand control,
   so ours would be a second card inside the Host's one.
-  `PLUGIN_ROW_CONFIG_SLOT` names that same row seat and `registerSettingsCard`
-  defaults to it, so a row card may route through the helper — with the row
-  `key` and no `styles` — or drive `ctx.slots.inject`/`register` itself, which
-  is what every migrated plugin of this repository does.
+- `registerSettingsCard` / `SETTINGS_PLUGIN_ITEM_SLOT` default to the slot the
+  Host deleted at `0.1.7` — pass `slotName: "plugins.row.config"` with the row
+  `key`, or drive `ctx.slots.inject`/`register` yourself, which is what every
+  migrated plugin of this repository does.
 - The page seats the same entry under two `view`s: `summary` — a one-liner
   wherever a row declares no description of its own — and `page`, the card.
   Export an entry that answers `summary` with the sentence and mounts the card
