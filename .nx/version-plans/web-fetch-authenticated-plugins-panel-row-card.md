@@ -24,9 +24,19 @@ metadata from this bundle's own manifest, so the row is headed
 and the page draws the surface and the control that expands the section. The
 card stopped drawing a second one: its border, header, chevron and open state
 went, so the seat's page view is the configuration body, mounted as soon as the
-page opens the row. The one fact the header's badge carried — whether the
-provider is enabled — stays readable in the status section, where the provider
-report states it.
+page opens the row.
+
+Whether the provider is enabled stays readable, but from another source and on
+another clock than the header's badge had. The badge read the saved setting and
+flipped in the same click; the pill in the status section states what the
+provider itself reports, and the card asks for that report on a five-second poll
+rather than after a write. So between a toggle and the next tick the pill is the
+half that is behind, and while the page sits in the background — where the poll
+waits for the page to become visible again — it stays behind until the reader
+returns. The **Provider enabled** switch remains the immediate reading of the
+setting. Where a row carries no description of its own, this seat's fallback line
+is the same sentence as the package's description rather than a second one, so
+editing the description cannot leave the row with two.
 
 The keyboard still reaches every control this card draws. The page dresses its
 own elements and leaves a plugin's to the plugin, so each field, button, icon

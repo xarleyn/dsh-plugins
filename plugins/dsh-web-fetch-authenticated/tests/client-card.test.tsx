@@ -36,6 +36,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { styles } from "../src/client/styles.js";
 import {
   demoConfig,
+  demoStatus,
   registeredSeat,
   seatProps,
 } from "./client-seat.helpers.js";
@@ -115,14 +116,42 @@ describe("plugins row configuration entry, rendered", () => {
 
     /*
      * The page's chrome gives the row's title and id but not its enablement, so
-     * the body still answers that — from the provider report, in the status
-     * section the shell's header badge used to duplicate.
+     * the body still answers that — in the status section the shell's header
+     * badge used to duplicate. Which of the two stand sources feeds the pill is
+     * the next case's question, not this one's.
      */
     const status = await screen.findByTestId("wfa-status-section");
     expect(status.textContent).toContain("1 rule(s), 1 enabled");
-    expect(screen.getByTestId("wfa-status-enabled-state").textContent).toBe(
-      "Enabled",
+  });
+
+  it("takes the enabled pill from the provider report, not from the saved setting", async () => {
+    /*
+     * The header badge this shell dropped read `config.enabled` and flipped in the
+     * same click. The pill in the status section reads the provider's own report
+     * (`sections/status.tsx:37-40`), which the card only learns from the polled
+     * `status()` call — nothing refreshes it after a write, and
+     * `startVisibilityAwarePolling` skips ticks under `hidden`. So between a write
+     * and the next report the two disagree, and a stand that set both to the same
+     * value could not tell which one the pill follows. Here the setting says
+     * enabled and the report says otherwise.
+     */
+    const seat = await registeredSeat(
+      demoConfig(),
+      "ready",
+      true,
+      demoStatus({ enabled: false }),
     );
+    await renderSeat(seat, "page");
+    await screen.findByTestId("wfa-global-section");
+
+    expect(screen.getByTestId("wfa-status-enabled-state").textContent).toBe(
+      "Disabled",
+    );
+    // The Global switch is the setting, and it says the opposite.
+    expect(
+      (screen.getByTestId("wfa-global-provider-enabled") as HTMLInputElement)
+        .checked,
+    ).toBe(true);
   });
 
   it("saves an edit to the Host form as one field of the namespace", async () => {
@@ -153,18 +182,16 @@ describe("plugins row configuration entry, rendered", () => {
 
   it("leaves the row's title and description line to the page", async () => {
     /*
-     * The page prints this package's manifest `description` above the body, and
-     * the entry's summary answer is the fallback for a row whose metadata carries
-     * none. Either one copied into the body would show the same sentence twice on
-     * one screen, which is what a heading inside the Host's card amounts to.
+     * The page prints this package's manifest `description` above the body, and the
+     * entry's summary answer is the same sentence for a row whose metadata carries
+     * none — so one assertion here covers both: neither the line the page draws nor
+     * the line the seat would fall back to is repeated inside the body, which is
+     * what a heading inside the Host's card amounts to.
      */
     const seat = await registeredSeat();
     const page = await renderSeat(seat, "page");
 
     expect(page.container.textContent).not.toContain(rowDescription);
-    expect(page.container.textContent).not.toContain(
-      "Per-origin authenticated rules for web_fetch",
-    );
     expect(await screen.findByTestId("wfa-rules-list")).toBeTruthy();
   });
 
@@ -210,20 +237,24 @@ describe("plugins row configuration entry, rendered", () => {
     ).toBe(true);
   });
 
-  it("answers the summary view with one line of text and no second body", async () => {
+  it("answers the summary view with the row's own line, as text and no second body", async () => {
     /*
      * The view the page asks for when a row's metadata carries no description
-     * (`PluginManagerPage.tsx:491`); for this row the manifest supplies one, so
-     * this answer is the fallback. Either way it lands inside the page's own
-     * paragraph, so it stays text — mounting the body here would open a live
-     * settings store and poll the Remote a second time for a line of prose.
+     * (`PluginManagerPage.tsx:491`); for this row the manifest supplies one, so this
+     * answer is the fallback. It is held to the same sentence on purpose: a row with
+     * two descriptions shows whichever one the reader's metadata happens to carry,
+     * and an edit of `package.json` alone would quietly leave both. Compared against
+     * the manifest rather than against a literal here, so moving one half without the
+     * other is a red test rather than a visible surprise.
+     *
+     * Either way it lands inside the page's own paragraph, so it stays text —
+     * mounting the body here would open a live settings store and poll the Remote a
+     * second time for a line of prose.
      */
     const seat = await registeredSeat();
     const { container } = await renderSeat(seat, "summary");
 
-    expect(container.textContent).toBe(
-      "Per-origin authenticated rules for web_fetch: credentials, SSRF policy, and diagnostics.",
-    );
+    expect(container.textContent).toBe(rowDescription);
     expect(container.querySelector("[data-testid]")).toBeNull();
   });
 
