@@ -39,7 +39,11 @@ unavailable namespace now says the settings are not exposed to this browser sess
 and a namespace that has not answered yet says so — instead of drawing the plugin's
 built-in defaults as if they were the saved policy. The scan panel keeps its place in
 either case: it reads the runtime rather than the settings, and rolling back temporary
-repairs is the action an operator has left on a stand whose settings are closed.
+repairs is the action an operator has left on a stand whose settings are closed. The
+two actions that answer to the mode — Apply and Ignore on a reported issue — keep
+waiting for it: an issue the scan found is still listed, but a repair is not offered
+under a mode the row has just said it has not read, and certainly not under one it
+took from its own built-in defaults.
 
 Nothing else moved: the runtime, the scans, the repair actions and the write path of
 every field are untouched.

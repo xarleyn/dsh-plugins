@@ -17,13 +17,16 @@ import type { Context } from "@deepseek-ai/cordis";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 import { apply } from "../src/client/index.js";
+import type { UIRepairRuntime } from "../src/client/runtime.js";
 import type { UIRepairPluginConfig } from "../src/shared/config.js";
+import { dimensions } from "./runtime.helpers.js";
 
 type Entry = (props: Record<string, unknown>) => ReactElement | string | null;
 
 interface Mounted {
   readonly Entry: Entry;
   readonly face: Record<string, unknown>;
+  readonly runtime: UIRepairRuntime;
   readonly set: ReturnType<typeof vi.fn>;
   readonly subscribe: ReturnType<typeof vi.fn>;
   readonly dispose: () => void;
@@ -41,8 +44,8 @@ interface Snapshot {
 /*
  * `ConfigFormSnapshot.status` is `loading | ready | unavailable`
  * (`@deepseek-ai/dsh-client-ui-settings` `lib/types/client/config-form-types.d.ts:12`),
- * and `value` is undefined until the first accepted section, so neither
- * non-ready fixture carries one.
+ * and `value` is undefined until the first accepted section, so the two fixtures
+ * the seat reports on its way in and out carry none.
  */
 const LOADING: Snapshot = Object.freeze({
   status: "loading",
@@ -52,6 +55,18 @@ const LOADING: Snapshot = Object.freeze({
 const UNAVAILABLE: Snapshot = Object.freeze({
   status: "unavailable",
   value: undefined,
+  writable: false,
+});
+/*
+ * The third state a namespace can be caught in: one that drops back to `loading`
+ * while still holding the section it had accepted — `value` is `T | undefined`
+ * beside `status`, never narrowed by it, so a resync hands the card a mode it has
+ * no right to act on. `STALE_SUGGEST` is that case, and it is the only one of the
+ * three that can tell a readiness guard from a shipped default.
+ */
+const STALE_SUGGEST: Snapshot = Object.freeze({
+  status: "loading",
+  value: { enabled: true, mode: "suggest" as const },
   writable: false,
 });
 
@@ -137,7 +152,39 @@ function mountEntry(
   if (Entry === undefined || face === undefined) {
     throw new Error("the activation never registered an entry");
   }
-  return { Entry, face, set, subscribe, dispose };
+  return {
+    Entry,
+    face,
+    runtime: face["runtime"] as UIRepairRuntime,
+    set,
+    subscribe,
+    dispose,
+  };
+}
+
+/**
+ * One clipped panel the scanner reports, then removed: the issue stays in the
+ * runtime's last report, which is the half of the page the settings cannot reach.
+ * `data-dsh-ui-repair-scroll` is what lifts the confidence over the repairable
+ * threshold, so the issue carries a suggestion and Apply has a reason to exist.
+ */
+async function scanClippedPanel(runtime: UIRepairRuntime): Promise<void> {
+  document.body.innerHTML = `
+    <section data-dsh-ui-repair-root="fixture">
+      <div id="panel" style="overflow-y: hidden" data-dsh-ui-repair-scroll></div>
+    </section>
+  `;
+  const panel = document.querySelector("#panel") as HTMLElement;
+  dimensions(panel, {
+    clientHeight: 100,
+    scrollHeight: 180,
+    clientWidth: 200,
+    scrollWidth: 200,
+  });
+  await act(async () => {
+    await runtime.scan();
+  });
+  document.querySelector('[data-dsh-ui-repair-root="fixture"]')?.remove();
 }
 
 /** The owner prop the row seat spreads after the face, and its page-view call. */
@@ -378,5 +425,65 @@ describe("plugins.row.config seat", () => {
       throw new Error("the body renders no rollback control");
     }
     expect(rollback.disabled).toBe(false);
+  });
+
+  it("offers the manual repair actions under the mode the namespace answered", async () => {
+    mounted = mountEntry({
+      status: "ready",
+      value: { enabled: true, mode: "suggest" },
+      writable: true,
+    });
+    const { Entry, face, runtime } = mounted;
+    await scanClippedPanel(runtime);
+    const { container } = pageView({ Entry, face });
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // The pair is not dead markup: with a saved `suggest` mode it is what the
+    // row offers, and `runtime.apply` refuses every other mode.
+    expect(
+      container.querySelectorAll('[data-testid="repair-issue"]'),
+    ).toHaveLength(1);
+    expect(
+      container.querySelector('[data-testid="repair-issue-apply"]'),
+    ).not.toBeNull();
+    expect(
+      container.querySelector('[data-testid="repair-issue-ignore"]'),
+    ).not.toBeNull();
+  });
+
+  it("withholds the mode-gated actions from a namespace that never answered the mode", async () => {
+    mounted = mountEntry({
+      status: "ready",
+      value: { enabled: true, mode: "suggest" },
+      writable: true,
+    });
+    const { Entry, face, runtime } = mounted;
+    await scanClippedPanel(runtime);
+
+    for (const state of [LOADING, UNAVAILABLE, STALE_SUGGEST]) {
+      const { container, unmount } = pageView({ Entry, face }, state);
+      await act(async () => {
+        await Promise.resolve();
+      });
+
+      // The report belongs to the runtime, so the scan panel keeps it...
+      expect(
+        container.querySelectorAll('[data-testid="repair-issue"]'),
+      ).toHaveLength(1);
+      // ...but an action that stands or falls on `mode` may not be drawn from a
+      // snapshot the namespace has not accepted. Under `STALE_SUGGEST` this is the
+      // assertion that fails without the readiness guard: there the shipped default
+      // and a stale value agree that the operator asked for manual repairs, while
+      // the row is simultaneously saying the policy arrives once the Host answers.
+      expect(
+        container.querySelector('[data-testid="repair-issue-apply"]'),
+      ).toBeNull();
+      expect(
+        container.querySelector('[data-testid="repair-issue-ignore"]'),
+      ).toBeNull();
+      unmount();
+    }
   });
 });
