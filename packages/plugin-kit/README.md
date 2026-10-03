@@ -39,7 +39,10 @@ bundle, which keeps published browser bundles self-contained.
   `ChevronDown`, `CardShell`, `registerSettingsCard` /
   `registerSettingsSlot` / `injectCardStyles` (a card that names no `slotName`
   is mounted on `plugins.row.config`, the Host's own row on the Plugins panel,
-  so it passes no shell CSS and draws no shell of ours),
+  whose page draws the frame — such a card styles its controls and nothing
+  around them, and both `registerSettingsCard` and `registerSettingsSlot` throw
+  at a row registration that could not draw: a key that is not
+  `<package name>#<row id>`, or our shell riding in with the styles),
   `bindSettingsExternalStore`, and `startVisibilityAwarePolling`. It also ships
   the credential-help note itself: `CredentialHelpNote` renders the trigger and
   its disclosure panel (`credentialHelpView` turns metadata into the view, and

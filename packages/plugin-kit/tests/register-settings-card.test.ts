@@ -1,23 +1,16 @@
 import { describe, expect, it } from "vitest";
 import {
+  HOST_CHROME_SEATS,
+  OWN_SHELL_SEATS,
+} from "@yadsh/dsh-plugin-scripts/verify-plugin-card-contract";
+import { PLUGIN_CARD_SHELL_CSS } from "../src/client/plugin-card-css.js";
+import {
   PLUGIN_ROW_CONFIG_SLOT,
   registerSettingsCard,
   registerSettingsSlot,
   type SettingsCardHost,
   type SettingsCardSlotOptions,
 } from "../src/client/register-settings-card.js";
-
-/**
- * The seats `0.1.7` ships for a plugin's own configuration card. The package gate
- * checks the helper's default against the lists the shared card contract exports,
- * so this copy is a readable pin, not the authority on it.
- */
-const LIVE_CARD_SEATS = [
-  "plugins.row.config",
-  "plugins.bundle.config",
-  "settings.section",
-  "settings.plugins.tab",
-];
 
 interface Registration {
   readonly options: SettingsCardSlotOptions;
@@ -63,6 +56,8 @@ function createHost(): {
 
 const CARD = { displayName: "Card" };
 const ROW_KEY = "@yadsh/dsh-demo#dsh-demo";
+const BODY_STYLES = ".demo-body{display:flex;gap:12px}";
+const SHELL_IN_STYLES = `${PLUGIN_CARD_SHELL_CSS}\n${BODY_STYLES}`;
 
 describe("registerSettingsSlot", () => {
   it("mounts a card that names no seat onto the Plugins panel row", () => {
@@ -151,10 +146,90 @@ describe("registerSettingsCard", () => {
       `effect:${PLUGIN_ROW_CONFIG_SLOT}`,
     ]);
   });
+
+  it("keeps the plugin's own body rules on the row seat, where the card styles its controls", () => {
+    const { host, injected, registrations } = createHost();
+    registerSettingsCard(host, {
+      key: ROW_KEY,
+      component: CARD,
+      styles: BODY_STYLES,
+      pluginName: "@yadsh/dsh-demo",
+    });
+
+    expect(injected).toEqual([PLUGIN_ROW_CONFIG_SLOT]);
+    expect(registrations[0]?.options.name).toBe(PLUGIN_ROW_CONFIG_SLOT);
+  });
+});
+
+/*
+ * The seat chose the card's surface, and a card that reaches nowhere draws no
+ * error: these are the two remaining ways the helper could be handed a
+ * registration that silently fails, refused at the call instead.
+ */
+describe("a row registration that cannot draw", () => {
+  it("refuses a key that is not the composite the row is looked up by", () => {
+    const { host, registrations } = createHost();
+    expect(() =>
+      registerSettingsSlot(host, { key: "dsh-demo", component: CARD }),
+    ).toThrow(/keyed "<package name>#<row id>"/u);
+    expect(registrations).toEqual([]);
+  });
+
+  it("refuses a composite with an empty half", () => {
+    const { host } = createHost();
+    expect(() =>
+      registerSettingsSlot(host, { key: "@yadsh/dsh-demo#", component: CARD }),
+    ).toThrow(/keyed "<package name>#<row id>"/u);
+  });
+
+  it("fails the full bootstrap before the Host sees the seat", () => {
+    const { host, injected } = createHost();
+    expect(() =>
+      registerSettingsCard(host, { key: "dsh-demo", component: CARD }),
+    ).toThrow(/drawn nowhere/u);
+    expect(injected).toEqual([]);
+  });
+
+  it("refuses our shell in the styles of a card the Host frames", () => {
+    const { host, injected } = createHost();
+    expect(() =>
+      registerSettingsCard(host, {
+        key: ROW_KEY,
+        component: CARD,
+        styles: SHELL_IN_STYLES,
+        pluginName: "@yadsh/dsh-demo",
+      }),
+    ).toThrow(/second card inside the Host's/u);
+    expect(injected).toEqual([]);
+  });
+
+  it("leaves a seat that frames itself alone, shell and all", () => {
+    const { host, registrations } = createHost();
+    registerSettingsCard(host, {
+      key: "dsh-demo",
+      component: CARD,
+      styles: SHELL_IN_STYLES,
+      pluginName: "@yadsh/dsh-demo",
+      slotName: "settings.section",
+    });
+
+    expect(registrations[0]?.options.name).toBe("settings.section");
+  });
 });
 
 describe("the helper's default seat", () => {
-  it("is a seat the Host still ships, so a card routed without slotName draws", () => {
-    expect(LIVE_CARD_SEATS).toContain(PLUGIN_ROW_CONFIG_SLOT);
+  /*
+   * Read off the lists the package gate checks the built bundle against, so the
+   * assertion fails when the Host moves the seat and the kit's default does not
+   * follow — a copy of the list in this file could not.
+   */
+  it("is a seat the Host still ships", () => {
+    expect([...HOST_CHROME_SEATS, ...OWN_SHELL_SEATS]).toContain(
+      PLUGIN_ROW_CONFIG_SLOT,
+    );
+  });
+
+  it("is the Host's own row, so the card seated there draws no frame of ours", () => {
+    expect(HOST_CHROME_SEATS).toContain(PLUGIN_ROW_CONFIG_SLOT);
   });
 });
