@@ -43,6 +43,7 @@ type SleevLocaleKey =
   | "logInfo"
   | "logDebug"
   | "invalidNumber"
+  | "loading"
   | "noSettings"
   | "readOnly"
   | "saveFailed"
@@ -73,8 +74,9 @@ const en: Record<SleevLocaleKey, string> = {
   logInfo: "Completed calls",
   logDebug: "Call starts and completions",
   invalidNumber: "Enter a positive whole number.",
+  loading: "Loading Sleev's settings…",
   noSettings:
-    "This deployment has not served Sleev's settings yet, so there is nothing to edit.",
+    "Sleev's settings are not open to this session, so nothing here can be read or changed yet. The observer keeps reporting with the last configuration the Host accepted.",
   readOnly: "This deployment stores settings read-only.",
   saveFailed: "The deployment did not accept these values.",
   discard: "Discard",
@@ -99,7 +101,9 @@ const zh: Record<SleevLocaleKey, string> = {
   logInfo: "仅完成的调用",
   logDebug: "调用开始和完成",
   invalidNumber: "请输入正整数。",
-  noSettings: "当前部署尚未提供 Sleev 的设置，因此没有可编辑的内容。",
+  loading: "正在加载 Sleev 的设置…",
+  noSettings:
+    "当前会话没有打开 Sleev 的设置，因此这里暂时既不能查看也不能修改。观测器仍会按宿主接受的最后一份配置继续上报。",
   readOnly: "此部署的设置为只读。",
   saveFailed: "部署未接受这些值。",
   discard: "放弃修改",
@@ -115,7 +119,7 @@ const zh: Record<SleevLocaleKey, string> = {
  * undeclared token would drop the whole `outline` shorthand.
  */
 const CARD_STYLES = `.dsh-sleev-config{display:flex;flex-direction:column;gap:12px}
-.dsh-sleev-no-settings{margin:0;padding:12px 0;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
+.dsh-sleev-no-settings,.dsh-sleev-loading{margin:0;padding:12px 0;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .dsh-sleev-button:focus-visible,.dsh-sleev-reset:focus-visible,.dsh-sleev-input:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}
 .dsh-sleev-read-only{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .dsh-sleev-pill{border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px;font-weight:500;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);white-space:nowrap}
@@ -197,22 +201,33 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
   // to nor written field by field. The card never reads it: the live `ConfigForm`
   // for the namespace arrives through this injected face instead.
   const state = props.useSleevSettings((snapshot) => snapshot);
-  if (!state.available) {
-    /*
-     * No form to edit: the contract says a card seated on the row renders none
-     * while the namespace does not answer. Silence was affordable on the Settings
-     * tab, which simply stayed shut; the row's Configure control is drawn from the
-     * inventory, so the visitor of this seat gets one stated line instead of an
-     * empty section.
-     */
+  /*
+   * The namespace answers three states, and the row's frame takes one line each:
+   * a single sentence for all of them made a page that is still loading claim it
+   * has nothing to edit. `unavailable` is the settings directory closed to this
+   * client — a non-loopback browser, or memory mode — where the card still has to
+   * answer, and `loading` is the first snapshot of a namespace that will serve.
+   * The old tab could stay shut through both; here the row's Configure control is
+   * drawn from the inventory, so silence would open a row on an empty section.
+   * Neither line is a live region: `loading` is replaced by the form as soon as
+   * the namespace serves, and a `role="status"` would read that swap out.
+   */
+  if (state.status === "unavailable") {
     return (
-      <p
-        className="dsh-sleev-no-settings"
-        role="status"
-        data-testid="sleev-no-settings"
-      >
-        {props.t("noSettings")}
-      </p>
+      <div className="dsh-sleev-config" data-testid="sleev-row-config">
+        <p className="dsh-sleev-no-settings" data-testid="sleev-no-settings">
+          {props.t("noSettings")}
+        </p>
+      </div>
+    );
+  }
+  if (state.status === "loading") {
+    return (
+      <div className="dsh-sleev-config" data-testid="sleev-row-config">
+        <p className="dsh-sleev-loading" data-testid="sleev-loading">
+          {props.t("loading")}
+        </p>
+      </div>
     );
   }
   const blocked =

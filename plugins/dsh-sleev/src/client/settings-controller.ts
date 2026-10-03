@@ -2,7 +2,10 @@ import {
   createSnapshotStore,
   type SnapshotStore,
 } from "@deepseek-ai/dsh-client-store";
-import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type {
+  ConfigForm,
+  ConfigFormSnapshot,
+} from "@deepseek-ai/dsh-client-ui-settings/client";
 
 export type SleevLogLevel = "off" | "info" | "debug";
 
@@ -27,8 +30,18 @@ export interface SleevSettingsFieldState {
   readonly invalid: boolean;
 }
 
+/**
+ * Sync state of the namespace, carried through from the Host snapshot rather than
+ * flattened: `loading` until the first accepted section, `ready` while one stands,
+ * and `unavailable` when the namespace is not exposed to this client or the
+ * connection keeps preferences process-local. The card answers all three
+ * differently, so one boolean would make a page that is still loading claim it has
+ * nothing to edit.
+ */
+export type SleevSettingsStatus = ConfigFormSnapshot<SleevSettings>["status"];
+
 export interface SleevSettingsCardState {
-  readonly available: boolean;
+  readonly status: SleevSettingsStatus;
   readonly writable: boolean;
   readonly dirty: boolean;
   readonly invalid: boolean;
@@ -211,7 +224,7 @@ export class SleevSettingsController {
     const snapshot = this.form.getSnapshot();
     const plan = this.plan();
     return {
-      available: snapshot.status === "ready",
+      status: snapshot.status,
       writable: snapshot.writable,
       dirty: plan.length > 0,
       invalid: plan.some((entry) => entry.invalid),

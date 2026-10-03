@@ -8,24 +8,10 @@ import {
   type SleevSettings,
 } from "../src/client/settings-controller.js";
 
-vi.mock("@deepseek-ai/dsh-client-store", () => ({
-  createSnapshotStore: <T>(initial: T) => {
-    let value = initial;
-    const listeners = new Set<() => void>();
-    return {
-      getSnapshot: () => value,
-      subscribe: (listener: () => void) => {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
-      },
-      set: (next: T) => {
-        value = next;
-        for (const listener of listeners) listener();
-      },
-      update: () => {},
-    };
-  },
-}));
+vi.mock("@deepseek-ai/dsh-client-store", async () => {
+  const { createSnapshotStore } = await import("./helpers/snapshot-store.js");
+  return { createSnapshotStore };
+});
 
 /** Structural stand-in for the wire `SettingsPathOpView` union. */
 type FormPathOp =
@@ -115,7 +101,7 @@ describe("Sleev settings card controller", () => {
     const face = controller.inject();
 
     expect(face.hooks.sleevSettings.getSnapshot()).toMatchObject({
-      available: true,
+      status: "ready",
       dirty: false,
       routePrefixes: { text: "sleev-", overridden: false, invalid: false },
       maxRecentCalls: { text: "100", overridden: false, invalid: false },
@@ -212,6 +198,29 @@ describe("Sleev settings card controller", () => {
       routePrefixes: { text: "sleev-", overridden: false },
     });
     expect(form.writes).toEqual([]);
+    controller.dispose();
+  });
+
+  it("passes the namespace's sync state through instead of one boolean", () => {
+    /*
+     * The card draws a different line for each state, so the projection may not
+     * collapse `loading` and `unavailable` into "not ready": that is how a row
+     * whose namespace was still being served claimed there was nothing to edit,
+     * one frame before the form it was about to show.
+     */
+    const form = new FakeForm();
+    const controller = new SleevSettingsController(form);
+    const face = controller.inject();
+
+    for (const status of ["loading", "unavailable", "ready"] as const) {
+      form.snapshot = {
+        ...form.snapshot,
+        status,
+        writable: status === "ready",
+      };
+      for (const listener of form.listeners) listener();
+      expect(face.hooks.sleevSettings.getSnapshot()).toMatchObject({ status });
+    }
     controller.dispose();
   });
 });

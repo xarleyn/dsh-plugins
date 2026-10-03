@@ -18,24 +18,10 @@ import {
 // the Host snapshot-store package that the browser bundle carries and this Node
 // suite does not resolve. The render tests never construct that store, so a
 // stub of the module is enough for the import to load.
-vi.mock("@deepseek-ai/dsh-client-store", () => ({
-  createSnapshotStore: <T>(initial: T) => {
-    let value = initial;
-    const listeners = new Set<() => void>();
-    return {
-      getSnapshot: () => value,
-      subscribe: (listener: () => void) => {
-        listeners.add(listener);
-        return () => listeners.delete(listener);
-      },
-      set: (next: T) => {
-        value = next;
-        for (const listener of listeners) listener();
-      },
-      update: () => {},
-    };
-  },
-}));
+vi.mock("@deepseek-ai/dsh-client-store", async () => {
+  const { createSnapshotStore } = await import("./helpers/snapshot-store.js");
+  return { createSnapshotStore };
+});
 
 function field(
   text: string,
@@ -48,7 +34,7 @@ function cardState(
   over: Partial<SleevSettingsCardState> = {},
 ): SleevSettingsCardState {
   return {
-    available: true,
+    status: "ready",
     writable: true,
     dirty: false,
     invalid: false,
@@ -262,6 +248,48 @@ describe("Sleev settings card render", () => {
         (child) => child.props["data-testid"] === "sleev-save-error",
       ),
     ).toBeTruthy();
+  });
+
+  it("names the two states that are not a form separately", () => {
+    /*
+     * The projection used to hand the card one boolean for `loading`, `ready` and
+     * `unavailable`, so the first snapshot of a namespace that was still serving
+     * was announced as "nothing to edit" a frame before its own form appeared.
+     * Each state now owes its own line, and neither line is a live region: the
+     * loading line is replaced by the form the moment the namespace answers.
+     */
+    const loading = render({
+      state: cardState({ status: "loading", writable: false }),
+    });
+    expect(loading.props["data-testid"]).toBe("sleev-row-config");
+    expect(childrenOf(loading)).toHaveLength(1);
+    const loadingLine = childrenOf(loading)[0] as ReactElement;
+    expect(loadingLine.type).toBe("p");
+    expect(loadingLine.props["data-testid"]).toBe("sleev-loading");
+    expect(loadingLine.props.className).toBe("dsh-sleev-loading");
+    expect(loadingLine.props.children).toBe("t:loading");
+    expect(loadingLine.props.role).toBeUndefined();
+    expect(
+      classesOf(loading).some((name) => name.includes("no-settings")),
+    ).toBe(false);
+
+    const unavailable = render({
+      state: cardState({ status: "unavailable", writable: false }),
+    });
+    expect(childrenOf(unavailable)).toHaveLength(1);
+    const reason = childrenOf(unavailable)[0] as ReactElement;
+    expect(reason.props["data-testid"]).toBe("sleev-no-settings");
+    expect(reason.props.className).toBe("dsh-sleev-no-settings");
+    expect(reason.props.children).toBe("t:noSettings");
+    expect(reason.props.role).toBeUndefined();
+    // Neither state draws a field or a write control.
+    for (const node of [loading, unavailable]) {
+      expect(
+        elementsOf(node).filter(
+          (element) => element.props["data-testid"] === "sleev-save",
+        ),
+      ).toEqual([]);
+    }
   });
 
   it("answers the summary seat with the one-liner and never mounts the card", () => {
