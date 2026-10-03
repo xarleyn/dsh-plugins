@@ -359,7 +359,13 @@ export function UIRepairCard({ settings, runtime }: CardProps) {
                         .join("; ")}
                     </code>
                   )}
-                  {config.mode !== "suggest" ? null : (
+                  {/*
+                   * Both actions answer to the `mode` field, and outside `ready`
+                   * the resolved `config` is the shipped default, not the saved
+                   * policy — so readiness is decided here rather than left to
+                   * `DEFAULT_PLUGIN_CONFIG.mode` happening to be `observe`.
+                   */}
+                  {settingsReady && config.mode === "suggest" ? (
                     <div className="uir-issue-actions">
                       {issue.suggestedCss === undefined ? null : (
                         <button
@@ -390,7 +396,7 @@ export function UIRepairCard({ settings, runtime }: CardProps) {
                           : "Ignore"}
                       </button>
                     </div>
-                  )}
+                  ) : null}
                 </li>
               ))}
             </ul>
@@ -492,7 +498,11 @@ export function UIRepairCard({ settings, runtime }: CardProps) {
  *   placeholder. A card that draws its own `<li>` can afford returning nothing;
  *   this one is not the frame's owner. The scan panel reads the runtime instead of
  *   the settings and survives both — on a stand whose settings are closed, rolling
- *   back temporary repairs is the action an operator has left.
+ *   back temporary repairs is the action an operator has left. The per-issue
+ *   Apply/Ignore pair does not survive them: it is offered only under the `suggest`
+ *   mode, so drawing it from a resolved default would claim a saved policy the
+ *   namespace never answered, and the guard is the snapshot status rather than the
+ *   default mode happening to be `observe`.
  *
  * Nothing from the removed header was carried into the body: the row's chrome is
  * not ours to draw, and a mode badge would repeat the `mode` field two lines
