@@ -9,6 +9,9 @@
  */
 
 import { fireEvent, render, screen, within } from "@testing-library/react";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import type { ComponentType, ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import {
@@ -19,6 +22,21 @@ import {
 import { SERVICE_REACH } from "../../src/client/operator-service-reach.js";
 import { GitlabSection } from "../../src/client/operator-sections/gitlab.js";
 import type { OperatorForm } from "../../src/client/operator-sections/shared.js";
+
+/*
+ * The row's one-liner as the Host reads it: the installed manifest's `description`,
+ * which fills the page's description `<p>` before this seat is ever asked for its
+ * `summary` view. Resolved through `fileURLToPath` because the jsdom environment
+ * replaces the global `URL`, and Node's `readFileSync` only recognises its own.
+ */
+const MANIFEST_DESCRIPTION = (
+  JSON.parse(
+    readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json"),
+      "utf8",
+    ),
+  ) as { description: string }
+).description;
 
 /** The slot props the Plugins page supplies are outside this test's concern. */
 const Card = OperatorCard as unknown as (props: {
@@ -797,6 +815,17 @@ describe("integrations row entry", () => {
     // ask is `{ view: "summary" }` and nothing else.
     expect(container.querySelector("input")).toBeNull();
     expect(container.textContent).toBe(QA_INTEGRATIONS_ROW_SUMMARY);
+  });
+
+  it("keeps the one-liner equal to the manifest field the Host fills the row from", () => {
+    /*
+     * The page takes the row's sentence from the installed manifest's `description`
+     * and asks this seat only when the row declares none, so the two are the same
+     * line of the same paragraph reached two ways. Read from the manifest rather
+     * than restated as a literal, because a manifest edit cannot be caught by a
+     * string in a test.
+     */
+    expect(QA_INTEGRATIONS_ROW_SUMMARY).toBe(MANIFEST_DESCRIPTION);
   });
 
   it("renders the body, and only the body, for the page seat", () => {

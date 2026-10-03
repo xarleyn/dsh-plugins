@@ -48,7 +48,11 @@ which side of the fallback a live row sits on is the Host's to decide, not this
 bundle's: the page takes the description from `rowText(row)` over the `row.meta` the
 Host reports, so a published bundle whose package text the Host does resolve shows a
 description and never dispatches the view. The branch stays for the case where
-nothing resolves, and it stays a sentence there too. The bundle seat is documented as
+nothing resolves, and it stays a sentence there too — the *same* sentence the
+manifest's `description` gives the Host, so the row reads one line whichever way the
+page reaches it. `dsh-plugin-log-ui` (#651) does the same and the equality is drawn
+from `package.json` by a test rather than restated as a literal, because a manifest
+edit is invisible to a test that repeats the string. The bundle seat is documented as
 `page`-only, which is why the account card has no such branch. The account card
 needs no form at all — it reaches the account through the `qaUserSession` service —
 so it takes the bundle's own seat, and the signed-in user's QA settings section is

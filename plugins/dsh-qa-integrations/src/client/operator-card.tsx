@@ -91,14 +91,20 @@ type ScopeOps = Parameters<ConfigForm<QaIntegrationsConfig>["mutate"]>[0];
  * rows carry no description field at all. A published bundle normally does
  * resolve to package text, so this sentence is what the entry answers with when
  * it does not, and it has to stay a sentence in that case either way: the page
- * puts the answer inside its own description paragraph, where a mounted form
+ * mounts whatever it returns inside its own description paragraph, where a body
  * would be a page of controls inside a line of text.
- * `scripts/verify-package.mjs` therefore pins only what this artifact can prove —
- * the string and the branch that returns it ship — and not the reachability the
- * Host decides.
+ *
+ * It is therefore kept equal to the `description` field of `package.json`, which
+ * is what the Host reads the row's sentence from (`docs/DSH-0.1.7-MIGRATION.md`
+ * §4.2, and `dsh-plugin-log-ui` #651 does the same): the same row then reads one
+ * way whether the line comes from the manifest or from this entry. A test derives
+ * the value from the manifest rather than restating it, so an edit to either side
+ * that breaks the equality fails the suite.
+ * `scripts/verify-package.mjs` pins what this artifact can prove — the branch and
+ * the sentence ship — and not the reachability the Host decides.
  */
 export const QA_INTEGRATIONS_ROW_SUMMARY =
-  "Конфигурация подключений стенда: провайдеры, адреса, возможности и сервисные доступы.";
+  "Principal-scoped, encrypted user integrations for DSH QA Surface";
 
 /**
  * The card as the Plugins page renders this bundle's row: `view: 'page'` mounts
