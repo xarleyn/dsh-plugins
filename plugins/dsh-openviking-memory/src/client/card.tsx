@@ -43,8 +43,9 @@ export interface OpenVikingCardFace {
    *
    * Named `settingsForm`, not `form`: the row seat hands its registrant a `form`
    * of its own — the Host's `ConfigPageForm`, `{ state, mutate }` and nothing
-   * else (`packages/client/ui-plugin-manager/src/client/slot-contract.ts:124-130`
-   * at tag `dsh-v0.1.7-rc.2`, delivered as the owner prop at `:24-27`) — and the
+   * else (`lib/types/client/slot-contract.d.ts:150-155` of
+   * `@deepseek-ai/dsh-client-ui-plugin-manager` `0.1.7-rc.2`, delivered as the
+   * optional owner prop `form` of `PluginConfigViewProps` at `:20-25`) — and the
    * renderer spreads that owner prop after this face, so a face member called
    * `form` would be overwritten by it. What the page's form cannot do is carry a
    * subscription: its `state` is one snapshot, refreshed when the page owner
