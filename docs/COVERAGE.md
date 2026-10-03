@@ -100,15 +100,17 @@ change in what the tests exercise.
 ### What this snapshot cannot say about three projects
 
 `@yadsh/dsh-plugin-kit`, `@yadsh/dsh-test-kit` and `@yadsh/dsh-plugin-generator`
-have no number here: their suites do not start on this tree. All three extend
+have no number here: their suites do not start on this tree. All three inherited
 `@yadsh/dsh-config/tsconfig/base`, whose own `extends` escapes its package by
 three `../` hops, and Vite 8 (which `dsh-v0.1.7-rc` moved onto from Vite 7 while
-this card was open) resolves it through the `node_modules/@yadsh/dsh-config`
-symlink instead of the real path, so the search lands on
-`node_modules/tsconfig.base.json` and every test file fails to transform.
-`pnpm nx run-many -t test` fails the same three the same way, with and without
-`--coverage` — the defect is in the shared tsconfig preset, not in the
-measurement, and fixing it belongs to another card than this one.
+this card was open) resolves `extends` through the
+`node_modules/@yadsh/dsh-config` symlink instead of the real path, so the search
+landed on `node_modules/tsconfig.base.json` and every test file failed to
+transform. `pnpm nx run-many -t test` fails the same three the same way, with and
+without `--coverage` — the defect is in the shared tsconfig preset, not in the
+measurement. #688 moved the three to the preset's path inside the workspace and
+#700 took the `base` and `browser` subpaths out of the package's `exports`, so the
+next snapshot ranks them instead of omitting them.
 
 They are absent from the table rather than ranked at the bottom, and that
 distinction is the reason this section exists: `reportOnFailure` makes each of
