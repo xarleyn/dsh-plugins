@@ -11,11 +11,12 @@
  * gate, which reads the seat off `lib/client.js`.
  */
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { cleanup, screen, waitFor } from "@testing-library/react";
 
 import { resolveConfig } from "../../../src/resolve-config.js";
 import {
+  EFFECTIVE,
   renderCard,
   section,
   sectionHeading,
@@ -69,14 +70,26 @@ describe("QA Surface card body", () => {
     }
   });
 
-  it("renders nothing while the row's namespace answers unavailable", async () => {
+  it("names why the column is empty while the namespace answers unavailable", async () => {
+    const poll = vi.fn(async () => ({
+      ok: true as const,
+      value: EFFECTIVE,
+    }));
     const { container } = await renderCard({
       snapshot: { status: "unavailable", value: undefined },
+      describe: poll,
     });
-    // The page's own heading and configure control are the Host's and stay;
-    // what the plugin holds back is its body, and with it every control.
-    expect(container.firstElementChild).toBeNull();
-    expect(container.textContent).toBe("");
+    // The page's own heading and configure control are the Host's and stay; the
+    // body answers with the reason, and with no control to write through.
+    expect(screen.getByTestId("qa-settings-unavailable").textContent).toContain(
+      "не отдаёт",
+    );
+    expect(container.firstElementChild?.tagName).toBe("P");
+    expect(screen.queryByTestId("qa-settings-status")).toBeNull();
+    expect(screen.queryByTestId("qa-settings-access")).toBeNull();
+    // Nothing reads the effective configuration here, so the poll that would
+    // feed it never starts.
+    expect(poll).not.toHaveBeenCalled();
   });
 
   it("shows the route, policy, and account gate the Host answered with", async () => {

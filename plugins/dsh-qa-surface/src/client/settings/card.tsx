@@ -158,6 +158,9 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
   }, [describe]);
 
   useEffect(() => {
+    // An unreachable namespace has no status section to feed, so the poll stays
+    // off until a snapshot serves values again.
+    if (settings.status === "unavailable") return;
     const stopPolling = startVisibilityAwarePolling(
       refresh,
       REFRESH_INTERVAL_MS,
@@ -166,7 +169,7 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
       stopPolling();
       activeRequest.current += 1;
     };
-  }, [refresh]);
+  }, [refresh, settings.status]);
 
   /**
    * Path-addressed writes into the namespace. The form's mutation operations
@@ -244,11 +247,22 @@ export function QaSettingsCard({ settingsForm, describe }: CardProps) {
     );
   }, [applyMutation, overrides]);
 
-  // A namespace the Host does not serve has no values to edit, so nothing of ours
-  // mounts in the row's configuration column (AGENTS.md, card-shell contract). A
-  // namespace that serves values but refuses writes is the other case: the body
-  // renders and disables its controls on `writable` instead of hiding itself.
-  if (settings.status === "unavailable") return null;
+  // The row's page draws its heading and its expand control whatever the
+  // namespace answers, so an unavailable one says why rather than leaving the
+  // column the operator just opened empty. The Plugins panel is not the settings
+  // directory: a browser on another machine sees the namespace as unavailable
+  // and still has the row, so hiding the body would hide the reason (AGENTS.md).
+  // A namespace that serves values but refuses writes is the other case: the
+  // body renders and disables its controls on `writable` instead of hiding.
+  if (settings.status === "unavailable") {
+    return (
+      <p className="qa-card-muted" data-testid="qa-settings-unavailable">
+        Хост не отдаёт этому браузеру пространство настроек плагина — они
+        читаются только с машины, где поднят стенд. Редактировать здесь нечего,
+        работа ассистента при этом идёт по сохранённым значениям.
+      </p>
+    );
+  }
 
   const sectionProps: ConfigProps = {
     config,
