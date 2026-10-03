@@ -408,6 +408,63 @@ test("owes the ring to the seat in both registration forms", () => {
   }
 });
 
+/*
+ * The two ends of the waiver, both left unowned by the fixtures above: a bundle seat sharing
+ * the bundle with a row seat cancels none of the row's debt, and `ringOwed` reaches no further
+ * than `RING_APPLIED` — a waived seat that dresses its own controls with a hard-coded outline
+ * is still the Host's fight, so the flag cannot grow into skipping the chrome check.
+ */
+test("keeps the ring owed when a bundle seat shares the bundle with a row seat", () => {
+  const mixed = [
+    `slots.register({ name: "plugins.bundle.config", key: "@yadsh/demo" }, Card);`,
+    `slots.register({ name: "plugins.row.config", key: "@yadsh/demo#demo" }, Card);`,
+    `const Card = () => jsx("section", { className: "demo-body" });`,
+  ].join("\n");
+  // A page that owes no ring, seated next to one that does, cancels nothing.
+  assert.throws(() => {
+    verifyPluginCardContract(mixed);
+  }, /at least one of its own controls/u);
+  // And the refusal is the missing ring, not a fixture no bundle could satisfy.
+  assert.doesNotThrow(() => {
+    verifyPluginCardContract(`${mixed}\n${HOST_RING_RULE}`);
+  });
+});
+
+test("still refuses a hard-coded ring on the seat that owes none", () => {
+  const bundleSeat = [
+    `slots.register({ name: "plugins.bundle.config", key: "@yadsh/demo" }, Card);`,
+    `const Card = () => jsx("section", { className: "demo-body" });`,
+    `.demo-body button:focus-visible{outline:2px solid var(--dsw-alias-brand-primary)}`,
+  ].join("\n");
+  // The waiver covers the *absence* of a ring, which is a claim about who renders the
+  // controls. A rule that dresses them wrong is the Host's fight at either panel seat, so
+  // `ringOwed: false` must never reach past `RING_APPLIED` — and never become a skipped
+  // `verifyHostChrome` wearing the same name.
+  assert.throws(() => {
+    verifyPluginCardContract(bundleSeat);
+  }, /must build its ring from/u);
+});
+
+test("waives the ring for a bundle seat that only reaches the contract as a quote", () => {
+  // An accepted weakening, recorded so it stays visible: `plugin-kit`'s helper compiles to
+  // `name: slotName`, the seat sits in an option no resolver follows, and the bundle is then
+  // judged by what it quotes — so prose decides the ring as well as the half of the contract.
+  // Teaching `readSeats` the positional `slots.inject("<seat>", …)` form puts this bundle on
+  // the strong path and returns the quote path to fail-closed; that is a follow-up, and until
+  // it lands this fixture is the line the change has to move.
+  const helper = [
+    `function registerCardSlot(host, options) {`,
+    `  const slotName = options.slotName;`,
+    `  return host.slots.register({ name: slotName, key: options.key }, options.component);`,
+    `}`,
+    `registerCardSlot(host, { slotName: "plugins.bundle.config", key: "@yadsh/demo" });`,
+    `const Card = () => jsx("section", { className: "demo-body" });`,
+  ].join("\n");
+  assert.doesNotThrow(() => {
+    verifyPluginCardContract(helper);
+  });
+});
+
 test("reads a positional registration as the seat it names", () => {
   // `slots.inject("plugins.row.config", Comp)` carries no `name:` property at all. Before
   // the quoted seat was read bundle-wide, this bundle fell through to "what does it

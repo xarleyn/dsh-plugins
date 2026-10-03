@@ -318,6 +318,15 @@ export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
       operator: "seat",
     });
   }
+  /*
+   * The same predicate as above, so a seat answers one way whatever form it reached the
+   * bundle in. What that parity costs: quotes now settle the ring too, and a bundle seat
+   * surviving only as a citation is waived exactly as a registered one is. Accepted until
+   * `readSeats` learns the positional `slots.inject("<seat>", …)` form, which moves those
+   * bundles onto the path above and leaves this one fail-closed; the test "waives the ring
+   * for a bundle seat that only reaches the contract as a quote" marks the line that change
+   * has to move.
+   */
   if (panelMentioned.length > 0)
     return verifyHostChrome(client, {
       ...options,
