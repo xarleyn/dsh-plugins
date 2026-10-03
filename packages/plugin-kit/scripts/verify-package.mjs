@@ -6,7 +6,11 @@
 // through the seat-aware dispatcher a plugin bundle goes through.
 import assert from "node:assert/strict";
 import { runVerifyPackage } from "@yadsh/dsh-plugin-scripts/run-verify-package";
-import { verifyCanonicalShell } from "@yadsh/dsh-plugin-scripts/verify-plugin-card-contract";
+import {
+  HOST_CHROME_SEATS,
+  OWN_SHELL_SEATS,
+  verifyCanonicalShell,
+} from "@yadsh/dsh-plugin-scripts/verify-plugin-card-contract";
 
 await runVerifyPackage({
   packageRoot: new URL("../", import.meta.url),
@@ -56,9 +60,19 @@ await runVerifyPackage({
       );
     }
     assert.equal(
-      client.SETTINGS_PLUGIN_ITEM_SLOT,
-      "settings.plugin.item",
-      "the slot registerSettingsCard mounts a card into by default",
+      client.PLUGIN_ROW_CONFIG_SLOT,
+      "plugins.row.config",
+      "the seat registerSettingsCard mounts a card into when the plugin names none",
+    );
+    // A card aimed at a seat the Host no longer ships does not fail — it draws
+    // nowhere — so the default is held against the same live seat list the card
+    // contract resolves a built bundle against.
+    const liveSeats = [...HOST_CHROME_SEATS, ...OWN_SHELL_SEATS];
+    assert.ok(
+      liveSeats.includes(client.PLUGIN_ROW_CONFIG_SLOT),
+      `the helper's default seat ${String(
+        client.PLUGIN_ROW_CONFIG_SLOT,
+      )} is not a seat the Host ships (one of ${liveSeats.join(", ")})`,
     );
   },
 });

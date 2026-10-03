@@ -37,12 +37,14 @@ bundle, which keeps published browser bundles self-contained.
 - `./client` subpath: the shared settings-card scaffolding for browser
   bundles — canonical `dsh-plugin-card` shell CSS (`PLUGIN_CARD_SHELL_CSS`),
   `ChevronDown`, `CardShell`, `registerSettingsCard` /
-  `registerSettingsSlot` / `injectCardStyles`,
+  `registerSettingsSlot` / `injectCardStyles` (a card that names no `slotName`
+  is mounted on `plugins.row.config`, the Host's own row on the Plugins panel,
+  so it passes no shell CSS and draws no shell of ours),
   `bindSettingsExternalStore`, and `startVisibilityAwarePolling`. It also ships
   the credential-help note itself: `CredentialHelpNote` renders the trigger and
   its disclosure panel (`credentialHelpView` turns metadata into the view, and
   `CREDENTIAL_HELP_CSS` carries its rules). The note renders inside any settings
-  card — `settings.plugin.item`, a feature-owned tab, the Models page's
+  card — a Plugins panel row card, a feature-owned tab, the Models page's
   provider cards — and renders nothing at all when there is no metadata.
 
 ## Workspace usage

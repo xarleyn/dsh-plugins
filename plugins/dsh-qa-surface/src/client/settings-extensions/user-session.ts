@@ -4,7 +4,7 @@ import type { QaAccountsController } from "../QaAccountsController.js";
  * The signed-in QA account, as a client service.
  *
  * A QA panel plugin receives the account token through its panel props. A card
- * mounted in the host's own settings (`settings.plugin.item`) has no panel to
+ * seated on the Host's Plugins panel (`plugins.row.config`) has no panel to
  * read it from, so this service is the one place such a surface asks whether a
  * QA account is signed in and obtains the bearer credential the
  * principal-scoped QA remotes authorize with.
