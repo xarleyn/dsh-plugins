@@ -65,6 +65,12 @@ await runVerifyPackage({
       // And no shell came with it: the panel draws the frame and the expand
       // control, so our chevron path in this bundle is a second card.
       /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u,
+      // The ring above has to survive its own cascade. The shared contract reads
+      // a focus rule that exists and skips any `outline` whose value removes it,
+      // so a later `outline:none` on a control we draw — which is how this body
+      // once left a clicked field ringless — satisfies that gate and pays no
+      // attention here. Nothing else in this bundle writes an `outline`.
+      /outline\s*:\s*(?:none|unset|revert|inherit|0)\b/u,
     ],
     cardContract: { legacyPatterns: [/\.dsh-sleev-card\{/u] },
   },
@@ -74,19 +80,30 @@ await runVerifyPackage({
     assert.equal(DEFAULT_SLEEV_GATEWAY_URL, "http://127.0.0.1:17321/v1");
     assert.equal(EXPERIMENTAL_DSH_HARNESS_ID, "pi");
     // The seat key joins the package name to the row id, and since 0.1.7 the row
-    // id is the settings namespace, so the two are one fact. The bundler folds
-    // the join away, so no `includes` can read the shipped key as a literal, and
-    // each half is gate-checked on its own elsewhere: rename either one and every
-    // other gate still passes while the row's configure control stops appearing.
-    // `dsh-model-safety-gate` pins the same pair against its patch.
-    const rowId = /^\s*- id: (\S+)$/mu.exec(patch ?? "")?.[1];
+    // id is the settings namespace, so the two are one fact. The bundle keeps that
+    // join as a template literal — `@yadsh/dsh-sleev#${SLEEV_SETTINGS_NAMESPACE_ID}`
+    // — so no `includes` can read a shipped key that is only assembled at runtime,
+    // and each half is gate-checked on its own elsewhere: rename either one and
+    // every other gate still passes while the row's configure control stops
+    // appearing. `dsh-model-safety-gate` pins the same pair against its patch.
+    const rowIds = [...(patch ?? "").matchAll(/^\s*- id: (\S+)$/gmu)].map(
+      ([, id]) => id,
+    );
     const seat = await readFile("src/shared/settings.ts");
     // Read on its own: two failed extractions would otherwise compare equal.
-    assert.ok(rowId, "cordis.patch.yml must declare the row id");
+    assert.ok(rowIds.length > 0, "cordis.patch.yml must declare the row id");
+    // This gate keys one seat, so a second profile entry would need a second
+    // registration; comparing the namespace against the first id alone would let
+    // the extra row go unregistered with every assertion still green.
+    assert.equal(
+      rowIds.length,
+      1,
+      `this gate expects the one row cordis.patch.yml keys a seat for, but the patch declares ${rowIds.length} (${rowIds.join(", ")}); register a seat per row and pin each half here`,
+    );
     assert.equal(
       /SLEEV_SETTINGS_NAMESPACE_ID\s*=\s*"([^"]+)"/u.exec(seat)?.[1],
-      rowId,
-      `the settings namespace must be the profile entry id ${rowId} that cordis.patch.yml declares`,
+      rowIds[0],
+      `the settings namespace must be the profile entry id ${rowIds[0]} that cordis.patch.yml declares`,
     );
     assert.match(
       seat,

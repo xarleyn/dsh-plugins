@@ -1,5 +1,5 @@
 ---
-"@yadsh/dsh-sleev": patch
+"@yadsh/dsh-sleev": minor
 ---
 
 The observer's settings card moves out of Settings and onto the Plugins panel.
@@ -18,8 +18,12 @@ overridden ones, resetting one field to its composition default, and refusing a
 value the schema would reject.
 One thing the new seat does change: on the Settings tab a namespace that had not been
 served left the tab shut, while the row's **Configure** control is drawn from the
-inventory, so the same moment now answers with a line saying there is nothing to edit
-instead of an empty page.
+inventory, so an opened row always owes a line. The namespace has three states and now
+gets three answers — a loading line while the first snapshot is on its way, the form
+once it stands, and a stated reason when the settings directory is closed to this
+client, which is where a browser off the loopback address and a memory-mode host sit.
+Neither line is a live region, because the loading one is replaced by the form as soon
+as the namespace answers.
 
 The card takes the frame the page already draws. The row's detail page paints the
 surface, the row title and the expand control before it mounts what a registration
@@ -40,4 +44,15 @@ one-liner where the page has no description of its own, and renders the form wit
 its save control as the page body. Both answers are pinned by the package's tests.
 Reaching the new surface is a host-side requirement, so
 `compatibility.json` now names `plugins.row.config` as the client feature the browser half
-needs, and `dsh.client.inject` names the module that declares the slot.
+needs, and `dsh.client.inject` names the module that declares the slot: a browser on a
+host without the Plugins panel's row loses the card entirely, which is why this is
+`minor` rather than `patch` — the same step the twins that moved onto this seat took
+(`dsh-model-safety-gate`, `dsh-plugin-log-ui`, `dsh-jev-compaction`).
+The package gate reads the pair from the built bundle (the seat literal inside the
+registration, and the `@yadsh/dsh-sleev#` key prefix the seat is joined from), reads the
+chrome the other way (the ring tokens present, the shell classes, the chevron path and
+the old tab seat absent), and now also rejects any `outline` in the bundle that removes a
+ring — the shared contract only requires a focus rule to exist, and a later
+`outline:none` on a field satisfied it while leaving a clicked field ringless. One
+devDependency left with the shell: `@yadsh/dsh-plugin-kit` supplied `CardShell` and
+`PLUGIN_CARD_SHELL_CSS` and nothing in the package names it now.
