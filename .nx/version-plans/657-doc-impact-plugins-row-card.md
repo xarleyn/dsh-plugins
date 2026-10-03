@@ -60,15 +60,34 @@ off the built bundle, and a registration that names its seat in the call is the 
 can read; the same contract is what now holds this bundle to *no* shell, where it once
 required one.
 
-The manifest needed no new dependency, and that is a property of this entry rather
-than an oversight: the bundle registers through the injected `slots` service by slot
-name and reaches the settings surface as a type only, so there is no new runtime
-surface to anchor a peer on (`dsh.client.inject` names exactly the packages whose
-surfaces a client imports). The
-browser half does now depend on the Plugins page existing, and says so —
+The seat hands over three things the entry used to spell by hand, and the manifest now
+carries the packages that say them: `@deepseek-ai/dsh-client-ui-plugin-manager` merges
+the row seat's owner contract into the slot table, `@deepseek-ai/dsh-client-ui-slots`
+composes the entry's props from it, and `@deepseek-ai/dsh-client-ui-renderer` is the
+half that assembles them at render time. All three arrive as peer and dev dependencies
+in the shape `dsh-model-safety-gate` (#653) already uses, and none of them is a runtime
+import: the card's props are now `PropsRuntime<"plugins.row.config"> & InjectFace<…> &
+PropsLocale<"dsh-doc-impact">` rather than an interface this package wrote, so the
+`view` discriminator, the page's `form`, the bound `useDocImpactCard` hook and the `t`
+seat are read from the declarations that hand them out. That closes the question this
+review round kept open — whether the page really delivers a translator to a keyed seat.
+It does, and not by hope: the renderer synthesizes `t` for exactly those entries whose
+registration declares a `locale:` namespace, and refuses the slot assembly with a
+`SlotAssemblyError` when no locale face stands (`dsh-client-ui-renderer/lib/client.js`,
+`standardKit`). A fallback translator would therefore be unreachable code standing in
+for a failure the Host already reports, so the entry takes `t` as the definite prop the
+composition says it is, and the dictionary's keys are merged into `LocaleNamespaceMap`,
+which makes the key domain of `t` this card's own dictionary rather than any string.
+
+The browser half does now depend on the Plugins page existing, and says so —
 `compatibility.json` lists `plugins.row.config` among the required client features,
-which is why this is `minor` rather than `patch`: a browser on a host without that
-page loses the card. `tests/client-bundle.test.ts` reads the seat key and the settings
+which is why this is `minor` rather than `patch`: a browser on a host without that page
+loses the card. The losing is quiet, and that is the registration seam's doing rather
+than the card's: `slots.inject` runs its callback when the slot already stands and
+otherwise inside the declaring `register()` (`registry.d.ts`), so on a host that never
+declares this page the callback is never reached and the `register` that would throw on
+an undeclared slot is never called.
+`tests/client-bundle.test.ts` reads the seat key and the settings
 namespace from `cordis.patch.yml` rather than repeating them, so a row id that moves in
 the patch reddens the test instead of quietly dropping the configure control, and it
 drives the entry through both views the page asks this seat for — the page view mounting
@@ -77,16 +96,41 @@ settings read at all. The page view is rendered with the page's own `form` prop 
 and poisoned on both of its halves, because the card deliberately takes nothing from it:
 the seat hands a `{ state, mutate }` whose `state` is one snapshot the page took while it
 rendered, and a card that has to follow a write it did not make reads and fences the
-document through the `ConfigForm` it resolves itself. `tests/client-render.test.ts` runs
+document through the `ConfigForm` it resolves itself. The same test asserts the injected
+face carries no member named `form`, which is the sentence the previous paragraph
+argued for and nothing pinned until now: the renderer spreads the owner props after the
+face, so a face member of that name would be shadowed by the page's narrower form and
+the card would stop seeing its own without going red anywhere.
+`tests/client-render.test.ts` runs
 its field-by-field render through that registered entry as well as through the card, so
 an entry that stopped forwarding the props the card draws with is a missing control on a
 screen, not a comment, and both files fail if the body grows a frame or a toggle of its
 own again.
 `scripts/verify-client-bundle.mjs` checks values, not the spellings of the constants
-that spell them: the slot literal, the package-name half of the key as the patch names
-it, the row id the bundle carries, the `view === "summary"` branch the page depends on,
-the seat being claimed inside a served-namespace watch, the Host's ring token on the
+that spell them: the slot literal, the full joined key the patch composes, the
+`view === "summary"` branch the page depends on, the Host's ring token on the
 controls this bundle draws, this package's own retired shell classes, and the absence of
 the `settings.plugins.tab` seat this card vacated. Whether the bundle carries a shell it
 no longer owns is the shared contract's rule to enforce, and it picks that rule from the
-seat it reads off the bundle — which is why the seat is named in the registration.
+seat it reads off the bundle — which is why the seat is named in the registration. Both
+that gate and the test now reach the patch through one parser, `scripts/patch-row.mjs`,
+which parses the YAML instead of matching it and requires the one row every bundle patch
+in this repository declares: two copies of a first-`id:`-wins pattern were two chances
+for a second row to shift the key out from under a check that would still have gone
+green.
+
+One thing the card does differently from the first card on this seat. `#653` claims its
+row unconditionally; this bundle used to claim its seat only while
+`configForms.whileServed([SETTINGS_NS], …)` reported the namespace served, and it now
+claims it unconditionally too. The watch is built for a page editing a namespace
+*another* plugin owns — its callback fires from the `settings.describe` mirror — and that
+mirror answers `unavailable` as the terminal state of a non-loopback page, where the
+settings directory is deliberately not exposed. So gating on it hid the row's configure
+control in exactly the browser AGENTS.md names for a card seated on the Plugins panel
+("keeps answering from a non-loopback browser, where the settings directory is
+intentionally unavailable … disable the write controls instead of hiding the card"). Per-
+namespace reads do not pass through that directory: `get` answers a form for any entry
+id, and the form's own snapshot says whether a document stands under it, which is where
+the body already answers — a status line for a namespace nothing resolved, disabled
+controls for a connection that keeps preferences process-local. `tests/client-bundle.test.ts`
+holds this by never serving the namespace and expecting the seat anyway.

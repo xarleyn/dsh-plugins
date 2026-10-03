@@ -3,12 +3,15 @@
 // without a browser:
 //   - the ModuleLoader id must stay "@yadsh/dsh-doc-impact" (the served bundle URL
 //     and the plugin inventory both key on the package name);
-//   - the card must claim the `plugins.row.config` seat, keyed from the package name
-//     its own `cordis.patch.yml` declares — the second half of that key, the settings
-//     namespace the form reads through `ctx.configForms`, is a runtime pairing and
-//     belongs to `tests/client-bundle.test.ts`, which derives both halves from the
-//     patch; what is checked here are the values, never the names of the constants
-//     that spell them, so a rename cannot redden this gate on its own;
+//   - the card must claim the `plugins.row.config` seat under the full key
+//     `<package name>#<row id>`, both halves read from this bundle's own
+//     `cordis.patch.yml` through one parser (`patch-row.mjs`) that
+//     `tests/client-bundle.test.ts` shares — the page hands a row its configure
+//     control only for a pair its roster carries, so the join is what has to appear,
+//     not the two halves somewhere in the file. That the row id is also the settings
+//     namespace the form reads through `ctx.configForms` is a runtime pairing and
+//     belongs to the test; what is checked here are the values, never the names of
+//     the constants that spell them, so a rename cannot redden this gate on its own;
 //   - the entry must answer both views the page asks this seat for: the row's
 //     one-liner (`view: 'summary'`, taken because this patch declares no description
 //     of its own) and the configuration page (`view: 'page', form`);
@@ -24,23 +27,18 @@
 //   - no secrets or telemetry may creep into the settings form.
 import { readFile } from "node:fs/promises";
 import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
+import { readPatchRow } from "./patch-row.mjs";
 
 const client = await readFile(
   new URL("../lib/client.js", import.meta.url),
   "utf8",
 );
-const patch = await readFile(
+// The row this bundle's seat key is built from. One parse of the patch, shared
+// with tests/client-bundle.test.ts, so the two gates cannot drift onto different
+// readings of the same declaration.
+const { id: patchId, name: patchName } = await readPatchRow(
   new URL("../cordis.patch.yml", import.meta.url),
-  "utf8",
 );
-/** The row the Host inventories this bundle under: `<name>#<id>` is the seat key. */
-const patchName = /^\s*name:\s*"?([^"\n]+)"?/mu.exec(patch)?.[1];
-const patchId = /^\s*-?\s*id:\s*"?([\w.-]+)"?/mu.exec(patch)?.[1];
-if (!patchName || !patchId) {
-  throw new Error(
-    "cordis.patch.yml declares no plugin row to key the seat from",
-  );
-}
 
 function expectAbsent(needle, why) {
   if (client.includes(needle)) {
@@ -71,12 +69,12 @@ expectPresent(
   "the card must register as the configuration entry of its own row on the Plugins page",
 );
 expectPresent(
-  `${patchName}#`,
-  "the keyed seat must start from the package name cordis.patch.yml declares",
-);
-expectPresent(
-  `"${patchId}"`,
-  "the bundle must carry the row id the patch declares, which is the namespace its form reads",
+  `"${patchName}#${patchId}"`,
+  "the keyed seat must be the join of the package name and the row id cordis.patch.yml " +
+    "declares: the page hands a row its configure control only for a pair its roster " +
+    "carries, so a bundle spelling one half and reaching for the other elsewhere is a " +
+    "card that silently never appears. Matching the bare row id would not say — any " +
+    "literal naming the namespace would pass it.",
 );
 expectPresent(
   "configForms.get(",
@@ -90,15 +88,12 @@ expectAbsent(
   '"settings.plugins.tab"',
   "the card must not keep a tab of the old Settings surface beside its row",
 );
-expectPresent(
-  "whileServed(",
-  "the seat must be claimed only while the Host serves the namespace: the host " +
-    "answers get() with a controller for any name, so this is the only call that " +
-    "keeps an unserved namespace off the row. Which namespace that watch names is a " +
-    "runtime pairing and belongs to tests/client-bundle.test.ts, which compares it " +
-    "with the row id the patch declares; naming the bundle's constant here would " +
-    "redden this gate on a rename instead of on a regression.",
-);
+// Whether the seat is claimed from inside `configForms.whileServed` is left to
+// tests/client-bundle.test.ts, which proves it by never serving the namespace and
+// expecting the card anyway. That is the honest place for it: the decision is about
+// which call the entry makes, and a string needle only tracks how the bundle spells
+// whichever call it makes — green on a rewrap that renames nothing only if the
+// comment explaining the choice is compiled out, which is a build setting.
 expectPresent(
   "resetField",
   "every field needs the composition-layer reset action",

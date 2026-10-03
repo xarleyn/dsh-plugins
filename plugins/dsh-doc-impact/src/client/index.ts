@@ -35,9 +35,11 @@
 // by the ModuleLoader. The slots / configForms / locale services are declared in
 // `inject` (the client runtime exposes only injected services, so a missing
 // declaration makes `apply` see them as absent and silently skip the card); the
-// method guards below keep headless or older profiles safe. The card's own text
-// arrives as the translate seat the page synthesizes for the locale namespace this
-// entry declares, which is why the dictionary below is registered before any seat is.
+// guards below keep headless or older profiles safe. The card's own text arrives
+// as the `t` seat the Host's renderer synthesizes for the locale namespace this
+// entry declares — it fails the slot assembly rather than rendering without it,
+// which is why `card.ts` takes `t` as a definite prop and no fallback stands by.
+// That is also why the dictionary below is registered before any seat is claimed.
 
 import type { ConfigForms } from "@deepseek-ai/dsh-client-ui-settings/client";
 import { RowConfigEntry, type RowEntryProps } from "./card.js";
@@ -62,25 +64,41 @@ interface LocaleService {
 
 /**
  * The settings service the card reads its namespace through: the Host's own
- * `ConfigForms`, narrowed to the two members this entry calls, so a signature
+ * `ConfigForms`, narrowed to the one member this entry calls, so a signature
  * change on the provider stops compiling here instead of being mirrored by hand.
  * `get` answers a controller for any name, served or not — "this profile does not
  * carry the namespace" is not in its reply, the transient lives in the snapshot
- * status. The instrument that says whether the namespace is served is
- * `whileServed`, and the card claims its seat inside it.
+ * status, and that is where the card reads it. `whileServed` is deliberately not
+ * called: see the note above the seat.
  */
-type ConfigFormsService = Pick<ConfigForms, "get" | "whileServed">;
+type ConfigFormsService = Pick<ConfigForms, "get">;
 
 /** The seat the card claims: the configuration entry of this bundle's own row. */
 interface RowSeat {
   name: string;
   key: string;
-  locale: string;
+  /**
+   * The locale namespace whose dictionary this entry translates with. The type is
+   * the literal `LOCALE_NS` holds, and {@link RowEntryProps} composes its `t` seat
+   * from that same namespace: the renderer synthesizes `t` exactly when the seat
+   * declares one, so a seat naming a namespace the card was not typed against stops
+   * compiling here instead of at render time.
+   */
+  locale: typeof LOCALE_NS;
   inject: () => CardFace;
 }
 
 /** The slot service that turns the seat and the component into a page. */
 interface SlotsService {
+  /**
+   * Install the effect for each lifetime of one slot's declaration: the factory
+   * runs at once when the slot already stands, and otherwise inside the declaring
+   * `register()` once it is committed (`registry.d.ts`). So a host that never
+   * declares this page leaves the factory uncalled — the card is absent rather than
+   * throwing at `register`, which `register` would do only against a declared slot.
+   * This wait is what makes a served-namespace watch redundant here: the page, not
+   * the settings directory, is the thing this call already waits for.
+   */
   inject(slot: string, factory: () => () => void): () => void;
   register(
     seat: RowSeat,
@@ -109,47 +127,51 @@ export function apply(ctx: DocImpactClientContext): () => void {
   }
 
   const configForms = ctx.configForms;
-  if (
-    !configForms ||
-    typeof configForms.get !== "function" ||
-    typeof configForms.whileServed !== "function"
-  )
+  if (!configForms || typeof configForms.get !== "function")
     return function () {};
   const form = new SettingsForm(configForms.get<SettingsDocument>(SETTINGS_NS));
 
-  // `whileServed` wraps the injection rather than the card body: it is the slot
-  // injection that gives the row its configure control, so a namespace this
-  // profile does not serve would otherwise leave a control opening a section with
-  // nothing in it.
+  // The seat is claimed unconditionally, and not from inside
+  // `configForms.whileServed([SETTINGS_NS], …)` even though that call exists and
+  // reads like the purpose-built instrument. It is built for a page editing a
+  // namespace *another* plugin owns: its callback runs once a namespace stands in
+  // the `settings.describe` mirror, and that mirror answers `unavailable` as the
+  // terminal state of a non-loopback page (`settings-mirror.d.ts`), where the
+  // settings directory is deliberately not exposed. Gating on it would leave this
+  // row without a configure control for exactly the browser AGENTS.md names for a
+  // card seated on the Plugins panel — "keeps answering from a non-loopback
+  // browser, where the settings directory is intentionally unavailable … disable
+  // the write controls instead of hiding the card".
   //
-  // The Host documents the reply as a disposer the caller owns — it ends the
-  // watch and drops whatever registration is live. A client entry owes the
-  // rollback of everything `apply` did (docs/PLUGIN_GUIDELINES.md §3.3.5), so the
-  // two are kept and handed back here rather than thrown away as soon as they
-  // were answered. Whether this host ever calls it is not observed from here —
-  // what is observed is that keeping nothing left the choice to the Host alone.
-  const endWatch = configForms.whileServed([SETTINGS_NS], function () {
-    return ctx.slots.inject("plugins.row.config", function () {
-      // The key joins this package's name to the row id the patch declares, which is
-      // the namespace the form above reads — the two halves are spelled out here so
-      // the built bundle states its seat and its row without a constant to resolve,
-      // and `tests/client-bundle.test.ts` holds both against `cordis.patch.yml`.
-      return ctx.slots.register(
-        {
-          name: "plugins.row.config",
-          key: "@yadsh/dsh-doc-impact#dsh-doc-impact",
-          locale: LOCALE_NS,
-          inject: function () {
-            return form.inject();
-          },
+  // Per-namespace reads do not go through that directory: `get` answers a form for
+  // any entry id, and the form's own snapshot says whether a document stands under
+  // it. So the unserved and the read-only cases are answered one level in, by the
+  // body — a status line for a namespace nothing resolved, disabled controls for a
+  // connection that keeps preferences process-local — which is what lets the row
+  // keep its control without offering one that opens an empty section.
+  const removeSeat = ctx.slots.inject("plugins.row.config", function () {
+    // The key joins this package's name to the row id the patch declares, which is
+    // the namespace the form above reads — the two halves are spelled out here so
+    // the built bundle states its seat and its row without a constant to resolve,
+    // and `tests/client-bundle.test.ts` holds both against `cordis.patch.yml`.
+    return ctx.slots.register(
+      {
+        name: "plugins.row.config",
+        key: "@yadsh/dsh-doc-impact#dsh-doc-impact",
+        locale: LOCALE_NS,
+        inject: function () {
+          return form.inject();
         },
-        RowConfigEntry,
-      );
-    });
+      },
+      RowConfigEntry,
+    );
   });
 
+  // A client entry owes the rollback of everything `apply` did
+  // (docs/PLUGIN_GUIDELINES.md §3.3.5), so both the registration and the form are
+  // kept and handed back rather than dropped as soon as they were answered.
   return function () {
-    endWatch();
+    removeSeat();
     form.dispose();
   };
 }

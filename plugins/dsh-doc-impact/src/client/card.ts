@@ -9,13 +9,19 @@
 // specificity than a rule of ours can reach without fighting it, so every control
 // drawn here takes the Host's ring tokens instead, each with a fallback: an undeclared
 // token would invalidate the whole `outline` shorthand and drop the ring entirely.
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
+import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
+import type {
+  InjectFace,
+  PropsLocale,
+  PropsRuntime,
+} from "@deepseek-ai/dsh-client-ui-slots";
 import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 import { createElement } from "react";
 import {
   MODE_OPTIONS,
   ON_LIMIT_OPTIONS,
   type CardFace,
-  type CardSnapshot,
   type ModeOption,
   type OnLimitOption,
 } from "./settings-form.js";
@@ -59,13 +65,46 @@ const CSS = [
 ].join("\n");
 if (typeof document !== "undefined") injectCardStyles("dsh-doc-impact", CSS);
 
-/** The props the page hands the card: the injected face plus the locale binding. */
-export interface ConfigCardProps extends CardFace {
-  readonly t: Translate;
-  readonly useDocImpactCard: (
-    select: (snapshot: CardSnapshot) => CardSnapshot,
-  ) => CardSnapshot;
-}
+/**
+ * The half of the seat's props the configuration body reads, composed from the
+ * Host's own declarations rather than re-typed here:
+ *
+ * - `InjectFace<CardFace>` — our injected face with its `hooks` compartment bound,
+ *   so `hooks.docImpactCard` arrives as the `useDocImpactCard` selector hook;
+ * - `PropsLocale<"dsh-doc-impact">` — the `t` seat, present exactly because the
+ *   registration declares that `locale:` namespace. The Host's renderer either
+ *   synthesizes it or fails the slot assembly with a `SlotAssemblyError` naming the
+ *   missing locale face, so a card that reached this render always holds a callable
+ *   `t`: a fallback branch here would be unreachable, and asserting one would hide
+ *   that assembly failure instead of reporting it.
+ */
+export type ConfigCardProps = InjectFace<CardFace> &
+  PropsLocale<"dsh-doc-impact">;
+
+/**
+ * Everything the row seat hands its entry: {@link ConfigCardProps} plus
+ * `PropsRuntime<"plugins.row.config">`, whose owner share is the `view`
+ * discriminator and the page's `form`, read straight from the contract the Plugins
+ * page merges into `SlotMap`. This is the composition the seat's own `register`
+ * call checks a component against, so a seat that stops handing over a member
+ * becomes a type error in this file rather than a `TypeError` in the row.
+ *
+ * Of those props the card reads no `form`. The page's `form` is a `ConfigPageForm`
+ * — `{ state, mutate }`, whose `state` is the one `getSnapshot()` the page took
+ * while it rendered, and the page re-renders when the roster of served namespaces
+ * moves, not when this document is written. This card has to follow a write it did
+ * not make (an entry config edited elsewhere, the same namespace open in another
+ * surface), so it reads and fences the document through the `ConfigForm` the
+ * bootstrap resolves and takes nothing from that prop.
+ * `tests/client-bundle.test.ts` hands the entry a live page form, so the non-use
+ * stays a decision someone can see fail rather than an unread prop. It is also why
+ * {@link CardFace} must carry no member named `form`: the renderer spreads the
+ * owner props after the injected face, so the page's narrower form would shadow the
+ * card's own — the same rule `dsh-model-safety-gate` honors by naming its face
+ * member `settingsForm`.
+ */
+export type RowEntryProps = PropsRuntime<"plugins.row.config"> &
+  ConfigCardProps;
 
 /**
  * The row's heading line, for the `view: 'summary'` the Plugins page asks this
@@ -291,27 +330,6 @@ export function ConfigCard(props: ConfigCardProps) {
       ),
     ),
   );
-}
-
-/**
- * What the row seat renders its entry with: what {@link ConfigCard} takes, plus
- * the two owner props the Plugins page spreads over the injected face.
- *
- * `view` picks the view. `form` is the page's own `ConfigPageForm` — `{ state,
- * mutate }`, whose `state` is the single `getSnapshot()` the page took while it
- * rendered, and the page re-renders when the roster of served namespaces moves,
- * not when this document is written. This card has to follow a write it did not
- * make (an entry config edited elsewhere, the same namespace open in another
- * surface), so it reads and fences the document through the `ConfigForm` the
- * bootstrap resolves and takes nothing from this prop. `tests/client-bundle.test.ts`
- * hands the entry a live page form, so the non-use stays a decision someone can
- * see fail rather than an unread prop. The prop is also why {@link CardFace} must
- * not carry a member named `form`: the renderer spreads the owner props after the
- * face, and the page's narrower form would shadow the card's own.
- */
-export interface RowEntryProps extends ConfigCardProps {
-  readonly view: "page" | "summary";
-  readonly form?: unknown;
 }
 
 /**
