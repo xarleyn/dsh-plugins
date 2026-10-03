@@ -402,7 +402,7 @@ test("refuses the same contradiction when the seat only reaches as an option", (
     `  return host.slots.register({ name: options.slotName }, options.component);`,
     `}`,
     `registerSettingsSlot(host, { slotName: "plugins.row.config" });`,
-    `const note = 'moved off \"settings.plugins.tab\" in rc.2';`,
+    `const note = 'moved off "settings.plugins.tab" in rc.2';`,
     CANONICAL_SHELL_RULES[0],
   ].join("\n");
   assert.throws(() => {
