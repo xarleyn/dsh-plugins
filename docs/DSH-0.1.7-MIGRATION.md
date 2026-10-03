@@ -1388,21 +1388,23 @@ What option 1 means in this repository now:
 Scope, and how to read it: the contract arrived with exactly one series package seated on
 the row (`dsh-model-safety-gate`, #653). The remaining packages of the epic (#646) migrate
 onto it under their own cards, and **which ones have done so is the epic's list, not this
-paragraph's** — the tree answers it in one grep (`plugins.row.config` at a registration),
-and a migrating card that appends itself here only makes the sentence above false. A shared
-paragraph that every migration edits is also a guaranteed conflict between twelve branches
-that touch nothing else in common.
+paragraph's** — the built bundles answer it too, since the contract reads the seat out of
+`lib/client.js` rather than out of a declaration, but a source grep goes quiet exactly where
+a card registers through a helper and passes no seat literal. A migrating card that appends
+itself here only makes the sentence above false. A shared paragraph that every migration
+edits is also a guaranteed conflict between branches that touch nothing else in common.
 
 **Fact that had to survive the decision:** `scripts/verify-package-hygiene.mjs` keyed the
 *entire* card-contract enforcement off a source file containing the literal
 `settings.plugin.item`; once plugins register `plugins.row.config`, that gate stops
 firing and the shell contract becomes unenforced unless the constant is retargeted.
-**[verified 03.10]** the list `CARD_SEAT_SLOTS` at `:58-62` and the reader
-`findSettingsCardSlot` at `:890` — line numbers moved when #684 renamed the constant, which
-is why this sentence names symbols instead of lines. **Retargeted by #510:** the gate fires
-on `settings.plugin.item`, `plugins.row.config`, and `settings.plugins.tab` combined with
-the shell, so enforcement held whichever way D1 went. #684 renamed the list to what it
-decides and added `plugins.bundle.config`, the other seat whose contract forbids our shell.
+**[verified 03.10]** by symbol, not by line — `CARD_SEAT_SLOTS` and its reader
+`findSettingsCardSlot`; #684 renamed the constant and shifted the lines under the old
+`:49,816-835` citations, which is exactly why this sentence stopped quoting numbers.
+**Retargeted by #510:** the gate then fired on `settings.plugin.item`,
+`plugins.row.config`, and `settings.plugins.tab` combined with the shell, so enforcement
+held whichever way D1 went. #684 renamed the list to what it decides and added the fourth
+name, `plugins.bundle.config`, the other seat whose contract forbids our shell.
 
 **D2 — preset authoring (`dsh-preset-persona-editor`) — newly open.** §8.6:
 the copy-to-writable-root capability does not exist at `rc.2`, and neither does
@@ -1464,9 +1466,9 @@ excluding the shared 2-line `compatibility.json` wave each row also carries.
 
 | Package | class | what changes | our files (line refs) | ~lines | covering tests |
 | --- | --- | --- | --- | --- | --- |
-| `@yadsh/dsh-plugin-kit` | **decision → do first** | `SETTINGS_PLUGIN_ITEM_SLOT` → `plugins.row.config` helper; `ConfigForm`-shaped binding (`ctx.configForms.get<T>(ns)`); `card-shell.tsx`/`chevron.tsx`/`plugin-card-css.ts` die only under D1 option 1 | `src/client/register-settings-card.tsx:56,93,116` **[verified]**, `src/client/settings-store.ts:3` (survives — structural over `subscribe`/`getSnapshot`), `src/client/card-shell.tsx:34-57`, `src/client/chevron.tsx:13`, `src/client/index.ts:17,19-21` — **note from #513:** under D1 option 2 a tab registration takes `id`/`order`/`label` and no `key`, which `SettingsCardOptions` does not carry, so `dsh-qa-surface` calls `ctx.slots.inject/register` directly and uses only `injectCardStyles` + `bindSettingsExternalStore` from this kit; the shell CSS and `CardShell` survive untouched | 60 | none of its own (4 files pass today); exercised by every plugin client test |
+| `@yadsh/dsh-plugin-kit` | **decision → do first** | `SETTINGS_PLUGIN_ITEM_SLOT` → `plugins.row.config` helper (**still owed — #694**: the default still names the deleted slot, so a card routed through the helper without `slotName` lands nowhere); `ConfigForm`-shaped binding (`ctx.configForms.get<T>(ns)`); `card-shell.tsx`/`chevron.tsx`/`plugin-card-css.ts` survive D1 option 1 — they are the shell of the `settings.section` / `settings.plugins.tab` seats, and only a row-seat registrant must not use them | `src/client/register-settings-card.tsx:56,93,116` **[verified]**, `src/client/settings-store.ts:3` (survives — structural over `subscribe`/`getSnapshot`), `src/client/card-shell.tsx:34-57`, `src/client/chevron.tsx:13`, `src/client/index.ts:17,19-21` — **note from #513:** under D1 option 2 a tab registration takes `id`/`order`/`label` and no `key`, which `SettingsCardOptions` does not carry, so `dsh-qa-surface` calls `ctx.slots.inject/register` directly and uses only `injectCardStyles` + `bindSettingsExternalStore` from this kit; the shell CSS and `CardShell` survive untouched | 60 | none of its own (4 files pass today); exercised by every plugin client test |
 | `@yadsh/dsh-plugin-scripts` | **decision** | canonical shell CSS + chevron assertions; `deepEqual` capability | `verify-plugin-card-contract.mjs:4-15,39,44-45` **[verified]**, `run-verify-package.mjs:45,169-174`, `run-verify-package.test.mjs:58-59` (version literal) | 25 | `run-verify-package.test.mjs` |
-| repo root `scripts/` | **decision** | `SETTINGS_CARD_SLOT` constant must follow D1 or the gate goes blind (§4.3a) | `verify-package-hygiene.mjs:49,816-835` **[verified]**; `package-hygiene.test.mjs:41-42`; `check-dependencies.test.mjs:67,69,131` | 15 | `package-hygiene.test.mjs` |
+| repo root `scripts/` | **decision** | The seat list the gate reads must follow D1 or the gate goes blind (§4.3a) | `verify-package-hygiene.mjs` — `CARD_SEAT_SLOTS` and its reader `findSettingsCardSlot` (symbol names, not line numbers: #684 renamed the constant and shifted them) **[verified 03.10]**; `package-hygiene.test.mjs`; `check-dependencies.test.mjs:67,69,131` | 15 | `package-hygiene.test.mjs` |
 | `@yadsh/dsh-test-kit` | code | host **one** `MemorySettings` conforming to `SettingsForms` (accessor `writable`, no stray `override`) so 3 plugins share it — no error of its own today | new/changed fake in `packages/test-kit/src/**`; current copies at `dsh-model-safety-gate/tests/integration/settings.test.ts:19-30`, `dsh-plugin-log-ui/tests/integration.test.ts:14-25`, `dsh-prompt-firewall/tests/settings.test.ts:14-25` **[verified]** | 30 | `dsh-test-kit` 3 files pass today |
 | `dsh-session-scope` | **mechanical**, debt blocked | **[verified] no mandatory edit** — clean at `rc.2`: build, typecheck, lint and 17 test files (98 pass / 1 skip) green, no `TS2742`, and `src`+`tests` have zero hits for any removed identifier (`settings.plugin.item`, `SettingsScope`, `installSection`, `standingKeyFor`, `agent/session-start`, …). It registers no settings card (so D1 does not gate it), reads no `block.type` (so §5's emitted `tool-addition`/`tool-removal` cannot reach it) and never touches `approvalPolicy`/`permissionPreset` (so D3 does not either) | The 10 `src` refs the row already listed are **8 calls + 2 declarations in our own structures** (`host-api.ts:24`, `scope-delegation.ts:22`) — the old prose "8 calls" counted the calls only; `tests/` adds **18** more (§13.2). All 10 line refs verified exact. Blocked as a unit by §5's "no replacement at `rc.2`" finding: `src/{host-api.ts:24,57,index.ts:141,497,scope-delegation.ts:22,49,57,84,scope-fs.ts:121,140}` | 0 mandatory; 2 if only the `seq` slice is taken | `tests/{host-api,scope-delegation,scope-fs,scope-remote,tool-guard-*}.test.ts` (17 pass today) |
 | `dsh-tool-offload` | **mechanical** | shell/sandbox untouched §8.5; one fixture source kind | `compatibility.json:4-5`; `tests/unit/parent-context.test.ts:29` `kind:"plugin"` | 5 | `tests/unit/parent-context.test.ts` (14 files pass today) |
@@ -1484,7 +1486,7 @@ than estimated — `grep -rl "settings.plugin.item" plugins/*/src` names
 `dsh-qa-integrations`, `dsh-qa-surface`, `dsh-sleev`, `dsh-ui-repair`,
 `dsh-web-fetch-authenticated`. That is §4.3's "~12 card components lose their
 outer shell", now as a list, and it is the set the shared gate
-`scripts/verify-package-hygiene.mjs:816-835` currently keys enforcement off.
+`scripts/verify-package-hygiene.mjs` (the seat list `CARD_SEAT_SLOTS`) keys enforcement off.
 **[re-measured after #520]** the same grep names **11**: `dsh-sleev` left the set
 by taking D1 option 2 — it registers on `settings.plugins.tab` and kept the
 shell, so the literal left its sources while the gate still guards it (the tab
@@ -1514,13 +1516,16 @@ whose version-plan arithmetic can silently drift.
    `TS2742` build failures and the 10 peer warnings, and those two are the
    hardest to diagnose later.
 2. New step 3.5, **before** any card rewrite: settle D1 with the `rc.2` chrome
-   facts (§4.3a) and, whichever way it goes, retarget
-   `scripts/verify-package-hygiene.mjs:49` — otherwise the shell contract quietly
-   stops being enforced the moment the slot string disappears from our sources.
-   The retarget half is **done** (#510); D1 is **settled** (option 2, §10), so the
-   12 card cards migrate onto `settings.plugins.tab` with the shell they have.
-   The retarget half is **done** (#510); the D1 settle is **done too** — option 2,
-   decided in #508 and first executed by #521.
+   facts (§4.3a) and, whichever way it goes, retarget the shared gate in
+   `scripts/verify-package-hygiene.mjs` (`CARD_SEAT_SLOTS`, with its reader
+   `findSettingsCardSlot`) — otherwise the shell contract quietly stops being
+   enforced the moment the slot string disappears from our sources. Both halves are
+   **done**, and they do not agree with each other in the older paragraphs below: the
+   retarget landed in #510 and was extended by #684, while **D1 was reopened and
+   redecided on 01.10 as option 1** (§10), so the migrating cards move onto
+   `plugins.row.config` and **drop** the shell — not onto `settings.plugins.tab` with
+   it. Where a paragraph still says option 2, it is reporting the 26.09 state, not a
+   step to take; §10 is the one that decides.
 3. §7 step 8's release half must **read the 39 existing plans first** and pair a
    new qa-surface plan with `0.14.1`/`0.15.0`, not `0.12.x` (§6).
 4. New step 6 stands, none of which `nx test` covers: (a) one `plugins.row.config`
@@ -1595,7 +1600,7 @@ value and the 39 pending version plans — were re-read directly
 (`git show dsh-v0.1.7-rc.{1,2}:packages/interaction/permission-presets/src/index.ts`,
 `ls .nx/version-plans/*.md | wc -l`) rather than taken on report, as were the
 `AGENTS.md`-relevant ones (`ui-plugin-manager` `.card` radius re-tokening,
-`focus.css`, `scripts/verify-package-hygiene.mjs:49`).
+`focus.css`, the seat list in `scripts/verify-package-hygiene.mjs`).
 
 ### 13.1 Repository gates that are red on `dsh-v0.1.7-rc` independently of the cutover
 
