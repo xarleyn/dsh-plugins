@@ -1,5 +1,5 @@
 {
-  "extends": "@yadsh/dsh-config/tsconfig/base",
+  "extends": "../config/tsconfig/base.json",
   "compilerOptions": {
     "outDir": "lib",
     "types": ["node"]
