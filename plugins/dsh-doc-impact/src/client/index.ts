@@ -9,8 +9,10 @@
 // (`dsh-doc-impact`), so the half of the key and the namespace the form reads are
 // one string, and a value an operator saved while the card sat on the old tab is
 // read back from here unchanged — only where the card renders moved. The page
-// titles the row itself and asks this one seat for two views, the heading line and
-// the form (`docs/DSH-0.1.7-MIGRATION.md` §4.2).
+// titles the row itself and entitles this one seat to two views, the row's one-liner
+// and the form; the one-liner is a fallback the page reaches only when the row
+// carries no description of its own, which for a published bundle means the
+// manifest's `description` field (`docs/DSH-0.1.7-MIGRATION.md` §4.2).
 //
 // Both halves of the seat are spelled as literals in the call below, not reached
 // through a constant: the card contract (`verify-plugin-card-contract.mjs`) reads

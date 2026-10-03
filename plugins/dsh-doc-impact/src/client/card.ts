@@ -33,7 +33,6 @@ import {
   TextField,
   type ChoiceProps,
 } from "./fields.js";
-import type { Translate } from "./dictionary.js";
 
 const CSS = [
   ".ddi_body{color:var(--dsw-alias-label-primary)}",
@@ -107,14 +106,21 @@ export type RowEntryProps = PropsRuntime<"plugins.row.config"> &
   ConfigCardProps;
 
 /**
- * The row's heading line, for the `view: 'summary'` the Plugins page asks this
- * seat for when the patch declares no description of its own. It answers with text
- * and nothing else — the page puts the entry inside its own `<p>` — and it reads no
- * settings state, so no second copy of the form mounts in a line of text.
+ * The one-liner of this bundle's row — kept equal to the `description` field of
+ * `package.json`, which is where the Host reads a row's sentence from
+ * (`docs/DSH-0.1.7-MIGRATION.md` §4.2, `presentation.ts:127-131`). That also says
+ * when this answer is reached: the page writes `description ?? renderSlot(…)` into
+ * its own `<p>`, so while the manifest carries the field the seat is never asked,
+ * and the sentence below is the fallback the contract owes a row that declares no
+ * description rather than the row's normal line. It is text and nothing else — the
+ * page puts it inside a paragraph — and it reads no settings state, so no second
+ * copy of the form mounts in a line of heading text.
+ * `tests/client-bundle.test.ts` and `tests/client-render.test.ts` compare this reply
+ * against the manifest field itself rather than against a copy of this string, so an
+ * edit to the manifest cannot be missed here.
  */
-export function CardSummary(props: { readonly t: Translate }): string {
-  return props.t("cardDescription");
-}
+const ROW_SUMMARY =
+  "Deterministic documentation impact engine for DeepSeek Harness";
 
 export function ConfigCard(props: ConfigCardProps) {
   const state = props.useDocImpactCard(function (snapshot) {
@@ -334,16 +340,14 @@ export function ConfigCard(props: ConfigCardProps) {
 
 /**
  * The entry `plugins.row.config` registers. The seat answers two views: the
- * configuration section as `{ view: 'page', form }`, and the row's heading line as
- * `{ view: 'summary' }` whenever the bundle's patch declares no description of its
- * own. Choosing the component here, rather than returning early inside
- * {@link ConfigCard}, is what keeps each view its own hook order — the card reads
- * the settings state, the one-liner reads none and mounts no shell, so a line of
- * heading text never gets a second live copy of the form inside it.
+ * configuration section as `{ view: 'page', form }`, and the row's one-liner as
+ * `{ view: 'summary' }` for a row that carries no display description of its own
+ * ({@link ROW_SUMMARY}). The two are separated here rather than by an early return
+ * inside {@link ConfigCard}, which is what keeps each view its own hook order: the
+ * card reads the settings state, the one-liner reads none and mounts nothing, so a
+ * line of heading text never gets a second live copy of the form inside it.
  */
 export function RowConfigEntry(props: RowEntryProps) {
-  if (props.view === "summary") {
-    return createElement(CardSummary, props);
-  }
+  if (props.view === "summary") return ROW_SUMMARY;
   return createElement(ConfigCard, props);
 }

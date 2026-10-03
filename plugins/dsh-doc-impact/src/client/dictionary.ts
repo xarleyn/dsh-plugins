@@ -12,7 +12,6 @@
 import type { TranslateNS } from "@deepseek-ai/dsh-client-ui-slots";
 
 const en = {
-  cardDescription: "Settings of the documentation impact plugin",
   unsaved: "Unsaved",
   readOnly: "This connection is read-only; settings cannot be changed.",
   unavailable:
@@ -73,7 +72,6 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
 export type Translate = TranslateNS<"dsh-doc-impact">;
 
 const zh: Record<LocaleKey, string> = {
-  cardDescription: "文档影响检查插件的运行设置",
   unsaved: "未保存",
   readOnly: "当前连接为只读，无法修改设置。",
   unavailable:

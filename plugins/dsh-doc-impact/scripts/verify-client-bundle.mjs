@@ -12,9 +12,9 @@
 //     namespace the form reads through `ctx.configForms` is a runtime pairing and
 //     belongs to the test; what is checked here are the values, never the names of
 //     the constants that spell them, so a rename cannot redden this gate on its own;
-//   - the entry must answer both views the page asks this seat for: the row's
-//     one-liner (`view: 'summary'`, taken because this patch declares no description
-//     of its own) and the configuration page (`view: 'page', form`);
+//   - the entry must answer both views the page asks this seat for: the configuration
+//     page (`view: 'page', form`) and the row's one-liner (`view: 'summary'`), which
+//     the page reaches when the row carries no display description of its own;
 //   - the seat it left behind must stay left behind: no `settings.plugins.tab`
 //     registration, which would put a second copy of this card under Settings;
 //   - the card is a body, not a card: the row page draws the frame, the heading and
@@ -82,7 +82,7 @@ expectPresent(
 );
 expectPresent(
   'view === "summary"',
-  "the page asks this seat for the row's one-liner when the patch declares no description, and this patch declares none",
+  "the contract entitles a row that carries no description to ask this seat for its one-liner, so an entry that stopped answering it would drop the row's sentence on such a host",
 );
 expectAbsent(
   '"settings.plugins.tab"',

@@ -7,6 +7,7 @@
 // what keeps either of them inside the repository's test-file budget. Duplicating the
 // stand to get there would have left two fakes of one Host contract to drift apart.
 import { createModuleLoaderStub } from "@yadsh/dsh-test-kit";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import vm from "node:vm";
 import { join } from "node:path";
@@ -16,6 +17,26 @@ import { join } from "node:path";
 const PACKAGE_ROOT = join(import.meta.dirname, "..", "..");
 const CLIENT_BUNDLE_PATH = join(PACKAGE_ROOT, "lib", "client.js");
 export const PATCH_PATH = join(PACKAGE_ROOT, "cordis.patch.yml");
+
+/**
+ * The row's one-liner as the Host reads it: the `description` field of the
+ * installed manifest, which fills the page's `<p>` before the seat is ever asked
+ * for its `summary` view. Read from the manifest rather than repeated as a literal,
+ * so the answer a bundle that declares no description gets is checked against the
+ * same sentence the other rows are checked against — and an edit to the manifest
+ * cannot be missed by a string copied into a test.
+ */
+export const MANIFEST_DESCRIPTION: string = (
+  JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as {
+    description: string;
+  }
+).description;
+
+/** One `locale.register` call, as the entry made it. */
+export interface LocaleRegistration {
+  namespace: string;
+  dictionaries: Record<string, Record<string, string>>;
+}
 
 export interface SlotEntry {
   options: {
@@ -169,17 +190,35 @@ export function makeCtx(form: unknown, options: { served?: boolean } = {}) {
   const slotInjections: string[] = [];
   const servedRequests: string[][] = [];
   const namespacesRead: string[] = [];
+  const localeRegistrations: LocaleRegistration[] = [];
+  /*
+   * Everything the entry claims from the Host services, in the order it claimed it.
+   * The dictionaries a card translates with have to be filed with the locale service
+   * before the seat that declares them is handed over — the renderer builds `t` off
+   * the namespace at assembly time — so a registration that lost its `locale.register`
+   * call, or moved behind the seat, would show the operator raw keys while every
+   * needle in the bundle still matched. Order is the only shape that failure has.
+   */
+  const calls: string[] = [];
   const served = options.served !== false;
   const ctx = {
     registered,
     slotInjections,
     servedRequests,
     namespacesRead,
+    localeRegistrations,
+    calls,
     // The client runtime exposes declared inject services as context
     // properties, so the stub mirrors that contract (the former ctx.get
     // indirection was a 0.1.1 leftover that left the card unregistered).
     locale: {
-      register: () => undefined,
+      register(
+        namespace: string,
+        dictionaries: Record<string, Record<string, string>>,
+      ) {
+        calls.push(`locale:${namespace}`);
+        localeRegistrations.push({ namespace, dictionaries });
+      },
     },
     // The shape of the real Host service: `get` always answers a controller, even
     // for a name the profile does not carry, and `whileServed` follows the
@@ -216,12 +255,14 @@ export function makeCtx(form: unknown, options: { served?: boolean } = {}) {
       // register disposer (the shared host contract), not a generator.
       inject(slot: string, factory: () => () => unknown) {
         slotInjections.push(slot);
+        calls.push(`inject:${slot}`);
         const remove = factory();
         return () => {
           remove();
         };
       },
       register(options: SlotEntry["options"], component: unknown) {
+        calls.push(`register:${options.name}`);
         const entry = { options, component };
         registered.push(entry);
         return () => {
