@@ -6,6 +6,53 @@ import { readReleaseRows } from "./verify-package-publication.mjs";
 
 const CHANGELOG_FILE = "CHANGELOG.md";
 
+/**
+ * The largest body the GitHub Releases API accepts. A wave whose entries exceed
+ * it fails the release step with `422 body is too long` after npm, the tag and
+ * the push have already succeeded, so the limit is enforced here instead.
+ */
+const RELEASE_BODY_LIMIT = 125_000;
+
+/**
+ * Pack whole package sections into the limit, dropping from the end rather than
+ * cutting a paragraph, and name what was left out. Only the single section that
+ * does not fit on its own is trimmed, and then at a line boundary.
+ */
+export function capWaveNotes(sections, limit = RELEASE_BODY_LIMIT) {
+  const heading = (section) => section.split("\n", 1)[0].replace(/^##\s+/u, "");
+  const footerFor = (omitted) =>
+    omitted.length === 0
+      ? ""
+      : `\n\n_${omitted.length} package section(s) left out because GitHub caps a ` +
+        `release body at ${limit} characters: ${omitted.map((name) => `\`${name}\``).join(", ")}. ` +
+        `Each one ships in its package's \`${CHANGELOG_FILE}\` and in the stand's version history._\n`;
+
+  let kept = sections.length;
+  let text = "";
+  // Never drop below one section: a wave whose first entry alone exceeds the
+  // limit is trimmed inside that entry rather than left with an empty body.
+  while (kept >= 1) {
+    const included = sections.slice(0, kept);
+    const footer = footerFor(sections.slice(kept).map(heading));
+    text = `${included.join("\n\n")}\n${footer}`;
+    if (text.length <= limit || kept === 1) break;
+    kept -= 1;
+  }
+
+  if (text.length > limit) {
+    // The marker itself counts against the limit, or the trimmed body would
+    // overshoot it by exactly the sentence that explains the overshoot.
+    const marker = `\n\n_(trimmed: GitHub caps a release body at ${limit} characters.)_\n`;
+    const lines = text.split("\n");
+    while (lines.length > 1 && `${lines.join("\n")}${marker}`.length > limit) {
+      lines.pop();
+    }
+    text = `${lines.join("\n")}${marker}`;
+  }
+
+  return text;
+}
+
 function escapeRegExp(value) {
   return value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
@@ -64,7 +111,7 @@ export function buildWaveNotes(rows, repoRoot) {
     );
   }
 
-  return `${sections.join("\n\n")}\n`;
+  return capWaveNotes(sections);
 }
 
 function main(argv = process.argv.slice(2)) {
