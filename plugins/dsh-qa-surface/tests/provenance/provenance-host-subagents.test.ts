@@ -121,7 +121,7 @@ describe("Host provenance lifecycle", () => {
   });
 
   /**
-   * DEF-1 on the live stand: the chat's own agent called `qa_report_sources`
+   * Seen on the live stand: the chat's own agent called `qa_report_sources`
    * with a well-formed file and web source and was answered
    * `Recorded 0 source(s).`, so the «Источники» panel never opened. Whether a
    * report may be recorded is not what `validateReportedSources` governs — the
