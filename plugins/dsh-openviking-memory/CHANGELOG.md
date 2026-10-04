@@ -1,3 +1,247 @@
+## 0.5.0 (2026-10-04)
+
+### 🚀 Features
+
+- Per-account memory becomes the operator's switch, and the account boundary is stated where it can be read. ([#172](https://github.com/xarleyn/dsh-plugins/issues/172))
+
+  The card gains a **Multi-user memory** section carrying `qaUserScoping` — the
+  option the schema has had since 0.4.0 with nothing in the settings surface able
+  to set it. Like every other knob, a committed change is re-resolved and reaches
+  sessions that are already open.
+
+  A session that was left alone for want of an account now answers a second time:
+  `qa_memory_attributed`, with the delay it took. A chat is claimed when its
+  browser half opens it, which trails the session start, so the lone
+  `qa_memory_unattributed` line read as lost memory when it was usually only
+  early; the pair separates the two, and the map behind it is now released with
+  the session.
+
+  SPEC §2.2 and the README name the one path that is **not** per account — the
+  bridged `mcp__openviking__*` tools run in one child mounted for the process, so a
+  model-initiated `remember`, `search` or `read` works on the deployment space and
+  is shared by every account — pin that with a request-level test, and write out
+  the migration path for memory filed under the deployment identity before
+  scoping was turned on. §6 gains the scenarios: the master switch pulled live on
+  an open session, a chat claimed late, a model-initiated write on a scoped
+  deployment, and the card on the stand's loopback face.
+
+- The OpenViking Memory card is opened from the Plugins page now, on the row of the ([#652](https://github.com/xarleyn/dsh-plugins/issues/652), [#646](https://github.com/xarleyn/dsh-plugins/issues/646))
+  plugin it configures.
+
+  The card sat as a tab of *Settings → Plugins* (`settings.plugins.tab`), which is
+  where a plugin puts a page the Host does not own. This card edits exactly one
+  thing — this bundle's own Config — and `0.1.7` grew a surface for that: the Plugins
+  page declares `plugins.row.config`, a keyed seat whose entry opens as the row's
+  configuration section, headed by the page's own chrome. Registering there is the
+  difference between a settings page a user has to know the name of and a configure
+  control on the row they were already looking at.
+
+  The key is `@yadsh/dsh-openviking-memory#dsh-openviking-memory` — the package name
+  joined to the row id `cordis.patch.yml` declares. That join is what makes the move
+  cheap and what makes it safe: the row id is the same string the Host has resolved
+  this plugin's volatile Config under since `#516`, so the namespace the page derives
+  its form from and the namespace this plugin reads are one namespace. **Nothing about
+  where values are stored changed**, and an endpoint, a peer rule or a recall budget
+  saved by an older build is read back by this one; the tab's own seat id
+  `openviking-memory` was the only name left behind, and it named nothing but the seat.
+
+  The card keeps its six sections and its write-on-change behavior, and gives up the
+  frame around them. Its row is seated inside the page's own card: the page paints the
+  surface, the heading, the row id, the description line and the expand control, and only
+  then mounts this body. Until now the bundle drew a second card inside that one — a 12 px
+  rounded rectangle with our chevron, our open state and a badge repeating the master
+  switch, all of it inside the page's 20 px surface — so this plugin's row read as a
+  nested panel next to first-party rows. The body arrives directly now, and with the
+  header gone the description sentence is printed once, by the page, from this entry's
+  `summary` answer. The focus ring on each control the bundle draws comes from the Host's
+  `--dsw-focus-ring-width` / `--dsw-focus-ring-color` tokens, each with its fallback,
+  because `focus.css` of the Host suppresses a hard-coded outline under pointer modality
+  at a higher specificity than our rule had. A row whose namespace is not served to the
+  client says so in a sentence rather than leaving the opened section blank: a card that
+  owns its shell may stay invisible, one inside the page's frame may not. The owner
+  settled this on 2026-10-01 in #646, it landed as the contract in #684, and the
+  card-contract gate reads the seat off the built bundle and holds a card seated on the
+  row to that half.
+
+  Two details follow from the new seat rather than from a redesign. The seat spreads its
+  own owner prop `form` after the injected face: a `ConfigPageForm` of
+  `{ state, mutate }`, this same namespace's form seen through two members (`state` is
+  one snapshot, refreshed when the page owner renders, and there is no subscription to
+  take). So the full `ConfigForm` this entry resolves enters the card as `settingsForm`,
+  where that prop cannot overwrite it, and it is what the card follows for the values it
+  shows — while the writes themselves go through the page's `mutate` wherever the seat
+  supplies one, and through the resolved form on a seat that supplies none. `set` and
+  `unset` are one-op `mutate`s, so a field change keeps the revision fence, the ordering
+  and the recovery read it had. And the seat hands the same entry two views: `page` is
+  the body, `summary` is the row's one-liner, which the entry answers with the sentence
+  rather than with the card, because the fallback lands inside a line of the page's own
+  text.
+
+  The account-scoped page is untouched: it is a feature-owned QA page reached by a
+  browser over the network, so it keeps mounting through `qaUserSettingsSections` and
+  keeps the Remote namespace it reads. Only the operator's card changed seats.
+
+  The manifest followed the surface: the client half type-imports the Plugins page's
+  slot contract instead of the settings-plugins one, so
+  `@deepseek-ai/dsh-client-ui-plugin-manager` replaces
+  `@deepseek-ai/dsh-client-ui-settings-plugins` as peer, dev and `dsh.client.inject`
+  entry — which is why this is `minor` rather than `patch`: a browser running a host
+  without the Plugins page loses the card, and `compatibility.json` says so, its
+  required client features naming `plugins.row.config` where it named
+  `settings.plugins.tab`. `scripts/verify-package.mjs` asserts the new pair (the slot
+  literal and the `@yadsh/dsh-openviking-memory#` key prefix in the shipped bundle, the
+  new package in the inject list), asserts the `summary` answer ships in the same
+  bundle, refuses the old slot name, and refuses the shell: a built bundle that still
+  carries a `dsh-plugin-card` class or the shell stylesheet fails the gate. The client
+  tests assert the keyed registration, the namespace the form is resolved under, the two
+  views of the entry, which `mutate` a field change reaches the Host through, and that
+  every control this body draws takes the Host's ring from both tokens with their
+  fallbacks.
+
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- Automatic recall is unchanged; the module behind it is now eight, each with one ([#426](https://github.com/xarleyn/dsh-plugins/issues/426))
+  reason to change.
+
+  `src/openviking/recall-core.ts` had grown past a thousand lines while carrying
+  three jobs that move separately — what is asked of the memory backend, which of
+  the retrieved items a turn is shown, and how those are rendered into the prompt.
+  A change to the server's request contract, to the ranking rule, and to the shape
+  of the injected block all landed in the same file, and none of them could be
+  reviewed as one subject.
+
+  The parts now live in `src/openviking/recall/`: `request-body.ts` (the bodies of
+  the two search faces, the quota arithmetic behind them, and the per-stage HTTP
+  deadlines), `source-search.ts` (the raw `find` sweep and the user space its URIs
+  resolve against), `server-assembled.ts` (the context face, the deprecated
+  `/recall` preset behind it, and the rejections that mean a server predates a
+  field), `rank.ts` (the query profile, the boosts, the dedup), `format.ts` (the
+  token estimate, the per-item content, the envelope), `state-files.ts` (what one
+  turn leaves on disk for the next), `pipeline.ts` (the order those paths are
+  tried, including the second pass for a workspace's former peer), and `types.ts`
+  for the vocabulary they share. `docs/upstream-sync.md` points a sync at the
+  directory, and at the one file that carries this fork's type widenings.
+
+  Nothing a caller can see moves. `recall-core.ts` stays as the re-export, so the
+  import path, the twelve public names, and their types are what they were; the
+  lines were moved as written, with `export` and `import` as the only additions;
+  and the module's load-time effects — no I/O, one mutable cache — are unchanged.
+
+- The user space a profile is read from is now resolved per OpenViking identity ([#352](https://github.com/xarleyn/dsh-plugins/issues/352))
+  instead of once per process, so the second account of a shared deployment reads
+  its own `viking://user/<space>` rather than whatever the first account resolved.
+  Re-pointing the endpoint asks the new server again instead of reusing the old
+  answer.
+
+  A queued write now carries the identity it was queued as, so the offline queue
+  replays after the server recovers. A deployment that allows memory without
+  naming a per-account user used to refuse every replay, and its backlog aged out
+  of the queue unsend; an entry whose account space is genuinely unknown still
+  waits instead of guessing.
+
+- OpenViking memory links can no longer escape into local filesystem tools. ([cc49668c](https://github.com/xarleyn/dsh-plugins/commit/cc49668c))
+
+  The `viking://` execution guard is now registered globally, so calls routed
+  through an agent scope are denied before `read`, `glob`, `grep`, shell, or edit
+  tools can reinterpret a memory URI as a workspace path. The denial points the
+  agent to the matching `mcp__openviking__*` tool instead.
+
+- Both OpenViking Memory settings surfaces carry stable `data-testid` selectors. ([#468](https://github.com/xarleyn/dsh-plugins/issues/468))
+
+  The configuration card names its seven sections (`openviking-card-recall`,
+  `openviking-card-capture`, …) and every control inside them by the section that
+  owns it and the settings key it writes
+  (`openviking-card-recall-token-budget`), so a browser test reaches a field
+  without reading the hint under its label. The override marker derives its id
+  from the control it marks
+  (`openviking-card-connection-endpoint-override`), the badge and
+  the loading and write-error lines are named for the state they project, and the
+  reset action is one hook rather than a hunt for a button whose caption counts
+  overrides. The account-scoped memory page is `openviking-memory-*`: the page,
+  its totals and the three notices that qualify them, the profile, group and
+  session rows, the line that says which space is being shown, and the refresh
+  control. A repeated node holds the id of its template, so no index is baked
+  into a name.
+
+  The two client suites now ask for those ids where they used to search the card
+  for a sentence or a BEM class, and each keeps the assertion it was really
+  making: the section heading is still checked as the heading it announces, the
+  reset and refresh controls as buttons named by their caption, and every field's
+  label as the accessible name that still points at the node the id found. The
+  card shell itself is the shared `AGENTS.md` contract and was left alone, so its
+  class queries stay where they are.
+
+  Nothing moved and no existing class changed: the ids are an addition to the same
+  elements, and the markup of the three files is identical to the previous one
+  once the added attributes are removed.
+
+- The memory plugin configures itself live on harness 0.1.7-rc.2. ([#516](https://github.com/xarleyn/dsh-plugins/issues/516), [#511](https://github.com/xarleyn/dsh-plugins/issues/511))
+
+  The 0.1.7 settings rewrite folded a plugin's profile configuration and its
+  browser-editable namespace into one thing: a field is an editable form field
+  exactly when its schema node is marked volatile, and the settings namespace is
+  the profile entry id. Every knob of this plugin's `static Config` carries that
+  mark, so the Host now serves the namespace on its own and the plugin's
+  registration call — the settings section it installed through a host service
+  that no longer exists — is gone. The consequence for an operator is the same
+  promise, kept a different way: a switch edited in the card is re-read at the
+  start of the next thing a session asks, reaches the sessions that are already
+  open, and lands in the running runtime. Clearing a field still falls back to the
+  composition entry rather than to a built-in default.
+
+  The card moved with the surface it sits on. `settings.plugin.item` was deleted
+  with no replacement slot of the same shape, so the card registers as a tab of the
+  Plugins settings section instead — which is also where the plugin's own shell
+  belongs, since that section hands a registrant an empty column: the card keeps
+  the `dsh-plugin-card` shell and the `<li>` root now sits in a list the plugin
+  owns. Nothing about the controls, the override markers or the write path changed.
+
+  Session start moved too. The `agent/session-start` event no longer exists; the
+  startup profile is delivered from `agent/created`, whose listeners the host
+  awaits and where a throw rolls agent creation back. The plugin now reports every
+  failure of that read in its log instead of raising it, so an unreachable
+  OpenViking server cannot stop a chat from opening — and because the host awaits
+  the listener, the profile is in the context before the first step rather than
+  racing it.
+
+  Injected context finally names its producer the way the host asks: the catch-all
+  `plugin` source kind was removed and the source map is open for each producer to
+  extend, so the plugin's profile and recall blocks are attributed to
+  `openviking-memory`. Sessions whose history was written before this release carry
+  the old attribution, and the "this chat already has its profile" check still
+  recognises it — a resumed chat does not get a second profile. Capture reads only
+  what the source map says is conversation, so a `developer/message` carrying the
+  `tool-addition` / `tool-removal` blocks the host started emitting at `rc.2`
+  neither reaches memory nor pollutes a recall query; those three rules are pinned
+  by tests.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.14.0
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+- Updated @yadsh/dsh-plugin-kit to 0.5.0
+
+### ❤️ Thank You
+
+- qoder-bot
+- xarleyn @xarleyn
+
 ## 0.4.0 (2026-09-23)
 
 ### 🚀 Features

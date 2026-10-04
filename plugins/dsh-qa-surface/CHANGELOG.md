@@ -1,3 +1,1281 @@
+## 0.14.0 (2026-10-04)
+
+### 🚀 Features
+
+- A finished turn says so — to the person waiting for it, and to nobody else. ([#306](https://github.com/xarleyn/dsh-plugins/issues/306))
+
+  The chat list carries the completion into the page: a line naming the chat whose
+  turn has just ended, opened by clicking it. Only the chats this browser keeps in
+  its own history can raise one, so another account's activity stays another
+  account's business. Waiting means having seen the whole of a turn: a page that
+  opened on a run already under way stays silent about that run, and so does every
+  turn a dropped link interrupts in a gap the screen reflected — even one it had
+  watched begin, because while the link was down the chat may have run a different
+  turn and the rows that come back do not say which one this is. An idle row that
+  has not moved since the gap arms nothing either, and what arms it is a turn of
+  that chat ending — so the first turn to finish after the link returns is silent
+  whichever turn it was, even one begun and finished on the recovered link, and a
+  turn that finished while the link was down is lost on top of it. Notices come
+  back with the turn after that. On a stand whose link drops inside every long
+  turn, and whose screen reflects each of those drops, every turn pays for its own
+  drop and none is announced. A link lost and recovered between two screen updates
+  is the one gap the page is never shown: it hands the page nothing to go silent
+  about, so a turn that began inside it is credited to the reader as though its
+  start had been seen. A tab that is hidden or behind another
+  window can hand the same line to the operating system; the page asks for that
+  once, remembers the answer, and keeps the in-page line whenever the answer is no.
+  A stand can close the channels from its configuration:
+  `notifications.enabled` stops both, `notifications.allowOs` leaves the one
+  inside the page.
+
+- Сообщение, заданное во время ответа, теперь ждёт своей очереди, а не теряется. ([#367](https://github.com/xarleyn/dsh-plugins/issues/367))
+
+  Пока агент отвечал, стенд не давал отправить вопрос: поле ввода оставалось
+  редактируемым, Enter и кнопка ничего не делали. На самом деле Host умеет
+  принимать вопрос следующим ходом — именно в этом смысле он и отправляется в
+  `queue`, — но собственный композитор стенда этим режимом не пользовался, а
+  затем и не показывал то, что там уже лежит. Теперь во время ответа можно
+  написать следующий вопрос: он встаёт в очередь над полем ввода, и строку этой
+  очереди можно отредактировать, отправить сразу (вставив в текущий ответ) или
+  убрать.
+
+  Очередь принадлежит Host, поэтому стенд ничего не хранит сам: строки читаются
+  из очереди сессии, а три операции — `edit`, `steer`, `remove` — идут в
+  `session/updateQueue`. Сообщение, которое ещё летит через транспорт, показывает
+  эхо, которое mintит сам Host, и гаснет в тот момент, когда его очередь-occurrence
+  приходит; из-за этого один и тот же вопрос не может одновременно читаться как
+  «летит» и как готовая строка очереди. В переписке его тоже не видно: в
+  транскрипте он появится, только когда агент его возьмёт.
+
+  Строка без правки не остаётся: сообщение с вложениями Host не отдаёт как чистый
+  текст, поэтому его можно убрать или отправить сразу, но нельзя переписать —
+  кнопка правки говорит об этом прямо. Отклонённую операции Host'ом очередь не
+  молча не перерисовывает: стенд пишет, что сообщение, возможно, уже отправлено,
+  потому что ровно это и происходит, когда очередь забирает ход, закончившийся
+  между кадрами.
+
+- Where a finished turn is allowed to reach a reader is now the reader's own ([#322](https://github.com/xarleyn/dsh-plugins/issues/322), [#306](https://github.com/xarleyn/dsh-plugins/issues/306))
+  choice, and it travels with their account. The `Настройки` dialog gained an
+  «Уведомления» section with the two channels the stand has: the line inside the
+  page, and the notice a hidden or backgrounded tab can hand to the operating
+  system. The choice is stored on the account next to the profile and the starter
+  buttons, so signing in on another laptop brings it along; on a stand without
+  accounts the desktop answer stays in the browser that gave it, which is the only
+  record there. What the deployment closed with `notifications.enabled` or
+  `notifications.allowOs` stays closed, and the section names which of the two
+  shut a channel instead of offering a switch that cannot take effect. The browser
+  is asked for its permission from a click — the notice's button or the new
+  section's — never on load and never once per turn.
+
+- A stand can now be told how many questions it is allowed to answer at the same ([#324](https://github.com/xarleyn/dsh-plugins/issues/324))
+  time, and a visitor whose question does not fit is told so instead of being
+  answered slowly — or, on a single graphics card, three at once, not at all.
+
+  `session.maxActiveRequests` (0 through 50, default 0 = no ceiling) is the
+  setting; the card shows it in «Сессия». The count it bounds is read on the Host
+  from the harness's own `running` state of the top-level agents, because that is
+  the only place the whole load is visible: a browser sees its own chats, never
+  another account's, and a question that arrived through the HTTP integration API
+  is invisible to every chat view. Delegated experts ride the turn that delegated
+  them, so they do not cost a second place.
+
+  Before a send the browser asks `qaSurface/queueStatus`, and a full stand holds
+  the question back where nothing has been spent yet: the draft chat is never
+  materialized, nothing enters the transcript, and the composer keeps its text —
+  the visitor reads «Подождите в очереди» with the number of requests the stand
+  already has in work, closes it, and asks again on the same draft. Refusing after
+  `prompt` would have been the other option, and it is worse on every axis that
+  matters here: it creates the chat the issue says must not exist and leaves an
+  unanswered question in the durable log.
+
+  What the ceiling bounds is a question that would wake a second driver. A message
+  typed while its own chat is answering joins that chat's queue and is admitted
+  without the read — the driver is busy either way, and a stand capped at one would
+  otherwise stop a visitor from continuing the conversation it is holding. A human
+  command rides the Host's command runtime and is never held back: the palette is
+  how one inspects a saturated stand, and this plugin cannot tell which commands
+  wake the model. Both enter the same Host count once they do, so the next question
+  waits behind them as behind any other turn. That count is of the model's load
+  rather than of this plugin's traffic: any top-level turn the harness is answering
+  occupies a place, a native assistant's as much as a QA question's, which is the
+  point of a ceiling set for one weak card.
+
+  Two properties are stated rather than fixed, and both come from one fact — the
+  prompt rides the native session RPC, which this plugin does not own. The ceiling
+  is a ceiling, not a lock: two questions pressed in the same instant can overshoot
+  by one, and the next read sees both. And a load the Host cannot report sends the
+  question anyway, because a deployment that does not know how busy it is has not
+  earned the right to refuse a visitor.
+
+  No behavior changes where the setting stays at its default: with no ceiling
+  configured the browser asks nothing, so an ordinary deployment keeps both its
+  send path and its wire traffic exactly as they were.
+
+- Expert memory can be maintained, and junk stops being recorded. ([1c783708](https://github.com/xarleyn/dsh-plugins/commit/1c783708))
+
+  The QA admin console gained a "Expert memory" section: the records an expert
+  wrote to itself, listed per domain, searchable, correctable and deletable one at
+  a time or as a selection. A reviewer reads it; only an administrator writes it,
+  and every write is audited with the line as it was before.
+
+  On the write path, the `domain_memory` tool now refuses a note that records
+  nothing — an acknowledgement, a placeholder, an echoed command, or "nothing was
+  found" — and answers with the reason, so a wrong line stops being injected into
+  every later answer of that domain by the same expert that wrote it. Operators
+  are not gated: correcting or emptying a record from the console stays allowed.
+
+- The settings card now opens from the plugin's own row in the Plugins panel, not from a tab of the Settings "Built-in plugins" section, and it paints only its body there. ([#659](https://github.com/xarleyn/dsh-plugins/issues/659))
+
+  The Plugins page draws the heading of a row's page itself — the crumb, the artwork and the title — and seats the bundle's configuration under it, so the card no longer competes for a place in the Settings dialog's tab strip. The card registers into the page's `plugins.row.config` slot under `@yadsh/dsh-qa-surface#dsh-qa-surface`, the package-and-row key the page builds from this bundle's patch, so the row itself gains the configure control that opens the page.
+
+  The page seats one entry in two views, and this entry answers them differently. As the page it renders the card; where the page wants the row's one-liner — the seat it falls back to for a row carrying no description — it returns a sentence, because a card mounted inside a line of text draws a page within a line and starts a second poll of the Remote. That sentence is the manifest's own `description`, which is where the page reads the row's paragraph from: one row that reads two ways is a defect, so the two are kept equal and a test and the package gate read the manifest rather than repeating the words. An entry the page renders without naming a view is that page rather than an empty column. The seat also hands its registrant a `form` of its own — the page's `ConfigPageForm`, which is `{ state, mutate }` alone, so it can neither be subscribed to nor written field by field — and the renderer spreads it after the injected face. The card therefore keeps resolving the full `ConfigForm` of this namespace through the settings domain, and that form crosses the boundary as `settingsForm`, where the owner prop cannot shadow it. The seat also hands its registrant a `form` of its own — the page's `ConfigPageForm`, which is `{ state, mutate }` alone, so it can neither be subscribed to nor written field by field — and the renderer spreads it after the injected face. The card therefore keeps resolving the full `ConfigForm` of this namespace through the settings domain, and that form crosses the boundary as `settingsForm`, where the owner prop cannot shadow it.
+
+  The row's page draws the card surface, the heading and the expand control, so the bundle stopped drawing them: the plugin's own shell — the 12 px frame, the header with the badge, and the chevron of the card contract — is gone rather than nested inside the Host's 20 px one, and the configuration sections mount directly; the 16 px the body used to keep under its own header went with that header, because the page's own configuration column already spaces what it holds (`detailSections` carries a 32 px margin and gap in the installed build, and the Host's own section beside ours sits on that rhythm alone). The route and the on/off state the header badge repeated are already in the status section, so nothing is lost with it. Focus rings now come from the Host's `--dsw-focus-ring-width` / `--dsw-focus-ring-color` tokens, with each rule's own colour as the fallback, instead of a hard-coded outline the Host's `focus.css` outranks: this reaches every control the bundle paints, the row's body and the assistant's own pages alike. The disclosure arrows of the message queue, the administrator's tool list and the audit JSON tree left the card shell's chevron for one arrow drawn on the 16 by 16 grid, each inside the box its own stylesheet already gave it; the audit tree's `viewBox` moved together with its path, since a 16-grid path inside a 14 box renders larger than the arrows beside it. A namespace the Host does not serve answers with the reason in one sentence rather than with an empty column — the row's heading and its configure control are already drawn, so silence would carry no explanation — and the poll that would feed a status section nobody mounts stays off while the namespace is unreachable.
+
+  Nothing about the stored settings moves: the configuration namespace stays `dsh-qa-surface`, and the card keeps reading and writing through the Host form for exactly that namespace, so a value saved before this release is still there after it.
+
+  `@yadsh/dsh-audit-ui` changes for one rule of its own — the tree disclosure arrow and the focus ring of its tab strip, both of which travel inside the `@yadsh/dsh-qa-surface` bundle and are held to the row card's contract there.
+
+- The `/qa` surface can change its own theme. ([#303](https://github.com/xarleyn/dsh-plugins/issues/303))
+
+  Light, dark and follow-the-system were the application's choice only: the Host
+  publishes its Appearance row inside the settings, and the QA overlay is exactly
+  the thing that suppresses the host shell — so on `/qa` there was nothing to
+  click, and a stand opened in a palette nobody had picked. The surface now
+  carries the three preferences itself, as an icon control in the header next to
+  the role it belongs to.
+
+  The choice is the browser's, not the deployment's. It is written to this
+  stand's own localStorage namespace and never to the Host user-settings document,
+  because a stand is shared by everyone who opens it and one visitor's eyes are
+  not a configuration. A browser that never touched the control stores nothing and
+  writes nothing at all — the stand keeps the palette the application booted it
+  in, and the control reports the palette on screen instead of claiming a
+  preference nobody picked — so the default deployment looks exactly as it did.
+
+  What the control writes is the Host's own palette contract: `color-scheme` on
+  the root and the dark-palette attribute on the body, the two fields the Host
+  theme presenter owns. That is why the whole surface follows — the plugin cards,
+  the transcript and the dialogs are built from `--dsw-alias-*` tokens, and those
+  tokens are declared under precisely those two selectors. The Host publishes its
+  preference nowhere in the DOM, only the resolved palette, so the surface keeps
+  the font-size axis and a theme's own token overrides to the Host. `system`
+  resolves through the OS and keeps listening, so a laptop that goes dark at dusk
+  takes the chat with it.
+
+  While the surface is on screen the choice owns the document; when it stops being
+  what the visitor sees — the route changing inside the application, or the
+  overlay unmounting — the palette the document wore is put back. That is the
+  point of handing it over: off its own route the control is not on screen to
+  undo itself, and a harness left in a QA stand's palette would stay in it for the
+  rest of the visit.
+
+  While the surface owns the row, the header no longer overflows on a phone: the
+  title, the role, the palette and the action cluster now wrap instead of pushing
+  «Настройки» past the clipped edge.
+
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- A revoked account token stops working on the call that presents it. ([#336](https://github.com/xarleyn/dsh-plugins/issues/336))
+
+  The Host keeps the accounts in memory and re-reads them when another process
+  wrote the database — the `qa-accounts` CLI, or a second Host process, since a
+  password change, a disable or a revocation is an operator act and usually comes
+  from there. Which call actually re-read was a property of the *caller*:
+  `whoami`, `currentUser` and the session-ownership checks re-read, while
+  `requireUser` did not. The personal-skill remotes gate on `requireUser` alone, so
+  a token revoked a moment ago kept authorizing those calls until some other method
+  happened to refresh the model — and a browser that only ever opens its own skills
+  never triggers one.
+
+  The refresh itself was also not atomic. `loadAll` took its `PRAGMA data_version`
+  baseline *after* the SELECTs, so a commit landing mid-read was invisible to it:
+  the account rows came from before the commit and the baseline from after, which
+  labeled a model of two database states as current. A revocation that arrived in
+  that window survived not just the next call but until some later write moved the
+  version again.
+
+  Every credential check now reads the authorization state through one entry point
+  that refreshes first, so the refusal lands on the call carrying the dead token.
+  `loadAll` takes the version around its reads and repeats them when the version
+  moved, which makes the returned model and the baseline describing it one instant;
+  a database committed into faster than this store can read hands back a model whose
+  baseline deliberately does not match, so the next access reloads instead of
+  trusting it.
+
+- An answer that carries LaTeX or a table no longer shows its markup while it is ([#323](https://github.com/xarleyn/dsh-plugins/issues/323), [#302](https://github.com/xarleyn/dsh-plugins/issues/302))
+  being written.
+
+  A research question costs minutes on this stand, and the answer arrives as a
+  stream: the browser renders every frame of the text grown so far. The block
+  parser read those frames the way it reads a finished answer, where a `$$` fence
+  with no closer is a paragraph — so while the model was still inside a formula
+  the reader saw its dollars and a half-typed `\frac{`, a table showed its own
+  pipes until the delimiter row was typed whole, and the row being typed rendered
+  as a truncated one. A Mermaid diagram made it worse: an open fence was handed to
+  `mermaid.render` on every frame, which answered with a syntax error and then
+  with the error panel next to the code.
+
+  The parser stays the single authority on where a block ends. It learns exactly
+  one fact from the caller — the text is a live frame — and reports the block the
+  stream stopped inside as `pending`, so no component re-detects an unfinished
+  tail. An open block is then held rather than guessed at: the TeX shows as a
+  monospace frame carrying what has been written, without its delimiters, a
+  half-written delimiter row opens the table header, a row still being typed stays
+  out of the cells, and an open Mermaid fence stays source.
+
+  A settled answer is untouched, which is the invariant the tests hold: every
+  block the stream leaves open reads exactly as it did before once the text has
+  settled, because without the flag nothing about the grammar changes.
+
+- A signed-in chat stops falling back to the sign-in card on its own. ([#308](https://github.com/xarleyn/dsh-plugins/issues/308))
+
+  The browser half of the surface rebuilds its account controller whenever the
+  remote wiring re-injects, and the boot `whoami` of the instance being replaced is
+  still in flight at that moment. Its answer used to arrive in a controller that
+  nothing had ever unloaded: a definite "not authenticated" cleared the stored
+  token under the shared `<storageKey>:v1:<route>:account-token` key — the very key
+  the fresh instance had just written its login to. The browser then showed the
+  sign-in card over a session it had actually kept, and asked for the password
+  again. No account data was lost.
+
+  The controllers teardown effect now unloads the account controller alongside the
+  config and route controllers, as every other controller of the module already
+  was, so the late answer stops at the `disposed` guard instead of reaching
+  storage. The race is pinned at the level it lives on: the client module is
+  loaded, unloaded and loaded again under a Cordis context, and the assertion is
+  about what the second instance stored. That test fails on the previous sources,
+  where the token comes back erased.
+
+- An answer belongs to the question that asked it — in the API and in the composer. ([#339](https://github.com/xarleyn/dsh-plugins/issues/339))
+
+  Two races, one on each side of a conversation.
+
+  `/qa/api/ask` admits a question and then reads the reply back out of the durable
+  log, and the read chose its turn by "the newest human prompt in this chat". That
+  is a global counter, not an identity: while two callers hold the same chat, the
+  second question's row is the newest row there is, so the first caller's read was
+  cut at the second one's question and published its answer — the bridge posted one
+  customer's answer under another customer's request, with that turn's citations
+  attached. Selecting by "latest" also hid the opposite case: a question whose own
+  turn was cut off before it wrote any text used to be answered with whatever a
+  later turn had said. The harness already brands each durable prompt row with the
+  rpc id of the call that wrote it, and the runner now looks for its own row and
+  reads the turn that row was claimed into — so a question is answered by its own
+  turn, or, when that turn committed no prose, by nothing at all. The provenance
+  citation follows the same number instead of the chat's newest bundle, and the
+  cursor rule is left as the fallback it was written for: a prompt whose row the
+  read has not reached yet.
+
+  The composer staged an attachment after it had chosen the chat to send into. An
+  upload is a round-trip, and the binding was only tested once the answer came
+  back — after the state had been written and the prompt dispatched. Leaving for
+  another chat, or closing the surface, while a file was still going therefore sent
+  the draft into the chat that had been left, and the chat now on screen inherited
+  a send that was never its own: its composer stayed busy on a submission it had
+  not made. The binding is re-checked between the upload and the send, on both
+  routes that stage files — the model prompt and a human command — and a send whose
+  chat is gone is dropped instead of landing somewhere else.
+
+  The regressions: two concurrent questions in one chat, each with its own marker
+  in the answer and its own evidence in the turn bundle, pinned to the answer and
+  the citations its caller receives; a question whose own turn committed nothing
+  pinned to an empty answer; six projector tests over the row lookup, a batched
+  turn that answers two questions at once, injected context that must not end a
+  turn, and a log that names no turn; and three composer tests that switch chats or
+  dispose the surface in the middle of a stalled upload, pinning that neither chat
+  received the draft and that the chat the operator moved to is not left reporting a
+  running send.
+
+- `qa-accounts` answered with nothing when a stand ran it through the installed ([#327](https://github.com/xarleyn/dsh-plugins/issues/327), [#284](https://github.com/xarleyn/dsh-plugins/issues/284))
+  bin.
+
+  A package manager installs a bin as a link, and Node resolves the entry point
+  with `fs.realpath`: the process is handed the link path while the module knows
+  the file it links. The launch guard compared those two paths as spelled, so the
+  entry never matched, `main` was never called, and every command printed nothing
+  and exited 0 — `list` on a database full of accounts read as "the stand has no
+  accounts", and `add` reported success while writing nothing. The guard resolves
+  both sides now, so a link behaves like the file it links; `qa-repair-sessions`
+  and `qa-attach-sessions` compared the same way and are fixed the same way.
+
+  The silence is bounded at pack time, where it cannot cost an operator an
+  afternoon: package verification launches every bin through a
+  `node_modules/.bin`-style link and requires a real answer — the usage text, and
+  `list` against an empty database — and checks the node shebang that lets a bare
+  `qa-accounts list` reach Node at all. A launch that goes quiet now fails the
+  release instead of the deployment.
+
+- The sidebar's chat-delete control becomes addressable, so a run of deletions ([#288](https://github.com/xarleyn/dsh-plugins/issues/288))
+  removes the chats it points at.
+
+  The confirmation dialog arrived in 0.12.0, and the browser round that asked for
+  it named a second half of the same problem: after the first removal, the next
+  click did not reliably reach the row it was aimed at. Two things made the row
+  controls tell apart badly, and both are fixed here.
+
+  Every row's control carried the same accessible name — "Удалить чат" — while the
+  dialog carried that string as well, so neither a screen reader nor a test could
+  say which chat a control belongs to or tell the dialog from the button behind
+  it. The control now names its own chat ("Удалить чат «Как перевыставить счёт»"),
+  and the dialog is named for what it asks ("Подтвердите удаление чата").
+
+  A title is not an identity, though, and the stand shows it: every chat reads
+  «Новый чат» until its first answer lands, so two of them standing side by side
+  would share one name again. Where a title repeats, the control numbers the chats
+  carrying it by their place in the list — «Удалить чат «Новый чат» (2 из 2)» —
+  and the confirmation asks about that same numbered chat, so it stays the right
+  chat while the rows move up under it. The numbering runs over every chat the
+  browser lists rather than only the rows a search leaves visible: a chat's name
+  does not change because another one is filtered out, and a lone match still says
+  how many share its title. The limit is the number itself — it names a row by
+  where it stands, so a reader who cannot see the order has the row's timestamp to
+  go on, which is what the row shows them. The session id would be unique and is
+  deliberately not used: it is noise in a name read aloud.
+
+  The control is drawn only while its row is hovered, but transparency alone does
+  not step out of the way: it kept the right edge of the row and answered a click
+  that arrived without the row being hovered — measured in Chromium against the
+  shipped sheet, a blind `locator.click()` pressed it, which is how an automated
+  walk over the list removed rows nobody touched. (A pointer click cannot be
+  caught that way, because moving onto the row reveals the control.) The rule now
+  hands pointer input to the control exactly when it reveals it, so a click
+  without hover falls through to the chat itself, and the keyboard path is
+  unchanged, because focusing the control is itself a revealing condition.
+
+  Closing the dialog hands the keyboard back where it came from: cancelling
+  refocuses the row it was opened from, and a confirmed removal leaves focus in
+  the chat list rather than on the document body, so the next Tab continues among
+  the chats instead of restarting from the top of the page.
+
+  Tests cover the history case (a chat with a real title is not removed before the
+  dialog is answered), two chats sharing one title, a run of deletions across rows
+  that move up, focus restoration on every way the dialog closes — the cancel
+  button, Escape, its own close control, the backdrop — and on a confirmed
+  removal, and the hit-testing rule in the sheet.
+
+- The first message of a newly created chat no longer disappears without a trace. ([#287](https://github.com/xarleyn/dsh-plugins/issues/287))
+
+  "New chat" spends no session: the chat is created by the first prompt, and that
+  was the moment the message died. The composer kept its unsent text as component
+  state keyed by the bound session, so binding the freshly created session
+  rebuilt the field empty — the question vanished from the browser before the
+  Host had accepted anything, and the chat came up empty with no error in the
+  interface and nothing on the wire. The composer and the per-chat state beside
+  it are keyed by the chat now, which a draft keeps through its own lazy session;
+  the text and the attachments are handed back only when the session has taken
+  the prompt.
+
+  A submission that cannot be sent is said out loud instead of being dropped: a
+  chat still being created and a chat that is no longer open both answer with the
+  reason, and the draft stays in the field to be sent again.
+
+  Chat identities are now drawn once for the whole page and handed to a session
+  only where that session is actually adopted. The surface re-creates this
+  controller whenever the account, the configuration or the route changes, and a
+  rebuilt controller used to name its first chat exactly as its predecessor had
+  named its last — so an unsent question, its attachments and the per-chat panels
+  outlived the chat they belonged to and were shown by the next one. Adopting a
+  session is the whole of it now: a first send whose session never reached a
+  binding, never opened, or was refused by the policy check is retried in the same
+  chat rather than read as another one, and an adoption that finishes after the
+  visitor has moved to another chat — the Host listed or refused its session too
+  late — belongs to nobody and takes nothing back: the chat on screen keeps its
+  identity, its subscriptions and its own policy proof, and the next question
+  rides it as usual. A chat that takes over the screen — because a persisted chat
+  was refused, or because it simply vanished — starts empty and quiet, without the
+  question and the "sending" state of the chat it replaced.
+
+  An identity is never handed out twice, and that is the price: a rebuilt
+  controller opens its first chat under a fresh identity too, so an unsent
+  question, the files staged with it and the panels that were open are dropped
+  even when the very same conversation comes back. Before this the rebuild reused
+  its predecessor's identity and the draft did survive — by being shown to a chat
+  that had never seen it.
+
+  An adoption that steps back now says so. Leaving a chat for a fresh draft —
+  choosing another role, or the way out of an administrator's preview — retired
+  the binding a first send was waiting on without raising the generation that
+  waiting adoption is measured against, and so the adoption resumed as the owner
+  of a screen it no longer was. The send took that for a finished adoption and
+  reported a draft that had never been adopted: the chat the visitor switched to
+  answered every later question with «чат не открыт», and the way out was to press
+  «Новый чат» again. Starting a draft raises the generation the way opening another
+  chat does, retires the materialization the ending chat was still paying for, and
+  `bind` answers whether it adopted, so no caller can read a step back as a
+  success. The way out of a preview waits for the same «чат ещё создаётся» moment
+  the header's «Новый чат» and the role selector already waited for.
+
+  A step back now also takes itself back. Past the binding an adoption has already
+  installed a chat of its own — the retained reference, the session, and the three
+  subscriptions that answer every frame of it with a publish — and until now it
+  undid none of that when it stepped back. That was safe whenever the screen moved
+  to a chat that retires the binding itself, and it was not safe when the screen
+  moved to the bootstrap, which raises the generation while deliberately keeping the
+  transcript on screen until its own session exists: a bootstrap that then failed
+  left the abandoned adoption holding a Host session nobody is in and republishing
+  that chat's frames into the surface, and each frame cleared the «не удалось начать
+  чат» the stand had just published — the silence this card is about, arriving a
+  second time as a reason that vanishes. An adoption that steps back or falls over
+  while the screen is no longer its own now releases what it took, and only its own:
+  the chat that replaced it keeps its identity, its subscriptions and its policy
+  proof. Entering a draft is held to the same rule across its own round-trip —
+  stopping a running turn is a request, and a chat opened through it keeps the
+  screen, because the draft was asked for before that click.
+
+- The account gate is asked who owns a chat even when lockdown is off, and the client suite fails on console noise it did not expect. ([#364](https://github.com/xarleyn/dsh-plugins/issues/364))
+
+  `attestPolicy` returned the session as attested the moment it saw
+  `lockdown.enabled: false`, so with `accounts.enabled` on the browser bound a
+  chat and enabled the composer without ever calling the Host. The Host checks
+  account identity and ownership before it looks at lockdown — its own comment
+  calls that order "independent of lockdown" — and every plugin-owned remote
+  re-runs that check, but the bind path is the one that decides whether this
+  browser may speak in the chat it restored. Browser chat persistence is keyed by
+  deployment and route rather than by account, so signing out and back in as
+  another user in the same browser restores the previous account's chat, and the
+  skipped call was the only thing that would have named it as somebody else's.
+  The call is now made whenever accounts are enabled: with nothing pinned, the
+  Host answers with its vacuous proof, `proofMatchesConfig` compares only the
+  session the proof names, and a refused restore falls into the path the surface
+  already has — the stored id is forgotten and the account gets a chat of its
+  own. A deployment without accounts still skips the round trip, because there is
+  one principal and nothing to prove. `docs/CONFIGURATION.md` states the split,
+  which the text previously described only for the lockdown-enabled case.
+
+  Unexpected console output in the client tests now fails the test. The suite was
+  green while jsdom printed an uncaught `props.route.subscribe` TypeError and
+  nineteen React warnings, so a crash that no case intended looked the same as a
+  run that had none. A setup file wraps `console.error` and `console.warn`,
+  matches what it catches against an explicit list of the refusals the tests
+  provoke on purpose — attestation reasons, a refused upload, an account action
+  the Host turned down — and fails any line outside it. Three things the guard
+  found are fixed rather than listed: the footnote section was appended to the
+  rendered blocks without a key, the admin-route fixture left `accessApi.session`
+  returning nothing which the surface reads once a chat is bound (so a mount
+  effect threw and the failure only reached the console), and the async updates
+  behind the auth gate, composer, skills page, question form and surface bootstrap
+  are now flushed inside `act`, with the crash the guard test feeds its boundary
+  suppressed at the window error event the way the panel host already does.
+
+- An account's own skills reach its policy, so the palette and `/name` see them. ([#252](https://github.com/xarleyn/dsh-plugins/issues/252))
+
+  A skill kept in the account's personal list (Settings → Skills, invocable by a
+  person) was discovered by the capability catalog and still appeared nowhere a
+  person could reach it: the list of skills one session may invoke was built from
+  the Common and role lists the administrator maintains, and a personal skill
+  belongs to one account while a role is shared by many, so naming it in a role is
+  not something a deployment can do. The palette repeated that list, and the same
+  list is what closed a typed `/name`.
+
+  A personal skill now joins its owner's user-invoke list directly — palette,
+  typed gesture and the enforcement guard read the one policy field, so they cannot
+  disagree. It stays out of the model's catalog, which is the role's to decide.
+  The role's ceiling still bounds the tools the skill activates with: what the role
+  cannot hand out, a personal skill does not get either. An administrator's
+  outright withdrawal of the same name wins over the personal layer, and it wins at
+  once: a chat that froze the name loses it when the withdrawal lands, because the
+  personal half of a frozen snapshot is the live half. The role's half keeps
+  freezing, as it does for every other role edit.
+
+- A full quality family keeps every record when one of them is re-judged. ([#337](https://github.com/xarleyn/dsh-plugins/issues/337))
+
+  Retention cuts each family of `quality_rows` down to its cap, and the cut was
+  expressed as a range of `seq`: drop everything below `MAX(seq) - cap`. That
+  arithmetic equals the overflow only while every sequence value between the
+  oldest row and the newest one is taken, and the store itself vacates values.
+  Re-rating a message moves that row to the end of its family's order and leaves
+  its old value behind; dropping a conversation or a queue entry leaves a hole the
+  same way. Every vacated value therefore cost one real record. A family at its
+  cap lost its oldest row to a re-judgement of a record it already held — 20 000
+  ratings came back as 19 999 — with nothing new arriving to displace anything.
+  The in-memory list is trimmed by row count, so the loss stayed invisible until
+  the next open of the file replaced the list with the smaller database.
+
+  The cut now ranks instead of measuring: a family keeps the newest `cap` rows by
+  `seq` and gives up what falls below that rank, so re-judging what the store
+  already holds costs nothing, while a genuine overflow still costs exactly its
+  oldest entry. The cut runs on every write and the feedback family grows to
+  20 000 rows, so finding the rank reads through an index instead of scanning and
+  sorting: schema version 2 adds a `(kind, seq)` index. Four family-scoped reads
+  are what it serves — the cap's lookup of the row at its rank, the `MAX(seq)` a
+  write takes its place from, the reload of one family, and the ownership sweep's
+  read of a family it is emptying. The two counts that check a legacy import are
+  not among them — neither the emptiness test that runs before the import nor the
+  per-family arrival check after it — because neither sorts anything and both were
+  already answered from a covering index, so the new index only changed which one
+  they read. What a reader sees newest-first is assembled in memory, by lists that
+  sort on `createdAt`; the one statement that reads backwards through `seq` is the
+  rank lookup, so the index is not what gives readers their shape.
+
+  What the index removes is the sort, and it removes it from two of those reads —
+  the rank lookup and the replay. A re-judgement meets both: the write runs the
+  cut and the read that follows it replays the family, so what used to sort the
+  family once per write and once per read now walks it. It does not cover the
+  table: the reads that want nothing but `seq` — the rank lookup and `MAX(seq)` —
+  are answered from the index alone, whereas the replay and the sweep read `json`
+  too and still reach the row, so they get cheaper without becoming flat.
+  Measured on a feedback family planted to its 20 000-row cap — those four reads,
+  each bound the way the store binds it, median of 201 timed calls, SQLite 3.51.3
+  on node v24.15.0, JSON parsing left out — the rank lookup went from 7.0 ms to
+  0.35 ms and `MAX(seq)` from 2.9 ms to 0.02 ms, the replay from 14 ms to 7.6 ms
+  and the sweep from 9.0 ms to 7.9 ms. Of those, the first pair is the figure that
+  travels: read from the index alone, milliseconds becoming fractions of a
+  millisecond held on a second machine. The shares the replay and the sweep saved
+  moved between the runs taken here — the replay by between 45 % and 54 %, the
+  sweep by between 4 % and 12 % — so those last two say a direction, not a ratio.
+  What stays is the traversal: finding the rank walks as many index entries as the
+  cap, so the cap bounds it rather than a seek, but only through that family's
+  slice of the index, and the delete reaches just the rows it removes — a write
+  that does not overflow pays the read alone.
+
+  The tests fill the feedback family to its cap and re-judge one record, and do
+  the same to the review family, each time asserting the row count and which
+  record gave up its place both in the open store and after a reopen. Two more
+  fill the queue: one drops an entry from the middle and then pushes past the cap,
+  asserting in the open store, and one lets the ownership sweep forget three
+  conversations of a full queue before refilling it to the cap, through the reopen
+  as well. One more opens a file that schema version 1 wrote — rows, no index, and
+  the version number saying so — checks that the upgrade adds the index, then
+  re-judges a rating through it and reads the file back, so the step is proven on
+  the paths a write takes and not only by opening the table. Every other test
+  creates its file fresh and would only ever run that step on an empty table. A
+  last test reads the query plan of the four statements above, bound with the
+  arguments the store's own calls pass, so the index that bounds this cost is
+  checked rather than assumed: the rank lookup and the replay walk it instead of
+  sorting the family into a temp B-tree, and only the rank lookup and the
+  `MAX(seq)` read are answered from the index alone. Nothing is seeded there,
+  because a plan is compiled from the statement and the schema rather than from
+  how many rows a table holds, and the sweep is claimed no further than that it
+  sorts nothing — which of two same-cost indexes answers its bare
+  `WHERE kind = ?` is the planner's tie-break and not a property of the statement,
+  so what it saves is the measured direction above rather than a number asserted
+  here.
+
+- The check that guards answer ratings no longer depends on how fast the machine ([#407](https://github.com/xarleyn/dsh-plugins/issues/407))
+  running it happens to be, so a loaded runner cannot report the rating path as
+  broken when nothing in it is.
+
+  `rating an answer from the chat surface` asked testing-library for the thumbs
+  button and gave the surface one second to produce it. Reaching that button is a
+  chain of awaited remotes — the account stage, the access profile, the session
+  bind and its policy attestation — and every link commits a render, so the chain
+  advances only when the test hands the event loop back to React. It settles in
+  ~100 ms alone and needed 2.5 s on a runner shared by twenty project jobs, so the
+  second ran out while the surface was still in `creating`. The report blamed a
+  missing `Нравится` button, but the DOM it printed showed a chat that had not
+  finished opening: no message, no footer, a composer reading «Подключаюсь…».
+  Nothing in `QaMessage` was rendered in the wrong phase — the control is offered
+  for any settled, non-system message, and the surface withheld the transcript
+  until the bind settled, which is the behaviour the rating path depends on.
+
+  The wait is now driven by render rounds: each round is one chance for React to
+  commit, and the loop stops at the control it is looking for, so the rounds
+  needed are a property of the surface's state machine rather than a stopwatch.
+  The click reaches the Host on the spot, so the durable log position the rating
+  is filed under is asserted rather than polled, and a surface that genuinely
+  never settles says which phase it stopped in instead of naming a missing
+  button. No assertion was relaxed: the same expectation, the same `21`.
+
+  For the user the stand is unchanged.
+
+- The QA page loads from a clean npm installation again. ([953bfd48](https://github.com/xarleyn/dsh-plugins/commit/953bfd48))
+
+  The browser entrypoint is emitted as one self-contained classic bundle. Mermaid
+  support can no longer leave relative runtime chunks outside DSH's module table,
+  and the package and tarball checks reject that broken artifact shape before a
+  release is published.
+
+- The sent question stays on screen while the turn takes it over. ([#301](https://github.com/xarleyn/dsh-plugins/issues/301))
+
+  The browser draws a submitted question itself and hands that row to the
+  transcript once the Host's own copy of it arrives. The hand-off was timed by the
+  session's running bit: a chat that had been seen running and then read idle
+  again retired the optimistic row. That bit reaches the surface through the
+  session list as well, and a stale `false` relayed at the start of a turn retired
+  the copy before the Chat slice had assembled the durable node — the question
+  vanished for about a third of a second and came back, with the composer
+  unlocking and the empty-chat screen flashing in the gap. On the first question
+  of a chat it read as a lost message even though the prompt had been taken.
+
+  The row is retired by facts the transcript itself carries now: its own durable
+  user node reaching the projection, or a turn the Chat slice has recorded as
+  closed. The running bit on its own removes nothing. A chat whose transcript
+  never shows the row still lets go once a turn ends, so the composer cannot stay
+  locked by a copy that will never be superseded.
+
+- A skill file the Host only read partly is reported as what it is, and a strict ([#338](https://github.com/xarleyn/dsh-plugins/issues/338))
+  skill stops losing on a tool its role already hands out.
+
+  `SKILL.md` is read up to a ceiling, so one oversized file cannot pin a
+  memory-bound Host. The read then presented the prefix as the document: the size
+  rule compared the loaded bytes against the ceiling they had just been cut to, so
+  the limit could not fire for the one file it exists for and the answer came back
+  valid, with no diagnostics. The revision was the hash of that same prefix, so an
+  append to the tail changed nothing a caller could see, and the contract's
+  `sha256(file bytes)` described only its head. The loss followed the edit: open
+  such a skill, change the body the editor was handed, save, and the serializer
+  wrote back what the draft held — everything behind the ceiling gone without a
+  word. The administrator badge broke on the same seam from the other side,
+  because a write records the hash of the whole text it wrote while a read answered
+  with the hash of what it had loaded.
+
+  The read now carries the file's real size and says plainly when it stopped
+  early: the size rule sees the bytes on disk, `skill-file-truncated` joins the
+  diagnostics, and the document is marked so the editor knows it is holding a part.
+  The revision is computed over the whole file, hashed through a bounded buffer, so
+  a change behind the ceiling moves it and a write built on the older revision is
+  refused as the conflict it is. Saving over a partly loaded document is refused
+  until the client says it knows the copy is incomplete: the editor asks once,
+  names what will be lost, and puts the confirmation on the second save. The
+  administrator sidecar keeps reading a truncated record as "no marks" — a lost
+  badge stays a lost badge, and the reason is now written down where that read
+  happens.
+
+  The strict-skill half is the same class of mistake. A requirement was checked
+  against the list of tools a grant may still ADD, and the capability policy
+  subtracts the role's own base set from that list — so a skill asking for `read`,
+  on a role that gives `read` to every chat, was told the tool was unavailable and
+  refused outright. What a session already holds now satisfies the requirement, and
+  only what it lacks goes through the ceiling and the mask.
+
+  The regressions: a file above the ceiling is checked for its diagnostics, for the
+  refused save, for the file it leaves untouched and for the save that proceeds once
+  confirmed, and a tail append is pinned to the revision it changes; two grant tests
+  cover a requirement the base set alone meets and one that mixes a base tool with a
+  grantable one, and a browser test drives the two save clicks.
+
+- The QA surface's own tests are filed by the area of the stand they check, following the shape `dsh-qa-integrations` got in b13e13e. ([#224](https://github.com/xarleyn/dsh-plugins/issues/224), [#325](https://github.com/xarleyn/dsh-plugins/issues/325))
+
+  Two hundred and eight test files and twenty shared helpers sat in one flat `tests/` directory. The area a file belongs to was carried by its name prefix, and that prefix had stopped agreeing with the tree a long time ago: `provenance-*`, `qa-admin-console-*`, `accounts-*` and `session-*` files were neighbours, and finding the test that covers a behavior meant scanning the whole listing rather than opening the folder the behavior lives in. The suite had also grown past the point where a name-only convention holds: two hundred and eight entries in one column is not a table anyone reads.
+
+  The domain folders now carry that information instead — access, accounts, admin, client, config, enforcement, integration, personal-skills, prompt-notes, provenance, qa-tools, questions, routing, scripts, session, slash, transcript, wiring, and a helpers folder. Two groups of latecomers are folded in here: the provenance host files, which landed flat after the first cut, and the notifications and message-queue tests that reached `tests/` from main afterwards. Those now sit under `client/notifications`, `client/components`, `config` and `session`, each next to the module it drives.
+
+  Nothing is re-asserted: no test body, helper, or expectation was rewritten, only paths and the relative specifiers that resolve them. The suite runs the same — two hundred and thirty-two files, one thousand seven hundred and eighteen tests — and no test file is left at the top level, which is the measure this card was opened with.
+
+- A settings card routed through the kit's helper reaches the Plugins panel row now. ([#694](https://github.com/xarleyn/dsh-plugins/issues/694), [#684](https://github.com/xarleyn/dsh-plugins/issues/684), [#647](https://github.com/xarleyn/dsh-plugins/issues/647), [#659](https://github.com/xarleyn/dsh-plugins/issues/659))
+
+  `registerSettingsCard` and `registerSettingsSlot` mounted a card that named no
+  `slotName` into `settings.plugin.item` — the keyed seat the Host deleted in
+  `0.1.7`. Registering into a seat that no longer exists throws nothing: the card
+  was drawn nowhere, neither on the plugin's row nor in Settings. The default is
+  `plugins.row.config` now, the keyed seat of the bundle's own row on the Host's
+  Plugins panel, which is where a plugin's configuration card belongs. The constant
+  took the same rename, `PLUGIN_ROW_CONFIG_SLOT`, so the published surface stops
+  naming a seat that is gone.
+
+  Breaking for a consumer that imported `SETTINGS_PLUGIN_ITEM_SLOT`; no package of
+  this repository did. A plugin that passes `slotName` behaves exactly as before,
+  and one seated on a surface it must frame itself — `settings.section`,
+  `settings.plugins.tab` — still names that seat, and `CardShell`,
+  `PLUGIN_CARD_SHELL_CSS` and `ChevronDown` stay published for those two cards. A
+  row card passing no `styles` is the point: the panel draws the frame, the heading
+  and the expand control, so our shell there would be a second card inside the
+  Host's.
+
+  The row seat is keyed `<package name>#<row id>` rather than by a bare namespace,
+  and `SettingsCardOptions.key` now says so — the same string is the namespace the
+  Host resolves the plugin's volatile Config under, so a value saved before this
+  change still reads back through it. Moving the seat without checking the key
+  would have left the same silent failure one field over, so both registration
+  helpers now throw at the call when the row seat is handed a key that is not that
+  composite, or styles that declare the `dsh-plugin-card` shell next to the frame
+  the panel already draws. A consumer that hit either case drew no card and said
+  nothing; it now says what the seat asks for.
+
+  The bump is `minor`, not `major`: below `1.0` that is the step this repository
+  takes for a break, since `major` on a `0.4.0` package publishes `1.0.0` rather
+  than announcing anything.
+
+  `@yadsh/dsh-qa-surface` carries the same story in its spec. Section 12.3 told a
+  reader to register the settings card into the keyed slot this release deleted,
+  with the settings namespace as a bare `key`; the section now names the seat the
+  bundle actually takes — a `settings.plugins.tab` page identified by that
+  namespace — and says what a card seated on the Plugins panel row does instead.
+  `SPEC.md` is outside the package's `files`, so nothing an install reads changes,
+  which is why that half is `patch`.
+
+- The QA changelog names what #286 actually shipped, and the guards #286 added ([#286](https://github.com/xarleyn/dsh-plugins/issues/286))
+  gain the regression tests that hold them.
+
+  Version 0.13.0 described three of its own capabilities — the one-request
+  `/no-review` waiver, the automatic managed service profile for a new account,
+  and `web_fetch_file` for non-graphic attachments — nowhere, although the plan
+  that released them named all three; the curated list now carries them.
+
+  Documentation search pins the grep syntax it promises the model (character
+  classes and anchors) and its pattern budget, and `docs_read` refuses an
+  absolute path that leaves the documentation tree the way `docs_search` already
+  did. Automatic service binding is tested against both of the shapes it has to
+  stand down for: a deployment that offers no default profile, and one that
+  publishes several. Downloaded attachments test their leaf-only filename
+  directly, so a percent-encoded path cannot reach the store with separators.
+
+- The sources panel, the files panel and the markdown renderer now name every part ([#457](https://github.com/xarleyn/dsh-plugins/issues/457))
+  of themselves, so a test can point at the node it means instead of guessing it
+  from the Russian caption beside it or the BEM class under it.
+
+  Every control those files draw, and every node whose state the sheet carries as
+  a class modifier, takes a `data-testid`: `qa-sources-*` for the grouped list,
+  `qa-source-detail-*`
+  and `qa-source-preview-*` for the detail view and its file preview,
+  `qa-source-badges*` for the origin badges the list and the detail share,
+  `qa-files-*` for the attachment roster, `qa-md-*` for the rendered document, and
+  `qa-source-chip-*` for the source faces the markdown shares with
+  the panel. A group heading stays unnamed — its caption is the handle a run reads
+  — while the count and the time beside it take one.
+  A group takes the id of the kind key it already declares
+  (`qa-sources-group-web`, `qa-sources-group-file`), so a new kind inherits its hook
+  rather than naming one, and a state the class carried as a modifier carries the
+  same fact in the id — `qa-source-preview-line-highlight`, `qa-md-math-pending`,
+  `qa-files-thumb-broken`. The truncated file preview carries an id of its own, so
+  the check that a long source does not take the answer down with it names the
+  notice instead of matching its sentence. A `mermaid` fence is a code block here —
+  the client carries no diagram engine since 0.14.0 — so the fence is reached
+  through the code-block ids and nothing names a diagram of its own. The values are
+  ASCII kebab-case, zoned by prefix, and no two of them name different things in
+  the package.
+
+  The panel and renderer tests now reach those nodes through the ids instead of
+  `querySelector(".dsh-qa-*")` or `getByText`, and what a test asserts about a
+  caption or a control — the group titles, the Raw/Rendered toggle, the
+  jump-to-message button, a source link — it still asserts through
+  role, accessible name, or the control's own ARIA state. No markup and no
+  appearance changed: an attribute was added.
+
+- The QA page stops downloading a diagram engine, and the bundle band starts ([#599](https://github.com/xarleyn/dsh-plugins/issues/599))
+  measuring in CI.
+
+  The browser entrypoint is one classic ModuleLoader file: DSH fetches
+  `/plugins/<package>/client.js`, evaluates it, and never asks that plugin for a
+  second module, so a client bundle carries its own copy of everything it uses and
+  `react` is the only thing the shell answers for it
+  (`docs/ARCHITECTURE.md`, §Host process vs browser client).
+  Mermaid arrived in 0.13.0 as a plain import of the whole engine, and the artifact
+  followed it: 239 027 lines and 9.3 MB where the same build measured 66 745 lines
+  and 2.8 MB without it. Reading the built bundle's own source map names where those
+  lines come from — mermaid 73 681, cytoscape 35 707, the diagram-language parser
+  34 060, plus d3, dagre, roughjs and the rest — the tree behind one fence is 72% of
+  what the QA page downloads before it paints anything.
+
+  Neither way out that the size of a bundle usually has is open here. The engine is
+  not something the shell could provide: none of the `@deepseek-ai/*` client bundles
+  in the tested matrix contains it, so declaring it external would leave the page
+  with a `require` nobody answers — which is the 0.13.1 incident. The tarball gate
+  catches a relative `require("./x")` that resolves to nothing, not a bare one, so
+  the size band in `check-file-budget.mjs` is what holds this line. And a deferred
+  chunk is the same unavailable
+  second file seen from the other end: `codeSplitting: false` is what made the QA
+  page open again. So the diagram engine leaves the client. A `mermaid` fence
+  renders as the code block it was before 0.13.0 — an open fence shows what has been
+  written so far, a closed one shows the source, and both keep the copy control.
+  KaTeX stays: math is 16 671 source lines against the engine's 172 111, it is what
+  makes a formula read as a formula, and it is the one third-party tree this surface
+  can name a reason for. Getting diagrams back is a host question, not a plugin one:
+  either the shell renders them or the loader learns to fetch a plugin's deferred
+  module, and until one of those exists the client must not carry the tree.
+
+  The second defect is the one that let the first stand for two days.
+  `pnpm check:files` holds a generated bundle to a runaway line limit, and its own
+  comment bases that limit on this file — but `lib/` is gitignored and the gate runs
+  in the `prepare` job, on a checkout that has never been built, so in CI the band
+  reported `0 generated artifacts` and the line was crossed only because someone
+  rebuilt locally. The CI workflow now runs the same gate in the project job, right
+  after that project's build, which is where its bundles exist; the repository
+  tooling test pins both the step and its position after the build, and
+  `docs/VERIFICATION.md` says which band measures what where.
+
+  Tests: the Mermaid suite pins the fence as source rather than a rendered diagram,
+  the streaming suite keeps the open-fence case with the renderer's calls removed,
+  and the curated changelog loses the 0.14.0 entry that promised to fix diagram
+  re-rendering on every keystroke — the thing it described is gone with the engine.
+  Verified with `pnpm nx run @yadsh/dsh-qa-surface:check` (lint, typecheck, test,
+  build, verify) and `pnpm check:files`, which now reports the client at 66 745
+  lines against the 80 000 warning.
+
+- The settings card test reaches the session section through its own hook. ([#603](https://github.com/xarleyn/dsh-plugins/issues/603))
+
+  One case in `qa-settings-card-sections.test.tsx` asked `section()` for «Сессия»
+  — the caption an operator reads — while the helper takes a `data-testid`, and
+  the section's test id has been `qa-settings-session` since the card named its
+  markup. The lookup therefore found nothing and the case failed. It asked for the
+  request-ceiling field inside that section, so the assertion it carries — the
+  field's `max` must equal the number `QA_MAX_ACTIVE_REQUESTS_MAX` the Host
+  validator enforces — never ran.
+
+  The assertion itself is untouched: it still quotes the validator's constant
+  rather than repeating a number, which is the half of the deal that keeps the
+  card and the Host schema from drifting apart. No source of the package changed,
+  so no release note is added.
+
+- A turn the Host ended in failure says which failure it was, in the chat and in the stand's log. ([#636](https://github.com/xarleyn/dsh-plugins/issues/636))
+
+  The terminal row was one sentence for every failure the Host does not own localized copy for, so a stand whose provider adapters never registered — each turn ending `NO_ADAPTER`, the answer never written — looked exactly like a transport hiccup: «Помощнику не удалось завершить ответ.» The code and the provider it names were in the session journal, which is a zstd archive nobody opens over an operator's shoulder, and in neither the chat nor the plugin's daily log, where the round's tool warnings were the only lines. Every such case became a manual decode.
+
+  Every terminal failure row now carries its code, because the code is the handle an operator greps the log with — including the failures that already had their own sentence, since that sentence is identical on every stand while the log line is per chat, and the code is what ties the two together. `UNKNOWN` is left out of both rows, terminal and retry: it is what the Host writes for anything that is not a provider failure, so naming it promises a diagnostic that does not exist, and one failure must not be called two ways inside one transcript. A missing adapter gets its own sentence rather than the code alone, because the one thing a tester would otherwise try — asking again — cannot repair a registry the Host never filled, and that sentence points at the log line without promising a provider name the record may not hold.
+
+  On the Host, a turn closed with an error is recorded as `session.turn-failed` with the chat, the turn, the failure code and the provider the request was routed to. A delegated expert is recorded under the chat that owns it, because an operator reads the log against the chats of /qa and an expert id matches none of them; the expert's own id rides along as `failedSessionId`, so two experts of one chat that died on the same turn number do not collapse into the same line. For a registry refusal the provider is read out of the Host's own refusal sentence — it comes in two variants, `llm.registration` naming a provider with no adapter and the pi-ai adapter naming one it does not own, and the second is what the stand of this card actually hits — because that sentence describes the route this turn asked for while the session's folded header describes the conversation and can still carry an earlier provider. Every other code keeps the header as its source. Only the name between the first pair of quotes is taken, and only from those two whole sentences: a provider message is free text that can echo a credential, so no message text reaches the log. Delegated experts resolve through the ownership map the interactive seams install, and the wiring test drives that map under a real context, so a seam that stopped listening or a resolver collapsed back to a boolean fails a test instead of quietly narrowing the record to the chat's own turns.
+
+  This is the diagnosability half of #636 only. Why `llm-pi-ai` came up without registering `local-dev` after the container's restart, and the official-provider «Add an API key to get started» modal that appeared on `/qa` in the same restart, are left for separate cards: this change makes both readable from the log line rather than a decoded journal, and fixes neither.
+
+- A queued question leaves the strip when the turn takes it, instead of staying ([#643](https://github.com/xarleyn/dsh-plugins/issues/643))
+  behind as a question that has not been sent yet.
+
+  A message sent while the agent was answering was admitted by the Host, listed by
+  its queue and answered in the next turn, yet its row stayed above the composer
+  marked «отправляется…» with no button on it. The strip drew two different rows for
+  one send: the queue's own row while the message waited, and a transport row built
+  from the submission echo the session library registers in this browser for it. The
+  echo is supposed to be retired when the queue accepts the message; while it is
+  listed, the strip folds it into the queue row it stands for. So an echo that
+  outlives its own claim becomes visible again the moment the claim empties the
+  queue — a permanent row over a question the transcript had already answered.
+  Reload made it go away, which is how the repro proved the state was the browser's,
+  and the visitor typed the question a second time: the duplicate send under load is
+  exactly what the queue exists to prevent.
+
+  Naming a message is the server's own receipt for it, and the Host names it in two
+  of its own lists: the Inbox that holds what waits, and the durable input row it
+  writes when the turn takes the message. The surface now records either name per
+  binding — a submission the Host has once named is settled, so the strip reads it
+  from the queue while it waits and never again as a question crossing the
+  transport. The claim frame therefore yields no row at all, while a send the Host
+  has never named is still marked as crossing, and a message the server holds and has
+  not claimed keeps its three operations. The record is never dropped while the
+  binding lives: `beginSubmission` mints a fresh `randomUUID` per submission, so an id
+  the server named cannot belong to a later send, and dropping the receipt is what
+  lets the survivor come back. It belongs to the chat that minted the ids, so another
+  chat's queue says nothing about this one's sends.
+
+  The receipt is taken from the Host's notification, before the running turn's frame
+  spacing, and not from the frame that reaches the screen. A question sent while the
+  agent answers is admitted inside a spacing window, and an absorbed window frame is
+  dropped rather than replayed: measured on the projected frame, the pair of facts —
+  the echo the snapshot registers and the message the queue lists — can reach the
+  browser without ever being seen together, and the claim frame then finds nothing to
+  settle the send against. That is the row this card reports, restored. Reading the
+  transcript as well closes the order the Inbox alone cannot: a send admitted *and*
+  claimed between two notifications is named by no queue frame this browser is
+  handed, and only its durable row — which outlives the claim and arrives with the
+  next frame — settles it.
+
+  What the record costs and what it does not are both the mask's, not the Host's.
+  It costs no row the contract would have drawn, because the library has already
+  committed to the removal by the time either Host list can name the send: the Inbox
+  frame that lists a queued echo latches the retirement there and then, and so does
+  the durable row that opens the turn (`client.js:2201` and `:2213`, both handing the
+  request to `scheduleObservedRetirement` at `:2233`). A message the Host takes out of
+  its queue without handing it to the turn is therefore not a case the record
+  swallows — its removal was latched the moment the Inbox listed it, and only the
+  frame is missing. The retirements the library runs with no frame are the ones for a
+  send the Host never named at all: the abandon path and a failed prompt
+  (`client.js:1704`, `:1753`), and the splice reporting `outcome === "canceled"` for a
+  settlement tracked by insertion receipt, which a queued echo never is
+  (`client.js:2164`, `:2186`, `:2245`). So the mask differs from the contract by the
+  clock, never by the outcome. What it costs is the binding:
+  `unbind()` drops the record, and that runs not only on leaving a chat but also for
+  a subagent view, a policy re-bind and entering a draft. Only a rebind of the same
+  Session object could draw a survivor again, and this surface retains under one
+  source — releasing its reference makes the manager withdraw the instance and
+  dispose it (`client.js:2413`), so the next binding holds a session with no echoes
+  at all. Where another holder keeps that object alive, the next Host frame names the
+  send again and re-earns the record, so the row returns for a frame rather than for
+  good.
+
+  None of this is a cure, and the cure is not in this package. The echo is the
+  browser's own: `@deepseek-ai/dsh-api-session-controller` — the harness's
+  `packages/api/session-controller`, pinned here at 0.1.7-rc.2 — describes
+  `SessionSnapshot.pendingSubmissions` as "Local prompt-submission echoes not yet
+  observed as durable events or queue occurrences" and `beginSubmission` as "Queued
+  echoes retire on queue acceptance", that retirement being the `observed` branch of
+  `PendingSubmissionRetirement`. It does not happen at acceptance. In the pinned
+  bundle `scheduleObservedRetirement` (`lib/client.js:2233`) latches the settlement
+  and hands `finishSubmission` to `scheduleFrame` (`lib/client.js:2309`), which calls
+  `requestAnimationFrame` and takes the macrotask only where that function does not
+  exist at all. The follow-up is that one step: retire a settlement a delivered
+  notification already proved without waiting for a frame — or take the macrotask
+  whenever the frame clock stops, not only where there is no `requestAnimationFrame` —
+  since a surface that gets no frames never runs the removal. This surface changes
+  neither that contract nor the server: the strip only stops lying to the visitor
+  while it goes unmet.
+
+  So the mask has one proven case and one predicted, and the seam between them is the
+  frame clock. The card measured the browser panel collapsed (`viewport=0x0`), where
+  the deferred removal cannot run while the snapshot notifications keep arriving —
+  those are published on microtasks by the same package — so the feed moved and the
+  row stayed: that is the branch this change fixes, and the branch the repro is in.
+  With the panel shown and the tab focused, the same mechanism predicts the row leaves
+  by itself one frame after the claim, and the mask then holds the dock to its own
+  promise rather than a symptom a visitor saw — "a row that left the queue must not
+  keep anything" (`QaQueueDock.tsx:148`). The measurement that separates the two is
+  the card's repro repeated with the panel open and the tab active, on a short turn,
+  and it is not taken here.
+
+- The shell's own screens are now addressed by a stable id. ([#454](https://github.com/xarleyn/dsh-plugins/issues/454), [#453](https://github.com/xarleyn/dsh-plugins/issues/453), [#456](https://github.com/xarleyn/dsh-plugins/issues/456), [#458](https://github.com/xarleyn/dsh-plugins/issues/458))
+
+  The surface root, its zones, the account-checking placeholder, the
+  administrator-only refusal, the empty-chat welcome, the read-only and error
+  notices, the composer's slot and the guard's failure card carry `data-testid`
+  (epic #453). Tests that located those nodes by CSS class or by visible wording
+  now ask for the id, so rephrasing the stand no longer reads as a broken build;
+  the role and accessible-name assertions that check the same nodes stay. The
+  fullscreen frame the failure card inherits from the surface root is pinned as a
+  stylesheet contract, which is the only claim a class query was really making.
+
+- The chat, its message rows and its composer became addressable from a browser ([#455](https://github.com/xarleyn/dsh-plugins/issues/455))
+  run, so the surface can be driven without naming the Russian words it paints.
+
+  Every check of this surface had to say what it clicked in the operator's own
+  vocabulary: a test found the optimistic row by its `data-status`, the attachment
+  chip by the file name it renders, the running status by its copy, the pager of a
+  parked question by a CSS class. Copy is the least stable handle the surface
+  offers — it is localized, the composer hint changes with the phase of a turn, and
+  an answer's text is the one thing a run cannot know in advance. The browser round
+  of epic #453 asks for a second handle that survives both a copy edit and a
+  language switch.
+
+  The eight components of the transcript, the composer and the cards that park a
+  turn now carry `data-testid`: `qa-message` and its parts (`qa-message-content`,
+  `qa-message-actions`, `qa-message-meta`, `qa-message-pending`, the rating, copy
+  and regenerate controls), `qa-composer` and its parts (`qa-composer-input`,
+  `qa-composer-send`, `qa-composer-stop`, `qa-composer-attach`, `qa-composer-hint`
+  and the pending-attachment lists), `qa-turn-rail` with `qa-turn-rail-mark` on
+  every rung, `qa-question` and `qa-approval` for the two cards that wait on a
+  person, `qa-turn-notice` for the stack, `qa-variants` for the answer switcher and
+  `qa-file` for the attachment chip the composer and a sent message share. Values
+  are ASCII kebab-case and every zone keeps its own prefix. A repeated node carries
+  the value of its template rather than a number of its own — the rungs of the
+  ladder, the chips of one message and the lines of the stack all read alike, and
+  which one is meant stays the run's business, told apart by the accessible name or
+  the place in the list the node already offered.
+
+  Only attributes were added: no element moved, no class changed, and the sheet
+  still describes every box, so the surface looks and reads exactly as before. The
+  package's own checks moved to the new handles wherever they had used visible text
+  or a class as the locator — the metadata row, the byline, the attachment chip, the
+  composer hint and its hidden file input, the pager and the option list of a
+  question, the reason and the delegation mark of an approval, the lines of the
+  completion stack, the optimistic row on the whole surface — while every assertion
+  on a role or an accessible name stayed where it was, because those are the checks
+  that keep the surface usable without a screen.
+
+- The `/qa` surface names the parts of its own chrome, so a browser test can point ([#456](https://github.com/xarleyn/dsh-plugins/issues/456))
+  at a node instead of at the Russian words beside it.
+
+  Sidebar, header, right rail, agents panel, workspace browser, work group, dialog
+  shell, auth gate and the welcome notice were all reachable through their BEM
+  classes or the visible label — and several of them repeat one class across every
+  row, tab and entry, so a check had to match a caption or a modifier to find the
+  node it meant. A reworded label, or a renamed class, broke such a check while
+  nothing was actually wrong with the surface. Each zone now says what it is:
+  `sidebar-*` and `sidebar-resize` for the chat history and its handle,
+  `header-*` and `subagent-banner-*` for the chrome above the transcript,
+  `rail-*` for the sources and files panel, `agents-*` for the subagent list,
+  `workspace-*` for the file browser and its preview, `work-*` for the turn's
+  reasoning and tool rows, `modal-*` for the shared dialog shell, `auth-*` for the
+  sign-in card, `welcome-*` for the disclosure and `width-handle-*` for the two
+  content handles. The values are ASCII kebab-case and unique in the package;
+  where a zone repeats — a row per chat, a tab per panel, a handle per side — the
+  recurring parts share one id and the side-specific ones carry their discriminator.
+
+  Nothing else moved: no class, no attribute the reader sees, no layout — only the
+  test attribute. The surface's own tests reach those nodes by id now and keep
+  asserting every control through its role or accessible name.
+
+- The QA admin console became addressable from a browser run, so driving it no ([#458](https://github.com/xarleyn/dsh-plugins/issues/458), [#453](https://github.com/xarleyn/dsh-plugins/issues/453))
+  longer requires naming the Russian labels it paints.
+
+  The console is the most clicked surface of the plugin and the least reachable
+  one: a check found the delete control, the row's «Открыть», the reset queue's
+  «Сбросить», a priority cell or the collapsed tool calls by the string rendered
+  beside them, and the console shell itself by a BEM class. Copy is the weakest
+  handle a page offers — it is localized, it is reworded without changing any
+  behaviour, and a filter's label is exactly the line a maintainer edits when the
+  filter stops matching what operators search for. This is the admin-console round
+  of epic #453.
+
+  Every node a run reaches now carries a `data-testid`: the shell and the
+  navigation (`qa-admin-root`, `qa-admin-nav-<section>`), each page
+  (`qa-admin-overview`, `qa-admin-conversations`, `qa-admin-review-queue`,
+  `qa-admin-quality`, `qa-admin-audit`, `qa-admin-users`, `qa-admin-user-card`,
+  `qa-admin-memory`), and inside them the controls, the state chips and the row and
+  cell hooks. Filters and paging are named first, because they are what a copy
+  edit breaks: one id per filter (`qa-admin-conversations-filter-from`,
+  `qa-admin-users-filter-role`, `qa-admin-memory-filter-expert`, …) and one
+  `qa-admin-pager` with its `-count`, `-more` and `-reset` controls, shared by
+  every paged list. Values are ASCII kebab-case with the zone in the prefix, and a
+  repeated node keeps the value of its template — the rows of a table, the badges
+  of a message, the buckets of the effective-access tab all read alike, and which
+  one is meant stays the run's business, told apart by the accessible name or the
+  place in the list the node already had. Explanatory prose is deliberately left
+  unnamed: an id marks a control, a state or a shell, not a sentence.
+
+  Only attributes were added. No element moved, no class changed, and no `role` or
+  `aria-*` attribute was touched, so the console looks and reads exactly as it did.
+  The console's own checks moved to the new handles wherever they had used visible
+  text or a class as the locator — the metric a counter row paints, the transcript
+  and its collapsed tool calls, the refusal of a deletion, the priority and reason
+  of a queue item, the password-reset queue and its field, the memory rows and
+  their editor, the skill table's health and its blocked verdict, the role card's
+  counts, the console shell in the routing checks — while every assertion on a role
+  or an accessible name stayed where it was. The namespace picker and the review
+  form's problem options are still reached through the name a screen reader reads,
+  which is the coverage the epic asks to preserve.
+
+- Every control of the plugin settings card is now addressable by a stable test ([#459](https://github.com/xarleyn/dsh-plugins/issues/459), [#453](https://github.com/xarleyn/dsh-plugins/issues/453), [#407](https://github.com/xarleyn/dsh-plugins/issues/407))
+  id, so a browser run drives the card without naming the Russian words it paints.
+
+  The card body is the densest form in the plugin: thirteen sections, their
+  switches and fields, and the notices that appear when two of them contradict
+  each other. Its checks reached almost all of that through the copy an operator
+  reads — a section by its heading, a warning by its first words, the error plate
+  by its class — and copy is the weakest handle the surface offers: it is
+  localized, and a reworded hint silently broke the test that keyed on it.
+
+  The sections now carry `qa-settings-<section>` and their controls
+  `qa-settings-<section>-<setting>`, ASCII kebab-case with the zone in the prefix
+  and no index substituted into an id; a notice is named by what it warns about
+  (`qa-settings-lockdown-notice-disabled`), a status chip by what it reads out
+  (`qa-settings-status-accounts`), and the «изменено» marker by the section it
+  belongs to (`qa-settings-access-modified`). Two notices swap their wording
+  between the branches of a condition and keep one hook, since only one of them
+  is ever on screen; apart from that pair the open card answers to each name once.
+  The card shell keeps the contract `AGENTS.md` sets for it: the hooks
+  were added inside the body, and every className, role and aria attribute stays
+  byte-identical — the card looks and reads exactly as it did.
+
+  No release note is added for this: nothing a visitor sees has changed.
+
+- The settings dialog, the role selector and the slash palette became addressable ([#460](https://github.com/xarleyn/dsh-plugins/issues/460), [#453](https://github.com/xarleyn/dsh-plugins/issues/453))
+  from a browser run, so the parts of the surface a person configures can be
+  driven without naming the Russian words they are painted in.
+
+  Every check of these three zones reached its node through the copy on screen or
+  through a BEM class: a test found the account facts by the email it renders, the
+  refusal notice by its sentence, a starter row by `.dsh-qa-starters__item`, the
+  group headers of the palette by «Навыки», and the confirm button of a role change
+  by the name of the role it switches to. Copy is the weakest handle the surface
+  offers — it is localized, it changes with the state of a form, and the label of a
+  save button is literally the verb the feature is named after.
+
+  The components of `src/client/user-settings`, `src/client/role` and
+  `src/client/slash` now carry `data-testid`: `qa-settings-*` for the dialog shell
+  and its seven pages, `qa-role-*` for the selector and the confirmation it asks
+  for mid-conversation, `qa-admin-preview-*` for the preview banner and its way
+  out, and `qa-slash-*` for the palette, its groups and its rows. Values are ASCII
+  kebab-case and every zone keeps its own prefix. The field primitives the pages
+  share — a field, a section, a toggle, a notice, a button — take the id from their
+  call site rather than inventing one, so the same primitive reads
+  `qa-settings-profile-save` on one page and `qa-settings-tokens-revoke` on
+  another. A node repeated over a list keeps the value of its template — the tabs
+  of the dialog, the rows of the palette, the chips of granted tools — so no
+  account key is ever substituted into an id, and which one is meant stays the
+  run's business, told apart by the accessible name or the place in the list the
+  node already offered.
+
+  Only attributes were added: no element moved, no class changed and no style was
+  touched, so the dialog, the banner and the palette look and read exactly as
+  before. The package's own checks moved to the new handles wherever they had used
+  visible text or a class as the locator — the account facts, the leads and hints
+  of the pages, the notices that refuse a save, the rows of the catalog and of the
+  token list, the group titles and rows of the palette — while every assertion on
+  a role or an accessible name stayed where it was, because those are the checks
+  that keep the surface usable without a screen.
+
+- The audit badge, the audit dialog and the extension panel became addressable from ([#461](https://github.com/xarleyn/dsh-plugins/issues/461))
+  a browser run.
+
+  Epic #453 gives the surface handles that survive a copy edit and a language
+  switch. The transcript got its own in the same epic; this is the two zones that
+  sit beside it — the mark a session row carries when its chat has been audited,
+  the dialog that opens from it, and the right-hand panel an extension mounts into.
+
+  The four components now carry `data-testid`: `qa-audit-badge` with its check and
+  its verdict, `qa-audit-dialog` and `qa-audit-dialog-body` for the dialog, and
+  `qa-panel` for the panel shell with `qa-panel-header`, `qa-panel-title`,
+  `qa-panel-close`, `qa-panel-resizer`, `qa-panel-body`, the `qa-panel-launcher`
+  strip and its `qa-panel-launcher-button`, plus `qa-panel-missing` and
+  `qa-panel-error` for the two diagnostics the shell renders when a panel has no
+  keyed body or its body throws. Values are ASCII kebab-case and each zone keeps its
+  own prefix. A repeated node carries the value of its template rather than a key
+  substituted into it — every launcher button and every retained panel body reads
+  alike, and which one a run means stays the run's business, told apart by the
+  accessible name or the place in the list the node already offered. Text
+  paragraphs and the layout wrappers between the parts stay unnamed, so an id marks
+  a control, a state or a shell rather than a sentence.
+
+  Nothing here is user-visible: only attributes were added, every element, class,
+  role and aria attribute stayed as it was, and the sheet still describes every box.
+  The package's own checks moved to the new handles wherever they had used a BEM
+  class as the locator — the verdict of a badge, the modifier a row with a delete
+  control gets, the resizer and the retained body of a panel — while each assertion
+  on a role or an accessible name stayed where it was.
+
+- A turn notice speaks for a chat the reader owns, and for no other one. ([#477](https://github.com/xarleyn/dsh-plugins/issues/477))
+
+  `accounts.showOtherUsersChats` is a read: it puts the other accounts' chats into
+  the sidebar so an admin can open them. The completion notifier was handed the
+  sidebar's own rows, so that same switch also decided whose finished turn this
+  browser announces. An admin reading the shared history watched every listed chat
+  and got a line the moment one of them stopped answering — and with the desktop
+  channel on, the operating system got a notification whose title it keeps on disk,
+  for a turn that belonged to somebody else. Reading a chat is not being told when
+  its turns stop.
+
+  The account now holds the two lists apart. `ownedIds` stays what the sidebar
+  shows: the account's own chats plus, for an admin, every mapped one. `ownIds` is
+  the account's own alone, and it is what bounds a notice — the differ never sees a
+  chat the reader does not own, so it does not even remember that another account's
+  turn was running, and a chat leaving the shared view leaves no notice behind. A
+  chat this page claims enters both lists. A refresh re-reads the strict one: the
+  merged list can survive the account losing a chat whose ownership record still
+  names it, so it is not the proof that nothing changed.
+
+  The read scope kept everything it had. The admin's sidebar, its grouping by
+  owner, the author labels over foreign chats and the audit badges list exactly
+  what they listed before, and a deployment with the shared history off behaves as
+  it did — there the two lists are the same list. Nothing was made configurable
+  instead: another account's activity has no delivery channel here at all, and
+  giving it one would take a choice on the admin's side and an allowance on the
+  deployment's, not the read flag that happens to be on.
+
+- The keyboard reaches the turn notices, and keeps its place when one goes away. ([#482](https://github.com/xarleyn/dsh-plugins/issues/482), [#624](https://github.com/xarleyn/dsh-plugins/issues/624))
+
+  The notice stack is painted in `document.body`, outside the `<main>` whose key
+  handler holds Tab inside the QA interface, so the ring was drawn around a subtree
+  the notices were not part of: a Tab leaving the composer turned back at the
+  surface's last control, and `open`, the line's cross and the desktop opt-in
+  could not be reached without a mouse. The ring now walks the surface and the
+  stack together, and a key typed inside the portal is trapped by a handler mounted
+  on the portal itself — `<main>` is not its ancestor and never hears it. Only Tab
+  is taken there, so an Escape given inside the stack still reaches a dialog that
+  listens on the window. And while a modal dialog holds the keyboard — the
+  onboarding gate marking the page inert, or a `QaModal` standing over it — the
+  ring steps back to the surface alone: the stack is a neighbour of such a dialog
+  rather than its content, so a trap closed around both would take the reader out
+  of the dialog they are working in and back onto a page under the scrim.
+
+  Losing the focused control is read where it happens rather than from the number
+  of lines. Waving one of the three off, a fourth turn pushing the oldest out of a
+  full stack, and the opt-in going away once the browser has answered the
+  permission question all take the focused button out of the page while the stack
+  stays on screen; the page then answers the next Tab with the browser's own order,
+  which leaves the interface. The ring remembers the line the reader stood on and
+  hands the keyboard to the line that took its place, on the same control of it —
+  a cross given back as a cross. A stack control alone is remembered: a row of the
+  chat list, the queue dock, or a transcript action that leaves the page under
+  focus is the surface's own business, as it was before. And the remembered place
+  goes only with the focus it hands back — a reader who moved the keyboard
+  elsewhere, by mouse or into another dialog, is not pulled back, and a dialog that
+  owns the keyboard is left to place the focus where it belongs.
+
+  Two of the ways a place is handed over are decided rather than left to chance.
+  Opening a chat from a line is the one loss that also changes what the surface
+  shows: the notice goes, its chat arrives, and the keyboard stays on the stack —
+  the composer the switch remounts is disabled while that chat is being bound, so
+  it can take no focus, and nothing in the surface moves the keyboard on a switch
+  further than it already does. And a page the reader has left to work in another
+  window is left alone: while `document.hasFocus()` is false nothing here touches
+  the keyboard, because a control of a page nobody is looking at has no claim on
+  the page the reader is typing in. The hand-over is owed rather than dropped —
+  the remembered place stands until the window's own `focus` event pays it, so the
+  reader who comes back to a stack that dropped a line under them finds their place
+  and their next Tab is the interface's.
+
+  What the ring counts as a step is what a browser stops on, read off the markup:
+  the negative `tabindex` is subtracted from every kind of control, not only from
+  the elements that carry the attribute, `hidden` is read along the ancestor
+  chain, a `select` or a `summary` — the role picker of the header and the fold of
+  a message — is a step of the way, and the body of a fold the reader has not
+  opened is not. A ring with no controls in it takes no key at all: a Tab
+  prevented with nowhere to hand the focus is a key that sticks.
+
+  The markup is not the whole of what a page hides. The chat rail is switched off
+  at ≤900px and the sidebar at ≤600px by a media query, which leaves neither a
+  `hidden` nor a `tabindex` to read, so the enumeration reads the layout too: a
+  control whose own or whose ancestor's computed `display` is `none` is off the
+  path, and so the edge of the ring is drawn at a control the reader can actually
+  stand on. The walk up the ancestor chain is what says it — a control of a
+  switched-off subtree answers for its own `display` exactly as it does on screen,
+  which a live Chromium measured on the two production rules. As a last step the
+  hand-off still asks each candidate to take the keyboard and spends the key on the
+  next control of the way if it answers by moving nothing, which covers the refusal
+  no read predicts and the environments that apply no CSS at all.
+
+  Both were measured in Chromium with the production sheet and the ring module of
+  this branch on a fixture shaped like the mounted surface — the sidebar, the
+  header, a fold, the rail, the composer, and the stack in `document.body` — with
+  real `Tab` and `Shift+Tab` presses. At 1200px the trail from the composer walks
+  `send → open → dismiss → opt-in` and turns back at the stack's edge into the
+  first control of the sidebar. At 500px, where both parts are switched off, the
+  ring enumerates neither, and Shift+Tab from the header's control — the front the
+  width leaves — lands on the stack's opt-in; against the ring as it stood at HEAD
+  the same press leaves the page for the browser's own order, and the walk back from
+  the composer escapes at that same step. At 850px, with the rail switched off and
+  no notices on screen, Tab from the composer's send turns back into the interface.
+  What the stand still owes is the same walk on the mounted surface in a browser:
+  not run, because the browser panel of the stand is collapsed (`viewport=0x0`) and
+  gives no real key presses to observe.
+
+- The QA surface reads its configuration the way a 0.1.7-rc.2 host publishes it, and its card edits it from its own tab. ([#513](https://github.com/xarleyn/dsh-plugins/issues/513))
+
+  On 0.1.5 the plugin installed a settings namespace and the browser bound to it
+  through a settings scope. The Host rewrote that subsystem: the namespace of an
+  entry IS its profile entry id, a field is editable while its schema node carries
+  `.volatile()`, and the browser edits it through `ctx.configForms`. Every
+  top-level field of this plugin's Config is therefore declared volatile, the
+  plugin reads the current snapshot of each reference on every operation instead
+  of holding one resolved copy, and the parts that are not read per operation — the
+  registered routes, the one-time configuration warnings — re-sync on the Host's
+  `settings/document-updated` notification for this entry. The generated page is
+  switched off, because the plugin's own card is the page; the card binds to
+  `dsh-qa-surface`, the row id the bundle declares, and registers as a tab of the
+  Plugins settings section under the shell contract it already kept. The key of a
+  queued message is now read from the session's Inbox projection, since the queue
+  left the session snapshot; delegated chats are named from the host list rows the
+  `subagent` origin marks, since the parent-keyed catalog left the list state; a
+  retained reference replaced the Host-wide `open`; a running tool call reports its
+  arguments only once it has started; and the notes the plugin injects carry their
+  own producer kind, because the catch-all `plugin` kind is gone.
+
+  Two host facts the compiler surfaced are settled rather than worked around. The
+  preset registry reads its scope through a revision lease (`acquireScope`), held
+  for exactly the capability-catalog read that borrowed it, because
+  `standingKeyFor` was deleted, not relocated. And the `auto` permission preset,
+  which resolves to `approval: ask`, is now refused as a lockdown preset at
+  configuration time — the lockdown pins `never` and cannot be weakened, so a
+  deployment that named `auto` previously only learned it could not attest one
+  chat at a time.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.6.0
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+- Updated @yadsh/dsh-plugin-kit to 0.5.0
+- Updated @yadsh/dsh-audit-core to 0.1.1
+- Updated @yadsh/dsh-audit-ui to 0.1.2
+
+### ❤️ Thank You
+
+- qoder-bot
+- xarleyn @xarleyn
+
 ## 0.13.0 (2026-09-24)
 
 ### 🚀 Features

@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-preset-persona-editor",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "description": "Read what an agent preset contributes to the prompt from the DeepSeek Harness settings UI: the persona prefix, suffix, complete mode and runtime-context toggle the preset composes with, and the named prompt sections it registers in its own name",
   "repository": {
     "type": "git",

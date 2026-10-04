@@ -1,3 +1,172 @@
+## 0.6.0 (2026-10-04)
+
+### 🚀 Features
+
+- The documents card opens from the Plugins page now, inside that page's own card ([#656](https://github.com/xarleyn/dsh-plugins/issues/656), [#618](https://github.com/xarleyn/dsh-plugins/issues/618), [#646](https://github.com/xarleyn/dsh-plugins/issues/646))
+  rather than in a frame of its own.
+
+  The card sat as a tab of *Settings → Plugins* (`settings.plugins.tab`), the seat
+  a plugin takes for a page the Host does not own. This card is not such a page: it
+  edits exactly one thing — this bundle's own Config — and `0.1.7` grew a surface
+  for that. The Plugins page declares `plugins.row.config`, a keyed seat whose
+  entry opens as the configuration of one row, reached by that row's own configure
+  control. Registering there is the difference between a settings tab whose name a
+  operator has to remember, and a configure control on the row they were already
+  looking at.
+
+  The key is `@yadsh/dsh-documents#documents` — the package name joined to the row
+  id `cordis.patch.yml` declares. That join is what makes the move cheap and what
+  makes it safe: the row id is the same `documents` the Host has resolved this
+  plugin's volatile Config under since the `0.1.7` cutover, so the namespace the
+  page takes its form from and the namespace this plugin reads are one namespace.
+  **Nothing about where values are stored changed**, and a root, a mode or an
+  address saved by an older build is read back by this one. The tab's own seat id —
+  also `documents` — was the only name left behind, and it named nothing but the
+  seat.
+
+  What the card edits did not change: the same sections, the same path-addressed
+  writes that let a cleared field re-inherit the composition default. What it draws
+  did. The page renders the card surface, the row title, the row id and the
+  description line, and mounts the registrant's `page` view under them, so the
+  shell this card used to bring — `CardShell`, the canonical CSS, the
+  `dsh-plugin-card*` classes, the badge, the chevron and the `<li>` in a
+  plugin-owned `<ul>` — left the bundle: beside a first-party row it was a second
+  card inside the Host's one, and a heading that repeated the page's own. The
+  card-contract gate agrees, and now enforces it from the seat: decision D1 of the
+  cutover was reversed on 01.10 to "as the host does", the gate reads the seat off
+  the built bundle rather than trusting a declaration, and on a panel seat it
+  *rejects* the classes it once required. So the seat is named by a literal at the
+  registration, and each control the body still draws for itself — a field, a
+  switch, a button — takes its ring from the Host's `--dsw-focus-ring-width` and
+  `--dsw-focus-ring-color`, each with its fallback: where a token is undeclared the
+  whole `outline` shorthand would be dropped, and a hard-coded outline of ours loses
+  to the Host's `focus.css` under pointer modality.
+
+  Three details follow from the new
+  seat rather than from a redesign. The page hands its registrant a `ConfigPageForm`,
+  which is `{ state, mutate }` — no subscription, no single-field write — so the
+  card keeps resolving its own `ConfigForm` for the namespace and that form now
+  arrives through the injected face under the name `settingsForm`, where the owner
+  prop called `form` cannot shadow it. The page also draws the row's title and
+  one-liner itself, from the display metadata the Host reads at
+  `@yadsh/dsh-documents/locale/en.json` without activating the plugin, so the
+  package ships that file: the row is titled «Документы» — the word the tab's own
+  `label` used to carry — and its description is the sentence this entry answers the
+  seat's `summary` view with. Without the file the Plugins page names the row by its
+  full module name and the surface loses the only wording of its own it ever had. And
+  the entry answers two views: `page` is the body, `summary` is the one-liner the
+  page falls back to only for a row with no display description — a guard, so a row
+  that loses its metadata gets text inside the page's own paragraph rather than a
+  whole card.
+
+  The manifest followed the surface: the client half type-imports the Plugins
+  page's slot contract, so `@deepseek-ai/dsh-client-ui-plugin-manager` — new to
+  both catalogs — replaces `@deepseek-ai/dsh-client-ui-settings-plugins` as peer,
+  dev and `dsh.client.inject` entry, and `locale/en.json` is exported and published
+  so the Host can read it without activating the plugin. This is `minor` rather
+  than `patch` for two reasons. A browser running a host without the Plugins page
+  loses the card; and the card is now reached *from that page*, which reads its
+  inventory through `api-remotes` and reports itself unavailable on a Host without
+  a managed profile — a condition the Settings → Plugins tab never imposed. The
+  page is not the loopback-gated settings directory, so a browser on the LAN still
+  reaches the card. `compatibility.json` names the first: its required client
+  features say `plugins.row.config` where they named the tab, and its range already
+  starts at the release that grew the seat. The second is a consequence of the seat,
+  not of a version a consumer can fence on.
+  `scripts/verify-package.mjs` asserts the new pair (the slot literal and the
+  `@yadsh/dsh-documents#` key prefix in the shipped bundle, the tab seat banned so
+  the card cannot start rendering twice, the new package in the
+  inject list and on the peer list, `plugins.row.config` among the declared client
+  features) and that the published package carries display metadata with both fields
+  filled, and a new client test drives the real `apply()` against a bare context:
+  the keyed registration, the key built from the row `cordis.patch.yml` declares
+  rather than from the constant that names the namespace, the form arriving under a
+  name the slot cannot overwrite, the summary view staying text, and the row's
+  description being the sentence the entry answers with.
+
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- The plugin's backend suite stops losing to Vitest's default timeout on a loaded ([#290](https://github.com/xarleyn/dsh-plugins/issues/290))
+  Windows run.
+
+  Rendering goes through a configured executable, so each render costs a real
+  child process and its cold start. Vitest gives a test five seconds and this
+  package re-exported the shared preset with no override; a full
+  `nx run-many -t test` runs eight projects at once, and the test that renders
+  twice through a failing backend was observed hitting that cap at 5036ms while
+  its neighbours cost up to four seconds. The cap, not the renderer, is what
+  failed it. The package now budgets 30 seconds per test, the allowance the
+  browser plugin already gives its I/O-bound suites.
+
+  No runtime behavior changed: the fix is test configuration.
+
+- The documents settings card is now addressable by a stable hook. ([#471](https://github.com/xarleyn/dsh-plugins/issues/471), [#422](https://github.com/xarleyn/dsh-plugins/issues/422))
+
+  Every section of the card the operator edits — the pipeline, extraction, the
+  parsers, artifacts and the template/limit budgets — carries a `data-testid`, and
+  so does each control inside it and each section's reset button. The ids are ASCII
+  kebab-case under the `docs-` zone (`docs-pipeline`, `docs-extraction-ocr`,
+  `docs-artifacts-retain-source`, …), so a browser test reaches a knob without
+  reading the Russian caption or the BEM class that used to identify it, and no two
+  ids in the package collide.
+
+  Only an attribute was added: the markup, the shell contract and the rendered text
+  are unchanged. The comparison section is left untouched (its configuration is led
+  by #422), and the tools inventory keeps being asserted by the text it shows — the
+  tool names are the thing under test there, not a label to hang a hook on.
+
+  The card test that clicked the pipeline switch through its Russian caption now
+  reaches it through `docs-pipeline-enabled`: what that test asserts is the revision
+  each write is fenced with, not the wording of the label. The comparison assertions
+  stay as they were, since #422 owns that section.
+
+- The document pipeline runs live on a 0.1.7-rc.2 host, and its card moves to the surface that host still serves. ([#519](https://github.com/xarleyn/dsh-plugins/issues/519))
+
+  The pipeline configured itself through an installed settings section, which the
+  `0.1.7` settings rewrite deleted: a field is now editable without a remount
+  exactly when its schema node is marked volatile, and the namespace an operator
+  edits is the profile entry id rather than a section a plugin installs. Every
+  section of this plugin's `Config` is therefore volatile now, which is what keeps
+  all fifteen of them in the form the Host serves; the loader hands each as a
+  stable reference, so the entry reads one plain snapshot per operation instead of
+  copying the configuration at startup, and rebuilds the subsystem when a committed
+  write moves the resolved values. An operator turning the pipeline off stops the
+  five tools at once, as the card's own hint promises.
+
+  The card was registered into `settings.plugin.item`, and that slot no longer
+  exists. It is a tab of the Plugins settings page now — the surface the README
+  already described — where it keeps the shared card shell and edits the same
+  namespace through the Host's configuration form, writing with the revision it
+  just read so a stale view cannot overwrite a newer one. Clearing a field still
+  re-inherits the composition default rather than freezing today's value, and a
+  browser the Host serves read-only still gets disabled controls plus the notice
+  that says why.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+- Updated @yadsh/dsh-plugin-kit to 0.5.0
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.5.1 (2026-09-22)
 
 ### 🩹 Fixes
