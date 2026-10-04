@@ -294,14 +294,14 @@ opaque delegated provider must call `qa_report_sources`. The note travels as
 injected context on the conversation (see the profile notes below), so a QA
 preset cannot suppress it.
 
-A report is checked before it is recorded, in two places. The caller must be
-a delegated run — a report from anywhere else is refused, because provenance
-is collected rather than authored. And every entry must carry a path or a URL
-that survives normalization, so an entry describing a fact is dropped and the
-tool answers with a lower count.
-`sources.subagents.validateReportedSources` (default true) turns both checks
-off: a report from the QA agent itself is recorded into that session's current
-turn, and an entry with no address keeps its `kind`, title and snippet instead
+A report is checked entry by entry: every entry must carry a path or a URL that
+survives normalization, so an entry describing a fact is dropped and the tool
+answers with a lower count. Who files the report is not a check — a delegated
+run's report inherits the turn that started the run, and a report the QA agent
+files from its own chat is recorded into that session's current turn, exactly
+where a tool-derived source of the same turn would be.
+`sources.subagents.validateReportedSources` (default true) turns the address
+check off: an entry with no address keeps its `kind`, title and snippet instead
 of being rejected. A URL the normalizer cannot parse is then kept verbatim,
 and a missing title falls back to the last path or URL segment; an entry with
 neither a title nor an address is still dropped, because there would be
