@@ -101,10 +101,10 @@ Everything below was confirmed by a broken surface, not by a green gate.
   a `settings.section` or `settings.plugins.tab` page — and must NOT be imported by
   a row card: the Plugins page draws the frame, the heading and the expand control,
   so ours would be a second card inside the Host's one.
-  `registerSettingsCard` / `SETTINGS_PLUGIN_ITEM_SLOT` default to the slot the
-  Host deleted at `0.1.7` — pass `slotName: "plugins.row.config"` with the row
-  `key`, or drive `ctx.slots.inject`/`register` yourself, which is what every
-  migrated plugin of this repository does.
+  `PLUGIN_ROW_CONFIG_SLOT` names that same row seat and `registerSettingsCard`
+  defaults to it, so a row card may route through the helper — with the row
+  `key` and no `styles` — or drive `ctx.slots.inject`/`register` itself, which
+  is what every migrated plugin of this repository does.
 - The page seats the same entry under two `view`s: `summary` — a one-liner
   wherever a row declares no description of its own — and `page`, the card.
   Export an entry that answers `summary` with the sentence and mounts the card

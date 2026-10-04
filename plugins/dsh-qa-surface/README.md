@@ -896,15 +896,16 @@ export function apply(ctx: Context) {
 
 ### The signed-in account outside the dialog
 
-A card mounted in the host's own settings (`settings.plugin.item`) has no panel
-props to read the account from, so the same contract also publishes the session
-as the `qaUserSession` client service: `checking`, `anonymous` or `authed` with
-the bearer credential the principal-scoped QA remotes authorize with. It follows
-the same account controller the pages use, so a card and the dialog never
-disagree. Subscribe to it with `useSyncExternalStore` and render account-bound
-controls only for `authed` — without an account every call would be refused, and
-the credential is transport authentication only: never persist it, log it, or
-put it in a URL, a tool argument or any model-visible value.
+A card seated on the Host's Plugins panel — the keyed `plugins.row.config` seat
+of its own bundle row — has no panel props to read the account from, so the same
+contract also publishes the session as the `qaUserSession` client service:
+`checking`, `anonymous` or `authed` with the bearer credential the
+principal-scoped QA remotes authorize with. It follows the same account
+controller the pages use, so a card and the dialog never disagree. Subscribe to
+it with `useSyncExternalStore` and render account-bound controls only for
+`authed` — without an account every call would be refused, and the credential is
+transport authentication only: never persist it, log it, or put it in a URL, a
+tool argument or any model-visible value.
 
 ```ts
 import type { Context } from "@deepseek-ai/cordis";
@@ -913,9 +914,9 @@ export const inject = ["qaUserSession", "slots"];
 
 export function apply(ctx: Context) {
   ctx.effect(() =>
-    ctx.slots.inject("settings.plugin.item", () =>
+    ctx.slots.inject("plugins.row.config", () =>
       ctx.slots.register(
-        { name: "settings.plugin.item", key: "my-namespace" },
+        { name: "plugins.row.config", key: "@yadsh/dsh-<name>#<row id>" },
         MyCard,
       ),
     ),
