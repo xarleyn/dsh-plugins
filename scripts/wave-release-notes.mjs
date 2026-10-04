@@ -7,55 +7,11 @@ import { readReleaseRows } from "./verify-package-publication.mjs";
 const CHANGELOG_FILE = "CHANGELOG.md";
 
 /**
- * The largest body the GitHub Releases API accepts. A wave whose entries exceed
- * it fails the release step with `422 body is too long` after npm, the tag and
- * the push have already succeeded, so the limit is enforced here instead.
+ * The largest body the GitHub Releases API accepts. A wave that exceeds it fails
+ * the release step with `422 body is too long` — after npm, the wave tag and the
+ * push have already succeeded — so the limit is enforced here instead.
  */
 const RELEASE_BODY_LIMIT = 125_000;
-
-/**
- * Pack whole package sections into the limit, dropping from the end rather than
- * cutting a paragraph, and name what was left out. Only the single section that
- * does not fit on its own is trimmed, and then at a line boundary.
- */
-export function capWaveNotes(sections, limit = RELEASE_BODY_LIMIT) {
-  const heading = (section) => section.split("\n", 1)[0].replace(/^##\s+/u, "");
-  const footerFor = (omitted) =>
-    omitted.length === 0
-      ? ""
-      : `\n\n_${omitted.length} package section(s) left out because GitHub caps a ` +
-        `release body at ${limit} characters: ${omitted.map((name) => `\`${name}\``).join(", ")}. ` +
-        `Each one ships in its package's \`${CHANGELOG_FILE}\` and in the stand's version history._\n`;
-
-  let kept = sections.length;
-  let text = "";
-  // Never drop below one section: a wave whose first entry alone exceeds the
-  // limit is trimmed inside that entry rather than left with an empty body.
-  while (kept >= 1) {
-    const included = sections.slice(0, kept);
-    const footer = footerFor(sections.slice(kept).map(heading));
-    text = `${included.join("\n\n")}\n${footer}`;
-    if (text.length <= limit || kept === 1) break;
-    kept -= 1;
-  }
-
-  if (text.length > limit) {
-    // The marker itself counts against the limit, or the trimmed body would
-    // overshoot it by exactly the sentence that explains the overshoot.
-    const marker = `\n\n_(trimmed: GitHub caps a release body at ${limit} characters.)_\n`;
-    const lines = text.split("\n");
-    while (lines.length > 1 && `${lines.join("\n")}${marker}`.length > limit) {
-      lines.pop();
-    }
-    text = `${lines.join("\n")}${marker}`;
-  }
-
-  return text;
-}
-
-function escapeRegExp(value) {
-  return value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-}
 
 /**
  * The body of a version's own section in an Nx-generated changelog, or
@@ -80,16 +36,67 @@ export function changelogSection(changelog, version) {
   return body.join("\n");
 }
 
-/**
- * The GitHub Release notes for one release wave: every released package with
- * the changelog entry its new version already carries in the repository. The
- * release commit rewrote those changelogs moments before, so the notes always
- * describe exactly what the wave published.
- */
-export function buildWaveNotes(rows, repoRoot) {
-  const sections = [];
+function escapeRegExp(value) {
+  return value.replaceAll(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+}
 
-  for (const row of rows) {
+/**
+ * Pack whole entries under the budget, dropping from the end rather than
+ * cutting a paragraph, and name what was left out together with where its text
+ * still lives. An entry too large on its own is trimmed at a line boundary —
+ * never to nothing, because a release whose body is only an apology is worse
+ * than a shortened one.
+ */
+export function packWaveNotes(entries, budget) {
+  const footerFor = (omitted) =>
+    omitted.length === 0
+      ? ""
+      : `\n\n_${omitted.length} entr${omitted.length === 1 ? "y" : "ies"} shortened to the index above because GitHub caps a release body at ${RELEASE_BODY_LIMIT} characters: ${omitted
+          .map((item) => `\`${item.title}\` (\`${item.path}\`)`)
+          .join(", ")}._\n`;
+  const assemble = (included, omitted) =>
+    `${included.map((item) => item.text).join("\n\n")}\n${footerFor(omitted)}`;
+
+  if (entries.length === 0) return "";
+
+  // Drop whole entries first: half a story would describe a release the wave did
+  // not ship, while the index above still names the package and its file.
+  for (let kept = entries.length; kept > 1; kept -= 1) {
+    const text = assemble(entries.slice(0, kept), entries.slice(kept));
+    if (text.length <= budget) return text;
+  }
+
+  // A single entry that still does not fit is trimmed line by line, and the
+  // footer is kept: it is what tells the reader where the shortened text lives.
+  const footer = footerFor(entries.slice(1));
+  const marker = `\n\n_(trimmed: GitHub caps a release body at ${RELEASE_BODY_LIMIT} characters; the full entry is in the file named in the index.)_\n`;
+  const room = Math.max(budget - footer.length - marker.length, 0);
+  const lines = entries[0].text.split("\n");
+  let keptLines = lines.length;
+  while (keptLines > 1 && lines.slice(0, keptLines).join("\n").length > room) {
+    keptLines -= 1;
+  }
+
+  return `${lines.slice(0, keptLines).join("\n")}${marker}${footer}`;
+}
+
+/**
+ * The GitHub Release notes for one release wave: an index naming every released
+ * package and where its changelog lives, then the changelog entry each new
+ * version already carries in the repository. The release commit rewrote those
+ * changelogs moments before, so the notes always describe exactly what the wave
+ * published — and the index is what stays true when the body hits the limit.
+ */
+export function buildWaveNotes(rows, repoRoot, limit = RELEASE_BODY_LIMIT) {
+  const index = rows
+    .map(
+      (row) =>
+        `- \`${row.name}@${row.version}\` — \`${row.directory}/${CHANGELOG_FILE}\``,
+    )
+    .join("\n");
+  const preamble = `## Packages in this release\n\n${index}\n\n`;
+
+  const entries = rows.map((row) => {
     let changelog;
     try {
       changelog = readFileSync(
@@ -102,16 +109,20 @@ export function buildWaveNotes(rows, repoRoot) {
     const body = changelog
       ? changelogSection(changelog, row.version)
       : undefined;
-    sections.push(
-      [
-        `## ${row.name} ${row.version}`,
+    const title = `${row.name} ${row.version}`;
+
+    return {
+      title,
+      path: `${row.directory}/${CHANGELOG_FILE}`,
+      text: [
+        `## ${title}`,
         "",
         body || "_No changelog entry was found for this version._",
       ].join("\n"),
-    );
-  }
+    };
+  });
 
-  return capWaveNotes(sections);
+  return `${preamble}${packWaveNotes(entries, limit - preamble.length)}`;
 }
 
 function main(argv = process.argv.slice(2)) {
