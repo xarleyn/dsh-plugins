@@ -116,6 +116,26 @@
   settings surface belongs on the Plugins panel. A page registered here
   that reuses the standard card shell keeps its `<li>` root inside a
   plugin-owned `<ul>`.
+- Use a Plugins-page seat — `plugins.row.config` (keyed
+  `<package name>#<row id>`) for one row's own configuration,
+  `plugins.bundle.config` (keyed by the package name) for the bundle's — when the
+  card edits that bundle's own Host Config and nothing else, as `dsh-documents`
+  does. This is a placement on the *other* surface, not a rename of the settings
+  namespace: the row id is the namespace the Host serves the form under, so
+  moving a card here keeps every stored value readable. Two consequences follow:
+  the page reports itself unavailable on a Host without a managed profile and
+  reads its inventory through `api-remotes`, so a card that must stay reachable
+  from a non-loopback browser belongs in `settings.plugins.tab`, not here; and
+  the page draws the row's own title and description from the package's exported
+  display metadata (`<package>/locale/en.json`, exported at
+  `./locale/en.json`), not from a `label` the registrant supplies — without that
+  file the row is named by its full package name. A card registered here that
+  reuses the standard card shell keeps its `<li>` root inside a plugin-owned
+  `<ul>`, since the configuration section supplies no list.
+- That naming fallback is the Host's behaviour, not a requirement of this
+  repository: no gate here demands `./locale/en.json`, so a bundle without it
+  still passes. Shipping the file is what makes a row read as a phrase an
+  operator recognises instead of a package specifier.
 
 ### Two kinds of card: who owns the chrome
 
