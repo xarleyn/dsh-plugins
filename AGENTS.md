@@ -93,6 +93,9 @@
   `settings.plugin.item` slot was deleted in `0.1.7`, and `settings.plugins.tab`
   — a tab of the native Plugins settings section — is not a registration point a
   plugin of this repository adds to, even though the Host still ships that slot.
+- `plugins.item` is neither: it is the Host's own list of companion packages, fed
+  from inside the Plugins page (`ui-plugin-manager` renders its entries itself),
+  and not a seat a plugin of this repository registers into.
 - The Plugins panel is not the settings directory, so a card seated there keeps
   answering from a non-loopback browser, where the settings directory is
   intentionally unavailable. Read `state.status` and `state.writable` off the
