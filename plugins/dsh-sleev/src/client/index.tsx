@@ -5,11 +5,10 @@ import type {
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type {} from "@deepseek-ai/dsh-client-locale/client";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
-import type { ChangeEvent, ReactElement, ReactNode } from "react";
-import { CardShell, PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
+import type { ChangeEvent, ReactNode } from "react";
 import {
   SleevSettingsController,
   type SleevSettings,
@@ -18,23 +17,17 @@ import {
   type SleevSettingsFieldState,
 } from "./settings-controller.js";
 import {
+  SLEEV_ROW_CONFIG_KEY,
   SLEEV_SETTINGS_NAMESPACE_ID,
-  SLEEV_SETTINGS_TAB_ID,
 } from "../shared/settings.js";
 
 export * from "./settings-controller.js";
 
 const LOCALE_NAMESPACE = "dsh-sleev";
 const SETTINGS_NAMESPACE = SLEEV_SETTINGS_NAMESPACE_ID;
-const SETTINGS_TAB = SLEEV_SETTINGS_TAB_ID;
-/** Tab position among the plugin pages of the Host Plugins settings section. */
-const SETTINGS_TAB_ORDER = 30;
 
 type SleevLocaleKey =
-  | "title"
   | "description"
-  | "expand"
-  | "collapse"
   | "unsaved"
   | "overridden"
   | "reset"
@@ -50,6 +43,8 @@ type SleevLocaleKey =
   | "logInfo"
   | "logDebug"
   | "invalidNumber"
+  | "loading"
+  | "noSettings"
   | "readOnly"
   | "saveFailed"
   | "discard"
@@ -63,10 +58,7 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
 }
 
 const en: Record<SleevLocaleKey, string> = {
-  title: "Sleev",
   description: "Observed routes and telemetry retention.",
-  expand: "Show settings",
-  collapse: "Hide settings",
   unsaved: "Unsaved",
   overridden: "Overridden",
   reset: "Reset to default",
@@ -82,6 +74,9 @@ const en: Record<SleevLocaleKey, string> = {
   logInfo: "Completed calls",
   logDebug: "Call starts and completions",
   invalidNumber: "Enter a positive whole number.",
+  loading: "Loading Sleev's settings…",
+  noSettings:
+    "Sleev's settings are not open to this session, so nothing here can be read or changed yet. The observer keeps reporting with the last configuration the Host accepted.",
   readOnly: "This deployment stores settings read-only.",
   saveFailed: "The deployment did not accept these values.",
   discard: "Discard",
@@ -90,10 +85,7 @@ const en: Record<SleevLocaleKey, string> = {
 };
 
 const zh: Record<SleevLocaleKey, string> = {
-  title: "Sleev",
   description: "观测路由和遥测保留设置。",
-  expand: "展开设置",
-  collapse: "收起设置",
   unsaved: "未保存",
   overridden: "已覆盖",
   reset: "恢复默认值",
@@ -109,6 +101,9 @@ const zh: Record<SleevLocaleKey, string> = {
   logInfo: "仅完成的调用",
   logDebug: "调用开始和完成",
   invalidNumber: "请输入正整数。",
+  loading: "正在加载 Sleev 的设置…",
+  noSettings:
+    "当前会话没有打开 Sleev 的设置，因此这里暂时既不能查看也不能修改。观测器仍会按宿主接受的最后一份配置继续上报。",
   readOnly: "此部署的设置为只读。",
   saveFailed: "部署未接受这些值。",
   discard: "放弃修改",
@@ -116,10 +111,17 @@ const zh: Record<SleevLocaleKey, string> = {
   saving: "保存中…",
 };
 
-const CARD_STYLES = `${PLUGIN_CARD_SHELL_CSS}
-.dsh-sleev-tab{display:flex;flex-direction:column;gap:12px;margin:0;padding:0;list-style:none}
-.dsh-sleev-button:focus-visible,.dsh-sleev-reset:focus-visible,.dsh-sleev-input:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:2px}
-.dsh-sleev-read-only{margin:12px 0 0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
+/*
+ * Body rules only. The Plugins panel page draws this card's frame, its heading
+ * and its expand control, so the bundle ships no shell of its own (AGENTS.md);
+ * the ring on every control the package renders is the Host's token pair, each
+ * half with a fallback, because a hard-coded outline loses to `focus.css` and an
+ * undeclared token would drop the whole `outline` shorthand.
+ */
+const CARD_STYLES = `.dsh-sleev-config{display:flex;flex-direction:column;gap:12px}
+.dsh-sleev-no-settings,.dsh-sleev-loading{margin:0;padding:12px 0;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
+.dsh-sleev-button:focus-visible,.dsh-sleev-reset:focus-visible,.dsh-sleev-input:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}
+.dsh-sleev-read-only{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
 .dsh-sleev-pill{border-radius:999px;padding:1px 8px;font-size:11px;line-height:17px;font-weight:500;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);white-space:nowrap}
 .dsh-sleev-field{display:flex;flex-direction:column;gap:6px;padding:12px 0}
 .dsh-sleev-field+.dsh-sleev-field{border-top:1px solid var(--dsw-alias-border-l2)}
@@ -130,7 +132,7 @@ const CARD_STYLES = `${PLUGIN_CARD_SHELL_CSS}
 .dsh-sleev-reset:disabled{opacity:.4;cursor:default}
 .dsh-sleev-input{box-sizing:border-box;width:100%;min-height:34px;padding:0 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);font:inherit;font-size:13px;line-height:1.5;color:var(--dsw-alias-label-primary)}
 textarea.dsh-sleev-input{height:64px;min-height:48px;padding:8px 12px;resize:vertical}
-.dsh-sleev-input:focus{border-color:var(--dsw-alias-border-brand);outline:none}
+.dsh-sleev-input:focus{border-color:var(--dsw-alias-border-brand)}
 .dsh-sleev-input:disabled{color:var(--dsw-alias-label-tertiary);cursor:default}
 .dsh-sleev-input[aria-invalid=true]{border-color:var(--dsw-alias-border-error)}
 .dsh-sleev-hint,.dsh-sleev-error{margin:0;font-size:12px;line-height:1.5;color:var(--dsw-alias-label-tertiary)}
@@ -143,7 +145,7 @@ textarea.dsh-sleev-input{height:64px;min-height:48px;padding:8px 12px;resize:ver
 .dsh-sleev-button:disabled{opacity:.4;cursor:default}
 `;
 
-type SleevSettingsCardProps = PropsRuntime<"settings.plugins.tab"> &
+type SleevSettingsCardProps = PropsRuntime<"plugins.row.config"> &
   PropsLocale<"dsh-sleev"> &
   InjectFace<SleevSettingsCardFace>;
 
@@ -192,10 +194,42 @@ function SettingsField(props: {
   );
 }
 
-/** Settings card contributed to the official Plugins → Plugin configuration tab. */
+/** Body of the Sleev bundle row's configuration page on the Host Plugins panel. */
 export function SleevSettingsCard(props: SleevSettingsCardProps) {
+  // The seat hands its registrant a `form` owner prop of its own — the page's
+  // `ConfigPageForm`, only `{ state, mutate }`, which can be neither subscribed
+  // to nor written field by field. The card never reads it: the live `ConfigForm`
+  // for the namespace arrives through this injected face instead.
   const state = props.useSleevSettings((snapshot) => snapshot);
-  if (!state.available) return null;
+  /*
+   * The namespace answers three states, and the row's frame takes one line each:
+   * a single sentence for all of them made a page that is still loading claim it
+   * has nothing to edit. `unavailable` is the settings directory closed to this
+   * client — a non-loopback browser, or memory mode — where the card still has to
+   * answer, and `loading` is the first snapshot of a namespace that will serve.
+   * The old tab could stay shut through both; here the row's Configure control is
+   * drawn from the inventory, so silence would open a row on an empty section.
+   * Neither line is a live region: `loading` is replaced by the form as soon as
+   * the namespace serves, and a `role="status"` would read that swap out.
+   */
+  if (state.status === "unavailable") {
+    return (
+      <div className="dsh-sleev-config" data-testid="sleev-row-config">
+        <p className="dsh-sleev-no-settings" data-testid="sleev-no-settings">
+          {props.t("noSettings")}
+        </p>
+      </div>
+    );
+  }
+  if (state.status === "loading") {
+    return (
+      <div className="dsh-sleev-config" data-testid="sleev-row-config">
+        <p className="dsh-sleev-loading" data-testid="sleev-loading">
+          {props.t("loading")}
+        </p>
+      </div>
+    );
+  }
   const blocked =
     !state.dirty || state.invalid || state.saving || !state.writable;
   const edit =
@@ -215,16 +249,11 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
   });
 
   return (
-    <CardShell
-      title={props.t("title")}
-      description={props.t("description")}
-      label={(open) => `${props.t(open ? "collapse" : "expand")}: Sleev`}
-      badge={
-        state.dirty ? (
-          <span className="dsh-plugin-card__badge">{props.t("unsaved")}</span>
-        ) : undefined
-      }
-    >
+    // The page draws the frame, the heading and the expand control around what
+    // this returns, so the body is mounted straight away and carries no shell,
+    // no badge of the header's, and no chevron of ours (AGENTS.md). The unsaved
+    // marker the old header held moves into the footer beside the write controls.
+    <div className="dsh-sleev-config" data-testid="sleev-row-config">
       {!state.writable ? (
         <p
           className="dsh-sleev-read-only"
@@ -322,6 +351,11 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
             {props.t("saveFailed")}
           </p>
         ) : null}
+        {state.dirty ? (
+          <span className="dsh-sleev-pill" data-testid="sleev-unsaved">
+            {props.t("unsaved")}
+          </span>
+        ) : null}
         <button
           type="button"
           className="dsh-sleev-button dsh-sleev-discard"
@@ -341,27 +375,36 @@ export function SleevSettingsCard(props: SleevSettingsCardProps) {
           {props.t(state.saving ? "saving" : "save")}
         </button>
       </div>
-    </CardShell>
+    </div>
   );
 }
 
 export const inject = ["slots", "configForms", "locale"];
 
 /**
- * Page seat of the Host Plugins settings section.
- *
- * The section mounts a tab contribution directly, so the card's `<li>` shell
- * needs the list parent the card contract assumes; the plugin owns that `<ul>`.
+ * Configuration seat of the Sleev bundle row on the Host Plugins page. The
+ * contract of the declared peer dependency —
+ * `@deepseek-ai/dsh-client-ui-plugin-manager`, `lib/types/client/slot-contract`
+ * — names the slot and hands it `PluginConfigViewProps`, whose `view` is the
+ * union `'summary' | 'page'` and whose `form` is only the page's `ConfigPageForm`
+ * (`{ state, mutate }`). Because this bundle's `cordis.patch.yml` gives the row
+ * no description, the contract's fallback — an absent description falls back to
+ * the entry's `view: 'summary'` — is the path this row actually takes: `summary`
+ * answers with the one-liner that lands in the page's own description paragraph,
+ * so a card there would draw a page within a line, and `page` is the form body.
+ * The body carries no frame of its own: the row-detail page draws the surface,
+ * the row title and the expand control before it is mounted, and a shell here
+ * would be a second card inside the Host's. The card resolves the full
+ * `ConfigForm` for the `dsh-sleev` namespace through its injected face rather
+ * than through the seat's shallow `form`, which is what keeps values stored before
+ * the move readable after it.
  */
-export function SleevSettingsTab(props: SleevSettingsCardProps): ReactElement {
-  return (
-    <ul className="dsh-sleev-tab" data-testid="sleev-tab">
-      <SleevSettingsCard {...props} />
-    </ul>
-  );
+export function SleevRowConfig(props: SleevSettingsCardProps): ReactNode {
+  if (props.view === "summary") return props.t("description");
+  return <SleevSettingsCard {...props} />;
 }
 
-/** Register Sleev's localized settings card as a tab of the Host Plugins section. */
+/** Register Sleev's localized settings card as its bundle row's configuration page. */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     const style = document.createElement("style");
@@ -377,17 +420,15 @@ export function apply(ctx: ClientContext): void {
   const controller = new SleevSettingsController(
     ctx.configForms.get<SleevSettings>(SETTINGS_NAMESPACE),
   );
-  ctx.slots.inject("settings.plugins.tab", () => {
+  ctx.slots.inject("plugins.row.config", () => {
     const unregister = ctx.slots.register(
       {
-        name: "settings.plugins.tab",
-        id: SETTINGS_TAB,
-        order: SETTINGS_TAB_ORDER,
-        label: () => "Sleev",
+        name: "plugins.row.config",
+        key: SLEEV_ROW_CONFIG_KEY,
         locale: LOCALE_NAMESPACE,
         inject: () => controller.inject(),
       },
-      SleevSettingsTab,
+      SleevRowConfig,
     );
     return () => {
       controller.dispose();
