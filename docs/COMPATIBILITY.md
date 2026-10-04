@@ -57,7 +57,7 @@ instance.
 | `@yadsh/dsh-preset-persona-editor` | Cordis, agent presets, system prompt, gateway, client renderer/settings/slots, Typert protocol, React |
 | `@yadsh/dsh-prompt-firewall` | Cordis, gateway, client renderer/settings/slots, settings, system prompt, Typert protocol |
 | `@yadsh/dsh-qa-browser` | Cordis, schemastery, agent, attachment, gateway, api-session-controller, webserver, tools, client renderer/slots, Typert protocol, React, React DOM |
-| `@yadsh/dsh-qa-integrations` | Cordis, schemastery, tools, settings, client settings/settings-plugins, Typert protocol, React |
+| `@yadsh/dsh-qa-integrations` | Cordis, schemastery, tools, settings, client plugin-manager/settings, Typert protocol, React |
 | `@yadsh/dsh-qa-surface` | Cordis, schemastery, gateway, agent, agent presets, api-session-controller, api-workspace-controller, permissions, session, settings, tools, workspace, webserver, client connection/conversation/chat/renderer/layout/settings/slots/theme, Typert protocol, React |
 | `@yadsh/dsh-session-audit` | Cordis, schemastery, home paths, gateway, client conversation/renderer/slots, Typert protocol, React |
 | `@yadsh/dsh-session-scope` | filesystem, sandbox, session |

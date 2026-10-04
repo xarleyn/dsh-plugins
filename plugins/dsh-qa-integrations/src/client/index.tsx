@@ -1,7 +1,7 @@
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
   RemoteResult,
   TypertRemoteContribution,
@@ -13,12 +13,12 @@ import type {
 } from "@yadsh/dsh-qa-surface/client/settings";
 import type { QaIntegrationsConfig } from "../config.js";
 import type { IntegrationSummary, PolicyPatch } from "../types.js";
-import { createIntegrationsHostTab } from "./card.js";
+import { createIntegrationsCard } from "./card.js";
 import {
   createIntegrationsPage,
   type IntegrationsClientRemote,
 } from "./integrations.js";
-import { OperatorCardTab } from "./operator-card.js";
+import { OperatorCardEntry } from "./operator-card.js";
 import { styles } from "./styles.js";
 import { QA_INTEGRATIONS_SETTINGS_NAMESPACE } from "../shared/settings.js";
 
@@ -54,10 +54,17 @@ export const inject = [
  * All three mounts of this one bundle: the operator card, which edits the
  * plugin's own profile entry through the settings form the Host serves for it,
  * the page of the signed-in user's QA settings dialog, where the account gate
- * lives, and the feature-owned tab in the host's Plugins settings, which
- * reaches the same account through the `qaUserSession` service. Both cards sit
- * in the Plugins tab strip and draw the shared shell themselves, so neither
- * depends on the Host settings directory.
+ * lives, and the account card the Plugins page shows on this bundle's own page,
+ * which reaches the same account through the `qaUserSession` service.
+ *
+ * The two panel cards draw the body only — the page supplies their frame, title
+ * and expand control. What they leave behind is the Settings *surface*: neither
+ * needs the settings directory (loopback-only, and the card keeps answering from
+ * a browser on the LAN) nor a tab of the Settings dialog. What neither can drop
+ * is the settings *service*: `configForms` is
+ * `@deepseek-ai/dsh-client-ui-settings`, which stays a peer, an injection and a
+ * documented dependency (`docs/COMPATIBILITY.md`) — a seat decides where the card
+ * renders, not which module hands it a form.
  */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const disposeRemote = await (ctx as ClientFace).remote.$mount(
@@ -76,7 +83,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         const face = injected as ClientFace;
         let cancelled = false;
         let removeSection: (() => void) | undefined;
-        let removeHostTab: (() => void) | undefined;
+        let removeBundleCard: (() => void) | undefined;
         face.effect(() => {
           const style = document.createElement("style");
           style.dataset.dshQaIntegrations = "styles";
@@ -91,20 +98,21 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         const removeCard = face.configForms.whileServed(
           [QA_INTEGRATIONS_SETTINGS_NAMESPACE],
           () =>
-            face.slots.inject("settings.plugins.tab", () =>
+            face.slots.inject("plugins.row.config", () =>
               face.slots.register(
                 {
-                  name: "settings.plugins.tab",
-                  id: "qa-integrations-config",
-                  order: 30,
-                  label: () => "Интеграции — конфигурация",
+                  name: "plugins.row.config",
+                  key: "@yadsh/dsh-qa-integrations#qa-integrations",
+                  // The seat hands the page's own `ConfigPageForm` — `{ state,
+                  // mutate }` only — so the card edits the full form this entry
+                  // resolves, under a name the owner prop cannot overwrite.
                   inject: () => ({
-                    form: face.configForms.get<QaIntegrationsConfig>(
+                    settingsForm: face.configForms.get<QaIntegrationsConfig>(
                       QA_INTEGRATIONS_SETTINGS_NAMESPACE,
                     ),
                   }),
                 },
-                OperatorCardTab,
+                OperatorCardEntry,
               ),
             ),
         );
@@ -123,27 +131,25 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               providers,
             ),
           });
-          const HostTab = createIntegrationsHostTab(
+          const BundleCard = createIntegrationsCard(
             face.remote.qaIntegrations,
             providers,
             face.qaUserSession,
           );
-          removeHostTab = face.slots.inject("settings.plugins.tab", () =>
+          removeBundleCard = face.slots.inject("plugins.bundle.config", () =>
             face.slots.register(
               {
-                name: "settings.plugins.tab",
-                id: "qa-integrations",
-                order: 40,
-                label: () => "Интеграции",
+                name: "plugins.bundle.config",
+                key: "@yadsh/dsh-qa-integrations",
               },
-              HostTab,
+              BundleCard,
             ),
           );
         })().catch(() => undefined);
         return () => {
           cancelled = true;
           removeSection?.();
-          removeHostTab?.();
+          removeBundleCard?.();
           removeCard();
         };
       },

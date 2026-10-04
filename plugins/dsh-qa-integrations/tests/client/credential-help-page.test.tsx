@@ -79,9 +79,17 @@ describe("Integrations credential help", () => {
       name: /Создать токен/u,
     });
     expect(trigger.getAttribute("aria-expanded")).toBe("false");
-    fireEvent.click(trigger);
+    // The disclosure is this bundle's own glyph, not the card shell's inline
+    // chevron: a bundle seated on the Plugins panel may not carry that path at
+    // all, and the rotate hook is the `aria-expanded` the styles read.
+    expect(trigger.querySelector("svg")).toBeNull();
     expect(
-      container.querySelector(".dsh-credential-help__title")?.textContent,
+      trigger.querySelector(".dsh-qa-integrations-help__chevron"),
+    ).not.toBeNull();
+    fireEvent.click(trigger);
+    expect(trigger.getAttribute("aria-expanded")).toBe("true");
+    expect(
+      container.querySelector(".dsh-qa-integrations-help__title")?.textContent,
     ).toBe("Personal access token GitLab");
     expect(screen.getByText("read_api — всё читаемое")).toBeDefined();
     const link = screen.getByRole("link", { name: "Создать токен" });

@@ -13,16 +13,13 @@
  * a new provider adds one of those instead of copying this card's form.
  */
 
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import {
-  CardShell,
-  bindSettingsExternalStore,
-} from "@yadsh/dsh-plugin-kit/client";
+import { bindSettingsExternalStore } from "@yadsh/dsh-plugin-kit/client";
 import {
   useCallback,
   useMemo,
@@ -56,31 +53,74 @@ import { ServiceAccessSection } from "./operator-sections/service-profiles.js";
 
 /** The face the slot entry injects into this card. */
 export interface OperatorCardFace {
-  readonly form: ConfigForm<QaIntegrationsConfig>;
+  /**
+   * The live Config of this plugin's namespace.
+   *
+   * Named `settingsForm`, not `form`: the row seat hands its registrant a `form`
+   * of its own — the Plugins page's `ConfigPageForm`, which is only
+   * `{ state, mutate }` and so can neither be subscribed to nor written field by
+   * field. This card's `ConfigForm` therefore arrives through the injected face,
+   * where the owner prop cannot shadow it.
+   */
+  readonly settingsForm: ConfigForm<QaIntegrationsConfig>;
 }
 
-type CardProps = PropsRuntime<"settings.plugins.tab"> &
+type CardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<OperatorCardFace>;
 
 /** Mutation operations as the bound form declares them. */
 type ScopeOps = Parameters<ConfigForm<QaIntegrationsConfig>["mutate"]>[0];
 
 /**
- * The card as the Host's Plugins settings render it: one entry of
- * `settings.plugins.tab`, whose `<li>` shell therefore sits in a list this
- * plugin owns. The panel supplies no list of its own, and a bare `<li>` under
- * a `<div>` is what the shell contract on the account tab already avoids.
+ * The one-liner the Plugins page asks this row's entry for.
+ *
+ * The seat is keyed `@yadsh/dsh-qa-integrations#qa-integrations` and the page
+ * dispatches that one entry under two views: `view: 'page'` is the form with its
+ * own save control, `view: 'summary'` is the row's description line. The
+ * contract the installed `@deepseek-ai/dsh-client-ui-plugin-manager` ships makes
+ * the second a fallback — `lib/types/client/slot-contract.d.ts` admits `summary`
+ * "for an official card's one-liner or a row's missing-description fallback" and
+ * closes the `plugins.row.config` entry with "An absent description falls back to
+ * the entry's `view: 'summary'`".
+ *
+ * Whether a live page reaches that fallback is not this bundle's to know, and it
+ * is not `cordis.patch.yml` that decides it: the row's detail renders
+ * `description ?? renderSlot("plugins.row.config", { view: "summary" })`, and
+ * that `description` comes from `rowText(row)` over the Host-supplied `row.meta`
+ * localized text — measured on the installed `rc.2` client, where the patch's own
+ * rows carry no description field at all. A published bundle normally does
+ * resolve to package text, so this sentence is what the entry answers with when
+ * it does not, and it has to stay a sentence in that case either way: the page
+ * mounts whatever it returns inside its own description paragraph, where a body
+ * would be a page of controls inside a line of text.
+ *
+ * It is therefore kept equal to the `description` field of `package.json`, which
+ * is what the Host reads the row's sentence from (`docs/DSH-0.1.7-MIGRATION.md`
+ * §4.2, and `dsh-plugin-log-ui` #651 does the same): the same row then reads one
+ * way whether the line comes from the manifest or from this entry. A test derives
+ * the value from the manifest rather than restating it, so an edit to either side
+ * that breaks the equality fails the suite.
+ * `scripts/verify-package.mjs` pins what this artifact can prove — the branch and
+ * the sentence ship — and not the reachability the Host decides.
  */
-export function OperatorCardTab(props: CardProps): ReactElement | null {
-  return (
-    <ul className="dsh-qa-integrations__host-tab">
-      <OperatorCard {...props} />
-    </ul>
-  );
+export const QA_INTEGRATIONS_ROW_SUMMARY =
+  "Principal-scoped, encrypted user integrations for DSH QA Surface";
+
+/**
+ * The card as the Plugins page renders this bundle's row: `view: 'page'` mounts
+ * the body below, and the `summary` fallback is answered with the sentence rather
+ * than with a second render of it.
+ */
+export function OperatorCardEntry(props: CardProps): ReactElement | string {
+  if (props.view === "summary") return QA_INTEGRATIONS_ROW_SUMMARY;
+  return <OperatorCard {...props} />;
 }
 
-export function OperatorCard({ form }: CardProps): ReactElement | null {
-  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
+export function OperatorCard({ settingsForm }: CardProps): ReactElement {
+  const store = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const settings = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -95,20 +135,20 @@ export function OperatorCard({ form }: CardProps): ReactElement | null {
       const ops = [
         { op: "set", path: [...path], value },
       ] as unknown as ScopeOps;
-      form.mutate(ops).catch((cause: unknown) => {
+      settingsForm.mutate(ops).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [form],
+    [settingsForm],
   );
   const unset = useCallback(
     (path: readonly string[]) => {
       const ops = [{ op: "unset", path: [...path] }] as unknown as ScopeOps;
-      form.mutate(ops).catch((cause: unknown) => {
+      settingsForm.mutate(ops).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [form],
+    [settingsForm],
   );
   const overridden = useCallback(
     (path: readonly string[]) => isOverridden(settings.user, path),
@@ -120,12 +160,31 @@ export function OperatorCard({ form }: CardProps): ReactElement | null {
       op: "unset",
       path: [key],
     })) as unknown as ScopeOps;
-    form.mutate(ops).catch((cause: unknown) => {
+    settingsForm.mutate(ops).catch((cause: unknown) => {
       setError(displayError(cause));
     });
-  }, [form, keys]);
+  }, [settingsForm, keys]);
 
-  if (settings.status === "unavailable") return null;
+  if (settings.status === "unavailable") {
+    /**
+     * The namespace left the Host's `describe()` view after this seat mounted —
+     * a Config with no `.volatile()` field, or a Host that dropped the entry. A
+     * card that owns its shell could render nothing here; this one sits inside
+     * the page's own card, so rendering nothing would leave the reader in an
+     * opened row with an empty section and no reason. The sentence is the answer,
+     * and the row's own `Configure` control — drawn from the inventory, not from
+     * this entry — stays clickable.
+     */
+    return (
+      <div className="qai-op__body">
+        <p className="qai-op__muted" data-testid="qa-integrations-unavailable">
+          Настройки интеграций в этом сеансе недоступны, поэтому здесь нечего
+          читать и нечего менять. Запущенный сервис сохраняет конфигурацию,
+          которую принял последней.
+        </p>
+      </div>
+    );
+  }
 
   const control: ControlProps = {
     disabled: !writable,
@@ -171,26 +230,11 @@ export function OperatorCard({ form }: CardProps): ReactElement | null {
   const sections: OperatorForm = { config, control, toggle };
 
   return (
-    <CardShell
-      title="Интеграции — конфигурация"
-      description="Операторские настройки подключений: провайдеры, адреса, возможности и сервисные доступы. Правка применяется к запущенному сервису сразу."
-      badge={
-        <span
-          className="dsh-plugin-card__badge"
-          data-testid="qa-integrations-override-badge"
-        >
-          {keys.length === 0
-            ? "по умолчанию"
-            : `переопределено: ${keys.length}`}
-        </span>
-      }
-      label={(open) =>
-        open
-          ? "Свернуть конфигурацию интеграций"
-          : "Развернуть конфигурацию интеграций"
-      }
-      bodyClassName="qai-op__body"
-    >
+    // The Plugins page draws this card's frame, its title and its expand control,
+    // so the bundle renders the body and nothing around it (AGENTS.md). The
+    // override marker is the body's own: it states what this section holds, which
+    // the page's chrome does not know.
+    <div className="qai-op__body">
       {settings.status === "loading" ? (
         <p className="qai-op__muted" data-testid="qa-integrations-loading">
           Загружаем конфигурацию интеграций…
@@ -221,6 +265,14 @@ export function OperatorCard({ form }: CardProps): ReactElement | null {
             <span className="qai-op__hint">
               Слой правок поверх конфигурации профиля: очищенная настройка
               возвращается к значению из yaml.
+            </span>
+            <span
+              className="qai-op__override-state"
+              data-testid="qa-integrations-override-badge"
+            >
+              {keys.length === 0
+                ? "по умолчанию"
+                : `переопределено: ${keys.length}`}
             </span>
             <button
               type="button"
@@ -261,6 +313,6 @@ export function OperatorCard({ form }: CardProps): ReactElement | null {
           </Section>
         </>
       )}
-    </CardShell>
+    </div>
   );
 }

@@ -4,11 +4,8 @@ import type {
   QaUserSession,
   QaUserSessionSnapshot,
 } from "@yadsh/dsh-qa-surface/client/settings";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import {
-  createIntegrationsCard,
-  createIntegrationsHostTab,
-} from "../../src/client/card.js";
+import { render, screen, waitFor } from "@testing-library/react";
+import { createIntegrationsCard } from "../../src/client/card.js";
 import type { IntegrationsClientRemote } from "../../src/client/integrations.js";
 import { GITLAB_CAPABILITY_INFO } from "../../src/providers/gitlab/catalog.js";
 import type { IntegrationSummary } from "../../src/types.js";
@@ -71,21 +68,8 @@ function remote(calls: string[]): IntegrationsClientRemote {
 }
 
 describe("Integrations plugin card", () => {
-  it("keeps the card as a direct child of its host-tab list", () => {
-    const HostTab = createIntegrationsHostTab(
-      remote([]),
-      ["gitlab"],
-      session(ANONYMOUS),
-    );
-    render(<HostTab />);
-    const list = screen.getByTestId("qa-integrations-host-tab");
-    const shell = list.firstElementChild as HTMLElement;
-    expect(shell.tagName).toBe("LI");
-    expect(shell.classList.contains("dsh-plugin-card")).toBe(true);
-  });
-
-  it("mounts the shared card shell with a closed body", () => {
-    // Anonymous on purpose: the shell test must not race the provider cards'
+  it("renders the body with no frame and no expand control of ours", () => {
+    // Anonymous on purpose: the chrome test must not race the provider cards'
     // own loads.
     const Card = createIntegrationsCard(
       remote([]),
@@ -93,31 +77,33 @@ describe("Integrations plugin card", () => {
       session(ANONYMOUS),
     );
     const { container } = render(<Card />);
-    expect(container.querySelector("li.dsh-plugin-card")).not.toBeNull();
-    const header = screen.getByRole("button", {
-      name: "Развернуть настройки интеграций",
-    });
-    expect(header.getAttribute("aria-expanded")).toBe("false");
-    expect(header.className).toBe("dsh-plugin-card__header");
+    // The Plugins page draws this card's card surface, its title and its
+    // disclosure, so a shell class, an `li` root or a toggle button here would
+    // be a second card inside the Host's one.
+    expect(container.querySelector("[class*='dsh-plugin-card']")).toBeNull();
+    expect(container.querySelector("li")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
+    expect(container.querySelector("svg")).toBeNull();
+    // The one heading names this section, at the level the page gives its section
+    // titles: the host's bundle section carries no heading of its own —
+    // `host-seat-contract.test.ts` reads that fact out of the installed page — while
+    // the rows section beside it signs itself with an `<h4>` under an `<h3>` package
+    // title. An `<h3>` of ours would sit beside the package name, not under it.
+    expect(
+      screen.getByRole("heading", { level: 4, name: "Интеграции" }),
+    ).not.toBeNull();
+    expect(container.querySelector("h3")).toBeNull();
+    // The body is mounted at once — the page expands the section, not us.
+    expect(screen.getByTestId("qa-integrations-bundle-card").className).toBe(
+      "dsh-qa-integrations__body",
+    );
     expect(screen.getByText("Интеграции")).not.toBeNull();
-    // The chevron is the shared inline SVG, never a font glyph.
     expect(
-      container
-        .querySelector("svg.dsh-plugin-card__chevron path")
-        ?.getAttribute("d"),
-    ).toBe("m3.5 5.25 3.5 3.5 3.5-3.5");
-    expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
-
-    fireEvent.click(header);
-    expect(container.querySelector("li.dsh-plugin-card--open")).not.toBeNull();
-    expect(container.querySelector(".dsh-plugin-card__body")).not.toBeNull();
-    expect(header.getAttribute("aria-expanded")).toBe("true");
-    expect(
-      screen.getByRole("button", { name: "Свернуть настройки интеграций" }),
-    ).toBe(header);
+      screen.getByTestId("qa-integrations-settings-card-gate").textContent,
+    ).toContain("Войдите в QA Surface");
   });
 
-  it("reads nothing until the operator opens the card", async () => {
+  it("reads the deployment as soon as the page mounts the body", async () => {
     const calls: string[] = [];
     const Card = createIntegrationsCard(
       remote(calls),
@@ -125,10 +111,8 @@ describe("Integrations plugin card", () => {
       session(AUTHED),
     );
     render(<Card />);
-    expect(calls).toEqual([]);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Развернуть настройки интеграций" }),
-    );
+    // Nothing is deferred to a disclosure we no longer own: the seat renders only
+    // while the row's page is open, so the mount itself is the intent to read.
     await waitFor(() => {
       expect(calls).toContain("instances");
     });
@@ -141,9 +125,6 @@ describe("Integrations plugin card", () => {
       session(AUTHED),
     );
     render(<Card />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Развернуть настройки интеграций" }),
-    );
     expect(
       await screen.findByTestId("qa-integrations-provider-card-gitlab"),
     ).not.toBeNull();
@@ -168,7 +149,7 @@ describe("Integrations plugin card", () => {
 
   it("drops a provider the service stopped offering", async () => {
     // The page was built for both providers, and the operator switched one off
-    // while the dialog stayed open: the card must go with the button under it,
+    // while the page stayed open: the card must go with the button under it,
     // because the service no longer has a provider to connect to.
     const Card = createIntegrationsCard(
       {
@@ -191,9 +172,6 @@ describe("Integrations plugin card", () => {
       session(AUTHED),
     );
     render(<Card />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Развернуть настройки интеграций" }),
-    );
     expect(
       await screen.findByTestId("qa-integrations-provider-card-gitlab"),
     ).not.toBeNull();
@@ -211,9 +189,6 @@ describe("Integrations plugin card", () => {
       session(ANONYMOUS),
     );
     render(<Card />);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Развернуть настройки интеграций" }),
-    );
     expect(
       screen.getByTestId("qa-integrations-settings-card-gate").textContent,
     ).toContain("Войдите в QA Surface");
