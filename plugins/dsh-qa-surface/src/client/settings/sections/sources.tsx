@@ -367,7 +367,7 @@ export function SourcesSection(props: ConfigProps) {
             checked={sources?.subagents?.validateReportedSources ?? true}
             disabled={blocked}
             label="Проверять источники из отчёта"
-            hint="С проверкой принимается только источник с путём или адресом из делегированного прогона. Без неё записывается и «факт» без адреса, и отчёт самого помощника."
+            hint="С проверкой записывается только источник с путём или адресом — и в делегированном прогоне, и в отчёте самого помощника. Без неё записывается и «факт» без адреса."
             testId="qa-settings-sources-subagents-validate-reported-sources"
             onChange={(value) => {
               props.write(

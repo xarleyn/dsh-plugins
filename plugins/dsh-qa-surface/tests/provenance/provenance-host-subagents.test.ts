@@ -120,6 +120,59 @@ describe("Host provenance lifecycle", () => {
     host.dispose();
   });
 
+  /**
+   * DEF-1 on the live stand: the chat's own agent called `qa_report_sources`
+   * with a well-formed file and web source and was answered
+   * `Recorded 0 source(s).`, so the «Источники» panel never opened. Whether a
+   * report may be recorded is not what `validateReportedSources` governs — the
+   * flag says an entry has to carry an address — so an addressed entry the
+   * model files from its own chat lands in that chat's current turn, exactly
+   * where a tool-derived source of the same turn would.
+   */
+  it("records an addressed report the QA agent files from its own chat", async () => {
+    const root = fakeSession("root", [event("turn/start", { turn: 3 }, 0)]);
+    const world = harness([root.session]);
+    const host = new QaProvenanceHost(world.ctx, () => resolveConfig());
+
+    const outcome = (await world.getTool()?.execute(
+      {
+        sources: [
+          {
+            kind: "file",
+            title: "Skills guide",
+            path: "D:/repo/.dsh/skills/guide.md",
+          },
+          {
+            kind: "web",
+            title: "Release notes",
+            uri: "https://example.com/docs/notes?utm_source=agent",
+          },
+        ],
+      },
+      { agent: { id: "root" }, callId: "report-parent" } as never,
+    )) as { accepted: number } | undefined;
+
+    expect(outcome).toEqual({ accepted: 2 });
+    expect(host.bundles("root")[0]).toMatchObject({
+      turn: 3,
+      complete: true,
+      sources: [
+        {
+          id: "file:.dsh/skills/guide.md",
+          kind: "file",
+          evidence: "reported",
+          origins: [{ role: "parent", sessionId: "root", turn: 3 }],
+        },
+        {
+          id: "web:https://example.com/docs/notes",
+          kind: "web",
+          evidence: "reported",
+        },
+      ],
+    });
+    host.dispose();
+  });
+
   it("records an unaddressed report only when reported-source validation is off", async () => {
     const report = {
       sources: [
