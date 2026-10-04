@@ -11,15 +11,14 @@
 
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import {
-  CardShell,
   bindSettingsExternalStore,
   startVisibilityAwarePolling,
 } from "@yadsh/dsh-plugin-kit/client";
@@ -35,7 +34,6 @@ import {
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../../types.js";
 import type { ConfigEntry } from "./fields.js";
 import {
-  badgeText,
   isOverridden,
   mutationLanded,
   overriddenKeys,
@@ -64,13 +62,37 @@ const REFRESH_INTERVAL_MS = 5_000;
 const REFUSED_MESSAGE =
   "Хост отклонил изменение: значение не сохранилось. Обычно так отвечает несовместимая комбинация полей — проверьте связанные значения этого раздела. Точную причину хост пишет в свой журнал.";
 
-/** The face the tab entry injects into this card. */
+/**
+ * The one-liner of this row, carried by the `summary` view the Plugins page asks
+ * this seat for. Kept equal to the `description` field of `package.json`, which
+ * is where the host reads the row's sentence from: the two answers reach the same
+ * paragraph, so a drift makes one row read two ways. Pinned by a test that reads
+ * the manifest rather than repeating this literal (AGENTS.md card-shell contract,
+ * `docs/DSH-0.1.7-MIGRATION.md` §4.2).
+ */
+const ROW_SUMMARY =
+  "A focused end-user QA surface backed by native DeepSeek Harness sessions";
+
+/**
+ * The face the row seat injects into this card.
+ *
+ * The live form is named `settingsForm`, not `form`: the seat hands its
+ * registrant a `form` of its own — the page's `ConfigPageForm`, which is only
+ * `{ state, mutate }` (`formFor` in
+ * `@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js` snapshots the same
+ * namespace's form and forwards `mutate` and nothing else), so it can neither be
+ * subscribed to nor written field by field, and which the page leaves
+ * `undefined` for a Config declaring no volatile field — and the renderer
+ * spreads that owner prop after this face. The card therefore keeps resolving
+ * the full `ConfigForm` of its own namespace through `ctx.configForms` and takes
+ * no copy of the page's view.
+ */
 export interface QaSettingsCardFace {
-  readonly form: ConfigForm<QaSurfaceConfig>;
+  readonly settingsForm: ConfigForm<QaSurfaceConfig>;
   describe(): Promise<RemoteResult<ResolvedQaSurfaceConfig>>;
 }
 
-type CardProps = PropsRuntime<"settings.plugins.tab"> &
+type CardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<QaSettingsCardFace>;
 
 /** Mutation operations as the bound form declares them. */
@@ -86,8 +108,11 @@ function displayError(error: unknown): string {
   return "Хост отклонил изменение настроек помощника.";
 }
 
-export function QaSettingsCard({ form, describe }: CardProps) {
-  const store = useMemo(() => bindSettingsExternalStore(form), [form]);
+export function QaSettingsCard({ settingsForm, describe }: CardProps) {
+  const store = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const settings = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -137,6 +162,9 @@ export function QaSettingsCard({ form, describe }: CardProps) {
   }, [describe]);
 
   useEffect(() => {
+    // An unreachable namespace has no status section to feed, so the poll stays
+    // off until a snapshot serves values again.
+    if (settings.status === "unavailable") return;
     const stopPolling = startVisibilityAwarePolling(
       refresh,
       REFRESH_INTERVAL_MS,
@@ -145,7 +173,7 @@ export function QaSettingsCard({ form, describe }: CardProps) {
       stopPolling();
       activeRequest.current += 1;
     };
-  }, [refresh]);
+  }, [refresh, settings.status]);
 
   /**
    * Path-addressed writes into the namespace. The form's mutation operations
@@ -164,7 +192,7 @@ export function QaSettingsCard({ form, describe }: CardProps) {
       entries: readonly ConfigEntry[],
       cleared: readonly (readonly string[])[],
     ) => {
-      const before = form.getSnapshot().revision;
+      const before = settingsForm.getSnapshot().revision;
       const ops = [
         ...entries.map((entry) => ({
           op: "set" as const,
@@ -174,19 +202,19 @@ export function QaSettingsCard({ form, describe }: CardProps) {
         ...cleared.map((path) => ({ op: "unset" as const, path: [...path] })),
       ] as unknown as ScopeOps;
       try {
-        await form.mutate(ops);
+        await settingsForm.mutate(ops);
       } catch (cause) {
         setWriteError(displayError(cause));
         return;
       }
-      const after = form.getSnapshot();
+      const after = settingsForm.getSnapshot();
       const landed =
         after.revision !== before || mutationLanded(entries, cleared, after);
       // Held until a later write lands: the message names what to look at, and
       // a timer that clears it would only hide the problem.
       setWriteError(landed ? null : REFUSED_MESSAGE);
     },
-    [form],
+    [settingsForm],
   );
 
   const write = useCallback(
@@ -223,10 +251,22 @@ export function QaSettingsCard({ form, describe }: CardProps) {
     );
   }, [applyMutation, overrides]);
 
-  if (settings.status === "unavailable") return null;
-
-  const enabled = effective?.enabled ?? config?.enabled ?? true;
-  const routePath = effective?.route.path ?? config?.route?.path;
+  // The row's page draws its heading and its expand control whatever the
+  // namespace answers, so an unavailable one says why rather than leaving the
+  // column the operator just opened empty. The Plugins panel is not the settings
+  // directory: a browser on another machine sees the namespace as unavailable
+  // and still has the row, so hiding the body would hide the reason (AGENTS.md).
+  // A namespace that serves values but refuses writes is the other case: the
+  // body renders and disables its controls on `writable` instead of hiding.
+  if (settings.status === "unavailable") {
+    return (
+      <p className="qa-card-muted" data-testid="qa-settings-unavailable">
+        Хост не отдаёт этому браузеру пространство настроек плагина — они
+        читаются только с машины, где поднят стенд. Редактировать здесь нечего,
+        работа ассистента при этом идёт по сохранённым значениям.
+      </p>
+    );
+  }
 
   const sectionProps: ConfigProps = {
     config,
@@ -239,17 +279,9 @@ export function QaSettingsCard({ form, describe }: CardProps) {
   };
 
   return (
-    <CardShell
-      title="Помощник QA"
-      description="Страница вопросов и ответов на сессиях DeepSeek Harness: маршрут, оформление, сессия, политика запуска, аккаунты и источники."
-      badge={
-        <span className="dsh-plugin-card__badge">
-          {badgeText(enabled, routePath)}
-        </span>
-      }
-      label={(open) => `${open ? "Скрыть" : "Показать"} настройки: Помощник QA`}
-      bodyClassName="qa-card-body"
-    >
+    // The Plugins page draws this card's frame, its heading and its expand
+    // control, so the bundle renders the body and nothing around it (AGENTS.md).
+    <div className="qa-card-body">
       {settings.status === "loading" ? (
         <p className="qa-card-muted" data-testid="qa-settings-loading">
           Загружаю настройки помощника…
@@ -318,19 +350,28 @@ export function QaSettingsCard({ form, describe }: CardProps) {
           </div>
         </>
       )}
-    </CardShell>
+    </div>
   );
 }
 
 /**
- * The tab page this plugin registers. The card shell's root is an `<li>`, and a
- * tab owns its own content, so the list around it belongs to the plugin
- * (AGENTS.md, card-shell contract).
+ * The entry this plugin registers in the row's configuration seat.
+ *
+ * `RowDetail` in `@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js` can
+ * ask this seat for two shapes of the same entry: `view: 'summary'` as the row's
+ * one-liner and `view: 'page'` in the configuration column under the row's
+ * heading. Which of the two it asks for is the page's decision and §4.2 of
+ * `docs/DSH-0.1.7-MIGRATION.md` is where that is measured and stated — the row's
+ * description comes from the installed manifest, and the summary seat is the
+ * fallback for a row that declares none — so this bundle answers both without
+ * claiming either call is its own. The summary lands inside a line of the page's
+ * text, so it stays a sentence: a card seated there would draw a page within a
+ * line and start a second poll of the `qaSurface/describe` Remote. The page view
+ * is the body alone — the row's page already draws the card surface, the heading
+ * and the expand control, so a shell of ours would be a second frame inside the
+ * first (AGENTS.md, card-shell contract).
  */
-export function QaSettingsTab(props: CardProps) {
-  return (
-    <ul className="qa-settings-cards">
-      <QaSettingsCard {...props} />
-    </ul>
-  );
+export function QaSettingsCardEntry(props: CardProps) {
+  if (props.view === "summary") return ROW_SUMMARY;
+  return <QaSettingsCard {...props} />;
 }

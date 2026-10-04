@@ -11,8 +11,8 @@ import type {} from "@deepseek-ai/dsh-agent-preset-registry/remote";
 import type {} from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 import { QaConfigController } from "./QaConfigController.js";
 import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
@@ -101,9 +101,15 @@ import type {
   QaReviewQueueRow,
   QaUserQuery,
 } from "../types.js";
-import { QA_SURFACE_SETTINGS_NAMESPACE } from "../shared/settings.js";
+import {
+  QA_SURFACE_ROW_CONFIG_KEY,
+  QA_SURFACE_SETTINGS_NAMESPACE,
+} from "../shared/settings.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
-import { QaSettingsTab, type QaSettingsCardFace } from "./settings/card.js";
+import {
+  QaSettingsCardEntry,
+  type QaSettingsCardFace,
+} from "./settings/card.js";
 import { QA_SETTINGS_STYLES } from "./settings/styles.js";
 import { QaSurfacePanelRegistry } from "./panels/registry.js";
 import { QaUserSettingsSectionRegistry } from "./settings-extensions/index.js";
@@ -851,33 +857,37 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         // declarations during an incremental source typecheck.
         return described.value as unknown as ResolvedQaSurfaceConfig;
       });
-      // The operator edits this deployment from its own tab in the Plugins
-      // settings section: the same namespace the page reads, plus the Host's own
-      // answer about what it resolved. Its stylesheet is the card shell, not the
-      // QA page's palette, and the card keeps drawing its own shell.
+      // The operator edits this deployment from the plugin's own row in the
+      // Plugins panel: the same namespace the page reads, plus the Host's own
+      // answer about what it resolved. The row's page draws the card surface,
+      // the heading and the expand control, so this bundle supplies the body
+      // only (AGENTS.md, card-shell contract).
+      // The seat is keyed `<package name>#<row id>`, and the row id is the
+      // namespace above, so the move never orphans a saved value. The seat hands
+      // its registrant a `ConfigPageForm` for that namespace — `{ state, mutate }`
+      // only, unsubscribable and unable to write one field — which is why the
+      // card reads the `configForm` resolved above rather than the page's view.
       ctx.effect(() => {
         const cardFace: QaSettingsCardFace = {
-          form: configForm,
+          settingsForm: configForm,
           describe: () => policyRemote.describe(),
         };
         const removeStyles = injectCardStyles(
           "@yadsh/dsh-qa-surface",
           QA_SETTINGS_STYLES,
         );
-        const removeTab = ctx.slots.inject("settings.plugins.tab", () =>
+        const removeRowConfig = ctx.slots.inject("plugins.row.config", () =>
           ctx.slots.register(
             {
-              name: "settings.plugins.tab",
-              id: QA_SURFACE_SETTINGS_NAMESPACE,
-              order: 30,
-              label: () => "Помощник QA",
+              name: "plugins.row.config",
+              key: QA_SURFACE_ROW_CONFIG_KEY,
               inject: () => cardFace,
             },
-            QaSettingsTab,
+            QaSettingsCardEntry,
           ),
         );
         return () => {
-          removeTab();
+          removeRowConfig();
           removeStyles();
         };
       }, "dsh-qa-surface: settings-card");

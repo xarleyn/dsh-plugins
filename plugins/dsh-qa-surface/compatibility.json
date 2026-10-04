@@ -10,6 +10,7 @@
       "uiConversation.binding",
       "sessions.binding",
       "configForms",
+      "plugins.row.config",
       "settings.onboarding list-slot shadowing",
       "keyed child slots with owner props",
       "webServer.register",

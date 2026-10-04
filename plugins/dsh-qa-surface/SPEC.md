@@ -1023,27 +1023,34 @@ Do not register into `root`, `sidebar`, or `conversation` as the default impleme
 
 ### 12.3 Settings card
 
-The same namespace the page reads is editable in place from the Host settings
-page. Register one card into the Plugins tab of the native settings surface:
+The same namespace the page reads is editable in place from the plugin's own row
+on the Host's Plugins panel. Register the card into that row's keyed seat:
 
 ```text
-settings.plugins.tab    (id = the `qa-surface` settings namespace)
+plugins.row.config    (key = `<package name>#<row id>`, here `@yadsh/dsh-qa-surface#dsh-qa-surface`)
 ```
 
-The keyed card slot this section named until `0.1.7` is gone with the release, so
-a configuration card is seated either on a tab of that surface, as this plugin
-ships it, or on the `plugins.row.config` seat of the bundle's own row on the
-Host's Plugins panel — where the row draws the frame and the card draws the body
-only.
+The row id is the profile entry `cordis.patch.yml` declares, which is also the
+settings namespace the Host serves the volatile `Config` under: seat and
+namespace are the same name, so a value saved before this card moved onto the
+row still reads back. The seat hands its registrant a `form` of its own —
+`{ state, mutate }`, unsubscribable and unable to write a single field — after
+the injected face, so the card resolves the full `ConfigForm` through
+`ctx.configForms` and passes it in its face under another name.
 
-This plugin keeps the tab, and with it the whole card: beside the form it writes,
-the card reports what the running Host resolved, read through a QA remote while
-the card is visible. So it uses the canonical plugin-card shell of
-`@yadsh/dsh-plugin-kit/client` (the AGENTS.md contract: a direct `<li>` child of
-the host list, a full-width header button with `aria-expanded`, the
-title/description stack, an optional status badge, and the 14×14 SVG chevron),
-and renders nothing when the namespace is unavailable — a deployment that does
-not compose the plugin shows no trace of it.
+The row's page owns the chrome: it paints the card surface, the heading, the row
+id and the expand control, so the bundle renders the configuration body and
+nothing around it (the AGENTS.md card-shell contract — no `dsh-plugin-card*`
+class, no `<li>` root, no chevron of ours, and a focus ring built from the
+Host's `--dsw-focus-ring-*` tokens rather than a hard-coded outline). When the
+namespace answers `unavailable` it says so in one sentence rather than mounting
+nothing: the page has already drawn the row's heading and its configure
+control, so an empty column would carry no reason. Where the page seats the
+same entry as the row's one-liner (`view: 'summary'`), it answers with that
+sentence rather than with a card — and with the manifest's `description`
+verbatim: the page fills the row's paragraph from that field and asks this seat
+only for a row that declares none, so two different sentences would make one row
+read two ways (pinned by the seat's test and by the package gate).
 
 Responsibilities:
 
@@ -1907,7 +1914,8 @@ Register the `qa-surface` settings namespace so values are manageable through no
 
 ### Phase C
 
-Optionally contribute a settings card under the DSH Plugins settings section.
+Optionally contribute a settings card, seated in the plugin's own row on the
+Host's Plugins panel.
 
 Fields suitable for UI editing:
 

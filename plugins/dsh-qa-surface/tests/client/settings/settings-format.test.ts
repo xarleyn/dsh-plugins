@@ -6,7 +6,6 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  badgeText,
   describeSandbox,
   describeSessionPolicy,
   formatClock,
@@ -26,13 +25,6 @@ import {
 import { resolveConfig } from "../../../src/resolve-config.js";
 
 describe("card status copy", () => {
-  it("shows the route while the surface is on and the off state otherwise", () => {
-    expect(badgeText(true, "/qa")).toBe("/qa");
-    expect(badgeText(undefined, "/q")).toBe("/q");
-    expect(badgeText(false, "/qa")).toBe("Выключено");
-    expect(badgeText(true, undefined)).toBe("/qa");
-  });
-
   it("names every session policy the schema accepts", () => {
     for (const policy of ["browser-persistent", "new-on-load", "fixed"]) {
       const copy = describeSessionPolicy(policy);

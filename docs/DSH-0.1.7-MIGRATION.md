@@ -312,11 +312,13 @@ declares none, asks `plugins.row.config` for that sentence under
 summary seat against `:495` for the page seat, `dsh-v0.1.7-rc.2`) and declared in
 `slot-contract.ts` in prose: `view` is `'summary' | 'page'` (`:22`), and the row
 seat's docblock says "An absent description falls back to the entry's
-`view: 'summary'`" (`:100`). A card that owns a row is therefore rendered
-**twice**, and its `summary` pass must return text rather than its shell — the
-page puts it inside its own `<p>`, so a card there would nest an `<li>` in a
-paragraph. `dsh-plugin-log-ui` (#651) registers this seat and answers both
-shapes; the wave (#646) moves further cards onto it.
+`view: 'summary'`" (`:100`). A card that owns a row is therefore seated in two
+shapes, one of them conditional on what the row's inventory carries, and its
+`summary` answer must be text rather than its shell — the page puts it inside its
+own `<p>`, so a card there would nest an `<li>` in a paragraph. Which of the two
+the page reaches for is measured below, and that is where the answer's wording is
+settled; `dsh-plugin-log-ui` (#651) and `dsh-qa-surface` (#659) register this seat
+and answer both shapes, and the wave (#646) moves further cards onto it.
 
 [verified] **and the summary pass is not reached by a bundle that declares a
 `description` in its manifest.** The row's `meta` is read from the *installed

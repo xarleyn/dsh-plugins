@@ -14,7 +14,6 @@ import { QA_MAX_ACTIVE_REQUESTS_MAX } from "../../../src/config-resolvers/sessio
 import { resolveConfig } from "../../../src/resolve-config.js";
 import {
   BASE,
-  openCard,
   renderCard,
   section,
   settle,
@@ -37,7 +36,6 @@ describe("QA Surface card", () => {
         } as QaSurfaceConfig,
       },
     });
-    openCard();
     expect(
       screen.getByTestId("qa-settings-branding-notice-disclaimer-hidden")
         .textContent,
@@ -53,7 +51,6 @@ describe("QA Surface card", () => {
         value: resolveConfig({ thinkingPhrases: ["Точу", "Полирую"] }),
       }),
     });
-    openCard();
     const field = screen.getByTestId(
       "qa-settings-interface-thinking-phrases",
     ) as HTMLTextAreaElement;
@@ -74,7 +71,6 @@ describe("QA Surface card", () => {
       snapshot: { value: withoutPhrases as QaSurfaceConfig },
       describe: async () => ({ ok: false as const, error: new Error("нет") }),
     });
-    openCard();
     const field = screen.getByTestId(
       "qa-settings-interface-thinking-phrases",
     ) as HTMLTextAreaElement;
@@ -95,7 +91,6 @@ describe("QA Surface card", () => {
         value: resolveConfig({ thinkingPhrases: ["Точу", "Полирую"] }),
       }),
     });
-    openCard();
     const field = screen.getByTestId(
       "qa-settings-interface-thinking-phrases",
     ) as HTMLTextAreaElement;
@@ -111,7 +106,6 @@ describe("QA Surface card", () => {
         } as QaSurfaceConfig,
       },
     });
-    openCard();
     expect(
       screen.getByTestId("qa-settings-interface-notice-internals-visible")
         .textContent,
@@ -127,7 +121,6 @@ describe("QA Surface card", () => {
         } as QaSurfaceConfig,
       },
     });
-    openCard();
     expect(
       screen.getByTestId("qa-settings-embedding-notice-open").textContent,
     ).toMatch(/Встраивание разрешено/u);
@@ -137,7 +130,6 @@ describe("QA Surface card", () => {
     const { mutate } = await renderCard({
       snapshot: { user: { enabled: false, route: { path: "/ask" } } },
     });
-    openCard();
 
     expect(screen.getByTestId("qa-settings-access-modified").textContent).toBe(
       "изменено",
@@ -154,7 +146,6 @@ describe("QA Surface card", () => {
 
   it("disables the controls while a remote browser cannot write", async () => {
     await renderCard({ snapshot: { writable: false } });
-    openCard();
     const access = section("qa-settings-access");
     expect(
       (
@@ -167,7 +158,6 @@ describe("QA Surface card", () => {
 
   it("shows a loading note until the first section arrives", async () => {
     await renderCard({ snapshot: { status: "loading", value: undefined } });
-    openCard();
     expect(screen.getByTestId("qa-settings-loading").textContent).toMatch(
       /Загружаю настройки помощника/u,
     );
@@ -176,7 +166,6 @@ describe("QA Surface card", () => {
 
   it("commits the declared profile fields as parsed entries", async () => {
     const { mutate } = await renderCard();
-    openCard();
 
     const fields = screen.getByTestId(
       "qa-settings-accounts-profile-identities",
@@ -198,7 +187,6 @@ describe("QA Surface card", () => {
 
   it("writes the attachment policy field by field", async () => {
     const { mutate } = await renderCard();
-    openCard();
 
     const attachments = section("qa-settings-attachments");
     fireEvent.click(screen.getByTestId("qa-settings-attachments-text-files"));
@@ -224,7 +212,6 @@ describe("QA Surface card", () => {
     // validator without raising the field, and the card silently refuses a value
     // the deployment would have honoured.
     await renderCard();
-    openCard();
     const field = within(section("qa-settings-session")).getByLabelText(
       /Максимум одновременных вопросов/u,
     ) as HTMLInputElement;
@@ -234,7 +221,6 @@ describe("QA Surface card", () => {
 
   it("shows the extension list in effect and stores the parsed one", async () => {
     const { mutate } = await renderCard();
-    openCard();
 
     const field = screen.getByTestId(
       "qa-settings-attachments-extensions",
