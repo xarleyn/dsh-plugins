@@ -1426,7 +1426,18 @@ last code commit of this series, and puts the writer back against helpers (`read
 `revisionOf`, `preset.path`) the read-path migration deleted, so it does not
 compile. A
 reversal of D2 is a revert of the whole #518 series. #605 carries the blocker for
-returning persona edits to the screen. `select` takes a live `Agent`, which a
+returning persona edits to the screen — and what it returns must not be the guard
+that #518 removed. #356 measured that guard losing an update: it compared a
+snapshot revision, not the absence of another writer, so two saves presenting one
+revision both passed the check before either renamed the file, both answered a
+success receipt, and the disk kept one variant. An atomic rename makes a file's
+swap atomic, not the read → check → write around it, so a restored write needs a
+transaction that holds one composition exclusively across that whole span. Its
+key is the file the write lands in, and that key arrives with the file IO this
+option deleted: the rc.2 roster answers `readDocument(id)`, not a path.
+Guarantee 5 of `plugins/dsh-preset-persona-editor/SPEC.md` carries the same
+correction and the two concurrency cases — save against save, save against reset —
+that define the guard as met. `select` takes a live `Agent`, which a
 settings page does not have, so the read-only build did not grow a session
 surface; see §5's registry bullet for the landed shape and the file-by-file list.
 
