@@ -155,7 +155,7 @@ describe("client apply()", () => {
     // body draws no heading of its own. A bundle without this file is named by its
     // full package name, which is not a name an operator would recognise.
     const meta = await exportedMeta();
-    expect(meta?.["title"]).toBe("Документы");
+    expect(meta?.["title"]).toBe("Documents");
     // The row's description and the one-liner this entry answers its `summary`
     // view with are one string: the panel falls back to that answer, and a drift
     // would show the row describing something other than the page it opens.
