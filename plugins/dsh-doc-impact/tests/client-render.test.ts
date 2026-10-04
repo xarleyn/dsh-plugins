@@ -6,6 +6,8 @@
 // carry. These are the pins for that, plus the two for a choice whose stored value
 // is outside its vocabulary — the select then has no option to mark selected,
 // which reads on screen as an empty box, and the card answers it with its default.
+// The last pair runs the same checks one level up, through the entry the Plugins
+// row seat registers, so the view dispatch cannot drop a prop in silence.
 import { describe, expect, it, vi } from "vitest";
 
 interface Rendered {
@@ -28,7 +30,11 @@ vi.mock("react", () => ({
   },
 }));
 
-import { ConfigCard } from "../src/client/card.js";
+import {
+  ConfigCard,
+  RowConfigEntry,
+  type RowEntryProps,
+} from "../src/client/card.js";
 import {
   BoolField,
   ChoiceField,
@@ -44,6 +50,7 @@ import {
   type NamespaceForm,
   type NamespaceSnapshot,
 } from "../src/client/settings-form.js";
+import { MANIFEST_DESCRIPTION } from "./helpers/client-seat.js";
 
 /**
  * A namespace document whose two choice fields hold a value the vocabulary does
@@ -98,6 +105,17 @@ const BASE_ONLY: NamespaceSnapshot = {
   mode: "host",
 };
 
+/** A namespace the Host has not resolved: no document, so no field to show. */
+const PENDING: NamespaceSnapshot = {
+  status: "unavailable",
+  value: {},
+  base: {},
+  user: {},
+  writable: false,
+  revision: 0,
+  mode: "host",
+};
+
 /** The renderer the spec's kind prescribes. */
 function rendererFor(spec: FieldSpec): unknown {
   switch (spec.kind) {
@@ -123,8 +141,7 @@ function renderCard(host: NamespaceSnapshot = HOSTILE): {
   ConfigCard({
     ...form.inject(),
     t: (key: string) => key,
-    useDocImpactCard: (select: (s: CardSnapshot) => CardSnapshot) =>
-      select(snapshot),
+    useDocImpactCard: <S>(select: (s: CardSnapshot) => S) => select(snapshot),
   });
   return { snapshot, elements: tree.slice() };
 }
@@ -226,5 +243,106 @@ describe("doc-impact card render", () => {
     ).toBe(false);
     const select = selectOf(controlOf(elements, snapshot, "mode"));
     expect(select.offered).toContain(String(select.value));
+  });
+
+  it("answers a namespace the Host has not resolved with a sentence", () => {
+    // The row page owns the frame, so this view cannot stay invisible the way a card
+    // that draws its own shell can: an opened row would show nothing and say nothing.
+    const form = new SettingsForm(readOnlyForm(PENDING));
+    const snapshot = form.getSnapshot();
+    expect(snapshot.available).toBe(false);
+    tree.length = 0;
+    const drawn = ConfigCard({
+      ...form.inject(),
+      t: (key: string) => key,
+      useDocImpactCard: <S>(select: (s: CardSnapshot) => S) => select(snapshot),
+    }) as unknown as Rendered;
+    expect(tree).toHaveLength(1);
+    expect(drawn.type).toBe("p");
+    expect(drawn.props.role).toBe("status");
+    expect(drawn.children.flat()).toContain("unavailable");
+  });
+});
+
+/**
+ * The entry is typed against the whole composed seat, and `PropsRuntime` folds in
+ * the Host's global share — `usePanelInfo`, a hook only a running Host can hand
+ * over. Every share this file is about is supplied in full and typed: the injected
+ * face, the `t` seat, and the page's own `view` and `form`. What is dropped is the
+ * Host's panel hook, which neither view of this entry reads.
+ */
+type EntryProps = Omit<RowEntryProps, "usePanelInfo">;
+
+/**
+ * Draws one of the two views the way the seat does: the registered entry answers
+ * with the card's element or with the row's sentence, and the element is then
+ * rendered one level down. `client-bundle.test.ts` pins the same dispatch on the
+ * built bundle; this pins it on the source, where an entry that stopped forwarding
+ * the props its card needs shows up as a missing control rather than as an
+ * assertion nobody made.
+ */
+function renderView(
+  view: "page" | "summary",
+  host: NamespaceSnapshot = HOSTILE,
+): {
+  readonly snapshot: CardSnapshot;
+  readonly elements: Rendered[];
+  /** What the entry handed the page: the body's element for `page`, its sentence for `summary`. */
+  readonly drawn: unknown;
+} {
+  const form = new SettingsForm(readOnlyForm(host));
+  const snapshot = form.getSnapshot();
+  tree.length = 0;
+  const seatProps: EntryProps = {
+    ...form.inject(),
+    t: (key: string) => key,
+    useDocImpactCard: <S>(select: (s: CardSnapshot) => S) => select(snapshot),
+    view: view,
+    // What the page really spreads over the face: its own snapshot of this
+    // namespace and its own write path. The card takes nothing from either; the
+    // bundle test is where a card that started reading it would go red.
+    form: { state: host, mutate: async () => false },
+  };
+  const answered = RowConfigEntry(seatProps as RowEntryProps);
+  // The summary view answers as text, so it is returned as drawn: a path that
+  // rendered it through a component would be inventing the element this entry
+  // stopped creating.
+  const drawn =
+    typeof answered === "string"
+      ? answered
+      : (answered.type as (props: never) => unknown)(answered.props as never);
+  return { snapshot, elements: tree.slice(), drawn };
+}
+
+describe("doc-impact seat entry", () => {
+  it("forwards the seat's props to a body that still draws every field", () => {
+    const { snapshot, elements, drawn } = renderView("page");
+    // The row page supplies the frame, so the view is a plain body element: an
+    // entry that grew a list or a shell of its own nests a second card inside the
+    // page's one.
+    expect((drawn as Rendered).type).toBe("div");
+    expect((drawn as Rendered).props.className).toBe("ddi_body");
+    const controls = elements.filter((entry) =>
+      Object.hasOwn(entry.props, "state"),
+    );
+    expect(controls, "one control per spec, through the entry").toHaveLength(
+      FIELDS.length,
+    );
+    for (const spec of FIELDS) {
+      const control = controlOf(controls, snapshot, spec.field);
+      expect(control.type, `${spec.field} renderer`).toBe(rendererFor(spec));
+    }
+  });
+
+  it("mounts nothing behind the row's one-liner", () => {
+    const { elements, drawn } = renderView("summary");
+    // The page puts this reply inside its own `<p>`, so the entry answers with text
+    // and creates no element at all: a shell, a list, or a subscribed store here
+    // would be a second live copy of the form in a line of heading text.
+    expect(elements).toHaveLength(0);
+    // Kept equal to the manifest's `description`, which is what the page puts here
+    // whenever the row carries a description at all — read off the manifest so a
+    // drift between the two shows up as a failure, not as two matching literals.
+    expect(drawn).toBe(MANIFEST_DESCRIPTION);
   });
 });

@@ -3,18 +3,41 @@
 // without a browser:
 //   - the ModuleLoader id must stay "@yadsh/dsh-doc-impact" (the served bundle URL
 //     and the plugin inventory both key on the package name);
-//   - the card must claim the `settings.plugins.tab` seat under the profile
-//     entry id, which on this host is also the settings namespace it reads
-//     through `ctx.configForms` (that pairing is what the Plugins page
-//     dispatches on);
+//   - the card must claim the `plugins.row.config` seat under the full key
+//     `<package name>#<row id>`, both halves read from this bundle's own
+//     `cordis.patch.yml` through one parser (`patch-row.mjs`) that
+//     `tests/client-bundle.test.ts` shares — the page hands a row its configure
+//     control only for a pair its roster carries, so the join is what has to appear,
+//     not the two halves somewhere in the file. That the row id is also the settings
+//     namespace the form reads through `ctx.configForms` is a runtime pairing and
+//     belongs to the test; what is checked here are the values, never the names of
+//     the constants that spell them, so a rename cannot redden this gate on its own;
+//   - the entry must answer both views the page asks this seat for: the configuration
+//     page (`view: 'page', form`) and the row's one-liner (`view: 'summary'`), which
+//     the page reaches when the row carries no display description of its own;
+//   - the seat it left behind must stay left behind: no `settings.plugins.tab`
+//     registration, which would put a second copy of this card under Settings;
+//   - the card is a body, not a card: the row page draws the frame, the heading and
+//     the expand control, so a bundle that grew a shell of its own again would nest a
+//     second frame inside the Host's. That is the shared contract's rule, and it reads
+//     the seat off this bundle to decide it (`verify-plugin-card-contract.mjs` holds a
+//     card seated on the row to no shell class, no chevron, and the Host's focus ring);
+//     this file only adds the retired class names this package owns;
 //   - the bundle must stay pure browser code: react only, no host packages;
 //   - no secrets or telemetry may creep into the settings form.
 import { readFile } from "node:fs/promises";
 import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
+import { readPatchRow } from "./patch-row.mjs";
 
 const client = await readFile(
   new URL("../lib/client.js", import.meta.url),
   "utf8",
+);
+// The row this bundle's seat key is built from. One parse of the patch, shared
+// with tests/client-bundle.test.ts, so the two gates cannot drift onto different
+// readings of the same declaration.
+const { id: patchId, name: patchName } = await readPatchRow(
+  new URL("../cordis.patch.yml", import.meta.url),
 );
 
 function expectAbsent(needle, why) {
@@ -42,46 +65,63 @@ expectPresent(
   "the ModuleLoader factory id keys the served bundle",
 );
 expectPresent(
+  '"plugins.row.config"',
+  "the card must register as the configuration entry of its own row on the Plugins page",
+);
+expectPresent(
+  `"${patchName}#${patchId}"`,
+  "the keyed seat must be the join of the package name and the row id cordis.patch.yml " +
+    "declares: the page hands a row its configure control only for a pair its roster " +
+    "carries, so a bundle spelling one half and reaching for the other elsewhere is a " +
+    "card that silently never appears. Matching the bare row id would not say — any " +
+    "literal naming the namespace would pass it.",
+);
+expectPresent(
+  "configForms.get(",
+  "the form must be read through the host's settings form service",
+);
+expectPresent(
+  'view === "summary"',
+  "the contract entitles a row that carries no description to ask this seat for its one-liner, so an entry that stopped answering it would drop the row's sentence on such a host",
+);
+expectAbsent(
   '"settings.plugins.tab"',
-  "the card must register as a tab of the Plugins settings page",
+  "the card must not keep a tab of the old Settings surface beside its row",
 );
-expectPresent(
-  "id: SETTINGS_NS",
-  "the tab seat must be keyed by the settings namespace",
-);
-expectPresent(
-  "configForms.get(SETTINGS_NS)",
-  "the form must read the doc-impact settings namespace through the host form",
-);
-expectPresent(
-  "whileServed([SETTINGS_NS],",
-  "the tab must be claimed only while the Host serves the namespace: the host " +
-    "answers get() with a controller for any name, so this is the only reply " +
-    "that keeps an unserved namespace off the Plugins page",
-);
+// Whether the seat is claimed from inside `configForms.whileServed` is left to
+// tests/client-bundle.test.ts, which proves it by never serving the namespace and
+// expecting the card anyway. That is the honest place for it: the decision is about
+// which call the entry makes, and a string needle only tracks how the bundle spells
+// whichever call it makes — green on a rewrap that renames nothing only if the
+// comment explaining the choice is compiled out, which is a build setting.
 expectPresent(
   "resetField",
   "every field needs the composition-layer reset action",
 );
-expectPresent('"unsaved"', "the header must carry the unsaved-changes badge");
 expectPresent(
-  "dsh-plugin-card__name",
-  "custom cards must share the standard card shell",
+  '"unsaved"',
+  "the write controls must carry the unsaved-drafts marker the row's header no longer offers",
 );
 expectPresent(
-  "m3.5 5.25 3.5 3.5 3.5-3.5",
-  "the header must use the standard SVG chevron",
+  "--dsw-focus-ring-width",
+  "the ring of a control inside the Host's chrome comes from the Host's focus tokens, not a hard-coded outline the Host would suppress under pointer modality",
 );
+// The shell and the chevron are the shared contract's to reject, and it does: reading
+// the seat off this bundle, a `dsh-plugin-card` class used as one or our chevron path
+// fails as the second frame. This package adds no bare-word ban of its own, because the
+// contract deliberately lets a comment name the class it stopped drawing — a stricter
+// local rule would make the next agent delete a correct sentence to get green. What is
+// local knowledge, and so checked below, is this bundle's own retired class names.
 verifyPluginCardContract(client, {
   legacyPatterns: [/ddi_card/u],
 });
 expectAbsent(
   "ddi_card",
-  "the outer card shell must use the shared class contract",
+  "the bundle must not keep the pre-contract outer shell class",
 );
 expectAbsent(
-  "▾",
-  "font-dependent disclosure glyphs must not replace the SVG chevron",
+  "ddi_list",
+  "the body mounts directly, so the plugin-owned list element the shell needed is gone with it",
 );
 
 // The bundle runs in the browser and may only require what the ModuleLoader

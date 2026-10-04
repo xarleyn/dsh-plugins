@@ -195,9 +195,9 @@ Per package:
 | `dsh-qa-browser` | 24 | card surface, client slots |
 | `dsh-openviking-memory` | ✔ **done in #516** (D1 took option 2) | volatile Config replaced the settings-section registration; the card moved to `settings.plugins.tab` with our shell; `agent/session-start` → `agent/created` under a non-throwing listener; the plugin declares its own producer kind; the `tool-addition`/`tool-removal` taxonomy is pinned at runtime | landed: `src/config.ts:302` every knob `.volatile()` (`z<Config, LiveConfig>`), `:266` `LiveConfig`, `:279` `snapshotConfig`; `src/index.ts:208` the `agent/created` listener, `:337` `refreshConfig()`, `:402` its call from `activeScoping()`; `src/settings.ts` **deleted** (82 lines; `installSection` is gone from the Host); `src/capture.ts:45` the `openviking-memory` source-kind augmentation, `:61` the captured-kind whitelist (`user`/`model`/`tool`), which is also the default branch §5 demands of a non-exhaustive `switch (source.kind)`; `src/runtime.ts:793` the own kind on injected messages, `:828` `isStartupProfile` matching **both** kinds for one release; `src/client/index.tsx:49` `inject = ["slots", "configForms"]`, `:90` `ctx.configForms.get(ns)`, `:97-103` the tab registration; `src/client/card.tsx:46` `PropsRuntime<"settings.plugins.tab">` over `ConfigForm<Config>`, `:155` the `<li>` inside a plugin-owned `<ul>`; `compatibility.json:9,16`; `scripts/verify-package.mjs:64,76-88`. Checked and kept: `package.json:49-52` — the `dsh.client.inject` list already names every client module the bundle reads, no edit; `src/openviking/capture-utils.ts:151,327,350,457` — **no edit**: a generated fork file whose loose extractor already drops both blocks (`normalizeType("tool-addition")` matches no set, `blockToText` returns `""`, `.filter(Boolean)` discards it), so the rule is pinned by `tests/block-taxonomy.test.ts` rather than by editing the vendored code; `src/capture.ts:93,143` became the whitelist and the own-kind filter; `scripts/smoke-packed-dsh.mjs` **does not exist in this package** — the stale `"0.1.1-rc.2"` default of §6 is `dsh-sleev`'s | ~230 | `tests/settings-live.test.ts` (replaces `settings-install.test.ts`: the schema-volatile namespace pin, and a committed change reaching a session that is already open), `tests/block-taxonomy.test.ts`, `tests/config.test.ts:44-53` (`requireValue` snapshots the live refs), `tests/helpers/harness.ts:82,115` (`createLiveConfig`, `writeConfig`), `tests/runtime-context.test.ts:192,200,277` (both profile attributions), `tests/client-card.test.tsx`, `tests/client-index.test.ts:193-241`, plus the 15 renamed `agent/created` emit sites. Measured on this tree: 31 files / 283 tests pass |
 | `dsh-model-safety-gate` | ✔ **done in #517** (D1 option 2) | volatile Config; card; own `"tool-result"` **label** channel is ours, kept verbatim | landed: `src/config.ts` — twelve top-level nodes `.volatile()` (**nothing volatile may sit under a volatile node**, so each group is one live field), `SAFETY_GATE_LIVE_NODES` + `snapshotSafetyGateConfig`, schema cast retargeted to the live view — the row named no config file, and the migration is mostly there; `src/service.ts` — `installSection`/`SettingsInstallFace`/`configSource` deleted, one `loader/volatile-update` listener re-snapshots per reload (the old `structuredClone(config)` would have cloned the references, not the values); `src/shared/settings.ts` — the namespace is the profile entry id now, `model-safety-gate` is gone, and `scripts/verify-package.mjs` pins the pair against `cordis.patch.yml`; `src/client/index.tsx` — `settingsScope` → `configForms`, registered on `settings.plugins.tab` with `{id, order, label}` (the kit's `registerSettingsCard` still defaults to the deleted keyed seat and passes `key`, not `id`/`label`, so a tab cannot route through it yet); `src/client/card.tsx` — `ConfigForm`, `mutate(ops, revision)`, `<li>` inside a plugin-owned `<ul>`; `src/types.ts` — `configRejected` on the Remote, because the Host enforces only the schema and a `validate` hook no longer exists | 55 estimated, **≈340 landed** | `tests/integration/settings.test.ts` rewritten (the `MemorySettings` fake cannot survive — §11's promote-to-`test-kit` item now has one fewer copy), `tests/integration/service.test.ts` (live-commit tests replace the install-face ones), `tests/client-card.test.tsx`, `tests/client-index.test.ts`, `tests/unit/config.test.ts` |
-| `dsh-plugin-log-ui` | decision + code | ✔ **done in #521** under D1 option 2 (shell kept, card moved to `settings.plugins.tab`), **and moved again by #651**: the card now registers `plugins.row.config` under the keyed seat of its own row, and once D1 reopened to option 1 the shell came off — the page draws the frame, the heading and the expander, so the bundle answers with the body. volatile Config; card; typert-driven panel. **No `MemorySettings` fake left to share**: with `installSection` gone the plugin touches no settings service at all, so this package contributes nothing to `dsh-test-kit`. **`scripts/verify-client-bundle.mjs` does not exist here** — the gate is `scripts/verify-package.mjs`: the seat literal and the keyed join in `includes`, `dsh-plugin-card`, the chevron path and the old tab seat in `notMatches`, and `cardContract.legacyPatterns` | landed: `src/config.ts:33-52` all three fields `.volatile()`; `src/types.ts:1-25` `VolatilePluginLogUiConfig`; `src/index.ts:26-33` `PLUGIN_LOG_ENTRY_ID`, `:50-95` `installSection` + `configSource` gone, `getConfig()` reads each `.get()` at call time; `src/client/index.tsx` the keyed row registration, the two `view` answers and the body; `src/client/panel/definition.tsx:63-66` guide `id` (`SidebarRightGuideEntry` gained a required `id`, un-itemised in §8.2); `src/client/styles.ts` body rules only — no shell sheet; `compatibility.json:7`; `scripts/verify-package.mjs` | 60 | `tests/client-panel.test.ts` (the panel pair, both injected sheets, and the Host's ring on every control the bundle draws), `tests/client-card.test.tsx` (the seat's two views, and the read/write through the namespace's own form), `tests/client-settings-store.test.ts`, `tests/integration.test.ts` — 9 files / 53 tests, but see §13.1: the integration file cannot load under the repo's current `vite` |
+| `dsh-plugin-log-ui` | decision + code | ✔ **done in #521** under D1 option 2 (shell kept, card moved to `settings.plugins.tab`). volatile Config; card; typert-driven panel. **No `MemorySettings` fake left to share**: with `installSection` gone the plugin touches no settings service at all, so this package contributes nothing to `dsh-test-kit`. **`scripts/verify-client-bundle.mjs` does not exist here** — the gate is `scripts/verify-package.mjs:43` (the slot literal), `:47-48` (`dsh-plugin-card__name`, chevron path), `:50-56` (`notMatches`, `cardContract.legacyPatterns`) | landed: `src/config.ts:33-52` all three fields `.volatile()`; `src/types.ts:1-25` `VolatilePluginLogUiConfig`; `src/index.ts:26-33` `PLUGIN_LOG_ENTRY_ID`, `:50-95` `installSection` + `configSource` gone, `getConfig()` reads each `.get()` at call time; `src/client/index.tsx:4,44-47,67-71,115-155,268-287,309,345-360`; `src/client/panel/definition.tsx:63-66` guide `id` (`SidebarRightGuideEntry` gained a required `id`, un-itemised in §8.2); `src/client/styles.ts:4-5` the `<ul>` the shell's `<li>` needs on a tab seat; `compatibility.json:7`; `scripts/verify-package.mjs:43-44` | 60 | `tests/client-panel.test.ts:229-243`, `tests/client-settings-store.test.ts`, `tests/integration.test.ts` — 7 files / 41 tests, but see §13.1: the integration file cannot load under the repo's current `vite` |
 | `dsh-draft-sessions` | 13 | client conversation/controller types |
-| `dsh-sleev` | ✔ **done in #520**, **and moved again by #650**: the card registers `plugins.row.config` under the keyed seat of its own row (`@yadsh/dsh-sleev#dsh-sleev`), and once D1 reopened to option 1 the shell came off — the page draws the frame, the heading and the expander, so the bundle answers with the body | volatile Config; card on `settings.plugins.tab` under our own shell (D1 option 2, so `registerSettingsSlot` is dropped and the slot call is direct); the smoke-script bug folded in | landed: `src/shared/config.ts:7,33,50` (`Config` fields are `Volatile<T>`, `.volatile()` on every editable node, one `snapshotConfig` per operation) and `:75` (`resolveConfig` stays pure over a raw `ConfigSnapshot`, so `tests/config.test.ts` needed no edit); `src/shared/settings.ts:6,9` (the namespace is the profile entry id `dsh-sleev`, and that equality is what #650's seat move leans on — the `sleev` tab id this row shipped in #520 is gone with that seat, the namespace is not); `src/index.ts:47,72,103` (`installSection` gone, `configure({ auto: false })`, and the logger level re-applied by the read that first sees a new value — `loader/volatile-update` is not nameable here: its `Events` merge lives in `@deepseek-ai/cordis-plugin-loader`, which we do not depend on); `src/client/index.tsx:12,146,326,334,356,359` (the kit supplies the shell only; the form comes from `ctx.configForms`; the `<li>` sits in a plugin-owned `<ul>`); `src/client/settings-controller.ts:5,95` (`ConfigForm<SleevSettings>`, `set`/`unset` answer `boolean`); `compatibility.json:7`; `scripts/verify-package.mjs:39,40`; `scripts/smoke-packed-dsh.mjs:20-29`; `scripts/smoke-neuraldeep.ts:38,55,226-231` (user source kind, assistant source without a restated `kind`, `tool`-role result message); `tests/settings-controller.test.ts:1-5,35-59` (`FakeScope implements SettingsScope` → `FakeForm implements ConfigForm`) | 45 estimated, 184+/118− | `tests/settings-controller.test.ts`, `tests/config.test.ts`, and `tests/llm-integration.test.ts`, which loads the volatile schema for real |
+| `dsh-sleev` | ✔ **done in #520** | volatile Config; card on `settings.plugins.tab` under our own shell (D1 option 2, so `registerSettingsSlot` is dropped and the slot call is direct); the smoke-script bug folded in | landed: `src/shared/config.ts:7,33,50` (`Config` fields are `Volatile<T>`, `.volatile()` on every editable node, one `snapshotConfig` per operation) and `:75` (`resolveConfig` stays pure over a raw `ConfigSnapshot`, so `tests/config.test.ts` needed no edit); `src/shared/settings.ts:6,9` (the namespace is the profile entry id `dsh-sleev`, the tab id stays `sleev`); `src/index.ts:47,72,103` (`installSection` gone, `configure({ auto: false })`, and the logger level re-applied by the read that first sees a new value — `loader/volatile-update` is not nameable here: its `Events` merge lives in `@deepseek-ai/cordis-plugin-loader`, which we do not depend on); `src/client/index.tsx:12,146,326,334,356,359` (the kit supplies the shell only; the form comes from `ctx.configForms`; the `<li>` sits in a plugin-owned `<ul>`); `src/client/settings-controller.ts:5,95` (`ConfigForm<SleevSettings>`, `set`/`unset` answer `boolean`); `compatibility.json:7`; `scripts/verify-package.mjs:39,40`; `scripts/smoke-packed-dsh.mjs:20-29`; `scripts/smoke-neuraldeep.ts:38,55,226-231` (user source kind, assistant source without a restated `kind`, `tool`-role result message); `tests/settings-controller.test.ts:1-5,35-59` (`FakeScope implements SettingsScope` → `FakeForm implements ConfigForm`) | 45 estimated, 184+/118− | `tests/settings-controller.test.ts`, `tests/config.test.ts`, and `tests/llm-integration.test.ts`, which loads the volatile schema for real |
 | `dsh-prompt-firewall` | ✔ **done in #522** (D1 = option 2: our shell stays ours, the card moves to `settings.plugins.tab`) | volatile Config; card; settings fake rewritten in place | landed: `src/config.ts:49-80` every editable field `.volatile()` (`audit`/`metrics` as whole containers, which is what the card writes), new `readVolatileConfig` `src/config.ts:88`; `src/types.ts:26-64` `PromptFirewallVolatileConfig` beside the flat view, list fields `readonly … \| undefined` — the `\| undefined` is forced, not stylistic, because the typert generator compiles the package with `exactOptionalPropertyTypes` (`packages/plugin-scripts/generate-typert.mjs:112`); `src/index.ts:52` namespace = the **entry id** `dsh-prompt-firewall` (was the Cordis plugin id), `:54` `Config` = the volatile view, `installSection` (was `:89-104`) deleted, one `snapshot()` per operation `:119`, and `reloadRules()` gone from the class and from `PromptFirewallService`; client `src/client/index.tsx:4,64,69,157,199,206,221`. Checked and kept: `compatibility.json:4-5` (#511), `:7` → `settings.plugins.tab`; `scripts/verify-package.mjs` needed no edit and **the row's `scripts/verify-client-bundle.mjs:34` never existed in this package**; the only shell CSS change is the plugin-owned `<ul>` (`src/client/styles.ts:4`). The settings fake: `tests/settings.test.ts` no longer subclasses `SettingsForms` — its constructor reaches `ctx.root.loader` and its `static inject` is `['configEditor','profileContext']`, neither of which a bare cordis context has — so the test provides a structural stand-in under the `settings` name and asserts the write; the shared promotion §11 wanted (one `MemorySettings` in `@yadsh/dsh-test-kit` for three plugins) is **still owed**, the other two copies are untouched. 40 estimated / ≈120 actual, of which ≈60 is the test file | `tests/settings.test.ts` (8), `tests/client-index.test.ts`, `tests/client-settings-store.test.ts` — 8 files / 36 tests green, but only through a `tsc`-emitted build: see §13.1 |
 | `dsh-documents` | 11 (+build) | card + `installSection` |
 | `dsh-web-fetch-authenticated` | 9 | card + `installSection` |
@@ -205,7 +205,7 @@ Per package:
 | `dsh-user-correction-miner` | code | ✔ **done in #528** (10 insertions, 18 deletions across three files — not the 25 estimated). `tool-result` block gone; `SessionHeader` fixture; `SESSION_QUERY_CORRUPT_SESSION` needed no code — the historical scan's per-session `catch` already counts it as one failed session | landed: `src/mining/message-text.ts:5` **[verified]** (dead branch dropped, so `blockText` stops recursing); `tests/fixtures/sessions.ts:9-10` (header from `SESSION_FORMAT_VERSION` + `SessionId`, cast gone), `:20,30` (`plugin` source kind is absent from both axes → `system-prompt`; the fixture's own label became `injected`, which also moved `tests/context-extractor.test.ts:73` — a site this map missed), `:77-81` (`tool`-role result message, `toolCallId` beside it). Checked and kept: `src/mining/context-extractor.ts:39,92`, `src/types.ts:34`, `src/dsh/storage.ts:44` (the map named it `src/storage.ts`, which never existed — own `tool-result` **label**, not the block), `src/mining/engine.ts:127` (`snapshotEvents()` alive); `compatibility.json` → #511 | 25 | `tests/{context-extractor,engine,storage,sessions}.test.ts` — 65 pass |
 | `dsh-domain-experts` | ✔ **done in #529** (no card decision — D1 never gated it) | 2, both `installSection` | volatile entry `Config`; the browser half is a management page, not a configuration card, so it survived untouched | landed: `src/config.ts:111` `ConfigSchema: z<Config, LiveConfig>` with all ten leaves `.volatile()`, `:60` `LiveConfig`, `:74` `snapshotConfig` (+ `:89` the structural reference probe), `:6` **`SETTINGS_NAMESPACE` deleted** — the namespace of a profile is its entry id `dsh-domain-experts` now and this plugin never writes config back, so the constant named a section that no longer exists; `src/index.ts:2-4` the loader type anchor in place of the `dsh-settings` import, `:122` one `entry` field where `entry` and `source` were (the map's `:152-153`), `:205-208` one `loader/volatile-update` effect where the `installSection` block stood (the map's `:231`, verified on the pre-#598 entry), `:229-230` `config()` takes one snapshot per operation, `:522-532` the surface re-exports — **every `src/index.ts` ref here is the #598 layout**: the card was cut once against the 1019-line entry, then #598 split that file (catalog to `src/catalog.ts`, verdicts to `src/validate.ts`), which moved the settings registration nowhere — it stayed in the entry — but renumbered it by ~390 lines and conflicted the first patch; `compatibility.json:13`; `package.json` `@deepseek-ai/cordis-plugin-loader` peer + dev (`catalog:dsh` / `catalog:dsh-dev`, already in both catalogs — the pattern `dsh-documents` set). Checked and kept: `src/client/index.tsx:47` registers `settings.plugins.tab`, which survives, and `scripts/verify-package.mjs:74` still requires **no** card shell in the bundle; `settings.configure({ auto: false })` deliberately **not** called — the ten volatile fields are the successor of the old section and nothing in `src/client` reads `ctx.configForms` (grep: zero hits), so the generated page is their only editor; `dsh-sleev` and `dsh-documents` take the lever because their own card draws the form. `defaultMemoryProvider`, `memoryDbPath` and `auditLimit` stay built-once facts, as their descriptions already promised | 20 estimated, ~45 landed | `tests/config.test.ts` +4 (every leaf answers `get()`; a snapshot of the schema resolves to the documented defaults; a committed value is followed without a remount; a knob that resolves to nothing is dropped), `tests/wiring.test.ts` +2 (the `enabled` flip through `loader/volatile-update`, and an unrelated knob leaving the tool surface alone) — 34 files / 332 tests green; `wiring.test.ts` still cannot load under §13.3 (reproduced on untouched `HEAD` in this package: `SyntaxError: Invalid or unexpected token` at import), so its 23 assertions were run against the compiled `lib/` entry instead, the way #514 did |
 | `dsh-preset-persona-editor` | ✔ **done in #518** (decision D2, option 1) | `AgentPresetRegistry` lost `authorable`/`copy` — the `TS2739` at `src/host/service.ts:114` is gone because the write half that hit it is gone; §11's row carries the landed shape |
-| `dsh-doc-impact` | ✔ **done in #530** (347 insertions, 277 deletions over `src` + `scripts`; the 35 the row promised was the card half alone — the host half it did not name is the volume) | volatile entry `Config`; card is a Plugins tab under our own shell (D1 option 2); own message source kind | landed: `src/dsh/plugin-config.ts:71` `ConfigSchema` (every card node `.volatile()`, nested groups marked at the container) with `plainEntryConfig` `:310` and `readLiveConfig` `:364` replacing `declaredSettingsBase`/`fromSettingsSection`; **`src/dsh/settings.ts` deleted** (133 lines of `settings.register`/`settings.get` that rc.2 answers to nothing — it typed itself through a self-declared `SettingsService`, which is why it cost zero compile errors); `src/dsh/plugin.ts:26` `export const Config`, `:107` `settings.configure({ auto: false })` (§4.1 taken, not deferred — this plugin owns its page); `src/client/index.ts:33,55` tab seat `settings.plugins.tab` keyed by the namespace, form through `ctx.configForms.get`; `src/client/settings-form.ts` writes `mutate([{op,path,value}], revision)` against the **nested** document (`defaults.mode`, `safety.*`, `changeDetection.maxSnapshotFiles`); `src/client/card.ts:264` `<ul>` around the shell (AGENTS.md `settings.plugins.tab`), shell and badge unchanged; `src/dsh/lifecycle.ts:13,94` kind `doc-impact` via a `MessageSourceMap` augmentation; `scripts/verify-client-bundle.mjs:43-55`. **The namespace moved `doc-impact` → `dsh-doc-impact`** — it is the profile entry id now (§4.2), so values saved through the old card do not carry over while the profile patch line does. Checked and kept: `src/dsh/{commands.ts:14,67,tools.ts:47,lifecycle.ts:39}` `snapshotEvents` folds (§5/#531: no replacement for a whole-log fold); `compatibility.json:4-5` → #511 | 35 → **≈350** | `tests/client-bundle.test.ts` 8 (nested fake `ConfigForm`, seat↔namespace pair), `tests/settings.test.ts` 10 (schema↔card path pairing pinned: every card field is under exactly one volatile node), `tests/e2e.test.ts` 4 — 87 pass |
+| `dsh-doc-impact` | ✔ **done in #530** (347 insertions, 277 deletions over `src` + `scripts`; the 35 the row promised was the card half alone — the host half it did not name is the volume) | volatile entry `Config`; card is a Plugins tab under our own shell (D1 option 2); own message source kind | landed: `src/dsh/plugin-config.ts:71` `ConfigSchema` (every card node `.volatile()`, nested groups marked at the container) with `plainEntryConfig` `:310` and `readLiveConfig` `:364` replacing `declaredSettingsBase`/`fromSettingsSection`; **`src/dsh/settings.ts` deleted** (133 lines of `settings.register`/`settings.get` that rc.2 answers to nothing — it typed itself through a self-declared `SettingsService`, which is why it cost zero compile errors); `src/dsh/plugin.ts:26` `export const Config`, `:107` `settings.configure({ auto: false })` (§4.1 taken, not deferred — this plugin owns its page); `src/client/index.ts:33,55` tab seat `settings.plugins.tab` keyed by the namespace, form through `ctx.configForms.get`; `src/client/settings-form.ts` writes `mutate([{op,path,value}], revision)` against the **nested** document (`defaults.mode`, `safety.*`, `changeDetection.maxSnapshotFiles`); `src/client/card.ts:264` `<ul>` around the shell (AGENTS.md `settings.plugins.tab`), shell and badge unchanged; **[superseded by #657, which moved this card to `plugins.row.config` and dropped the shell with the `<ul>` — the seat, both of its views and the body-only chrome are D1 option 1, and the settings namespace this row names did not move]**; `src/dsh/lifecycle.ts:13,94` kind `doc-impact` via a `MessageSourceMap` augmentation; `scripts/verify-client-bundle.mjs:43-55`. **The namespace moved `doc-impact` → `dsh-doc-impact`** — it is the profile entry id now (§4.2), so values saved through the old card do not carry over while the profile patch line does. Checked and kept: `src/dsh/{commands.ts:14,67,tools.ts:47,lifecycle.ts:39}` `snapshotEvents` folds (§5/#531: no replacement for a whole-log fold); `compatibility.json:4-5` → #511 | 35 → **≈350** | `tests/client-bundle.test.ts` 8 (nested fake `ConfigForm`, seat↔namespace pair), `tests/settings.test.ts` 10 (schema↔card path pairing pinned: every card field is under exactly one volatile node), `tests/e2e.test.ts` 4 — 87 pass |
 | `dsh-answer-review-gate` | 1 | message role `'plugin'` removed |
 
 Error-class frequency (top): `'settings' is of type 'unknown'` ×57, `ProviderCardProps`
@@ -303,47 +303,19 @@ now at `:579`; `plugins.row.config` is still rendered **with** `form`, now at
 `formFor(id)` (`:1151-1155`) still calls `props.configForm(id)` with the **row id
 as the namespace**, so the join-key insight below survives `rc.2` untouched.
 
-[rc.2 fix] **[verified]** and one render site this document never listed, which
-makes the bullet above ("rendered with `{ view: 'page', form }`") understate the
-seat: `RowDetail` writes the row's description into a `<p>` and, when the row
-declares none, asks `plugins.row.config` for that sentence under
-`{ view: 'summary' }`. Measured in the host's own source at the target tag
-(`packages/client/ui-plugin-manager/src/client/PluginManagerPage.tsx:491` for the
-summary seat against `:495` for the page seat, `dsh-v0.1.7-rc.2`) and declared in
-`slot-contract.ts` in prose: `view` is `'summary' | 'page'` (`:22`), and the row
-seat's docblock says "An absent description falls back to the entry's
-`view: 'summary'`" (`:100`). A card that owns a row is therefore seated in two
-shapes, one of them conditional on what the row's inventory carries, and its
-`summary` answer must be text rather than its shell — the page puts it inside its
-own `<p>`, so a card there would nest an `<li>` in a paragraph. Which of the two
-the page reaches for is measured below, and that is where the answer's wording is
-settled; `dsh-plugin-log-ui` (#651) and `dsh-qa-surface` (#659) register this seat
-and answer both shapes, and the wave (#646) moves further cards onto it.
-
-[verified] **and the summary pass is not reached by a bundle that declares a
-`description` in its manifest.** The row's `meta` is read from the *installed
-package.json* (`packages/boot/app-boot/src/package-meta.ts:148-156`, joined onto
-the row at `packages/boot/plugin-manager/src/index.ts:650-652`): the title falls
-back to the manifest's `name`, its description to the manifest's `description`
-(`packages/client/ui-plugin-manager/src/client/presentation.ts:127-131`). Our
-bundles all declare a `description`, so `PluginManagerPage.tsx:491`'s `??` never
-asks the seat — the row's one-liner on a live stand is the manifest field, and an
-entry that returns text from its `summary` view is answering a call the page does
-not make for these bundles. Keep the answer anyway (the contract entitles a row
-that declares nothing to it) but make it *equal to the manifest field*, or the
-same row reads one way from the manifest and another from its card.
-**What the manifest cannot give you is a human title**: with no
-`locale/<lang>.json` beside the manifest, the row's heading *is* the package name
-(`@yadsh/<pkg>`), and our card's own header is the only place a phrase like
-"Plugin logging" appears. The host mechanism for that is a `locale/en.json`
-carrying `{"meta": {"title": …}}`, exported as `./locale/en.json` and listed in
-`files` — first-party plugins do exactly this
-(`packages/experimental/inspector/`). No package in this repository ships one
-yet, and the export must name the concrete file: the host resolves
-`<specifier>/locale/en.json` as an address, and this repository's package gate can
-stat every `exports` target (`packages/plugin-scripts/run-verify-package.mjs:154-166`,
-opt-in through `exportsBuilt`, which a wildcard target would fail). Needs its own
-card and one browser check.
+[rc.2 fix] **[verified at `rc.2`: the two render sites below, the stand probe in #646,
+and `AGENTS.md` since #660]** the bullet above reads this seat as having one view; it
+has **two**. Besides `{ view: 'page', form }` at `:495`, the page renders
+`plugins.row.config` as `{ view: 'summary' }` at `:491` — `description ??
+renderSlot('plugins.row.config', { view: 'summary' }, …)`, so the one-liner is asked
+for whenever `rowText` yields no description because the patch declares no
+`meta.description` (`presentation.ts:131`). A bundle that registers here and declares
+no description of its own therefore has to answer `summary`, and answer it as **text**:
+the page puts the result inside its own `<p>`, so an entry that mounts its shell — or
+subscribes to settings state — there gets a second live copy of the form in a heading
+line. Pick the component per view at registration rather than returning early inside
+the card component, so each view keeps its own hook order. `plugins.item` is not the
+only seat with a summary view.
 
 Three refinements the `rc.1` pass missed, all **[verified]** at both tags (so
 they were never `rc.2` changes — they were gaps in this document):
@@ -391,26 +363,14 @@ so the namespace `dsh-ui-repair` is unchanged, and the join key becomes
 join key") survives through the row id — we do not have to invent anything.
 
 ```tsx
-export const inject = ["slots", "configForms"];   // was ["slots", "settingsScope"]
+export const inject = ["slots", "locale", "configForms"];   // was ["slots", "settingsScope"]
 
 ctx.slots.inject("plugins.row.config", () => ctx.slots.register({
   name: "plugins.row.config",
   key: "@yadsh/dsh-ui-repair#dsh-ui-repair",
+  locale: "dsh-ui-repair",
 }, UIRepairCard));
 ```
-
-[verified] **and the register payload takes `key`, not `label`.** The option
-shape is chosen by the slot's kind (`@deepseek-ai/dsh-client-ui-slots`,
-`KindOptions`, `lib/types/index.d.ts:560-583`): `keyed` cells carry `key` and an
-optional `priority`, while `id`, `order` and `label` belong to `list` cells — so
-`label` is available on `plugins.item` (whose docblock says "`label` is the
-card's title") and is *not a legal option* on `plugins.row.config`. `locale` is
-optional on every kind and does something narrower than a title: declaring a
-dictionary namespace synthesises the `t` seat onto the component props, and
-"rendering requires an installed locale face — fails loud otherwise"
-(`index.d.ts:604-610`). A card whose copy is inline English gains nothing from it
-and risks the loud failure. Where the row's *display* name comes from instead is
-the manifest question above.
 
 `ConfigFormSnapshot<T>` is `{ status: 'loading'|'ready'|'unavailable', value, base,
 user, revision, writable, mode: 'host'|'memory' }` — same three layers
@@ -500,75 +460,7 @@ inventory, because the configure control is gated on
 `ledger.rows.has(rowConfigKey(…))` (`PluginManagerPage.tsx:1191`).
 **[unverified]** remains one narrower thing: that fixture's card ignores `form`
 entirely (hardcoded `defaultValue`, no read or write), so nothing in the harness
-proves the *wired* read/write path end to end. The stand pass recorded below settles
-that.
-**Updated by #651**, which registers this seat in this repository:
-`plugins/dsh-plugin-log-ui/tests/client-card.test.tsx` mounts the component that
-plugin's `apply()` actually registered, with the two prop shapes `RowDetail` passes
-(`{ view: 'page', form }` and `{ view: 'summary' }`), and holds a stored level,
-format and per-plugin override in the stand for `ctx.configForms.get(rowId)` — so
-the read-back of a value written before the move, and the write of a change through
-that same namespace's form, are now measured rather than assumed. The shapes those
-tests hand over are no longer the tests' own invention either:
-`plugins/dsh-plugin-log-ui/tests/host-seat-contract.test.ts` reads the installed
-`@deepseek-ai/dsh-client-ui-plugin-manager` bundle and its published
-`slot-contract.d.ts` and asserts that the page still calls the row seat exactly
-twice, once with `view: 'summary'` and no `form`, once with `view: 'page'` and the
-`form`, and that `view`'s union still names both. That is a CI-visible pin: a host
-release that changes the seat fails the suite on the version bump instead of
-leaving a `summary` branch quietly dead.
-**[verified]** — that pass happened, on the deployed page at `0.1.7-rc.2` and on a
-build of this branch (#646, 2026-09-30): the row's configure control opens the detail
-page, this plugin's seat renders inside its configuration section, and all three
-controls read and write the live Config (levels `trace…silent`, format Text/JSON, the
-registered-plugins list) with nothing in the console. Two further things the page
-showed are worth keeping, because neither is visible from the contract:
-
-- the configuration section is mounted eagerly, and so is the body this bundle
-  answers with. What the stand saw under the shell was a second disclosure: our own
-  header carrying the title, a line and the live count, with the fields hidden until
-  that header was clicked. Decision D1 then went to option 1 (§10), and the header is
-  gone — `plugins/dsh-plugin-log-ui/tests/client-card.test.tsx` now pins the fields
-  mounted with no button, no chevron and no shell class of ours anywhere in the
-  section.
-- the `view: 'summary'` site is reached only as a fallback. The page writes
-  `description ?? renderSlot(…)` into the row's `<p>` (`PluginManagerPage.tsx:491`
-  against `:495`), so a row whose manifest declares a `description` is read from the
-  manifest and its seat is never asked for the one-liner. Pinned against the installed
-  bundle by `plugins/dsh-plugin-log-ui/tests/host-seat-contract.test.ts`, which also
-  asserts the `page` call stayed unconditional.
-
-§4.3's duplication premise measured away in the same pass: the ancestors of our
-`.dsh-plugin-card` on that page (`ul.plu-card-list` → `div` → `detailSections` →
-`detail` → `section.page`) carry `border: 0` and a transparent background, so the host
-draws its title, icon and crumb **above** the content rather than a frame around it —
-no second rounded rectangle, and so no host 20px corner sitting over our 12px one at
-`rc.2`. That is what one deployment of one host version showed, and it did not carry
-the decision: D1 reopened on 01.10 and went to option 1 (§10), which is that the row's
-chrome belongs to the page. `#651` took the shell, the plugin-owned
-`ul.plu-card-list` and the header out of this bundle with it, so the measurement above
-describes a shape the tree no longer has.
-
-**What stays open is the page's availability, not the seat.** On a locked QA stand the
-Plugins page needs `POST /api/pluginInventory/list` plus `pluginManager/listBundles`
-and `pluginManager/listPlugins`, and all three answer 403. Opening them means opening
-`pluginManager` wholesale, and its remote methods are not read-only: `inspect(spec)`
-takes "a registry name, an absolute path, a git address, or a tarball" beside
-`installBundle(spec, options)` and `setPluginEnabled`
-(`packages/extensions/tool-cordis/src/api-catalog.ts:1644,1661`). A LAN visitor with
-a remote installer is not a trade this repository makes for a settings page, so that
-deployment bounds **what a locked stand can show**, not whether the seat move ships:
-the card series #647–#660 is not parked — #653 landed `plugins.row.config` on this
-line, #684 landed the chrome contract that goes with it, and #651 registers the same
-seat under that contract, shell removed. What
-the stand does settle for this card is item 1 above: the wired read/write path the
-harness fixture never exercised. The allow-list question stays open on the stand's
-side; item 3's ring is answered in code by #651 — every control this bundle draws takes
-the `--dsw-focus-ring-*` pair with a fallback on each half — and a browser still has to
-confirm it, which is the same bound as the one above. The old section's own defect — a
-tab strip clipping 332px of an 881px
-row — is
-#675, which does not depend on this choice.
+proves the *wired* read/write path end to end. One live stand still settles that.
 
 **2. [verified] the host chrome moved off our `AGENTS.md` shell contract between
 `rc.1` and `rc.2`.** The structure is the same (`CardHead` at
@@ -810,14 +702,6 @@ Also **[source]**, no compile error but runtime-relevant:
   non-loopback browser already got read-only settings at 0.1.5, which is why
   `AGENTS.md` routes must-work-without-loopback UI to `settings.plugins.tab`.
   **No availability regression** — do not treat this as a 0.1.7 blocker.
-  **[verified] and moving a card onto `plugins.row.config` does not change it
-  either:** the memory/host split sits on the *namespace*, which the move carries
-  over untouched, and `writable` is false in memory mode by definition
-  (`packages/client/ui-settings/src/client/config-form-types.ts:30-34`). A
-  non-loopback browser reads the same values on the Plugins page as it did on the
-  tab, and may not persist them from either. What a stand still has to confirm is
-  that the page itself is *reachable* to that session, not that its form is
-  writable.
 - **[verified] new at `rc.2`, and the sharpest item in this document — no compile
   error anywhere.** `tool-addition` / `tool-removal` blocks **started being
   emitted**: the types existed at `rc.1` but nothing produced them, whereas
@@ -1387,27 +1271,46 @@ What option 1 means in this repository now:
 - Cards seated in `settings.section` and `settings.plugins.tab` still own their whole
   card; those seats keep the canonical shell.
 
-Scope, and how to read it: the contract arrived with exactly one series package seated on
-the row (`dsh-model-safety-gate`, #653). The remaining packages of the epic (#646) migrate
-onto it under their own cards, and **which ones have done so is the epic's list, not this
-paragraph's** — the code answers it (the card-contract gate reads the seat out of the built
-`lib/client.js`, which git does not carry; the hygiene gate lists *seats*, not who sits on
-them), and the tracker answers it per card, so no grep here is needed either. A migrating
-card must not add a present-tense count here: this paragraph records what the contract
-arrived with, and an appended sentence reads as a claim about today. A shared paragraph that
-every migration
-edits is also a guaranteed conflict between branches that touch nothing else in common.
+Scope as of 01.10: one of the thirteen series packages is seated on the row today
+(`dsh-model-safety-gate`, #653), so the contract landed with that one migrated and the
+other twelve — still on `settings.plugins.tab` — are named in the epic (#646) as the
+second step, each on its own card. **As of #657 it is two and eleven**: the second
+package crossed to the row and to the body-only chrome in the same change, so the
+contract has now been exercised by a bundle that reached the seat from the tab.
 
-**Fact that had to survive the decision:** `scripts/verify-package-hygiene.mjs` keyed the
-*entire* card-contract enforcement off a source file containing the literal
+**Fact that survives either branch:** `scripts/verify-package-hygiene.mjs:49,816-835`
+keyed the *entire* card-contract enforcement off a source file containing the literal
 `settings.plugin.item`; once plugins register `plugins.row.config`, that gate stops
 firing and the shell contract becomes unenforced unless the constant is retargeted.
-**[verified 03.10]** by symbol, not by line — `CARD_SEAT_SLOTS` and its reader
-`findSettingsCardSlot`; #684 renamed the constant and shifted the lines under the old
-`:49,816-835` citations, which is exactly why this sentence stopped quoting numbers.
-**Retargeted by #510:** the gate then fired on `settings.plugin.item`,
-`plugins.row.config`, and `settings.plugins.tab` combined with the shell, so enforcement
-held whichever way D1 went. #684 renamed the list to what it decides and added `plugins.bundle.config` as a third name; the tab seat stays the separate `CARD_TAB_SLOT`, which counts only together with `CARD_SHELL_MARKERS`.
+**[verified]** line 49 and the block at 816-835. **Retargeted by #510:** the gate now
+fires on `settings.plugin.item`, `plugins.row.config`, and `settings.plugins.tab`
+combined with the shell, so enforcement survives whichever way D1 goes.
+
+**Superseded on both halves by #653 (`dsh-model-safety-gate`, landed) and #657
+(`dsh-doc-impact`, the second card on this seat)**, which register on
+`plugins.row.config`: the keyed seat takes
+the join §4.2 describes, the settings namespace stayed where it was, and — with option 1
+in force — neither bundle keeps option 2's frame any more. Both render the body the page
+mounts inside its own card.
+
+The probe that argument rested on is still what `rc.2` measures: the page titles the row
+and puts its heading, icon and crumb **above** the entry, and the ancestors of a row's
+configuration section carry no border and no background of their own. Read the other way
+round, that is exactly the defect — the section supplies no box, so the bundle's 12px
+rectangle was a second card nested in the page's 20px one, standing beside first-party
+rows that draw only the page's frame. The recommendation now says the same thing the code does —
+`AGENTS.md` ("Choosing the registration point", rewritten by #660), `docs/PLUGIN_GUIDELINES.md`
+and the `create-plugin` skill all route a configuration card to the row seat and tell it
+not to register in the Settings dialog.
+
+**What #657 could not close is the availability of that page.** The Plugins page reads
+`pluginInventory/list` and `pluginManager/listBundles|listPlugins`, and on the locked QA
+stand all three answer 403 because `pluginManager` also exposes `inspect`/`installBundle`/
+`setPluginEnabled` to the remote surface; adding it to `DSH_REMOTE_API_SERVICES` is the
+owner's call, not a plugin's (§4.3, #646's 30.09 measurement). So the acceptance
+"the card opens from the Plugins panel and saves" is proven for #657 by the bundle test —
+the seat key, both views, one settings read — and by the read of a value written under the
+same namespace before the move, not by a click on the operator's stand.
 
 **D2 — preset authoring (`dsh-preset-persona-editor`) — newly open.** §8.6:
 the copy-to-writable-root capability does not exist at `rc.2`, and neither does
@@ -1469,9 +1372,9 @@ excluding the shared 2-line `compatibility.json` wave each row also carries.
 
 | Package | class | what changes | our files (line refs) | ~lines | covering tests |
 | --- | --- | --- | --- | --- | --- |
-| `@yadsh/dsh-plugin-kit` | **decision → do first** | `SETTINGS_PLUGIN_ITEM_SLOT` → `plugins.row.config` helper (**still owed — #694**: the default still names the deleted slot, so a card routed through the helper without `slotName` lands nowhere); `ConfigForm`-shaped binding (`ctx.configForms.get<T>(ns)`); `card-shell.tsx`/`chevron.tsx`/`plugin-card-css.ts` survive D1 option 1 — they are the shell of the `settings.section` / `settings.plugins.tab` seats, and a registrant of either panel seat (`plugins.row.config`, `plugins.bundle.config`) must not use them | `src/client/register-settings-card.tsx:56,93,116` **[verified]**, `src/client/settings-store.ts:3` (survives — structural over `subscribe`/`getSnapshot`), `src/client/card-shell.tsx:34-57`, `src/client/chevron.tsx:13`, `src/client/index.ts:17,19-21` — **note from #513:** under D1 option 2 a tab registration takes `id`/`order`/`label` and no `key`, which `SettingsCardOptions` does not carry, so `dsh-qa-surface` calls `ctx.slots.inject/register` directly and uses only `injectCardStyles` + `bindSettingsExternalStore` from this kit; the shell CSS and `CardShell` survive untouched | 60 | none of its own (4 files pass today); exercised by every plugin client test |
-| `@yadsh/dsh-plugin-scripts` | **decision** | canonical shell CSS + chevron assertions; `deepEqual` capability | `verify-plugin-card-contract.mjs` — `HOST_CHROME_SEATS`, `OWN_SHELL_SEATS`, `verifyCanonicalShell` and `verifyPluginCardContract` **[verified 03.10, by symbol]**, `run-verify-package.mjs` (`cardContract` option), `run-verify-package.test.mjs` | 25 | `run-verify-package.test.mjs` |
-| repo root `scripts/` | **decision** | The seat list the gate reads must follow D1 or the gate goes blind (§4.3a) | `verify-package-hygiene.mjs` — `CARD_SEAT_SLOTS` and its reader `findSettingsCardSlot` (symbol names, not line numbers: #684 renamed the constant and shifted them) **[verified 03.10]**; `package-hygiene.test.mjs`; `check-dependencies.test.mjs` | 15 | `package-hygiene.test.mjs` |
+| `@yadsh/dsh-plugin-kit` | **decision → do first** | `SETTINGS_PLUGIN_ITEM_SLOT` → `plugins.row.config` helper; `ConfigForm`-shaped binding (`ctx.configForms.get<T>(ns)`); `card-shell.tsx`/`chevron.tsx`/`plugin-card-css.ts` die only under D1 option 1 | `src/client/register-settings-card.tsx:56,93,116` **[verified]**, `src/client/settings-store.ts:3` (survives — structural over `subscribe`/`getSnapshot`), `src/client/card-shell.tsx:34-57`, `src/client/chevron.tsx:13`, `src/client/index.ts:17,19-21` — **note from #513:** under D1 option 2 a tab registration takes `id`/`order`/`label` and no `key`, which `SettingsCardOptions` does not carry, so `dsh-qa-surface` calls `ctx.slots.inject/register` directly and uses only `injectCardStyles` + `bindSettingsExternalStore` from this kit; the shell CSS and `CardShell` survive untouched | 60 | none of its own (4 files pass today); exercised by every plugin client test |
+| `@yadsh/dsh-plugin-scripts` | **decision** | canonical shell CSS + chevron assertions; `deepEqual` capability | `verify-plugin-card-contract.mjs:4-15,39,44-45` **[verified]**, `run-verify-package.mjs:45,169-174`, `run-verify-package.test.mjs:58-59` (version literal) | 25 | `run-verify-package.test.mjs` |
+| repo root `scripts/` | **decision** | `SETTINGS_CARD_SLOT` constant must follow D1 or the gate goes blind (§4.3a) | `verify-package-hygiene.mjs:49,816-835` **[verified]**; `package-hygiene.test.mjs:41-42`; `check-dependencies.test.mjs:67,69,131` | 15 | `package-hygiene.test.mjs` |
 | `@yadsh/dsh-test-kit` | code | host **one** `MemorySettings` conforming to `SettingsForms` (accessor `writable`, no stray `override`) so 3 plugins share it — no error of its own today | new/changed fake in `packages/test-kit/src/**`; current copies at `dsh-model-safety-gate/tests/integration/settings.test.ts:19-30`, `dsh-plugin-log-ui/tests/integration.test.ts:14-25`, `dsh-prompt-firewall/tests/settings.test.ts:14-25` **[verified]** | 30 | `dsh-test-kit` 3 files pass today |
 | `dsh-session-scope` | **mechanical**, debt blocked | **[verified] no mandatory edit** — clean at `rc.2`: build, typecheck, lint and 17 test files (98 pass / 1 skip) green, no `TS2742`, and `src`+`tests` have zero hits for any removed identifier (`settings.plugin.item`, `SettingsScope`, `installSection`, `standingKeyFor`, `agent/session-start`, …). It registers no settings card (so D1 does not gate it), reads no `block.type` (so §5's emitted `tool-addition`/`tool-removal` cannot reach it) and never touches `approvalPolicy`/`permissionPreset` (so D3 does not either) | The 10 `src` refs the row already listed are **8 calls + 2 declarations in our own structures** (`host-api.ts:24`, `scope-delegation.ts:22`) — the old prose "8 calls" counted the calls only; `tests/` adds **18** more (§13.2). All 10 line refs verified exact. Blocked as a unit by §5's "no replacement at `rc.2`" finding: `src/{host-api.ts:24,57,index.ts:141,497,scope-delegation.ts:22,49,57,84,scope-fs.ts:121,140}` | 0 mandatory; 2 if only the `seq` slice is taken | `tests/{host-api,scope-delegation,scope-fs,scope-remote,tool-guard-*}.test.ts` (17 pass today) |
 | `dsh-tool-offload` | **mechanical** | shell/sandbox untouched §8.5; one fixture source kind | `compatibility.json:4-5`; `tests/unit/parent-context.test.ts:29` `kind:"plugin"` | 5 | `tests/unit/parent-context.test.ts` (14 files pass today) |
@@ -1482,14 +1385,14 @@ excluding the shared 2-line `compatibility.json` wave each row also carries.
 | `dsh-preset-persona-editor` | **decision (D2) → landed #518** | registry rename `dsh-agent-presets` → `dsh-agent-preset-registry`; the roster face has **no** replacement for `authorable`/`copy`/`trust`/`path` — the read half moves to `list`/`resolve`/`readDocument`/`defaultId`, and the write half (`save`/`reset`/`copy`, `src/host/preset-writer.ts`, the four Config ceilings) is removed in its own commit, which **does not revert on its own** — replayed over the read-path commit it conflicts in 20 paths at `296b8836`, the last code commit of this series, and restores a writer against `readPresetFile`/`revisionOf`/`preset.path`, all deleted by that commit, so §10's D2 bullet counts the reversal as a revert of the whole #518 series. `select(agent, id)` needs a live `Agent`, so the settings page never took it. **No D1 dependency** — the page registers `settings.section`, which survives `rc.2` unchanged, and the card shell is asserted untouched. **[review round]** two facts the face alone does not tell, driven through the installed `0.1.7-rc.2` class over a hand-seeded definition rather than read off its types: `resolve()` and `readDocument()` **reject** `agent-preset/not-found` for an id they do not hold (neither answers `undefined`), and `readDocument()` renders a **broken** preset's declarations without consulting `diagnostic()` — so "cannot compose" and "nothing to read" are different answers and the page must not merge them; `editable`, which did, is off the wire, and a refusal now carries the registry's own reason to the card and to `preset-persona.composition-refused`. A registry answering no `readDocument()` — legal inside the `<0.2.0` half of the range — used to make every row silently unreadable. **[second review round]** three more facts the read path owed: a host that answers `readDocument()` with a value that is not a composition is refused at the read, because `inspectPreset` discriminated the union on `composition === null` while `readDocument()` read the same field through `composition?.content` — that answer reached the card as `Cannot read properties of undefined (reading 'content')`, the one place this page showed a `TypeError` where it promises words; the sections list is keyed `name:index`, since the reader drops an unnamed row and keeps a duplicate, so a hand-edited composition may name one section twice, and `SPEC.md` §1.20 states what the page then says about the collision (nothing — refusing it is the harness's job and this page has no write left to refuse it with); and `tests/service.test.ts` drives the shared `preset-roster.helpers` face instead of its own copy, so both host shapes are covered at the service and not only at the reader. **[third review round]** three facts about a check that cannot fail. A refused roster refresh wrote its reason into `state.error` while leaving `status` at `"ready"`, and the roster screen reads `error` only in its `failed` branch — the rows stayed on screen presented as current, and `client-store-page-controller.test.ts` asserted that very pairing, which is what a field no branch renders degenerates into; the reason now goes into the notice slot this screen does render, and the case is asserted on the rendered page (`PersonaPage` drawn at all, for the first time in this package) because the controller and the JSX were each checked against themselves and never against each other. `state.error` is non-empty only where `failed` renders it. The section-rule cases had fallen from the base's `rejects.toMatchObject({ code: "preset-persona/invalid" })` to a bare `toThrow()` when the writer that raised the code was removed — a `TypeError` inside `validateSections` satisfies the latter and leaves the rule it crashed on untested — so every case names the code and the sentence its own rule answers with, and the ceiling fixture left `cases.slice(0, 5)` / `cases[5]`: an index coupling that silently moves a case from the loop to the ceiling test when one is inserted in the middle. Two assertions queried `[data-testid="persona-unreadable"]`, an id no file in the package renders since the warning carrying it was deleted in the first round — `toBeNull()` over a selector that matches nothing is the one assertion that survives any change to the markup — and count the paragraphs carrying the sentence instead. The same divergence in method form, one step behind this round's own change: a notice that now holds a refresh refusal stays on the screen, and `dismissNotice()` on the controller had no JSX reaching it, so the notice carries a dismiss control named by its own text — pressed by that name in the suite, which is also how an unbound handler becomes a failing test rather than a user's dead click. **[fourth review round]** one sentence, and it was this row's own correction undone: §0 of `SPEC.md` still promised "one commit is what brings them back" after the second round had written the opposite into three other places — a summary that contradicts its own correction is worse than a missing correction, because the next reader takes the summary. §0 now says what the other three say. Putting a number in that sentence is what made it rot: the merge-tree replay conflicts in 20 paths (17 content, 3 modify/delete) at this series' head, `tests/service.test.ts` and `tests/prompt-sections.helpers.ts` having joined the set with the third round's edits, `src/host/errors.ts` with the fifth round's comment sweep, and `src/client/store.ts` with the sixth round's roster control, so the five places stating it — this row, §8.6 above, §10, `SPEC.md` §0 and the version plan — state 20 and name the commit the count was taken at. The same round checked its references against what they name instead of trusting them: `README.md` bounded the host's refusal text by "§5 of `SPEC.md`" — §5 is the scenario list, the identities-not-locations rule is §2 — and §5's registry bullet said this plugin's `src/index.ts` is 111 lines, true of `df9f26f3`, the tag the never-existed citation is judged against, 94 after this cutover. **[fifth review round]** the wording the third round named, which outlived two more rounds because it was a comment and not a behaviour: the page's own header still said the roster's cards each open "its persona editor" and that "the thing it edits is a composition file", the slot comment still said this page "edits one field of what that page composes", `verify-package.mjs` still justified its node-built-in gate with "the browser half edits text", and `invalid()` still described a write request the namespace no longer has — four sites, with two more of the same class beside them: the headers of `src/host/{validation,composition}.ts`, which spoke of refusals that happen "before anything reaches the file system" in a plugin that stopped touching one at `7821bd30`, and `NO_READ_DOCUMENT`, credited to "the host's own words" while `SPEC.md` §2 and `README.md` of this same diff assign exactly those two refusals to the page. Comments only, no behaviour, and the gate still asserts what it asserted. Two doc facts that had outlived their subject: §10's D2 paragraph, which this card rewrites three lines under itself, still offered option 2 the premise that "the plugin already has its own file IO in `src/host/preset-reader.ts`" — the removed file IO is what the decided option deleted, so whoever reopens D2 would start from none — and `docs/COMPATIBILITY.md` still named `schemastery` among this package's peers after the Config took it out; nothing checks that matrix (`grep -rl COMPATIBILITY.md scripts packages/*/scripts plugins/*/scripts` is empty) and no other file carries it, so this row is where it is fixed. One shape that was wrong in code: Cordis builds a plugin with `new callback(ctx, config)` (`@deepseek-ai/cordis/lib/index.js:1068`) and `resolveConfig` hands that row through untouched when the runtime declares no `Config` (`:956-957`), so the second parameter of `PresetPersonaEditor` — documented and typed as the test seam — received the operator's configuration in every deployment, and only a test ever passed a seam there. Harmless while the body reads `.logger` off it, and harmless now, with one difference: the parameter is `(ctx, config, deps)` the way `dsh-qa-browser` has it, the config slot is declared, named and unread, a case hands a leftover row of ceilings to slot two and fails on the slot-three logger if anyone collapses them again, `README.md` tells the operator that `allowComplete`, `maxPersonaBytes`, `maxSections` and `maxSectionsBytes` in a deployment row change nothing, and `SPEC.md` §2's rule about whose words a refusal is stays the rule the reader finds. The bump level four rounds left unasked is answered where `docs/RELEASING.md` says it is chosen: `minor`, because a `major` on a `0.1.2` package does not mark the break, it publishes `1.0.0` — no package this repository ships has reached it (highest `dsh-qa-surface` at `0.13.0`, no `1.x` heading in any changelog, no version plan ever declaring `major`), so below `1.0` the breaking step is the one this wave's sibling cut-over (#515) took; the plan says so, names §9.3's contrary letter, and points at the line the owner changes if they want the break announced at `1.0.0`. **[sixth review round]** six things the screen, the log and the published page owed, all measured against the installed `0.1.7-rc.2` class: the registry answers `broken` as a **tree** — `diagnostic()` is `[...failed, ...pending].join("\n")` over `mountDetail()`, which nests a wrapped cause under `- ` with `\n  ` continuations (`lib/index.js:208-247`) — and the page handed that tree to two blocks styled with no `white-space`, so the promise "the registry's own words" was kept letterwise and lost structurally: one run-on line, glued to the persona state by the description's ` · `. Fixed by what each block is: the shell's description stays one line (its rules are shared with every first-party card and `AGENTS.md` keeps them identical, so pre-formatting it from here is not on the table) and carries the tree's own first line — the row that refused — while `.preset-persona__error` took `white-space:pre-line`, so the whole tree, breaks included, is what the opened card states. `preset-persona.composition-refused` fired per row, where `NO_READ_DOCUMENT` and `NO_COMPOSITION_TEXT` are facts about the **host**, which either publishes `readDocument()` or does not: N presets, N identical `warn` lines on every visit to Settings. Now grouped by reason after the parallel walk, in the roster's order — a granularity the reader's own test had never asserted, `readCatalog(roster, logger)` being called with a logger and nothing said about it. The composition was read with the **request** id while `resolve(id?)` answers the deployment's default (`const wanted = id ?? this.defaultId`, `lib/index.js:604`) and `readDocument()` looks its id up exactly, no fallback (`:620-622`) — unreachable through the typed Remote, permitted by the face's own optional parameter, and it would have paired the default preset's document with `readError: Unknown agent preset: undefined`; the reader asks with `preset.id` now. Two checkboxes carried `disabled` where the textareas beside them carried `readOnly`, so a keyboard reader stepped over `complete` and `includeRuntimeContext` without learning they exist — they are reachable now, `aria-disabled` with the value pinned, because `readOnly` names a rule for controls that take text and holds a checkbox by nothing. `SPEC.md` §2 argued the disclosure rule with "the Loader it audits adds nothing but entry ids to its messages", which the class does not support: the text under `- ` is whatever the mounted plugin rejected with, and the argument that holds is the one the row states now — the same tree already answers any client over the registry's own `agentPresets` `list` Remote, so nothing new leaves the deployment. And the published `README.md` named `docs/DSH-0.1.7-MIGRATION.md` and `#605` in backticks, two places a reader on npm cannot go (`files` ships `lib`, `cordis.patch.yml`, `compatibility.json`, `README.md`, `LICENSE`); the hygiene gate cannot see them either, because `relativeLinkTargets` reads markdown links and `src`/`href`, not prose paths. Both are absolute `blob/main` links now, the form 20 of 26 published READMEs use. The gate's blind spot is deliberately **not** closed in this card: the same prose form is live in nine other packages' READMEs, so teaching the gate about backticks would redden a check the wave does not own — it needs its own card. One repo-level piece of this card's own litter went with it: `pnpm-workspace.yaml` kept two `@deepseek-ai/dsh-agent-presets` keys (the `dsh` range and the `dsh-dev` pin) after `7821bd30` renamed the only consumer, `grep -rl dsh-agent-presets --include=package.json plugins packages tooling` is empty, this diff loses the name from `pnpm-lock.yaml`, and §1's registry sweep says the name does not exist at `rc.2` (321 DSH names queried, so it is exhaustive rather than sampled) — a dangling catalog key is an invitation to the next plugin to pin a peer on a package no install can resolve. Last, the roster screen had no way to ask again: a `waiting for <service>` line is the registry's **pending** audit result, and those rows activate by themselves once the provider mounts, so the screen held "Cannot compose" until the settings section remounted. It carries **Reload the roster** now, which is also why the fifth round's reasoning about the notice no longer applies — the path where a successful `load()` followed a refused one is reachable, so `refresh()` puts that notice down before asking and a refused retry puts a refusal back. **[rebase onto the current `rc` line, 28.09]** the head of this series sat on `0dbbd0d1` while the line moved to `1e5d35dc`, so the series was replayed over the twenty-one commits the line gained. One conflict round, and it was #291's coverage wave: `test:coverage` and `@vitest/coverage-v8` land in the same `package.json` and `pnpm-lock.yaml` hunks this card's peer rename had rewritten, and both halves are kept — the package carries the coverage script and devDependency the other projects got, beside the renamed peer and the `@testing-library/react` / `react-dom` dev tier, and `pnpm install --frozen-lockfile` calls the hand-merged lock up to date. Every number this row quotes was re-measured against the new base and none of it moved: the replay still conflicts in 20 paths (17 content, 3 modify/delete), the diff is still 43 files / +2194 / −3213 over the thirty-three commits to the last code commit, the write-half commit is still 29 files / +520 / −2425, `src/index.ts` is still 111 lines at the base and 94 after this cutover, `modeSelectionEnabled` and `standingKeyFor` still answer zero and one hit over `plugins` plus `packages`, no manifest still names `dsh-agent-presets`, and of the 26 published plugin `README.md`s, the 20 the sixth round counted still link through `blob/main` beside this card's own. What did move is the shared-preset error site above, and the commits this row and `SPEC.md` §0 name are the rebased ones | `src/host/{preset-reader.ts,service.ts,errors.ts,validation.ts,composition.ts}` (the last two comment-only, since the fifth round), `src/{index.ts,types.ts}`, `src/client/{store.ts,PersonaPage.tsx,PersonaEditor.tsx,PersonaPreview.tsx,index.tsx,locale.ts,styles.ts}`, `src/shared/prompt-sections.ts` (the registrar source and the list comparison the writer owned leave with it), `package.json` (peer+dev rename, `schemastery` leaves with the Config, `@testing-library/react` + `react-dom` join the dev tier as they did in `dsh-jev-compaction`), `README.md`, `SPEC.md`, `scripts/verify-package.mjs`, `docs/COMPATIBILITY.md` (this package's peer row), `pnpm-workspace.yaml` (the two `dsh-agent-presets` catalog keys this card's rename orphaned); `compatibility.json` needs nothing — `service:agentPresets` is the same key at `rc.2`, and the version pair is #511's wave | 43 files, +2194 / −3213 across the thirty-three commits ending at `296b8836`, the last code commit of this series (measured over everything but this document; the write-half commit alone is 29 files, +520 / −2425, and reverses only as the whole series) | `tests/{preset-reading,service,client-bundle,client-index,client-editor-markup,client-store.*,prompt-sections.*}.test.ts` — **109 tests green over all 13 files**, and `service.test.ts` is one of them for the first time: §13.3 kept that file from importing the `@Remote`-decorated host entry, so through the previous round its 11 cases had to be replayed against the compiled `lib/host/service.js` (where they passed 11/11), and #603 landed the decorator lowering in the shared vitest preset on this card's base between the two rounds. The file is 12 cases now, the fifth round's extra one pinning which positional slot the deployment's config row lands in. Lint, typecheck, `nx test`, `nx build`, `verify-package` and `prettier --check` are clean for the package, and `pnpm --filter @yadsh/dsh-preset-persona-editor check` runs end to end at exit 0 — the first whole pass this card has had. Repo-wide `pnpm -r --no-bail typecheck` exits 1 on four *other* packages (`dsh-draft-sessions`, `dsh-l10n-overrides`, `dsh-session-audit`, `dsh-sleev`), all over `packages/config/vitest/vitest.config.ts:171` — the `transform` of #603's decorator-lowering plugin, cited as `:155` until #291's coverage block shifted that file on this card's base: #603's own file, on the base, untouched by this diff. `verify-package-hygiene`, `check:files`, `deps:check`, `check-release-plans` and `test:release` are green. `client-editor-markup.test.tsx` is new and is the only test in the package that renders the client at all — it is what pins the `for`/`id` name on each reading, the one-refusal-one-sentence rule, the margin reset on every block the page draws, the two same-named sections staying two rows, and (since the third round, over the roster screen as well as the reader) that every fact the controller records is drawn by some branch of the page. The sixth round added four to that file: no control leaves the tab order and no switch moves when clicked, the header carries one line of a refused tree while the opened card carries every line and the rule that keeps the breaks, and the roster's own Reload answers a row the audit has since released. What it cannot pin is what a person sees, so §6 of `SPEC.md` now names the live pass by its three states — read cleanly, `broken`, composition refused — rather than leaving it as "not done" |
 | `@yadsh/dsh-plugin-generator` (`tooling/`) | **mechanical** | generator defaults + its test literal | `tooling/generators/dsh-plugin/src/index.ts:364,365,395,428,473` **[verified]**, `tests/index.test.ts:100-101` **[verified]** | 7 | `tests/index.test.ts` (2 files pass today) |
 
-**Wave totals.** D1-gated (card shell) packages: **exactly 12** at the moment the cutover
-was measured — a scope count, not a progress bar (see §10: which of them have migrated is
-the epic's list) — `grep -rl "settings.plugin.item" plugins/*/src` names
+**Wave totals.** D1-gated (card shell) packages: **exactly 12**, measured rather
+than estimated — `grep -rl "settings.plugin.item" plugins/*/src` names
 `dsh-doc-impact`, `dsh-documents`, `dsh-jev-compaction`, `dsh-model-safety-gate`,
 `dsh-openviking-memory`, `dsh-plugin-log-ui`, `dsh-prompt-firewall`,
 `dsh-qa-integrations`, `dsh-qa-surface`, `dsh-sleev`, `dsh-ui-repair`,
 `dsh-web-fetch-authenticated`. That is §4.3's "~12 card components lose their
-outer shell", now as a list, and it is the set of packages whose card the shared gate guards — the gate's own list `CARD_SEAT_SLOTS` is about seats, and is wider than this set of packages.
+outer shell", now as a list, and it is the set the shared gate
+`scripts/verify-package-hygiene.mjs:816-835` currently keys enforcement off.
 **[re-measured after #520]** the same grep names **11**: `dsh-sleev` left the set
 by taking D1 option 2 — it registers on `settings.plugins.tab` and kept the
 shell, so the literal left its sources while the gate still guards it (the tab
@@ -1519,31 +1422,19 @@ whose version-plan arithmetic can silently drift.
    `TS2742` build failures and the 10 peer warnings, and those two are the
    hardest to diagnose later.
 2. New step 3.5, **before** any card rewrite: settle D1 with the `rc.2` chrome
-   facts (§4.3a) and, whichever way it goes, retarget the shared gate in
-   `scripts/verify-package-hygiene.mjs` (`CARD_SEAT_SLOTS`, with its reader
-   `findSettingsCardSlot`) — otherwise the shell contract quietly stops being
-   enforced the moment the slot string disappears from our sources. Both halves are
-   **done**, and they do not agree with each other in the older paragraphs above (the §5 per-package table, §4.3a, the §11 registry): the
-   retarget landed in #510 and was extended by #684, while **D1 was reopened and
-   redecided on 01.10 as option 1** (§10), so the migrating cards move onto
-   `plugins.row.config` and **drop** the shell — not onto `settings.plugins.tab` with
-   it. Where a paragraph still says option 2, it reports what that package did when it landed —
-   which for most of them is still today's code, since the migration is in flight — and not a
-   step to take; §10 is the one that decides.
+   facts (§4.3a) and, whichever way it goes, retarget
+   `scripts/verify-package-hygiene.mjs:49` — otherwise the shell contract quietly
+   stops being enforced the moment the slot string disappears from our sources.
+   The retarget half is **done** (#510); D1 is **settled** (option 2, §10), so the
+   12 card cards migrate onto `settings.plugins.tab` with the shell they have.
+   The retarget half is **done** (#510); the D1 settle is **done too** — option 2,
+   decided in #508 and first executed by #521.
 3. §7 step 8's release half must **read the 39 existing plans first** and pair a
    new qa-surface plan with `0.14.1`/`0.15.0`, not `0.12.x` (§6).
 4. New step 6 stands, none of which `nx test` covers: (a) one `plugins.row.config`
-   card with a **real** read/write wired on a deployed page — #651 registered such a
-   card in this repository, its suite pins the client half of that wire, and
-   `host-seat-contract.test.ts` pins the seat's two call sites against the installed
-   host package, so what the stand still owes is the Host's own seat occupancy
-   (§4.3a item 1) and the three things only a rendered page answers: the row's
-   configure control opening this entry, the row's heading being the installed
-   package's `name` while the human title lives inside our card (§4.2), and the
-   page's `<p>` carrying the manifest `description` rather than the entry's
-   `summary`; (b) one
-   `agent/created` listener that throws, to watch creation roll back; (c) one qa
-   lockdown stand with `lockdown.permissionPreset = "auto"` (D3);
+   card with a **real** read/write wired (the harness fixture ignores `form`, §4.3a
+   item 1); (b) one `agent/created` listener that throws, to watch creation roll
+   back; (c) one qa lockdown stand with `lockdown.permissionPreset = "auto"` (D3);
    (d) one session that triggers a dynamic tool update, then check every
    `block.type` switch for the emitted `tool-addition`/`tool-removal` (§8.4);
    (e) a focused-card check after a mouse click for the `focus.css` outranking
@@ -1604,7 +1495,7 @@ value and the 39 pending version plans — were re-read directly
 (`git show dsh-v0.1.7-rc.{1,2}:packages/interaction/permission-presets/src/index.ts`,
 `ls .nx/version-plans/*.md | wc -l`) rather than taken on report, as were the
 `AGENTS.md`-relevant ones (`ui-plugin-manager` `.card` radius re-tokening,
-`focus.css`, the seat list in `scripts/verify-package-hygiene.mjs`).
+`focus.css`, `scripts/verify-package-hygiene.mjs:49`).
 
 ### 13.1 Repository gates that are red on `dsh-v0.1.7-rc` independently of the cutover
 
