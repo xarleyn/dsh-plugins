@@ -172,6 +172,57 @@ and `deps:check` — it does not run `tarball:verify` or
 `release:check`; run those separately before pushing. `pnpm affected:check`
 mirrors the per-project CI targets locally.
 
+### Re-counting the line after a batch of merges
+
+`pnpm affected:check` is the set one pull request owes. It does not prove the head
+of a branch after a batch of merges: the head is a merge commit nobody checked as a
+whole, and each contributing pull request was green only over its own base. The
+recount therefore adds the lint of the whole line to the targets of the affected
+projects:
+
+```bash
+pnpm lint:workspace                                        # eslint.config.js and the root scripts/
+NX_DAEMON=false pnpm nx run-many -t lint --skip-nx-cache   # 34 projects, green as a whole
+```
+
+`lint` is in this set because for a tooling package it is the only per-project gate
+that exists. `@yadsh/dsh-plugin-scripts` declares one Nx target — `lint`, which is
+`eslint .` over the package root — and no `build`, `test` or `verify`: its tests are
+named one by one in the root `pnpm test:release` list instead. `nx` does not read a
+missing target as an error, so
+`pnpm nx run-many -t build test verify --projects=@yadsh/dsh-plugin-scripts --skip-nx-cache`
+exits 0 having printed `No tasks were run`. A recount assembled out of those three
+words reports such a package as covered while never having looked at it — and 22 of
+the 26 plugins depend on it, so it is affected by nearly everything.
+
+Lint is a real gate on those files, not a formality: `no-useless-escape` is
+switched off only for `plugins/**/tests/**/*.{ts,tsx}` (`eslint.config.js:78-81`),
+so a `*.test.mjs` under `packages/**` sits under `eslint.configs.recommended`
+(`eslint.config.js:15`). That is how two escaped quotes inside a card-contract
+fixture survived the #684 merge and reddened the head. The matrix runs `lint` for
+every affected project (`.github/workflows/ci.yml:135`), so the lane of an
+unrelated card met a `@yadsh/dsh-plugin-scripts:lint` failure it had not caused,
+read it as a verdict on its own change, and either redid work that was already
+right or pushed again and rejoined a queue that stands for hours.
+
+Require the set in full rather than package by package — it is clean as a whole, so
+a green line costs one command. And read the run's own summary rather than its exit
+code: `Successfully ran target lint for 34 projects` says the set was measured,
+where a silent 0 can mean no task matched, which is the same hole as above.
+
+The answer to a red here is the fix in the file, never a wider exemption. The rule
+must stay on for `packages/**`: that package ships three scripts through its
+`exports` (`generate-typert`, `run-verify-package`, `verify-plugin-card-contract`)
+and they run inside the verify chain of those 22 plugins, so a useless escape there
+is a defect rather than fixture decoration. Exemption lists in this repository only
+shrink — [the file-size budget](#file-size-budget) says the same of its own list.
+
+`--skip-nx-cache` is not a speed knob in this set: a cached task replays a green
+verdict the run did not earn. `NX_DAEMON=false` is what a second checkout or a
+worktree needs; the cache directory is shared across worktrees, so a stale replay is
+never cleared with `nx reset` for the whole fleet (see
+[The Nx cache in a worktree](#the-nx-cache-in-a-worktree)).
+
 `check:files` runs twice, for two different reasons. In `prepare`, on a checkout
 with no build output, it holds the source and test budget of every file in the
 pull request to its line limit; the generated bundle band is inert there, and the
