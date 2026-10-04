@@ -71,11 +71,11 @@ Session and Agent Loop.
 - optionally redirects non-loopback hostnames from the harness root into the
   QA route (`entry.redirectNonLoopback`), keeping the operator's localhost
   harness UI untouched;
-- ships an operator settings card (Settings → Plugins → plugin configuration →
-  «Помощник QA») that edits the `qa-surface` namespace in place — route,
-  branding, session, interface, lockdown, accounts, sources, attachments,
-  embedding — and reports the configuration the running Host
-  resolved;
+- ships an operator settings card on the Host's Plugins page — this package's
+  row, opened under its configuration section — that edits the `qa-surface`
+  namespace in place (route, branding, session, interface, lockdown, accounts,
+  sources, attachments, embedding) and reports the configuration the running
+  Host resolved;
 - no longer owns the document pipeline: `document_create`,
   `document_to_markdown`, `document_from_url`, `document_convert` and
   `document_inspect` come from [`@yadsh/dsh-documents`](https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-documents#readme),
@@ -123,16 +123,27 @@ Configuration is registered under the Host settings namespace `qa-surface`.
 Composition values form the base layer; normal DSH user settings can override
 them when the deployment provides writable settings.
 
-The browser half carries a settings card for that namespace: **Settings →
-Plugins → plugin configuration → «Помощник QA»**. It writes the user layer of
-`qa-surface` — so every change is revertible through the card's own reset — and
-shows the configuration the running Host resolved next to it. Combinations the
-Host refuses are either written together in one mutation (a provider with its
-model, per-user workspaces with the `workspace-write` sandbox) or disabled with
-the reason stated. The card renders only where the settings namespace is
-readable, which the DSH gateway pins to loopback; a browser served over the LAN
-reads the same configuration read-only through `qaSurface/describe` on the QA
-page itself.
+The browser half carries a settings card for that namespace: **the Host's
+Plugins page → this package's row → its configuration section**. It writes the
+user layer of `qa-surface` — so every change is revertible through the card's own
+reset — and shows the configuration the running Host resolved next to it.
+Combinations the Host refuses are either written together in one mutation (a
+provider with its model, per-user workspaces with the `workspace-write` sandbox)
+or disabled with the reason stated. The row's chrome is the page's: it draws the
+surface, the heading and the expand control, and this bundle contributes the body
+— the heading falls back to the package name and the row's one-liner to this
+manifest's `description`, which is the sentence the card answers its `summary`
+view with. The Plugins page is not the settings directory, so the card keeps
+answering from a browser on another machine: there the namespace reads
+`unavailable` — the DSH gateway pins it to loopback — and the card says so rather
+than vanishing, while a namespace that serves values but refuses writes keeps its
+body and disables the write controls. Either way the same configuration stays
+readable anywhere through `qaSurface/describe` on the QA page itself.
+
+The row on the Plugins page is the only browser route that writes these values.
+Where a deployment keeps that page from the operator, the `config:` block below
+is what sets them: it is the composition layer the card's user layer overrides,
+and the values it names are the ones the card would have changed.
 
 ```yaml
 config:
@@ -590,10 +601,6 @@ take effect. Like the starter messages, none of this reaches the agent prompt, a
 a notice never carries the answer itself — only the chat's title and the fact that
 its turn ended.
 
-A notice is bounded by ownership, not by what the reader may open: an admin's
-shared history (`accounts.showOtherUsersChats`) deliberately lists chats that
-belong to other accounts, and the turn of such a chat raises nothing here.
-
 ### Integration tokens
 
 The same `Настройки` dialog carries an «Интеграционные токены» section, so the
@@ -896,16 +903,16 @@ export function apply(ctx: Context) {
 
 ### The signed-in account outside the dialog
 
-A card seated on the Host's Plugins panel — the keyed `plugins.row.config` seat
-of its own bundle row — has no panel props to read the account from, so the same
-contract also publishes the session as the `qaUserSession` client service:
-`checking`, `anonymous` or `authed` with the bearer credential the
-principal-scoped QA remotes authorize with. It follows the same account
-controller the pages use, so a card and the dialog never disagree. Subscribe to
-it with `useSyncExternalStore` and render account-bound controls only for
-`authed` — without an account every call would be refused, and the credential is
-transport authentication only: never persist it, log it, or put it in a URL, a
-tool argument or any model-visible value.
+A card mounted outside the QA dialog — in the plugin's own row on the Host's
+Plugins panel (`plugins.row.config`) — has no panel props to read the account
+from, so the same contract also publishes the session
+as the `qaUserSession` client service: `checking`, `anonymous` or `authed` with
+the bearer credential the principal-scoped QA remotes authorize with. It follows
+the same account controller the pages use, so a card and the dialog never
+disagree. Subscribe to it with `useSyncExternalStore` and render account-bound
+controls only for `authed` — without an account every call would be refused, and
+the credential is transport authentication only: never persist it, log it, or
+put it in a URL, a tool argument or any model-visible value.
 
 ```ts
 import type { Context } from "@deepseek-ai/cordis";
@@ -916,7 +923,8 @@ export function apply(ctx: Context) {
   ctx.effect(() =>
     ctx.slots.inject("plugins.row.config", () =>
       ctx.slots.register(
-        { name: "plugins.row.config", key: "@yadsh/dsh-<name>#<row id>" },
+        // `<package name>#<row id>`, the row id being the settings namespace.
+        { name: "plugins.row.config", key: "@yadsh/dsh-my-plugin#my-namespace" },
         MyCard,
       ),
     ),

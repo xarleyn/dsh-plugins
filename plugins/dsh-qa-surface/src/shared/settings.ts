@@ -15,3 +15,14 @@
  * it under that id.
  */
 export const QA_SURFACE_SETTINGS_NAMESPACE = "dsh-qa-surface";
+
+/**
+ * The key of the seat this card takes on the Host's Plugins page.
+ *
+ * `plugins.row.config` is keyed `<package name>#<row id>`, so the two names the
+ * page joins are this bundle's `package.json.name` and the profile entry id
+ * above. Neither is a name this plugin picks: a key that drifts from that pair
+ * leaves the row without its configure control and the card off the page, with
+ * nothing said about it.
+ */
+export const QA_SURFACE_ROW_CONFIG_KEY = `@yadsh/dsh-qa-surface#${QA_SURFACE_SETTINGS_NAMESPACE}`;

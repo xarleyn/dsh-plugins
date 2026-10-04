@@ -15,18 +15,6 @@ export interface DescribedOption {
   readonly hint: string;
 }
 
-/**
- * Header badge: the route the page answers on, or that the surface is off.
- * The route is the one fact an operator scanning the plugin list looks for.
- */
-export function badgeText(
-  enabled: boolean | undefined,
-  routePath: string | undefined,
-): string {
-  if (enabled === false) return "Выключено";
-  return routePath === undefined || routePath === "" ? "/qa" : routePath;
-}
-
 /** Wording of the session-policy control. */
 export function describeSessionPolicy(
   policy: string | undefined,

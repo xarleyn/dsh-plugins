@@ -56,11 +56,12 @@ function PaperclipIcon() {
 }
 
 function ChevronIcon({ up }: { readonly up: boolean }) {
+  // The 16 by 16 grid every other icon of this dock is drawn on. The 14 by 14
+  // one belongs to the plugin-card shell and to nothing else, and a bundle
+  // seated on the Plugins panel row may not carry that chevron at all.
   return (
-    <svg viewBox="0 0 14 14" aria-hidden="true">
-      <path
-        d={up ? "m3.5 8.75 3.5-3.5 3.5 3.5" : "m3.5 5.25 3.5 3.5 3.5-3.5"}
-      />
+    <svg viewBox="0 0 16 16" aria-hidden="true">
+      <path d={up ? "m4 10 4-4 4 4" : "m4 6 4 4 4-4"} />
     </svg>
   );
 }

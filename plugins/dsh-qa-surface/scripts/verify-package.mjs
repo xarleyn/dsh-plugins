@@ -107,9 +107,9 @@ assert(
 );
 assert(
   manifest.dsh.client.inject.includes(
-    "@deepseek-ai/dsh-client-ui-settings-plugins",
+    "@deepseek-ai/dsh-client-ui-plugin-manager",
   ),
-  "the settings card needs the plugin-cards tab in the client inject manifest",
+  "the settings card opens from the plugin's row in the Plugins panel, so its slot contract must arrive in the client inject manifest",
 );
 assert(
   manifest.dsh.client.inject.includes("@deepseek-ai/dsh-agent-preset-registry"),
@@ -517,18 +517,45 @@ for (const builtin of ["process", "buffer", "node:fs", "node:path"]) {
 }
 assert.doesNotMatch(client, /node_modules\/yaml/u, "yaml stays on the Host");
 
-// The settings card (AGENTS.md shell contract): the canonical shell rules and
-// chevron path, the tab this plugin owns in the Plugins settings section, and
-// the plugin's own body classes.
+// The settings card (AGENTS.md card-shell contract). The seat is read off this
+// bundle by the contract, and it is the Plugins panel row, so the contract held
+// here is the host-chrome half: no shell classes, no chevron of ours, and every
+// focus ring built from the Host's `--dsw-focus-ring-*` token pair.
 verifyPluginCardContract(client, {
   legacyPatterns: [/dsh-plugin-card\s*\*/u, /\.qa-panel\b/u],
 });
-assert.match(client, /settings\.plugins\.tab/u);
-assert.match(client, /Помощник QA/u);
-// The toggle's accessible label is assembled from the open state and the card
-// name, so the bundle carries the two halves rather than one sentence.
-assert.match(client, /Скрыть/u);
-assert.match(client, /настройки: Помощник QA/u);
+// The shared contract picks which half of itself applies from the seat named at
+// the registration, so the pin is the registration's own text rather than the
+// bare slot name — a comment or a leftover constant would answer the latter.
+assert.match(client, /name:\s*"plugins\.row\.config"/u);
+// The seat key is `<package name>#<row id>`, and a key that drifts from that
+// pair says nothing when it fails: the row keeps its place on the page and
+// never gains the control that opens the card. So the bundle carries the join.
+assert.match(client, /@yadsh\/dsh-qa-surface#/u);
+// One render site: the card must not register a second time on the tab seat of the
+// Plugins settings section, or it shows twice. The registration is what fails, the
+// way the shared contract reads a seat — esbuild carries `src/` comments into this
+// bundle, and a sentence about the seat this card left is prose, not a second seat.
+assert.doesNotMatch(
+  client,
+  /\bname:\s*["']settings\.plugins\.tab["']|\b(?:const|let|var)\s+[\w$]+\s*=\s*["']settings\.plugins\.tab["']/u,
+);
+// The row's one-liner is this entry's answer for the `summary` view, and the host
+// paints the same paragraph from the manifest's `description`. Read from there
+// rather than repeated here: a manifest edit must move this sentence with it, and
+// only the bundle would have gone stale.
+assert.ok(
+  typeof manifest.description === "string" && manifest.description.length > 0,
+  "the row's summary is the manifest description, so the manifest must declare one",
+);
+assert.ok(
+  client.includes(manifest.description),
+  "client bundle must carry the row's one-liner equal to the manifest description",
+);
+// The heading and the expand control belong to the page, so the bundle carries
+// neither of their halves any more — a surviving label here means the shell
+// came back inside the Host's card.
+assert.doesNotMatch(client, /настройки: Помощник QA/u);
 assert.match(client, /qa-card-body/u);
 assert.match(client, /qa-card-notice/u);
 // The sources section carries the reported-source validation switch, so a

@@ -632,18 +632,20 @@ function MessageRow(props: {
             onClick={() => setOpen((value) => !value)}
           >
             {/* Inline chevron, never a font glyph: its shape and baseline
-                would follow whatever font the page happens to use. */}
+                would follow whatever font the page happens to use. Drawn on the
+                16 by 16 grid of this surface's icons — the 14 by 14 one is the
+                plugin-card shell's, and a row-seated bundle may not carry it. */}
             <svg
               className={`dsh-qa-admin__disclosure${
                 open ? " dsh-qa-admin__disclosure--open" : ""
               }`}
-              viewBox="0 0 14 14"
+              viewBox="0 0 16 16"
               width="14"
               height="14"
               aria-hidden="true"
             >
               <path
-                d="m3.5 5.25 3.5 3.5 3.5-3.5"
+                d="m4 6 4 4 4-4"
                 fill="none"
                 stroke="currentColor"
                 strokeWidth="1.5"

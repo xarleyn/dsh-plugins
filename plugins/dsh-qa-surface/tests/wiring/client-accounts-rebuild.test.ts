@@ -19,6 +19,10 @@ import * as clientModule from "../../src/client/index.js";
 import type { QaAccountsController } from "../../src/client/QaAccountsController.js";
 import type { QaAccountsApi } from "../../src/client/types.js";
 import { resolveConfig } from "../../src/resolve-config.js";
+import {
+  QA_SURFACE_ROW_CONFIG_KEY,
+  QA_SURFACE_SETTINGS_NAMESPACE,
+} from "../../src/shared/settings.js";
 import type { QaWhoamiResult } from "../../src/types.js";
 import {
   TOKEN_KEY,
@@ -38,6 +42,8 @@ const CLIENT_PLUGIN: Plugin = {
 /** One slot registration the module performed. */
 interface Registration {
   readonly name: string;
+  /** The keyed seat's join: `<package name>#<row id>` for a plugin row. */
+  readonly key?: string;
   readonly inject?: () => Record<string, unknown>;
 }
 
@@ -71,12 +77,19 @@ function harness(accounts: QaAccountsApi) {
       subscribe: () => () => undefined,
     },
   });
+  /** The one form every namespace resolves to, kept for identity assertions. */
+  const settingsForm = {
+    getSnapshot: () => ({ status: "unavailable" }),
+    subscribe: () => () => undefined,
+    mutate: async () => true,
+  };
+  /** Every namespace the module asked a configuration form for. */
+  const formNamespaces: string[] = [];
   ctx.provide("configForms", {
-    get: () => ({
-      getSnapshot: () => ({ status: "unavailable" }),
-      subscribe: () => () => undefined,
-      mutate: async () => true,
-    }),
+    get: (namespace: string) => {
+      formNamespaces.push(namespace);
+      return settingsForm;
+    },
   });
   ctx.provide("slots", {
     inject: (_name: string, factory: () => (() => void) | void) => {
@@ -95,6 +108,12 @@ function harness(accounts: QaAccountsApi) {
   });
 
   return {
+    /** Every registration the module made, newest last. */
+    registrations,
+    /** Namespaces the module resolved a configuration form for. */
+    formNamespaces,
+    /** The single form this harness hands back for any of them. */
+    settingsForm,
     /** Start the module; `face()` reads the overlay face it registered. */
     async load() {
       const fiber = await ctx.plugin(CLIENT_PLUGIN);
@@ -160,5 +179,40 @@ describe("browser half rebuild", () => {
     await settled();
 
     expect(window.localStorage.getItem(TOKEN_KEY)).toBe("t-fresh");
+  });
+});
+
+describe("browser half settings card", () => {
+  it("seats the card on this bundle's own row, bound to its namespace form", async () => {
+    const accounts = accountsRemote({
+      accountsWhoami: vi.fn(async () => ({
+        ok: true as const,
+        value: { authenticated: false },
+      })),
+      accountsLogin: vi.fn(async () => session("t-seat")),
+    });
+    const world = harness(accounts);
+    await world.load();
+    await settled();
+
+    const seat = world.registrations
+      .filter((item) => item.name === "plugins.row.config")
+      .at(-1);
+    // The Plugins page finds a row's configuration only by
+    // `<package name>#<row id>` and says nothing when that pair is absent: the
+    // row keeps its place on the page and never gains the control that opens the
+    // card. So the join the module registers is asserted, not assumed.
+    expect(seat?.key).toBe(QA_SURFACE_ROW_CONFIG_KEY);
+    // One render site — the tab seat of the Settings Plugins section stays gone.
+    expect(
+      world.registrations.some((item) => item.name === "settings.plugins.tab"),
+    ).toBe(false);
+
+    // And the card edits the very namespace the page reads, taking the full form
+    // through the face under a name the seat's own `form` prop cannot shadow.
+    expect(world.formNamespaces).toContain(QA_SURFACE_SETTINGS_NAMESPACE);
+    expect(seat?.inject?.()).toMatchObject({
+      settingsForm: world.settingsForm,
+    });
   });
 });
