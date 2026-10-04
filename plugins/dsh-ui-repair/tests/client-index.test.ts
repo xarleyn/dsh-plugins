@@ -30,6 +30,7 @@ describe("client entrypoint", () => {
     };
     const removeSlot = vi.fn();
     const removeRegistration = vi.fn();
+    let registeredFace: Record<string, unknown> | undefined;
     const ctx = {
       provide,
       configForms: { get: vi.fn(() => form) },
@@ -38,7 +39,12 @@ describe("client entrypoint", () => {
           factory();
           return removeSlot;
         }),
-        register: vi.fn(() => removeRegistration),
+        register: vi.fn(
+          (options: { inject: () => Record<string, unknown> }) => {
+            registeredFace = options.inject();
+            return removeRegistration;
+          },
+        ),
       },
     };
     const dispose = apply(ctx as unknown as Context, {
@@ -61,16 +67,21 @@ describe("client entrypoint", () => {
     expect(runtime.getMode()).toBe("suggest");
     expect(ctx.configForms.get).toHaveBeenCalledWith("dsh-ui-repair");
     expect(ctx.slots.inject).toHaveBeenCalledWith(
-      "settings.plugins.tab",
+      "plugins.row.config",
       expect.any(Function),
     );
     expect(ctx.slots.register).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: "settings.plugins.tab",
-        id: "dsh-ui-repair",
+        name: "plugins.row.config",
+        key: "@yadsh/dsh-ui-repair#dsh-ui-repair",
       }),
       expect.any(Function),
     );
+    // The page spreads its owner props over the injected face, and one of them
+    // is its own `form`, so the card reaches its ConfigForm under a name the
+    // page never passes.
+    expect(registeredFace).not.toHaveProperty("form");
+    expect(registeredFace?.settings).toBe(form);
     snapshot = {
       status: "ready",
       value: { mode: "auto" },
