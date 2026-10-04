@@ -43,7 +43,7 @@ This first implementation slice includes:
 - `R010` icon-to-label gap and `R011` repeated-row padding diagnostics;
 - `R012` clipped text and `R013` outside-parent diagnostics;
 - `observe`, `suggest`, and conservative `auto` runtime modes;
-- persistent Host settings and a standard Plugin Configuration card;
+- persistent Host settings and a configuration card on the Plugins page;
 - persistent selector/plugin/rule ignore policies;
 - allowlisted CSS writes scoped by per-repair data attributes;
 - animation-frame layout stabilization, verification, and rollback;
@@ -113,11 +113,15 @@ attributes.
 
 ## Settings
 
-The standard Plugins → Plugin Configuration card exposes activation, mode,
-normal and risky confidence thresholds, startup, mutation, and resize scanning,
-manual scan/apply/ignore/rollback actions, session health counters, and
-persistent ignored selectors. Risky overflow/clipping repairs can never be
-configured below 98% confidence.
+The card opens from this bundle's row on the Host's Plugins page and exposes
+activation, mode, normal and risky confidence thresholds, startup, mutation, and
+resize scanning, manual scan/apply/ignore/rollback actions, session health
+counters, and persistent ignored selectors. Risky overflow/clipping repairs can
+never be configured below 98% confidence. The row answers every state of its
+namespace: while the Host has no settings for this session the card says so and
+keeps the scan panel and the rollback action, rather than leaving the section
+blank or drawing its defaults as the saved policy — the Plugins page stays
+reachable from a browser the settings directory is intentionally closed to.
 
 ## Development
 
