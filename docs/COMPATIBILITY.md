@@ -65,7 +65,7 @@ instance.
 | `@yadsh/dsh-tool-offload` | Cordis, schemastery, tools, subagent |
 | `@yadsh/dsh-ui-repair` | Cordis, schemastery, client renderer/settings/settings-plugins/slots, settings |
 | `@yadsh/dsh-user-correction-miner` | Cordis, schemastery, LLM, session, session-query, storage-domain |
-| `@yadsh/dsh-web-fetch-authenticated` | Cordis, schemastery, credentials, web, settings, client connection/renderer/settings/slots, Typert protocol, React |
+| `@yadsh/dsh-web-fetch-authenticated` | Cordis, schemastery, credentials, web, settings, client connection/plugin-manager/renderer/settings/slots, Typert protocol, React |
 | `@yadsh/dsh-audit-core` | none |
 | `@yadsh/dsh-audit-ui` | React |
 | `@yadsh/dsh-plugin-log` | none |

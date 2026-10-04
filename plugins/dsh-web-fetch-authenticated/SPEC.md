@@ -185,6 +185,10 @@ Settings
      -> Authenticated Web Fetch
 ```
 
+As shipped, neither tree is where the card lives: the Host moved plugin
+configuration out of the Settings dialog onto the **Plugins** page, and the card
+is the configuration of this bundle's own row there (`web-fetch-authenticated`).
+
 ### 6.1 Overview screen
 
 Show:
