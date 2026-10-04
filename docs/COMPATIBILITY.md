@@ -43,7 +43,7 @@ instance.
 | `@yadsh/dsh-answer-review-gate` | Cordis, schemastery, LLM |
 | `@yadsh/dsh-cas-results` | Cordis, schemastery, tools |
 | `@yadsh/dsh-doc-impact` | Cordis, LLM, tools |
-| `@yadsh/dsh-documents` | Cordis, schemastery, tools, settings, client settings/settings-plugins/slots, React |
+| `@yadsh/dsh-documents` | Cordis, schemastery, tools, settings, client settings/plugin-manager/slots, React |
 | `@yadsh/dsh-domain-experts` | Cordis, schemastery, agent, session, settings, storage-domain, subagent, tools, gateway, client renderer/settings, Typert protocol, React |
 | `@yadsh/dsh-draft-sessions` | Cordis, gateway, api-session-controller, api-workspace-controller, session, client connection/locale/renderer/UI, Typert protocol |
 | `@yadsh/dsh-git-readonly` | tools, schemastery |

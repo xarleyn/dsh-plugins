@@ -986,8 +986,7 @@ this branch now, and the next release commit will collide if it is trusted:
    `@deepseek-ai/dsh-client-ui-plugin-manager` + `pnpm install`.
 3. Decide §4.3 (host chrome vs our shell). This gates step 4.
 4. Centralize the new plumbing in `@yadsh/dsh-plugin-kit` —
-   `SETTINGS_PLUGIN_ITEM_SLOT` → the `plugins.row.config` helper (the slot half
-   landed in #694, as `PLUGIN_ROW_CONFIG_SLOT`) and a
+   `SETTINGS_PLUGIN_ITEM_SLOT` → the `plugins.row.config` helper and a
    `ConfigForm`-shaped store binding — so the 12 plugin diffs stay thin.
 5. Per plugin, verify with `pnpm --filter <pkg> typecheck` (not `nx run-many`,
    which hides dependent failures): host volatile Config → client card →
@@ -1426,18 +1425,7 @@ last code commit of this series, and puts the writer back against helpers (`read
 `revisionOf`, `preset.path`) the read-path migration deleted, so it does not
 compile. A
 reversal of D2 is a revert of the whole #518 series. #605 carries the blocker for
-returning persona edits to the screen — and what it returns must not be the guard
-that #518 removed. #356 measured that guard losing an update: it compared a
-snapshot revision, not the absence of another writer, so two saves presenting one
-revision both passed the check before either renamed the file, both answered a
-success receipt, and the disk kept one variant. An atomic rename makes a file's
-swap atomic, not the read → check → write around it, so a restored write needs a
-transaction that holds one composition exclusively across that whole span. Its
-key is the file the write lands in, and that key arrives with the file IO this
-option deleted: the rc.2 roster answers `readDocument(id)`, not a path.
-Guarantee 5 of `plugins/dsh-preset-persona-editor/SPEC.md` carries the same
-correction and the two concurrency cases — save against save, save against reset —
-that define the guard as met. `select` takes a live `Agent`, which a
+returning persona edits to the screen. `select` takes a live `Agent`, which a
 settings page does not have, so the read-only build did not grow a session
 surface; see §5's registry bullet for the landed shape and the file-by-file list.
 
@@ -1479,7 +1467,7 @@ excluding the shared 2-line `compatibility.json` wave each row also carries.
 
 | Package | class | what changes | our files (line refs) | ~lines | covering tests |
 | --- | --- | --- | --- | --- | --- |
-| `@yadsh/dsh-plugin-kit` | **decision → do first** | `SETTINGS_PLUGIN_ITEM_SLOT` → `plugins.row.config` helper — **landed in #694**: the constant is `PLUGIN_ROW_CONFIG_SLOT` and a card routed through the helper without `slotName` reaches the Plugins panel row instead of a seat `0.1.7` deleted; `ConfigForm`-shaped binding (`ctx.configForms.get<T>(ns)`) — **still owed**; `card-shell.tsx`/`chevron.tsx`/`plugin-card-css.ts` survive D1 option 1 — they are the shell of the `settings.section` / `settings.plugins.tab` seats, and a registrant of either panel seat (`plugins.row.config`, `plugins.bundle.config`) must not use them | `src/client/register-settings-card.tsx` — `PLUGIN_ROW_CONFIG_SLOT` and the two `options.slotName ?? …` reads it feeds (the rename moved the lines, so this cell names symbols), `src/client/settings-store.ts:3` (survives — structural over `subscribe`/`getSnapshot`), `src/client/card-shell.tsx:34-57`, `src/client/chevron.tsx:13`, `src/client/index.ts:17,19-21` — **note from #513:** under D1 option 2 a tab registration takes `id`/`order`/`label` and no `key`, which `SettingsCardOptions` does not carry, so `dsh-qa-surface` calls `ctx.slots.inject/register` directly and uses only `injectCardStyles` + `bindSettingsExternalStore` from this kit; the shell CSS and `CardShell` survive untouched | 60 | `tests/register-settings-card.test.ts` covers the helper's own seat resolution; the rest is exercised by every plugin client test |
+| `@yadsh/dsh-plugin-kit` | **decision → do first** | `SETTINGS_PLUGIN_ITEM_SLOT` → `plugins.row.config` helper (**still owed — #694**: the default still names the deleted slot, so a card routed through the helper without `slotName` lands nowhere); `ConfigForm`-shaped binding (`ctx.configForms.get<T>(ns)`); `card-shell.tsx`/`chevron.tsx`/`plugin-card-css.ts` survive D1 option 1 — they are the shell of the `settings.section` / `settings.plugins.tab` seats, and a registrant of either panel seat (`plugins.row.config`, `plugins.bundle.config`) must not use them | `src/client/register-settings-card.tsx:56,93,116` **[verified]**, `src/client/settings-store.ts:3` (survives — structural over `subscribe`/`getSnapshot`), `src/client/card-shell.tsx:34-57`, `src/client/chevron.tsx:13`, `src/client/index.ts:17,19-21` — **note from #513:** under D1 option 2 a tab registration takes `id`/`order`/`label` and no `key`, which `SettingsCardOptions` does not carry, so `dsh-qa-surface` calls `ctx.slots.inject/register` directly and uses only `injectCardStyles` + `bindSettingsExternalStore` from this kit; the shell CSS and `CardShell` survive untouched | 60 | none of its own (4 files pass today); exercised by every plugin client test |
 | `@yadsh/dsh-plugin-scripts` | **decision** | canonical shell CSS + chevron assertions; `deepEqual` capability | `verify-plugin-card-contract.mjs` — `HOST_CHROME_SEATS`, `OWN_SHELL_SEATS`, `verifyCanonicalShell` and `verifyPluginCardContract` **[verified 03.10, by symbol]**, `run-verify-package.mjs` (`cardContract` option), `run-verify-package.test.mjs` | 25 | `run-verify-package.test.mjs` |
 | repo root `scripts/` | **decision** | The seat list the gate reads must follow D1 or the gate goes blind (§4.3a) | `verify-package-hygiene.mjs` — `CARD_SEAT_SLOTS` and its reader `findSettingsCardSlot` (symbol names, not line numbers: #684 renamed the constant and shifted them) **[verified 03.10]**; `package-hygiene.test.mjs`; `check-dependencies.test.mjs` | 15 | `package-hygiene.test.mjs` |
 | `@yadsh/dsh-test-kit` | code | host **one** `MemorySettings` conforming to `SettingsForms` (accessor `writable`, no stray `override`) so 3 plugins share it — no error of its own today | new/changed fake in `packages/test-kit/src/**`; current copies at `dsh-model-safety-gate/tests/integration/settings.test.ts:19-30`, `dsh-plugin-log-ui/tests/integration.test.ts:14-25`, `dsh-prompt-firewall/tests/settings.test.ts:14-25` **[verified]** | 30 | `dsh-test-kit` 3 files pass today |
