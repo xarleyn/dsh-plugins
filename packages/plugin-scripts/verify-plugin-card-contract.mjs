@@ -17,10 +17,9 @@ import assert from "node:assert/strict";
  * this contract checks: a row card that leaves its shell in could otherwise keep
  * `seat: "settings"` in its verify script and pass.
  */
-export const HOST_CHROME_SEATS = [
-  "plugins.row.config",
-  "plugins.bundle.config",
-];
+const ROW_CONFIG_SEAT = "plugins.row.config";
+const BUNDLE_CONFIG_SEAT = "plugins.bundle.config";
+export const HOST_CHROME_SEATS = [ROW_CONFIG_SEAT, BUNDLE_CONFIG_SEAT];
 export const OWN_SHELL_SEATS = ["settings.section", "settings.plugins.tab"];
 
 export const CANONICAL_SHELL_RULES = [
@@ -83,6 +82,20 @@ const FOCUS_OUTLINE = /:focus(?:-visible)?[^{}]*\{[^}]*outline:\s*([^;}]+)/gu;
 // that only forbids a hard-coded outline is satisfied by deleting every focus rule,
 // which is how a ring disappears while the check stays green.
 const RING_APPLIED = /:focus(?:-visible)?[^{}]*\{[^}]*--dsw-focus-ring[^;}]*/u;
+
+/*
+ * Whether a panel seat owes that ring is a property of the seat, and of nothing else.
+ *
+ * The row seat renders this bundle's form inside the Host's card, so its controls are
+ * ours to dress. `plugins.bundle.config` is a page the Remote owns (AGENTS.md) and this
+ * bundle renders no fields there, so the same demand would buy a CSS declaration written
+ * for the gate. Computed from the seat alone — never at the call site that resolved it —
+ * so one seat cannot dictate two requirement sets depending on whether it reached the
+ * bundle as a literal, a constant, or a quote.
+ */
+function panelSeatOwesRing(panelSeats) {
+  return panelSeats.includes(ROW_CONFIG_SEAT);
+}
 
 /*
  * Which contract applies is read off the *registration*, not off any occurrence of
@@ -234,9 +247,9 @@ function verifyHostChrome(client, options) {
   }
 
   // A body whose controls keep no ring at all is the same user-visible failure as a
-  // hard-coded one, and deleting the rules is the cheaper way to reach it. Asked of a
-  // seat that renders no form, though, this becomes a CSS rule written for the gate —
-  // so it is asked of the row, where the plugin does render controls.
+  // hard-coded one, and deleting the rules is the cheaper way to reach it. Which seats
+  // owe it is `panelSeatOwesRing`'s call; `ringOwed` is passed by every caller, and the
+  // default stays "owed", so a caller that forgets asks too much rather than too little.
   if (options.ringOwed !== false) {
     assert.match(
       client,
@@ -275,9 +288,7 @@ export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
   if (onPanel.length > 0)
     return verifyHostChrome(client, {
       ...options,
-      // `plugins.bundle.config` is a page the Remote owns, not a settings form
-      // (AGENTS.md), so a focus ring there would be a rule written for the gate.
-      ringOwed: onPanel.includes("plugins.row.config"),
+      ringOwed: panelSeatOwesRing(onPanel),
     });
   if (onSettings.length > 0) return verifyCanonicalShell(client, options);
 
@@ -307,16 +318,30 @@ export function verifyPluginCardContract(client, { legacyPatterns = [] } = {}) {
       operator: "seat",
     });
   }
-  if (panelMentioned.length > 0) return verifyHostChrome(client, options);
+  /*
+   * The same predicate as above, so a seat answers one way whatever form it reached the
+   * bundle in. What that parity costs: quotes now settle the ring too, and a bundle seat
+   * surviving only as a citation is waived exactly as a registered one is. Accepted until
+   * `readSeats` learns the positional `slots.inject("<seat>", …)` form, which moves those
+   * bundles onto the path above and leaves this one fail-closed; the test "waives the ring
+   * for a bundle seat that only reaches the contract as a quote" marks the line that change
+   * has to move.
+   */
+  if (panelMentioned.length > 0)
+    return verifyHostChrome(client, {
+      ...options,
+      ringOwed: panelSeatOwesRing(panelMentioned),
+    });
   if (settingsMentioned.length > 0)
     return verifyCanonicalShell(client, options);
 
   /*
    * Nothing named the seat at all. The bundle still says what it is: a card that owns its
    * frame carries the shell classes, and one seated inside the Host's card carries none.
+   * A bundle that names no seat also cannot prove it renders no form, so the ring stays owed.
    */
   if (drawsCanonicalShell(client)) {
     return verifyCanonicalShell(client, options);
   }
-  return verifyHostChrome(client, options);
+  return verifyHostChrome(client, { ...options, ringOwed: true });
 }
