@@ -1,6 +1,6 @@
 {
   "meta": {
-    "title": "Документы",
-    "description": "Конвейер документов: Markdown ↔ DOCX/PDF, извлечение текста, онлайн-источники."
+    "title": "Documents",
+    "description": "Document pipeline: Markdown ↔ DOCX/PDF, text extraction, online sources."
   }
 }
