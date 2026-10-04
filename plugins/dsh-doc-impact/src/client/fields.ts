@@ -1,14 +1,14 @@
 // Field renderers of the doc-impact settings card (createElement style,
 // matching the classic ModuleLoader client convention of this plugin).
 import { createElement, type ChangeEvent } from "react";
-import type { Translate } from "./dictionary.js";
+import type { LocaleKey, Translate } from "./dictionary.js";
 import type { FieldState } from "./settings-form.js";
 
 interface FieldProps {
   readonly t: Translate;
   readonly id: string;
-  readonly labelKey: string;
-  readonly hintKey: string;
+  readonly labelKey: LocaleKey;
+  readonly hintKey: LocaleKey;
   readonly state: FieldState;
   readonly disabled: boolean;
   readonly onReset: () => void;
@@ -43,7 +43,7 @@ interface BoolProps extends FieldProps {
 export function FieldHead(
   t: Translate,
   id: string,
-  labelKey: string,
+  labelKey: LocaleKey,
   state: FieldState,
   disabled: boolean,
   onReset: () => void,

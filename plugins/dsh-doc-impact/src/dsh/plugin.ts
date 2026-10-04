@@ -72,8 +72,8 @@ export interface SettingsFormsLike {
  * dsh-doc-impact plugin entry (SPEC §14, §64): load config, wire the engine to
  * the public `agent/*` and `session/*` extension points, register the
  * `doc_impact_*` tools and the `/doc-impact` command, and keep the
- * `dsh-doc-impact` settings namespace behind Settings → Plugins. No
- * agent-loop internals are imported or patched (SPEC §92-§93).
+ * `dsh-doc-impact` volatile settings namespace that the Plugins panel's row card
+ * edits. No agent-loop internals are imported or patched (SPEC §92-§93).
  */
 export function apply(
   ctx: PluginContext,
