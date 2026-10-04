@@ -44,10 +44,10 @@ export type QaTurnSighting =
   /**
    * Not running, but read only in frames the browser cannot vouch for: the link
    * was down when this was read, or it has returned and the chat's row has not
-   * moved since. A row that has not moved is still the reading taken before the
-   * gap and says nothing about now: it arms no baseline, because a run that
-   * began inside the gap would leave it exactly as it is. Only the row moving
-   * ends it.
+   * moved since. A row that has not moved is no news about now — it may well be
+   * the reading the gap left behind, and this page cannot tell the two apart —
+   * so it arms nothing, because a run that began inside the gap would leave it
+   * exactly as it is. Only the row moving ends it.
    */
   | "stale";
 
@@ -57,10 +57,12 @@ export interface QaTurnCompletionOptions {
    * reconnecting the list it holds is stale, and the first frame after the
    * link returns would otherwise read as a batch of finished turns. This flag
    * goes back off with the link, which is sooner than the host list is read
-   * again, so what a pause costs this page is carried by the readings rather
-   * than by the flag — see `stale`. A gap that left no frame with this flag set
-   * is named as a rule of `docs/specs/owner-scoped-notifications.md` §12, not
-   * as a detail of this file.
+   * again: the re-pull belongs to the host store and is not awaited, so a live
+   * frame can carry the rows the drop left. What a pause costs this page is
+   * therefore carried by the readings rather than by the flag — see `stale`. A
+   * gap that left no frame with this flag set is named as a rule of
+   * `docs/specs/owner-scoped-notifications.md` §12, not as a detail of this
+   * file.
    */
   readonly paused?: boolean;
   readonly now?: number;
@@ -80,14 +82,25 @@ export interface QaTurnCompletionOptions {
  * could vouch for. So the notice always tells the reader about a turn they were
  * waiting for, and never about one that was already under way when they could
  * not see it: a chat found running on the page's first frame, or in the frames
- * around a reconnect, is `unwatched`, and its end passes in silence. The end of
- * the first run after a gap passes in silence too, in a chat whose row never
- * moved across it — the only idle this page holds for that chat was read
- * through the gap, and a run that began inside the gap would look exactly like
- * it; this reading arms nothing until the chat's own row moves. The run the page
- * watches start is its own: the next turn of the same chat is seen beginning
- * from the idle reading that closed this one, so a page that stays open keeps
- * notifying — once per turn.
+ * around a reconnect, is `unwatched`, and its end passes in silence. Nor does a
+ * gap the page was shown spare a run it lands inside: the paused frame takes
+ * back the evidence that this page watched that run begin, because while the
+ * link was down the chat may have run another turn and the rows that come back
+ * name neither. The first run to end after a gap passes in silence too, in a
+ * chat whose row never moved across it — the only idle this page holds for that
+ * chat was read through the gap, and a run that began inside the gap would look
+ * exactly like it. That reading arms nothing until the chat's own row moves, and
+ * the move that arms it is a run ending: the very one this page then keeps
+ * silent about. So a turn is reported only when no gap falls between the idle
+ * reading that armed this page and the frame that sees the run end, which is why
+ * a run begun and finished on the recovered link can still pass unreported, and
+ * why a gap the page was shown costs a chat one turn — or two, where a turn
+ * ended inside the gap. A gap that reached no committed frame hands this function
+ * nothing to go silent about, and §12 of
+ * `docs/specs/owner-scoped-notifications.md` owns that case. The turn that a link
+ * which held carries from an armed idle to its end is the page's own, so a page
+ * that stays open notifies again once the turn paying for the gap has ended —
+ * once per turn from there.
  */
 export function settleTurnCompletions(
   seen: Map<string, QaTurnSighting>,

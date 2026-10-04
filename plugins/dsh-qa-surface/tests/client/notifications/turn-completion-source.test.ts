@@ -172,6 +172,74 @@ describe("turn completion source", () => {
     ]);
   });
 
+  it("arms a row that comes back idle inside an unvouched window, and pays for it", () => {
+    const page = openPage();
+    page.see([chat("a", false)], { now: 1 });
+    // The link drops, and while the page cannot vouch for the list, the chat's
+    // row leaves the sidebar for a reason of this browser's own — its index, not
+    // the host list. A row that is away is a reading the differ does not hold.
+    expect(page.see([chat("a", false)], { now: 2, paused: true })).toEqual([]);
+    expect(page.see([], { now: 3 })).toEqual([]);
+    expect(page.seen.size).toBe(0);
+    // The link is back and the row comes with it, saying idle. This is the leak
+    // §12 of the spec names: with no reading left, the differ has nothing to
+    // compare that idle against, so it arms the way a cold start does — even
+    // though this row may be exactly the one the gap left behind. The run that
+    // follows may have begun anywhere back in the gap, yet the page now holds it
+    // as watched, and reports its end.
+    expect(page.see([chat("a", false)], { now: 4 })).toEqual([]);
+    expect(page.seen.get("a")).toBe("idle");
+    expect(page.see([chat("a", true)], { now: 5 })).toEqual([]);
+    expect(page.see([chat("a", false)], { now: 6 })).toEqual([
+      { sessionId: "a", title: "Чат a", at: 6 },
+    ]);
+    // Pinned as measured, not as intended. Closing it is this page's own call,
+    // not a host-list gap: the differ deletes the reading above, so keeping the
+    // row on as `stale` while it is away would close the corner at the price of
+    // a silent turn on every return — the trade §12 of the spec names unmade.
+  });
+
+  it("spends the turn that rebuilds the baseline after a gap on that gap", () => {
+    const page = openPage();
+    page.see([chat("a", false)], { now: 1 });
+    page.see([chat("a", true)], { now: 2 });
+    // The link goes down mid-run and the run ends while the page cannot see it.
+    expect(page.see([chat("a", true)], { now: 3, paused: true })).toEqual([]);
+    expect(page.see([chat("a", false)], { now: 4, paused: true })).toEqual([]);
+    // The first live frame repeats that idle, and repeating it proves nothing:
+    // this row is the reading the gap left behind, not a reading of now.
+    expect(page.see([chat("a", false)], { now: 5 })).toEqual([]);
+    // So the turn that buys the baseline back is spent on the gap even though
+    // this page watched the run begin and end over the recovered link. Two turns
+    // of silence for one gap, which is what docs/CONFIGURATION.md promises.
+    expect(page.watchTurn("a", 6)).toEqual([]);
+    expect(page.seen.get("a")).toBe("idle");
+    // Only after it does a turn that ends raise a line again.
+    expect(page.watchTurn("a", 9)).toEqual([
+      { sessionId: "a", title: "Чат a", at: 11 },
+    ]);
+  });
+
+  it("stays silent on a stand whose link drops inside every turn", () => {
+    const page = openPage();
+    page.see([chat("a", false)], { now: 1 });
+    // Three turns begun on the live link, each interrupted by a gap that takes
+    // the evidence of that very turn, and each ending after the link returned.
+    for (const now of [2, 6, 10]) {
+      expect(page.see([chat("a", true)], { now })).toEqual([]);
+      expect(
+        page.see([chat("a", true)], { now: now + 1, paused: true }),
+      ).toEqual([]);
+      expect(page.see([chat("a", true)], { now: now + 2 })).toEqual([]);
+      expect(page.see([chat("a", false)], { now: now + 3 })).toEqual([]);
+    }
+    // Every drop paid for by its own turn, so three finished turns raised
+    // nothing. A turn the link carries end to end is announced again.
+    expect(page.watchTurn("a", 14)).toEqual([
+      { sessionId: "a", title: "Чат a", at: 16 },
+    ]);
+  });
+
   it("loses a watched run across a gap it cannot vouch for", () => {
     const page = openPage();
     page.see([chat("a", false)], { now: 1 });
@@ -288,9 +356,12 @@ describe("turn completion source", () => {
     // where nobody could see them, and the stack stays empty.
     expect(page.see(running, { now: 5 })).toEqual([]);
     expect(page.see(idle, { now: 6 })).toEqual([]);
-    // What the gap held back is one turn per chat, not the reader's attention:
-    // the row moving over a vouched link rebuilds the baseline, and the next turn
-    // this page sees begin is reported — once, and for that chat alone.
+    // What the gap held back is the turn this page only found running, not the
+    // reader's attention: the row moving over a vouched link rebuilds the
+    // baseline, and the next turn this page sees begin is reported — once, and for
+    // that chat alone. A turn that finished inside the gap is lost on top of this
+    // one, which is what `spends the turn that rebuilds the baseline after a gap
+    // on that gap` measures.
     expect(page.watchTurn("b", 7)).toEqual([
       { sessionId: "b", title: "Чат b", at: 9 },
     ]);

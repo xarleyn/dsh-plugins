@@ -598,19 +598,47 @@ one is ever built.
   reading it cannot yet trust (`stale`). These are not the same hole,
   because only one of them closes by itself — the unaccounted run ends,
   its row moves, and the page reads the chat idle over a live link.
-  `stale` is the missing half of that evidence named. `paused` goes back
-  off with the connection, while the rows are rewritten by a re-pull the
-  host client starts once the link is up (`SessionManager.handleConnected`
-  → `refreshList`, an RPC), so the frames between the two carry the list
-  the drop left. Reading one of those as a live idle armed the baseline
+  `stale` is the missing half of that evidence named. What the flag covers and
+  what the readings carry are deliberately kept apart: `paused` goes back off
+  with the connection — `QaSessionController.publish` derives it from the
+  connection snapshot and emits it synchronously with the link going down —
+  while the rows are the host list store's, which `QaSurface` reads through
+  `useSyncExternalStore`. That store's re-pull on a returned link is measured
+  below: it is fire-and-forget and its answer lands in a frame of its own, later
+  than the edge that cleared the flag, so the frames between the two carry the
+  list the drop left. Reading one of those as a live idle armed the baseline
   and credited the run after it: measured on the built differ, `idle` →
   `paused+idle` → `live+idle` → `live+running` → `idle` raised a notice
   for a turn that might have begun anywhere inside the gap, against the
-  promise `docs/CONFIGURATION.md` makes. A row that has not moved since
-  the gap is the reading the gap left behind, so it now arms nothing, and
-  that turn is silent with the others: the chat earns its baseline back
-  when its own row moves, which bounds the cost at one turn per chat —
-  the run the page could not account for, then normal service.
+  promise `docs/CONFIGURATION.md` makes. A row that has not moved since the gap
+  is the reading the gap left behind, so it now arms nothing — and the move that
+  arms it back is a run of that chat ending, which therefore passes silently even
+  where this page watched that run begin over the recovered link. So the silence
+  is bounded by the gap rather than by the turns it falls inside, and what a gap
+  the page was shown costs a chat is one turn, or two where a turn finished inside
+  the gap: the sequence above raises nothing while the full live turn after it
+  raises one
+  notice (`does not arm a baseline from an idle the gap left behind`), and
+  `idle` → `running` → `paused+running` → `paused+idle` → `live+idle` → a full
+  live turn leaves two turns silent before the notices come back
+  (`spends the turn that rebuilds the baseline after a gap on that gap`). One
+  untrusted frame is enough to drop a `watched` run to `unwatched` — `idle` →
+  `running` → `paused+running` → `live+running` → `live+idle` raises nothing on
+  the built differ — which is what
+  `stays silent on a stand whose link drops inside every turn` measures: three
+  turns begun on the live link and interrupted each by their own gap raise
+  nothing between them. So `docs/CONFIGURATION.md`, the version plan and the
+  0.14.0 changelog entry say so, of the gaps the screen reflected: a stand whose
+  link drops inside long turns pays for every one of those drops and gets no
+  notice there at all. That every gap reaches the screen is no proof, though:
+  `paused` arrives at the differ as the page's committed
+  `state.phase === "reconnecting"`, and the effect that raises notices lists it
+  in its dependencies (`src/client/notifications/use-turn-notifications.ts:145`)
+  — and an effect runs on committed values only, so a link that went and came
+  back inside one batch hands it no frame with the flag set at all. The next
+  bullet
+  names that case as the boundary of the rule rather than letting the absolute
+  swallow it.
   Whether the host list lets a browser vouch for anything across a gap at
   all is measured below, and the answer is that it does not; the silence is
   written into `docs/CONFIGURATION.md` as the shipped promise, so a stand that
@@ -620,20 +648,42 @@ one is ever built.
   while the row is away the differ holds no reading for that chat at all,
   so its run is found rather than watched, and it ends silently too —
   which is written into `docs/CONFIGURATION.md` beside the link case. One
-  corner of that case stays with #479: a row that leaves the list for a
-  local reason (this browser's own index, not the host) and returns idle
-  inside an unvouched window arms its baseline the way a cold start does,
-  because the differ has no reading left to compare it against.
+  corner of that case belongs to this page rather than to #479: a row that
+  leaves the list for a local reason (this browser's own index, not the host)
+  and returns idle inside an unvouched window arms its baseline the way a cold
+  start does, because the differ drops the reading as soon as the row is gone
+  (`src/client/notifications/turn-completion-source.ts:111-114`) and so has
+  nothing left to compare that idle against — and the run that follows is then
+  reported although it may have begun back inside the gap.
+  No host signal closes it: holding the reading across the absence, as `stale`,
+  is a decision inside this page, and #479 measured the host side only. The
+  decision is left unmade on purpose — dropping is the rule the differ was built
+  on, it bounds the map to the rows on screen, and it is what makes a chat that
+  comes back running a run found rather than watched — while keeping the reading
+  would cost that chat a silent turn on every return.
+  That leak is pinned as measured, not as intended, by
+  `tests/client/notifications/turn-completion-source.test.ts`
+  (“arms a row that comes back idle inside an unvouched window, and pays for
+  it”), which asserts the notice it raises so the rule above is not mistaken
+  for a closed one.
   What #479 does not need to build again: the invalidation itself —
   `readSighting` leaving a paused frame `unwatched` or `stale` according
   to what it read, the refusal to arm a baseline on a row that has not
   moved since, and the dropping of a reading whose chat left the list.
   All three are covered by the cold-start and reconnect cases under
-  `tests/client/notifications/`, and measured rather than asserted: taking out
-  either half of the `stale` transition — the paused idle that leaves it, or the
-  live frame whose row has not moved keeping it — fails the same eight cases,
-  five of them written by #479 (two in the differ, three at page level) and
-  three by the cases #483 added with the fourth reading. The ordering half is
+  `tests/client/notifications/`, and measured rather than asserted. Their price
+  was read off a full-suite run of the tree this ships on — 249 files,
+  1907 tests green — with each half of the `stale` transition taken
+  out in turn, and the two halves cost the same: taking out the paused idle that
+  leaves it, and taking out the live frame whose row has not moved keeping it,
+  each fail the same nine cases — five in the differ, four at page level — and
+  nothing else in the suite. That is not a coincidence of the tests but of the
+  guarantee, which holds only where both halves hold: with either half gone the
+  idle row the gap left behind arms the baseline, and the nine are the cases that
+  read that arming. Two of the differ cases and three of the page cases in each
+  set are #479's ordering scenarios, the rest are #483's, and
+  `spends the turn that rebuilds the baseline after a gap on that gap` fails
+  under both, which is the case that pays for the gap. The ordering half is
   settled by hand rather than assumed: `tests/session/session-controller-reconnecting-frame.test.ts`
   draws both orders at the seam where the page picks the two edges up — the
   link's return published on the strength of the link alone, with the rows
