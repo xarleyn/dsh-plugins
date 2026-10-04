@@ -1,3 +1,67 @@
+## 0.2.1 (2026-10-04)
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- An empty `reviewer.allowedTools` now really leaves the reviewer without tools, ([#340](https://github.com/xarleyn/dsh-plugins/issues/340))
+  and unloading the plugin closes what it opened.
+
+  The subagent backend attached a tool filter only when the allow-list was
+  non-empty. The host restricts a child's tools only when a filter arrives, so
+  `allowedTools: []` — the value that promises a reviewer working from its own
+  knowledge only — was precisely the one that handed the reviewer the parent
+  agent's whole tool surface. The list is now always sent, empty included.
+
+  The teardown paths close as well. `apply` returns an unload disposer that
+  closes the shared plugin logger, the one resource the plugin fiber does not
+  own; a review now waits for the subagent child's disposal instead of leaving it
+  running past the verdict; and a domain-expert review whose turn was already
+  cancelled at entry says so instead of launching a run it has no way to stop —
+  the reviewer face that plugin exposes owns the run and takes no signal.
+
+- The gate attributes its steers to its own producer kind and builds against a 0.1.7-rc.2 host. ([#527](https://github.com/xarleyn/dsh-plugins/issues/527), [#511](https://github.com/xarleyn/dsh-plugins/issues/511))
+
+  The revision and failure-policy messages the gate puts back into the reviewed
+  agent were attributed to a catch-all `plugin` source kind. `0.1.7-rc.2` does not
+  define one: the source map — the harness's answer to *who produced this*, kept
+  separate from the `notice`/`snapshot`/`catalog` vocabulary that answers *what
+  kind of thing it is* — ships only `user`, `model`, `tool` and `system-prompt`,
+  and every other producer declares its own kind through a module augmentation
+  (`tool-registry`, `subagent-settled`, `model-selection`). Naming a kind the host
+  deleted is a compile error, so the package did not build against an rc.2 host at
+  all; and a kind no declaration carries would leave a consumer with nothing to
+  match the row against, falling through to opaque content.
+
+  The package now declares `answer-review` as its own source kind and steers under
+  it. The form it already used is rc.2's vocabulary unchanged — a `notice` with a
+  bounded one-line account — so a steered row still reads "Answer review requested
+  corrections (round 1 of 2)" instead of unlabelled text, and which candidate the
+  gate reviews, when it suppresses an interim turn, and what it steers are all
+  untouched. What changed is that an rc.2 host can say who wrote the message.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+
+### ❤️ Thank You
+
+- Qoder
+- qoder-bot
+
 ## 0.2.0 (2026-09-24)
 
 ### 🚀 Features

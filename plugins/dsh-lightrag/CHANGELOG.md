@@ -1,3 +1,47 @@
+## 0.2.2 (2026-10-04)
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- A retrieval call now ends within `timeoutMs` even when the server stops ([#347](https://github.com/xarleyn/dsh-plugins/issues/347))
+  mid-answer.
+
+  The budget used to cover the response headers only: the timer was cleared the
+  moment `fetch` resolved, so a LightRAG server that answered and then stopped
+  delivering chunks left the tool call pending indefinitely — no deadline was
+  left to fire, and the host's own cancellation was the only way out. Each body
+  chunk is now read against the request's abort signal, and the stream is
+  cancelled on every way out of the read, whether the byte cap, the deadline or a
+  broken transfer ended it.
+
+  Failures say which half of the exchange was lost. A body that stalls is a
+  timeout that names the body rather than a host that never replied, and a
+  transfer cut short folds into `unreachable` with the transport's reason instead
+  of escaping as an untyped error. The README and SPEC state that one budget
+  covers the whole request.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.2.1 (2026-09-21)
 
 ### 🩹 Fixes

@@ -1,3 +1,215 @@
+## 0.4.0 (2026-10-04)
+
+### 🚀 Features
+
+- The Browser runtime can now drive a Chromium it did not start. ([#202](https://github.com/xarleyn/dsh-plugins/issues/202))
+
+  `runtime.mode` chooses where the browser comes from. `launch` — still the
+  default, and still the shape DOCKER.md puts first, the image that carries its
+  own Chromium — owns one process: it starts it for the first session and closes
+  it on teardown. `attach` joins a browser that is already up, through its DevTools
+  endpoint, and the runtime's own teardown drops the link and the contexts it
+  created while leaving the process and a person's own tabs alone. The provider
+  seam existed for exactly this, so the SPEC's "remote CDP" landed as a second mode
+  of the Playwright provider instead of a third provider or a new package.
+
+  The endpoint is a control handle — whoever holds it drives that browser, past
+  this plugin's own network policy — so `runtime.cdpEndpoint` names this machine
+  by default and any other host needs `runtime.allowRemoteCdpEndpoint: true`
+  written next to it. The default is read exactly: `localhost`, `127.0.0.1`, `::1`,
+  and the forms the URL parser itself resolves into those (`http://127.1`,
+  `http://2130706433`). A `*.localhost` name counts as another host, and so does
+  `localhost.` with its trailing dot, which is a DNS query rather than the literal:
+  the runtime never resolves the endpoint itself, so a name whose answer a search
+  domain or a resolver can change proves nothing. For an `http` endpoint what the
+  gate bounds is the first hop — that server replies with the `ws` URL Playwright
+  then dials — so a deployment that must pin the dialled address writes a `ws` URL.
+  What the gate opens is not a browser that answers, either: Chromium replies to a
+  DevTools request only when its `Host` header is an IP address or `localhost`, on
+  the `/json/version` question and on the `ws` upgrade alike, so a container's
+  service name is refused by the browser itself and DOCKER.md now names an address.
+  The opt-in run puts that question to a live browser rather than taking the shape
+  on faith, and puts it to one started with `--remote-allow-origins` too. That flag
+  guards the other header, and the run reads both directions of it: an upgrade
+  carrying a page's `Origin` is refused by a browser started without the flag and
+  carried through by one started with `--remote-allow-origins=*`, while a name in
+  `Host` is refused with it set just as it is without it — which is why the guide
+  names an address rather than a switch to reach for, and why it calls that switch
+  not neutral: what the flag gives up is the endpoint's own guard against a page the
+  browser loads dialling back into it.
+  Attach mode owns no process, and the config says so rather than quietly ignoring
+  the keys that would shape one — `headless: false`, an `executablePath`, a
+  `browserChannel` other than `chromium`, and `chromiumSandbox: false` are each
+  refused when the config resolves, as are `cdpEndpoint` and
+  `allowRemoteCdpEndpoint: true` under `launch`, where there is no endpoint for them
+  to open. A mode outside `launch` and `attach` is refused too, instead of falling
+  into `launch` while the resolved config still carries the word that was written.
+
+  Losing the browser now says which kind of loss it was. A dropped CDP connection
+  reports `BROWSER_CONNECTION_LOST`, the panel reads "the connection to the
+  browser was lost" instead of claiming a crash it cannot observe, and the host
+  logs `browser.connection-lost`; our own process dying keeps `BROWSER_CRASHED`.
+  Both rebuild the session on the next action, and both wait for the link or the
+  process with mode-accurate wording while a first page opens.
+
+  The launch path is not merely unbroken by this: both modes are pinned by the
+  suite that runs on every `pnpm test`. Each one names the Playwright entry point
+  it expects, the context options and network gates it builds on top of that
+  browser — attached ones included —, what it reports when the browser goes away
+  and under which log key each of the two losses reaches the operator, that an
+  attached browser is never asked for the context it came with (`contexts()`
+  is the one route a `Browser` handle offers to it, and the provider never calls
+  it), where a session close stops and the runtime's own stop begins — closing the
+  last of this runtime's contexts leaves the borrowed browser linked for the next
+  session —, and what the config accepts, endpoint forms included. The opt-in
+  Chromium run then covers what only a real browser can answer: it starts a
+  Chromium outside the plugin, drives it over CDP, screenshots it, and checks that
+  the plugin's teardown left that process running with its owner's page still in
+  it — and, in a second
+  case, kills the browser mid-session and reads the session back as a lost link
+  rather than a crash. The network gates are exercised on that attached browser
+  too, in both directions — the refused navigation, the refused socket handshake,
+  the socket they permit still arriving at its server, and the service worker that
+  reaches no address outside the gate — since a request path only a launched browser
+  walked through would prove nothing about the mode this card ships, and a borrowed
+  context that intercepted requests merely to drop them would answer every refusal
+  correctly while leaving a session unable to hold a live connection. The `http` and
+  the `ws` form the mode accepts are both dialled there: the deployment
+  writes the address itself instead of asking a server for one, Playwright connects to
+  it without asking anything where to go next, and an `http`-only run would have left
+  that form untried against a real browser. The two secure spellings ride the same
+  two branches, and the suite that runs on every `pnpm test` holds a case for each of
+  the four, so a scheme dropped from the gate reddens the case standing for it rather
+  than quietly turning a documented form into a refusal. The run also puts a second
+  driver on that endpoint, the shape the Harness's own browser tool makes of a shared
+  Chromium: a page opened through another connection, in the context the browser
+  arrived with, neither lends its cookies and storage to a session of this plugin nor
+  takes one, and the origin this plugin's policy refuses for a session is served to
+  it — the two promises about coexisting drivers, read off a live browser instead of
+  asserted. Each attach case finds its
+  browser through the same search the launch path uses, so a
+  run that was asked for and found nothing fails saying so — an attach case that
+  quietly skipped would be the one result nobody could read. That run needs one
+  variable, `DSH_QA_BROWSER_E2E=1`. This
+  project's own CI job sets it, so the run belongs to what checks a change rather
+  than to what someone runs when they remember.
+
+  The network policy keeps running on an attached browser, with its premise moved:
+  the gate resolves and classifies a destination in the Host process, while the
+  browser dials from wherever the deployment started it. Where the two are one
+  machine there is one answer, and that is every deployment that starts its own
+  browser; a Chromium in its own container — the sidecar DOCKER.md draws for this
+  mode — has its own resolver and its own `/etc/hosts`, so an allow-list written
+  for the Host is a judgment about a name that browser may read differently.
+
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- A page's WebSockets now pass the network policy, a stopped runtime stops for ([#344](https://github.com/xarleyn/dsh-plugins/issues/344))
+  good, and a disposal finishes the session it was still building.
+
+  The policy gate was installed on the request route, and a WebSocket handshake is
+  never a request that route sees: a page could open a socket to any host the
+  operator had blocked, and the refusal the panel shows for every other kind of
+  destination simply never happened. A context now carries a socket route as well,
+  installed while it still has no page — Playwright only routes sockets created
+  after the registration — and a handshake the policy refuses is ended before the
+  destination is offered one. Since the default `allowedSchemes` lists `http` and
+  `https`, sockets are refused by that same default rather than quietly allowed;
+  `ws` and `wss` open them deliberately. A service worker dials from outside every
+  page, which puts its traffic past any route that covers pages, so a Browser
+  context blocks workers instead of leaving that way out unattributed.
+
+  A browser that finished starting after its runtime had been stopped was a
+  process nobody owned: `stop()` looked at what existed at the moment it was
+  called, so a launch still in flight published itself into a provider that had
+  already closed, and a context built that late was listed after the list was
+  emptied. Stopping is now a state the provider waits in — it drains the launch
+  and the context builds it already admitted, closes what they produced, and turns
+  away anything new until it is done — and a disposal joins the sessions still
+  being created before it sweeps the map, so a session that finishes building
+  during a shutdown is closed by that shutdown.
+
+- Every part of the Browser panel now carries a `data-testid`, so a test can name ([#467](https://github.com/xarleyn/dsh-plugins/issues/467))
+  the node it means instead of guessing it from the Russian text beside it.
+
+  The panel's chrome is drawn from a handful of repeating classes — three nav
+  buttons share one, the device and menu toggles share another, and both tab and
+  stage use the same empty-state class — which left an automated check nothing
+  stable to point at: it had to match a visible string, and a reworded label broke
+  the test rather than the feature. Each zone of the panel now says what it is:
+  `panel-*` for the container, `tabs-*` for the strip, `toolbar-*` for navigation
+  and the address, `device-*` for the viewport row, `stage-*` for the page,
+  `menu-*` for the actions popover and `status-*` for the footer. The values are
+  ASCII kebab-case and unique in the package, and the menu entries carry the id of
+  the action they offer.
+
+  Nothing else moved: no class, no attribute the user sees, no layout — only the
+  test attribute. The panel's own tests now reach the viewport readout, the
+  blocked-tab marker, the stage canvas and the pointer-input chip by id, and keep
+  asserting every control through its role or accessible name.
+
+- The browser panel survives a 0.1.7-rc.2 host. ([#526](https://github.com/xarleyn/dsh-plugins/issues/526), [#509](https://github.com/xarleyn/dsh-plugins/issues/509), [#511](https://github.com/xarleyn/dsh-plugins/issues/511))
+
+  Every call the panel makes to its own `qaBrowser` Remote crosses a typert
+  boundary, and those boundaries changed shape: a strict codec used to carry the
+  shared schema as a `schema` field, and now carries a `create` factory that
+  materialises the schema in the realm that needs it. The panel still handed over
+  the field, so the host reached a codec with no `create`, and the first
+  serialised argument — a click, a URL, a screenshot request — threw a `TypeError`
+  instead of moving. Against an rc.2 host the panel was therefore not merely
+  typewrong: it did not work.
+
+  All seven descriptors now contribute a factory, and the tests that assert the
+  chrome's own field requirements parse through it the way the runtime does. The
+  schemas themselves are untouched, so nothing a panel accepts or refuses changed
+  — the same tab fields, the same mouse buttons, the same click counts. What
+  changed is that the host can read them.
+
+- Test coverage now comes from the shared Vitest preset, so `pnpm run ([#291](https://github.com/xarleyn/dsh-plugins/issues/291))
+  test:coverage` measures the same tree in every package and writes the same
+  machine-readable `coverage/coverage-summary.json` beside the printed table.
+
+  Until this release the preset carried no coverage block at all, so whatever a
+  package listed as its `include` was the whole denominator. That choice is gone:
+  `mergeConfig` concatenates arrays instead of replacing them, so a re-declared
+  `include` can only widen the tree and `exclude` is the only way left to measure
+  less. The blocks are dropped rather than rewritten, which means a package that
+  used to measure part of its sources now measures all of them, client code
+  included. Where that happens the percentage falls with the wider denominator
+  while not a single test changed, and the number is comparable with the other
+  packages of this workspace but not with what the same package printed before.
+  Neither is it comparable with the older test-lines-per-source-lines ratio, which
+  counted words instead of executed statements.
+
+  No thresholds on purpose: the percentage is a measurement to read before a
+  refactor, not a gate that competes with the per-file size budget. No runtime
+  change.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.14.0
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.3.1 (2026-09-22)
 
 ### 🩹 Fixes

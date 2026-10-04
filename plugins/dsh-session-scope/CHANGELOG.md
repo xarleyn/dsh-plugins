@@ -1,3 +1,100 @@
+## 0.7.6 (2026-10-04)
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- The browser client is several modules now, and nothing the shell sees changes. ([#317](https://github.com/xarleyn/dsh-plugins/issues/317))
+
+  `src/client.ts` was one 1429-line file holding everything the client renders and
+  all of the transport it uses. It is now a `src/client/` directory built by the
+  same tsdown entry: `index.ts` keeps what only a mounted plugin instance can own —
+  the Remote `$mount`, the durable `/scope` write, the read RPC, the composer seat
+  and the blank-session hero portal — while the copy, the stylesheet, the icons,
+  the path-comparison rules and the client half of the Remote contract each got
+  their own module, and the scope editor was separated into the draft state and
+  commands (`scope-editor.ts`) and the rendering of the modal
+  (`scope-editor-view.ts`). The largest client module is 400 lines.
+
+  Nothing observable moved. The bundle is still generated rather than authored,
+  still registers exactly `@yadsh/dsh-session-scope`, still takes `react` and
+  `react-dom` as shell statics, still contributes the Scope chip to the composer's
+  left seat, still resolves the workspace root from the sessions store and falls
+  back to the `session-scope` projection, and still reads one directory level
+  through the dedicated non-durable `sessionScope/list` RPC instead of a slash
+  command. `verify:client` asserts those shapes in the built artifact and runs the
+  registration against a module-loader stub, and the client tests still mount the
+  chip through a fake React; every string the client renders survived the move
+  verbatim.
+
+  Two boundaries became explicit instead of implicit. The editor no longer closes
+  over the transport — it is handed `runCommand` and `listLevel` as props, so what
+  a draft is saved through is visible where the editor starts. And clearing every
+  pending row is a named action of the editor rather than a raw state patch
+  written in the middle of the render tree, which is the one place the render had
+  been reaching into state.
+
+- The isolated Linux backend now hides the workspace from itself. ([#359](https://github.com/xarleyn/dsh-plugins/issues/359))
+
+  `isolated` masked the session workspace with mounts: the selected roots are
+  staged, the workspace is covered with an empty tmpfs, and the chosen roots are
+  bound back over it. That leaves the mount path as the only thing doing the
+  hiding. While the confined process shared a PID namespace with the host, every
+  unconfined process of the same UID stayed addressable inside the sandbox as
+  `/proc/<pid>` — and `/proc/<pid>/root` is that process's own root, so it is a
+  second path to the very workspace the tmpfs just covered. Whether a same-UID
+  reader may actually resolve the link is decided by Yama, `hidepid=` and the
+  target's dumpability, which means the guarantee the plugin advertises was being
+  granted by whichever host it happened to run on rather than by the sandbox.
+
+  The isolated profile therefore takes a PID namespace of its own: the rewritten
+  argv carries `--unshare-pid` alongside the provider's `--proc /proc`, so the
+  mounted procfs belongs to the new namespace and the confined process meets no
+  outside pid at all. The route is gone on every host, not only on strict ones.
+  Both isolated shapes get it — the narrowed view and the whole-workspace
+  selection — and the capability probe runs exactly this argv, so a kernel that
+  cannot create the namespace reports `isolated` as unavailable and fails closed
+  instead of promising a weaker isolation than the mode means. The recognized
+  provider profile is untouched: what has to match the host's own bwrap output is
+  the input, and the plugin still owns only the narrowing.
+
+  A fixture holds the line where the claim is made. Under bwrap it runs the same
+  probe twice — once in the provider's profile, once in the isolated one — against
+  an unconfined bystander of the same UID: the confined process must share the
+  host's PID namespace and be able to name the bystander by its argv in the first
+  run, and must be in a different namespace and unable to name it in the second,
+  with the hidden file unreachable and the selected file still readable. The
+  comparison is deliberately about the namespace and the addressability, not about
+  whether the bystander's proc-root read succeeds: that answer is the host's
+  policy, and a test asserting it would pass or fail for reasons this package does
+  control nothing of.
+
+  What `isolated` still does not promise is unchanged: a `read-only` permission
+  mode keeps the rest of the host filesystem visible, processes outside the
+  sandbox are not restricted by it, and memory of the confined process is readable
+  by whoever could read it before confinement.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.7.5 (2026-09-22)
 
 ### 🩹 Fixes

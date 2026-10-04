@@ -1,3 +1,54 @@
+## 0.1.8 (2026-10-04)
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- The protected-surface table now names the harness-owned surfaces by the stable ([#473](https://github.com/xarleyn/dsh-plugins/issues/473), [#453](https://github.com/xarleyn/dsh-plugins/issues/453))
+  `data-testid` epic #453 gave them, instead of only guessing from a class name.
+
+  A surface that holds someone else's text — a rendered Markdown block, a quoted
+  source snippet, a line of the log buffer — must never be rewritten by the
+  translator. Until now it was caught only when its class or test id happened to
+  read like a conversation buffer, so `qa-md-table`, `qa-md-code` or
+  `qa-source-detail-snippet` stayed translatable while its own markup says plainly
+  what it is. Those ids are listed now, the Markdown zone by its prefix, and the
+  class keywords stay as the fallback for markup that carries no test id yet — the
+  host's own surfaces among them. Both the selector list and the heuristic that
+  notices a protection was removed are built from the same tables, so a surface
+  cannot be protected on one path and missed on the other.
+
+  Nothing was widened past the id it names: the table matches a prefix, not a
+  substring, so a surface that merely looks alike stays translatable, and the
+  composer keeps its protection only as a test id, because its class is layout.
+  The package's own checks reached several nodes through a class, which is the
+  attribute a translation scope is written in and the one the tests themselves
+  rewrite; those locators moved to `data-testid`, and every assertion on visible
+  text, on an attribute or on `aria-label` stayed where it was. Only attributes
+  were added to the fixtures — no element moved, so the markup tests exactly what
+  it tested before.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.1.7 (2026-09-21)
 
 ### 🩹 Fixes
