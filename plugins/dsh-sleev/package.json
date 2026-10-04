@@ -41,8 +41,8 @@
       "inject": [
         "@deepseek-ai/dsh-client-locale",
         "@deepseek-ai/dsh-client-store",
-        "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-settings-plugins"
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-ui-settings"
       ],
       "platform": "web"
     }
@@ -90,9 +90,9 @@
     "@deepseek-ai/schemastery": "catalog:dsh",
     "@deepseek-ai/dsh-client-locale": "catalog:dsh",
     "@deepseek-ai/dsh-client-store": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
     "@deepseek-ai/dsh-llm": "catalog:dsh",
     "@deepseek-ai/dsh-settings": "catalog:dsh",
@@ -105,9 +105,9 @@
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-locale": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-store": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
     "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
     "@deepseek-ai/dsh-llm-pi-ai": "catalog:dsh-dev",
@@ -117,7 +117,6 @@
     "@types/react": "catalog:frontend-dev",
     "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
-    "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
