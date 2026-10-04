@@ -111,6 +111,20 @@ export interface QaSidebarProps {
   /** Removes a chat from this browser's index; omit to hide the control. */
   readonly onDelete?: (sessionId: string) => void;
   /**
+   * Whether the phone layout shows this sidebar as a drawer over the
+   * conversation. The state is the surface's, not the sidebar's: the control
+   * that opens it stands in the header, outside the subtree the phone layout
+   * switches off, and a drawer the collapsed rail alone could answer would leave
+   * a reader whose desktop state says collapsed with nothing to open.
+   */
+  readonly drawerOpen?: boolean;
+  /**
+   * Closes the drawer. Also what a row and «Новый чат» answer with, so the
+   * history does not stay standing over the chat the reader just chose. Never
+   * touched on a wide layout, where the collapse control keeps its own state.
+   */
+  readonly onDrawerClose?: () => void;
+  /**
    * Audit summaries by chat id, for the row badge. Empty when the audit plugin
    * is not installed — the badge is then absent rather than empty.
    */
@@ -300,7 +314,14 @@ export const QaSidebar = memo(
       setCollapsed(next);
       writeCollapsed(props.stateKey, next);
     };
-    if (collapsed) {
+    // The drawer is a phone affordance, so it answers only when it is the thing
+    // showing: on a wide layout the same control collapses the sidebar to a rail
+    // and writes that choice down, exactly as it always did.
+    const drawerOpen = props.drawerOpen === true;
+    const closeDrawer = () => {
+      if (drawerOpen) props.onDrawerClose?.();
+    };
+    if (collapsed && !drawerOpen) {
       return (
         <nav
           className="dsh-qa-sidebar dsh-qa-sidebar--collapsed"
@@ -351,7 +372,10 @@ export const QaSidebar = memo(
             className="dsh-qa-sidebar__item-main"
             data-testid="qa-surface-sidebar-item-open"
             aria-current={row.active ? "true" : undefined}
-            onClick={() => props.onSwitch(row.id)}
+            onClick={() => {
+              props.onSwitch(row.id);
+              closeDrawer();
+            }}
           >
             <span
               className="dsh-qa-sidebar__item-title"
@@ -418,7 +442,16 @@ export const QaSidebar = memo(
         ref={nav}
         className="dsh-qa-sidebar"
         data-testid="qa-surface-sidebar"
+        data-qa-drawer={drawerOpen ? "open" : undefined}
         aria-label="История чатов"
+        // The drawer stands over the header, so the control that opened it is
+        // behind it: the key the reader gives instead is the one every other
+        // overlay of this surface already answers.
+        onKeyDown={(event) => {
+          if (!drawerOpen || event.key !== "Escape") return;
+          event.stopPropagation();
+          closeDrawer();
+        }}
       >
         <div
           className="dsh-qa-sidebar__head"
@@ -446,9 +479,19 @@ export const QaSidebar = memo(
             type="button"
             className="dsh-qa-sidebar__collapse"
             data-testid="qa-surface-sidebar-collapse"
-            aria-label="Свернуть историю чатов"
-            title="Свернуть историю чатов"
-            onClick={toggleCollapsed}
+            aria-label={
+              drawerOpen ? "Закрыть историю чатов" : "Свернуть историю чатов"
+            }
+            title={
+              drawerOpen ? "Закрыть историю чатов" : "Свернуть историю чатов"
+            }
+            onClick={() => {
+              if (drawerOpen) {
+                closeDrawer();
+                return;
+              }
+              toggleCollapsed();
+            }}
           >
             <ChevronIcon />
           </button>
@@ -463,7 +506,10 @@ export const QaSidebar = memo(
               className="dsh-qa-sidebar__new"
               data-testid="qa-surface-sidebar-new"
               disabled={props.busy}
-              onClick={props.onNewChat}
+              onClick={() => {
+                props.onNewChat();
+                closeDrawer();
+              }}
             >
               <PlusIcon />
               Новый чат
@@ -650,6 +696,8 @@ export const QaSidebar = memo(
     prev.stateKey === next.stateKey &&
     prev.showNewChat === next.showNewChat &&
     prev.busy === next.busy &&
+    prev.drawerOpen === next.drawerOpen &&
+    prev.onDrawerClose === next.onDrawerClose &&
     prev.groupByOwner === next.groupByOwner &&
     prev.onSwitch === next.onSwitch &&
     prev.onNewChat === next.onNewChat &&

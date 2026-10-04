@@ -170,6 +170,9 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-sidebar__account-exit:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-qa-sidebar__account-exit:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:-2px}
 .dsh-qa-sidebar__account-exit svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
+/* The phone drawer's dismiss layer: painted by the narrow layout alone, and only
+   while the drawer is open (QaSurface mounts nothing else). */
+.dsh-qa-sidebar__scrim{display:none}
 .dsh-qa-auth{align-items:center;justify-content:center;padding:24px}
 .dsh-qa-auth__card{display:flex;flex-direction:column;gap:14px;width:min(360px,100%);padding:28px;border:1px solid var(--dsw-alias-border-l2);border-radius:14px;background:var(--dsw-alias-bg-layer-2);box-shadow:0 18px 48px var(--dsh-qa-overlay)}
 .dsh-qa-auth__brand{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
@@ -398,6 +401,15 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-header__settings:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-qa-header__settings svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .dsh-qa-header__settings:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:2px}
+/* The opener of the chat history at the phone widths, where the sheet switches
+   the sidebar off: it stands in the header because a control inside a switched-off
+   subtree is no control, and it is sized for a thumb rather than a cursor. The
+   wide layout hides it — there the sidebar is already on screen. */
+.dsh-qa-header__history{display:none;align-items:center;justify-content:center;flex:none;width:44px;height:44px;padding:0;border:0;border-radius:10px;background:0 0;color:var(--dsw-alias-label-secondary);cursor:pointer}
+.dsh-qa-header__history:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dsh-qa-header__history[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dsh-qa-header__history:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:2px}
+.dsh-qa-header__history svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.25;stroke-linecap:round;stroke-linejoin:round}
 .dsh-qa-role-selector select,.dsh-qa-header__admin{height:30px;padding:4px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:20px;cursor:pointer}
 .dsh-qa-role-selector select:hover,.dsh-qa-header__admin:hover{border-color:var(--dsw-alias-label-dimmed);color:var(--dsw-alias-label-primary)}
 .dsh-qa-role-selector select:focus-visible,.dsh-qa-header__admin:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:1px}
@@ -971,7 +983,7 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
    row — title, role, palette, action cluster — is wider than the viewport with
    every child refusing to shrink, so it wraps instead of pushing «Настройки»
    past the clipped edge. */
-@media (max-width:600px){.dsh-qa-sidebar{display:none}.dsh-qa-panel,.dsh-qa-agents{position:absolute;inset:0;z-index:6;width:100%;border-left:0}.dsh-qa-header__inner{padding-left:16px;padding-right:16px}.dsh-qa-header h1{max-width:48vw}.dsh-qa-header__title-row{flex-wrap:wrap;row-gap:6px}.dsh-qa-width-handle{display:none}.dsh-qa-transcript__inner{--dsh-qa-bleed:0px;max-width:100%;padding:16px 16px 28px}.dsh-qa-footer__inner{max-width:100%}.dsh-qa-message{margin-bottom:16px}.dsh-qa-message--user .dsh-qa-message__content{max-width:88%;font-size:15px}.dsh-qa-message__content{font-size:14px}.dsh-qa-footer{padding-left:10px;padding-right:10px;padding-bottom:max(8px,env(safe-area-inset-bottom))}.dsh-qa-composer{min-height:84px;padding-top:12px}.dsh-qa-composer__hint{font-size:0}.dsh-qa-composer__hint::after{content:"Enter: отправить";font-size:11px}}
+@media (max-width:600px){.dsh-qa-sidebar{display:none}.dsh-qa-sidebar[data-qa-drawer="open"]{display:flex;position:fixed;inset:0 auto 0 0;z-index:24;width:min(320px,86vw);max-width:100%;border-right:1px solid var(--dsw-alias-border-l2);box-shadow:0 18px 44px rgba(0,0,0,.28);padding-bottom:env(safe-area-inset-bottom)}.dsh-qa-sidebar__scrim{display:block;position:fixed;inset:0;z-index:22;background:var(--dsh-qa-overlay)}.dsh-qa-sidebar__resize{display:none}.dsh-qa-sidebar__collapse,.dsh-qa-sidebar__expand{width:44px;height:44px}.dsh-qa-sidebar__new,.dsh-qa-sidebar__item-main{min-height:44px}.dsh-qa-header__history{display:inline-flex}.dsh-qa-panel,.dsh-qa-agents{position:absolute;inset:0;z-index:6;width:100%;border-left:0}.dsh-qa-header__inner{padding-left:16px;padding-right:16px}.dsh-qa-header h1{max-width:48vw}.dsh-qa-header__title-row{flex-wrap:wrap;row-gap:6px}.dsh-qa-width-handle{display:none}.dsh-qa-transcript__inner{--dsh-qa-bleed:0px;max-width:100%;padding:16px 16px 28px}.dsh-qa-footer__inner{max-width:100%}.dsh-qa-message{margin-bottom:16px}.dsh-qa-message--user .dsh-qa-message__content{max-width:88%;font-size:15px}.dsh-qa-message__content{font-size:14px}.dsh-qa-footer{padding-left:10px;padding-right:10px;padding-bottom:max(8px,env(safe-area-inset-bottom))}.dsh-qa-composer{min-height:84px;padding-top:12px}.dsh-qa-composer__hint{font-size:0}.dsh-qa-composer__hint::after{content:"Enter: отправить";font-size:11px}}
 @media (max-height:480px) and (orientation:landscape){.dsh-qa-header__inner{padding-top:6px}.dsh-qa-header__tabs{display:none}.dsh-qa-transcript__inner{padding-top:12px}.dsh-qa-footer{padding-top:12px}.dsh-qa-composer{min-height:72px;gap:4px;padding-top:8px}}
 @media (prefers-reduced-motion:reduce){.dsh-qa-message__cursor,.dsh-qa-message__pending-spinner,.dsh-qa-work__spinner,.dsh-qa-work-item__spinner,.dsh-qa-command__spinner{animation:none}.dsh-qa-work__chevron{transition:none}.dsh-qa-rail__frame,.dsh-qa-rail__pos,.dsh-qa-rail__mark::before,.dsh-qa-rail__mark--busy::before,.dsh-qa-rail__preview{transition:none;animation:none}}
 ${QA_ADMIN_CONSOLE_STYLES}

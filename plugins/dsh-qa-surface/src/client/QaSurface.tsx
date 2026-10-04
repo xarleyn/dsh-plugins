@@ -728,6 +728,16 @@ export function QaSurface(props: QaSurfaceProps) {
     void controller?.startDraft();
   }, [controller]);
 
+  // The phone layout's history drawer. Its state is the surface's, not the
+  // sidebar's, because the control that opens it stands in the header: the narrow
+  // sheet switches the whole sidebar subtree off, and an opener inside it is no
+  // opener at all. The sidebar keeps its own collapsed rail, which is a
+  // wide-layout choice and a different thing — a phone that opens the drawer gets
+  // the list whatever that rail remembers.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const toggleHistory = useCallback(() => setHistoryOpen((open) => !open), []);
+  const closeHistory = useCallback(() => setHistoryOpen(false), []);
+
   // The audit dialog's target, not its state: opening it is a view choice, and
   // closing it must not disturb the chat underneath.
   const [auditTarget, setAuditTarget] = useState<string | null>(null);
@@ -1407,6 +1417,18 @@ export function QaSurface(props: QaSurfaceProps) {
             disabled={state.phase === "creating"}
           />
         ) : null}
+        {showSidebar && historyOpen ? (
+          // The tap-outside half of the drawer, painted beside it rather than
+          // inside it: the sheet switches the sidebar subtree off when the drawer
+          // is closed, and a dismiss layer under that switch could not be clicked
+          // in the one state where it is on screen.
+          <div
+            className="dsh-qa-sidebar__scrim"
+            data-testid="qa-surface-sidebar-scrim"
+            aria-hidden="true"
+            onClick={closeHistory}
+          />
+        ) : null}
         {showSidebar ? (
           <QaSidebar
             rows={chatRows}
@@ -1416,6 +1438,8 @@ export function QaSurface(props: QaSurfaceProps) {
             stateKey={stateKey}
             showNewChat={allowNewChat}
             busy={state.phase === "creating"}
+            drawerOpen={historyOpen}
+            onDrawerClose={closeHistory}
             onSwitch={handleSwitch}
             onNewChat={handleNewChat}
             onDelete={handleDelete}
@@ -1521,6 +1545,13 @@ export function QaSurface(props: QaSurfaceProps) {
               filesOpen={rail.railOpen && rail.railTab === "files"}
               onOpenFiles={() => rail.openTab("files")}
               panelLauncher={<QaPanelLauncher panels={props.panels} />}
+              // The narrow layout switches the sidebar off, so the history is
+              // opened from here — and only where there is a sidebar to open.
+              history={
+                showSidebar
+                  ? { open: historyOpen, onToggle: toggleHistory }
+                  : undefined
+              }
               // The sidebar carries this entry next to the account name, so
               // the header takes it over exactly when there is no sidebar.
               settings={showSidebar ? undefined : settingsEntry}

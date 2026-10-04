@@ -1,8 +1,8 @@
 /**
  * The surface's header chrome: brand row, the derived conversation title, the
- * agents/sources/files controls and the reset action. Plain (non-memoized)
- * rendering — the badge counts move with the session state anyway, so
- * reference guards would never pay off here.
+ * phone opener of the chat history, the agents/sources/files controls and the
+ * reset action. Plain (non-memoized) rendering — the badge counts move with the
+ * session state anyway, so reference guards would never pay off here.
  */
 import type { ReactNode } from "react";
 
@@ -89,6 +89,18 @@ export interface QaHeaderProps {
     readonly label: string;
     readonly onOpen: () => void;
   };
+  /**
+   * The phone layout's way into the chat history. Below 600px the sheet switches
+   * the sidebar subtree off, and the only control that opened it stood inside
+   * that subtree — so the opener has to live here, outside it, and it is offered
+   * only where a sidebar exists to open (`config.ui.showSessionList`). The sheet
+   * shows the button at the phone widths alone: on a wide layout the sidebar is
+   * already on screen and carries its own collapse control.
+   */
+  readonly history?: {
+    readonly open: boolean;
+    readonly onToggle: () => void;
+  };
   readonly panelLauncher?: ReactNode;
   readonly showReset: boolean;
   readonly resetDisabled: boolean;
@@ -116,6 +128,7 @@ export function QaHeader({
   filesOpen,
   onOpenFiles,
   settings,
+  history,
   panelLauncher,
   showReset,
   resetDisabled,
@@ -131,6 +144,21 @@ export function QaHeader({
           className="dsh-qa-header__title-row"
           data-testid="qa-surface-header-title-row"
         >
+          {history === undefined ? null : (
+            <button
+              type="button"
+              className="dsh-qa-header__history"
+              data-testid="qa-surface-header-history"
+              aria-label="История чатов"
+              title="История чатов"
+              aria-expanded={history.open}
+              onClick={history.onToggle}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M5.75 4h8M5.75 8h8M5.75 12h8M2.75 4h.01M2.75 8h.01M2.75 12h.01" />
+              </svg>
+            </button>
+          )}
           {logoUrl === null ? null : (
             <img
               className="dsh-qa-header__logo"
