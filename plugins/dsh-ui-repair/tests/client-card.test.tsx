@@ -70,6 +70,44 @@ const STALE_SUGGEST: Snapshot = Object.freeze({
   writable: false,
 });
 
+/*
+ * `apply()` re-answers its own `scanOnStartup/observeMutations/observeResize`
+ * options from the volatile section (`index.ts:49`), so a namespace that reports
+ * only `enabled` and `mode` turns them back on from the shipped defaults
+ * (`shared/config.ts:91`). A live MutationObserver then queues a targeted rescan
+ * for every mutation the fixture itself makes — installing the panel, React
+ * mounting its container, removing the panel — and a rescan of an emptied
+ * document replaces the runtime's report, so the row this card is meant to keep
+ * disappears whenever the pending animation frame lands before the assertion.
+ * Answering the flags off is what the activation already declares; the observer
+ * wiring is `runtime-lifecycle.test.ts`'s subject.
+ */
+const QUIET_SCAN: UIRepairPluginConfig = Object.freeze({
+  scanOnStartup: false,
+  scanAfterMutation: false,
+  scanAfterResize: false,
+});
+
+/**
+ * Drain the async work the runtime can schedule before the DOM is read. jsdom
+ * runs `requestAnimationFrame` on a timer, so an `await Promise.resolve()`
+ * settles only microtasks and leaves a queued frame to land whenever the runner
+ * gets to it — which is how a loaded CI box turned a live report into none.
+ */
+async function settle(): Promise<void> {
+  await act(async () => {
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+    await new Promise<void>((resolve) => {
+      setTimeout(resolve, 0);
+    });
+    await new Promise<void>((resolve) => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+}
+
 /**
  * The same namespace read in another state: a store must hand back the same
  * snapshot object until it changes, or React treats every read as an update, so
@@ -102,7 +140,7 @@ function summaryLine(props: {
 function mountEntry(
   snapshot: Snapshot = {
     status: "ready",
-    value: { enabled: true, mode: "observe" },
+    value: { enabled: true, mode: "observe", ...QUIET_SCAN },
     writable: true,
   },
 ): Mounted {
@@ -167,6 +205,8 @@ function mountEntry(
  * runtime's last report, which is the half of the page the settings cannot reach.
  * `data-dsh-ui-repair-scroll` is what lifts the confidence over the repairable
  * threshold, so the issue carries a suggestion and Apply has a reason to exist.
+ * The scan stays the only one the runtime runs, because {@link QUIET_SCAN} leaves
+ * no observer to rescan the emptied document behind it.
  */
 async function scanClippedPanel(runtime: UIRepairRuntime): Promise<void> {
   document.body.innerHTML = `
@@ -430,15 +470,13 @@ describe("plugins.row.config seat", () => {
   it("offers the manual repair actions under the mode the namespace answered", async () => {
     mounted = mountEntry({
       status: "ready",
-      value: { enabled: true, mode: "suggest" },
+      value: { enabled: true, mode: "suggest", ...QUIET_SCAN },
       writable: true,
     });
     const { Entry, face, runtime } = mounted;
     await scanClippedPanel(runtime);
     const { container } = pageView({ Entry, face });
-    await act(async () => {
-      await Promise.resolve();
-    });
+    await settle();
 
     // The pair is not dead markup: with a saved `suggest` mode it is what the
     // row offers, and `runtime.apply` refuses every other mode.
@@ -456,7 +494,7 @@ describe("plugins.row.config seat", () => {
   it("withholds the mode-gated actions from a namespace that never answered the mode", async () => {
     mounted = mountEntry({
       status: "ready",
-      value: { enabled: true, mode: "suggest" },
+      value: { enabled: true, mode: "suggest", ...QUIET_SCAN },
       writable: true,
     });
     const { Entry, face, runtime } = mounted;
@@ -464,9 +502,7 @@ describe("plugins.row.config seat", () => {
 
     for (const state of [LOADING, UNAVAILABLE, STALE_SUGGEST]) {
       const { container, unmount } = pageView({ Entry, face }, state);
-      await act(async () => {
-        await Promise.resolve();
-      });
+      await settle();
 
       // The report belongs to the runtime, so the scan panel keeps it...
       expect(
