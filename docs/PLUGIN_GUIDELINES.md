@@ -507,9 +507,14 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   `lib/types/**/*.d.ts`. Поля `types` и `exports` обязаны указывать на реально
   существующий layout, оба варианта проверяются packed smoke.
 - Plain Node packages наследуют `@yadsh/dsh-config/tsconfig/node`; packages с
-  browser/client entrypoint наследуют `@yadsh/dsh-config/tsconfig/browser` или
+  browser/client entrypoint наследуют `@yadsh/dsh-config/tsconfig/client` или
   сохраняют более строгий явный mixed config. Генератор выбирает preset по
-  флагу `client`.
+  флагу `client`. По subpath наследовать можно только те пресеты, которые не
+  выходят за границы пакета: `tsconfig/base` и `tsconfig/browser` в `exports`
+  не объявлены — резолвер Vite теряет в таком наследовании корневой
+  `tsconfig.base.json` и вся пачка тестов падает ещё до первого assert (#687),
+  а `tsc` этого не видит. Нужны опции из `base` — берут их путём внутри
+  worktree: `"extends": "../config/tsconfig/base.json"`.
 - Относительные импорты внутри пакета — **всегда с расширением `.js`**
   (`verbatimModuleSyntax` + ESM).
 - `lib/` не коммитится, кроме случаев, явно оговорённых в `.gitignore`
