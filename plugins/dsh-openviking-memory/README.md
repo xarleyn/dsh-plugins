@@ -54,8 +54,8 @@ recall HTTP request (not "the request is made and the result dropped").
   of silently clamping it. Out-of-range defaults still resolve to the upstream
   behaviour.
 - **A settings card in the web UI.** The plugin ships a browser bundle, so its
-  configuration is editable from **Settings → Plugins** without touching a
-  patch file. See [Settings card](#settings-card).
+  configuration is editable from the **Plugins** page — on this plugin's own row —
+  without touching a patch file. See [Settings card](#settings-card).
 - **Memory per QA account.** On a deployment with QA Surface mounted, each
   account gets its own OpenViking space, and its QA settings dialog shows what
   that space holds about it — read-only, because the switches that decide
@@ -210,14 +210,21 @@ config:
   qaUserScoping: false
 ```
 
-> **Where the settings live.** The configuration card is a tab of the Host's
-> Plugins settings section, and it edits the settings document of the profile
-> that mounts this plugin. A browser reaching the deployment over the network
-> gets a process-local copy of that document instead — `memory` mode, which never
-> writes the Host's file — so the operator configures on the machine that serves
-> the installation, and a QA overlay does not render the native settings tree at
-> all. That card stays the operator's surface: it is where the memory is
-> configured; the QA page above only reports what the memory holds.
+> **Where the settings live.** The configuration card opens from this plugin's row
+> on the Host's **Plugins** page, and it edits the settings document of the profile
+> that mounts this plugin. A browser reaching the deployment over the network is
+> served that document in `memory` mode — the Host's own contract calls it
+> process-local and never writable — and while its form reports that state the card
+> says so in one sentence instead of drawing controls, so the operator configures on
+> the machine that serves the
+> installation. That is how the tab this card left behaved too: the provider that
+> decides it is shared, and §6.17 of
+> [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-openviking-memory/SPEC.md)
+> carries the citations, plus the one thing a live stand still owes — whether the
+> deployed page serves that row to a non-loopback connection at all. So the card is
+> the operator's surface in access as well as in effect: the QA page above is the
+> face a network browser is meant to use, and it only reports what the memory
+> holds.
 >
 > There is no namespace for the card to register. Since 0.1.7 a field is an
 > editable form field exactly when its schema node is volatile, and the profile
@@ -289,8 +296,8 @@ key is absent, and it matches upstream.
 
 ## Settings card
 
-The package ships a browser bundle, so the plugin gets a card under
-**Settings → Plugins** in the DSH web UI. It edits the plugin's
+The package ships a browser bundle, so the plugin gets a card on the **Plugins**
+page, opened from its own row in the DSH web UI. It edits the plugin's
 `dsh-openviking-memory` settings namespace directly — no patch file required:
 
 - **Sections** follow the reference tables below: automatic context
@@ -307,20 +314,23 @@ The package ships a browser bundle, so the plugin gets a card under
   because they are a child process whose transport is fixed when it starts.
 - **Overrides are visible.** A field the profile's user layer carries is
   marked, and a reset action clears every override in one step.
-- **The badge is configuration, not status.** It shows `Auto-inject` or
-  `Manual recall` from the master switch. Runtime diagnostics live in the
-  plugin log under `<$DSH_HOME>/logs/dsh-openviking-memory/`.
+- **The card draws no chrome of its own.** The Plugins page draws the row's card —
+  its surface, heading, description line and expand control — and this bundle
+  mounts the body inside it. The master switch therefore reads from its own
+  `autoInject` toggle rather than from a header badge. Runtime diagnostics live in
+  the plugin log under `<$DSH_HOME>/logs/dsh-openviking-memory/`; the card shows
+  the configuration and nothing else, because it has no Remote face.
 - **The card edits the Host's document from loopback.** The settings document a
   card writes is the profile the Host serves, and a page that reaches the
-  deployment over the network is handed a process-local `memory` copy instead —
-  one nothing outside that browser tab reads. So the operator sets these switches
-  on the machine that serves the installation, including a stand through its
-  loopback port; a browser reaching the same deployment over the network gets the
-  read-only account page described in §Per-account memory, and a QA overlay does
-  not mount the native settings tree at all. That split is deliberate: the
-  switches below change one
-  shared deployment (endpoint, credentials, which memory is injected), so they
-  belong to the operator, not to whoever opens a chat.
+  deployment over the network is served it in `memory` mode — process-local, and
+  never writable, in the Host contract's own words — which this card reports as one
+  sentence naming the state, not as a disabled form and not as an empty section.
+  So the operator sets these switches on
+  the machine that serves the installation, including a stand through its loopback
+  port; the surface a network browser is meant to use is the read-only account page
+  described in §Per-account memory. The split is deliberate: the switches below
+  change one shared deployment (endpoint, credentials, which memory is injected),
+  so they belong to the operator, not to whoever opens a chat.
 
 ### Injection
 

@@ -1,19 +1,10 @@
 /**
  * Pure presentation helpers of the OpenViking Memory card.
  *
- * Kept out of the components so the badge, override, and filter wording is
+ * Kept out of the components so the override and filter wording is
  * unit-testable without a DOM, and so every place that renders the same value
  * renders it identically. Type-only imports stay erased in the browser bundle.
  */
-
-/**
- * Header badge wording. The master switch is on unless the user explicitly
- * turned it off, which mirrors `resolveInjectionPlan`'s reading of an absent
- * field.
- */
-export function badgeText(autoInject: boolean | undefined): string {
-  return autoInject === false ? "Manual recall" : "Auto-inject";
-}
 
 /**
  * Whether the user layer carries an explicit value for a top-level key. A

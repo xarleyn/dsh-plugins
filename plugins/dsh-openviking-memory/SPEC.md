@@ -75,21 +75,77 @@ Two mechanisms worth stating:
 
 ### 2.1 Settings namespace and the Web GUI card
 
-The settings namespace is `dsh-openviking-memory` — the Cordis plugin id. The
-package ships a browser client bundle that registers as
-`@yadsh/dsh-openviking-memory` and mounts the card as a tab of the **Settings →
-Plugins** section (`settings.plugins.tab`); the card keeps the canonical
-`dsh-plugin-card` shell, and because that slot hands a registrant an empty
-column, the card owns the `<ul>` its `<li>` root sits in.
+The settings namespace is `dsh-openviking-memory` — the Cordis plugin id, which on
+0.1.7 is also the profile entry the Host serves this plugin's configuration
+under. The package ships a browser client bundle that registers as
+`@yadsh/dsh-openviking-memory` and mounts the card as the configuration of its own
+row on the **Plugins** page — the keyed `plugins.row.config` seat
+`@yadsh/dsh-openviking-memory#dsh-openviking-memory`, the package name joined to
+the row id `cordis.patch.yml` declares. The card renders the body and nothing around
+it: the page draws the row's card — its surface, its heading, the `<code>` lines of
+the row id and the module specifier, and the expand control — before this entry is
+mounted, so a shell of ours would be a second frame inside the first. That is the
+owner's decision of 01.10 in #646, landed as the contract in #684; the plugin-owned
+`dsh-plugin-card` shell with its chevron and open state stays only for
+`settings.section` and `settings.plugins.tab`.
+
+The page seats the same entry twice. The shipped contract of `plugins.row.config`
+says so in prose — "An absent description falls back to the entry's
+`view: 'summary'`" (`lib/types/client/slot-contract.d.ts:105-116` of
+`@deepseek-ai/dsh-client-ui-plugin-manager` `0.1.7-rc.2`) — and `RowDetail` is the
+page that does it: the row's description line is `description ??
+renderSlot('plugins.row.config', { view: 'summary' }, { entryKey: key })`
+(`lib/client.js:1841`), while the configuration body renders the same entry with
+`{ view: 'page', form }` (`:1852`). §7.1 carries the commands that print both sites
+from the package this plugin installs. `AGENTS.md` states the rule the entry obeys:
+answer the summary with the sentence and mount the card only for `page`, because the
+fallback lands inside the page's own `<p>` — a card there would draw a page within a
+line of text.
+
+Whether the page asks *this* row for the line is the Host's inventory, and this
+checkout cannot read it. `description` comes from `rowText`, which folds in
+`row.meta?.description` and nothing else (`lib/client.js:211-215`), and the reader
+that fills `row.meta` lives in `@deepseek-ai/dsh-package-manifest` — a package none
+of this repository's plugins installs. What this bundle controls is the patch: it
+declares its row as `id` + `name`, no description, and `tests/bundle.test.ts` holds
+it there, so closing this branch would take a row description, and that is the edit
+the test turns red on. The live pass §7 names is what sees the line rendered. What
+*this* checkout can prove is the other half — that the answer ships — and
+`scripts/verify-package.mjs` holds it: the built bundle has to carry both the
+`view === "summary"` branch and the sentence it returns.
+
+With the shell gone, the page prints each of its lines once. The description sentence
+comes from this entry's `summary` answer and appears nowhere else — the card has no
+header of its own to repeat it in — and the heading is `rowText`'s title, which falls
+back to the row's module specifier `@yadsh/dsh-openviking-memory` where the inventory
+hands no `title` (`lib/client.js:1826-1828`, `:213`), followed by the two `<code>`
+lines of the row id and the module specifier (`:1831-1838`). What the row title reads
+as on a live stand — the module specifier rather than the plugin's own wording — is
+the page's inventory, not this bundle's, and §7 states what the browser pass owes.
+The seat moved and the namespace did not, so a value saved before the move is read
+back after it.
 
 Since the 0.1.7 settings rewrite nothing registers a namespace: a field is a
 settings-form field exactly when its schema node is `.volatile()`, every knob of
 `static Config` carries it, and the namespace is the profile entry. The card
 reaches that namespace through `ctx.configForms.get(namespace)`, and the same
 references are the plugin's configuration source — the Host keeps them current
-as the document changes. Because a volatile namespace would otherwise also get a
-generated form page, the plugin registers `configure({ auto: false })` on its
-entry: the card is the one editor of that document.
+as the document changes. The row seat hands its registrant a `form` of its own: the
+`ConfigPageForm` of `{ state, mutate }` (`lib/types/client/slot-contract.d.ts:150-155`),
+which the page builds by resolving `configForms.get(rowId)` down to those two
+members (`lib/client.js:2690` over the same service at `:538`) and spreads over the
+injected face. So the full `ConfigForm` enters under another name — `settingsForm` —
+because that is the half the page's prop cannot carry: a subscription the card can
+follow, where `state` is one snapshot refreshed when the page owner renders. Writes
+are the other half, and the card does take the seat's form for them: the page's
+`mutate` is this very form's `mutate`, and `set`/`unset` are one-op `mutate`s
+(`@deepseek-ai/dsh-client-ui-settings` `lib/client.js:1152-1170`), so a field change
+goes through `form.mutate([{ op: 'set' | 'unset', … }])` when the seat supplies a
+form and through the face's form when it supplies none — `form` is `undefined` on a
+Host that serves no page form for the row. Because a volatile
+namespace would otherwise also get a generated form page, the plugin registers
+`configure({ auto: false })` on its entry (`src/index.ts:339`): the card is the one
+editor of that document.
 `refreshConfig()` re-reads the references at the start of an
 operation, and when a value actually moved `reapplySettings()` re-resolves the
 configuration and hands it to the running runtime. Everything the plugin decides
@@ -103,8 +159,10 @@ The card is an editor over that namespace, nothing more:
   injection knobs), connection, peer identity, recall, capture and commit,
   multi-user memory (`qaUserScoping`, §2.2), and an advanced group
   (`skipSubagentSessions`, the two timeouts, the deprecated `captureMode`).
-- Writes are immediate scalar `set`s; a cleared field becomes an `unset`, which
-  drops the user-layer override and re-inherits the composition layer. Every
+- Writes are immediate and one field at a time — one `set` op, or one `unset` op for
+  a cleared field, which drops the user-layer override and re-inherits the
+  composition layer — handed to the seat's `form.mutate` wherever the page hands a
+  form. Every
   field shows an **override** marker while the user layer carries a value, and
   a reset action clears all overrides in one mutation.
 - An emptied connection field is an `unset`, not a written empty string — so a
@@ -114,9 +172,9 @@ The card is an editor over that namespace, nothing more:
   `recallQueryExpansion`, `recallMaxTokens`, `recallCompressMaxBullets`) render
   their upstream fallback as a placeholder and write only when the user names a
   value, preserving the "configured" vs "defaulted" distinction of §2.
-- The card is config-only: it has no Remote face, and the header badge
-  projects the master switch (`Auto-inject` / `Manual recall`), not live
-  runtime state.
+- The card is config-only: it has no Remote face and projects no runtime state.
+  The master switch reads from its own toggle in the first section rather than
+  from a header badge, because the row's header is the page's to draw.
 
 ### 2.2 Per-account scoping and the account-scoped page
 
@@ -362,15 +420,51 @@ official plugin; any change to the MCP tool contracts.
     the plugin's own requests for that session keep using the account space.
 17. **Card on the operator face.** On the machine that serves the deployment,
     open its loopback URL — with the QA kiosk overlay off, that port serves the
-    native UI — and look under **Settings → Plugins → Plugin configuration**.
-    → The OpenViking Memory card renders, including its multi-user section. A
-    browser reaching the same deployment over the network gets no card at all:
-    the Host serves its settings directory to a loopback page only, and the QA
-    overlay does not mount the native settings tree — which is why the switches
-    are the operator's and the account face stays read-only (§2.2). Recording
-    the card as "missing on a stand" is therefore a statement about which face
-    was opened, not about the registration: the registration is what §2.1
-    covers, and it is asserted by a test.
+    native UI — and open **Plugins → this plugin's row**.
+    → The OpenViking Memory card renders as that row's configuration, including its
+    multi-user section. The seat is the keyed `plugins.row.config` entry of §2.1,
+    not a tab of *Settings → Plugins*.
+    **What a browser over the network gets:** nothing to click, and for a reason the
+    move did not change. One sentence of the Host's published contract decides it:
+    `ConfigFormSnapshot.status` is `unavailable` when "the namespace is not exposed
+    to this client or the connection keeps preferences process-local (memory mode)",
+    and `writable` is false because "memory mode never" accepts writes
+    (`@deepseek-ai/dsh-client-ui-settings` `0.1.7-rc.2`,
+    `lib/types/client/config-form-types.d.ts:7-12` and `:28-31`). The provider picks
+    the mode from the face — `isLoopback ? 'host' : 'memory'` (`lib/client.js:1509`)
+    — and a `memory` controller opens at `unavailable`, never subscribes to the
+    describe mirror, and turns every queued write into a refusal at the door
+    (`:1118`, `:1126`, `:1213`). This card answers that state with one sentence
+    instead of a form (`src/client/card.tsx:189-197`, `openviking-card-unavailable`),
+    so on that face the row's configuration section is that line of explanation
+    while the page's description line above it still
+    prints — whether that line comes from the row's metadata or from this entry's
+    `summary` answer, which needs no form. It behaved the same way on the tab
+    this card left, because the provider is shared: `docs/DSH-0.1.7-MIGRATION.md`
+    records memory mode as byte-identical across `rc.1..rc.2`, the Host's own reason
+    being that "a non-loopback browser already got read-only settings at 0.1.5".
+    `AGENTS.md` has since been rewritten (#660) to seat configuration cards on the
+    Plugins panel and to tell a card seated there to disable its write controls off
+    `state.writable` instead of hiding itself — which this card cannot do on that
+    face, because memory mode is reported as `unavailable` rather than as
+    `ready`-and-not-writable. "Render no card" is what the rulebook answers with for
+    a card that owns its shell; a card seated inside the page's frame that returns
+    nothing leaves an opened row with no section and no reason, so this one owes a
+    sentence — the same choice the pilot row card of #646 and #653 makes. So
+    the earlier sentence of this item — "a browser reaching the same deployment over
+    the network gets no card at all: the Host serves its settings directory to a
+    loopback page only" — named the mechanism wrongly, and the visible half of its
+    conclusion has now changed with the shell: what that face shows is the row's own
+    section saying there is nothing to read or write yet, not an empty column. What stays **[unverified]** is one layer
+    further out: whether the deployed Host serves the Plugins page's inventory
+    Remotes (`pluginManager` / `pluginInventory`, read at `client.js:646,781`) to a
+    non-loopback connection at all — no client bundle answers it, so the browser pass
+    owes two statements, not one: the card on the loopback face, and what the network
+    face shows. Either way the operator configures on the machine that serves the
+    installation, which is why the switches are the operator's and the account face
+    stays read-only (§2.2). Recording the card as "missing on a stand" is therefore a
+    statement about which face was opened, not about the registration: the
+    registration is what §2.1 covers, and it is asserted by a test.
 
 ## 7. Implementation status
 
@@ -381,9 +475,68 @@ official plugin; any change to the MCP tool contracts.
 | Injection controls (`autoInject`, `injectStartupProfile`, `injectStepProfile`, `autoRecall`) with zero-work semantics | Implemented |
 | Structured file logging | Implemented |
 | Injection matrix / manual-only / capture / config / guard / runtime / queue / proxy tests | Implemented |
-| Settings card in the Web GUI | Implemented (the namespace is registered by `src/settings.ts`; a card without that registration renders nowhere) |
+| Settings card in the Web GUI | Implemented (it is the configuration of this bundle's own row on the Plugins page, §2.1). Nothing registers a namespace since 0.1.7: the Host serves `dsh-openviking-memory` because every node of `static Config` is `.volatile()` (`src/config.ts`), and the entry declines the page the Host would generate for it with `settings.configure({ auto: false })` (`src/index.ts:339`), so the card is the one editor. On a face where the client is not served the namespace, the row's section says so in one sentence instead of drawing controls (§6.17). |
 | Live re-apply of a committed settings change | Implemented (the bridged MCP tool surface follows on reload) |
 | Per-account scoping and the account-scoped QA settings page (read-only overview) | Implemented (unit + request-level tests; the `mcp__openviking__*` bridge keeps the deployment space by design, §2.2; no live multi-account run yet) |
 | Upstream-sync tooling | Deferred |
 | Live OpenViking E2E | Deferred |
-| Visual/browser verification of the settings card on a rig | Deferred (jsdom tests + bundle gates pass; no live click-through yet) |
+| Visual/browser verification of the settings card on a rig | Deferred for the render half — the jsdom tests and the bundle gates pass, and no live click-through has happened yet. The stored-value half of the acceptance needs no browser and the diff settles it: the branch touches no host-side source and nothing under `src/shared/`, so the namespace an older build wrote under (`OPENVIKING_MEMORY_SETTINGS_NAMESPACE`, still `dsh-openviking-memory`) and the schema read back through it are the same ones, and only the render site moved. The browser pass did not run because the only rig reachable on this machine installs the released `0.4.0` bundle, which still registers the tab this card left; seating this build there is a spec-line swap plus a restart of a stand this lane did not bring up, and `qa-stand-run` §1 hands that step to the rig's owner rather than taking it. What that pass will see is named from the shipped page, not guessed, and §7.1 gives the commands that print it: above the card, an `<h3>` carrying `rowText`'s title (`lib/client.js:1826-1828`, with `:211-216` — `row.meta?.title ?? row.moduleName`, and this patch declares no `title`), so the heading is the module specifier `@yadsh/dsh-openviking-memory`, which is what the row is named by when the inventory hands nothing of its own and the bundle prints no title at all; then the `<p><code>` lines of the row id and the module specifier (`:1831-1838`, the first skipped only when the title already *is* the row id); then the description line (`:1839-1842`), which the page fills from the row's metadata and, where the inventory hands none, from this entry's `summary` answer — the only place this bundle's sentence is printed now, since the card draws no header of its own, and `tests/bundle.test.ts` is the guard that says when the row would gain a description of its own. Below that chrome the bundle mounts its body with no frame of ours: the page's surface (its `--dsw-radius-xl` 20px and `0.5px` settings stroke) is the card, our 12px shell, its chevron and its badge are gone, and the ring on each control this package draws comes from the Host's `--dsw-focus-ring-*` tokens rather than the hard-coded outline that `focus.css`'s `html[data-input-modality='pointer'] body :focus-visible:not(:read-write)` (0-3-2 against our 0-2-0) used to suppress. The owner settled that on 01.10 in #646 and it landed as the contract in #684; this package now obeys it. What the live pass still owes is the look of the result next to a first-party row — collapsed, expanded, and focused after a mouse click — which no jsdom test can report. |
+
+### 7.1 Reading the seat from the installed package
+
+Every claim §2.1 and §7 make about the host page is reproducible from the installed
+package, so a reader does not have to trust a line number quoted in a plugin's own
+SPEC. From this package's directory:
+
+```sh
+grep -n "renderSlot(" node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js
+grep -n "summary" node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/lib/types/client/slot-contract.d.ts
+sed -n '206,216p;1794,1800p;1818,1856p' node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js
+sed -n '534,540p;2686,2694p' node_modules/@deepseek-ai/dsh-client-ui-plugin-manager/lib/client.js
+grep -n "unavailable\|memory" node_modules/@deepseek-ai/dsh-client-ui-settings/lib/types/client/config-form-types.d.ts
+sed -n '1108,1132p;1140,1180p;1205,1216p;1505,1512p' node_modules/@deepseek-ai/dsh-client-ui-settings/lib/client.js
+```
+
+At `0.1.7-rc.2` the first command lists four configuration sites:
+`plugins.item` at `:1717` and `:1773` (`{ view: "summary" }`) and `:1781`
+(`page` with a `form`); `plugins.row.config` at `:1841` (`{ view: "summary" }`, the
+`??` fallback) and `:1852` (`{ view: "page", form }`); and
+`plugins.bundle.config` at `:1973` — `{ view: "page" }`, no `form`, which is §4.2's
+trap. The second command prints the contract's own sentences, including "An absent
+description falls back to the entry's `view: 'summary'`" for this slot. The third
+prints `rowText`, the key join and `RowDetail`. The fourth prints how the page builds
+the prop it spreads over the face: `configForm: (id) => this.ctx.configForms.get(id)`
+at `:538`, narrowed at `:2688-2694` to `formFor`, which answers `undefined` when the
+described namespaces do not carry the row id and otherwise hands
+`{ state: form.getSnapshot(), mutate }` — the same form object this entry resolves,
+seen through two members. The fifth prints the
+`ConfigFormSnapshot` prose §6.17 quotes — `unavailable` for a memory-mode
+connection, and `writable` false because "memory mode never" accepts writes — and
+the sixth its implementation: the persistence choice from the face at `:1509`, the
+controller that opens at `unavailable` and only subscribes when the mode is `host`
+(`:1118`, `:1126`), `enqueue` refusing every write in `memory` mode (`:1213`), and
+`set`/`unset` at `:1152-1170` — each one a `mutate` of a single op, which is why the
+card can hand the page's `mutate` a field change and keep the fence, the ordering and
+the recovery read of the method it replaces.
+
+This route was walked on 2026-10-01 against the `0.1.7-rc.2` install: the commands
+above printed every line quoted here. Nothing §2.1 or §7 claims about the host page
+rests on a source file of the harness repository; where a claim needs the Host's
+inventory rather than its bundle — whether the page asks this row for its one-liner,
+what `row.meta` carries — SPEC says so and leaves it to the live pass.
+
+The rulebook caught up while this card was in review: #660 rewrote
+`AGENTS.md` §"Plugin configuration card UI", `docs/PLUGIN_GUIDELINES.md` and the
+`create-plugin` skill's client reference to name the row seat of the Plugins panel
+as where a configuration card registers, to require the `summary` answer this entry
+gives, and to record the two traps of the seat — the owner prop `form` spread after the
+face, and the panel being open to a non-loopback browser. The card now registers where
+that rulebook sends it; `docs/DSH-0.1.7-MIGRATION.md` §4.2 carries the seat recipe the
+same wave wrote. The shell followed in the same series: the owner's decision of 01.10
+gave the panel's row the page's own chrome and left the plugin-owned shell to
+`settings.section` and `settings.plugins.tab`, it landed as the contract in #684 —
+`AGENTS.md` and `packages/plugin-scripts/verify-plugin-card-contract.mjs`, measured
+against the built bundle by the seat it registers on — and this package obeys it now:
+no shell, no chevron, no badge, the ring from the Host's tokens. Nothing about this
+card waits on the wave any more; what is left open is the live look of it, §7 item
+for the browser pass.
