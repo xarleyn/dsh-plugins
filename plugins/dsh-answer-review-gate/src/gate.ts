@@ -262,6 +262,7 @@ export class AnswerReviewGate {
       sessionId,
       turn,
       requestText: collected.requestText,
+      requestAttachments: collected.requestAttachments,
       candidateText: collected.text,
       signal,
     };

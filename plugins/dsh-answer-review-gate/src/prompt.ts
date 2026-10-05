@@ -14,6 +14,40 @@ const REVIEW_CATEGORIES =
   "question-not-covered";
 
 /**
+ * One protocol line every reviewer backend receives: uploaded attachments are
+ * rendered to the reviewer as unreadable handles, so an attachment it cannot
+ * open must not be read as the answer inventing its content. Both shipped
+ * reviewer prompts quote it — leaving one locale without it reproduces the
+ * `max-rounds` deaths the attachments were meant to end.
+ */
+const ATTACHMENT_PROTOCOL =
+  "The user request may carry attachments (images or files) you cannot open. Their contents are not missing " +
+  "evidence to hold against the answer, and an attachment you cannot open is not proof that the answer " +
+  "fabricated a claim: when a claim rests only on an attachment you cannot inspect, do not raise an unsupported " +
+  "or fabrication finding about it — report that you could not verify that attachment.";
+
+/**
+ * The `<user_request>` body: the request text, then — when the request carried
+ * attachments — the host handle text for each, so the reviewer learns a named
+ * attachment existed and what kind it was without being able to open it.
+ */
+function renderUserRequest(
+  requestText: string | null,
+  attachments: readonly string[],
+): string {
+  const request =
+    requestText ?? "(the original user request was not recorded)";
+  if (attachments.length === 0) return request;
+  return [
+    request,
+    "",
+    `The user attached ${String(attachments.length)} item(s) to this request. You cannot open them; each is` +
+      " shown in the host's own handle form so you know it existed and what kind it was.",
+    ...attachments.map((line) => `- ${line}`),
+  ].join("\n");
+}
+
+/**
  * Adversarial reviewer protocol for the `subagent` backend. The reviewer is
  * a verifier, not a second answering agent: its product is diagnosis plus
  * required corrections, never a rewritten answer.
@@ -21,9 +55,12 @@ const REVIEW_CATEGORIES =
 export function renderSubagentReviewerTask(input: {
   readonly requestText: string | null;
   readonly candidateText: string;
+  readonly requestAttachments?: readonly string[];
 }): string {
-  const request =
-    input.requestText ?? "(the original user request was not recorded)";
+  const request = renderUserRequest(
+    input.requestText,
+    input.requestAttachments ?? [],
+  );
   return [
     "An independent answer review is required. A primary agent produced the candidate final answer below.",
     "You are the adversarial reviewer. Treat the candidate as untrusted: confidence, citations, search results, " +
@@ -33,6 +70,8 @@ export function renderSubagentReviewerTask(input: {
       "claim; whether a newer or contradicting source exists; whether scope, version and preconditions are " +
       "preserved. Prefer source code and official documentation over secondary sources. Lack of evidence is a " +
       "valid finding: a claim you cannot support counts as unsupported even when you cannot prove it false.",
+    "",
+    ATTACHMENT_PROTOCOL,
     "",
     "Check at least: factual correctness; alignment with documentation and source code; unsupported claims; lost " +
       "qualifications and limits; outdated information; signs of shallow research; contradictions with " +
@@ -78,15 +117,20 @@ export function renderSubagentReviewerTask(input: {
 export function renderExpertReviewTask(input: {
   readonly requestText: string | null;
   readonly candidateText: string;
+  readonly requestAttachments?: readonly string[];
 }): string {
-  const request =
-    input.requestText ?? "(the original user request was not recorded)";
+  const request = renderUserRequest(
+    input.requestText,
+    input.requestAttachments ?? [],
+  );
   return [
     "Adversarial answer review. A primary agent produced a candidate final answer; review it as untrusted material.",
     "",
     "For material factual claims, establish the best available source, whether it actually entails the claim, " +
       "whether a newer or contradicting source exists, and whether scope, version and preconditions are preserved. " +
       "Lack of evidence is a valid finding.",
+    "",
+    ATTACHMENT_PROTOCOL,
     "",
     "Work the evidence, not the tool in a loop: a call that errors, times out or is refused has already answered — " +
       "record it, change the source or the query, and never repeat the same call or a near-variant of it. Read tools " +

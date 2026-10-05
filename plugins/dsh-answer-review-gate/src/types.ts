@@ -151,6 +151,13 @@ export interface ReviewInput {
   readonly turn: number;
   /** The latest user request text, when it could be located. */
   readonly requestText: string | null;
+  /**
+   * Handle text for every attachment (image/file) the user request carried,
+   * rendered with the host's `fileHandleText`/`textOnlyImageText` idiom. The
+   * reviewer sees that a named attachment existed and what kind it was, and
+   * that it cannot open it. Empty when the request carried no attachment.
+   */
+  readonly requestAttachments: readonly string[];
   /** The candidate final answer text. */
   readonly candidateText: string;
   /** Cancellation owned by the reviewed agent's turn. */
