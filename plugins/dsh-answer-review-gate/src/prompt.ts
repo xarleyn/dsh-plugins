@@ -35,8 +35,7 @@ function renderUserRequest(
   requestText: string | null,
   attachments: readonly string[],
 ): string {
-  const request =
-    requestText ?? "(the original user request was not recorded)";
+  const request = requestText ?? "(the original user request was not recorded)";
   if (attachments.length === 0) return request;
   return [
     request,
