@@ -23,6 +23,7 @@ function reviewInput(): ReviewInput {
     sessionId: "session-1",
     turn: 2,
     requestText: "What locks does the runtime use?",
+    requestAttachments: [],
     candidateText: "The runtime uses file locks around journal writes.",
     signal: new AbortController().signal,
   };

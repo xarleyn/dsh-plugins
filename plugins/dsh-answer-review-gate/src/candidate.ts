@@ -11,7 +11,11 @@
 
 import { createHash } from "node:crypto";
 
-import type { ContentBlock } from "@deepseek-ai/dsh-llm";
+import {
+  fileHandleText,
+  textOnlyImageText,
+  type ContentBlock,
+} from "@deepseek-ai/dsh-llm";
 
 import {
   collectReviewWaiver,
@@ -33,6 +37,14 @@ export interface CollectedCandidate {
   readonly text: string;
   /** Latest real user message before the candidate; null when not found. */
   readonly requestText: string | null;
+  /**
+   * Handle text for every attachment (image/file) the located user request
+   * carried, rendered with the host's own `fileHandleText`/`textOnlyImageText`
+   * idiom so the reviewer sees that a named attachment existed and what kind it
+   * was — without the gate pretending the reviewer can open it. Empty when the
+   * request carried no attachment or none was located.
+   */
+  readonly requestAttachments: readonly string[];
   /**
    * Surface seq of that user request — the identity of the user turn this
    * candidate belongs to; null when no real user message was found.
@@ -60,6 +72,30 @@ export function textOfBlocks(blocks: readonly ContentBlock[]): string {
 }
 
 /**
+ * Handle text for the non-text (image/file) blocks of one content-block list.
+ *
+ * The companion of `textOfBlocks`: where that keeps only text, this renders
+ * every attachment the same way the deployed harness projects it for a model
+ * that cannot receive it — `fileHandleText` with no read path (files never
+ * reach a provider natively) and `textOnlyImageText` for images. The reviewer
+ * therefore learns a named attachment existed and what kind it was, and that
+ * it cannot open it, without the gate handing it the bytes.
+ */
+export function attachmentHandleTexts(
+  blocks: readonly ContentBlock[],
+): readonly string[] {
+  const lines: string[] = [];
+  for (const block of blocks) {
+    if (block.type === "file") {
+      lines.push(fileHandleText(block.attachment, undefined));
+    } else if (block.type === "image") {
+      lines.push(textOnlyImageText(block.attachment));
+    }
+  }
+  return lines;
+}
+
+/**
  * Collect the candidate final answer: the latest `assistant/message` surface
  * event. An interrupted (truncated) latest message is not a candidate — the
  * turn did not produce a finished answer.
@@ -84,6 +120,7 @@ export function collectCandidate(
     return {
       text,
       requestText: request?.text ?? null,
+      requestAttachments: request?.attachments ?? [],
       requestSeq: request?.seq ?? null,
       reviewWaiver:
         request === null
@@ -107,6 +144,7 @@ function collectUserRequest(
   readonly text: string;
   readonly seq: number;
   readonly messageId: string | null;
+  readonly attachments: readonly string[];
 } | null {
   const nodes = session.surface.nodes;
   for (let i = nodes.length - 1; i >= 0; i -= 1) {
@@ -120,12 +158,14 @@ function collectUserRequest(
       readonly content?: readonly ContentBlock[];
     };
     if (data.source?.kind !== "user") continue;
-    const text = textOfBlocks(data.content ?? []);
+    const content = data.content ?? [];
+    const text = textOfBlocks(content);
     if (text !== "") {
       return {
         text,
         seq,
         messageId: typeof data.id === "string" ? data.id : null,
+        attachments: attachmentHandleTexts(content),
       };
     }
   }

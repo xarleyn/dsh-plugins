@@ -121,6 +121,7 @@ export function createSubagentBackend(deps: {
               type: "text",
               text: renderSubagentReviewerTask({
                 requestText: input.requestText,
+                requestAttachments: input.requestAttachments,
                 candidateText: input.candidateText,
               }),
             },

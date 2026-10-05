@@ -88,6 +88,7 @@ describe("collectCandidate", () => {
     expect(collectCandidate(session)).toEqual({
       text: "The runtime uses file locks around journal writes.",
       requestText: "What locks does the runtime use?",
+      requestAttachments: [],
       requestSeq: 0,
       reviewWaiver: null,
     });
