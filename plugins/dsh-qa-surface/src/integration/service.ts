@@ -205,6 +205,9 @@ export class QaIntegrationService {
         attachments: request.attachments,
         ticketKey: request.context.ticketKey,
         signal: combined,
+        // The runner stops a turn only for a caller that truly went away; the
+        // budget is the bridge's polling signal and keeps the turn running.
+        callerSignal: signal,
         onChat: (id) => {
           chatId = id;
         },
@@ -263,6 +266,15 @@ export class QaIntegrationService {
         return this.escalated(chatId ?? "", "the request timed out");
       }
       if (signal.aborted) {
+        // No answer reaches the log on this path, and the response is already
+        // gone: without this line a stand cannot tell an abandoned turn from a
+        // quiet day. The turn itself is stopped by the runner, which reads the
+        // same signal.
+        this.deps.logger.warn("integration.dropped", {
+          tokenId: identity.tokenId,
+          chatId,
+          ms: this.now() - started,
+        });
         throw new QaIntegrationError("unavailable", "the request was dropped");
       }
       if (error instanceof QaIntegrationAttachmentError) {

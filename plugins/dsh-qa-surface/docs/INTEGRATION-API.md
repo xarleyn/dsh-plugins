@@ -105,6 +105,19 @@ budget, the polling path is `GET {basePath}/session` with the `chat_id` from an
 escalated response — the turn keeps running, and the answer is picked up when it
 lands.
 
+A caller that disconnects is a different ending, and it is not covered by that
+polling path: nobody holds the `chat_id`, so nobody is ever going to read what
+the turn produces. The endpoint therefore stops the work as well as the wait —
+the session's active turn is cancelled, keeping the prompts other callers have
+queued in the same chat. Two things limit it, because a stopped turn cannot be
+asked again: only the caller's own abandonment stops one (an expired budget is
+the escalation a bridge polls, and must not orphan the answer it waits for), and
+only when the log still shows this question's own turn running — a question
+still queued behind another's, or one already answered while the agent moved on,
+leaves the stranger's turn alone. A dropped request is logged as
+`integration.dropped`, and the stop it caused as `integration.turn-abandoned`,
+because neither appears anywhere else on the answer path.
+
 A hard failure (the Host could not open a chat, the provider refused) is still
 `503`, because that is a transient condition a retry can fix.
 
@@ -409,7 +422,16 @@ copy, and it is the contract this implementation is tested against.
   malformed events are tolerated. Plus the publication budget: an answer that
   fits is untouched, an over-long one is cut at a paragraph or line boundary
   and marked, a hard cut keeps an unbroken answer inside the budget, and one
-  early paragraph break does not shrink a full answer to a line.
+  early paragraph break does not shrink a full answer to a line. Plus whose turn
+  the agent is running: a claimed row with no closer is ours, an unflushed
+  prompt and a closer already committed are not, and injected context never
+  reads as a prompt.
+- `tests/integration/integration-cancellation.test.ts` — the two endings of a
+  question that outlived its wait: a disconnected caller gets its own turn
+  cancelled and its concurrency slot back, an expired budget gets the escalation
+  with the chat and no cancellation, and a turn belonging to another question —
+  still queued, or already closed while the agent runs the next one — is left
+  running.
 - `tests/integration/integration-config.test.ts` — off by default, base path normalization
   and refusals, the accounts cross-check, and every numeric bound.
 - `tests/accounts/cli.test.ts` — `token create|list|revoke`, the secret printed once, a
