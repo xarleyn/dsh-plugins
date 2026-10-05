@@ -227,7 +227,20 @@ export interface QaIntegrationRunner {
     readonly message: string;
     readonly attachments: readonly QaIntegrationAttachment[];
     readonly ticketKey: string | null;
+    /** Ends the wait: the caller's own lifetime merged with the deployment's budget. */
     readonly signal: AbortSignal;
+    /**
+     * The caller's lifetime alone, without the budget.
+     *
+     * The two ends of `signal` mean different things. A question that ran out of
+     * `requestTimeoutMs` still has a reader: the escalation hands back the chat
+     * id and the bridge picks the answer up from the session read, so the turn
+     * has to keep going. A question whose caller disconnected has none, and the
+     * turn is stopped. Absent when the caller cannot tell the two apart, which
+     * leaves every abandoned turn running — the safe direction, because a turn
+     * stopped for the wrong reason cannot be asked again.
+     */
+    readonly callerSignal?: AbortSignal;
     /**
      * Called as soon as the chat exists, before the turn settles. The service
      * needs the identity of a chat whose answer it may never see: a timed-out

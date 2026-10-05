@@ -201,6 +201,57 @@ export function boundAnswer(answer: string, maxCharacters: number): string {
 }
 
 /**
+ * Whether the turn one request's prompt opened is still the turn the agent runs.
+ *
+ * A caller that gives up may only stop its own work. Prompts are admitted with
+ * `mode: "queue"`, so a chat can hold several questions at once and the running
+ * turn belongs to whoever the harness claimed — not to whoever asked first, and
+ * not to whoever is still holding a connection. The two facts the log gives
+ * back decide it: this request's row exists only once the harness has claimed
+ * the prompt into a turn, and a turn that has committed its closer (or been
+ * followed by a newer `turn/start`, since the harness runs one turn at a time)
+ * is over whatever the agent is busy with afterwards.
+ *
+ * @param events - durable events, in any order.
+ * @param requestId - the rpc id the prompt was submitted with.
+ * @returns true only when a claimed row of this request has no closer yet.
+ */
+export function ownTurnStillRunning(
+  events: readonly StoredSessionEvent[],
+  requestId: string,
+): boolean {
+  const ordered = [...events].sort((left, right) => left.seq - right.seq);
+  let promptSeq: number | undefined;
+  let turn: number | undefined;
+  for (const event of ordered) {
+    if (promptSeq !== undefined) break;
+    if (event.type === "turn/start") {
+      const data = record(event.data);
+      if (typeof data?.turn === "number") turn = data.turn;
+    } else if (isPromptOf(event, requestId)) {
+      promptSeq = event.seq;
+    }
+  }
+  if (promptSeq === undefined) return false;
+  const own = turn;
+  for (const event of ordered) {
+    if (event.seq <= promptSeq) continue;
+    const numbered = record(event.data)?.turn;
+    const turnNumber = typeof numbered === "number" ? numbered : undefined;
+    if (event.type === "turn/start") {
+      // An unnumbered log gives no identity to compare, so any newer turn is
+      // taken as the end of ours; a numbered one has to differ from ours.
+      if (turnNumber === undefined || turnNumber !== own) return false;
+      continue;
+    }
+    if (event.type === "turn/end" && own !== undefined && turnNumber === own) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * The seq of the newest user-authored message in a log, which is the floor
  * `answerAfter` reads from when the caller has just submitted a prompt.
  * Synthetic context (injected notes, skill payloads) is skipped: it is model
