@@ -1,4 +1,4 @@
-import { IntegrationError } from "../../errors.js";
+import { IntegrationError, type TransportBudget } from "../../errors.js";
 
 export const RETRY_CAP_MS = 2_000;
 export const BACKOFF_BASE_MS = 250;
@@ -238,6 +238,21 @@ export const DEADLINE_IS_THE_BUDGET: TransportRetriable = (error) =>
 export const RESEND_AFTER_EVERY_FAULT: TransportRetriable = () => true;
 
 /**
+ * Write the budget a call was refused under onto the error that carries it out.
+ * The party that reports the failure knows the provider and the operation and
+ * nothing about the attempts; the loop that spent them knows nothing else. This
+ * is the one place the two meet, and it is why a log line can say both what was
+ * asked for and what it cost.
+ */
+export function withTransportBudget(
+  error: IntegrationError,
+  budget: TransportBudget,
+): IntegrationError {
+  error.budget = budget;
+  return error;
+}
+
+/**
  * How a provider folds transport outcomes into its own safe domain errors:
  * each transport keeps the wording, the shared loop keeps the mechanics.
  */
@@ -279,7 +294,10 @@ export type ResponseRead<T> = (
  * budget instead of leaving the call pending. A fetch that answered is never
  * retried by this loop unless its status says the upstream fault may be gone on
  * a later try, and what `read` refuses on its own (a body over the cap, a body
- * that is not JSON) stays the domain error it named.
+ * that is not JSON) stays the domain error it named. Whatever the loop hands
+ * back from a transport give-up carries the budget it spent, because the party
+ * reporting that failure to the operator knows the call and none of the
+ * arithmetic behind it.
  */
 export async function fetchWithRetries<T>(
   fetcher: typeof fetch,
@@ -289,6 +307,13 @@ export async function fetchWithRetries<T>(
 ): Promise<T> {
   const retriable = policy.retriable ?? DEADLINE_IS_THE_BUDGET;
   for (let attempt = 0; ; attempt += 1) {
+    // What this attempt has spent so far, in the shape a report reads: the
+    // deadline re-paid by every retry, and the attempts the call actually cost.
+    const spent = (): TransportBudget => ({
+      timeoutMs: policy.timeoutMs,
+      retries: policy.retries,
+      attempts: attempt + 1,
+    });
     let timedOut = false;
     const controller = new AbortController();
     const timer = setTimeout(() => {
@@ -309,7 +334,7 @@ export async function fetchWithRetries<T>(
       } catch (error) {
         const failure = policy.transportFailure(error, timedOut);
         if (attempt >= policy.retries || !retriable(failure)) {
-          throw failure;
+          throw withTransportBudget(failure, spent());
         }
         await sleep(retryDelay(attempt));
         continue;
@@ -326,8 +351,17 @@ export async function fetchWithRetries<T>(
       try {
         return await read(response, controller.signal);
       } catch (error) {
-        if (error instanceof IntegrationError) throw error;
-        throw policy.transportFailure(error, timedOut);
+        // A read this deployment's own deadline ended leaves as the refusal the
+        // reader named — and carries the budget that named it, whatever that
+        // refusal was: the attempts and the deadline are true of the call either
+        // way, and only the reader knows which of them ended it.
+        if (error instanceof IntegrationError) {
+          throw withTransportBudget(error, spent());
+        }
+        throw withTransportBudget(
+          policy.transportFailure(error, timedOut),
+          spent(),
+        );
       }
     } finally {
       // Cleared here rather than the moment the headers arrived: the budget is

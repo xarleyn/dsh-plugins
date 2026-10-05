@@ -389,6 +389,10 @@ export class IntegrationBroker {
         integrationId: integration.id,
         reason: code,
       });
+      // A probe the upstream never answered is the same invisible failure as a
+      // read that did: the row goes to `error` and nothing says the deadline
+      // ended the probe rather than the credential being wrong.
+      this.logTransportTimeout(providerId, "credential.validate", error);
       throw error;
     }
   }
@@ -821,10 +825,59 @@ export class IntegrationBroker {
         serviceProfileId: resolved?.profile.id ?? null,
         sourceSessionId: request.sourceSessionId,
       });
+      this.logTransportTimeout(
+        request.provider,
+        request.operation,
+        error,
+        resolved?.profile.id,
+      );
       throw error;
     } finally {
       releaseSlot?.();
     }
+  }
+
+  /**
+   * Record a call this deployment's own deadline ended.
+   *
+   * Without it the failure is invisible where an operator looks for it: the
+   * audit row says `error`, the trail of the reason code is the chat, and the
+   * log — the one surface that outlives both — carried nothing about a provider
+   * that stopped answering. The provider and the operation are this call's; the
+   * deadline and the attempts come written on the error by the transport loop
+   * that spent them, which is the only party that ever knew them.
+   *
+   * Nothing upstream is named here: no address, no query, no body, no
+   * credential. Numbers, a provider id and an operation are enough to find the
+   * call again in the trail.
+   */
+  private logTransportTimeout(
+    provider: IntegrationProviderId,
+    operation: string,
+    error: unknown,
+    serviceProfileId?: string | undefined,
+  ): void {
+    if (
+      !(error instanceof IntegrationError) ||
+      error.code !== "UpstreamTimeout"
+    ) {
+      return;
+    }
+    const budget = error.budget;
+    this.logger.warn("transport.timeout", {
+      provider,
+      operation,
+      ...(budget === undefined
+        ? {}
+        : {
+            timeoutMs: budget.timeoutMs,
+            retries: budget.retries,
+            attempts: budget.attempts,
+          }),
+      ...(serviceProfileId === undefined
+        ? {}
+        : { serviceProfile: serviceProfileId }),
+    });
   }
 
   /**

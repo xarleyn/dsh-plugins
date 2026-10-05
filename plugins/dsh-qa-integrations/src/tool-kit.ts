@@ -36,6 +36,22 @@ const OUTPUT = {
 } as const;
 
 /**
+ * The budget the harness arms on every integration tool. It promises nothing
+ * about our own reads — it is the outer bound that ends a chat turn a read which
+ * outlived them all would have held open — so it has to sit above the transport's
+ * own worst case and below the round the chat owns. The arithmetic, at the
+ * shipped defaults: one read costs `(retries + 1) × timeoutMs + retries ×
+ * RETRY_CAP_MS`, and the widest `timeoutMs` a read is held to is the streaming
+ * one a log or an attachment takes (30 000 against the general 15 000), so a
+ * fully retried read is 3 × 30 000 + 2 × 2 000 = 94 000 ms; a call chains up to
+ * three such reads (a boundary probe, the reading, one included collection) for
+ * 282 000 ms; 300 000 clears that and leaves the 600 000 ms `/ask` round to
+ * `@yadsh/dsh-qa-surface`, which owns it. `tests/tools/tool-timeout.test.ts`
+ * recomputes both bounds from the resolvers rather than from this number.
+ */
+const TOOL_TIMEOUT_MS = 300_000;
+
+/**
  * What a provider's tool factory takes from the deployment. One type for all
  * seven, so no factory can be built on a broker alone and go on describing a
  * managed credential this stand never issues.
@@ -125,6 +141,10 @@ export function createToolKit(options: ToolKitOptions) {
         : definition.description,
       parameters: definition.parameters,
       output: OUTPUT,
+      // Without this the harness arms no deadline at all: a tool that declares
+      // no budget is delegated unchanged, and a chat turn waits on the upstream
+      // for as long as the upstream likes.
+      timeoutMs: TOOL_TIMEOUT_MS,
       execute: (args, exec) =>
         run(
           exec,

@@ -1,7 +1,7 @@
 import { IntegrationError } from "../../errors.js";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { hostMatchesSuffix } from "../shared/host.js";
-import { readBoundedJson } from "../kernel/read-policy.js";
+import { readBoundedJson, withTransportBudget } from "../kernel/read-policy.js";
 
 export interface BitrixCredential {
   readonly webhookBaseUrl: string;
@@ -170,11 +170,25 @@ export class BitrixTransport {
         next: count(envelope?.next),
       };
     } catch (error) {
+      // One attempt is this provider's whole budget, so the loop's arithmetic is
+      // named here rather than left out of it: a refusal the operator reads has
+      // to say what it cost whether the shared loop made the attempt or this one
+      // did.
+      const spent = {
+        timeoutMs: this.config.timeoutMs,
+        retries: 0,
+        attempts: 1,
+      };
       // A refusal the read already named — a denied operation, a body over the
       // cap, a body that stopped arriving — stays what it was named as.
-      if (error instanceof IntegrationError) throw error;
+      if (error instanceof IntegrationError) {
+        throw withTransportBudget(error, spent);
+      }
       throw timedOut
-        ? new IntegrationError("UpstreamTimeout", "Provider did not answer")
+        ? withTransportBudget(
+            new IntegrationError("UpstreamTimeout", "Provider did not answer"),
+            spent,
+          )
         : new IntegrationError(
             "ProviderUnavailable",
             "Provider request failed",
