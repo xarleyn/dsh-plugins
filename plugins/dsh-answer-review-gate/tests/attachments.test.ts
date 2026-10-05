@@ -158,8 +158,9 @@ function surfaceWithAttachment(
 
 function promptTextOf(spec: SubagentStartSpec): string {
   return spec.prompt
-    .filter((block): block is Extract<ContentBlock, { type: "text" }> =>
-      block.type === "text",
+    .filter(
+      (block): block is Extract<ContentBlock, { type: "text" }> =>
+        block.type === "text",
     )
     .map((block) => block.text)
     .join("\n");
