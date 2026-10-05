@@ -85,12 +85,25 @@ answer to "why can this service see my chat" is "it is your account's token".
 
 ### 2.5 A timeout is an answer, not an error
 
-The bridge's contract is a 90-second answer. When the turn is still running at
-`requestTimeoutMs`, the endpoint answers `200` with `escalate: true`, an empty
-`answer` and the `chat_id`, instead of a `504`: the bridge escalates the ticket
-to a specialist, and a later retry continues the same chat. A `5xx` there would
-send the bridge into retries against a turn that is still going to finish, and
-each retry would return the same nothing.
+The contract is not a fixed number of seconds: it is `requestTimeoutMs`, the
+budget the deployment gives the endpoint (90 seconds in the shipped default,
+and a stand running a local model typically raises it to the ceiling this
+build accepts). A bridge must read the budget from its own deployment
+configuration rather than assume a value, because the wait before an answer
+scales with how long the model takes to answer.
+
+When the turn is still running at `requestTimeoutMs`, the endpoint answers
+`200` with `escalate: true`, an empty `answer` and the `chat_id`, instead of a
+`504`: the bridge escalates the ticket to a specialist, and a later retry
+continues the same chat. A `5xx` there would send the bridge into retries
+against a turn that is still going to finish, and each retry would return the
+same nothing.
+
+Raising the budget buys answers at the cost of latency; it does not make the
+wait asynchronous. Where a bridge cannot hold a request open for the whole
+budget, the polling path is `GET {basePath}/session` with the `chat_id` from an
+escalated response — the turn keeps running, and the answer is picked up when it
+lands.
 
 A hard failure (the Host could not open a chat, the provider refused) is still
 `503`, because that is a transient condition a retry can fix.
