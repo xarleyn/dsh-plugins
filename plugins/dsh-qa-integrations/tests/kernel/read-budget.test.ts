@@ -124,6 +124,31 @@ function policyOf(target: Partial<FetchRetryPolicy> = {}): FetchRetryPolicy {
 const readJson: ResponseRead<unknown> = (response, signal) =>
   readBoundedJson(response, 1_000_000, "test", signal);
 
+/**
+ * One read of an upstream that never answers, run to the point the loop gives up
+ * on it. Nothing touches a socket, so the whole exchange costs the suite its
+ * backoff and no more.
+ */
+async function givenUpOn(policy: FetchRetryPolicy): Promise<IntegrationError> {
+  const hanging: typeof fetch = (_input, init) =>
+    new Promise((_resolve, reject) => {
+      init?.signal?.addEventListener("abort", () =>
+        reject(new Error("aborted")),
+      );
+    });
+  return await fetchWithRetries(
+    hanging,
+    "http://127.0.0.1:1/never-answers",
+    policy,
+    readJson,
+  ).then(
+    () => {
+      throw new Error("expected the read to be refused");
+    },
+    (cause: unknown) => cause as IntegrationError,
+  );
+}
+
 describe("kernel read budget", () => {
   it("refuses an upstream that answers headers and then stalls the body", async () => {
     let hits = 0;
@@ -243,5 +268,42 @@ describe("kernel read budget", () => {
     } finally {
       await target.close();
     }
+  });
+
+  it("writes the budget it spent onto a call it gave up on", async () => {
+    // The loop is the only party that knows what a refused call cost: the caller
+    // that logs it knows the provider and the operation, and nothing about the
+    // attempts. Without this the operator's log has a failure and no arithmetic.
+    const attempts = await givenUpOn(
+      policyOf({
+        timeoutMs: IN_MEMORY_BUDGET_MS,
+        retries: 2,
+        retriable: RESEND_AFTER_EVERY_FAULT,
+      }),
+    );
+    expect(attempts.code).toBe("UpstreamTimeout");
+    expect(attempts.budget).toEqual({
+      timeoutMs: IN_MEMORY_BUDGET_MS,
+      retries: 2,
+      attempts: 3,
+    });
+  });
+
+  it("counts one attempt where the deadline is the whole budget", async () => {
+    // The same allowance read by the other rule: a deployment that refuses to
+    // re-pay its deadline spent one attempt, and the record has to say so rather
+    // than the retries it never used.
+    const attempts = await givenUpOn(
+      policyOf({
+        timeoutMs: IN_MEMORY_BUDGET_MS,
+        retries: 2,
+        retriable: DEADLINE_IS_THE_BUDGET,
+      }),
+    );
+    expect(attempts.budget).toEqual({
+      timeoutMs: IN_MEMORY_BUDGET_MS,
+      retries: 2,
+      attempts: 1,
+    });
   });
 });

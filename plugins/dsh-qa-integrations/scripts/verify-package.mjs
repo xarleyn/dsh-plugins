@@ -675,6 +675,23 @@ assert.match(readPolicy, /void reader\.cancel\(\)/u);
 // provider's comment and its retry behaviour start to disagree.
 assert.match(readPolicy, /export const DEADLINE_IS_THE_BUDGET/u);
 assert.match(readPolicy, /export const RESEND_AFTER_EVERY_FAULT/u);
+// A call the deadline ended has to say what it cost. The loop that spent the
+// attempts is the only party that knows them, so it writes them on the error it
+// gives up with — and the report an operator greps is the broker's, which knows
+// the provider and the operation and nothing of the arithmetic. Losing either
+// half leaves the log with a failed call and no way to tell a timeout from any
+// other refusal, which is how a stand spent weeks unable to answer the question.
+assert.match(readPolicy, /export function withTransportBudget/u);
+assert.match(readPolicy, /throw withTransportBudget\(failure, spent\(\)\)/u);
+const brokerArtifact = await readFile(new URL("lib/broker.js", root), "utf8");
+assert.match(brokerArtifact, /"transport\.timeout"/u);
+// The harness arms no deadline for a tool that declares none, so an undeclared
+// budget is not a missing optimisation but an unbounded chat turn.
+const toolKitArtifact = await readFile(
+  new URL("lib/tool-kit.js", root),
+  "utf8",
+);
+assert.match(toolKitArtifact, /timeoutMs:/u);
 // One address policy for every provider list: the parts of a pasted browser URL
 // that are not an endpoint are refused here, fragment included, because
 // `<origin><path>` would otherwise fold it away and leave the operator

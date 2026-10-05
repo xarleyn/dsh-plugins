@@ -313,6 +313,13 @@ export function describeProviderConformance(target: ConformanceTarget): void {
       expect(message, "an error names no upstream address").not.toMatch(
         /https?:\/\//u,
       );
+      // The refusal has to say what it cost, or the operator's log has a failed
+      // call and no arithmetic to read against it. One attempt here — a fetch
+      // that answered is not re-sent — under the deadline the deployment armed.
+      expect(
+        error.budget,
+        `${target.provider}: a transport refusal names no budget`,
+      ).toMatchObject({ timeoutMs: 20, attempts: 1 });
     });
   });
 }
