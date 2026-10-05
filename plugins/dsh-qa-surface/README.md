@@ -1193,7 +1193,7 @@ integration:
   enabled: true # requires accounts.enabled: true
   basePath: /qa/api # POST {basePath}/ask, GET {basePath}/session, GET {basePath}/health
   tokenTtlDays: 90
-  requestTimeoutMs: 90000
+  requestTimeoutMs: 90000 # the answer budget; a slow model wants a larger one, see docs/INTEGRATION-API.md §2.5
   maxConcurrent: 4
   requestsPerMinute: 60
   maxAnswerCharacters: 4096 # the answer the ticket comment can hold
