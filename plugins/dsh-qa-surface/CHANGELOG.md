@@ -1,3 +1,44 @@
+## 0.15.1 (2026-10-05)
+
+### 🩹 Fixes
+
+- A question nobody is waiting for any more stops being answered. ([b9dea68f](https://github.com/xarleyn/dsh-plugins/commit/b9dea68f))
+
+  The integration API released its concurrency slot correctly, but the turn outlived
+  the caller: `prompt` carries the caller's signal only up to admission, and the
+  wait ending is not the work ending. So a bridge that gave up left the agent
+  running — model still generating, tools still firing, the chat's agent still
+  busy — and the next question continued into that chat queued behind work nobody
+  had asked for, which is how a stand ends up with several asks hitting its full
+  answer budget in a row.
+
+  An abandoned ask now stops the turn it started, and only that turn: the stop
+  fires on the caller's own disconnect, and only when the session's durable log
+  says this request's turn is still running. Other callers' queued prompts survive
+  it. An expired budget is unchanged — that is the escalation the bridge polls
+  with the `chat_id` it was handed — and both outcomes now leave a line in the log
+  (`integration.dropped`, `integration.turn-abandoned`), where before a dropped
+  caller left no trace at all.
+
+- The integration API now documents its answer budget as a deployment setting. ([d5a46e99](https://github.com/xarleyn/dsh-plugins/commit/d5a46e99))
+
+  `README.md` ships inside the package, and it showed `requestTimeoutMs: 90000`
+  without saying what the number decides. It is not a client's patience: past the
+  budget the endpoint answers `200` with `escalate: true` and the `chat_id`, which
+  is how a ticket bridge hands a question to a human instead of retrying a turn
+  that is still running. A deployment that raises the budget changes when that
+  hand-off happens, and a bridge reading the example as a contract would wait the
+  wrong amount of time.
+
+  The reference now names the value as the deployment's budget, points at the
+  section that explains the escalation, and states the polling path
+  (`GET {basePath}/session` with the returned `chat_id`) for a bridge that cannot
+  hold one request open for the whole budget.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.15.0 (2026-10-04)
 
 ### 🚀 Features
