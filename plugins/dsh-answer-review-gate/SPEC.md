@@ -536,11 +536,29 @@ Search snippets alone should not normally satisfy a material factual claim when 
 
 On `REVISE`:
 
-1. Feed structured findings back to primary with `agent.steer`.
+1. Feed structured findings back to primary with `agent.steer`, inside a
+   delimited `<review_notes>` block.
 2. Primary checks the reviewer's evidence.
 3. Primary corrects supported findings.
-4. Unsupported reviewer objections may be rejected only after re-verification.
+4. Unsupported reviewer objections may be rejected only after re-verification,
+   and silently: the steer admits exactly one visible artifact — the corrected
+   answer.
 5. Materially changed candidate is reviewed again.
+
+The revision steer therefore carries no rebuttal channel. An earlier text asked
+the primary to state the disproof of an objection it rejected while forbidding
+any mention of the review in the same instruction; a live primary resolved the
+contradiction by opening the user's final answer with its argument against the
+reviewer, and the review's own vocabulary reached user-visible output twice — in
+the answer and in the thinking block that reasoned about a concealment
+instruction. Findings are working material for the next version of the answer,
+which is what the reviewer re-reads; where the exchange repeats, the round budget
+ends it under the configured failure policy.
+
+A candidate that opens by disputing the review (`opensWithReviewDisputation`) is
+that same leak. It is not handed to a reviewer and never receives a PASS: the
+gate demands the answer's shape once per user turn, then treats a later draft on
+the ordinary path, because a committed message cannot be edited at this seam.
 
 Default maximum:
 

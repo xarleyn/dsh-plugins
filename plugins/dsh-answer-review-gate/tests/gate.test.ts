@@ -613,6 +613,77 @@ describe("AnswerReviewGate user-turn scoping", () => {
   });
 });
 
+describe("AnswerReviewGate answer shape", () => {
+  const LEAK_ONE =
+    "Опровержение вывода ревизора: файл доступен как читаемый путь.\n\n" +
+    TEXT_A;
+  const LEAK_TWO =
+    "Rebuttal of the reviewer's finding: the path was readable all along.\n\n" +
+    TEXT_B;
+
+  it("demands an answer instead of reviewing a draft that argues with the review", async () => {
+    const face = new ScriptedFace();
+    const steers: SteerRecord[] = [];
+    const gate = makeGate(face, {}, steers);
+
+    expect(await stop(gate, LEAK_ONE)).toBe("revise");
+    expect(face.started).toHaveLength(0);
+    expect(steers).toHaveLength(1);
+    expect(steers[0]!.text).toContain("answer alone");
+    expect(steers[0]!.summary).toContain("answered the review");
+  });
+
+  it("steers the shape once per user turn, then reviews on the ordinary path", async () => {
+    const face = new ScriptedFace();
+    const steers: SteerRecord[] = [];
+    const gate = makeGate(face, {}, steers);
+
+    expect(await stop(gate, LEAK_ONE)).toBe("revise");
+    const pending = stop(gate, LEAK_TWO);
+    await face.settle(face.resultOf(PASS));
+    expect(await pending).toBe("pass");
+    expect(face.started).toHaveLength(1);
+    expect(steers).toHaveLength(1);
+  });
+
+  it("renews the shape demand for a new user request", async () => {
+    const face = new ScriptedFace();
+    const steers: SteerRecord[] = [];
+    const gate = makeGate(face, {}, steers);
+
+    expect(
+      await stopAt(gate, surfaceOf(userLine("q1"), assistantLine(LEAK_ONE)), 1),
+    ).toBe("revise");
+    expect(
+      await stopAt(
+        gate,
+        surfaceOf(
+          userLine("q1"),
+          assistantLine(LEAK_ONE),
+          userLine("q2"),
+          assistantLine(LEAK_TWO),
+        ),
+        2,
+      ),
+    ).toBe("revise");
+    expect(steers).toHaveLength(2);
+    expect(face.started).toHaveLength(0);
+  });
+
+  it("reviews an answer that only mentions the review inside itself", async () => {
+    const face = new ScriptedFace();
+    const steers: SteerRecord[] = [];
+    const gate = makeGate(face, {}, steers);
+    const draft =
+      "The default is 1024.\n\nThe reviewer's earlier objection was refuted by the source.";
+
+    const pending = stop(gate, draft);
+    await face.settle(face.resultOf(PASS));
+    expect(await pending).toBe("pass");
+    expect(steers).toHaveLength(0);
+  });
+});
+
 describe("AnswerReviewGate failure policy", () => {
   it("reviewer failures are never converted into a PASS", async () => {
     for (const [failMode, expectedSteers] of [
