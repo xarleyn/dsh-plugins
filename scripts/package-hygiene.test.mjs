@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -37,6 +37,10 @@ async function fixture(overrides = {}) {
   for (const file of ["cordis.patch.yml", "LICENSE", "README.md"]) {
     writeFileSync(path.join(directory, file), `${file}\n`);
   }
+  mkdirSync(path.join(directory, "locale"), { recursive: true });
+  writeJson(path.join(directory, "locale", "en.json"), {
+    meta: { title: "Fixture", description: "A fixture plugin." },
+  });
   writeJson(path.join(directory, "compatibility.json"), {
     deepseekHarness: {
       range: ">=0.1.7-rc.2 <0.2.0",
@@ -50,10 +54,12 @@ async function fixture(overrides = {}) {
     types: "./lib/index.d.ts",
     exports: {
       ".": { types: "./lib/index.d.ts", default: "./lib/index.js" },
+      "./locale/en.json": "./locale/en.json",
       "./package.json": "./package.json",
     },
     files: [
       "lib",
+      "locale/*.json",
       "compatibility.json",
       "cordis.patch.yml",
       "LICENSE",
@@ -118,6 +124,7 @@ test("accepts the bundled multi-entry declaration layout", async () => {
         types: "./lib/types/client/index.d.ts",
         default: "./lib/client.js",
       },
+      "./locale/en.json": "./locale/en.json",
       "./package.json": "./package.json",
     },
   });
@@ -144,6 +151,67 @@ test("rejects missing canonical package metadata", async () => {
     assert.ok(errors.some((error) => error.includes("declaration layout")));
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a bundle that leaves its Plugins panel row unnamed", async () => {
+  // The Host titles and describes the row from `<package>/locale/en.json`, read
+  // through the exports map without activating the plugin. Without the file, or
+  // with a field that is empty or not a string, the row is named by its full
+  // package specifier — and a tarball that omits the locale directory shows the
+  // same fallback on an installed deployment even though the source has it.
+  const directory = await fixture();
+  try {
+    rmSync(path.join(directory, "locale", "en.json"));
+    assert.deepEqual(validatePublishablePlugin(directory), [
+      "locale/en.json is missing; without it the Plugins panel names this row by its package specifier",
+    ]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+
+  const unpublished = await fixture({
+    exports: {
+      ".": { types: "./lib/index.d.ts", default: "./lib/index.js" },
+      "./package.json": "./package.json",
+    },
+    files: [
+      "lib",
+      "compatibility.json",
+      "cordis.patch.yml",
+      "LICENSE",
+      "README.md",
+    ],
+  });
+  try {
+    assert.deepEqual(validatePublishablePlugin(unpublished), [
+      'exports["./locale/en.json"] must equal "./locale/en.json"; the Host reads the row name through the exports map',
+      "locale/en.json is missing from package.json files",
+    ]);
+  } finally {
+    await rm(unpublished, { recursive: true, force: true });
+  }
+
+  const blank = await fixture();
+  try {
+    writeJson(path.join(blank, "locale", "en.json"), {
+      meta: { title: "  ", description: null },
+    });
+    const errors = validatePublishablePlugin(blank);
+    assert.ok(
+      errors.some((error) =>
+        error.includes("meta.title must be a non-empty string"),
+      ),
+      errors.join("\n"),
+    );
+    assert.ok(
+      errors.some((error) =>
+        error.includes("meta.description must be a non-empty string"),
+      ),
+      errors.join("\n"),
+    );
+  } finally {
+    await rm(blank, { recursive: true, force: true });
   }
 });
 
