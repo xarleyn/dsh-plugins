@@ -1,15 +1,28 @@
-import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
-
-export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
-.pf-settings{margin:0;padding:0;list-style:none;display:grid;gap:12px}
-.pf-body,.pf-body *{box-sizing:border-box}
-.pf-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
+/*
+ * The body sheet of the row's configuration page.
+ *
+ * The shell is not here: this card sits on the Plugins panel row, where the page
+ * draws the frame, the heading and the expand control (AGENTS.md), so the bundle
+ * ships the body and nothing around it. Everything is expressed in
+ * `--dsw-alias-*` tokens so light, dark and system themes stay coherent, and the
+ * ring of every control this package draws itself comes from the Host's
+ * `--dsw-focus-ring-*` pair. Both halves carry a fallback: an undeclared token
+ * makes the whole `outline` shorthand invalid and the ring disappears instead of
+ * degrading, while a hard-coded outline of our own loses to the Host's `focus.css`
+ * on specificity under pointer modality.
+ */
+export const styles: string = `.pf-body,.pf-body *{box-sizing:border-box}
+.pf-body{display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .pf-section{display:grid;gap:12px}.pf-section-title{display:flex;justify-content:space-between;align-items:center;gap:12px}.pf-section-title h3{font-size:13px;margin:0}.pf-muted{color:var(--dsw-alias-label-tertiary);font-size:12px;margin:0;line-height:1.5}
 .pf-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}.pf-field{display:grid;gap:6px}.pf-field>span{font-size:11px;color:var(--dsw-alias-label-secondary);font-weight:600}
-.pf-control{width:100%;height:36px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);padding:0 10px;font:inherit;font-size:12px;outline:none}.pf-control:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}
+.pf-control{width:100%;height:36px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);padding:0 10px;font:inherit;font-size:12px;outline:none}.pf-control:focus-visible{border-color:var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .pf-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px}.pf-toggle-copy{display:grid;gap:2px}.pf-toggle-copy strong{font-size:12px;font-weight:500}.pf-toggle-copy span{font-size:10px;color:var(--dsw-alias-label-tertiary)}
 .pf-toggle{appearance:none;width:34px;height:19px;border-radius:999px;background:var(--dsw-alias-label-dimmed);position:relative;cursor:pointer;transition:.18s;flex:none}.pf-toggle:after{content:'';position:absolute;top:3px;left:3px;width:13px;height:13px;border-radius:50%;background:var(--dsw-alias-bg-layer-3);transition:.18s}.pf-toggle:checked{background:var(--dsw-alias-brand-primary)}.pf-toggle:checked:after{transform:translateX(15px)}
 .pf-toggle:disabled,.pf-control:disabled,.pf-btn:disabled{cursor:default;opacity:.45}
+.pf-toggle:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}
+.pf-btn:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
+.pf-advanced summary:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-2px}
+.pf-notice{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.5}
 .pf-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}.pf-stat{padding:12px;border-radius:9px;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l2)}.pf-stat b{display:block;font-size:17px;margin-bottom:3px}.pf-stat span{font-size:10px;color:var(--dsw-alias-label-tertiary)}
 .pf-editor{display:grid;grid-template-columns:1.2fr .8fr .8fr auto;gap:8px}.pf-btn{height:34px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);padding:0 12px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}.pf-btn:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed);background:var(--dsw-alias-interactive-bg-hover)}.pf-btn.primary{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-layer-3)}.pf-btn.danger{color:var(--dsw-alias-label-error)}.pf-btn.link{height:27px;padding:0 8px;background:transparent}
 .pf-rules{display:grid;gap:6px}.pf-rule{display:grid;grid-template-columns:minmax(0,1fr) 70px 70px auto;gap:9px;align-items:center;padding:7px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;font-size:11px}.pf-rule code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-primary)}.pf-pill{font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--dsw-alias-label-tertiary)}.pf-pill.block{color:var(--dsw-alias-label-error)}.pf-pill.allow{color:var(--dsw-alias-state-business-primary)}.pf-pill.protect{color:var(--dsw-alias-brand-primary)}

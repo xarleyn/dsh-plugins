@@ -1,9 +1,9 @@
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-api-gateway/client";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
 import type {
   InjectFace,
   PropsRuntime,
@@ -14,7 +14,6 @@ import type {
 } from "@deepseek-ai/dsh-typert-protocol";
 import promptFirewallRemote from "@yadsh/dsh-prompt-firewall/remote";
 import {
-  CardShell,
   bindSettingsExternalStore,
   injectCardStyles,
   startVisibilityAwarePolling,
@@ -45,6 +44,16 @@ import {
 const SETTINGS_NAMESPACE = "dsh-prompt-firewall";
 const REFRESH_INTERVAL_MS = 3_000;
 
+/**
+ * The one-liner of this bundle's row.
+ *
+ * Kept equal to `meta.description` of `locale/en.json`, which is where the Host
+ * reads the row's sentence from; this answer is what the same row says if that
+ * field were ever dropped, so one row cannot describe two pages. Pinned by a test.
+ */
+export const PROMPT_FIREWALL_ROW_SUMMARY =
+  "Prompt hygiene, section policy, and request-level observability.";
+
 interface InspectorRemote {
   inspect(): Promise<RemoteResult<PromptFirewallInspectorSnapshot>>;
   setSectionPolicy(
@@ -59,13 +68,22 @@ interface ClientRemote {
   promptFirewall: InspectorRemote;
 }
 
+/**
+ * The face the row seat injects into this card.
+ *
+ * The form travels as `settingsForm`, not `form`: the seat hands its registrant a
+ * `form` of its own — the Host's `ConfigPageForm`, only `{ state, mutate }`, which
+ * can neither be subscribed to nor written field by field — and spreads that owner
+ * prop *after* this face, so a form named `form` would be overwritten in the
+ * operator's browser rather than in a test.
+ */
 interface CardFace {
-  form: ConfigForm<PromptFirewallConfig>;
+  settingsForm: ConfigForm<PromptFirewallConfig>;
   inspect: InspectorRemote["inspect"];
   setSectionPolicy: InspectorRemote["setSectionPolicy"];
 }
 
-type CardProps = PropsRuntime<"settings.plugins.tab"> & InjectFace<CardFace>;
+type CardProps = PropsRuntime<"plugins.row.config"> & InjectFace<CardFace>;
 
 function displayError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -73,7 +91,11 @@ function displayError(error: unknown): string {
   return "Could not load Prompt Inspector data.";
 }
 
-function PromptFirewallCard({ form, inspect, setSectionPolicy }: CardProps) {
+function PromptFirewallCard({
+  settingsForm: form,
+  inspect,
+  setSectionPolicy,
+}: CardProps) {
   const settingsStore = useMemo(() => bindSettingsExternalStore(form), [form]);
   const settings = useSyncExternalStore(
     settingsStore.subscribe,
@@ -143,57 +165,73 @@ function PromptFirewallCard({ form, inspect, setSectionPolicy }: CardProps) {
     [form, refresh, setSectionPolicy],
   );
 
-  const enabled = config?.enabled ?? true;
-
-  if (settings.status === "unavailable") return null;
-
   return (
-    // The tab surface renders no host list of its own, so the shell's `<li>`
-    // root keeps a plugin-owned `<ul>` (AGENTS.md card contract).
-    <ul className="pf-settings">
-      <CardShell
-        title="Prompt Firewall"
-        description="Prompt hygiene, section policy, and request-level observability."
-        badge={
-          <span className="dsh-plugin-card__badge">
-            {enabled ? "Enabled" : "Disabled"}
-          </span>
-        }
-        label={(open) => `${open ? "Hide" : "Show"} settings: Prompt Firewall`}
-        bodyClassName="pf-body"
-      >
-        {error !== null && (
-          <div className="pf-error" data-testid="pf-error">
-            {error}
-          </div>
-        )}
+    /*
+     * The Plugins page draws this card's frame, its heading and its expand control
+     * around the body, so the bundle renders the body and nothing around it — a
+     * shell of ours here is a second frame and a second heading next to the
+     * first-party rows (AGENTS.md, card-shell contract). The `enabled` state the old
+     * header badge carried is the first switch of the Policy section, where it is
+     * also something the operator can act on.
+     */
+    <div className="pf-body" data-testid="pf-settings">
+      {settings.status === "unavailable" ? (
+        /*
+         * The row opens onto a section the Host will not serve, and a card that
+         * returns nothing leaves an expanded row silent with no reason: the settings
+         * directory is loopback-only, so this is what a browser on the LAN reads. The
+         * write controls below disable themselves off the same snapshot.
+         */
+        <div className="pf-notice" data-testid="pf-settings-unavailable">
+          This browser cannot read or write the deployment&apos;s settings. The
+          firewall keeps enforcing the last policy the Host accepted.
+        </div>
+      ) : null}
 
-        <PolicySection
-          config={config}
-          writable={writable}
-          setPath={setPath}
-          unsetPreset={() => {
-            void form.unset("preset");
-          }}
-        />
-        <LastRequestSection
-          config={config}
-          inspector={inspector}
-          refreshing={refreshing}
-          onRefresh={() => {
-            void refresh();
-          }}
-        />
-        <RulesSection config={config} writable={writable} setPath={setPath} />
-        <AuditSection config={config} writable={writable} setPath={setPath} />
-        <InspectorSection
-          inspector={inspector}
-          writable={writable}
-          setPolicy={setPolicy}
-        />
-      </CardShell>
-    </ul>
+      {error !== null && (
+        <div className="pf-error" data-testid="pf-error">
+          {error}
+        </div>
+      )}
+
+      <PolicySection
+        config={config}
+        writable={writable}
+        setPath={setPath}
+        unsetPreset={() => {
+          void form.unset("preset");
+        }}
+      />
+      <LastRequestSection
+        config={config}
+        inspector={inspector}
+        refreshing={refreshing}
+        onRefresh={() => {
+          void refresh();
+        }}
+      />
+      <RulesSection config={config} writable={writable} setPath={setPath} />
+      <AuditSection config={config} writable={writable} setPath={setPath} />
+      <InspectorSection
+        inspector={inspector}
+        writable={writable}
+        setPolicy={setPolicy}
+      />
+    </div>
   );
+}
+
+/**
+ * The entry the Plugins page renders for this bundle's row.
+ *
+ * The seat is asked for two views of one registrant: `page` is the body below the
+ * page's own chrome, and `summary` is the row's one-liner for a row that declares no
+ * description — the page drops it into a paragraph of its own, so it stays text and
+ * starts no second poll of the Remote.
+ */
+export function PromptFirewallEntry(props: CardProps) {
+  if (props.view === "summary") return PROMPT_FIREWALL_ROW_SUMMARY;
+  return <PromptFirewallCard {...props} />;
 }
 
 export const inject = ["slots", "remote", "configForms"];
@@ -208,7 +246,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     await ctx.inject(["remote.promptFirewall"], (remoteCtx) => {
       const injectedRemote = remoteCtx.remote as unknown as ClientRemote;
       const face: CardFace = {
-        form,
+        settingsForm: form,
         inspect: () => injectedRemote.promptFirewall.inspect(),
         setSectionPolicy: (section, policy, revision) =>
           injectedRemote.promptFirewall.setSectionPolicy(
@@ -218,16 +256,21 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           ),
       };
 
-      return ctx.slots.inject("settings.plugins.tab", () =>
+      return ctx.slots.inject("plugins.row.config", () =>
         ctx.slots.register(
           {
-            name: "settings.plugins.tab",
-            id: SETTINGS_NAMESPACE,
-            order: 30,
-            label: () => "Prompt Firewall",
+            name: "plugins.row.config",
+            /*
+             * The key joins this bundle's package name to the row id
+             * `cordis.patch.yml` declares, and that row id *is* the namespace the Host
+             * serves this form under, so the seat and the settings agree without either
+             * naming the other — and a value saved before this move is read back after
+             * it.
+             */
+            key: `@yadsh/dsh-prompt-firewall#${SETTINGS_NAMESPACE}`,
             inject: () => face,
           },
-          PromptFirewallCard,
+          PromptFirewallEntry,
         ),
       );
     });
