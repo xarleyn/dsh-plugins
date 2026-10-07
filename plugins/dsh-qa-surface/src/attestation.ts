@@ -14,6 +14,7 @@ export type QaAttestationReason =
   | "composition-mismatch"
   | "permission-preset"
   | "adoption-refused"
+  | "subagent-session"
   | "unknown-tools"
   | "auth-required"
   | "session-owned-elsewhere"
