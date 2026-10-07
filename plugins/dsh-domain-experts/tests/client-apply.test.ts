@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { Context } from "@deepseek-ai/cordis";
 import * as clientModule from "../src/client/index.js";
@@ -73,10 +74,10 @@ function remoteStub(): DomainExpertsRemote {
 }
 
 interface Registration {
-  readonly key: string;
-  readonly id: string | undefined;
-  readonly order: number | undefined;
-  readonly label: string | undefined;
+  /** The seat the page registered on. */
+  readonly seat: string;
+  /** The seat key: the package name, for this bundle's own page on the panel. */
+  readonly key: string | undefined;
   readonly props: Record<string, unknown>;
 }
 
@@ -122,16 +123,13 @@ function harnessOf(): Harness {
       };
     },
     register: (options: {
-      id?: string;
-      order?: number;
-      label?: () => string;
+      name?: string;
+      key?: string;
       inject?: () => Record<string, unknown>;
     }) => {
       registrations.push({
-        key: "settings.plugins.tab",
-        id: options.id,
-        order: options.order,
-        label: options.label?.(),
+        seat: options.name ?? "",
+        key: options.key,
         props: options.inject?.() ?? {},
       });
       return () => undefined;
@@ -142,17 +140,39 @@ function harnessOf(): Harness {
 }
 
 describe("client apply()", () => {
-  it("mounts the remote and registers the settings tab", async () => {
+  it("mounts the remote and seats the page on this bundle's row", async () => {
     const harness = harnessOf();
     await apply(harness.ctx);
     expect(harness.mounted.count).toBe(1);
     expect(harness.registrations).toHaveLength(1);
+    /*
+     * The bundle-level seat of the Plugins page, keyed by the package name: this page
+     * owns no configuration form of the bundle, so the row seat — whose registrant is
+     * handed the Host's own form — is not its place. It declares no `label` either:
+     * the page titles the bundle from this package's exported `locale/en.json`.
+     */
     expect(harness.registrations[0]).toMatchObject({
-      key: "settings.plugins.tab",
-      id: "domain-experts",
-      order: 20,
-      label: "Domain Experts",
+      seat: "plugins.bundle.config",
+      key: "@yadsh/dsh-domain-experts",
     });
+    expect(harness.registrations[0]?.props).not.toHaveProperty("label");
+  });
+
+  it("names the bundle from the locale the Host reads, not from the page", () => {
+    /*
+     * The Plugins page titles this bundle from the exported `locale/en.json`, which
+     * it resolves through the exports map without activating the plugin; the seat
+     * hands its registrant no label. This is the sentence the page used to carry as
+     * its own `<h2>` heading — the panel draws the heading, so the copy moved to the
+     * manifest resource instead of being repeated under it.
+     */
+    const meta = (
+      JSON.parse(
+        readFileSync(new URL("../locale/en.json", import.meta.url), "utf8"),
+      ) as { meta: { description: string; title: string } }
+    ).meta;
+    expect(meta.title).toBe("Domain Experts");
+    expect(meta.description).toContain("one persona, one scope");
   });
 
   it("hands the page an api that unwraps the two-layer remote result", async () => {

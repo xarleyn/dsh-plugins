@@ -49,7 +49,7 @@ Payments expert  ── domain_expert(domain="inventory", …) ──▶  Invent
 dsh plugin --profile web add @yadsh/dsh-domain-experts
 ```
 
-然后打开 `Settings → Plugins → Domain Experts`。
+然后打开 Host **Plugins** 页面中的 **Domain Experts** 行。
 
 ## 管理领域
 
@@ -74,8 +74,8 @@ dsh plugin --profile web add @yadsh/dsh-domain-experts
 
 ## 配置
 
-插件设置是该插件自身 profile 配置里的实时字段，宿主在 `Settings → Plugins` 下为
-`dsh-domain-experts` 条目渲染其表单。`Domain Experts` 选项卡管理的是领域本身。
+插件设置是该插件自身 profile 配置里的实时字段，宿主为
+`dsh-domain-experts` 条目渲染其表单。Plugins 页面上的 **Domain Experts** 页面管理的是领域本身。
 改动会应用到后续操作。
 
 | 选项 | 类型 | 默认值 | 说明 |
@@ -130,7 +130,7 @@ DSH 的工具过滤是能力范围限定，而不是操作系统级沙箱，因�
 
 - DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`（已针对 `0.1.7-rc.2` 测试）
 - Node `^22.19.0 || >=24.0.0`
-- 浏览器端需要 `settings.plugins.tab` 插槽
+- 浏览器端需要 `plugins.bundle.config` 插槽
 
 机器可读形式见 [compatibility.json](./compatibility.json)。
 

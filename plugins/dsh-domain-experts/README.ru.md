@@ -61,7 +61,7 @@ Payments expert  ── domain_expert(domain="inventory", …) ──▶  Invent
 dsh plugin --profile web add @yadsh/dsh-domain-experts
 ```
 
-Затем откройте `Settings → Plugins → Domain Experts`.
+Затем откройте ряд **Domain Experts** на странице **Plugins** хоста.
 
 ## Управление доменами
 
@@ -91,9 +91,9 @@ dsh plugin --profile web add @yadsh/dsh-domain-experts
 ## Конфигурация
 
 Настройки плагина — живые поля его собственной конфигурации профиля: форму для них
-выдаёт хост в `Settings → Plugins` для записи `dsh-domain-experts`. Вкладка
-`Domain Experts` служит самим доменам. Изменения применяются к последующим
-операциям.
+выдаёт хост для записи `dsh-domain-experts`. Страница
+`Domain Experts` на панели Plugins управляет самими доменами. Изменения применяются
+к последующим операциям.
 
 | Параметр | Тип | По умолчанию | Описание |
 | --- | --- | --- | --- |
@@ -155,7 +155,7 @@ dsh plugin --profile web add @yadsh/dsh-domain-experts
 
 - DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (протестировано на `0.1.7-rc.2`)
 - Node `^22.19.0 || >=24.0.0`
-- Браузерная часть требует слота `settings.plugins.tab`
+- Браузерная часть требует слот `plugins.bundle.config`
 
 Машиночитаемая форма — в [compatibility.json](./compatibility.json).
 

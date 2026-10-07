@@ -112,8 +112,9 @@ Each numbered item is a verifiable guarantee, phrased as behaviour.
 27. The browser half degrades rather than throws: an unavailable slot, an
     unavailable settings namespace or an unanswered Remote call renders as a
     labelled status, never as a broken page.
-28. The plugin registers **no** settings card. Its UI is one page in
-    `settings.plugins.tab`, so the bundle carries no card shell.
+28. The plugin registers **no** settings card. Its UI is one page on the
+    `plugins.bundle.config` seat of the Host's Plugins page, so the bundle carries
+    no card shell and no title of its own.
 29. Every agent-visible tool declares `output { schema, render }`, and a refusal
     carries its stable error code in the message the model receives.
 30. Changing the carrier of memory changes what it costs, not what it answers.
@@ -301,7 +302,7 @@ audit ring mirrored to the plugin log.
 
 ## 5. Required end-to-end scenarios
 
-1. **Create and use.** Open `Settings → Plugins → Domain Experts`, create
+1. **Create and use.** Open the **Domain Experts** row of the Plugins page, create
    `payments` with a persona and one primary path. In a chat, call
    `domain_expert(domain: "payments", task: "…")`. Expect a child session whose
    persona contains the base policy, the task and the primary path.
@@ -352,7 +353,7 @@ audit ring mirrored to the plugin log.
 | Background expert runs | Implemented | Continuable children; returns a receipt |
 | Structured expert output | Partial | Prompt contract with lenient parsing; native `outputSchema` deferred |
 | Execution audit | Partial | In-memory ring + plugin log; durable store deferred |
-| Settings tab UI | Implemented | `settings.plugins.tab`, id `domain-experts` |
+| Bundle page UI | Implemented | `plugins.bundle.config`, keyed by the package name |
 | Resolved-scope inspector | Implemented | Per-entry enforcement labels |
 | Expert test screen | Implemented | Real run through `ctx.agents`; profile preview |
 | Extension APIs | Implemented | `registerScopeProvider` / `registerMemoryProvider` / `registerWorker` |

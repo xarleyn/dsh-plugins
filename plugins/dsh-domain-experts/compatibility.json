@@ -11,7 +11,7 @@
       "subagents.provider-capabilities",
       "storageDomain.open"
     ],
-    "requiredClientFeatures": ["settings.plugins.tab", "typert.remote"]
+    "requiredClientFeatures": ["plugins.bundle.config", "typert.remote"]
   },
   "node": "^22.19.0 || >=24.0.0"
 }
