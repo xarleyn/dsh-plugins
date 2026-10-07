@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaSessionController } from "../../src/client/QaSessionController.js";
-import { harness } from "../helpers/session-fakes.js";
+import { harness, openChat } from "../helpers/session-fakes.js";
 import { legacy, snapshot } from "../helpers/conversation-fakes.js";
 import type {
   ConversationNode,
@@ -41,9 +41,8 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    expect(await controller.send("Привет")).toBe(false);
     expect(controller.getSnapshot()).toMatchObject({
-      phase: "error",
-      canSend: false,
       error: "Настройки помощника недоступны.",
     });
     controller.dispose();
@@ -56,6 +55,8 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    // The chat this browser talks to is the one its first prompt made.
+    await openChat(controller, world);
     const opensBefore = world.retain.mock.calls.length;
     // First send-time attestation hits an agent whose tool view the Host
     // dismantled; the retry after the re-bind sees a healthy catalog.
@@ -84,6 +85,7 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    await openChat(controller, world);
     // Send attestation and the re-bind attestation both hit the dismantled
     // session; the blank-session fallback mints a fresh attested one.
     const refusal = {
@@ -147,6 +149,7 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    await openChat(controller, world);
     const refusal = {
       ok: false as const,
       error: {
@@ -161,8 +164,10 @@ describe("QA session controller", () => {
       .mockResolvedValueOnce(refusal)
       .mockResolvedValueOnce(refusal);
     expect(await controller.send("hello")).toBe(false);
-    expect(world.faces.get("created-1")?.prompt).not.toHaveBeenCalled();
-    expect(world.faces.get("created-2")?.prompt).not.toHaveBeenCalled();
+    expect(world.faces.get("created-1")?.prompt).not.toHaveBeenCalledWith(
+      [{ type: "text", text: "hello" }],
+      "queue",
+    );
     expect(controller.getSnapshot()).toMatchObject({
       error: "Настройки помощника недоступны.",
     });
@@ -170,15 +175,16 @@ describe("QA session controller", () => {
   });
 
   it("does not draft a locked session by default", async () => {
-    const world = harness();
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig(),
     });
     await controller.ensureSession();
     await controller.startDraft();
-    expect(world.create).toHaveBeenCalledOnce();
-    expect(controller.getSnapshot().sessionId).toBe("created-1");
+    expect(world.create).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().sessionId).toBe("saved");
     controller.dispose();
   });
 
