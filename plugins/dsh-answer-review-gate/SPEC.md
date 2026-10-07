@@ -405,6 +405,28 @@ Ideally reviewer uses:
 - no unrestricted shell;
 - no ability to recursively invoke itself.
 
+The tool half of that list is enforced, not advised. `src/reviewer-tools.ts`
+names the read-only set the `subagent` reviewer is composed with when the
+deployment names none (`read`, `read_image`, `glob`, `grep`, `docs_read`,
+`docs_search`) and the names that never enter a reviewer — `file_delete`,
+`write`, `edit`, `apply_patch`, `str_replace_editor`, `bash`, `shell`,
+`run_code`, `lsp`, `dsh_lightrag_delete`, and any `terminal_*`/`job_*` tool.
+The exclusion is applied twice: once when the config is resolved, once again at
+the call that starts the child, so no path composes a reviewer that can change
+the workspace. `tests/reviewer-tools.test.ts` holds both.
+
+This exists because a reviewer that could delete did delete: on a stand with
+`interaction.approvals: interactive` the child raised `file_delete`, the request
+parked above the parent's composer, and the turn waited — 12,5 minutes in one
+observation, over an hour in another — for an approval a delegated call cannot
+receive. The reviewer's prompt says the same thing the filter enforces: an
+obstacle is a finding about the candidate, never something to clear.
+
+The `domain-expert` backend's tools are the configured domain's, and a tool the
+surface attaches to the agent's own layer survives any inherited filter; that
+branch is bounded on the surface's side, where a delegated call asking for
+confirmation is refused on the spot.
+
 Correlated model failures should be reduced where economically reasonable by using a reviewer route different from primary.
 
 ---
@@ -824,7 +846,9 @@ How many review rounds are typically needed?
 
 # Security
 
-Reviewer should be read-only by default.
+Reviewer is read-only by default: the allow-list and the excluded names are in
+`src/reviewer-tools.ts`, and a delegated reviewer that asks for confirmation is
+refused where it asks rather than parking the parent turn.
 
 It must not:
 

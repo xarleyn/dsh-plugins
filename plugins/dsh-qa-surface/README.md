@@ -48,9 +48,10 @@ Session and Agent Loop.
 - ships a destructive-but-fenced `file_delete` tool in that catalog: it removes
   one regular file strictly inside the chat's workspace and refuses
   directories, missing paths and anything that leaves the root — symlink
-  escapes included — with an explicit, path-safe reason; every call answers
-  `ask`, so the interactive approval card parks it for the operator and
-  nothing is ever deleted without a person's answer;
+  escapes included — with an explicit, path-safe reason; a call from the chat's
+  own agent answers `ask`, so the interactive approval card parks it for the
+  operator, a delegated call is refused outright, and nothing is ever deleted
+  without a person's answer;
 - optionally gates the surface behind email + password accounts
   (`accounts.enabled`) with server-side session ownership, a first-login
   migration of the browser's existing chats, a `qa-accounts` management CLI
@@ -324,11 +325,14 @@ As of catalog version 3 the shipped catalog carries four tools:
 capability — it deletes a single regular file strictly inside the calling
 chat's workspace and refuses directories, missing paths and anything that
 escapes the root, symlink escapes included, with an explicit reason that never
-echoes a host path. Every `file_delete` call is answered `ask` by an
-inner gate that sits inside the approval flow, so on a deployment with
-`interaction.approvals: interactive` the interactive approval card parks the
-call for the operator, and on `blocked` the call is refused outright: nothing
-is deleted without a person. Like every catalog tool it is admitted as a
+echoes a host path. Every `file_delete` call from the chat's own agent is
+answered `ask` by an inner gate that sits inside the approval flow, so on a
+deployment with `interaction.approvals: interactive` the interactive approval
+card parks the call for the operator, and on `blocked` the call is refused
+outright: nothing is deleted without a person. A delegated child of that chat is
+refused by the same inner gate without a card — a child cannot be confirmed by
+anyone, and a card parked over the parent's composer holds the parent turn for
+an answer that cannot arrive. Like every catalog tool it is admitted as a
 dynamic name at execution time — it needs no `lockdown.toolPolicy` entry —
 and a role-managed deployment grants it through the same Tools baskets as any
 other tool.
