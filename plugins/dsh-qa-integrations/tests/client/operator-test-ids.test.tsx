@@ -13,7 +13,7 @@ import { render } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { describe, expect, it } from "vitest";
 import { OperatorCard } from "../../src/client/operator-card.js";
-import { testIdOf } from "../../src/client/operator-controls.js";
+import { kebabSegment, testIdOf } from "../../src/client/operator-controls.js";
 
 /** The slot props the Plugins page supplies are outside this test's concern. */
 const Card = OperatorCard as unknown as (props: {
@@ -157,5 +157,24 @@ describe("operator control test ids", () => {
     // A card that rendered nothing would pass the loops above.
     expect(named).toBeGreaterThan(100);
     expect(scopes.length).toBeGreaterThan(3);
+  });
+});
+
+/**
+ * The provider card names its capability and boundary rows with the same
+ * segment rule (#715). Cut on a case-free class instead, `buildConfigs.read`
+ * collapsed to `build-onfigs-read` and no selector reached that row.
+ */
+describe("the shared test id segment", () => {
+  it("keeps a capital in the middle of a vocabulary key", () => {
+    expect(kebabSegment("buildConfigs.read")).toBe("build-configs-read");
+    expect(kebabSegment("workItems.testResults")).toBe(
+      "work-items-test-results",
+    );
+    expect(kebabSegment("screenshotsRead")).toBe("screenshots-read");
+    expect(kebabSegment("ci.logs.read")).toBe("ci-logs-read");
+    expect(kebabSegment("merge_requests.read")).toBe("merge-requests-read");
+    // An acronym run belongs to the word after it, as in the operator card.
+    expect(kebabSegment("maxHTTPRetries")).toBe("max-http-retries");
   });
 });
