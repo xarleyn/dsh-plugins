@@ -14,8 +14,12 @@
 
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import type { Context } from "@deepseek-ai/cordis";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
+import { UI_REPAIR_ROW_SUMMARY } from "../src/client/card.js";
 import { apply } from "../src/client/index.js";
 import type { UIRepairRuntime } from "../src/client/runtime.js";
 import type { UIRepairPluginConfig } from "../src/shared/config.js";
@@ -32,8 +36,24 @@ interface Mounted {
   readonly dispose: () => void;
 }
 
-const ROW_SUMMARY =
-  "Observe layout defects and apply reversible, scoped repairs.";
+/**
+ * The display copy the Host reads for this package's row without activating it.
+ *
+ * Taken from the shipped file rather than restated here: a copy would keep this
+ * file green while `locale/en.json` renamed the row away from the card it opens.
+ * Read through `fileURLToPath` because the jsdom environment replaces the global
+ * `URL`, and Node's `readFileSync` only recognises its own.
+ */
+const rowMeta = (
+  JSON.parse(
+    readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "..", "locale/en.json"),
+      "utf8",
+    ),
+  ) as {
+    readonly meta: { readonly title: string; readonly description: string };
+  }
+).meta;
 
 interface Snapshot {
   readonly status: string;
@@ -278,10 +298,20 @@ describe("plugins.row.config seat", () => {
 
     const paragraphs = container.querySelectorAll("p");
     expect(paragraphs).toHaveLength(1);
-    expect(paragraphs[0]?.textContent).toBe(ROW_SUMMARY);
+    expect(paragraphs[0]?.textContent).toBe(UI_REPAIR_ROW_SUMMARY);
     expect(container.querySelector("button")).toBeNull();
     expect(container.querySelector('[data-testid="repair-ui"]')).toBeNull();
     expect(subscribe.mock.calls).toHaveLength(before);
+  });
+
+  it("describes the row with the sentence the seat falls back to", () => {
+    // The page titles and describes this row from `locale/en.json`, and it prints
+    // the entry's own answer only where that file carries no description: two
+    // strings for one line means the row can describe something other than the
+    // page it opens. The title has no copy of its own anywhere else, so it is
+    // pinned to the name this deployment's operator reads.
+    expect(rowMeta.title).toBe("UI Repair");
+    expect(rowMeta.description).toBe(UI_REPAIR_ROW_SUMMARY);
   });
 
   it("mounts the settings body with no frame, heading or disclosure of its own", async () => {

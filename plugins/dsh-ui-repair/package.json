@@ -26,6 +26,7 @@
     "./types": {
       "types": "./lib/types/client/types.d.ts"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -46,6 +47,7 @@
   "files": [
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
