@@ -88,12 +88,12 @@ describe("QA session controller: an adoption the visitor left behind", () => {
     expect(world.faces.get(late)?.prompt).not.toHaveBeenCalled();
     // And it still owns its identity: had the abandoned adoption cleared the
     // name, the next chat this surface bootstraps would have inherited it.
+    const createdBefore = world.createSession.mock.calls.length;
     await controller.ensureSession();
-    // The newest creation is the head of the list the harness publishes, so this
-    // says "the chat bootstrap opened a session of its own" without naming it.
-    expect(controller.getSnapshot()).toMatchObject({
-      sessionId: String(world.list.getSnapshot().ids[0]),
-    });
+    // A page that starts over under this policy takes a draft of its own, with
+    // its own identity, and spends no session on it.
+    expect(controller.getSnapshot()).toMatchObject({ sessionId: null });
+    expect(world.createSession.mock.calls.length).toBe(createdBefore);
     expect(controller.getSnapshot().chatKey).not.toBe(liveKey);
     controller.dispose();
   });
@@ -425,14 +425,18 @@ describe("QA session controller: an adoption the visitor left behind", () => {
     // nothing. If that bootstrap then fails, nothing ever unbinds this adoption:
     // it would go on holding a Host session nobody is in, and each frame of that
     // abandoned chat would clear the error the stand published.
-    const world = harness();
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig({
-        session: { policy: "new-on-load" },
         ui: { showReset: true },
         lockdown: { allowSessionReset: true },
       }),
+      // The bootstrap this test needs is one that never gets as far as a
+      // session: a load that only drafts takes the screen without touching
+      // anything, and there is no install left behind to take back.
+      timeoutMs: 5,
     });
     await controller.ensureSession();
     await controller.startDraft();
@@ -459,14 +463,8 @@ describe("QA session controller: an adoption the visitor left behind", () => {
     );
 
     // The surface re-boots — another account, configuration or route — and the
-    // stand refuses to create the session this bootstrap is after.
-    world.createSession.mockImplementationOnce(async () => ({
-      ok: false as const,
-      error: {
-        code: "qa.session_create_refused",
-        message: "preset unavailable",
-      },
-    }));
+    // Host stops answering the session list this bootstrap waits for.
+    world.list.set({ ...world.list.getSnapshot(), phase: "pending" });
     const bootstrapping = controller.ensureSession();
     releaseAttestation({
       ok: true,
@@ -523,9 +521,10 @@ describe("QA session controller: an adoption the visitor left behind", () => {
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig({
-        session: { policy: "new-on-load" },
-        ui: { showReset: true },
-        lockdown: { allowSessionReset: true },
+        // The bootstrap this test needs to fail is one that has a session to
+        // open and cannot: a load that drafts has nothing to spend and nothing
+        // to refuse.
+        session: { policy: "fixed", fixedSessionId: "gone" },
       }),
     });
     const subagent = world.faces.get("sub-1");
@@ -538,13 +537,6 @@ describe("QA session controller: an adoption the visitor left behind", () => {
       () => (world.bindings.get("sub-1")?.target.mock.calls.length ?? 0) > 0,
     );
 
-    world.createSession.mockImplementationOnce(async () => ({
-      ok: false as const,
-      error: {
-        code: "qa.session_create_refused",
-        message: "preset unavailable",
-      },
-    }));
     const bootstrapping = controller.ensureSession();
 
     // The transcript the visitor already left arrives, and proves nothing about
@@ -577,18 +569,18 @@ describe("QA session controller: an adoption the visitor left behind", () => {
     // one, so it has to give the screen back rather than resume as its owner:
     // unbinding a session that had just been adopted leaves a visitor looking at
     // an empty chat they never chose, whose every question then goes nowhere.
-    const world = harness(["other"]);
+    const world = harness(["saved", "other"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig({
-        session: { policy: "new-on-load" },
         ui: { showReset: true },
         lockdown: { allowSessionReset: true },
       }),
     });
     await controller.ensureSession();
     const open = controller.getSnapshot().sessionId;
-    expect(open).not.toBeNull();
+    expect(open).toBe("saved");
     const openFace = world.faces.get(String(open));
     openFace?.source.set({
       ...openFace.source.getSnapshot(),

@@ -40,8 +40,13 @@ describe("QA session controller", () => {
     await controller.ensureSession();
 
     expect(world.retain).not.toHaveBeenCalledWith("sub-1");
-    expect(world.create).toHaveBeenCalledOnce();
-    expect(controller.getSnapshot().sessionId).toMatch(/^created-/u);
+    // A chat the Host will not vouch for is not answered by spending another
+    // one: the load falls back to a draft and the stale id goes with it.
+    expect(world.create).not.toHaveBeenCalled();
+    expect(world.stored.has("dsh-qa-surface.session:v1:/qa:session")).toBe(
+      false,
+    );
+    expect(controller.getSnapshot().sessionId).toBeNull();
     controller.dispose();
   });
 
@@ -58,7 +63,8 @@ describe("QA session controller", () => {
     await controller.ensureSession();
 
     expect(world.retain).not.toHaveBeenCalledWith("__proto__");
-    expect(world.create).toHaveBeenCalledOnce();
+    expect(world.create).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().sessionId).toBeNull();
     controller.dispose();
   });
 });

@@ -12,7 +12,7 @@ import { until } from "../helpers/settle.js";
  */
 describe("QA session controller: the chat a first send belongs to", () => {
   it("keeps the chat identity across the session a draft creates on first send", async () => {
-    const world = harness();
+    const world = harness(["saved"]);
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig({
@@ -66,7 +66,7 @@ describe("QA session controller: the chat a first send belongs to", () => {
     expect(controller.getSnapshot().chatKey).toBe(draftKey);
     // A real move to another chat does change the identity: that composer must
     // not carry the previous conversation's text.
-    await controller.switchTo("created-1");
+    await controller.switchTo("saved");
     expect(controller.getSnapshot().chatKey).not.toBe(draftKey);
     controller.dispose();
   });
@@ -83,7 +83,8 @@ describe("QA session controller: the chat a first send belongs to", () => {
       config: resolveConfig(),
     });
     await first.ensureSession();
-    expect(first.getSnapshot().sessionId).toBe("created-1");
+    // A visit that sends nothing owns a draft, not a chat.
+    expect(first.getSnapshot().sessionId).toBeNull();
     const firstKey = first.getSnapshot().chatKey;
     expect(firstKey).not.toBe(QA_SESSION_IDLE_STATE.chatKey);
     first.dispose();
@@ -93,8 +94,8 @@ describe("QA session controller: the chat a first send belongs to", () => {
       config: resolveConfig(),
     });
     await second.ensureSession();
-    // The chat the first controller left behind, reopened by the second one.
-    expect(second.getSnapshot().sessionId).toBe("created-1");
+    // The controller the surface rebuilt is another chat, whatever it reopens:
+    // two of them under one identity is what this guards.
     expect(second.getSnapshot().chatKey).not.toBe(firstKey);
     second.dispose();
   });
@@ -224,9 +225,11 @@ describe("QA session controller: the chat a first send belongs to", () => {
     });
 
     await controller.ensureSession();
+    // The retry re-opens the same draft — same identity, still no session — and
+    // the question the visitor holds is what pays for the next one.
     expect(controller.getSnapshot()).toMatchObject({
       chatKey: draftKey,
-      sessionId: "created-1",
+      sessionId: null,
     });
     controller.dispose();
   });

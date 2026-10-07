@@ -11,6 +11,9 @@ describe("QA chat index and switching", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    // A visit that sends nothing is not a chat: the index fills with the prompt.
+    expect(controller.chatIds()).toEqual([]);
+    expect(await controller.send("Первый вопрос")).toBe(true);
     expect(controller.chatIds()).toEqual(["created-1"]);
     expect(
       JSON.parse(
@@ -27,6 +30,7 @@ describe("QA chat index and switching", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(true);
     expect(controller.getSnapshot().sessionId).toBe("created-2");
     await controller.switchTo("saved");
     expect(controller.getSnapshot()).toMatchObject({
@@ -58,7 +62,7 @@ describe("QA chat index and switching", () => {
       phase: "error",
       error: "Не удалось открыть этот чат.",
     });
-    expect(controller.chatIds()).toEqual(["created-2", "saved"]);
+    expect(controller.chatIds()).toEqual(["saved"]);
     controller.dispose();
   });
 
@@ -75,7 +79,8 @@ describe("QA chat index and switching", () => {
       phase: "error",
       error: "Настройки помощника недоступны.",
     });
-    expect(controller.chatIds()).toEqual(["created-2"]);
+    // A chat the stand would not vouch for is not written into the history.
+    expect(controller.chatIds()).toEqual([]);
     controller.dispose();
   });
 

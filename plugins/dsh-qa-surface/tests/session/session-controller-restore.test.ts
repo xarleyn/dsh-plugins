@@ -106,7 +106,7 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("replaces a stale id through Host-authoritative creation", async () => {
+  it("opens a draft instead of a chat when the persisted id is gone", async () => {
     const world = harness();
     world.stored.set("dsh-qa-surface.session:v1:/qa:session", "gone");
     const controller = new QaSessionController({
@@ -120,11 +120,21 @@ describe("QA session controller", () => {
       }),
     });
     await controller.ensureSession();
+    // Nothing on the Host answers to the id this browser kept, and the answer
+    // is not a fresh session nobody asked for: the stale id is dropped and the
+    // screen shows a draft, which pays for its chat on the first prompt.
+    expect(world.createSession).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().sessionId).toBeNull();
+    expect(world.stored.has("dsh-qa-surface.session:v1:/qa:session")).toBe(
+      false,
+    );
+
+    expect(await controller.send("Первый вопрос")).toBe(true);
     expect(controller.getSnapshot().sessionId).toBe("created-1");
+    expect(world.createSession).toHaveBeenCalledWith("", null, false);
     expect(world.stored.get("dsh-qa-surface.session:v1:/qa:session")).toBe(
       "created-1",
     );
-    expect(world.createSession).toHaveBeenCalledWith("", null, false);
     expect(world.api.selectModel).not.toHaveBeenCalled();
     controller.dispose();
   });
@@ -268,16 +278,18 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(true);
     expect(controller.getSnapshot().sessionId).toBe("created-1");
     const firstKey = controller.getSnapshot().chatKey;
 
     // The Host stopped listing the chat this browser had persisted, and the
-    // operator pressed retry: the bootstrap lands on a session of its own, so
-    // the surface is looking at another chat than the one it named.
+    // operator pressed retry: what the bootstrap puts on screen is a draft of
+    // its own, so the surface is looking at another chat than the one it named.
     world.list.set({ ...world.list.getSnapshot(), ids: [], byId: {} });
     await controller.ensureSession();
 
-    expect(controller.getSnapshot().sessionId).toBe("created-2");
+    expect(controller.getSnapshot().sessionId).toBeNull();
+    expect(world.create).toHaveBeenCalledOnce();
     // What the vanished chat was holding — an unsent question, an attachment,
     // an open drawer — has to die with it rather than be inherited.
     expect(controller.getSnapshot().chatKey).not.toBe(firstKey);
@@ -408,6 +420,7 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(true);
     const current = controller.getSnapshot().sessionId;
 
     await controller.switchTo("historical");
@@ -419,6 +432,9 @@ describe("QA session controller", () => {
       canSend: false,
       error: null,
     });
+    // Opening a transcript the stand will not write into spends no session of
+    // its own: the only chat this browser made is the one its first prompt asked
+    // for.
     expect(world.create).toHaveBeenCalledOnce();
     expect(current).not.toBe("historical");
     controller.dispose();
@@ -437,10 +453,9 @@ describe("QA session controller", () => {
     });
 
     await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(false);
 
     expect(controller.getSnapshot()).toMatchObject({
-      phase: "error",
-      canSend: false,
       error: "Настройки помощника недоступны.",
     });
     expect(world.stored.has(storageKey)).toBe(false);
@@ -464,11 +479,10 @@ describe("QA session controller", () => {
     });
 
     await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(false);
 
     expect(controller.getSnapshot()).toMatchObject({
-      phase: "error",
       compatibilityReadOnly: false,
-      canSend: false,
       error: "Настройки помощника недоступны.",
     });
     controller.dispose();
@@ -483,6 +497,7 @@ describe("QA session controller", () => {
       }),
     });
     await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(true);
     expect(world.createSession).toHaveBeenCalledWith("", null, false);
     expect(world.selectAgentPreset).not.toHaveBeenCalled();
     expect(world.secureSession).toHaveBeenCalledWith("", "created-1");

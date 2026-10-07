@@ -1087,17 +1087,35 @@ export class QaSessionController {
       // raise exists to stop.
       if (this.disposed || this.generation !== owned) return;
     }
-    // Taking the screen from the chat it was showing moves the generation, as
-    // every other path that retires a binding does: an adoption still looking
-    // for its session measures itself against that generation, and would
-    // otherwise take the screen back for the chat the visitor just left. Its
-    // materialization goes the same way — it belongs to the ending chat, and must
-    // not hold this draft in "chat still being created" until a round-trip nobody
-    // is waiting for answers.
+    this.enterDraft();
+  }
+
+  /**
+   * Put a draft on the screen: no session, so no row in the chat history and no
+   * record on the Host until the first prompt is sent into it
+   * ({@link materializeDraft}). Taking the screen moves the generation the way
+   * every other path that retires a binding does, so an adoption still looking
+   * for its session measures itself against the new one rather than taking the
+   * draft back.
+   *
+   * A draft that is already on screen — including one whose first send fell
+   * short of a claimed session — keeps its chat identity: a new one rebuilds the
+   * composer over the question the visitor is still looking at.
+   */
+  private enterDraft(): void {
     this.generation += 1;
     this.materializing = undefined;
     this.drafting = true;
-    this.openChat();
+    if (this.namedSession !== null) {
+      this.openChat();
+    } else {
+      // The identity stays, so the composer keeps the text its question was
+      // typed into — but the send that chat had in flight is retired with it:
+      // the projection reads the optimistic row and the busy flag out of it
+      // without asking which chat is on screen.
+      this.pendingSubmission = undefined;
+      this.admissionPending = false;
+    }
     this.unbind();
     this.operationError = null;
     this.policyReady = false;
@@ -1384,6 +1402,20 @@ export class QaSessionController {
   }
 
   private async ensureSessionNow(): Promise<void> {
+    // A load with no chat to resume opens a draft rather than a chat: the
+    // session — and with it its row in the history and its ownership record on
+    // the Host — is spent only on the first prompt sent into it
+    // ({@link materializeDraft}). Without this, every visit to the surface left
+    // one more blank «Новый чат» behind, and one more live Host session nobody
+    // asked for. A fixed-policy deployment has one session to show and cannot
+    // draft, so it keeps its own path.
+    const resumable =
+      this.config.session.policy === "browser-persistent" &&
+      this.chats.activeId() !== null;
+    if (this.config.session.policy !== "fixed" && !resumable) {
+      this.enterDraft();
+      return;
+    }
     const operation = ++this.generation;
     this.drafting = false;
     this.state = {
@@ -1417,8 +1449,8 @@ export class QaSessionController {
             : undefined;
         // A stored id that is not a chat any more — a delegated child this
         // browser once opened as one, a session the Host no longer lists —
-        // falls through to a fresh chat instead of restoring a transcript
-        // nobody can send into.
+        // falls through to a draft instead of restoring a transcript nobody can
+        // send into.
         if (
           stored !== null &&
           summary !== undefined &&
@@ -1432,12 +1464,11 @@ export class QaSessionController {
         }
       }
       if (id === null) {
-        id = await createQaSession({
-          createSession: this.createSessionRemote,
-          token: this.accounts?.token() ?? "",
-          subroleId: this.selectedSubrole,
-          adminPreview: this.adminPreview,
-        });
+        // The persisted id names nothing this browser may reopen; that is the
+        // same case as a load with no id at all, so it drafts too. The prompt
+        // the visitor sends next materializes the chat it belongs to.
+        this.enterDraft();
+        return;
       }
       if (this.disposed || operation !== this.generation) return;
       // A restored id's first bind stays quiet: the recovery path below may
@@ -1897,7 +1928,18 @@ export class QaSessionController {
   private publish(): void {
     if (this.disposed) return;
     const connected = this.connection.getSnapshot() !== undefined;
-    if (this.drafting && this.session === undefined) {
+    // A draft is on screen while its chat owns no session. That includes one
+    // whose first send created a session the stand then refused to attest:
+    // projecting that never-claimed binding would hand the screen to a chat the
+    // visitor does not hold and leave the composer disabled with no retry over
+    // it, while the draft keeps a sendable composer and the reason above it. A
+    // proof still in flight is the other case — the session the question is
+    // waiting for is already the chat on screen, and its rows belong there.
+    const refusedDraft =
+      this.drafting &&
+      this.namedSession === null &&
+      this.materializing === undefined;
+    if (this.drafting && (this.session === undefined || refusedDraft)) {
       // Draft state: an empty writable composer without a bound session. The
       // session list is untouched — nothing exists until the first send.
       const materializing =

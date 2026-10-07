@@ -38,7 +38,10 @@ describe("attestation diagnostics", () => {
         details: {},
       },
     });
+    // The proof is spent on the chat the first prompt creates: a load that
+    // sends nothing attests nothing.
     await controller.ensureSession();
+    expect(await controller.send("Привет")).toBe(false);
     const texts = errorSpy.mock.calls.map((call) => String(call[0]));
     expect(
       texts.filter((text) => text.includes("policy attestation failed")),
@@ -49,7 +52,6 @@ describe("attestation diagnostics", () => {
       texts.filter((text) => text.includes("session operation failed")),
     ).toEqual([]);
     expect(controller.getSnapshot()).toMatchObject({
-      phase: "error",
       error: "Настройки помощника недоступны.",
     });
     errorSpy.mockRestore();
@@ -81,6 +83,7 @@ describe("attestation diagnostics", () => {
       },
     });
     await controller.ensureSession();
+    await controller.send("Привет");
     const texts = errorSpy.mock.calls.map((call) => String(call[0]));
     expect(
       texts.some((text) => text.includes("(reason: proof-mismatch)")),
@@ -102,9 +105,9 @@ it("forgets a non-active chat without touching sessions", async () => {
   });
   await controller.ensureSession();
   await controller.deleteChat("saved");
-  expect(world.create).toHaveBeenCalledTimes(1);
-  expect(controller.chatIds()).toEqual(["created-2", "other"]);
-  expect(controller.getSnapshot().sessionId).toBe("created-2");
+  expect(world.create).not.toHaveBeenCalled();
+  expect(controller.chatIds()).toEqual(["other"]);
+  expect(controller.getSnapshot().sessionId).toBeNull();
   controller.dispose();
 });
 
@@ -115,6 +118,9 @@ it("deleting the active chat falls back to a draft without creating a session", 
     config: resolveConfig({ lockdown: { allowSessionReset: true } }),
   });
   await controller.ensureSession();
+  // The chat the browser holds is the one its first prompt created.
+  expect(await controller.send("Первый вопрос")).toBe(true);
+  expect(world.create).toHaveBeenCalledOnce();
   await controller.deleteChat("created-1");
   expect(world.create).toHaveBeenCalledOnce();
   expect(controller.getSnapshot()).toMatchObject({
