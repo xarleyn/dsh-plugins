@@ -235,6 +235,26 @@ describe("classic browser bundle", () => {
     expect(container.querySelector("input, select, button")).toBeNull();
   });
 
+  it("names and describes its row from the locale the Host reads", async () => {
+    /*
+     * The Plugins page titles this bundle's row and prints its one-liner from the
+     * package's exported `locale/en.json`, which it resolves without activating the
+     * plugin — the seat hands its registrant no label. Without the file the row is
+     * named by its full package specifier, and a description that drifts from the
+     * summary answer above lets one row describe two different pages.
+     */
+    const meta = (
+      JSON.parse(
+        await readFile(
+          join(import.meta.dirname, "..", "..", "locale/en.json"),
+          "utf8",
+        ),
+      ) as { meta: { description: string; title: string } }
+    ).meta;
+    expect(meta.title).toBe("Jev Compaction");
+    expect(meta.description).toBe(JEV_COMPACTION_ROW_SUMMARY);
+  });
+
   it("injects its stylesheet once, tagged with the package name", async () => {
     const { exports } = await loadBundle();
     exports.apply({
