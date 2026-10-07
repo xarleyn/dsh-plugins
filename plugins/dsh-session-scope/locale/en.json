@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Session Scopes",
+    "description": "Per-session workspace visibility scopes: what a session may read, write, and run."
+  }
+}
