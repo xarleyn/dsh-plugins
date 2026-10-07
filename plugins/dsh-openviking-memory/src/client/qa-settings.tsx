@@ -63,7 +63,7 @@ export const qaSettingsStyles: string = `
 .ovm-qa__chat-id{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
 .ovm-qa__notice{margin:0;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.5}
 .ovm-qa__notice strong{color:var(--dsw-alias-label-primary)}
-.ovm-qa__error{margin:0;padding:10px 12px;border-radius:9px;background:var(--dsw-alias-bg-error);color:var(--dsw-alias-label-error);font-size:11px;line-height:1.5}
+.ovm-qa__error{margin:0;padding:10px 12px;border-radius:9px;background:color-mix(in srgb, var(--dsw-alias-state-error-primary, #b3261e) 8%, transparent);color:var(--dsw-alias-state-error-primary, #b3261e);font-size:11px;line-height:1.5}
 .ovm-qa__footer{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .ovm-qa__btn{height:32px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);padding:0 12px;font:inherit;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
 .ovm-qa__btn:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed);background:var(--dsw-alias-interactive-bg-hover)}

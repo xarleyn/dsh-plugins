@@ -148,10 +148,17 @@ await runVerifyPackage({
       "--dsw-alias-label-secondary",
       "--dsw-alias-state-warn-label",
       "--dsw-alias-state-error-primary",
-      "--dsw-alias-bg-error",
     ]) {
       assert.ok(client.includes(token), `panel styles must use ${token}`);
     }
+    // The tint is mixed from the error token rather than named: the theme has
+    // no error-surface alias, and a `--dsw-alias-bg-error` it never declares
+    // would cost this rule its whole declaration in silence (issue #717).
+    assert.doesNotMatch(
+      client,
+      /--dsw-alias-(bg|label|border)-error/u,
+      "the panel must not name a design token the Host theme does not declare",
+    );
     assert.ok(
       client.includes(".plu-log-time{color:var(--dsw-alias-label-secondary)"),
       "the clock must stay above the dimmed ink it started on",

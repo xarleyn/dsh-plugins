@@ -38,7 +38,7 @@ const CSS = [
   ".ddi_body{color:var(--dsw-alias-label-primary)}",
   ".ddi_notice{color:var(--dsw-alias-label-tertiary);margin:12px 0 0;font-size:12px;line-height:1.5}",
   ".ddi_footer{border-top:1px solid var(--dsw-alias-border-l2);justify-content:flex-end;align-items:center;gap:8px;padding:12px 0 4px;display:flex}",
-  ".ddi_failed{min-width:0;color:var(--dsw-alias-label-error);flex:1;margin:0;font-size:12px;line-height:1.5}",
+  ".ddi_failed{min-width:0;color:var(--dsw-alias-state-error-primary, #b3261e);flex:1;margin:0;font-size:12px;line-height:1.5}",
   ".ddi_save,.ddi_discard{appearance:none;font:inherit;cursor:pointer;border:1px solid transparent;border-radius:8px;padding:5px 14px;font-size:13px;line-height:1.5}",
   ".ddi_discard{border-color:var(--dsw-alias-border-l2);color:var(--dsw-alias-label-secondary);background:0 0}",
   ".ddi_discard:hover:not(:disabled){color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-label-dimmed)}",
@@ -58,9 +58,9 @@ const CSS = [
   ".ddi_textarea{resize:vertical;min-height:132px;font-family:inherit}",
   ".ddi_input:focus-visible,.ddi_select:focus-visible,.ddi_textarea:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}",
   ".ddi_input:disabled,.ddi_select:disabled,.ddi_textarea:disabled{opacity:.5;cursor:default}",
-  ".ddi_inputInvalid{border-color:var(--dsw-alias-label-error)}",
+  ".ddi_inputInvalid{border-color:var(--dsw-alias-state-error-primary, #b3261e)}",
   ".ddi_hint{color:var(--dsw-alias-label-tertiary);margin:6px 0 0;font-size:12px;line-height:1.5}",
-  ".ddi_invalid{color:var(--dsw-alias-label-error);margin:6px 0 0;font-size:12px;line-height:1.5}",
+  ".ddi_invalid{color:var(--dsw-alias-state-error-primary, #b3261e);margin:6px 0 0;font-size:12px;line-height:1.5}",
 ].join("\n");
 if (typeof document !== "undefined") injectCardStyles("dsh-doc-impact", CSS);
 
