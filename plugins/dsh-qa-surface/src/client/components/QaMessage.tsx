@@ -82,6 +82,8 @@ function QaAttachedImage({
 }
 import type { QaFeedbackReason } from "../../types.js";
 import { FEEDBACK_REASON_LABELS } from "../admin/copy.js";
+import { useCopyAction } from "../clipboard.js";
+import { CopyHint } from "./copy-hint.js";
 import { formatDayTime, formatSeconds } from "./format.js";
 import { Markdown } from "./Markdown.js";
 import { QaWorkGroup } from "./QaWorkGroup.js";
@@ -363,10 +365,14 @@ export const QaMessage = memo(
     thinkingPhrases,
     onRateFeedback,
   }: QaMessageProps) {
-    const [copied, setCopied] = useState(false);
-    const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
-      undefined,
-    );
+    // A work row carries no copyable text; the footer action renders for the
+    // roles that have it.
+    const {
+      copied,
+      impossible: copyImpossible,
+      refused: copyRefused,
+      copy,
+    } = useCopyAction(message.role === "work" ? "" : message.text);
     const [rating, setRating] = useState<Rating | null>(null);
     // The negative flow asks why, once, without blocking the rating itself.
     const [askingWhy, setAskingWhy] = useState(false);
@@ -390,13 +396,6 @@ export const QaMessage = memo(
     useEffect(() => {
       setRating(readRatings(stateKey)[message.id] ?? null);
     }, [stateKey, message.id]);
-    useEffect(
-      () => () => {
-        if (copiedTimer.current !== undefined)
-          clearTimeout(copiedTimer.current);
-      },
-      [],
-    );
     if (message.role === "system" && message.command !== undefined) {
       // A human command never enters the model conversation, so this row is
       // the only place its life cycle is visible. It is a control line, not a
@@ -493,19 +492,6 @@ export const QaMessage = memo(
         : message.role === "user"
           ? (message.author ?? "Вы")
           : "Статус";
-    const copy = async () => {
-      if (copied || navigator.clipboard?.writeText === undefined) return;
-      try {
-        await navigator.clipboard.writeText(message.text);
-        setCopied(true);
-        if (copiedTimer.current !== undefined)
-          clearTimeout(copiedTimer.current);
-        copiedTimer.current = setTimeout(() => setCopied(false), 1200);
-      } catch {
-        // Clipboard access may be denied by the embedding browser; keep the
-        // action available for a later user gesture without surfacing noise.
-      }
-    };
     const persist = (
       next: Rating | null,
       detail?: {
@@ -665,24 +651,33 @@ export const QaMessage = memo(
             data-persistent={persistentMeta || undefined}
           >
             {message.role === "user" ? meta : null}
-            <button
-              type="button"
-              data-testid="qa-message-copy"
-              aria-label={copied ? "Скопировано" : "Скопировать сообщение"}
-              title={copied ? "Скопировано" : "Копировать"}
-              onClick={() => void copy()}
-            >
-              {copied ? (
-                <svg viewBox="0 0 18 18" aria-hidden="true">
-                  <path d="m4.5 9.25 2.75 2.75 6.25-6.25" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 18 18" aria-hidden="true">
-                  <rect x="6.25" y="3.25" width="8.5" height="8.5" rx="2" />
-                  <path d="M11.75 11.75v.5a2.5 2.5 0 0 1-2.5 2.5h-3.5a2.5 2.5 0 0 1-2.5-2.5v-3.5a2.5 2.5 0 0 1 2.5-2.5h.5" />
-                </svg>
-              )}
-            </button>
+            {copyImpossible ? (
+              <CopyHint testId="qa-message-copy-hint" />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  data-testid="qa-message-copy"
+                  aria-label={copied ? "Скопировано" : "Скопировать сообщение"}
+                  title={copied ? "Скопировано" : "Копировать"}
+                  onClick={copy}
+                >
+                  {copied ? (
+                    <svg viewBox="0 0 18 18" aria-hidden="true">
+                      <path d="m4.5 9.25 2.75 2.75 6.25-6.25" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 18 18" aria-hidden="true">
+                      <rect x="6.25" y="3.25" width="8.5" height="8.5" rx="2" />
+                      <path d="M11.75 11.75v.5a2.5 2.5 0 0 1-2.5 2.5h-3.5a2.5 2.5 0 0 1-2.5-2.5v-3.5a2.5 2.5 0 0 1 2.5-2.5h.5" />
+                    </svg>
+                  )}
+                </button>
+                {copyRefused ? (
+                  <CopyHint testId="qa-message-copy-hint" />
+                ) : null}
+              </>
+            )}
             {message.role === "user" ? null : (
               <>
                 <button

@@ -114,6 +114,10 @@ afterEach(() => {
     value: undefined,
     configurable: true,
   });
+  Object.defineProperty(document, "execCommand", {
+    value: undefined,
+    configurable: true,
+  });
 });
 
 describe("integration tokens page", () => {
@@ -173,6 +177,40 @@ describe("integration tokens page", () => {
     expect(
       await screen.findByRole("button", { name: "Скопировано" }),
     ).toBeTruthy();
+  });
+
+  it("copies the secret through the copy command on an insecure page", async () => {
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: undefined,
+      configurable: true,
+    });
+    const execCommand = vi.fn(() => true);
+    Object.defineProperty(document, "execCommand", {
+      value: execCommand,
+      configurable: true,
+    });
+    const { api } = tokenApi({});
+    render(<QaIntegrationTokensPage api={api} />);
+    fireEvent.click(screen.getByTestId("qa-settings-tokens-create"));
+    const copy = await screen.findByTestId("qa-settings-tokens-copy");
+    fireEvent.click(copy);
+    await waitFor(() => expect(execCommand).toHaveBeenCalledWith("copy"));
+    expect(
+      await screen.findByRole("button", { name: "Скопировано" }),
+    ).toBeTruthy();
+  });
+
+  it("says to copy by hand where no copy path exists", async () => {
+    Object.defineProperty(window.navigator, "clipboard", {
+      value: undefined,
+      configurable: true,
+    });
+    const { api } = tokenApi({});
+    render(<QaIntegrationTokensPage api={api} />);
+    fireEvent.click(screen.getByTestId("qa-settings-tokens-create"));
+    const hint = await screen.findByTestId("qa-settings-tokens-copy-hint");
+    expect(hint.textContent).toBe("Скопируйте вручную");
+    expect(screen.queryByTestId("qa-settings-tokens-copy")).toBeNull();
   });
 
   it("asks twice before revoking, and reports the state it leaves behind", async () => {
