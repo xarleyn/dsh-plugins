@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Preset Persona",
+    "description": "Read what an agent preset contributes to the prompt: prefix, suffix, complete mode, runtime context, named sections."
+  }
+}
