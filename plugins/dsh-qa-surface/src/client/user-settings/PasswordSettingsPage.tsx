@@ -37,11 +37,15 @@ export function QaPasswordSettingsPage(props: QaPasswordSettingsPageProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  // The form is submitted with `noValidate`, so an Enter on an empty field has
+  // to be answered here — the browser would have answered it in its own words.
+  const [attempted, setAttempted] = useState(false);
   const tooShort = next !== "" && next.length < MIN_PASSWORD_LENGTH;
   const mismatch = repeat !== "" && repeat !== next;
   const incomplete = current === "" || next === "" || repeat === "";
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setAttempted(true);
     if (busy || incomplete || mismatch || tooShort) return;
     setBusy(true);
     setError(null);
@@ -57,6 +61,7 @@ export function QaPasswordSettingsPage(props: QaPasswordSettingsPageProps) {
       setCurrent("");
       setNext("");
       setRepeat("");
+      setAttempted(false);
       setSaved(true);
     });
   };
@@ -64,6 +69,7 @@ export function QaPasswordSettingsPage(props: QaPasswordSettingsPageProps) {
     <form
       className="dsh-qa-settings__page"
       data-testid="qa-settings-password"
+      noValidate
       onSubmit={submit}
     >
       <h3
@@ -120,6 +126,14 @@ export function QaPasswordSettingsPage(props: QaPasswordSettingsPageProps) {
           onChange={(event) => setRepeat(event.currentTarget.value)}
         />
       </QaSettingsField>
+      {attempted && incomplete ? (
+        <p
+          className="dsh-qa-settings__field-hint"
+          data-testid="qa-settings-password-incomplete"
+        >
+          Заполните все поля.
+        </p>
+      ) : null}
       {tooShort ? (
         <p
           className="dsh-qa-settings__field-hint"
