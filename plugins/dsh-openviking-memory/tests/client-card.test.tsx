@@ -6,6 +6,9 @@
  * renders this entry in.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   cleanup,
   fireEvent,
@@ -22,6 +25,22 @@ import {
   OpenVikingMemoryCard,
   OpenVikingMemoryCardEntry,
 } from "../src/client/card.js";
+
+/*
+ * The row's display copy, read from the file the Host resolves for it. Through
+ * `fileURLToPath` because the jsdom environment replaces the global `URL`, and
+ * Node's `readFileSync` only recognises its own.
+ */
+const rowMeta = (
+  JSON.parse(
+    readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "..", "locale/en.json"),
+      "utf8",
+    ),
+  ) as {
+    readonly meta: { readonly description: string; readonly title: string };
+  }
+).meta;
 
 const CONFIG: Config = {
   autoInject: true,
@@ -521,6 +540,12 @@ describe("the row entry the Plugins page renders", () => {
     // The page puts this inside its own `<p>`, so it has to stay text.
     expect(view.container.textContent).toBe(OPENVIKING_MEMORY_ROW_SUMMARY);
     expect(view.container.querySelector(".ovm-body")).toBeNull();
+    // The page takes the row's title and sentence from `locale/en.json` and asks
+    // this seat for the sentence only when the row carries none, so the pair must
+    // stay one string — and the title is the phrase the panel shows, the seat
+    // handing its registrant no label of its own.
+    expect(rowMeta.description).toBe(OPENVIKING_MEMORY_ROW_SUMMARY);
+    expect(rowMeta.title).toBe("OpenViking Memory");
   });
 
   it("mounts the body directly for the page view, with no list of ours", () => {

@@ -36,6 +36,7 @@
       "types": "./lib/typert.host.d.ts",
       "default": "./lib/typert.host.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -58,6 +59,7 @@
   "files": [
     "lib",
     "skills",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
