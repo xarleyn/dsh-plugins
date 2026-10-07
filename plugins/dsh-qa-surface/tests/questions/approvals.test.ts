@@ -1,5 +1,8 @@
-import { describe, expect, it } from "vitest";
-import { QaApprovalGate } from "../../src/approvals.js";
+import { describe, expect, it, vi } from "vitest";
+import {
+  QA_APPROVAL_PARK_TIMEOUT_MS,
+  QaApprovalGate,
+} from "../../src/approvals.js";
 import { QaSessionOwnership } from "../../src/session-ownership.js";
 import { fakeContext, sessionAgent } from "../helpers/context-fakes.js";
 
@@ -125,21 +128,46 @@ describe("QA approval gate", () => {
     gate.dispose();
   });
 
-  it("lists a delegated child's ask under the chat it belongs to", async () => {
+  it("refuses a delegated child's ask instead of parking it over the parent", async () => {
     const { gate, call, fire } = gateFor({
       interactive: true,
       attested: ["s1"],
     });
     const child = sessionAgent("s1-child", "s1");
     (fire("session/created") as (session: unknown) => void)(child.session);
-    const pending = call({ name: "web_fetch", agent: child }, ask);
-    await Promise.resolve();
-    const [request] = gate.list("s1");
-    expect(request).toMatchObject({ delegated: true, sessionId: "s1" });
+    await expect(
+      call({ name: "web_fetch", agent: child }, ask),
+    ).resolves.toMatchObject({
+      kind: "deny",
+      reason: expect.stringMatching(/delegated call cannot wait for/u),
+    });
+    // Nothing is parked, so nothing can hold the parent turn: the child asked
+    // a question no one can answer, and the harness refuses it by nature. This
+    // is the one seam every delegated child of an attested chat passes — a
+    // domain expert, a reviewer subagent, an offloaded worker — so the refusal
+    // is recorded here rather than repeated in each of them.
+    expect(gate.list("s1")).toEqual([]);
     expect(gate.list("s1-child")).toEqual([]);
-    gate.answer("s1", request!.id, "allowed-once");
-    await expect(pending).resolves.toEqual({ kind: "allow" });
     gate.dispose();
+  });
+
+  it("expires a parked ask no one answers, and fails it closed", async () => {
+    vi.useFakeTimers();
+    try {
+      const { gate, call } = gateFor({ interactive: true, attested: ["s1"] });
+      const pending = call({ name: "glob", agent: sessionAgent("s1") }, ask);
+      await Promise.resolve();
+      expect(gate.list("s1")).toHaveLength(1);
+      vi.advanceTimersByTime(QA_APPROVAL_PARK_TIMEOUT_MS);
+      await expect(pending).resolves.toEqual({
+        kind: "deny",
+        reason: 'approval for tool "glob" went unanswered in time',
+      });
+      expect(gate.list("s1")).toEqual([]);
+      gate.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("cancels the wait when the turn's signal aborts", async () => {
