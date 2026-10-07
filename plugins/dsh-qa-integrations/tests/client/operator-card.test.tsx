@@ -24,19 +24,26 @@ import { GitlabSection } from "../../src/client/operator-sections/gitlab.js";
 import type { OperatorForm } from "../../src/client/operator-sections/shared.js";
 
 /*
- * The row's one-liner as the Host reads it: the installed manifest's `description`,
- * which fills the page's description `<p>` before this seat is ever asked for its
- * `summary` view. Resolved through `fileURLToPath` because the jsdom environment
- * replaces the global `URL`, and Node's `readFileSync` only recognises its own.
+ * The row's display copy as the Host reads it: `meta` of the exported
+ * `locale/en.json`, which fills the page's title and description before this seat
+ * is ever asked for its `summary` view — the manifest's own `description` is only
+ * the fallback behind that file. Resolved through `fileURLToPath` because the
+ * jsdom environment replaces the global `URL`, and Node's `readFileSync` only
+ * recognises its own.
  */
-const MANIFEST_DESCRIPTION = (
+const ROW_META = (
   JSON.parse(
     readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "..", "..", "package.json"),
+      join(
+        dirname(fileURLToPath(import.meta.url)),
+        "..",
+        "..",
+        "locale/en.json",
+      ),
       "utf8",
     ),
-  ) as { description: string }
-).description;
+  ) as { meta: { description: string; title: string } }
+).meta;
 
 /** The slot props the Plugins page supplies are outside this test's concern. */
 const Card = OperatorCard as unknown as (props: {
@@ -817,15 +824,17 @@ describe("integrations row entry", () => {
     expect(container.textContent).toBe(QA_INTEGRATIONS_ROW_SUMMARY);
   });
 
-  it("keeps the one-liner equal to the manifest field the Host fills the row from", () => {
+  it("keeps the one-liner equal to the copy the Host fills the row from", () => {
     /*
-     * The page takes the row's sentence from the installed manifest's `description`
-     * and asks this seat only when the row declares none, so the two are the same
-     * line of the same paragraph reached two ways. Read from the manifest rather
-     * than restated as a literal, because a manifest edit cannot be caught by a
-     * string in a test.
+     * The page takes the row's sentence from `meta.description` and asks this seat
+     * only when the row declares none, so the two are the same line of the same
+     * paragraph reached two ways. Read from the shipped file rather than restated as
+     * a literal, because an edit to that file cannot be caught by a string in a
+     * test. The title has no other copy anywhere — the seat hands its registrant no
+     * label — so it is pinned to the phrase this deployment reads on the panel.
      */
-    expect(QA_INTEGRATIONS_ROW_SUMMARY).toBe(MANIFEST_DESCRIPTION);
+    expect(QA_INTEGRATIONS_ROW_SUMMARY).toBe(ROW_META.description);
+    expect(ROW_META.title).toBe("QA Integrations");
   });
 
   it("renders the body, and only the body, for the page seat", () => {
