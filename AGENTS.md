@@ -135,10 +135,19 @@
   file the row is named by its full package name. A card registered here that
   reuses the standard card shell keeps its `<li>` root inside a plugin-owned
   `<ul>`, since the configuration section supplies no list.
-- That naming fallback is the Host's behaviour, not a requirement of this
-  repository: no gate here demands `./locale/en.json`, so a bundle without it
-  still passes. Shipping the file is what makes a row read as a phrase an
-  operator recognises instead of a package specifier.
+- That naming fallback is the Host's behaviour; the requirement is this
+  repository's: `pnpm verify:packages` demands `locale/en.json` of every plugin
+  package, with a non-empty `meta.title` and `meta.description`, exported at
+  `./locale/en.json` and covered by `files`. Shipping the file is what makes a row
+  read as a phrase an operator recognises instead of a package specifier, and the
+  `files` half is what makes it survive the tarball — a locale directory the
+  package omits falls back just the same on an installed deployment.
+- `en.json` is the English dictionary and the discovery anchor: the Host enumerates
+  every `*.json` in that directory and re-resolves each through the exports map, so
+  a second locale needs the `"./locale/*.json"` glob export, and a non-language
+  filename left in `locale/` is a metadata diagnostic for the whole row. Until a
+  locale other than `en` is served, write the copy in English — the panel titles
+  rows in English whatever language the card body speaks.
 
 ### Two kinds of card: who owns the chrome
 

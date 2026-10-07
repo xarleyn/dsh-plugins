@@ -274,6 +274,40 @@ export function validatePublishablePlugin(directory) {
     errors.push('exports["./package.json"] must equal "./package.json"');
   }
 
+  // The Host titles and describes the bundle's row on the Plugins panel from
+  // `<package name>/locale/en.json`, which it resolves through the exports map
+  // without activating the plugin. Skip the file and the row is named by its
+  // full package specifier — an operator reads an identifier, not a name — and a
+  // locale field that is empty or not a string is not a fallback but a metadata
+  // diagnostic, which degrades the row the same way.
+  const localePath = path.join(directory, "locale", "en.json");
+  if (!existsSync(localePath)) {
+    errors.push(
+      "locale/en.json is missing; without it the Plugins panel names this row by its package specifier",
+    );
+  } else {
+    let locale;
+    try {
+      locale = readJson(localePath);
+    } catch (cause) {
+      errors.push(`locale/en.json is not readable JSON: ${String(cause)}`);
+    }
+    for (const field of ["title", "description"]) {
+      const value = locale?.meta?.[field];
+      if (typeof value !== "string" || value.trim() === "") {
+        errors.push(`locale/en.json meta.${field} must be a non-empty string`);
+      }
+    }
+  }
+  if (manifest.exports?.["./locale/en.json"] !== "./locale/en.json") {
+    errors.push(
+      'exports["./locale/en.json"] must equal "./locale/en.json"; the Host reads the row name through the exports map',
+    );
+  }
+  if (!isPublishedFile(manifest.files ?? [], "locale/en.json")) {
+    errors.push("locale/en.json is missing from package.json files");
+  }
+
   const rootExport = manifest.exports?.["."];
   const exportedTypes =
     typeof rootExport === "object" && rootExport !== null
