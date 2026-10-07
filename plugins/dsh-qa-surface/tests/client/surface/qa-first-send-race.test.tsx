@@ -343,4 +343,73 @@ describe("first send from a new QA chat", () => {
     await waitFor(() => expect(promptField()).not.toBe(mounted));
     expect(promptField()).toHaveProperty("value", "");
   });
+
+  it("opens the first chat whose session the catalog lists only late", async () => {
+    // The incident on the board: a fresh account, an empty chat and a red plate
+    // reading `sessions.retain: unknown session` over a session the stand had in
+    // fact created. The create answers before the row that lists it reaches the
+    // browser, so the first chat has to wait the catalog out instead of
+    // reporting that refusal as a chat which cannot start.
+    const world = harness([SAVED_SESSION]);
+    let session = "";
+    world.createSession.mockImplementation(async () => {
+      session = String(await world.serverSession());
+      return { ok: true as const, value: session };
+    });
+    const { newChat } = await mountSurface(world);
+    fireEvent.click(newChat);
+    const promptField = () => screen.getByRole("combobox");
+    fireEvent.change(promptField(), { target: { value: "Первый вопрос" } });
+    fireEvent.click(screen.getByRole("button", { name: "Отправить" }));
+
+    await waitFor(() => {
+      expect(world.faces.get(session)?.prompt).toHaveBeenCalledWith(
+        [{ type: "text", text: "Первый вопрос" }],
+        "queue",
+      );
+    });
+    expect(screen.queryByTestId("qa-surface-error")).toBeNull();
+    expect(world.refresh).toHaveBeenCalled();
+  });
+
+  it("starts a working chat from the plate's Повторить", async () => {
+    // The plate the report quotes is the one the page draws over the chat it
+    // opened by itself at login, so this is the failure the visitor has to be
+    // able to leave. Its button re-runs that bootstrap; the chat it comes back
+    // with has to be usable and carry no trace of the reason it repaired.
+    const world = harness();
+    world.createSession.mockImplementationOnce(async () => ({
+      ok: false as const,
+      error: {
+        code: "qa.session_create_refused",
+        message: "preset unavailable",
+      },
+    }));
+    await mountSurface(world);
+    // The chat the page opened for itself at login is the one that failed, so the
+    // plate and its button are on screen before the visitor touches anything.
+    const retry = await screen.findByTestId("qa-surface-error-retry");
+    expect(retry.textContent).toBe("Повторить");
+
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(screen.queryByTestId("qa-surface-error")).toBeNull(),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("qa-surface-root")).toHaveProperty(
+        "dataset.phase",
+        "ready",
+      ),
+    );
+    const promptField = () => screen.getByRole("combobox");
+    fireEvent.change(promptField(), { target: { value: "Первый вопрос" } });
+    fireEvent.click(screen.getByRole("button", { name: "Отправить" }));
+    const session = String(world.list.getSnapshot().ids[0]);
+    await waitFor(() => {
+      expect(world.faces.get(session)?.prompt).toHaveBeenCalledWith(
+        [{ type: "text", text: "Первый вопрос" }],
+        "queue",
+      );
+    });
+  });
 });

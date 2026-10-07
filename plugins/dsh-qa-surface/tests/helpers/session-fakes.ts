@@ -178,6 +178,12 @@ export interface QaSessionTestWorld {
   /** Every reference `retain` handed out, in the order it asked for them. */
   references: SessionReferenceFake[];
   list: Source<SessionListState>;
+  /** The catalog baseline pull, which lands the rows a server session left pending. */
+  refresh: Mock;
+  /** Create one session the way this plugin's Remote does: listed only after a pull or a push. */
+  serverSession: Mock;
+  /** Land one pending row in this browser's catalog, the way a Host push does. */
+  publishRow: (id: string) => void;
   secureSession: Mock;
 }
 
@@ -278,9 +284,23 @@ export function harness(
   // `rc.2` has no Host navigation: binding a chat means retaining it, and the
   // reference is what a test proves the controller holds and releases.
   const references: SessionReferenceFake[] = [];
+  // The Host resolves a retain target against the catalog this browser holds —
+  // a resident Session, a listed row, or a discovered subagent address — and
+  // refuses an id it has never heard of. The fake refuses the same way, so a
+  // session created on the server cannot be adopted out of thin air.
   const retain = vi.fn((id: unknown) => {
+    const key = String(id);
+    if (!faces.has(key) && !Object.hasOwn(list.getSnapshot().byId, key)) {
+      throw new Error(`sessions.retain: unknown session ${key}`);
+    }
+    // A reference is what materializes the Client Session behind an id: a row
+    // the catalog just learned has no face to bind until something holds it.
+    if (!faces.has(key)) {
+      faces.set(key, sessionFace(key));
+      bindings.set(key, conversationBinding(key));
+    }
     const reference: SessionReferenceFake = {
-      sessionId: String(id),
+      sessionId: key,
       ready: Promise.resolve({}),
       release: vi.fn(),
     };
@@ -298,8 +318,24 @@ export function harness(
     },
   } as unknown as QaSessionControllerOptions["sessions"];
   let sequence = listed.length;
+  /** Rows the Host has created but this browser's catalog does not list yet. */
+  const pending = new Map<string, SessionListState["byId"][SessionId]>();
+  const rowOf = (id: string) =>
+    ({ ...summaryOf(id), updatedAt: 2 }) as SessionListState["byId"][SessionId];
+  const publishRow = (id: string): void => {
+    const summary = pending.get(id);
+    if (summary === undefined) return;
+    pending.delete(id);
+    const before = list.getSnapshot();
+    list.set({
+      ...before,
+      ids: [id as SessionId, ...before.ids],
+      byId: { ...before.byId, [id]: summary },
+    } as SessionListState);
+  };
+  const mintId = (): string => `created-${(sequence += 1)}`;
   const create = vi.fn(async () => {
-    const id = `created-${++sequence}`;
+    const id = mintId();
     faces.set(id, sessionFace(id));
     bindings.set(id, conversationBinding(id));
     const before = list.getSnapshot();
@@ -313,7 +349,12 @@ export function harness(
     } as SessionListState);
     return id as never;
   });
-  Object.assign(sessions, { create });
+  // The catalog baseline pull the surface asks for when a retain was refused:
+  // it is what delivers the rows the Host created without telling this browser.
+  const refresh = vi.fn(async () => {
+    for (const id of [...pending.keys()]) publishRow(id);
+  });
+  Object.assign(sessions, { create, refresh });
   const selectModel = vi.fn(async () => ({
     ok: true as const,
     value: { selected: {} },
@@ -358,6 +399,18 @@ export function harness(
   const createSession = vi.fn<QaSessionControllerOptions["createSession"]>(
     async () => ({ ok: true, value: String(await create()) }),
   );
+  /**
+   * Create a session the way this plugin's own Remote does: the server has it,
+   * while this browser holds neither its catalog row nor its Client Session —
+   * `sessions.retain` is refused for it, and the reference is only materialized
+   * once {@link publishRow} or {@link refresh} has landed the row. That gap is
+   * the window the surface has to wait out rather than fail in.
+   */
+  const serverSession = vi.fn(async () => {
+    const id = mintId();
+    pending.set(id, rowOf(id));
+    return id;
+  });
   return {
     sessions,
     api,
@@ -373,6 +426,9 @@ export function harness(
     retain,
     references,
     list,
+    refresh,
+    serverSession,
+    publishRow,
     secureSession,
   };
 }

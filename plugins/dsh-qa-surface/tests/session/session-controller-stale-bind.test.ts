@@ -41,9 +41,9 @@ describe("QA session controller: an adoption the visitor left behind", () => {
       value: late,
     }));
     const sending = controller.send("Первый вопрос");
-    // The reference is retained as bind() starts looking for the session, which
-    // is the hand-off into the wait this test is about: the switch below has to
-    // land while the adoption is still parked in it.
+    // The adoption asks the Host for a reference to its session as soon as the
+    // create answers, which is the hand-off into the wait this test is about:
+    // the switch below has to land while the adoption is still parked in it.
     await until(() =>
       world.retain.mock.calls.some(([id]) => String(id) === late),
     );
@@ -68,12 +68,13 @@ describe("QA session controller: an adoption the visitor left behind", () => {
       canSend: true,
       error: null,
     });
-    // The reference this adoption retained while it looked for its session came
-    // back: a Host session counted against by a chat nobody is in stays bound
-    // forever, and nothing else in the page will ever let it go.
+    // The Host will not hand out a reference to a Session its catalog has not
+    // listed, so an adoption parked in that wait holds nothing to give back: the
+    // late arrival finds no reference of this adoption's still counting against a
+    // Session nobody is in. (A bind that got its reference and then lost the
+    // screen is the case below, where the reference does have to come back.)
     const orphaned = world.references.filter((ref) => ref.sessionId === late);
-    expect(orphaned).toHaveLength(1);
-    expect(orphaned[0]?.release).toHaveBeenCalledOnce();
+    expect(orphaned).toHaveLength(0);
     // The chat on screen keeps the reference it holds.
     const live = world.references.filter((ref) => ref.sessionId === "other");
     expect(live).toHaveLength(1);
@@ -396,12 +397,11 @@ describe("QA session controller: an adoption the visitor left behind", () => {
       canSend: true,
       error: null,
     });
-    // It never became a chat of this browser, and the reference it retained
-    // while looking for the binding came back.
+    // It never became a chat of this browser, and it never got a reference to
+    // give back either: the Host refuses one until its catalog lists the Session.
     expect(controller.chatIds()).not.toContain(late);
     const orphaned = world.references.filter((ref) => ref.sessionId === late);
-    expect(orphaned).toHaveLength(1);
-    expect(orphaned[0]?.release).toHaveBeenCalledOnce();
+    expect(orphaned).toHaveLength(0);
 
     // The draft is still a draft, and its question rides a session of its own.
     expect(await controller.send("Второй вопрос")).toBe(true);
