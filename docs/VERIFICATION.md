@@ -154,6 +154,25 @@ rather than a file link on purpose: nothing in the gate set resolves a link from
 `docs/**` into `.agents/**`, so such a link rots silently whenever a skill is
 reorganized, while a name still says which skill to open.
 
+The same blind spot faces the other way, and #728 measured it on a stand: four
+defects in the Host's own operator layer — the settings dialog's section nav
+invisible at 390px, that dialog sometimes closing on a section click with
+nothing in the console, provider rows whose buttons overlap their names at that
+width, and a preset title truncated by its own badge — leave the whole gate set
+green, because no gate reads the Host's rendered text. That is exactly what the
+check asked for, and the answer is that no gate depends on those surfaces: the
+seat gates key on the Host's *slot identifiers*
+(`scripts/verify-package-hygiene.mjs`,
+`packages/plugin-scripts/verify-plugin-card-contract.mjs`), so a clipped or
+invisible label moves nothing; `scripts/verify-button-names.mjs` walks our own
+`plugins/` and `packages/` sources and never a host screen; and the preset
+roster is matched by id, not by title
+(`plugins/dsh-preset-persona-editor/src/host/preset-reader.ts`). What does sit
+on those surfaces is reachability, not a gate: the one page still seated in the
+native settings tree enters only through that nav, which is why the
+`create-plugin` skill's `client-side` reference now says how to prove a narrow
+layout without it.
+
 Two files [PLUGIN_GUIDELINES.md](PLUGIN_GUIDELINES.md) §4.1 lists are
 **not** gated, deliberately: `tsdown.config.ts`, which seven host-only plugins
 do not need (their `lib/` comes from `tsc` alone), and a local
