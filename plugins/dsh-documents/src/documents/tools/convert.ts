@@ -15,6 +15,7 @@ import {
   requireDocumentScope,
   toolFiles,
   toolWarnings,
+  workspacePathName,
   type DocumentToolExec,
   type DocumentToolOptions,
   warningsSchema,
@@ -86,7 +87,12 @@ export function createDocumentConvertTool(options: DocumentToolOptions) {
               additionalProperties: false,
               properties: {
                 format: { type: "string", required: true },
-                path: { type: "string", required: true },
+                path: {
+                  type: "string",
+                  required: true,
+                  description:
+                    "The produced file, relative to the session workspace.",
+                },
                 mediaType: { type: "string", required: true },
                 size: { type: "number", required: true },
                 sha256: { type: "string", required: true },
@@ -100,12 +106,22 @@ export function createDocumentConvertTool(options: DocumentToolOptions) {
             required: true,
             additionalProperties: false,
             properties: {
-              path: { type: "string", required: true },
+              path: {
+                type: "string",
+                required: true,
+                description:
+                  "The converted file, relative to the session workspace.",
+              },
               format: { type: "string", required: true },
             },
           },
           warnings: warningsSchema,
-          manifestPath: { type: "string", required: true },
+          manifestPath: {
+            type: "string",
+            required: true,
+            description:
+              "The bundle's manifest, relative to the session workspace.",
+          },
         },
       },
       render: (_args: unknown, value: unknown) => {
@@ -131,16 +147,26 @@ export function createDocumentConvertTool(options: DocumentToolOptions) {
       options.runtime.config.docling.timeoutMs +
       30_000,
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
+      const scope = requireDocumentScope(exec, options);
       const result = await options.runtime.convert(
         args as unknown as Parameters<DocumentRuntime["convert"]>[0],
-        requireDocumentScope(exec, options),
+        scope,
       );
       return {
         artifactId: result.artifactId,
-        files: toolFiles(result.files),
-        source: { path: result.source.path, format: result.source.format },
+        files: await toolFiles(result.files, scope.workspaceRoot),
+        source: {
+          path: await workspacePathName(
+            scope.workspaceRoot,
+            result.source.path,
+          ),
+          format: result.source.format,
+        },
         warnings: toolWarnings(result.warnings),
-        manifestPath: result.manifestPath,
+        manifestPath: await workspacePathName(
+          scope.workspaceRoot,
+          result.manifestPath,
+        ),
       };
     },
   });

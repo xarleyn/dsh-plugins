@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { QaImageView } from "../../types.js";
+import type { QaArtifactView, QaImageView } from "../../types.js";
 import type { QaChatFileGroup } from "../chat-files.js";
 import type { QaBoundSourceApi } from "../types.js";
 import { formatDayTime } from "./format.js";
@@ -68,8 +68,17 @@ export interface QaFilesPanelProps {
   readonly groups: readonly QaChatFileGroup[];
   /** Resolve an image attachment to an object URL; images render inert without it. */
   readonly resolveImage?: (attachmentId: string) => Promise<string>;
-  /** Scroll the transcript to the group's user message. */
+  /** Scroll the transcript to the group's message. */
   readonly onJumpToMessage: (messageId: string) => void;
+  /** Open a produced file in the workspace viewer below. */
+  readonly onArtifactOpen?: (artifact: QaArtifactView) => void;
+  /** Save a produced file. */
+  readonly onArtifactDownload?: (artifact: QaArtifactView) => void;
+  /**
+   * A file to open on arrival, with the request's stamp. The stamp is what makes
+   * a second click on the same card a fresh arrival rather than a no-op.
+   */
+  readonly openArtifact?: { readonly path: string; readonly stamp: number };
   /**
    * The chat whose workspace the panel browses. Both this and `api` are absent
    * in hosts that only render the attachment roster, where the workspace
@@ -92,6 +101,9 @@ export function QaFilesPanel({
   groups,
   resolveImage,
   onJumpToMessage,
+  onArtifactOpen,
+  onArtifactDownload,
+  openArtifact,
   sessionId,
   api,
 }: QaFilesPanelProps) {
@@ -104,7 +116,12 @@ export function QaFilesPanel({
         <h3>
           <span>Рабочий каталог</span>
         </h3>
-        <QaWorkspaceBrowser sessionId={sessionId} api={api} />
+        <QaWorkspaceBrowser
+          key={openArtifact?.stamp ?? "browse"}
+          sessionId={sessionId}
+          api={api}
+          initialFile={openArtifact?.path}
+        />
       </section>
     );
   if (groups.length === 0) {
@@ -167,6 +184,24 @@ export function QaFilesPanel({
                   />
                 ),
               )}
+              {(group.artifacts ?? []).map((artifact) => (
+                <QaFileAttachment
+                  key={artifact.path}
+                  name={artifact.name}
+                  bytes={artifact.bytes}
+                  tone="sent"
+                  onOpen={
+                    onArtifactOpen === undefined
+                      ? undefined
+                      : () => onArtifactOpen(artifact)
+                  }
+                  onDownload={
+                    onArtifactDownload === undefined
+                      ? undefined
+                      : () => onArtifactDownload(artifact)
+                  }
+                />
+              ))}
             </div>
           </section>
         );

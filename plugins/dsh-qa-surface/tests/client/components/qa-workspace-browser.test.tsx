@@ -373,4 +373,46 @@ describe("workspace browser", () => {
     const status = await screen.findByTestId("qa-surface-workspace-status");
     expect(status.textContent).toBe("Каталог пуст.");
   });
+
+  it("opens the file a card arrived with, instead of the listing", async () => {
+    const readWorkspaceFile = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        path: ".qa/artifacts/documents/doc_1/report.docx",
+        size: 12_595,
+        truncated: false,
+        markdown: false,
+        renderableMarkdown: false,
+        mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      },
+    }));
+    const previewWorkspaceDocument = vi.fn(refused("unsupported"));
+    render(
+      <QaWorkspaceBrowser
+        sessionId="s1"
+        api={api({ readWorkspaceFile, previewWorkspaceDocument })}
+        initialFile=".qa/artifacts/documents/doc_1/report.docx"
+      />,
+    );
+    // The arrival is the point of the card under an answer: the reader lands on
+    // the document, not on a directory they have to walk into.
+    await waitFor(() =>
+      expect(readWorkspaceFile).toHaveBeenCalledWith(
+        "s1",
+        ".qa/artifacts/documents/doc_1/report.docx",
+      ),
+    );
+    const preview = await screen.findByTestId("qa-surface-workspace-preview");
+    expect(
+      within(preview).getByTestId("qa-surface-workspace-preview-name")
+        .textContent,
+    ).toBe("report.docx");
+    // A Word file asks the Host for the copy the browser can draw.
+    await waitFor(() =>
+      expect(previewWorkspaceDocument).toHaveBeenCalledWith(
+        "s1",
+        ".qa/artifacts/documents/doc_1/report.docx",
+      ),
+    );
+  });
 });

@@ -27,6 +27,7 @@ import {
   runtime,
   stub,
   write,
+  workspace,
 } from "./documents-comparison-tools.helpers.js";
 
 describe("document_compare", () => {
@@ -193,7 +194,13 @@ describe("document_compare", () => {
         left: { path: "before.md" },
         right: { path: "after.md" },
       });
-      digests.push(await readFile(result.changesPath as string, "utf8"));
+      // The tool reports the change set by its name inside the session
+      // workspace, which is what the model can quote without naming the
+      // account directory the deployment keeps the workspace in.
+      const reported = result.changesPath as string;
+      expect(path.isAbsolute(reported)).toBe(false);
+      expect(reported.startsWith(".qa/artifacts/documents/cmp_")).toBe(true);
+      digests.push(await readFile(path.join(workspace, reported), "utf8"));
     }
     expect(new Set(digests).size).toBe(1);
   });

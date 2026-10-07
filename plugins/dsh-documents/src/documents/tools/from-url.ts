@@ -17,6 +17,7 @@ import {
   renderWarning,
   requireDocumentScope,
   toolWarnings,
+  workspacePathName,
   warningsSchema,
   type DocumentToolExec,
   type DocumentToolOptions,
@@ -55,12 +56,22 @@ export function createDocumentFromUrlTool(options: DocumentToolOptions) {
         properties: {
           artifactId: { type: "string", required: true },
           markdown: { type: "string", required: true },
-          markdownPath: { type: "string", required: true },
+          markdownPath: {
+            type: "string",
+            required: true,
+            description:
+              "The stored Markdown, relative to the session workspace.",
+          },
           sourceUrl: { type: "string", required: true },
           truncated: { type: "boolean", required: true },
           backend: { type: "string", required: true },
           warnings: warningsSchema,
-          manifestPath: { type: "string", required: true },
+          manifestPath: {
+            type: "string",
+            required: true,
+            description:
+              "The bundle's manifest, relative to the session workspace.",
+          },
         },
       },
       render: (_args: unknown, value: unknown) => {
@@ -88,19 +99,26 @@ export function createDocumentFromUrlTool(options: DocumentToolOptions) {
       options.runtime.config.markitdown.timeoutMs +
       30_000,
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
+      const scope = requireDocumentScope(exec, options);
       const result = await options.runtime.fromUrl(
         args as unknown as Parameters<DocumentRuntime["fromUrl"]>[0],
-        requireDocumentScope(exec, options),
+        scope,
       );
       return {
         artifactId: result.artifactId,
         markdown: result.markdown,
-        markdownPath: result.markdownPath,
+        markdownPath: await workspacePathName(
+          scope.workspaceRoot,
+          result.markdownPath,
+        ),
         sourceUrl: result.sourceUrl,
         truncated: result.truncated,
         backend: result.backend,
         warnings: toolWarnings(result.warnings),
-        manifestPath: result.manifestPath,
+        manifestPath: await workspacePathName(
+          scope.workspaceRoot,
+          result.manifestPath,
+        ),
       };
     },
   });

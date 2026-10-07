@@ -15,19 +15,40 @@ export interface QaFileAttachmentProps {
   /** Pending draft vs already-sent attachment: pending offers removal. */
   readonly tone: "draft" | "sent";
   readonly onRemove?: () => void;
+  /**
+   * Open the file: shown as a control on a card the reader can act on, and left
+   * out of a chip that only records what was sent. A produced document is
+   * worthless as a name in a paragraph — this is what makes it reachable.
+   */
+  readonly onOpen?: () => void;
+  /** Save the file. Omitted where the surface cannot read its bytes. */
+  readonly onDownload?: () => void;
 }
 
 /**
- * One attached file: the extension badge, the name and the size. The browser
- * never re-reads these bytes (the Host attachment route serves images), so
- * both the composer card and the sent row show the same handle.
+ * One attached file: the extension badge, the name and the size. A sent
+ * attachment shows the handle the model resolved and the browser never
+ * re-reads its bytes; a file the turn produced is the same chip with the two
+ * controls that make it usable — open it, or take it away.
  */
 export function QaFileAttachment({
   name,
   bytes,
   tone,
   onRemove,
+  onOpen,
+  onDownload,
 }: QaFileAttachmentProps) {
+  const text = (
+    <span className="dsh-qa-file__text">
+      <span className="dsh-qa-file__name" data-testid="qa-file-name">
+        {name}
+      </span>
+      <span className="dsh-qa-file__meta" data-testid="qa-file-size">
+        {formatFileSize(bytes)}
+      </span>
+    </span>
+  );
   return (
     <span
       className="dsh-qa-file"
@@ -42,14 +63,32 @@ export function QaFileAttachment({
       >
         {badgeText(name)}
       </span>
-      <span className="dsh-qa-file__text">
-        <span className="dsh-qa-file__name" data-testid="qa-file-name">
-          {name}
-        </span>
-        <span className="dsh-qa-file__meta" data-testid="qa-file-size">
-          {formatFileSize(bytes)}
-        </span>
-      </span>
+      {onOpen === undefined ? (
+        text
+      ) : (
+        <button
+          type="button"
+          className="dsh-qa-file__open"
+          data-testid="qa-file-open"
+          aria-label={`Открыть ${name}`}
+          title={`Открыть ${name}`}
+          onClick={onOpen}
+        >
+          {text}
+        </button>
+      )}
+      {onDownload === undefined ? null : (
+        <button
+          type="button"
+          className="dsh-qa-file__download"
+          data-testid="qa-file-download"
+          aria-label={`Скачать ${name}`}
+          title="Скачать"
+          onClick={onDownload}
+        >
+          Скачать
+        </button>
+      )}
       {onRemove === undefined ? null : (
         <button
           type="button"

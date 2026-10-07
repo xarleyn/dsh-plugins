@@ -15,6 +15,7 @@ import type { DocumentCompareResult } from "../comparison/types.js";
 import {
   renderWarning,
   requireDocumentScope,
+  workspacePathName,
   type DocumentToolExec,
   type DocumentToolOptions,
   warningsSchema,
@@ -204,9 +205,24 @@ export function createDocumentCompareTool(options: DocumentToolOptions) {
             },
           },
           previewTruncated: { type: "boolean", required: true },
-          changesPath: { type: "string", required: true },
-          reportPath: { type: "string", required: true },
-          manifestPath: { type: "string", required: true },
+          changesPath: {
+            type: "string",
+            required: true,
+            description:
+              "The machine-readable change list, relative to the session workspace.",
+          },
+          reportPath: {
+            type: "string",
+            required: true,
+            description:
+              "The written-up comparison report, relative to the session workspace.",
+          },
+          manifestPath: {
+            type: "string",
+            required: true,
+            description:
+              "The bundle's manifest, relative to the session workspace.",
+          },
           warnings: warningsSchema,
         },
       },
@@ -248,9 +264,10 @@ export function createDocumentCompareTool(options: DocumentToolOptions) {
     },
     timeoutMs: 600_000,
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
+      const scope = requireDocumentScope(exec, options);
       const result = await options.runtime.compare(
         args as unknown as Parameters<DocumentRuntime["compare"]>[0],
-        requireDocumentScope(exec, options),
+        scope,
       );
       return {
         comparisonId: result.comparisonId,
@@ -274,9 +291,18 @@ export function createDocumentCompareTool(options: DocumentToolOptions) {
           signals: [...entry.signals],
         })),
         previewTruncated: result.previewTruncated,
-        changesPath: result.changesPath,
-        reportPath: result.reportPath,
-        manifestPath: result.manifestPath,
+        changesPath: await workspacePathName(
+          scope.workspaceRoot,
+          result.changesPath,
+        ),
+        reportPath: await workspacePathName(
+          scope.workspaceRoot,
+          result.reportPath,
+        ),
+        manifestPath: await workspacePathName(
+          scope.workspaceRoot,
+          result.manifestPath,
+        ),
         // The tool result carries code, message and backend; the diagnostic
         // `details` stay in the manifest, where an operator reads them.
         warnings: result.warnings.map((warning) => ({
