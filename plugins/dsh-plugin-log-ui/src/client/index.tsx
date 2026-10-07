@@ -49,9 +49,10 @@ const SETTINGS_ENTRY_ID = "dsh-plugin-log-ui";
  */
 const ROW_CONFIG_KEY = `@yadsh/dsh-plugin-log-ui#${SETTINGS_ENTRY_ID}`;
 /**
- * The one-liner of this plugin's row. Kept equal to the `description` field of
- * `package.json` — the host reads the row's sentence from there, so the row reads
- * the same whichever way the sentence reaches the page. Pinned by a test.
+ * The one-liner of this plugin's row. Kept equal to `meta.description` in
+ * `locale/en.json` — the host reads the row's sentence from there, with the
+ * `description` field of `package.json` only behind it as a fallback, so the row
+ * reads the same whichever way the sentence reaches the page. Pinned by a test.
  */
 const ROW_SUMMARY =
   "DSH settings UI for shared plugin logging levels and file format";

@@ -36,19 +36,20 @@ import { harnessOf, rowConfigRegistration } from "./helpers/client-harness.js";
 const { apply } = clientModule;
 
 /*
- * The row's one-liner as the host reads it: the installed manifest's
- * `description`, which fills the page's `<p>` before the seat is ever asked for it.
- * Resolved through `fileURLToPath` because the jsdom environment replaces the
- * global `URL`, and Node's `readFileSync` only recognises its own.
+ * The row's sentence as the host reads it: `meta.description` of the exported
+ * `locale/en.json`, which fills the page's `<p>` before the seat is ever asked for
+ * its `summary` view — the manifest's own `description` is only the fallback behind
+ * that file. Resolved through `fileURLToPath` because the jsdom environment
+ * replaces the global `URL`, and Node's `readFileSync` only recognises its own.
  */
-const MANIFEST_DESCRIPTION = (
+const ROW_META = (
   JSON.parse(
     readFileSync(
-      join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"),
+      join(dirname(fileURLToPath(import.meta.url)), "..", "locale/en.json"),
       "utf8",
     ),
-  ) as { description?: string }
-).description;
+  ) as { meta: { description: string; title: string } }
+).meta;
 
 /** What one `set` call carried. */
 interface Write {
@@ -241,12 +242,15 @@ describe("the row-config card", () => {
       createElement(seat.component, { ...seat.props, view: "summary" }),
     );
     /*
-     * The host fills the row's sentence from the installed manifest's `description`
-     * and only asks this seat when the row declares none, so the two must be the
-     * same sentence — read here rather than repeated, since a manifest edit cannot
-     * be caught by a literal in a test.
+     * The host fills the row's sentence from `meta.description` and only asks this
+     * seat when the row declares none, so the two must be the same sentence — read
+     * here rather than repeated, since an edit to that file cannot be caught by a
+     * literal in a test.
      */
-    expect(container.textContent).toBe(MANIFEST_DESCRIPTION);
+    expect(container.textContent).toBe(ROW_META.description);
+    // The row's name comes from the same file and nowhere else: the seat hands the
+    // registrant no label, so this is the phrase an operator reads on the panel.
+    expect(ROW_META.title).toBe("Plugin Logging");
     // The sentence lands inside the page's own `<p>`: a form there is a page in a line.
     expect(container.querySelector("select")).toBeNull();
     expect(
