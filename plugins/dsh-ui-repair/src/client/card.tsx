@@ -18,8 +18,15 @@ import {
 import type { UIRepairRuntime } from "./runtime.js";
 import type { RepairIssue } from "./types.js";
 
-/** The one-liner this row answers the seat's `summary` view with. */
-const ROW_SUMMARY =
+/**
+ * The one-liner this row answers the seat's `summary` view with.
+ *
+ * Exported because it is one string with the row's display description: the page
+ * falls back to this answer only where `locale/en.json` leaves the row without a
+ * description, and a test pins the pair, so the row cannot describe one thing and
+ * open another.
+ */
+export const UI_REPAIR_ROW_SUMMARY =
   "Observe layout defects and apply reversible, scoped repairs.";
 
 /** What the row answers while the Host has not accepted a section yet. */
@@ -524,6 +531,6 @@ export function UIRepairCard({ settings, runtime }: CardProps) {
  * {@link CardFace.settings}.
  */
 export function UIRepairCardEntry(props: CardProps) {
-  if (props.view === "summary") return ROW_SUMMARY;
+  if (props.view === "summary") return UI_REPAIR_ROW_SUMMARY;
   return <UIRepairCard {...props} />;
 }
