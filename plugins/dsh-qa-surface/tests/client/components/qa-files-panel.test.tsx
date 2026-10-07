@@ -67,4 +67,47 @@ describe("files panel", () => {
     render(<QaFilesPanel groups={[]} onJumpToMessage={vi.fn()} />);
     expect(screen.getByTestId("qa-files-empty")).toBeTruthy();
   });
+
+  it("lists a document the answer produced, and opens it on request", () => {
+    const onArtifactOpen = vi.fn();
+    render(
+      <QaFilesPanel
+        groups={[
+          {
+            messageId: "assistant:1",
+            timestamp: Date.UTC(2026, 8, 13, 11, 0),
+            files: [],
+            images: [],
+            artifacts: [
+              {
+                path: ".qa/artifacts/documents/doc_1/report.docx",
+                name: "report.docx",
+                format: "docx",
+                bytes: 12_595,
+              },
+            ],
+          },
+        ]}
+        onJumpToMessage={vi.fn()}
+        onArtifactOpen={onArtifactOpen}
+      />,
+    );
+    // The roster is no longer the empty chat it was: a produced file belongs to
+    // the conversation the same way a sent one does.
+    expect(screen.queryByTestId("qa-files-empty")).toBeNull();
+    expect(
+      within(screen.getByTestId("qa-files-group-items")).getByTestId(
+        "qa-file-name",
+      ).textContent,
+    ).toBe("report.docx");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Открыть report.docx" }),
+    );
+    expect(onArtifactOpen).toHaveBeenCalledWith({
+      path: ".qa/artifacts/documents/doc_1/report.docx",
+      name: "report.docx",
+      format: "docx",
+      bytes: 12_595,
+    });
+  });
 });

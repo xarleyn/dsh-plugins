@@ -2784,16 +2784,32 @@ package.
   Any open file can be expanded out of the rail with `Развернуть файл` into the
   `document`-sized `QaModal` (the same body, more room), which closes back to
   the directory.
-  The roster below it is unchanged:
-  - grouped by sending message, newest message first, each group headed by
+  The roster below it lists:
+  - grouped by message, newest message first, each group headed by
     `formatDayTime` and a jump control that scrolls the transcript to that
-    user message via the existing `data-dsh-qa-turn-anchor` seam;
+    message via the existing `data-dsh-qa-turn-anchor` seam;
   - files render as the sent `QaFileAttachment` cards (badge, name, size —
     never a read-back: the attachment route serves images only);
   - images render as thumbnails resolved through the controller's asset
     repository (`resolveImage`), linking to the full-size object URL;
+  - a document the answer's own turn produced renders as an artifact card under
+    that answer and in this roster, addressed by the workspace-relative name the
+    producing tool reported: `chat-artifacts.ts` reads those lines out of the
+    turn's settled tool results whatever `ui.showToolActivity` says, because a
+    produced file is part of the answer rather than tool noise. Its controls are
+    the panel's own — `Открыть` lands on `QaWorkspaceBrowser` at exactly that
+    file (`initialFile`), `Скачать` uses `readWorkspaceFile` — and both are
+    omitted where `sources.filePreview.enabled` is off, since the Host refuses
+    the read anyway; the card still names the file.
   - pending composer drafts are not listed — they are already visible as
     composer chips.
+- An answer that quotes a path is made to name the file instead:
+  `client/workspace-paths.ts` masks the chat's own workspace directory (the
+  controller's `sourceAnchor`, the same directory sources are anchored on) and
+  the per-account `.qa-users/<account>/` partition out of projected assistant
+  text. The producing tools report workspace-relative names, which is the fix at
+  the source; the mask is the repair for what still arrives, including a durable
+  answer written before it, which replays through this projection.
 - Below 600px the rail goes full-bleed absolute, as the drawers did.
 - No new configuration fields: sources gating reuses `sources.enabled` /
   `sources.display.sidebar`; the files tab follows whatever the attachments

@@ -2003,6 +2003,9 @@ export class QaSessionController {
       sessionSnapshot: snapshot,
       conversationSnapshot,
       sourceBundles,
+      // The same directory the sources are anchored on: an answer that quotes a
+      // file the turn made is masked to the name inside this workspace.
+      workspaceRoot: this.sourceAnchor(sessionId),
       approvals: this.hostApprovals.list(),
       questions: this.hostQuestions.list(),
       // Ownership is chat-level: every user message of a foreign chat

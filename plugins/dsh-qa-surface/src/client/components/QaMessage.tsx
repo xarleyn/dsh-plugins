@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type {
+  QaArtifactView,
   QaCommandActivity,
   QaFileView,
   QaMessage as QaMessageModel,
@@ -109,6 +110,14 @@ export interface QaMessageProps {
   ) => void;
   /** Open one path-backed source's detail (an inline footnote click). */
   readonly onSourceDetail?: (source: QaSource) => void;
+  /**
+   * Open a file this answer's turn produced, in the surface's own file viewer.
+   * Omitted where the surface has no workspace reads: the card then names the
+   * file without promising an action it cannot perform.
+   */
+  readonly onArtifactOpen?: (artifact: QaArtifactView) => void;
+  /** Save a produced file. Omitted on the same terms as {@link onArtifactOpen}. */
+  readonly onArtifactDownload?: (artifact: QaArtifactView) => void;
   /** Operator-configured running phrases; omitted reads the built-in list. */
   readonly thinkingPhrases?: readonly string[];
   /**
@@ -150,6 +159,7 @@ export function sameMessage(a: QaMessageModel, b: QaMessageModel): boolean {
   if (a.role === "assistant" && b.role === "assistant") {
     return (
       sameSources(a.sources, b.sources) &&
+      sameArtifacts(a.artifacts, b.artifacts) &&
       (a.stats === undefined) === (b.stats === undefined) &&
       (a.stats === undefined ||
         b.stats === undefined ||
@@ -224,6 +234,21 @@ function sameFiles(
       file.attachmentId === (b[index] as QaFileView).attachmentId &&
       file.name === (b[index] as QaFileView).name &&
       file.bytes === (b[index] as QaFileView).bytes,
+  );
+}
+
+function sameArtifacts(
+  a: readonly QaArtifactView[] | undefined,
+  b: readonly QaArtifactView[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined || a.length !== b.length) return false;
+  return a.every(
+    (artifact, index) =>
+      artifact.path === (b[index] as QaArtifactView).path &&
+      artifact.name === (b[index] as QaArtifactView).name &&
+      artifact.format === (b[index] as QaArtifactView).format &&
+      artifact.bytes === (b[index] as QaArtifactView).bytes,
   );
 }
 
@@ -362,6 +387,8 @@ export const QaMessage = memo(
     resolveImage,
     onOpenSources,
     onSourceDetail,
+    onArtifactOpen,
+    onArtifactDownload,
     thinkingPhrases,
     onRateFeedback,
   }: QaMessageProps) {
@@ -608,6 +635,34 @@ export const QaMessage = memo(
           ) : (
             message.text
           )}
+          {message.role === "assistant" &&
+          message.artifacts !== undefined &&
+          message.artifacts.length > 0 ? (
+            <div
+              className="dsh-qa-message__artifacts"
+              data-testid="qa-message-artifacts"
+              aria-label="Созданные файлы"
+            >
+              {message.artifacts.map((artifact) => (
+                <QaFileAttachment
+                  key={artifact.path}
+                  name={artifact.name}
+                  bytes={artifact.bytes}
+                  tone="sent"
+                  onOpen={
+                    onArtifactOpen === undefined
+                      ? undefined
+                      : () => onArtifactOpen(artifact)
+                  }
+                  onDownload={
+                    onArtifactDownload === undefined
+                      ? undefined
+                      : () => onArtifactDownload(artifact)
+                  }
+                />
+              ))}
+            </div>
+          ) : null}
           {message.status === "streaming" ? (
             <span className="dsh-qa-message__cursor" aria-hidden="true" />
           ) : null}
@@ -750,6 +805,8 @@ export const QaMessage = memo(
     prev.resolveImage === next.resolveImage &&
     prev.onOpenSources === next.onOpenSources &&
     prev.onSourceDetail === next.onSourceDetail &&
+    prev.onArtifactOpen === next.onArtifactOpen &&
+    prev.onArtifactDownload === next.onArtifactDownload &&
     prev.thinkingPhrases === next.thinkingPhrases &&
     sameMessage(prev.message, next.message),
 );

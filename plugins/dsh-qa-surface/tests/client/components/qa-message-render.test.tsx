@@ -323,4 +323,80 @@ describe("QA message", () => {
     );
     expect(within(file).getByTestId("qa-file-size").textContent).toBe("19 КБ");
   });
+
+  it("hands the produced document over under the answer, not as a path", () => {
+    const onArtifactOpen = vi.fn();
+    const onArtifactDownload = vi.fn();
+    render(
+      <QaMessage
+        message={{
+          id: "assistant:2",
+          role: "assistant",
+          text: "Собрал отчёт одним файлом.",
+          status: "committed",
+          artifacts: [
+            {
+              path: ".qa/artifacts/documents/doc_1/report.docx",
+              name: "report.docx",
+              format: "docx",
+              bytes: 12_595,
+            },
+          ],
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+        onArtifactOpen={onArtifactOpen}
+        onArtifactDownload={onArtifactDownload}
+      />,
+    );
+    const card = within(screen.getByTestId("qa-message-artifacts")).getByTestId(
+      "qa-file",
+    );
+    expect(within(card).getByTestId("qa-file-badge").textContent).toBe("DOCX");
+    expect(within(card).getByTestId("qa-file-name").textContent).toBe(
+      "report.docx",
+    );
+    expect(within(card).getByTestId("qa-file-size").textContent).toBe("12 КБ");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Открыть report.docx" }),
+    );
+    expect(onArtifactOpen).toHaveBeenCalledWith({
+      path: ".qa/artifacts/documents/doc_1/report.docx",
+      name: "report.docx",
+      format: "docx",
+      bytes: 12_595,
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Скачать report.docx" }),
+    );
+    expect(onArtifactDownload).toHaveBeenCalledTimes(1);
+  });
+
+  it("names a produced file without promising a read it cannot perform", () => {
+    render(
+      <QaMessage
+        message={{
+          id: "assistant:3",
+          role: "assistant",
+          text: "Готово.",
+          status: "committed",
+          artifacts: [
+            {
+              path: ".qa/artifacts/documents/doc_1/report.pdf",
+              name: "report.pdf",
+              format: "pdf",
+              bytes: 0,
+            },
+          ],
+        }}
+        renderMarkdown={false}
+        showTimestamp={false}
+      />,
+    );
+    // A surface with no workspace reads still shows the card — the reader must
+    // learn that the answer produced something — but offers no dead controls.
+    expect(screen.getAllByTestId("qa-file")).toHaveLength(1);
+    expect(screen.queryByTestId("qa-file-open")).toBeNull();
+    expect(screen.queryByTestId("qa-file-download")).toBeNull();
+  });
 });

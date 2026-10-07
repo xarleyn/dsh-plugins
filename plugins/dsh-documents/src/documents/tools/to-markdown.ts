@@ -14,6 +14,7 @@ import {
   renderWarning,
   requireDocumentScope,
   toolWarnings,
+  workspacePathName,
   type DocumentToolExec,
   type DocumentToolOptions,
   warningsSchema,
@@ -24,7 +25,7 @@ export const DOCUMENT_TO_MARKDOWN_TOOL = "document_to_markdown";
 const DESCRIPTION = [
   "Extract a DOCX or PDF into Markdown.",
   "Supports structured extraction, tables and images, and applies OCR when the document has no text layer.",
-  "Returns the Markdown plus the path of the extracted file inside its artifact bundle.",
+  "Returns the Markdown plus the extracted file's path inside its artifact bundle, relative to the session workspace.",
 ].join(" ");
 
 export function createDocumentToMarkdownTool(options: DocumentToolOptions) {
@@ -77,7 +78,12 @@ export function createDocumentToMarkdownTool(options: DocumentToolOptions) {
         properties: {
           artifactId: { type: "string", required: true },
           markdown: { type: "string", required: true },
-          markdownPath: { type: "string", required: true },
+          markdownPath: {
+            type: "string",
+            required: true,
+            description:
+              "The extracted Markdown, relative to the session workspace.",
+          },
           assets: {
             type: "array",
             items: {
@@ -92,7 +98,12 @@ export function createDocumentToMarkdownTool(options: DocumentToolOptions) {
           pages: { type: "number" },
           backend: { type: "string", required: true },
           warnings: warningsSchema,
-          manifestPath: { type: "string", required: true },
+          manifestPath: {
+            type: "string",
+            required: true,
+            description:
+              "The bundle's manifest, relative to the session workspace.",
+          },
         },
       },
       render: (_args: unknown, value: unknown) => {
@@ -122,14 +133,18 @@ export function createDocumentToMarkdownTool(options: DocumentToolOptions) {
       options.runtime.config.markitdown.timeoutMs +
       30_000,
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
+      const scope = requireDocumentScope(exec, options);
       const result = await options.runtime.toMarkdown(
         args as unknown as Parameters<DocumentRuntime["toMarkdown"]>[0],
-        requireDocumentScope(exec, options),
+        scope,
       );
       return {
         artifactId: result.artifactId,
         markdown: result.markdown,
-        markdownPath: result.markdownPath,
+        markdownPath: await workspacePathName(
+          scope.workspaceRoot,
+          result.markdownPath,
+        ),
         ...(result.assets === undefined
           ? {}
           : {
@@ -141,7 +156,10 @@ export function createDocumentToMarkdownTool(options: DocumentToolOptions) {
         ...(result.pages === undefined ? {} : { pages: result.pages }),
         backend: result.backend,
         warnings: toolWarnings(result.warnings),
-        manifestPath: result.manifestPath,
+        manifestPath: await workspacePathName(
+          scope.workspaceRoot,
+          result.manifestPath,
+        ),
       };
     },
   });
