@@ -57,7 +57,15 @@ declare module "@deepseek-ai/dsh-client-ui-slots" {
   }
 }
 
-const en: Record<SleevLocaleKey, string> = {
+/**
+ * The English dictionary this card's copy is read from.
+ *
+ * Exported because its `description` is one string with `meta.description` of
+ * `locale/en.json`: the page fills the row's line from that file and asks this seat
+ * for the sentence only when the row carries none, and a test pins the pair so one
+ * row cannot describe two pages.
+ */
+export const SLEEV_EN_DICTIONARY: Record<SleevLocaleKey, string> = {
   description: "Observed routes and telemetry retention.",
   unsaved: "Unsaved",
   overridden: "Overridden",
@@ -414,7 +422,11 @@ export function apply(ctx: ClientContext): void {
     return () => style.remove();
   }, "dsh-sleev: settings styles");
   ctx.effect(
-    () => ctx.locale.register(LOCALE_NAMESPACE, { en, zh }),
+    () =>
+      ctx.locale.register(LOCALE_NAMESPACE, {
+        en: SLEEV_EN_DICTIONARY,
+        zh,
+      }),
     "dsh-sleev: settings dictionaries",
   );
   const controller = new SleevSettingsController(

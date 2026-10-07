@@ -1,4 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis";
+import { readFileSync } from "node:fs";
 import type {
   ConfigForm,
   ConfigFormSnapshot,
@@ -6,6 +7,7 @@ import type {
 import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
+  SLEEV_EN_DICTIONARY,
   SleevRowConfig,
   SleevSettingsCard,
   apply,
@@ -135,5 +137,23 @@ describe("client registration", () => {
     expect(page.type).toBe(SleevSettingsCard);
     // What the page body renders for each state of the namespace is the render
     // suite's subject (`tests/client-card.test.ts`); this suite keeps the seat.
+  });
+
+  it("names and describes the row from this package's exported meta", () => {
+    /*
+     * The Plugins page titles this bundle's row and fills its description from the
+     * package's exported `locale/en.json`, which it resolves through the exports map
+     * without activating the plugin; the seat hands its registrant no label. The row's
+     * fallback line is this entry's `description` dictionary key, so the file and the
+     * English dictionary must stay one sentence — and without the file the row is
+     * named by its full package specifier.
+     */
+    const meta = (
+      JSON.parse(
+        readFileSync(new URL("../locale/en.json", import.meta.url), "utf8"),
+      ) as { meta: { description: string; title: string } }
+    ).meta;
+    expect(meta.title).toBe("Sleev Routing");
+    expect(meta.description).toBe(SLEEV_EN_DICTIONARY.description);
   });
 });
