@@ -5,16 +5,21 @@
  * light, dark and system themes stay coherent. The only literal colours are the
  * semver-like status hues the design tokens do not carry, and they are used
  * for text and thin accents, never for a surface.
+ *
+ * The page draws no title and no surface frame of its own: it is seated on the
+ * Plugins page, which supplies both. The ring of every control this package
+ * renders comes from the Host's `--dsw-focus-ring-*` pair, each half with a
+ * fallback — an undeclared token invalidates the whole `outline` shorthand and
+ * the ring disappears instead of degrading, and a hard-coded outline of our own
+ * loses to the Host's `focus.css` on specificity under pointer modality.
  */
 export const DOMAIN_EXPERTS_STYLES = `
 .dx-page{display:flex;flex-direction:column;gap:16px;min-width:0}
 .dx-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.dx-title{color:var(--dsw-alias-label-primary);font-size:18px;font-weight:600;line-height:1.35;margin:0}
-.dx-subtitle{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5;margin:4px 0 0}
 /* The list and the editor are one pane each, not two wrapping columns. A
    viewport media query cannot decide this and neither could the old
-   flex-wrap: the page renders inside the settings dialog, whose width is the
-   host's choice and far below the viewport, so a two-column layout collapsed
+   flex-wrap: the page renders inside the Plugins page, whose width is the
+   host's choice and often below the viewport, so a two-column layout collapsed
    into "the editor is below the list", out of sight. */
 .dx-detail{display:flex;flex-direction:column;gap:12px;min-width:0}
 .dx-detail:focus{outline:none}
@@ -24,7 +29,7 @@ export const DOMAIN_EXPERTS_STYLES = `
 .dx-list-card{display:flex;flex-direction:column;background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);border-radius:10px;transition:border-color .16s,background .16s;min-width:0}
 .dx-list-card:hover{border-color:var(--dsw-alias-label-dimmed)}
 .dx-list-item{display:flex;flex-direction:column;gap:6px;width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer;background:0 0;border:0;border-radius:10px 10px 0 0;padding:12px 14px;min-width:0}
-.dx-list-item:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-2px}
+.dx-list-item:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-2px}
 .dx-list-actions{display:flex;gap:8px;align-items:center;border-top:1px solid var(--dsw-alias-border-l2);padding:8px 14px}
 .dx-button--small{font-size:12px;padding:3px 9px}
 .dx-list-name{display:flex;align-items:center;gap:8px;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:600}
@@ -43,7 +48,7 @@ export const DOMAIN_EXPERTS_STYLES = `
 .dx-hint{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.5}
 .dx-input,.dx-textarea,.dx-select{width:100%;box-sizing:border-box;font:inherit;font-size:13px;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;padding:7px 9px}
 .dx-textarea{min-height:88px;resize:vertical;font-family:var(--dsw-font-family-mono,ui-monospace,SFMono-Regular,Menlo,monospace);line-height:1.55}
-.dx-input:focus-visible,.dx-textarea:focus-visible,.dx-select:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}
+.dx-input:focus-visible,.dx-textarea:focus-visible,.dx-select:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .dx-input[aria-invalid="true"],.dx-textarea[aria-invalid="true"]{border-color:var(--dx-danger)}
 .dx-row{display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end}
 .dx-row>*{flex:1 1 180px;min-width:0}

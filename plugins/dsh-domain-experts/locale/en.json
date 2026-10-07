@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Domain Experts",
+    "description": "Give a part of the product its own expert agent: one persona, one scope, one memory namespace, one tool policy."
+  }
+}

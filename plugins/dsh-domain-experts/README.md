@@ -56,7 +56,7 @@ Install the published npm package by name:
 dsh plugin --profile web add @yadsh/dsh-domain-experts
 ```
 
-Then open `Settings → Plugins → Domain Experts`.
+Then open the **Domain Experts** row of the Host's **Plugins** page.
 
 ## Managing domains
 
@@ -90,9 +90,8 @@ degraded.
 ## Configuration
 
 Plugin settings are live fields of this plugin's own profile configuration, and
-the Host serves their form under `Settings → Plugins` for the
-`dsh-domain-experts` entry. The `Domain Experts` tab there manages the domains
-themselves. Changes apply to subsequent operations.
+the Host serves their form for the `dsh-domain-experts` entry. The
+**Domain Experts** page on the Plugins panel manages the domains themselves. Changes apply to subsequent operations.
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -192,7 +191,7 @@ match is attempted.
 
 - DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (tested against `0.1.7-rc.2`)
 - Node `^22.19.0 || >=24.0.0`
-- Browser half requires the `settings.plugins.tab` slot
+- Browser half requires the `plugins.bundle.config` seat
 
 See [compatibility.json](./compatibility.json) for the machine-readable form.
 

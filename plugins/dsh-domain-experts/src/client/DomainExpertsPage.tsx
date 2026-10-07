@@ -472,17 +472,13 @@ export function DomainExpertsPage({
 
   return (
     <div className="dx-page" data-testid="domain-experts-page-root">
+      {/*
+        No title and no intro line here: this page is seated on the Plugins page's
+        own bundle view, which already draws the bundle's name and the one-liner
+        from `locale/en.json` above the section. Repeating them is a second heading
+        under the first (AGENTS.md, card-shell contract).
+      */}
       <header className="dx-header" data-testid="domain-experts-page-header">
-        <div>
-          <h2 className="dx-title" data-testid="domain-experts-page-title">
-            Domain Experts
-          </h2>
-          <p className="dx-subtitle" data-testid="domain-experts-page-subtitle">
-            A domain expert is a persona bound to a scope, a memory namespace
-            and a tool policy. The expert runs as an ordinary subagent of the
-            caller.
-          </p>
-        </div>
         <div className="dx-actions" data-testid="domain-experts-page-actions">
           <span className="dx-count" data-testid="domain-experts-page-count">
             {String(sorted.length)} domain{sorted.length === 1 ? "" : "s"}
