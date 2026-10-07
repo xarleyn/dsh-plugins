@@ -284,7 +284,12 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it.each(["composition-mismatch", "agent-unavailable", "adoption-refused"])(
+  it.each([
+    "composition-mismatch",
+    "agent-unavailable",
+    "adoption-refused",
+    "subagent-session",
+  ] as const)(
     "opens a persisted %s chat as a read-only historical transcript",
     async (reason) => {
       const world = harness(["saved"]);

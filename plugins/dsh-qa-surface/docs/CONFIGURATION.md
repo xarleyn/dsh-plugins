@@ -147,8 +147,13 @@ disables Send with the generic message `Настройки помощника н
 Detailed mismatch facts are written only to Host logs; the
 browser console additionally prints one line with a stable coarse reason code
 (`reason: unknown-tools`, `workspace-unavailable`, `composition-mismatch`, `permission-preset`,
-`adoption-refused`, `agent-unavailable`, `proof-mismatch` or `attestation-failed`) plus an operator
+`adoption-refused`, `subagent-session`, `agent-unavailable`, `proof-mismatch`
+or `attestation-failed`) plus an operator
 hint, so a refused surface can be diagnosed without Host log access.
+Attestation is also what lets the Host answer about a chat at all, so the
+sources, approvals, questions and workspace-browsing Remotes admit the session
+before reading it: one refused chat therefore meets the gate once per panel
+refresh rather than once per visit.
 `lockdown.enabled: false` drops the pins, not the request: with `accounts.enabled`
 on, the browser still asks, because account identity and ownership are checked
 in the Host whatever the lockdown state, and a deployment that turned policy
@@ -156,20 +161,33 @@ pinning off keeps refusing a chat another account owns. Without accounts the
 surface has one principal and nothing to prove, so the call is skipped.
 
 An existing indexed chat rejected as `composition-mismatch`,
-`agent-unavailable` or `adoption-refused` is retained as a historical
-read-only transcript. This compatibility path never marks the session
+`agent-unavailable`, `adoption-refused` or `subagent-session` is retained as a
+historical read-only transcript. This compatibility path never marks the session
 attested: Send, stop, approvals and questions remain disabled, while New chat
 creates a session from the current deployment configuration. Other refusals
 (including authentication, ownership, permission-preset and unknown-tool
 failures) remain fail-closed errors.
 
-`agent-unavailable` means the Host could not put a live agent behind the chat:
-attestation resumes a session the Host has not materialized in this process —
-DSH builds an agent on demand, so a chat restored from an earlier Host run has a
-transcript but no agent — and the resume composes the composition that session
-recorded. The refusal therefore reports a session whose recorded preset no
-longer mounts (or whose log the Host refuses to read); the composition detail is
-in the Host logs under `session.agent-resolve-rejected`.
+`agent-unavailable` means the Host has the chat's transcript but could not stand
+an agent behind it: attestation resumes a session the Host has not materialized
+in this process — DSH builds an agent on demand, so a chat restored from an
+earlier Host run has a transcript but no agent — and the resume composes the
+composition that session recorded. The refusal therefore reports a session whose
+recorded preset no longer mounts, or whose log the Host refuses to read; it is
+not what a restart of the stand looks like, since after a restart the next open
+simply resumes the chat. The composition detail is in the Host logs under
+`session.agent-resolve-rejected`, and this class keeps its ERROR level: the
+deployment is what must be repaired.
+
+`subagent-session` means the opposite of a repair: the identity this browser
+asked about is a delegated subagent run, not a chat. The Host owns such an
+identity through subagent routing and will not materialize a sendable agent
+behind it — it says so with `session/agent-busy` when the run's agent is gone,
+and the surface reads the durable `parentSession` when it is still live — so the
+two paths refuse it with one reason and one sentence. Its sources reach the
+parent chat through the provenance inheritance flow, which is why the subagent
+view asks the Host for none of them. A journal line here is a warning: the Host
+answered correctly about another conversation.
 
 The built-in branding, controls, status messages and accessibility labels are
 Russian. The default quick questions are rendered directly above the composer
