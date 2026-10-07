@@ -19,6 +19,7 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -28,6 +29,7 @@
   },
   "files": [
     "lib",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
