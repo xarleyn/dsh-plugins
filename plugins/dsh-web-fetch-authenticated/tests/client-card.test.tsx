@@ -43,22 +43,22 @@ import {
 
 /**
  * The sentence the row page prints above this card: the Host reads the row's
- * display metadata off the bundle's own manifest and falls back to its
- * `description` field (`@deepseek-ai/dsh-plugin-manager` `src/index.ts:650`,
- * `@deepseek-ai/dsh-app-boot` `src/package-meta.ts:157`), so the line the user
- * sees is this string, not the entry's summary answer.
+ * display metadata from the bundle's exported `locale/en.json`, and only falls back
+ * to the manifest's `description` behind it (`@deepseek-ai/dsh-plugin-manager`
+ * `src/index.ts:650`, `@deepseek-ai/dsh-app-boot` `src/package-meta.ts:157`), so the
+ * line the user sees is this string, not the entry's summary answer.
  */
-const rowDescription =
+const rowMeta =
   // Resolved through `node:url`/`node:path`: the `URL` the jsdom global exposes
   // answers a relative spec against the document base, not against this module.
   (
     JSON.parse(
       readFileSync(
-        join(dirname(fileURLToPath(import.meta.url)), "..", "package.json"),
+        join(dirname(fileURLToPath(import.meta.url)), "..", "locale/en.json"),
         "utf8",
       ),
-    ) as { description: string }
-  ).description;
+    ) as { meta: { description: string; title: string } }
+  ).meta;
 
 /** The Host's ring, with a fallback on each half of the pair. */
 const HOST_RING =
@@ -191,7 +191,7 @@ describe("plugins row configuration entry, rendered", () => {
     const seat = await registeredSeat();
     const page = await renderSeat(seat, "page");
 
-    expect(page.container.textContent).not.toContain(rowDescription);
+    expect(page.container.textContent).not.toContain(rowMeta.description);
     expect(await screen.findByTestId("wfa-rules-list")).toBeTruthy();
   });
 
@@ -240,12 +240,12 @@ describe("plugins row configuration entry, rendered", () => {
   it("answers the summary view with the row's own line, as text and no second body", async () => {
     /*
      * The view the page asks for when a row's metadata carries no description
-     * (`PluginManagerPage.tsx:491`); for this row the manifest supplies one, so this
-     * answer is the fallback. It is held to the same sentence on purpose: a row with
-     * two descriptions shows whichever one the reader's metadata happens to carry,
-     * and an edit of `package.json` alone would quietly leave both. Compared against
-     * the manifest rather than against a literal here, so moving one half without the
-     * other is a red test rather than a visible surprise.
+     * (`PluginManagerPage.tsx:491`); this row carries one in `locale/en.json`, so
+     * this answer is the fallback. It is held to the same sentence on purpose: a row
+     * with two descriptions shows whichever one the reader's metadata happens to
+     * carry, and an edit of the locale file alone would quietly leave both. Compared
+     * against the shipped file rather than against a literal here, so moving one half
+     * without the other is a red test rather than a visible surprise.
      *
      * Either way it lands inside the page's own paragraph, so it stays text —
      * mounting the body here would open a live settings store and poll the Remote a
@@ -254,8 +254,11 @@ describe("plugins row configuration entry, rendered", () => {
     const seat = await registeredSeat();
     const { container } = await renderSeat(seat, "summary");
 
-    expect(container.textContent).toBe(rowDescription);
+    expect(container.textContent).toBe(rowMeta.description);
     expect(container.querySelector("[data-testid]")).toBeNull();
+    // The row's title is drawn from this same file and from nowhere else: the seat
+    // hands its registrant no label, so this is the phrase the panel shows.
+    expect(rowMeta.title).toBe("Authenticated Web Fetch");
   });
 
   it.each(OWN_CONTROLS)(

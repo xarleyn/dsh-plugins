@@ -62,16 +62,16 @@ const WEB_FETCH_AUTH_ROW_CONFIG_KEY = `@yadsh/dsh-web-fetch-authenticated#${WEB_
  * The row's description line, as this entry answers it. The page renders the
  * `summary` view only as the fallback for a description the row's Host metadata
  * does not carry (`PluginManagerPage.tsx:491`, `description ?? renderSlot(…)`,
- * with `description` read off `row.meta` in `presentation.ts:131`), and this
- * row's metadata is built from the row's own manifest (`@deepseek-ai/dsh-plugin-manager`
- * `0.1.7-rc.2` `src/index.ts:650`, through `@deepseek-ai/dsh-app-boot`
- * `src/package-meta.ts:157`, where a missing field falls back to that manifest's
- * `description`). So the sentence printed above this card today is this package's
- * `description`, and this answer is what the same row would say if that field were
- * dropped — which is why it is the same sentence. Two different ones would give one
- * row two descriptions, and which a reader sees would depend on which half of the
- * pair an edit of `description` forgot; `client-card.test.tsx` compares this string
- * against `package.json`, so the pair cannot drift apart quietly.
+ * with `description` read off `row.meta` in `presentation.ts:131`), and this row's
+ * metadata is built from the bundle's exported `locale/en.json`, falling back to
+ * that address's manifest `description` only when the file carries none
+ * (`@deepseek-ai/dsh-app-boot` `src/package-meta.ts:151-157`). So the sentence
+ * printed above this card today is `meta.description`, and this answer is what the
+ * same row would say if that field were dropped — which is why it is the same
+ * sentence. Two different ones would give one row two descriptions, and which a
+ * reader sees would depend on which half of the pair an edit forgot;
+ * `client-card.test.tsx` compares this string against `locale/en.json`, so the pair
+ * cannot drift apart quietly.
  *
  * It stays answered because the seat contract asks both views of every
  * registrant (`slot-contract.ts`), and because the answer is a string: the page
