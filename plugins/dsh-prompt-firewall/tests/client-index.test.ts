@@ -1,5 +1,10 @@
+import { readFileSync } from "node:fs";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { apply } from "../src/client/index.js";
+import {
+  PROMPT_FIREWALL_ROW_SUMMARY,
+  PromptFirewallEntry,
+  apply,
+} from "../src/client/index.js";
 
 describe("client activation", () => {
   afterEach(() => {
@@ -69,7 +74,7 @@ describe("client activation", () => {
       slots: readyCtx.slots,
     } as never);
     const face = cardFace?.() as {
-      form: unknown;
+      settingsForm: unknown;
       inspect(): Promise<unknown>;
       setSectionPolicy(
         name: string,
@@ -78,11 +83,16 @@ describe("client activation", () => {
       ): Promise<unknown>;
     };
 
+    // The seat is this bundle's own row on the Plugins page, keyed by the package
+    // name joined to the row id `cordis.patch.yml` declares — and that row id is the
+    // namespace the Host serves this form under, so the move orphans no saved value.
     expect(cardOptions).toMatchObject({
-      name: "settings.plugins.tab",
-      id: "dsh-prompt-firewall",
+      name: "plugins.row.config",
+      key: "@yadsh/dsh-prompt-firewall#dsh-prompt-firewall",
     });
-    expect(face.form).toBe(form);
+    // The form travels under a name the seat's own `form` owner prop cannot shadow.
+    expect(face.settingsForm).toBe(form);
+    expect(cardOptions).not.toHaveProperty("label");
     await expect(face.inspect()).resolves.toEqual({ ok: true, value: {} });
     await expect(
       face.setSectionPolicy("plugin:test", "block", 2),
@@ -95,5 +105,29 @@ describe("client activation", () => {
     await dispose();
     expect(disposeRemote).toHaveBeenCalledOnce();
     expect(style.remove).toHaveBeenCalledOnce();
+  });
+
+  it("names and describes the row from this package's exported meta", () => {
+    /*
+     * The Plugins page titles this bundle's row and fills its description from the
+     * package's exported `locale/en.json`, which it resolves through the exports map
+     * without activating the plugin — the seat hands its registrant no label, so a
+     * bundle without the file is named by its full package specifier. The row's
+     * fallback line is this entry's own `summary` answer, so the file and the answer
+     * are one sentence: two of them would let one row describe two pages.
+     */
+    const meta = (
+      JSON.parse(
+        readFileSync(new URL("../locale/en.json", import.meta.url), "utf8"),
+      ) as { meta: { description: string; title: string } }
+    ).meta;
+    expect(meta.title).toBe("Prompt Firewall");
+    expect(meta.description).toBe(PROMPT_FIREWALL_ROW_SUMMARY);
+    expect(
+      PromptFirewallEntry({
+        view: "summary",
+        settingsForm: {},
+      } as never),
+    ).toBe(PROMPT_FIREWALL_ROW_SUMMARY);
   });
 });

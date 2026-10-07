@@ -35,6 +35,7 @@
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -49,7 +50,7 @@
         "@deepseek-ai/dsh-api-gateway",
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-settings-plugins"
+        "@deepseek-ai/dsh-client-ui-plugin-manager"
       ],
       "platform": "web"
     }
@@ -59,6 +60,7 @@
     "lib/**/*.js.map",
     "lib/**/*.d.ts",
     "lib/client.js",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
@@ -96,7 +98,7 @@
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
     "@deepseek-ai/dsh-settings": "catalog:dsh",
     "@deepseek-ai/dsh-system-prompt": "catalog:dsh",
@@ -112,7 +114,7 @@
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
     "@deepseek-ai/dsh-settings": "catalog:dsh-dev",
     "@deepseek-ai/dsh-system-prompt": "catalog:dsh-dev",

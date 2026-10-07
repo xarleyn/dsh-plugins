@@ -46,7 +46,8 @@ The default configuration is deliberately neutral: blocklist mode with no blocke
 
 ## Settings UI
 
-The browser half adds a **Prompt Firewall** card under **Settings → Plugins**. It provides:
+The browser half seats **Prompt Firewall** on the Host's **Plugins** page: the row
+this bundle owns opens onto its configuration section. It provides:
 
 - live mode, preset, core-protection, audit, preview, history, and metrics settings;
 - an exact, prefix, and glob rule editor;
