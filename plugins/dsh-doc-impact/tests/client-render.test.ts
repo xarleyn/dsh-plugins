@@ -50,7 +50,7 @@ import {
   type NamespaceForm,
   type NamespaceSnapshot,
 } from "../src/client/settings-form.js";
-import { MANIFEST_DESCRIPTION } from "./helpers/client-seat.js";
+import { ROW_META } from "./helpers/client-seat.js";
 
 /**
  * A namespace document whose two choice fields hold a value the vocabulary does
@@ -340,9 +340,9 @@ describe("doc-impact seat entry", () => {
     // and creates no element at all: a shell, a list, or a subscribed store here
     // would be a second live copy of the form in a line of heading text.
     expect(elements).toHaveLength(0);
-    // Kept equal to the manifest's `description`, which is what the page puts here
-    // whenever the row carries a description at all — read off the manifest so a
+    // Kept equal to the row's own display copy, which is what the page puts here
+    // whenever the row carries a description at all — read off the shipped file so a
     // drift between the two shows up as a failure, not as two matching literals.
-    expect(drawn).toBe(MANIFEST_DESCRIPTION);
+    expect(drawn).toBe(ROW_META.description);
   });
 });

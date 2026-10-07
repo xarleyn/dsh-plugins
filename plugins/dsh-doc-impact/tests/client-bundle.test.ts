@@ -11,9 +11,9 @@ import {
   fakeReact,
   loadBundle,
   makeCtx,
-  MANIFEST_DESCRIPTION,
   PATCH_PATH,
   renderEntry,
+  ROW_META,
   PATHS,
 } from "./helpers/client-seat.js";
 
@@ -248,10 +248,11 @@ describe("client bundle", () => {
     });
 
     expect(reads).toEqual([]);
-    // Read off the manifest rather than repeated as a literal here: the two must be
-    // the same sentence, or the row reads one way from the inventory and another from
-    // its own card.
-    expect(summary).toBe(MANIFEST_DESCRIPTION);
+    // Read off the row's own display copy rather than repeated as a literal here:
+    // the two must be the same sentence, or the row reads one way from the panel and
+    // another from its own card.
+    expect(summary).toBe(ROW_META.description);
+    expect(ROW_META.title).toBe("Documentation Impact");
   });
 
   it("skips registration when the configForms service is absent", async () => {

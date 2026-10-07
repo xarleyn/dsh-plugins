@@ -19,18 +19,19 @@ const CLIENT_BUNDLE_PATH = join(PACKAGE_ROOT, "lib", "client.js");
 export const PATCH_PATH = join(PACKAGE_ROOT, "cordis.patch.yml");
 
 /**
- * The row's one-liner as the Host reads it: the `description` field of the
- * installed manifest, which fills the page's `<p>` before the seat is ever asked
- * for its `summary` view. Read from the manifest rather than repeated as a literal,
- * so the answer a bundle that declares no description gets is checked against the
- * same sentence the other rows are checked against — and an edit to the manifest
- * cannot be missed by a string copied into a test.
+ * The row's display copy as the Host reads it: the `meta` of the exported
+ * `locale/en.json`, which titles and describes the row before the seat is ever
+ * asked for its `summary` view. The manifest's own `description` is only the
+ * fallback behind that file. Read from the shipped file rather than repeated as a
+ * literal, so the answer a row gets from its card is checked against the same
+ * sentence the page draws — and an edit to either file cannot be missed by a
+ * string copied into a test.
  */
-export const MANIFEST_DESCRIPTION: string = (
-  JSON.parse(readFileSync(join(PACKAGE_ROOT, "package.json"), "utf8")) as {
-    description: string;
+export const ROW_META: { description: string; title: string } = (
+  JSON.parse(readFileSync(join(PACKAGE_ROOT, "locale/en.json"), "utf8")) as {
+    meta: { description: string; title: string };
   }
-).description;
+).meta;
 
 /** One `locale.register` call, as the entry made it. */
 export interface LocaleRegistration {
