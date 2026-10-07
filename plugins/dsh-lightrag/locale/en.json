@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "LightRAG Knowledge Base",
+    "description": "Knowledge-base tools over a LightRAG graph-RAG index: ask, inspect the catalog, check its health."
+  }
+}
