@@ -18,7 +18,7 @@ import {
 
 const PAGE_SIZE = 25;
 
-/** The Host's floor; the form refuses a shorter password before the round trip. */
+/** The Host's floor; the queue answers a shorter password before the round trip. */
 const MIN_PASSWORD_LENGTH = 8;
 
 /**
@@ -152,7 +152,6 @@ function PasswordResetQueue(props: {
                   type="password"
                   data-testid="qa-admin-password-reset-input"
                   autoComplete="new-password"
-                  minLength={MIN_PASSWORD_LENGTH}
                   placeholder="не короче 8 символов"
                   disabled={busy === request.userId}
                   value={drafts[request.userId] ?? ""}

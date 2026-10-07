@@ -136,6 +136,87 @@ describe("QA auth gate", () => {
     });
   });
 
+  // A click on the submit button goes through the browser's submission
+  // algorithm in jsdom too, so a field `required` or `type="email"` fails to
+  // reach the card until the form opts out — which is the defect, and the
+  // reason the opt-out is asserted rather than only implied by the copy below.
+  it("submits without handing the field to the browser's validator", async () => {
+    await mountedGate(accountsApi(), false);
+    const form = screen.getByTestId<HTMLFormElement>("qa-surface-auth-card");
+    expect(form.noValidate).toBe(true);
+    // The constraints stay declarative: they name the field for autofill and
+    // assistive tech, while the card decides what an attempt means.
+    expect(form.querySelector('input[type="email"]')).not.toBeNull();
+    expect(
+      form.querySelector<HTMLInputElement>('input[name="password"]')?.minLength,
+    ).toBe(8);
+  });
+
+  it("refuses a password below the floor with its own copy, before the round trip", async () => {
+    const api = accountsApi();
+    await mountedGate(api, false);
+    fireEvent.change(screen.getByLabelText(/Email/), {
+      target: { value: "a@b.co" },
+    });
+    fireEvent.change(screen.getByLabelText(/Пароль/), {
+      target: { value: "abc" },
+    });
+    fireEvent.click(screen.getByTestId("qa-surface-auth-submit"));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toBe(
+        "Пароль должен быть не короче 8 символов.",
+      );
+    });
+    expect(api.accountsLogin).not.toHaveBeenCalled();
+    // Fixing the field takes the refusal away: it answered the attempt, not the
+    // text the operator is typing now.
+    fireEvent.change(screen.getByLabelText(/Пароль/), {
+      target: { value: "password-1" },
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(screen.getByTestId("qa-surface-auth-submit"));
+    await waitFor(() => {
+      expect(api.accountsLogin).toHaveBeenCalledWith("a@b.co", "password-1");
+    });
+  });
+
+  it("refuses an address the Host could not accept", async () => {
+    const api = accountsApi();
+    await mountedGate(api, true);
+    fireEvent.click(screen.getByTestId("qa-surface-auth-tab-register"));
+    fireEvent.change(screen.getByLabelText(/Email/), {
+      target: { value: "not-an-address" },
+    });
+    fireEvent.change(screen.getByLabelText(/Пароль/), {
+      target: { value: "password-1" },
+    });
+    fireEvent.click(screen.getByTestId("qa-surface-auth-submit"));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toBe(
+        "Введите корректный email.",
+      );
+    });
+    expect(api.accountsRegister).not.toHaveBeenCalled();
+    // The registration tab is a different operation, not a different excuse.
+    fireEvent.change(screen.getByLabelText(/Email/), {
+      target: { value: "a@b.co" },
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("refuses an empty reset request in its own words", async () => {
+    const api = accountsApi();
+    await mountedGate(api, false);
+    fireEvent.click(screen.getByTestId("qa-surface-auth-forgot"));
+    fireEvent.click(screen.getByTestId("qa-surface-auth-submit"));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toBe(
+        "Введите корректный email.",
+      );
+    });
+    expect(api.accountsRequestPasswordReset).not.toHaveBeenCalled();
+  });
+
   it("files a forgotten-password request from the reset card", async () => {
     const api = accountsApi();
     const { accounts } = await mountedGate(api, false);
