@@ -749,6 +749,7 @@ pnpm check:files
 pnpm verify:logging
 pnpm verify:a11y
 pnpm verify:testids
+pnpm verify:tokens
 pnpm verify:packages
 pnpm test:release
 pnpm release:check --base="$NX_BASE" --head="$NX_HEAD"

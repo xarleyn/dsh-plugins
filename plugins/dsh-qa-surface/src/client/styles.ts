@@ -288,8 +288,8 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-settings__button:disabled{opacity:.6;cursor:default}
 .dsh-qa-settings__button--primary{border-color:transparent;background:var(--dsh-qa-brand);color:var(--dsh-qa-accent-contrast);font-weight:600}
 .dsh-qa-settings__button--primary:hover:not(:disabled){background:var(--dsh-qa-accent-hover);color:var(--dsh-qa-accent-contrast)}
-.dsh-qa-settings__button--danger{border-color:var(--dsw-alias-label-error);color:var(--dsw-alias-label-error)}
-.dsh-qa-settings__button--danger:hover:not(:disabled){background:var(--dsw-alias-bg-error);color:var(--dsw-alias-label-error)}
+.dsh-qa-settings__button--danger{border-color:var(--dsw-alias-state-error-primary);color:var(--dsw-alias-state-error-primary)}
+.dsh-qa-settings__button--danger:hover:not(:disabled){background:color-mix(in srgb, var(--dsw-alias-state-error-primary) 8%, transparent);color:var(--dsw-alias-state-error-primary)}
 .dsh-qa-settings__empty{display:flex;flex-direction:column;align-items:flex-start;gap:10px;padding:22px 18px;border:1px dashed var(--dsw-alias-border-l2);border-radius:12px;background:var(--dsw-alias-bg-layer-3)}
 .dsh-qa-settings__empty-title{margin:0;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:600;line-height:20px}
 .dsh-qa-settings__search{appearance:none;width:100%;padding:8px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:13px;line-height:19px}

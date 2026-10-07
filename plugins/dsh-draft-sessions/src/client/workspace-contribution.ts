@@ -95,7 +95,7 @@ const FOOTER_CSS = `
 .dsd-footer-icon{flex:none;width:12px;height:12px;border:1px dashed currentColor;border-radius:50%}
 .dsd-footer-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .dsd-footer-count{flex:none;margin-left:auto;color:var(--dsw-alias-label-tertiary);font-size:12px}
-.dsd-footer-panel{position:fixed;z-index:2147483000;display:flex;flex-direction:column;width:320px;max-width:calc(100vw - 24px);max-height:60vh;overflow:hidden;border:1px solid var(--dsw-alias-border-inverted);border-radius:12px;background:var(--dsw-specific-menu,var(--dsw-alias-bg-elevated));box-shadow:var(--dsw-shadow-lv3,0 8px 24px rgba(0,0,0,.22))}
+.dsd-footer-panel{position:fixed;z-index:2147483000;display:flex;flex-direction:column;width:320px;max-width:calc(100vw - 24px);max-height:60vh;overflow:hidden;border:1px solid var(--dsw-alias-border-inverted);border-radius:12px;background:var(--dsw-specific-menu,var(--dsw-alias-button-elevated-fill));box-shadow:var(--dsw-shadow-lv3,0 8px 24px rgba(0,0,0,.22))}
 `;
 
 function findNativeTabRegistry(target: unknown): NativeTabRegistry | undefined {

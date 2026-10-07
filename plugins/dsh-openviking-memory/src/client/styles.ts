@@ -40,7 +40,7 @@ export const styles: string = `.ovm-body,.ovm-body *{box-sizing:border-box}
 .ovm-btn:disabled{cursor:default;opacity:.45}
 .ovm-notice{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l2);font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary)}
 .ovm-notice strong{color:var(--dsw-alias-label-primary)}
-.ovm-error{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-error);color:var(--dsw-alias-label-error);font-size:11px;line-height:1.5}
+.ovm-error{padding:9px 11px;border-radius:8px;background:color-mix(in srgb, var(--dsw-alias-state-error-primary, #b3261e) 8%, transparent);color:var(--dsw-alias-state-error-primary, #b3261e);font-size:11px;line-height:1.5}
 .ovm-advanced{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:0 12px}
 .ovm-advanced summary{cursor:pointer;padding:11px 0;font-size:12px;font-weight:600}
 .ovm-advanced-content{padding:2px 0 13px;display:grid;gap:10px}
