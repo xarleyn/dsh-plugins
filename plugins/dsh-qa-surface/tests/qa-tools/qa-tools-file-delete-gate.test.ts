@@ -56,6 +56,10 @@ describe("QA file_delete gate", () => {
       reason: QA_FILE_DELETE_ASK_REASON,
     });
     expect(consulted).toBe(0);
+    // The reason is printed on the approval card the operator reads, so the
+    // language is part of it: comparing the card against the same constant
+    // would still pass if the string drifted back to the tool chain's English.
+    expect(/[А-Яа-яЁё]/u.test(QA_FILE_DELETE_ASK_REASON)).toBe(true);
     gate.dispose();
   });
 

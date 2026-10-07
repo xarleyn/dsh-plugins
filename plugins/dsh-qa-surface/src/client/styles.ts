@@ -179,17 +179,17 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-auth__logo{width:32px;height:32px;fill:none;stroke:var(--dsh-qa-brand);stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 .dsh-qa-auth__brand h1{margin:0;color:var(--dsw-alias-label-primary);font-size:19px;font-weight:600;line-height:26px}
 .dsh-qa-auth__tabs{display:flex;gap:4px;padding:3px;border-radius:9px;background:var(--dsw-alias-bg-module-platform)}
-.dsh-qa-auth__tab{appearance:none;flex:1;padding:6px 0;border:0;border-radius:7px;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;font-weight:500;line-height:18px;cursor:pointer;transition:background .12s,color .12s}
+.dsh-qa-auth__tab{appearance:none;flex:1;padding:6px 0;border:0;border-radius:7px;background:0 0;color:var(--dsw-alias-label-secondary);font:inherit;font-size:16px;font-weight:500;line-height:22px;cursor:pointer;transition:background .12s,color .12s}
 .dsh-qa-auth__tab:hover{color:var(--dsw-alias-label-primary)}
 .dsh-qa-auth__tab--active{background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary)}
 .dsh-qa-auth__tab:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:-2px}
 .dsh-qa-auth__field{display:flex;flex-direction:column;gap:5px}
-.dsh-qa-auth__field span{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:16px}
-.dsh-qa-auth__field input{appearance:none;width:100%;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:14px;line-height:20px}
+.dsh-qa-auth__field span{color:var(--dsw-alias-label-secondary);font-size:16px;line-height:22px}
+.dsh-qa-auth__field input{appearance:none;width:100%;padding:9px 11px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary);font:inherit;font-size:16px;line-height:22px}
 .dsh-qa-auth__field input:focus{outline:none;border-color:var(--dsh-qa-brand)}
 .dsh-qa-auth__field input:disabled{opacity:.55}
-.dsh-qa-auth__error{margin:0;color:var(--dsh-qa-error);font-size:12px;line-height:17px}
-.dsh-qa-auth__submit{appearance:none;margin-top:2px;padding:10px 0;border:0;border-radius:9px;background:var(--dsh-qa-brand);color:var(--dsh-qa-accent-contrast);font:inherit;font-size:14px;font-weight:600;line-height:20px;cursor:pointer;transition:background .12s}
+.dsh-qa-auth__error{margin:0;color:var(--dsh-qa-error);font-size:16px;line-height:22px}
+.dsh-qa-auth__submit{appearance:none;margin-top:2px;padding:10px 0;border:0;border-radius:9px;background:var(--dsh-qa-brand);color:var(--dsh-qa-accent-contrast);font:inherit;font-size:16px;font-weight:600;line-height:22px;cursor:pointer;transition:background .12s}
 .dsh-qa-auth__submit:hover{background:var(--dsh-qa-accent-hover)}
 .dsh-qa-auth__submit:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:2px}
 .dsh-qa-auth__submit:disabled{opacity:.6;cursor:default}
@@ -351,8 +351,8 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-header h1{max-width:min(42vw,420px);min-width:0;overflow:hidden;margin:0;color:var(--dsw-alias-label-primary);font-size:14px;font-weight:500;line-height:20px;text-overflow:ellipsis;white-space:nowrap}
 .dsh-qa-header__reset{padding:5px 10px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;cursor:pointer}
 .dsh-qa-header__agents{display:inline-flex;align-items:center;gap:6px;flex:none;padding:5px 10px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;cursor:pointer}
-.dsh-qa-header__agents:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.dsh-qa-header__agents:disabled{opacity:.45;cursor:default}
+.dsh-qa-header__agents:hover:not(:disabled):not([aria-disabled="true"]){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dsh-qa-header__agents:disabled,.dsh-qa-header__agents[aria-disabled="true"]{opacity:.45;cursor:default}
 .dsh-qa-header__agents[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-qa-header__agents svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .dsh-qa-header__agents:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:2px}
@@ -386,14 +386,14 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-agents__meta-list{display:flex;gap:8px}
 .dsh-qa-agents__open{flex:none;color:var(--dsh-qa-accent);font-size:12px;font-weight:500;line-height:18px}
 .dsh-qa-header__sources{display:inline-flex;align-items:center;gap:6px;flex:none;padding:5px 10px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;cursor:pointer}
-.dsh-qa-header__sources:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.dsh-qa-header__sources:disabled{opacity:.45;cursor:default}
+.dsh-qa-header__sources:hover:not(:disabled):not([aria-disabled="true"]){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dsh-qa-header__sources:disabled,.dsh-qa-header__sources[aria-disabled="true"]{opacity:.45;cursor:default}
 .dsh-qa-header__sources[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-qa-header__sources svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .dsh-qa-header__sources:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:2px}
 .dsh-qa-header__files{display:inline-flex;align-items:center;gap:6px;flex:none;padding:5px 10px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:13px;line-height:20px;cursor:pointer}
-.dsh-qa-header__files:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.dsh-qa-header__files:disabled{opacity:.45;cursor:default}
+.dsh-qa-header__files:hover:not(:disabled):not([aria-disabled="true"]){background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
+.dsh-qa-header__files:disabled,.dsh-qa-header__files[aria-disabled="true"]{opacity:.45;cursor:default}
 .dsh-qa-header__files[aria-expanded="true"]{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
 .dsh-qa-header__files svg{width:15px;height:15px;fill:none;stroke:currentColor;stroke-width:1.2;stroke-linecap:round;stroke-linejoin:round}
 .dsh-qa-header__files:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:2px}
@@ -464,8 +464,11 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-header__reset:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}
 .dsh-qa-header__reset:disabled{opacity:.45;cursor:default}
 .dsh-qa-header__tabs{position:relative;z-index:1;display:flex;gap:32px;margin-top:4px}
-.dsh-qa-header__tabs span{position:relative;padding:0 0 11px;color:var(--dsh-qa-accent);font-size:13px;font-weight:500;line-height:16px}
-.dsh-qa-header__tabs span::after{content:"";position:absolute;right:0;bottom:1px;left:0;height:2px;border-radius:2px;background:var(--dsh-qa-accent)}
+.dsh-qa-header__tabs span,.dsh-qa-header__tab{position:relative;padding:0 0 11px;color:var(--dsh-qa-accent);font-size:13px;font-weight:500;line-height:16px}
+.dsh-qa-header__tab{appearance:none;background:0 0;border:0;cursor:pointer;font-family:inherit}
+.dsh-qa-header__tab:hover{text-decoration:underline}
+.dsh-qa-header__tab:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:2px}
+.dsh-qa-header__tabs span::after,.dsh-qa-header__tab::after{content:"";position:absolute;right:0;bottom:1px;left:0;height:2px;border-radius:2px;background:var(--dsh-qa-accent)}
 .dsh-qa-extension-panel__resizer{position:relative;z-index:2;flex:0 0 5px;width:5px;touch-action:none;cursor:col-resize;background:var(--dsw-alias-border-l2)}
 .dsh-qa-extension-panel__resizer:hover,.dsh-qa-extension-panel__resizer:focus-visible{background:var(--dsh-qa-accent);outline:0}
 .dsh-qa-extension-panel{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--dsw-alias-bg-base);color:var(--dsw-alias-label-primary)}
@@ -628,7 +631,20 @@ a.dsh-qa-sources__title:hover{text-decoration:underline}
 .dsh-qa-message--assistant{align-items:flex-start;margin-right:auto}
 .dsh-qa-message--work{align-items:flex-start;margin:-4px 0 14px}
 .dsh-qa-message--system{align-items:center;margin:4px auto 20px}
-.dsh-qa-message__content{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);font-size:15px;line-height:1.62}
+/*
+  The type scale of this surface: what the reader is asked to read is 16px, and
+  nothing that carries a decision sits below it — the assistant's answer, the
+  operator's own draft and the composer's status line all match the 16px the
+  user bubble is drawn at, so a reply never reads smaller than the question.
+
+  Deliberate exceptions, all of them chrome rather than content: the header row
+  and the tab marker (13px), the panel tab chips and their counts (13px/10px),
+  message meta and timestamps (11-12px), the quick-question chips (13px),
+  system notices and turn lines (13px), code and workspace file names
+  (monospace, 11-13px), the admin console's tables and badges (10-12px), the
+  composer's key hint (11px) and the welcome lede (14px).
+*/
+.dsh-qa-message__content{max-width:100%;white-space:pre-wrap;overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);font-size:16px;line-height:1.62}
 .dsh-qa-message--user .dsh-qa-message__content{max-width:min(525px,82%);padding:10px 16px;border-radius:22px;background:var(--dsw-specific-bubble);font-size:16px;line-height:24px}
 .dsh-qa-message[data-status="pending"] .dsh-qa-message__content{opacity:.78}
 .dsh-qa-message__pending{display:flex;align-items:center;gap:6px;margin-top:6px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
@@ -701,7 +717,7 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
    properties, so a font-size preference or a light/dark switch moves both
    surfaces together. A container that needs a denser scale (the source
    preview, the work-item text) overrides the ladder for its own subtree. */
-.dsh-qa-md{min-width:0;white-space:normal;overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-markdown-base-font-family,inherit);font-size:var(--dsw-font-markdown-base-font-size,14px);font-weight:400;line-height:var(--dsw-font-markdown-base-line-height,24px)}
+.dsh-qa-md{min-width:0;white-space:normal;overflow-wrap:anywhere;color:var(--dsw-alias-label-primary);font-family:var(--dsw-font-markdown-base-font-family,inherit);font-size:var(--dsw-font-markdown-base-font-size,16px);font-weight:400;line-height:var(--dsw-font-markdown-base-line-height,24px)}
 .dsh-qa-md>:first-child{margin-top:0}
 .dsh-qa-md>:last-child{margin-bottom:0}
 .dsh-qa-md p{margin:16px 0}
@@ -990,7 +1006,7 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
    row — title, role, palette, action cluster — is wider than the viewport with
    every child refusing to shrink, so it wraps instead of pushing «Настройки»
    past the clipped edge. */
-@media (max-width:600px){.dsh-qa-sidebar{display:none}.dsh-qa-sidebar[data-qa-drawer="open"]{display:flex;position:fixed;inset:0 auto 0 0;z-index:24;width:min(320px,86vw);max-width:100%;border-right:1px solid var(--dsw-alias-border-l2);box-shadow:0 18px 44px rgba(0,0,0,.28);padding-bottom:env(safe-area-inset-bottom)}.dsh-qa-sidebar__scrim{display:block;position:fixed;inset:0;z-index:22;background:var(--dsh-qa-overlay)}.dsh-qa-sidebar__resize{display:none}.dsh-qa-sidebar__collapse,.dsh-qa-sidebar__expand{width:44px;height:44px}.dsh-qa-sidebar__new,.dsh-qa-sidebar__item-main{min-height:44px}.dsh-qa-header__history{display:inline-flex}.dsh-qa-panel,.dsh-qa-agents{position:absolute;inset:0;z-index:6;width:100%;border-left:0}.dsh-qa-header__inner{padding-left:16px;padding-right:16px}.dsh-qa-header h1{max-width:48vw}.dsh-qa-header__title-row{flex-wrap:wrap;row-gap:6px}.dsh-qa-width-handle{display:none}.dsh-qa-transcript__inner{--dsh-qa-bleed:0px;max-width:100%;padding:16px 16px 28px}.dsh-qa-footer__inner{max-width:100%}.dsh-qa-message{margin-bottom:16px}.dsh-qa-message--user .dsh-qa-message__content{max-width:88%;font-size:15px}.dsh-qa-message__content{font-size:14px}.dsh-qa-footer{padding-left:10px;padding-right:10px;padding-bottom:max(8px,env(safe-area-inset-bottom))}.dsh-qa-composer{min-height:84px;padding-top:12px}.dsh-qa-composer__hint{font-size:0}.dsh-qa-composer__hint::after{content:"Enter: отправить";font-size:11px}}
+@media (max-width:600px){.dsh-qa-sidebar{display:none}.dsh-qa-sidebar[data-qa-drawer="open"]{display:flex;position:fixed;inset:0 auto 0 0;z-index:24;width:min(320px,86vw);max-width:100%;border-right:1px solid var(--dsw-alias-border-l2);box-shadow:0 18px 44px rgba(0,0,0,.28);padding-bottom:env(safe-area-inset-bottom)}.dsh-qa-sidebar__scrim{display:block;position:fixed;inset:0;z-index:22;background:var(--dsh-qa-overlay)}.dsh-qa-sidebar__resize{display:none}.dsh-qa-sidebar__collapse,.dsh-qa-sidebar__expand{width:44px;height:44px}.dsh-qa-sidebar__new,.dsh-qa-sidebar__item-main{min-height:44px}.dsh-qa-header__history{display:inline-flex}.dsh-qa-panel,.dsh-qa-agents{position:absolute;inset:0;z-index:6;width:100%;border-left:0}.dsh-qa-panel__close{width:44px;height:44px}.dsh-qa-panel__tab{min-height:44px}.dsh-qa-header__inner{padding-left:16px;padding-right:16px}.dsh-qa-header h1{max-width:48vw}.dsh-qa-header__title-row{flex-wrap:wrap;row-gap:6px}.dsh-qa-width-handle{display:none}.dsh-qa-transcript__inner{--dsh-qa-bleed:0px;max-width:100%;padding:16px 16px 28px}.dsh-qa-footer__inner{max-width:100%}.dsh-qa-message{margin-bottom:16px}.dsh-qa-message__actions{height:44px}.dsh-qa-message__actions button{width:44px;height:44px}.dsh-qa-message--user .dsh-qa-message__content{max-width:88%}.dsh-qa-footer{padding-left:10px;padding-right:10px;padding-bottom:max(8px,env(safe-area-inset-bottom))}.dsh-qa-composer{min-height:84px;padding-top:12px}.dsh-qa-quick-questions{flex-wrap:wrap;overflow-x:visible}.dsh-qa-composer__hint{font-size:0}.dsh-qa-composer__hint::after{content:"Enter: отправить";font-size:11px}}
 @media (max-height:480px) and (orientation:landscape){.dsh-qa-header__inner{padding-top:6px}.dsh-qa-header__tabs{display:none}.dsh-qa-transcript__inner{padding-top:12px}.dsh-qa-footer{padding-top:12px}.dsh-qa-composer{min-height:72px;gap:4px;padding-top:8px}}
 @media (prefers-reduced-motion:reduce){.dsh-qa-message__cursor,.dsh-qa-message__pending-spinner,.dsh-qa-work__spinner,.dsh-qa-work-item__spinner,.dsh-qa-command__spinner{animation:none}.dsh-qa-work__chevron{transition:none}.dsh-qa-rail__frame,.dsh-qa-rail__pos,.dsh-qa-rail__mark::before,.dsh-qa-rail__mark--busy::before,.dsh-qa-rail__preview{transition:none;animation:none}}
 ${QA_ADMIN_CONSOLE_STYLES}

@@ -16,6 +16,11 @@ export interface QaChatRow {
   readonly running: boolean;
   readonly active: boolean;
   readonly meta: string;
+  /**
+   * The chat's whole name, held back from the row only because the row had to
+   * be cut to fit; absent when the title is shown in full.
+   */
+  readonly fullName?: string;
   readonly updatedAt: number;
   /** Chat owner's display name; present in the admin ownership view only. */
   readonly ownerName?: string;
@@ -41,12 +46,20 @@ export function buildChatRows(
     const summary = byId[id];
     if (summary === undefined || isDelegatedSession(summary)) continue;
     const ownerName = ownerNameOf?.(id);
+    const label = summary.blank ? "Новый чат" : summary.displayTitle;
+    // A label shorter than the durable title behind it has been cut by whoever
+    // projected it, and two chats sharing the cut read as one row: the row says
+    // so with an ellipsis and keeps the whole name for the tooltip.
+    const full = summary.title;
+    const clipped =
+      !summary.blank && full !== undefined && full.length > label.length;
     rows.push({
       id,
-      title: summary.blank ? "Новый чат" : summary.displayTitle,
+      title: clipped ? `${label.trimEnd()}…` : label,
       running: summary.running,
       active: id === activeId,
       meta: relativeTime(summary.updatedAt, now),
+      ...(clipped && full !== undefined ? { fullName: full } : {}),
       updatedAt: summary.updatedAt,
       ...(ownerName === undefined ? {} : { ownerName }),
     });
@@ -212,8 +225,11 @@ function ChevronIcon() {
 }
 
 function rowMatches(row: QaChatRow, query: string): boolean {
+  // The whole name, not just what the row had room for: a chat whose row reads
+  // «Напиши двадцать…» is still found by the tail of its title.
   return (
     row.title.toLowerCase().includes(query) ||
+    (row.fullName?.toLowerCase().includes(query) ?? false) ||
     row.ownerName?.toLowerCase().includes(query) === true
   );
 }
@@ -372,6 +388,7 @@ export const QaSidebar = memo(
             className="dsh-qa-sidebar__item-main"
             data-testid="qa-surface-sidebar-item-open"
             aria-current={row.active ? "true" : undefined}
+            title={row.fullName ?? row.title}
             onClick={() => {
               props.onSwitch(row.id);
               closeDrawer();

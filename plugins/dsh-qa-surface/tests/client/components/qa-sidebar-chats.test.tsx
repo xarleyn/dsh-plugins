@@ -55,6 +55,46 @@ describe("QA sidebar", () => {
     ]);
   });
 
+  it("marks a cut chat name and keeps the whole name reachable", () => {
+    // Two chats opening the same way are one row to the reader without the
+    // ellipsis; the tooltip carries what the row had no room for.
+    const cut = {
+      "s-9": {
+        id: "s-9",
+        title: "Напиши двадцать коротких стихотворений о погоде",
+        displayTitle: "Напиши двадцать корот",
+        running: false,
+        blank: false,
+        updatedAt: 5_000,
+      },
+    } as unknown as Record<string, SessionSummary>;
+    const [row] = buildChatRows(["s-9"], cut, null, undefined, 90_000);
+    expect(row?.title).toBe("Напиши двадцать корот…");
+    expect(row?.fullName).toBe(
+      "Напиши двадцать коротких стихотворений о погоде",
+    );
+    const rows = buildChatRows(["s-9"], cut, null, undefined, 90_000);
+    render(
+      <QaSidebar
+        rows={rows}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
+        showNewChat={false}
+        busy={false}
+        onSwitch={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    );
+    const open = screen.getByTestId("qa-surface-sidebar-item-open");
+    expect(open.getAttribute("title")).toBe(
+      "Напиши двадцать коротких стихотворений о погоде",
+    );
+    const search = screen.getByLabelText("Поиск по чатам") as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "стихотворений" } });
+    expect(screen.getAllByTestId("qa-surface-sidebar-item")).toHaveLength(1);
+  });
+
   it("never shows a delegated child, even when the index still names one", () => {
     // A record from a release that could claim a subagent's session keeps such
     // an id in the browser index; a subagent's session is not a chat, and the

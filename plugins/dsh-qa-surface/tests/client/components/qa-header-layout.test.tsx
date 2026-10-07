@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   QaHeader,
@@ -95,5 +95,71 @@ describe("header action cluster", () => {
     const { container } = render(<QaHeader {...BASE} />);
     expect(container.querySelector(".dsh-qa-header__mode")).toBeNull();
     expect(screen.queryByTestId("qa-surface-header-viewing")).toBeNull();
+  });
+});
+
+/**
+ * The empty states of the row's own controls, and the tab marker that becomes
+ * the way back once a panel stands over the conversation.
+ */
+describe("header empty states and the chat tab", () => {
+  it("keeps an empty control reachable and explains why it answers nothing", () => {
+    render(<QaHeader {...BASE} />);
+    const agents = screen.getByTestId("qa-surface-header-agents");
+    // `disabled` would drop the control out of the tab order, and a keyboard
+    // reader never learns that it exists.
+    expect(agents.hasAttribute("disabled")).toBe(false);
+    expect(agents.getAttribute("aria-disabled")).toBe("true");
+    expect(
+      screen
+        .getByRole("button", { name: /субагентов в этом чате пока нет/ })
+        .getAttribute("title"),
+    ).toBe("Субагентов в этом чате пока нет");
+    expect(
+      screen.getByRole("button", {
+        name: /этот ответ обошёлся без источников/,
+      }),
+    ).toBeTruthy();
+  });
+
+  it("presses nothing while the control says it is empty", () => {
+    const onToggleAgents = vi.fn();
+    render(
+      <QaHeader {...BASE} agentCount={0} onToggleAgents={onToggleAgents} />,
+    );
+    fireEvent.click(screen.getByTestId("qa-surface-header-agents"));
+    expect(onToggleAgents).not.toHaveBeenCalled();
+  });
+
+  it("hands the control back once it has something to show", () => {
+    const onToggleAgents = vi.fn();
+    render(
+      <QaHeader {...BASE} agentCount={2} onToggleAgents={onToggleAgents} />,
+    );
+    const agents = screen.getByTestId("qa-surface-header-agents");
+    expect(agents.getAttribute("aria-disabled")).toBeNull();
+    expect(agents.textContent).toContain("Агенты (2)");
+    fireEvent.click(agents);
+    expect(onToggleAgents).toHaveBeenCalledOnce();
+  });
+
+  it("leaves the chat marker a label while the chat is all there is", () => {
+    render(<QaHeader {...BASE} />);
+    expect(screen.queryByTestId("qa-surface-header-chat-tab")).toBeNull();
+    const marker = screen.getByTestId(
+      "qa-surface-header-tabs",
+    ).firstElementChild;
+    expect(marker?.tagName).toBe("SPAN");
+    expect(marker?.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("makes the chat marker the way back while a panel is open", () => {
+    const onBackToChat = vi.fn();
+    render(<QaHeader {...BASE} onBackToChat={onBackToChat} />);
+    const tab = screen.getByTestId("qa-surface-header-chat-tab");
+    expect(tab.tagName).toBe("BUTTON");
+    expect(tab.getAttribute("aria-current")).toBe("page");
+    fireEvent.click(screen.getByRole("button", { name: "Вернуться к чату" }));
+    expect(onBackToChat).toHaveBeenCalledOnce();
   });
 });
