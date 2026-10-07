@@ -33,14 +33,15 @@ import {
 } from "./qa-settings-card.helpers.js";
 
 /*
- * The row's one-liner as the host reads it: the installed manifest's
- * `description`, which fills the page's paragraph before this seat is ever asked.
- * Read rather than repeated, because a manifest edit has nothing to fail in a test
- * that quotes the same words. Resolved through `fileURLToPath` because the jsdom
- * environment replaces the global `URL`, and Node's `readFileSync` only
+ * The row's display copy as the host reads it: `meta` of the exported
+ * `locale/en.json`, which titles the row and fills its paragraph before this seat
+ * is ever asked — the manifest's own `description` sits only behind that file. Read
+ * rather than repeated, because an edit to the shipped file has nothing to fail in a
+ * test that quotes the same words. Resolved through `fileURLToPath` because the
+ * jsdom environment replaces the global `URL`, and Node's `readFileSync` only
  * recognises its own.
  */
-const MANIFEST_DESCRIPTION = (
+const ROW_META = (
   JSON.parse(
     readFileSync(
       join(
@@ -48,12 +49,12 @@ const MANIFEST_DESCRIPTION = (
         "..",
         "..",
         "..",
-        "package.json",
+        "locale/en.json",
       ),
       "utf8",
     ),
-  ) as { description?: string }
-).description;
+  ) as { meta: { description?: string; title?: string } }
+).meta;
 
 /** One recorded call of a stub, as the assertions below read it. */
 type Spy = ReturnType<typeof vi.fn>;
@@ -111,13 +112,17 @@ describe("QA Surface row seat", () => {
     /*
      * The line is the row's description: plain text the page drops into its own
      * paragraph — no body, no element, and no second poll of the Remote. The host
-     * fills that paragraph from the manifest and asks this seat only for a row that
-     * declares none, so the two answers must be one sentence (§4.2 of
+     * fills that paragraph from the row's exported `meta` and asks this seat only
+     * for a row that declares none, so the two answers must be one sentence (§4.2 of
      * `docs/DSH-0.1.7-MIGRATION.md`).
      */
-    expect(summary.container.textContent).toBe(MANIFEST_DESCRIPTION);
+    expect(summary.container.textContent).toBe(ROW_META.description);
     expect(summary.container.firstElementChild).toBeNull();
     expect(summary.polls).toBe(0);
+
+    // The row's name is drawn from the same file and from nowhere else — the seat
+    // hands its registrant no label — so this is the phrase the panel shows.
+    expect(ROW_META.title).toBe("QA Surface");
 
     const page = await renderEntry("page");
     // The page view is the one that carries controls, and it is the same entry.
