@@ -1562,6 +1562,14 @@ export function QaSurface(props: QaSurfaceProps) {
             <QaHeader
               logoUrl={config.branding.logoUrl}
               title={conversationTitle}
+              onBackToChat={
+                rail.railOpen || agentsOpen
+                  ? () => {
+                      rail.close();
+                      setAgentsOpen(false);
+                    }
+                  : undefined
+              }
               viewingSubagent={state.viewingSubagent !== null}
               onCloseSubagent={handleCloseSubagent}
               roleSelector={

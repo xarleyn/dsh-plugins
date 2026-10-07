@@ -24,6 +24,18 @@ const INLINE_TOKENS = new Set([
   "side-space",
 ]);
 
+/**
+ * The sheet carries more than one 600px block; the phone layout is the one that
+ * switches the sidebar off and re-lays the conversation out.
+ */
+function phoneLayout(): string {
+  return (
+    [...QA_SURFACE_STYLES.matchAll(/@media \(max-width:600px\)\{.*\}/gu)]
+      .map((match) => match[0] ?? "")
+      .find((block) => block.includes(".dsh-qa-sidebar")) ?? ""
+  );
+}
+
 describe("QA surface stylesheet", () => {
   it("declares every --dsh-qa-* variable its rules reference", () => {
     const used = new Set(
@@ -136,6 +148,35 @@ describe("QA surface stylesheet", () => {
     expect(QA_SURFACE_STYLES).toContain(
       ".dsh-qa-composer-slot[hidden]{display:none}",
     );
+  });
+
+  it("gives the phone layout a finger-sized way out of the panel", () => {
+    // Below 600px the panel is the whole surface, so its close control is the
+    // only exit the layout leaves on screen; the sheet already demands 44px of
+    // the sidebar's own controls, and the panel and the message actions belong
+    // to the same promise.
+    const phone = phoneLayout();
+    expect(phone).toBeDefined();
+    expect(phone).toContain(".dsh-qa-panel__close{width:44px;height:44px}");
+    expect(phone).toContain(".dsh-qa-panel__tab{min-height:44px}");
+    expect(phone).toContain(
+      ".dsh-qa-message__actions button{width:44px;height:44px}",
+    );
+  });
+
+  it("reads the assistant's answer at the size of the question", () => {
+    // The operator's own bubble is 16px; an answer drawn smaller than the
+    // question it replies to reads as the lesser of the two.
+    const body = /\.dsh-qa-message__content\{[^}]*\}/u.exec(
+      QA_SURFACE_STYLES,
+    )?.[0];
+    expect(body).toContain("font-size:16px");
+    // The phone layout used to drop it to 14px; the composer keeps its 16px.
+    const phone = phoneLayout();
+    expect(phone).not.toMatch(/\.dsh-qa-message__content\{[^}]*font-size/u);
+    expect(
+      /\.dsh-qa-composer textarea\{[^}]*\}/u.exec(QA_SURFACE_STYLES)?.[0],
+    ).toContain("font-size:16px");
   });
 
   it("takes the unrevealed row action out of the hit test", () => {
