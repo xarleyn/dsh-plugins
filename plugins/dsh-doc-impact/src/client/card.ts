@@ -106,18 +106,19 @@ export type RowEntryProps = PropsRuntime<"plugins.row.config"> &
   ConfigCardProps;
 
 /**
- * The one-liner of this bundle's row — kept equal to the `description` field of
- * `package.json`, which is where the Host reads a row's sentence from
+ * The one-liner of this bundle's row — kept equal to `meta.description` of
+ * `locale/en.json`, which is where the Host reads a row's sentence from, the
+ * manifest's `description` being only the fallback behind it
  * (`docs/DSH-0.1.7-MIGRATION.md` §4.2, `presentation.ts:127-131`). That also says
  * when this answer is reached: the page writes `description ?? renderSlot(…)` into
- * its own `<p>`, so while the manifest carries the field the seat is never asked,
+ * its own `<p>`, so while the row carries a description the seat is never asked,
  * and the sentence below is the fallback the contract owes a row that declares no
  * description rather than the row's normal line. It is text and nothing else — the
  * page puts it inside a paragraph — and it reads no settings state, so no second
  * copy of the form mounts in a line of heading text.
  * `tests/client-bundle.test.ts` and `tests/client-render.test.ts` compare this reply
- * against the manifest field itself rather than against a copy of this string, so an
- * edit to the manifest cannot be missed here.
+ * against the shipped locale file rather than against a copy of this string, so an
+ * edit to that file cannot be missed here.
  */
 const ROW_SUMMARY =
   "Deterministic documentation impact engine for DeepSeek Harness";
