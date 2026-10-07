@@ -4,6 +4,9 @@
  * classifier disclosure, and the status projection the Remote feeds it.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   act,
   cleanup,
@@ -22,7 +25,28 @@ import type {
 } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type { ModelSafetyGateConfig } from "../src/config.js";
 import type { SafetyGateInspect } from "../src/types.js";
-import { SafetyGateCard, SafetyGateEntry } from "../src/client/card.js";
+import {
+  SAFETY_GATE_ROW_SUMMARY,
+  SafetyGateCard,
+  SafetyGateEntry,
+} from "../src/client/card.js";
+
+/*
+ * The row's display copy as the Host reads it, without activating the plugin.
+ * Read from the shipped file rather than restated here, and through
+ * `fileURLToPath` because the jsdom environment replaces the global `URL` while
+ * Node's `readFileSync` only recognises its own.
+ */
+const rowMeta = (
+  JSON.parse(
+    readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "..", "locale/en.json"),
+      "utf8",
+    ),
+  ) as {
+    readonly meta: { readonly description: string; readonly title: string };
+  }
+).meta;
 
 /** The form's atomic write, as the card calls it. */
 type FormOps = ConfigForm<ModelSafetyGateConfig>["mutate"];
@@ -240,10 +264,17 @@ describe("Safety Gate card", () => {
     // The row's description seat sits inside the page's own text, so it carries
     // no shell and starts no poll of the Remote.
     expect(container.querySelector("li.dsh-plugin-card")).toBeNull();
-    expect(container.textContent).toBe(
-      "Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results.",
-    );
+    expect(container.textContent).toBe(SAFETY_GATE_ROW_SUMMARY);
     expect(inspect).not.toHaveBeenCalled();
+  });
+
+  it("describes the row with the sentence the seat falls back to", () => {
+    // The page titles and describes this row from `locale/en.json` and prints the
+    // entry's own answer only where that file carries no description, so two
+    // different sentences here would let the row describe something other than
+    // the page it opens.
+    expect(rowMeta.title).toBe("Model Safety Gate");
+    expect(rowMeta.description).toBe(SAFETY_GATE_ROW_SUMMARY);
   });
 
   it("explains rather than vanishes when the settings namespace is unavailable", async () => {

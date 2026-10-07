@@ -47,8 +47,14 @@ import {
 
 const REFRESH_INTERVAL_MS = 3_000;
 
-/** The one-liner this row carries: the page draws it as the row's description. */
-const ROW_SUMMARY =
+/**
+ * The one-liner this row carries: the page draws it as the row's description.
+ *
+ * Exported because it is one string with `locale/en.json`'s `meta.description`,
+ * which the page reads first — a test pins the pair, so the row cannot describe
+ * something other than the page it opens.
+ */
+export const SAFETY_GATE_ROW_SUMMARY =
   "Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results.";
 
 /** The face the slot entry injects into this card. */
@@ -282,6 +288,6 @@ export function SafetyGateCard({ settingsForm, inspect }: CardProps) {
  * a second poll of the Remote.
  */
 export function SafetyGateEntry(props: CardProps) {
-  if (props.view === "summary") return ROW_SUMMARY;
+  if (props.view === "summary") return SAFETY_GATE_ROW_SUMMARY;
   return <SafetyGateCard {...props} />;
 }
