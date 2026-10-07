@@ -1671,9 +1671,28 @@ export class QaSessionController {
       track = true,
       allowCompatibilityReadOnly = false,
     } = options;
-    const reference = this.sessions.retain(id as SessionId, {
-      source: QA_SURFACE_SESSION_SOURCE,
-    });
+    const retainAttemptedAt = Date.now();
+    let reference: SessionReference;
+    try {
+      reference = this.sessions.retain(id as SessionId, {
+        source: QA_SURFACE_SESSION_SOURCE,
+      });
+    } catch (error) {
+      // The Host resolves a retain target against the Session catalog *this*
+      // browser holds and refuses an id it has not listed yet. A QA session is
+      // born on the server, through this plugin's own Remote, so its create can
+      // answer before the row that lists it reaches this browser — and the
+      // patience below sits behind the reference, so it cannot wait for a row
+      // the Host never handed out. Land the row first, then retain.
+      if (
+        !(await this.awaitCatalogRow(id, retainAttemptedAt, operation, error))
+      ) {
+        return false;
+      }
+      reference = this.sessions.retain(id as SessionId, {
+        source: QA_SURFACE_SESSION_SOURCE,
+      });
+    }
     let binding: SessionBinding | undefined = this.sessions.binding(
       id as SessionId,
     );
@@ -1814,6 +1833,52 @@ export class QaSessionController {
     // open at once whether or not the skill and command registries answer.
     void this.refreshSlashCatalog(true);
     return true;
+  }
+
+  /**
+   * Wait for this browser's Session catalog to come to know one id, after
+   * {@link bind} was refused a reference to it, and answer whether the chat on
+   * screen still belongs to the adoption that asked (`false` — it moved on, and
+   * nothing is retained). A refusal is only final once the row has had its
+   * chance: this is the one window where the race is repairable rather than
+   * reportable, so the failure the caller reads stays the Host's own refusal,
+   * not a timeout nobody asked for.
+   *
+   * Both timestamps are logged because the race is intermittent and the stand
+   * keeps no other trace of it: the server never sees a retain, so its journal
+   * cannot say which chat lost the create, and the next round needs the id and
+   * the two moments to line this up with its own observations.
+   */
+  private async awaitCatalogRow(
+    id: string,
+    retainAttemptedAt: number,
+    operation: number,
+    failure: unknown,
+  ): Promise<boolean> {
+    if (this.disposed || operation !== this.generation) return false;
+    console.warn("dsh-qa-surface: sessions.retain raced the session catalog", {
+      sessionId: id,
+      retainAttemptedAt: new Date(retainAttemptedAt).toISOString(),
+    });
+    // The row arrives either as a Host push or on the next catalog pull, and a
+    // loaded stand can put the create's answer ahead of the push that carries
+    // it. Ask for a fresh baseline instead of waiting for whichever of the two
+    // comes: the pull is single-flight and lands in the source waited on here.
+    void this.sessions.refresh();
+    try {
+      await waitFor(
+        this.sessions.list,
+        (snapshot) => Object.hasOwn(snapshot.byId, id),
+        this.timeoutMs,
+      );
+    } catch {
+      throw failure;
+    }
+    console.warn("dsh-qa-surface: session catalog row landed", {
+      sessionId: id,
+      waitedMs: Date.now() - retainAttemptedAt,
+    });
+    return !this.disposed && operation === this.generation;
   }
 
   /**
