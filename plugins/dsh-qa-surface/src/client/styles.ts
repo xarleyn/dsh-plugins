@@ -731,11 +731,12 @@ a.dsh-qa-srcref:hover,button.dsh-qa-srcref:hover{border-color:var(--dsw-alias-la
 .dsh-qa-md-image{display:block;max-width:100%;height:auto;margin:0;border-radius:8px}
 .dsh-qa-md-image-alt{color:var(--dsw-alias-label-tertiary);font-style:italic}
 .dsh-qa-md-code{margin:16px 0;border-radius:12px;background:var(--dsw-alias-markdown-code-block,var(--dsw-alias-bg-layer-2));color:var(--dsw-alias-label-primary)}
-.dsh-qa-md-code__banner{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 14px;border-radius:12px 12px 0 0;background:var(--dsw-alias-markdown-code-block-banner,var(--dsw-alias-bg-layer-3))}
-.dsh-qa-md-code__lang{min-width:0;overflow:hidden;color:var(--dsw-alias-label-primary);font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Consolas,monospace);font-size:11px;line-height:18px;text-overflow:ellipsis;white-space:nowrap}
+.dsh-qa-md-code__banner{display:flex;align-items:center;justify-content:flex-end;gap:12px;padding:9px 14px;border-radius:12px 12px 0 0;background:var(--dsw-alias-markdown-code-block-banner,var(--dsw-alias-bg-layer-3))}
+.dsh-qa-md-code__lang{flex:none;min-width:0;margin-right:auto;overflow:hidden;color:var(--dsw-alias-label-primary);font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Consolas,monospace);font-size:11px;line-height:18px;text-overflow:ellipsis;white-space:nowrap}
 .dsh-qa-md-code__copy{appearance:none;flex:none;padding:0;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:11px;line-height:18px;cursor:pointer}
 .dsh-qa-md-code__copy:hover{color:var(--dsw-alias-label-primary)}
 .dsh-qa-md-code__copy:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:2px}
+.dsh-qa-copy-hint{flex:none;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:18px;white-space:nowrap}
 .dsh-qa-md-code pre{overflow-x:auto;margin:0;padding:16px;border:0;border-radius:0 0 12px 12px;background:transparent;font-family:var(--ds-font-family-code,ui-monospace,SFMono-Regular,Consolas,monospace);font-size:var(--dsw-font-markdown-code-block-font-size,11px);line-height:var(--dsw-font-markdown-code-block-line-height,19px);white-space:pre-wrap;word-break:break-word}
 .dsh-qa-md-code pre code{display:block;padding:0;border:0;background:transparent;font:inherit}
 .dsh-qa-md-tok[data-tok="comment"]{color:var(--shiki-token-comment)}

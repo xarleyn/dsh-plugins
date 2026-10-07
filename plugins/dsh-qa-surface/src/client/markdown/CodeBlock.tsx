@@ -1,10 +1,8 @@
-import { Fragment, memo, useCallback, useMemo } from "react";
+import { Fragment, memo, useMemo } from "react";
 import type { ReactNode } from "react";
+import { useCopyAction } from "../clipboard.js";
+import { CopyHint } from "../components/copy-hint.js";
 import { highlightLines } from "./highlight.js";
-import { useTransientFlag } from "./use-transient-flag.js";
-
-/** Copied-label window: long enough to read, short enough to not stick. */
-const COPIED_MS = 1200;
 
 /**
  * One fenced code block: the language banner, a copy button, and the code
@@ -20,27 +18,29 @@ export const CodeBlock = memo(function CodeBlock({
   readonly lang?: string;
 }) {
   const lines = useMemo(() => highlightLines(code, lang), [code, lang]);
-  const { on: copied, pulse: pulseCopied } = useTransientFlag(COPIED_MS);
-  const onCopy = useCallback(() => {
-    const clipboard = navigator.clipboard;
-    if (clipboard === undefined) return;
-    clipboard.writeText(code).then(pulseCopied, () => undefined);
-  }, [code, pulseCopied]);
+  const copy = useCopyAction(code);
   return (
     <div className="dsh-qa-md-code" data-testid="qa-md-code">
       <div className="dsh-qa-md-code__banner" data-testid="qa-md-code-banner">
         <span className="dsh-qa-md-code__lang" data-testid="qa-md-code-lang">
           {lang ?? ""}
         </span>
-        <button
-          type="button"
-          className="dsh-qa-md-code__copy"
-          data-testid="qa-md-code-copy"
-          onClick={onCopy}
-          aria-label={copied ? "Скопировано" : "Копировать код"}
-        >
-          {copied ? "Скопировано" : "Копировать"}
-        </button>
+        {copy.impossible ? (
+          <CopyHint testId="qa-md-code-copy-hint" />
+        ) : (
+          <>
+            <button
+              type="button"
+              className="dsh-qa-md-code__copy"
+              data-testid="qa-md-code-copy"
+              onClick={copy.copy}
+              aria-label={copy.copied ? "Скопировано" : "Копировать код"}
+            >
+              {copy.copied ? "Скопировано" : "Копировать"}
+            </button>
+            {copy.refused ? <CopyHint testId="qa-md-code-copy-hint" /> : null}
+          </>
+        )}
       </div>
       <pre tabIndex={0} data-testid="qa-md-code-pre">
         <code data-language={lang} data-testid="qa-md-code-content">

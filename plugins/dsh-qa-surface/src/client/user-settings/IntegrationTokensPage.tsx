@@ -12,6 +12,8 @@ import type {
   QaServiceTokenSummary,
 } from "../../types.js";
 import type { QaIntegrationTokenApi } from "../types.js";
+import { useCopyAction } from "../clipboard.js";
+import { CopyHint } from "../components/copy-hint.js";
 import {
   QaSettingsActions,
   QaSettingsButton,
@@ -78,7 +80,12 @@ export function QaIntegrationTokensPage(props: {
   );
   const [busy, setBusy] = useState(false);
   const [issued, setIssued] = useState<QaIssuedServiceToken | null>(null);
-  const [copied, setCopied] = useState(false);
+  const {
+    copied,
+    impossible: copyImpossible,
+    refused: copyRefused,
+    copy: copySecret,
+  } = useCopyAction(issued?.token ?? "");
   const [pendingRevoke, setPendingRevoke] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   useEffect(() => {
@@ -112,7 +119,6 @@ export function QaIntegrationTokensPage(props: {
     if (busy) return;
     setBusy(true);
     setError(null);
-    setCopied(false);
     void props.api
       .create({
         label: label.trim(),
@@ -152,14 +158,6 @@ export function QaIntegrationTokensPage(props: {
       }
       await reload();
     });
-  };
-  const copySecret = (secret: string) => {
-    const clipboard = navigator.clipboard;
-    if (clipboard === undefined) return;
-    void clipboard.writeText(secret).then(
-      () => setCopied(true),
-      () => undefined,
-    );
   };
   const now = Date.now();
   return (
@@ -204,19 +202,25 @@ export function QaIntegrationTokensPage(props: {
             />
           </QaSettingsField>
           <QaSettingsActions>
-            <QaSettingsButton
-              testId="qa-settings-tokens-copy"
-              label={copied ? "Скопировано" : "Скопировать"}
-              onClick={() => copySecret(issued.token)}
-            />
+            {copyImpossible ? (
+              <CopyHint testId="qa-settings-tokens-copy-hint" />
+            ) : (
+              <>
+                <QaSettingsButton
+                  testId="qa-settings-tokens-copy"
+                  label={copied ? "Скопировано" : "Скопировать"}
+                  onClick={copySecret}
+                />
+                {copyRefused ? (
+                  <CopyHint testId="qa-settings-tokens-copy-hint" />
+                ) : null}
+              </>
+            )}
             <QaSettingsButton
               testId="qa-settings-tokens-ack"
               tone="primary"
               label="Я сохранил токен"
-              onClick={() => {
-                setIssued(null);
-                setCopied(false);
-              }}
+              onClick={() => setIssued(null)}
             />
           </QaSettingsActions>
         </QaSettingsSection>
