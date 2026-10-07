@@ -675,6 +675,30 @@ plugin-owned `$DSH_HOME/qa-sources.json`, so reload does not rerun tools and
 no custom event enters the Harness session journal. Search-only discovery
 stays hidden by default.
 
+The extractor registry (`src/provenance/extractors.ts`) is the whole
+definition: a completed tool result becomes a source only when one of its seven
+extractors matches it — a read naming a workspace path, a fetch naming a URL, a
+search returning its source list, a file search shaped as matches, or a Jira,
+Confluence or knowledge record. The collector then keeps the evidence half of
+what the registry returned, so a file that only appeared in a search result
+joins the list once the answer actually reads it. Everything else contributes
+nothing, and both channels — the Host store and the transcript projection —
+agree because they share this registry. Injected memory and a bridged recall
+tool (an `mcp__openviking__*` read returning a `viking://` address as text) are
+not on the list: the deployment note treats recalled memory as background from
+earlier sessions rather than the source an answer is looked up in, and a
+virtual address has no file preview to open. Nor does a document the model
+only names in its prose: the collector reads durable tool results, never the
+answer's wording. A turn that answered from memory or from what the
+conversation already carried therefore ends with no source at all.
+
+That is why the header control never disables on an empty list while the answer
+footer stays unrendered: the panel owns the explanation, and a dead button hid
+the only surface that gives it. Its empty state names the classes that do
+appear and says plainly that an empty list is not a collection failure. Gating
+stays with the deployment — `sources.enabled` and `sources.display.sidebar`
+decide whether the control exists at all.
+
 Legacy sessions written by earlier releases can be repaired while DSH is
 stopped. Preview changes first, then apply them with an automatic backup:
 

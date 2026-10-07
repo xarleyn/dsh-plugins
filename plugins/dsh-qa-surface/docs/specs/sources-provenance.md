@@ -1306,11 +1306,31 @@ File title:
 
 ## 20. UI states
 
+> Implementation note (2026-10-08): the "hidden/disabled" option below is
+> superseded — see §20.1.
+
 ### No sources
 
 Do not render an empty `Sources` footer.
 
 Sidebar source action may be hidden/disabled.
+
+### 20.1. Empty list (decision, 2026-10-08)
+
+A completed turn that collected nothing is the designed outcome of an answer
+built from what the conversation already carried or from recalled memory, and
+none of the seven extractors in `src/provenance/extractors.ts` matches either.
+The UI has to say that, because a reader cannot tell it from a collector that
+failed:
+
+- the answer footer stays unrendered (unchanged: no empty footer);
+- the header «Источники» control is **not** disabled by an empty count — it was,
+  which left a dead button and made the panel's explanation unreachable; only
+  `sources.enabled` / `sources.display.sidebar` decide whether it exists;
+- the panel answers an empty list with the classes that do appear and one line
+  saying an empty list is not a collection failure.
+
+The list of recognized classes and why memory is not among it: README §Sources.
 
 ### Loading / active turn
 

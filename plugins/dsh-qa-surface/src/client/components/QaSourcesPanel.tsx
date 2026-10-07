@@ -449,6 +449,21 @@ export function QaSourcesPanel({
               {incompleteOrigins?.length ?? 1}).
             </p>
           ) : null}
+          {/*
+            An empty list is the designed outcome of a turn that read nothing
+            outside this conversation, so it has to say so: the reader standing
+            here cannot tell "this answer cites no collectable source" from
+            "collection broke".
+          */}
+          {sources.length === 0 ? (
+            <p className="dsh-qa-sources__empty" data-testid="qa-sources-empty">
+              Здесь перечислены материалы, которые ход читал или открывал сам:
+              файл рабочего каталога, веб-страница, выдача веб-поиска, ответ
+              Jira, Confluence или базы знаний. Ответ, собранный по памяти или
+              по тому, что уже было в этом разговоре, ничего сюда не добавляет —
+              пустой список означает именно это, а не сбой сбора.
+            </p>
+          ) : null}
           {groups.map((group) => {
             const visible = expanded.has(group.key)
               ? group.sources
