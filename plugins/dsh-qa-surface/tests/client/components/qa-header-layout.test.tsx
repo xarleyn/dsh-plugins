@@ -96,6 +96,20 @@ describe("header action cluster", () => {
     expect(container.querySelector(".dsh-qa-header__mode")).toBeNull();
     expect(screen.queryByTestId("qa-surface-header-viewing")).toBeNull();
   });
+
+  /**
+   * BASE carries a settled chat with no sources — the state of a turn answered
+   * from memory. Disabling the control there hid the one surface that explains
+   * an empty list and left a button the reader could only press mentally.
+   */
+  it("opens the sources panel of a chat that collected nothing", () => {
+    const onOpenSources = vi.fn();
+    render(<QaHeader {...BASE} onOpenSources={onOpenSources} />);
+    const sources = screen.getByTestId("qa-surface-header-sources");
+    expect(sources.hasAttribute("disabled")).toBe(false);
+    fireEvent.click(sources);
+    expect(onOpenSources).toHaveBeenCalledOnce();
+  });
 });
 
 /**

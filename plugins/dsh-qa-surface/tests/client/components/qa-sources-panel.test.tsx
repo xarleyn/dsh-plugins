@@ -62,6 +62,29 @@ describe("sources panel", () => {
     expect(screen.getByTestId("qa-sources-incomplete")).toBeTruthy();
   });
 
+  /**
+   * A turn that answered from memory or from what the conversation already
+   * carried collects no source, and the reader cannot tell that designed
+   * outcome from a broken collector unless the empty list says so.
+   */
+  it("explains an empty list instead of rendering nothing", () => {
+    const config = resolveConfig().sources;
+    render(
+      <QaSourcesPanel
+        sources={[]}
+        complete
+        sessionId="root"
+        sourceApi={{ sources: vi.fn(), readSourceFile: vi.fn() } as never}
+        display={config.display}
+        filePreview={config.filePreview}
+      />,
+    );
+    const empty = screen.getByTestId("qa-sources-empty");
+    expect(empty.textContent).toMatch(/памяти/u);
+    expect(empty.textContent).toMatch(/не сбой сбора/u);
+    expect(screen.queryByTestId("qa-sources-incomplete")).toBeNull();
+  });
+
   it("opens Markdown rendered, toggles to raw and highlights referenced lines", async () => {
     const config = resolveConfig({
       sources: { display: { showOriginBadges: true } },
