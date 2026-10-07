@@ -48,12 +48,14 @@
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/**/*.js",
     "lib/**/*.js.map",
     "lib/**/*.d.ts",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
