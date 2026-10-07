@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "KV Cache Persist",
+    "description": "Keeps local LLM sessions warm across switches and restarts by saving and restoring inference-cache slots."
+  }
+}
