@@ -24,6 +24,14 @@ const EXPECTED_CONSOLE: readonly RegExp[] = [
   /^dsh-qa-surface: account operation failed/u,
   // An attachment the Host refused to stage.
   /^dsh-qa-surface: file upload refused/u,
+  // The two halves of a retain that raced the Session catalog: the refusal, and
+  // the row that came for it. A test provokes the race to assert the chat still
+  // opens, so both lines are its own doing.
+  /^dsh-qa-surface: sessions\.retain raced the session catalog/u,
+  /^dsh-qa-surface: session catalog row landed/u,
+  // The re-read the race asks the Host for, refused: the push still carries the
+  // row, so the adoption waits it out and reports the retain's own refusal.
+  /^dsh-qa-surface: session catalog refresh refused/u,
 ];
 
 interface Recorded {

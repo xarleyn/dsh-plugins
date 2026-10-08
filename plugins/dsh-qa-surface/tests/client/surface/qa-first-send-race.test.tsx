@@ -343,4 +343,67 @@ describe("first send from a new QA chat", () => {
     await waitFor(() => expect(promptField()).not.toBe(mounted));
     expect(promptField()).toHaveProperty("value", "");
   });
+
+  it("opens the first chat whose session the catalog lists only late", async () => {
+    // The incident on the board: a fresh account, an empty chat and a red plate
+    // reading `sessions.retain: unknown session` over a session the stand had in
+    // fact created. The create answers before the row that lists it reaches the
+    // browser, so the first chat has to wait the catalog out instead of
+    // reporting that refusal as a chat which cannot start.
+    const world = harness([SAVED_SESSION]);
+    let session = "";
+    world.createSession.mockImplementation(async () => {
+      session = String(await world.serverSession());
+      return { ok: true as const, value: session };
+    });
+    const { newChat } = await mountSurface(world);
+    fireEvent.click(newChat);
+    const promptField = () => screen.getByRole("combobox");
+    fireEvent.change(promptField(), { target: { value: "Первый вопрос" } });
+    fireEvent.click(screen.getByRole("button", { name: "Отправить" }));
+
+    await waitFor(() => {
+      expect(world.faces.get(session)?.prompt).toHaveBeenCalledWith(
+        [{ type: "text", text: "Первый вопрос" }],
+        "queue",
+      );
+    });
+    expect(screen.queryByTestId("qa-surface-error")).toBeNull();
+    expect(world.refresh).toHaveBeenCalled();
+  });
+
+  it("starts a working chat from the plate's Повторить", async () => {
+    // The plate with the button is the one drawn over the chat a load restores for
+    // itself, and the button re-runs that bootstrap. A refusal is a dead end only
+    // if the retry leads nowhere, so this proves it leads into a chat that takes
+    // the next question. A draft whose first send was refused needs no button:
+    // it stays a sendable draft and the case above already sends it again.
+    const world = harness([SAVED_SESSION]);
+    world.retain.mockImplementationOnce(() => {
+      throw new Error("sessions.retain: session is not available here");
+    });
+    await mountSurface(world);
+    const retry = await screen.findByTestId("qa-surface-error-retry");
+    expect(retry.textContent).toBe("Повторить");
+
+    fireEvent.click(retry);
+    await waitFor(() =>
+      expect(screen.queryByTestId("qa-surface-error")).toBeNull(),
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("qa-surface-root")).toHaveProperty(
+        "dataset.phase",
+        "ready",
+      ),
+    );
+    const promptField = () => screen.getByRole("combobox");
+    fireEvent.change(promptField(), { target: { value: "Первый вопрос" } });
+    fireEvent.click(screen.getByRole("button", { name: "Отправить" }));
+    await waitFor(() => {
+      expect(world.faces.get(SAVED_SESSION)?.prompt).toHaveBeenCalledWith(
+        [{ type: "text", text: "Первый вопрос" }],
+        "queue",
+      );
+    });
+  });
 });
