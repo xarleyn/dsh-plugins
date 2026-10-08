@@ -1658,8 +1658,11 @@ export type QaMessage =
       readonly id: string;
       readonly role: "work";
       readonly turn: number;
-      /** "error" marks a turn the host ended with a provider failure. */
-      readonly status: "running" | "complete" | "error";
+      /**
+       * "error" marks a turn the host ended with a provider failure; "stopped"
+       * marks one the user ended, whose answer is a prefix rather than a reply.
+       */
+      readonly status: "running" | "complete" | "error" | "stopped";
       readonly startedAt?: number;
       readonly endedAt?: number;
       readonly items: readonly QaWorkItem[];
