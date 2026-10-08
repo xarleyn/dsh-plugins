@@ -76,6 +76,7 @@ function harness(options: HarnessOptions): {
     undefined,
     undefined,
     undefined,
+    undefined,
     bindings,
   );
   return { admission, bindings };
