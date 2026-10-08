@@ -173,6 +173,31 @@ native settings tree enters only through that nav, which is why the
 `create-plugin` skill's `client-side` reference now says how to prove a narrow
 layout without it.
 
+A fifth observation reached the same card later: the Host's `Select Workspace
+Directory` dialog sits on "Loading…" (one measurement, at least 26 s) while its
+`GET /api/directoryPicker/list` answers `404`. The route belongs to the Host —
+`@deepseek-ai/dsh-host-directory-picker` is a peer of its own workspace
+controller, and it reaches this repository only through the catalog entry
+[DSH-0.1.7-MIGRATION.md](DSH-0.1.7-MIGRATION.md) §1 added to `pnpm-workspace.yaml`.
+Nothing of ours calls that route: `dsh-session-scope` lists a directory itself,
+one level over `node:fs` (`src/core.ts`, `listDirectoryLevel`), and the one
+bundle that imports `@deepseek-ai/dsh-api-workspace-controller/client` —
+`dsh-draft-sessions`, on the sidebar's workspace state — takes its types, not its
+picker.
+
+The one asset that does sit on a Host dialog is the browser pass in
+`plugins/dsh-qa-surface/scripts/smoke-packed-dsh.mjs`. This rig pins no model, so
+DSH's blocking "Add an API key" step owns the page, and the pass lifts it by
+clearing the `inert` attribute off `#root` and hiding the **first**
+`[role="dialog"][aria-modal="true"]` in the document. That selector names
+whichever dialog the Host is holding rather than the API-key step, so the silent
+dialog close above reaches this step: when the lift does not take, ask which
+dialog the document holds before reading it as a QA-surface fault. The same pass
+runs at 375 × 720 — inside the width that deletes the settings nav — but asserts
+only our own overlay, and neither browser pass opens the Settings dialog or
+selects a provider by its rendered name or a preset by its title, so none of the
+five observations moves anything they check.
+
 Two files [PLUGIN_GUIDELINES.md](PLUGIN_GUIDELINES.md) §4.1 lists are
 **not** gated, deliberately: `tsdown.config.ts`, which seven host-only plugins
 do not need (their `lib/` comes from `tsc` alone), and a local
