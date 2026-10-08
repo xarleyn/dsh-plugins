@@ -212,6 +212,12 @@ No gate opens the page, so "green" is never evidence about layout:
   asks for, since viewport media queries do not fire inside that dialog — and
   record a dialog that closes under your click as a Host finding, not as a
   defect in the page.
+- **On the Plugins panel, a phone width measures the Host's row control, not
+  your card.** A `plugins.row.config` card renders no heading of its own, so a
+  Host row title clipped at 390px has no body of yours to hide; the control that
+  could keep the card out of reach is the row's own open button, which is
+  Host chrome and has not been measured at that width. Name which of the two
+  you looked at before reading a blank row as a card that failed to mount.
 - **Capture the states that can differ**: the states the card UI section of
   AGENTS.md asks you to compare against a first-party card — that section names
   them, this page does not copy the list — plus the empty, loading and refusal
