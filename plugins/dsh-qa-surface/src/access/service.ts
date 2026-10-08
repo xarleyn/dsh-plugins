@@ -639,32 +639,7 @@ export class QaAccessService {
       record = accounts.updateSessionAccess(sessionId, { subroleId });
     }
     const catalog = await this.catalog.snapshot(agent);
-    const policy =
-      record?.capabilitySnapshot === undefined
-        ? resolveCapabilityPolicy({
-            config,
-            subroleId,
-            systemTools: this.systemRequiredTools(),
-            systemSkills: [],
-            available: {
-              tools: catalog.toolIds,
-              skills: catalog.skillIds,
-              userSkills: catalog.userSkillIds,
-              ownSkills: catalog.ownUserSkillIds,
-            },
-            skillMetadata: catalog.skillMetadata,
-            revision: policyRevision(
-              config,
-              catalog.skillMetadata,
-              catalog.toolIds,
-            ),
-          })
-        : retainInstalledSnapshot(
-            record.capabilitySnapshot,
-            catalog,
-            personalUserSkillNames(config, catalog.ownUserSkillIds),
-            withdrawnSkillNames(config),
-          );
+    const policy = this.policyForRecord(config, record, subroleId, catalog);
     if (record?.capabilitySnapshot === undefined) {
       accounts.updateSessionAccess(sessionId, { capabilitySnapshot: policy });
       this.options.logger.info("access.policy-snapshotted", {
@@ -695,6 +670,90 @@ export class QaAccessService {
           record: (entry) => this.recordSkillActivation(sessionId, entry),
         }),
     };
+  }
+
+  /**
+   * The policy one session record answers with: the snapshot it froze, or the
+   * role as it is configured now when the chat has never frozen one.
+   *
+   * Every read of a session's capabilities goes through here, so a chat that is
+   * running and a chat nobody has woken cannot disagree about what its role
+   * grants.
+   */
+  private policyForRecord(
+    config: QaCapabilityConfig,
+    record:
+      | {
+          readonly subroleId?: string;
+          readonly capabilitySnapshot?: QaEffectiveCapabilityPolicy;
+        }
+      | undefined,
+    subroleId: string,
+    catalog: CapabilityCatalogSnapshot,
+  ): QaEffectiveCapabilityPolicy {
+    return record?.capabilitySnapshot === undefined
+      ? resolveCapabilityPolicy({
+          config,
+          subroleId,
+          systemTools: this.systemRequiredTools(),
+          systemSkills: [],
+          available: {
+            tools: catalog.toolIds,
+            skills: catalog.skillIds,
+            userSkills: catalog.userSkillIds,
+            ownSkills: catalog.ownUserSkillIds,
+          },
+          skillMetadata: catalog.skillMetadata,
+          revision: policyRevision(
+            config,
+            catalog.skillMetadata,
+            catalog.toolIds,
+          ),
+        })
+      : retainInstalledSnapshot(
+          record.capabilitySnapshot,
+          catalog,
+          personalUserSkillNames(config, catalog.ownUserSkillIds),
+          withdrawnSkillNames(config),
+        );
+  }
+
+  /**
+   * The policy of a chat this process holds no live agent for.
+   *
+   * A cold chat has an owner and a role, and the reads that name its
+   * capabilities must narrow it by the rule above — the same one a live chat is
+   * narrowed by — rather than answer "no role opinion" because the agent that
+   * carries the capability snapshot happens to be asleep. What a cold chat has
+   * no answer for is that snapshot: the catalog the deployment mounts for every
+   * chat stands in for the agent's own, which is why the project layer of this
+   * chat's workspace is missing from it, and why nothing is frozen onto the
+   * session record here — a palette read must not decide what a later turn may
+   * do.
+   *
+   * @returns the resolved policy; the ownership check is the refusal, so a
+   *   foreign browser never reaches it.
+   */
+  async policyForColdSession(
+    token: string,
+    sessionId: string,
+  ): Promise<QaEffectiveCapabilityPolicy> {
+    const accounts = this.requireAccounts();
+    const owner = accounts.ensureSessionAccess(
+      token,
+      sessionId,
+      this.sessionFacts(sessionId),
+    );
+    const config = this.roles.snapshot();
+    const record = accounts.sessionAccess(sessionId);
+    const subroleId =
+      record?.subroleId ??
+      normalizeUserAccess(accounts.accessOf(owner.id), config).defaultSubrole;
+    if (record?.subroleId === undefined) {
+      accounts.updateSessionAccess(sessionId, { subroleId });
+    }
+    const catalog = await this.catalog.snapshot();
+    return this.policyForRecord(config, record, subroleId, catalog);
   }
 
   /** The browser's entry point: the token resolves the owning account. */
