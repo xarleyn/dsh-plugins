@@ -65,8 +65,11 @@ const TEST_ID_ZONE = "qa-integrations";
  * run of non-alphanumerics collapses to one dash (`issues.read` is
  * `issues-read`). Whatever the key looks like, the answer is ASCII kebab-case:
  * an id carrying a dot or a stray capital is a selector the harness cannot quote.
+ *
+ * The provider card names its capability and boundary rows with this same rule,
+ * so one spelling of a vocabulary key cannot yield two different selectors.
  */
-function kebabSegment(segment: string): string {
+export function kebabSegment(segment: string): string {
   return (
     segment
       .replace(/([a-z0-9])([A-Z])/gu, "$1-$2")
