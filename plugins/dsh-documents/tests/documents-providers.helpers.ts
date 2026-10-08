@@ -17,6 +17,83 @@ export const STUB_SOURCE = `
 import { readFileSync, writeFileSync, mkdirSync, appendFileSync } from "node:fs";
 import path from "node:path";
 
+// A real backend decodes its command line in its own locale and its input
+// files as UTF-8. Where no UTF-8 locale is set, every byte above 0x7F of an
+// argument arrives as a replacement character, so the stub reads the metadata
+// the same two ways: through argv (mangled) and through a file (intact).
+const decodeArgv = (value) =>
+  Array.from(Buffer.from(value, "utf8"), (byte) =>
+    byte < 0x80 ? String.fromCharCode(byte) : "\\uFFFD",
+  ).join("");
+const readMetadata = (args) => {
+  const meta = {};
+  for (const arg of args) {
+    if (!arg.startsWith("--metadata=")) continue;
+    const pair = arg.slice("--metadata=".length);
+    const eq = pair.indexOf("=");
+    if (eq > 0) meta[pair.slice(0, eq)] = decodeArgv(pair.slice(eq + 1));
+  }
+  const file = args.find((arg) => arg.startsWith("--metadata-file="));
+  if (file) {
+    const scalar = (raw) => (raw.startsWith('"') ? JSON.parse(raw) : raw);
+    for (const line of readFileSync(file.slice("--metadata-file=".length), "utf8").split("\\n")) {
+      const colon = line.indexOf(":");
+      if (colon <= 0) continue;
+      meta[scalar(line.slice(0, colon).trim())] = scalar(line.slice(colon + 1).trim());
+    }
+  }
+  return meta;
+};
+const crc32 = (buffer) => {
+  let crc = 0xffffffff;
+  for (const byte of buffer) {
+    crc ^= byte;
+    for (let bit = 0; bit < 8; bit += 1) {
+      crc = (crc >>> 1) ^ (0xedb88320 & -(crc & 1));
+    }
+  }
+  return (crc ^ 0xffffffff) >>> 0;
+};
+/** A stored-entry ZIP: enough for a reader to open the part it carries. */
+const storedZip = (entries) => {
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const [name, data] of entries) {
+    const label = Buffer.from(name, "utf8");
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt16LE(0x0800, 6);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(label.length, 26);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt16LE(0x0800, 8);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(label.length, 28);
+    central.writeUInt32LE(offset, 42);
+    locals.push(local, label, data);
+    centrals.push(central, label);
+    offset += local.length + label.length + data.length;
+  }
+  const centralBytes = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralBytes.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, centralBytes, eocd]);
+};
+
 const [docxSrc, pdfSrc, logPath, mode = "ok", ...argv] = process.argv.slice(2);
 const record = () => {
   if (!logPath) return;
@@ -49,6 +126,18 @@ const source = to === "pdf" ? pdfSrc : docxSrc;
 const target = outdir
   ? path.join(outdir, path.basename(argv.at(-1) ?? "out").replace(/\\.[^.]+$/, "") + ".pdf")
   : out;
+if (mode === "locale-docx") {
+  const title = readMetadata(argv).title ?? "";
+  const document =
+    "<?xml version=\\"1.0\\" encoding=\\"UTF-8\\" standalone=\\"yes\\"?>\\n" +
+    "<w:document xmlns:w=\\"http://schemas.openxmlformats.org/wordprocessingml/2006/main\\"><w:body>" +
+    "<w:p><w:pPr><w:pStyle w:val=\\"Title\\"/></w:pPr><w:r><w:t>" + title + "</w:t></w:r></w:p>" +
+    "</w:body></w:document>";
+  mkdirSync(path.dirname(target), { recursive: true });
+  writeFileSync(target, storedZip([["word/document.xml", Buffer.from(document, "utf8")]]));
+  process.stdout.write("converted\\n");
+  process.exit(0);
+}
 mkdirSync(path.dirname(target), { recursive: true });
 writeFileSync(target, readFileSync(source));
 process.stdout.write("converted\\n");
