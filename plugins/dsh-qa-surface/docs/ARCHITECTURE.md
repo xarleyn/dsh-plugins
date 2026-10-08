@@ -113,6 +113,26 @@ follow. Attempts are recorded on the session ownership record for review; no
 custom session event is emitted, because an unknown event type would make the
 whole session log unreadable.
 
+The whole consumer is agent-local, and that bounds it to the chat's own agent.
+A delegated child joins the parent's *preset* revision and installs only its
+spawn persona and `toolFilter` on its own scope, so no agent-local row of the
+chat — the catalog section, the shadow loader, the gesture listener — enters
+the child's chain, and the harness publishes a model-facing catalog only where
+the `skill` tool is visible in that agent's scope. The role's catalog therefore
+never reaches a delegated assistant; what a child can get instead is the
+standard, unfiltered list, and only if its own `toolFilter` names `skill`. This
+is the stated boundary rather than an accident of layering: a delegated session
+is refused
+attestation outright, because it has no owner to resolve a role from, so the
+allow-list has nothing to be frozen *for*. Publishing the role's names into
+that child without the shadow consumer would aim it at the standard,
+unfiltered loader — a reach wider than the role grants its own chat — so
+carrying the catalog into delegated assistants means carrying the enforcement
+into them first. What does cross into a child is the conversation ceiling,
+which decides what it may never execute and says nothing about what it can
+see. `tests/enforcement/subagent-skill-catalog.test.ts` holds the three halves
+together.
+
 An indexed historical chat whose immutable preset, workspace or model no
 longer matches may keep its already-open transcript binding in compatibility
 read-only mode. It never receives a successful proof, and the projection and
