@@ -536,11 +536,46 @@ Search snippets alone should not normally satisfy a material factual claim when 
 
 On `REVISE`:
 
-1. Feed structured findings back to primary with `agent.steer`.
+1. Feed structured findings back to primary with `agent.steer`, inside a
+   delimited `<review_notes>` block.
 2. Primary checks the reviewer's evidence.
 3. Primary corrects supported findings.
-4. Unsupported reviewer objections may be rejected only after re-verification.
+4. Unsupported reviewer objections may be rejected only after re-verification,
+   and silently: the steer admits exactly one visible artifact — the corrected
+   answer.
 5. Materially changed candidate is reviewed again.
+
+The revision steer therefore carries no rebuttal channel. An earlier text asked
+the primary to state the disproof of an objection it rejected while forbidding
+any mention of the review in the same instruction; a live primary resolved the
+contradiction by opening the user's final answer with its argument against the
+reviewer, and the review's own vocabulary reached user-visible output twice — in
+the answer and in the thinking block that reasoned about a concealment
+instruction. Findings are working material for the next version of the answer,
+which is what the reviewer re-reads; where the exchange repeats, the round budget
+ends it under the configured failure policy.
+
+Reviewer prose is hostile input: a finding may quote the very page the reviewer
+was asked to assess. Every field placed inside `<review_notes>` is therefore
+bounded in length and has the block's closing marker neutralized in it, so no
+quotation can close the block early and have its remainder read as the gate's own
+instruction.
+
+A candidate that opens by disputing the review (`opensWithReviewDisputation`) is
+that same leak. The guard speaks only in a turn that has already been reviewed
+(`round > 0`): a first draft has no verdict to argue with, and steering it would
+announce a review the request never had. Within a reviewed turn the first such
+draft is not handed to a reviewer and so cannot receive a PASS; the gate records
+an `answer-shape` outcome, demands the answer's shape, and does so once per user
+turn.
+
+The honest bounds: a committed message cannot be edited at this seam, so a second
+such draft goes through the ordinary review path, and a request the user waived
+is settled before the guard runs, so its draft ships as it stands. The detector
+is the demonstrated signature, not a general filter for review talk in answers —
+it needs a disputing word and a review word in the same opening line, because
+either half alone is ordinary prose, and the Russian stem for the second half is
+guarded against matching inside `опровержение`, the first half's own word.
 
 Default maximum:
 
@@ -773,6 +808,11 @@ issue counts
 failure type
 waiver reason
 ```
+
+`outcome` is one of `pass`, `revise`, `answer-shape`, `waived`,
+`suppressed-pending-work`, `failure`. `answer-shape` is the gate's own demand
+that a draft which argues with the review be rewritten as an answer: no reviewer
+ran for it, so its `backend` names the gate rather than a reviewer.
 
 Do not persist full prompts/responses by default if they may contain sensitive content.
 

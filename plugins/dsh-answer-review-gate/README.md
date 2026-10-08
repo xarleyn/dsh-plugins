@@ -32,6 +32,17 @@ User → primary agent → research / tools / background subagents
   budget belongs to the user request the candidate answers — the agent turns
   and revisions that request takes share one budget, and no agent turn hands
   out a fresh one.
+- A revision steer admits exactly one visible artifact: the corrected answer.
+  Findings are handed back as a delimited `<review_notes>` block, and the steer
+  asks for no account of the review — a demand to "state the disproof" of a
+  rejected objection was resolved literally on a live stand, and the user read
+  the primary's argument with its reviewer. A draft that opens by disputing the
+  review (`Опровержение вывода ревизора: …`) is that leak: in a turn that has
+  already been reviewed the gate demands the answer's shape once, and that draft
+  is not handed to a reviewer, so it cannot be certified as verified. The honest
+  bounds: a committed message cannot be edited at this seam, so a second such
+  draft goes through the ordinary review path, and a request the user waived is
+  settled before the guard runs.
 - The reviewer itself is exempt: it runs as a subagent child and subagents are
   never gated, so the reviewer cannot recursively review itself.
 
