@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -808,6 +809,173 @@ export function curatedChangelogVersions(changelogSource) {
 }
 
 /**
+ * The curated changelog split into one raw block per entry: the source text
+ * from a `version: "x.y.z"` literal up to the next one, cut at the closing of
+ * the array so the rendering code below the list is never part of an entry.
+ * Comparing blocks verbatim is what lets the frozen-section gate see a prose
+ * edit without parsing TypeScript, and it keeps an entry added above the
+ * released ones from changing the block of any entry already published.
+ */
+export function curatedChangelogBlocks(changelogSource) {
+  const matches = [...changelogSource.matchAll(/\bversion:\s*"([^"]+)"/gu)];
+  const arrayEnd = changelogSource.indexOf("\n];");
+  const blocks = new Map();
+  matches.forEach((match, index) => {
+    const next = matches[index + 1];
+    const ends = [next === undefined ? changelogSource.length : next.index];
+    if (arrayEnd !== -1) ends.push(arrayEnd);
+    blocks.set(match[1], changelogSource.slice(match.index, Math.min(...ends)));
+  });
+  return blocks;
+}
+
+/**
+ * AGENTS.md ("a released section is frozen"): a branch may not rewrite what a
+ * wave published. The sidebar test cannot see this — it compares the *list* of
+ * versions against CHANGELOG.md, so a line slipped into an already published
+ * section leaves the list untouched and stays green, while the deployed note
+ * now claims a fix that shipped in an earlier version.
+ *
+ * `baseSource` is the same file as the branch's own merge base. A section the
+ * branch did not write is not the branch's doing: a head that predates the wave
+ * simply carries an older file, and rebasing is what seats it back, so only a
+ * section whose current text differs from both the published text and the
+ * branch's own starting text is reported.
+ */
+export function validateQaChangelogFrozenSections(
+  changelogSource,
+  releasedSource,
+  baseSource = null,
+) {
+  // `git show` hands back the blob (LF through .gitattributes) while a checkout
+  // can hand back CRLF; a line-ending difference is not an edited section.
+  const normalize = (source) => source.replace(/\r\n/gu, "\n");
+  const released = curatedChangelogBlocks(normalize(releasedSource));
+  const working = curatedChangelogBlocks(normalize(changelogSource));
+  // Without a base there is nothing to attribute the difference to, so the
+  // published text is simply held to.
+  const blameEverything = baseSource === null || baseSource === undefined;
+  const base = blameEverything
+    ? new Map()
+    : curatedChangelogBlocks(normalize(baseSource));
+  const failures = [];
+  for (const [version, block] of released) {
+    const current = working.get(version);
+    if (current === block) continue;
+    if (!blameEverything && base.get(version) === current) continue;
+    if (current === undefined) {
+      failures.push(
+        `plugins/dsh-qa-surface: QaChangelog.tsx drops the entry of the released version ${version}; a published section is frozen — rebase onto the line and put your note in the entry of the version your plans bump to`,
+      );
+      continue;
+    }
+    failures.push(
+      `plugins/dsh-qa-surface: QaChangelog.tsx changes the entry of the released version ${version} away from what that wave published; a published section is frozen — rebase onto the line and put your note in the entry of the version your plans bump to`,
+    );
+  }
+  return failures;
+}
+
+/**
+ * A curated entry newer than the manifest version promises the user a release
+ * that only a version plan can produce. `validateQaChangelogCoverage` checks
+ * the other direction (a plan demands its entry); together they pin the set of
+ * pending entries to exactly the version the qa-surface plans bump to, so a
+ * note committed without its plan cannot reach the deployed sidebar as a
+ * version that never shipped. An entry the branch inherited from its own base
+ * is not the branch's doing — rebasing resolves it — so `baseChangelogSource`
+ * keeps the message on the note this branch actually added.
+ */
+export function validateQaChangelogPlannedEntries(
+  changelogSource,
+  currentVersion,
+  plans,
+  baseChangelogSource = null,
+) {
+  const qaSurfacePlans = plans.filter((plan) =>
+    planProjects(plan.content).includes(QA_SURFACE_PROJECT),
+  );
+  let allowed;
+  if (qaSurfacePlans.length === 0) {
+    allowed = new Set();
+  } else {
+    const bumpOrder = { patch: 0, minor: 1, major: 2 };
+    const bumps = qaSurfacePlans
+      .map((plan) => planBumpFor(plan.content, QA_SURFACE_PROJECT))
+      .filter((bump) => bump !== undefined);
+    // Unparseable front matter and a non-numeric manifest version are already
+    // reported by validateVersionPlan and validateQaChangelogCoverage; guessing
+    // a second version here would only add a misleading message.
+    if (bumps.length === 0) return [];
+    const highestBump = Object.keys(bumpOrder)
+      .filter((bump) => bumps.includes(bump))
+      .sort((a, b) => bumpOrder[b] - bumpOrder[a])
+      .at(0);
+    const plannedVersion = incrementVersion(currentVersion, highestBump);
+    if (plannedVersion === undefined) return [];
+    allowed = new Set([plannedVersion]);
+  }
+  const inherited = new Set(
+    baseChangelogSource === null
+      ? []
+      : curatedChangelogVersions(baseChangelogSource.replace(/\r\n/gu, "\n")),
+  );
+  return [
+    ...new Set(
+      curatedChangelogVersions(changelogSource).filter(
+        (version) =>
+          compareVersions(version, currentVersion) > 0 &&
+          !allowed.has(version) &&
+          !inherited.has(version),
+      ),
+    ),
+  ].map(
+    (version) =>
+      `plugins/dsh-qa-surface: QaChangelog.tsx has an entry for ${version}, newer than the released ${currentVersion}, but no qa-surface version plan bumps to it — a curated note without a plan names a release that will not happen`,
+  );
+}
+
+/**
+ * The two changelog baselines the frozen-section gate needs: as the newest
+ * reachable `release/*` tag published it, and as the branch's own merge base
+ * with that tag saw it. Returns null when there is nothing to freeze against —
+ * no wave tag yet, a shallow clone without tags, or a checkout where the file
+ * is missing at the tag — so the gate skips instead of inventing a baseline.
+ */
+export function qaChangelogBaselines(repoRoot) {
+  const git = (args) =>
+    spawnSync("git", args, { cwd: repoRoot, encoding: "utf8" });
+  const gitPath = path
+    .join(QA_SURFACE_DIRECTORY, QA_CHANGELOG_SOURCE)
+    .split(path.sep)
+    .join("/");
+  const describe = git([
+    "describe",
+    "--tags",
+    "--match",
+    "release/*",
+    "--abbrev=0",
+    "HEAD",
+  ]);
+  if (describe.status !== 0) return null;
+  const tag = describe.stdout.trim();
+  if (tag === "") return null;
+  const released = git(["show", `${tag}:${gitPath}`]);
+  if (released.status !== 0) return null;
+  const mergeBase = git(["merge-base", tag, "HEAD"]);
+  if (mergeBase.status !== 0) {
+    return { released: released.stdout, base: released.stdout };
+  }
+  const base = git(["show", `${mergeBase.stdout.trim()}:${gitPath}`]);
+  // No file at the merge base means this branch wrote the whole changelog, so
+  // every published section is its own doing.
+  return {
+    released: released.stdout,
+    base: base.status === 0 ? base.stdout : null,
+  };
+}
+
+/**
  * The semver bump a version plan declares for one project, read from the
  * front matter (`"project": patch|minor|major`).
  */
@@ -1055,7 +1223,7 @@ export function validateVersionPlan(fileName, content, knownProjects) {
 
 export function verifyVersionPlans(
   repoRoot = process.cwd(),
-  { requirePlans = false } = {},
+  { requirePlans = false, changelogBaselines } = {},
 ) {
   const plansRoot = path.join(repoRoot, VERSION_PLANS_DIRECTORY);
   const planFiles = existsSync(plansRoot)
@@ -1076,6 +1244,44 @@ export function verifyVersionPlans(
     );
   }
   failures.push(...validateQaChangelogCoverage(repoRoot, plans));
+
+  const changelogPath = path.join(
+    repoRoot,
+    QA_SURFACE_DIRECTORY,
+    QA_CHANGELOG_SOURCE,
+  );
+  const manifestPath = path.join(
+    repoRoot,
+    QA_SURFACE_DIRECTORY,
+    "package.json",
+  );
+  if (existsSync(changelogPath) && existsSync(manifestPath)) {
+    const changelogSource = readFileSync(changelogPath, "utf8");
+    const baselines =
+      changelogBaselines === undefined
+        ? qaChangelogBaselines(repoRoot)
+        : changelogBaselines;
+    const baseSource =
+      baselines === null || baselines === undefined ? null : baselines.base;
+    failures.push(
+      ...validateQaChangelogPlannedEntries(
+        changelogSource,
+        readJson(manifestPath).version,
+        plans,
+        baseSource,
+      ),
+    );
+    if (baselines !== null && baselines !== undefined) {
+      failures.push(
+        ...validateQaChangelogFrozenSections(
+          changelogSource,
+          baselines.released,
+          baselines.base,
+        ),
+      );
+    }
+  }
+
   if (requirePlans && planFiles.length === 0) {
     failures.push("at least one version plan file is required");
   }
@@ -1087,12 +1293,24 @@ export function verifyVersionPlans(
 }
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
-  if (process.argv.includes("--version-plans-only")) {
-    const plans = verifyVersionPlans(process.cwd(), { requirePlans: true });
+  const plansOnly = process.argv.includes("--version-plans-only");
+  // Read the frozen baseline once and say out loud when there is none, so a
+  // skipped check is never mistaken for a passing one.
+  const changelogBaselines = qaChangelogBaselines(process.cwd());
+  if (changelogBaselines === null) {
+    process.stderr.write(
+      "package hygiene: frozen changelog sections NOT checked, no release/* tag reachable from HEAD\n",
+    );
+  }
+  if (plansOnly) {
+    const plans = verifyVersionPlans(process.cwd(), {
+      requirePlans: true,
+      changelogBaselines,
+    });
     process.stdout.write(`version plans: verified ${plans} plan file(s)\n`);
   } else {
     const verified = verifyPublishablePlugins();
-    const plans = verifyVersionPlans(process.cwd());
+    const plans = verifyVersionPlans(process.cwd(), { changelogBaselines });
     process.stdout.write(
       `package hygiene: verified ${verified} publishable plugins\n`,
     );
