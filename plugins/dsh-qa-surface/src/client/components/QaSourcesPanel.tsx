@@ -450,18 +450,23 @@ export function QaSourcesPanel({
             </p>
           ) : null}
           {/*
-            An empty list is the designed outcome of a turn that read nothing
-            outside this conversation, so it has to say so: the reader standing
-            here cannot tell "this answer cites no collectable source" from
-            "collection broke".
+            Two states share an empty list and only one of them is a fact about
+            the turn, so the line is drawn for that one alone:
+            - `complete === false` means the collection has not settled, and the
+              line above already says which origins stayed unreachable;
+            - a chat that has not asked anything yet has no bundle at all, and
+              `sourcesComplete` answers `true` for it, so the sentence may
+              describe what this list holds, never diagnose an answer that
+              never happened.
           */}
-          {sources.length === 0 ? (
+          {complete && sources.length === 0 ? (
             <p className="dsh-qa-sources__empty" data-testid="qa-sources-empty">
-              Здесь перечислены материалы, которые ход читал или открывал сам:
+              Здесь появляются материалы, которые ход читал или открывал сам:
               файл рабочего каталога, веб-страница, выдача веб-поиска, ответ
               Jira, Confluence или базы знаний. Ответ, собранный по памяти или
-              по тому, что уже было в этом разговоре, ничего сюда не добавляет —
-              пустой список означает именно это, а не сбой сбора.
+              по тому, что уже было в этом разговоре, сюда ничего не добавляет —
+              поэтому пустой список после завершённого хода означает именно это,
+              а не сбой сбора.
             </p>
           ) : null}
           {groups.map((group) => {

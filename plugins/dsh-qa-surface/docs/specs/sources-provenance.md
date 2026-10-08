@@ -1330,7 +1330,26 @@ failed:
 - the panel answers an empty list with the classes that do appear and one line
   saying an empty list is not a collection failure.
 
+The explanation is drawn only for a settled collection — `complete &&
+sources.length === 0` — because an empty list means a different thing in each of
+the three states that produce one:
+
+- `complete: false` — the collection has not settled, or a delegated run still
+  owes its origins; §«Loading / active turn» and the incomplete line above the
+  list already say so, and a second line claiming nothing was collected would
+  contradict it;
+- a turn bundle with `complete: true` and no source — "collected, nothing
+  found", the state this decision is about;
+- no bundle at all, a chat that has asked nothing yet — projected as
+  `sourcesComplete: true` with an empty list, so the sentence may only describe
+  what this list holds, never diagnose an answer that never happened. Hence it
+  names the classes in the present tense and scopes its claim to "after a
+  completed turn".
+
 The list of recognized classes and why memory is not among it: README §Sources.
+The same section names the second channel — `qa_report_sources`, an entry the
+answering agent files itself, which no extractor sees and which therefore can
+put a source into a list the collector matched nothing into.
 
 ### Loading / active turn
 
