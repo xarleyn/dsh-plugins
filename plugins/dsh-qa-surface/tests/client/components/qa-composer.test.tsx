@@ -266,4 +266,40 @@ describe("QA composer", () => {
     );
     expect(onAttachmentsChange).not.toHaveBeenCalled();
   });
+
+  it("drops the refusal once a prompt has sent", async () => {
+    // The line names a file the reader tried to add; sending empties the tray,
+    // and a refusal left over an empty tray describes nothing but the past.
+    const { onAttachmentsChange } = mount({
+      limits: { ...DEFAULT_ATTACHMENT_LIMITS, maxPending: 1 },
+      attachments: [
+        {
+          kind: "file",
+          id: "file-1",
+          name: "spec.md",
+          bytes: 10,
+          blob: new Blob(["x"]),
+        },
+      ],
+    });
+    const input = screen.getByTestId(
+      "qa-composer-file-input",
+    ) as HTMLInputElement;
+    Object.defineProperty(input, "files", {
+      value: [new File(["hello"], "note.txt", { type: "text/plain" })],
+    });
+    fireEvent.change(input);
+    await waitFor(() =>
+      expect(screen.getByTestId("qa-composer-attachment-error")).toBeTruthy(),
+    );
+    const prompt = screen.getByTestId(
+      "qa-composer-input",
+    ) as HTMLTextAreaElement;
+    fireEvent.change(prompt, { target: { value: "Продолжим" } });
+    fireEvent.keyDown(prompt, { key: "Enter" });
+    await waitFor(() =>
+      expect(screen.queryByTestId("qa-composer-attachment-error")).toBeNull(),
+    );
+    expect(onAttachmentsChange).toHaveBeenLastCalledWith([]);
+  });
 });

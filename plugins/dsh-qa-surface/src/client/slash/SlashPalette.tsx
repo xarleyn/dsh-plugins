@@ -19,6 +19,9 @@ export interface QaSlashPaletteProps {
   readonly onPick: (entry: QaSlashCatalogEntry) => void;
 }
 
+/** Whether a Host-supplied description is written in the surface's language. */
+const isCyrillic = /[А-Яа-яЁё]/u;
+
 const KIND_LABEL: Readonly<Record<QaSlashCatalogEntry["kind"], string>> =
   Object.freeze({ skill: "Навык", command: "Команда" });
 
@@ -122,9 +125,16 @@ export const QaSlashPalette = memo(function QaSlashPalette(
                   ) : null}
                 </span>
                 {props.showDescriptions && entry.description !== "" ? (
+                  // A description is the Host's own catalog copy, shown as it
+                  // stands: it names what the model is about to run, and a
+                  // translation here would be a second, wrong name for the
+                  // thing. The palette's Russian labels and this line do meet on
+                  // one screen, so the switch between them is announced rather
+                  // than left for the reader's voice to guess.
                   <span
                     className="dsh-qa-slash__description"
                     data-testid="qa-slash-row-description"
+                    lang={isCyrillic.test(entry.description) ? "ru" : "en"}
                   >
                     {entry.description}
                   </span>

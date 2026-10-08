@@ -73,6 +73,39 @@ describe("workspace browser", () => {
     );
   });
 
+  it("names the root once and brings the trail back below it", async () => {
+    // The Files section already heads this listing with «Рабочий каталог»; a
+    // single crumb repeating it is the same line printed twice, one under the
+    // other. Deeper in, the trail is the way back up and it shows again.
+    const listWorkspaceFiles = vi.fn((_sessionId: string, path: string) =>
+      Promise.resolve({
+        ok: true as const,
+        value:
+          path === ""
+            ? {
+                path: "",
+                truncated: false,
+                entries: [
+                  { name: ".qa", type: "directory" as const, size: null },
+                ],
+              }
+            : { path, truncated: false, entries: [] },
+      }),
+    );
+    render(
+      <QaWorkspaceBrowser sessionId="s1" api={api({ listWorkspaceFiles })} />,
+    );
+    await screen.findByTestId("qa-surface-workspace-entry-name");
+    expect(screen.queryByTestId("qa-surface-workspace-crumbs")).toBeNull();
+    fireEvent.click(screen.getByTestId("qa-surface-workspace-entry"));
+    const crumbs = await screen.findByTestId("qa-surface-workspace-crumbs");
+    expect(
+      within(crumbs)
+        .getAllByTestId("qa-surface-workspace-crumb")
+        .map((node) => node.textContent),
+    ).toEqual(["Рабочий каталог", ".qa"]);
+  });
+
   it("opens a text file and toggles a Markdown body between rendered and raw", async () => {
     const readWorkspaceFile = vi.fn(async () => ({
       ok: true as const,

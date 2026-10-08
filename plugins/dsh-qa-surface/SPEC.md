@@ -2743,7 +2743,16 @@ package.
   sources drawer had.
 - The tab strip sits at the top: one chip per tab (`Источники`, `Файлы`) with
   an item count, plus a close button. `role=tablist` / `role=tab` /
-  `role=tabpanel` semantics; the close control is «Закрыть панель».
+  `role=tabpanel` semantics; the close control names the tab it leaves
+  («Закрыть панель «Файлы» и вернуться к чату»), because on the phone layout the
+  panel is the whole surface and that button is the only exit on screen. Escape
+  closes the rail from anywhere on the page — answered on the window, since the
+  focus may still sit in the composer behind the panel — and yields to a dialog
+  standing over it.
+- While the rail or the agents drawer is open, the header's «Чат» marker becomes
+  the button that closes it and returns to the conversation; while nothing is
+  open it stays a plain label, because a button that leaves the reader where
+  they already stand is a dead control.
 - Tabs are mutually exclusive with the agents drawer: opening one side closes
   the other, exactly as the two drawers behaved.
 - Rail state is chat-local: switching or resetting a chat closes the rail and
@@ -2757,8 +2766,10 @@ package.
     view offers «Все источники» to return to the whole-chat list;
   - the list/preview content is the former drawer's, unchanged (groups,
     badges, safe local-file preview).
-- Files tab: a new header «Файлы» button (count badge, disabled when the chat
-  has no attachments and no readable workspace) opens the chat's own working
+- Files tab: a new header «Файлы» button (count badge; when the chat has no
+  attachments and no readable workspace it is `aria-disabled` rather than
+  `disabled`, so it stays in the tab order and its accessible name says what is
+  missing) opens the chat's own working
   directory above a roster of everything the visitor attached in this chat.
   The browser section (`QaWorkspaceBrowser`) walks the chat's workspace one
   directory at a time through the Host's `listWorkspaceFiles`: crumbs from the
