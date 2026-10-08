@@ -60,7 +60,11 @@ dsh plugin --profile web add ./plugins/dsh-preset-persona-editor
 ```
 
 Restart the deployment (or reload the browser page) and open
-**Settings → Persona**.
+**Settings → Persona**, on a desktop-width viewport. That step walks the Host's
+own section nav, and on `0.1.7-rc.2` the nav's buttons are invisible at 390px
+with nothing in their place, so at phone width this page has no entry point —
+the Host's operator layer, not this page. To check this page at a narrow width,
+constrain the settings dialog's container rather than the viewport.
 
 ## Configuration
 
