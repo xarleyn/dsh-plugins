@@ -64,7 +64,7 @@ interface Write {
  * `getSnapshot` returns one object for every call, as the Host's form does: a fresh
  * object each render would spin `useSyncExternalStore` forever.
  */
-function storedForm(writes: Write[]) {
+function storedForm(writes: Write[], writable = true) {
   const snapshot = {
     status: "ready" as const,
     value: {
@@ -75,7 +75,7 @@ function storedForm(writes: Write[]) {
     base: undefined,
     user: {},
     revision: 3,
-    writable: true,
+    writable,
     mode: "host" as const,
   };
   return {
@@ -120,8 +120,8 @@ const PAGE_FORM = {
  * whole of what this bundle answers. Also waits for the registry snapshot, which
  * the card reads on mount rather than receiving as a prop.
  */
-async function openCard(writes: Write[]) {
-  const harness = harnessOf({ settingsForm: storedForm(writes) });
+async function openCard(writes: Write[], writable = true) {
+  const harness = harnessOf({ settingsForm: storedForm(writes, writable) });
   await apply(harness.ctx);
   const seat = rowConfigRegistration(harness);
   if (!seat) throw new Error("the card lost its seat registration");
@@ -181,8 +181,16 @@ describe("the row-config card", () => {
     await waitFor(() =>
       expect(screen.getByTestId("log-card-plugin-row")).toBeDefined(),
     );
-    // Nothing here invites a click, and nothing here draws the expand control.
-    expect(screen.queryAllByRole("button")).toEqual([]);
+    /*
+     * The page owns the disclosure, so the body brings no expand control of ours:
+     * nothing carries `aria-expanded`, and no button offers to show or hide the
+     * card. The buttons the body does draw are actions the page's chrome cannot
+     * supply — hold a level for a moment, give it back — and they open nothing.
+     */
+    expect(root.querySelector("[aria-expanded]")).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: /^(show|hide|expand|collapse)/iu }),
+    ).toBeNull();
     expect(root.querySelector("svg")).toBeNull();
     expect(root.className).not.toContain("dsh-plugin-card");
     expect(root.querySelector("[class*='dsh-plugin-card']")).toBeNull();
@@ -284,5 +292,98 @@ describe("the row-config card", () => {
     expect(screen.queryByTestId("log-card-default-level")).toBeNull();
     // The read-only notice is for a connection that can read but not write.
     expect(screen.queryByTestId("log-card-read-only")).toBeNull();
+  });
+
+  /*
+   * The hold path, and the one thing it owes: a level the operator did not save
+   * must never reach the settings form. Before #743 the card had only the saved
+   * overrides, so looking at one plugin's DEBUG meant writing it to the stand's
+   * Config and remembering to undo it; these tests stand on the distinction the
+   * card now draws between looking and leaving.
+   */
+  it("holds a level through the plugin's Remote and writes nothing to settings", async () => {
+    const writes: Write[] = [];
+    const harness = await openCard(writes);
+
+    fireEvent.change(screen.getByTestId("log-card-hold-plugin"), {
+      target: { value: "dsh-sample" },
+    });
+    fireEvent.change(screen.getByTestId("log-card-hold-window"), {
+      target: { value: "5" },
+    });
+    fireEvent.click(screen.getByTestId("log-card-hold-apply"));
+
+    await waitFor(() =>
+      expect(harness.holds).toEqual([
+        { pluginId: "dsh-sample", level: "debug", minutes: 5 },
+      ]),
+    );
+    // The form records every `set` the card makes, and the hold made none.
+    expect(writes).toEqual([]);
+  });
+
+  it("marks the row that runs on a held level and keeps its select on the setting", async () => {
+    const writes: Write[] = [];
+    await openCard(writes);
+
+    fireEvent.change(screen.getByTestId("log-card-hold-plugin"), {
+      target: { value: "dsh-sample" },
+    });
+    fireEvent.change(screen.getByTestId("log-card-hold-level"), {
+      target: { value: "trace" },
+    });
+    fireEvent.click(screen.getByTestId("log-card-hold-apply"));
+
+    const marker = await screen.findByTestId("log-card-hold-marker");
+    expect(marker.textContent).toContain("not saved: held at trace");
+    expect(marker.textContent).toContain("min left");
+    // The row reports what the logger is running at, which is now not what the
+    // select says: the two disagree on purpose, and the chip says why.
+    const row = screen.getByTestId("log-card-plugin-row");
+    expect(row.textContent).toContain("active: trace");
+    expect(
+      screen.getByTestId<HTMLSelectElement>("log-card-plugin-level").value,
+    ).toBe("debug");
+    expect(writes).toEqual([]);
+  });
+
+  it("counts a session hold down as nothing and gives it back on the click", async () => {
+    const harness = await openCard([]);
+
+    fireEvent.change(screen.getByTestId("log-card-hold-plugin"), {
+      target: { value: "dsh-sample" },
+    });
+    fireEvent.change(screen.getByTestId("log-card-hold-window"), {
+      target: { value: "session" },
+    });
+    fireEvent.click(screen.getByTestId("log-card-hold-apply"));
+
+    await waitFor(() => expect(harness.holds).toHaveLength(1));
+    expect(harness.holds[0]?.minutes).toBeUndefined();
+    const held = screen.getByTestId("log-card-hold-row");
+    expect(held.textContent).toContain("until revoked");
+    expect(held.textContent).not.toMatch(/min left/u);
+
+    fireEvent.click(screen.getByTestId("log-card-hold-revert"));
+    await waitFor(() => expect(harness.releases).toEqual(["dsh-sample"]));
+    await waitFor(() =>
+      expect(screen.queryByTestId("log-card-hold-row")).toBeNull(),
+    );
+    expect(screen.queryByTestId("log-card-hold-marker")).toBeNull();
+  });
+
+  it("disables the hold controls instead of hiding them from a read-only connection", async () => {
+    await openCard([], false);
+
+    // The Plugins panel answers from a non-loopback browser where the settings
+    // directory is not reachable; the card stays, the writes stop (AGENTS.md).
+    expect(
+      screen.getByTestId<HTMLButtonElement>("log-card-hold-apply").disabled,
+    ).toBe(true);
+    expect(
+      screen.getByTestId<HTMLSelectElement>("log-card-hold-plugin").disabled,
+    ).toBe(true);
+    expect(screen.getByTestId("log-card-read-only")).toBeDefined();
+    expect(screen.getByTestId("log-card-section")).toBeDefined();
   });
 });
