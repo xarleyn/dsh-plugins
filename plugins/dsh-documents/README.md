@@ -173,8 +173,11 @@ of this plugin's row on the host **Plugins** page — or declaratively:
 
 What the defaults assume:
 
-- `pandoc` and a headless `libreoffice` exist in the deployment image. Missing
-  executables surface as `BACKEND_UNAVAILABLE`, never worked around;
+- `pandoc` and a headless `libreoffice` exist in the deployment image. A missing
+  executable is answered at boot by the `documents.installed` record, which names
+  every program the check covered and repeats the absent ones as a
+  `documents.programs.missing` warning; in a call it surfaces as
+  `BACKEND_UNAVAILABLE`, never worked around;
 - `docling` is reachable at `http://docling:5001` — the default of the
   `docling-serve` container — and is the backend that reads PDF and DOCX into
   Markdown. `docling.enabled: false` turns that path off;
