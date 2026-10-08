@@ -73,6 +73,15 @@ tool allow-list, the QA tool attachment and the attestation record are one code
 path, not two. The only thing the integration path does differently is how the
 caller's identity is established — ownership record instead of browser token.
 
+Because that record has just been checked against the caller's own account, this
+path is also where the session's QA principal is bound: the tools of
+`@yadsh/dsh-qa-integrations` resolve the identity of the chat they run in from
+that binding and refuse a chat without one, so a continued chat re-attests
+before every question and a chat of a restarted container gets its integrations
+back the same way. A refusal of the admission clears the binding rather than
+leaving the previous one in place, and a delegated child is never attested, so
+it never inherits one.
+
 ### 2.4 The chat belongs to the account, and only to it
 
 A conversation opened over the API is owned by the account its token belongs

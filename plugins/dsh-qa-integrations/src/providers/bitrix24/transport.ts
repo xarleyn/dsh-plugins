@@ -1,7 +1,14 @@
 import { IntegrationError } from "../../errors.js";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { hostMatchesSuffix } from "../shared/host.js";
-import { readBoundedJson, withTransportBudget } from "../kernel/read-policy.js";
+import {
+  answerDiagnostics,
+  credentialRedirectFailure,
+  isRedirectStatus,
+  readBoundedJson,
+  withTransportBudget,
+  withTransportDiagnostics,
+} from "../kernel/read-policy.js";
 
 export interface BitrixCredential {
   readonly webhookBaseUrl: string;
@@ -131,7 +138,10 @@ export class BitrixTransport {
         `${credential.webhookBaseUrl}/${method}.json`,
         {
           method: "POST",
-          redirect: "error",
+          // Never followed: the webhook's own secret must not travel to another
+          // origin. `manual` so that the redirect itself reaches the fold — the
+          // portal answers a dead webhook with one.
+          redirect: "manual",
           headers: {
             "content-type": "application/json",
             accept: "application/json",
@@ -144,9 +154,16 @@ export class BitrixTransport {
       // never read at all, exactly as in the shared transport loop.
       if (!response.ok) {
         const denied = response.status === 401 || response.status === 403;
-        throw new IntegrationError(
-          denied ? "ProviderPermissionDenied" : "ProviderUnavailable",
-          denied ? "Provider denied this operation" : "Provider request failed",
+        throw withTransportDiagnostics(
+          isRedirectStatus(response.status)
+            ? credentialRedirectFailure("Bitrix24")
+            : new IntegrationError(
+                denied ? "ProviderPermissionDenied" : "ProviderUnavailable",
+                denied
+                  ? "Provider denied this operation"
+                  : "Provider request failed",
+              ),
+          answerDiagnostics(response),
         );
       }
       // One bounded read for every provider: the deployment's byte cap decides

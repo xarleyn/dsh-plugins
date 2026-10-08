@@ -17,6 +17,7 @@ describeProviderConformance({
     value: `Basic ${BASIC}`,
   },
   statuses: [
+    [302, "CredentialRevoked"],
     [400, "InvalidRequest"],
     [401, "CredentialRevoked"],
     [403, "ProviderPermissionDenied"],

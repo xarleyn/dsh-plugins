@@ -3,7 +3,9 @@ import { IntegrationError } from "../../errors.js";
 import {
   TLS_FAILURE,
   causeCode,
+  credentialRedirectFailure,
   fetchWithRetries,
+  isRedirectStatus,
   numberFrom,
   readBoundedJson,
   readBoundedText,
@@ -243,6 +245,11 @@ export class TestitTransport {
    */
   private failure(response: Response): IntegrationError {
     const status = response.status;
+    // A spent token is answered with the login redirect rather than a 401, and
+    // only the first of these two says what the user can do about it.
+    if (isRedirectStatus(status)) {
+      return credentialRedirectFailure("Test IT");
+    }
     if (status === 401) {
       return new IntegrationError(
         "CredentialRevoked",
