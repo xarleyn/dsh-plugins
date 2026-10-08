@@ -1614,6 +1614,13 @@ export type QaMessage =
       readonly seq?: number;
       /** Host turn this answer belongs to; groups regenerations into variants. */
       readonly turn?: number;
+      /**
+       * Files this turn produced, in the order the tools reported them. The
+       * answer is the place a produced document is handed over: without these
+       * cards the file exists only as a path in a paragraph, and a reader who
+       * does not know the files tab concludes nothing was made.
+       */
+      readonly artifacts?: readonly QaArtifactView[];
       /** Canonical evidence snapshot shared with this answer's source drawer. */
       readonly sources?: readonly QaSource[];
       readonly sourcesComplete?: boolean;
@@ -1750,6 +1757,26 @@ export interface QaImageView {
 export interface QaFileView {
   readonly attachmentId: string;
   readonly name: string;
+  readonly bytes: number;
+}
+
+/**
+ * A file the agent produced during the turn an answer belongs to.
+ *
+ * An artifact has no attachment-store handle: it lives in the chat's own
+ * workspace, so the card addresses it by the workspace-relative name the
+ * producing tool reported — the spelling the Host's workspace reads take, and
+ * the only spelling that cannot publish the directory the deployment keeps
+ * this account's workspace in.
+ */
+export interface QaArtifactView {
+  /** Workspace-relative path; the identifier every workspace read takes. */
+  readonly path: string;
+  /** Last path segment, which is what the card is signed with. */
+  readonly name: string;
+  /** Format the producing tool reported: `docx`, `pdf` or `md`. */
+  readonly format: string;
+  /** Bytes as the tool reported them; 0 when it reported no size. */
   readonly bytes: number;
 }
 

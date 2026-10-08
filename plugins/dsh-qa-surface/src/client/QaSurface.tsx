@@ -20,6 +20,7 @@ import type {
   QaAccountProfileInput,
   QaAccountStartersInput,
   QaApprovalDecision,
+  QaArtifactView,
   QaAttachmentDraft,
   QaQuestionAnswerItem,
   QaCurrentAccess,
@@ -72,6 +73,7 @@ import {
   collectSubagents,
 } from "./components/QaAgentsDrawer.js";
 import { collectChatFiles, countChatAttachments } from "./chat-files.js";
+import { downloadWorkspaceFile } from "./workspace-download.js";
 import { QaFilesPanel } from "./components/QaFilesPanel.js";
 import { isQaModalOpen } from "./components/QaModal.js";
 import { QaRightRail, type QaRailTabModel } from "./components/QaRightRail.js";
@@ -687,9 +689,26 @@ export function QaSurface(props: QaSurfaceProps) {
     setVariantOffsets,
     agentsOpen,
     setAgentsOpen,
+    setRailOpen,
+    setRailTab,
     pendingAttachments,
     setPendingAttachments,
   } = ui;
+
+  /**
+   * The file a card asked to open, with the chat it was asked in and the stamp
+   * of the request. The chat is part of the arrival because the rail survives
+   * switching chats: an arrival from the previous chat must not open its file
+   * in this one. The stamp makes a second click on the same card a fresh
+   * arrival rather than a path that never changed.
+   */
+  const [artifactArrival, setArtifactArrival] = useState<{
+    readonly path: string;
+    readonly chatKey: number;
+    readonly stamp: number;
+  } | null>(null);
+  /** Counts the open requests, so the same file twice is two arrivals. */
+  const artifactStamp = useRef(0);
 
   useEffect(() => {
     if (!route.active) return;
@@ -856,6 +875,54 @@ export function QaSurface(props: QaSurfaceProps) {
     }
     nearBottom.current = isNearBottom(element);
   }, []);
+  /**
+   * A produced file the reader wants to see: open the rail on its workspace
+   * viewer at exactly that file. The viewer is the panel's own — it reads under
+   * the chat's fence and converts a Word document into a preview — so a card
+   * under an answer points at that work instead of carrying a second viewer
+   * that could disagree with it.
+   */
+  const handleArtifactOpen = useCallback(
+    (artifact: QaArtifactView) => {
+      artifactStamp.current += 1;
+      setArtifactArrival({
+        path: artifact.path,
+        chatKey: state.chatKey,
+        stamp: artifactStamp.current,
+      });
+      setAgentsOpen(false);
+      setRailOpen(true);
+      setRailTab("files");
+    },
+    // The three setters never change identity, and the chat key is the only
+    // value the arrival carries: the callback stays stable across the frames of
+    // one chat, which is what keeps the memoized transcript rows from
+    // re-rendering on every published state.
+    [setAgentsOpen, setRailOpen, setRailTab, state.chatKey],
+  );
+  /**
+   * A produced file the reader wants to keep: the same fenced read the panel
+   * uses, handed to the browser's download machinery. A read that fails opens
+   * the viewer instead, which reports the refusal rather than swallowing the
+   * click.
+   */
+  const handleArtifactDownload = useCallback(
+    (artifact: QaArtifactView) => {
+      const sessionId = state.sessionId;
+      if (sessionId === null) return;
+      boundSourceApi.readWorkspaceFile(sessionId, artifact.path).then(
+        (result) => {
+          if (result.ok) {
+            downloadWorkspaceFile(result.value);
+            return;
+          }
+          handleArtifactOpen(artifact);
+        },
+        () => handleArtifactOpen(artifact),
+      );
+    },
+    [boundSourceApi, handleArtifactOpen, state.sessionId],
+  );
 
   const view = useTranscriptView(state.messages, variantOffsets);
   const railItems = view.railItems;
@@ -919,6 +986,12 @@ export function QaSurface(props: QaSurfaceProps) {
   const filesEnabled =
     attachmentCount > 0 ||
     (state.sessionId !== null && config.sources.filePreview.enabled);
+  // A card may promise an action only when the Host will answer it: the same
+  // switch the workspace reads are refused under. Where it is off, a produced
+  // file still shows as a name and a size, which is the half the reader needs
+  // to know the answer produced something.
+  const workspaceReadable =
+    state.sessionId !== null && config.sources.filePreview.enabled;
   // Buttons above an empty composer: the account's own starters, then the
   // deployment's suggestions unless the account hid them. Anonymous visitors
   // (and deployments with the feature off) see the deployment list alone.
@@ -1198,6 +1271,16 @@ export function QaSurface(props: QaSurfaceProps) {
           groups={fileGroups}
           resolveImage={resolveImage}
           onJumpToMessage={handleJumpToMessage}
+          onArtifactOpen={workspaceReadable ? handleArtifactOpen : undefined}
+          onArtifactDownload={
+            workspaceReadable ? handleArtifactDownload : undefined
+          }
+          openArtifact={
+            artifactArrival !== null &&
+            artifactArrival.chatKey === state.chatKey
+              ? { path: artifactArrival.path, stamp: artifactArrival.stamp }
+              : undefined
+          }
           sessionId={state.sessionId ?? undefined}
           api={boundSourceApi}
         />
@@ -1649,6 +1732,14 @@ export function QaSurface(props: QaSurfaceProps) {
                             onSourceDetail={
                               config.sources.enabled
                                 ? rail.openSourceDetail
+                                : undefined
+                            }
+                            onArtifactOpen={
+                              workspaceReadable ? handleArtifactOpen : undefined
+                            }
+                            onArtifactDownload={
+                              workspaceReadable
+                                ? handleArtifactDownload
                                 : undefined
                             }
                             onRateFeedback={rateFeedback}

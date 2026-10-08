@@ -351,6 +351,12 @@ interface DocumentCreateResult {
 }
 ```
 
+The runtime result is absolute, because containment is checked against absolute
+paths. The tool's model-facing projection reports `source.path`, `files[].path`
+and `manifestPath` relative to the session workspace — the same spelling its own
+input parameters accept — so an answer quoting a produced file cannot print the
+account directory the deployment keeps that workspace in.
+
 ---
 
 # 9. `document_to_markdown`
