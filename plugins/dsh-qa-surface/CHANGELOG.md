@@ -1,3 +1,13 @@
+## 0.15.7 (2026-10-08)
+
+### 🩹 Fixes
+
+- attest the QA principal of a chat the integration API opened, so its tools stop refusing every provider call ([#767](https://github.com/xarleyn/dsh-plugins/issues/767))
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.15.6 (2026-10-08)
 
 ### 🩹 Fixes

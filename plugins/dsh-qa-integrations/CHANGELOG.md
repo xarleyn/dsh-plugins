@@ -1,3 +1,17 @@
+## 0.10.3 (2026-10-08)
+
+### 🩹 Fixes
+
+- read a refused credential as one: a sign-in redirect and an HTML answer fold into `CredentialRevoked`, the binding records the refusal, and a live failure logs what the upstream answered with ([#767](https://github.com/xarleyn/dsh-plugins/issues/767))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.15.7
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.10.2 (2026-10-08)
 
 ### 🩹 Fixes
