@@ -44,15 +44,17 @@ and prefer the newer rule.
 
 ## After the generator — mandatory manual work
 
-- `README.md`: the install command must carry the required `--profile` flag —
-  the CLI rejects a bare `dsh plugin add`:
+- `README.md`: the scaffold prints `dsh plugin --profile <profile> add ...`,
+  because the CLI rejects a bare `dsh plugin add` — substitute the real profile
+  and keep the flag in every install/remove command you add:
   - host-only plugin: `dsh plugin --profile <profile> add @yadsh/dsh-<name>`
   - plugin with `dsh.client`: `dsh plugin --profile web add @yadsh/dsh-<name>`
 - `dsh.client` is scaffolded as `{ platform: "web" }` only. Real plugins also
   declare (see `plugins/dsh-model-safety-gate/package.json` as the reference):
   - `inject`: harness client packages whose face the plugin's client code
-    imports (e.g. `@deepseek-ai/dsh-client-ui-settings` for a settings card,
-    `@deepseek-ai/dsh-client-connection`);
+    imports (e.g. `@deepseek-ai/dsh-client-ui-plugin-manager` for a card on the
+    Plugins panel, `@deepseek-ai/dsh-client-ui-settings` for the `ConfigForm`
+    types, `@deepseek-ai/dsh-client-connection`);
   - `external`: packages that stay out of the bundle because the host page
     provides them (React, `@deepseek-ai/dsh-client-ui-slots`) — mirror the
     same ids in `tsdown.config.ts` `deps.neverBundle`.
@@ -143,8 +145,10 @@ one plan per package, several plans merge into the highest bump; the plan is
 what nx turns into the version bump and CHANGELOG entry — a missing plan means
 your feature silently never appears in the changelog; uncommitted changes are
 invisible to `pnpm release:check` (it reads commits); for `dsh-qa-surface`
-plans, `QaChangelog.tsx` must gain a newer curated entry in the same change
-(the hygiene gate enforces this). Validate with `pnpm verify:packages`.
+plans, `QaChangelog.tsx` must gain a curated entry whose `version:` is exactly
+the version those plans bump to, in the same change (`AGENTS.md` §QA surface
+release notes owns the rule, the hygiene gate enforces it). Validate with
+`pnpm verify:packages`.
 
 ## Commit conventions
 
@@ -163,7 +167,8 @@ plans, `QaChangelog.tsx` must gain a newer curated entry in the same change
 - `references/host-side.md` — cordis semantics, config, tools, storage,
   subagents, typert/Remote, testing recipes.
 - `references/client-side.md` — ModuleLoader bundle identity, platform
-  limits, remote namespaces, slots, settings cards, design tokens.
+  limits, remote namespaces, slots, configuration cards on the Plugins panel,
+  design tokens.
 - `references/release-and-gates.md` — gates map, build order, pre-push
   command set, packaging/docs layout, release mechanics.
 - Canonical docs: `docs/PLUGIN_GUIDELINES.md`, `docs/VERIFICATION.md`,

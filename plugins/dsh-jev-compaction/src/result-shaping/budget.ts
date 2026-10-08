@@ -9,7 +9,7 @@
 
 import type { Session } from "@deepseek-ai/dsh-session";
 
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 
 interface TurnUsage {
   turn: number;

@@ -1,6 +1,12 @@
-import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
-
-export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
+/*
+ * The body of a card seated on the Host's Plugins row: the page draws the
+ * surface, so nothing here styles a frame of our own. Focus rings come from the
+ * Host's ring tokens, each half with a fallback — where `--dsw-focus-ring-width`
+ * is undeclared the whole `outline` shorthand would be invalid and the ring
+ * would vanish instead of degrading, and raising specificity to beat the Host's
+ * `focus.css` is the wrong repair.
+ */
+export const styles: string = `
 .wfa-body,.wfa-body *{box-sizing:border-box}
 .wfa-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .wfa-section{display:grid;gap:12px}
@@ -12,7 +18,8 @@ export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
 .wfa-field>span{font-size:11px;color:var(--dsw-alias-label-secondary);font-weight:600}
 .wfa-control{width:100%;min-height:36px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);padding:7px 10px;font:inherit;font-size:12px;outline:none}
 textarea.wfa-control{resize:vertical}
-.wfa-control:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}
+.wfa-control:focus-visible{border-color:var(--dsw-alias-brand-primary)}
+.wfa-control:focus-visible,.wfa-btn:focus-visible,.wfa-icon-btn:focus-visible,.wfa-toggle:focus-visible,.wfa-advanced summary:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .wfa-control:disabled{cursor:default;opacity:.45}
 .wfa-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px}
 .wfa-toggle-copy{display:grid;gap:2px}
@@ -26,11 +33,10 @@ textarea.wfa-control{resize:vertical}
 .wfa-btn{height:34px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);padding:0 12px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
 .wfa-btn:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed);background:var(--dsw-alias-interactive-bg-hover)}
 .wfa-btn.primary{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-layer-3)}
-.wfa-btn.danger{color:var(--dsw-alias-label-error)}
+.wfa-btn.danger{color:var(--dsw-alias-state-error-primary, #b3261e)}
 .wfa-icon-btn{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:0;flex:none}
 .wfa-icon-btn:hover:not(:disabled){border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}
-.wfa-icon-btn:focus-visible{outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}
-.wfa-icon-btn.danger:hover:not(:disabled){color:var(--dsw-alias-label-error)}
+.wfa-icon-btn.danger:hover:not(:disabled){color:var(--dsw-alias-state-error-primary, #b3261e)}
 .wfa-icon-btn svg{width:14px;height:14px}
 .wfa-icon-btn:disabled{cursor:default;opacity:.45}
 .wfa-btn:disabled{cursor:default;opacity:.45}
@@ -43,7 +49,7 @@ textarea.wfa-control{resize:vertical}
 .wfa-pill{font-size:9px;text-transform:uppercase;letter-spacing:.04em;color:var(--dsw-alias-label-tertiary);border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:2px 7px;white-space:nowrap}
 .wfa-pill.ok{color:var(--dsw-alias-state-business-primary)}
 .wfa-pill.warn{color:var(--dsw-alias-label-secondary)}
-.wfa-pill.err{color:var(--dsw-alias-label-error)}
+.wfa-pill.err{color:var(--dsw-alias-state-error-primary, #b3261e)}
 .wfa-checks{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .wfa-check{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--dsw-alias-label-secondary)}
 .wfa-report{display:grid;gap:5px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:11px 12px;font-size:11px}
@@ -51,7 +57,7 @@ textarea.wfa-control{resize:vertical}
 .wfa-meta-item{display:inline-flex;align-items:baseline;gap:5px}
 .wfa-report b{font-weight:600;color:var(--dsw-alias-label-secondary)}
 .wfa-report pre{margin:0;white-space:pre-wrap;word-break:break-word;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:10px;color:var(--dsw-alias-label-tertiary);max-height:160px;overflow:auto}
-.wfa-error{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-error);color:var(--dsw-alias-label-error);font-size:11px}
+.wfa-error{padding:9px 11px;border-radius:8px;background:color-mix(in srgb, var(--dsw-alias-state-error-primary, #b3261e) 8%, transparent);color:var(--dsw-alias-state-error-primary, #b3261e);font-size:11px}
 .wfa-warnings{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);font-size:11px}
 .wfa-empty{padding:22px;text-align:center;color:var(--dsw-alias-label-tertiary);font-size:12px}
 .wfa-editor{display:grid;gap:12px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:12px}

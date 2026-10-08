@@ -1,13 +1,9 @@
 import type { Context } from "@deepseek-ai/cordis";
-import type { Agent } from "@deepseek-ai/dsh-agent";
-import type {} from "@deepseek-ai/dsh-settings";
-import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
+// Type anchor only: the loader owns the `loader/volatile-update` event this
+// plugin listens to, and ships no runtime value this entry would import.
+import type {} from "@deepseek-ai/cordis-plugin-loader";
 import type {} from "@deepseek-ai/dsh-storage-domain";
-import type {
-  SubagentProvider,
-  SubagentRun,
-  SubagentStartRequest,
-} from "@deepseek-ai/dsh-subagent";
+import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
 import {
   createHostLoggerSink,
@@ -16,53 +12,69 @@ import {
 } from "@yadsh/dsh-plugin-log";
 import {
   ConfigSchema,
-  SETTINGS_NAMESPACE,
   resolveConfig,
+  snapshotConfig,
   type Config as PluginConfig,
+  type LiveConfig,
   type ResolvedConfig,
 } from "./config.js";
+import {
+  CatalogStores,
+  agentsFaceOf,
+  catalogTools,
+  delegationVerdictFrom,
+  deferredMemoryTable,
+  memoryNamespacesOf,
+  domainListings,
+  domainSummaries,
+  expertProfile,
+  expertToolDefinitions,
+  memoryProviderOf,
+  subagentsFaceOf,
+  syncToolAvailability,
+  testParentOf,
+  testRunInput,
+  type StorageHandles,
+} from "./catalog.js";
 import { AuditRing } from "./host/audit.js";
-import { DomainExpertsError, errorMessageOf } from "./host/errors.js";
 import {
   RunTracker,
   runExpert,
+  type ExecutionDependencies,
   type ExpertRunInput,
-  type SubagentsFace,
 } from "./host/execution.js";
+import { createMemoryAdmin, type MemoryAdmin } from "./host/memory/admin.js";
+import { createBuiltinMemoryProvider } from "./host/memory/builtin.js";
 import {
-  createBuiltinMemoryProvider,
-  type MemoryTable,
-} from "./host/memory/builtin.js";
-import {
-  SQLITE_MEMORY_PROVIDER_ID,
-  createSqliteMemoryProvider,
-  type SqliteMemoryProvider,
-} from "./host/memory/sqlite.js";
-import { MemoryProviderRegistry } from "./host/memory/registry.js";
-import { delegationVerdictOf, parallelBudgetOf } from "./host/policy.js";
-import { DomainRegistry } from "./host/registry.js";
-import { summarizeDomain } from "./host/schema.js";
-import {
-  memoryEntries,
-  resolveExpert,
-  type ResolverDependencies,
-} from "./host/resolver.js";
+  MemoryProviderRegistry,
+  type DomainMemoryProvider,
+} from "./host/memory/registry.js";
+import type { SqliteMemoryProvider } from "./host/memory/sqlite.js";
+import { parallelBudgetOf } from "./host/policy.js";
+import { PrincipalIdentities } from "./host/qa-principal.js";
+import type { ResolverDependencies } from "./host/resolver.js";
 import { createFilesystemProvider } from "./host/scopes/filesystem.js";
 import { ScopeProviderRegistry } from "./host/scopes/registry.js";
-import {
-  domainExpertsSpec,
-  domainsTableOf,
-  memoryTableOf,
-  type DomainExpertsStorage,
-} from "./host/storage.js";
-import { createDomainExpertTool } from "./host/tools/domain-expert.js";
-import { createDomainMemoryTool } from "./host/tools/domain-memory.js";
-import { createListDomainsTool } from "./host/tools/list-domains.js";
-import type {
-  DelegationVerdict,
-  ToolDependencies,
-} from "./host/tools/shared.js";
+import { domainExpertsSpec } from "./host/storage.js";
+import type { ToolDependencies } from "./host/tools/shared.js";
 import { WorkerRegistry } from "./host/workers/registry.js";
+import {
+  accepted,
+  clearDomainMemory,
+  domainDeleteRefusal,
+  domainDraft,
+  domainGetRefusal,
+  domainListRefusal,
+  domainWriteRefusal,
+  draftInspection,
+  draftInspectionRefusal,
+  expertRunRefusal,
+  guarded,
+  inspectDomainMemory,
+  missingTestParent,
+  scopeRefusal,
+  type MemoryAccess,
+} from "./validate.js";
 import type {
   AuditListResult,
   CatalogResult,
@@ -71,17 +83,13 @@ import type {
   DomainExpertResult,
   DomainGetResult,
   DomainListResult,
-  DomainListing,
-  DomainSummary,
   DomainWriteResult,
   DraftInspectionResult,
   ExpertRunResult,
   MemoryClearResult,
   MemoryInspectResult,
   ResolvedScopeResult,
-  ValidationIssueView,
 } from "./types.js";
-import { emptyDomainDraft } from "./types.js";
 
 export const name = "domain-experts";
 export const inject = ["tools", "agents", "subagents", "storageDomain"];
@@ -94,81 +102,54 @@ declare module "@deepseek-ai/cordis" {
 }
 
 /**
- * A memory table that resolves its backing store on first use, so the built-in
- * provider can be registered before storage opens.
- */
-function deferredMemoryTable(resolve: () => MemoryTable): MemoryTable {
-  return {
-    get: (key) => resolve().get(key),
-    entries: () => resolve().entries(),
-    put: (key, value) => resolve().put(key, value),
-    delete: (key) => resolve().delete(key),
-  };
-}
-
-interface StorageHandles {
-  readonly storage: DomainExpertsStorage;
-  readonly domains: DomainRegistry;
-  readonly memory: MemoryTable;
-}
-
-/**
- * Session id as the agent registry types it.
- *
- * Derived from the service itself instead of importing the host session
- * package: that package augments `Context.sessions` for the host, and loading
- * it here would merge with the browser face in this package's single
- * typecheck program.
- */
-type AgentId = Parameters<Context["agents"]["get"]>[0];
-
-/** The registry surface used by the service; keeps `ctx.agents` structural. */
-interface AgentsFace {
-  get(id: AgentId): Agent | undefined;
-  list(): readonly Agent[];
-}
-
-/**
  * Domain experts: a host-plane service, three agent tools and a management UI.
  *
  * The service owns nothing the runtime already owns. Expert children are
  * ordinary DSH subagents started through `ctx.subagents`; the plugin only
  * composes the request (persona, tool mask, depth cap) and reports what it
  * could and could not enforce.
+ *
+ * What it serves — the store, the tools and the projections of the expert
+ * catalog — is `catalog.ts`; the verdicts on one of its entries are
+ * `validate.ts`. This file is the wiring: the service, its registries, the
+ * live configuration it answers to and the Remote contract the client calls.
  */
 export class DomainExpertsService extends TypertRemoteService {
   static inject = inject;
   static Config = ConfigSchema;
 
   private readonly logger: PluginLogger;
-  private readonly entry: PluginConfig;
-  private source: () => PluginConfig;
+  private readonly entry: PluginConfig | LiveConfig;
   private readonly scopeProviders = new ScopeProviderRegistry();
   private readonly memoryProviders = new MemoryProviderRegistry();
   private readonly workers = new WorkerRegistry();
   private readonly audits: AuditRing;
   private readonly tracker = new RunTracker();
-  private readonly tools = new Map<string, ToolDefinition>();
+  private readonly tools: Map<string, ToolDefinition>;
   private toolDisposers: (() => void)[] = [];
-  private storagePromise: Promise<StorageHandles> | undefined;
-  private storageHandles: StorageHandles | undefined;
+  private readonly stores: CatalogStores;
   private readonly memoryTable = deferredMemoryTable(() =>
-    this.requireMemoryTable(),
+    this.stores.requireMemoryTable(),
   );
-  /**
-   * The SQLite memory provider, present only when the deployment asks for it.
-   *
-   * Opening its database for a deployment that keeps its memory in the storage
-   * unit would create a file nothing reads, so the provider — and with it the
-   * one-time import from the unit — exists only when it is the configured one.
-   */
+  /** The backend the deployment moved its memory out of the unit to, if any. */
   private readonly sqliteMemory: SqliteMemoryProvider | undefined;
   private toolAvailability = false;
+  /** Whose memory a call reaches: the account of its session, or none. */
+  private readonly principals: PrincipalIdentities;
+  /**
+   * Operator-facing memory maintenance (design §15).
+   *
+   * Not a `@Remote` on purpose: this writes into the store that feeds every
+   * expert's prompt, so it is reached from another plugin's host-plane service,
+   * behind that plugin's own permission check. Its dependencies resolve through
+   * `this` on each call, so a deployment that switches provider or adds a domain
+   * is answered from the new state rather than a snapshot of the first one.
+   */
+  readonly memoryAdmin: MemoryAdmin;
 
-  constructor(ctx: Context, entry: PluginConfig = {}) {
+  constructor(ctx: Context, entry: PluginConfig | LiveConfig = {}) {
     super(ctx, "domainExperts", { namespace: "domainExperts" });
     this.entry = entry;
-    this.source = () => entry;
     this.logger = getPluginLogger({
       pluginId: `dsh-${name}`,
       consoleSink: createHostLoggerSink(ctx.logger),
@@ -185,42 +166,50 @@ export class DomainExpertsService extends TypertRemoteService {
     this.memoryProviders.register(
       createBuiltinMemoryProvider(this.memoryTable, () => Date.now()),
     );
-    this.sqliteMemory =
-      resolved.defaultMemoryProvider === SQLITE_MEMORY_PROVIDER_ID
-        ? createSqliteMemoryProvider({
-            filePath: resolved.memoryDbPath,
-            logger: this.logger,
-          })
-        : undefined;
+    this.sqliteMemory = memoryProviderOf(resolved, this.logger);
     if (this.sqliteMemory !== undefined) {
       this.memoryProviders.register(this.sqliteMemory);
     }
-
-    this.registerTools();
+    this.stores = new CatalogStores({
+      openUnit: () => ctx.storageDomain.open(domainExpertsSpec),
+      logger: this.logger,
+      sqlite: this.sqliteMemory,
+    });
+    this.memoryAdmin = createMemoryAdmin({
+      definitions: async () => (await this.stores.opened()).domains.list(),
+      provider: () => this.memoryProvider(),
+      logger: this.logger,
+    });
+    this.principals = new PrincipalIdentities({
+      logger: this.logger,
+      surface: () => ctx.get("qaSurface"),
+      config: () => this.config(),
+    });
+    this.tools = expertToolDefinitions(this.toolDependencies());
     this.applyEnabled();
 
-    // Settings are an optional seam: without a settings service the plugin
-    // runs on its composition entry exactly as composed.
-    ctx.inject(["settings"], (settingsCtx) => {
-      settingsCtx.settings.installSection(
-        ctx,
-        SETTINGS_NAMESPACE,
-        ConfigSchema,
-        entry,
-        {
-          setSource: (source) => {
-            this.source = source;
-          },
-          onChange: () => {
-            this.applyEnabled();
-          },
-        },
-      );
-    });
+    /*
+     * There is no settings section to install any more: a field is editable live
+     * exactly when its schema node carries `.volatile()`, which all ten do, and
+     * the namespace is the profile entry id. The Host therefore serves the form
+     * this plugin used to install, and `settings.configure({ auto: false })` is
+     * deliberately not called: the browser half here is the domain catalog, not
+     * a card over these ten fields, so the generated page is their only editor.
+     *
+     * A committed write moves the values inside the references this plugin was
+     * handed and no fiber is remounted, so `enabled` — the one knob with an
+     * effect beyond the next read — is re-applied here. Every other knob is read
+     * through `config()`, i.e. from a fresh snapshot, so it follows the document
+     * on its own.
+     */
+    ctx.effect(
+      () => ctx.on("loader/volatile-update", () => this.applyEnabled()),
+      "domain-experts.volatile-config",
+    );
 
     ctx.effect(
       () => () => {
-        void this.closeStorage();
+        void this.stores.close();
       },
       "domain-experts.storage",
     );
@@ -230,176 +219,77 @@ export class DomainExpertsService extends TypertRemoteService {
     });
   }
 
+  /**
+   * The configuration as one operation sees it.
+   *
+   * The references the Host hands this plugin are stable and always current, so
+   * one snapshot per call is what keeps a committed settings write from being
+   * frozen into a value captured at startup.
+   */
   private config(): ResolvedConfig {
-    return resolveConfig(this.source());
-  }
-
-  // ---------------------------------------------------------------- storage
-
-  /**
-   * Open durable storage at most once.
-   *
-   * A storage failure is reported, never thrown at load time: the plugin keeps
-   * serving its tools and UI, and every domain operation answers
-   * `STORAGE_UNAVAILABLE` with the underlying message. A corrupt record aborts
-   * the open loudly (the storage layer names the table and key) instead of
-   * being skipped, and the domains become reachable again once the deployment
-   * fixes it and restarts.
-   */
-  private async storage(): Promise<StorageHandles> {
-    this.storagePromise ??= this.openStorage();
-    return this.storagePromise;
-  }
-
-  private async openStorage(): Promise<StorageHandles> {
-    try {
-      const storage = await this.ctx.storageDomain.open(domainExpertsSpec);
-      const handles: StorageHandles = {
-        storage,
-        domains: new DomainRegistry(domainsTableOf(storage)),
-        memory: memoryTableOf(storage),
-      };
-      this.importMemoryFromUnit(handles);
-      this.storageHandles = handles;
-      this.logger.info("domain-experts/storage-open", {
-        domains: handles.domains.list().length,
-      });
-      return handles;
-    } catch (error) {
-      this.logger.error("domain-experts/storage-failed", {
-        error: errorMessageOf(error),
-      });
-      throw new DomainExpertsError(
-        "STORAGE_UNAVAILABLE",
-        `Domain storage could not be opened: ${errorMessageOf(error)}`,
-        { cause: error },
-      );
-    }
-  }
-
-  /**
-   * Copy the storage unit's memory into the SQLite provider, once per database.
-   *
-   * The unit keeps its records: that copy is how a deployment switches back,
-   * and a memory the operator cannot point at afterwards is not a migration but
-   * a loss. A failed verification throws, the transaction behind it rolls back,
-   * and this open is reported as `STORAGE_UNAVAILABLE` rather than serving an
-   * expert from a database that might be missing something.
-   */
-  private importMemoryFromUnit(handles: StorageHandles): void {
-    const provider = this.sqliteMemory;
-    if (provider === undefined) return;
-    const report = provider.importFromUnit(handles.memory);
-    this.logger.info("domain-experts/memory-migrated", {
-      outcome: report.outcome,
-      records: report.records,
-      namespaces: report.namespaces,
-      file: provider.filePath,
-    });
-  }
-
-  private async closeStorage(): Promise<void> {
-    const handles = this.storageHandles;
-    this.storageHandles = undefined;
-    this.storagePromise = undefined;
-    // The provider's own database: opened at load, so it closes on unload even
-    // when the storage unit never came up.
-    this.sqliteMemory?.close();
-    if (handles === undefined) return;
-    try {
-      await handles.storage.close();
-    } catch (error) {
-      this.logger.warn("domain-experts/storage-close-failed", {
-        error: errorMessageOf(error),
-      });
-    }
-  }
-
-  /** Storage plus the registries, or the STORAGE_UNAVAILABLE refusal. */
-  private async opened(): Promise<StorageHandles> {
-    return await this.storage();
-  }
-
-  private requireMemoryTable(): MemoryTable {
-    const handles = this.storageHandles;
-    if (handles === undefined) {
-      throw new DomainExpertsError(
-        "STORAGE_UNAVAILABLE",
-        "Domain storage is not open yet; retry once the plugin has finished starting.",
-      );
-    }
-    return handles.memory;
+    return resolveConfig(snapshotConfig(this.entry));
   }
 
   // ------------------------------------------------------------------- tools
 
-  private registerTools(): void {
-    this.tools.set(
-      "domain_expert",
-      createDomainExpertTool(this.toolDependencies()),
-    );
-    this.tools.set(
-      "domain_experts_list",
-      createListDomainsTool(this.toolDependencies()),
-    );
-    this.tools.set(
-      "domain_memory",
-      createDomainMemoryTool(this.toolDependencies()),
-    );
-  }
-
   /** Register or withdraw the agent tools as `enabled` flips. */
   private applyEnabled(): void {
-    const wanted = this.config().enabled;
-    if (wanted === this.toolAvailability) return;
-    this.toolAvailability = wanted;
-    for (const dispose of this.toolDisposers) dispose();
-    this.toolDisposers = [];
-    if (!wanted) {
-      this.logger.info("domain-experts/tools-withdrawn", {});
-      return;
-    }
-    for (const [toolName, definition] of this.tools) {
-      try {
-        this.toolDisposers.push(this.ctx.tools.register(definition));
-        void toolName;
-      } catch (error) {
-        this.logger.error("domain-experts/tool-register-failed", {
-          tool: toolName,
-          error: errorMessageOf(error),
-        });
-      }
-    }
-    this.logger.info("domain-experts/tools-registered", {
-      count: this.toolDisposers.length,
+    const next = syncToolAvailability({
+      available: this.toolAvailability,
+      disposers: this.toolDisposers,
+      logger: this.logger,
+      register: (definition) => this.ctx.tools.register(definition),
+      tools: this.tools,
+      wanted: this.config().enabled,
     });
+    if (next === undefined) return;
+    this.toolAvailability = next.available;
+    this.toolDisposers = next.disposers;
   }
 
   private toolDependencies(): ToolDependencies {
     return {
-      list: () => this.listings(),
+      list: async () =>
+        domainListings((await this.stores.opened()).domains.list()),
       requireDefinition: (id) => this.requireDefinition(id),
       run: (input) => this.runExpertSafely(input),
       activeRun: (sessionId) => this.tracker.find(sessionId),
       delegationVerdict: (callerDomainId, targetDomainId) =>
-        this.delegationVerdict(callerDomainId, targetDomainId),
+        delegationVerdictFrom(
+          this.stores.handles,
+          callerDomainId,
+          targetDomainId,
+        ),
       parallelBudget: (callerSessionId) =>
         parallelBudgetOf(
           this.tracker.countForCaller(callerSessionId),
           this.tracker.find(callerSessionId)?.maxParallel ??
             this.config().defaultMaxParallel,
         ),
-      memory: () =>
-        this.memoryProviders.require(this.config().defaultMemoryProvider),
+      memory: () => this.memoryProvider(),
       logger: this.logger,
+    };
+  }
+
+  /** The memory provider the deployment selected. */
+  private memoryProvider(): DomainMemoryProvider {
+    return this.memoryProviders.require(this.config().defaultMemoryProvider);
+  }
+
+  /** What the service supplies before one expert's memory is answered. */
+  private get memoryAccess(): MemoryAccess {
+    return {
+      domain: (domainId) => this.requireDefinition(domainId),
+      provider: () => this.memoryProvider(),
+      owner: () => this.principals.unattributedOwner(),
     };
   }
 
   // ---------------------------------------------------------------- resolver
 
-  private resolverDependencies(domains: DomainRegistry): ResolverDependencies {
+  private resolverDependencies(handles: StorageHandles): ResolverDependencies {
     return {
-      domains,
+      domains: handles.domains,
       scopeProviders: this.scopeProviders,
       memoryProviders: this.memoryProviders,
       workers: this.workers,
@@ -408,98 +298,39 @@ export class DomainExpertsService extends TypertRemoteService {
     };
   }
 
+  /** What one expert run reads off the live service. */
+  private executionDependencies(
+    handles: StorageHandles,
+  ): ExecutionDependencies {
+    return {
+      resolver: this.resolverDependencies(handles),
+      subagents: subagentsFaceOf(this.ctx.subagents),
+      subagentProvider: this.config().subagentProvider,
+      tracker: this.tracker,
+      audits: this.audits,
+      logger: this.logger,
+      now: Date.now,
+      perUserMemory: this.principals.perUserMemory(),
+      principalOf: (sessionId) => this.principals.principalOf(sessionId),
+      modelPolicyOf: (sessionId) => this.principals.modelPolicyOf(sessionId),
+    };
+  }
+
   /**
-   * The persisted definition, waiting for the one-time storage open.
+   * The persisted definition of one enabled domain.
    *
-   * The open is lazy and memoized, so the first tool call after a start races
-   * it: a synchronous handle check refuses "not open yet" for exactly that
-   * call, and every later call of a failed open repeats the refusal forever
-   * without naming the cause. Awaiting the open keeps the racing call correct
-   * and lets a failed open surface its underlying `STORAGE_UNAVAILABLE`
-   * message.
+   * Waiting for the store is part of the contract, not a formality; the rule and
+   * the reason for it are `CatalogStores.addressed`.
    */
   private async requireDefinition(id: string): Promise<DomainDefinition> {
-    const handles = await this.storage();
-    return handles.domains.requireEnabled(id.trim());
-  }
-
-  private async listings(): Promise<readonly DomainListing[]> {
-    const handles = await this.storage();
-    return handles.domains
-      .list()
-      .filter((definition) => definition.enabled)
-      .map((definition) => ({
-        id: definition.id,
-        name: definition.name,
-        description: definition.description,
-      }));
-  }
-
-  private delegationVerdict(
-    callerDomainId: string,
-    targetDomainId: string,
-  ): DelegationVerdict {
-    const handles = this.storageHandles;
-    if (handles === undefined) {
-      return {
-        allowed: false,
-        mode: "disabled",
-        targets: [],
-        message:
-          "Domain storage is not open, so cross-domain policy cannot be evaluated.",
-      };
-    }
-    return delegationVerdictOf(
-      handles.domains.get(callerDomainId),
-      callerDomainId,
-      handles.domains.get(targetDomainId),
-      targetDomainId,
-    );
+    return await this.stores.definition(id);
   }
 
   private async runExpertSafely(
     input: ExpertRunInput,
   ): Promise<DomainExpertResult> {
-    const handles = await this.opened();
-    return await runExpert(
-      {
-        resolver: this.resolverDependencies(handles.domains),
-        subagents: this.subagentsFace(),
-        subagentProvider: this.config().subagentProvider,
-        tracker: this.tracker,
-        audits: this.audits,
-        logger: this.logger,
-        now: Date.now,
-      },
-      input,
-    );
-  }
-
-  private subagentsFace(): SubagentsFace {
-    const runtime = this.ctx.subagents;
-    return {
-      getProvider: (providerName: string): SubagentProvider | undefined =>
-        runtime.getProvider(providerName),
-      start: (
-        providerName: string,
-        request: SubagentStartRequest,
-      ): Promise<SubagentRun> => runtime.start(providerName, request),
-      ...(typeof runtime.startContinuable === "function"
-        ? {
-            startContinuable: runtime.startContinuable.bind(
-              runtime,
-            ) as NonNullable<SubagentsFace["startContinuable"]>,
-          }
-        : {}),
-    };
-  }
-
-  private agentsFace(): AgentsFace {
-    const registry = this.ctx.agents;
-    return {
-      get: (id: AgentId): Agent | undefined => registry.get(id),
-      list: (): readonly Agent[] => registry.list(),
-    };
+    const handles = await this.stores.opened();
+    return await runExpert(this.executionDependencies(handles), input);
   }
 
   // -------------------------------------------------------- extension seams
@@ -527,153 +358,71 @@ export class DomainExpertsService extends TypertRemoteService {
 
   /** The resolved scope of one expert, without running it. */
   async resolveDomainScope(domainId: string): Promise<ResolvedScopeResult> {
-    try {
-      const handles = await this.opened();
-      const definition = handles.domains.requireEnabled(domainId.trim());
-      const profile = await resolveExpert(
-        this.resolverDependencies(handles.domains),
-        {
-          definition,
-          workspaceDir: "",
-          callerDomain: null,
-          depth: 1,
-        },
-      );
-      return { ok: true, code: "", message: "", profile };
-    } catch (error) {
-      return {
-        ok: false,
-        code: error instanceof DomainExpertsError ? error.code : "INTERNAL",
-        message: errorMessageOf(error),
-        profile: null,
-      };
-    }
+    return guarded(async () => {
+      const handles = await this.stores.opened();
+      return accepted({
+        profile: await expertProfile(
+          this.resolverDependencies(handles),
+          await this.requireDefinition(domainId),
+          this.principals.unattributedOwner(),
+        ),
+      });
+    }, scopeRefusal);
   }
 
   // -------------------------------------------------------- remote contract
 
   @Remote("listDomains")
   async listDomains(): Promise<DomainListResult> {
-    try {
-      const handles = await this.opened();
-      const summaries: DomainSummary[] = [];
-      for (const definition of handles.domains.list()) {
-        const profile = await resolveExpert(
-          this.resolverDependencies(handles.domains),
-          {
-            definition,
-            workspaceDir: "",
-            callerDomain: null,
-            depth: 1,
-          },
-        );
-        // Report the tools the expert will actually see, not just the ones the
-        // user configured: an expert always keeps the plugin's own tools.
-        summaries.push({
-          ...summarizeDomain(definition, profile.degradations.length),
-          tools: profile.tools.filter((tool) => tool.available).length,
-        });
-      }
-      return { ok: true, code: "", message: "", domains: summaries };
-    } catch (error) {
-      return {
-        ok: false,
-        code: error instanceof DomainExpertsError ? error.code : "INTERNAL",
-        message: errorMessageOf(error),
-        domains: [],
-      };
-    }
+    return guarded(async () => {
+      const handles = await this.stores.opened();
+      return accepted({
+        domains: await domainSummaries(
+          handles.domains,
+          this.resolverDependencies(handles),
+          this.principals.unattributedOwner(),
+        ),
+      });
+    }, domainListRefusal);
   }
 
   @Remote("getDomain")
   async getDomain(domainId: string): Promise<DomainGetResult> {
-    try {
-      const handles = await this.opened();
-      return {
-        ok: true,
-        code: "",
-        message: "",
-        domain: handles.domains.get(domainId.trim()) ?? null,
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        code: error instanceof DomainExpertsError ? error.code : "INTERNAL",
-        message: errorMessageOf(error),
-        domain: null,
-      };
-    }
+    return guarded(async () => {
+      const handles = await this.stores.opened();
+      return accepted({ domain: handles.domains.get(domainId.trim()) ?? null });
+    }, domainGetRefusal);
   }
 
   @Remote("draftDomain")
   draftDomain(domainId: string): DomainWriteResult {
-    const resolved = this.config();
-    const draft = emptyDomainDraft(domainId.trim(), Date.now());
-    return {
-      ok: true,
-      code: "",
-      message: "",
-      domain: {
-        ...draft,
-        memory: { ...draft.memory, namespace: `domain/${domainId.trim()}` },
-        delegation: {
-          ...draft.delegation,
-          maxDepth: resolved.defaultMaxDepth,
-          crossDomainMode: resolved.defaultCrossDomainMode,
-        },
-      },
-    };
+    return domainDraft(domainId.trim(), this.config(), Date.now());
   }
 
   @Remote("inspectDraft")
   async inspectDraft(
     definition: DomainDefinition,
   ): Promise<DraftInspectionResult> {
-    try {
-      const handles = await this.opened();
-      const inspection = handles.domains.inspectDraft(definition);
-      return {
-        ok: true,
-        code: "",
-        message: inspection.message,
-        definition: inspection.definition,
-        issues: inspection.issues.map((issue): ValidationIssueView => ({
-          severity: issue.severity,
-          field: issue.field,
-          message: issue.message,
-        })),
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        code: error instanceof DomainExpertsError ? error.code : "INTERNAL",
-        message: errorMessageOf(error),
-        definition: null,
-        issues: [],
-      };
-    }
+    return guarded(async () => {
+      const handles = await this.stores.opened();
+      return draftInspection(handles.domains.inspectDraft(definition));
+    }, draftInspectionRefusal);
   }
 
   @Remote("createDomain")
   async createDomain(definition: DomainDefinition): Promise<DomainWriteResult> {
-    try {
-      const handles = await this.opened();
-      const created = await handles.domains.create(definition);
-      return { ok: true, code: "", message: "", domain: created };
-    } catch (error) {
-      return this.writeFailure(error);
-    }
+    return guarded(async () => {
+      const handles = await this.stores.opened();
+      return accepted({ domain: await handles.domains.create(definition) });
+    }, domainWriteRefusal);
   }
 
   @Remote("updateDomain")
   async updateDomain(definition: DomainDefinition): Promise<DomainWriteResult> {
-    try {
-      const handles = await this.opened();
-      const updated = await handles.domains.update(definition);
-      return { ok: true, code: "", message: "", domain: updated };
-    } catch (error) {
-      return this.writeFailure(error);
-    }
+    return guarded(async () => {
+      const handles = await this.stores.opened();
+      return accepted({ domain: await handles.domains.update(definition) });
+    }, domainWriteRefusal);
   }
 
   @Remote("setDomainEnabled")
@@ -681,32 +430,22 @@ export class DomainExpertsService extends TypertRemoteService {
     domainId: string,
     enabled: boolean,
   ): Promise<DomainWriteResult> {
-    try {
-      const handles = await this.opened();
-      const updated = await handles.domains.setEnabled(
-        domainId.trim(),
-        enabled,
-      );
-      return { ok: true, code: "", message: "", domain: updated };
-    } catch (error) {
-      return this.writeFailure(error);
-    }
+    return guarded(async () => {
+      const handles = await this.stores.opened();
+      return accepted({
+        domain: await handles.domains.setEnabled(domainId.trim(), enabled),
+      });
+    }, domainWriteRefusal);
   }
 
   @Remote("deleteDomain")
   async deleteDomain(domainId: string): Promise<DomainDeleteResult> {
-    try {
-      const handles = await this.opened();
-      const deleted = await handles.domains.remove(domainId.trim());
-      return { ok: true, code: "", message: "", deleted };
-    } catch (error) {
-      return {
-        ok: false,
-        code: error instanceof DomainExpertsError ? error.code : "INTERNAL",
-        message: errorMessageOf(error),
-        deleted: false,
-      };
-    }
+    return guarded(async () => {
+      const handles = await this.stores.opened();
+      return accepted({
+        deleted: await handles.domains.remove(domainId.trim()),
+      });
+    }, domainDeleteRefusal);
   }
 
   @Remote("resolveScope")
@@ -716,27 +455,17 @@ export class DomainExpertsService extends TypertRemoteService {
 
   @Remote("catalog")
   catalog(): CatalogResult {
-    const handles = this.storageHandles;
-    return {
-      ok: true,
-      code: "",
-      message: "",
+    return accepted({
       scopeProviders: this.scopeProviders.info(),
       memoryProviders: this.memoryProviders.info(),
       workers: this.workers.info(),
-      tools: [...this.tools.keys()].map((toolName) => ({
-        name: toolName,
-        provider: `@yadsh/dsh-domain-experts`,
-      })),
-      memoryNamespaces: handles === undefined ? [] : this.builtinNamespaces(),
-    };
-  }
-
-  private builtinNamespaces(): readonly string[] {
-    const provider = this.memoryProviders.get(
-      this.config().defaultMemoryProvider,
-    );
-    return provider?.listNamespaces() ?? [];
+      tools: catalogTools(this.tools.keys()),
+      memoryNamespaces: memoryNamespacesOf(
+        this.stores.handles,
+        this.memoryProviders,
+        this.config().defaultMemoryProvider,
+      ),
+    });
   }
 
   @Remote("inspectMemory")
@@ -745,54 +474,7 @@ export class DomainExpertsService extends TypertRemoteService {
     namespace: string,
     limit: number,
   ): Promise<MemoryInspectResult> {
-    try {
-      const handles = await this.opened();
-      const definition = handles.domains.requireEnabled(domainId.trim());
-      const entries = memoryEntries(definition);
-      const requested = namespace.trim();
-      const target = entries.filter(
-        (entry) => requested === "" || entry.namespace === requested,
-      );
-      if (requested !== "" && target.length === 0) {
-        throw new DomainExpertsError(
-          "MEMORY_SCOPE_DENIED",
-          `Namespace "${requested}" does not belong to domain "${definition.id}".`,
-          { refs: [requested] },
-        );
-      }
-      const provider = this.memoryProviders.require(
-        this.config().defaultMemoryProvider,
-      );
-      const cap = limit > 0 ? Math.min(Math.trunc(limit), 500) : 200;
-      const records: MemoryInspectResult["records"][number][] = [];
-      const namespaces: MemoryInspectResult["namespaces"][number][] = [];
-      for (const entry of target) {
-        const found = await provider.inspect(entry.namespace);
-        namespaces.push({
-          namespace: entry.namespace,
-          access: entry.access,
-          records: found.length,
-        });
-        records.push(...found);
-      }
-      return {
-        ok: true,
-        code: "",
-        message: "",
-        namespaces,
-        records: records
-          .sort((left, right) => right.updatedAt - left.updatedAt)
-          .slice(0, cap),
-      };
-    } catch (error) {
-      return {
-        ok: false,
-        code: error instanceof DomainExpertsError ? error.code : "INTERNAL",
-        message: errorMessageOf(error),
-        namespaces: [],
-        records: [],
-      };
-    }
+    return inspectDomainMemory(this.memoryAccess, domainId, namespace, limit);
   }
 
   @Remote("clearMemory")
@@ -800,41 +482,12 @@ export class DomainExpertsService extends TypertRemoteService {
     domainId: string,
     namespace: string,
   ): Promise<MemoryClearResult> {
-    try {
-      const handles = await this.opened();
-      const definition = handles.domains.requireEnabled(domainId.trim());
-      const writable = memoryEntries(definition).find(
-        (entry) => entry.access === "read-write",
-      );
-      const requested =
-        namespace.trim() === ""
-          ? (writable?.namespace ?? "")
-          : namespace.trim();
-      if (writable === undefined || requested !== writable.namespace) {
-        throw new DomainExpertsError(
-          "MEMORY_SCOPE_DENIED",
-          `Only the private namespace of domain "${definition.id}" can be cleared.`,
-          { refs: [requested] },
-        );
-      }
-      const provider = this.memoryProviders.require(
-        this.config().defaultMemoryProvider,
-      );
-      const cleared = await provider.clear(requested);
-      this.logger.info("domain-experts/memory-cleared", {
-        domain: definition.id,
-        namespace: requested,
-        cleared,
-      });
-      return { ok: true, code: "", message: "", cleared };
-    } catch (error) {
-      return {
-        ok: false,
-        code: error instanceof DomainExpertsError ? error.code : "INTERNAL",
-        message: errorMessageOf(error),
-        cleared: 0,
-      };
-    }
+    return clearDomainMemory(
+      this.memoryAccess,
+      domainId,
+      namespace,
+      this.logger,
+    );
   }
 
   @Remote("testExpert")
@@ -843,105 +496,40 @@ export class DomainExpertsService extends TypertRemoteService {
     task: string,
     parentSessionId: string,
   ): Promise<ExpertRunResult> {
-    try {
-      const handles = await this.opened();
-      const definition = handles.domains.requireEnabled(domainId.trim());
-      const parent = this.resolveTestParent(parentSessionId);
-      if (parent === undefined) {
-        throw new DomainExpertsError(
-          "TASK_REJECTED",
-          "Running a test needs a live session to act as the caller's parent. Open a chat, or use the domain_expert tool from a conversation.",
-        );
-      }
-      const result = await runExpert(
-        {
-          resolver: this.resolverDependencies(handles.domains),
-          subagents: this.subagentsFace(),
-          subagentProvider: this.config().subagentProvider,
-          tracker: this.tracker,
-          audits: this.audits,
-          logger: this.logger,
-          now: Date.now,
-        },
-        {
-          parent,
-          definition,
-          request: {
-            task: task.trim(),
-            context: "",
-            output: "",
-            mode: "investigate",
-            background: false,
-          },
-          signal: new AbortController().signal,
-          callerDomain: null,
-        },
+    return guarded(async () => {
+      const { handles, definition } = await this.stores.addressed(domainId);
+      const parent = testParentOf(
+        agentsFaceOf(this.ctx.agents),
+        parentSessionId,
       );
-      return { ok: true, code: "", message: "", result };
-    } catch (error) {
-      return {
-        ok: false,
-        code: error instanceof DomainExpertsError ? error.code : "INTERNAL",
-        message: errorMessageOf(error),
-        result: null,
-      };
-    }
-  }
-
-  /**
-   * Pick the parent for a test run: the addressed session when it has a live
-   * agent, otherwise the most recent top-level live agent. A test run is a
-   * real subagent, so it appears in the session tree like any other.
-   */
-  private resolveTestParent(parentSessionId: string): Agent | undefined {
-    const agents = this.agentsFace();
-    const requested = parentSessionId.trim();
-    if (requested !== "") {
-      const found = agents.get(requested as AgentId);
-      if (found !== undefined) return found;
-    }
-    let newest: Agent | undefined;
-    for (const agent of agents.list()) {
-      if (agent.session.header.origin === "subagent") continue;
-      if (
-        newest === undefined ||
-        agent.session.header.createdAt > newest.session.header.createdAt
-      ) {
-        newest = agent;
+      if (parent === undefined) {
+        throw missingTestParent();
       }
-    }
-    return newest;
+      return accepted({
+        result: await runExpert(
+          this.executionDependencies(handles),
+          testRunInput(parent, definition, task),
+        ),
+      });
+    }, expertRunRefusal);
   }
 
   @Remote("recentAudits")
   recentAudits(limit: number): AuditListResult {
-    return {
-      ok: true,
-      code: "",
-      message: "",
-      entries: this.audits.recent(limit > 0 ? limit : 50),
-    };
-  }
-
-  private writeFailure(error: unknown): DomainWriteResult {
-    return {
-      ok: false,
-      code: error instanceof DomainExpertsError ? error.code : "INTERNAL",
-      message: errorMessageOf(error),
-      domain: null,
-    };
+    return accepted({ entries: this.audits.recent(limit > 0 ? limit : 50) });
   }
 }
 
 export {
   ConfigSchema,
-  SETTINGS_NAMESPACE,
   resolveConfig,
+  snapshotConfig,
   DEFAULT_MEMORY_PROVIDER,
   DEFAULT_SUBAGENT_PROVIDER,
 } from "./config.js";
 export type {
   Config as DomainExpertsConfig,
+  LiveConfig,
   ResolvedConfig,
 } from "./config.js";
 export { DomainExpertsError, isDomainExpertsError } from "./host/errors.js";
@@ -952,9 +540,12 @@ export { DomainRegistry } from "./host/registry.js";
 export { composePersona, BASE_POLICY, ANSWER_FORMAT } from "./host/persona.js";
 export {
   memoryEntries,
+  memoryOwnerOf,
   resolveExpert,
+  DEPLOYMENT_MEMORY_OWNER,
   EXPERT_INFRASTRUCTURE_TOOLS,
   TOOL_ALIASES,
+  type MemoryOwner,
   type ResolverDependencies,
   type ResolveInput,
 } from "./host/resolver.js";

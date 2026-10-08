@@ -63,18 +63,37 @@ await runVerifyPackage({
     range: true,
     testedReleases: true,
     hostFeatures: ["tools/register", "subagents.start", "storageDomain.open"],
-    clientFeatures: ["settings.plugins.tab"],
+    clientFeatures: ["plugins.bundle.config"],
   },
   clientBundle: {
     moduleLoaderId: true,
-    includes: ["settings.plugins.tab", "domain-experts", "Domain Experts"],
+    includes: [
+      // The bundle-level seat of the Plugins page, keyed by the package name: this
+      // page edits domains through its Remote services, not this bundle's settings
+      // namespace, so it is the bundle's page rather than a row's configuration card.
+      "plugins.bundle.config",
+      "@yadsh/dsh-domain-experts",
+    ],
+    matches: [
+      // The seat is named at the registration, the way the card contract reads it.
+      /name:\s*"plugins\.bundle\.config"/u,
+    ],
     notMatches: [
+      // The tab of the Plugins settings section is the surface this page left: a
+      // second render site would show it twice.
+      /"settings\.plugins\.tab"/u,
       // The negative assertions are the deliberate half: this plugin ships no
       // card shell, so the canonical card CSS must not appear in the bundle.
       /dsh-plugin-card/u,
       /@yadsh\/dsh-plugin-log/u,
       /from\s+["']node:/u,
     ],
+    cardContract: {
+      // The Plugins panel draws this page's frame, so the shared gate holds the
+      // bundle to the host-chrome half; what it does not ask of a bundle seat is the
+      // focus ring, because the row's own form is not this page's to dress.
+      legacyPatterns: [/\.dx-title\{/u, /\.dx-subtitle\{/u],
+    },
   },
   extra: async ({ manifest, readFile }) => {
     // Manifest identity (tarball gate 2 checks the packed copy of the same fields).

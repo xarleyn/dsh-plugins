@@ -1,5 +1,7 @@
 import z from "@deepseek-ai/schemastery";
 import { scopedConfigError } from "../../errors.js";
+import { findEndpoint, resolveEndpointList } from "../kernel/address.js";
+import { withinCap } from "../kernel/read-policy.js";
 
 /**
  * Which Jira this site is: Atlassian Cloud, or a self-hosted Server / Data
@@ -119,9 +121,7 @@ export const JIRA_DEFAULTS: JiraFlags = Object.freeze({
   retries: 2,
 });
 
-const SITE_ID = /^[a-z0-9][a-z0-9-]{0,31}$/u;
 const ALIAS = /^[a-z][a-z0-9-]{0,31}$/u;
-const MAX_SITES = 16;
 const MAX_ALIASES = 32;
 
 const configError = scopedConfigError("jira integration config");
@@ -154,76 +154,23 @@ function normalizeDeployment(input: unknown, index: number): JiraDeployment {
 }
 
 /**
- * Canonicalize one configured site. Everything here is operator input, so a typo
- * must fail loudly at load: a silently dropped site would leave users with a
- * provider they cannot connect to and no explanation.
+ * The site list as the operator wrote it, validated and canonicalized by the
+ * shared address policy — id grammar, HTTPS rule, credential-free absolute
+ * URL, trailing-slash folding. The one member a Jira site carries beyond the
+ * shared shape is the product it answers as.
  */
-function normalizeSite(
-  input: unknown,
-  index: number,
-  allowInsecureHttp: boolean,
-  seen: Set<string>,
-): JiraSite {
-  if (typeof input !== "object" || input === null || Array.isArray(input)) {
-    throw configError(`sites[${index}] must be a mapping`);
-  }
-  const record = input as Record<string, unknown>;
-  const id = typeof record["id"] === "string" ? record["id"].trim() : "";
-  if (!SITE_ID.test(id)) {
-    throw configError(
-      `sites[${index}].id must be lowercase latin, digits or dashes`,
-    );
-  }
-  if (seen.has(id)) throw configError(`sites[${index}].id is a duplicate`);
-  seen.add(id);
-  const raw = typeof record["baseUrl"] === "string" ? record["baseUrl"] : "";
-  let url: URL;
-  try {
-    url = new URL(raw.trim());
-  } catch {
-    throw configError(`sites[${index}].baseUrl must be an absolute URL`);
-  }
-  if (url.protocol !== "https:" && url.protocol !== "http:") {
-    throw configError(`sites[${index}].baseUrl must use HTTP or HTTPS`);
-  }
-  if (url.protocol === "http:" && !allowInsecureHttp) {
-    throw configError(
-      `sites[${index}].baseUrl needs HTTPS; set allowInsecureHttp for a development site`,
-    );
-  }
-  if (url.username !== "" || url.password !== "" || url.search !== "") {
-    throw configError(
-      `sites[${index}].baseUrl must carry no credentials or query`,
-    );
-  }
-  // A trailing slash would double up when the API root is appended; the WHATWG
-  // URL parser has already folded away any `..` segments.
-  const path = url.pathname.replace(/\/+$/u, "");
-  const label =
-    typeof record["label"] === "string" ? record["label"].trim() : "";
-  return Object.freeze({
-    id,
-    label: label === "" ? url.host : label,
-    baseUrl: `${url.origin}${path}`,
-    deploymentType: normalizeDeployment(record["deploymentType"], index),
-  });
-}
-
 function normalizeSites(
   input: unknown,
   allowInsecureHttp: boolean,
 ): readonly JiraSite[] {
-  if (input === undefined || input === null) return JIRA_DEFAULTS.sites;
-  if (!Array.isArray(input)) throw configError("sites must be a list");
-  if (input.length > MAX_SITES) {
-    throw configError(`sites accepts at most ${MAX_SITES} entries`);
-  }
-  const seen = new Set<string>();
-  return Object.freeze(
-    input.map((entry, index) =>
-      normalizeSite(entry, index, allowInsecureHttp, seen),
-    ),
-  );
+  return resolveEndpointList(input, allowInsecureHttp, {
+    error: configError,
+    field: "sites",
+    noun: "site",
+    extra: (record, index) => ({
+      deploymentType: normalizeDeployment(record["deploymentType"], index),
+    }),
+  });
 }
 
 /**
@@ -319,16 +266,19 @@ export function resolveJiraConfig(input: JiraConfigInput = {}): JiraFlags {
   // Jira Cloud answers at most 100 issues per page once fields are requested, so
   // a deployment cannot raise the ceiling past that: the value is folded, not
   // rejected, because an operator asking for more only wants the maximum.
-  const maxSearchLimit = Math.min(
-    input.maxSearchLimit ?? JIRA_DEFAULTS.maxSearchLimit,
+  const maxSearchLimit = withinCap(
+    input.maxSearchLimit,
+    JIRA_DEFAULTS.maxSearchLimit,
     SEARCH_PAGE_CAP,
   );
-  const defaultSearchLimit = Math.min(
-    input.defaultSearchLimit ?? JIRA_DEFAULTS.defaultSearchLimit,
+  const defaultSearchLimit = withinCap(
+    input.defaultSearchLimit,
+    JIRA_DEFAULTS.defaultSearchLimit,
     maxSearchLimit,
   );
-  const maxCommentLimit = Math.min(
-    input.maxCommentLimit ?? JIRA_DEFAULTS.maxCommentLimit,
+  const maxCommentLimit = withinCap(
+    input.maxCommentLimit,
+    JIRA_DEFAULTS.maxCommentLimit,
     SEARCH_PAGE_CAP,
   );
   return Object.freeze({
@@ -356,5 +306,5 @@ export function jiraSite(
   flags: JiraFlags,
   siteId: string,
 ): JiraSite | undefined {
-  return flags.sites.find((item) => item.id === siteId);
+  return findEndpoint(flags.sites, siteId);
 }

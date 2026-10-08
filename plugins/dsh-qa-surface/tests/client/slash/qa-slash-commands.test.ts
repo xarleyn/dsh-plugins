@@ -1,11 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../../src/resolve-config.js";
 import { QaSessionController } from "../../../src/client/QaSessionController.js";
+import type { QaFileUpload } from "../../../src/client/types.js";
 import type {
   QaSlashExecution,
   QaSlashSubmitAttachment,
 } from "../../../src/types.js";
-import { harness } from "../../helpers/session-fakes.js";
+import {
+  deferredUpload,
+  fileDraft,
+  harness,
+  landDurableUserRow,
+} from "../../helpers/session-fakes.js";
 import { slashEntry } from "../../helpers/slash.js";
 
 /**
@@ -41,9 +47,12 @@ function world(
     ) => QaSlashExecution;
     readonly catalogOk?: boolean;
     readonly deniedSkills?: readonly string[];
+    /** The chats this browser indexes; the first one is the open chat. */
+    readonly chats?: readonly string[];
+    readonly fileUpload?: () => QaFileUpload | undefined;
   } = {},
 ) {
-  const base = harness(["saved"]);
+  const base = harness([...(options.chats ?? ["saved"])]);
   base.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
   const execute = vi.fn(
     async (
@@ -77,6 +86,9 @@ function world(
   const controller = new QaSessionController({
     ...base,
     config: options.config ?? ENABLED,
+    ...(options.fileUpload === undefined
+      ? {}
+      : { fileUpload: options.fileUpload }),
     slashApi: {
       catalog: catalog as never,
       execute: execute as never,
@@ -92,15 +104,16 @@ async function ready(options: Parameters<typeof world>[0] = {}) {
 }
 
 /**
- * Retire the optimistic submission of the previous send. The composer stays
- * busy until the Host's own user row lands, and the harness only produces one
- * when the turn runs — which is exactly what this reproduces.
+ * Retire the optimistic submission of the previous send the way the Host does:
+ * one turn runs and ends, and then the Chat slice lands the durable user row
+ * that replaces the browser's copy of the question.
  */
-function settle(built: ReturnType<typeof world>): void {
+function settle(built: ReturnType<typeof world>, text = "hello"): void {
   const face = built.faces.get("saved");
   if (face === undefined) return;
   face.source.set({ ...face.source.getSnapshot(), running: true });
   face.source.set({ ...face.source.getSnapshot(), running: false });
+  landDurableUserRow(built.bindings.get("saved"), text);
 }
 
 describe("QA session controller slash routing", () => {
@@ -311,6 +324,34 @@ describe("QA session controller slash routing", () => {
       prompts,
     );
     expect(built.execute).not.toHaveBeenCalled();
+    built.controller.dispose();
+  });
+
+  it("never runs a command whose attachment finished staging after the chat was left", async () => {
+    // Issue #339: the upload is a round-trip, and the operator may switch
+    // chats during it. A human command mutates the chat on the Host's side, so
+    // the binding is re-checked after the staging and before the execute.
+    const upload = deferredUpload();
+    const built = await ready({
+      chats: ["saved", "other"],
+      entries: [{ ...COMMAND, acceptsAttachments: true }, SKILL],
+      fileUpload: () => upload.service,
+    });
+    await vi.waitFor(() => {
+      expect(built.controller.getSnapshot().slash.state).toBe("ready");
+    });
+
+    const running = built.controller.send("/compact", [fileDraft()]);
+    await vi.waitFor(() =>
+      expect(upload.service.upload).toHaveBeenCalledOnce(),
+    );
+
+    await built.controller.switchTo("other");
+    upload.settle();
+
+    expect(await running).toBe(false);
+    expect(built.execute).not.toHaveBeenCalled();
+    expect(built.faces.get("other")?.prompt).not.toHaveBeenCalled();
     built.controller.dispose();
   });
 });

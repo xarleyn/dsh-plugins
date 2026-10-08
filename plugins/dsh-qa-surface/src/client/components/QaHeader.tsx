@@ -1,8 +1,8 @@
 /**
  * The surface's header chrome: brand row, the derived conversation title, the
- * agents/sources/files controls and the reset action. Plain (non-memoized)
- * rendering — the badge counts move with the session state anyway, so
- * reference guards would never pay off here.
+ * phone opener of the chat history, the agents/sources/files controls and the
+ * reset action. Plain (non-memoized) rendering — the badge counts move with the
+ * session state anyway, so reference guards would never pay off here.
  */
 import type { ReactNode } from "react";
 
@@ -30,10 +30,18 @@ export function QaSubagentBanner({
   readonly onClose: () => void;
 }) {
   return (
-    <div className="dsh-qa-agentview" role="status">
+    <div
+      className="dsh-qa-agentview"
+      data-testid="qa-surface-subagent-banner"
+      role="status"
+    >
       <RobotBadge />
       <span>Просмотр субагента</span>
-      <button type="button" onClick={onClose}>
+      <button
+        type="button"
+        data-testid="qa-surface-subagent-banner-back"
+        onClick={onClose}
+      >
         ← В чат
       </button>
     </div>
@@ -48,6 +56,8 @@ export interface QaHeaderProps {
   readonly viewingSubagent: boolean;
   readonly onCloseSubagent: () => void;
   readonly roleSelector?: ReactNode;
+  /** The palette choice, next to the role it belongs to on screen. */
+  readonly themeSwitcher?: ReactNode;
   readonly administration?: { readonly onOpen: () => void };
   readonly agentCount: number;
   readonly agentsOpen: boolean;
@@ -55,7 +65,9 @@ export interface QaHeaderProps {
   readonly onToggleAgents: () => void;
   /** Whether the deployment shows the sources control in the header at all. */
   readonly sourcesVisible: boolean;
+  /** Sources of the chat so far; 0 prints no badge but never closes the panel. */
   readonly sourcesCount: number;
+  /** Whether collection has settled: a running turn's 0 is not yet a none. */
   readonly sourcesComplete: boolean;
   readonly sourcesOpen: boolean;
   readonly onOpenSources: () => void;
@@ -79,10 +91,29 @@ export interface QaHeaderProps {
     readonly label: string;
     readonly onOpen: () => void;
   };
+  /**
+   * The phone layout's way into the chat history. Below 600px the sheet switches
+   * the sidebar subtree off, and the only control that opened it stood inside
+   * that subtree — so the opener has to live here, outside it, and it is offered
+   * only where a sidebar exists to open (`config.ui.showSessionList`). The sheet
+   * shows the button at the phone widths alone: on a wide layout the sidebar is
+   * already on screen and carries its own collapse control.
+   */
+  readonly history?: {
+    readonly open: boolean;
+    readonly onToggle: () => void;
+  };
   readonly panelLauncher?: ReactNode;
   readonly showReset: boolean;
   readonly resetDisabled: boolean;
   readonly onReset: () => void;
+  /**
+   * Offered while a panel is in front of the conversation: the «Чат» marker
+   * then becomes the control that puts the conversation back, which is what its
+   * selected look already promises. Omitted while the chat is all there is —
+   * a control that returns the reader to where they stand is a dead button.
+   */
+  readonly onBackToChat?: () => void;
 }
 
 export function QaHeader({
@@ -91,6 +122,7 @@ export function QaHeader({
   viewingSubagent,
   onCloseSubagent,
   roleSelector,
+  themeSwitcher,
   administration,
   agentCount,
   agentsOpen,
@@ -105,26 +137,62 @@ export function QaHeader({
   filesOpen,
   onOpenFiles,
   settings,
+  history,
   panelLauncher,
   showReset,
   resetDisabled,
   onReset,
+  onBackToChat,
 }: QaHeaderProps) {
   return (
-    <header className="dsh-qa-header">
-      <div className="dsh-qa-header__inner">
-        <div className="dsh-qa-header__title-row">
-          {logoUrl === null ? null : (
-            <img className="dsh-qa-header__logo" src={logoUrl} alt="" />
+    <header className="dsh-qa-header" data-testid="qa-surface-header">
+      <div
+        className="dsh-qa-header__inner"
+        data-testid="qa-surface-header-inner"
+      >
+        <div
+          className="dsh-qa-header__title-row"
+          data-testid="qa-surface-header-title-row"
+        >
+          {history === undefined ? null : (
+            <button
+              type="button"
+              className="dsh-qa-header__history"
+              data-testid="qa-surface-header-history"
+              aria-label="История чатов"
+              title="История чатов"
+              aria-expanded={history.open}
+              onClick={history.onToggle}
+            >
+              <svg viewBox="0 0 16 16" aria-hidden="true">
+                <path d="M5.75 4h8M5.75 8h8M5.75 12h8M2.75 4h.01M2.75 8h.01M2.75 12h.01" />
+              </svg>
+            </button>
           )}
-          {title === null ? null : <h1 title={title}>{title}</h1>}
+          {logoUrl === null ? null : (
+            <img
+              className="dsh-qa-header__logo"
+              data-testid="qa-surface-header-logo"
+              src={logoUrl}
+              alt=""
+            />
+          )}
+          {title === null ? null : (
+            <h1 title={title} data-testid="qa-surface-header-title">
+              {title}
+            </h1>
+          )}
           {viewingSubagent ? (
-            <span className="dsh-qa-header__viewing">
+            <span
+              className="dsh-qa-header__viewing"
+              data-testid="qa-surface-header-viewing"
+            >
               <RobotBadge />
               Просмотр субагента
               <button
                 type="button"
                 className="dsh-qa-header__back"
+                data-testid="qa-surface-header-back"
                 onClick={onCloseSubagent}
               >
                 ← В чат
@@ -132,12 +200,34 @@ export function QaHeader({
             </span>
           ) : null}
           {roleSelector}
+          {themeSwitcher}
+          {/*
+            An empty list is a state the control has to name. A `disabled`
+            button leaves the tab order and answers neither hover nor key, so
+            the reader meets a grey rectangle with nothing to ask it: these stay
+            focusable under `aria-disabled`, and the unavailable case moves the
+            reason into the accessible name.
+          */}
           <button
             type="button"
             className="dsh-qa-header__agents"
-            disabled={agentCount === 0}
+            data-testid="qa-surface-header-agents"
+            aria-disabled={agentCount === 0 || undefined}
             aria-expanded={agentsOpen}
-            onClick={onToggleAgents}
+            {...(agentCount === 0
+              ? {
+                  "aria-label": "Агенты: субагентов в этом чате пока нет",
+                }
+              : {})}
+            title={
+              agentCount === 0
+                ? "Субагентов в этом чате пока нет"
+                : "Показать субагентов этого чата"
+            }
+            onClick={() => {
+              if (agentCount === 0) return;
+              onToggleAgents();
+            }}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <rect x="3" y="5.5" width="10" height="7" rx="1.75" />
@@ -147,11 +237,26 @@ export function QaHeader({
             {agentCount === 0 ? null : ` (${agentCount})`}
           </button>
           {sourcesVisible ? (
+            // An empty list is a fact the panel can explain, not a reason to
+            // withhold it: disabling this control on a turn that collected
+            // nothing made the only surface that says why unreachable, and left
+            // a dead button whose silence the reader has to guess at.
             <button
               type="button"
               className="dsh-qa-header__sources"
-              disabled={sourcesCount === 0 && sourcesComplete}
+              data-testid="qa-surface-header-sources"
               aria-expanded={sourcesOpen}
+              {...(sourcesCount === 0 && sourcesComplete
+                ? {
+                    "aria-label":
+                      "Источники: этот ответ обошёлся без источников",
+                  }
+                : {})}
+              title={
+                sourcesCount === 0 && sourcesComplete
+                  ? "Этот ответ обошёлся без источников"
+                  : "Показать источники этого ответа"
+              }
               onClick={onOpenSources}
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -167,9 +272,24 @@ export function QaHeader({
           <button
             type="button"
             className="dsh-qa-header__files"
-            disabled={!filesEnabled}
+            data-testid="qa-surface-header-files"
+            aria-disabled={!filesEnabled || undefined}
             aria-expanded={filesOpen}
-            onClick={onOpenFiles}
+            {...(!filesEnabled
+              ? {
+                  "aria-label":
+                    "Файлы: в этом чате нет ни вложений, ни читаемого рабочего каталога",
+                }
+              : {})}
+            title={
+              !filesEnabled
+                ? "В этом чате нет ни вложений, ни читаемого рабочего каталога"
+                : "Показать файлы этого чата"
+            }
+            onClick={() => {
+              if (!filesEnabled) return;
+              onOpenFiles();
+            }}
           >
             <svg viewBox="0 0 16 16" aria-hidden="true">
               <path d="M9.25 2.5H4.75A1.25 1.25 0 0 0 3.5 3.75v8.5a1.25 1.25 0 0 0 1.25 1.25h6.5a1.25 1.25 0 0 0 1.25-1.25V5.75L9.25 2.5Z" />
@@ -184,11 +304,15 @@ export function QaHeader({
             gaps, which parked «Файлы» in the middle of the row, away from the
             tabs it belongs to.
           */}
-          <div className="dsh-qa-header__actions">
+          <div
+            className="dsh-qa-header__actions"
+            data-testid="qa-surface-header-actions"
+          >
             {showReset ? (
               <button
                 type="button"
                 className="dsh-qa-header__reset"
+                data-testid="qa-surface-header-reset"
                 disabled={resetDisabled}
                 onClick={onReset}
               >
@@ -199,6 +323,7 @@ export function QaHeader({
               <button
                 type="button"
                 className="dsh-qa-header__admin"
+                data-testid="qa-surface-header-admin"
                 onClick={administration.onOpen}
               >
                 Администрирование
@@ -209,6 +334,7 @@ export function QaHeader({
               <button
                 type="button"
                 className="dsh-qa-header__settings"
+                data-testid="qa-surface-header-settings"
                 title={settings.label}
                 onClick={settings.onOpen}
               >
@@ -221,10 +347,34 @@ export function QaHeader({
             )}
           </div>
         </div>
-        {/* Not a tablist yet: the tab bar is a single current page marker, and
-        an aria-label without a widget role would never be announced. */}
-        <div className="dsh-qa-header__tabs">
-          <span aria-current="page">Чат</span>
+        {/*
+          Not a tablist yet: the tab bar is a single current page marker, and
+          an aria-label without a widget role would never be announced. With a
+          panel in front of the conversation the marker is a promise the reader
+          can cash in, so it becomes the button that returns to the chat; while
+          nothing is open it stays a plain label, because a button that leaves
+          the reader exactly where they are is the dead control of the row
+          above.
+        */}
+        <div
+          className="dsh-qa-header__tabs"
+          data-testid="qa-surface-header-tabs"
+        >
+          {onBackToChat === undefined ? (
+            <span aria-current="page">Чат</span>
+          ) : (
+            <button
+              type="button"
+              className="dsh-qa-header__tab"
+              data-testid="qa-surface-header-chat-tab"
+              aria-current="page"
+              aria-label="Вернуться к чату"
+              title="Закрыть панель и вернуться к чату"
+              onClick={onBackToChat}
+            >
+              Чат
+            </button>
+          )}
         </div>
       </div>
     </header>

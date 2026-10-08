@@ -1,7 +1,14 @@
 import { IntegrationError } from "../../errors.js";
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
 import { hostMatchesSuffix } from "../shared/host.js";
-import { readBoundedJson } from "../shared/http.js";
+import {
+  answerDiagnostics,
+  credentialRedirectFailure,
+  isRedirectStatus,
+  readBoundedJson,
+  withTransportBudget,
+  withTransportDiagnostics,
+} from "../kernel/read-policy.js";
 
 export interface BitrixCredential {
   readonly webhookBaseUrl: string;
@@ -121,13 +128,20 @@ export class BitrixTransport {
     params: Readonly<Record<string, unknown>> | readonly unknown[],
   ): Promise<BitrixResponse> {
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), this.config.timeoutMs);
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, this.config.timeoutMs);
     try {
       const response = await this.fetcher(
         `${credential.webhookBaseUrl}/${method}.json`,
         {
           method: "POST",
-          redirect: "error",
+          // Never followed: the webhook's own secret must not travel to another
+          // origin. `manual` so that the redirect itself reaches the fold — the
+          // portal answers a dead webhook with one.
+          redirect: "manual",
           headers: {
             "content-type": "application/json",
             accept: "application/json",
@@ -140,18 +154,26 @@ export class BitrixTransport {
       // never read at all, exactly as in the shared transport loop.
       if (!response.ok) {
         const denied = response.status === 401 || response.status === 403;
-        throw new IntegrationError(
-          denied ? "ProviderPermissionDenied" : "ProviderUnavailable",
-          denied ? "Provider denied this operation" : "Provider request failed",
+        throw withTransportDiagnostics(
+          isRedirectStatus(response.status)
+            ? credentialRedirectFailure("Bitrix24")
+            : new IntegrationError(
+                denied ? "ProviderPermissionDenied" : "ProviderUnavailable",
+                denied
+                  ? "Provider denied this operation"
+                  : "Provider request failed",
+              ),
+          answerDiagnostics(response),
         );
       }
       // One bounded read for every provider: the deployment's byte cap decides
-      // how much is read, and a capped body is `ResultTooLarge`, not a
-      // transport failure.
+      // how much is read, the deadline above decides for how long, and a capped
+      // body is `ResultTooLarge` rather than a transport failure.
       const envelope = await readBoundedJson<BitrixEnvelope | null>(
         response,
         this.config.maxResponseBytes,
         "Provider",
+        controller.signal,
       );
       if (envelope?.error !== undefined) {
         throw new IntegrationError(
@@ -165,12 +187,32 @@ export class BitrixTransport {
         next: count(envelope?.next),
       };
     } catch (error) {
-      if (error instanceof IntegrationError) throw error;
-      throw new IntegrationError(
-        "ProviderUnavailable",
-        "Provider request failed",
-      );
+      // One attempt is this provider's whole budget, so the loop's arithmetic is
+      // named here rather than left out of it: a refusal the operator reads has
+      // to say what it cost whether the shared loop made the attempt or this one
+      // did.
+      const spent = {
+        timeoutMs: this.config.timeoutMs,
+        retries: 0,
+        attempts: 1,
+      };
+      // A refusal the read already named — a denied operation, a body over the
+      // cap, a body that stopped arriving — stays what it was named as.
+      if (error instanceof IntegrationError) {
+        throw withTransportBudget(error, spent);
+      }
+      throw timedOut
+        ? withTransportBudget(
+            new IntegrationError("UpstreamTimeout", "Provider did not answer"),
+            spent,
+          )
+        : new IntegrationError(
+            "ProviderUnavailable",
+            "Provider request failed",
+          );
     } finally {
+      // The budget covers the whole exchange, so the timer outlives the body
+      // read rather than ending where the headers ended.
       clearTimeout(timer);
     }
   }

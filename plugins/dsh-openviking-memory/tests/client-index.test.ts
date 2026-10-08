@@ -1,7 +1,7 @@
 /**
- * Client activation: the entry binds the plugin's settings namespace, registers
- * the native card, and reaches the account-scoped page through the Remote
- * gateway.
+ * Client activation: the entry resolves its own configuration form, registers
+ * the plugin's page in the configuration seat of its own row on the Plugins page,
+ * and reaches the account-scoped page through the Remote gateway.
  *
  * The Remote half of this file runs against a **real Cordis application**, and
  * that is the point of it. On a hand-written context `ctx.remote` is simply
@@ -38,6 +38,7 @@ vi.mock("../src/client/qa-settings.js", async (importOriginal) => {
 interface CardRegistration {
   readonly name: string;
   readonly key: string;
+  readonly inject?: () => unknown;
 }
 
 interface SectionRegistration {
@@ -128,6 +129,8 @@ class FakeGateway extends Service {
  * with the two services the face declares, and a gateway the test can mount
  * before or after the entry.
  */
+const FORM = { namespace: "dsh-openviking-memory" };
+
 function createClientApp(
   options: { readonly mountRelease?: Promise<void> } = {},
 ) {
@@ -137,7 +140,7 @@ function createClientApp(
   const styles = stubDocument();
   let gateway: FakeGateway | undefined;
 
-  root.provide("settingsScope", { bind: () => ({}) });
+  root.provide("configForms", { get: () => FORM });
   root.provide("qaUserSettingsSections", {
     register: (section: SectionRegistration) => {
       sections.push(section);
@@ -190,13 +193,13 @@ describe("client activation", () => {
     sectionFaces.length = 0;
   });
 
-  it("binds the namespace and registers the native card", () => {
-    const scope = {};
+  it("resolves the namespace's form and registers the card in its row's seat", () => {
     let cardFace: (() => unknown) | undefined;
 
     const disposeSlot = vi.fn();
+    const get = vi.fn(() => FORM);
     const ctx = {
-      settingsScope: { bind: vi.fn(() => scope) },
+      configForms: { get },
       // A page with no gateway at all: the entry still has to register the
       // card, so the waiting fiber it opens is a no-op to dispose.
       inject: vi.fn(() => ({ dispose: vi.fn() })),
@@ -221,32 +224,51 @@ describe("client activation", () => {
     });
 
     const dispose = apply(ctx as never);
-    const face = cardFace?.() as { scope: unknown };
+    const face = cardFace?.() as { settingsForm: unknown };
 
-    expect(ctx.settingsScope.bind).toHaveBeenCalledWith({
-      namespace: "dsh-openviking-memory",
-    });
-    expect(face.scope).toBe(scope);
+    // The namespace is the profile entry id, and the form is the only way a
+    // card reaches the Host's volatile configuration.
+    expect(get).toHaveBeenCalledWith("dsh-openviking-memory");
+    expect(face.settingsForm).toBe(FORM);
     expect(ctx.slots.register).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: "settings.plugin.item",
-        key: "dsh-openviking-memory",
+        name: "plugins.row.config",
+        // The keyed seat of this bundle's own row: the package name joined to the
+        // row id `cordis.patch.yml` declares, which is also the namespace above —
+        // so a value saved before the move is read back after it.
+        key: "@yadsh/dsh-openviking-memory#dsh-openviking-memory",
       }),
       expect.anything(),
     );
-    // Canonical shell travels with the card.
-    expect(style.textContent).toContain(".dsh-plugin-card{");
+    // The sheet this bundle injects styles its own body and nothing else: the
+    // row's card is drawn by the Plugins page, so the canonical shell must not
+    // travel with us.
+    expect(style.textContent).not.toContain("dsh-plugin-card");
+    expect(style.textContent).toContain(".ovm-body{");
+    // Every control the body draws itself takes the Host's ring, both halves of
+    // the token pair each with its fallback — a declared-without-fallback token
+    // invalidates the whole `outline` shorthand and the ring vanishes.
+    const ring =
+      "outline:var(--dsw-focus-ring-width, 2px) solid " +
+      "var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary))";
+    for (const rule of [
+      ".ovm-control:focus-visible",
+      ".ovm-area:focus-visible",
+      ".ovm-toggle:focus-visible",
+      ".ovm-btn:focus-visible",
+    ]) {
+      const line = style.textContent
+        .split("\n")
+        .find((sheetLine) => sheetLine.startsWith(`${rule}{`));
+      expect(line, `${rule} is missing from the sheet`).toContain(ring);
+      expect(line).toContain("outline-offset");
+    }
+    expect(style.textContent).not.toMatch(/outline:\s*\d/u);
     expect(style.dataset.plugin).toBe("@yadsh/dsh-openviking-memory");
 
     dispose();
     expect(disposeSlot).toHaveBeenCalledOnce();
     expect(style.remove).toHaveBeenCalledOnce();
-  });
-
-  it("renders no card when the settings binder is unavailable", () => {
-    const dispose = apply({ slots: {} } as never);
-    expect(dispose).toBeTypeOf("function");
-    expect(() => dispose()).not.toThrow();
   });
 
   it("applies on a loader fiber while the Remote gateway is still absent", async () => {

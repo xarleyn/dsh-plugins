@@ -15,10 +15,11 @@ import {
   adminErrorMessage,
   useAdminResource,
 } from "../shared.js";
+import { ModelPolicyEditor } from "../ModelPolicyEditor.js";
 
 const PAGE_SIZE = 25;
 
-/** The Host's floor; the form refuses a shorter password before the round trip. */
+/** The Host's floor; the queue answers a shorter password before the round trip. */
 const MIN_PASSWORD_LENGTH = 8;
 
 /**
@@ -84,10 +85,10 @@ function PasswordResetQueue(props: {
 
   if (requests.length === 0) return null;
   return (
-    <div className="dsh-qa-admin__panel">
+    <div className="dsh-qa-admin__panel" data-testid="qa-admin-password-resets">
       <div className="dsh-qa-admin__panel-head">
         <h2>Заявки на сброс пароля</h2>
-        <Badge tone="warning">
+        <Badge tone="warning" testId="qa-admin-password-reset-badge">
           {requests.length === 1
             ? "1 заявка"
             : `${String(requests.length)} заявок`}
@@ -98,16 +99,27 @@ function PasswordResetQueue(props: {
         его сессии: старый пароль и выданные токены перестают действовать.
       </p>
       {error === undefined ? null : (
-        <p className="dsh-qa-admin__error" role="alert">
+        <p
+          className="dsh-qa-admin__error"
+          data-testid="qa-admin-password-reset-error"
+          role="alert"
+        >
           {error}
         </p>
       )}
       {notice === undefined ? null : (
-        <p className="dsh-qa-admin__notice" role="status">
+        <p
+          className="dsh-qa-admin__notice"
+          data-testid="qa-admin-password-reset-notice"
+          role="status"
+        >
           {notice}
         </p>
       )}
-      <table className="dsh-qa-admin__table">
+      <table
+        className="dsh-qa-admin__table"
+        data-testid="qa-admin-password-reset-table"
+      >
         <thead>
           <tr>
             <th>Пользователь</th>
@@ -119,8 +131,8 @@ function PasswordResetQueue(props: {
         </thead>
         <tbody>
           {requests.map((request) => (
-            <tr key={request.userId}>
-              <td>
+            <tr key={request.userId} data-testid="qa-admin-password-reset-row">
+              <td data-testid="qa-admin-password-reset-user">
                 <strong>{request.displayName}</strong>
                 <small>{request.email}</small>
                 {request.disabled ? (
@@ -133,12 +145,14 @@ function PasswordResetQueue(props: {
                 <Stamp value={request.lastRequestedAt} />
                 <small>первый запрос: {formatStamp(request.requestedAt)}</small>
               </td>
-              <td>{formatCount(request.requestCount)}</td>
+              <td data-testid="qa-admin-password-reset-requests">
+                {formatCount(request.requestCount)}
+              </td>
               <td>
                 <input
                   type="password"
+                  data-testid="qa-admin-password-reset-input"
                   autoComplete="new-password"
-                  minLength={MIN_PASSWORD_LENGTH}
                   placeholder="не короче 8 символов"
                   disabled={busy === request.userId}
                   value={drafts[request.userId] ?? ""}
@@ -154,6 +168,7 @@ function PasswordResetQueue(props: {
               <td>
                 <button
                   type="button"
+                  data-testid="qa-admin-password-reset-submit"
                   disabled={busy === request.userId}
                   onClick={() => void reset(request.userId)}
                 >
@@ -224,7 +239,11 @@ export function AdminUsers(props: {
   }, [load]);
 
   return (
-    <section className="dsh-qa-admin__page" aria-label="Пользователи">
+    <section
+      className="dsh-qa-admin__page"
+      data-testid="qa-admin-users"
+      aria-label="Пользователи"
+    >
       <div className="dsh-qa-admin__title-row">
         <div>
           <h1>Пользователи</h1>
@@ -235,17 +254,22 @@ export function AdminUsers(props: {
         </div>
       </div>
       <PasswordResetQueue api={props.api} token={props.token} />
-      <div className="dsh-qa-admin__filters">
-        <FilterField label="Поиск">
+      <div
+        className="dsh-qa-admin__filters"
+        data-testid="qa-admin-users-filters"
+      >
+        <FilterField label="Поиск" testId="qa-admin-users-filter-search">
           <input
             type="search"
+            data-testid="qa-admin-users-search"
             value={search}
             placeholder="Имя или адрес"
             onChange={(event) => setSearch(event.currentTarget.value)}
           />
         </FilterField>
-        <FilterField label="Роль">
+        <FilterField label="Роль" testId="qa-admin-users-filter-role">
           <select
+            data-testid="qa-admin-users-role"
             value={role}
             onChange={(event) =>
               setRole(event.currentTarget.value as QaAccountRole | "")
@@ -257,8 +281,9 @@ export function AdminUsers(props: {
             <option value="user">Пользователь</option>
           </select>
         </FilterField>
-        <FilterField label="Статус">
+        <FilterField label="Статус" testId="qa-admin-users-filter-status">
           <select
+            data-testid="qa-admin-users-status-filter"
             value={status}
             onChange={(event) =>
               setStatus(event.currentTarget.value as "active" | "disabled" | "")
@@ -271,16 +296,23 @@ export function AdminUsers(props: {
         </FilterField>
       </div>
       {error === undefined ? null : (
-        <p className="dsh-qa-admin__error" role="alert">
+        <p
+          className="dsh-qa-admin__error"
+          data-testid="qa-admin-users-error"
+          role="alert"
+        >
           {error}
         </p>
       )}
       {rows.length === 0 ? (
-        <p className="dsh-qa-admin__empty">
+        <p className="dsh-qa-admin__empty" data-testid="qa-admin-users-empty">
           {loading ? "Загружаю…" : "Никого не нашлось."}
         </p>
       ) : (
-        <table className="dsh-qa-admin__table">
+        <table
+          className="dsh-qa-admin__table"
+          data-testid="qa-admin-users-table"
+        >
           <thead>
             <tr>
               <th>Пользователь</th>
@@ -295,14 +327,14 @@ export function AdminUsers(props: {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id}>
-                <td>
+              <tr key={row.id} data-testid="qa-admin-users-row">
+                <td data-testid="qa-admin-users-cell-user">
                   <strong>
                     {row.fullName === "" ? row.displayName : row.fullName}
                   </strong>
                   <small>{row.email}</small>
                 </td>
-                <td>
+                <td data-testid="qa-admin-users-cell-status">
                   {row.disabled ? (
                     <Badge tone="negative">Отключён</Badge>
                   ) : (
@@ -319,6 +351,7 @@ export function AdminUsers(props: {
                 <td>
                   <button
                     type="button"
+                    data-testid="qa-admin-users-open"
                     onClick={() => props.onOpenUser(row.id)}
                   >
                     Открыть
@@ -390,11 +423,22 @@ export function AdminUserDetail(props: {
 
   if (resource.error !== undefined) {
     return (
-      <section className="dsh-qa-admin__page">
-        <p className="dsh-qa-admin__error" role="alert">
+      <section
+        className="dsh-qa-admin__page"
+        data-testid="qa-admin-user-failed"
+      >
+        <p
+          className="dsh-qa-admin__error"
+          data-testid="qa-admin-user-load-error"
+          role="alert"
+        >
           {adminErrorMessage(resource.error)}
         </p>
-        <button type="button" onClick={props.onBack}>
+        <button
+          type="button"
+          data-testid="qa-admin-user-back"
+          onClick={props.onBack}
+        >
           К списку
         </button>
       </section>
@@ -403,7 +447,9 @@ export function AdminUserDetail(props: {
   if (detail === undefined) {
     return (
       <section className="dsh-qa-admin__page">
-        <p className="dsh-qa-admin__empty">Загружаю пользователя…</p>
+        <p className="dsh-qa-admin__empty" data-testid="qa-admin-user-loading">
+          Загружаю пользователя…
+        </p>
       </section>
     );
   }
@@ -420,17 +466,31 @@ export function AdminUserDetail(props: {
     const defaultSubrole = allowed.includes(access.defaultSubrole)
       ? access.defaultSubrole
       : (allowed[0] as string);
-    void write({ access: { allowedSubroles: allowed, defaultSubrole } });
+    void write({
+      access: {
+        allowedSubroles: allowed,
+        defaultSubrole,
+        ...(access.model === undefined ? {} : { model: access.model }),
+      },
+    });
   };
 
   return (
-    <section className="dsh-qa-admin__page" aria-label="Пользователь">
+    <section
+      className="dsh-qa-admin__page"
+      data-testid="qa-admin-user-card"
+      aria-label="Пользователь"
+    >
       <div className="dsh-qa-admin__title-row">
         <div>
-          <button type="button" onClick={props.onBack}>
+          <button
+            type="button"
+            data-testid="qa-admin-user-back"
+            onClick={props.onBack}
+          >
             ← Пользователи
           </button>
-          <h1>
+          <h1 data-testid="qa-admin-user-name">
             {detail.user.fullName === ""
               ? detail.user.displayName
               : detail.user.fullName}
@@ -442,15 +502,26 @@ export function AdminUserDetail(props: {
         </div>
       </div>
       {error === undefined ? null : (
-        <p className="dsh-qa-admin__error" role="alert">
+        <p
+          className="dsh-qa-admin__error"
+          data-testid="qa-admin-user-error"
+          role="alert"
+        >
           {error}
         </p>
       )}
       <div className="dsh-qa-admin__columns">
-        <section className="dsh-qa-admin__panel">
+        <section
+          className="dsh-qa-admin__panel"
+          data-testid="qa-admin-user-access"
+        >
           <h2>Доступ</h2>
-          <FilterField label="Административная роль">
+          <FilterField
+            label="Административная роль"
+            testId="qa-admin-user-field-role"
+          >
             <select
+              data-testid="qa-admin-user-role"
               value={detail.user.role}
               disabled={busy}
               onChange={(event) =>
@@ -464,9 +535,10 @@ export function AdminUserDetail(props: {
               <option value="admin">Администратор</option>
             </select>
           </FilterField>
-          <FilterField label="Статус">
+          <FilterField label="Статус" testId="qa-admin-user-field-status">
             <button
               type="button"
+              data-testid="qa-admin-user-toggle"
               disabled={busy}
               onClick={() => void write({ disabled: !detail.user.disabled })}
             >
@@ -474,9 +546,12 @@ export function AdminUserDetail(props: {
             </button>
           </FilterField>
           <h3>Доступные профили QA</h3>
-          <ul className="dsh-qa-admin__checks">
+          <ul
+            className="dsh-qa-admin__checks"
+            data-testid="qa-admin-user-subroles"
+          >
             {subroles.map((role) => (
-              <li key={role.id}>
+              <li key={role.id} data-testid="qa-admin-user-subrole">
                 <label>
                   <input
                     type="checkbox"
@@ -489,8 +564,12 @@ export function AdminUserDetail(props: {
               </li>
             ))}
           </ul>
-          <FilterField label="Профиль по умолчанию">
+          <FilterField
+            label="Профиль по умолчанию"
+            testId="qa-admin-user-field-default"
+          >
             <select
+              data-testid="qa-admin-user-default-subrole"
               value={access.defaultSubrole}
               disabled={busy || access.allowedSubroles.length === 0}
               onChange={(event) =>
@@ -498,6 +577,9 @@ export function AdminUserDetail(props: {
                   access: {
                     allowedSubroles: access.allowedSubroles,
                     defaultSubrole: event.currentTarget.value,
+                    ...(access.model === undefined
+                      ? {}
+                      : { model: access.model }),
                   },
                 })
               }
@@ -509,12 +591,35 @@ export function AdminUserDetail(props: {
               ))}
             </select>
           </FilterField>
+          <h3>Модель этого аккаунта</h3>
+          <ModelPolicyEditor
+            api={props.accessApi}
+            token={props.token}
+            disabled={busy}
+            testId="qa-admin-user-model"
+            value={access.model}
+            onChange={(model) =>
+              void write({
+                access: {
+                  allowedSubroles: access.allowedSubroles,
+                  defaultSubrole: access.defaultSubrole,
+                  ...(model === undefined ? {} : { model }),
+                },
+              })
+            }
+          />
           <h3>Действующие возможности</h3>
-          <ul className="dsh-qa-admin__effective">
+          <ul
+            className="dsh-qa-admin__effective"
+            data-testid="qa-admin-user-effective"
+          >
             {detail.effective.map((row) => (
-              <li key={row.subroleId}>
+              <li
+                key={row.subroleId}
+                data-testid="qa-admin-user-effective-item"
+              >
                 <strong>{row.name}</strong>
-                <span>
+                <span data-testid="qa-admin-user-effective-count">
                   {/* The counts say what a chat under this profile resolves:
                       the pinned system tools included, the skill-grantable
                       ceiling reported as a ceiling rather than as visibility,
@@ -533,17 +638,23 @@ export function AdminUserDetail(props: {
             ))}
           </ul>
         </section>
-        <section className="dsh-qa-admin__panel">
+        <section
+          className="dsh-qa-admin__panel"
+          data-testid="qa-admin-user-activity"
+        >
           <h2>Активность</h2>
-          <dl className="dsh-qa-admin__facts">
+          <dl className="dsh-qa-admin__facts" data-testid="qa-admin-user-facts">
             <dt>Разговоры</dt>
-            <dd>{formatCount(detail.activity.conversations)}</dd>
+            <dd data-testid="qa-admin-user-conversations">
+              {formatCount(detail.activity.conversations)}
+            </dd>
             <dt>Сообщения</dt>
             <dd>
               {/* The count lives where the logs are read anyway: the
                   conversations page. Reading every conversation here made the
                   card wait minutes on a real store. */}
               <span
+                data-testid="qa-admin-user-messages"
                 title={
                   detail.activity.messages === null
                     ? "Считается на странице «Разговоры»"
@@ -556,18 +667,30 @@ export function AdminUserDetail(props: {
               </span>
             </dd>
             <dt>Положительные оценки</dt>
-            <dd>{formatCount(detail.activity.positiveRatings)}</dd>
+            <dd data-testid="qa-admin-user-positive-ratings">
+              {formatCount(detail.activity.positiveRatings)}
+            </dd>
             <dt>Негативные оценки</dt>
-            <dd>{formatCount(detail.activity.negativeRatings)}</dd>
+            <dd data-testid="qa-admin-user-negative-ratings">
+              {formatCount(detail.activity.negativeRatings)}
+            </dd>
           </dl>
-          <div className="dsh-qa-admin__actions">
+          <div
+            className="dsh-qa-admin__actions"
+            data-testid="qa-admin-user-actions"
+          >
             <button
               type="button"
+              data-testid="qa-admin-user-open-conversations"
               onClick={() => props.onOpenConversations(detail.user.id)}
             >
               Разговоры пользователя
             </button>
-            <button type="button" onClick={props.onOpenAudit}>
+            <button
+              type="button"
+              data-testid="qa-admin-user-open-audit"
+              onClick={props.onOpenAudit}
+            >
               История изменений
             </button>
           </div>

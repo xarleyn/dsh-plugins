@@ -351,6 +351,12 @@ interface DocumentCreateResult {
 }
 ```
 
+The runtime result is absolute, because containment is checked against absolute
+paths. The tool's model-facing projection reports `source.path`, `files[].path`
+and `manifestPath` relative to the session workspace — the same spelling its own
+input parameters accept — so an answer quoting a produced file cannot print the
+account directory the deployment keeps that workspace in.
+
 ---
 
 # 9. `document_to_markdown`
@@ -650,6 +656,12 @@ pandoc source.md \
 
 Агент не должен иметь возможность передать произвольные Pandoc CLI arguments.
 
+Текст документа (title, metadata) в argv не кладётся: бэкенд декодирует командную
+строку в собственной локали, и без UTF-8 локали каждый байт выше 0x7F приходит как
+U+FFFD, тогда как переданный файл он читает как UTF-8. Провайдер пишет metadata
+в UTF-8 YAML-файл в work-каталоге задания и передаёт `--metadata-file` — тот же
+канал, что и `source.md`. Флаг требует Pandoc 2.0+.
+
 ---
 
 # 14. PDF generation
@@ -789,7 +801,9 @@ Extracted Markdown должен проходить normalization layer.
 
 ## 17.1 Generated documents
 
-Markdown может ссылаться на:
+Markdown может ссылаться на asset. Путь в примере — иллюстративный, он
+отсчитывается от `document.md` внутри сгенерированного артефакта, а не от
+файлов этого репозитория:
 
 ```md
 ![Screenshot](assets/login-error.png)
@@ -814,7 +828,7 @@ artifact/
     └── image-002.jpeg
 ```
 
-Markdown:
+Markdown в `document.md` ссылается на asset тем же относительным путём:
 
 ```md
 ![Image](assets/image-001.png)

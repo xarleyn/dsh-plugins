@@ -14,3 +14,15 @@ export { memoryTable } from "./memory-table.js";
 export type { MemoryTable } from "./memory-table.js";
 export { listenerCollector } from "./listener-collector.js";
 export type { ListenerCollector } from "./listener-collector.js";
+export {
+  BUNDLE_CONFIG_SEAT,
+  ROW_CONFIG_SEAT,
+  expectBundleSectionUntitled,
+  expectBundleSeatContract,
+  expectRowSeatContract,
+  expectRowSeatKeyJoin,
+  readHostSeats,
+  seatCallSites,
+  seatDocblock,
+} from "./host-plugin-seats.js";
+export type { HostSeatProbe } from "./host-plugin-seats.js";

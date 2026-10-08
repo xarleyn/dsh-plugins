@@ -59,6 +59,14 @@ function AttachIcon() {
   );
 }
 
+function SendIcon() {
+  return (
+    <svg viewBox="0 0 18 18" aria-hidden="true">
+      <path d="M9 13.5v-9m0 0L5.5 8M9 4.5 12.5 8" />
+    </svg>
+  );
+}
+
 /**
  * Memoized with the default shallow compare: every prop is a scalar, a
  * stable array or a stable callback, so a stream of transcript frames never
@@ -113,6 +121,9 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
       if (await props.onSend(text, attachments, pick?.id ?? null)) {
         setDraft("");
         props.onAttachmentsChange([]);
+        // The composer is empty again, so the refusal that emptied it is no
+        // longer about anything: it names a file that is not in the tray.
+        setAttachmentError(null);
       }
     } finally {
       setSubmitting(false);
@@ -172,6 +183,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           ? "dsh-qa-composer-wrap dsh-qa-composer-wrap--drag"
           : "dsh-qa-composer-wrap"
       }
+      data-testid="qa-composer-drop-zone"
       onDragOver={(event) => {
         event.preventDefault();
         setDragOver(true);
@@ -184,11 +196,16 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
       }}
     >
       {(props.quickQuestions?.length ?? 0) > 0 ? (
-        <div className="dsh-qa-quick-questions" aria-label="Быстрые вопросы">
+        <div
+          className="dsh-qa-quick-questions"
+          data-testid="qa-composer-quick-questions"
+          aria-label="Быстрые вопросы"
+        >
           {props.quickQuestions?.map((question, index) => (
             <button
               type="button"
               key={index}
+              data-testid="qa-composer-quick-question"
               disabled={!props.canSend || submitting}
               onClick={() => void send(question.prompt)}
             >
@@ -211,10 +228,11 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           onPick={navigation.pick}
         />
       ) : null}
-      <div className="dsh-qa-composer">
+      <div className="dsh-qa-composer" data-testid="qa-composer">
         {files.length === 0 ? null : (
           <div
             className="dsh-qa-composer__files"
+            data-testid="qa-composer-files"
             aria-label="Прикреплённые файлы"
           >
             {files.map((file) => (
@@ -233,13 +251,19 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
         {images.length === 0 ? null : (
           <div
             className="dsh-qa-composer__images"
+            data-testid="qa-composer-images"
             aria-label="Прикреплённые изображения"
           >
             {images.map((image) => (
-              <span key={image.id} className="dsh-qa-composer__image">
+              <span
+                key={image.id}
+                className="dsh-qa-composer__image"
+                data-testid="qa-composer-image"
+              >
                 <img src={image.previewUrl} alt={image.name} />
                 <button
                   type="button"
+                  data-testid="qa-composer-image-remove"
                   aria-label={`Убрать ${image.name}`}
                   title="Убрать"
                   onClick={() => {
@@ -255,7 +279,11 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           </div>
         )}
         {attachmentError === null ? null : (
-          <p className="dsh-qa-composer__attachment-error" role="alert">
+          <p
+            className="dsh-qa-composer__attachment-error"
+            data-testid="qa-composer-attachment-error"
+            role="alert"
+          >
             {attachmentError}
           </p>
         )}
@@ -265,6 +293,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
         <textarea
           ref={textarea}
           id="dsh-qa-prompt"
+          data-testid="qa-composer-input"
           rows={1}
           value={draft}
           placeholder={props.placeholder}
@@ -345,6 +374,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           <input
             ref={fileInput}
             type="file"
+            data-testid="qa-composer-file-input"
             accept={attachmentAccept(limits)}
             multiple
             className="dsh-qa-sr-only"
@@ -358,6 +388,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           <button
             type="button"
             className="dsh-qa-composer__attach"
+            data-testid="qa-composer-attach"
             aria-label="Прикрепить файл"
             title="Прикрепить файл или изображение"
             disabled={!props.canSend || attachments.length >= limits.maxPending}
@@ -365,13 +396,18 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           >
             <AttachIcon />
           </button>
-          <span className="dsh-qa-composer__hint" aria-live="polite">
+          <span
+            className="dsh-qa-composer__hint"
+            data-testid="qa-composer-hint"
+            aria-live="polite"
+          >
             {hint}
           </span>
           {props.running && props.showStop ? (
             <button
               type="button"
               className="dsh-qa-composer__action dsh-qa-composer__action--stop"
+              data-testid="qa-composer-stop"
               aria-label="Остановить"
               title="Остановить"
               disabled={!props.canStop}
@@ -381,18 +417,33 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
                 <rect x="5.25" y="5.25" width="7.5" height="7.5" rx="1.5" />
               </svg>
             </button>
-          ) : (
+          ) : null}
+          {/* A running turn does not take the question now, it queues it, so
+          the field stays writable and the button has to say what it does. */}
+          {props.running && props.showStop && props.canSend ? (
             <button
               type="button"
               className="dsh-qa-composer__action dsh-qa-composer__action--send"
-              aria-label="Отправить"
-              title="Отправить"
+              data-testid="qa-composer-send"
+              aria-label="Отправить в очередь"
+              title="Отправить в очередь"
+              disabled={submitting || !hasContent}
+              onClick={() => void send()}
+            >
+              <SendIcon />
+            </button>
+          ) : null}
+          {props.running && props.showStop ? null : (
+            <button
+              type="button"
+              className="dsh-qa-composer__action dsh-qa-composer__action--send"
+              data-testid="qa-composer-send"
+              aria-label={props.running ? "Отправить в очередь" : "Отправить"}
+              title={props.running ? "Отправить в очередь" : "Отправить"}
               disabled={!props.canSend || submitting || !hasContent}
               onClick={() => void send()}
             >
-              <svg viewBox="0 0 18 18" aria-hidden="true">
-                <path d="M9 13.5v-9m0 0L5.5 8M9 4.5 12.5 8" />
-              </svg>
+              <SendIcon />
             </button>
           )}
         </div>

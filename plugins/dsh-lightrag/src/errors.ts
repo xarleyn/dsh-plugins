@@ -11,7 +11,7 @@
 export type LightRagErrorCode =
   /** The model sent an argument the tool cannot use. */
   | "invalid-argument"
-  /** The configured endpoint refused the connection or did not resolve. */
+  /** The transport failed: refused, unresolved, or dropped mid-body. */
   | "unreachable"
   /** The server rejected the API key (401/403). */
   | "unauthorized"

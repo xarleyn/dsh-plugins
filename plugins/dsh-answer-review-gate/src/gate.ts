@@ -13,6 +13,7 @@
 import {
   candidateHash,
   collectCandidate,
+  opensWithReviewDisputation,
   type CandidateSession,
   type CollectedCandidate,
 } from "./candidate.js";
@@ -23,11 +24,13 @@ import {
   createSubagentBackend,
 } from "./adapters/reviewers.js";
 import {
+  renderAnswerShapeSteer,
   renderClosedModeSteer,
   renderQualificationSteer,
   renderRevisionSteer,
   steerSummary,
 } from "./prompt.js";
+import { qaModelPolicy } from "./qa-policy.js";
 import type {
   DomainExpertsFace,
   ReviewAuditEntry,
@@ -75,6 +78,13 @@ interface GateSessionState {
   lastTurn: number;
   /** One failure-policy steer per user turn — failure steers must not loop. */
   failureSteered: boolean;
+  /**
+   * One answer-shape steer per user turn: a draft that opens by arguing with
+   * the review is demanded back as an answer once, and a second such draft is
+   * reviewed on the ordinary path rather than steered again. Only a turn that
+   * has already been reviewed can be steered at all.
+   */
+  answerShapeSteered: boolean;
   /** A review of this session is awaited; no second reviewer may start. */
   reviewing: boolean;
   /** Hash of the candidate a review PASS applies to. */
@@ -90,8 +100,15 @@ export interface AnswerReviewGateDeps {
   readonly domainExperts: () => DomainExpertsFace | undefined;
   readonly subagents: () => SubagentsFace | undefined;
   /**
-   * Deliver one plugin-sourced steer message to the agent (production:
-   * `createUserMessage` with the plugin source; injectable for tests).
+   * The host's QA surface, for the model policy of the chat under review.
+   * Optional and read per call: a deployment with no QA surface has no policy,
+   * and the reviewer then runs on this plugin's own configuration.
+   */
+  readonly qaSurface?: () => unknown;
+  /**
+   * Deliver one `answer-review`-sourced steer message to the agent
+   * (production: `createUserMessage` with the gate's own source kind;
+   * injectable for tests).
    */
   readonly steerMessage: (
     agent: GateAgent,
@@ -102,7 +119,13 @@ export interface AnswerReviewGateDeps {
 
 /** Outcome of one boundary decision, for the event handler's audit log. */
 export type BoundaryOutcome =
-  "pass" | "revise" | "waived" | "failure" | "suppressed-pending-work" | null;
+  | "pass"
+  | "revise"
+  | "answer-shape"
+  | "waived"
+  | "failure"
+  | "suppressed-pending-work"
+  | null;
 
 export class AnswerReviewGate {
   readonly delegation = new DelegationTracker();
@@ -201,6 +224,42 @@ export class AnswerReviewGate {
       return "waived";
     }
     if (collected.text.length < config.minCandidateChars) return null;
+    // A post-review check: `round` counts the reviews this user turn has
+    // already run, so a first draft is never told it argued with a review that
+    // never happened — the demand would both misread the draft and announce a
+    // review the turn does not have.
+    if (
+      state.round > 0 &&
+      opensWithReviewDisputation(collected.text) &&
+      !state.answerShapeSteered
+    ) {
+      state.answerShapeSteered = true;
+      this.record(config, {
+        time: this.deps.now(),
+        sessionId,
+        turn,
+        candidateHash: hash,
+        round: state.round,
+        backend: "answer-shape",
+        reviewer: "none",
+        durationMs: 0,
+        outcome: "answer-shape",
+      });
+      this.deps.logger.warn("gate.answer-shape-steered", {
+        sessionId,
+        turn,
+        userTurn: state.userTurn,
+        candidateHash: hash,
+      });
+      this.deps.steerMessage(
+        agent,
+        renderAnswerShapeSteer(),
+        steerSummary(
+          "The draft answered the review instead of the user, so an answer was requested",
+        ),
+      );
+      return "answer-shape";
+    }
     if (state.lastPassedHash === hash) {
       this.deps.logger.info("gate.candidate-already-passed", {
         sessionId,
@@ -261,6 +320,7 @@ export class AnswerReviewGate {
       sessionId,
       turn,
       requestText: collected.requestText,
+      requestAttachments: collected.requestAttachments,
       candidateText: collected.text,
       signal,
     };
@@ -409,6 +469,9 @@ export class AnswerReviewGate {
         face: this.deps.subagents(),
         config: config.reviewer,
         parent: agent,
+        // The reviewed chat's policy, not its visitor's picker: a reviewer that
+        // followed the parent's model would change with every role on the stand.
+        modelPolicy: qaModelPolicy(this.deps.qaSurface?.(), String(agent.id)),
       });
     }
     return createDomainExpertBackend({
@@ -436,6 +499,7 @@ export class AnswerReviewGate {
         userTurn,
         lastTurn: turn,
         failureSteered: false,
+        answerShapeSteered: false,
         reviewing: false,
       };
       this.states.set(sessionId, fresh);
@@ -446,6 +510,7 @@ export class AnswerReviewGate {
       existing.userTurn = userTurn;
       existing.round = 0;
       existing.failureSteered = false;
+      existing.answerShapeSteered = false;
       existing.lastPassedHash = undefined;
     }
     return existing;

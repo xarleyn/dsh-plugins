@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-session-audit",
-  "version": "0.2.1",
+  "version": "0.2.3",
   "description": "Session audit registry and viewer for DeepSeek Harness: an Audit tab in every session, driven by audit artifacts on disk",
   "repository": {
     "type": "git",
@@ -36,12 +36,14 @@
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "files": [
     "lib/**/*.js",
     "lib/**/*.js.map",
     "lib/**/*.d.ts",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
@@ -67,6 +69,7 @@
     "lint": "eslint src tests scripts tsdown.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "verify:package": "node scripts/verify-package.mjs",
     "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
@@ -91,7 +94,7 @@
     "@yadsh/dsh-audit-ui": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^",
     "chokidar": "^4.0.3",
-    "zod": "^4.4.3"
+    "zod": "catalog:runtime"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
@@ -119,6 +122,7 @@
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
     "@types/react-dom": "catalog:frontend-dev",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "@yadsh/dsh-test-kit": "workspace:^",

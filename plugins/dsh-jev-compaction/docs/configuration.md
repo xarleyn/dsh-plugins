@@ -2,7 +2,8 @@
 
 Every field below can be set in the profile's `cordis.patch.yml` (or the
 deployment's `cordis.yml`) and, unless marked **deployment-only**, edited at
-runtime from the settings card (**Settings → Plugins → Jev Compaction**).
+runtime from the settings card (the **Plugins** page, under this plugin's
+row).
 
 Settings layer in this order, each overriding the one before it:
 
@@ -133,7 +134,8 @@ _Historical compaction_:
 | Preserve errors           | `preserve.errors`                             | `true`          |
 
 `decisions.truncateThreshold` must not exceed `decisions.fullThreshold`; the
-settings service refuses the write otherwise.
+plugin refuses to apply such a pair, so the running configuration keeps its
+previous thresholds and the card reports the failure.
 
 ## `decision` / `jev` — the decision backend
 
@@ -151,16 +153,19 @@ Provider presets and their per-provider overrides are documented in the
 
 ## Live versus restart-scoped changes
 
-Everything on the card applies to the running plugin without a restart, with
-one exception: `archive.rootPath` is a deployment-only field, because moving
-the archive root while shaping runs would split one conversation's originals
-across two directories.
+Everything the card edits is a volatile field of the plugin's own configuration,
+so it applies to the running plugin without a restart, with one exception:
+`archive.rootPath` is written like the others but only takes effect on the next
+mount, because moving the archive root while shaping runs would split one
+conversation's originals across two directories.
 
 ## Validation
 
-`resolveJevCompactionConfig` rejects what it cannot express safely: negative or
-non-finite sizes, probabilities outside `[0, 1]`, an inverted
-`truncateThreshold > fullThreshold`, an unknown provider, and `custom` without
-an endpoint. The same resolution runs in the settings section's `validate`
-hook, so a bad value is refused before it is persisted. Errors surface in the
-card next to the field that caused them.
+The Host persists a card write after checking it against the schema bounds of
+the field (`.min`, `.max`, the provider and policy vocabularies), and refuses a
+value outside them. `resolveJevCompactionConfig` then rejects what it cannot
+express safely: negative or non-finite sizes, probabilities outside `[0, 1]`, an
+inverted `truncateThreshold > fullThreshold`, an unknown provider, and `custom`
+without an endpoint. A committed pair the resolver refuses never reaches the
+planner — the plugin keeps running on its previous configuration and reports the
+failure, which is what the card shows next to the field.

@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaSessionController } from "../../src/client/QaSessionController.js";
-import { harness } from "../helpers/session-fakes.js";
+import { harness, openChat } from "../helpers/session-fakes.js";
 import { legacy, snapshot } from "../helpers/conversation-fakes.js";
 import type {
   ConversationNode,
@@ -41,9 +41,8 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    expect(await controller.send("Привет")).toBe(false);
     expect(controller.getSnapshot()).toMatchObject({
-      phase: "error",
-      canSend: false,
       error: "Настройки помощника недоступны.",
     });
     controller.dispose();
@@ -56,7 +55,9 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
-    const opensBefore = world.open.mock.calls.length;
+    // The chat this browser talks to is the one its first prompt made.
+    await openChat(controller, world);
+    const opensBefore = world.retain.mock.calls.length;
     // First send-time attestation hits an agent whose tool view the Host
     // dismantled; the retry after the re-bind sees a healthy catalog.
     world.secureSession.mockResolvedValueOnce({
@@ -69,7 +70,7 @@ describe("QA session controller", () => {
       },
     });
     expect(await controller.send("hello")).toBe(true);
-    expect(world.open.mock.calls.length).toBe(opensBefore + 1);
+    expect(world.retain.mock.calls.length).toBe(opensBefore + 1);
     expect(world.faces.get("created-1")?.prompt).toHaveBeenCalledWith(
       [{ type: "text", text: "hello" }],
       "queue",
@@ -84,6 +85,7 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    await openChat(controller, world);
     // Send attestation and the re-bind attestation both hit the dismantled
     // session; the blank-session fallback mints a fresh attested one.
     const refusal = {
@@ -98,13 +100,21 @@ describe("QA session controller", () => {
     world.secureSession
       .mockResolvedValueOnce(refusal)
       .mockResolvedValueOnce(refusal);
+    const chatKey = controller.getSnapshot().chatKey;
     expect(await controller.send("hello")).toBe(true);
     expect(world.create).toHaveBeenCalledTimes(2);
-    expect(world.open).toHaveBeenCalledWith("created-2");
+    expect(world.retain).toHaveBeenCalledWith("created-2", {
+      source: "qaSurface",
+    });
     expect(world.faces.get("created-2")?.prompt).toHaveBeenCalledWith(
       [{ type: "text", text: "hello" }],
       "queue",
     );
+    // Only a chat that never received a prompt is replaced here, so the fresh
+    // id is the same chat the user was writing into and it keeps its identity:
+    // a new one would remount the composer over the question this send is
+    // still carrying, which is how the first message of a chat used to go.
+    expect(controller.getSnapshot().chatKey).toBe(chatKey);
     const replacement = world.bindings.get("created-2");
     replacement?.snapshot.set(
       snapshot(
@@ -139,6 +149,7 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    await openChat(controller, world);
     const refusal = {
       ok: false as const,
       error: {
@@ -153,8 +164,10 @@ describe("QA session controller", () => {
       .mockResolvedValueOnce(refusal)
       .mockResolvedValueOnce(refusal);
     expect(await controller.send("hello")).toBe(false);
-    expect(world.faces.get("created-1")?.prompt).not.toHaveBeenCalled();
-    expect(world.faces.get("created-2")?.prompt).not.toHaveBeenCalled();
+    expect(world.faces.get("created-1")?.prompt).not.toHaveBeenCalledWith(
+      [{ type: "text", text: "hello" }],
+      "queue",
+    );
     expect(controller.getSnapshot()).toMatchObject({
       error: "Настройки помощника недоступны.",
     });
@@ -162,15 +175,109 @@ describe("QA session controller", () => {
   });
 
   it("does not draft a locked session by default", async () => {
-    const world = harness();
+    const world = harness(["saved"]);
+    world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
     const controller = new QaSessionController({
       ...world,
       config: resolveConfig(),
     });
     await controller.ensureSession();
     await controller.startDraft();
-    expect(world.create).toHaveBeenCalledOnce();
-    expect(controller.getSnapshot().sessionId).toBe("created-1");
+    expect(world.create).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().sessionId).toBe("saved");
     controller.dispose();
+  });
+
+  describe("with lockdown off", () => {
+    const SESSION_KEY = "dsh-qa-surface.session:v1:/qa:session";
+
+    /** The proof a Host with nothing to pin answers with, after its account gate. */
+    const admitted = async (_token: string, sessionId: string) => ({
+      ok: true as const,
+      value: {
+        sessionId,
+        enabled: false,
+        agentPresetMatches: true,
+        workspaceMatches: true,
+        modelMatches: true,
+        sandboxModeMatches: false,
+        approvalIsNever: false,
+        permissionPreset: "",
+        toolPolicyLoaded: false,
+        toolAllowList: [],
+      },
+    });
+
+    const refused = async (reason: string) => ({
+      ok: false as const,
+      error: {
+        code: "internal",
+        message: `Assistant configuration is unavailable. (reason: ${reason})`,
+        details: {},
+      },
+    });
+
+    /** The accounts facade the controller reads identity from. */
+    function facade(ownedIds: readonly string[]) {
+      return {
+        token: () => "t-1",
+        ownedIds: () => ownedIds,
+        messageAuthorOf: () => undefined,
+        onSessionCreated: vi.fn(),
+        onAuthRequired: vi.fn(),
+      };
+    }
+
+    it("still asks the Host whose chat this is before it lets the account speak", async () => {
+      const world = harness(["saved"]);
+      world.stored.set(SESSION_KEY, "saved");
+      world.secureSession.mockImplementation(admitted);
+      const controller = new QaSessionController({
+        ...world,
+        config: resolveConfig({ lockdown: { enabled: false } }),
+        accounts: facade(["saved"]),
+      });
+      await controller.ensureSession();
+      expect(world.secureSession).toHaveBeenCalledWith("t-1", "saved");
+      expect(controller.getSnapshot()).toMatchObject({
+        phase: "ready",
+        sessionId: "saved",
+        canSend: true,
+      });
+      expect(await controller.send("hello")).toBe(true);
+      expect(world.faces.get("saved")?.prompt).toHaveBeenCalledWith(
+        [{ type: "text", text: "hello" }],
+        "queue",
+      );
+      controller.dispose();
+    });
+
+    it("gives up a restored chat the Host says belongs to another account", async () => {
+      const world = harness(["saved"]);
+      world.stored.set(SESSION_KEY, "saved");
+      world.secureSession.mockImplementation(async (_token, sessionId) =>
+        sessionId === "saved"
+          ? await refused("session-owned-elsewhere")
+          : await admitted(_token, sessionId),
+      );
+      const controller = new QaSessionController({
+        ...world,
+        config: resolveConfig({ lockdown: { enabled: false } }),
+        // The previous account's chat is still what this browser restores.
+        accounts: facade([]),
+      });
+      await controller.ensureSession();
+      expect(world.secureSession).toHaveBeenCalledWith("t-1", "saved");
+      const adopted = controller.getSnapshot().sessionId;
+      expect(adopted).not.toBe("saved");
+      expect(controller.getSnapshot()).toMatchObject({
+        phase: "ready",
+        canSend: true,
+      });
+      expect(await controller.send("hello")).toBe(true);
+      expect(world.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+      expect(world.faces.get(String(adopted))?.prompt).toHaveBeenCalled();
+      controller.dispose();
+    });
   });
 });

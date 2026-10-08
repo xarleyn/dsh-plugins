@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-ui-repair",
-  "version": "0.2.5",
+  "version": "0.3.1",
   "description": "Reversible DOM diagnostics and scoped UI repairs for DeepSeek Harness plugins",
   "repository": {
     "type": "git",
@@ -26,6 +26,7 @@
     "./types": {
       "types": "./lib/types/client/types.d.ts"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -37,8 +38,8 @@
         "@deepseek-ai/dsh-client-ui-slots"
       ],
       "inject": [
-        "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-settings-plugins"
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-ui-settings"
       ],
       "platform": "web"
     }
@@ -46,6 +47,7 @@
   "files": [
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
@@ -58,6 +60,7 @@
     "lint": "eslint src tests scripts tsdown.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm run build:client && vitest run",
+    "test:coverage": "pnpm run build:client && vitest run --coverage",
     "verify:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs",
     "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
@@ -83,8 +86,8 @@
     "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/schemastery": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
     "@deepseek-ai/dsh-settings": "catalog:dsh",
     "react": "^18.2.0"
@@ -96,12 +99,15 @@
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
     "@deepseek-ai/dsh-settings": "catalog:dsh-dev",
+    "@testing-library/react": "^16.3.0",
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
+    "@types/react-dom": "catalog:frontend-dev",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
@@ -109,6 +115,7 @@
     "eslint": "catalog:tooling",
     "jsdom": "catalog:tooling",
     "react": "catalog:frontend-dev",
+    "react-dom": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
     "typescript": "catalog:plugin-tooling",
     "vitest": "catalog:tooling"

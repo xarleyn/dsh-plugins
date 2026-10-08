@@ -613,6 +613,121 @@ describe("AnswerReviewGate user-turn scoping", () => {
   });
 });
 
+describe("AnswerReviewGate answer shape", () => {
+  const LEAK_ONE =
+    "Опровержение вывода ревизора: файл доступен как читаемый путь.\n\n" +
+    TEXT_A;
+  const LEAK_TWO =
+    "Rebuttal of the reviewer's finding: the path was readable all along.\n\n" +
+    TEXT_B;
+
+  /**
+   * Puts `entries` through one REVISE round. The shape demand is a post-review
+   * check: a draft only argues with a review once the turn has one.
+   */
+  async function revised(
+    gate: AnswerReviewGate,
+    face: ScriptedFace,
+    entries: readonly SurfaceEntry[],
+    turn: number,
+  ): Promise<void> {
+    const pending = stopAt(gate, surfaceOf(...entries), turn);
+    await face.settle(face.resultOf(REVISE));
+    expect(await pending).toBe("revise");
+  }
+
+  it("demands an answer instead of reviewing a draft that argues with the review", async () => {
+    const face = new ScriptedFace();
+    const steers: SteerRecord[] = [];
+    const auditEntries: ReviewAuditEntry[] = [];
+    const gate = makeGate(face, {}, steers, auditEntries);
+    const asked = [userLine("the question"), assistantLine(TEXT_A)];
+    await revised(gate, face, asked, 1);
+
+    expect(
+      await stopAt(gate, surfaceOf(...asked, assistantLine(LEAK_ONE)), 2),
+    ).toBe("answer-shape");
+    // The leaking draft is not handed to a reviewer, so it cannot be certified.
+    expect(face.started).toHaveLength(1);
+    expect(steers).toHaveLength(2);
+    expect(steers[1]!.text).toContain("answer alone");
+    expect(steers[1]!.summary).toContain("answered the review");
+    // And the demand is visible in the audit ring, not only in the log.
+    expect(auditEntries.map((entry) => entry.outcome)).toEqual([
+      "revise",
+      "answer-shape",
+    ]);
+  });
+
+  it("says nothing about a review to a draft of an unreviewed turn", async () => {
+    const face = new ScriptedFace();
+    const steers: SteerRecord[] = [];
+    const gate = makeGate(face, {}, steers);
+
+    // No review has run in this turn, so a draft is reviewed on the ordinary
+    // path rather than accused of arguing with a verdict it never saw.
+    const pending = stop(gate, LEAK_ONE);
+    await face.settle(face.resultOf(PASS));
+    expect(await pending).toBe("pass");
+    expect(face.started).toHaveLength(1);
+    expect(steers).toHaveLength(0);
+  });
+
+  it("steers the shape once per user turn, then reviews on the ordinary path", async () => {
+    const face = new ScriptedFace();
+    const steers: SteerRecord[] = [];
+    const gate = makeGate(face, {}, steers);
+    const asked = [userLine("the question"), assistantLine(TEXT_A)];
+    await revised(gate, face, asked, 1);
+    const disputed = [...asked, assistantLine(LEAK_ONE)];
+
+    expect(await stopAt(gate, surfaceOf(...disputed), 2)).toBe("answer-shape");
+
+    const pending = stopAt(
+      gate,
+      surfaceOf(...disputed, assistantLine(LEAK_TWO)),
+      3,
+    );
+    await face.settle(face.resultOf(PASS));
+    expect(await pending).toBe("pass");
+    expect(face.started).toHaveLength(2);
+    expect(steers).toHaveLength(2);
+  });
+
+  it("renews the shape demand for a new user request", async () => {
+    const face = new ScriptedFace();
+    const steers: SteerRecord[] = [];
+    const gate = makeGate(face, {}, steers);
+    const first = [userLine("q1"), assistantLine(TEXT_A)];
+    await revised(gate, face, first, 1);
+
+    const disputed = [...first, assistantLine(LEAK_ONE)];
+    expect(await stopAt(gate, surfaceOf(...disputed), 2)).toBe("answer-shape");
+
+    // The second request owns a fresh budget, so it is reviewed once and then
+    // served its own single shape demand.
+    const second = [...disputed, userLine("q2"), assistantLine(TEXT_B)];
+    await revised(gate, face, second, 3);
+    expect(
+      await stopAt(gate, surfaceOf(...second, assistantLine(LEAK_TWO)), 4),
+    ).toBe("answer-shape");
+    expect(steers).toHaveLength(4);
+  });
+
+  it("reviews an answer that only mentions the review inside itself", async () => {
+    const face = new ScriptedFace();
+    const steers: SteerRecord[] = [];
+    const gate = makeGate(face, {}, steers);
+    const draft =
+      "The default is 1024.\n\nThe reviewer's earlier objection was refuted by the source.";
+
+    const pending = stop(gate, draft);
+    await face.settle(face.resultOf(PASS));
+    expect(await pending).toBe("pass");
+    expect(steers).toHaveLength(0);
+  });
+});
+
 describe("AnswerReviewGate failure policy", () => {
   it("reviewer failures are never converted into a PASS", async () => {
     for (const [failMode, expectedSteers] of [

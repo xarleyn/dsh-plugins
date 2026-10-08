@@ -45,6 +45,14 @@ lists bundles explicitly.
 | `document_compare` | Two documents → a deterministic comparison artifact, a summary and a bounded preview |
 | `document_diff_read` | Pages of a comparison's changes, filtered by section, kind and signal |
 
+Each producing tool reports its files by their path **inside the session
+workspace** — `.qa/artifacts/documents/<id>/report.docx` — which is also the
+spelling its own input parameters accept, so a file reported by one call can be
+read back by the next. The pipeline works in absolute paths internally and a
+tool never hands one to the model: a deployment keeps every account in its own
+directory, so an absolute path prints that directory, and the account with it,
+into an answer a person reads.
+
 Tool registration follows the configuration: `documents.enabled: false` (or a
 resolved `enabled: false` from the environment) leaves them unregistered rather
 than inert, and `documents.comparison.enabled: false` does the same for the
@@ -118,8 +126,8 @@ fallback to a shell and no request that the model compare the documents itself.
 
 ## Configuration
 
-The namespace is `documents`, edited in the plugin's own card (Settings →
-Plugins → Документы) or declaratively:
+The namespace is `documents`, edited in the plugin's own card — the configuration
+of this plugin's row on the host **Plugins** page — or declaratively:
 
 ```yaml
 - id: documents
@@ -165,8 +173,11 @@ Plugins → Документы) or declaratively:
 
 What the defaults assume:
 
-- `pandoc` and a headless `libreoffice` exist in the deployment image. Missing
-  executables surface as `BACKEND_UNAVAILABLE`, never worked around;
+- `pandoc` and a headless `libreoffice` exist in the deployment image. A missing
+  executable is answered at boot by the `documents.installed` record, which names
+  every program the check covered and repeats the absent ones as a
+  `documents.programs.missing` warning; in a call it surfaces as
+  `BACKEND_UNAVAILABLE`, never worked around;
 - `docling` is reachable at `http://docling:5001` — the default of the
   `docling-serve` container — and is the backend that reads PDF and DOCX into
   Markdown. `docling.enabled: false` turns that path off;

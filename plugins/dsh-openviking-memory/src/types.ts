@@ -51,6 +51,23 @@ export interface QaMemoryOverviewProfile {
   readonly truncated: boolean;
 }
 
+/**
+ * Why the memory could not be read, as the code the page speaks from.
+ *
+ * A code rather than the store's own sentence: a transport string names a
+ * method, an endpoint and a status, which tells the reader neither whether the
+ * memory is switched off nor whether the deployment is broken, and shows them
+ * the inside of the surface they are looking at. The detail belongs to the
+ * plugin log, where an operator can grep it.
+ */
+export type QaMemoryFailure =
+  /** The store answered nothing, or answered with a server-side error. */
+  | "unreachable"
+  /** The store answered and refused this caller: no key, or a rejected one. */
+  | "refused"
+  /** The store confirmed the caller but could not read out its listings. */
+  | "listing-failed";
+
 /** What one account's memory looks like, as its page reads it. */
 export interface QaUserMemoryOverview {
   /** Whether the memory server answered at all. */
@@ -82,6 +99,6 @@ export interface QaUserMemoryOverview {
     readonly memories: boolean;
     readonly sessions: boolean;
   };
-  /** Why nothing could be read; present exactly when `connected` is false. */
-  readonly error: string | null;
+  /** {@link QaMemoryFailure} for the read that failed; set exactly when `connected` is false. */
+  readonly failure: QaMemoryFailure | null;
 }

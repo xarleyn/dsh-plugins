@@ -2,14 +2,23 @@ import type {
   ConnectionGenerationState,
   SessionId,
 } from "@deepseek-ai/dsh-client-connection/client";
-import type { SessionFace } from "@deepseek-ai/dsh-api-session-controller/client";
+import type {
+  SessionBinding,
+  SessionFace,
+  SessionReference,
+  SessionReferenceSource,
+  SubmissionHandle,
+} from "@deepseek-ai/dsh-api-session-controller/client";
 import type { ConversationBinding } from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type { UserMessage } from "@deepseek-ai/dsh-llm";
 import { bytesToBase64 } from "./base64.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
 import type {
   QaAttachmentDraft,
   QaFileDraft,
   QaPendingUserMessage,
+  QaQueueOperation,
+  QaQueueStatus,
   QaSessionState,
   QaSlashCatalog,
   QaSlashCatalogEntry,
@@ -32,11 +41,7 @@ import {
   QaPolicyAttestationError,
 } from "./attestation.js";
 import { QaChatIndex } from "./chat-index.js";
-import {
-  isDelegatedSession,
-  visibleSubagentCandidates,
-  type SubagentCatalogs,
-} from "./lineage.js";
+import { isDelegatedSession, visibleSubagentCandidates } from "./lineage.js";
 import { SessionAssetRepository } from "./session-assets.js";
 import { createQaSession } from "./create-session.js";
 import {
@@ -54,6 +59,7 @@ import type {
   QaConversation,
   QaCreateSession,
   QaFileUpload,
+  QaQueueStatusRemote,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -67,8 +73,29 @@ import type { QaApprovalDecision, QaQuestionAnswerItem } from "../types.js";
 import { waitFor } from "./wait-for.js";
 import { QA_REGENERATE_MARKER } from "./QaTranscriptAdapter.js";
 import { readableSubagentName } from "./settlement.js";
-import { projectBoundSessionState } from "./project-session-state.js";
-import { projectTurnSources, sourceAnchorRoot } from "./turn-sources.js";
+import {
+  hostNamedSubmissionIds,
+  projectBoundSessionState,
+} from "./project-session-state.js";
+
+declare module "@deepseek-ai/dsh-api-session-controller/client" {
+  interface SessionReferenceSourceMap {
+    /** The QA surface holds the Session of the chat it is showing. */
+    qaSurface: unknown;
+  }
+}
+
+/**
+ * `rc.2` deleted the Host-wide navigation: a Session lives while the view that
+ * retained it holds the reference, so binding a chat means retaining it for as
+ * long as this controller projects it.
+ */
+const QA_SURFACE_SESSION_SOURCE = "qaSurface" satisfies SessionReferenceSource;
+import {
+  chatLegacyOf,
+  projectTurnSources,
+  sourceAnchorRoot,
+} from "./turn-sources.js";
 
 export interface QaAccountsFacade {
   /** The account bearer token, or null while anonymous. */
@@ -113,6 +140,14 @@ export interface QaSessionControllerOptions {
    * working, which is exactly the pre-feature behaviour.
    */
   readonly slashApi?: QaSlashApi;
+  /**
+   * The Host's live read of the request ceiling. Absent on a Host build that
+   * predates it — and unanswered, or answered by a deployment that sets no
+   * ceiling — the surface sends the way it always did: the ceiling is an
+   * arrangement between browsers about how much this stand can take, never a
+   * reason a question cannot be asked.
+   */
+  readonly queueStatus?: QaQueueStatusRemote;
   readonly storage?: StorageLike;
   /**
    * Browser file-upload service, resolved lazily: the page may not serve the
@@ -145,18 +180,84 @@ const CONFIGURATION_ERROR = "Настройки помощника недост�
 const SLASH_CATALOG_STALE_MS = 3_000;
 
 /**
+ * How long a refused retain waits for its row to come into this browser's
+ * Session catalog. Short on purpose, and shorter than the adoption timeout: the
+ * row arrives either as a Host push or as the answer of the one pull asked for
+ * here, so it is a round-trip away — while a whole `timeoutMs` of patience
+ * would stack a second window onto the waits that follow and hold a chat that
+ * never opens on screen for two of them. A row that misses this window loses
+ * the chat, and the plate's «Повторить» re-runs the adoption on a catalog that
+ * has had the pull.
+ */
+const CATALOG_ROW_PATIENCE_MS = 5_000;
+
+/**
  * Spacing of the parked-request poll. A request is answered by a person, so a
  * second of latency is invisible; the poll only runs while a turn runs.
  */
 const PENDING_POLL_MS = 1_000;
 
+/**
+ * Source of chat identities. Page-wide rather than per controller: the surface
+ * re-creates this controller whenever the account, the config or the route
+ * changes, and a counter that restarted at its first value would name the new
+ * controller's chat exactly as it named the old one's — which is how a draft,
+ * its attachments and its per-chat UI state walked from one chat into another.
+ * `0` stays with `QA_SESSION_IDLE_STATE`, the snapshot the surface reads before
+ * any controller exists.
+ */
+let chatKeySequence = 0;
+
+function nextChatKey(): number {
+  chatKeySequence += 1;
+  return chatKeySequence;
+}
+
 interface PendingSubmission {
   readonly message: QaPendingUserMessage;
   /** Number of durable user rows present before this send started. */
   baselineUserCount: number;
+  /**
+   * Number of turns the Chat slice had recorded as finished when this send
+   * started. A turn that has since closed is the last chance the transcript
+   * gets for this question, so it is the fallback that retires the row.
+   */
+  baselineTurnEnds: number;
   accepted: boolean;
-  /** Lets a completed Host turn retire the optimistic row even if Chat lagged. */
-  sawRunning: boolean;
+}
+
+/** What the strip says when the Host refuses one queue operation. */
+const QUEUE_FAILURE_COPY: Record<QaQueueOperation, string> = {
+  edit: "Не удалось изменить сообщение в очереди. Возможно, оно уже отправлено.",
+  remove:
+    "Не удалось убрать сообщение из очереди. Возможно, оно уже отправлено.",
+  steer: "Не удалось отправить сообщение сразу. Попробуйте ещё раз.",
+};
+
+/**
+ * Image previews for the Host echo of a queued send. A data URL, not the
+ * composer's blob URL: the composer revokes the blob the moment the send is
+ * accepted, while the Host keeps the echo until its queue occurrence lands.
+ * Files are left out — the Host echo wants a durable attachment reference, and
+ * a staged receipt is a write handle, not one.
+ */
+function submissionImages(attachments: readonly QaAttachmentDraft[]): readonly {
+  readonly type: "image";
+  readonly value: { readonly previewUrl: string; readonly name?: string };
+}[] {
+  return attachments.flatMap((attachment) =>
+    attachment.kind === "image"
+      ? [
+          {
+            type: "image" as const,
+            value: {
+              previewUrl: `data:${attachment.mediaType};base64,${attachment.data}`,
+              name: attachment.name,
+            },
+          },
+        ]
+      : [],
+  );
 }
 
 /**
@@ -186,8 +287,11 @@ export class QaSessionController {
   private readonly streamPublisher: StreamPublisher;
   private state: QaSessionState = QA_SESSION_IDLE_STATE;
   private session: SessionFace | undefined;
+  /** The reference that keeps {@link session} alive; released with the binding. */
+  private sessionReference: SessionReference | undefined;
   private conversationBinding: ConversationBinding | undefined;
   private unsubscribeSession: (() => void) | undefined;
+  private unsubscribeInbox: (() => void) | undefined;
   private unsubscribeChat: (() => void) | undefined;
   private readonly unsubscribeConnection: () => void;
   private ensuring: Promise<void> | undefined;
@@ -196,6 +300,18 @@ export class QaSessionController {
   private admissionPending = false;
   private pendingSubmission: PendingSubmission | undefined;
   private pendingSequence = 0;
+  /**
+   * Request ids this binding has seen the Host name — in the Inbox queue or as a
+   * durable transcript row. The mask that keeps an echo the session library
+   * failed to retire from coming back as a question still crossing the
+   * transport: the retirement is `@deepseek-ai/dsh-api-session-controller`'s own
+   * contract, deferred to an animation frame that a surface with no frame clock
+   * never runs, and `projectQueue` in project-session-state.ts carries the
+   * citation, what the substitute costs and does not cost, and the point where
+   * this set is dead code. Kept for the whole binding: a request id is minted per
+   * submission, so an id the Host has named can never belong to a later send.
+   */
+  private readonly admittedSubmissions = new Set<string>();
   private policyReady = false;
   /** Historical transcript retained after the Host classifies policy drift. */
   private compatibilityReadOnly = false;
@@ -206,6 +322,31 @@ export class QaSessionController {
   private connectedOnce: boolean;
   private disposed = false;
   private generation = 0;
+  /**
+   * The session the current chat identity names, or null while the chat it
+   * names has no session yet. This is what makes the identity a chat identity
+   * rather than a counter: {@link bind} compares the session it is about to
+   * adopt against it, so any path that ends up in another session takes another
+   * identity — and a draft adopting its first session keeps the one it holds.
+   * It only ever names a session this controller holds: {@link bind} hands it
+   * out once the adoption has cleared every wait that caller asked it to take —
+   * a chat is opened and attested, a subagent transcript is only opened — and
+   * both a failed adoption and {@link unbind} take it back. The converse does
+   * not hold: a held session may name nothing, which is the transcript of an
+   * attestation this chat could not pass and whose caller still reads it. So a
+   * chat whose first send fell short keeps its identity while naming no session,
+   * and the retry — which brings a fresh id — stays in the composer the question
+   * was typed into instead of reading as a move to another chat.
+   */
+  private namedSession: string | null = null;
+  /**
+   * Chat identity handed to the surface (`QaSessionState.chatKey`). Taken from
+   * the page-wide sequence on every move to another chat, and never when the
+   * bound draft merely creates its session: a component that keeps per-chat
+   * state in React therefore survives the first prompt of a new chat, while two
+   * chats never read the same identity.
+   */
+  private chatKey = nextChatKey();
   private chatsRevision = 0;
   private selectedSubrole: string | null;
   private adminPreview: boolean;
@@ -215,6 +356,9 @@ export class QaSessionController {
   private readonly hostApprovals: QaHostApprovalBridge;
   /** Host-side question requests of the bound chat waiting for the operator. */
   private readonly hostQuestions: QaHostQuestionBridge;
+  private readonly queueRemote: QaQueueStatusRemote | undefined;
+  /** Last send the stand had no room for; drives the request-ceiling dialog. */
+  private requestQueueNotice: QaQueueStatus | null = null;
   /** Set while a running turn is polled for parked requests. */
   private pendingTimer: ReturnType<typeof setInterval> | undefined;
   /**
@@ -280,6 +424,7 @@ export class QaSessionController {
     );
     this.hostApprovals = new QaHostApprovalBridge(options.approvalApi);
     this.hostQuestions = new QaHostQuestionBridge(options.questionApi);
+    this.queueRemote = options.queueStatus;
     this.timeoutMs = options.timeoutMs ?? 15_000;
     this.streamPublisher = new StreamPublisher(options.streamIntervalMs ?? 66);
     this.connectedOnce = this.connection.getSnapshot() !== undefined;
@@ -328,10 +473,21 @@ export class QaSessionController {
     if (this.session === undefined) {
       // A draft chat materializes its session only now: nothing was created
       // when the user pressed "New chat", so the first submission pays for it.
-      if (!this.drafting || this.materializing !== undefined) return undefined;
-      if (!(await this.materializeDraft()) || this.session === undefined) {
+      if (this.materializing !== undefined) {
+        // A first prompt is already paying for the session; this one would
+        // only race it. Say so, because the alternative is a silent drop.
+        this.refuseSend("Чат ещё создаётся. Отправьте сообщение ещё раз.");
         return undefined;
       }
+      if (!this.drafting) {
+        this.refuseSend("Не удалось отправить сообщение: чат не открыт.");
+        return undefined;
+      }
+      const created = await this.materializeDraft();
+      // A refusal reports itself inside materializeDraft, with the Host's
+      // reason, and a draft the user left while it was being created is
+      // attested by whichever chat took its place: neither answer here.
+      if (!created || this.session === undefined) return undefined;
     }
     const step = await this.attestPolicy();
     if (step.kind === "stale") {
@@ -412,14 +568,44 @@ export class QaSessionController {
       this.publish();
       return false;
     }
+    // A message that joins the queue of a chat which is already answering costs
+    // the stand no second place — the turn is running anyway — so the ceiling
+    // has nothing to say about it. Read before the round-trip below: asking a
+    // busy Host how busy it is, in order to refuse the very queue that keeps
+    // the busy chat from stalling, would be the wrong answer twice over.
+    const joiningQueue = this.session?.getSnapshot().running === true;
+    if (this.config.session.maxActiveRequests > 0 && !joiningQueue) {
+      // The ceiling is read before anything is spent. A draft chat has no
+      // session yet, so a question this stand has no room for must not
+      // materialize one, must not enter the transcript, and must not leave the
+      // composer — which is what a refusal ahead of `beginSubmission` buys.
+      const bound = this.session;
+      const ceiling = await this.readQueueStatus();
+      // A chat that went away during the read answers for its own sends. One
+      // that merely arrived is this draft's session landing underneath, which
+      // the submission rides exactly the way it always did.
+      if (this.disposed || (bound !== undefined && this.session !== bound))
+        return false;
+      if (ceiling !== null && ceiling.full) {
+        this.requestQueueNotice = ceiling;
+        this.publish();
+        return false;
+      }
+    }
     this.operationError = null;
+    this.requestQueueNotice = null;
+    // A running turn has nowhere for a new question to land but its queue, and
+    // the queue is the Host's state, not the transcript's: echoing it into the
+    // transcript would show the same message twice — once waiting, once sent.
+    const queueing = this.session?.getSnapshot().running === true;
     // Regeneration rides a hidden marker and must never leak it into the UI.
     const submission =
-      prompt === QA_REGENERATE_MARKER
+      prompt === QA_REGENERATE_MARKER || queueing
         ? undefined
         : this.beginSubmission(prompt, attachments);
     let accepted = false;
     let target: SessionFace | undefined;
+    let echo: SubmissionHandle | undefined;
     try {
       target = await this.liveTarget();
       if (target === undefined) return false;
@@ -429,6 +615,7 @@ export class QaSessionController {
         submission.baselineUserCount = this.state.messages.filter(
           (message) => message.role === "user",
         ).length;
+        submission.baselineTurnEnds = this.durableTurnEndCount();
       }
       let receipts = new Map<string, string>();
       if (files.length > 0) {
@@ -444,11 +631,29 @@ export class QaSessionController {
           return false;
         }
         receipts = outcome.receipts;
+        // The upload was an external round-trip: the user may have left this
+        // chat or closed the surface while it ran. Re-checked before anything is
+        // written to the state and before the prompt is sent, so a draft meant
+        // for the abandoned chat cannot land in it or in its replacement.
+        if (this.disposed || this.session !== target) return false;
       }
+      const content = buildQaPromptContent(prompt, attachments, receipts);
+      // A queued send needs the Host's own echo, not the transcript one: the
+      // Host mints the identity the prompt carries, retires the echo when its
+      // queue occurrence arrives, and retires it again when an identified
+      // prompt fails, so the strip never keeps a row the server refused.
+      echo = queueing
+        ? target.beginSubmission({
+            mode: "queue",
+            text: prompt,
+            attachments: submissionImages(attachments),
+          })
+        : undefined;
       this.admissionPending = true;
       this.publish();
-      const content = buildQaPromptContent(prompt, attachments, receipts);
-      const result = await target.prompt(content, "queue");
+      const result = queueing
+        ? await target.prompt(content, "queue", undefined, echo?.requestId)
+        : await target.prompt(content, "queue");
       if (this.session !== target) return false;
       if (!result.ok) {
         this.admissionPending = false;
@@ -464,6 +669,9 @@ export class QaSessionController {
       return true;
     } catch (error) {
       this.admissionPending = false;
+      // The prompt call never completed, so nothing settled the echo; a queued
+      // row would otherwise sit in the strip claiming to be on its way.
+      echo?.abandon();
       console.error("dsh-qa-surface: prompt failed", error);
       if (this.session === target) {
         this.operationError = "Не удалось отправить сообщение.";
@@ -480,6 +688,36 @@ export class QaSessionController {
         this.publish();
       }
     }
+  }
+
+  /**
+   * What the stand answers about its load, or null when it does not answer.
+   *
+   * Every failure here sends the question anyway. The ceiling exists to keep a
+   * weak model from drowning, not to be a door a browser cannot open: an
+   * unreadable count says nothing about the load, and refusing a visitor on
+   * that would be a worse answer than the one they would have got.
+   */
+  private async readQueueStatus(): Promise<QaQueueStatus | null> {
+    if (this.queueRemote === undefined) return null;
+    try {
+      const result = await this.queueRemote();
+      return result.ok ? result.value : null;
+    } catch (error) {
+      console.error("dsh-qa-surface: queue status unavailable", error);
+      return null;
+    }
+  }
+
+  /**
+   * Close the request-ceiling dialog. Nothing is retried and nothing is
+   * dropped: the held-back question is still the composer's own text, so asking
+   * it again is the visitor's keystroke, taken once the stand has a place free.
+   */
+  dismissRequestQueueNotice(): void {
+    if (this.requestQueueNotice === null) return;
+    this.requestQueueNotice = null;
+    this.publish();
   }
 
   /**
@@ -527,6 +765,11 @@ export class QaSessionController {
           return false;
         }
         receipts = outcome.receipts;
+        // The upload was an external round-trip: the user may have left this
+        // chat or closed the surface while it ran. Re-checked before the command
+        // reaches the Host, so a command meant for the abandoned chat cannot run
+        // in it or in its replacement.
+        if (this.disposed || this.session !== target) return false;
       }
       const result = await this.slashApi.execute(
         this.accounts?.token() ?? "",
@@ -691,6 +934,17 @@ export class QaSessionController {
     return view;
   }
 
+  /**
+   * Turns the loaded Chat window has recorded as durably finished. The Host
+   * writes one per `turn/end`, so the count only moves on a fact the
+   * transcript itself carries — unlike the session's running bit, which the
+   * list relay can also deliver stale.
+   */
+  private durableTurnEndCount(): number {
+    return chatLegacyOf(this.conversationBinding?.snapshot.getSnapshot())
+      .turnEnds.size;
+  }
+
   /** Publish a browser-only copy before any network or Host admission awaits. */
   private beginSubmission(
     text: string,
@@ -731,8 +985,8 @@ export class QaSessionController {
       baselineUserCount: this.state.messages.filter(
         (message) => message.role === "user",
       ).length,
+      baselineTurnEnds: this.durableTurnEndCount(),
       accepted: false,
-      sawRunning: false,
     };
     this.pendingSubmission = submission;
     this.publish();
@@ -766,10 +1020,56 @@ export class QaSessionController {
   }
 
   /**
+   * Edit, send now, or drop one message that still waits for its turn. Every
+   * operation addresses the occurrence id the Host's queue frame carried, so a
+   * row the agent claimed a moment ago is refused by the Host rather than
+   * quietly dropped here.
+   *
+   * The answer is the refusal text rather than a flag, and the strip beside the
+   * composer keeps showing it: a session frame follows a refusal within
+   * milliseconds, and the shared error line is cleared by exactly that frame.
+   */
+  async queueAction(
+    id: string,
+    action: QaQueueOperation,
+    text = "",
+  ): Promise<string | null> {
+    const target = this.session;
+    if (target === undefined || !this.state.canEditQueue) return null;
+    const wire =
+      action === "remove"
+        ? ({ kind: "remove" } as const)
+        : action === "steer"
+          ? ({ kind: "steer" } as const)
+          : ({ kind: "edit", content: [{ type: "text", text }] } as const);
+    try {
+      const result = await target.updateQueue(
+        // The strip holds the id as text; only the Host's brand knows it back.
+        id as Parameters<SessionFace["updateQueue"]>[0],
+        wire,
+      );
+      if (this.session !== target) return null;
+      if (!result.ok) return QUEUE_FAILURE_COPY[action];
+      this.publish();
+      return null;
+    } catch (error) {
+      console.error("dsh-qa-surface: queue operation failed", error);
+      if (this.session !== target) return null;
+      return QUEUE_FAILURE_COPY[action];
+    }
+  }
+
+  /**
    * Enter the "new chat" draft: show an empty composer without creating any
    * session. Nothing appears in the chat list and no Host session is spent
    * until the first prompt is actually sent, which materializes the session
    * lazily ({@link materializeDraft}). Fixed-policy deployments cannot draft.
+   *
+   * A draft is a chat of its own, so entering one takes the screen the way
+   * {@link switchTo} does; see the note where the generation moves. Stopping the
+   * turn that was running first takes a round-trip, and a chat opened through it
+   * keeps the screen: the draft is what the visitor asked for before that click,
+   * so this call gives up rather than taking the chat back from under them.
    */
   async startDraft(policyChange = false): Promise<void> {
     if (
@@ -781,6 +1081,7 @@ export class QaSessionController {
     )
       return;
     const previous = this.session;
+    const owned = this.generation;
     if (
       !this.compatibilityReadOnly &&
       previous?.getSnapshot().running === true
@@ -790,15 +1091,49 @@ export class QaSessionController {
       } catch (error) {
         console.error("dsh-qa-surface: stop before draft failed", error);
       }
+      // Asking the Host to stop a running turn is a round-trip, and the visitor
+      // reaches the chat list through it. Whoever took the screen during that
+      // window owns it: a draft asked for before the trip would otherwise take
+      // the screen back, unbind the chat that had just been adopted, and answer
+      // its send with nothing — the same takeover this method's own generation
+      // raise exists to stop.
+      if (this.disposed || this.generation !== owned) return;
     }
+    this.enterDraft();
+  }
+
+  /**
+   * Put a draft on the screen: no session, so no row in the chat history and no
+   * record on the Host until the first prompt is sent into it
+   * ({@link materializeDraft}). Taking the screen moves the generation the way
+   * every other path that retires a binding does, so an adoption still looking
+   * for its session measures itself against the new one rather than taking the
+   * draft back.
+   *
+   * A draft that is already on screen — including one whose first send fell
+   * short of a claimed session — keeps its chat identity: a new one rebuilds the
+   * composer over the question the visitor is still looking at.
+   */
+  private enterDraft(): void {
+    this.generation += 1;
+    this.materializing = undefined;
     this.drafting = true;
-    this.pendingSubmission = undefined;
+    if (this.namedSession !== null) {
+      this.openChat();
+    } else {
+      // The identity stays, so the composer keeps the text its question was
+      // typed into — but the send that chat had in flight is retired with it:
+      // the projection reads the optimistic row and the busy flag out of it
+      // without asking which chat is on screen.
+      this.pendingSubmission = undefined;
+      this.admissionPending = false;
+    }
     this.unbind();
     this.operationError = null;
-    this.admissionPending = false;
     this.policyReady = false;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
+      chatKey: this.chatKey,
       chatsRevision: this.chatsRevision,
     };
     this.publish();
@@ -823,7 +1158,11 @@ export class QaSessionController {
           adminPreview: this.adminPreview,
         });
         if (this.disposed || operation !== this.generation) return false;
-        await this.bind(id);
+        // A step back is not a materialized draft: this adoption never ended up
+        // holding a session, so the draft has to stay a draft. Calling it done
+        // leaves a chat with neither a session nor a draft behind, and every
+        // later question in it answered with "chat not open".
+        if (!(await this.bind(id, { operation }))) return false;
         if (this.disposed || operation !== this.generation) return false;
         this.drafting = false;
         if (this.config.session.policy === "browser-persistent") {
@@ -864,14 +1203,14 @@ export class QaSessionController {
       return;
     const operation = ++this.generation;
     this.drafting = false;
-    this.pendingSubmission = undefined;
+    this.openChat();
     this.viewingSubagent = null;
     this.unbind();
     this.operationError = null;
-    this.admissionPending = false;
     this.policyReady = false;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
+      chatKey: this.chatKey,
       chatsRevision: this.chatsRevision,
       phase: "creating",
     };
@@ -896,7 +1235,14 @@ export class QaSessionController {
         this.forgetChat(sessionId);
         throw new Error("Этот чат больше недоступен.");
       }
-      await this.bind(sessionId, { allowCompatibilityReadOnly: true });
+      const adopted = await this.bind(sessionId, {
+        operation,
+        allowCompatibilityReadOnly: true,
+      });
+      // The chat this switch was asked for is on screen only if this adoption
+      // finished: a step back means another chat took the screen in the meantime,
+      // and persisting this id as the open one would reopen it on the next load.
+      if (!adopted) return;
       if (this.disposed || operation !== this.generation) return;
       this.chats.saveActive(sessionId);
     } catch (error) {
@@ -928,14 +1274,14 @@ export class QaSessionController {
     }
     const operation = ++this.generation;
     this.drafting = false;
-    this.pendingSubmission = undefined;
+    this.openChat();
     this.viewingSubagent = { id, title };
     this.unbind();
     this.operationError = null;
-    this.admissionPending = false;
     this.policyReady = false;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
+      chatKey: this.chatKey,
       chatsRevision: this.chatsRevision,
       viewingSubagent: this.viewingSubagent,
       phase: "creating",
@@ -943,7 +1289,18 @@ export class QaSessionController {
     this.emit();
     try {
       await this.waitForConnection();
-      await this.bind(id, { attest: false, track: false, report: false });
+      // A step back here is the visitor having left this view for another chat,
+      // which shows its own transcript — there is nothing of ours left to publish
+      // and nothing of theirs to mark as a failed open.
+      if (
+        !(await this.bind(id, {
+          operation,
+          attest: false,
+          track: false,
+          report: false,
+        }))
+      )
+        return;
     } catch (error) {
       // A newer operation superseded this view request: leave its state alone.
       if (this.disposed || operation !== this.generation) return;
@@ -1057,10 +1414,25 @@ export class QaSessionController {
   }
 
   private async ensureSessionNow(): Promise<void> {
+    // A load with no chat to resume opens a draft rather than a chat: the
+    // session — and with it its row in the history and its ownership record on
+    // the Host — is spent only on the first prompt sent into it
+    // ({@link materializeDraft}). Without this, every visit to the surface left
+    // one more blank «Новый чат» behind, and one more live Host session nobody
+    // asked for. A fixed-policy deployment has one session to show and cannot
+    // draft, so it keeps its own path.
+    const resumable =
+      this.config.session.policy === "browser-persistent" &&
+      this.chats.activeId() !== null;
+    if (this.config.session.policy !== "fixed" && !resumable) {
+      this.enterDraft();
+      return;
+    }
     const operation = ++this.generation;
     this.drafting = false;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
+      chatKey: this.chatKey,
       chatsRevision: this.chatsRevision,
       phase: "creating",
     };
@@ -1089,8 +1461,8 @@ export class QaSessionController {
             : undefined;
         // A stored id that is not a chat any more — a delegated child this
         // browser once opened as one, a session the Host no longer lists —
-        // falls through to a fresh chat instead of restoring a transcript
-        // nobody can send into.
+        // falls through to a draft instead of restoring a transcript nobody can
+        // send into.
         if (
           stored !== null &&
           summary !== undefined &&
@@ -1104,22 +1476,28 @@ export class QaSessionController {
         }
       }
       if (id === null) {
-        id = await createQaSession({
-          createSession: this.createSessionRemote,
-          token: this.accounts?.token() ?? "",
-          subroleId: this.selectedSubrole,
-          adminPreview: this.adminPreview,
-        });
+        // The persisted id names nothing this browser may reopen; that is the
+        // same case as a load with no id at all, so it drafts too. The prompt
+        // the visitor sends next materializes the chat it belongs to.
+        this.enterDraft();
+        return;
       }
       if (this.disposed || operation !== this.generation) return;
       // A restored id's first bind stays quiet: the recovery path below may
       // replace it. A freshly created session must report a refusal at once —
       // it is the deployment's only chance to learn the reason.
       try {
-        await this.bind(id, {
-          report: !restored,
-          allowCompatibilityReadOnly: existing,
-        });
+        // A step back is not a refusal: another operation owns the screen now,
+        // so this bootstrap must neither run its recovery ladder over it nor
+        // persist a chat it never adopted.
+        if (
+          !(await this.bind(id, {
+            operation,
+            report: !restored,
+            allowCompatibilityReadOnly: existing,
+          }))
+        )
+          return;
       } catch (error) {
         // A stale restore must not start its recovery ladder against a newer
         // operation; rethrow for the generation-guarded outer catch.
@@ -1138,6 +1516,9 @@ export class QaSessionController {
         this.unbind();
         this.operationError = null;
         this.chats.clearActive();
+        // Nothing is published for the replacement yet: until it exists this is
+        // still the chat on screen, and a fresh session the stand refuses to
+        // create must not cost the visitor the draft they were reading.
         id = await createQaSession({
           createSession: this.createSessionRemote,
           token: this.accounts?.token() ?? "",
@@ -1145,7 +1526,14 @@ export class QaSessionController {
           adminPreview: this.adminPreview,
         });
         if (this.disposed || operation !== this.generation) return;
-        await this.bind(id);
+        // The replacement is another chat — empty, and not one the user asked to
+        // open — so it takes an identity of its own, dropping the refused chat's
+        // unsent text, staged attachments and drawers rather than handing them
+        // to a conversation nobody chose. The bind that refused it left the
+        // identity naming no session, so without this the replacement would
+        // adopt the refused chat's.
+        this.openChat();
+        if (!(await this.bind(id, { operation }))) return;
       }
       if (this.disposed || operation !== this.generation) return;
       if (this.config.session.policy === "browser-persistent") {
@@ -1185,14 +1573,13 @@ export class QaSessionController {
     }
     const operation = ++this.generation;
     this.unbind();
-    this.admissionPending = false;
     this.policyReady = false;
     this.state = { ...this.state, phase: "creating" };
     this.emit();
     try {
       await this.waitForConnection();
       try {
-        await this.bind(id);
+        if (!(await this.bind(id, { operation }))) return null;
         if (this.disposed || operation !== this.generation) return null;
         if (this.policyReady) return id;
       } catch (error) {
@@ -1203,6 +1590,11 @@ export class QaSessionController {
         this.fail(CONFIGURATION_ERROR, new QaPolicyAttestationError());
         return null;
       }
+      // Only a chat that never received a prompt is replaced here, so the fresh
+      // id continues the chat the user is writing into: leaving the binding
+      // above takes the identity's name back, and bind() then adopts the fresh
+      // id under the identity still on screen — the question this send carries
+      // has not left the composer.
       this.unbind();
       this.chats.clearActive();
       const created = await createQaSession({
@@ -1212,7 +1604,7 @@ export class QaSessionController {
         adminPreview: this.adminPreview,
       });
       if (this.disposed || operation !== this.generation) return null;
-      await this.bind(created);
+      if (!(await this.bind(created, { operation }))) return null;
       if (this.disposed || operation !== this.generation) return null;
       this.chats.saveActive(created);
       return this.policyReady ? created : null;
@@ -1228,34 +1620,142 @@ export class QaSessionController {
     }
   }
 
+  /**
+   * Begin a chat of its own: take a fresh identity from the page-wide sequence,
+   * leave it naming no session, and retire the send the ending chat had in
+   * flight. Called on every move between chats — reset, switch, subagent view —
+   * by {@link bind} when it ends up in a session the identity does not name, and
+   * by the bootstrap whose restored chat was refused, for the replacement it is
+   * about to open.
+   */
+  private openChat(): void {
+    this.namedSession = null;
+    this.chatKey = nextChatKey();
+    // A send in flight belongs to the chat that is ending. The projection reads
+    // the optimistic row and the busy flag out of it without asking which chat
+    // is on screen, so unless it dies here, the chat that takes this identity
+    // shows a question it never received and waits for a send it never made.
+    this.pendingSubmission = undefined;
+    this.admissionPending = false;
+  }
+
+  /**
+   * Adopt one Host session as the chat on screen: take its binding, wait for it
+   * to open, attest the policy, and only then hand the chat identity to the
+   * session, so {@link namedSession} never names one this controller does not
+   * hold. A caller that asks for no attestation — the subagent view, whose
+   * transcript is read rather than written into — is named once its session is
+   * open.
+   *
+   * Answers whether the adoption happened. `true` is a finished one: this call
+   * holds the session and the chat identity names it, so the caller may publish
+   * what it kept for that chat — the draft it retired, the id it persisted.
+   * `false` is a step back: the chat on screen moved on while this call waited,
+   * it undoes nothing of the chat that replaced it and leaves the screen holding
+   * nothing of this one ({@link stepBack}), and the caller must keep its own
+   * state as unclaimed — a draft that was never materialized stays a draft, and a
+   * chat that was never adopted is not persisted as the open one.
+   *
+   * Any of those waits can outlive the operation it belongs to — the user moves
+   * to another chat while a first send is still looking for its session. Two
+   * questions decide that at each wait: is this still the generation the caller
+   * owns, and is this still the session this call took? The first is the page's
+   * own — every path that takes the screen raises the generation. The second is
+   * kept beside it because a generation only records who was asked to start, not
+   * what the controller holds by the time an adoption resumes: a binding
+   * somebody else retired in between is no more this one's to finish.
+   */
   private async bind(
     id: string,
     options: {
+      /** The generation whose adoption this is; see the two guards below. */
+      operation: number;
       report?: boolean;
       attest?: boolean;
       track?: boolean;
       allowCompatibilityReadOnly?: boolean;
-    } = {},
-  ): Promise<void> {
+    },
+  ): Promise<boolean> {
     const {
+      operation,
       report = true,
       attest = true,
       track = true,
       allowCompatibilityReadOnly = false,
     } = options;
-    this.sessions.open(id as SessionId);
-    let binding = this.sessions.binding(id as SessionId);
-    if (binding === undefined) {
-      await waitFor(
-        this.sessions.list,
-        (snapshot) => Object.hasOwn(snapshot.byId, id),
-        this.timeoutMs,
-      );
-      binding = this.sessions.binding(id as SessionId);
+    const retainAttemptedAt = Date.now();
+    let reference: SessionReference;
+    try {
+      reference = this.sessions.retain(id as SessionId, {
+        source: QA_SURFACE_SESSION_SOURCE,
+      });
+    } catch (error) {
+      if (this.catalogLists(id)) {
+        // The catalog of this browser already names the session, so the Host
+        // refused it for a reason of its own — a route, a policy, a generation
+        // that ended. Waiting for a row that is here would only delay that
+        // refusal, ask the catalog to re-read itself, and print a race in the
+        // one moment an operator is reading the failure.
+        throw error;
+      }
+      // The Host resolves a retain target against the Session catalog *this*
+      // browser holds and refuses an id it has not listed yet. A QA session is
+      // born on the server, through this plugin's own Remote, so its create can
+      // answer before the row that lists it reaches this browser — and the
+      // patience below sits behind the reference, so it cannot wait for a row
+      // the Host never handed out. Land the row first, then retain.
+      if (
+        !(await this.awaitCatalogRow(id, retainAttemptedAt, operation, error))
+      ) {
+        return false;
+      }
+      // The row is here, so a refusal now answers a catalog that lists the
+      // session: a different fact than the race, and the caller reads it as it
+      // stands rather than as the stale refusal of the window before.
+      reference = this.sessions.retain(id as SessionId, {
+        source: QA_SURFACE_SESSION_SOURCE,
+      });
+    }
+    let binding: SessionBinding | undefined = this.sessions.binding(
+      id as SessionId,
+    );
+    try {
+      if (binding === undefined) {
+        await reference.ready;
+        binding = this.sessions.binding(id as SessionId);
+      }
+      if (binding === undefined) {
+        await waitFor(
+          this.sessions.list,
+          (snapshot) => Object.hasOwn(snapshot.byId, id),
+          this.timeoutMs,
+        );
+        binding = this.sessions.binding(id as SessionId);
+      }
+    } finally {
+      // A binding this controller never got to hold must not leave a reference
+      // counting against the Session it could not show.
+      if (binding === undefined) reference.release();
     }
     if (binding === undefined)
       throw new Error("Session binding is unavailable.");
+    if (this.disposed || operation !== this.generation) {
+      // A newer operation owns the chat on screen while this one was still
+      // looking for its session. Adopting now would retire the binding that
+      // newer operation is showing, so this one gives up before it takes
+      // anything; the reference it retained is its own to release.
+      reference.release();
+      return false;
+    }
+    // Another session under the identity that named a different one is another
+    // chat: it takes its own identity, so nothing the previous chat was holding
+    // — an unsent question, staged attachments, an open drawer — walks into it.
+    // A chat that names no session adopts under the identity it already has,
+    // which is what keeps a retried first send — it brings a fresh id — in the
+    // composer the question was typed into.
+    if (this.namedSession !== null && this.namedSession !== id) this.openChat();
     this.unbind();
+    this.sessionReference = reference;
     this.session = binding.session;
     this.conversationBinding = this.conversation.binding(id as SessionId);
     this.policyReady = false;
@@ -1265,6 +1765,12 @@ export class QaSessionController {
       this.operationError = null;
       this.publishSessionUpdate();
     });
+    // The queue strip reads the Inbox projection, which the Host publishes on
+    // its own channel: a claim or a splice changes no session snapshot, so the
+    // strip would otherwise keep the rows the agent has already taken.
+    this.unsubscribeInbox = binding.session.projections
+      .faceOf("inbox")
+      .subscribe(() => this.publishSessionUpdate());
     // Subscribing the Chat target activates it, so the assembled transcript
     // (nodes, partials, running calls) materializes for the projection.
     this.unsubscribeChat = this.conversationBinding
@@ -1272,49 +1778,202 @@ export class QaSessionController {
       .subscribe(() => {
         this.publishSessionUpdate();
       });
-    await waitFor(
-      binding.session,
-      (snapshot) =>
-        snapshot.openState === "open" || snapshot.openState === "error",
-      this.timeoutMs,
-    );
-    if (binding.session.getSnapshot().openState !== "open") {
-      throw new Error("Session binding could not be opened.");
-    }
-    if (attest) {
-      const step = await this.attestPolicy(report);
-      if (step.kind === "refused") {
-        if (
-          !allowCompatibilityReadOnly ||
-          !canOpenAsCompatibilityReadOnly(step.reason)
-        ) {
-          throw new QaPolicyAttestationError(step.reason);
-        }
-        // The Host classified the existing binding before returning these
-        // reason classes. Preserve the transcript, but never mark the binding
-        // policy-ready: every mutating operation remains disabled.
-        this.compatibilityReadOnly = true;
-        this.operationError = null;
-      } else if (step.kind !== "ok") {
-        throw new QaPolicyAttestationError();
+    try {
+      await waitFor(
+        binding.session,
+        (snapshot) =>
+          snapshot.openState === "open" || snapshot.openState === "error",
+        this.timeoutMs,
+      );
+      if (binding.session.getSnapshot().openState !== "open") {
+        throw new Error("Session binding could not be opened.");
       }
+      if (attest) {
+        // Attestation both reads and writes the chat on screen: it proves the
+        // session the controller holds and stamps this adoption's verdict onto
+        // it. Ask the two questions before spending a proof on the wrong chat,
+        // and answer only for the session this call took — not for whichever
+        // one the screen holds by the time the proof comes back.
+        if (this.stepBack(operation, binding.session)) return false;
+        const step = await this.attestPolicy(report, binding.session);
+        // A chat that moved on during the proof is attested by whichever
+        // adoption holds it now, so this verdict is not this one's to write.
+        if (this.stepBack(operation, binding.session)) return false;
+        if (step.kind === "refused") {
+          if (
+            !allowCompatibilityReadOnly ||
+            !canOpenAsCompatibilityReadOnly(step.reason)
+          ) {
+            throw new QaPolicyAttestationError(step.reason);
+          }
+          // The Host classified the existing binding before returning these
+          // reason classes. Preserve the transcript, but never mark the binding
+          // policy-ready: every mutating operation remains disabled.
+          this.compatibilityReadOnly = true;
+          this.operationError = null;
+        }
+      }
+      if (this.stepBack(operation, binding.session)) {
+        // The chat on screen moved on while this adoption waited: what replaced
+        // it holds the identity now, so there is nothing here left to finish —
+        // and this call gives back the binding it installed, which is all the
+        // screen ever took from it.
+        return false;
+      }
+      if (track) {
+        this.chatSessionId = String(binding.session.sessionId);
+        this.viewingSubagent = null;
+        this.chats.addChat(String(binding.session.sessionId));
+        this.accounts?.onSessionCreated(String(binding.session.sessionId));
+      }
+    } catch (error) {
+      // An adoption that fell short must not leave the chat naming the session
+      // it could not finish with: a retried first send brings another id, and an
+      // identity still pointing here would read that retry as a move to another
+      // chat — rebuilding the composer over the very question that has to go
+      // again. A session that never opened is not one this controller holds, so
+      // it goes too; a session whose attestation was refused stays, because its
+      // caller reads the transcript before deciding whether the chat may be
+      // replaced. Once a newer chat has retired the binding this call took, none
+      // of it is ours to undo — that chat owns the identity from then on, and
+      // there is nothing of ours left installed.
+      if (this.ownsAdoption(operation, binding.session)) {
+        this.namedSession = null;
+        if (!(error instanceof QaPolicyAttestationError)) this.unbind();
+      } else if (this.session === binding.session) {
+        // Left behind, and the failure is not a caller's to read any more: the
+        // hand that took the screen was the bootstrap, which retires nothing, so
+        // this adoption's own binding and subscriptions go with this throw.
+        this.unbind();
+      }
+      throw error;
     }
-    if (track) {
-      this.chatSessionId = String(this.session.sessionId);
-      this.viewingSubagent = null;
-      this.chats.addChat(String(this.session.sessionId));
-      this.accounts?.onSessionCreated(String(this.session.sessionId));
-    }
+    // Every wait this adoption was asked to take is behind it: only now does the
+    // chat take this session as its identity.
+    this.namedSession = id;
     this.publish();
     // Deliberately not awaited: the palette is a convenience, and a chat must
     // open at once whether or not the skill and command registries answer.
     void this.refreshSlashCatalog(true);
+    return true;
+  }
+
+  /**
+   * Whether this browser's Session catalog names one id. The Host answers a
+   * retain from exactly this set, so a refusal of a listed session is a refusal
+   * of a session it knows — never the race this adoption can wait out.
+   */
+  private catalogLists(id: string): boolean {
+    return Object.hasOwn(this.sessions.list.getSnapshot().byId, id);
+  }
+
+  /**
+   * Wait for this browser's Session catalog to come to know one id, after
+   * {@link bind} was refused a reference to it, and answer whether the chat on
+   * screen still belongs to the adoption that asked (`false` — it moved on, and
+   * nothing is retained). Only an id the catalog does not name reaches here: a
+   * refusal of a session it already lists is not this race and goes back as it
+   * came, so there is always a row to wait for. A refusal is only final once
+   * that row has had its chance: this is the one window where the race is
+   * repairable rather than reportable, so the failure the caller reads stays the
+   * Host's own refusal, not a timeout nobody asked for.
+   *
+   * Both timestamps are logged because the race is intermittent and the stand
+   * keeps no other trace of it: the server never sees a retain, so its journal
+   * cannot say which chat lost the create, and the next round needs the id and
+   * the two moments to line this up with its own observations.
+   */
+  private async awaitCatalogRow(
+    id: string,
+    retainAttemptedAt: number,
+    operation: number,
+    failure: unknown,
+  ): Promise<boolean> {
+    if (this.disposed || operation !== this.generation) return false;
+    console.warn("dsh-qa-surface: sessions.retain raced the session catalog", {
+      sessionId: id,
+      retainAttemptedAt: new Date(retainAttemptedAt).toISOString(),
+    });
+    // The row arrives either as a Host push or on the next catalog pull, and a
+    // loaded stand can put the create's answer ahead of the push that carries
+    // it. Ask for a fresh baseline instead of waiting for whichever of the two
+    // comes: the pull is single-flight and lands in the source waited on here.
+    // It is not awaited: a pull the Host refuses must not fail the adoption
+    // here, because the push still carries the row and the refusal the caller
+    // reads has to be the retain's own. The rejection would otherwise reach the
+    // browser as an unhandled one.
+    this.sessions.refresh().catch((cause: unknown) => {
+      // The patience below now rests on the Host's own push alone, which is a
+      // narrower window than this waited for. Say so, because a chat lost in
+      // this shape reads as a slow catalog and is really an unreadable one.
+      console.warn("dsh-qa-surface: session catalog refresh refused", {
+        sessionId: id,
+        cause: cause instanceof Error ? cause.message : String(cause),
+      });
+    });
+    try {
+      await waitFor(
+        this.sessions.list,
+        (snapshot) => Object.hasOwn(snapshot.byId, id),
+        Math.min(this.timeoutMs, CATALOG_ROW_PATIENCE_MS),
+      );
+    } catch {
+      throw failure;
+    }
+    console.warn("dsh-qa-surface: session catalog row landed", {
+      sessionId: id,
+      waitedMs: Date.now() - retainAttemptedAt,
+    });
+    return !this.disposed && operation === this.generation;
+  }
+
+  /**
+   * Give up on an adoption the chat on screen has outgrown, and answer whether
+   * that is what happened (`true` — the caller has nothing left to publish).
+   *
+   * Past the binding this call installed a session of its own: the retained
+   * reference, the three subscriptions beside it, and whatever those
+   * subscriptions write on every frame. The path that took the screen usually
+   * retired all of that with its own {@link unbind} — but the bootstrap raises the
+   * generation while keeping the transcript readable until its own session
+   * exists, and an adoption left behind by it would otherwise go on holding a
+   * Host session nobody is in and publishing that chat's frames into the surface:
+   * each frame clears the error the bootstrap published and answers for a binding
+   * the page has given up on. Undoing the install is therefore this call's own
+   * hand — and only its own: the chat that already replaced this one holds the
+   * name, the subscriptions and the policy proof, and emptying its screen is the
+   * failure this method exists to prevent.
+   */
+  private stepBack(operation: number, session: SessionFace): boolean {
+    if (this.ownsAdoption(operation, session)) return false;
+    if (this.session === session) this.unbind();
+    return true;
+  }
+
+  /**
+   * Is this adoption still the one on screen? The generation says whether the
+   * operation that asked for it still owns the page — every path that takes the
+   * screen raises it, {@link startDraft} among them — and the session says
+   * whether the binding this call took is still the one held, which a generation
+   * alone cannot answer: a newer chat raises it before it has taken any name, and
+   * a caller can retire the binding it holds inside its own generation.
+   */
+  private ownsAdoption(operation: number, session: SessionFace): boolean {
+    return (
+      !this.disposed &&
+      operation === this.generation &&
+      this.session === session
+    );
   }
 
   private unbind(): void {
+    this.sessionReference?.release();
+    this.sessionReference = undefined;
     this.streamPublisher.clear();
     this.unsubscribeSession?.();
     this.unsubscribeSession = undefined;
+    this.unsubscribeInbox?.();
+    this.unsubscribeInbox = undefined;
     this.unsubscribeChat?.();
     this.unsubscribeChat = undefined;
     this.conversationBinding = undefined;
@@ -1324,6 +1983,10 @@ export class QaSessionController {
       this.assets.release(String(this.session.sessionId));
     }
     this.session = undefined;
+    // A chat that holds no session names no session: {@link bind} hands the
+    // identity out only at the end of a finished adoption, and leaving a
+    // binding is the hand that takes it back.
+    this.namedSession = null;
     this.hostSources.reset();
     this.hostApprovals.reset();
     this.hostQuestions.reset();
@@ -1331,6 +1994,12 @@ export class QaSessionController {
     // The next binding probes the Host again even for the same chat.
     this.pendingProbeKey = "";
     this.admissionPending = false;
+    // Request ids are minted per submission, so another chat's queue listing
+    // says nothing about this one's submissions still crossing the transport.
+    this.admittedSubmissions.clear();
+    // A held-back question belongs to the chat that asked it; another binding
+    // answers for its own sends.
+    this.requestQueueNotice = null;
     this.policyReady = false;
     this.compatibilityReadOnly = false;
     // The catalog belongs to the chat that produced it: another chat has a
@@ -1356,6 +2025,11 @@ export class QaSessionController {
   /** Project one session notification; the running-turn spacing policy
    * (first frame at once, further frames absorbed) lives in the publisher. */
   private publishSessionUpdate(): void {
+    // Read before the spacing, from the notification itself: a frame absorbed
+    // into a running turn's window is dropped rather than replayed, so an
+    // admission landing in such a window would otherwise go unrecorded and the
+    // claim frame after it would draw the ghost row this retires.
+    this.trackAdmittedSubmissions();
     this.streamPublisher.publish(
       this.session?.getSnapshot().running === true,
       () => this.publish(),
@@ -1365,7 +2039,18 @@ export class QaSessionController {
   private publish(): void {
     if (this.disposed) return;
     const connected = this.connection.getSnapshot() !== undefined;
-    if (this.drafting && this.session === undefined) {
+    // A draft is on screen while its chat owns no session. That includes one
+    // whose first send created a session the stand then refused to attest:
+    // projecting that never-claimed binding would hand the screen to a chat the
+    // visitor does not hold and leave the composer disabled with no retry over
+    // it, while the draft keeps a sendable composer and the reason above it. A
+    // proof still in flight is the other case — the session the question is
+    // waiting for is already the chat on screen, and its rows belong there.
+    const refusedDraft =
+      this.drafting &&
+      this.namedSession === null &&
+      this.materializing === undefined;
+    if (this.drafting && (this.session === undefined || refusedDraft)) {
       // Draft state: an empty writable composer without a bound session. The
       // session list is untouched — nothing exists until the first send.
       const materializing =
@@ -1373,12 +2058,14 @@ export class QaSessionController {
         this.pendingSubmission !== undefined;
       this.state = {
         ...QA_SESSION_IDLE_STATE,
+        chatKey: this.chatKey,
         phase: materializing
           ? "creating"
           : !connected && this.connectedOnce
             ? "reconnecting"
             : "idle",
         error: this.operationError,
+        requestQueue: this.requestQueueNotice,
         canSend: connected && !materializing,
         pendingMessage: this.pendingSubmission?.message ?? null,
         chatsRevision: this.chatsRevision,
@@ -1392,6 +2079,7 @@ export class QaSessionController {
         phase:
           !connected && this.connectedOnce ? "reconnecting" : this.state.phase,
         error: this.operationError ?? this.state.error,
+        requestQueue: this.requestQueueNotice,
       };
       this.emit();
       return;
@@ -1406,31 +2094,46 @@ export class QaSessionController {
       this.sourceAnchor(sessionId),
     );
     const sourceBundles = this.hostSources.merge(projectedSourceBundles);
-    if (!snapshot.running) {
+    // A delegated child is not attested, so every Host RPC that admits the
+    // session refuses it — and its evidence reaches the chat through the
+    // inheritance flow anyway. Asking for a child's bundles therefore answers
+    // nothing, costs the operator a rejected admission per publish, and leaves
+    // the view reading its sources off the transcript projection alone.
+    if (!snapshot.running && this.viewingSubagent === null) {
       void this.hostSources.refresh(sessionId, () => this.publish());
     }
     this.probePending(sessionId, connected);
     this.syncPendingPolling(
       snapshot.running === true && !this.compatibilityReadOnly,
     );
+    const queuedMessages = this.queuedMessages();
     const projectionInput = {
       connected,
       sessionId,
+      chatKey: this.chatKey,
       sessionSnapshot: snapshot,
       conversationSnapshot,
       sourceBundles,
+      // The same directory the sources are anchored on: an answer that quotes a
+      // file the turn made is masked to the name inside this workspace.
+      workspaceRoot: this.sourceAnchor(sessionId),
       approvals: this.hostApprovals.list(),
       questions: this.hostQuestions.list(),
       // Ownership is chat-level: every user message of a foreign chat
       // carries its owner's name when an admin reads it.
       author: this.accounts?.messageAuthorOf(sessionId),
       operationError: this.operationError,
+      requestQueue: this.requestQueueNotice,
       policyReady: this.policyReady,
       compatibilityReadOnly: this.compatibilityReadOnly,
       admissionPending:
         this.admissionPending || this.pendingSubmission !== undefined,
       chatsRevision: this.chatsRevision,
       viewingSubagent: this.viewingSubagent,
+      queuedMessages,
+      // The live set, not a copy: `projectQueue` only asks it `has` and keeps no
+      // reference, so nothing here could go stale by the next frame.
+      admittedSubmissions: this.admittedSubmissions,
       slash: this.slashView(),
       config: this.config,
       subagentNames: this.subagentNames(),
@@ -1438,13 +2141,19 @@ export class QaSessionController {
     let projected = projectBoundSessionState(projectionInput);
     const pending = this.pendingSubmission;
     if (pending !== undefined) {
-      if (snapshot.running) pending.sawRunning = true;
+      // The optimistic copy retires on a fact the transcript itself carries —
+      // its own row arriving, or a turn closing — and not on the session's
+      // running bit: the Session list relays that one too, and a stale false
+      // at the start of a turn retired the copy before the Chat slice had
+      // assembled the node, which is the frame the question vanished in.
       const committedUserCount = projected.messages.filter(
         (message) => message.role === "user",
       ).length;
       if (
         committedUserCount > pending.baselineUserCount ||
-        (pending.accepted && pending.sawRunning && !snapshot.running)
+        (pending.accepted &&
+          chatLegacyOf(conversationSnapshot).turnEnds.size >
+            pending.baselineTurnEnds)
       ) {
         this.pendingSubmission = undefined;
         // The first projection was intentionally busy while the optimistic
@@ -1461,6 +2170,59 @@ export class QaSessionController {
       pendingMessage: this.pendingSubmission?.message ?? null,
     };
     this.emit();
+  }
+
+  /**
+   * The messages the Host has accepted for the agent's next turn. They arrive
+   * through the session's Inbox projection rather than the snapshot the queue
+   * strip used to read: `rc.2` moved pending input onto the projection surface,
+   * and a key the Host never published reads as no queued work.
+   */
+  private queuedMessages(): readonly UserMessage[] {
+    const inbox = this.session?.projections.faceOf("inbox").getSnapshot() as
+      { readonly "next-turn"?: readonly UserMessage[] } | undefined;
+    return inbox?.["next-turn"] ?? [];
+  }
+
+  /**
+   * Record the submissions this binding has seen the Host name — the queue rows
+   * it holds and the durable input rows it has written. Naming the message is the
+   * server's own receipt for it, so from that notification on the row belongs to
+   * the chat, not to the transport: an echo the claim leaves behind must not read
+   * again as a question still crossing. The scan is only paid for while some
+   * queued echo still waits for its name.
+   *
+   * Both lists are read because neither is reliable alone, and the transcript is
+   * the durable one: a send admitted and claimed between two notifications never
+   * appears in a queue frame this browser is handed, but its row stays in the
+   * transcript, so the next frame names it. And the receipt is never dropped
+   * while the binding lives — an id the server has named belongs to the submission
+   * that minted it (`beginSubmission` returns a fresh `randomUUID`), so no later
+   * send can need the row this hides, whereas forgetting the receipt re-draws the
+   * ghost the moment the snapshot registers the echo again.
+   *
+   * Read from the notification, not from the projected frame: the projection of a
+   * running turn is spaced, and an absorbed frame is dropped rather than
+   * replayed, so spacing must not decide whether this browser ever saw the name.
+   */
+  private trackAdmittedSubmissions(): void {
+    const snapshot = this.session?.getSnapshot();
+    if (snapshot === undefined) return;
+    // Only an echo still waiting can draw a row, so a chat whose queued sends are
+    // all settled costs no scan of the transcript — and a browser registers the
+    // echo before it sends, so an id with no echo there has nothing to settle.
+    const unsettled = snapshot.pendingSubmissions.some(
+      (item) =>
+        item.placement === "queued" &&
+        !this.admittedSubmissions.has(String(item.requestId)),
+    );
+    if (!unsettled) return;
+    for (const requestId of hostNamedSubmissionIds(
+      this.queuedMessages(),
+      this.conversationBinding?.snapshot.getSnapshot(),
+    )) {
+      this.admittedSubmissions.add(requestId);
+    }
   }
 
   /**
@@ -1503,11 +2265,7 @@ export class QaSessionController {
     const names: Record<string, string> = {};
     const list = this.sessions.list.getSnapshot();
     const chats = this.visibleChatIds();
-    const candidates = visibleSubagentCandidates(
-      list.byId ?? {},
-      (list.subagentsByParent ?? {}) as SubagentCatalogs,
-      chats,
-    );
+    const candidates = visibleSubagentCandidates(list.byId ?? {}, chats);
     for (const candidate of candidates) {
       const name = readableSubagentName(candidate.label, candidate.id);
       if (name !== undefined) names[candidate.id] = name;
@@ -1525,6 +2283,15 @@ export class QaSessionController {
     return new Set(this.accounts.ownedIds());
   }
 
+  /**
+   * Tell the user that a submission they pressed did not go. The composer keeps
+   * its text through a refused send, so silence here would read as success.
+   */
+  private refuseSend(message: string): void {
+    this.operationError = message;
+    this.publish();
+  }
+
   private fail(message: string, error: unknown): void {
     // Policy attestation refusals already logged their precise reason; a
     // second stack trace for the wrapper error is only console noise.
@@ -1535,6 +2302,7 @@ export class QaSessionController {
     this.operationError = message;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
+      chatKey: this.chatKey,
       phase: "error",
       error: message,
       chatsRevision: this.chatsRevision,
@@ -1543,25 +2311,30 @@ export class QaSessionController {
   }
 
   /**
-   * Attest the currently bound session. `ok` carries the session id the proof
-   * was issued for; `stale` means the binding changed while the request was
-   * in flight, so nothing was written — the newer binding manages its own
-   * attestation; `refused` is a genuine admission refusal of this binding.
+   * Attest `session`, which defaults to the one currently bound. `ok` carries
+   * the session id the proof was issued for; `stale` means the binding changed
+   * while the request was in flight, so nothing was written — the newer binding
+   * manages its own attestation; `refused` is a genuine admission refusal of
+   * this binding.
    */
   private async attestPolicy(
     reportFailure = true,
+    session = this.session,
   ): Promise<
     | { kind: "ok"; sessionId: string }
     | { kind: "refused"; reason: string | null }
     | { kind: "stale" }
   > {
-    const session = this.session;
     if (session === undefined) return { kind: "refused", reason: null };
     const sessionId = String(session.sessionId);
-    if (!this.config.lockdown.enabled) {
+    if (!this.config.lockdown.enabled && this.accounts === undefined) {
       this.policyReady = true;
       return { kind: "ok", sessionId };
     }
+    // With lockdown off there is no policy to pin, but the Host call still
+    // runs: account identity and ownership are admitted there independently of
+    // lockdown, and skipping the call is what let a browser that restored
+    // another account's chat write into it without ever being asked who spoke.
     this.policyReady = false;
     this.publish();
     const outcome = await attestQaPolicy({

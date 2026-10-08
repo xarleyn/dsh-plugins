@@ -1,7 +1,7 @@
 import { resolveConfig } from "../../src/config.js";
 import { ConfluenceProvider } from "../../src/providers/confluence/index.js";
 import { COMPANY, EMAIL, SITES, TOKEN } from "./shared.js";
-import { describeProviderConformance } from "../provider-conformance.helpers.js";
+import { describeProviderConformance } from "../helpers/provider-conformance.helpers.js";
 
 const BASIC = Buffer.from(`${EMAIL}:${TOKEN}`, "utf8").toString("base64");
 
@@ -17,6 +17,7 @@ describeProviderConformance({
     value: `Basic ${BASIC}`,
   },
   statuses: [
+    [302, "CredentialRevoked"],
     [400, "InvalidRequest"],
     [401, "CredentialRevoked"],
     [403, "ProviderPermissionDenied"],
@@ -27,10 +28,11 @@ describeProviderConformance({
     [500, "ProviderUnavailable"],
   ],
   transient: { status: 429, attempts: 3, code: "RateLimited" },
-  build: ({ fetcher, retries, maxResponseBytes }) => {
+  build: ({ fetcher, retries, maxResponseBytes, timeoutMs }) => {
     const provider = new ConfluenceProvider(
       resolveConfig({
         maxResponseBytes,
+        timeoutMs,
         confluence: { instances: SITES, retries },
       }),
       fetcher,

@@ -98,6 +98,25 @@ export function createBuiltinMemoryProvider(
       return record;
     },
 
+    async replace(
+      namespace: string,
+      key: string,
+      text: string,
+      tags: readonly string[] = [],
+    ): Promise<MemoryRecord | undefined> {
+      const normalizedNamespace = normalizeNamespace(namespace);
+      const storageKey = memoryKeyOf(normalizedNamespace, key.trim());
+      const existing = table.get(storageKey);
+      if (existing === undefined) return undefined;
+      const record = buildMemoryRecord(
+        { namespace: normalizedNamespace, key, text, tags },
+        existing,
+        now(),
+      );
+      await table.put(storageKey, record);
+      return record;
+    },
+
     async forget(namespace: string, key: string): Promise<boolean> {
       return table.delete(
         memoryKeyOf(normalizeNamespace(namespace), key.trim()),

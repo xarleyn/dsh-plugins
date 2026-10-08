@@ -27,6 +27,7 @@ import {
   type ResolvedToolOffloadConfig,
   type ToolOffloadConfig,
 } from "./config.js";
+import { qaModelPolicy } from "./qa-policy.js";
 import {
   createPostExecuteListener,
   type ToolOffloadListener,
@@ -114,7 +115,11 @@ export class ToolOffloadService extends Service {
       // The runtime can arrive while the plugin is being torn down; mounting
       // there would collect undo actions nobody will ever walk.
       if (this.disposed) return;
-      const runner = deps.runner ?? createSubagentRunner(host.subagents);
+      const runner =
+        deps.runner ??
+        createSubagentRunner(host.subagents, (sessionId) =>
+          qaModelPolicy(ctx.get("qaSurface"), sessionId),
+        );
       disposers.push(
         host.on(
           "tools/post-execute",

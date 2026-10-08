@@ -27,7 +27,13 @@ per restriction, whether it is **enforced** by code or merely **advisory**.
   cannot be replaced by accident.
 - **Scoped memory.** Each expert has a private read/write namespace and
   read-only shared namespaces. The private boundary is a storage key layout,
-  not a sentence in a prompt.
+  not a sentence in a prompt. Where the deployment has accounts, the private
+  namespace is one per account (`domain/payments/u/<account>`) and the domain's
+  own namespace stays read-only for every account — what one account's expert
+  learned is not a rule another account inherits. A note has to say who it is
+  true for: what only this caller's access showed (a tool that was refused, a
+  source that was not mounted) is the caller's situation, and the key layout
+  keeps it out of the common tiers.
 - **Scoped tools.** The selected tools are the only ones the expert can see or
   execute; a tool that is filtered out refuses to run.
 - **Honest enforcement.** Every filesystem rule, memory namespace and
@@ -50,7 +56,7 @@ Install the published npm package by name:
 dsh plugin --profile web add @yadsh/dsh-domain-experts
 ```
 
-Then open `Settings → Plugins → Domain Experts`.
+Then open the **Domain Experts** row of the Host's **Plugins** page.
 
 ## Managing domains
 
@@ -75,7 +81,7 @@ The plugin registers three agent-facing tools.
 | --- | --- |
 | `domain_expert` | Ask one domain's expert to investigate, answer or review something. Called from inside an expert it is a delegation, and the caller's cross-domain policy decides whether it is allowed. |
 | `domain_experts_list` | Identifiers, names and one-line descriptions of the enabled domains. Scope, memory and policy stay out of the model's view. |
-| `domain_memory` | Read and write the calling expert's own memory. Only namespaces resolved from the persisted definition are reachable, and only the private one accepts writes. |
+| `domain_memory` | Read and write the calling expert's own memory. Only namespaces resolved from the persisted definition are reachable, and only the caller's own namespace accepts writes — that is the account's namespace where the deployment keeps memory per account. A write that records nothing — an acknowledgement, a placeholder, an echoed command, «nothing was found», a text too short to carry a fact — is refused with the reason, because whatever is stored is recalled into every later answer of that domain. |
 
 `domain_delegate` is accepted as a tool-policy alias for `domain_expert` so a
 configuration written against the design vocabulary is not reported as
@@ -83,9 +89,9 @@ degraded.
 
 ## Configuration
 
-Plugin settings live in the `domain-experts` namespace and are edited in
-`Settings → Plugins → Configurable` (or `Settings → Plugins → Domain Experts`
-for the domains themselves). Changes apply to subsequent operations.
+Plugin settings are live fields of this plugin's own profile configuration, and
+the Host serves their form for the `dsh-domain-experts` entry. The
+**Domain Experts** page on the Plugins panel manages the domains themselves. Changes apply to subsequent operations.
 
 | Option | Type | Default | Description |
 | --- | --- | --- | --- |
@@ -96,6 +102,7 @@ for the domains themselves). Changes apply to subsequent operations.
 | `defaultCrossDomainMode` | string | `expert-only` | Cross-domain mode pre-filled on new domains: `disabled`, `expert-only` or `direct-read`. |
 | `defaultMemoryProvider` | string | `builtin` | Memory provider id every expert uses. Providers are registered when the plugin loads, so naming one the deployment did not start with takes a restart. |
 | `memoryDbPath` | string | `<DSH_HOME>/domain-experts-memory.db` | Database file the `sqlite` memory provider owns. |
+| `perUserMemory` | boolean | `true` | Keep a separate memory namespace per account, in a deployment that has accounts. Takes effect only while the host's accounts surface is mounted. |
 | `recallLimit` | number | `5` | Memory records recalled into an expert's persona. |
 | `auditLimit` | number | `200` | Execution audit entries kept in memory and mirrored to the log. |
 
@@ -128,6 +135,17 @@ as the plugin's other SQLite stores — its `-wal` and `-shm` sidecars travel wi
 it, and it is copied while the stack is stopped. A domain seed that re-seeds the
 storage unit no longer touches memory held by the `sqlite` provider.
 
+What an expert recorded is maintenance data, not a write-once log. The service
+exposes a host-plane seam for it — `ctx.domainExperts.memoryAdmin` — which lists
+every namespace the enabled experts declare, searches one, corrects a record in
+place, and deletes one record, a named set, or a whole namespace. It is not a
+Remote: a browser must not hold an unauthenticated write endpoint over the store
+that feeds every expert's prompt, so the calling surface — the QA console in
+`@yadsh/dsh-qa-surface`, behind its own permission check — carries the identity.
+Writes reach only a namespace some enabled expert owns as its private one, a
+correction of a record that vanished meanwhile is refused instead of re-created,
+and an operator's edit is never filtered as a model's would be.
+
 Domain definitions are **not** plugin configuration: they are durable records in
 the plugin's own storage domain, edited in the Domain Experts tab. That keeps an
 arbitrarily large expert catalog out of `cordis.yml`.
@@ -141,7 +159,7 @@ reported with one of two levels:
 | Restriction | Typical level | What makes it enforced |
 | --- | --- | --- |
 | Tool policy | `enforced` | The harness removes the tool from the child's view *and* refuses to execute it. |
-| Memory namespace | `enforced` | The storage key layout keeps other namespaces out of reach; reads and writes go through the resolved namespace only. |
+| Memory namespace | `enforced` | The storage key layout keeps other namespaces out of reach; reads and writes go through the resolved namespace only. In an account-scoped deployment the writable namespace is the caller's own account, and a run nobody claimed is refused a write rather than shown the door — the namespace it would reach is what every account reads. |
 | Delegation policy | `enforced` | The plugin refuses a delegation the caller's mode or target list forbids. |
 | Filesystem scope | `enforced` when a selected worker declares it applies the scope, otherwise `advisory` | A worker that actually restricts path access (`DomainWorker.enforces`). |
 | Persona wording | always `advisory` | Nothing but the model's compliance. |
@@ -149,7 +167,16 @@ reported with one of two levels:
 The resolved-scope inspector renders this per resource, and the degraded
 sections list what a domain asks for but the deployment cannot supply
 (`SCOPE_PROVIDER_MISSING`, `MEMORY_PROVIDER_MISSING`, `WORKER_UNAVAILABLE`,
-`TOOL_UNVERIFIED`, `DELEGATION_TARGET_MISSING`).
+`TOOL_UNVERIFIED`, `TOOL_UNFILTERABLE`, `DELEGATION_TARGET_MISSING`).
+
+A `N degraded` chip is not a broken expert, and the codes are not equally severe.
+`TOOL_UNVERIFIED` costs nothing: it is recorded for every allow-list name that is
+not a worker of this plugin — an ordinary tool such as `read` or `grep` — because
+the resolver cannot see the host's global tool registry, so it passes the name to
+the child unchanged and says it could not verify it. An expert that answers with
+`status="completed"` and this one code in the log had all the tools its policy
+asks for. `TOOL_UNFILTERABLE` is the code that can name a tool the expert did not
+get, and it names it.
 
 Path containment is implemented once, in `decidePath`/`resolveWithinRoot`:
 denial wins over any allow, a path that no rule classifies is refused, and
@@ -162,9 +189,9 @@ match is attempted.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (tested against `0.1.5-rc.2`)
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (tested against `0.1.7-rc.2`)
 - Node `^22.19.0 || >=24.0.0`
-- Browser half requires the `settings.plugins.tab` slot
+- Browser half requires the `plugins.bundle.config` seat
 
 See [compatibility.json](./compatibility.json) for the machine-readable form.
 

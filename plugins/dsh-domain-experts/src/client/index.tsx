@@ -1,4 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import domainExpertsRemote from "@yadsh/dsh-domain-experts/remote";
@@ -16,15 +17,18 @@ import { currentSessionId } from "./session-id.js";
 
 export const inject = ["slots", "remote", "sessions"];
 
+/** The package name, which is also the key of this bundle's seat on the page. */
+const PACKAGE_NAME = "@yadsh/dsh-domain-experts";
+
 const STYLE_MARKER = "dsh-domain-experts";
 
 /**
  * Browser half of the plugin.
  *
  * It mounts the generated Remote contribution, adapts the two-layer result
- * shape into one outcome, and registers one page in the Plugins settings
- * section. Everything it displays comes from the host service: the page never
- * decides policy, so the same service can back a CLI or an API later.
+ * shape into one outcome, and seats the page on this bundle's own row of the
+ * Plugins page. Everything it displays comes from the host service: the page
+ * never decides policy, so the same service can back a CLI or an API later.
  */
 export async function apply(ctx: Context): Promise<() => Promise<void>> {
   const remote = ctx.remote as DomainExpertsClientRemote;
@@ -44,13 +48,18 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       const namespace = (remoteContext.remote as DomainExpertsClientRemote)
         .domainExperts;
       disposeSlot?.();
-      disposeSlot = ctx.slots.inject("settings.plugins.tab", () =>
+      disposeSlot = ctx.slots.inject("plugins.bundle.config", () =>
         ctx.slots.register(
           {
-            name: "settings.plugins.tab",
-            id: "domain-experts",
-            order: 20,
-            label: () => "Domain Experts",
+            name: "plugins.bundle.config",
+            /*
+             * The bundle-level seat of the Plugins page, keyed by the package name:
+             * this page edits domains through its own Remote services, not this
+             * bundle's settings namespace, which is what separates it from a row's
+             * configuration card (AGENTS.md). The page supplies no `label` — the Host
+             * titles the bundle from its exported `locale/en.json`.
+             */
+            key: PACKAGE_NAME,
             inject: () => ({
               api: createApi(namespace),
               currentSessionId: (): string => currentSessionId(ctx),

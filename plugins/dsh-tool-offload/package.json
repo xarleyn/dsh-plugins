@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-tool-offload",
-  "version": "0.1.6",
+  "version": "0.1.9",
   "description": "Offloads large, low-judgement DeepSeek Harness tool results to small one-shot worker agents before they enter the main model context",
   "repository": {
     "type": "git",
@@ -19,6 +19,7 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -28,6 +29,7 @@
   },
   "files": [
     "lib",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
@@ -40,6 +42,7 @@
     "lint": "eslint src tests scripts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "verify:package": "node scripts/verify-package.mjs",
     "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
@@ -80,6 +83,7 @@
     "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",

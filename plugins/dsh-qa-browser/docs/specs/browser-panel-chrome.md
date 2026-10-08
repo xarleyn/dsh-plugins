@@ -82,8 +82,9 @@ appears in the panel's error line already, and a banner repeating it would be
 noise.
 
 The entries travel with the tab, and the panel shows the ones belonging to the
-selected tab plus the residue that has no page behind it (a service worker's
-request). The strip marks a tab that carries entries, so a second page failing
+selected tab plus the residue that has no page behind it (a refused WebSocket
+handshake, whose route names no frame). The strip marks a tab that carries
+entries, so a second page failing
 is visible without the panel pretending it is the one on screen. Each list is
 one entry per refused destination, counted rather than repeated — a page
 retrying a blocked endpoint is one thing to fix. It is capped at eight
@@ -113,7 +114,7 @@ needs the lease, and the lease needs a session. The gesture is the human saying
 
 The device row offers a width, a height and four presets (laptop, desktop,
 tablet, phone). The Host clamps every request to the same bounds the agent's
-`browser_viewport` tool uses — `VIEWPORT_BOUNDS` in `src/host/viewport.ts` is
+`browser_viewport` tool uses — `VIEWPORT_BOUNDS` in `src/shared/viewport.ts` is
 the single home for them, and the panel imports it so the two callers cannot
 drift apart. The scale is the panel's own view preference: «По размеру окна»
 fits the whole page into the pane, 100 % (and 75 %, 50 %) draws it at a fixed

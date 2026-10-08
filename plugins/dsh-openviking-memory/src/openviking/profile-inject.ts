@@ -26,7 +26,34 @@
  */
 
 const USER_RESERVED_DIRS = new Set(["memories"]);
-let _userSpaceCache: string | null = null;
+
+/**
+ * FORK LOCAL EDIT (see docs/upstream-sync.md): the resolved space is remembered
+ * per identity instead of one module-wide slot. Upstream assumes the process
+ * serves one OpenViking identity; this plugin serves one account space per QA
+ * account in the same process and can re-point its endpoint while running, so a
+ * cached space must never outlive the identity it was resolved for.
+ */
+const userSpaceCache = new Map<string, string>();
+
+/**
+ * The identity one profile build speaks as: which server, which account, which
+ * user. `resolveUserSpace` asks that server where this identity's memory lives,
+ * so its answer belongs to exactly this triple.
+ */
+export interface RequestIdentity {
+  readonly endpoint: string;
+  readonly account: string;
+  readonly user: string;
+}
+
+/**
+ * The cache key of one identity. Separated on NUL: none of the three fields can
+ * contain it, so two different triples never read as one.
+ */
+function identityKey(identity: RequestIdentity): string {
+  return `${identity.endpoint}\0${identity.account}\0${identity.user}`;
+}
 
 /**
  * The `makeFetchJSON` closure the runtime hands this helper. Declared locally
@@ -90,9 +117,12 @@ function asRecord(value: unknown): Record<string, unknown> | null {
  */
 async function resolveUserSpace(
   fetchJSON: FetchJSON,
-  actorPeerId: string = "",
+  actorPeerId: string,
+  identity: RequestIdentity,
 ): Promise<string> {
-  if (_userSpaceCache) return _userSpaceCache;
+  const key = identityKey(identity);
+  const cached = userSpaceCache.get(key);
+  if (cached !== undefined) return cached;
 
   let fallbackSpace = "default";
   const status = await fetchJSON("/api/v1/system/status");
@@ -101,6 +131,7 @@ async function resolveUserSpace(
     fallbackSpace = statusUser.trim();
   }
 
+  let resolved = fallbackSpace;
   const lsRes = await fetchJSON(
     `/api/v1/fs/ls?uri=${encodeURIComponent("viking://user")}&output=original`,
     {},
@@ -115,22 +146,13 @@ async function resolveUserSpace(
       })
       .filter((n) => n && !n.startsWith(".") && !USER_RESERVED_DIRS.has(n));
     if (spaces.length > 0) {
-      if (spaces.includes(fallbackSpace)) {
-        _userSpaceCache = fallbackSpace;
-        return fallbackSpace;
-      }
-      if (spaces.includes("default")) {
-        _userSpaceCache = "default";
-        return "default";
-      }
-      if (spaces.length === 1) {
-        _userSpaceCache = spaces[0]!;
-        return spaces[0]!;
-      }
+      if (spaces.includes(fallbackSpace)) resolved = fallbackSpace;
+      else if (spaces.includes("default")) resolved = "default";
+      else if (spaces.length === 1) resolved = spaces[0]!;
     }
   }
-  _userSpaceCache = fallbackSpace;
-  return fallbackSpace;
+  userSpaceCache.set(key, resolved);
+  return resolved;
 }
 
 /**
@@ -334,6 +356,9 @@ function formatListing(
  *
  * @param {Function} fetchJSON  ov-session.mjs:makeFetchJSON closure
  * @param {number} totalBudgetTokens  chars/4 budget, total for the whole block
+ * @param {string} actorPeerId  peer the reads are attributed to
+ * @param {object} identity  the endpoint/account/user this build speaks as,
+ *   which is what the resolved user space is cached under
  * @returns {Promise<null | {
  *   block: string, chars: number, tokens: number, profileUri: string,
  *   profileChars: number, prefCount: number, entCount: number,
@@ -343,9 +368,10 @@ function formatListing(
 export async function buildProfileBlock(
   fetchJSON: FetchJSON,
   totalBudgetTokens: number,
-  actorPeerId: string = "",
+  actorPeerId: string,
+  identity: RequestIdentity,
 ): Promise<ProfileBlock | null> {
-  const space = await resolveUserSpace(fetchJSON, actorPeerId);
+  const space = await resolveUserSpace(fetchJSON, actorPeerId, identity);
   const profileUri = `viking://user/${space}/memories/profile.md`;
   const prefUri = `viking://user/${space}/memories/preferences`;
   const entUri = `viking://user/${space}/memories/entities`;

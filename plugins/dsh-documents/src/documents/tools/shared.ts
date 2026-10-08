@@ -8,6 +8,7 @@
  * knows a backend name beyond the one the result reports.
  */
 
+import path from "node:path";
 import type {
   ParameterSchemaSpec,
   ValueSchemaSpec,
@@ -15,6 +16,7 @@ import type {
 
 import { DocumentError } from "../errors.js";
 import type { DocumentScope } from "../orchestrator/scope.js";
+import { canonicalizeForContainment } from "../security/paths.js";
 import type { DocumentRuntime } from "../runtime.js";
 import type { DocumentFileResult, DocumentWarning } from "../types.js";
 
@@ -53,8 +55,8 @@ export const warningsSchema = {
   },
 } satisfies ValueSchemaSpec;
 
-/** Mutable projection of a produced file for the tool result. */
-export function toolFiles(files: readonly DocumentFileResult[]): {
+/** Model-facing projection of one produced file. */
+export interface ToolFile {
   format: string;
   path: string;
   mediaType: string;
@@ -62,16 +64,72 @@ export function toolFiles(files: readonly DocumentFileResult[]): {
   sha256: string;
   status: string;
   error?: string;
-}[] {
-  return files.map((file) => ({
-    format: file.format,
-    path: file.path,
-    mediaType: file.mediaType,
-    size: file.size,
-    sha256: file.sha256,
-    status: file.status,
-    ...(file.error === undefined ? {} : { error: file.error }),
-  }));
+}
+
+/** A path spelled with forward slashes, the separator the tools quote. */
+function toPosix(value: string): string {
+  return value.split(path.sep).join("/");
+}
+
+/**
+ * The name one produced file is reported under: its path inside the session
+ * workspace, with forward slashes.
+ *
+ * The pipeline works in absolute paths — that is what containment is checked
+ * against — but a tool result is text the model repeats to a person, and a
+ * deployment keeps every account under its own workspace directory, so an
+ * absolute path would name the account that owns the file rather than the file.
+ * The workspace-relative spelling is also the one the input parameters accept,
+ * so a document reported under this name can be read back unchanged.
+ *
+ * The canonical spelling is tried first because the pipeline resolved the file
+ * through it: a workspace whose directory is reached through a symlink is
+ * reported by the pipeline under the resolved root, and only the raw spelling
+ * would fall to a bare name. A file outside every spelling of the workspace —
+ * a deployment that pins its artifact root elsewhere — is reported by name
+ * alone, which leaks nothing and is still the name the file has.
+ */
+export async function workspacePathName(
+  workspaceRoot: string,
+  target: string,
+): Promise<string> {
+  const roots: string[] = [];
+  try {
+    roots.push(await canonicalizeForContainment(workspaceRoot));
+  } catch {
+    // The raw spelling below is the fallback the scope itself was built from.
+  }
+  roots.push(workspaceRoot);
+  for (const root of roots) {
+    const relative = toPosix(path.relative(root, target));
+    if (
+      relative !== "" &&
+      !relative.startsWith("../") &&
+      !path.isAbsolute(relative)
+    ) {
+      return relative;
+    }
+  }
+  const segments = toPosix(target).split("/");
+  return segments[segments.length - 1] ?? target;
+}
+
+/** Project every produced file of one call into its model-facing shape. */
+export async function toolFiles(
+  files: readonly DocumentFileResult[],
+  workspaceRoot: string,
+): Promise<ToolFile[]> {
+  return Promise.all(
+    files.map(async (file) => ({
+      format: file.format,
+      path: await workspacePathName(workspaceRoot, file.path),
+      mediaType: file.mediaType,
+      size: file.size,
+      sha256: file.sha256,
+      status: file.status,
+      ...(file.error === undefined ? {} : { error: file.error }),
+    })),
+  );
 }
 
 /** Structural view of the execution context a tool body needs. */
@@ -165,5 +223,14 @@ export function renderFiles(files: readonly DocumentFileResult[]): string[] {
   });
 }
 
+/**
+ * The closing line of every producing tool. The paths it follows are
+ * workspace-relative, so the note says who passes them back, and says not to
+ * quote a location at the user: the chat shows a produced file as its own card,
+ * and a directory layout is how the deployment is built, not what the user asked
+ * for.
+ */
 export const ARTIFACT_NOTE =
-  "The artifact directory keeps the source, the assets and manifest.json beside the outputs.";
+  "The artifact directory keeps the source, the assets and manifest.json beside the outputs. " +
+  "Paths are relative to the session working directory: pass one back unchanged to convert or read the file. " +
+  "Name the file to the user instead of quoting a path — the chat presents a produced file as an attachment.";

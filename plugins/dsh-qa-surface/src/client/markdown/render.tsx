@@ -1,10 +1,13 @@
 import { Fragment, createElement } from "react";
 import type { ReactNode } from "react";
-import type { MarkdownBlock, MarkdownListItem } from "./blocks.js";
+import type {
+  MarkdownBlock,
+  MarkdownListItem,
+  MarkdownParseOptions,
+} from "./blocks.js";
 import { parseMarkdown } from "./blocks.js";
 import { parseInline, type MarkdownInline } from "./inline.js";
 import { CodeBlock, LinkGlyph } from "./CodeBlock.js";
-import { MermaidBlock } from "./MermaidBlock.js";
 import { renderTexToReact } from "./math.js";
 import {
   codeChip,
@@ -31,14 +34,17 @@ interface RenderContext extends MarkdownSourceContext {
  * instead of a plain link or code token.
  * @param text - Assistant-authored markdown.
  * @param context - Source resolution handed down by the owning message.
+ * @param options - How to read the end of the text; a live stream frame holds
+ * the block it stopped inside instead of rendering it as settled.
  * @returns The document's blocks, plus the footnote section when the document
  * references a defined footnote.
  */
 export function renderMarkdown(
   text: string,
   context: MarkdownSourceContext,
+  options: MarkdownParseOptions = {},
 ): ReactNode[] {
-  const { blocks, definitions, footnotes } = parseMarkdown(text);
+  const { blocks, definitions, footnotes } = parseMarkdown(text, options);
   const pass: RenderContext = {
     ...context,
     definitions,
@@ -51,6 +57,40 @@ export function renderMarkdown(
   );
   const footnotesSection = renderFootnoteSection(pass);
   return footnotesSection === null ? elements : [...elements, footnotesSection];
+}
+
+/**
+ * One display formula. KaTeX once its source has settled; while the stream is
+ * still inside the block the TeX is held as a literal frame, because half a
+ * formula has no correct rendering — KaTeX answers it with an error span, and
+ * the dollars that open it mean nothing in prose.
+ * @param text - The TeX payload, delimiters already off.
+ * @param key - The block's React key.
+ * @param pending - Whether the block's closer is still to come.
+ * @returns The formula's element, or nothing while an empty block opens.
+ */
+function renderDisplayMath(
+  text: string,
+  key: string,
+  pending: boolean,
+): ReactNode {
+  if (!pending) {
+    return (
+      <div key={key} className="dsh-qa-md-math" data-testid="qa-md-math">
+        {renderTexToReact(text, true)}
+      </div>
+    );
+  }
+  if (text.trim() === "") return null;
+  return (
+    <div
+      key={key}
+      className="dsh-qa-md-math dsh-qa-md-math--pending"
+      data-testid="qa-md-math-pending"
+    >
+      <code>{text}</code>
+    </div>
+  );
 }
 
 function renderBlock(
@@ -70,14 +110,7 @@ function renderBlock(
     case "code":
       if (block.lang === "math" && block.text.trim() !== "") {
         // A ```math fence renders as display TeX, the way the Host does.
-        return (
-          <div key={key} className="dsh-qa-md-math">
-            {renderTexToReact(block.text, true)}
-          </div>
-        );
-      }
-      if (block.lang?.toLowerCase() === "mermaid") {
-        return <MermaidBlock key={key} code={block.text} />;
+        return renderDisplayMath(block.text, key, block.pending === true);
       }
       return (
         <CodeBlock
@@ -87,11 +120,7 @@ function renderBlock(
         />
       );
     case "math":
-      return (
-        <div key={key} className="dsh-qa-md-math">
-          {renderTexToReact(block.text, true)}
-        </div>
-      );
+      return renderDisplayMath(block.text, key, block.pending === true);
     case "quote":
       return (
         <blockquote key={key}>
@@ -130,6 +159,7 @@ function renderListItem(
     <input
       key="task"
       type="checkbox"
+      data-testid="qa-md-task-checkbox"
       checked={item.checked}
       disabled
       aria-label="Задача"
@@ -159,7 +189,11 @@ function renderListItem(
     parts.push(renderBlock(block, `${key}:${index + 1}`, context));
   });
   return (
-    <li key={key} className={item.task ? "dsh-qa-md-task" : undefined}>
+    <li
+      key={key}
+      className={item.task ? "dsh-qa-md-task" : undefined}
+      data-testid={item.task ? "qa-md-task-item" : undefined}
+    >
       {parts}
     </li>
   );
@@ -171,7 +205,7 @@ function renderTable(
   context: RenderContext,
 ): ReactNode {
   return (
-    <div key={key} className="dsh-qa-md-table">
+    <div key={key} className="dsh-qa-md-table" data-testid="qa-md-table">
       <table>
         <thead>
           <tr>
@@ -298,7 +332,11 @@ function inlineNodes(
         const src = remoteImage(node.src);
         if (src === undefined) {
           return (
-            <span key={nodeKey} className="dsh-qa-md-image-alt">
+            <span
+              key={nodeKey}
+              className="dsh-qa-md-image-alt"
+              data-testid="qa-md-image-alt"
+            >
               {node.alt}
             </span>
           );
@@ -307,6 +345,7 @@ function inlineNodes(
           <img
             key={nodeKey}
             className="dsh-qa-md-image"
+            data-testid="qa-md-image"
             src={src}
             alt={node.alt}
             loading="lazy"
@@ -323,7 +362,11 @@ function inlineNodes(
         );
       case "footnoteRef":
         return (
-          <sup key={nodeKey} className="dsh-qa-md-fn-ref">
+          <sup
+            key={nodeKey}
+            className="dsh-qa-md-fn-ref"
+            data-testid="qa-md-fn-ref"
+          >
             {footnoteNumber(node.id, context)}
           </sup>
         );
@@ -378,11 +421,20 @@ function renderFootnoteSection(context: RenderContext): ReactNode | null {
     if (tail === undefined || tail.kind !== "paragraph") {
       children.push(...backrefs);
     }
-    items.push(<li key={key}>{children}</li>);
+    items.push(
+      <li key={key} data-testid="qa-md-footnote-item">
+        {children}
+      </li>,
+    );
   }
   if (items.length === 0) return null;
   return (
-    <section className="dsh-qa-md-footnotes" aria-label="Сноски">
+    <section
+      key="footnotes"
+      className="dsh-qa-md-footnotes"
+      data-testid="qa-md-footnotes"
+      aria-label="Сноски"
+    >
       <ol>{items}</ol>
     </section>
   );

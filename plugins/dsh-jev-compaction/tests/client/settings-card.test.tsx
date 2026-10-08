@@ -1,16 +1,20 @@
 // @vitest-environment jsdom
 
 /**
- * The settings card itself (result-shaping SPEC §51, §56): the shell contract,
- * the values it projects, the writes it issues, and the two safety
- * affordances — the archive warning and the read-only state.
+ * The settings card itself (result-shaping SPEC §51, §56): the markup the Plugins
+ * page leaves to this bundle, the values it projects, the writes it issues, and the
+ * two safety affordances — the archive warning and the read-only state.
+ *
+ * A control reached through its own markup is addressed by `data-testid`, so a
+ * reworded caption cannot break the test; the helper behind those lookups keeps
+ * asserting the caption still labels the node it points at.
  */
 
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import type { JevCompactionConfig } from "../../src/config.js";
+import type { JevCompactionConfig } from "../../src/config/index.js";
 import { JevCompactionCard } from "../../src/client/card.js";
 
 afterEach(cleanup);
@@ -21,8 +25,8 @@ interface Op {
   readonly value?: unknown;
 }
 
-/** A settings scope stub that applies writes onto a fake user layer. */
-function stubScope(
+/** A config form stub that records the writes the card issues. */
+function stubForm(
   options: {
     readonly value?: JevCompactionConfig;
     readonly user?: unknown;
@@ -42,7 +46,7 @@ function stubScope(
     writable: options.writable ?? true,
     mode: "host" as const,
   };
-  const scope = {
+  const form = {
     getSnapshot: () => snapshot,
     subscribe: () => () => {},
     mutate: async (issued: Op[]) => {
@@ -50,62 +54,60 @@ function stubScope(
     },
     set: async () => {},
     unset: async () => {},
-  } as unknown as SettingsScope<JevCompactionConfig>;
-  return { scope, ops };
+  } as unknown as ConfigForm<JevCompactionConfig>;
+  return { form, ops };
 }
 
-function renderCard(options: Parameters<typeof stubScope>[0] = {}) {
-  const { scope, ops } = stubScope(options);
-  const result = render(<JevCompactionCard scope={scope} />);
+function renderCard(options: Parameters<typeof stubForm>[0] = {}) {
+  const { form, ops } = stubForm(options);
+  const result = render(<JevCompactionCard settingsForm={form} />);
   return { ...result, ops };
 }
 
-/** Expand the card the way a user does, through its own header button. */
-function expand(): void {
-  fireEvent.click(
-    screen.getByRole("button", { name: "Show settings: Jev Compaction" }),
-  );
+/**
+ * The control a test id names, with the assertion that its accessible name is
+ * still wired: the id keeps a browser test alive across a reworded caption, and
+ * this keeps the caption from drifting away from the control it labels.
+ */
+function controlById<T extends HTMLElement = HTMLElement>(
+  testId: string,
+  name: string | RegExp,
+): T {
+  const node = screen.getByTestId<T>(testId);
+  expect(screen.getByLabelText(name)).toBe(node);
+  return node;
 }
 
-describe("JevCompactionCard shell", () => {
-  it("renders the canonical shell as a list item child", () => {
+describe("JevCompactionCard frame", () => {
+  it("renders the body directly, with no card of its own around it", () => {
     const { container } = renderCard();
-    const root = container.querySelector("li.dsh-plugin-card");
-    expect(root).not.toBeNull();
-    expect(root!.querySelector(".dsh-plugin-card__header")).not.toBeNull();
-    expect(root!.querySelector(".dsh-plugin-card__name")!.textContent).toBe(
-      "Jev Compaction",
-    );
+    // The Plugins page draws this card's frame, its heading and its expand
+    // control, so the bundle mounts the controls and nothing around them
+    // (AGENTS.md): no list item, no disclosure button, no chevron.
+    const root = container.querySelector(".jevc-body")!;
+    expect(root.tagName).toBe("DIV");
+    expect(root.parentElement?.tagName).not.toBe("LI");
+    expect(container.querySelector("ul")).toBeNull();
+    expect(container.querySelector("svg")).toBeNull();
     expect(
-      root!.querySelector(".dsh-plugin-card__description")!.textContent,
-    ).toContain("Semantic result shaping and historical context compaction");
-    expect(root!.querySelector(".dsh-plugin-card__chevron")).not.toBeNull();
-    // The body only exists while the card is open.
-    expect(root!.querySelector(".dsh-plugin-card__body")).toBeNull();
+      screen.queryByRole("button", { name: /settings: Jev Compaction/u }),
+    ).toBeNull();
   });
 
-  it("opens and closes through the header button", () => {
-    const { container } = renderCard();
-    expand();
-    const root = container.querySelector("li.dsh-plugin-card")!;
-    expect(root.classList.contains("dsh-plugin-card--open")).toBe(true);
-    expect(root.querySelector(".dsh-plugin-card__body")).not.toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Hide settings: Jev Compaction" }),
-    ).toBeTruthy();
+  it("mounts the controls without an expand step", () => {
+    renderCard();
+    // The page opens the row; the body is there the moment it does.
+    expect(controlById("jevc-enabled", "Enable Jev Compaction")).toBeTruthy();
   });
 
-  it("uses no font-glyph chevron", () => {
-    const { container } = renderCard();
-    expect(container.textContent).not.toMatch(/[\u2304\u25be]/u);
-    expect(container.querySelector("svg path")!.getAttribute("d")).toBe(
-      "m3.5 5.25 3.5 3.5 3.5-3.5",
-    );
-  });
-
-  it("renders nothing when the namespace is unavailable", () => {
+  it("explains an unavailable namespace instead of vanishing", () => {
     const { container } = renderCard({ status: "unavailable" });
-    expect(container.childElementCount).toBe(0);
+    // Rendering nothing inside a row the page just expanded would leave the
+    // reader with an empty section and no reason.
+    expect(container.querySelector(".jevc-body")?.textContent).toContain(
+      "not available in this session",
+    );
+    expect(container.querySelector("input, select, button")).toBeNull();
   });
 });
 
@@ -122,15 +124,28 @@ describe("JevCompactionCard content", () => {
         resultShaping: { enabled: false, thresholdChars: 15000 },
       },
     });
-    expand();
-    expect(screen.getByText("jev-latest")).toBeTruthy();
+    expect(screen.getByTestId("jevc-status-model").textContent).toBe(
+      "jev-latest",
+    );
     expect(
-      screen.getByDisplayValue("https://api.typesafe.ai/v1/systemone"),
-    ).toBeTruthy();
-    expect(screen.getByDisplayValue("TYPESAFE_API_KEY")).toBeTruthy();
-    expect(screen.getByDisplayValue("15000")).toBeTruthy();
+      controlById<HTMLInputElement>("jevc-endpoint", "Endpoint").value,
+    ).toBe("https://api.typesafe.ai/v1/systemone");
+    expect(
+      controlById<HTMLInputElement>(
+        "jevc-api-key-env",
+        "API key environment variable",
+      ).value,
+    ).toBe("TYPESAFE_API_KEY");
+    expect(
+      controlById<HTMLInputElement>(
+        "jevc-shaping-threshold",
+        "Minimum result size",
+      ).value,
+    ).toBe("15000");
     // The status line never claims a health check it did not perform.
-    expect(screen.getByText(/Enabled/)).toBeTruthy();
+    expect(screen.getByTestId("jevc-status-enabled").textContent).toContain(
+      "Enabled",
+    );
   });
 
   it("never renders a resolved secret, only the variable name", () => {
@@ -143,7 +158,6 @@ describe("JevCompactionCard content", () => {
         },
       },
     });
-    expand();
     expect(screen.getByText(/never reaches this page/u)).toBeTruthy();
     // No password-style input exists on the card at all.
     expect(document.querySelector('input[type="password"]')).toBeNull();
@@ -151,8 +165,7 @@ describe("JevCompactionCard content", () => {
 
   it("writes an enable toggle as one path-addressed set", () => {
     const { ops } = renderCard({ value: { enabled: false } });
-    expand();
-    fireEvent.click(screen.getByLabelText("Enable Jev Compaction"));
+    fireEvent.click(controlById("jevc-enabled", "Enable Jev Compaction"));
     expect(ops).toEqual([{ op: "set", path: ["enabled"], value: true }]);
   });
 
@@ -160,9 +173,11 @@ describe("JevCompactionCard content", () => {
     const { ops } = renderCard({
       value: { resultShaping: { enabled: false } },
     });
-    expand();
     fireEvent.click(
-      screen.getByLabelText("Shape tool results before they are persisted"),
+      controlById(
+        "jevc-shaping-enabled",
+        "Shape tool results before they are persisted",
+      ),
     );
     expect(ops).toEqual([
       { op: "set", path: ["resultShaping", "enabled"], value: true },
@@ -173,26 +188,24 @@ describe("JevCompactionCard content", () => {
     renderCard({
       value: { resultShaping: { enabled: true }, archive: { enabled: false } },
     });
-    expand();
-    expect(
-      screen.getAllByText(/may not be recoverable from session replay/u).length,
-    ).toBeGreaterThan(0);
+    expect(screen.getByTestId("jevc-shaping-warning")).toBeTruthy();
+    expect(screen.getByTestId("jevc-archive-warning")).toBeTruthy();
   });
 
   it("stays quiet about recovery when the archive is on", () => {
     renderCard({
       value: { resultShaping: { enabled: true }, archive: { enabled: true } },
     });
-    expand();
-    expect(
-      screen.queryByText(/may not be recoverable from session replay/u),
-    ).toBeNull();
+    expect(screen.queryByTestId("jevc-shaping-warning")).toBeNull();
+    expect(screen.queryByTestId("jevc-archive-warning")).toBeNull();
   });
 
   it("marks a field the user layer overrides", () => {
     renderCard({ value: { enabled: true }, user: { enabled: true } });
-    expand();
-    expect(screen.getAllByText(/overridden/u).length).toBeGreaterThan(0);
+    expect(screen.getByTestId("jevc-enabled-chip")).toBeTruthy();
+    // The mark belongs to the field the user layer owns, and to no other.
+    expect(screen.getByLabelText(/Enable Jev Compaction/u)).toBeTruthy();
+    expect(screen.queryByTestId("jevc-shaping-enabled-chip")).toBeNull();
   });
 
   it("resets every override with one unset per key", () => {
@@ -200,8 +213,11 @@ describe("JevCompactionCard content", () => {
       value: { enabled: true, resultShaping: { enabled: true } },
       user: { enabled: true, resultShaping: { enabled: false } },
     });
-    expand();
-    fireEvent.click(screen.getByRole("button", { name: /Reset overrides/u }));
+    const reset = screen.getByTestId("jevc-reset-overrides");
+    expect(screen.getByRole("button", { name: /Reset overrides/u })).toBe(
+      reset,
+    );
+    fireEvent.click(reset);
     expect(ops).toEqual([
       { op: "unset", path: ["enabled"] },
       { op: "unset", path: ["resultShaping"] },
@@ -210,23 +226,21 @@ describe("JevCompactionCard content", () => {
 
   it("disables every control on a read-only profile", () => {
     renderCard({ writable: false, value: { enabled: true } });
-    expand();
     expect(
-      screen.getByLabelText<HTMLInputElement>("Enable Jev Compaction").disabled,
+      controlById<HTMLInputElement>("jevc-enabled", "Enable Jev Compaction")
+        .disabled,
     ).toBe(true);
-    expect(screen.getByText(/read-only/u)).toBeTruthy();
+    expect(screen.getByTestId("jevc-read-only")).toBeTruthy();
   });
 
   it("adds a tool to the allow list", () => {
     const { ops } = renderCard({
       value: { resultShaping: { includeTools: ["bash"] } },
     });
-    expand();
-    const input = screen.getByPlaceholderText("add a tool name");
+    const input = controlById("jevc-include-tools", "Eligible tools");
     fireEvent.change(input, { target: { value: "cargo" } });
-    // Two lists on the card each own an Add button; the eligible-tools one is
-    // the first, and its input is the one just typed into.
-    fireEvent.click(screen.getAllByRole("button", { name: "Add" })[0]!);
+    // The two lists own one Add button each, so the id picks this field's own.
+    fireEvent.click(screen.getByTestId("jevc-include-tools-add"));
     expect(ops).toEqual([
       {
         op: "set",
@@ -240,7 +254,6 @@ describe("JevCompactionCard content", () => {
     const { ops } = renderCard({
       value: { resultShaping: { includeTools: ["bash", "pwsh"] } },
     });
-    expand();
     fireEvent.click(screen.getByRole("button", { name: "Remove bash" }));
     expect(ops).toEqual([
       { op: "set", path: ["resultShaping", "includeTools"], value: ["pwsh"] },

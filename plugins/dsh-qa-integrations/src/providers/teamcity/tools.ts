@@ -5,9 +5,11 @@ import {
   requiredInteger,
   requiredText,
 } from "../../coerce.js";
-import type { IntegrationBroker } from "../../broker.js";
-import type { IntegrationPrincipal } from "../../types.js";
-import { createToolKit } from "../../tool-kit.js";
+import {
+  createToolKit,
+  type ProviderToolFactoryOptions,
+} from "../../tool-kit.js";
+import { TEAMCITY_OPERATIONS } from "./catalog.js";
 import { TEAMCITY_DEFAULTS } from "./config.js";
 import { LOG_MODES } from "./logs.js";
 import {
@@ -59,13 +61,14 @@ const UNTRUSTED_LOG =
  * QA user who owns the DSH session, and no tool schema carries a user,
  * credential or server selector.
  */
-export function createTeamcityTools(options: {
-  readonly broker: IntegrationBroker;
-  readonly principalForSession: (
-    sessionId: string,
-  ) => IntegrationPrincipal | undefined;
-}): readonly ToolDefinition[] {
-  const kit = createToolKit({ ...options, provider: "teamcity" });
+export function createTeamcityTools(
+  options: ProviderToolFactoryOptions,
+): readonly ToolDefinition[] {
+  const kit = createToolKit({
+    ...options,
+    provider: "teamcity",
+    operations: TEAMCITY_OPERATIONS,
+  });
   const tool = kit.tool;
 
   return [
@@ -372,7 +375,7 @@ export function createTeamcityTools(options: {
 
     tool({
       name: "teamcity_build_log",
-      description: `A bounded window of one build's log. Read-only. The log is downloaded up to the deployment byte limit, stripped of terminal control sequences and credential-shaped strings, and cut to the requested lines. ${UNTRUSTED_LOG} \`logTruncated\` means the log continues beyond what was downloaded, so in \`tail\` mode this is the end of the downloaded part, not of the build.`,
+      description: `A bounded window of one build's log. Read-only. The log is downloaded up to the deployment byte limit, stripped of terminal control sequences and credential-shaped strings, and cut to the requested lines. ${UNTRUSTED_LOG} \`logTruncated\` means the log continues beyond what was downloaded, so in \`tail\` mode this is the end of the downloaded part, not of the build. Where the ceiling refuses this reading, \`teamcity_build_failures\` answers why the build failed without the log.`,
       parameters: {
         buildId: { type: "number", required: true, description: BUILD_ID_HINT },
         mode: {

@@ -93,18 +93,31 @@ export function DomainEditor(props: EditorProps) {
       ?.message;
 
   return (
-    <div className="dx-panel">
-      <div className="dx-section">
-        <h3 className="dx-section-title">
+    <div className="dx-panel" data-testid="domain-experts-editor-root">
+      <div className="dx-section" data-testid="domain-experts-editor-header">
+        <h3
+          className="dx-section-title"
+          data-testid="domain-experts-editor-title"
+        >
           {props.isNew ? "New domain" : `Edit ${draft.name || draft.id}`}
         </h3>
-        <p className="dx-section-note">
-          Id <span className="dx-mono">{draft.id}</span>
+        <p
+          className="dx-section-note"
+          data-testid="domain-experts-editor-id-note"
+        >
+          Id{" "}
+          <span className="dx-mono" data-testid="domain-experts-editor-id">
+            {draft.id}
+          </span>
           {props.isNew ? " (fixed once created)" : ""}
         </p>
       </div>
 
-      <div className="dx-tabs" role="tablist">
+      <div
+        className="dx-tabs"
+        role="tablist"
+        data-testid="domain-experts-editor-tabs"
+      >
         {TABS.map((name) => (
           <button
             key={name}
@@ -112,6 +125,7 @@ export function DomainEditor(props: EditorProps) {
             role="tab"
             aria-selected={tab === name}
             className="dx-tab"
+            data-testid="domain-experts-editor-tab"
             onClick={() => {
               setTab(name);
             }}
@@ -122,7 +136,7 @@ export function DomainEditor(props: EditorProps) {
       </div>
 
       {issues.length > 0 ? (
-        <ul className="dx-issues">
+        <ul className="dx-issues" data-testid="domain-experts-editor-issues">
           {issues.map((issue, index) => (
             <li
               className={
@@ -131,6 +145,7 @@ export function DomainEditor(props: EditorProps) {
                   : "dx-issue dx-issue--warning"
               }
               key={`${issue.field}-${String(index)}`}
+              data-testid="domain-experts-editor-issue"
             >
               <strong>{issue.field}</strong> {issue.message}
             </li>
@@ -142,6 +157,7 @@ export function DomainEditor(props: EditorProps) {
         <Section
           title="Identity"
           note="Id and colour are presentation and identity only; the core never interprets them."
+          testId="domain-experts-editor-identity"
         >
           <TextInput
             label="Id"
@@ -151,6 +167,7 @@ export function DomainEditor(props: EditorProps) {
               fieldIssue("id") ??
               "Lowercase letters, digits and dashes. Used by domain_expert."
             }
+            testId="domain-experts-editor-domain-id"
             onChange={(id) => {
               onChange({ ...draft, id });
             }}
@@ -160,6 +177,7 @@ export function DomainEditor(props: EditorProps) {
             value={draft.name}
             invalid={fieldIssue("name") !== undefined}
             hint={fieldIssue("name")}
+            testId="domain-experts-editor-name"
             onChange={(name) => {
               onChange({ ...draft, name });
             }}
@@ -168,15 +186,20 @@ export function DomainEditor(props: EditorProps) {
             label="Description"
             value={draft.description}
             hint="One line, shown in the domain list and to the model."
+            testId="domain-experts-editor-description"
             onChange={(description) => {
               onChange({ ...draft, description });
             }}
           />
-          <div className="dx-row">
+          <div
+            className="dx-row"
+            data-testid="domain-experts-editor-appearance"
+          >
             <TextInput
               label="Icon"
               value={draft.icon}
               hint="Optional label or emoji."
+              testId="domain-experts-editor-icon"
               onChange={(icon) => {
                 onChange({ ...draft, icon });
               }}
@@ -185,6 +208,7 @@ export function DomainEditor(props: EditorProps) {
               label="Colour"
               value={draft.color}
               hint="Optional CSS colour."
+              testId="domain-experts-editor-colour"
               onChange={(color) => {
                 onChange({ ...draft, color });
               }}
@@ -193,6 +217,7 @@ export function DomainEditor(props: EditorProps) {
           <Toggle
             checked={draft.enabled}
             label="Enabled (a disabled domain is refused by domain_expert and hidden from the list)"
+            testId="domain-experts-editor-enabled"
             onChange={(enabled) => {
               onChange({ ...draft, enabled });
             }}
@@ -204,17 +229,20 @@ export function DomainEditor(props: EditorProps) {
         <Section
           title="Persona"
           note="The base policy is fixed and always present. Your instructions are appended; they never replace it."
+          testId="domain-experts-editor-persona"
         >
           <TextArea
             label="Base policy (read-only)"
             value={props.profile?.basePolicy ?? "Resolving…"}
             onChange={() => undefined}
             rows={10}
+            testId="domain-experts-editor-base-policy"
           />
           <TextArea
             label="Custom instructions"
             value={draft.persona.instructions}
             placeholder="What this domain cares about, which conventions it follows, what it must not do."
+            testId="domain-experts-editor-instructions"
             onChange={(instructions) => {
               onChange({ ...draft, persona: { instructions } });
             }}
@@ -224,6 +252,7 @@ export function DomainEditor(props: EditorProps) {
             value={props.profile?.persona ?? "Resolving…"}
             onChange={() => undefined}
             rows={16}
+            testId="domain-experts-editor-composed-persona"
           />
         </Section>
       ) : null}
@@ -232,12 +261,14 @@ export function DomainEditor(props: EditorProps) {
         <Section
           title="Filesystem and knowledge scope"
           note="Paths are workspace-relative globs. A path matching the denied list is refused even when it also matches a primary one."
+          testId="domain-experts-editor-resources"
         >
           <ListEditor
             label="Primary paths"
             hint="Owned by this domain."
             placeholder="services/payments/**"
             values={draft.scope.filesystem.primary}
+            testId="domain-experts-editor-primary-paths"
             onChange={(primary) => {
               onChange({
                 ...draft,
@@ -253,6 +284,7 @@ export function DomainEditor(props: EditorProps) {
             hint="Owned by another domain; readable, not writable."
             placeholder="packages/common/**"
             values={draft.scope.filesystem.sharedReadOnly}
+            testId="domain-experts-editor-shared-paths"
             onChange={(sharedReadOnly) => {
               onChange({
                 ...draft,
@@ -268,6 +300,7 @@ export function DomainEditor(props: EditorProps) {
             hint="Explicitly outside this domain."
             placeholder="services/inventory/**"
             values={draft.scope.filesystem.denied}
+            testId="domain-experts-editor-denied-paths"
             onChange={(denied) => {
               onChange({
                 ...draft,
@@ -282,6 +315,7 @@ export function DomainEditor(props: EditorProps) {
             label="Knowledge sources to include"
             placeholder="docs/payments/**"
             values={draft.scope.documentation.include}
+            testId="domain-experts-editor-docs-include"
             onChange={(include) => {
               onChange({
                 ...draft,
@@ -295,6 +329,7 @@ export function DomainEditor(props: EditorProps) {
           <ListEditor
             label="Knowledge sources to exclude"
             values={draft.scope.documentation.exclude}
+            testId="domain-experts-editor-docs-exclude"
             onChange={(exclude) => {
               onChange({
                 ...draft,
@@ -305,7 +340,10 @@ export function DomainEditor(props: EditorProps) {
               });
             }}
           />
-          <p className="dx-section-note">
+          <p
+            className="dx-section-note"
+            data-testid="domain-experts-editor-scope-providers"
+          >
             Registered scope providers:{" "}
             {props.catalog.scopeProviders
               .map((provider) => provider.id)
@@ -317,16 +355,18 @@ export function DomainEditor(props: EditorProps) {
       {tab === "Memory" ? (
         <Section
           title="Memory"
-          note="The private namespace accepts writes. Shared namespaces are read-only, and a foreign namespace is refused by code, not by instruction."
+          note="An expert writes only its own namespace. Where the deployment has accounts, that namespace is this one suffixed with /u/ and the account id, and this one stays read-only for every account — what the domain knows for everyone. Shared namespaces are read-only too, and a foreign namespace is refused by code, not by instruction."
+          testId="domain-experts-editor-memory"
         >
           <TextInput
-            label="Private namespace"
+            label="Domain namespace"
             value={draft.memory.namespace}
             invalid={fieldIssue("memory.namespace") !== undefined}
             hint={
               fieldIssue("memory.namespace") ??
               "Lowercase segments joined by '/'."
             }
+            testId="domain-experts-editor-memory-namespace"
             onChange={(namespace) => {
               onChange({ ...draft, memory: { ...draft.memory, namespace } });
             }}
@@ -335,6 +375,7 @@ export function DomainEditor(props: EditorProps) {
             label="Shared read-only namespaces"
             placeholder="shared/product"
             values={draft.memory.sharedReadOnly}
+            testId="domain-experts-editor-memory-shared"
             onChange={(sharedReadOnly) => {
               onChange({
                 ...draft,
@@ -342,11 +383,15 @@ export function DomainEditor(props: EditorProps) {
               });
             }}
           />
-          <div className="dx-actions">
+          <div
+            className="dx-actions"
+            data-testid="domain-experts-editor-memory-actions"
+          >
             <button
               type="button"
               className="dx-button"
               disabled={props.busy || props.isNew}
+              data-testid="domain-experts-editor-inspect-memory"
               onClick={() => {
                 props.onInspectMemory("");
               }}
@@ -361,17 +406,26 @@ export function DomainEditor(props: EditorProps) {
                 props.isNew ||
                 draft.memory.namespace.trim() === ""
               }
+              data-testid="domain-experts-editor-clear-memory"
               onClick={props.onClearMemory}
             >
-              Clear private namespace
+              Clear domain namespace
             </button>
           </div>
           {props.memory.error === "" ? null : (
-            <StatusLine tone="error">{props.memory.error}</StatusLine>
+            <StatusLine
+              tone="error"
+              testId="domain-experts-editor-memory-error"
+            >
+              {props.memory.error}
+            </StatusLine>
           )}
           {props.memory.result === null ? null : (
             <>
-              <table className="dx-table">
+              <table
+                className="dx-table"
+                data-testid="domain-experts-editor-memory-table"
+              >
                 <thead>
                   <tr>
                     <th>Namespace</th>
@@ -381,7 +435,10 @@ export function DomainEditor(props: EditorProps) {
                 </thead>
                 <tbody>
                   {props.memory.result.namespaces.map((view) => (
-                    <tr key={view.namespace}>
+                    <tr
+                      key={view.namespace}
+                      data-testid="domain-experts-editor-memory-row"
+                    >
                       <td className="dx-mono">{view.namespace}</td>
                       <td>{view.access}</td>
                       <td>{String(view.records)}</td>
@@ -389,11 +446,15 @@ export function DomainEditor(props: EditorProps) {
                   ))}
                 </tbody>
               </table>
-              <ul className="dx-log">
+              <ul
+                className="dx-log"
+                data-testid="domain-experts-editor-memory-log"
+              >
                 {props.memory.result.records.map((record) => (
                   <li
                     className="dx-log-item"
                     key={`${record.namespace}/${record.key}`}
+                    data-testid="domain-experts-editor-memory-record"
                   >
                     <span className="dx-mono">
                       {record.namespace}/{record.key}
@@ -424,10 +485,12 @@ export function DomainEditor(props: EditorProps) {
         <Section
           title="Cross-domain policy"
           note="Foreign domains are reached through their expert. Direct reads are refused outside the mode that allows them."
+          testId="domain-experts-editor-delegation"
         >
           <Toggle
             checked={draft.delegation.allowCrossDomain}
             label="Allow this expert to reach other domains"
+            testId="domain-experts-editor-allow-cross-domain"
             onChange={(allowCrossDomain) => {
               onChange({
                 ...draft,
@@ -443,6 +506,7 @@ export function DomainEditor(props: EditorProps) {
               label: mode,
             }))}
             hint="expert-only is the recommended default: ask the owning expert, never read its resources."
+            testId="domain-experts-editor-cross-domain-mode"
             onChange={(value) => {
               onChange({
                 ...draft,
@@ -458,6 +522,7 @@ export function DomainEditor(props: EditorProps) {
             hint="Empty means any other enabled domain."
             placeholder="inventory"
             values={draft.delegation.targets}
+            testId="domain-experts-editor-delegation-targets"
             onChange={(targets) => {
               onChange({
                 ...draft,
@@ -465,12 +530,16 @@ export function DomainEditor(props: EditorProps) {
               });
             }}
           />
-          <div className="dx-row">
+          <div
+            className="dx-row"
+            data-testid="domain-experts-editor-delegation-limits"
+          >
             <TextInput
               label="Max delegation depth"
               type="number"
               value={String(draft.delegation.maxDepth)}
               hint="Enforced by the subagent runtime."
+              testId="domain-experts-editor-max-depth"
               onChange={(value) => {
                 onChange({
                   ...draft,
@@ -486,6 +555,7 @@ export function DomainEditor(props: EditorProps) {
               type="number"
               value={String(draft.delegation.maxParallel)}
               hint="Enforced by the plugin per calling session."
+              testId="domain-experts-editor-max-parallel"
               onChange={(value) => {
                 onChange({
                   ...draft,
@@ -503,6 +573,7 @@ export function DomainEditor(props: EditorProps) {
               hint="Only used in direct-read mode."
               placeholder="domain/inventory"
               values={draft.delegation.directRead}
+              testId="domain-experts-editor-direct-read"
               onChange={(directRead) => {
                 onChange({
                   ...draft,
@@ -518,20 +589,26 @@ export function DomainEditor(props: EditorProps) {
         <Section
           title="Model"
           note="Inheriting the caller's route is almost always right. Pin a route only when the domain needs a different model."
+          testId="domain-experts-editor-model"
         >
           <Toggle
             checked={draft.model.inherit}
             label="Inherit from the caller"
+            testId="domain-experts-editor-model-inherit"
             onChange={(inherit) => {
               onChange({ ...draft, model: { ...draft.model, inherit } });
             }}
           />
           {draft.model.inherit ? null : (
             <>
-              <div className="dx-row">
+              <div
+                className="dx-row"
+                data-testid="domain-experts-editor-model-route"
+              >
                 <TextInput
                   label="Provider"
                   value={draft.model.provider}
+                  testId="domain-experts-editor-model-provider"
                   onChange={(provider) => {
                     onChange({ ...draft, model: { ...draft.model, provider } });
                   }}
@@ -539,16 +616,21 @@ export function DomainEditor(props: EditorProps) {
                 <TextInput
                   label="Model"
                   value={draft.model.model}
+                  testId="domain-experts-editor-model-name"
                   onChange={(model) => {
                     onChange({ ...draft, model: { ...draft.model, model } });
                   }}
                 />
               </div>
-              <div className="dx-row">
+              <div
+                className="dx-row"
+                data-testid="domain-experts-editor-model-budget"
+              >
                 <TextInput
                   label="Reasoning effort"
                   value={draft.model.reasoningEffort}
                   hint="Provider-specific identifier; leave empty to inherit."
+                  testId="domain-experts-editor-reasoning-effort"
                   onChange={(reasoningEffort) => {
                     onChange({
                       ...draft,
@@ -561,6 +643,7 @@ export function DomainEditor(props: EditorProps) {
                   type="number"
                   value={String(draft.model.maxTokens)}
                   hint="0 means no override."
+                  testId="domain-experts-editor-max-tokens"
                   onChange={(value) => {
                     onChange({
                       ...draft,
@@ -578,6 +661,7 @@ export function DomainEditor(props: EditorProps) {
         <Section
           title="Test"
           note="Run the expert with a real task. It starts an ordinary subagent of the addressed session, so it appears in the session tree."
+          testId="domain-experts-editor-test"
         >
           <TestTab
             draft={draft}
@@ -593,32 +677,48 @@ export function DomainEditor(props: EditorProps) {
         <Section
           title="Run history"
           note="Every run of this domain the process has recorded, whichever surface started it: a conversation, the agents panel or the Test tab. The host keeps a bounded in-memory ring and mirrors each run to the plugin log, so a restart begins a new list."
+          testId="domain-experts-editor-runs"
         >
-          <div className="dx-actions">
+          <div
+            className="dx-actions"
+            data-testid="domain-experts-editor-runs-toolbar"
+          >
             <button
               type="button"
               className="dx-button"
               disabled={props.busy}
+              data-testid="domain-experts-editor-runs-refresh"
               onClick={props.onRefreshRuns}
             >
               Refresh
             </button>
-            <span className="dx-chip">
+            <span
+              className="dx-chip"
+              data-testid="domain-experts-editor-runs-count"
+            >
               {String(props.runs.entries.length)} run
               {props.runs.entries.length === 1 ? "" : "s"}
             </span>
           </div>
           {props.runs.error === "" ? null : (
-            <StatusLine tone="error">{props.runs.error}</StatusLine>
+            <StatusLine tone="error" testId="domain-experts-editor-runs-error">
+              {props.runs.error}
+            </StatusLine>
           )}
           {props.runs.entries.length === 0 ? (
-            <p className="dx-section-note">
+            <p
+              className="dx-section-note"
+              data-testid="domain-experts-editor-runs-empty"
+            >
               No runs recorded for this domain in the current process. An expert
               opened from a conversation or from the agents panel is listed here
               as soon as it finishes.
             </p>
           ) : (
-            <table className="dx-table">
+            <table
+              className="dx-table"
+              data-testid="domain-experts-editor-runs-table"
+            >
               <thead>
                 <tr>
                   <th>Started</th>
@@ -631,14 +731,24 @@ export function DomainEditor(props: EditorProps) {
               </thead>
               <tbody>
                 {props.runs.entries.map((entry) => (
-                  <tr key={`${entry.childSessionId}:${String(entry.at)}`}>
-                    <td>{startedAt(entry.at)}</td>
+                  <tr
+                    key={`${entry.childSessionId}:${String(entry.at)}`}
+                    data-testid="domain-experts-editor-run"
+                  >
+                    <td data-testid="domain-experts-editor-run-started">
+                      {startedAt(entry.at)}
+                    </td>
                     <td>
                       {entry.mode}
                       {entry.background ? (
                         <>
                           {" "}
-                          <span className="dx-chip">background</span>
+                          <span
+                            className="dx-chip"
+                            data-testid="domain-experts-editor-run-background"
+                          >
+                            background
+                          </span>
                         </>
                       ) : null}
                     </td>
@@ -647,13 +757,18 @@ export function DomainEditor(props: EditorProps) {
                       {entry.degraded.length === 0 ? null : (
                         <>
                           {" "}
-                          <span className="dx-chip dx-chip--advisory">
+                          <span
+                            className="dx-chip dx-chip--advisory"
+                            data-testid="domain-experts-editor-run-degraded"
+                          >
                             {String(entry.degraded.length)} degraded
                           </span>
                         </>
                       )}
                     </td>
-                    <td>{durationOf(entry.durationMs)}</td>
+                    <td data-testid="domain-experts-editor-run-duration">
+                      {durationOf(entry.durationMs)}
+                    </td>
                     <td>
                       {/*
                        * The caller is what ties a run to the place it was
@@ -661,19 +776,31 @@ export function DomainEditor(props: EditorProps) {
                        * chat side and this page share: the agents panel lists
                        * the very same id.
                        */}
-                      <span className="dx-mono" title={entry.callerSessionId}>
+                      <span
+                        className="dx-mono"
+                        title={entry.callerSessionId}
+                        data-testid="domain-experts-editor-run-caller"
+                      >
                         {shortId(entry.callerSessionId)}
                       </span>
                       {entry.callerDomain === null ? null : (
                         <>
                           {" "}
-                          <span className="dx-chip">{entry.callerDomain}</span>
+                          <span
+                            className="dx-chip"
+                            data-testid="domain-experts-editor-run-caller-domain"
+                          >
+                            {entry.callerDomain}
+                          </span>
                         </>
                       )}
                       {entry.delegatePath.length > 1 ? (
                         <>
                           {" "}
-                          <span className="dx-chip">
+                          <span
+                            className="dx-chip"
+                            data-testid="domain-experts-editor-run-path"
+                          >
                             {entry.delegatePath.join(" > ")}
                           </span>
                         </>
@@ -690,11 +817,12 @@ export function DomainEditor(props: EditorProps) {
         </Section>
       ) : null}
 
-      <div className="dx-actions">
+      <div className="dx-actions" data-testid="domain-experts-editor-footer">
         <button
           type="button"
           className="dx-button dx-button--primary"
           disabled={props.busy}
+          data-testid="domain-experts-editor-save"
           onClick={props.onSave}
         >
           {props.isNew ? "Create domain" : "Save"}
@@ -704,16 +832,24 @@ export function DomainEditor(props: EditorProps) {
             type="button"
             className="dx-button dx-button--danger"
             disabled={props.busy}
+            data-testid="domain-experts-editor-delete"
             onClick={props.onDelete}
           >
             Delete
           </button>
         )}
-        <StatusLine tone={props.status.tone}>{props.status.text}</StatusLine>
+        <StatusLine
+          tone={props.status.tone}
+          testId="domain-experts-editor-status"
+        >
+          {props.status.text}
+        </StatusLine>
       </div>
 
       {props.profileError === "" ? null : (
-        <StatusLine tone="error">{props.profileError}</StatusLine>
+        <StatusLine tone="error" testId="domain-experts-editor-profile-error">
+          {props.profileError}
+        </StatusLine>
       )}
       {props.profile === null ? null : (
         <ScopeInspector profile={props.profile} />
@@ -774,9 +910,10 @@ function ToolsSection({
     <Section
       title="Tools"
       note="Only these global tools stay visible to the expert. Everything else disappears from its view and refuses to execute."
+      testId="domain-experts-editor-tools"
     >
       {unique.length === 0 ? (
-        <p className="dx-empty">
+        <p className="dx-empty" data-testid="domain-experts-editor-tools-empty">
           No workers or plugin tools are registered in this deployment.
         </p>
       ) : (
@@ -785,6 +922,7 @@ function ToolsSection({
             key={option.name}
             checked={allow.has(option.name)}
             label={`${option.name} — ${option.note}`}
+            testId="domain-experts-editor-tool"
             onChange={(on) => {
               toggle(option.name, on);
             }}
@@ -799,6 +937,7 @@ function ToolsSection({
         values={draft.tools.allow.filter(
           (name) => !unique.some((option) => option.name === name),
         )}
+        testId="domain-experts-editor-tools-allow"
         onChange={(extra) => {
           const known = draft.tools.allow.filter((name) =>
             unique.some((option) => option.name === name),
@@ -813,13 +952,14 @@ function ToolsSection({
         label="Denied tool names"
         placeholder="bash"
         values={draft.tools.deny}
+        testId="domain-experts-editor-tools-deny"
         onChange={(deny) => {
           onChange({ ...draft, tools: { ...draft.tools, deny } });
         }}
       />
       {draft.tools.deny.length > 0 &&
       draft.tools.allow.some((n) => draft.tools.deny.includes(n)) ? (
-        <StatusLine tone="error">
+        <StatusLine tone="error" testId="domain-experts-editor-tools-conflict">
           A tool cannot be both allowed and denied; remove one of the entries.
         </StatusLine>
       ) : null}
@@ -846,20 +986,31 @@ function TestTab({
   const [mode, setMode] = useState<ExpertMode>("investigate");
   return (
     <>
-      <TextArea label="Task" value={task} rows={3} onChange={setTask} />
+      <TextArea
+        label="Task"
+        value={task}
+        rows={3}
+        testId="domain-experts-editor-test-task"
+        onChange={setTask}
+      />
       <Select
         label="Mode"
         value={mode}
         options={EXPERT_MODES.map((value) => ({ value, label: value }))}
+        testId="domain-experts-editor-test-mode"
         onChange={(value) => {
           setMode(value as ExpertMode);
         }}
       />
-      <div className="dx-actions">
+      <div
+        className="dx-actions"
+        data-testid="domain-experts-editor-test-toolbar"
+      >
         <button
           type="button"
           className="dx-button dx-button--primary"
           disabled={disabled || test.running || task.trim() === ""}
+          data-testid="domain-experts-editor-test-run"
           onClick={() => {
             onChange(draft);
             onRunTest(task.trim());
@@ -869,18 +1020,29 @@ function TestTab({
         </button>
       </div>
       {test.error === "" ? null : (
-        <StatusLine tone="error">{test.error}</StatusLine>
+        <StatusLine tone="error" testId="domain-experts-editor-test-error">
+          {test.error}
+        </StatusLine>
       )}
       {test.summary === "" ? null : (
         <>
-          <StatusLine>status {test.status}</StatusLine>
-          <p className="dx-section-note" style={{ whiteSpace: "pre-wrap" }}>
+          <StatusLine testId="domain-experts-editor-test-status">
+            status {test.status}
+          </StatusLine>
+          <p
+            className="dx-section-note"
+            style={{ whiteSpace: "pre-wrap" }}
+            data-testid="domain-experts-editor-test-summary"
+          >
             {test.summary}
           </p>
         </>
       )}
       {test.findings.length === 0 ? null : (
-        <table className="dx-table">
+        <table
+          className="dx-table"
+          data-testid="domain-experts-editor-test-findings"
+        >
           <thead>
             <tr>
               <th>Confidence</th>
@@ -890,7 +1052,10 @@ function TestTab({
           </thead>
           <tbody>
             {test.findings.map((finding, index) => (
-              <tr key={`${finding.claim}-${String(index)}`}>
+              <tr
+                key={`${finding.claim}-${String(index)}`}
+                data-testid="domain-experts-editor-test-finding"
+              >
                 <td>{finding.confidence}</td>
                 <td>{finding.claim}</td>
                 <td className="dx-mono">{finding.evidence.join("; ")}</td>

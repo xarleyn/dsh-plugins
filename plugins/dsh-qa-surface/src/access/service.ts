@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
-import type { ScopeKey } from "@deepseek-ai/dsh-scope";
+
 // The `types` subpath keeps the client ISessions Context merge authoritative,
 // mirroring the admission boundary's import.
 import { SessionId } from "@deepseek-ai/dsh-session/types";
@@ -19,6 +19,8 @@ import type {
   QaClaimResult,
   QaCurrentAccess,
   QaEffectiveCapabilityPolicy,
+  QaModelCatalogEntry,
+  QaModelPair,
   QaSessionAccess,
   QaSkillAccess,
   QaSkillActivationRecord,
@@ -30,16 +32,27 @@ import type {
 } from "../types.js";
 import type { QaSessionLogReader } from "../admin/session-log.js";
 import {
+  assertModelPairAvailable,
+  deploymentModelPair,
+  normalizeModelPair,
+  projectModelCatalog,
+  resolveModelPolicy,
+  type QaSessionModelPolicy,
+} from "./model-policy.js";
+import {
   enabledSubroles,
   normalizeCapabilityConfig,
   normalizeUserAccess,
+  personalUserSkillNames,
   resolveCapabilityPolicy,
   resolveSkillAccess,
+  withdrawnSkillNames,
 } from "./model.js";
 import {
   QaCapabilityCatalog,
   withMissingCapabilities,
   type CapabilityCatalogSnapshot,
+  type QaPresetScopeLease,
 } from "./capability-catalog.js";
 import { QaRoleRepository } from "./role-repository.js";
 
@@ -133,9 +146,11 @@ function requireExactAssignment(
       "assignment must name enabled roles and select one of them as default",
     );
   }
+  const model = normalizeModelPair(input.model, "assignment model");
   return Object.freeze({
     allowedSubroles: Object.freeze(allowed),
     defaultSubrole: input.defaultSubrole,
+    ...(model === undefined ? {} : { model }),
   });
 }
 
@@ -170,6 +185,8 @@ function freezePolicy(
 function retainInstalledSnapshot(
   stored: QaEffectiveCapabilityPolicy,
   catalog: CapabilityCatalogSnapshot,
+  personalUserSkills: readonly string[],
+  withdrawn: ReadonlySet<string>,
 ): QaEffectiveCapabilityPolicy {
   const tool = (values: readonly string[]) =>
     values.filter((id) => catalog.toolIds.has(id));
@@ -177,12 +194,28 @@ function retainInstalledSnapshot(
     values.filter((id) => catalog.skillIds.has(id));
   const anySkill = (values: readonly string[]) =>
     values.filter((id) => catalog.userSkillIds.has(id));
+  // The snapshot froze the account's own names alongside the role's, and only
+  // the personal part of the list is read live. A name the account owns and the
+  // administrator withdrew since is therefore dropped here too, so the
+  // withdrawal reaches a chat already under way; a role's grants keep freezing,
+  // as they do for every other role edit.
+  const owned = catalog.ownUserSkillIds;
   return freezePolicy({
     subroleId: stored.subroleId,
     tools: tool(stored.tools),
     grantableTools: tool(stored.grantableTools),
     skills: modelSkill(stored.skills),
-    userSkills: anySkill(stored.userSkills),
+    // The frozen part of the user list is what the role granted then and the
+    // catalog still has; the personal part is read live, so a skill the account
+    // added today is invocable in a chat that started last week.
+    userSkills: [
+      ...new Set([
+        ...anySkill(stored.userSkills).filter(
+          (id) => !(owned.has(id) && withdrawn.has(id)),
+        ),
+        ...personalUserSkills,
+      ]),
+    ],
     sources: {
       systemTools: tool(stored.sources.systemTools),
       commonTools: tool(stored.sources.commonTools),
@@ -243,7 +276,7 @@ export class QaAccessService {
        * preset's scope, so a global-only catalog left the operator unable to
        * see — or grant — what every QA chat actually mounts.
        */
-      readonly presetScope?: () => Promise<ScopeKey | undefined>;
+      readonly presetScope?: () => Promise<QaPresetScopeLease | undefined>;
       /**
        * Durable session listing, used to tell a chat from a delegated child
        * across Host runs. Without it the lineage answer degrades to the live
@@ -618,26 +651,7 @@ export class QaAccessService {
       record = accounts.updateSessionAccess(sessionId, { subroleId });
     }
     const catalog = await this.catalog.snapshot(agent);
-    const policy =
-      record?.capabilitySnapshot === undefined
-        ? resolveCapabilityPolicy({
-            config,
-            subroleId,
-            systemTools: this.systemRequiredTools(),
-            systemSkills: [],
-            available: {
-              tools: catalog.toolIds,
-              skills: catalog.skillIds,
-              userSkills: catalog.userSkillIds,
-            },
-            skillMetadata: catalog.skillMetadata,
-            revision: policyRevision(
-              config,
-              catalog.skillMetadata,
-              catalog.toolIds,
-            ),
-          })
-        : retainInstalledSnapshot(record.capabilitySnapshot, catalog);
+    const policy = this.policyForRecord(config, record, subroleId, catalog);
     if (record?.capabilitySnapshot === undefined) {
       accounts.updateSessionAccess(sessionId, { capabilitySnapshot: policy });
       this.options.logger.info("access.policy-snapshotted", {
@@ -668,6 +682,90 @@ export class QaAccessService {
           record: (entry) => this.recordSkillActivation(sessionId, entry),
         }),
     };
+  }
+
+  /**
+   * The policy one session record answers with: the snapshot it froze, or the
+   * role as it is configured now when the chat has never frozen one.
+   *
+   * Every read of a session's capabilities goes through here, so a chat that is
+   * running and a chat nobody has woken cannot disagree about what its role
+   * grants.
+   */
+  private policyForRecord(
+    config: QaCapabilityConfig,
+    record:
+      | {
+          readonly subroleId?: string;
+          readonly capabilitySnapshot?: QaEffectiveCapabilityPolicy;
+        }
+      | undefined,
+    subroleId: string,
+    catalog: CapabilityCatalogSnapshot,
+  ): QaEffectiveCapabilityPolicy {
+    return record?.capabilitySnapshot === undefined
+      ? resolveCapabilityPolicy({
+          config,
+          subroleId,
+          systemTools: this.systemRequiredTools(),
+          systemSkills: [],
+          available: {
+            tools: catalog.toolIds,
+            skills: catalog.skillIds,
+            userSkills: catalog.userSkillIds,
+            ownSkills: catalog.ownUserSkillIds,
+          },
+          skillMetadata: catalog.skillMetadata,
+          revision: policyRevision(
+            config,
+            catalog.skillMetadata,
+            catalog.toolIds,
+          ),
+        })
+      : retainInstalledSnapshot(
+          record.capabilitySnapshot,
+          catalog,
+          personalUserSkillNames(config, catalog.ownUserSkillIds),
+          withdrawnSkillNames(config),
+        );
+  }
+
+  /**
+   * The policy of a chat this process holds no live agent for.
+   *
+   * A cold chat has an owner and a role, and the reads that name its
+   * capabilities must narrow it by the rule above — the same one a live chat is
+   * narrowed by — rather than answer "no role opinion" because the agent that
+   * carries the capability snapshot happens to be asleep. What a cold chat has
+   * no answer for is that snapshot: the catalog the deployment mounts for every
+   * chat stands in for the agent's own, which is why the project layer of this
+   * chat's workspace is missing from it, and why nothing is frozen onto the
+   * session record here — a palette read must not decide what a later turn may
+   * do.
+   *
+   * @returns the resolved policy; the ownership check is the refusal, so a
+   *   foreign browser never reaches it.
+   */
+  async policyForColdSession(
+    token: string,
+    sessionId: string,
+  ): Promise<QaEffectiveCapabilityPolicy> {
+    const accounts = this.requireAccounts();
+    const owner = accounts.ensureSessionAccess(
+      token,
+      sessionId,
+      this.sessionFacts(sessionId),
+    );
+    const config = this.roles.snapshot();
+    const record = accounts.sessionAccess(sessionId);
+    const subroleId =
+      record?.subroleId ??
+      normalizeUserAccess(accounts.accessOf(owner.id), config).defaultSubrole;
+    if (record?.subroleId === undefined) {
+      accounts.updateSessionAccess(sessionId, { subroleId });
+    }
+    const catalog = await this.catalog.snapshot();
+    return this.policyForRecord(config, record, subroleId, catalog);
   }
 
   /** The browser's entry point: the token resolves the owning account. */
@@ -758,13 +856,95 @@ export class QaAccessService {
     return this.roles.updateSkillOverride(actor.id, input);
   }
 
-  createSubrole(token: string, input: QaSubrole): QaSubrole {
+  /**
+   * The provider/model pairs this Host can serve right now, for the surface
+   * that writes a policy.
+   *
+   * The operator picks out of this list rather than typing a pair: a policy
+   * that names a model the deployment does not offer does not fail when it is
+   * saved, it fails on the first question of every chat that policy opens.
+   * @param token - the administrator's browser token.
+   */
+  async modelCatalog(token: string): Promise<readonly QaModelCatalogEntry[]> {
+    this.requireAdmin(token);
+    return projectModelCatalog(await this.ctx.sessionController.modelCatalog());
+  }
+
+  /**
+   * The model policy of one session: the pair its chats open on, and the layer
+   * that fixed it.
+   *
+   * Read from the role the chat was reserved under, so the answer is the same
+   * for the browser path and for the integration API, which addressed the same
+   * account through a service token. Without an account behind the chat only
+   * the deployment layer can speak, which is what a stand without accounts
+   * asked for before roles had opinions about models.
+   * @param sessionId - the chat being opened.
+   */
+  modelPolicyFor(sessionId: string): QaSessionModelPolicy {
+    const config = this.roles.snapshot();
+    const accounts = this.options.accounts();
+    const ownerId = accounts?.ownerIdOf(sessionId);
+    const assignment =
+      ownerId === undefined || accounts === undefined
+        ? undefined
+        : normalizeUserAccess(accounts.accessOf(ownerId), config);
+    const subroleId =
+      accounts?.sessionAccess(sessionId)?.subroleId ??
+      assignment?.defaultSubrole;
+    return resolveModelPolicy({
+      account: assignment?.model,
+      subrole:
+        subroleId === undefined
+          ? undefined
+          : config.subroles.find(({ id }) => id === subroleId)?.model,
+      deployment: deploymentModelPair(this.options.config().session),
+    });
+  }
+
+  /**
+   * Refuse a policy the Host cannot serve before it is stored.
+   * @param pair - the pair as edited, before normalization.
+   * @param label - the field the operator edited, for the refusal.
+   */
+  async assertPairServable(
+    pair: QaModelPair | null | undefined,
+    label: string,
+  ): Promise<void> {
+    const normalized = normalizeModelPair(pair, label);
+    if (normalized === undefined) return;
+    await this.requireServablePair(normalized);
+  }
+
+  /**
+   * Ask the Host's catalog about one named pair.
+   *
+   * Called only where a pair was actually named: an assignment or a role that
+   * says nothing about models is written the moment it was written, without
+   * waiting on a catalog read it has no use for.
+   */
+  private async requireServablePair(pair: QaModelPair): Promise<void> {
+    assertModelPairAvailable(
+      pair,
+      projectModelCatalog(await this.ctx.sessionController.modelCatalog()),
+    );
+  }
+
+  async createSubrole(token: string, input: QaSubrole): Promise<QaSubrole> {
     const { actor } = this.requireAdmin(token);
+    const pair = normalizeModelPair(input.model, `subrole ${input.id}.model`);
+    if (pair !== undefined) await this.requireServablePair(pair);
     return this.roles.create(actor.id, input);
   }
 
-  updateSubrole(token: string, id: string, input: QaSubrole): QaSubrole {
+  async updateSubrole(
+    token: string,
+    id: string,
+    input: QaSubrole,
+  ): Promise<QaSubrole> {
     const { actor } = this.requireAdmin(token);
+    const pair = normalizeModelPair(input.model, `subrole ${id}.model`);
+    if (pair !== undefined) await this.requireServablePair(pair);
     return this.roles.update(actor.id, id, input);
   }
 
@@ -817,12 +997,14 @@ export class QaAccessService {
     return this.roles.updateCommon(actor.id, input);
   }
 
-  updateAssignment(
+  async updateAssignment(
     token: string,
     userId: string,
     input: QaUserAccess,
-  ): QaUserAccess {
+  ): Promise<QaUserAccess> {
     const { actor, accounts } = this.requireAdmin(token);
+    const pair = normalizeModelPair(input.model, "assignment model");
+    if (pair !== undefined) await this.requireServablePair(pair);
     const access = requireExactAssignment(input, this.roles.snapshot());
     const before = accounts.accessOf(userId);
     accounts.setAccess(userId, access);

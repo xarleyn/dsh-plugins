@@ -1,5 +1,8 @@
 import { Service, type Context } from "@deepseek-ai/cordis";
-import type { ISessions } from "@deepseek-ai/dsh-api-session-controller/client";
+import type {
+  ISessions,
+  SessionReference,
+} from "@deepseek-ai/dsh-api-session-controller/client";
 import type { SessionId } from "@deepseek-ai/dsh-session/types";
 import type { IConversation } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {
@@ -8,6 +11,7 @@ import type {
   TypertRemoteNamespace,
 } from "@deepseek-ai/dsh-typert-protocol";
 import type { DraftSession } from "../shared/types.js";
+import { DRAFT_COMPOSER_SOURCE } from "./session-source.js";
 import type { DraftSessionLifecycle } from "./lifecycle.js";
 import type { DraftSidebarSource } from "./sidebar.js";
 
@@ -16,6 +20,7 @@ type ComposerInput = ReturnType<IConversation["input"]["for"]>;
 
 interface ActiveDraft {
   draft: DraftSession;
+  readonly reference: SessionReference;
   readonly input: ComposerInput;
   unsubscribe: () => void;
   timer: ReturnType<typeof setTimeout> | undefined;
@@ -29,7 +34,7 @@ export interface DraftComposerBridgeOptions {
     "ensureShell" | "onBeforeFinalize"
   >;
   readonly drafts: DraftSessionsRemote;
-  readonly sessions: Pick<ISessions, "open" | "scope">;
+  readonly sessions: Pick<ISessions, "retain" | "scope">;
   readonly conversation: Pick<IConversation, "input">;
   readonly sidebar?: Pick<DraftSidebarSource, "accept">;
   readonly debounceMs?: number;
@@ -65,12 +70,13 @@ function debounceDelay(value: number | undefined): number {
 export class DraftComposerBridge extends Service {
   private readonly lifecycle: DraftComposerBridgeOptions["lifecycle"];
   private readonly drafts: DraftSessionsRemote;
-  private readonly sessions: Pick<ISessions, "open" | "scope">;
+  private readonly sessions: Pick<ISessions, "retain" | "scope">;
   private readonly conversation: Pick<IConversation, "input">;
   private readonly debounceMs: number;
   private readonly sidebar: Pick<DraftSidebarSource, "accept"> | undefined;
   private active: ActiveDraft | undefined;
   private saveQueue = Promise.resolve();
+  private navigationQueue = Promise.resolve();
 
   constructor(ctx: Context, options?: DraftComposerBridgeOptions) {
     super(ctx, "draftComposerBridge");
@@ -95,39 +101,60 @@ export class DraftComposerBridge extends Service {
     );
   }
 
-  /** Flush the previous draft, open this Session, and restore exact text. */
-  async open(draft: DraftSession): Promise<DraftSession> {
-    await this.flush();
-    this.detach();
+  /** Flush the previous draft, retain this Session, and restore exact text. */
+  open(draft: DraftSession): Promise<DraftSession> {
+    return this.enqueueNavigation(async () => {
+      // The flushed record carries the revision the Host just accepted. The
+      // record a caller holds can predate that autosave, and restoring from it
+      // would repaint the composer with superseded text and aim the next save
+      // at a revision the Host has already moved past.
+      const saved = await this.flush();
+      this.detach();
 
-    const ready = await this.lifecycle.ensureShell(draft);
-    if (ready.sessionId === null) {
-      throw new Error(`draft ${JSON.stringify(ready.id)} has no Session shell`);
-    }
-    const sessionId = ready.sessionId as SessionId;
-    this.sessions.open(sessionId);
-    const scope = this.sessions.scope(sessionId);
-    if (scope === undefined) {
-      throw new Error(
-        `draft ${JSON.stringify(ready.id)} Session ${JSON.stringify(ready.sessionId)} has no client scope`,
+      const ready = await this.lifecycle.ensureShell(
+        saved !== undefined && saved.id === draft.id ? saved : draft,
       );
-    }
-    const input = this.conversation.input.for(scope);
-    input.setDraft(ready.text);
+      if (ready.sessionId === null) {
+        throw new Error(
+          `draft ${JSON.stringify(ready.id)} has no Session shell`,
+        );
+      }
+      const sessionId = ready.sessionId as SessionId;
+      // `rc.2` has no Host navigation: retaining the Session is what makes it
+      // current, and the reference has to outlive the mirrored composer.
+      const reference = this.sessions.retain(sessionId, {
+        source: DRAFT_COMPOSER_SOURCE,
+      });
+      try {
+        await reference.ready;
+        const scope = this.sessions.scope(sessionId);
+        if (scope === undefined) {
+          throw new Error(
+            `draft ${JSON.stringify(ready.id)} Session ${JSON.stringify(ready.sessionId)} has no client scope`,
+          );
+        }
+        const input = this.conversation.input.for(scope);
+        input.setDraft(ready.text);
 
-    const active: ActiveDraft = {
-      draft: ready,
-      input,
-      unsubscribe: () => undefined,
-      timer: undefined,
-      pendingText: undefined,
-      savingText: undefined,
-    };
-    active.unsubscribe = input.state.subscribe(() => {
-      this.inputChanged(active);
+        const active: ActiveDraft = {
+          draft: ready,
+          reference,
+          input,
+          unsubscribe: () => undefined,
+          timer: undefined,
+          pendingText: undefined,
+          savingText: undefined,
+        };
+        active.unsubscribe = input.state.subscribe(() => {
+          this.inputChanged(active);
+        });
+        this.active = active;
+      } catch (cause) {
+        reference.release();
+        throw cause;
+      }
+      return ready;
     });
-    this.active = active;
-    return ready;
   }
 
   /** Persist every pending edit before navigation continues. */
@@ -147,10 +174,22 @@ export class DraftComposerBridge extends Service {
   }
 
   /** Flush and stop mirroring the current composer. */
-  async close(): Promise<DraftSession | undefined> {
-    const saved = await this.flush();
-    this.detach();
-    return saved;
+  close(): Promise<DraftSession | undefined> {
+    return this.enqueueNavigation(async () => {
+      const saved = await this.flush();
+      this.detach();
+      return saved;
+    });
+  }
+
+  /** Run one navigation only after the previous one has fully settled. */
+  private enqueueNavigation<T>(operation: () => Promise<T>): Promise<T> {
+    const result = this.navigationQueue.then(operation, operation);
+    this.navigationQueue = result.then(
+      () => undefined,
+      () => undefined,
+    );
+    return result;
   }
 
   private inputChanged(active: ActiveDraft): void {
@@ -225,6 +264,7 @@ export class DraftComposerBridge extends Service {
     if (active === undefined) return;
     this.clearTimer(active);
     active.unsubscribe();
+    active.reference.release();
     this.active = undefined;
   }
 }

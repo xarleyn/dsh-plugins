@@ -4,6 +4,7 @@ import type {
   ManagedPluginLogLevel,
   PluginLogUiConfig,
   ResolvedPluginLogUiConfig,
+  VolatilePluginLogUiConfig,
 } from "./types.js";
 
 export const MANAGED_LOG_LEVELS = [
@@ -30,15 +31,31 @@ export const DEFAULT_PLUGIN_LOG_UI_CONFIG: ResolvedPluginLogUiConfig =
 
 const levelSchema = z.union(MANAGED_LOG_LEVELS);
 
-export const ConfigSchema: z<PluginLogUiConfig> = z.object({
-  defaultLevel: levelSchema.default(DEFAULT_PLUGIN_LOG_UI_CONFIG.defaultLevel),
-  format: z
-    .union(MANAGED_LOG_FORMATS)
-    .default(DEFAULT_PLUGIN_LOG_UI_CONFIG.format),
-  levels: z.dict(levelSchema).default({}),
-});
+/*
+ * `0.1.7` has no settings namespace a plugin registers by name: a field is
+ * browser-editable exactly when its schema node carries `.volatile()`, and the
+ * Host publishes the whole Config under the profile entry id. Each field is
+ * marked on its own — volatility may not sit inside a dictionary's values, so
+ * `levels` carries the mark as one container.
+ */
+export const ConfigSchema: z<PluginLogUiConfig, VolatilePluginLogUiConfig> =
+  z.object({
+    defaultLevel: levelSchema
+      .default(DEFAULT_PLUGIN_LOG_UI_CONFIG.defaultLevel)
+      .volatile(),
+    format: z
+      .union(MANAGED_LOG_FORMATS)
+      .default(DEFAULT_PLUGIN_LOG_UI_CONFIG.format)
+      .volatile(),
+    levels: z.dict(levelSchema).default({}).volatile(),
+  });
 
-const PLUGIN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+/**
+ * The shape of a logger id the Config accepts as an override key. A temporary
+ * level is addressed by the same identifier, so both paths validate it the same
+ * way and an operator cannot reach a logger through the door settings closed.
+ */
+export const PLUGIN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export function resolveConfig(
   input: PluginLogUiConfig = {},

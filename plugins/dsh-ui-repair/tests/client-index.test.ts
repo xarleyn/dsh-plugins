@@ -19,7 +19,7 @@ describe("client entrypoint", () => {
       writable: true,
     };
     let settingsListener: (() => void) | undefined;
-    const scope = {
+    const form = {
       getSnapshot: () => snapshot,
       subscribe: vi.fn((listener: () => void) => {
         settingsListener = listener;
@@ -30,15 +30,21 @@ describe("client entrypoint", () => {
     };
     const removeSlot = vi.fn();
     const removeRegistration = vi.fn();
+    let registeredFace: Record<string, unknown> | undefined;
     const ctx = {
       provide,
-      settingsScope: { bind: vi.fn(() => scope) },
+      configForms: { get: vi.fn(() => form) },
       slots: {
         inject: vi.fn((_slot: string, factory: () => unknown) => {
           factory();
           return removeSlot;
         }),
-        register: vi.fn(() => removeRegistration),
+        register: vi.fn(
+          (options: { inject: () => Record<string, unknown> }) => {
+            registeredFace = options.inject();
+            return removeRegistration;
+          },
+        ),
       },
     };
     const dispose = apply(ctx as unknown as Context, {
@@ -53,26 +59,29 @@ describe("client entrypoint", () => {
       },
     });
 
-    expect(inject).toEqual(["slots", "settingsScope"]);
+    expect(inject).toEqual(["slots", "configForms"]);
     expect(provide).toHaveBeenCalledWith("uiRepair", expect.anything());
     const runtime = provide.mock.calls[0]?.[1] as {
       getMode(): string;
     };
     expect(runtime.getMode()).toBe("suggest");
-    expect(ctx.settingsScope.bind).toHaveBeenCalledWith({
-      namespace: "ui-repair",
-    });
+    expect(ctx.configForms.get).toHaveBeenCalledWith("dsh-ui-repair");
     expect(ctx.slots.inject).toHaveBeenCalledWith(
-      "settings.plugin.item",
+      "plugins.row.config",
       expect.any(Function),
     );
     expect(ctx.slots.register).toHaveBeenCalledWith(
       expect.objectContaining({
-        name: "settings.plugin.item",
-        key: "ui-repair",
+        name: "plugins.row.config",
+        key: "@yadsh/dsh-ui-repair#dsh-ui-repair",
       }),
       expect.any(Function),
     );
+    // The page spreads its owner props over the injected face, and one of them
+    // is its own `form`, so the card reaches its ConfigForm under a name the
+    // page never passes.
+    expect(registeredFace).not.toHaveProperty("form");
+    expect(registeredFace?.settings).toBe(form);
     snapshot = {
       status: "ready",
       value: { mode: "auto" },

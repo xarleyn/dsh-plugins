@@ -48,11 +48,13 @@ pnpm typecheck
 | `pnpm build` | Build all packages |
 | `pnpm lint` | Lint repository tooling and all packages |
 | `pnpm test` | Run all tests |
+| `pnpm test:coverage` | Run every package's tests with V8 coverage and print its percentages |
 | `pnpm typecheck` | Type-check all packages |
 | `pnpm check` | Run the complete local validation pipeline |
 | `pnpm format` | Check formatting with the shared Prettier config |
 | `pnpm format:write` | Rewrite files that fail the formatting check |
 | `pnpm deps:check` | Enforce workspace dependency boundaries |
+| `pnpm check:files` | Report a package's `src`, `scripts`, and `tests` files that outgrew their line budget (the repository root's `scripts/` is not measured yet) |
 | `pnpm tarball:verify` | Pack, install, and smoke-test publishable packages |
 | `pnpm affected:check` | Run lint/typecheck/test/build/verify on affected packages only |
 | `pnpm release:plan` | Start version planning for next release |
@@ -76,6 +78,18 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 Add a commit to that list only when its whole change is formatting and it reflowed four or more files — a `style(...)` commit, by the convention above. `scripts/repo-config.test.mjs` checks every entry still resolves on the branch and is still a formatting commit, so a rewritten history cannot leave the list silently useless.
 
+### Operating Systems
+
+Every CI job runs on `ubuntu-latest` (`jobs.*.runs-on` in `.github/workflows/ci.yml`); there is no Windows or macOS matrix. A green run therefore proves the suite passes on Linux and says nothing about the machine you are typing on — in both directions: a failure you see locally can be your platform's and still be ours to fix, and CI cannot see a regression your platform produces.
+
+The suite is OS-sensitive because the code under test is. The git suites build throwaway repositories in `beforeAll` (`dsh-git-readonly/tests/fixtures/git.ts`; the mutation suite builds two), so a file spends a dozen process spawns before its first assertion. Symlink fixtures are skipped where the platform cannot grant the privilege. Mtime comparisons depend on the timestamp resolution of the filesystem. The opt-in browser suite (`DSH_QA_BROWSER_E2E=1`) launches a real Chromium and needs its binary present. And `pnpm deps:check` plus `pnpm tarball:verify` shell out to bash — `scripts/run-bash.mjs` resolves that to Git for Windows' `bash.exe`, so Git Bash has to be installed and WSL is not used.
+
+What that asks of a contributor on Windows or macOS:
+
+- Run the tests of every package you touch on your own OS before opening a pull request — `pnpm affected:check` is the smallest honest set — and treat a failure that only your platform produces as a bug to fix, not noise to skip.
+- Where a suite is only slower here than on the runner, raise the budget in that package's `vitest.config.ts`. The shared preset sets no timeouts, so Vitest's defaults apply (10 s per hook), and a Windows disk spawning short-lived processes does exceed that. Keep the raise in the package that needs it: widening the preset would change what every plugin inherits and bury the next slow fixture.
+- Do not gate a test on `process.platform` to make a run green. A guard belongs only where the behaviour genuinely differs — the symlink tests skip because the platform cannot make the link, not because the assertion runs slowly.
+
 ---
 
 ## Adding a New Plugin
@@ -90,10 +104,9 @@ pnpm nx g dsh-plugin <name> --client --description "My awesome plugin"
 
 | Flag | Description |
 |------|-------------|
-| `--client` | Include a client-side entrypoint (`src/client.ts`) |
+| `--client` | Include a client-side entrypoint (`src/client/index.tsx`) and its tsdown bundle |
 | `--description` | Short description for the plugin |
 | `--scope` | npm scope (default: `@yadsh`) |
-| `--with-ui` | Use an existing shared UI kit; fails clearly while no UI contract exists |
 | `--with-tests=false` | Omit starter tests and the Vitest target |
 
 ### What the Generator Creates
@@ -101,16 +114,21 @@ pnpm nx g dsh-plugin <name> --client --description "My awesome plugin"
 ```
 plugins/dsh-<name>/
 ├── src/
-│   ├── index.ts          # Server-side entrypoint
-│   └── client.ts         # Client-side (if --client)
+│   ├── index.ts              # Server-side entrypoint
+│   └── client/index.tsx      # Client-side (with --client)
+├── scripts/
+│   └── verify-package.mjs    # Package gates (+ verify-client-bundle.mjs with --client)
 ├── tests/
-│   └── index.test.ts     # Starter tests
-├── cordis.patch.yml      # DSH bundle metadata
-├── LICENSE               # Repository MIT license copy
-├── package.json          # Standardized metadata
-├── tsconfig.json         # Extends the shared config package
-├── vitest.config.ts      # Test configuration
-└── README.md             # Plugin documentation
+│   └── index.test.ts         # Starter tests (with --tests, the default)
+├── compatibility.json        # Machine-readable DSH/Node baseline
+├── cordis.patch.yml          # DSH bundle metadata
+├── LICENSE                   # Repository MIT license copy
+├── package.json              # Standardized metadata
+├── tsconfig.json             # Extends the shared config package
+├── tsconfig.build.json       # Declaration + lib build
+├── tsdown.config.ts          # Browser bundle (with --client)
+├── vitest.config.ts          # Test configuration (with --tests, the default)
+└── README.md                 # Plugin documentation
 ```
 
 ### Manual Plugin Creation
@@ -129,15 +147,18 @@ Shared packages live in `packages/` and are organized by capability:
 | Package | Purpose |
 |---------|---------|
 | `plugin-log` | Publishable runtime logging and consumer discovery |
-| `plugin-kit` | Private runtime helpers (config validation, version checks) |
-| `test-kit` | Testing utilities (mock contexts, fixtures) |
-| `config` | Shared TypeScript, Vitest, and build configs |
-| `ui-kit` | Shared UI primitives (when needed by multiple plugins) |
+| `plugin-kit` | Publishable runtime helpers: config validation, compatibility checks, the `./client` card scaffolding, `./sqlite` store plumbing |
+| `audit-core` | Publishable audit artifact domain layer: schema, parsing, validation, atomic publishing |
+| `audit-ui` | Publishable audit presentation components: sanitized report, findings, scorecard, JSON view |
+| `test-kit` | Private testing utilities (mock contexts, fixtures) |
+| `config` | Private shared TypeScript, Vitest, and build configs |
+| `plugin-scripts` | Private shared build/verify script runners |
+| `ui-kit` | Shared UI primitives — not created yet; [SPEC §26](./SPEC.md#26-ui-kit) gates it on genuine multi-plugin reuse |
 
 ### Guidelines
 
 1. **Name by capability**, not by function (`plugin-kit`, not `helpers`)
-2. **No plugin-to-plugin coupling** — shared packages must not depend on concrete plugins
+2. **Shared packages stay plugin-free** — nothing under `plugins/*` may appear in a `packages/*` manifest (SPEC §27.2). Coupling between two *plugins* is a separate rule: allowed only as a deliberate extension API (SPEC §5.3, decoded in [plugin guidelines §3.1](./docs/PLUGIN_GUIDELINES.md#31-границы-монорепо-и-зависимости))
 3. **Use `workspace:^`** for internal dependencies
 4. **Declare DSH runtime deps as `peerDependencies`** with `catalog:dsh`
 
@@ -189,6 +210,14 @@ These are enforced automatically by CI, but know them before writing code:
 7. Do not rely on hoisting for undeclared dependencies — ⚠️
 8. Prefer public interfaces over deep source imports (`../other/src/...`) — ❌
 9. Workspace consumption must go through declared package exports — ✅
+10. A plugin must NOT depend on another plugin — ❌ unless that exact edge, with
+    the reason that justifies it, is listed in `plugin-dependency-allowlist.json`
+    (SPEC §27.11); the gate checks the list too, so a stale or unexplained entry
+    fails as well
+11. A third-party range a named catalog holds is declared as `catalog:<name>`,
+    never re-typed as a literal — ⚠️ (SPEC §27.12). `peerDependencies` stay
+    literal on purpose, and `pnpm deps:check` lists the remaining literals so a
+    range shared by two manifests is visible instead of accidental
 
 ---
 

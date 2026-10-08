@@ -1,48 +1,38 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { beforeEach, describe, expect, it, vi } from "vitest";
-
-const mocks = vi.hoisted(() => ({
-  initialize: vi.fn(),
-  render: vi.fn(),
-}));
-
-vi.mock("mermaid", () => ({ default: mocks }));
+import { render, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
 
 import { Markdown } from "../../../src/client/components/Markdown.js";
 
-describe("Mermaid markdown preview", () => {
-  beforeEach(() => {
-    mocks.render.mockReset();
-  });
-
-  it("renders sanitized SVG with fit, source and expanded controls", async () => {
-    mocks.render.mockResolvedValue({
-      svg: '<svg onload="alert(1)"><script>alert(1)</script><a href="https://evil.example"><text>Flow</text></a></svg>',
-    });
+/**
+ * A `mermaid` fence is source text here: the client bundle carries no diagram
+ * engine, because the one file DSH loads is the file the page downloads before
+ * it paints. These cases hold the fallback shape, so a renderer that returns
+ * has to be added on purpose and with its payload measured.
+ */
+describe("Mermaid fence rendering", () => {
+  it("shows the diagram source as a code block", () => {
     const { container } = render(
-      <Markdown text={"```mermaid\ngraph TD\n A --> B\n```"} />,
+      <Markdown text={"```mermaid\ngraph TD\n  A --> B\n```"} />,
     );
 
-    await waitFor(() => expect(container.querySelector("svg")).not.toBeNull());
-    expect(container.innerHTML).not.toContain("script");
-    expect(container.innerHTML).not.toContain("onload");
-    expect(container.innerHTML).not.toContain("https://evil.example");
-    expect(screen.getByText("По размеру")).toBeTruthy();
-    fireEvent.click(screen.getByText("Код"));
-    expect(container.querySelector("code")?.textContent).toContain("graph TD");
-    fireEvent.click(screen.getByText("Во весь экран"));
-    expect(container.querySelector(".dsh-qa-mermaid--expanded")).not.toBeNull();
+    expect(
+      within(container).getByTestId("qa-md-code-content").textContent,
+    ).toContain("graph TD");
+    expect(container.querySelector("svg")).toBeNull();
   });
 
-  it("falls back to the raw code when syntax is invalid", async () => {
-    mocks.render.mockRejectedValue(new Error("syntax error"));
-    render(<Markdown text={"```mermaid\nnot a diagram\n```"} />);
+  it("keeps the fence language on the code block", () => {
+    const { container } = render(
+      <Markdown text={"```mermaid\nsequenceDiagram\n  A->>B: ok\n```"} />,
+    );
 
+    expect(within(container).getByTestId("qa-md-code-lang").textContent).toBe(
+      "mermaid",
+    );
     expect(
-      await screen.findByText(/Не удалось отобразить Mermaid-диаграмму/u),
-    ).toBeTruthy();
-    expect(screen.getByText("not a diagram")).toBeTruthy();
+      within(container).getByTestId("qa-md-code-content").textContent,
+    ).toContain("sequenceDiagram");
   });
 });

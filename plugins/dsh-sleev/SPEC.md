@@ -2025,7 +2025,7 @@ Target version: `0.4.x`
 
 Features:
 
-- Sleev tab/settings surface;
+- Sleev settings surface on the Plugins page;
 - health status;
 - route list;
 - per-session summary;

@@ -12,6 +12,8 @@ import type {
   QaServiceTokenSummary,
 } from "../../types.js";
 import type { QaIntegrationTokenApi } from "../types.js";
+import { useCopyAction } from "../clipboard.js";
+import { CopyHint } from "../components/copy-hint.js";
 import {
   QaSettingsActions,
   QaSettingsButton,
@@ -78,7 +80,12 @@ export function QaIntegrationTokensPage(props: {
   );
   const [busy, setBusy] = useState(false);
   const [issued, setIssued] = useState<QaIssuedServiceToken | null>(null);
-  const [copied, setCopied] = useState(false);
+  const {
+    copied,
+    impossible: copyImpossible,
+    refused: copyRefused,
+    copy: copySecret,
+  } = useCopyAction(issued?.token ?? "");
   const [pendingRevoke, setPendingRevoke] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
   useEffect(() => {
@@ -112,7 +119,6 @@ export function QaIntegrationTokensPage(props: {
     if (busy) return;
     setBusy(true);
     setError(null);
-    setCopied(false);
     void props.api
       .create({
         label: label.trim(),
@@ -153,31 +159,38 @@ export function QaIntegrationTokensPage(props: {
       await reload();
     });
   };
-  const copySecret = (secret: string) => {
-    const clipboard = navigator.clipboard;
-    if (clipboard === undefined) return;
-    void clipboard.writeText(secret).then(
-      () => setCopied(true),
-      () => undefined,
-    );
-  };
   const now = Date.now();
   return (
-    <div className="dsh-qa-settings__page">
-      <h3 className="dsh-qa-settings__page-title">Интеграционные токены</h3>
-      <p className="dsh-qa-settings__lead">
+    <div className="dsh-qa-settings__page" data-testid="qa-settings-tokens">
+      <h3
+        className="dsh-qa-settings__page-title"
+        data-testid="qa-settings-tokens-title"
+      >
+        Интеграционные токены
+      </h3>
+      <p
+        className="dsh-qa-settings__lead"
+        data-testid="qa-settings-tokens-lead"
+      >
         Токен — это ключ для другой программы: она задаёт вопросы от имени вашей
         учётной записи, не открывая браузер. Выдавайте отдельный токен каждой
         интеграции и отзывайте его, когда она больше не нужна. Токен переживает
         смену вашего пароля, поэтому отзывается отдельно.
       </p>
       {issued === null ? null : (
-        <QaSettingsSection title="Токен создан">
-          <QaSettingsNotice tone="warn">
+        <QaSettingsSection
+          testId="qa-settings-tokens-issued"
+          title="Токен создан"
+        >
+          <QaSettingsNotice
+            tone="warn"
+            testId="qa-settings-tokens-issued-notice"
+          >
             Скопируйте значение сейчас и передайте его интеграции. Показать его
             повторно нельзя: на стенде хранится только отпечаток.
           </QaSettingsNotice>
           <QaSettingsField
+            testId="qa-settings-tokens-secret"
             label="Значение токена"
             hint="Передавайте его как заголовок Authorization: Bearer …"
           >
@@ -189,25 +202,38 @@ export function QaIntegrationTokensPage(props: {
             />
           </QaSettingsField>
           <QaSettingsActions>
+            {copyImpossible ? (
+              <CopyHint testId="qa-settings-tokens-copy-hint" />
+            ) : (
+              <>
+                <QaSettingsButton
+                  testId="qa-settings-tokens-copy"
+                  label={copied ? "Скопировано" : "Скопировать"}
+                  onClick={copySecret}
+                />
+                {copyRefused ? (
+                  <CopyHint testId="qa-settings-tokens-copy-hint" />
+                ) : null}
+              </>
+            )}
             <QaSettingsButton
-              label={copied ? "Скопировано" : "Скопировать"}
-              onClick={() => copySecret(issued.token)}
-            />
-            <QaSettingsButton
+              testId="qa-settings-tokens-ack"
               tone="primary"
               label="Я сохранил токен"
-              onClick={() => {
-                setIssued(null);
-                setCopied(false);
-              }}
+              onClick={() => setIssued(null)}
             />
           </QaSettingsActions>
         </QaSettingsSection>
       )}
-      <QaSettingsSection title="Новый токен">
+      <QaSettingsSection testId="qa-settings-tokens-new" title="Новый токен">
         {props.api.canCreate ? (
-          <form className="dsh-qa-settings__page" onSubmit={submit}>
+          <form
+            className="dsh-qa-settings__page"
+            data-testid="qa-settings-tokens-create-form"
+            onSubmit={submit}
+          >
             <QaSettingsField
+              testId="qa-settings-tokens-label"
               label="Название"
               hint="По нему вы отличите токены в списке: например, «мост заявок»."
             >
@@ -219,26 +245,38 @@ export function QaIntegrationTokensPage(props: {
               />
             </QaSettingsField>
             {QA_SERVICE_TOKEN_SCOPES.map((scope) => (
-              <div key={scope} className="dsh-qa-settings__toggle-row">
+              <div
+                key={scope}
+                className="dsh-qa-settings__toggle-row"
+                data-testid="qa-settings-tokens-scope"
+              >
                 <label className="dsh-qa-settings__toggle">
                   <input
                     type="checkbox"
+                    data-testid="qa-settings-tokens-scope-input"
                     checked={scopes.includes(scope)}
                     onChange={(event) =>
                       toggleScope(scope, event.currentTarget.checked)
                     }
                   />
-                  <span className="dsh-qa-settings__toggle-label">
+                  <span
+                    className="dsh-qa-settings__toggle-label"
+                    data-testid="qa-settings-tokens-scope-label"
+                  >
                     {SCOPE_LABELS[scope]}
                   </span>
                 </label>
               </div>
             ))}
-            <p className="dsh-qa-settings__field-hint">
+            <p
+              className="dsh-qa-settings__field-hint"
+              data-testid="qa-settings-tokens-scopes-hint"
+            >
               Права ограничивают токен, но не расширяют доступ вашей учётной
               записи: токен не может больше того, что можете вы.
             </p>
             <QaSettingsField
+              testId="qa-settings-tokens-ttl"
               label="Срок, дней"
               hint={`От ${String(QA_SERVICE_TOKEN_TTL_DAYS_MIN)} до ${String(QA_SERVICE_TOKEN_TTL_DAYS_MAX)}; по умолчанию — срок вашей сессии.`}
             >
@@ -255,6 +293,7 @@ export function QaIntegrationTokensPage(props: {
             </QaSettingsField>
             <QaSettingsActions>
               <QaSettingsButton
+                testId="qa-settings-tokens-create"
                 type="submit"
                 tone="primary"
                 disabled={busy}
@@ -263,38 +302,70 @@ export function QaIntegrationTokensPage(props: {
             </QaSettingsActions>
           </form>
         ) : (
-          <QaSettingsNotice tone="info">
+          <QaSettingsNotice tone="info" testId="qa-settings-tokens-api-off">
             Интеграционный API выключен на этом стенде, поэтому создавать токены
             пока не для чего. Выданные ранее токены остаются в списке ниже — их
             можно отозвать.
           </QaSettingsNotice>
         )}
       </QaSettingsSection>
-      <QaSettingsSection title="Выданные токены">
+      <QaSettingsSection
+        testId="qa-settings-tokens-list"
+        title="Выданные токены"
+      >
         {error === null ? null : (
-          <QaSettingsNotice tone="error">{error}</QaSettingsNotice>
+          <QaSettingsNotice tone="error" testId="qa-settings-tokens-error">
+            {error}
+          </QaSettingsNotice>
         )}
         {loading ? (
-          <p className="dsh-qa-settings__field-hint">Загрузка…</p>
+          <p
+            className="dsh-qa-settings__field-hint"
+            data-testid="qa-settings-tokens-loading"
+          >
+            Загрузка…
+          </p>
         ) : tokens.length === 0 ? (
-          <p className="dsh-qa-settings__field-hint">
+          <p
+            className="dsh-qa-settings__field-hint"
+            data-testid="qa-settings-tokens-empty"
+          >
             У вас пока нет интеграционных токенов.
           </p>
         ) : (
-          <ul className="dsh-qa-settings__rows">
+          <ul
+            className="dsh-qa-settings__rows"
+            data-testid="qa-settings-tokens-rows"
+          >
             {tokens.map((token) => {
               const state = tokenState(token, now);
               const confirming = pendingRevoke === token.id;
               return (
-                <li key={token.id} className="dsh-qa-settings__row">
-                  <div className="dsh-qa-settings__row-button">
-                    <span className="dsh-qa-settings__row-title">
+                <li
+                  key={token.id}
+                  className="dsh-qa-settings__row"
+                  data-testid="qa-settings-tokens-row"
+                >
+                  <div
+                    className="dsh-qa-settings__row-button"
+                    data-testid="qa-settings-tokens-row-body"
+                  >
+                    <span
+                      className="dsh-qa-settings__row-title"
+                      data-testid="qa-settings-tokens-row-title"
+                    >
                       {token.label}
                     </span>
-                    <span className="dsh-qa-settings__row-description">
+                    <span
+                      className="dsh-qa-settings__row-description"
+                      data-testid="qa-settings-tokens-row-scopes"
+                    >
                       {scopeLabels(token.scopes)}
                     </span>
-                    <span className="dsh-qa-settings__row-meta">
+                    <span
+                      className="dsh-qa-settings__row-meta"
+                      data-testid="qa-settings-tokens-row-meta"
+                    >
                       создан {day(token.createdAt)} · до {day(token.expiresAt)}{" "}
                       · использований: {token.useCount}
                       {token.lastUsedAt === null
@@ -308,6 +379,7 @@ export function QaIntegrationTokensPage(props: {
                             ? "dsh-qa-settings__row-meta"
                             : "dsh-qa-settings__row-warning"
                         }
+                        data-testid="qa-settings-tokens-row-state"
                       >
                         {state === "revoked"
                           ? "отозван"
@@ -319,10 +391,12 @@ export function QaIntegrationTokensPage(props: {
                         {confirming ? (
                           <>
                             <QaSettingsButton
+                              testId="qa-settings-tokens-revoke-cancel"
                               label="Отмена"
                               onClick={() => setPendingRevoke(null)}
                             />
                             <QaSettingsButton
+                              testId="qa-settings-tokens-revoke-confirm"
                               tone="danger"
                               disabled={revoking === token.id}
                               label={
@@ -335,6 +409,7 @@ export function QaIntegrationTokensPage(props: {
                           </>
                         ) : (
                           <QaSettingsButton
+                            testId="qa-settings-tokens-revoke"
                             tone="danger"
                             label="Отозвать"
                             title={`Отозвать токен «${token.label}»`}

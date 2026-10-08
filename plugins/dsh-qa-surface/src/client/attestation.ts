@@ -17,15 +17,20 @@ export class QaPolicyAttestationError extends Error {
 }
 
 /**
- * Refusals that classify an existing chat as belonging to an older deployment
- * composition. Keeping only its transcript is safe: policyReady stays false,
- * so no prompt, cancel, approval or question reaches the Host.
+ * Refusals that classify what the browser has on screen rather than faulting
+ * the deployment: an existing chat of an older composition, one adopted from
+ * outside the QA policy, or an identity that is another conversation's
+ * delegated child.
+ *
+ * Keeping only its transcript is safe: policyReady stays false, so no prompt,
+ * cancel, approval or question reaches the Host.
  */
 export function canOpenAsCompatibilityReadOnly(reason: string | null): boolean {
   return (
     reason === "composition-mismatch" ||
     reason === "agent-unavailable" ||
-    reason === "adoption-refused"
+    reason === "adoption-refused" ||
+    reason === "subagent-session"
   );
 }
 
@@ -48,7 +53,10 @@ export function attestationReasonOf(
 
 export function attestationHint(reason: string | null): string {
   if (reason === "agent-unavailable") {
-    return "The Host could not put a live agent behind this chat: resuming the composition its session recorded failed (a preset that no longer mounts does this). The refusal detail is in the Host logs.";
+    return "This chat's transcript is on the Host, but no agent stands behind it: resuming the composition its session recorded failed — a preset that no longer mounts, or a log the Host refuses to read. That is not what a restarted stand looks like; after a restart the next open simply resumes the chat. The failing session is named in the Host log under `session.agent-resolve-rejected` — re-mount the preset that session recorded and re-open the chat, while New chat gives the visitor a working one meanwhile.";
+  }
+  if (reason === "subagent-session") {
+    return "The id this page asked about is a delegated subagent run, not a chat: subagent routing owns that identity, so the Host puts no sendable agent behind it and nothing can be attested here. Read the run from its parent chat's work group — its sources already reach that chat. If a chat row of this browser leads here, it points at a child: start a new chat and leave that id behind.";
   }
   if (reason === "unknown-tools") {
     return "A lockdown.toolPolicy name is not mounted in this session's tool catalog — check the deployment agent preset and the tool's server availability.";
@@ -84,8 +92,16 @@ export function proofMatchesConfig(
   lockdown: ResolvedQaSurfaceConfig["lockdown"],
   sessionId: string,
 ): boolean {
+  if (proof.sessionId !== sessionId) return false;
+  if (!lockdown.enabled) {
+    // A lockdown that is off pins nothing, so the Host answers with the
+    // vacuous proof and there are no facts here to compare: which session it
+    // admitted is all this call can say, and the admission itself — account
+    // identity and ownership, which the Host checks whatever the lockdown
+    // state — is the reason the browser asks.
+    return true;
+  }
   return (
-    proof.sessionId === sessionId &&
     proof.enabled &&
     proof.agentPresetMatches &&
     proof.workspaceMatches &&

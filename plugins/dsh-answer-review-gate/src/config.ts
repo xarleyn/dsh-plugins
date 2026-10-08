@@ -11,6 +11,11 @@
 
 import z from "@deepseek-ai/schemastery";
 
+import {
+  REVIEWER_READ_ONLY_TOOLS,
+  restrictReviewerTools,
+} from "./reviewer-tools.js";
+
 /** Raw user-facing configuration. */
 export interface AnswerReviewGateConfig {
   /** Master switch; when false the gate registers no listeners at all. */
@@ -35,8 +40,11 @@ export interface AnswerReviewGateConfig {
     /** Persona instruction for the `subagent` reviewer child. */
     readonly persona?: string;
     /**
-     * Read-only tool allow-list for the `subagent` reviewer child. Empty
-     * means the reviewer works from its own knowledge only.
+     * Read-only tool allow-list for the `subagent` reviewer child. Absent means
+     * `REVIEWER_READ_ONLY_TOOLS` — reads and searches, and nothing that can
+     * change state. An explicitly empty list means a tool-less reviewer.
+     * Whatever is listed, the destructive names of `REVIEWER_FORBIDDEN_TOOLS`
+     * are removed: a reviewer never holds a tool that can delete or write.
      */
     readonly allowedTools?: string[];
   };
@@ -116,7 +124,7 @@ export const ANSWER_REVIEW_GATE_DEFAULTS: ResolvedAnswerReviewGateConfig = {
     route: "",
     reasoningEffort: "",
     persona: "",
-    allowedTools: [],
+    allowedTools: REVIEWER_READ_ONLY_TOOLS,
   },
   maxReviewRounds: 3,
   failMode: "warn",
@@ -190,7 +198,12 @@ export function resolveAnswerReviewGateConfig(
       route: cleanString(reviewer.route, ""),
       reasoningEffort: cleanString(reviewer.reasoningEffort, ""),
       persona: cleanString(reviewer.persona, ""),
-      allowedTools: cleanList(reviewer.allowedTools),
+      // An unset list means the read-only default; a set one is honoured only
+      // for the names a reviewer may hold at all.
+      allowedTools:
+        reviewer.allowedTools === undefined
+          ? REVIEWER_READ_ONLY_TOOLS
+          : restrictReviewerTools(reviewer.allowedTools),
     },
     maxReviewRounds: clampInteger(
       entry.maxReviewRounds,
@@ -269,9 +282,9 @@ export const AnswerReviewGateConfigSchema: z<AnswerReviewGateConfig> = z
           .description("Persona instruction for the subagent reviewer."),
         allowedTools: z
           .array(z.string())
-          .default([])
+          .default([...REVIEWER_READ_ONLY_TOOLS])
           .description(
-            "Read-only tool allow-list for the subagent reviewer; empty means no tools.",
+            "Read-only tool allow-list for the subagent reviewer. Unset means the read-only set (reads and searches); an explicitly empty list means no tools; deleting or writing a file is never allowed.",
           ),
       })
       .default({
@@ -282,7 +295,7 @@ export const AnswerReviewGateConfigSchema: z<AnswerReviewGateConfig> = z
         route: "",
         reasoningEffort: "",
         persona: "",
-        allowedTools: [],
+        allowedTools: [...REVIEWER_READ_ONLY_TOOLS],
       }),
     maxReviewRounds: z
       .number()

@@ -2,14 +2,18 @@ import { useMemo, useState, useSyncExternalStore } from "react";
 import { QaModal } from "../components/QaModal.js";
 import type {
   QaAccountIdentityField,
+  QaAccountNotifications,
+  QaAccountNotificationsInput,
   QaAccountProfile,
   QaAccountProfileInput,
   QaAccountStarters,
   QaAccountStartersInput,
+  ResolvedQaSurfaceConfig,
 } from "../../types.js";
 import type { QaBoundSkillApi, QaIntegrationTokenApi } from "../types.js";
 import { QaGeneralSettingsPage } from "./GeneralSettingsPage.js";
 import { QaIntegrationTokensPage } from "./IntegrationTokensPage.js";
+import { QaNotificationSettingsPage } from "./NotificationSettingsPage.js";
 import { QaPasswordSettingsPage } from "./PasswordSettingsPage.js";
 import { QaProfileSettingsPage } from "./ProfileSettingsPage.js";
 import { QaSkillsSettingsPage } from "./SkillsSettingsPage.js";
@@ -21,6 +25,7 @@ export type QaSettingsSectionId =
   | "profile"
   | "password"
   | "starters"
+  | "notifications"
   | "tokens"
   | "general"
   | "skills"
@@ -55,6 +60,18 @@ export interface QaUserSettingsDialogProps {
   readonly starters?: {
     readonly starters: QaAccountStarters;
     readonly onSave: (input: QaAccountStartersInput) => Promise<string | null>;
+  };
+  /**
+   * Self-service notification channels. Absent only where there is no account
+   * to hold the choice: an anonymous stand keeps its mute switch in the
+   * browser, and the notices read it from there.
+   */
+  readonly notifications?: {
+    readonly notifications: QaAccountNotifications;
+    readonly switches: ResolvedQaSurfaceConfig["notifications"];
+    readonly onSave: (
+      input: QaAccountNotificationsInput,
+    ) => Promise<string | null>;
   };
   /** Integration tokens; absent when accounts are off altogether. */
   readonly integrationTokens?: QaIntegrationTokenApi;
@@ -107,6 +124,9 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
     if (props.starters !== undefined) {
       models.push({ id: "starters", title: "Быстрые сообщения" });
     }
+    if (props.notifications !== undefined) {
+      models.push({ id: "notifications", title: "Уведомления" });
+    }
     if (props.integrationTokens !== undefined) {
       models.push({ id: "tokens", title: "Интеграционные токены" });
     }
@@ -122,6 +142,7 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
     props.profile,
     props.password,
     props.starters,
+    props.notifications,
     props.integrationTokens,
     props.skills,
     extensionSnapshot.sections,
@@ -139,9 +160,10 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
       size="settings"
       onClose={props.onClose}
     >
-      <div className="dsh-qa-settings">
+      <div className="dsh-qa-settings" data-testid="qa-settings">
         <nav
           className="dsh-qa-settings__nav"
+          data-testid="qa-settings-nav"
           role="tablist"
           aria-label="Разделы настроек"
         >
@@ -150,6 +172,7 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
               key={entry.id}
               type="button"
               role="tab"
+              data-testid="qa-settings-tab"
               aria-selected={entry.id === active}
               className={
                 entry.id === active
@@ -164,6 +187,7 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
         </nav>
         <div
           className="dsh-qa-settings__content"
+          data-testid="qa-settings-content"
           role="tabpanel"
           aria-label={
             sections.find((entry) => entry.id === active)?.title ?? "Настройки"
@@ -185,6 +209,13 @@ export function QaUserSettingsDialog(props: QaUserSettingsDialogProps) {
             <QaStartersSettingsPage
               starters={props.starters.starters}
               onSave={props.starters.onSave}
+            />
+          ) : null}
+          {active === "notifications" && props.notifications !== undefined ? (
+            <QaNotificationSettingsPage
+              notifications={props.notifications.notifications}
+              switches={props.notifications.switches}
+              onSave={props.notifications.onSave}
             />
           ) : null}
           {active === "tokens" && props.integrationTokens !== undefined ? (

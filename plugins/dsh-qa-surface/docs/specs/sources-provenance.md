@@ -1018,7 +1018,7 @@ Nice-to-have:
 A Markdown document may contain:
 
 ```md
-[See architecture](../architecture.md)
+[See architecture](../ARCHITECTURE.md)
 ```
 
 Phase 1:
@@ -1306,11 +1306,50 @@ File title:
 
 ## 20. UI states
 
+> Implementation note (2026-10-08): the "hidden/disabled" option below is
+> superseded — see §20.1.
+
 ### No sources
 
 Do not render an empty `Sources` footer.
 
 Sidebar source action may be hidden/disabled.
+
+### 20.1. Empty list (decision, 2026-10-08)
+
+A completed turn that collected nothing is the designed outcome of an answer
+built from what the conversation already carried or from recalled memory, and
+none of the seven extractors in `src/provenance/extractors.ts` matches either.
+The UI has to say that, because a reader cannot tell it from a collector that
+failed:
+
+- the answer footer stays unrendered (unchanged: no empty footer);
+- the header «Источники» control is **not** disabled by an empty count — it was,
+  which left a dead button and made the panel's explanation unreachable; only
+  `sources.enabled` / `sources.display.sidebar` decide whether it exists;
+- the panel answers an empty list with the classes that do appear and one line
+  saying an empty list is not a collection failure.
+
+The explanation is drawn only for a settled collection — `complete &&
+sources.length === 0` — because an empty list means a different thing in each of
+the three states that produce one:
+
+- `complete: false` — the collection has not settled, or a delegated run still
+  owes its origins; §«Loading / active turn» and the incomplete line above the
+  list already say so, and a second line claiming nothing was collected would
+  contradict it;
+- a turn bundle with `complete: true` and no source — "collected, nothing
+  found", the state this decision is about;
+- no bundle at all, a chat that has asked nothing yet — projected as
+  `sourcesComplete: true` with an empty list, so the sentence may only describe
+  what this list holds, never diagnose an answer that never happened. Hence it
+  names the classes in the present tense and scopes its claim to "after a
+  completed turn".
+
+The list of recognized classes and why memory is not among it: README §Sources.
+The same section names the second channel — `qa_report_sources`, an entry the
+answering agent files itself, which no extractor sees and which therefore can
+put a source into a list the collector matched nothing into.
 
 ### Loading / active turn
 

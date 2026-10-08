@@ -1,12 +1,9 @@
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import {
-  CardShell,
-  bindSettingsExternalStore,
-} from "@yadsh/dsh-plugin-kit/client";
+import { bindSettingsExternalStore } from "@yadsh/dsh-plugin-kit/client";
 import {
   useMemo,
   useState,
@@ -21,18 +18,53 @@ import {
 import type { UIRepairRuntime } from "./runtime.js";
 import type { RepairIssue } from "./types.js";
 
+/**
+ * The one-liner this row answers the seat's `summary` view with.
+ *
+ * Exported because it is one string with the row's display description: the page
+ * falls back to this answer only where `locale/en.json` leaves the row without a
+ * description, and a test pins the pair, so the row cannot describe one thing and
+ * open another.
+ */
+export const UI_REPAIR_ROW_SUMMARY =
+  "Observe layout defects and apply reversible, scoped repairs.";
+
+/** What the row answers while the Host has not accepted a section yet. */
+const LOADING_NOTE =
+  "Reading the UI Repair settings… the policy and the ignore list appear once the Host answers.";
+
+/** What the row answers when the namespace reaches no settings at all. */
+const UNAVAILABLE_NOTE =
+  "The UI Repair settings are not exposed to this browser session, so this row " +
+  "can neither show the saved policy nor change it.";
+
 export interface CardFace {
-  readonly scope: SettingsScope<UIRepairPluginConfig>;
+  /**
+   * The card's own settings form, resolved through `ctx.configForms` and named
+   * `settings`, not `form`.
+   *
+   * The seat hands its registrant a `form` of its own: a `ConfigPageForm` of
+   * `{ state, mutate }` only (`lib/types/client/slot-contract.d.ts`, built at
+   * `lib/client.js:2688` of the installed `0.1.7-rc.2` bundle). That view can
+   * neither be subscribed to nor written field by field, and every control here
+   * writes one named field, so the card reads and writes through the full
+   * `ConfigForm` the face carries instead — under a name the page never passes,
+   * because the renderer spreads its owner props after the face. `form` is
+   * `undefined` for a Config that declares no `.volatile()` field, so nothing the
+   * card draws or refuses to draw may depend on it either.
+   */
+  readonly settings: ConfigForm<UIRepairPluginConfig>;
   readonly runtime: UIRepairRuntime;
 }
 
-type CardProps = PropsRuntime<"settings.plugin.item"> & InjectFace<CardFace>;
+type CardProps = PropsRuntime<"plugins.row.config"> & InjectFace<CardFace>;
 
 interface ToggleProps {
   readonly title: string;
   readonly description: string;
   readonly checked: boolean;
   readonly disabled: boolean;
+  readonly testId: string;
   readonly onChange: (checked: boolean) => void;
 }
 
@@ -48,6 +80,7 @@ function Toggle(props: ToggleProps) {
         type="checkbox"
         checked={props.checked}
         disabled={props.disabled}
+        data-testid={props.testId}
         onChange={(event) => props.onChange(event.currentTarget.checked)}
       />
     </label>
@@ -63,15 +96,15 @@ function validSelector(selector: string): boolean {
   }
 }
 
-export function UIRepairCard({ scope, runtime }: CardProps) {
-  const store = useMemo(() => bindSettingsExternalStore(scope), [scope]);
-  const settings = useSyncExternalStore(
+export function UIRepairCard({ settings, runtime }: CardProps) {
+  const store = useMemo(() => bindSettingsExternalStore(settings), [settings]);
+  const snapshot = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
     store.getSnapshot,
   );
-  const config = resolvePluginConfig(settings.value ?? {});
-  const writable = settings.status === "ready" && settings.writable;
+  const config = resolvePluginConfig(snapshot.value ?? {});
+  const writable = snapshot.status === "ready" && snapshot.writable;
   useSyncExternalStore(
     (listener) => runtime.subscribe(listener),
     () => runtime.getRevision(),
@@ -84,14 +117,36 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
   const [pendingRepair, setPendingRepair] = useState<string | undefined>();
   const [repairError, setRepairError] = useState<string | undefined>();
 
-  if (settings.status === "unavailable") return null;
+  /*
+   * The frame on this seat belongs to the page, so silence here is an opened row
+   * with an empty configuration section inside it and no reason attached. A card
+   * that draws its own shell may stay invisible; this one answers every state the
+   * namespace reports with a sentence (AGENTS.md, `plugins.row.config`).
+   *
+   * Both non-ready states swap the two settings-owned sections for that sentence
+   * rather than draw them: `snapshot.value` is undefined until the Host's first
+   * accepted section arrives, and a resolved default shown as the saved policy is
+   * a wrong reading, not a placeholder. The scan panel reads the runtime instead
+   * of the settings, so it stays on the page either way.
+   */
+  const settingsReady = snapshot.status === "ready";
+  const settingsNote =
+    snapshot.status === "unavailable" ? (
+      <p className="uir-muted" data-testid="repair-settings-unavailable">
+        {UNAVAILABLE_NOTE}
+      </p>
+    ) : (
+      <p className="uir-muted" data-testid="repair-settings-loading">
+        {LOADING_NOTE}
+      </p>
+    );
 
   const setConfidence = (
     field: "autoConfidence" | "dangerousConfidence",
     event: ChangeEvent<HTMLInputElement>,
   ) => {
     const percent = Number(event.currentTarget.value);
-    if (Number.isFinite(percent)) void scope.set(field, percent / 100);
+    if (Number.isFinite(percent)) void settings.set(field, percent / 100);
   };
   const scan = async () => {
     setScanning(true);
@@ -108,11 +163,11 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
       return;
     }
     setSelectorError(undefined);
-    void scope.set("ignore", [...config.ignore, { selector: value }]);
+    void settings.set("ignore", [...config.ignore, { selector: value }]);
     setSelector("");
   };
   const removeIgnore = (index: number) => {
-    void scope.set(
+    void settings.set(
       "ignore",
       config.ignore.filter((_rule, ruleIndex) => ruleIndex !== index),
     );
@@ -134,7 +189,7 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
   };
   const ignoreIssue = (issue: RepairIssue) => {
     const target = validSelector(issue.target) ? issue.target : undefined;
-    void scope.set("ignore", [
+    void settings.set("ignore", [
       ...config.ignore,
       {
         ...(issue.plugin === undefined ? {} : { plugin: issue.plugin }),
@@ -145,18 +200,8 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
   };
 
   return (
-    <CardShell
-      title="UI Repair"
-      description="Observe layout defects and apply reversible, scoped repairs."
-      badge={
-        <span className="dsh-plugin-card__badge" data-dsh-ui-repair-ui>
-          {config.enabled ? config.mode : "disabled"}
-        </span>
-      }
-      label={(open) => `${open ? "Hide" : "Show"} settings: UI Repair`}
-      bodyClassName="uir-body"
-    >
-      <div data-dsh-ui-repair-ui>
+    <div className="uir-body" data-dsh-ui-repair-ui data-testid="repair-ui">
+      {settingsReady ? (
         <section className="uir-section">
           <h3 className="uir-section-title">Policy</h3>
           <Toggle
@@ -164,7 +209,8 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
             description="Disabling restores all temporary repairs and stops observation."
             checked={config.enabled}
             disabled={!writable}
-            onChange={(checked) => void scope.set("enabled", checked)}
+            testId="repair-toggle-enabled"
+            onChange={(checked) => void settings.set("enabled", checked)}
           />
           <div className="uir-grid">
             <label className="uir-field">
@@ -173,8 +219,9 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
                 className="uir-control"
                 value={config.mode}
                 disabled={!writable}
+                data-testid="repair-mode"
                 onChange={(event) =>
-                  void scope.set(
+                  void settings.set(
                     "mode",
                     event.currentTarget.value as UIRepairPluginConfig["mode"],
                   )
@@ -197,6 +244,7 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
                 step="1"
                 value={Math.round(config.autoConfidence * 100)}
                 disabled={!writable}
+                data-testid="repair-auto-confidence"
                 onChange={(event) => setConfidence("autoConfidence", event)}
               />
             </label>
@@ -210,6 +258,7 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
                 step="1"
                 value={Math.round(config.dangerousConfidence * 100)}
                 disabled={!writable}
+                data-testid="repair-dangerous-confidence"
                 onChange={(event) =>
                   setConfidence("dangerousConfidence", event)
                 }
@@ -221,130 +270,157 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
             description="Run one bounded scan after the browser plugin mounts."
             checked={config.scanOnStartup}
             disabled={!writable}
-            onChange={(checked) => void scope.set("scanOnStartup", checked)}
+            testId="repair-toggle-scan-startup"
+            onChange={(checked) => void settings.set("scanOnStartup", checked)}
           />
           <Toggle
             title="Scan after DOM changes"
             description="Batch affected roots through MutationObserver and animation frames."
             checked={config.scanAfterMutation}
             disabled={!writable}
-            onChange={(checked) => void scope.set("scanAfterMutation", checked)}
+            testId="repair-toggle-scan-mutation"
+            onChange={(checked) =>
+              void settings.set("scanAfterMutation", checked)
+            }
           />
           <Toggle
             title="Scan after layout resize"
             description="Observe bounded repair roots for geometry changes."
             checked={config.scanAfterResize}
             disabled={!writable}
-            onChange={(checked) => void scope.set("scanAfterResize", checked)}
+            testId="repair-toggle-scan-resize"
+            onChange={(checked) =>
+              void settings.set("scanAfterResize", checked)
+            }
           />
         </section>
+      ) : (
+        settingsNote
+      )}
 
-        <section className="uir-section">
-          <h3 className="uir-section-title">UI health</h3>
-          <div className="uir-actions">
-            <button
-              className="uir-button"
-              type="button"
-              disabled={scanning || !config.enabled}
-              onClick={() => void scan()}
-            >
-              {scanning ? "Scanning..." : "Scan now"}
-            </button>
-            <button
-              className="uir-button"
-              type="button"
-              onClick={() => {
-                runtime.rollbackAll();
-              }}
-            >
-              Roll back temporary repairs
-            </button>
-          </div>
-          {report === undefined ? (
-            <p className="uir-muted">
-              No completed scan in this browser session.
-            </p>
-          ) : (
-            <>
-              <div className="uir-report">
-                <span className="uir-metric">
-                  <strong>{report.issues.length}</strong>
-                  <span>issues</span>
-                </span>
-                <span className="uir-metric">
-                  <strong>{report.applied.length}</strong>
-                  <span>applied</span>
-                </span>
-                <span className="uir-metric">
-                  <strong>{report.ignored.length}</strong>
-                  <span>ignored</span>
-                </span>
-                <span className="uir-metric">
-                  <strong>{report.rolledBack.length}</strong>
-                  <span>rolled back</span>
-                </span>
-              </div>
-              <ul className="uir-issues">
-                {report.issues.slice(0, 5).map((issue) => (
-                  <li className="uir-issue" key={issue.id}>
-                    <div className="uir-issue-summary">
-                      <span className="uir-rule">{issue.ruleId}</span>
-                      <span className="uir-target">{issue.target}</span>
-                      <span className="uir-confidence">
-                        {Math.round(issue.confidence * 100)}%
-                      </span>
-                    </div>
-                    {issue.suggestedCss === undefined ? null : (
-                      <code className="uir-suggestion">
-                        {Object.entries(issue.suggestedCss)
-                          .map(([property, value]) => `${property}: ${value}`)
-                          .join("; ")}
-                      </code>
-                    )}
-                    {config.mode !== "suggest" ? null : (
-                      <div className="uir-issue-actions">
-                        {issue.suggestedCss === undefined ? null : (
-                          <button
-                            className="uir-button"
-                            type="button"
-                            disabled={
-                              pendingRepair !== undefined ||
-                              report.ignored.includes(issue.id) ||
-                              report.applied.includes(issue.id)
-                            }
-                            onClick={() => void applyIssue(issue)}
-                          >
-                            {pendingRepair === issue.id
-                              ? "Applying..."
-                              : "Apply"}
-                          </button>
-                        )}
+      <section className="uir-section">
+        <h3 className="uir-section-title">UI health</h3>
+        <div className="uir-actions">
+          <button
+            className="uir-button"
+            type="button"
+            disabled={scanning || !settingsReady || !config.enabled}
+            data-testid="repair-scan"
+            onClick={() => void scan()}
+          >
+            {scanning ? "Scanning..." : "Scan now"}
+          </button>
+          <button
+            className="uir-button"
+            type="button"
+            data-testid="repair-rollback"
+            onClick={() => {
+              runtime.rollbackAll();
+            }}
+          >
+            Roll back temporary repairs
+          </button>
+        </div>
+        {report === undefined ? (
+          <p className="uir-muted" data-testid="repair-report-empty">
+            No completed scan in this browser session.
+          </p>
+        ) : (
+          <>
+            <div className="uir-report">
+              <span className="uir-metric">
+                <strong>{report.issues.length}</strong>
+                <span>issues</span>
+              </span>
+              <span className="uir-metric">
+                <strong>{report.applied.length}</strong>
+                <span>applied</span>
+              </span>
+              <span className="uir-metric">
+                <strong>{report.ignored.length}</strong>
+                <span>ignored</span>
+              </span>
+              <span className="uir-metric">
+                <strong>{report.rolledBack.length}</strong>
+                <span>rolled back</span>
+              </span>
+            </div>
+            <ul className="uir-issues">
+              {report.issues.slice(0, 5).map((issue) => (
+                <li
+                  className="uir-issue"
+                  key={issue.id}
+                  data-testid="repair-issue"
+                >
+                  <div className="uir-issue-summary">
+                    <span className="uir-rule">{issue.ruleId}</span>
+                    <span className="uir-target">{issue.target}</span>
+                    <span className="uir-confidence">
+                      {Math.round(issue.confidence * 100)}%
+                    </span>
+                  </div>
+                  {issue.suggestedCss === undefined ? null : (
+                    <code className="uir-suggestion">
+                      {Object.entries(issue.suggestedCss)
+                        .map(([property, value]) => `${property}: ${value}`)
+                        .join("; ")}
+                    </code>
+                  )}
+                  {/*
+                   * Both actions answer to the `mode` field, and outside `ready`
+                   * the resolved `config` is the shipped default, not the saved
+                   * policy — so readiness is decided here rather than left to
+                   * `DEFAULT_PLUGIN_CONFIG.mode` happening to be `observe`.
+                   */}
+                  {settingsReady && config.mode === "suggest" ? (
+                    <div className="uir-issue-actions">
+                      {issue.suggestedCss === undefined ? null : (
                         <button
                           className="uir-button"
                           type="button"
                           disabled={
-                            !writable || report.ignored.includes(issue.id)
+                            pendingRepair !== undefined ||
+                            report.ignored.includes(issue.id) ||
+                            report.applied.includes(issue.id)
                           }
-                          onClick={() => ignoreIssue(issue)}
+                          data-testid="repair-issue-apply"
+                          onClick={() => void applyIssue(issue)}
                         >
-                          {report.ignored.includes(issue.id)
-                            ? "Ignored"
-                            : "Ignore"}
+                          {pendingRepair === issue.id ? "Applying..." : "Apply"}
                         </button>
-                      </div>
-                    )}
-                  </li>
-                ))}
-              </ul>
-              {repairError === undefined ? null : (
-                <p className="uir-error" role="status">
-                  {repairError}
-                </p>
-              )}
-            </>
-          )}
-        </section>
+                      )}
+                      <button
+                        className="uir-button"
+                        type="button"
+                        disabled={
+                          !writable || report.ignored.includes(issue.id)
+                        }
+                        data-testid="repair-issue-ignore"
+                        onClick={() => ignoreIssue(issue)}
+                      >
+                        {report.ignored.includes(issue.id)
+                          ? "Ignored"
+                          : "Ignore"}
+                      </button>
+                    </div>
+                  ) : null}
+                </li>
+              ))}
+            </ul>
+            {repairError === undefined ? null : (
+              <p
+                className="uir-error"
+                role="status"
+                data-testid="repair-apply-error"
+              >
+                {repairError}
+              </p>
+            )}
+          </>
+        )}
+      </section>
 
+      {settingsReady ? (
         <section className="uir-section">
           <h3 className="uir-section-title">Ignored selectors</h3>
           <p className="uir-muted">
@@ -356,6 +432,7 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
               <li
                 className="uir-ignore-item"
                 key={`${rule.plugin ?? ""}:${rule.rule ?? ""}:${rule.selector ?? ""}:${index}`}
+                data-testid="repair-ignore-row"
               >
                 <code>
                   {rule.selector ??
@@ -365,6 +442,7 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
                   className="uir-button"
                   type="button"
                   disabled={!writable}
+                  data-testid="repair-ignore-remove"
                   onClick={() => removeIgnore(index)}
                 >
                   Remove
@@ -379,24 +457,80 @@ export function UIRepairCard({ scope, runtime }: CardProps) {
               disabled={!writable}
               placeholder=".intentional-overflow"
               aria-label="CSS selector to ignore"
+              data-testid="repair-ignore-input"
               onChange={(event) => setSelector(event.currentTarget.value)}
             />
             <button
               className="uir-button"
               type="button"
               disabled={!writable}
+              data-testid="repair-ignore-add"
               onClick={addSelector}
             >
               Add selector
             </button>
           </div>
           {selectorError === undefined ? null : (
-            <p className="uir-error" role="alert">
+            <p
+              className="uir-error"
+              role="alert"
+              data-testid="repair-ignore-error"
+            >
               {selectorError}
             </p>
           )}
         </section>
-      </div>
-    </CardShell>
+      ) : null}
+    </div>
   );
+}
+
+/**
+ * The entry the Plugins page seats on this bundle's row, measured against the
+ * installed `@deepseek-ai/dsh-client-ui-plugin-manager` `0.1.7-rc.2`:
+ *
+ * - the row's page is the card. It draws the surface, the row title, the row id,
+ *   the module name and the description line, then mounts this entry's `page`
+ *   view into its own configuration section (`div[data-plugin-config]`,
+ *   `lib/client.js:1851-1852`). So the entry renders the settings body and
+ *   nothing else: a frame, a heading or an expand control of ours would draw a
+ *   second card inside the Host's one, which is what decision D1 of
+ *   `docs/DSH-0.1.7-MIGRATION.md` §10 forbids on this seat;
+ * - the same entry is asked for `view: "summary"`, and that answer lands inside
+ *   the page's own description paragraph, so it stays one plain sentence;
+ * - the body answers all three states of the settings snapshot rather than
+ *   deciding to be invisible: `loading` names the wait, `unavailable` names the
+ *   reason, and each swaps the settings-owned sections for that sentence, because
+ *   a resolved default drawn as the saved policy is a wrong reading, not a
+ *   placeholder. A card that draws its own `<li>` can afford returning nothing;
+ *   this one is not the frame's owner. The scan panel reads the runtime instead of
+ *   the settings and survives both — on a stand whose settings are closed, rolling
+ *   back temporary repairs is the action an operator has left. The per-issue
+ *   Apply/Ignore pair does not survive them: it is offered only under the `suggest`
+ *   mode, so drawing it from a resolved default would claim a saved policy the
+ *   namespace never answered, and the guard is the snapshot status rather than the
+ *   default mode happening to be `observe`.
+ *
+ * Nothing from the removed header was carried into the body: the row's chrome is
+ * not ours to draw, and a mode badge would repeat the `mode` field two lines
+ * below it. What the seat gives up is the collapsed row's line — the mode is
+ * visible once the row is open, not from the list — which is the page's layout,
+ * not a field this bundle lost.
+ *
+ * **[measured]** The page asks for the one-liner only where `row.meta` carries no
+ * description: the line is `description ?? renderSlot(… { view: "summary" } …)`
+ * (`:1841`), with `description` read off `row.meta` alone (`rowText`,
+ * `:211-215`). The Host builds `row.meta` from the bundle's exported locale files
+ * and falls back to that same address's `package.json` name and description
+ * (`readPluginMeta`, `@deepseek-ai/dsh-app-boot` `lib/index.js:1968-1978`), so a
+ * published bundle arrives with a description and this arm is the seat contract's
+ * fallback (`lib/types/client/slot-contract.d.ts`) rather than a line an operator
+ * sees. It still has to answer it, and it reads no store to do so.
+ *
+ * The page hands its registrant a `form` of its own; the card never reads it — see
+ * {@link CardFace.settings}.
+ */
+export function UIRepairCardEntry(props: CardProps) {
+  if (props.view === "summary") return UI_REPAIR_ROW_SUMMARY;
+  return <UIRepairCard {...props} />;
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   IMAGE_MEDIA_TYPES,
+  fileNameFromUrl,
   imageAcceptHeader,
   imageNameFromUrl,
   sniffImageMediaType,
@@ -59,5 +60,21 @@ describe("image formats", () => {
     );
     expect(imageNameFromUrl("https://example.test/")).toBe("image");
     expect(imageNameFromUrl("not a url")).toBe("image");
+  });
+
+  it("flattens a download name to a leaf the attachment store can keep", () => {
+    // A file attachment arrives under whatever name the tracker's URL carries.
+    // The store keeps a leaf, so a percent-encoded path has to lose its
+    // separators here rather than reach the store with them.
+    expect(
+      fileNameFromUrl(
+        "https://jira.example.corp/secure/attachment/42/report%20%231.pdf",
+      ),
+    ).toBe("report #1.pdf");
+    expect(
+      fileNameFromUrl("https://example.test/a/b/%2E%2E%2Fetc%2Fpasswd"),
+    ).toBe("..-etc-passwd");
+    expect(fileNameFromUrl("https://example.test/")).toBe("download");
+    expect(fileNameFromUrl("not a url")).toBe("download");
   });
 });

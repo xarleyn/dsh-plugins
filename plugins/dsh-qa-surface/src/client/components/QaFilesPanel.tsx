@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { QaImageView } from "../../types.js";
+import type { QaArtifactView, QaImageView } from "../../types.js";
 import type { QaChatFileGroup } from "../chat-files.js";
 import type { QaBoundSourceApi } from "../types.js";
 import { formatDayTime } from "./format.js";
@@ -30,15 +30,33 @@ function QaFileImage({
     };
   }, [image.attachmentId, resolve]);
   if (url === null) {
-    return <span className="dsh-qa-files__thumb" data-state="loading" />;
+    return (
+      <span
+        className="dsh-qa-files__thumb"
+        data-state="loading"
+        data-testid="qa-files-thumb-loading"
+      />
+    );
   }
   if (url === "") {
-    return <span className="dsh-qa-files__thumb" data-state="broken" />;
+    return (
+      <span
+        className="dsh-qa-files__thumb"
+        data-state="broken"
+        data-testid="qa-files-thumb-broken"
+      />
+    );
   }
   return (
-    <a href={url} target="_blank" rel="noreferrer">
+    <a
+      href={url}
+      data-testid="qa-files-thumb-link"
+      target="_blank"
+      rel="noreferrer"
+    >
       <img
         className="dsh-qa-files__thumb"
+        data-testid="qa-files-thumb"
         src={url}
         alt="Прикреплённое изображение"
       />
@@ -50,8 +68,17 @@ export interface QaFilesPanelProps {
   readonly groups: readonly QaChatFileGroup[];
   /** Resolve an image attachment to an object URL; images render inert without it. */
   readonly resolveImage?: (attachmentId: string) => Promise<string>;
-  /** Scroll the transcript to the group's user message. */
+  /** Scroll the transcript to the group's message. */
   readonly onJumpToMessage: (messageId: string) => void;
+  /** Open a produced file in the workspace viewer below. */
+  readonly onArtifactOpen?: (artifact: QaArtifactView) => void;
+  /** Save a produced file. */
+  readonly onArtifactDownload?: (artifact: QaArtifactView) => void;
+  /**
+   * A file to open on arrival, with the request's stamp. The stamp is what makes
+   * a second click on the same card a fresh arrival rather than a no-op.
+   */
+  readonly openArtifact?: { readonly path: string; readonly stamp: number };
   /**
    * The chat whose workspace the panel browses. Both this and `api` are absent
    * in hosts that only render the attachment roster, where the workspace
@@ -74,28 +101,41 @@ export function QaFilesPanel({
   groups,
   resolveImage,
   onJumpToMessage,
+  onArtifactOpen,
+  onArtifactDownload,
+  openArtifact,
   sessionId,
   api,
 }: QaFilesPanelProps) {
   const workspace =
     sessionId === undefined || api === undefined ? null : (
-      <section className="dsh-qa-files__workspace">
+      <section
+        className="dsh-qa-files__workspace"
+        data-testid="qa-files-workspace"
+      >
         <h3>
           <span>Рабочий каталог</span>
         </h3>
-        <QaWorkspaceBrowser sessionId={sessionId} api={api} />
+        <QaWorkspaceBrowser
+          key={openArtifact?.stamp ?? "browse"}
+          sessionId={sessionId}
+          api={api}
+          initialFile={openArtifact?.path}
+        />
       </section>
     );
   if (groups.length === 0) {
     return (
-      <div className="dsh-qa-files">
+      <div className="dsh-qa-files" data-testid="qa-files-panel">
         {workspace}
-        <p className="dsh-qa-files__empty">В этом чате нет вложений.</p>
+        <p className="dsh-qa-files__empty" data-testid="qa-files-empty">
+          В этом чате нет вложений.
+        </p>
       </div>
     );
   }
   return (
-    <div className="dsh-qa-files">
+    <div className="dsh-qa-files" data-testid="qa-files-panel">
       {workspace}
       {groups.map((group) => {
         const time =
@@ -103,12 +143,17 @@ export function QaFilesPanel({
             ? "Вложенные файлы"
             : formatDayTime(group.timestamp);
         return (
-          <section key={group.messageId} className="dsh-qa-files__group">
+          <section
+            key={group.messageId}
+            className="dsh-qa-files__group"
+            data-testid="qa-files-group"
+          >
             <h3>
-              <span>{time}</span>
+              <span data-testid="qa-files-group-time">{time}</span>
               <button
                 type="button"
                 className="dsh-qa-files__jump"
+                data-testid="qa-files-jump"
                 aria-label={`Перейти к сообщению от ${time}`}
                 title="К сообщению"
                 onClick={() => onJumpToMessage(group.messageId)}
@@ -118,7 +163,10 @@ export function QaFilesPanel({
                 </svg>
               </button>
             </h3>
-            <div className="dsh-qa-files__items">
+            <div
+              className="dsh-qa-files__items"
+              data-testid="qa-files-group-items"
+            >
               {group.files.map((file) => (
                 <QaFileAttachment
                   key={file.attachmentId}
@@ -136,6 +184,24 @@ export function QaFilesPanel({
                   />
                 ),
               )}
+              {(group.artifacts ?? []).map((artifact) => (
+                <QaFileAttachment
+                  key={artifact.path}
+                  name={artifact.name}
+                  bytes={artifact.bytes}
+                  tone="sent"
+                  onOpen={
+                    onArtifactOpen === undefined
+                      ? undefined
+                      : () => onArtifactOpen(artifact)
+                  }
+                  onDownload={
+                    onArtifactDownload === undefined
+                      ? undefined
+                      : () => onArtifactDownload(artifact)
+                  }
+                />
+              ))}
             </div>
           </section>
         );

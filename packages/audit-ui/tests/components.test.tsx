@@ -105,6 +105,47 @@ describe("AuditReport", () => {
     }
   });
 
+  it("keeps every table of contents anchor on its heading once containers nest one", () => {
+    const markdown = [
+      "# Trajectory Review",
+      "",
+      "## Verdict",
+      "",
+      "> ### Quoted heading",
+      ">",
+      "> #### Deep quoted",
+      "",
+      "## Scorecard",
+      "",
+      "- First item",
+      "  ## Heading in an item",
+      "- Second item",
+      "",
+      "## Recommendations",
+      "",
+    ].join("\n");
+    const { container } = render(<AuditReport markdown={markdown} />);
+
+    const links = [...container.querySelectorAll(".dsh-audit-report__toc a")];
+    expect(links.length).toBeGreaterThan(2);
+    for (const link of links) {
+      const id = link.getAttribute("href")?.slice(1) ?? "";
+      const target = container.querySelector(`[id="${id}"]`);
+      expect(target).not.toBeNull();
+      expect(target?.textContent).toBe(link.textContent);
+    }
+    // The counter is positional, so a nested heading counts even when its level
+    // keeps it out of the TOC; the ids after it say which walk produced them.
+    expect(links.map((link) => link.getAttribute("href"))).toEqual([
+      "#audit-h-0-trajectory-review",
+      "#audit-h-1-verdict",
+      "#audit-h-2-quoted-heading",
+      "#audit-h-4-scorecard",
+      "#audit-h-5-heading-in-an-item",
+      "#audit-h-6-recommendations",
+    ]);
+  });
+
   it("reports an empty document rather than rendering nothing", () => {
     render(<AuditReport markdown={""} />);
 

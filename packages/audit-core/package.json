@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-audit-core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Session audit artifact domain layer for DeepSeek Harness: schema, parsing, validation, summary and atomic publishing",
   "repository": {
     "type": "git",
@@ -58,11 +58,16 @@
     "lint": "eslint src tests",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run verify:package",
     "prepack": "pnpm run build"
   },
   "devDependencies": {
     "@types/node": "catalog:tooling",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling",
     "vitest": "catalog:tooling"

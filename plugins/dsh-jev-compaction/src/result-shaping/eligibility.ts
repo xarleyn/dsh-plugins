@@ -7,7 +7,7 @@
  * bounded this" checks before the classifier ever sees it.
  */
 
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 import { PRUNED_BY } from "../mutation/render.js";
 import { isShapedText } from "./reconstruct.js";
 import type { ShapeSkipReason } from "./metrics.js";

@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QaSidebar } from "../../../src/client/components/QaSidebar.js";
 import {
@@ -95,27 +95,25 @@ describe("QA sidebar resize", () => {
   it("publishes the stored width on mount and the default without one", () => {
     const fresh = renderSidebar();
     expect(
-      (
-        fresh.container.querySelector(".dsh-qa-sidebar") as HTMLElement
-      ).style.getPropertyValue("--dsh-qa-sidebar-width"),
+      screen
+        .getByTestId("qa-surface-sidebar")
+        .style.getPropertyValue("--dsh-qa-sidebar-width"),
     ).toBe("264px");
     fresh.unmount();
 
     window.localStorage.setItem(WIDTH_KEY, "380");
-    const restored = renderSidebar();
+    renderSidebar();
     expect(
-      (
-        restored.container.querySelector(".dsh-qa-sidebar") as HTMLElement
-      ).style.getPropertyValue("--dsh-qa-sidebar-width"),
+      screen
+        .getByTestId("qa-surface-sidebar")
+        .style.getPropertyValue("--dsh-qa-sidebar-width"),
     ).toBe("380px");
   });
 
   it("drags live, commits the final width, and restores it on the next mount", () => {
-    const { container } = renderSidebar();
-    const handle = container.querySelector(
-      ".dsh-qa-sidebar__resize",
-    ) as HTMLElement;
-    const nav = container.querySelector(".dsh-qa-sidebar") as HTMLElement;
+    const first = renderSidebar();
+    const handle = screen.getByTestId("qa-surface-sidebar-resize");
+    const nav = screen.getByTestId("qa-surface-sidebar");
     const drag = stageDrag(handle);
 
     fireEvent(handle, drag.pointerEvent("pointerdown", 100));
@@ -130,20 +128,19 @@ describe("QA sidebar resize", () => {
 
     // The reload a reader notices: a fresh mount comes back at the dragged
     // width, not at the default.
-    const reloaded = renderSidebar();
+    first.unmount();
+    renderSidebar();
     expect(
-      (
-        reloaded.container.querySelector(".dsh-qa-sidebar") as HTMLElement
-      ).style.getPropertyValue("--dsh-qa-sidebar-width"),
+      screen
+        .getByTestId("qa-surface-sidebar")
+        .style.getPropertyValue("--dsh-qa-sidebar-width"),
     ).toBe("324px");
   });
 
   it("stops the drag at the clamp on both sides", () => {
-    const { container } = renderSidebar();
-    const handle = container.querySelector(
-      ".dsh-qa-sidebar__resize",
-    ) as HTMLElement;
-    const nav = container.querySelector(".dsh-qa-sidebar") as HTMLElement;
+    renderSidebar();
+    const handle = screen.getByTestId("qa-surface-sidebar-resize");
+    const nav = screen.getByTestId("qa-surface-sidebar");
     const drag = stageDrag(handle);
 
     fireEvent(handle, drag.pointerEvent("pointerdown", 500));
@@ -162,11 +159,9 @@ describe("QA sidebar resize", () => {
   });
 
   it("ignores drags that do not start with the primary button", () => {
-    const { container } = renderSidebar();
-    const handle = container.querySelector(
-      ".dsh-qa-sidebar__resize",
-    ) as HTMLElement;
-    const nav = container.querySelector(".dsh-qa-sidebar") as HTMLElement;
+    renderSidebar();
+    const handle = screen.getByTestId("qa-surface-sidebar-resize");
+    const nav = screen.getByTestId("qa-surface-sidebar");
     const drag = stageDrag(handle);
 
     fireEvent(handle, drag.pointerEvent("pointerdown", 100, 2));
@@ -181,18 +176,14 @@ describe("QA sidebar resize", () => {
   it("keeps the collapsed rail fixed: no handle, restored width on expand", () => {
     window.localStorage.setItem(`${STATE_KEY}:sidebar-collapsed`, "1");
     window.localStorage.setItem(WIDTH_KEY, "400");
-    const { container } = renderSidebar();
-    expect(container.querySelector(".dsh-qa-sidebar--collapsed")).toBeTruthy();
-    expect(container.querySelector(".dsh-qa-sidebar__resize")).toBeNull();
+    renderSidebar();
+    expect(screen.getByTestId("qa-surface-sidebar-collapsed")).toBeTruthy();
+    expect(screen.queryByTestId("qa-surface-sidebar-resize")).toBeNull();
 
-    fireEvent.click(
-      container.querySelector(".dsh-qa-sidebar__expand") as HTMLButtonElement,
-    );
-    const nav = container.querySelector(
-      ".dsh-qa-sidebar:not(.dsh-qa-sidebar--collapsed)",
-    ) as HTMLElement;
+    fireEvent.click(screen.getByTestId("qa-surface-sidebar-expand"));
+    const nav = screen.getByTestId("qa-surface-sidebar");
     expect(nav).toBeTruthy();
-    expect(container.querySelector(".dsh-qa-sidebar__resize")).toBeTruthy();
+    expect(screen.getByTestId("qa-surface-sidebar-resize")).toBeTruthy();
     expect(nav.style.getPropertyValue("--dsh-qa-sidebar-width")).toBe("400px");
   });
 });

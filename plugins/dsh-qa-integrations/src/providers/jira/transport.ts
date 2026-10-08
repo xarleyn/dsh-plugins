@@ -1,13 +1,15 @@
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
-import { IntegrationError } from "../../errors.js";
+import { statusErrorOf, transportFailureOf } from "../kernel/errors.js";
 import {
-  backoff,
-  causeCode,
+  fetchWithRetries,
   readBoundedJson,
-  retryDelay,
-  sleep,
-  TLS_FAILURE,
-} from "../shared/http.js";
+  RESEND_AFTER_EVERY_FAULT,
+  type ResponseRead,
+} from "../kernel/read-policy.js";
+import {
+  decodeCredentialFields,
+  requireConfiguredEndpoint,
+} from "../kernel/token.js";
 import { jiraSite, type JiraFlags, type JiraSite } from "./config.js";
 import { authorizationFor, dialectOf } from "./dialect.js";
 
@@ -34,62 +36,52 @@ export interface JiraCredential {
   readonly token: string;
 }
 
-function invalidCredential(): never {
-  throw new IntegrationError(
-    "CredentialRevoked",
-    "Stored credential is invalid",
-  );
-}
-
 export function credentialFromPlaintext(plaintext: string): JiraCredential {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(plaintext);
-  } catch {
-    invalidCredential();
-  }
-  if (typeof parsed !== "object" || parsed === null) invalidCredential();
-  const record = parsed as Record<string, unknown>;
-  const siteId = record["siteId"];
-  const email = record["email"];
-  const token = record["token"];
   // An empty e-mail is a Server / Data Center connection, which authenticates
   // on the token alone; whether one is *required* is decided by the site's
   // declared deployment type, at the moment the secret would be spent.
-  if (
-    typeof siteId !== "string" ||
-    typeof email !== "string" ||
-    typeof token !== "string" ||
-    siteId === "" ||
-    token === ""
-  ) {
-    invalidCredential();
-  }
+  const { siteId, email, token } = decodeCredentialFields(plaintext, {
+    siteId: "nonempty",
+    email: "text",
+    token: "nonempty",
+  });
   return { siteId, email, token };
 }
 
 /**
- * The configured site a credential belongs to. A credential minted for a site
- * the operator has since removed fails closed: it never falls back to another
- * site, however permissive that one is.
+ * The configured site a credential belongs to: a credential minted for a site
+ * the operator has since removed fails closed.
  */
 export function credentialSite(
   flags: JiraFlags,
   credential: JiraCredential,
 ): JiraSite {
-  const site = jiraSite(flags, credential.siteId);
-  if (site === undefined) {
-    throw new IntegrationError(
-      "CredentialRevoked",
-      "Jira site is no longer configured",
-    );
-  }
-  return site;
+  return requireConfiguredEndpoint(
+    jiraSite(flags, credential.siteId),
+    "Jira site is no longer configured",
+  );
 }
 
 export type JiraQuery = Readonly<
   Record<string, string | number | boolean | undefined>
 >;
+
+/**
+ * The provider error model of Jira, folded by the shared policy. Jira answers a
+ * refused permission with 403 — a permission scheme the connected user is not
+ * in, an issue security level, or a project they cannot browse — and an unknown
+ * or invisible resource with 404; both stay distinct so the model can tell "you
+ * may not" from "it is not there". Jira historically also rate-limits with 403
+ * and a rate-limit body — that case keeps its permission meaning and is left to
+ * the user rather than retried, so only 429 and 5xx earn another attempt.
+ */
+const statusFailure = statusErrorOf({
+  label: "Jira",
+  rejectedCredential: "Jira rejected the stored API token",
+  invalidRequestStatuses: [400, 405, 406, 422],
+});
+
+const transportFailure = transportFailureOf({ label: "Jira" });
 
 /**
  * HTTP boundary of the provider: one documented Jira Cloud REST call, bounded in
@@ -113,11 +105,13 @@ export class JiraTransport {
     path: string,
     query: JiraQuery = {},
   ): Promise<T> {
-    const response = await this.request(site, credential, path, query);
-    return readBoundedJson<T>(
-      response,
-      this.config.maxResponseBytes,
-      "Provider",
+    return this.request(site, credential, path, query, (response, signal) =>
+      readBoundedJson<T>(
+        response,
+        this.config.maxResponseBytes,
+        "Provider",
+        signal,
+      ),
     );
   }
 
@@ -130,97 +124,34 @@ export class JiraTransport {
     return url.toString();
   }
 
-  private async request(
+  private async request<T>(
     site: JiraSite,
     credential: JiraCredential,
     path: string,
     query: JiraQuery,
-  ): Promise<Response> {
-    const target = this.url(site, path, query);
+    read: ResponseRead<T>,
+  ): Promise<T> {
     const dialect = dialectOf(site);
-    const authorization = authorizationFor(dialect, credential);
-    let lastError: IntegrationError | undefined;
-    for (let attempt = 0; ; attempt += 1) {
-      let response: Response;
-      let timedOut = false;
-      const controller = new AbortController();
-      const timer = setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, this.config.timeoutMs);
-      try {
-        response = await this.fetcher(target, {
-          method: "GET",
-          redirect: "error",
-          headers: {
-            authorization,
-            accept: "application/json",
-          },
-          signal: controller.signal,
-        });
-      } catch (error) {
-        lastError = timedOut
-          ? new IntegrationError("UpstreamTimeout", "Jira did not answer")
-          : TLS_FAILURE.test(causeCode(error))
-            ? new IntegrationError("TlsFailure", "Jira TLS handshake failed")
-            : new IntegrationError(
-                "ProviderUnavailable",
-                "Jira request failed",
-              );
-        if (attempt >= this.flags.retries) throw lastError;
-        await sleep(retryDelay(attempt));
-        continue;
-      } finally {
-        clearTimeout(timer);
-      }
-      if (response.ok) return response;
-      lastError = this.failure(response);
-      // Only throttling and upstream faults are retried; an authorization or
-      // not-found answer will not change by asking again. Jira rate-limits with
-      // 429 and, historically, 403 with a rate-limit body — the 403 case keeps
-      // its permission meaning and is left to the user.
-      const transient = response.status === 429 || response.status >= 500;
-      if (!transient || attempt >= this.flags.retries) throw lastError;
-      await sleep(backoff(response, attempt));
-    }
-  }
-
-  /**
-   * The provider error model. Jira answers a refused permission with 403 — a
-   * permission scheme the connected user is not in, an issue security level, or
-   * a project they cannot browse — and an unknown or invisible resource with
-   * 404; both stay distinct so the model can tell "you may not" from "it is not
-   * there". Neither answer ever carries the upstream body.
-   */
-  private failure(response: Response): IntegrationError {
-    const status = response.status;
-    if (status === 401) {
-      return new IntegrationError(
-        "CredentialRevoked",
-        "Jira rejected the stored API token",
-      );
-    }
-    if (status === 403) {
-      return new IntegrationError(
-        "ProviderPermissionDenied",
-        "Jira denied this operation",
-      );
-    }
-    if (status === 404) {
-      return new IntegrationError(
-        "ResourceNotFound",
-        "Jira resource not found",
-      );
-    }
-    if (status === 429) {
-      return new IntegrationError("RateLimited", "Jira rate limit reached");
-    }
-    if (status === 400 || status === 405 || status === 406 || status === 422) {
-      return new IntegrationError(
-        "InvalidRequest",
-        "Jira rejected the request",
-      );
-    }
-    return new IntegrationError("ProviderUnavailable", "Jira request failed");
+    return fetchWithRetries(
+      this.fetcher,
+      this.url(site, path, query),
+      {
+        timeoutMs: this.config.timeoutMs,
+        retries: this.flags.retries,
+        headers: {
+          authorization: authorizationFor(dialect, credential),
+          accept: "application/json",
+        },
+        transportFailure,
+        // The deviation from the shared default, named rather than implied:
+        // Jira re-sends a call this deployment gave up on, so one read can cost
+        // `retries × timeoutMs` rather than the `timeoutMs` the default promises.
+        // A Jira read is a GET that answers the same question either way, which
+        // is what makes paying the wait again acceptable here.
+        retriable: RESEND_AFTER_EVERY_FAULT,
+        statusFailure,
+      },
+      read,
+    );
   }
 }

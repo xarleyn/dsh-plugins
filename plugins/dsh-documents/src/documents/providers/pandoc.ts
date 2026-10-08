@@ -98,6 +98,12 @@ export class PandocDocxRenderer implements DocxRenderer {
   }
 
   async render(input: RenderDocxInput): Promise<RenderedArtifact> {
+    const metadataArgs = await metadataArguments(
+      input.workDir,
+      "docx-metadata.yml",
+      input.title,
+      input.metadata,
+    );
     const argv = [
       input.sourcePath,
       "--from=gfm",
@@ -110,8 +116,7 @@ export class PandocDocxRenderer implements DocxRenderer {
         ? []
         : [`--resource-path=${input.assetsDir}`]),
       ...(input.toc === true ? ["--toc", "--toc-depth=3"] : []),
-      ...(input.title === undefined ? [] : [`--metadata=title=${input.title}`]),
-      ...metadataArguments(input.metadata),
+      ...metadataArgs,
     ];
     const result = await spawnPandoc(this.options, argv, {
       cwd: input.workDir,
@@ -163,6 +168,12 @@ export class PandocTypstPdfRenderer implements PdfRenderer {
   }
 
   async render(input: RenderPdfInput): Promise<RenderedArtifact> {
+    const metadataArgs = await metadataArguments(
+      input.workDir,
+      "typst-metadata.yml",
+      input.title,
+      input.metadata,
+    );
     const argv = [
       input.sourcePath,
       "--from=gfm",
@@ -180,8 +191,7 @@ export class PandocTypstPdfRenderer implements PdfRenderer {
         ? []
         : [`-V=papersize=${input.pageSize}`]),
       ...(input.toc === true ? ["--toc", "--toc-depth=3"] : []),
-      ...(input.title === undefined ? [] : [`--metadata=title=${input.title}`]),
-      ...metadataArguments(input.metadata),
+      ...metadataArgs,
     ];
     const result = await spawnPandoc(this.options, argv, {
       cwd: input.workDir,

@@ -55,6 +55,46 @@ describe("QA sidebar", () => {
     ]);
   });
 
+  it("marks a cut chat name and keeps the whole name reachable", () => {
+    // Two chats opening the same way are one row to the reader without the
+    // ellipsis; the tooltip carries what the row had no room for.
+    const cut = {
+      "s-9": {
+        id: "s-9",
+        title: "Напиши двадцать коротких стихотворений о погоде",
+        displayTitle: "Напиши двадцать корот",
+        running: false,
+        blank: false,
+        updatedAt: 5_000,
+      },
+    } as unknown as Record<string, SessionSummary>;
+    const [row] = buildChatRows(["s-9"], cut, null, undefined, 90_000);
+    expect(row?.title).toBe("Напиши двадцать корот…");
+    expect(row?.fullName).toBe(
+      "Напиши двадцать коротких стихотворений о погоде",
+    );
+    const rows = buildChatRows(["s-9"], cut, null, undefined, 90_000);
+    render(
+      <QaSidebar
+        rows={rows}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
+        showNewChat={false}
+        busy={false}
+        onSwitch={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    );
+    const open = screen.getByTestId("qa-surface-sidebar-item-open");
+    expect(open.getAttribute("title")).toBe(
+      "Напиши двадцать коротких стихотворений о погоде",
+    );
+    const search = screen.getByLabelText("Поиск по чатам") as HTMLInputElement;
+    fireEvent.change(search, { target: { value: "стихотворений" } });
+    expect(screen.getAllByTestId("qa-surface-sidebar-item")).toHaveLength(1);
+  });
+
   it("never shows a delegated child, even when the index still names one", () => {
     // A record from a release that could claim a subagent's session keeps such
     // an id in the browser index; a subagent's session is not a chat, and the
@@ -105,22 +145,16 @@ describe("QA sidebar", () => {
         onNewChat={vi.fn()}
       />,
     );
-    const items = document.querySelectorAll(".dsh-qa-sidebar__item");
-    expect(items.length).toBe(2);
-    const active = document.querySelector(
-      ".dsh-qa-sidebar__item--active .dsh-qa-sidebar__item-main",
-    );
+    const items = screen.getAllByTestId("qa-surface-sidebar-item");
+    expect(items).toHaveLength(2);
+    const active = screen
+      .getAllByTestId("qa-surface-sidebar-item-open")
+      .find((node) => node.getAttribute("aria-current") === "true");
     expect(active?.getAttribute("aria-current")).toBe("true");
     expect(active?.textContent).toContain("Новый чат");
-    expect(document.querySelector(".dsh-qa-sidebar__dot")).toBeTruthy();
-    fireEvent.click(
-      document.querySelector(".dsh-qa-sidebar__new") as HTMLElement,
-    );
-    fireEvent.click(
-      (items[1] as HTMLElement).querySelector(
-        ".dsh-qa-sidebar__item-main",
-      ) as HTMLElement,
-    );
+    expect(screen.getByTestId("qa-surface-sidebar-item-running")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("qa-surface-sidebar-new"));
+    fireEvent.click(screen.getAllByTestId("qa-surface-sidebar-item-open")[1]!);
     expect(onSwitch).toHaveBeenCalledWith("s-1");
   });
 
@@ -138,19 +172,24 @@ describe("QA sidebar", () => {
         onNewChat={vi.fn()}
       />,
     );
-    expect(screen.getByText("DeepSeek QA")).toBeTruthy();
+    expect(screen.getByTestId("qa-surface-sidebar-name").textContent).toBe(
+      "DeepSeek QA",
+    );
     const search = screen.getByLabelText("Поиск по чатам") as HTMLInputElement;
     fireEvent.change(search, { target: { value: "cache" } });
-    const items = document.querySelectorAll(".dsh-qa-sidebar__item");
-    expect(items.length).toBe(1);
+    let items = screen.getAllByTestId("qa-surface-sidebar-item");
+    expect(items).toHaveLength(1);
     expect(items[0]?.textContent).toContain("How do I reset the cache?");
     fireEvent.click(screen.getByRole("button", { name: "Очистить поиск" }));
     expect(search.value).toBe("");
-    expect(document.querySelectorAll(".dsh-qa-sidebar__item").length).toBe(2);
+    expect(screen.getAllByTestId("qa-surface-sidebar-item")).toHaveLength(2);
     fireEvent.change(search, { target: { value: "нет такого" } });
-    expect(screen.getByText("Ничего не найдено")).toBeTruthy();
+    expect(screen.getByTestId("qa-surface-sidebar-empty").textContent).toBe(
+      "Ничего не найдено",
+    );
     fireEvent.change(search, { target: { value: "  " } });
-    expect(document.querySelectorAll(".dsh-qa-sidebar__item").length).toBe(2);
+    items = screen.getAllByTestId("qa-surface-sidebar-item");
+    expect(items).toHaveLength(2);
   });
 
   it("matches owner names in the admin search", () => {
@@ -177,8 +216,10 @@ describe("QA sidebar", () => {
     fireEvent.change(screen.getByLabelText("Поиск по чатам"), {
       target: { value: "аня" },
     });
-    expect(document.querySelectorAll(".dsh-qa-sidebar__item")).toHaveLength(1);
-    expect(screen.getByText("Аня (1)")).toBeTruthy();
+    expect(screen.getAllByTestId("qa-surface-sidebar-item")).toHaveLength(1);
+    expect(
+      screen.getByTestId("qa-surface-sidebar-group-name").textContent,
+    ).toBe("Аня (1)");
   });
 
   it("orders owner sections by freshness with unclaimed chats last", () => {
@@ -230,17 +271,17 @@ describe("QA sidebar", () => {
         onNewChat={vi.fn()}
       />,
     );
-    const names = [
-      ...document.querySelectorAll(".dsh-qa-sidebar__group-name"),
-    ].map((node) => node.textContent);
+    const names = screen
+      .getAllByTestId("qa-surface-sidebar-group-name")
+      .map((node) => node.textContent);
     expect(names).toEqual(["Борис (1)", "Аня (1)"]);
-    expect(document.querySelectorAll(".dsh-qa-sidebar__item").length).toBe(2);
+    expect(screen.getAllByTestId("qa-surface-sidebar-item")).toHaveLength(2);
   });
 
   it("collapses to a rail and expands again, remembering the state", () => {
     window.localStorage.clear();
     const rows = buildChatRows(["s-1"], byId, null, undefined, 90_000);
-    const view = render(
+    render(
       <QaSidebar
         rows={rows}
         title="DeepSeek QA"
@@ -255,7 +296,7 @@ describe("QA sidebar", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Свернуть историю чатов" }),
     );
-    expect(document.querySelector(".dsh-qa-sidebar--collapsed")).toBeTruthy();
+    expect(screen.getByTestId("qa-surface-sidebar-collapsed")).toBeTruthy();
     expect(
       window.localStorage.getItem(
         "dsh-qa-surface.session:v1:/qa:sidebar-collapsed",
@@ -264,9 +305,7 @@ describe("QA sidebar", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Развернуть историю чатов" }),
     );
-    expect(
-      view.container.querySelector(".dsh-qa-sidebar--collapsed"),
-    ).toBeNull();
+    expect(screen.queryByTestId("qa-surface-sidebar-collapsed")).toBeNull();
     expect(
       window.localStorage.getItem(
         "dsh-qa-surface.session:v1:/qa:sidebar-collapsed",
@@ -287,7 +326,11 @@ describe("QA sidebar", () => {
         onNewChat={vi.fn()}
       />,
     );
-    expect(screen.getByText("Здесь пока пусто")).toBeTruthy();
-    expect(screen.getByText("DeepSeek QA")).toBeTruthy();
+    expect(screen.getByTestId("qa-surface-sidebar-empty").textContent).toBe(
+      "Здесь пока пусто",
+    );
+    expect(screen.getByTestId("qa-surface-sidebar-name").textContent).toBe(
+      "DeepSeek QA",
+    );
   });
 });

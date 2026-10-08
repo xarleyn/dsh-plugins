@@ -15,9 +15,15 @@ import type { QaProvenanceHost } from "../provenance/host-store.js";
 import type { QaSourceReference } from "../provenance/types.js";
 import type { QaPolicyAdmission } from "../secure-session.js";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
+import { applySessionModelPolicy } from "../session-model.js";
 import { prepareQaUserWorkspace } from "../user-workspace.js";
 import type { DocumentsFace } from "@yadsh/dsh-documents";
-import { answerAfter, lastPromptSeq } from "./answer.js";
+import {
+  answerAfter,
+  answerForRequest,
+  lastPromptSeq,
+  ownTurnStillRunning,
+} from "./answer.js";
 import { attachmentPromptParts } from "./attachments.js";
 import type {
   QaFileAttachment,
@@ -130,16 +136,12 @@ export function createQaIntegrationRunner(
           ? {}
           : { agentPreset: config.session.agentPreset }),
       });
-      if (config.session.provider !== null && config.session.model !== null) {
-        await ctx.sessionController.selectModel({
-          sessionId: created.sessionId,
-          provider: config.session.provider,
-          model: config.session.model,
-          ...(config.session.reasoningEffort === null
-            ? {}
-            : { reasoningEffort: config.session.reasoningEffort }),
-        });
-      }
+      await applySessionModelPolicy(
+        ctx,
+        created.sessionId,
+        options.access.modelPolicyFor(String(created.sessionId)),
+        logger,
+      );
       const sessionId = String(created.sessionId);
       await options.admission.secureSessionForUser(owner.id, sessionId);
       logger.info("integration.chat-opened", {
@@ -216,6 +218,53 @@ export function createQaIntegrationRunner(
     ];
   };
 
+  /**
+   * Stop the turn of a question nobody is waiting for any more.
+   *
+   * `prompt` carries the caller's signal only up to admission — the harness
+   * documents it as cancellation *before* the prompt begins — and
+   * `whenIdleOrAborted` ends the wait, not the work. Without this call an
+   * abandoned ask keeps generating, keeps its tools running and keeps its
+   * chat's agent busy, so every later question continued into that chat waits
+   * behind work nobody asked for. The stop is the session's own
+   * (`sessionController.cancel`), which aborts the active turn, keeps other
+   * callers' queued prompts, and refuses a session this process does not own.
+   *
+   * Two checks narrow it, because a stop is not recoverable for the turn's real
+   * owner: only the caller's own abandonment stops a turn — an expired budget is
+   * the escalation the bridge polls with the `chat_id` it was handed, per
+   * docs/INTEGRATION-API.md §2.5 — and only when the log says this request's
+   * prompt is the turn still running.
+   *
+   * @param sessionId - the chat the question was admitted into.
+   * @param requestId - this request's prompt id, which the log echoes back.
+   * @param callerSignal - the caller's lifetime alone, absent for a caller that
+   * cannot tell its own giving-up apart from the deployment's budget.
+   */
+  async function abandonTurn(
+    sessionId: string,
+    requestId: string,
+    callerSignal: AbortSignal | undefined,
+  ): Promise<void> {
+    if (callerSignal === undefined || !callerSignal.aborted) return;
+    try {
+      const read = await options.sessionLog.read(sessionId);
+      // A turn this request did not open is not this request's to stop, and an
+      // unreadable log cannot say whose turn is running — both leave it alone.
+      if (!read.ok || !ownTurnStillRunning(read.events, requestId)) return;
+      ctx.sessionController.cancel({ sessionId: SessionId(sessionId) });
+      logger.warn("integration.turn-abandoned", { sessionId, requestId });
+    } catch (error) {
+      // The caller is already gone and the wait is already over: why a stop
+      // failed is a fact for the log, not a failure of this request.
+      logger.warn("integration.turn-abandon-refused", {
+        sessionId,
+        requestId,
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+
   return {
     async run(input: {
       readonly userId: string;
@@ -224,6 +273,7 @@ export function createQaIntegrationRunner(
       readonly attachments: readonly QaIntegrationAttachment[];
       readonly ticketKey: string | null;
       readonly signal: AbortSignal;
+      readonly callerSignal?: AbortSignal;
       readonly onChat?: (chatId: string) => void;
     }): Promise<QaIntegrationTurn> {
       const chatId =
@@ -266,24 +316,39 @@ export function createQaIntegrationRunner(
       if (agent === undefined) {
         throw new Error("the QA session has no live agent");
       }
-      await whenIdleOrAborted(agent, input.signal);
+      // Past this point the question is the harness's, and only this call can
+      // hand it back: the wait ends on the caller's signal, and a caller that
+      // gave up for good gets its own turn stopped rather than left running.
+      await whenIdleOrAborted(agent, input.signal, () => {
+        // Deliberately not awaited. The decision reads the session log, and an
+        // abandoned question must not spend one more moment of the caller's
+        // concurrency slot on a read whose only purpose is to stop work nobody
+        // is waiting for.
+        void abandonTurn(chatId, requestId, input.callerSignal);
+      });
       const read = await options.sessionLog.read(chatId);
       if (!read.ok) {
         throw new Error(`the session log is unavailable (${read.reason})`);
       }
-      // The prompt's own event may be missing from an empty snapshot, so the
-      // floor is the later of the cursor taken before the question and the
-      // newest human prompt the log knows about. Either way the answer is the
-      // last assistant message after it, and no earlier turn can be read as
-      // this one's answer.
-      const projected = answerAfter(
-        read.events,
-        Math.max(floor, lastPromptSeq(read.events)),
-      );
+      // This request's own turn answers it. The harness echoes the prompt's rpc
+      // id onto the durable user row, so the turn is found by that id instead of
+      // by "the newest prompt in the log": two questions in flight on one chat
+      // commit two turns, and reading the newest of them answers each caller with
+      // the other's turn. The cursor fallback is for the one case correlation
+      // cannot serve — a prompt whose row the read did not reach yet — and it is
+      // the later of the cursor taken before the question and the newest human
+      // prompt, so no earlier turn can be read as this one's answer.
+      const projected = answerForRequest(read.events, requestId) ?? {
+        ...answerAfter(
+          read.events,
+          Math.max(floor, lastPromptSeq(read.events)),
+        ),
+        turn: null,
+      };
       return Object.freeze({
         chatId,
         answer: projected.answer,
-        sources: sourcesOf(chatId),
+        sources: sourcesOf(chatId, projected.turn),
         interrupted: projected.interrupted,
       });
     },
@@ -308,15 +373,23 @@ export function createQaIntegrationRunner(
   };
 
   /**
-   * The evidence of the chat's latest turn, for the bridge's citations. The
-   * provenance store materializes one bundle per turn; the newest is the one
-   * that belongs to the answer just written. A deployment that switched
-   * source collection off answers with an empty list rather than no answer.
+   * The evidence of one turn, for the bridge's citations. The provenance store
+   * materializes one bundle per turn, so the bundle named by the turn that
+   * answered is the one that belongs to the answer just written — the newest
+   * bundle is only the same thing while one turn is the last one in the chat.
+   * `turn` is null when the answer came from a log that named no turn for it,
+   * and the newest bundle is then the best the citation has. A deployment that
+   * switched source collection off answers with an empty list rather than no
+   * answer.
    */
-  function sourcesOf(sessionId: string): readonly QaSourceReference[] {
+  function sourcesOf(
+    sessionId: string,
+    turn: number | null,
+  ): readonly QaSourceReference[] {
     try {
       const bundles = options.provenance.bundles(sessionId);
-      return bundles.at(-1)?.sources ?? [];
+      if (turn === null) return bundles.at(-1)?.sources ?? [];
+      return bundles.find((bundle) => bundle.turn === turn)?.sources ?? [];
     } catch (error) {
       logger.warn("integration.sources-unavailable", {
         sessionId,
@@ -336,24 +409,42 @@ const QA_ATTACHMENT_LEAD =
   "Вложения к этому вопросу — файлы, пришедшие из внешней системы вместе с " +
   "обращением. Их содержимое приведено ниже под заголовком с именем файла.";
 
-/** Wait for the agent to reach quiescence, or for the caller to give up. */
+/**
+ * Wait for the agent to reach quiescence, or for the caller to give up.
+ *
+ * `onAbandon` fires the moment the wait ends early, and is not awaited: a
+ * request that stopped waiting owes its caller an answer or an escalation, not
+ * the time it takes to find out whether the work it left behind is its own to
+ * stop. The hook is not called when the agent settles on its own terms.
+ */
 async function whenIdleOrAborted(
   agent: Agent,
   signal: AbortSignal,
+  onAbandon: () => void,
 ): Promise<void> {
-  if (signal.aborted) throw abortReason(signal);
-  await Promise.race([
-    agent.whenIdle(),
-    new Promise<never>((_resolve, reject) => {
-      signal.addEventListener(
-        "abort",
-        () => {
-          reject(abortReason(signal));
-        },
-        { once: true },
-      );
-    }),
-  ]);
+  if (signal.aborted) {
+    onAbandon();
+    throw abortReason(signal);
+  }
+  try {
+    await Promise.race([
+      agent.whenIdle(),
+      new Promise<never>((_resolve, reject) => {
+        signal.addEventListener(
+          "abort",
+          () => {
+            reject(abortReason(signal));
+          },
+          { once: true },
+        );
+      }),
+    ]);
+  } catch (error) {
+    // Only a wait that ended early abandons anything: an agent that failed on
+    // its own has already stopped.
+    if (signal.aborted) onAbandon();
+    throw error;
+  }
 }
 
 function abortReason(signal: AbortSignal): Error {

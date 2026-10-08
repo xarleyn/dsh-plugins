@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { QaApprovalGate } from "../../src/approvals.js";
 import {
   QA_FILE_DELETE_ASK_REASON,
+  QA_FILE_DELETE_DELEGATED_DENY_REASON,
   QaFileDeleteGate,
 } from "../../src/qa-tools/file-delete-gate.js";
 import { QaSessionOwnership } from "../../src/session-ownership.js";
@@ -56,6 +57,10 @@ describe("QA file_delete gate", () => {
       reason: QA_FILE_DELETE_ASK_REASON,
     });
     expect(consulted).toBe(0);
+    // The reason is printed on the approval card the operator reads, so the
+    // language is part of it: comparing the card against the same constant
+    // would still pass if the string drifted back to the tool chain's English.
+    expect(/[А-Яа-яЁё]/u.test(QA_FILE_DELETE_ASK_REASON)).toBe(true);
     gate.dispose();
   });
 
@@ -86,6 +91,23 @@ describe("QA file_delete gate", () => {
       kind: "allow",
     });
     expect(consulted).toBe(1);
+    gate.dispose();
+  });
+
+  it("refuses a delegated child's deletion instead of asking the parent's operator", async () => {
+    const { gate, call, fake } = gateFor({ attested: ["s1"] });
+    const child = sessionAgent("s1-child", "s1");
+    (fake.handler("session/created") as (session: unknown) => void)(
+      child.session,
+    );
+    consulted = 0;
+    await expect(
+      call({ name: "file_delete", agent: child }, allow),
+    ).resolves.toEqual({
+      kind: "deny",
+      reason: QA_FILE_DELETE_DELEGATED_DENY_REASON,
+    });
+    expect(consulted).toBe(0);
     gate.dispose();
   });
 
@@ -140,6 +162,39 @@ describe("QA file_delete gate", () => {
       reason:
         'tool "file_delete" requires approval, but approval interactions are unavailable in QA',
     });
+    expect(approvals.list("s1")).toEqual([]);
+    approvals.dispose();
+  });
+
+  it("leaves a delegated deletion unparked end to end, so the parent turn keeps going", async () => {
+    const fake = fakeContext();
+    const ownership = new QaSessionOwnership((sessionId) => sessionId === "s1");
+    const approvals = new QaApprovalGate(
+      fake.context,
+      () => true,
+      ownership,
+      SILENT_LOGGER as never,
+    );
+    const gate = new QaFileDeleteGate(fake.context, ownership);
+    approvals.install();
+    gate.install();
+    const child = sessionAgent("s1-child", "s1");
+    (fake.handler("session/created") as (session: unknown) => void)(
+      child.session,
+    );
+    await expect(
+      fake.dispatch(
+        "tools/pre-execute",
+        { name: "file_delete", agent: child },
+        async () => ({ kind: "allow" }) as PreToolDecision,
+      ) as Promise<PreToolDecision>,
+    ).resolves.toEqual({
+      kind: "deny",
+      reason: QA_FILE_DELETE_DELEGATED_DENY_REASON,
+    });
+    // The card the operator would have to answer never exists: an expert run
+    // delegated from this chat that reached for a deletion is refused where it
+    // asked, and the review verdict carries the refusal instead of the wait.
     expect(approvals.list("s1")).toEqual([]);
     approvals.dispose();
   });

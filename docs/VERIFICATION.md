@@ -12,25 +12,122 @@ pnpm check
 
 runs, in order: `lint` (workspace tooling + per-project eslint) → `format` →
 `typecheck` → `test` (repo-script tests, then per-project Vitest) → `build` →
-`verify` (per-project `verify` targets + the two root contract gates) →
+`check:files` (after the build, so the generated bundles exist to measure) →
+`verify` (per-project `verify` targets + the root contract gates) →
 `deps:check`. CI runs the same targets per affected project.
+
+### The Nx cache in a worktree
+
+A cached task stores its verdict *and* the files its target declares as
+`outputs`; `inputs` alone keys the verdict on the source and saves nothing else.
+`targetDefaults.build` therefore declares `{projectRoot}/lib` — the directory
+every `tsc`/`tsdown`/Typert build in this workspace emits into, and the one the
+26 plugins resolve `@yadsh/*` type declarations through. Without it a replayed
+`build` reports `Successfully ran target build for 31 projects` over a tree with
+no `lib/`, and the next `typecheck` fails on `TS2307` in code the lane never
+touched; `scripts/repo-config.test.mjs` replays a build in a throwaway workspace
+so that regression cannot come back quietly. `test`, `typecheck`, `lint` and
+`verify` stay without `outputs` on purpose — they emit nothing a later task
+reads, and declaring an output for them would have the cache overwrite files it
+does not own.
+
+The cache directory is shared across git worktrees by design: Nx resolves it to
+the main clone's `.nx/cache` for every worktree (`getMainWorktreeRoot` in
+`node_modules/nx/dist/src/utils/cache-directory.js`), so a lane can replay
+another lane's run — the recorded terminal output of a foreign worktree is what
+`pnpm build` prints on such a hit. Three consequences for a lane: read the
+per-task lines rather than the run summary, because `.nx/cache/run.json` is one
+file for all worktrees and a concurrent `run-many` overwrites it; `nx reset`
+clears the cache for every worktree, not just yours; and `cache.directory` stays
+out of `nx.json`, because Nx reads that property from the *main clone's*
+checkout, so pinning it here would silently follow whichever branch that
+checkout happens to hold.
 
 ## Gate map
 
 | Gate | Command | Asserts |
 | --- | --- | --- |
-| Dependency boundaries | `pnpm deps:check` (`scripts/check-dependencies.sh`) | Plugins may depend on shared packages, never the reverse; DSH runtime packages are peers, not dependencies; no cross-package relative imports |
-| Package hygiene | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | Every plugin exposes the canonical `check`/`verify`/`prepack` contract, uses pnpm, and only calls declared local scripts; every publishable package declares `compatibility.json`, `cordis.patch.yml`, `LICENSE`, `README.md`; `types` points at a standard `lib/` layout; every `.nx/version-plans/*.md` file parses the way Nx reads it (front-matter fence, known package, valid bump, changelog message); a version plan naming the qa-surface project requires a newer curated entry in `QaChangelog.tsx`; a plugin declaring `dsh.client` keeps a script that asserts its full package name, and a plugin registering a `settings.plugin.item` card keeps a script that runs the card contract |
-| Discoverability | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | Every publishable manifest carries canonical monorepo metadata (`repository.directory`, `homepage`, `bugs.url`), a description naming DeepSeek Harness/DSH, and the canonical keyword set plus feature words; the root `plugins.json` catalog and the README package table match the workspace manifests — the manifest lists published packages, the README table also documents private build tooling (`pnpm plugins:manifest` regenerates both); `plugins.json` additionally validates against `docs/plugins.schema.json`, and unknown schema keywords fail the gate instead of silently skipping the check |
+| Dependency boundaries | `pnpm deps:check` (`scripts/check-dependencies.sh`) | Plugins may depend on shared packages, never the reverse; DSH runtime packages are peers, not dependencies; no cross-package relative imports; a plugin→plugin edge only if `plugin-dependency-allowlist.json` declares it with a reason (§27.11); a range a named catalog holds is declared through the catalog, peers excepted, and the remaining literal ranges are listed as advice so a shared range staying literal is a seen decision (§27.12) |
+| Package hygiene | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | Every plugin exposes the canonical `check`/`verify`/`prepack` contract, uses pnpm, and only calls declared local scripts; every publishable package declares `compatibility.json`, `cordis.patch.yml`, `LICENSE`, `README.md`; `types` points at a standard `lib/` layout; every `.nx/version-plans/*.md` file parses the way Nx reads it (front-matter fence, known package, valid bump, changelog message); a version plan naming the qa-surface project requires a curated entry in `QaChangelog.tsx` whose `version:` is exactly the version those plans bump to (`AGENTS.md` §QA surface release notes owns the rule); a plugin declaring `dsh.client` keeps a script that asserts its full package name, and a plugin registering a configuration card (`settings.plugin.item` or, after the `0.1.7` slot rename, `plugins.row.config`; a card that stays on `settings.plugins.tab` counts when its sources carry the shell) keeps a script that runs the card contract |
+| Discoverability | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | Every publishable manifest carries canonical monorepo metadata (`repository.directory`, `homepage`, `bugs.url`), a description naming DeepSeek Harness/DSH, and the canonical keyword set plus feature words; the root `plugins.json` catalog and the README package table match the workspace manifests — the manifest lists published packages, each with the `kind` whose install contract its `install` command honors (`plugin` is registered on a profile with `dsh plugin add`, `library` is consumed as a dependency with `pnpm add`), the README table also documents private build tooling and carries that kind per row (`pnpm plugins:manifest` regenerates both); `plugins.json` additionally validates against `docs/plugins.schema.json`, whose `kind` enum rejects a third value, and unknown schema keywords fail the gate instead of silently skipping the check |
 | Published content | `pnpm verify:packages` (`scripts/verify-package-hygiene.mjs`) | A tarball carries the runtime, the bundle patch, compatibility data, legal notices, the README, and the images it embeds — never specs, changelogs, roadmaps, design docs, integration notes, or README translations; every relative link in a published README resolves inside the tarball, so the package page shows no dead links |
 | Logging contract | `pnpm verify:logging` (`scripts/verify-plugin-logging.mjs`) | Plugins write logs through `@yadsh/dsh-plugin-log` conventions (see [PLUGIN_LOGGING.md](PLUGIN_LOGGING.md)) |
 | Button names | `pnpm verify:a11y` (`scripts/verify-button-names.mjs`) | Every button a plugin or shared client package renders under `src/` carries an accessible name — `aria-label`, `aria-labelledby`, `title`, or children that can produce text — so a screen reader and `getByRole("button", { name })` can address it; an icon-only button is reported as `path:line` |
-| Client bundle | per-plugin `verify` chain (`plugins/*/scripts/verify-client-bundle.mjs`, or bundle asserts inside `verify-package.mjs`) | Built `lib/client.js` registers under the plugin's **full npm package name** and is self-contained (no bare external imports). A plugin may run these asserts as a separate `verify:client` script (`dsh-doc-impact` does); the other client bundles carry them inside `verify:package`. Either way the integration URL is `/plugins/<full-package-name>/client.js` |
-| Configuration card | per-plugin `verify` chain (`clientBundle.cardContract`, or a direct call to `scripts/verify-plugin-card-contract.mjs`) | Every bundle that renders the settings-card shell — the 12 plugins registering a `settings.plugin.item` card and the two `settings.section` pages that reuse the shell — carries the canonical shell CSS, the inline chevron SVG, the rendered open-state class pair and the header's `aria-expanded`; font-glyph chevrons, non-canonical shell tokens and the plugin's own legacy shell classes fail the gate. A plugin without a card owes nothing here |
+| Test ids | `pnpm verify:testids` (`scripts/verify-testids.mjs`) | Every `data-testid` a plugin or shared client package renders under `src/` follows the epic #453 convention: the attribute is spelled exactly `data-testid` (a `data-test-id` is an address `getByTestId` never resolves), a value the site decides is ASCII kebab-case with a zone in front of it, and one value is owned by one file of the workspace — the zone is what keeps two plugins apart once they render into one page, so the collision read does not stop at the package edge. A site is where the value reaches the attribute, which is one step wider than the attribute: a card that renders its fields through its own controls names the slot in the `testId` prop it passes down, and those values carry the same rules (the prop's own name is not read as a misspelling of the attribute's). The exceptions are read the way a static file can read them: a value repeated inside one file is how one node names its mutually exclusive states (`qa-message-image` at loading, broken and loaded), a value composed at runtime — `${testIdZone}-empty`, `props.testId` — is asked only about the text no caller can change, so its prefix and its collisions stay this gate's blind spot, and a comment renders nothing, so the doc example and the note about an old spelling are read as no site at all. Cyrillic, an all-digit segment and a segment naming a person the workspace's own manifests declare as an author are refused (an author line contributes its name and its login, not the host of its address): `AGENTS.md` §No internal identifiers covers these strings because they ship in the published bundle and name the node in every test screenshot |
+| Design tokens | `pnpm verify:tokens` (`scripts/verify-design-tokens.mjs`) | Every `var(--dsw-…)` a plugin or shared client package substitutes under `src/` names a custom property the Host theme really declares. The mechanism is silent and total: an unknown substitution yields the guaranteed-invalid value, so the browser drops the **whole declaration** at computed-value time — `color` falls back to inheritance, `background` to transparent — and writes nothing to the console, which is how issue #717 read a refusal as ordinary small text. The vocabulary is read from its source rather than from a list kept by hand: the installed `@deepseek-ai/dsh-client-ui-theme` — the publisher of every `--dsw-*` name, found through the workspace manifest that pins it, so the gate checks the same version the plugins build against. A manifest that stopped pinning it and an installed tree that does not hold it are both reported rather than skipped, because a check that measures nothing reads as coverage. Only a substitution is read as a claim: `var(--dsw-x)` and `var(--dsw-x, …)` count, the explanatory `var(--dsw-alias-*)` in a comment does not. A dead name is reported even where a fallback keeps the rule alive — the fallback paints a colour the Host never chose, and a name written down as dead is almost always standing in for a live one (`state-error-primary` was there all along). What stays a review question is whether the *chosen* token was the right colour: the gate asks only whether the name exists |
+| Client bundle | per-plugin `verify` chain (`plugins/*/scripts/verify-client-bundle.mjs`, or bundle asserts inside `verify-package.mjs`) | Built `lib/client.js` registers under the plugin's **full npm package name** and stays a classic ModuleLoader script rather than an ESM module; the React family the shell provides is its only external — everything else the client uses is inlined (see [ARCHITECTURE.md](ARCHITECTURE.md#host-process-vs-browser-client)). A plugin may run these asserts as a separate `verify:client` script (`dsh-doc-impact` does); the other client bundles carry them inside `verify:package`. Either way the integration URL is `/plugins/<full-package-name>/client.js` |
+| Configuration card | per-plugin `verify` chain (`clientBundle.cardContract`, or a direct call to `scripts/verify-plugin-card-contract.mjs`) | Which half of the contract a bundle is held to is read off the seat its own `slots.register({ name: … })` names, not off anything the plugin declares. A card that owns its shell (the `settings.section` and `settings.plugins.tab` pages) must carry the canonical shell CSS, the inline chevron SVG, the rendered open-state class pair and the header's `aria-expanded`. A card seated on the Plugins panel (`plugins.row.config`, `plugins.bundle.config`) must carry **none of them** — the page draws the frame, the heading and the expand control, so our shell there is a second card inside the Host's — and it must take the focus ring from the Host's `--dsw-focus-ring-*` tokens rather than a hard-coded `outline`. Both halves reject font-glyph chevrons and non-canonical shell tokens. Which half applies is resolved in this order: the literal at `name:`, the constant that `name:` identifier is bound to in the same bundle, and — when nothing resolved, because the seat reached as an option or the registration is positional — the seat names the bundle quotes anywhere in it. Naming one seat of each kind is a contradiction at every step and fails; only a bundle that quotes no seat at all falls back to what it draws (canonical shell classes present means it owns its frame, absent means the Host does). The focus ring is asked of `plugins.row.config` alone, which renders the controls; `plugins.bundle.config` is a Remote-owned page and owes no rule written for the gate. `@yadsh/dsh-plugin-kit` runs the canonical half over the shell modules every plugin bundle inlines, so the canonical text is checked at its source too, and registers no seat of its own. A plugin without a card owes nothing here |
 | Packed package | per-plugin `verify:package` (`plugins/*/scripts/verify-package.mjs`) | Static asserts only: manifest fields, `files` allowlist, exports exist on disk, no `workspace:`/`catalog:` leakage. Packing and the clean-room import smoke live in `pnpm tarball:verify`, not here |
-| Tarball (repo level) | `pnpm tarball:verify` (`scripts/tarball-verify.sh`) | Installs every packed tarball into a clean consumer project and smoke-imports it; an install the registry or the network broke mid-flight is retried, so a fetch that fails for the moment is not reported as an uninstallable package |
-| Repo tooling tests | `pnpm test:release` (`scripts/*.test.mjs`) | The CI/release scripts themselves are regression-tested with `node --test` |
+| Shared package | per-package `verify` (`packages/*/scripts/verify-package.mjs`, through `@yadsh/dsh-plugin-scripts/run-verify-package`) | Static asserts only, on the two things packing cannot show: `main`/`types` name the same file as the root `exports` entry, and every published range resolves for a registry consumer (a `workspace:` range never names a missing or private member, a `catalog:` range never names a member, a member is never declared as a plain range). Plus the manifest contract that carries over from a plugin: declared subpaths built, `files` allowlist, no `dsh.client` surface. `README.md` and `LICENSE` are pinned on disk as well: npm ships those two whatever the `files` list says, so the only way one misses a tarball is being gone from the package, and the tarball gate that asks for them by name (gate 4b) runs only for plugins. Where a package's runtime surface is what consumers lean on beyond its types, its gate pins that surface too — plugin-kit's client card surface and the shell contract, audit-core's schema and producer, audit-ui's sanitizer and token-only sheet. The gate does not pack — whether the tarball ships each export and leaks no protocol is `pnpm tarball:verify`, which CI runs for every publishable project. `pnpm verify:packages` rejects a publishable shared package whose `verify` script disappeared, and reads the call itself so a gate that stopped passing either option fails there instead of passing while this row describes a check nobody runs |
+| Tarball (repo level) | `pnpm tarball:verify` (`scripts/tarball-verify.sh`) | Packs each publishable plugin and shared package and reads the artifact: every `exports`/`main`/`types` entrypoint present, no `workspace:`/`catalog:` range left unresolved, then installs the tarball into a clean consumer project and smoke-imports it; an install the registry or the network broke mid-flight is retried, so a fetch that fails for the moment is not reported as an uninstallable package |
+| Repo tooling tests | `pnpm test:release` (`node --test` over the `*.test.mjs` files of `scripts/` and `packages/plugin-scripts/`, each one named in the root `package.json`) | The command is a written-out list, not a mask, so the list is a gate of its own: `scripts/ci-verification.test.mjs` compares it against those two directories, and a test file that exists without being named there — or an entry whose file is gone — reddens the run rather than quietly leaving a check unexecuted. The CI/release scripts themselves are regression-tested with `node --test`, and so are the repository's own config files — the blame list, the `lint` cache key and the `build` cache outputs, the last two proven by running `nx` in a throwaway workspace built from `nx.json`, and the three blocks `SPEC.md` copies verbatim — the `release` configuration of §14, the `prepare` gate list of §17, the command excerpt of §22 — compared against `nx.json`, the `prepare` job of `.github/workflows/ci.yml` and the root `package.json`. Each copy is cut from the section its heading names, so a block that left its section is a miss rather than a match, and §20's tag census (no `name@version` tag among those `git ls-remote --tags` advertises on the remotes the checkout points at — the local ref store is not asked, since a clone that outlived a rewrite keeps the tags the repository dropped and accumulates housekeeping refs of its own) is re-run alongside them; a read that comes back short — the checkout points at no remote, one of its remotes does not answer, or none of them advertises a `release/*` wave — reports that case skipped rather than passed, so a census nobody measured, or measured only over the remotes that answered, is never read as coverage — which is what stops the Draft from drifting from the runbook in silence. `scripts/qa-stand-launch-token.test.mjs` lifts the `qa-stand-run` §3 recipe out of its own `SKILL.md` and runs it over the fake boot-log lines that section lists, so the token pattern cannot drift from what it claims |
+| File size budget | `pnpm check:files` (`scripts/check-file-budget.mjs`) | No source file under `plugins/*/src`, `packages/*/src`, `plugins/*/scripts`, or `packages/*/scripts` is over its line budget, no test file under `plugins/*/tests` or `packages/*/tests` is over the tighter one, and no generated bundle under a package's `lib/` ran away; the repository's own root `scripts/` is outside the scope, and the thresholds and the allowlist are [below](#file-size-budget) |
+| Test coverage (a measurement, not a gate) | `pnpm test:coverage` | V8-instrumented percentages per package over its `src` tree, printed and written to `<package>/coverage/coverage-summary.json` (see [COVERAGE.md](COVERAGE.md) for the last committed snapshot). It asserts nothing: there is no threshold to fail, because a red floor competes with the per-file size budget and buys tests that assert nothing. Read it before a refactor to find the untested corner, not to close a pull request |
 | Version plans | `pnpm release:check` (`scripts/check-release-plans.mjs`) | Every publishable release project whose commits no release tag covers yet is named by a committed version plan; a project a tag already covers is not asked for one (see below) |
+
+### File size budget
+
+Nothing measured a file, so single-file modules grew a few hundred lines a week
+and every commit was small enough to review on its own. The gate counts lines the
+way `wc -l` does — a number it prints is a number you can reproduce by hand — and
+holds each file to the budget of its kind:
+
+| Kind | Scope | Warn | Fail |
+| --- | --- | --- | --- |
+| source | `plugins/*/{src,scripts}`, `packages/*/{src,scripts}` | 1200 | 1400 |
+| test | `plugins/*/tests`, `packages/*/tests` | 700 | 900 |
+| generated bundle | `lib/client.js`, `lib/typert.host.js` and `lib/typert.remote-client.js` in a package | 80000 | 100000 |
+
+**Scope boundary.** The gate walks package directories only, so the repository's
+own `scripts/` is not measured — even though `scripts/package-hygiene.test.mjs`
+(1138 lines) and `scripts/release-workflow.test.mjs` (1064) already sit past the
+test budget their counterparts under `plugins/*/tests` would be held to. Naming
+those files as debt is a separate card; until it lands, do not read this row as
+coverage of root `scripts/`.
+
+Every number is a line count, deliberately: bytes are a different measurement,
+and a bundle that swallowed a dependency tree looks the same in bytes as one that
+simply ships a wide surface. A byte budget is its own card, not an extra key here.
+
+The generated bundle band is a tripwire rather than a size goal — the largest
+artifact today is the qa-surface client at 66 745 lines, measured after
+`pnpm -r build` — and it only measures anything after a build, which is why
+`check` runs `check:files` after `build`. CI runs it in both places: `prepare`
+checks the source and test bands on a checkout that has no `lib/` in it, where
+the bundle rows measure nothing and the run says so in its own output
+(`0 generated artifacts`), and the project job runs the same gate right after it
+has built that project, which is where a bundle that swallowed a dependency tree
+costs the run. `verify` still asserts the identity and self-containedness of each
+built bundle. A warning costs a report line and never the run; one line per kind
+is printed, so a green run stays readable.
+
+**Allowlist.** `fileBudgetAllowlist` in the script names the files already over
+their hard budget, each with the reason for its exemption on the same line, and a
+green run prints one `allowlisted: <path> — <reason> (<lines> lines)` line per
+entry. Without the list the gate would be red on the commit that introduces it,
+and a check that is red gets switched off; without the printed line an exemption
+that nobody sees reads as coverage after half a year. Two classes are in it:
+
+- sources that were over 1400 lines before the gate landed — the qa-surface type,
+  index, admin, account and client modules, and the integrations index. They leave
+  one by one as their refactor card splits them, and four already did: the
+  integrations operator card, back within budget after the provider-core split, the
+  session-scope client, whose file that split deleted, and the browser session
+  manager and the authenticated-fetch client sections, each now a barrel over the
+  module directory that took its body.
+- `plugins/dsh-qa-integrations/scripts/verify-package.mjs`, an assertion list run
+  over the built bundle and the packed tarball. Its length tracks the shipped
+  surface rather than a module design, which is exactly the case the source budget
+  was not written for, so it is exempted by name and reason instead of by a rule.
+
+Growing an allowlisted file is neither an error nor a warning: the gate exists to
+stop the next 400 lines, not to re-litigate the last 2000, and those paths belong
+to the refactor cards — but the file stays named in the output while it is on the
+list. The list only shrinks — an entry whose file no longer exists fails the run,
+and one that came back within budget is reported so it can be dropped. No test
+file is exempted, because nothing is over 900 and a test that long is a missing
+helper, not a missing exemption. Adding a path, or raising a threshold to fit one,
+is the failure mode this section documents rather than the way out.
 
 ## What gates cannot prove
 
@@ -40,7 +137,90 @@ and — the expensive one — a provider that speaks a different API than the
 instance serves. Those are covered by
 [MANUAL_VERIFICATION.md](MANUAL_VERIFICATION.md), which carries the probe
 command (`scripts/probe-provider.mjs`), the per-provider acceptance steps, the
-negative cases, and the checklist for adding a second product to a provider.
+negative cases, the order of work for adding a provider, and the checklist for
+adding a second product to a provider.
+
+Nothing above opens the page either. A surface that overflows its container, a
+settings card that never appears for a non-loopback browser, a card state that
+does not match the first-party shell, and a client bundle that dies on mount all
+pass the whole gate set: the bundle gates assert its identity and
+self-containedness, the card-contract gate asserts the shell's text, and neither
+renders it. The proof is a measurement and a screenshot of each state the shell
+contract names, beside a first-party card, on a stand — the steps are in the
+`create-plugin` skill's `client-side` reference (§Proving the card you just
+registered, §Proving a UI change beyond the gates), and the round it belongs to
+is recorded under [Stand acceptance](#stand-acceptance). That pointer is a name
+rather than a file link on purpose: nothing in the gate set resolves a link from
+`docs/**` into `.agents/**`, so such a link rots silently whenever a skill is
+reorganized, while a name still says which skill to open.
+
+The same blind spot faces the other way, and #728 measured it on a stand: four
+defects in the Host's own operator layer — the settings dialog's section nav
+invisible at 390px, that dialog sometimes closing on a section click with
+nothing in the console, provider rows whose buttons overlap their names at that
+width, and a preset title truncated by its own badge — leave the whole gate set
+green, because no gate reads the Host's rendered text. That is exactly what the
+check asked for, and the answer is that no gate depends on those surfaces: the
+seat gates key on the Host's *slot identifiers*
+(`scripts/verify-package-hygiene.mjs`,
+`packages/plugin-scripts/verify-plugin-card-contract.mjs`), so a clipped or
+invisible label moves nothing; `scripts/verify-button-names.mjs` walks our own
+`plugins/` and `packages/` sources and never a host screen; and the preset
+roster is matched by id, not by title
+(`plugins/dsh-preset-persona-editor/src/host/preset-reader.ts`). What does sit
+on those surfaces is reachability, not a gate: the one page still seated in the
+native settings tree enters only through that nav, which is why the
+`create-plugin` skill's `client-side` reference now says how to prove a narrow
+layout without it.
+
+A fifth observation reached the same card later: the Host's `Select Workspace
+Directory` dialog sits on "Loading…" (one measurement, at least 26 s) while its
+`GET /api/directoryPicker/list` answers `404`. The route belongs to the Host —
+`@deepseek-ai/dsh-host-directory-picker` is a peer of its own workspace
+controller, and it reaches this repository only through the catalog entry
+[DSH-0.1.7-MIGRATION.md](DSH-0.1.7-MIGRATION.md) §1 added to `pnpm-workspace.yaml`.
+Nothing of ours calls that route: `dsh-session-scope` lists a directory itself,
+one level over `node:fs` (`src/core.ts`, `listDirectoryLevel`), and the one
+bundle that imports `@deepseek-ai/dsh-api-workspace-controller/client` —
+`dsh-draft-sessions`, on the sidebar's workspace state — takes its types, not its
+picker.
+
+The one asset that does sit on a Host dialog is the browser pass in
+`plugins/dsh-qa-surface/scripts/smoke-packed-dsh.mjs`. This rig pins no model, so
+DSH's blocking "Add an API key" step owns the page, and the pass lifts it by
+clearing the `inert` attribute off `#root` and hiding the **first**
+`[role="dialog"][aria-modal="true"]` in the document. That selector names
+whichever dialog the Host is holding rather than the API-key step, so the silent
+dialog close above reaches this step: when the lift does not take, ask which
+dialog the document holds before reading it as a QA-surface fault. The same pass
+runs at 375 × 720 — inside the width that deletes the settings nav — but asserts
+only our own overlay, and neither browser pass opens the Settings dialog or
+selects a provider by its rendered name or a preset by its title, so none of the
+five observations moves anything they check.
+
+Two of the card's own questions run the other way, and neither has a gate in its
+answer. Whether a step a *human* follows leans on those surfaces: exactly one
+live step in this repository walks the Host's section nav — the install step of
+`plugins/dsh-preset-persona-editor/README.md`, which opens
+**Settings → Persona** — and that step now names the width it needs, because at
+phone width the nav leaves the page no entry point. Every other mention of that
+nav is prose about a seat nothing registers today — a CHANGELOG recording a
+card's move, a phase plan, or a SPEC sketch — and the only settings dialog whose
+navigation this repository owns is QA Surface's own `Настройки` dialog, which
+none of the five observations reached. Whether a clipped Host row hides a card
+of ours: a `plugins.row.config` seat draws no heading of ours, because the card
+contract refuses our shell there, so the Host's row title has no card body of
+ours to cover. What the row shows of us is the `summary` sentence — a fallback
+for `meta.description`, printed inside the Host's own description paragraph, and
+each package holding both pins the pair equal in a test, as
+`plugins/dsh-jev-compaction/tests/client/client-bundle.test.tsx` does. The
+truncated-title pattern is not one our page repeats either: our preset name is
+the shell's wrapping `dsh-plugin-card__name`, not an ellipsis
+(`plugins/dsh-preset-persona-editor/src/client/PersonaPage.tsx`). Unmeasured,
+though, is the Plugins row's own open control at 390px — the two-step expand
+that half of the card rests on was confirmed live, at a width the round did not
+record — so whether a seated card stays reachable on a phone screen is still
+open, and the control is the Host's chrome wherever it lands.
 
 Two files [PLUGIN_GUIDELINES.md](PLUGIN_GUIDELINES.md) §4.1 lists are
 **not** gated, deliberately: `tsdown.config.ts`, which seven host-only plugins
@@ -54,11 +234,75 @@ their presence would reject packages that are correct as they stand.
 `.github/workflows/ci.yml` selects affected Nx projects once, then fans their
 `lint`, `typecheck`, `test`, `build`, `verify`, and publishable-tarball checks
 out through a bounded GitHub Actions matrix. Repository-wide `deps:check`,
-tooling tests and lint, `verify:logging`, `verify:a11y`, and `verify:packages`
-run once before the matrix. `pnpm check` covers `lint`, `format`, `typecheck`, `test`,
-`build`, `verify`, and `deps:check` — it does not run `tarball:verify` or
+tooling tests and lint, `check:files`, `verify:logging`, `verify:a11y`,
+`verify:testids`, `verify:tokens`, and `verify:packages` run once before the
+matrix. `pnpm check`
+covers `lint`, `format`, `typecheck`, `test`, `build`, `check:files`, `verify`,
+and `deps:check` — it does not run `tarball:verify` or
 `release:check`; run those separately before pushing. `pnpm affected:check`
 mirrors the per-project CI targets locally.
+
+### Re-counting the line after a batch of merges
+
+`pnpm affected:check` is the set one pull request owes. It does not prove the head
+of a branch after a batch of merges: the head is a merge commit nobody checked as a
+whole, and each contributing pull request was green only over its own base. The
+recount therefore adds the lint of the whole line to the targets of the affected
+projects:
+
+```bash
+pnpm lint:workspace                                        # eslint.config.js and the root scripts/
+NX_DAEMON=false pnpm nx run-many -t lint --skip-nx-cache   # 34 projects, green as a whole
+```
+
+`lint` is in this set because for a tooling package it is the only per-project gate
+that exists. `@yadsh/dsh-plugin-scripts` declares one Nx target — `lint`, which is
+`eslint .` over the package root — and no `build`, `test` or `verify`: its tests are
+named one by one in the root `pnpm test:release` list instead. `nx` does not read a
+missing target as an error, so
+`pnpm nx run-many -t build test verify --projects=@yadsh/dsh-plugin-scripts --skip-nx-cache`
+exits 0 having printed `No tasks were run`. A recount assembled out of those three
+words reports such a package as covered while never having looked at it — and 22 of
+the 26 plugins depend on it, so it is affected by nearly everything.
+
+Lint is a real gate on those files, not a formality: `no-useless-escape` is
+switched off only for `plugins/**/tests/**/*.{ts,tsx}` (`eslint.config.js:78-81`),
+so a `*.test.mjs` under `packages/**` sits under `eslint.configs.recommended`
+(`eslint.config.js:15`). That is how two escaped quotes inside a card-contract
+fixture survived the #684 merge and reddened the head. The matrix runs `lint` for
+every affected project (`.github/workflows/ci.yml:135`), so the lane of an
+unrelated card met a `@yadsh/dsh-plugin-scripts:lint` failure it had not caused,
+read it as a verdict on its own change, and either redid work that was already
+right or pushed again and rejoined a queue that stands for hours.
+
+Require the set in full rather than package by package — it is clean as a whole, so
+a green line costs one command. And read the run's own summary rather than its exit
+code: `Successfully ran target lint for 34 projects` says the set was measured,
+where a silent 0 can mean no task matched, which is the same hole as above.
+
+The answer to a red here is the fix in the file, never a wider exemption. The rule
+must stay on for `packages/**`: that package ships three scripts through its
+`exports` (`generate-typert`, `run-verify-package`, `verify-plugin-card-contract`)
+and they run inside the verify chain of those 22 plugins, so a useless escape there
+is a defect rather than fixture decoration. Exemption lists in this repository only
+shrink — [the file-size budget](#file-size-budget) says the same of its own list.
+
+`--skip-nx-cache` is not a speed knob in this set: a cached task replays a green
+verdict the run did not earn. `NX_DAEMON=false` is what a second checkout or a
+worktree needs; the cache directory is shared across worktrees, so a stale replay is
+never cleared with `nx reset` for the whole fleet (see
+[The Nx cache in a worktree](#the-nx-cache-in-a-worktree)).
+
+`check:files` runs twice, for two different reasons. In `prepare`, on a checkout
+with no build output, it holds the source and test budget of every file in the
+pull request to its line limit; the generated bundle band is inert there, and the
+step reports `0 generated artifacts` instead of pretending to have measured them.
+In the project job, right after that project has been built, it measures the
+bundles that build just wrote — the runaway tripwire that a client bundle
+swallowed a dependency tree is pulled there rather than left to whoever happens
+to rebuild locally. Each project's own `verify` target still asserts the identity
+and self-containedness of the bundle it built, and `pnpm check` reaches the same
+bundle band after `build`.
 
 The PR-only version-plan check compares each publishable release project
 against the newest release tag its history can reach — one `release/<date>` tag
@@ -83,5 +327,8 @@ matches all pass lint, typecheck, test and verify. A wave that will be deployed
 is therefore accepted on a stand as well. The deployment kit carries the manual
 playbooks — smoke after every deploy, wave acceptance with a row per changed
 package, and a refusal-to-cause reference — together with the evidence collector
-each round is recorded by. Run that pass on the test stand before moving the
-deployment's plugin list, and repeat the smoke pass on the deployment itself.
+each round is recorded by. Those are roles, not paths: the kit's file names are
+listed once, in the `release-plugins` skill §1b, and `qa-stand-run` is the route
+a single plugin change takes to the same pass. Run that pass on the test stand
+before moving the deployment's plugin list, and repeat the smoke pass on the
+deployment itself.

@@ -28,27 +28,88 @@ await runVerifyPackage({
     "cordis.patch.yml",
   ],
   patch: { id: "dsh-sleev" },
+  compatibility: { clientFeatures: ["plugins.row.config"] },
   exportDefaults: { "./client": "./lib/client.js" },
   client: {
     platform: "web",
-    injectIncludes: ["@deepseek-ai/dsh-client-ui-settings-plugins"],
+    injectIncludes: ["@deepseek-ai/dsh-client-ui-plugin-manager"],
   },
   clientBundle: {
     moduleLoaderId: true,
     includes: [
-      "settings.plugin.item",
-      "key: SETTINGS_NAMESPACE",
-      "dsh-plugin-card__name",
-      "m3.5 5.25 3.5 3.5 3.5-3.5",
+      // The seat is named at the registration, not merely quoted: this is the
+      // literal the card contract reads the place off, and the row card must
+      // carry none of the shell it used to own (verify-plugin-card-contract).
+      "plugins.row.config",
+      // That key is `<package name>#<row id>`, and the row id is the settings
+      // namespace, so a value saved before the move keeps reading under it.
+      "@yadsh/dsh-sleev#",
     ],
-    notMatches: [/dsw-alias-border-label-dimmed/u, /⌄/u],
+    matches: [
+      // One test id of the epic #453 pass is pinned as the representative of the
+      // rest: an id no gate reads can be renamed away without anything noticing.
+      // The attribute is asserted, not the bare value — `dsh-sleev-save` is a
+      // class name too, so the string alone would pass with the id gone.
+      /["']data-testid["']\s*:\s*["']sleev-save["']/u,
+      // The ring of every control the body draws comes from the Host's token
+      // pair, each half with a fallback. Pinned here because the contract reads
+      // a focus rule that exists: deleting the rules would satisfy its bans.
+      /--dsw-focus-ring-width\s*,\s*\S+[^;]*--dsw-focus-ring-color\s*,\s*\S+/u,
+    ],
+    notMatches: [
+      /dsw-alias-border-label-dimmed/u,
+      /⌄/u,
+      // The card left this section, so a registration returning to it is a
+      // regression the bundle itself has to reject.
+      /settings\.plugins\.tab/u,
+      // And no shell came with it: the panel draws the frame and the expand
+      // control, so our chevron path in this bundle is a second card.
+      /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u,
+      // The ring above has to survive its own cascade. The shared contract reads
+      // a focus rule that exists and skips any `outline` whose value removes it,
+      // so a later `outline:none` on a control we draw — which is how this body
+      // once left a clicked field ringless — satisfies that gate and pays no
+      // attention here. Nothing else in this bundle writes an `outline`.
+      /outline\s*:\s*(?:none|unset|revert|inherit|0)\b/u,
+    ],
     cardContract: { legacyPatterns: [/\.dsh-sleev-card\{/u] },
   },
-  extra: () => {
+  extra: async ({ patch, readFile }) => {
     assert.equal(name, "dsh-sleev");
     assert.equal(SleevIntegrationService.name, "SleevIntegrationService");
     assert.equal(DEFAULT_SLEEV_GATEWAY_URL, "http://127.0.0.1:17321/v1");
     assert.equal(EXPERIMENTAL_DSH_HARNESS_ID, "pi");
+    // The seat key joins the package name to the row id, and since 0.1.7 the row
+    // id is the settings namespace, so the two are one fact. The bundle keeps that
+    // join as a template literal — `@yadsh/dsh-sleev#${SLEEV_SETTINGS_NAMESPACE_ID}`
+    // — so no `includes` can read a shipped key that is only assembled at runtime,
+    // and each half is gate-checked on its own elsewhere: rename either one and
+    // every other gate still passes while the row's configure control stops
+    // appearing. `dsh-model-safety-gate` pins the same pair against its patch.
+    const rowIds = [...(patch ?? "").matchAll(/^\s*- id: (\S+)$/gmu)].map(
+      ([, id]) => id,
+    );
+    const seat = await readFile("src/shared/settings.ts");
+    // Read on its own: two failed extractions would otherwise compare equal.
+    assert.ok(rowIds.length > 0, "cordis.patch.yml must declare the row id");
+    // This gate keys one seat, so a second profile entry would need a second
+    // registration; comparing the namespace against the first id alone would let
+    // the extra row go unregistered with every assertion still green.
+    assert.equal(
+      rowIds.length,
+      1,
+      `this gate expects the one row cordis.patch.yml keys a seat for, but the patch declares ${rowIds.length} (${rowIds.join(", ")}); register a seat per row and pin each half here`,
+    );
+    assert.equal(
+      /SLEEV_SETTINGS_NAMESPACE_ID\s*=\s*"([^"]+)"/u.exec(seat)?.[1],
+      rowIds[0],
+      `the settings namespace must be the profile entry id ${rowIds[0]} that cordis.patch.yml declares`,
+    );
+    assert.match(
+      seat,
+      /SLEEV_ROW_CONFIG_KEY = `@yadsh\/dsh-sleev#\$\{SLEEV_SETTINGS_NAMESPACE_ID\}`/u,
+      "the seat key must join the package name to the namespace constant, not to a second literal",
+    );
     assert.deepEqual(resolveConfig().routePrefixes, ["sleev-"]);
     assert.deepEqual(
       buildSleevHeaders({

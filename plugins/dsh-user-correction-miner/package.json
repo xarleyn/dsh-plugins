@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-user-correction-miner",
-  "version": "0.2.3",
+  "version": "0.2.5",
   "description": "Mine durable project-rule candidates from user corrections in DeepSeek Harness sessions",
   "repository": {
     "type": "git",
@@ -31,10 +31,12 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
@@ -50,6 +52,7 @@
     "lint": "eslint src tests scripts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "verify:package": "node scripts/verify-package.mjs",
     "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
@@ -72,7 +75,7 @@
   },
   "dependencies": {
     "@yadsh/dsh-plugin-log": "workspace:^",
-    "zod": "^4.4.3"
+    "zod": "catalog:runtime"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
@@ -82,6 +85,7 @@
     "@deepseek-ai/dsh-session-query": "catalog:dsh-dev",
     "@deepseek-ai/dsh-storage-domain": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "@yadsh/dsh-test-kit": "workspace:^",

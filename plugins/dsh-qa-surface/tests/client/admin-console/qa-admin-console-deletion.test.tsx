@@ -18,7 +18,9 @@ describe("conversation deletion", () => {
         "/qa/admin/conversations/session-alice",
       );
 
-      fireEvent.click(await screen.findByText("Удалить разговор"));
+      fireEvent.click(
+        await screen.findByTestId("qa-admin-conversation-delete"),
+      );
 
       await waitFor(() => expect(deleteConversation).toHaveBeenCalledTimes(1));
       expect(deleteConversation.mock.calls[0]).toEqual([
@@ -43,7 +45,9 @@ describe("conversation deletion", () => {
         "/qa/admin/conversations/session-alice",
       );
 
-      fireEvent.click(await screen.findByText("Удалить разговор"));
+      fireEvent.click(
+        await screen.findByTestId("qa-admin-conversation-delete"),
+      );
 
       expect(deleteConversation).not.toHaveBeenCalled();
       expect(window.location.pathname).toBe(
@@ -65,11 +69,16 @@ describe("conversation deletion", () => {
     try {
       renderConsole(api, "/qa/admin/conversations/session-alice");
 
-      fireEvent.click(await screen.findByText("Удалить разговор"));
+      fireEvent.click(
+        await screen.findByTestId("qa-admin-conversation-delete"),
+      );
 
-      expect(
-        await screen.findByText(/Разговор открыт на стенде прямо сейчас/u),
-      ).toBeTruthy();
+      const refusal = await screen.findByTestId(
+        "qa-admin-conversation-delete-error",
+      );
+      expect(refusal.textContent).toContain(
+        "Разговор открыт на стенде прямо сейчас",
+      );
       expect(window.location.pathname).toBe(
         "/qa/admin/conversations/session-alice",
       );
@@ -85,7 +94,8 @@ describe("conversation deletion", () => {
       "reviewer",
     );
 
-    expect(await screen.findByText("Сделай отчёт по релизу")).toBeTruthy();
-    expect(screen.queryByText("Удалить разговор")).toBeNull();
+    const messages = await screen.findAllByTestId("qa-admin-message-text");
+    expect(messages[0]?.textContent).toBe("Сделай отчёт по релизу");
+    expect(screen.queryByTestId("qa-admin-conversation-delete")).toBeNull();
   });
 });

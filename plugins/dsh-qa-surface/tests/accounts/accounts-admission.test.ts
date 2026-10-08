@@ -137,7 +137,7 @@ describe("QA accounts store", () => {
       await admission.secureSession(a.token, "session-child");
       expect.unreachable("owned subagent sessions must not be attestable");
     } catch (error) {
-      expect((error as QaAttestationError).reason).toBe("adoption-refused");
+      expect((error as QaAttestationError).reason).toBe("subagent-session");
     }
   });
 
@@ -183,7 +183,7 @@ describe("QA accounts store", () => {
       await admission.secureSession(a.token, "session-child");
       expect.unreachable("subagent sessions must not be attestable");
     } catch (error) {
-      expect((error as QaAttestationError).reason).toBe("adoption-refused");
+      expect((error as QaAttestationError).reason).toBe("subagent-session");
     }
     expect(accounts.ownedSessionIds(a.token)).toEqual([]);
   });

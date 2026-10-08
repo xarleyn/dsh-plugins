@@ -2,7 +2,7 @@
  * The scanner, the registry and the service: the SPEC §73 scenarios, plus the
  * §74 security cases that belong to the pipeline rather than to a component.
  */
-import { writeFile } from "node:fs/promises";
+import { stat, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AuditRegistryEvent } from "@yadsh/dsh-audit-core";
@@ -88,18 +88,28 @@ describe("AuditService refresh", () => {
       report: REPORT,
     });
     await service.refresh();
-    const before = await service.getSessionAuditSummary(SESSION_ID);
 
+    const analysisPath = join(root, AUDIT_DIRECTORY, "analysis.json");
     await writeFile(
-      join(root, AUDIT_DIRECTORY, "analysis.json"),
+      analysisPath,
       JSON.stringify(analysis(SESSION_ID, { verdict: "poor" })),
       "utf8",
     );
+    // The summary's stamp is the newest of the two artefacts' mtimes, so a
+    // rewrite that lands inside the original's millisecond leaves it where it
+    // was: pinning the instant keeps this a test of the service, not of the
+    // resolution of the filesystem clock. The pin is a whole second because
+    // `utimes` carries the value through float seconds: on a nanosecond
+    // filesystem an arbitrary millisecond reads back one millisecond lower.
+    const stamp = new Date(
+      Math.floor((await stat(analysisPath)).mtimeMs / 1000) * 1000 + 60_000,
+    );
+    await utimes(analysisPath, stamp, stamp);
     await service.refresh();
 
     const after = await service.getSessionAuditSummary(SESSION_ID);
     expect(after?.verdict).toBe("poor");
-    expect(after?.modifiedAt).not.toBe(before?.modifiedAt);
+    expect(after?.modifiedAt).toBe(stamp.toISOString());
   });
 
   it("does not re-read or re-emit when only the mtime moved", async () => {
@@ -231,15 +241,32 @@ describe("AuditService refresh", () => {
       report: REPORT,
     });
     await service.refresh();
-    await writeAudit(root, `${AUDIT_DIRECTORY}-2`, {
+    // Two audits stamped in the same millisecond tie, and the tie breaks on the
+    // id, which would put the older one first: the second audit is stamped at
+    // an instant this test chooses, floored to a whole second so `utimes` does
+    // not read it back a millisecond lower on a nanosecond filesystem.
+    const newerStamp = new Date(
+      Math.floor(
+        (await stat(join(root, AUDIT_DIRECTORY, "REPORT.md"))).mtimeMs / 1000,
+      ) *
+        1000 +
+        60_000,
+    );
+    const second = await writeAudit(root, `${AUDIT_DIRECTORY}-2`, {
       analysis: analysis(SESSION_ID, { verdict: "good" }),
       report: REPORT,
     });
+    for (const artefact of ["analysis.json", "REPORT.md"]) {
+      await utimes(join(second, artefact), newerStamp, newerStamp);
+    }
     await service.refresh();
 
     const audits = await service.listSessionAudits(SESSION_ID);
 
-    expect(audits).toHaveLength(2);
+    expect(audits.map((audit) => audit.auditId)).toEqual([
+      `${AUDIT_DIRECTORY}-2`,
+      AUDIT_DIRECTORY,
+    ]);
     expect((await service.getSessionAuditSummary(SESSION_ID))?.verdict).toBe(
       "good",
     );
@@ -394,4 +421,300 @@ describe("AuditService refresh", () => {
     expect(audit?.report).toContain("# Trajectory Review");
     expect((audit?.raw as { verdict?: string }).verdict).toBe("good");
   });
+
+  it("keeps the detail view on the bytes its summary was built from", async () => {
+    const { service } = testService(root);
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: analysis(),
+      report: REPORT,
+    });
+    await service.refresh();
+    const before = await service.getSessionAudit(SESSION_ID);
+    expect(before?.analysis.kind).toBe("v1");
+
+    // A producer rewriting the analysis in place leaves an empty file behind.
+    await writeFile(join(root, AUDIT_DIRECTORY, "analysis.json"), "", "utf8");
+    await service.refresh();
+
+    // The summary is the last good one, and so is everything beside it: the
+    // detail must not go and re-read the file that just failed.
+    expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
+    const held = await service.getSessionAudit(SESSION_ID);
+    expect(held).not.toBeNull();
+    expect(held?.summary.auditId).toBe(AUDIT_DIRECTORY);
+    expect(held?.report).toBe(before?.report);
+    expect((held?.raw as { verdict?: string }).verdict).toBe("mixed");
+    expect(await service.readReport(AUDIT_DIRECTORY)).toContain(
+      "# Trajectory Review",
+    );
+
+    // A replacement that validates takes the view over — the held bytes are
+    // the last good version, not a frozen one.
+    await writeFile(
+      join(root, AUDIT_DIRECTORY, "analysis.json"),
+      JSON.stringify(analysis(SESSION_ID, { verdict: "poor" })),
+      "utf8",
+    );
+    await service.refresh();
+
+    const after = await service.getSessionAudit(SESSION_ID);
+    expect(after?.summary.verdict).toBe("poor");
+    expect((after?.raw as { verdict?: string }).verdict).toBe("poor");
+  });
+
+  it("binds an unresolved audit once the corpus grows to fit it", async () => {
+    const sessions: string[] = [];
+    const { service } = testService(root, {
+      listSessionIds: async () => sessions,
+    });
+    // A schema this build cannot read has no declared binding, so the directory
+    // name is what stands in for one.
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: { schemaVersion: 7, trajectory: {} },
+      report: REPORT,
+    });
+
+    await service.refresh();
+
+    expect(service.registry.counts().unresolved).toBe(1);
+    expect(await service.getSessionAuditSummary(SESSION_ID)).toBeNull();
+
+    // No byte of either artefact moves: the only fact that changed is which
+    // sessions the harness knows about.
+    sessions.push(SESSION_ID);
+    await service.refresh();
+
+    expect(service.registry.counts().unresolved).toBe(0);
+    expect(service.registry.get(AUDIT_DIRECTORY)?.status).toBe("ready");
+    expect(service.registry.get(AUDIT_DIRECTORY)?.sessionId).toBe(SESSION_ID);
+    expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
+    expect(await service.getSessionAudit(SESSION_ID)).not.toBeNull();
+    // And the gate closes again: a corpus that has stopped moving is no reason
+    // to read the artefacts on every pass.
+    expect((await service.refresh()).changed).toBe(0);
+  });
+
+  it("rebinds a prefix-less session id once the corpus spells it", async () => {
+    const bareSessionId = SESSION_ID.replace(/^session-/u, "");
+    const sessions: string[] = [bareSessionId];
+    const { service } = testService(root, {
+      listSessionIds: async () => sessions,
+    });
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: analysis(bareSessionId),
+      report: REPORT,
+    });
+
+    await service.refresh();
+
+    // A corpus that does not contain the prefixed id leaves the declared one
+    // alone, so the audit sits under a key no view asks with.
+    expect(await service.getSessionAuditSummary(bareSessionId)).not.toBeNull();
+    expect(await service.getSessionAuditSummary(SESSION_ID)).toBeNull();
+
+    sessions.push(SESSION_ID);
+    await service.refresh();
+
+    expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
+    expect(await service.getSessionAudit(SESSION_ID)).not.toBeNull();
+    expect(await service.getSessionAuditSummary(bareSessionId)).toBeNull();
+  });
+
+  it("leaves an audit already bound the harness' way alone as the corpus grows", async () => {
+    const sessions: string[] = [SESSION_ID];
+    const { service } = testService(root, {
+      listSessionIds: async () => sessions,
+    });
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: analysis(),
+      report: REPORT,
+    });
+    await service.refresh();
+
+    // Re-resolving is for the bindings a list could still improve. A session
+    // appearing elsewhere must not cost this audit a re-read on every pass.
+    sessions.push(OTHER_SESSION_ID);
+
+    expect((await service.refresh()).changed).toBe(0);
+    expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
+  });
+
+  it("detaches an audit whose unique prefix stopped being unique", async () => {
+    // A second session that starts the same way the first one does.
+    const sibling = "session-41b4e63f-0000-0000-0000-000000000000";
+    const sessions: string[] = [SESSION_ID];
+    const { service } = testService(root, {
+      listSessionIds: async () => sessions,
+    });
+    // An unknown schema names no session, so the directory name is what binds.
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: { schemaVersion: 7, trajectory: {} },
+      report: REPORT,
+    });
+
+    await service.refresh();
+
+    expect((await service.getSessionAuditSummary(SESSION_ID))?.auditId).toBe(
+      AUDIT_DIRECTORY,
+    );
+
+    sessions.push(sibling);
+    await service.refresh();
+
+    // SPEC §4: a prefix matching more than one session binds to none — and that
+    // verdict has to reach a binding the list already made, or the audit keeps
+    // standing in one session as a claim about work that may be another's.
+    expect(await service.getSessionAuditSummary(SESSION_ID)).toBeNull();
+    expect(await service.getSessionAuditSummary(sibling)).toBeNull();
+    const record = service.registry.get(AUDIT_DIRECTORY);
+    expect(record?.status).toBe("unresolved");
+    expect(record?.sessionId).toBeNull();
+    expect(record?.errors.map((error) => error.code)).toContain(
+      "SESSION_ID_AMBIGUOUS",
+    );
+  });
+
+  it("re-decides a list-bound audit without reading its artefacts again", async () => {
+    const sessions: string[] = [SESSION_ID];
+    const { service, logger } = testService(root, {
+      listSessionIds: async () => sessions,
+    });
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: { schemaVersion: 7, trajectory: {} },
+      report: REPORT,
+    });
+    await service.refresh();
+
+    // The list moved and this binding did not: another session appeared under a
+    // different prefix.
+    sessions.push(OTHER_SESSION_ID);
+    const stats = await service.refresh();
+
+    expect(stats.changed).toBe(0);
+    expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
+    // The pass never went back to the files. A full rebuild would log the
+    // record as updated even though the same bytes describe the same session.
+    expect(
+      logger.records.filter((record) => record.event === "audit updated"),
+    ).toEqual([]);
+  });
+
+  it("looks at the session list once per pass, not once per audit", async () => {
+    const sessions: string[] = [];
+    let listed = 0;
+    const { service } = testService(root, {
+      listSessionIds: async () => {
+        listed += 1;
+        return sessions;
+      },
+    });
+    // Two audits waiting for a session, so the list is looked at every pass.
+    await writeAudit(root, "session-nope-1", {
+      analysis: { schemaVersion: 7, trajectory: {} },
+      report: REPORT,
+    });
+    await writeAudit(root, "session-nope-2", {
+      analysis: { schemaVersion: 7, trajectory: {} },
+      report: REPORT,
+    });
+
+    await service.refresh();
+    listed = 0;
+
+    sessions.push("session-nope-2");
+    await service.refresh();
+
+    expect(listed).toBe(1);
+    // One listing answered both decisions, and only the one it changed was read.
+    expect(
+      (await service.getSessionAuditSummary("session-nope-2"))?.auditId,
+    ).toBe("session-nope-2");
+    expect(service.registry.get("session-nope-1")?.status).toBe("unresolved");
+  });
+
+  it("reports a session list it cannot look at, once per run of failures", async () => {
+    const sessions: string[] = [];
+    let broken = false;
+    const { service, logger } = testService(root, {
+      listSessionIds: async () => {
+        if (broken) throw new Error("sessionQuery is unavailable");
+        return sessions;
+      },
+    });
+    await writeAudit(root, AUDIT_DIRECTORY, {
+      analysis: { schemaVersion: 7, trajectory: {} },
+      report: REPORT,
+    });
+    await service.refresh();
+    expect(service.registry.counts().unresolved).toBe(1);
+
+    // The session its audit is waiting for appears, and the list cannot be read
+    // to find out.
+    broken = true;
+    sessions.push(SESSION_ID);
+    await service.refresh();
+    await service.refresh();
+
+    const failures = () =>
+      logger.records.filter(
+        (record) =>
+          record.level === "warn" &&
+          record.event === "session list unavailable, bindings stay parked",
+      );
+    // Once, not once per pass: while the list cannot be read the parked binding
+    // stays parked, and a 30-second interval would repeat this forever. Once is
+    // also not enough — see the recovery below.
+    expect(failures()).toHaveLength(1);
+    expect(String(failures()[0]?.fields["error"])).toContain(
+      "sessionQuery is unavailable",
+    );
+    expect(service.registry.counts().unresolved).toBe(1);
+
+    broken = false;
+    await service.refresh();
+    expect(await service.getSessionAuditSummary(SESSION_ID)).not.toBeNull();
+
+    broken = true;
+    await service.refresh();
+    expect(failures()).toHaveLength(2);
+  });
+
+  it("holds the last good bytes of what readers ask for, up to a total", async () => {
+    // Caps chosen so the budget is two and a bit audits wide: 2 × (64 + 2048)
+    // bytes against snapshots of 45 + 2000.
+    const { service } = testService(root, {
+      sessions: ["s-a", "s-b", "s-c"],
+      config: { maxAnalysisBytes: 64, maxReportBytes: 2048 },
+    });
+    const waiting = { analysis: { schemaVersion: 7, trajectory: {} } };
+    await writeAudit(root, "s-a", { ...waiting, report: reportOf(2000) });
+    await writeAudit(root, "s-b", { ...waiting, report: reportOf(2000) });
+    await service.refresh();
+    expect(service.registry.counts().ready).toBe(2);
+
+    // A is what someone is reading; B is sitting there unread.
+    expect(await service.readReport("s-a")).toContain("# Trajectory Review");
+    await writeAudit(root, "s-c", { ...waiting, report: reportOf(2000) });
+    await service.refresh();
+    expect(service.registry.counts().ready).toBe(3);
+
+    // Every artefact breaks. What survives is what the holding budget kept, so
+    // the bound is what the guarantee costs — not an unbounded pile of every
+    // audit the host has ever seen (SPEC §66).
+    for (const name of ["s-a", "s-b", "s-c"]) {
+      await writeFile(join(root, name, "analysis.json"), "", "utf8");
+    }
+    await service.refresh();
+
+    expect(await service.getSessionAuditSummary("s-b")).not.toBeNull();
+    expect(await service.getSessionAudit("s-b")).toBeNull();
+    expect(await service.getSessionAudit("s-a")).not.toBeNull();
+    expect(await service.getSessionAudit("s-c")).not.toBeNull();
+  });
 });
+
+/** A report of exactly `bytes`, because the holding budget counts bytes. */
+function reportOf(bytes: number): string {
+  const head = "# Trajectory Review\n\n";
+  return `${head}${"x".repeat(Math.max(0, bytes - head.length))}`;
+}

@@ -32,6 +32,17 @@ User → primary agent → research / tools / background subagents
   budget belongs to the user request the candidate answers — the agent turns
   and revisions that request takes share one budget, and no agent turn hands
   out a fresh one.
+- A revision steer admits exactly one visible artifact: the corrected answer.
+  Findings are handed back as a delimited `<review_notes>` block, and the steer
+  asks for no account of the review — a demand to "state the disproof" of a
+  rejected objection was resolved literally on a live stand, and the user read
+  the primary's argument with its reviewer. A draft that opens by disputing the
+  review (`Опровержение вывода ревизора: …`) is that leak: in a turn that has
+  already been reviewed the gate demands the answer's shape once, and that draft
+  is not handed to a reviewer, so it cannot be certified as verified. The honest
+  bounds: a committed message cannot be edited at this seam, so a second such
+  draft goes through the ordinary review path, and a request the user waived is
+  settled before the guard runs.
 - The reviewer itself is exempt: it runs as a subagent child and subagents are
   never gated, so the reviewer cannot recursively review itself.
 
@@ -75,7 +86,8 @@ bounded single run).
 Starts a native reviewer child (`reviewer.provider`, default `spawn`) with a
 fresh context: it receives only the user request and the candidate answer, an
 optional persona (`reviewer.persona`), a read-only tool allow-list
-(`reviewer.allowedTools`, empty means no tools) and an optional model route
+(`reviewer.allowedTools`; unset means the read-only set, an explicitly empty
+list means no tools) and an optional model route
 (`reviewer.route` / `reviewer.model` / `reviewer.reasoningEffort`). The verdict
 is requested as structured JSON; unparseable output is a reviewer failure, not
 a pass. For correlated-failure reduction, route the reviewer to a different
@@ -110,7 +122,7 @@ reviewer:
   # model: ""
   # reasoningEffort: ""
   # persona: ""
-  # allowedTools: []
+  # allowedTools: []          # unset means the read-only set; [] means no tools
 maxReviewRounds: 3
 failMode: warn
 trackBackgroundDelegations: true
@@ -132,7 +144,7 @@ audit:
 | `reviewer.provider` | Subagent provider name for the `subagent` backend. |
 | `reviewer.route` / `reviewer.model` / `reviewer.reasoningEffort` | Reviewer route overrides for the `subagent` backend. |
 | `reviewer.persona` | Persona instruction for the `subagent` reviewer. |
-| `reviewer.allowedTools` | Read-only tool allow-list; empty means the reviewer works without tools. |
+| `reviewer.allowedTools` | Read-only tool allow-list. Unset means the read-only set (`read`, `read_image`, `glob`, `grep`, `docs_read`, `docs_search`); an explicitly empty list means the reviewer works without tools. Destructive and writing names are removed whatever the list says. |
 | `maxReviewRounds` | Review/revision rounds per user turn before the failure policy applies (1–10). |
 | `failMode` | `open` / `warn` / `closed`, see above. |
 | `trackBackgroundDelegations` | Suppress review while the session's background work is pending. |
@@ -144,7 +156,7 @@ audit:
 
 ## Requirements
 
-- DeepSeek Harness >=0.1.5-rc.2 <0.2.0
+- DeepSeek Harness >=0.1.7-rc.2 <0.2.0
 - Node.js ^22.19.0 or >=24.0.0
 
 ## Installation
@@ -157,7 +169,7 @@ The `--profile` flag is required.
 
 ## Compatibility
 
-- DeepSeek Harness >=0.1.5-rc.2 <0.2.0 (see `compatibility.json`).
+- DeepSeek Harness >=0.1.7-rc.2 <0.2.0 (see `compatibility.json`).
 - Uses the `commands` host service plus the `agent/turn-stopping`,
   `tools/result` and `agent/inbox/inserted` lifecycle seams — no DSH core
   changes.
@@ -169,7 +181,15 @@ The `--profile` flag is required.
   hidden reasoning.
 - The `domain-expert` backend's tool access is whatever the configured domain
   grants; configure the reviewer domain read-only. The `subagent` backend's
-  tools are exactly `reviewer.allowedTools` — keep it read-only.
+  tools are `reviewer.allowedTools` minus the names `src/reviewer-tools.ts`
+  excludes: an unset list gives the reviewer the read-only set (reads and
+  searches), and a listed `file_delete`, `write`, `edit`, `apply_patch`,
+  `str_replace_editor`, `bash`, `shell`, `run_code`, `lsp`,
+  `dsh_lightrag_delete` or a `terminal_`/`job_` tool is dropped before the child
+  is started. A reviewer that reaches for a deletion stops the turn it belongs
+  to: on a QA stand the call parked above the parent's composer for an approval
+  a delegated child can never receive, so the boundary is held both by the
+  allow-list and by the surface, which refuses a delegated call outright.
 - Reviewer output is untrusted model output: it is parsed and validated, a
   malformed verdict is a reviewer failure handled by the failure policy, and
   the primary remains responsible for checking reviewer evidence rather than

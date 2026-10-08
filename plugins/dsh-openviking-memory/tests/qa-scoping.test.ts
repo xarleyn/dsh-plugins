@@ -16,7 +16,7 @@
 
 import { writeFileSync } from "node:fs";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   createFakeAgent,
@@ -69,7 +69,7 @@ async function runTurn(
   text = "what did we decide about the release plan?",
 ): Promise<void> {
   const { agent } = createFakeAgent({ sessionId });
-  await emit(target, "agent/session-start", { agent });
+  await emit(target, "agent/created", { agent });
   const payload = preStepPayload(agent, [userMessage(text)]);
   await emit(target, "agent/pre-step", payload, () =>
     Promise.resolve(enterDecision(payload.messages)),
@@ -111,6 +111,34 @@ describe("per-account scoping", () => {
     expect(users).toEqual(new Set(["account-a", "account-b"]));
   });
 
+  it("keeps the bridged MCP tools on the deployment identity", async () => {
+    harness = await createHarness(
+      { user: "shared-account" },
+      { qaSurface: surfaceFor({ "dsh-session-1": "account-a" }) },
+    );
+
+    await runTurn(harness, "dsh-session-1");
+
+    // What the plugin issues for the session speaks as the account…
+    expect(usersOn(harness, "/api/v1/search/search")).toEqual(["account-a"]);
+
+    // …while the stdio proxy behind `mcp__openviking__*` is mounted once for
+    // the whole process and carries the deployment identity in its environment
+    // (the transport is fixed before any session is known). A model-initiated
+    // `remember` therefore lands in the deployment space, not the account's —
+    // the one part of the boundary that is not per account, and named as such
+    // in SPEC §2.2 rather than left to be discovered.
+    const bridge = harness.mounted.find(
+      (entry) =>
+        (entry.config as { serverName?: string }).serverName === "openviking",
+    );
+    expect(
+      (bridge?.config as { env?: Record<string, string> }).env?.[
+        "OPENVIKING_USER"
+      ],
+    ).toBe("shared-account");
+  });
+
   it("issues nothing at all for a session no account has claimed", async () => {
     harness = await createHarness({}, { qaSurface: surfaceFor({}) });
 
@@ -120,6 +148,33 @@ describe("per-account scoping", () => {
     });
 
     expect(harness.requests).toEqual([]);
+  });
+
+  it("starts scoping a session as soon as its account claims it", async () => {
+    // A chat is claimed when its browser half opens it, which trails the moment
+    // the session starts. The first answer is therefore often "nobody", and
+    // what matters is that the *next* question after the claim lands sees it.
+    const owners: Record<string, string> = {};
+    harness = await createHarness({}, { qaSurface: surfaceFor(owners) });
+    const started = Date.now();
+    const clock = vi.spyOn(Date, "now").mockReturnValue(started);
+
+    try {
+      await runTurn(harness, "dsh-session-1");
+      expect(harness.requests).toEqual([]);
+
+      owners["dsh-session-1"] = "account-a";
+      // Past the window an unresolved answer is trusted for.
+      clock.mockReturnValue(started + 6_000);
+      await runTurn(harness, "dsh-session-1");
+
+      expect(harness.requests.length).toBeGreaterThan(0);
+      for (const request of harness.requests) {
+        expect(request.headers["X-OpenViking-User"]).toBe("account-a");
+      }
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it("leaves a child session in the account that started the chat", async () => {

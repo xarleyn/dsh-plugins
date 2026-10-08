@@ -7,16 +7,11 @@ import type {
 import type { QaBoundSourceApi } from "../types.js";
 import { formatFileSize } from "../attachments.js";
 import { base64ToBytes } from "../base64.js";
+import { downloadWorkspaceFile, fileNameOf } from "../workspace-download.js";
 import { isConvertibleDocument } from "../../shared/documents.js";
 import { sourcePreviewFailureCopy } from "../source-preview.js";
 import { Markdown } from "./Markdown.js";
 import { QaModal } from "./QaModal.js";
-
-/** Name of one entry: the last path segment, root spelled as the directory. */
-function entryName(path: string): string {
-  const parts = path.split("/");
-  return parts[parts.length - 1] ?? path;
-}
 
 /** Path join for the panel's own navigation, never leaving the chat root. */
 function joinPath(directory: string, name: string): string {
@@ -39,25 +34,6 @@ function crumbsOf(
   return crumbs;
 }
 
-/** Hand one file to the browser's download machinery. */
-function downloadFile(file: QaWorkspaceFile): void {
-  const bytes =
-    file.base64 === undefined
-      ? new TextEncoder().encode(file.text ?? "")
-      : base64ToBytes(file.base64);
-  const url = URL.createObjectURL(
-    new Blob([bytes as BlobPart], { type: file.mime }),
-  );
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = entryName(file.path);
-  anchor.rel = "noreferrer";
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
-}
-
 /** One row of the listing: a directory to descend into or a file to open. */
 function EntryRow({
   entry,
@@ -72,10 +48,11 @@ function EntryRow({
 }) {
   const path = joinPath(directory, entry.name);
   return (
-    <li className="dsh-qa-ws__row">
+    <li className="dsh-qa-ws__row" data-testid="qa-surface-workspace-row">
       <button
         type="button"
         className="dsh-qa-ws__entry"
+        data-testid="qa-surface-workspace-entry"
         data-kind={entry.type}
         onClick={() =>
           entry.type === "directory" ? onOpenDirectory(path) : onOpenFile(path)
@@ -90,9 +67,19 @@ function EntryRow({
             )}
           </svg>
         </span>
-        <span className="dsh-qa-ws__name">{entry.name}</span>
+        <span
+          className="dsh-qa-ws__name"
+          data-testid="qa-surface-workspace-entry-name"
+        >
+          {entry.name}
+        </span>
         {entry.size === null ? null : (
-          <span className="dsh-qa-ws__size">{formatFileSize(entry.size)}</span>
+          <span
+            className="dsh-qa-ws__size"
+            data-testid="qa-surface-workspace-entry-size"
+          >
+            {formatFileSize(entry.size)}
+          </span>
         )}
       </button>
     </li>
@@ -150,7 +137,8 @@ function FileBody({
     return (
       <img
         className="dsh-qa-ws__image"
-        alt={entryName(file.path)}
+        data-testid="qa-surface-workspace-image"
+        alt={fileNameOf(file.path)}
         src={`data:${file.mime};base64,${file.base64}`}
       />
     );
@@ -159,17 +147,28 @@ function FileBody({
     return (
       <iframe
         className="dsh-qa-ws__pdf"
-        title={entryName(file.path)}
+        data-testid="qa-surface-workspace-pdf"
+        title={fileNameOf(file.path)}
         src={pdf}
       />
     );
   }
   if (converting) {
-    return <p className="dsh-qa-ws__status">Готовлю предпросмотр…</p>;
+    return (
+      <p
+        className="dsh-qa-ws__status"
+        data-testid="qa-surface-workspace-status"
+      >
+        Готовлю предпросмотр…
+      </p>
+    );
   }
   if (file.text === undefined) {
     return (
-      <p className="dsh-qa-ws__status">
+      <p
+        className="dsh-qa-ws__status"
+        data-testid="qa-surface-workspace-status"
+      >
         {isConvertibleDocument(file.mime)
           ? conversionFailure
           : file.truncated
@@ -181,7 +180,11 @@ function FileBody({
   if (file.markdown && file.renderableMarkdown && !raw) {
     return <Markdown text={file.text} />;
   }
-  return <pre className="dsh-qa-ws__text">{file.text}</pre>;
+  return (
+    <pre className="dsh-qa-ws__text" data-testid="qa-surface-workspace-text">
+      {file.text}
+    </pre>
+  );
 }
 
 /** The opened file in the rail: chrome, the read/write toggles, and the body. */
@@ -208,28 +211,55 @@ function FilePreview({
 }) {
   if (status !== "ready" || file === undefined) {
     return (
-      <div className="dsh-qa-ws__preview">
-        <button type="button" className="dsh-qa-ws__back" onClick={onBack}>
+      <div
+        className="dsh-qa-ws__preview"
+        data-testid="qa-surface-workspace-preview"
+      >
+        <button
+          type="button"
+          className="dsh-qa-ws__back"
+          data-testid="qa-surface-workspace-back"
+          onClick={onBack}
+        >
           ← К файлам
         </button>
-        <p className="dsh-qa-ws__status">
+        <p
+          className="dsh-qa-ws__status"
+          data-testid="qa-surface-workspace-status"
+        >
           {status === "loading" ? "Открываю файл…" : "Файл недоступен."}
         </p>
       </div>
     );
   }
   return (
-    <div className="dsh-qa-ws__preview">
-      <div className="dsh-qa-ws__preview-head">
-        <button type="button" className="dsh-qa-ws__back" onClick={onBack}>
+    <div
+      className="dsh-qa-ws__preview"
+      data-testid="qa-surface-workspace-preview"
+    >
+      <div
+        className="dsh-qa-ws__preview-head"
+        data-testid="qa-surface-workspace-preview-head"
+      >
+        <button
+          type="button"
+          className="dsh-qa-ws__back"
+          data-testid="qa-surface-workspace-back"
+          onClick={onBack}
+        >
           ← К файлам
         </button>
-        <span className="dsh-qa-ws__preview-name" title={file.path}>
-          {entryName(file.path)}
+        <span
+          className="dsh-qa-ws__preview-name"
+          data-testid="qa-surface-workspace-preview-name"
+          title={file.path}
+        >
+          {fileNameOf(file.path)}
         </span>
         <button
           type="button"
           className="dsh-qa-ws__expand"
+          data-testid="qa-surface-workspace-expand"
           aria-label="Развернуть файл"
           title="Развернуть"
           onClick={onExpand}
@@ -241,12 +271,13 @@ function FilePreview({
         <button
           type="button"
           className="dsh-qa-ws__download"
-          onClick={() => downloadFile(file)}
+          data-testid="qa-surface-workspace-download"
+          onClick={() => downloadWorkspaceFile(file)}
         >
           Скачать
         </button>
       </div>
-      <p className="dsh-qa-ws__meta">
+      <p className="dsh-qa-ws__meta" data-testid="qa-surface-workspace-meta">
         {formatFileSize(file.size)}
         {file.truncated ? " · показана только часть файла" : ""}
       </p>
@@ -254,6 +285,7 @@ function FilePreview({
         <button
           type="button"
           className="dsh-qa-ws__toggle"
+          data-testid="qa-surface-workspace-raw-toggle"
           aria-pressed={raw}
           onClick={onToggleRaw}
         >
@@ -274,6 +306,12 @@ function FilePreview({
 export interface QaWorkspaceBrowserProps {
   readonly sessionId: string;
   readonly api: QaBoundSourceApi;
+  /**
+   * A file to open on arrival, named inside this workspace. The card under an
+   * answer points here rather than carrying its own viewer, so a document the
+   * turn produced previews through the same fenced read a browsed file uses.
+   */
+  readonly initialFile?: string;
 }
 
 /**
@@ -287,6 +325,7 @@ export interface QaWorkspaceBrowserProps {
 export function QaWorkspaceBrowser({
   sessionId,
   api,
+  initialFile,
 }: QaWorkspaceBrowserProps) {
   const [directory, setDirectory] = useState("");
   const [entries, setEntries] = useState<readonly QaWorkspaceEntry[]>([]);
@@ -405,6 +444,17 @@ export function QaWorkspaceBrowser({
     [api, convert, sessionId],
   );
 
+  // One arrival from a card outside the panel: open exactly that file, once.
+  // The caller remounts the panel per request, so asking for the same file
+  // twice arrives as a fresh mount rather than as a path that never changed.
+  const arrivalOpened = useRef(false);
+  useEffect(() => {
+    if (arrivalOpened.current) return;
+    if (initialFile === undefined || initialFile === "") return;
+    arrivalOpened.current = true;
+    openFile(initialFile);
+  }, [initialFile, openFile]);
+
   if (opened !== null) {
     const closeFile = () => {
       setOpened(null);
@@ -412,7 +462,7 @@ export function QaWorkspaceBrowser({
       setExpanded(false);
     };
     return (
-      <div className="dsh-qa-ws">
+      <div className="dsh-qa-ws" data-testid="qa-surface-workspace">
         <FilePreview
           file={file}
           status={fileStatus}
@@ -427,12 +477,18 @@ export function QaWorkspaceBrowser({
         <QaModal
           open={expanded && file !== undefined}
           size="document"
-          title={file === undefined ? "" : entryName(file.path)}
+          title={file === undefined ? "" : fileNameOf(file.path)}
           closeLabel="Закрыть файл"
           onClose={() => setExpanded(false)}
         >
-          <div className="dsh-qa-ws__expanded">
-            <p className="dsh-qa-ws__meta">
+          <div
+            className="dsh-qa-ws__expanded"
+            data-testid="qa-surface-workspace-expanded"
+          >
+            <p
+              className="dsh-qa-ws__meta"
+              data-testid="qa-surface-workspace-expanded-meta"
+            >
               {formatFileSize(file?.size ?? 0)}
               {file?.truncated === true ? " · показана только часть файла" : ""}
             </p>
@@ -451,31 +507,57 @@ export function QaWorkspaceBrowser({
     );
   }
   const crumbs = crumbsOf(directory);
+  // The trail starts where the section heading stops: at the root the only
+  // crumb would be the section's own title printed twice, one line under the
+  // other. Below the root the trail is the way back up, and it shows again.
+  const trail = directory === "" ? crumbs.slice(1) : crumbs;
   return (
-    <div className="dsh-qa-ws">
-      <nav className="dsh-qa-ws__crumbs" aria-label="Путь в рабочем каталоге">
-        {crumbs.map((crumb, index) => (
-          <span key={crumb.path}>
-            {index > 0 ? <span aria-hidden="true">/</span> : null}
-            <button
-              type="button"
-              className="dsh-qa-ws__crumb"
-              aria-current={index === crumbs.length - 1 ? "true" : undefined}
-              onClick={() => setDirectory(crumb.path)}
-            >
-              {crumb.label}
-            </button>
-          </span>
-        ))}
-      </nav>
+    <div className="dsh-qa-ws" data-testid="qa-surface-workspace">
+      {trail.length === 0 ? null : (
+        <nav
+          className="dsh-qa-ws__crumbs"
+          data-testid="qa-surface-workspace-crumbs"
+          aria-label="Путь в рабочем каталоге"
+        >
+          {trail.map((crumb, index) => (
+            <span key={crumb.path}>
+              {index > 0 ? <span aria-hidden="true">/</span> : null}
+              <button
+                type="button"
+                className="dsh-qa-ws__crumb"
+                data-testid="qa-surface-workspace-crumb"
+                aria-current={index === trail.length - 1 ? "true" : undefined}
+                onClick={() => setDirectory(crumb.path)}
+              >
+                {crumb.label}
+              </button>
+            </span>
+          ))}
+        </nav>
+      )}
       {listStatus === "loading" ? (
-        <p className="dsh-qa-ws__status">Читаю каталог…</p>
+        <p
+          className="dsh-qa-ws__status"
+          data-testid="qa-surface-workspace-status"
+        >
+          Читаю каталог…
+        </p>
       ) : listStatus === "refused" ? (
-        <p className="dsh-qa-ws__status">{listFailure}</p>
+        <p
+          className="dsh-qa-ws__status"
+          data-testid="qa-surface-workspace-status"
+        >
+          {listFailure}
+        </p>
       ) : entries.length === 0 ? (
-        <p className="dsh-qa-ws__status">Каталог пуст.</p>
+        <p
+          className="dsh-qa-ws__status"
+          data-testid="qa-surface-workspace-status"
+        >
+          Каталог пуст.
+        </p>
       ) : (
-        <ul className="dsh-qa-ws__list">
+        <ul className="dsh-qa-ws__list" data-testid="qa-surface-workspace-list">
           {entries.map((entry) => (
             <EntryRow
               key={`${entry.type}:${entry.name}`}
@@ -488,7 +570,12 @@ export function QaWorkspaceBrowser({
         </ul>
       )}
       {truncated ? (
-        <p className="dsh-qa-ws__status">Показаны не все файлы каталога.</p>
+        <p
+          className="dsh-qa-ws__status"
+          data-testid="qa-surface-workspace-status"
+        >
+          Показаны не все файлы каталога.
+        </p>
       ) : null}
     </div>
   );

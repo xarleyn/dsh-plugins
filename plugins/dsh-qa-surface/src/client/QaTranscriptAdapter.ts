@@ -7,13 +7,16 @@ import type {
 } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type { LegacyConversationSlice } from "@deepseek-ai/dsh-client-ui-chat/client";
 import type {
+  QaArtifactView,
   QaFileView,
   QaImageMediaType,
   QaImageView,
   QaMessage,
   QaWorkItem,
 } from "../types.js";
+import { artifactsOfToolResult } from "./chat-artifacts.js";
 import { chatLegacyOf } from "./turn-sources.js";
+import { toWorkspaceRelativeText } from "./workspace-paths.js";
 import { parseSettlement, settlementView } from "./settlement.js";
 import { retryWorkCopy, turnErrorCopy } from "./failure-copy.js";
 import {
@@ -30,6 +33,14 @@ import {
  */
 export const QA_REGENERATE_MARKER =
   "Перегенерируй свой предыдущий ответ — дай новый вариант, не повторяя предыдущий.";
+
+/**
+ * Terminal row of a turn a person stopped. "Готово" claims a complete answer,
+ * and a stopped turn commits a prefix instead, so the row says both what
+ * happened and what the reader is holding.
+ */
+const QA_TURN_STOPPED_COPY =
+  "Ход остановлен: ответ неполный. Отправь запрос ещё раз, чтобы получить ответ целиком.";
 
 interface OrderedWorkItem {
   readonly order: number;
@@ -58,6 +69,14 @@ interface TurnBuffer {
   readonly turn: number;
   readonly text: TextMessage[];
   readonly work: OrderedWorkItem[];
+  /** Files this turn's tools produced, in the order they were reported. */
+  readonly artifacts: QaArtifactView[];
+  /**
+   * Position of the prefix the Host froze when a person stopped this turn, or
+   * undefined when nothing stopped it. A stopped turn is a separate outcome:
+   * its answer is a prefix, so it must not read as a finished one.
+   */
+  stoppedAt?: number;
 }
 
 interface ToolHead {
@@ -142,14 +161,18 @@ function visibleContentText(content: readonly unknown[]): string {
 
 function visibleAssistantText(
   blocks: readonly { readonly kind: string; readonly text?: string }[],
+  workspaceRoot: string | undefined,
 ): string {
-  return blocks
-    .filter(
-      (block): block is { readonly kind: "text"; readonly text: string } =>
-        block.kind === "text" && typeof block.text === "string",
-    )
-    .map((block) => block.text)
-    .join("");
+  return toWorkspaceRelativeText(
+    blocks
+      .filter(
+        (block): block is { readonly kind: "text"; readonly text: string } =>
+          block.kind === "text" && typeof block.text === "string",
+      )
+      .map((block) => block.text)
+      .join(""),
+    workspaceRoot,
+  );
 }
 
 /**
@@ -183,7 +206,7 @@ function messageStats(
 function getTurn(turns: Map<number, TurnBuffer>, turn: number): TurnBuffer {
   let buffer = turns.get(turn);
   if (buffer === undefined) {
-    buffer = { turn, text: [], work: [] };
+    buffer = { turn, text: [], work: [], artifacts: [] };
     turns.set(turn, buffer);
   }
   return buffer;
@@ -194,9 +217,13 @@ function collectAssistant(
   turns: Map<number, TurnBuffer>,
   toolHeads: Map<string, ToolHead>,
   showReasoning: boolean,
+  workspaceRoot: string | undefined,
 ): void {
   const turn = getTurn(turns, node.turn);
-  const text = visibleAssistantText(node.blocks);
+  // The Host sets the flag on a message it committed after a stop, and on the
+  // frozen prefix it assembles from the chunks when nothing was committed.
+  if (node.interrupted === true) turn.stoppedAt = node.seq;
+  const text = visibleAssistantText(node.blocks, workspaceRoot);
   if (text !== "") {
     turn.text.push({
       id: `assistant:${node.messageId ?? node.seq}`,
@@ -268,6 +295,42 @@ function collectSettledTools(
   return settled;
 }
 
+/**
+ * The files each turn's tools handed over, keyed onto the turn that made them.
+ *
+ * This reads the settled tool results whatever the work-view switch says: a
+ * produced document is part of the answer, not tool noise, so a stand that
+ * hides the tool rows must still hand the file to the reader. The turn is
+ * resolved exactly as the work rows resolve it, because the card belongs to the
+ * answer the same turn wrote.
+ */
+function collectTurnArtifacts(
+  nodes: readonly ConversationNode[],
+  turns: Map<number, TurnBuffer>,
+  toolHeads: Map<string, ToolHead>,
+): void {
+  let nearestTurn: number | undefined;
+  for (const node of nodes) {
+    if (node.kind === "assistant") nearestTurn = node.turn;
+    if (node.kind !== "tool-result") continue;
+    const head = toolHeads.get(node.callId);
+    const name = head?.name ?? node.call?.name;
+    const turnNumber = head?.turn ?? nearestTurn;
+    if (name === undefined || turnNumber === undefined) continue;
+    const buffer = getTurn(turns, turnNumber);
+    for (const artifact of artifactsOfToolResult(
+      name,
+      flattenToolOutput(node),
+    )) {
+      // One file reported twice in a turn — a conversion that rewrote its own
+      // bundle — is one card, not two.
+      if (buffer.artifacts.some((seen) => seen.path === artifact.path))
+        continue;
+      buffer.artifacts.push(artifact);
+    }
+  }
+}
+
 function collectRunningTool(
   call: RunningToolCall,
   turns: Map<number, TurnBuffer>,
@@ -279,7 +342,8 @@ function collectRunningTool(
     item: workTool(
       call.callId,
       call.name,
-      call.argsRaw,
+      // A preparing call has no complete arguments yet.
+      call.phase === "start" ? call.argsRaw : "",
       "running",
       call.time,
       undefined,
@@ -327,6 +391,10 @@ function emitTurn(
   const timing = legacy.turnTimings.get(turn.turn);
   const completed =
     timing?.endTime !== undefined || legacy.turnEnds.has(turn.turn);
+  // A provider failure already names its own outcome on the row it adds, so it
+  // wins over the stop marker; a stopped turn is the other terminal outcome the
+  // surface must not print as a finished answer.
+  const stoppedAt = erroredCode === undefined ? turn.stoppedAt : undefined;
   const sortedText = [...turn.text].sort(
     (left, right) => left.order - right.order,
   );
@@ -373,9 +441,11 @@ function emitTurn(
         status:
           erroredCode !== undefined
             ? "error"
-            : completed || !running
-              ? "complete"
-              : "running",
+            : stoppedAt !== undefined
+              ? "stopped"
+              : completed || !running
+                ? "complete"
+                : "running",
         ...(timing?.startTime === undefined
           ? {}
           : { startedAt: timing.startTime }),
@@ -419,6 +489,24 @@ function emitTurn(
           ? {}
           : { timestamp: finalText.timestamp }),
         ...(finalText.stats === undefined ? {} : { stats: finalText.stats }),
+        // The files this turn produced are handed over under the answer that
+        // produced them, whatever the work-view switch hides above.
+        ...(turn.artifacts.length === 0 ? {} : { artifacts: turn.artifacts }),
+      },
+    });
+  }
+
+  if (stoppedAt !== undefined) {
+    // Shown even when the frozen prefix carried no text at all, because that is
+    // the case where the turn would otherwise close silently. The order keeps
+    // the row inside this turn's log slot, so a newer turn still follows it.
+    output.push({
+      order: stoppedAt + 0.5,
+      message: {
+        id: `turn-stopped:${turn.turn}`,
+        role: "system",
+        text: QA_TURN_STOPPED_COPY,
+        status: "info",
       },
     });
   }
@@ -439,10 +527,17 @@ export function projectTranscript(
     readonly subagentNames?: Readonly<Record<string, string>>;
     /** Sign settlement titles with deterministic codenames. */
     readonly subagentCodenames?: boolean;
+    /**
+     * The chat's own workspace directory. An answer that quotes a file inside it
+     * is made to name the file instead of locating it, because the directory is
+     * the account's own and the transcript is not where that layout belongs.
+     */
+    readonly workspaceRoot?: string;
   } = {},
 ): readonly QaMessage[] {
   const legacy = chatLegacyOf(snapshot);
   const running = options.running === true;
+  const workspaceRoot = options.workspaceRoot;
   const output: OrderedMessage[] = [];
   const turns = new Map<number, TurnBuffer>();
   const toolHeads = new Map<string, ToolHead>();
@@ -468,12 +563,18 @@ export function projectTranscript(
         },
       });
     } else if (node.kind === "assistant") {
-      collectAssistant(node, turns, toolHeads, options.showReasoning === true);
+      collectAssistant(
+        node,
+        turns,
+        toolHeads,
+        options.showReasoning === true,
+        workspaceRoot,
+      );
     } else if (node.kind === "context") {
       // Subagent settlement notices (the host injects them when a background
       // child finishes) read as status rows; other context injections stay
       // hidden — they are operator plumbing, not QA-facing content.
-      const label = node.provenance.label ?? "";
+      const label = node.producer.label ?? "";
       if (!label.toLowerCase().startsWith("subagent")) continue;
       const text = visibleContentText(node.content);
       if (text.trim() === "") continue;
@@ -563,6 +664,8 @@ export function projectTranscript(
     }
   }
 
+  collectTurnArtifacts(legacy.nodes, turns, toolHeads);
+
   if (options.showToolActivity === true) {
     const settled = collectSettledTools(legacy.nodes, turns, toolHeads);
     for (const call of legacy.runningCalls) {
@@ -574,7 +677,7 @@ export function projectTranscript(
 
   if (legacy.partial !== null) {
     const partialTurn = getTurn(turns, legacy.partial.turn);
-    const text = visibleAssistantText(legacy.partial.blocks);
+    const text = visibleAssistantText(legacy.partial.blocks, workspaceRoot);
     if (text !== "") {
       partialTurn.text.push({
         id: `assistant:partial:${legacy.partial.turn}:${legacy.partial.step}`,

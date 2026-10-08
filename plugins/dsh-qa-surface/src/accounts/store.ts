@@ -6,6 +6,7 @@ import {
 } from "node:crypto";
 import type {
   QaAccountIdentityField,
+  QaAccountNotificationsInput,
   QaAccountProfile,
   QaAccountProfileInput,
   QaAccountRole,
@@ -24,6 +25,10 @@ import type {
   QaUserAccess,
   QaWhoamiResult,
 } from "../types.js";
+import {
+  normalizeNotifications,
+  validateNotificationsWrite,
+} from "../notifications.js";
 import {
   QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX,
   normalizeProfile,
@@ -189,6 +194,7 @@ function toPublic(user: StoredUser): QaAccountUserPublic {
     disabled: user.disabled === true,
     profile: normalizeProfile(user.profile),
     starters: normalizeStarters(user.starters),
+    notifications: normalizeNotifications(user.notifications),
   };
 }
 
@@ -281,6 +287,20 @@ export class QaAccounts {
   private reloadIfChanged(): void {
     if (this.database.unchangedSinceLoad) return;
     this.file = this.database.loadAll();
+  }
+
+  /**
+   * The authorization state as the database holds it right now.
+   *
+   * Every credential check reads through here, because what decides one — the
+   * token version and the disabled flag — is a row another process may have
+   * changed since this store last read. Refreshing inside the check rather than
+   * in whichever method the caller happened to invoke first is what keeps a
+   * revoked token from surviving in the in-memory model.
+   */
+  private authState(): AccountsFile {
+    this.reloadIfChanged();
+    return this.file;
   }
 
   private pruneAuthAttempts(): void {
@@ -381,10 +401,10 @@ export class QaAccounts {
   }
 
   whoami(token: string): QaWhoamiResult {
-    this.reloadIfChanged();
-    const userId = this.verifyToken(token);
+    const file = this.authState();
+    const userId = verifyToken(file.secret, token, file.users);
     if (userId === null) return { authenticated: false };
-    const user = this.file.users.find((candidate) => candidate.id === userId);
+    const user = file.users.find((candidate) => candidate.id === userId);
     return user === undefined || user.disabled === true
       ? { authenticated: false }
       : { authenticated: true, user: toPublic(user) };
@@ -393,7 +413,8 @@ export class QaAccounts {
   /** Resolve a token to its user, or null for absent/invalid/expired ones. */
   verifyToken(token: string): string | null {
     // Signature, expiry and token-version mechanics live in token.ts.
-    return verifyToken(this.file.secret, token, this.file.users);
+    const file = this.authState();
+    return verifyToken(file.secret, token, file.users);
   }
 
   private mintToken(userId: string): string {
@@ -405,13 +426,21 @@ export class QaAccounts {
     });
   }
 
-  /** The account behind a token, or an auth-required refusal. */
+  /**
+   * The account behind a token, or an auth-required refusal.
+   *
+   * The check reads the current authorization state, so the refusal lands on the
+   * call that presents a revoked token rather than on whichever method reloaded
+   * first. The personal-skill remotes gate on this call alone, which is what
+   * made the difference a security one.
+   */
   requireUser(token: string): StoredUser {
-    const userId = this.verifyToken(token);
+    const file = this.authState();
+    const userId = verifyToken(file.secret, token, file.users);
     const user =
       userId === null
         ? undefined
-        : this.file.users.find((candidate) => candidate.id === userId);
+        : file.users.find((candidate) => candidate.id === userId);
     if (user === undefined || user.disabled === true) {
       throw new QaAccountsError(
         "auth-required",
@@ -423,7 +452,6 @@ export class QaAccounts {
 
   /** Public identity behind a token; used by server-side access services. */
   currentUser(token: string): QaAccountUserPublic {
-    this.reloadIfChanged();
     return toPublic(this.requireUser(token));
   }
 
@@ -1511,6 +1539,34 @@ export class QaAccounts {
           items: result.value.items.map((item) => ({ ...item })),
           hideDefaults: result.value.hideDefaults,
         },
+      })),
+    );
+  }
+
+  /**
+   * Replace the token account's notification channels. Same self-service shape
+   * as {@link updateOwnStarters}: the token is the only identity, the write is
+   * full-replace, and a rejected payload leaves the stored record alone.
+   *
+   * Deliberately not gated by a config key the way profiles and starters are —
+   * a stand that wanted this switched off already has `notifications.enabled`,
+   * and two switches for one decision is how a deployment ends up with an
+   * answer nobody can find.
+   */
+  updateOwnNotifications(
+    token: string,
+    input: QaAccountNotificationsInput,
+  ): QaAccountUserPublic {
+    this.reloadIfChanged();
+    const user = this.requireUser(token);
+    const result = validateNotificationsWrite(input);
+    if (!result.ok) {
+      throw new QaAccountsError("invalid-notifications", result.message);
+    }
+    return toPublic(
+      this.editUser(user.email, (current) => ({
+        ...current,
+        notifications: { ...result.value },
       })),
     );
   }

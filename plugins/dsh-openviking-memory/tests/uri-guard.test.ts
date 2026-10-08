@@ -285,6 +285,14 @@ describe("the wired listener", () => {
     expect(denial.reason).toContain("mcp__openviking__read");
   });
 
+  it("is global so agent-scoped filesystem calls cannot bypass it", async () => {
+    harness = await createHarness({});
+
+    expect(harness.listenerOptions.get("tools/pre-execute")).toEqual({
+      global: true,
+    });
+  });
+
   it("denies the same URI with autoInject:false, where nothing is injected at all", async () => {
     harness = await createHarness({ autoInject: false });
     const { next } = spyNext();

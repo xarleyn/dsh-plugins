@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { QaComposer } from "../../../src/client/components/QaComposer.js";
 import type { QaAttachmentDraft } from "../../../src/types.js";
@@ -9,6 +15,7 @@ import {
   DISABLED_SLASH_VIEW,
   DEFAULT_SLASH_POLICY,
 } from "../../helpers/slash.js";
+import { settle } from "../../helpers/act.js";
 
 /** Mount one composer over a fixed policy, returning its change spy. */
 function mount(overrides: Partial<Parameters<typeof QaComposer>[0]> = {}): {
@@ -57,6 +64,8 @@ describe("QA composer", () => {
     expect(send).not.toHaveBeenCalled();
     fireEvent.keyDown(input, { key: "Enter" });
     expect(send).toHaveBeenCalledWith("hello", [], null);
+    // The composer releases its draft once the accepted send resolves.
+    await settle();
   });
 
   it("shows a real Stop button during generation", () => {
@@ -68,6 +77,27 @@ describe("QA composer", () => {
     expect(screen.queryByRole("button", { name: "Отправить" })).toBeNull();
   });
 
+  it("offers a queue send beside Stop while a turn runs", async () => {
+    const send = vi.fn(async () => true);
+    mount({
+      canSend: true,
+      canStop: true,
+      running: true,
+      status: "Скребу…",
+      onSend: send,
+    });
+    const field = screen.getByLabelText("Задать вопрос");
+    fireEvent.change(field, { target: { value: "пока отвечают" } });
+    const queued = screen.getByRole("button", { name: "Отправить в очередь" });
+    expect((queued as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.getByRole("button", { name: "Остановить" })).toBeTruthy();
+    // Enter still works while the agent talks: the message waits its turn.
+    fireEvent.keyDown(field, { key: "Enter" });
+    await waitFor(() =>
+      expect(send).toHaveBeenCalledWith("пока отвечают", [], null),
+    );
+  });
+
   it("renders the running status inside the composer", () => {
     mount({
       canSend: false,
@@ -75,7 +105,9 @@ describe("QA composer", () => {
       running: true,
       status: "Скребу по сусекам…",
     });
-    expect(screen.getByText("Скребу по сусекам…")).toBeTruthy();
+    expect(screen.getByTestId("qa-composer-hint").textContent).toBe(
+      "Скребу по сусекам…",
+    );
   });
 
   it("sends a quick question from the empty-chat shortcuts", async () => {
@@ -175,9 +207,16 @@ describe("QA composer", () => {
         onStop={vi.fn()}
       />,
     );
-    expect(screen.getByText("spec.md")).toBeTruthy();
-    expect(screen.getByText("19 КБ")).toBeTruthy();
-    fireEvent.click(screen.getByRole("button", { name: "Убрать spec.md" }));
+    const chip = within(screen.getByTestId("qa-composer-files")).getByTestId(
+      "qa-file",
+    );
+    expect(within(chip).getByTestId("qa-file-name").textContent).toBe(
+      "spec.md",
+    );
+    expect(within(chip).getByTestId("qa-file-size").textContent).toBe("19 КБ");
+    fireEvent.click(
+      within(chip).getByRole("button", { name: "Убрать spec.md" }),
+    );
     expect(onAttachmentsChange).toHaveBeenCalledWith([]);
   });
 
@@ -194,8 +233,8 @@ describe("QA composer", () => {
         },
       ],
     });
-    const input = document.querySelector(
-      "input[type='file']",
+    const input = screen.getByTestId(
+      "qa-composer-file-input",
     ) as HTMLInputElement;
     Object.defineProperty(input, "files", {
       value: [new File(["hello"], "note.txt", { type: "text/plain" })],
@@ -213,8 +252,8 @@ describe("QA composer", () => {
     const { onAttachmentsChange } = mount({
       limits: { ...DEFAULT_ATTACHMENT_LIMITS, textFiles: false },
     });
-    const input = document.querySelector(
-      "input[type='file']",
+    const input = screen.getByTestId(
+      "qa-composer-file-input",
     ) as HTMLInputElement;
     Object.defineProperty(input, "files", {
       value: [new File(["hello"], "note.txt", { type: "text/plain" })],
@@ -226,5 +265,41 @@ describe("QA composer", () => {
       ),
     );
     expect(onAttachmentsChange).not.toHaveBeenCalled();
+  });
+
+  it("drops the refusal once a prompt has sent", async () => {
+    // The line names a file the reader tried to add; sending empties the tray,
+    // and a refusal left over an empty tray describes nothing but the past.
+    const { onAttachmentsChange } = mount({
+      limits: { ...DEFAULT_ATTACHMENT_LIMITS, maxPending: 1 },
+      attachments: [
+        {
+          kind: "file",
+          id: "file-1",
+          name: "spec.md",
+          bytes: 10,
+          blob: new Blob(["x"]),
+        },
+      ],
+    });
+    const input = screen.getByTestId(
+      "qa-composer-file-input",
+    ) as HTMLInputElement;
+    Object.defineProperty(input, "files", {
+      value: [new File(["hello"], "note.txt", { type: "text/plain" })],
+    });
+    fireEvent.change(input);
+    await waitFor(() =>
+      expect(screen.getByTestId("qa-composer-attachment-error")).toBeTruthy(),
+    );
+    const prompt = screen.getByTestId(
+      "qa-composer-input",
+    ) as HTMLTextAreaElement;
+    fireEvent.change(prompt, { target: { value: "Продолжим" } });
+    fireEvent.keyDown(prompt, { key: "Enter" });
+    await waitFor(() =>
+      expect(screen.queryByTestId("qa-composer-attachment-error")).toBeNull(),
+    );
+    expect(onAttachmentsChange).toHaveBeenLastCalledWith([]);
   });
 });

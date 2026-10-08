@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Content-Addressed Results",
+    "description": "Bulky tool output stored once by content hash, with a bounded preview and a stable reference in the session."
+  }
+}

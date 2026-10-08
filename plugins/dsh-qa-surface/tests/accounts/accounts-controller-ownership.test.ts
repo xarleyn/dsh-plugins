@@ -115,8 +115,123 @@ describe("QA accounts controller", () => {
     expect(accounts.getSnapshot()).toMatchObject({
       stage: "authed",
       ownedIds: ["s-1"],
+      ownIds: ["s-1"],
       ownership: [],
     });
     expect(accounts.messageAuthorOf("s-1")).toBeUndefined();
+  });
+});
+
+/**
+ * The list a notice is bounded by. The sidebar may show an admin every chat it
+ * is allowed to read; a surface that carries a chat's state out of the page is
+ * bounded by what the account owns, and the two must not be the same array.
+ */
+describe("the strictly owned chat list", () => {
+  const crossUserApi = (): ReturnType<typeof remote> =>
+    remote({
+      accountsOwnedSessions: vi.fn(async () => ({
+        ok: true as const,
+        value: { ids: ["s-mine"] },
+      })),
+      accountsListOwnership: vi.fn(async () => ({
+        ok: true as const,
+        value: {
+          entries: [
+            {
+              sessionId: "s-mine",
+              userId: "u-1",
+              displayName: "a",
+              claimedAt: "2026-09-11T00:00:00.000Z",
+            },
+            {
+              sessionId: "s-foreign",
+              userId: "u-2",
+              displayName: "Борис",
+              claimedAt: "2026-09-11T00:01:00.000Z",
+            },
+          ],
+        },
+      })),
+    });
+
+  it("stays at the account's own chats while the list grows past them", async () => {
+    const accounts = controller(crossUserApi(), { showOtherUsersChats: true });
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+
+    expect(accounts.ownedIds()).toEqual(["s-mine", "s-foreign"]);
+    expect(accounts.ownIds()).toEqual(["s-mine"]);
+  });
+
+  it("takes a chat this page claims into both lists", async () => {
+    const accounts = controller(crossUserApi(), { showOtherUsersChats: true });
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+    await accounts.claimNewSession("s-new");
+
+    expect(accounts.ownIds()).toEqual(["s-mine", "s-new"]);
+    expect(accounts.ownedIds()).toEqual(["s-mine", "s-foreign", "s-new"]);
+  });
+
+  it("notices a lost chat the merged list still names through the map", async () => {
+    let owned: readonly string[] = ["s-mine"];
+    const accounts = controller(
+      remote({
+        accountsOwnedSessions: vi.fn(async () => ({
+          ok: true as const,
+          value: { ids: owned },
+        })),
+        accountsListOwnership: vi.fn(async () => ({
+          ok: true as const,
+          value: {
+            entries: [
+              {
+                sessionId: "s-mine",
+                userId: "u-1",
+                displayName: "a",
+                claimedAt: "2026-09-11T00:00:00.000Z",
+              },
+            ],
+          },
+        })),
+      }),
+      { showOtherUsersChats: true },
+    );
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+    expect(accounts.ownIds()).toEqual(["s-mine"]);
+    expect(accounts.ownedIds()).toEqual(["s-mine"]);
+
+    // The account no longer owns the chat, but the ownership map still names
+    // it: the merged list is unchanged, so only the strict one can report it.
+    owned = [];
+    await accounts.refreshOwned();
+    expect(accounts.ownIds()).toEqual([]);
+    expect(accounts.ownedIds()).toEqual(["s-mine"]);
+  });
+
+  it("is the whole list for an account that reads no shared history", async () => {
+    const accounts = controller(
+      remote({
+        accountsLogin: vi.fn(async () => ({
+          ok: true as const,
+          value: {
+            token: "t-user",
+            user: { ...session("t-user").value.user, role: "user" as const },
+          },
+        })),
+        accountsOwnedSessions: vi.fn(async () => ({
+          ok: true as const,
+          value: { ids: ["s-mine"] },
+        })),
+      }),
+      { showOtherUsersChats: true },
+    );
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+
+    expect(accounts.ownIds()).toEqual(["s-mine"]);
+    expect(accounts.ownedIds()).toEqual(["s-mine"]);
   });
 });

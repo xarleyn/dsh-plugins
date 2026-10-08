@@ -21,6 +21,7 @@ import {
   writeFile,
 } from "node:fs/promises";
 import { existsSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
@@ -45,19 +46,106 @@ export interface TempRepo {
   dispose(): Promise<void>;
 }
 
+/**
+ * Ambient git identity keys, removed from every fixture `git` process.
+ *
+ * `GIT_AUTHOR_*`/`GIT_COMMITTER_*` outrank both the repository `user.name`
+ * config set below and the per-commit `-c user.name=` override, so a caller
+ * that exports a bot identity (CI bots, agent harnesses) would silently become
+ * the author of every fixture commit and break the assertions on it. The
+ * fixture pins identity in the repository config, so it must own it.
+ */
+const IDENTITY_ENV_KEYS: readonly string[] = [
+  "GIT_AUTHOR_NAME",
+  "GIT_AUTHOR_EMAIL",
+  "GIT_AUTHOR_DATE",
+  "GIT_COMMITTER_NAME",
+  "GIT_COMMITTER_EMAIL",
+  "GIT_COMMITTER_DATE",
+];
+
+function fixtureGitEnv(base: NodeJS.ProcessEnv = process.env) {
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(base)) {
+    if (value === undefined || IDENTITY_ENV_KEYS.includes(key)) continue;
+    env[key] = value;
+  }
+  return env;
+}
+
+/**
+ * A fixture `git` invocation that did not work.
+ *
+ * `gitReported` records whether git explained the failure itself, which is what
+ * decides a retry: a refusal git wrote to stderr will simply refuse again.
+ * `timedOut` records the run that never finished at all; retrying that would
+ * spend the per-child ceiling again on a child that already ignored it.
+ */
+class FixtureGitError extends Error {
+  constructor(
+    message: string,
+    readonly gitReported: boolean,
+    readonly timedOut: boolean,
+  ) {
+    super(message);
+    this.name = "FixtureGitError";
+  }
+}
+
+/** Attempts for the idempotent repository-setup commands. */
+const SETUP_ATTEMPTS = 4;
+
+/**
+ * Wall-clock ceiling for one fixture `git` child, so a hang costs this number
+ * and names its command instead of being absorbed by a test budget. The plugin
+ * itself never waits longer than `GIT_READONLY_DEFAULTS.timeoutMs` (15s) for a
+ * git child; the fixtures sit just above that so they never fail a call the
+ * production runner would have tolerated, and stay far below the hook budget in
+ * `vitest.config.ts`, which is what keeps a hang attributed to `git init`
+ * rather than reported as a hook that ran out.
+ */
+const GIT_CHILD_TIMEOUT_MS = 20_000;
+
 export async function createTempRepo(): Promise<TempRepo> {
   const dir = await mkdtemp(join(tmpdir(), "dsh-git-readonly-"));
+  const env = fixtureGitEnv();
   const runGit = (args: readonly string[], cwd: string) =>
     new Promise<string>((resolve, reject) => {
       execFile(
         "git",
         [...args],
-        { cwd, windowsHide: true, maxBuffer: 64 * 1024 * 1024 },
+        {
+          cwd,
+          env,
+          windowsHide: true,
+          maxBuffer: 64 * 1024 * 1024,
+          timeout: GIT_CHILD_TIMEOUT_MS,
+          killSignal: "SIGKILL",
+        },
         (error, stdout, stderr) => {
           if (error !== null) {
+            const failure = error as NodeJS.ErrnoException & {
+              code?: string | number;
+              signal?: string | null;
+              killed?: boolean;
+            };
+            const timedOut = failure.killed === true;
+            // git writes to stderr whenever it decides to refuse, so an empty
+            // stderr means the child died before deciding anything — killed, or
+            // never run. Node's bare `Command failed:` line names neither, so
+            // the exit code and signal go into the report.
+            const diagnostic = stderr.trim();
+            const detail =
+              diagnostic !== ""
+                ? diagnostic
+                : timedOut
+                  ? `${failure.message} (killed at the ${String(GIT_CHILD_TIMEOUT_MS)}ms per-child ceiling)`
+                  : `${failure.message} (code=${String(failure.code)}, signal=${String(failure.signal ?? "none")})`;
             reject(
-              new Error(
-                `git ${args.join(" ")} failed: ${stderr || error.message}`,
+              new FixtureGitError(
+                `git ${args.join(" ")} failed: ${detail}`,
+                diagnostic !== "",
+                timedOut,
               ),
             );
             return;
@@ -67,11 +155,40 @@ export async function createTempRepo(): Promise<TempRepo> {
       );
     });
 
-  await runGit(["init", "-b", "main"], dir);
-  await runGit(["config", "user.name", "QA Bot"], dir);
-  await runGit(["config", "user.email", "qa@example.com"], dir);
-  await runGit(["config", "core.autocrlf", "false"], dir);
-  await runGit(["config", "commit.gpgsign", "false"], dir);
+  /**
+   * Setup commands, retried only while git left no diagnostic at all. Under a
+   * loaded full run projects contend for process creation, and one child that
+   * dies without a word takes its whole test file down, whose tests are then
+   * reported skipped. Retrying these is safe because initializing twice and
+   * setting the same key twice accumulate nothing — which is exactly why nothing
+   * past this point is retried, a second `git commit` would leave two commits
+   * where the snapshot expects one. A child that ran out the per-call ceiling is
+   * not retried either: it gets the ceiling again and only delays the report.
+   */
+  const runSetup = async (args: readonly string[]): Promise<void> => {
+    for (let attempt = 1; ; attempt += 1) {
+      try {
+        await runGit(args, dir);
+        return;
+      } catch (error) {
+        if (
+          attempt === SETUP_ATTEMPTS ||
+          !(error instanceof FixtureGitError) ||
+          error.gitReported ||
+          error.timedOut
+        ) {
+          throw error;
+        }
+        await delay(25 * attempt);
+      }
+    }
+  };
+
+  await runSetup(["init", "-b", "main"]);
+  await runSetup(["config", "user.name", "QA Bot"]);
+  await runSetup(["config", "user.email", "qa@example.com"]);
+  await runSetup(["config", "core.autocrlf", "false"]);
+  await runSetup(["config", "commit.gpgsign", "false"]);
   // Auto-maintenance off. `git commit` ends with a detached
   // `git maintenance run --auto`, which takes `.git/objects/maintenance.lock`
   // for as long as it lives. On Linux the daemon outlives the commit (and,
@@ -80,8 +197,8 @@ export async function createTempRepo(): Promise<TempRepo> {
   // there, which is why the flake only ever showed up in CI. What the
   // mutation suite proves is that the *tools* never write; git's background
   // housekeeping is not part of that promise.
-  await runGit(["config", "maintenance.auto", "false"], dir);
-  await runGit(["config", "gc.auto", "0"], dir);
+  await runSetup(["config", "maintenance.auto", "false"]);
+  await runSetup(["config", "gc.auto", "0"]);
 
   const repo: TempRepo = {
     dir,

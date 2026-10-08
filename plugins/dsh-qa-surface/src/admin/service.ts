@@ -3,6 +3,7 @@ import type { QaAccounts } from "../accounts/store.js";
 import { QaAccountsError } from "../accounts/store.js";
 import type { QaAccessService } from "../access/service.js";
 import type { QaRoleRepository } from "../access/role-repository.js";
+import { normalizeModelPair } from "../access/model-policy.js";
 import {
   defaultCapabilityConfig,
   normalizeUserAccess,
@@ -28,6 +29,10 @@ import type {
   QaConversationReview,
   QaConversationReviewInput,
   QaConversationSummary,
+  QaExpertMemoryDraft,
+  QaExpertMemoryPage,
+  QaExpertMemoryRecord,
+  QaExpertMemoryScope,
   QaFeedbackHarvestEntry,
   QaFeedbackHarvestResult,
   QaFeedbackQuery,
@@ -54,6 +59,11 @@ import type {
   QaPersonalSkills,
   QaSkillScope,
 } from "../personal-skills/index.js";
+import type {
+  QaDomainExpertsFace,
+  QaExpertMemoryAdmin,
+} from "../integration/expert-memory.js";
+import { expertMemoryReasonOf } from "../integration/expert-memory.js";
 import { allows } from "./permissions.js";
 import { aggregateQuality, type QaConversationFact } from "./metrics.js";
 import { paginate } from "./paging.js";
@@ -179,6 +189,14 @@ export interface QaAdminServiceOptions {
    * never constructs storage before someone opens its skills page.
    */
   readonly skills: () => QaPersonalSkills;
+  /**
+   * The domain-experts service, if this deployment composed one. Resolved
+   * lazily for the same reason `skills` is, and for one more: a stand without
+   * experts must still open its console, so the memory page learns "there is
+   * nothing here to maintain" from this returning `undefined` rather than from a
+   * missing import at boot.
+   */
+  readonly domainExperts?: () => QaDomainExpertsFace | undefined;
   /** Drops the sources a conversation collected, when the deployment keeps any. */
   readonly dropSources?: (sessionId: string) => void;
   readonly logger: PluginLogger;
@@ -830,6 +848,9 @@ export class QaAdminService {
       });
     }
     if (nextAccess !== undefined) {
+      await this.options
+        .access()
+        .assertPairServable(nextAccess.model, "assignment model");
       const access = this.exactAssignment(nextAccess, userId);
       accounts.setAccess(userId, access);
       this.options.quality().appendAudit({
@@ -934,9 +955,11 @@ export class QaAdminService {
         "an assignment must name enabled roles and select one of them",
       );
     }
+    const model = normalizeModelPair(input.model, "assignment model");
     return Object.freeze({
       allowedSubroles: Object.freeze(allowed),
       defaultSubrole: input.defaultSubrole,
+      ...(model === undefined ? {} : { model }),
     });
   }
 
@@ -1813,6 +1836,245 @@ export class QaAdminService {
     name: string,
   ): QaSkillDocument {
     return this.options.skills().get(target.scope, name);
+  }
+
+  // -------------------------------------------------------------------------
+  // Expert memory
+  // -------------------------------------------------------------------------
+
+  /**
+   * The domain-experts maintenance seam, or the refusal that says this stand
+   * runs no experts.
+   *
+   * Reach is host-plane on purpose: the sibling plugin's remotes carry no token
+   * and check no permission, because inside the Harness their caller is already
+   * a trusted component. This console answers a browser on a LAN port, so it
+   * calls the service directly and gates every call with its own `require`.
+   */
+  private expertMemory(): QaExpertMemoryAdmin {
+    const admin = this.options.domainExperts?.()?.memoryAdmin;
+    if (admin === undefined) {
+      throw new QaAccountsError(
+        "memory-unavailable",
+        "no domain-experts plugin is composed on this deployment",
+      );
+    }
+    return admin;
+  }
+
+  /**
+   * Run one memory call, translating the sibling plugin's refusal.
+   *
+   * The reason crosses the wire, never the message: a memory refusal names
+   * namespaces, and a storage failure names the database file behind them.
+   */
+  private async memoryCall<T>(
+    action: string,
+    operation: (admin: QaExpertMemoryAdmin) => Promise<T>,
+  ): Promise<T> {
+    const admin = this.expertMemory();
+    try {
+      return await operation(admin);
+    } catch (error) {
+      if (error instanceof QaAccountsError) throw error;
+      const reason = expertMemoryReasonOf(error);
+      this.options.logger.warn("admin.memory-refused", {
+        action,
+        reason: reason ?? "unknown",
+      });
+      if (reason === undefined) throw error;
+      throw new QaAccountsError(reason, `expert memory refused the ${action}`);
+    }
+  }
+
+  /**
+   * What an audit row keeps about one record.
+   *
+   * A remembered line runs to a few pages, and the trail holds a capped JSON
+   * snapshot; the identity of the record and the head of its text is what an
+   * operator reads back to decide whether the deletion was wrong.
+   */
+  private memoryImage(
+    record: QaExpertMemoryRecord,
+  ): Readonly<Record<string, unknown>> {
+    return {
+      namespace: record.namespace,
+      key: record.key,
+      tags: record.tags,
+      updatedAt: record.updatedAt,
+      text: record.text.slice(0, 200),
+    };
+  }
+
+  /** The record one key holds now, if it still holds one. */
+  private async rememberedRecord(
+    admin: QaExpertMemoryAdmin,
+    namespace: string,
+    key: string,
+  ): Promise<QaExpertMemoryRecord | undefined> {
+    const page = await admin.search(namespace, key, QA_ADMIN_PAGE_MAX, 0);
+    return page.records.find((record) => record.key === key);
+  }
+
+  /** Every expert memory namespace on the stand, with its owner and size. */
+  async memoryScopes(token: string): Promise<readonly QaExpertMemoryScope[]> {
+    this.require(token, "memory.read");
+    return await this.memoryCall("scopes", (admin) => admin.scopes());
+  }
+
+  /** One page of one namespace, newest first, with the filter's match count. */
+  async memoryRecords(
+    token: string,
+    namespace: string,
+    query: string,
+    limit: number | null,
+    offset: number,
+  ): Promise<QaExpertMemoryPage> {
+    this.require(token, "memory.read");
+    const size = clampLimit(limit === null ? undefined : limit);
+    const from = Number.isFinite(offset) ? Math.max(0, Math.floor(offset)) : 0;
+    const page = await this.memoryCall("search", (admin) =>
+      admin.search(namespace, query, size, from),
+    );
+    return {
+      records: page.records,
+      total: page.total,
+      offset: from,
+      limit: size,
+    };
+  }
+
+  /**
+   * Rewrite one remembered line.
+   *
+   * The key is not editable: it is what the expert's own notes and the audit
+   * trail point at, and a console that renamed it would orphan both. The write
+   * refuses a record that vanished meanwhile rather than re-creating it — an
+   * operator editing a stale row should reload, not resurrect.
+   */
+  async correctMemory(
+    token: string,
+    namespace: string,
+    key: string,
+    draft: QaExpertMemoryDraft,
+  ): Promise<QaExpertMemoryRecord> {
+    const { actor } = this.require(token, "memory.manage");
+    const before = await this.memoryCall("read-before", (admin) =>
+      this.rememberedRecord(admin, namespace, key),
+    );
+    const record = await this.memoryCall("correct", (admin) =>
+      admin.correct({ namespace, key, text: draft.text, tags: draft.tags }),
+    );
+    this.options.quality().appendAudit({
+      actorId: actor.id,
+      action: "memory.corrected",
+      targetType: "expert-memory",
+      targetId: `${namespace}/${key}`,
+      ...(before === undefined ? {} : { before: this.memoryImage(before) }),
+      after: this.memoryImage(record),
+    });
+    this.options.logger.info("admin.memory-corrected", {
+      actor: actor.id,
+      namespace,
+      key,
+    });
+    return record;
+  }
+
+  /**
+   * Drop one or several remembered lines.
+   *
+   * A single deletion keeps the text it removed; a bulk one keeps only the
+   * count and the keys, because an audit trail that copies every page of memory
+   * it deletes becomes the thing an operator has to clean up.
+   */
+  async forgetMemory(
+    token: string,
+    namespace: string,
+    keys: readonly string[],
+  ): Promise<number> {
+    const { actor } = this.require(token, "memory.manage");
+    const wanted = [
+      ...new Set(keys.map((key) => key.trim()).filter((key) => key !== "")),
+    ];
+    if (wanted.length === 0) {
+      throw new QaAccountsError(
+        "invalid-memory",
+        "a memory deletion needs at least one record key",
+      );
+    }
+    const sole = wanted.length === 1 ? wanted[0] : undefined;
+    const before =
+      sole === undefined
+        ? undefined
+        : await this.memoryCall("read-before", (admin) =>
+            this.rememberedRecord(admin, namespace, sole),
+          );
+    const removed = await this.memoryCall("forget", async (admin) =>
+      sole === undefined
+        ? await admin.removeMany(namespace, wanted)
+        : (await admin.remove(namespace, sole))
+          ? 1
+          : 0,
+    );
+    this.options.quality().appendAudit({
+      actorId: actor.id,
+      action: "memory.deleted",
+      targetType: "expert-memory",
+      targetId: namespace,
+      before:
+        before === undefined
+          ? { keys: wanted, count: wanted.length }
+          : this.memoryImage(before),
+    });
+    this.options.logger.info("admin.memory-deleted", {
+      actor: actor.id,
+      namespace,
+      named: wanted.length,
+      removed,
+    });
+    return removed;
+  }
+
+  /** Empty one expert's private namespace. */
+  async wipeMemory(
+    token: string,
+    namespace: string,
+    expectedRecords: number | null,
+  ): Promise<number> {
+    const { actor } = this.require(token, "memory.manage");
+    const page = await this.memoryCall("read-before", (admin) =>
+      admin.search(namespace, "", 1, 0),
+    );
+    if (
+      expectedRecords !== null &&
+      Number.isFinite(expectedRecords) &&
+      expectedRecords >= 0 &&
+      page.total !== expectedRecords
+    ) {
+      // The console asks for the count it showed. Memory an expert wrote while
+      // the operator was deciding is not memory the operator agreed to erase.
+      throw new QaAccountsError(
+        "memory-record-unknown",
+        "the namespace holds a different number of records than the one confirmed",
+      );
+    }
+    const cleared = await this.memoryCall("wipe", (current) =>
+      current.wipe(namespace),
+    );
+    this.options.quality().appendAudit({
+      actorId: actor.id,
+      action: "memory.wiped",
+      targetType: "expert-memory",
+      targetId: namespace,
+      after: { cleared },
+    });
+    this.options.logger.info("admin.memory-wiped", {
+      actor: actor.id,
+      namespace,
+      cleared,
+    });
+    return cleared;
   }
 
   // -------------------------------------------------------------------------

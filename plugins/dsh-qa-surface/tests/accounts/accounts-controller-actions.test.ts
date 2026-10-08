@@ -204,6 +204,46 @@ describe("QA accounts controller", () => {
     expect(api.accountsUpdateStarters).not.toHaveBeenCalled();
   });
 
+  it("stores the signed-in user's channels and reports refusals inline", async () => {
+    const api = remote();
+    const accounts = controller(api);
+    await accounts.start();
+    await accounts.login("a@b.co", "password-1");
+    const input = { inApp: true, desktop: true };
+    expect(await accounts.updateNotifications(input)).toBeNull();
+    expect(api.accountsUpdateNotifications).toHaveBeenCalledWith(
+      "t-login",
+      input,
+    );
+    // The snapshot carries the stored pair, which is what the notices plan with.
+    expect(accounts.getSnapshot()).toMatchObject({
+      stage: "authed",
+      user: { notifications: input },
+    });
+
+    const refused = controller(
+      remote({
+        accountsUpdateNotifications: vi.fn(async () => ({
+          ok: false as const,
+          error: new Error("nope (reason: invalid-notifications)"),
+        })),
+      }),
+    );
+    await refused.start();
+    await refused.login("a@b.co", "password-1");
+    expect(await refused.updateNotifications(input)).toContain("уведомлений");
+  });
+
+  it("refuses a notifications write while anonymous", async () => {
+    const api = remote();
+    const accounts = controller(api);
+    await accounts.start();
+    await expect(
+      accounts.updateNotifications({ inApp: true, desktop: false }),
+    ).resolves.toContain("Не удалось");
+    expect(api.accountsUpdateNotifications).not.toHaveBeenCalled();
+  });
+
   it("changes the password and keeps the session on the token it gets back", async () => {
     const api = remote();
     const accounts = controller(api);

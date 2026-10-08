@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../../src/resolve-config.js";
 import { QaSidebar } from "../../../src/client/components/QaSidebar.js";
@@ -84,7 +90,13 @@ describe("QA auth gate", () => {
     const view = render(
       <GateView accounts={accounts} allowRegistration={allowRegistration} />,
     );
-    void accounts.start();
+    // The gate stage is published by the whoami probe `start` awaits, so the
+    // update lands after the render returned. Flushing it inside act is what
+    // makes the projection see it; left floating, React reports the update as
+    // unwrapped and the next test inherits the render.
+    await act(async () => {
+      await accounts.start();
+    });
     await waitFor(() => {
       expect(accounts.getSnapshot().stage).toBe("gate");
     });
@@ -93,17 +105,19 @@ describe("QA auth gate", () => {
 
   it("renders the login card and switches to registration", async () => {
     await mountedGate(accountsApi());
-    expect(screen.getByText("DeepSeek QA")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "DeepSeek QA" })).toBeTruthy();
     expect(screen.getByLabelText(/Email/)).toBeTruthy();
-    expect(screen.getByText("Регистрация")).toBeTruthy();
-    fireEvent.click(screen.getByText("Регистрация"));
-    expect(screen.getByText("Зарегистрироваться")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Регистрация" })).toBeTruthy();
+    fireEvent.click(screen.getByTestId("qa-surface-auth-tab-register"));
+    expect(
+      screen.getByRole("button", { name: "Зарегистрироваться" }),
+    ).toBeTruthy();
   });
 
   it("hides the registration tab when the deployment disables signup", async () => {
     await mountedGate(accountsApi(), false);
-    expect(screen.queryByText("Регистрация")).toBeNull();
-    expect(screen.getByText("Войти")).toBeTruthy();
+    expect(screen.queryByRole("tab", { name: "Регистрация" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Войти" })).toBeTruthy();
   });
 
   it("reports coarse refusals as audience-safe copy", async () => {
@@ -114,7 +128,7 @@ describe("QA auth gate", () => {
     fireEvent.change(screen.getByLabelText(/Пароль/), {
       target: { value: "wrong-password-1" },
     });
-    fireEvent.click(screen.getByText("Войти"));
+    fireEvent.click(screen.getByTestId("qa-surface-auth-submit"));
     await waitFor(() => {
       expect(screen.getByRole("alert").textContent).toContain(
         "Неверный email или пароль",
@@ -122,16 +136,97 @@ describe("QA auth gate", () => {
     });
   });
 
+  // A click on the submit button goes through the browser's submission
+  // algorithm in jsdom too, so a field `required` or `type="email"` fails to
+  // reach the card until the form opts out — which is the defect, and the
+  // reason the opt-out is asserted rather than only implied by the copy below.
+  it("submits without handing the field to the browser's validator", async () => {
+    await mountedGate(accountsApi(), false);
+    const form = screen.getByTestId<HTMLFormElement>("qa-surface-auth-card");
+    expect(form.noValidate).toBe(true);
+    // The constraints stay declarative: they name the field for autofill and
+    // assistive tech, while the card decides what an attempt means.
+    expect(form.querySelector('input[type="email"]')).not.toBeNull();
+    expect(
+      form.querySelector<HTMLInputElement>('input[name="password"]')?.minLength,
+    ).toBe(8);
+  });
+
+  it("refuses a password below the floor with its own copy, before the round trip", async () => {
+    const api = accountsApi();
+    await mountedGate(api, false);
+    fireEvent.change(screen.getByLabelText(/Email/), {
+      target: { value: "a@b.co" },
+    });
+    fireEvent.change(screen.getByLabelText(/Пароль/), {
+      target: { value: "abc" },
+    });
+    fireEvent.click(screen.getByTestId("qa-surface-auth-submit"));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toBe(
+        "Пароль должен быть не короче 8 символов.",
+      );
+    });
+    expect(api.accountsLogin).not.toHaveBeenCalled();
+    // Fixing the field takes the refusal away: it answered the attempt, not the
+    // text the operator is typing now.
+    fireEvent.change(screen.getByLabelText(/Пароль/), {
+      target: { value: "password-1" },
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+    fireEvent.click(screen.getByTestId("qa-surface-auth-submit"));
+    await waitFor(() => {
+      expect(api.accountsLogin).toHaveBeenCalledWith("a@b.co", "password-1");
+    });
+  });
+
+  it("refuses an address the Host could not accept", async () => {
+    const api = accountsApi();
+    await mountedGate(api, true);
+    fireEvent.click(screen.getByTestId("qa-surface-auth-tab-register"));
+    fireEvent.change(screen.getByLabelText(/Email/), {
+      target: { value: "not-an-address" },
+    });
+    fireEvent.change(screen.getByLabelText(/Пароль/), {
+      target: { value: "password-1" },
+    });
+    fireEvent.click(screen.getByTestId("qa-surface-auth-submit"));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toBe(
+        "Введите корректный email.",
+      );
+    });
+    expect(api.accountsRegister).not.toHaveBeenCalled();
+    // The registration tab is a different operation, not a different excuse.
+    fireEvent.change(screen.getByLabelText(/Email/), {
+      target: { value: "a@b.co" },
+    });
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("refuses an empty reset request in its own words", async () => {
+    const api = accountsApi();
+    await mountedGate(api, false);
+    fireEvent.click(screen.getByTestId("qa-surface-auth-forgot"));
+    fireEvent.click(screen.getByTestId("qa-surface-auth-submit"));
+    await waitFor(() => {
+      expect(screen.getByRole("alert").textContent).toBe(
+        "Введите корректный email.",
+      );
+    });
+    expect(api.accountsRequestPasswordReset).not.toHaveBeenCalled();
+  });
+
   it("files a forgotten-password request from the reset card", async () => {
     const api = accountsApi();
     const { accounts } = await mountedGate(api, false);
-    fireEvent.click(screen.getByText("Забыли пароль?"));
+    fireEvent.click(screen.getByTestId("qa-surface-auth-forgot"));
     // The reset card asks for an address only: there is no password to type.
     expect(screen.queryByLabelText(/Пароль/)).toBeNull();
     fireEvent.change(screen.getByLabelText(/Email/), {
       target: { value: "a@b.co" },
     });
-    fireEvent.click(screen.getByText("Отправить заявку"));
+    fireEvent.click(screen.getByTestId("qa-surface-auth-submit"));
     await waitFor(() => {
       expect(api.accountsRequestPasswordReset).toHaveBeenCalledWith("a@b.co");
     });
@@ -146,7 +241,7 @@ describe("QA auth gate", () => {
     });
     // Returning to the form drops the confirmation: it answered the request,
     // not the sign-in that follows it.
-    fireEvent.click(screen.getByText("Вернуться ко входу"));
+    fireEvent.click(screen.getByTestId("qa-surface-auth-forgot"));
     expect(screen.queryByRole("status")).toBeNull();
     expect(screen.getByLabelText(/Пароль/)).toBeTruthy();
   });
@@ -166,12 +261,10 @@ describe("QA auth gate", () => {
         account={{ email: "a@b.co", role: "admin", onLogout }}
       />,
     );
-    const chip = document.querySelector(".dsh-qa-sidebar__account");
-    expect(chip?.textContent).toContain("a@b.co");
-    expect(chip?.textContent).toContain("admin");
-    fireEvent.click(
-      document.querySelector(".dsh-qa-sidebar__account-exit") as HTMLElement,
-    );
+    const chip = screen.getByTestId("qa-surface-sidebar-account");
+    expect(chip.textContent).toContain("a@b.co");
+    expect(chip.textContent).toContain("admin");
+    fireEvent.click(screen.getByTestId("qa-surface-sidebar-account-logout"));
     expect(onLogout).toHaveBeenCalledTimes(1);
   });
 });

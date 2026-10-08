@@ -11,6 +11,7 @@ import {
   ConfigSchema,
   matchesOptimizedRoute,
   resolveConfig,
+  snapshotConfig,
 } from "./shared/config.js";
 import type { Config, ResolvedConfig } from "./shared/config.js";
 import type { OptimizerCallTelemetry } from "./shared/telemetry.js";
@@ -25,7 +26,7 @@ function pluginLogLevel(level: ResolvedConfig["logLevel"]): PluginLogLevel {
   return level === "off" ? "silent" : level;
 }
 
-/** User-editable settings section rendered by the browser client card. */
+/** Settings namespace the browser card edits, i.e. the profile entry id. */
 export const SLEEV_SETTINGS_NAMESPACE = SLEEV_SETTINGS_NAMESPACE_ID;
 
 declare module "@deepseek-ai/cordis" {
@@ -41,57 +42,42 @@ export class SleevIntegrationService extends Service {
 
   private readonly telemetry: CallTelemetryStore;
   private readonly logger: PluginLogger;
+  private appliedConfig: ResolvedConfig;
 
-  constructor(ctx: Context, input: Config = {}) {
+  constructor(ctx: Context, input: Config) {
     super(ctx, "sleev");
-    const resolvedEntry = resolveConfig(input);
-    const entry: Config = {
-      routes: [...resolvedEntry.routes],
-      routePrefixes: [...resolvedEntry.routePrefixes],
-      maxRecentCalls: resolvedEntry.maxRecentCalls,
-      logLevel: resolvedEntry.logLevel,
-    };
-    let configSource: () => Config = () => entry;
+    const entry = resolveConfig(snapshotConfig(input));
+    this.appliedConfig = entry;
     this.logger = getPluginLogger({
       pluginId: "dsh-sleev",
-      level: pluginLogLevel(resolvedEntry.logLevel),
+      level: pluginLogLevel(entry.logLevel),
       console: "trace",
       consoleSink: createHostLoggerSink(ctx.logger),
     });
     ctx.effect(() => async () => this.logger.close(), "dsh-sleev.logger");
+    const readConfig = (): ResolvedConfig => this.currentConfig(input);
     this.telemetry = new CallTelemetryStore(
       this.logger.child("telemetry"),
-      () => resolveConfig(configSource()),
+      readConfig,
     );
 
+    /*
+     * Every editable field carries `.volatile()`, so the Loader serves the
+     * entry itself as the settings namespace and the browser card edits it
+     * through `ctx.configForms`. `auto: false` keeps the Host from generating a
+     * second page for the values our own card already presents.
+     */
     ctx.inject(["settings"], (settingsCtx) => {
-      settingsCtx.settings.installSection(
-        ctx,
-        SLEEV_SETTINGS_NAMESPACE,
-        ConfigSchema,
-        entry,
-        {
-          setSource: (current) => {
-            configSource = current;
-          },
-          // Route matching and telemetry policy read through configSource for
-          // each operation, so a committed setting needs no re-registration.
-          onChange: () => {
-            const config = this.telemetry.reconfigure();
-            this.logger.setLevel(pluginLogLevel(config.logLevel));
-            this.logger.info("telemetry.config.updated", {
-              logLevel: config.logLevel,
-              maxRecentCalls: config.maxRecentCalls,
-            });
-          },
-        },
+      settingsCtx.effect(
+        () => settingsCtx.settings.configure({ auto: false }, ctx.fiber),
+        "dsh-sleev.settings-presentation",
       );
     });
 
     ctx.on(
       "llm/stream",
       (options: GenerateOptions, next: () => AsyncIterable<StreamChunk>) => {
-        const config = resolveConfig(configSource());
+        const config = readConfig();
         if (!matchesOptimizedRoute(options.provider, config)) return next();
         const handle = this.telemetry.begin(options, classifyRequest(options));
         return observeStream(next(), handle);
@@ -99,12 +85,38 @@ export class SleevIntegrationService extends Service {
       { global: true },
     );
 
-    if (resolvedEntry.logLevel !== "off") {
+    if (entry.logLevel !== "off") {
       this.logger.info("plugin.ready", {
-        routes: resolvedEntry.routes,
-        routePrefixes: resolvedEntry.routePrefixes,
+        routes: entry.routes,
+        routePrefixes: entry.routePrefixes,
       });
     }
+  }
+
+  /**
+   * Read one configuration snapshot and apply what a committed edit changes.
+   *
+   * The Loader swaps a volatile value inside the same reference instead of
+   * re-constructing this service, so the logger level and the retention bound
+   * follow on the first read that sees them.
+   */
+  private currentConfig(input: Config): ResolvedConfig {
+    const config = resolveConfig(snapshotConfig(input));
+    const previous = this.appliedConfig;
+    if (
+      config.logLevel === previous.logLevel &&
+      config.maxRecentCalls === previous.maxRecentCalls
+    ) {
+      return config;
+    }
+    this.appliedConfig = config;
+    this.logger.setLevel(pluginLogLevel(config.logLevel));
+    this.telemetry.reconfigure();
+    this.logger.info("telemetry.config.updated", {
+      logLevel: config.logLevel,
+      maxRecentCalls: config.maxRecentCalls,
+    });
+    return config;
   }
 
   /** Bounded completed-call snapshot; no prompts, headers, or credentials. */

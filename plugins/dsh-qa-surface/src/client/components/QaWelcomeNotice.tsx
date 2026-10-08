@@ -7,6 +7,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import type { SettingsOnboardingOwnerProps } from "@deepseek-ai/dsh-client-ui-settings/client";
+import { focusable } from "../focus-ring.js";
 import type { StorageLike } from "../types.js";
 
 /** Bump when the notice changes materially and must be acknowledged again. */
@@ -42,14 +43,6 @@ function acknowledged(storage: StorageLike, key: string): boolean {
   } catch {
     return false;
   }
-}
-
-function focusable(root: HTMLElement): HTMLElement[] {
-  return [
-    ...root.querySelectorAll<HTMLElement>(
-      "button:not([disabled]), a[href], input:not([disabled]), [tabindex]:not([tabindex='-1'])",
-    ),
-  ].filter((element) => !element.hidden);
 }
 
 /** Route-scoped replacement for DSH's stock `welcome-notice` onboarding step. */
@@ -124,10 +117,15 @@ export function QaWelcomeNotice(props: QaWelcomeNoticeProps) {
   if (isAcknowledged) return null;
 
   return createPortal(
-    <div className="dsh-qa-onboarding" onKeyDown={trapKeys}>
+    <div
+      className="dsh-qa-onboarding"
+      data-testid="qa-surface-welcome"
+      onKeyDown={trapKeys}
+    >
       <div
         ref={dialog}
         className="dsh-qa-onboarding__panel"
+        data-testid="qa-surface-welcome-panel"
         role="dialog"
         aria-modal="true"
         aria-labelledby="dsh-qa-onboarding-title"
@@ -140,23 +138,35 @@ export function QaWelcomeNotice(props: QaWelcomeNoticeProps) {
             <path d="m8.75 12 2 2 4.5-4.5" />
           </svg>
         </div>
-        <div className="dsh-qa-onboarding__content">
-          <h1 id="dsh-qa-onboarding-title" className="dsh-qa-onboarding__title">
+        <div
+          className="dsh-qa-onboarding__content"
+          data-testid="qa-surface-welcome-content"
+        >
+          <h1
+            id="dsh-qa-onboarding-title"
+            className="dsh-qa-onboarding__title"
+            data-testid="qa-surface-welcome-title"
+          >
             {QA_WELCOME_NOTICE_COPY.title}
           </h1>
           <div
             id="dsh-qa-onboarding-description"
             className="dsh-qa-onboarding__description"
+            data-testid="qa-surface-welcome-description"
           >
             {QA_WELCOME_NOTICE_COPY.paragraphs.map((paragraph) => (
               <p key={paragraph}>{paragraph}</p>
             ))}
           </div>
-          <div className="dsh-qa-onboarding__actions">
+          <div
+            className="dsh-qa-onboarding__actions"
+            data-testid="qa-surface-welcome-actions"
+          >
             <button
               ref={continueButton}
               type="button"
               className="dsh-qa-onboarding__continue"
+              data-testid="qa-surface-welcome-continue"
               onClick={confirm}
             >
               {QA_WELCOME_NOTICE_COPY.continueLabel}

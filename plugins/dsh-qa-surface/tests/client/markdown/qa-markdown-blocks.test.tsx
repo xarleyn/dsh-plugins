@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
-import { act, fireEvent, render } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { act, fireEvent, render, within } from "@testing-library/react";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Markdown } from "../../../src/client/components/Markdown.js";
 
 /** The answer shape that prompted this renderer: MR review with C# diff. */
@@ -53,7 +53,40 @@ if (etAttr != null) {
 \`\`\`
 `;
 
+/**
+ * A jsdom page has neither copy path, so the fence would render the manual hint
+ * in every test. Each case installs the browser it means to be: the secure
+ * context with the Clipboard API, the plain-HTTP stand with only the copy
+ * command, or a browser that refuses both.
+ */
+function withClipboardApi(writeText: (text: string) => Promise<void>): void {
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+}
+
+function withCopyCommand(result: boolean): void {
+  Object.defineProperty(document, "execCommand", {
+    configurable: true,
+    value: vi.fn(() => result),
+  });
+}
+
+function withoutCopyPaths(): void {
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: undefined,
+  });
+  Object.defineProperty(document, "execCommand", {
+    configurable: true,
+    value: undefined,
+  });
+}
+
 describe("assistant Markdown blocks", () => {
+  beforeEach(withoutCopyPaths);
+
   it("renders every ATX heading level instead of leaking the hashes", () => {
     const { container } = render(
       <Markdown
@@ -90,49 +123,96 @@ describe("assistant Markdown blocks", () => {
       "demo/example!4242",
     );
     expect(paragraph?.querySelector("em")?.textContent).toBe("одобрил");
-    const fences = container.querySelectorAll(".dsh-qa-md-code");
-    expect(fences.length).toBe(2);
-    expect(fences[0]?.querySelector(".dsh-qa-md-code__lang")?.textContent).toBe(
+    const fences = within(container).getAllByTestId("qa-md-code");
+    expect(fences).toHaveLength(2);
+    expect(within(fences[0]!).getByTestId("qa-md-code-lang").textContent).toBe(
       "csharp",
     );
     expect(
-      fences[0]?.querySelectorAll(".dsh-qa-md-tok").length,
+      within(fences[0]!).getAllByTestId("qa-md-code-token").length,
     ).toBeGreaterThan(4);
   });
 
   it("sets a fenced block's language, copy button, and highlight tokens", () => {
+    withClipboardApi(async () => undefined);
     const { container } = render(
       <Markdown text={'```json\n{"a": 1, "b": "x"}\n```'} />,
     );
-    const block = container.querySelector(".dsh-qa-md-code");
-    expect(block?.querySelector("code")?.getAttribute("data-language")).toBe(
+    const block = within(container).getByTestId("qa-md-code");
+    expect(block.querySelector("code")?.getAttribute("data-language")).toBe(
       "json",
     );
-    const tokens = [...(block?.querySelectorAll(".dsh-qa-md-tok") ?? [])];
+    const tokens = within(block).getAllByTestId("qa-md-code-token");
     expect(tokens.map((token) => token.getAttribute("data-tok"))).toEqual([
       "key",
       "number",
       "key",
       "string",
     ]);
-    const copy = block?.querySelector("button");
-    expect(copy?.textContent).toBe("Копировать");
+    const copy = within(block).getByTestId("qa-md-code-copy");
+    expect(copy.textContent).toBe("Копировать");
   });
 
   it("copies the fence source, and says so once it did", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+    const writeText = vi.fn(async () => undefined);
+    withClipboardApi(writeText);
     const { container } = render(
       <Markdown text={"```sh\nnpm run build\n```"} />,
     );
-    const copy = container.querySelector("button");
-    expect(copy).not.toBeNull();
+    const copy = within(container).getByTestId("qa-md-code-copy");
     await act(async () => {
-      if (copy !== null) fireEvent.click(copy);
+      fireEvent.click(copy);
       await Promise.resolve();
     });
     expect(writeText).toHaveBeenCalledWith("npm run build");
-    expect(copy?.textContent).toBe("Скопировано");
+    expect(copy.textContent).toBe("Скопировано");
+  });
+
+  it("copies the fence through the copy command on an insecure page", async () => {
+    // The stand over a LAN address: no `navigator.clipboard` at all, and the
+    // button used to answer such a click with nothing.
+    withCopyCommand(true);
+    const { container } = render(
+      <Markdown text={"```sh\nnpm run build\n```"} />,
+    );
+    const copy = within(container).getByTestId("qa-md-code-copy");
+    await act(async () => {
+      fireEvent.click(copy);
+      await Promise.resolve();
+    });
+    expect(document.execCommand).toHaveBeenCalledWith("copy");
+    expect(copy.textContent).toBe("Скопировано");
+  });
+
+  it("names the dead end instead of a copy button that cannot work", () => {
+    withoutCopyPaths();
+    const { container } = render(
+      <Markdown text={"```sh\nnpm run build\n```"} />,
+    );
+    expect(within(container).queryByTestId("qa-md-code-copy")).toBeNull();
+    expect(
+      within(container).getByTestId("qa-md-code-copy-hint").textContent,
+    ).toBe("Скопируйте вручную");
+  });
+
+  it("keeps the button and says to copy by hand once the browser refused", async () => {
+    withClipboardApi(async () => {
+      throw new DOMException("denied");
+    });
+    withCopyCommand(false);
+    const { container } = render(
+      <Markdown text={"```sh\nnpm run build\n```"} />,
+    );
+    const copy = within(container).getByTestId("qa-md-code-copy");
+    expect(within(container).queryByTestId("qa-md-code-copy-hint")).toBeNull();
+    await act(async () => {
+      fireEvent.click(copy);
+      await Promise.resolve();
+    });
+    expect(copy.textContent).toBe("Копировать");
+    expect(
+      within(container).getByTestId("qa-md-code-copy-hint").textContent,
+    ).toBe("Скопируйте вручную");
   });
 
   it("keeps nested lists, tight items, and task checkboxes", () => {
@@ -151,9 +231,9 @@ describe("assistant Markdown blocks", () => {
     expect(
       first?.querySelector(":scope > li")?.querySelector(":scope > p"),
     ).toBeNull();
-    const boxes = [
-      ...container.querySelectorAll<HTMLInputElement>("input[type=checkbox]"),
-    ];
+    const boxes = within(container).getAllByTestId<HTMLInputElement>(
+      "qa-md-task-checkbox",
+    );
     expect(boxes.map((box) => box.checked)).toEqual([true, false]);
     const ordered = container.querySelector("ol");
     expect(ordered?.querySelector(":scope > li > ol > li")?.textContent).toBe(
@@ -191,7 +271,7 @@ describe("assistant Markdown blocks", () => {
     ]);
     // The code chrome survives the promotion, and the URL glyph leads the text.
     expect(links[1]?.closest("code")).not.toBeNull();
-    expect(links[0]?.querySelector(".dsh-qa-md-link-icon")).not.toBeNull();
+    expect(within(links[0]!).queryByTestId("qa-md-link-icon")).not.toBeNull();
     expect(container.textContent).toContain("javascript:alert(1)");
   });
 
@@ -222,11 +302,11 @@ describe("assistant Markdown blocks", () => {
         }
       />,
     );
-    expect(container.querySelector("img")?.getAttribute("src")).toBe(
-      "https://example.com/a.png",
-    );
-    expect(container.querySelectorAll("img").length).toBe(1);
-    expect(container.querySelector(".dsh-qa-md-image-alt")?.textContent).toBe(
+    expect(
+      within(container).getByTestId("qa-md-image").getAttribute("src"),
+    ).toBe("https://example.com/a.png");
+    expect(within(container).getAllByTestId("qa-md-image")).toHaveLength(1);
+    expect(within(container).getByTestId("qa-md-image-alt").textContent).toBe(
       "локальная",
     );
   });

@@ -11,6 +11,30 @@
 
 import type { ContentBlock } from "@deepseek-ai/dsh-llm";
 
+// ------------------------------------------------------------- message source
+
+/**
+ * The gate's own producer source kind, declared the way the harness declares
+ * its own: the `@deepseek-ai/dsh-llm` source map is merge-extensible and ships
+ * no catch-all `plugin` kind, so a producer names itself here.
+ *
+ * `kind` says *who produced this*, `form` says *what kind of thing it is*; the
+ * gate only ever steers a one-off account of what a review found, so it pins
+ * the `notice` form rather than admitting the whole context-form union.
+ */
+export interface AnswerReviewMessageSource {
+  readonly kind: "answer-review";
+  readonly form: "notice";
+  /** One-line account of the review outcome, already bounded for the log. */
+  readonly summary: string;
+}
+
+declare module "@deepseek-ai/dsh-llm" {
+  interface MessageSourceMap {
+    "answer-review": AnswerReviewMessageSource;
+  }
+}
+
 // ------------------------------------------------------------------ verdict
 
 /** Severity of one review finding. */
@@ -90,9 +114,18 @@ export interface PendingDelegation {
 
 // -------------------------------------------------------------------- audit
 
-/** Outcome of one gate decision at a turn-stopping boundary. */
+/**
+ * Outcome of one gate decision at a turn-stopping boundary. `answer-shape` is
+ * the gate's own demand that a draft which argues with the review be rewritten
+ * as an answer: no reviewer ran, so no PASS is possible for that candidate.
+ */
 export type ReviewAuditOutcome =
-  "pass" | "revise" | "waived" | "suppressed-pending-work" | "failure";
+  | "pass"
+  | "revise"
+  | "answer-shape"
+  | "waived"
+  | "suppressed-pending-work"
+  | "failure";
 
 /** One audit record (`SPEC.md`, "Audit"). Never carries prompt/response text. */
 export interface ReviewAuditEntry {
@@ -127,6 +160,13 @@ export interface ReviewInput {
   readonly turn: number;
   /** The latest user request text, when it could be located. */
   readonly requestText: string | null;
+  /**
+   * Handle text for every attachment (image/file) the user request carried,
+   * rendered with the host's `fileHandleText`/`textOnlyImageText` idiom. The
+   * reviewer sees that a named attachment existed and what kind it was, and
+   * that it cannot open it. Empty when the request carried no attachment.
+   */
+  readonly requestAttachments: readonly string[];
   /** The candidate final answer text. */
   readonly candidateText: string;
   /** Cancellation owned by the reviewed agent's turn. */
@@ -208,7 +248,8 @@ export interface SubagentStartSpec {
 /** Structural view of one started subagent run. */
 export interface SubagentRunHandle {
   readonly result: Promise<SubagentRunResult>;
-  dispose(): void;
+  /** Tear the child down; asynchronous on the host, so callers await it. */
+  dispose(): void | Promise<void>;
 }
 
 /** The subset of `SubagentResult` the verdict path reads. */

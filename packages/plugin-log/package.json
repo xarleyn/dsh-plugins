@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-plugin-log",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Shared structured file logging and runtime logger discovery for DSH plugins",
   "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-log#readme",
   "bugs": {
@@ -42,16 +42,22 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src tests",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run verify:package",
     "prepack": "pnpm run build",
-    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build"
+    "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify"
   },
   "dependencies": {
+    "@pinojs/redact": "^0.4.0",
     "pino": "^10.3.1"
   },
   "devDependencies": {
     "@types/node": "catalog:tooling",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-scripts": "workspace:^",
     "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling",

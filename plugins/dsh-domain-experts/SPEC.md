@@ -56,57 +56,95 @@ Each numbered item is a verifiable guarantee, phrased as behaviour.
     namespace, read its shared namespaces, and nothing else. A foreign
     namespace is refused with `MEMORY_SCOPE_DENIED`, and a write to a read-only
     namespace is refused with the same code. The model never supplies a
-    namespace that is trusted.
-15. A foreign domain is reached through its own expert. With the default
+    namespace that is trusted. Where the deployment has accounts and
+    `perUserMemory` is on, "its own namespace" is the **caller's account**
+    namespace — `domain/payments/u/<account>` — and the domain's own namespace
+    joins the read-only tier, so what one account's expert learned is never a
+    rule another account inherits. The account comes from the caller's own
+    session, resolved host-side, never from an argument or a browser request,
+    and a delegated run inherits the account of the run that spawned it. A run
+    no account has claimed keeps reading and is refused a write, because the
+    only namespace left to it is what every account reads.
+15. A note says who it is true for. The composed policy states that a tool,
+    source or path which only this caller's access showed is that caller's
+    situation and not a property of the domain, and the writable namespace of
+    an account-scoped run cannot carry such a claim into what every account
+    reads.
+16. A foreign domain is reached through its own expert. With the default
     `expert-only` mode an expert cannot read another domain's memory or
     resources directly.
-16. Cross-domain policy is machine-enforced: `disabled` refuses every
+17. Cross-domain policy is machine-enforced: `disabled` refuses every
     delegation, an explicit target list restricts which domains are reachable,
     and self-delegation is refused even when everything else allows it.
-17. Delegation depth is capped by `delegation.maxDepth`, checked by the plugin
+18. Delegation depth is capped by `delegation.maxDepth`, checked by the plugin
     before the call (`DELEGATION_DEPTH_EXCEEDED`) and again by the runtime.
-18. Parallel expert runs per calling session are capped: the caller's own
+19. Parallel expert runs per calling session are capped: the caller's own
     `maxParallel` when the caller is an expert, otherwise the plugin default.
     Exceeding it refuses the call with `PARALLELISM_EXCEEDED`.
-19. A disabled or unknown domain is refused with `DOMAIN_DISABLED` or
+20. A disabled or unknown domain is refused with `DOMAIN_DISABLED` or
     `DOMAIN_NOT_FOUND`; the not-found message lists the known domain ids, and a
     disabled domain is absent from `domain_experts_list`.
-20. Every restriction the UI shows is labelled `enforced` or `advisory`. A
+21. Every restriction the UI shows is labelled `enforced` or `advisory`. A
     filesystem entry is `enforced` only when a selected worker declares that it
     applies that scope; otherwise it is `advisory`, including in the composed
     persona ("preference only").
-21. Degraded configuration is surfaced, not hidden: a configured but
+22. Degraded configuration is surfaced, not hidden: a configured but
     unregistered scope provider, a missing memory provider, a worker without a
     tool binding, an unverifiable tool name and a missing delegation target each
-    appear as a named degradation with the references that caused it.
+    appear as a named degradation with the references that caused it. Each code
+    also says what the expert loses (§2, degradation codes); `TOOL_UNVERIFIED`
+    loses nothing, so a `degraded` chip or a `domain-expert/degraded` log line is
+    not by itself a failed run and never overrides `status`.
 22. Each run records one audit entry — domain, caller domain, caller session,
+    appear as a named degradation with the references that caused it.
+23. Each run records one audit entry — domain, caller domain, caller session,
     child session, mode, status, duration, delegation path and degradation
     codes — mirrored to the plugin log. No task text, retrieved memory or
     credential is recorded.
-23. The plugin never throws from load. A storage failure is reported as
+24. The plugin never throws from load. A storage failure is reported as
     `STORAGE_UNAVAILABLE` with the underlying message, and the plugin keeps
     serving its tools and UI.
-24. A corrupt domain record fails the storage open loudly, naming the table and
+25. A corrupt domain record fails the storage open loudly, naming the table and
     key. The plugin then serves no domains rather than silently dropping the
     user's data.
-25. The management UI is a client of `ctx.domainExperts`. It holds no policy and
+26. The management UI is a client of `ctx.domainExperts`. It holds no policy and
     performs no enforcement; the same service can back a CLI or an API.
-26. The browser half degrades rather than throws: an unavailable slot, an
+27. The browser half degrades rather than throws: an unavailable slot, an
     unavailable settings namespace or an unanswered Remote call renders as a
     labelled status, never as a broken page.
-27. The plugin registers **no** settings card. Its UI is one page in
-    `settings.plugins.tab`, so the bundle carries no card shell.
-28. Every agent-visible tool declares `output { schema, render }`, and a refusal
+28. The plugin registers **no** settings card. Its UI is one page on the
+    `plugins.bundle.config` seat of the Host's Plugins page, so the bundle carries
+    no card shell and no title of its own.
+29. Every agent-visible tool declares `output { schema, render }`, and a refusal
     carries its stable error code in the message the model receives.
-29. Changing the carrier of memory changes what it costs, not what it answers.
+30. Changing the carrier of memory changes what it costs, not what it answers.
     Both providers score by the number of query terms present in a record's key,
     text and tags, order by score and then by the newest update, and break a tie
     by namespace and key; the same fixed queries return the same records in the
     same order on either carrier.
-30. An import into another carrier verifies or refuses. Records are copied in one
+31. An import into another carrier verifies or refuses. Records are copied in one
     transaction and compared field by field inside it; a mismatch rolls the copy
     back, leaves the source holding everything, and fails the open loudly rather
     than serving an expert from a partial store.
+31. A memory write that records nothing is refused. The `domain_memory` tool
+    answers `MEMORY_NOISE_REFUSED` and names the reason — an acknowledgement, a
+    placeholder, an echoed command, a note that nothing was found, punctuation,
+    or a text too short to carry a fact — because a remembered line is injected
+    verbatim into every later answer of that domain, and one stored sentence of
+    noise outlives the run that wrote it. Every rule matches the whole text, so a
+    finding that mentions an absence stays writable, and the gate is not applied
+    to a human correction: maintenance empties and shortens records on purpose.
+32. A memory record is addressable, never renamed. A correction rewrites the text
+    and the tags of the key it names and keeps `createdAt`; a key no record holds
+    is refused `MEMORY_RECORD_MISSING` rather than written fresh, so an edit made
+    over a row another writer deleted cannot leave a one-word record behind.
+33. Memory maintenance is a host-plane seam (`ctx.domainExperts.memoryAdmin`),
+    not a Remote. The agent-facing tool sees one expert's namespaces; maintenance
+    sees every enabled expert's, refuses anything no enabled expert declares
+    (`MEMORY_SCOPE_DENIED`), writes only a namespace some expert owns as
+    read-write, and deletes one record, a named set, or a whole namespace. It is
+    not reachable from a browser because a Remote would carry no token and check
+    no permission — the calling surface owns both.
 
 ## 2. Data model
 
@@ -125,6 +163,14 @@ at version `1` — in a file of its own: table `domain_memory`, primary key
 stored search text the scorer defines. The unit's `memory` table remains the
 source the import reads and the copy a rollback returns to; the plugin never
 deletes it. See `README.md`, "Where memory lives".
+
+- **Namespace layout.** `domain/<domain-id>` is what the domain knows for
+  everyone; an account-scoped deployment records below it as
+  `domain/<domain-id>/u/<account>`, and `shared/…` namespaces are the
+  deployment-wide tier. `defaultMemoryNamespace` and `userMemoryNamespace` are
+  the only places that spelling exists, and the host's account ids are already
+  storage-safe; an id that is not a valid namespace segment is treated as no
+  account at all rather than interpolated into a key.
 
 - **Unit version** is `1` and moves together with `DOMAIN_RECORD_VERSION`.
   A breaking record change bumps both and lists the previous version in
@@ -158,9 +204,39 @@ deletes it. See `README.md`, "Where memory lives".
 `PARALLELISM_EXCEEDED`, `EXPERT_NOT_CALLER`, `TASK_REJECTED`,
 `STORAGE_UNAVAILABLE`.
 
-Degradation codes (UI and audit): `SCOPE_PROVIDER_MISSING`,
-`MEMORY_PROVIDER_MISSING`, `WORKER_UNAVAILABLE`, `TOOL_UNVERIFIED`,
-`DELEGATION_TARGET_MISSING`.
+Degradation codes (`DomainDegradationCode`) appear in the resolved-scope
+inspector, in the domain list's `N degraded` chip, in the run audit and in the
+mirrored `domain-expert/degraded` warning. A code names what the deployment could
+not honour; it does not restate the run's outcome — `status` does. What each code
+costs the expert:
+
+| Code | Emitted when | What the expert loses |
+| --- | --- | --- |
+| `SCOPE_PROVIDER_MISSING` | A scope provider is configured but not registered, refuses its own configuration, or the built-in filesystem provider is absent. | That provider's resources and external scope; its configuration stays inert. |
+| `MEMORY_PROVIDER_MISSING` | The configured memory provider is not registered. | Recalled notes; the expert runs without them. |
+| `WORKER_UNAVAILABLE` | The allow-list names a registered worker that carries no tool binding, so it cannot be selected. | That worker; the entry is marked unavailable and stays out of the tool filter. |
+| `TOOL_UNVERIFIED` | The allow-list names something that is neither a plugin alias nor a worker this plugin knows — that is, a plain global tool (`read`, `grep`, `mcp__<server>__<tool>`). | Nothing. See below. |
+| `TOOL_UNFILTERABLE` | The runtime refused the tool filter at child start, naming entries it cannot resolve, and the run was retried without them. | At most the named tool, and only when nothing mounts it: a tool the expert's own preset provides stays available whatever the filter says. |
+| `DELEGATION_TARGET_MISSING` | A delegation target is unknown or disabled. | That peer as a delegation target. |
+
+`TOOL_UNVERIFIED` is informational by construction. Resolution consults this
+plugin's `WorkerRegistry` only; there is no seam to ask the host for its global
+tool registry before the child starts, so the resolver can neither confirm nor
+deny such a name and marks it `kind: "tool"`, leaving the harness to validate it.
+The name is passed through unchanged and stays in `toolFilter.allow`
+(`filterNamesOf` keeps every available entry). Dropping it instead would quietly
+narrow the expert on the deployments that do mount it, so it is not dropped: an
+allow-list is written in the vocabulary of the operator's kit, which means every
+healthy expert carrying ordinary tools records this code on every run. A
+`domain-expert/degraded codes="TOOL_UNVERIFIED"` line next to
+`status="completed"` is the expected record. A refusal the runtime issues that
+this plugin cannot attribute to a droppable filter entry is not a degradation at
+all — it stays a run failure, carrying `WORKER_UNAVAILABLE` when the refusal says
+the name is not registered in this deployment.
+
+This table is the grading a reader has to apply by hand: a degradation record
+carries no machine-readable severity, and giving it one changes the
+`DomainDegradation` contract and every surface that reads it (§4).
 
 ## 3. Lifecycle
 
@@ -168,7 +244,7 @@ Degradation codes (UI and audit): `SCOPE_PROVIDER_MISSING`,
 plugin load
   │  constructor: config, logger, built-in scope provider, tool objects
   │  applyEnabled(): register the agent tools when enabled
-  │  ctx.inject(['settings']): publish the settings namespace (optional seam)
+  │  ctx.on('loader/volatile-update'): re-apply the tool surface (config is live)
   ▼
 first domain operation
   │  storageDomain.open(domain_experts)        ── failure ⇒ STORAGE_UNAVAILABLE
@@ -222,10 +298,11 @@ audit ring mirrored to the plugin log.
 | Domain hierarchy (`parent`) | The record keeps a flat id space, which a future `parent` field can extend without a breaking change. |
 | Continuable-child delegation after a restart | A resumed durable child is no longer attributable to a domain, so delegation from it fails with `EXPERT_NOT_CALLER` rather than guessing. |
 | Enforcing an arbitrary global shell tool | A path restriction is only enforced by a worker that consumes the scope; the UI says `advisory` when none does. |
+| A severity field on the degradation record | `DomainDegradation` carries code, message and refs only; §2's table is the grading a reader applies by hand. Putting the tier in the record means changing the contract and every surface that reads it, so it is tracked as its own card rather than folded into documenting a code. |
 
 ## 5. Required end-to-end scenarios
 
-1. **Create and use.** Open `Settings → Plugins → Domain Experts`, create
+1. **Create and use.** Open the **Domain Experts** row of the Plugins page, create
    `payments` with a persona and one primary path. In a chat, call
    `domain_expert(domain: "payments", task: "…")`. Expect a child session whose
    persona contains the base policy, the task and the primary path.
@@ -234,7 +311,12 @@ audit ring mirrored to the plugin log.
    enforcing worker, `enforced` naming that worker.
 3. **Memory isolation.** Record a note with `domain_memory(action: "write")`
    inside the expert. Then call `domain_memory(action: "read", namespace:
-   "domain/other")` from the same expert. Expect `MEMORY_SCOPE_DENIED`.
+   "domain/other")` from the same expert. Expect `MEMORY_SCOPE_DENIED`. In a
+   deployment with accounts, repeat the write from a second account's chat and
+   read it back from the first: the note is absent, and the domain namespace
+   `domain/payments` is listed read-only to both. Start an expert from a session
+   no account has claimed and write: expect `MEMORY_SCOPE_DENIED` naming the
+   unattributed run, with reads still working.
 4. **Cross-domain question.** With `payments` in `expert-only` mode, call
    `domain_expert(domain: "inventory", task: "…")` from inside the payments
    expert. Expect an inventory child whose audit entry has delegation path
@@ -262,7 +344,7 @@ audit ring mirrored to the plugin log.
 | Persona composition | Implemented | Base policy + sections; `{{` guard |
 | Scope-provider registry | Implemented | Built-in `filesystem`; extension API on the service |
 | Filesystem scope metadata + path containment | Implemented | `path-guard.ts`, `resolveWithinRoot` |
-| Memory provider registry + built-in backend | Implemented | Namespace-partitioned records |
+| Memory provider registry + built-in backend | Implemented | Namespace-partitioned records, per domain and per account |
 | Memory on a SQLite carrier | Implemented | `src/host/memory/sqlite.ts`; one-time verified import from the unit; shared scorer keeps ranking identical |
 | Worker registry | Implemented | MVP workers are generic tool references |
 | `domain_expert` on the native subagent runtime | Implemented | Persona, tool mask, depth cap, model options |
@@ -271,7 +353,7 @@ audit ring mirrored to the plugin log.
 | Background expert runs | Implemented | Continuable children; returns a receipt |
 | Structured expert output | Partial | Prompt contract with lenient parsing; native `outputSchema` deferred |
 | Execution audit | Partial | In-memory ring + plugin log; durable store deferred |
-| Settings tab UI | Implemented | `settings.plugins.tab`, id `domain-experts` |
+| Bundle page UI | Implemented | `plugins.bundle.config`, keyed by the package name |
 | Resolved-scope inspector | Implemented | Per-entry enforcement labels |
 | Expert test screen | Implemented | Real run through `ctx.agents`; profile preview |
 | Extension APIs | Implemented | `registerScopeProvider` / `registerMemoryProvider` / `registerWorker` |

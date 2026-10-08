@@ -26,8 +26,8 @@ import { contentRef } from "../../src/archive/hash.js";
 import {
   DEFAULT_SHAPE_TOOLS,
   resolveJevCompactionConfig,
-} from "../../src/config.js";
-import type { ResolvedJevCompactionConfig } from "../../src/config.js";
+} from "../../src/config/index.js";
+import type { ResolvedJevCompactionConfig } from "../../src/config/index.js";
 import type {
   JevAnswers,
   JevQuestion,
@@ -196,10 +196,10 @@ describe("a shaped result survives persistence and replay", () => {
     expect(replayed).toBeDefined();
     const replayedText = (
       replayed!.data as {
-        message: { content: [{ content: { text: string }[] }] };
+        message: { content: readonly { type: string; text?: string }[] };
       }
-    ).message.content[0].content
-      .map((block) => block.text)
+    ).message.content
+      .map((block) => block.text ?? "")
       .join("\n");
     expect(replayedText).toContain("[dsh-jev-compaction: collapsed");
     expect(replayedText).not.toContain("progress 60% of dependency graph");

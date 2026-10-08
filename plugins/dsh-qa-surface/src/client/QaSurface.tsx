@@ -16,9 +16,11 @@ import type {
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type {
+  QaAccountNotificationsInput,
   QaAccountProfileInput,
   QaAccountStartersInput,
   QaApprovalDecision,
+  QaArtifactView,
   QaAttachmentDraft,
   QaQuestionAnswerItem,
   QaCurrentAccess,
@@ -45,6 +47,7 @@ import type {
   QaConversation,
   QaCreateSession,
   QaFileUpload,
+  QaQueueStatusRemote,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -57,8 +60,12 @@ import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { QaAuthGate } from "./components/QaAuthGate.js";
 import { QaApproval } from "./components/QaApproval.js";
 import { QaQuestions } from "./components/QaQuestions.js";
+import { QaRequestQueue } from "./components/QaRequestQueue.js";
 import { QaComposer } from "./components/QaComposer.js";
+import { QaQueueDock } from "./components/QaQueueDock.js";
 import { QaHeader, QaSubagentBanner } from "./components/QaHeader.js";
+import { QaThemeSwitcher } from "./components/QaThemeSwitcher.js";
+import { useQaThemePreference } from "./theme-preference.js";
 import { QaMessage } from "./components/QaMessage.js";
 import { buildChatRows, QaSidebar } from "./components/QaSidebar.js";
 import {
@@ -66,9 +73,17 @@ import {
   collectSubagents,
 } from "./components/QaAgentsDrawer.js";
 import { collectChatFiles, countChatAttachments } from "./chat-files.js";
+import { downloadWorkspaceFile } from "./workspace-download.js";
 import { QaFilesPanel } from "./components/QaFilesPanel.js";
+import { isQaModalOpen } from "./components/QaModal.js";
 import { QaRightRail, type QaRailTabModel } from "./components/QaRightRail.js";
 import { QaSourcesPanel } from "./components/QaSourcesPanel.js";
+import {
+  QA_TURN_NOTICE_LINE_SELECTOR,
+  QA_TURN_NOTICE_OFFER_SELECTOR,
+  QaTurnNotice,
+} from "./components/QaTurnNotice.js";
+import { useQaTurnNotifications } from "./notifications/use-turn-notifications.js";
 import {
   QA_TURN_FOLLOW_PX,
   QaTurnRail,
@@ -84,6 +99,13 @@ import { VariantSwitcher } from "./components/VariantSwitcher.js";
 import { QaWelcomeNotice } from "./components/QaWelcomeNotice.js";
 import { statusText, titleFromMessages } from "./components/surface-utils.js";
 import { useThinkingPhrase } from "./components/thinking-phrases.js";
+import {
+  focusFirst,
+  focusRing,
+  focusable,
+  isInert,
+  trapKeys,
+} from "./focus-ring.js";
 import {
   QaUserSettingsDialog,
   type QaSettingsSectionId,
@@ -159,6 +181,11 @@ export interface QaSurfaceFace {
    */
   readonly slashApi?: QaSlashApi;
   /**
+   * The Host's live read of the request ceiling. Absent on a Host build that
+   * predates it: a deployment with no ceiling never asks, so nothing changes.
+   */
+  readonly queueStatus?: QaQueueStatusRemote;
+  /**
    * Browser file-upload service, when the page serves the upload plugin.
    * Resolved per send so a page that loads it later still gets file support.
    */
@@ -181,40 +208,53 @@ export type QaSurfaceProps = PropsRuntime<"shell.overlay"> &
   PropsRenderSlots<"qa.surface.panel"> &
   InjectFace<QaSurfaceFace>;
 
-function focusable(root: HTMLElement): HTMLElement[] {
-  return [
-    ...root.querySelectorAll<HTMLElement>(
-      "button:not([disabled]), textarea:not([disabled]), a[href], [tabindex]:not([tabindex='-1'])",
-    ),
-  ].filter((element) => !element.hidden);
-}
-
-function trapKeys(event: KeyboardEvent<HTMLElement>): void {
-  event.stopPropagation();
-  if (event.key !== "Tab") return;
-  const items = focusable(event.currentTarget);
-  if (items.length === 0) {
-    event.preventDefault();
-    event.currentTarget.focus();
-    return;
-  }
-  const first = items[0];
-  const last = items.at(-1);
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last?.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first?.focus();
-  }
-}
-
 /** Same follow threshold the rail uses: this close to the floor is "at bottom". */
 function isNearBottom(element: HTMLElement): boolean {
   return (
     element.scrollHeight - element.scrollTop - element.clientHeight <
     QA_TURN_FOLLOW_PX
   );
+}
+
+/**
+ * The stack line the reader's control stands on, or null when the ring has no
+ * place to keep for it. The desktop opt-in is not a line: it is what the stack
+ * ends with, so losing it is losing the last control of the last line, and that
+ * line is taken as its place. The opt-in is read by its own block rather than as
+ * whatever the stack holds that is not a line — the next block the stack grows
+ * (a heading, a «скрыть все») is neither, and handing the reader to a line they
+ * never stood on is worse than handing them nowhere.
+ */
+function noticeLineOf(
+  target: HTMLElement,
+  stack: HTMLElement,
+): HTMLElement | null {
+  const line = target.closest<HTMLElement>(QA_TURN_NOTICE_LINE_SELECTOR);
+  if (line !== null) return line;
+  if (target.closest<HTMLElement>(QA_TURN_NOTICE_OFFER_SELECTOR) === null) {
+    return null;
+  }
+  const lines = stack.querySelectorAll<HTMLElement>(
+    QA_TURN_NOTICE_LINE_SELECTOR,
+  );
+  return lines.item(lines.length - 1);
+}
+
+/**
+ * The line the stack lists on this side of `line`, or null when there is none:
+ * the opt-in block shares the stack with the lines but is not one of them, so it
+ * is not a place a reader can be handed back to.
+ */
+function adjacentNoticeLine(
+  line: HTMLElement,
+  side: "previous" | "next",
+): HTMLElement | null {
+  const sibling =
+    side === "previous" ? line.previousElementSibling : line.nextElementSibling;
+  return sibling instanceof HTMLElement &&
+    sibling.matches(QA_TURN_NOTICE_LINE_SELECTOR)
+    ? sibling
+    : null;
 }
 
 export function QaSurface(props: QaSurfaceProps) {
@@ -254,10 +294,132 @@ export function QaSurface(props: QaSurfaceProps) {
   const transcript = useRef<HTMLDivElement>(null);
   const chat = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
+  const surface = useRef<HTMLElement>(null);
+  /** The notice stack: after `<main>` in the page, inside the ring with it. */
+  const noticeStack = useRef<HTMLDivElement>(null);
+  /**
+   * Whether a dialog, rather than this ring, owns the keyboard: the onboarding
+   * gate holds the page inert, and a `QaModal` stands over it with the Escape of
+   * its own. Neither paints the notice stack away — a dialog is a neighbour of
+   * it, not an ancestor — so the ring has to step back of its own accord, and
+   * step back to the subtree it counted before the stack was ever part of it.
+   */
+  const dialogOwnsKeyboard = useCallback((): boolean => {
+    const root = surface.current;
+    return isQaModalOpen() || (root !== null && isInert(root));
+  }, []);
+  /** The roots the Tab ring is drawn around, in the order the ring walks them. */
+  const ringRoots = useCallback(
+    (): readonly (HTMLElement | null)[] =>
+      dialogOwnsKeyboard()
+        ? [surface.current]
+        : [surface.current, noticeStack.current],
+    [dialogOwnsKeyboard],
+  );
+  /**
+   * Where the keyboard last stood in the notice stack: the control, the line it
+   * stood on, the lines the stack listed beside it, and the control's step
+   * within the line. The stack alone is remembered: a control of `<main>` that
+   * leaves the page with its row — a queue dock entry, a transcript action, a
+   * rebuilt chat — is the surface's own business, and this ring hands nothing
+   * back there. Read as focus moves, so it names where the reader stands rather
+   * than where they once stood: a focus landing anywhere else lets the place go.
+   *
+   * The place is held as lines, not as a number counted along the ring, because
+   * a counted place is not a stable coordinate here. A finished turn is put in
+   * front of the lines the reader already sees (`use-turn-notifications.ts`), so
+   * a step counted from the front of the stack slides by as many controls as the
+   * batch brought, and `<main>`, which the ring counts first, grows and shrinks
+   * for reasons of its own. The line the reader stood on and its neighbours keep
+   * the one claim the restore has to make — hand the keyboard to the line that
+   * took their place — whatever else arrived or left in the same moment.
+   */
+  const ringAnchor = useRef<{
+    /** The control itself: its loss is read from the page, not counted. */
+    element: HTMLElement;
+    line: HTMLElement | null;
+    /** The control's step among the tabbables of that line. */
+    step: number;
+    before: HTMLElement | null;
+    after: HTMLElement | null;
+  } | null>(null);
+  useEffect(() => {
+    const onFocusIn = (event: FocusEvent) => {
+      const target = event.target;
+      const stack = noticeStack.current;
+      if (
+        !(target instanceof HTMLElement) ||
+        stack === null ||
+        !stack.contains(target)
+      ) {
+        ringAnchor.current = null;
+        return;
+      }
+      const line = noticeLineOf(target, stack);
+      if (line === null) {
+        ringAnchor.current = null;
+        return;
+      }
+      const controls = focusable(line);
+      const step = controls.indexOf(target);
+      ringAnchor.current = {
+        element: target,
+        line,
+        // A control outside every line is the desktop opt-in, and the place it
+        // stands for is the front of the line the stack keeps last. Not its end:
+        // the last control is the cross, which answers the Enter the reader gave
+        // the offer by waving a notification they never aimed at.
+        step: step < 0 ? 0 : step,
+        before: adjacentNoticeLine(line, "previous"),
+        after: adjacentNoticeLine(line, "next"),
+      };
+    };
+    document.addEventListener("focusin", onFocusIn);
+    return () => document.removeEventListener("focusin", onFocusIn);
+  }, []);
+  /**
+   * Keys typed in the surface: Tab stays in the ring, and nothing else of the
+   * key reaches the harness the overlay is built on.
+   */
+  const trapSurfaceKeys = useCallback(
+    (event: KeyboardEvent<HTMLElement>) => {
+      trapKeys(event, ringRoots());
+    },
+    [ringRoots],
+  );
+  /**
+   * Keys typed in the notice stack, where no ancestor `<main>` can hear them.
+   *
+   * Only the Tab this ring answers is taken; every other key is left to bubble
+   * as the browser would carry it, so a dialog that listens on the window —
+   * `QaModal`, and the settings dialog built on it — still hears the Escape the
+   * reader gives it. A dialog is also why that Tab is left alone: the stack is
+   * the dialog's neighbour rather than its content, so a ring closed around both
+   * would take the reader out of the dialog they are working in and put them
+   * back on a page held under the scrim.
+   */
+  const trapNoticeKeys = useCallback(
+    (event: KeyboardEvent<HTMLElement>) => {
+      if (event.key !== "Tab" || dialogOwnsKeyboard()) return;
+      trapKeys(event, ringRoots());
+    },
+    [dialogOwnsKeyboard, ringRoots],
+  );
   /** Turn marks of the visible transcript, kept in a ref for stable callbacks. */
   const railItemsRef = useRef<readonly QaTurnRailItem[]>([]);
   const activeTurnFrame = useRef<number | null>(null);
   const stateKey = qaStorageNamespace(config);
+  // The palette belongs to the surface, so it is only painted while the
+  // surface is what the visitor is looking at: outside its own route the
+  // overlay is mounted and invisible, and flipping the Host document's
+  // attributes from there would be the QA stand restyling the harness. What the
+  // surface borrowed for the visit it hands back on the way out, for the same
+  // reason — see `useQaThemePreference`.
+  const theme = useQaThemePreference({
+    active: route.active,
+    storage: window.localStorage,
+    storageKey: `${stateKey}:theme`,
+  });
   const isAdmin =
     accountsSnapshot.stage === "authed" &&
     accountsSnapshot.user.role === "admin";
@@ -365,6 +527,9 @@ export function QaSurface(props: QaSurfaceProps) {
         ? {}
         : { questionApi: props.questionApi }),
       ...(props.slashApi === undefined ? {} : { slashApi: props.slashApi }),
+      ...(props.queueStatus === undefined
+        ? {}
+        : { queueStatus: props.queueStatus }),
       config,
       initialSubrole: selectedSubrole,
       adminPreview: previewing,
@@ -391,6 +556,7 @@ export function QaSurface(props: QaSurfaceProps) {
     props.fileUpload,
     props.approvalApi,
     props.questionApi,
+    props.queueStatus,
     props.secureSession,
     props.sourceApi,
     props.sessions,
@@ -512,9 +678,9 @@ export function QaSurface(props: QaSurfaceProps) {
     props.sessions.list.getSnapshot,
   );
   // Draft text, attachments, variant offsets and drawers are chat-local; the
-  // hook clears them whenever the bound session changes. The rail controller
-  // takes the drawer slice; the surface keeps the composer and marks state.
-  const ui = useSessionUiState(state.sessionId);
+  // hook clears them whenever the chat changes. The rail controller takes the
+  // drawer slice; the surface keeps the composer and marks state.
+  const ui = useSessionUiState(state.chatKey);
   const rail = useRightRail(ui);
   const {
     activeTurn,
@@ -523,9 +689,26 @@ export function QaSurface(props: QaSurfaceProps) {
     setVariantOffsets,
     agentsOpen,
     setAgentsOpen,
+    setRailOpen,
+    setRailTab,
     pendingAttachments,
     setPendingAttachments,
   } = ui;
+
+  /**
+   * The file a card asked to open, with the chat it was asked in and the stamp
+   * of the request. The chat is part of the arrival because the rail survives
+   * switching chats: an arrival from the previous chat must not open its file
+   * in this one. The stamp makes a second click on the same card a fresh
+   * arrival rather than a path that never changed.
+   */
+  const [artifactArrival, setArtifactArrival] = useState<{
+    readonly path: string;
+    readonly chatKey: number;
+    readonly stamp: number;
+  } | null>(null);
+  /** Counts the open requests, so the same file twice is two arrivals. */
+  const artifactStamp = useRef(0);
 
   useEffect(() => {
     if (!route.active) return;
@@ -564,6 +747,16 @@ export function QaSurface(props: QaSurfaceProps) {
     void controller?.startDraft();
   }, [controller]);
 
+  // The phone layout's history drawer. Its state is the surface's, not the
+  // sidebar's, because the control that opens it stands in the header: the narrow
+  // sheet switches the whole sidebar subtree off, and an opener inside it is no
+  // opener at all. The sidebar keeps its own collapsed rail, which is a
+  // wide-layout choice and a different thing — a phone that opens the drawer gets
+  // the list whatever that rail remembers.
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const toggleHistory = useCallback(() => setHistoryOpen((open) => !open), []);
+  const closeHistory = useCallback(() => setHistoryOpen(false), []);
+
   // The audit dialog's target, not its state: opening it is a view choice, and
   // closing it must not disturb the chat underneath.
   const [auditTarget, setAuditTarget] = useState<string | null>(null);
@@ -585,6 +778,13 @@ export function QaSurface(props: QaSurfaceProps) {
     ) => controller?.send(text, attachments, pick) ?? Promise.resolve(false),
     [controller],
   );
+  // Closing the queue notice only uncovers the composer: the question the stand
+  // had no room for is still the text in there, and asking it again is a
+  // keystroke the visitor takes when a place frees up.
+  const dismissRequestQueue = useCallback(
+    () => controller?.dismissRequestQueueNotice(),
+    [controller],
+  );
   // Cheap refresh on every palette opening: the skill registry has no browser
   // change event, and the controller skips the round-trip while its answer is
   // still fresh.
@@ -593,6 +793,21 @@ export function QaSurface(props: QaSurfaceProps) {
   }, [controller]);
   const handleStop = useCallback(
     () => controller?.stop() ?? Promise.resolve(),
+    [controller],
+  );
+  const handleQueueEdit = useCallback(
+    (id: string, text: string) =>
+      controller?.queueAction(id, "edit", text) ?? Promise.resolve(null),
+    [controller],
+  );
+  const handleQueueSendNow = useCallback(
+    (id: string) =>
+      controller?.queueAction(id, "steer") ?? Promise.resolve(null),
+    [controller],
+  );
+  const handleQueueRemove = useCallback(
+    (id: string) =>
+      controller?.queueAction(id, "remove") ?? Promise.resolve(null),
     [controller],
   );
   const handleAnswerApproval = useCallback(
@@ -660,6 +875,54 @@ export function QaSurface(props: QaSurfaceProps) {
     }
     nearBottom.current = isNearBottom(element);
   }, []);
+  /**
+   * A produced file the reader wants to see: open the rail on its workspace
+   * viewer at exactly that file. The viewer is the panel's own — it reads under
+   * the chat's fence and converts a Word document into a preview — so a card
+   * under an answer points at that work instead of carrying a second viewer
+   * that could disagree with it.
+   */
+  const handleArtifactOpen = useCallback(
+    (artifact: QaArtifactView) => {
+      artifactStamp.current += 1;
+      setArtifactArrival({
+        path: artifact.path,
+        chatKey: state.chatKey,
+        stamp: artifactStamp.current,
+      });
+      setAgentsOpen(false);
+      setRailOpen(true);
+      setRailTab("files");
+    },
+    // The three setters never change identity, and the chat key is the only
+    // value the arrival carries: the callback stays stable across the frames of
+    // one chat, which is what keeps the memoized transcript rows from
+    // re-rendering on every published state.
+    [setAgentsOpen, setRailOpen, setRailTab, state.chatKey],
+  );
+  /**
+   * A produced file the reader wants to keep: the same fenced read the panel
+   * uses, handed to the browser's download machinery. A read that fails opens
+   * the viewer instead, which reports the refusal rather than swallowing the
+   * click.
+   */
+  const handleArtifactDownload = useCallback(
+    (artifact: QaArtifactView) => {
+      const sessionId = state.sessionId;
+      if (sessionId === null) return;
+      boundSourceApi.readWorkspaceFile(sessionId, artifact.path).then(
+        (result) => {
+          if (result.ok) {
+            downloadWorkspaceFile(result.value);
+            return;
+          }
+          handleArtifactOpen(artifact);
+        },
+        () => handleArtifactOpen(artifact),
+      );
+    },
+    [boundSourceApi, handleArtifactOpen, state.sessionId],
+  );
 
   const view = useTranscriptView(state.messages, variantOffsets);
   const railItems = view.railItems;
@@ -723,6 +986,12 @@ export function QaSurface(props: QaSurfaceProps) {
   const filesEnabled =
     attachmentCount > 0 ||
     (state.sessionId !== null && config.sources.filePreview.enabled);
+  // A card may promise an action only when the Host will answer it: the same
+  // switch the workspace reads are refused under. Where it is off, a produced
+  // file still shows as a name and a size, which is the half the reader needs
+  // to know the answer produced something.
+  const workspaceReadable =
+    state.sessionId !== null && config.sources.filePreview.enabled;
   // Buttons above an empty composer: the account's own starters, then the
   // deployment's suggestions unless the account hid them. Anonymous visitors
   // (and deployments with the feature off) see the deployment list alone.
@@ -811,11 +1080,28 @@ export function QaSurface(props: QaSurfaceProps) {
             accounts.updateStarters(input),
         }
       : undefined;
+    // One object serves both halves of the same decision: the form that edits
+    // it and the notices that obey it. A reader cannot be looking at one and
+    // waiting on the other, and a memo keeps the identity stable for the
+    // watcher that reads the channels out of it.
+    const notifications = {
+      notifications: accountsSnapshot.user.notifications,
+      switches: config.notifications,
+      onSave: (input: QaAccountNotificationsInput) =>
+        accounts.updateNotifications(input),
+    };
     const skills =
       config.accounts.skills.enabled && boundSkillApi !== undefined
         ? boundSkillApi
         : undefined;
-    return { profile, password, starters, skills, integrationTokens };
+    return {
+      profile,
+      password,
+      starters,
+      notifications,
+      skills,
+      integrationTokens,
+    };
   }, [accounts, accountsSnapshot, config, boundSkillApi, integrationTokens]);
   const busyTurn =
     state.phase === "running" ? (railItems.at(-1)?.turn ?? null) : null;
@@ -831,6 +1117,94 @@ export function QaSurface(props: QaSurfaceProps) {
       ),
     [controller, listState, activeSessionId, ownerNames, state.chatsRevision],
   );
+  // A turn that ends in one of this browser's own chats gets a notice: the
+  // sidebar dot going out is otherwise the only sign, and it is easy to miss
+  // from behind another window. The account's own list, not the sidebar's, is
+  // what bounds it: an admin's shared history is a wider read than ownership,
+  // and another account's turn is not this reader's news.
+  const turnNotices = useQaTurnNotifications({
+    chats: chatRows,
+    ownChatIds:
+      accountsSnapshot.stage === "authed" ? accountsSnapshot.ownIds : undefined,
+    notifications: config.notifications,
+    storage: window.localStorage,
+    storageKey: `${stateKey}:notifications`,
+    // Signed in, the account's own channels decide and the settings form is
+    // what writes them; anonymously, the hook falls back to this browser.
+    account: settingsDialog?.notifications,
+    paused: state.phase === "reconnecting",
+    activeSessionId,
+    onSwitch: handleSwitch,
+  });
+  /**
+   * A line leaving the stack takes the control the reader was working out of the
+   * page, and a page with nothing focused answers Tab with the browser's own
+   * order — which leaves the QA interface. Most of the ways a line goes leave
+   * the stack standing and its count of lines where it was: waving one of the
+   * three off, a fourth turn pushing the oldest out of a full stack, the opt-in
+   * going away once the browser has answered the permission question. So the
+   * loss is read where it happens — the control the ring held is out of the page
+   * and nothing of the ring holds the focus — and the reader is handed to the
+   * line that took the lost one's place, on the same control of it: a cross
+   * given back as a cross. The anchor goes only with the focus it hands back: a
+   * page takes the focus out of a removed control on its own moment, not in step
+   * with this render. A dialog that holds the keyboard is not the ring's
+   * business, and is left to put the focus wherever it thinks the reader
+   * belongs.
+   *
+   * A page the reader is not looking at keeps its keyboard where it is: while
+   * `document.hasFocus()` is false nothing here is moved. The hand-off is owed
+   * rather than skipped — the anchor stands until the window comes back, and the
+   * `focus` event of this page is what pays it — because the reader who returns
+   * to a stack that dropped a line under them is exactly the reader this place
+   * was remembered for, while a control of a page no one is looking at has no
+   * claim on the keyboard of the page they are working in.
+   *
+   * Opening a chat from a line is the one path where a line goes and the chat
+   * changes in the same moment. The keyboard stays on the stack — on a
+   * neighbouring line, or back inside `<main>` once none is left — rather than
+   * following the switch: the composer the switch remounts is disabled while the
+   * chat is still being bound, so it can take no focus, and the surface moves
+   * the keyboard on a switch no further than it does anywhere else.
+   */
+  const restoreRingFocus = useCallback(() => {
+    const anchor = ringAnchor.current;
+    if (anchor === null || anchor.element.isConnected) return;
+    if (dialogOwnsKeyboard()) {
+      ringAnchor.current = null;
+      return;
+    }
+    if (!document.hasFocus()) return;
+    const ring = focusRing(ringRoots());
+    const active = document.activeElement;
+    if (active !== null && ring.includes(active as HTMLElement)) return;
+    ringAnchor.current = null;
+    // The line itself first, for a control that left while its line stayed:
+    // then whichever neighbour is still on screen, the one after the reader
+    // taking the place the stack still lists in that order.
+    const candidates: (HTMLElement | undefined)[] = [];
+    for (const line of [anchor.line, anchor.after, anchor.before]) {
+      if (line === null || !line.isConnected) continue;
+      const controls = focusable(line);
+      candidates.push(controls[Math.min(anchor.step, controls.length - 1)]);
+    }
+    // The stack has no line left to stand on: back into the interface, onto the
+    // control the ring reaches last, and past the first candidate of it that
+    // refuses the keyboard.
+    candidates.push(...[...ring].reverse(), surface.current ?? undefined);
+    focusFirst(candidates);
+  }, [dialogOwnsKeyboard, ringRoots]);
+  useEffect(() => {
+    restoreRingFocus();
+  });
+  useEffect(() => {
+    // The hand-off a blurred page owed, read again at the moment the reader
+    // comes back: whoever holds the keyboard then keeps it, and a control of the
+    // ring they reached on their own is not taken away from them.
+    const onWindowFocus = (): void => restoreRingFocus();
+    window.addEventListener("focus", onWindowFocus);
+    return () => window.removeEventListener("focus", onWindowFocus);
+  }, [restoreRingFocus]);
 
   // The audit provider is optional: `auditSnapshot.api` is null until the
   // audit plugin's client bundle is loaded, and the badge is absent until
@@ -897,6 +1271,16 @@ export function QaSurface(props: QaSurfaceProps) {
           groups={fileGroups}
           resolveImage={resolveImage}
           onJumpToMessage={handleJumpToMessage}
+          onArtifactOpen={workspaceReadable ? handleArtifactOpen : undefined}
+          onArtifactDownload={
+            workspaceReadable ? handleArtifactDownload : undefined
+          }
+          openArtifact={
+            artifactArrival !== null &&
+            artifactArrival.chatKey === state.chatKey
+              ? { path: artifactArrival.path, stamp: artifactArrival.stamp }
+              : undefined
+          }
           sessionId={state.sessionId ?? undefined}
           api={boundSourceApi}
         />
@@ -922,6 +1306,7 @@ export function QaSurface(props: QaSurfaceProps) {
           {welcomeNotice}
           <main
             className={QA_SURFACE_CLASS}
+            data-testid="qa-surface-loading"
             aria-busy="true"
             aria-label={config.branding.title}
             tabIndex={-1}
@@ -1019,11 +1404,16 @@ export function QaSurface(props: QaSurfaceProps) {
   }
   if (adminRoute) {
     return (
-      <main className="dsh-qa-admin" aria-label="Администрирование QA">
+      <main
+        className="dsh-qa-admin"
+        data-testid="qa-surface-admin-denied"
+        aria-label="Администрирование QA"
+      >
         <div className="dsh-qa-admin__loading">
           <p>Этот раздел доступен только администратору.</p>
           <button
             type="button"
+            data-testid="qa-surface-admin-return"
             onClick={() =>
               window.history.pushState(null, "", config.route.path)
             }
@@ -1038,6 +1428,16 @@ export function QaSurface(props: QaSurfaceProps) {
   return (
     <>
       {welcomeNotice}
+      <QaTurnNotice
+        items={turnNotices.items}
+        onOpen={turnNotices.onOpen}
+        onDismiss={turnNotices.onDismiss}
+        rootRef={noticeStack}
+        onKeyDown={trapNoticeKeys}
+        {...(turnNotices.onEnableDesktop === undefined
+          ? {}
+          : { onEnableDesktop: turnNotices.onEnableDesktop })}
+      />
       {settingsDialog === undefined ? null : (
         <QaUserSettingsDialog
           open={settingsOpen}
@@ -1069,6 +1469,7 @@ export function QaSurface(props: QaSurfaceProps) {
           {...(settingsDialog.starters === undefined
             ? {}
             : { starters: settingsDialog.starters })}
+          notifications={settingsDialog.notifications}
           {...(settingsDialog.integrationTokens === undefined
             ? {}
             : { integrationTokens: settingsDialog.integrationTokens })}
@@ -1078,11 +1479,13 @@ export function QaSurface(props: QaSurfaceProps) {
         />
       )}
       <main
+        ref={surface}
         className={QA_SURFACE_CLASS}
+        data-testid="qa-surface-root"
         data-phase={state.phase}
         aria-label={config.branding.title}
         tabIndex={-1}
-        onKeyDown={trapKeys}
+        onKeyDown={trapSurfaceKeys}
       >
         {previewing || sessionPreview ? (
           <QaAdminPreviewBanner
@@ -1094,6 +1497,19 @@ export function QaSurface(props: QaSurfaceProps) {
               ""
             }
             {...(previewing ? { onExit: exitPreview } : {})}
+            disabled={state.phase === "creating"}
+          />
+        ) : null}
+        {showSidebar && historyOpen ? (
+          // The tap-outside half of the drawer, painted beside it rather than
+          // inside it: the sheet switches the sidebar subtree off when the drawer
+          // is closed, and a dismiss layer under that switch could not be clicked
+          // in the one state where it is on screen.
+          <div
+            className="dsh-qa-sidebar__scrim"
+            data-testid="qa-surface-sidebar-scrim"
+            aria-hidden="true"
+            onClick={closeHistory}
           />
         ) : null}
         {showSidebar ? (
@@ -1105,6 +1521,8 @@ export function QaSurface(props: QaSurfaceProps) {
             stateKey={stateKey}
             showNewChat={allowNewChat}
             busy={state.phase === "creating"}
+            drawerOpen={historyOpen}
+            onDrawerClose={closeHistory}
             onSwitch={handleSwitch}
             onNewChat={handleNewChat}
             onDelete={handleDelete}
@@ -1136,7 +1554,7 @@ export function QaSurface(props: QaSurfaceProps) {
           }
           onClose={closeAudit}
         />
-        <div className="dsh-qa-body">
+        <div className="dsh-qa-body" data-testid="qa-surface-body">
           {state.viewingSubagent !== null && !config.ui.showHeader ? (
             <QaSubagentBanner onClose={handleCloseSubagent} />
           ) : null}
@@ -1144,6 +1562,14 @@ export function QaSurface(props: QaSurfaceProps) {
             <QaHeader
               logoUrl={config.branding.logoUrl}
               title={conversationTitle}
+              onBackToChat={
+                rail.railOpen || agentsOpen
+                  ? () => {
+                      rail.close();
+                      setAgentsOpen(false);
+                    }
+                  : undefined
+              }
               viewingSubagent={state.viewingSubagent !== null}
               onCloseSubagent={handleCloseSubagent}
               roleSelector={
@@ -1176,6 +1602,12 @@ export function QaSurface(props: QaSurfaceProps) {
                   />
                 )
               }
+              themeSwitcher={
+                <QaThemeSwitcher
+                  preference={theme.preference}
+                  onSelect={theme.select}
+                />
+              }
               administration={
                 accountsSnapshot.stage === "authed" &&
                 accountsSnapshot.user.role === "admin"
@@ -1204,6 +1636,13 @@ export function QaSurface(props: QaSurfaceProps) {
               filesOpen={rail.railOpen && rail.railTab === "files"}
               onOpenFiles={() => rail.openTab("files")}
               panelLauncher={<QaPanelLauncher panels={props.panels} />}
+              // The narrow layout switches the sidebar off, so the history is
+              // opened from here — and only where there is a sidebar to open.
+              history={
+                showSidebar
+                  ? { open: historyOpen, onToggle: toggleHistory }
+                  : undefined
+              }
               // The sidebar carries this entry next to the account name, so
               // the header takes it over exactly when there is no sidebar.
               settings={showSidebar ? undefined : settingsEntry}
@@ -1215,10 +1654,14 @@ export function QaSurface(props: QaSurfaceProps) {
             />
           ) : null}
 
-          <div className="dsh-qa-workspace">
+          <div
+            className="dsh-qa-workspace"
+            data-testid="qa-surface-workspace-split"
+          >
             <div
               ref={chat}
               className="dsh-qa-chat"
+              data-testid="qa-surface-chat"
               style={
                 {
                   "--dsh-qa-content-width": `${config.ui.minContentWidth}px`,
@@ -1228,6 +1671,7 @@ export function QaSurface(props: QaSurfaceProps) {
               <div
                 ref={transcript}
                 className="dsh-qa-transcript"
+                data-testid="qa-surface-transcript"
                 onScroll={(event) => {
                   const element = event.currentTarget;
                   nearBottom.current = isNearBottom(element);
@@ -1247,6 +1691,7 @@ export function QaSurface(props: QaSurfaceProps) {
                   {empty ? (
                     <section
                       className="dsh-qa-welcome"
+                      data-testid="qa-surface-transcript-welcome"
                       aria-labelledby="dsh-qa-welcome-title"
                     >
                       <h2 id="dsh-qa-welcome-title">
@@ -1297,6 +1742,14 @@ export function QaSurface(props: QaSurfaceProps) {
                                 ? rail.openSourceDetail
                                 : undefined
                             }
+                            onArtifactOpen={
+                              workspaceReadable ? handleArtifactOpen : undefined
+                            }
+                            onArtifactDownload={
+                              workspaceReadable
+                                ? handleArtifactDownload
+                                : undefined
+                            }
                             onRateFeedback={rateFeedback}
                           />
                           {group !== undefined && group.turns.length > 1 ? (
@@ -1326,18 +1779,27 @@ export function QaSurface(props: QaSurfaceProps) {
                     </div>
                   )}
                   {state.compatibilityReadOnly === true ? (
-                    <div className="dsh-qa-compatibility" role="status">
+                    <div
+                      className="dsh-qa-compatibility"
+                      data-testid="qa-surface-compatibility"
+                      role="status"
+                    >
                       Этот чат создан при другой конфигурации стенда и открыт
                       только для чтения. История сохранена; чтобы продолжить
                       работу с текущими настройками, создайте новый чат.
                     </div>
                   ) : null}
                   {state.error === null ? null : (
-                    <div className="dsh-qa-error" role="alert">
+                    <div
+                      className="dsh-qa-error"
+                      data-testid="qa-surface-error"
+                      role="alert"
+                    >
                       <span>{state.error}</span>
                       {state.phase === "error" ? (
                         <button
                           type="button"
+                          data-testid="qa-surface-error-retry"
                           onClick={() => void controller?.ensureSession()}
                         >
                           Повторить
@@ -1348,7 +1810,7 @@ export function QaSurface(props: QaSurfaceProps) {
                 </div>
               </div>
 
-              <footer className="dsh-qa-footer">
+              <footer className="dsh-qa-footer" data-testid="qa-surface-footer">
                 <div className="dsh-qa-footer__inner">
                   <QaApproval
                     approvals={state.approvals}
@@ -1368,12 +1830,28 @@ export function QaSurface(props: QaSurfaceProps) {
                   hidden rather than unmounted. */}
                   <div
                     className="dsh-qa-composer-slot"
+                    data-testid="qa-surface-composer-slot"
                     hidden={state.questions.length > 0}
                   >
+                    {/* Queued messages are not in the transcript yet, so this is
+                    the only place they are on the screen at all. */}
+                    <QaQueueDock
+                      rows={state.queue}
+                      running={state.phase === "running"}
+                      canEdit={state.canEditQueue}
+                      onEdit={handleQueueEdit}
+                      onSendNow={handleQueueSendNow}
+                      onRemove={handleQueueRemove}
+                    />
                     {/* Keyed by chat: the composer's draft text is chat-local, so a
-                    switch remounts it empty instead of carrying text across. */}
+                    switch remounts it empty instead of carrying text across. The
+                    identity is never reused — a controller rebuilt for another chat
+                    hands out a new one — and a draft keeps its own identity while it
+                    creates its session on the first prompt: that is the same chat, and
+                    remounting here would drop the question the Host has not admitted
+                    yet. */}
                     <QaComposer
-                      key={state.sessionId ?? "draft"}
+                      key={state.chatKey}
                       placeholder={config.branding.placeholder}
                       quickQuestions={empty ? quickQuestions : NO_QUESTIONS}
                       canSend={state.canSend}
@@ -1432,6 +1910,10 @@ export function QaSurface(props: QaSurfaceProps) {
             onClose={rail.close}
           />
         ) : null}
+        <QaRequestQueue
+          status={state.requestQueue}
+          onClose={dismissRequestQueue}
+        />
       </main>
     </>
   );

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Session Audit",
+    "description": "An Audit view beside Chat and Trajectory, driven by audit artifacts on disk."
+  }
+}

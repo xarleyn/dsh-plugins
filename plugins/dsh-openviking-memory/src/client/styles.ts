@@ -1,12 +1,15 @@
-import { PLUGIN_CARD_SHELL_CSS } from "@yadsh/dsh-plugin-kit/client";
-
 /**
- * Card stylesheet: the canonical shell (AGENTS.md contract) plus body rules
- * for this plugin's own controls. Every colour, border, and surface comes from
- * `--dsw-alias-*` tokens so light, dark, and system themes stay coherent.
+ * Card stylesheet: body rules for this plugin's own controls.
+ *
+ * The shell is not here — this card sits on the Plugins panel row, where the page
+ * draws the frame, the heading and the expand control (AGENTS.md). Every colour,
+ * border, and surface comes from `--dsw-alias-*` tokens so light, dark, and system
+ * themes stay coherent, and the focus ring is the Host's own token pair rather than
+ * a hard-coded outline, because `focus.css` of the Host would suppress the latter.
+ * Both halves of the pair carry a fallback: where a token is undeclared the whole
+ * `outline` shorthand is invalid and the ring disappears instead of degrading.
  */
-export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
-.ovm-body,.ovm-body *{box-sizing:border-box}
+export const styles: string = `.ovm-body,.ovm-body *{box-sizing:border-box}
 .ovm-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
 .ovm-section{display:grid;gap:12px}
 .ovm-section-title h3{font-size:13px;margin:0;font-weight:600}
@@ -15,10 +18,10 @@ export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
 .ovm-field{display:grid;gap:6px;align-content:start}
 .ovm-field>span{font-size:11px;color:var(--dsw-alias-label-secondary);font-weight:600;display:flex;align-items:center;gap:6px}
 .ovm-control{width:100%;height:36px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);padding:0 10px;font:inherit;font-size:12px;outline:none}
-.ovm-control:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}
+.ovm-control:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .ovm-control:disabled{cursor:default;opacity:.45}
 .ovm-area{width:100%;min-height:72px;resize:vertical;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);padding:8px 10px;font:inherit;font-size:12px;line-height:1.5;outline:none}
-.ovm-area:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:2px solid var(--dsw-alias-brand-primary);outline-offset:-1px}
+.ovm-area:focus-visible{border-color:var(--dsw-alias-brand-primary);outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .ovm-area:disabled{cursor:default;opacity:.45}
 .ovm-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px}
 .ovm-toggle-copy{display:grid;gap:2px;text-align:left}
@@ -29,13 +32,15 @@ export const styles: string = `${PLUGIN_CARD_SHELL_CSS}
 .ovm-toggle:checked{background:var(--dsw-alias-brand-primary)}
 .ovm-toggle:checked:after{transform:translateX(15px)}
 .ovm-toggle:disabled{cursor:default;opacity:.45}
+.ovm-toggle:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}
 .ovm-override{font-size:9px;font-weight:600;text-transform:uppercase;letter-spacing:.04em;color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-bg-module-platform);border-radius:999px;padding:1px 7px}
 .ovm-btn{height:34px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);padding:0 12px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
 .ovm-btn:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed);background:var(--dsw-alias-interactive-bg-hover)}
+.ovm-btn:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .ovm-btn:disabled{cursor:default;opacity:.45}
 .ovm-notice{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l2);font-size:11px;line-height:1.5;color:var(--dsw-alias-label-secondary)}
 .ovm-notice strong{color:var(--dsw-alias-label-primary)}
-.ovm-error{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-error);color:var(--dsw-alias-label-error);font-size:11px;line-height:1.5}
+.ovm-error{padding:9px 11px;border-radius:8px;background:color-mix(in srgb, var(--dsw-alias-state-error-primary, #b3261e) 8%, transparent);color:var(--dsw-alias-state-error-primary, #b3261e);font-size:11px;line-height:1.5}
 .ovm-advanced{border:1px solid var(--dsw-alias-border-l2);border-radius:10px;padding:0 12px}
 .ovm-advanced summary{cursor:pointer;padding:11px 0;font-size:12px;font-weight:600}
 .ovm-advanced-content{padding:2px 0 13px;display:grid;gap:10px}

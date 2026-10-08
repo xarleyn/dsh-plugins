@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Model Safety Gate",
+    "description": "Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results."
+  }
+}

@@ -9,7 +9,8 @@ again in the release workflow.
 1. Confirm that the `@yadsh` npm organization exists and that maintainers have
    permission to publish every public package in this repository.
 2. Make `main` the repository default branch and protect it with the **CI /
-   Verify affected projects** check.
+   Verify projects** check — the aggregate job at the end of
+   `.github/workflows/ci.yml`, not the per-project matrix jobs.
 3. In npm package settings, configure this GitHub repository and
    `.github/workflows/release.yml` as the Trusted Publisher for every public
    package.
@@ -56,17 +57,40 @@ A plan file must open with its `---` front-matter fence. Nx silently ignores a
 plan it cannot parse, so the release gate and `pnpm verify:packages` reject such
 a file instead of letting the run release nothing.
 
+`release.versionPlans.ignorePatternsForPlanCheck` names the paths a plan is not
+asked for: a package's own `CHANGELOG.md` and `package.json` (the release writes
+them), and a package's `tests/`. Tests are excluded because they do not ship —
+`files` in every plugin manifest lists `lib/`, `locale/`, the patch and policy
+documents, and a published tarball contains no path under `tests/`. Without the
+rule, a change confined to tests demands a version whose release note would have
+nothing to say, and a curated QA-surface entry for a version no user can see a
+difference in.
+
 `pnpm release:check` is the same command locally and in CI
 (`scripts/check-release-plans.mjs`). The check reads each publishable release
 project against the newest release tag its history can reach — the
 `release/<date>` tag the workflow creates once per release run — and asks for a
 plan only when commits no tag covers have landed since. Comparing every project
 against the default branch instead would report an already-published release as
-unreleased and demand plans the release has consumed. A project that never
-shipped has no tag, so its whole change against the base counts. Uncommitted
-work is reported as pending rather than judged, because the release reads
-commits too. The check ignores the files Nx ignores for this decision, so a
+unreleased and demand plans the release has consumed. A tag is only a start
+while the base has not already reached it: a remote whose copy is missing a
+release tag its default branch already carries would otherwise walk the range
+back over the work that release consumed, so the check starts at the base and
+names the tag it set aside. A project that never shipped has no tag, so its
+whole change against the base counts. Uncommitted work is reported as pending
+rather than judged, because the release reads commits too. The check ignores
+the files Nx ignores for this decision, so a
 release commit that only rewrites versions and changelogs needs no further plan.
+
+Moving a manifest range into a catalog is invisible for the same reason, and is
+deliberately left unversioned: `pnpm pack` rewrites `catalog:runtime` back to the
+range the catalog holds, so the tarball a consumer installs carries the bytes it
+carried before (gate 6 of `scripts/tarball-verify.sh` is what proves no `catalog:`
+survives packing). A bump here would version a change no consumer can observe, and
+for the qa-surface package it would also force a `QaChangelog.tsx` entry about
+something its reader cannot see. The case that does need a plan is the one where
+the range's *value* changes — `^4.4.3` to `^4.5.0`, say — because that reaches
+every consumer that installs the package.
 
 ## Maintainer flow
 
@@ -153,9 +177,14 @@ runner yet:
   versions, adopts what npm already has, and publishes the rest.
 - If **Verify the published versions install** fails, the wave reached npm but
   a consumer cannot resolve it: the message names the range npm could not
-  satisfy. Those versions stay published, so fix the manifest and release
-  again — the rerun adopts the versions npm has and publishes the fix as the
-  next version.
+  satisfy and says whether the polling ran out. A range the wave itself
+  publishes is the registry's CDN still behind — the step polls each such
+  version for up to five minutes before giving up, so a failure there means the
+  wait ran out rather than that the wave is broken: confirm the version on npm
+  first, rerun the failed job only once the registry serves it, and treat a
+  second refusal as a real failure. Any other range is a manifest mistake, and
+  those versions stay published, so fix the manifest and release again — the
+  rerun adopts the versions npm has and publishes the fix as the next version.
 
 Publication succeeded but the branch did not move, which is the one state that
 needs an explicit decision:

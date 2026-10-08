@@ -24,7 +24,11 @@ Payments expert  ── domain_expert(domain="inventory", …) ──▶  Invent
 - **组合式人格。** 固定的基础策略加上你的指令；基础策略（证据等级、冲突上报、
   不猜测陌生领域）不会被意外替换。
 - **范围受限的记忆。** 每位专家都有私有的读写命名空间和只读的共享命名空间。
-  私有边界是一种存储键布局，而不是提示词里的一句话。
+  私有边界是一种存储键布局，而不是提示词里的一句话。当部署带有账号时，私有
+  命名空间按账号区分（`domain/payments/u/<account>`），而领域自身的命名空间对
+  所有账号保持只读 —— 一个账号的专家学到的东西不会成为另一个账号继承的规则。
+  一条记录必须说明它对谁成立：某个调用者的权限才显示出来的情况（被拒绝的工具、
+  未挂载的来源）属于该调用者，存储键布局不会让它进入公共层级。
 - **范围受限的工具。** 所选工具是专家唯一能看见或执行的工具；被过滤掉的工具会
   拒绝运行。
 - **诚实的强制执行说明。** 每条文件系统规则、每个记忆命名空间和每个委托目标都
@@ -45,7 +49,7 @@ Payments expert  ── domain_expert(domain="inventory", …) ──▶  Invent
 dsh plugin --profile web add @yadsh/dsh-domain-experts
 ```
 
-然后打开 `Settings → Plugins → Domain Experts`。
+然后打开 Host **Plugins** 页面中的 **Domain Experts** 行。
 
 ## 管理领域
 
@@ -63,16 +67,16 @@ dsh plugin --profile web add @yadsh/dsh-domain-experts
 | --- | --- |
 | `domain_expert` | 请某个领域的专家去调查、回答或评审某件事。从专家内部调用时即为委托，由调用方的跨领域策略决定是否允许。 |
 | `domain_experts_list` | 已启用领域的标识符、名称和一句话描述。范围、记忆和策略不会进入模型视野。 |
-| `domain_memory` | 读取和写入调用专家自身的记忆。只有从持久化定义中解析出的命名空间可达，且只有私有命名空间接受写入。 |
+| `domain_memory` | 读取和写入调用专家自身的记忆。只有从持久化定义中解析出的命名空间可达，且只有调用者自己的命名空间接受写入 —— 在按账号区分记忆的部署里，那就是该账号的命名空间。 |
 
 `domain_delegate` 被接受为 `domain_expert` 的工具策略别名，因此按设计词汇表编写
 的配置不会被报告为降级。
 
 ## 配置
 
-插件设置位于 `domain-experts` 命名空间中，在
-`Settings → Plugins → Configurable` 中编辑（领域本身则在
-`Settings → Plugins → Domain Experts` 中编辑）。改动会应用到后续操作。
+插件设置是该插件自身 profile 配置里的实时字段，宿主为
+`dsh-domain-experts` 条目渲染其表单。Plugins 页面上的 **Domain Experts** 页面管理的是领域本身。
+改动会应用到后续操作。
 
 | 选项 | 类型 | 默认值 | 说明 |
 | --- | --- | --- | --- |
@@ -82,6 +86,7 @@ dsh plugin --profile web add @yadsh/dsh-domain-experts
 | `defaultMaxParallel` | number | `3` | 当调用方自身不是专家时，每个调用会话允许的并行专家数量。 |
 | `defaultCrossDomainMode` | string | `expert-only` | 新建领域时预填的跨领域模式：`disabled`、`expert-only` 或 `direct-read`。 |
 | `defaultMemoryProvider` | string | `builtin` | 每位专家使用的记忆提供方 id。 |
+| `perUserMemory` | boolean | `true` | 在带有账号的部署中，为每个账号保留独立的记忆命名空间。仅当主机挂载了账号服务时生效。 |
 | `recallLimit` | number | `5` | 召回并注入专家人格的记忆条目数。 |
 | `auditLimit` | number | `200` | 保留在内存中并镜像到日志的执行审计条目数。 |
 
@@ -96,14 +101,22 @@ DSH 的工具过滤是能力范围限定，而不是操作系统级沙箱，因�
 | 限制 | 典型级别 | 强制执行的原因 |
 | --- | --- | --- |
 | 工具策略 | `enforced` | harness 会从子智能体的视野中移除该工具，*并且*拒绝执行它。 |
-| 记忆命名空间 | `enforced` | 存储键布局使其他命名空间不可触及；读写只经过已解析的命名空间。 |
+| 记忆命名空间 | `enforced` | 存储键布局使其他命名空间不可触及；读写只经过已解析的命名空间。在按账号区分的部署里，可写的命名空间就是调用者所属账号的那个；未被任何账号认领的运行会被拒绝写入 —— 它本会写入的命名空间是所有账号都会读的。 |
 | 委托策略 | `enforced` | 插件会拒绝调用方的模式或目标列表所禁止的委托。 |
 | 文件系统范围 | 当所选 worker 声明其应用该范围时为 `enforced`，否则为 `advisory` | 真正限制路径访问的 worker（`DomainWorker.enforces`）。 |
 | 人格措辞 | 始终为 `advisory` | 仅靠模型自身的遵从。 |
 
 已解析范围检查器会按资源渲染这些信息，而降级部分则列出领域所要求、但部署无法
 提供的内容（`SCOPE_PROVIDER_MISSING`、`MEMORY_PROVIDER_MISSING`、
-`WORKER_UNAVAILABLE`、`TOOL_UNVERIFIED`、`DELEGATION_TARGET_MISSING`）。
+`WORKER_UNAVAILABLE`、`TOOL_UNVERIFIED`、`TOOL_UNFILTERABLE`、
+`DELEGATION_TARGET_MISSING`）。
+
+「N degraded」标记并不代表专家已经损坏，这些代码的严重程度也并不相同。
+`TOOL_UNVERIFIED` 不带来任何损失：它记录的是允许列表中不属于本插件 worker 的名称，
+也就是 `read`、`grep` 这类普通工具 —— 解析器看不到宿主的全局工具注册表，于是原样
+把名称交给子会话，只是声明自己无法校验它。若日志中只有这一个代码，而运行状态是
+`status="completed"`，那么专家实际拥有其策略所要求的全部工具。真正可能点出一个未
+能到达专家的工具的是 `TOOL_UNFILTERABLE`，而它确实会点出该工具。
 
 路径约束只实现一次，位于 `decidePath`/`resolveWithinRoot`：拒绝优先于任何允许；
 没有任何规则归类的路径会被拒绝；`..`、绝对路径、NUL 字节和符号链接逃逸都会在
@@ -115,9 +128,9 @@ DSH 的工具过滤是能力范围限定，而不是操作系统级沙箱，因�
 
 ## 兼容性
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`（已针对 `0.1.5-rc.2` 测试）
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`（已针对 `0.1.7-rc.2` 测试）
 - Node `^22.19.0 || >=24.0.0`
-- 浏览器端需要 `settings.plugins.tab` 插槽
+- 浏览器端需要 `plugins.bundle.config` 插槽
 
 机器可读形式见 [compatibility.json](./compatibility.json)。
 

@@ -4,9 +4,10 @@ import type {
   SessionFace,
 } from "@deepseek-ai/dsh-api-session-controller/client";
 import type {} from "@deepseek-ai/dsh-api-session-controller/remote";
-import type {} from "@deepseek-ai/dsh-agent-presets/remote";
+import type {} from "@deepseek-ai/dsh-agent-preset-registry/remote";
 import type { UiConversation } from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {
+  QaAccountNotificationsInput,
   QaAccountProfileInput,
   QaAccountSession,
   QaAccountStartersInput,
@@ -16,11 +17,13 @@ import type {
   QaApprovalDecision,
   QaClaimResult,
   QaLockdownProof,
+  QaModelCatalogEntry,
   QaOwnershipEntry,
   QaPasswordResetRequest,
   QaPendingApproval,
   QaPendingQuestion,
   QaQuestionAnswerItem,
+  QaQueueStatus,
   QaIssuedServiceToken,
   QaServiceTokenCreateInput,
   QaServiceTokenSummary,
@@ -59,6 +62,10 @@ import type {
   QaConversationReview,
   QaConversationReviewInput,
   QaConversationSummary,
+  QaExpertMemoryDraft,
+  QaExpertMemoryPage,
+  QaExpertMemoryRecord,
+  QaExpertMemoryScope,
   QaFeedbackQuery,
   QaFeedbackRow,
   QaMessageFeedback,
@@ -110,6 +117,13 @@ export type QaCreateSession = (
   adminPreview: boolean,
 ) => Promise<RemoteResult<string>>;
 
+/**
+ * The Host's live read of the request ceiling (`qaSurface/queueStatus`), asked
+ * per send: how many questions the stand is answering and whether one more
+ * fits.
+ */
+export type QaQueueStatusRemote = () => Promise<RemoteResult<QaQueueStatus>>;
+
 /** Role selector plus administrator mutation channel. */
 export interface QaAccessApi {
   current(token: string): Promise<RemoteResult<QaCurrentAccess>>;
@@ -141,6 +155,10 @@ export interface QaAccessApi {
     userId: string,
     input: QaUserAccess,
   ): Promise<RemoteResult<QaUserAccess>>;
+  /** The pairs the Host can serve, for writing a model policy by picking one. */
+  modelCatalog(
+    token: string,
+  ): Promise<RemoteResult<readonly QaModelCatalogEntry[]>>;
   updateSkillOverride(
     token: string,
     input: QaSkillAssignmentOverride,
@@ -291,6 +309,39 @@ export interface QaAdminApi {
     token: string,
     scope: QaAdminSkillScope,
   ): Promise<RemoteResult<readonly QaSkillToolDescriptor[]>>;
+  /**
+   * What the domain experts remembered.
+   *
+   * The namespaces come from the experts' own definitions, so a namespace the
+   * console can list is one an expert claims; `memory.read` opens the list and
+   * `memory.manage` the corrections.
+   */
+  memoryScopes(
+    token: string,
+  ): Promise<RemoteResult<readonly QaExpertMemoryScope[]>>;
+  memoryRecords(
+    token: string,
+    namespace: string,
+    query: string,
+    limit: number | null,
+    offset: number,
+  ): Promise<RemoteResult<QaExpertMemoryPage>>;
+  correctMemory(
+    token: string,
+    namespace: string,
+    key: string,
+    draft: QaExpertMemoryDraft,
+  ): Promise<RemoteResult<QaExpertMemoryRecord>>;
+  forgetMemory(
+    token: string,
+    namespace: string,
+    keys: readonly string[],
+  ): Promise<RemoteResult<number>>;
+  wipeMemory(
+    token: string,
+    namespace: string,
+    expectedRecords: number | null,
+  ): Promise<RemoteResult<number>>;
 }
 
 /**
@@ -599,6 +650,15 @@ export interface QaAccountsApi {
     input: QaAccountStartersInput,
   ): Promise<RemoteResult<QaAccountUserPublic>>;
   /**
+   * Replace the caller's own notification channels; the token is the identity.
+   * The stand's switches are applied when a notice is planned, not here, so
+   * this write can only ever narrow what the deployment allows.
+   */
+  accountsUpdateNotifications(
+    token: string,
+    input: QaAccountNotificationsInput,
+  ): Promise<RemoteResult<QaAccountUserPublic>>;
+  /**
    * Replace the caller's own password. The answer carries a fresh token: the
    * write bumps the account's token version, so without it the browser that
    * made the change would sign itself out.
@@ -652,12 +712,17 @@ export interface StorageLike {
 export const QA_SESSION_IDLE_STATE: QaSessionState = Object.freeze({
   phase: "idle",
   sessionId: null,
+  // Reserved for "no chat": the controller's chat identities come from a
+  // sequence that starts at 1, so this snapshot never collides with one.
+  chatKey: 0,
   messages: Object.freeze([]),
   pendingMessage: null,
   error: null,
   compatibilityReadOnly: false,
   canSend: false,
   canStop: false,
+  queue: Object.freeze([]),
+  canEditQueue: false,
   chatsRevision: 0,
   sources: Object.freeze([]),
   sourcesComplete: true,
@@ -665,6 +730,9 @@ export const QA_SESSION_IDLE_STATE: QaSessionState = Object.freeze({
   viewingSubagent: null,
   approvals: Object.freeze([]),
   questions: Object.freeze([]),
+  // No send was held back: the ceiling only speaks when a question reaches for
+  // a place that is already taken.
+  requestQueue: null,
   // Idle means no chat, so there is nothing for a slash line to act on; the
   // controller fills this in once a session binds.
   slash: Object.freeze({

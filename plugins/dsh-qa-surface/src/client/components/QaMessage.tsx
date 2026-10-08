@@ -1,5 +1,6 @@
 import { memo, useEffect, useRef, useState } from "react";
 import type {
+  QaArtifactView,
   QaCommandActivity,
   QaFileView,
   QaMessage as QaMessageModel,
@@ -52,15 +53,28 @@ function QaAttachedImage({
     };
   }, [image.attachmentId, image.previewUrl, resolve]);
   if (url === null) {
-    return <span className="dsh-qa-message__image" data-state="loading" />;
+    return (
+      <span
+        className="dsh-qa-message__image"
+        data-testid="qa-message-image"
+        data-state="loading"
+      />
+    );
   }
   if (url === "") {
-    return <span className="dsh-qa-message__image" data-state="broken" />;
+    return (
+      <span
+        className="dsh-qa-message__image"
+        data-testid="qa-message-image"
+        data-state="broken"
+      />
+    );
   }
   return (
     <a href={url} target="_blank" rel="noreferrer">
       <img
         className="dsh-qa-message__image"
+        data-testid="qa-message-image"
         src={url}
         alt="Прикреплённое изображение"
       />
@@ -69,6 +83,8 @@ function QaAttachedImage({
 }
 import type { QaFeedbackReason } from "../../types.js";
 import { FEEDBACK_REASON_LABELS } from "../admin/copy.js";
+import { useCopyAction } from "../clipboard.js";
+import { CopyHint } from "./copy-hint.js";
 import { formatDayTime, formatSeconds } from "./format.js";
 import { Markdown } from "./Markdown.js";
 import { QaWorkGroup } from "./QaWorkGroup.js";
@@ -94,6 +110,14 @@ export interface QaMessageProps {
   ) => void;
   /** Open one path-backed source's detail (an inline footnote click). */
   readonly onSourceDetail?: (source: QaSource) => void;
+  /**
+   * Open a file this answer's turn produced, in the surface's own file viewer.
+   * Omitted where the surface has no workspace reads: the card then names the
+   * file without promising an action it cannot perform.
+   */
+  readonly onArtifactOpen?: (artifact: QaArtifactView) => void;
+  /** Save a produced file. Omitted on the same terms as {@link onArtifactOpen}. */
+  readonly onArtifactDownload?: (artifact: QaArtifactView) => void;
   /** Operator-configured running phrases; omitted reads the built-in list. */
   readonly thinkingPhrases?: readonly string[];
   /**
@@ -135,6 +159,7 @@ export function sameMessage(a: QaMessageModel, b: QaMessageModel): boolean {
   if (a.role === "assistant" && b.role === "assistant") {
     return (
       sameSources(a.sources, b.sources) &&
+      sameArtifacts(a.artifacts, b.artifacts) &&
       (a.stats === undefined) === (b.stats === undefined) &&
       (a.stats === undefined ||
         b.stats === undefined ||
@@ -212,6 +237,21 @@ function sameFiles(
   );
 }
 
+function sameArtifacts(
+  a: readonly QaArtifactView[] | undefined,
+  b: readonly QaArtifactView[] | undefined,
+): boolean {
+  if (a === b) return true;
+  if (a === undefined || b === undefined || a.length !== b.length) return false;
+  return a.every(
+    (artifact, index) =>
+      artifact.path === (b[index] as QaArtifactView).path &&
+      artifact.name === (b[index] as QaArtifactView).name &&
+      artifact.format === (b[index] as QaArtifactView).format &&
+      artifact.bytes === (b[index] as QaArtifactView).bytes,
+  );
+}
+
 const REASONS: readonly QaFeedbackReason[] = [
   "incorrect",
   "instruction_not_followed",
@@ -242,13 +282,17 @@ function FeedbackReasonForm(props: {
   return (
     <form
       className="dsh-qa-feedback"
+      data-testid="qa-message-feedback"
       onSubmit={(event) => {
         event.preventDefault();
         props.onSubmit(reasons, comment);
       }}
     >
       <strong>Что пошло не так?</strong>
-      <div className="dsh-qa-feedback__reasons">
+      <div
+        className="dsh-qa-feedback__reasons"
+        data-testid="qa-message-feedback-reasons"
+      >
         {REASONS.map((reason) => (
           <label key={reason}>
             <input
@@ -267,14 +311,21 @@ function FeedbackReasonForm(props: {
         ))}
       </div>
       <textarea
+        data-testid="qa-message-feedback-comment"
         value={comment}
         rows={2}
         placeholder="Комментарий (необязательно)"
         onChange={(event) => setComment(event.currentTarget.value)}
       />
       <div className="dsh-qa-feedback__actions">
-        <button type="submit">Отправить</button>
-        <button type="button" onClick={props.onSkip}>
+        <button type="submit" data-testid="qa-message-feedback-submit">
+          Отправить
+        </button>
+        <button
+          type="button"
+          data-testid="qa-message-feedback-skip"
+          onClick={props.onSkip}
+        >
           Пропустить
         </button>
       </div>
@@ -336,13 +387,19 @@ export const QaMessage = memo(
     resolveImage,
     onOpenSources,
     onSourceDetail,
+    onArtifactOpen,
+    onArtifactDownload,
     thinkingPhrases,
     onRateFeedback,
   }: QaMessageProps) {
-    const [copied, setCopied] = useState(false);
-    const copiedTimer = useRef<ReturnType<typeof setTimeout> | undefined>(
-      undefined,
-    );
+    // A work row carries no copyable text; the footer action renders for the
+    // roles that have it.
+    const {
+      copied,
+      impossible: copyImpossible,
+      refused: copyRefused,
+      copy,
+    } = useCopyAction(message.role === "work" ? "" : message.text);
     const [rating, setRating] = useState<Rating | null>(null);
     // The negative flow asks why, once, without blocking the rating itself.
     const [askingWhy, setAskingWhy] = useState(false);
@@ -366,13 +423,6 @@ export const QaMessage = memo(
     useEffect(() => {
       setRating(readRatings(stateKey)[message.id] ?? null);
     }, [stateKey, message.id]);
-    useEffect(
-      () => () => {
-        if (copiedTimer.current !== undefined)
-          clearTimeout(copiedTimer.current);
-      },
-      [],
-    );
     if (message.role === "system" && message.command !== undefined) {
       // A human command never enters the model conversation, so this row is
       // the only place its life cycle is visible. It is a control line, not a
@@ -381,6 +431,7 @@ export const QaMessage = memo(
       return (
         <article
           className="dsh-qa-command"
+          data-testid="qa-message-command"
           data-state={activity.state}
           aria-label="Команда"
         >
@@ -409,7 +460,7 @@ export const QaMessage = memo(
     }
     if (message.role === "system" && message.notice !== undefined) {
       return (
-        <details className="dsh-qa-notice">
+        <details className="dsh-qa-notice" data-testid="qa-message-notice">
           <summary className="dsh-qa-notice__summary">
             <svg
               className="dsh-qa-notice__icon"
@@ -447,6 +498,7 @@ export const QaMessage = memo(
       return (
         <article
           className="dsh-qa-message dsh-qa-message--work"
+          data-testid="qa-message-work"
           data-status={message.status}
           aria-label="Работа помощника"
         >
@@ -467,19 +519,6 @@ export const QaMessage = memo(
         : message.role === "user"
           ? (message.author ?? "Вы")
           : "Статус";
-    const copy = async () => {
-      if (copied || navigator.clipboard?.writeText === undefined) return;
-      try {
-        await navigator.clipboard.writeText(message.text);
-        setCopied(true);
-        if (copiedTimer.current !== undefined)
-          clearTimeout(copiedTimer.current);
-        copiedTimer.current = setTimeout(() => setCopied(false), 1200);
-      } catch {
-        // Clipboard access may be denied by the embedding browser; keep the
-        // action available for a later user gesture without surfacing noise.
-      }
-    };
     const persist = (
       next: Rating | null,
       detail?: {
@@ -520,7 +559,7 @@ export const QaMessage = memo(
     const persistentMeta = showTimestamp && message.timestamp !== undefined;
     const meta =
       message.role === "system" || message.timestamp === undefined ? null : (
-        <span className="dsh-qa-message__meta">
+        <span className="dsh-qa-message__meta" data-testid="qa-message-meta">
           <time dateTime={new Date(message.timestamp).toISOString()}>
             {formatDayTime(message.timestamp)}
           </time>
@@ -540,16 +579,26 @@ export const QaMessage = memo(
     return (
       <article
         className={`dsh-qa-message dsh-qa-message--${message.role}`}
+        data-testid="qa-message"
         data-status={message.status}
         aria-label={`Сообщение: ${label}`}
       >
-        <div className="dsh-qa-message__content">
+        <div
+          className="dsh-qa-message__content"
+          data-testid="qa-message-content"
+        >
           {message.role === "user" && message.author !== undefined ? (
-            <span className="dsh-qa-message__byline">{message.author}</span>
+            <span
+              className="dsh-qa-message__byline"
+              data-testid="qa-message-author"
+            >
+              {message.author}
+            </span>
           ) : null}
           {message.role === "user" && message.files !== undefined ? (
             <div
               className="dsh-qa-message__files"
+              data-testid="qa-message-files"
               aria-label="Прикреплённые файлы"
             >
               {message.files.map((file) => (
@@ -563,7 +612,10 @@ export const QaMessage = memo(
             </div>
           ) : null}
           {message.role === "user" && message.images !== undefined ? (
-            <div className="dsh-qa-message__images">
+            <div
+              className="dsh-qa-message__images"
+              data-testid="qa-message-images"
+            >
               {message.images.map((image) => (
                 <QaAttachedImage
                   key={image.attachmentId}
@@ -576,18 +628,51 @@ export const QaMessage = memo(
           {message.role === "assistant" && renderMarkdown ? (
             <Markdown
               text={message.text}
+              streaming={message.status === "streaming"}
               sourceRefs={sourceRefs}
               onSourceOpen={onSourceDetail}
             />
           ) : (
             message.text
           )}
+          {message.role === "assistant" &&
+          message.artifacts !== undefined &&
+          message.artifacts.length > 0 ? (
+            <div
+              className="dsh-qa-message__artifacts"
+              data-testid="qa-message-artifacts"
+              aria-label="Созданные файлы"
+            >
+              {message.artifacts.map((artifact) => (
+                <QaFileAttachment
+                  key={artifact.path}
+                  name={artifact.name}
+                  bytes={artifact.bytes}
+                  tone="sent"
+                  onOpen={
+                    onArtifactOpen === undefined
+                      ? undefined
+                      : () => onArtifactOpen(artifact)
+                  }
+                  onDownload={
+                    onArtifactDownload === undefined
+                      ? undefined
+                      : () => onArtifactDownload(artifact)
+                  }
+                />
+              ))}
+            </div>
+          ) : null}
           {message.status === "streaming" ? (
             <span className="dsh-qa-message__cursor" aria-hidden="true" />
           ) : null}
         </div>
         {message.role === "user" && message.status === "pending" ? (
-          <span className="dsh-qa-message__pending" role="status">
+          <span
+            className="dsh-qa-message__pending"
+            data-testid="qa-message-pending"
+            role="status"
+          >
             <span
               className="dsh-qa-message__pending-spinner"
               aria-hidden="true"
@@ -602,6 +687,7 @@ export const QaMessage = memo(
           <button
             type="button"
             className="dsh-qa-message__sources"
+            data-testid="qa-message-sources"
             onClick={() =>
               onOpenSources(
                 message.sources ?? [],
@@ -616,30 +702,42 @@ export const QaMessage = memo(
         {showActions ? (
           <div
             className="dsh-qa-message__actions"
+            data-testid="qa-message-actions"
             data-persistent={persistentMeta || undefined}
           >
             {message.role === "user" ? meta : null}
-            <button
-              type="button"
-              aria-label={copied ? "Скопировано" : "Скопировать сообщение"}
-              title={copied ? "Скопировано" : "Копировать"}
-              onClick={() => void copy()}
-            >
-              {copied ? (
-                <svg viewBox="0 0 18 18" aria-hidden="true">
-                  <path d="m4.5 9.25 2.75 2.75 6.25-6.25" />
-                </svg>
-              ) : (
-                <svg viewBox="0 0 18 18" aria-hidden="true">
-                  <rect x="6.25" y="3.25" width="8.5" height="8.5" rx="2" />
-                  <path d="M11.75 11.75v.5a2.5 2.5 0 0 1-2.5 2.5h-3.5a2.5 2.5 0 0 1-2.5-2.5v-3.5a2.5 2.5 0 0 1 2.5-2.5h.5" />
-                </svg>
-              )}
-            </button>
+            {copyImpossible ? (
+              <CopyHint testId="qa-message-copy-hint" />
+            ) : (
+              <>
+                <button
+                  type="button"
+                  data-testid="qa-message-copy"
+                  aria-label={copied ? "Скопировано" : "Скопировать сообщение"}
+                  title={copied ? "Скопировано" : "Копировать"}
+                  onClick={copy}
+                >
+                  {copied ? (
+                    <svg viewBox="0 0 18 18" aria-hidden="true">
+                      <path d="m4.5 9.25 2.75 2.75 6.25-6.25" />
+                    </svg>
+                  ) : (
+                    <svg viewBox="0 0 18 18" aria-hidden="true">
+                      <rect x="6.25" y="3.25" width="8.5" height="8.5" rx="2" />
+                      <path d="M11.75 11.75v.5a2.5 2.5 0 0 1-2.5 2.5h-3.5a2.5 2.5 0 0 1-2.5-2.5v-3.5a2.5 2.5 0 0 1 2.5-2.5h.5" />
+                    </svg>
+                  )}
+                </button>
+                {copyRefused ? (
+                  <CopyHint testId="qa-message-copy-hint" />
+                ) : null}
+              </>
+            )}
             {message.role === "user" ? null : (
               <>
                 <button
                   type="button"
+                  data-testid="qa-message-rate-up"
                   aria-label="Нравится"
                   title="Нравится"
                   aria-pressed={rating === "up"}
@@ -652,6 +750,7 @@ export const QaMessage = memo(
                 </button>
                 <button
                   type="button"
+                  data-testid="qa-message-rate-down"
                   aria-label="Не нравится"
                   title="Не нравится"
                   aria-pressed={rating === "down"}
@@ -665,6 +764,7 @@ export const QaMessage = memo(
                 {onRegenerate === undefined ? null : (
                   <button
                     type="button"
+                    data-testid="qa-message-regenerate"
                     aria-label="Перегенерировать"
                     title="Перегенерировать"
                     onClick={onRegenerate}
@@ -705,6 +805,8 @@ export const QaMessage = memo(
     prev.resolveImage === next.resolveImage &&
     prev.onOpenSources === next.onOpenSources &&
     prev.onSourceDetail === next.onSourceDetail &&
+    prev.onArtifactOpen === next.onArtifactOpen &&
+    prev.onArtifactDownload === next.onArtifactDownload &&
     prev.thinkingPhrases === next.thinkingPhrases &&
     sameMessage(prev.message, next.message),
 );

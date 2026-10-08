@@ -33,7 +33,7 @@ falls back to normal inference. The model never knows this plugin exists.
 
 ## Requirements
 
-- DeepSeek Harness >= 0.1.5-rc.2 < 0.2.0
+- DeepSeek Harness >= 0.1.7-rc.2 < 0.2.0
 - A llama.cpp `llama-server` started with `--slots --slot-save-path <dir>`
   and `--parallel 1` for the single-slot mode (see the [design doc](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-kv-persist/docs/specs/design.md) §6).
   The server flag does not replace the plugin's local lease, which also
@@ -74,6 +74,7 @@ providers listed under `providers` are ever coordinated.
 | `checkpoint.onShutdown` | boolean | `true` | Final checkpoint on plugin disposal. |
 | `checkpoint.onSessionFlush` | boolean | `true` | Checkpoint on the session flush event. |
 | `checkpoint.idleMs` | number | `30000` | Idle checkpoint delay; `0` disables. |
+| `checkpoint.shutdownGraceMs` | number | `5000` | How long disposal waits for the final checkpoint before unloading anyway; the checkpoint itself is never aborted. |
 | `checkpoint.onTurnEnd` | boolean | `false` | Checkpoint after every user turn. |
 | `checkpoint.onStepEnd` | boolean | `false` | Reserved for per-step checkpoints. |
 | `restore.enabled` | boolean | `true` | Restore compatible snapshots lazily. |
@@ -88,7 +89,7 @@ Full configuration rationale: [design doc §35](https://github.com/xarleyn/dsh-p
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (see `compatibility.json`)
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (see `compatibility.json`)
 - Node.js >= 22
 - llama.cpp server with the slots management API enabled
 

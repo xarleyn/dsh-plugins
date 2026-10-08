@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { QaBrowserError } from "../src/errors.js";
 
-import { createHarness } from "./session-manager.helpers.js";
+import { createHarness, type FakeContext } from "./session-manager.helpers.js";
 
 describe("QaBrowserSessionManager", () => {
   it("creates one isolated context per DSH session and keeps independent tabs", async () => {
@@ -63,7 +63,7 @@ describe("QaBrowserSessionManager", () => {
   });
 
   it("marks state lost on crash and recreates the context on the next ensure", async () => {
-    const { manager, provider } = createHarness();
+    const { manager, provider, logged } = createHarness();
     await manager.ensureSession("crash");
     provider.crash();
     expect(manager.getSession("crash")).toMatchObject({
@@ -71,8 +71,94 @@ describe("QaBrowserSessionManager", () => {
       selectedTabId: null,
       tabIds: [],
     });
+    // The log line is the other half of the distinction for whoever reads the
+    // container's output: a crashed process has a crash log to go and look at,
+    // and this is the case that says where to find it.
+    expect(
+      logged
+        .filter((entry) => entry.level === "error")
+        .map((entry) => entry.event),
+    ).toEqual(["browser.crashed"]);
     await manager.ensureSession("crash");
     expect(manager.getSession("crash")?.status).toBe("ready");
+    await manager.dispose();
+  });
+
+  it("closes a session whose creation was still running when it disposed", async () => {
+    const { manager, provider } = createHarness();
+    // A creation the disposal has to join: the context it registers is not in
+    // the session map while it is being built, so a sweep that reads the map
+    // first would stop the provider and leave the session running behind it.
+    let openBuild: () => void = () => undefined;
+    const build = new Promise<void>((resolve) => {
+      openBuild = () => resolve();
+    });
+    const buildContext = provider.createContext.bind(provider);
+    const built: FakeContext[] = [];
+    provider.createContext = async (options) => {
+      await build;
+      const context = await buildContext(options);
+      built.push(context);
+      return context;
+    };
+
+    const creating = manager.ensureSession("late");
+    // The disposal has to be joined, not awaited after the creation: the point
+    // is that the two are running at the same time.
+    const disposing = manager.dispose();
+    openBuild();
+    await creating;
+    await disposing;
+
+    expect(built).toHaveLength(1);
+    expect(built[0]?.closed).toBe(true);
+    expect(provider.stops).toBe(1);
+    expect(manager.getSession("late")).toBeNull();
+  });
+
+  it("passes the configured runtime mode down to the provider", async () => {
+    const { manager, provider } = createHarness({
+      runtime: { mode: "attach", cdpEndpoint: "http://127.0.0.1:9222" },
+    });
+
+    await manager.ensureSession("attached");
+
+    expect(provider.startOptions.at(-1)).toMatchObject({
+      mode: "attach",
+      cdpEndpoint: "http://127.0.0.1:9222",
+    });
+    await manager.dispose();
+  });
+
+  it("keeps a dropped CDP link apart from a crash and re-attaches on the next ensure", async () => {
+    const { manager, provider, logged } = createHarness({
+      runtime: { mode: "attach", cdpEndpoint: "http://127.0.0.1:9222" },
+    });
+    const session = await manager.ensureSession("attached");
+    const tabId = session.selectedTabId!;
+
+    provider.crash("BROWSER_CONNECTION_LOST");
+
+    // The browser a person started is likely still running; only our link to it
+    // is gone, and the panel is told that rather than a crash it cannot verify.
+    expect(manager.getSession("attached")).toMatchObject({
+      status: "disconnected",
+      selectedTabId: null,
+      tabIds: [],
+    });
+    // And so is the log: an operator who reads `browser.crashed` goes looking for
+    // a crash log of a process this plugin never started.
+    expect(
+      logged
+        .filter((entry) => entry.level === "error")
+        .map((entry) => entry.event),
+    ).toEqual(["browser.connection-lost"]);
+    await expect(manager.snapshot("attached", tabId)).rejects.toMatchObject({
+      code: "BROWSER_CONNECTION_LOST",
+    });
+    await manager.ensureSession("attached");
+    expect(manager.getSession("attached")?.status).toBe("ready");
+    expect(provider.starts).toBe(2);
     await manager.dispose();
   });
 

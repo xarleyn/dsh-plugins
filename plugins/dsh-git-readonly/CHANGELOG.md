@@ -1,3 +1,117 @@
+## 0.2.5 (2026-10-08)
+
+### 🩹 Fixes
+
+- Every plugin row on the Host's Plugins page is named in words. ([fff88762](https://github.com/xarleyn/dsh-plugins/commit/fff88762))
+
+  The page titles a bundle's row and fills its description line from the package's
+  exported `locale/en.json`, which the Host resolves through the package's `exports`
+  map without activating the plugin (`@deepseek-ai/dsh-app-boot` `package-meta.ts`).
+  Only `dsh-documents` shipped that file, so the other twenty-five rows were signed by
+  their full package specifier — an operator read `@yadsh/dsh-jev-compaction` where a
+  first-party row read a phrase. Each package now exports `./locale/en.json`, publishes
+  `locale/*.json`, and carries English `meta.title` and `meta.description`; where the
+  package already had a configuration card, its `summary` one-liner and the row's
+  description are one string, pinned by a test against the shipped file rather than
+  against a copy in the test. `pnpm verify:packages` asks all three halves of every
+  plugin package, so a row cannot fall back to a specifier unnoticed.
+
+  Two pages still seated on the deleted-in-spirit `settings.plugins.tab` move to the
+  panel with them. `dsh-prompt-firewall` edits its own Config namespace, so it takes the
+  row seat keyed `@yadsh/dsh-prompt-firewall#dsh-prompt-firewall` — the row id is the
+  namespace the Host serves the form under, so no saved value is orphaned — and with the
+  seat it gives up its shell, its header badge and its show/hide labels, taking the
+  Host's `--dsw-focus-ring-*` pair for every control it draws and answering the
+  unavailable namespace with a sentence instead of an empty section.
+  `dsh-domain-experts` owns no form — it edits domains through its Remote services — so
+  it takes the bundle-level seat `plugins.bundle.config`, keyed by the package name, and
+  drops the `<h2>` heading and the intro line the panel already draws from the row's own
+  display metadata.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.2.4 (2026-10-04)
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- The plugin's own git suites finish on a loaded Windows run instead of timing out ([#290](https://github.com/xarleyn/dsh-plugins/issues/290))
+  before their first assertion, and they no longer inherit the identity of
+  whoever runs them.
+
+  Every git suite builds a throwaway repository in `beforeAll` — the mutation
+  suite builds two, and a single repository costs seven `git` calls before it
+  holds one commit — and the snapshot tests then walk the repository they built.
+  Vitest gives a hook ten seconds and a test five, and this package re-exported
+  the shared preset with no override, so a full `nx run-many -t test` on Windows
+  lost suites to `Hook timed out in 10000ms`. Vitest marks the tests of such a
+  file skipped while counting the file itself as failed, which is how the 22.09
+  full-run slice read as six failures.
+
+  It is the load that the budgets could not cover, not the git work: process
+  creation and file I/O get expensive enough that the heaviest snapshot test costs
+  a second on an idle machine and measured 52s inside a full run, and the two
+  heaviest files reached 139s and 103s. The package now budgets 120s per test and
+  90s per hook, and runs its suites on two Vitest workers rather than one per
+  logical CPU. Every worker builds its repositories with real `git` children, so
+  the suite was inflating the load it then failed to meet, and a `git` child that
+  comes back non-zero without a word is not a thing any budget forgives.
+
+  The ceiling therefore sits on the child rather than on the budget: each fixture
+  `git` run is killed at twenty seconds and reports which command it was. A hang
+  then costs one named command instead of a whole test budget, which is what makes
+  the two numbers above headroom over a measured slow run rather than a place for
+  a hang to idle. A loaded run is not a Windows-only case either — the per-project
+  split the pipeline fans out with has collapsed into a single job running every
+  project on one runner, and five other suites timed out inside it while this one
+  finished.
+
+  The throwaway repositories were also not hermetic. `GIT_AUTHOR_*` and
+  `GIT_COMMITTER_*` outrank both the `user.name` the fixture writes into the
+  repository and the per-commit `-c user.name=` override, so a caller that
+  exports its own identity — a CI bot, an agent harness — silently became the
+  author of every fixture commit, and the blame, context and history assertions
+  failed on that name. The fixture now strips those six keys from the environment
+  of every `git` it starts, so the identity it pins in repository config is the
+  identity commits carry.
+
+  A third failure the same runs exposed was not a timeout at all: one of the
+  fixture's setup `git` calls came back failed with nothing on stderr, which
+  dropped its whole test file and left those tests reported skipped. git writes a
+  diagnosis whenever it chooses to refuse, so silence means the child died before
+  refusing anything. The fixture now reports the exit code and signal it used to
+  discard, and retries a setup command only on that silence — up to three more
+  attempts with a short backoff. Commands past setup keep failing on their first
+  error, because a retried commit would leave two commits where the snapshot
+  compares against one.
+
+  No runtime behavior changed: these fixes live in test configuration and test
+  fixtures.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.2.3 (2026-09-17)
 
 ### 🩹 Fixes

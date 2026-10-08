@@ -13,6 +13,11 @@ Session and Agent Loop.
 - renders only user text, assistant-visible text and safe status messages;
 - supports streaming, Stop, optional New chat, safe Markdown, copy actions and
   a responsive first-party-style conversation layout;
+- queues a question asked while the assistant is still answering: the strip
+  above the composer lists what waits for the next turn, and each row can be
+  edited, sent into the running turn, or dropped. The queue is the Host
+  session's own state, so nothing is stored here and a message never reads as
+  both queued and sent;
 - renders assistant Markdown with this plugin's own GFM grammar — headings
   through `######`, nested and task lists, tables, quotes, images, autolinks,
   reference links, TeX math (`$…$`, `$$…$$`, ```math fences, through a bundled
@@ -43,30 +48,35 @@ Session and Agent Loop.
 - ships a destructive-but-fenced `file_delete` tool in that catalog: it removes
   one regular file strictly inside the chat's workspace and refuses
   directories, missing paths and anything that leaves the root — symlink
-  escapes included — with an explicit, path-safe reason; every call answers
-  `ask`, so the interactive approval card parks it for the operator and
-  nothing is ever deleted without a person's answer;
+  escapes included — with an explicit, path-safe reason; a call from the chat's
+  own agent answers `ask`, so the interactive approval card parks it for the
+  operator, a delegated call is refused outright, and nothing is ever deleted
+  without a person's answer;
 - optionally gates the surface behind email + password accounts
   (`accounts.enabled`) with server-side session ownership, a first-login
   migration of the browser's existing chats, a `qa-accounts` management CLI
   (list/add/set-password/set-role/disable/revoke), and a coarse honest boundary:
   accounts identify QA users, they do not fence the harness root;
 - gives each account a `Настройки` dialog — profile, starter messages,
-  integration tokens, general, and **personal skills**: ordinary Agent Skills stored as `SKILL.md` in the account's own
+  notification channels, integration tokens, general, and **personal skills**: ordinary Agent Skills stored as `SKILL.md` in the account's own
   directory (`accounts.skills`), edited with a catalog, an invocation-flag
   form, a Markdown body, a tool picker over the deployment's registry, and a
   preview of the exact file a save writes. Skills reach the model through a
   provider this plugin registers instead of the filesystem one, so no account
   can see another's, and `allowed-tools` is stored as declared but never
   grants anything the session does not already allow;
+- carries its own light/dark/system palette control in the header: the Host's
+  Appearance row lives in the settings this surface suppresses, so `/qa` would
+  otherwise open in whichever theme the application happened to boot with (see
+  [Theme](#theme));
 - optionally redirects non-loopback hostnames from the harness root into the
   QA route (`entry.redirectNonLoopback`), keeping the operator's localhost
   harness UI untouched;
-- ships an operator settings card (Settings → Plugins → plugin configuration →
-  «Помощник QA») that edits the `qa-surface` namespace in place — route,
-  branding, session, interface, lockdown, accounts, sources, attachments,
-  embedding — and reports the configuration the running Host
-  resolved;
+- ships an operator settings card on the Host's Plugins page — this package's
+  row, opened under its configuration section — that edits the `qa-surface`
+  namespace in place (route, branding, session, interface, lockdown, accounts,
+  sources, attachments, embedding) and reports the configuration the running
+  Host resolved;
 - no longer owns the document pipeline: `document_create`,
   `document_to_markdown`, `document_from_url`, `document_convert` and
   `document_inspect` come from [`@yadsh/dsh-documents`](https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-documents#readme),
@@ -114,16 +124,27 @@ Configuration is registered under the Host settings namespace `qa-surface`.
 Composition values form the base layer; normal DSH user settings can override
 them when the deployment provides writable settings.
 
-The browser half carries a settings card for that namespace: **Settings →
-Plugins → plugin configuration → «Помощник QA»**. It writes the user layer of
-`qa-surface` — so every change is revertible through the card's own reset — and
-shows the configuration the running Host resolved next to it. Combinations the
-Host refuses are either written together in one mutation (a provider with its
-model, per-user workspaces with the `workspace-write` sandbox) or disabled with
-the reason stated. The card renders only where the settings namespace is
-readable, which the DSH gateway pins to loopback; a browser served over the LAN
-reads the same configuration read-only through `qaSurface/describe` on the QA
-page itself.
+The browser half carries a settings card for that namespace: **the Host's
+Plugins page → this package's row → its configuration section**. It writes the
+user layer of `qa-surface` — so every change is revertible through the card's own
+reset — and shows the configuration the running Host resolved next to it.
+Combinations the Host refuses are either written together in one mutation (a
+provider with its model, per-user workspaces with the `workspace-write` sandbox)
+or disabled with the reason stated. The row's chrome is the page's: it draws the
+surface, the heading and the expand control, and this bundle contributes the body
+— the heading falls back to the package name and the row's one-liner to this
+manifest's `description`, which is the sentence the card answers its `summary`
+view with. The Plugins page is not the settings directory, so the card keeps
+answering from a browser on another machine: there the namespace reads
+`unavailable` — the DSH gateway pins it to loopback — and the card says so rather
+than vanishing, while a namespace that serves values but refuses writes keeps its
+body and disables the write controls. Either way the same configuration stays
+readable anywhere through `qaSurface/describe` on the QA page itself.
+
+The row on the Plugins page is the only browser route that writes these values.
+Where a deployment keeps that page from the operator, the `config:` block below
+is what sets them: it is the composition layer the card's user layer overrides,
+and the values it names are the ones the card would have changed.
 
 ```yaml
 config:
@@ -149,6 +170,8 @@ config:
     provider: null
     model: null
     reasoningEffort: null
+    # How many questions the stand answers at once; 0 sets no ceiling.
+    maxActiveRequests: 0
   ui:
     showHeader: true
     showReset: false
@@ -209,6 +232,13 @@ config:
     # Let the /qa route run the one-time ?token= host-cookie exchange itself,
     # so transparent entry works without the deploy proxy.
     cookieBootstrap: true
+  # Turn-completion notices for the chats of this browser's own history.
+  notifications:
+    # Off: a finished turn stays silent on both channels.
+    enabled: true
+    # Off: the page never hands a finished turn to the operating system,
+    # whatever a reader chose there.
+    allowOs: true
   lockdown:
     enabled: true
     enforceFixedAgentPreset: true
@@ -295,11 +325,14 @@ As of catalog version 3 the shipped catalog carries four tools:
 capability — it deletes a single regular file strictly inside the calling
 chat's workspace and refuses directories, missing paths and anything that
 escapes the root, symlink escapes included, with an explicit reason that never
-echoes a host path. Every `file_delete` call is answered `ask` by an
-inner gate that sits inside the approval flow, so on a deployment with
-`interaction.approvals: interactive` the interactive approval card parks the
-call for the operator, and on `blocked` the call is refused outright: nothing
-is deleted without a person. Like every catalog tool it is admitted as a
+echoes a host path. Every `file_delete` call from the chat's own agent is
+answered `ask` by an inner gate that sits inside the approval flow, so on a
+deployment with `interaction.approvals: interactive` the interactive approval
+card parks the call for the operator, and on `blocked` the call is refused
+outright: nothing is deleted without a person. A delegated child of that chat is
+refused by the same inner gate without a card — a child cannot be confirmed by
+anyone, and a card parked over the parent's composer holds the parent turn for
+an answer that cannot arrive. Like every catalog tool it is admitted as a
 dynamic name at execution time — it needs no `lockdown.toolPolicy` entry —
 and a role-managed deployment grants it through the same Tools baskets as any
 other tool.
@@ -504,6 +537,46 @@ to the document pipeline instead of the plain file reader, which refuses those
 formats as binary. The source-priority note is the one that says an answer
 belongs to the documentation or the expert before it belongs to memory.
 
+### Theme
+
+Three cubes in the header, next to the role control: light, dark, and follow
+the system. The surface needs its own because the Host keeps its Appearance row
+inside the settings — and the QA overlay is precisely what suppresses the native
+shell, while the kiosk never mounts it. Without these cubes the stand opens in
+whichever palette the application booted with and a visitor has nowhere to
+answer that.
+
+The choice belongs to the browser, not to the deployment. It is stored under
+this stand's own localStorage namespace (`<storageKey>:v1:<route>:theme`) and
+never written to the Host user-settings document: a stand is shared by everyone
+who reaches it, and one person's eyes are not a configuration. A browser that
+never touched the control stores nothing and writes nothing at all — the stand
+keeps the palette the application booted it in, so an untouched deployment looks
+exactly as it did before. The control then reports the palette on screen instead
+of claiming a preference nobody picked.
+
+What a click writes is the Host's own palette contract — `color-scheme` on the
+root and the dark-palette attribute on the body, the two fields the Host's theme
+presenter owns — which is why everything follows it: the cards, the transcript,
+the drawers and the dialogs are painted from `--dsw-alias-*` tokens, and those
+tokens are declared under exactly those selectors. The font-size axis and a
+theme's own token overrides stay the Host's. `system` resolves through
+`prefers-color-scheme` and keeps listening, so a laptop going dark at dusk takes
+the chat with it. Once a preference is chosen the control marks the *preference*,
+never the resolved palette, so «Системная тема» stays pressed while the operating
+system decides which theme that is.
+
+The document is borrowed, not owned: what a click writes is put back when the
+surface stops being what the visitor sees — the route changing inside the
+application, or the overlay unmounting. Off its own route this control is not on
+screen to undo itself, and a harness left in a QA stand's palette would stay in
+it for the rest of the visit. The palette put back is the one the document wore
+when the choice was applied, retaken on every repaint, so the Host's own answer
+wins again the moment the visitor leaves.
+
+One consequence worth knowing: the control is part of the header, so a deployment
+that hides the header (`ui.showHeader: false`) hides the only way to reach it.
+
 ### Starter messages
 
 The same `Настройки` dialog carries a «Быстрые сообщения» section where the
@@ -516,6 +589,21 @@ user hides them with the section's toggle. The list is stored on the account
 is pure UI preference — none of it reaches the agent prompt.
 `accounts.starters.enabled` (default `true`) turns the section off for
 deployments that want the buttons to stay operator-defined.
+
+### Notification channels
+
+A turn that ends in a chat the reader is not looking at says so, and the «Уведомления»
+section of the same `Настройки` dialog is where they decide how far that reaches: the
+line inside the page, and the notice a hidden or backgrounded tab can hand to the
+operating system. Both belong to the account rather than to the browser, so the
+choice follows the person to another machine; where a stand has no accounts, the
+desktop choice stays in the browser that made it. The permission itself is the
+browser's and is asked for once, from a click. What the stand refuses with
+`notifications.enabled` or `notifications.allowOs` stays refused, and the section
+says which of the two closed a channel instead of offering a switch that cannot
+take effect. Like the starter messages, none of this reaches the agent prompt, and
+a notice never carries the answer itself — only the chat's title and the fact that
+its turn ended.
 
 ### Integration tokens
 
@@ -553,6 +641,29 @@ stays quiet until a message is actually sent, and the old session stays intact
 for operator inspection. The sidebar orders chats by the host's last update,
 so merely opening a chat never moves it.
 
+A stand whose model runs locally can also refuse to take questions it cannot
+answer at the same time: `session.maxActiveRequests` names that ceiling, and 0 —
+the default — names none. The count is the Host's, read from the agents that are
+answering right now, so a question that arrived through the HTTP API occupies a
+place too and a browser never has to guess about chats that are not its own.
+Before a send the browser asks that read; a question with no place left is never
+sent — no session is materialized, nothing enters the transcript, the composer
+keeps the text, and the visitor reads how many requests the stand is already
+working. That count includes this visitor's own turns, which is why the dialog
+names occupied places rather than people ahead: a refused question is not queued
+behind a number the stand cannot attribute.
+It is a ceiling rather than a lock: the prompt itself rides the native session
+RPC, so two questions pressed in the same instant can still overshoot by one.
+What the ceiling buys is the steady state, and an unreadable count sends the
+question anyway.
+It bounds questions, not every other send. A message typed while a chat is
+answering joins that chat's own queue and costs no second place, so it is admitted
+without the read; a human command from the palette goes to the Host's command
+runtime and is never held back, because that surface is how a visitor inspects or
+repairs a saturated stand and this plugin cannot tell which commands wake the
+model. A command that does wake it enters the same Host count, so the next
+question waits behind it like behind any other turn.
+
 Regeneration: the last committed answer offers a retry action. The session log
 is append-only, so "regenerate" sends a hidden instruction as an ordinary
 prompt and the answer arrives as a follow-up turn; the projection hides that
@@ -567,6 +678,43 @@ answer footer and the right rail's sources tab and is persisted in the
 plugin-owned `$DSH_HOME/qa-sources.json`, so reload does not rerun tools and
 no custom event enters the Harness session journal. Search-only discovery
 stays hidden by default.
+
+A source enters a turn bundle through two channels, and the definition is their
+union. The extractor registry (`src/provenance/extractors.ts`) is the channel
+that reads durable tool results: a completed call becomes a source only when one
+of its seven extractors matches it — a read naming a workspace path, a fetch
+naming a URL, a search returning its source list, a file search shaped as
+matches, or a Jira, Confluence or knowledge record. The collector then keeps the
+evidence half of what the registry returned, so a file that only appeared in a
+search result joins the list once the answer actually reads it. The transcript
+projection rebuilds bundles from this registry alone. The Host store is the
+second channel: it also takes a report the answering agent files itself through
+the `qa_report_sources` tool (`src/provenance/host-store.ts`, normalized in
+`src/provenance/reported.ts`), and the Host's bundle wins the turn it shares with
+the projection (`src/client/session-sources.ts`), so a source the agent reported
+by hand can sit in a list no extractor produced.
+`sources.subagents.validateReportedSources` decides how strict that report is —
+by default every entry still has to name a path or a URL, switched off it keeps
+its own kind, title and snippet with no address at all.
+
+Neither channel collects injected memory or a bridged recall tool (an
+`mcp__openviking__*` read returning a `viking://` address as text): no extractor
+matches it, the deployment note treats recalled memory as background from earlier
+sessions rather than the source an answer is looked up in, and a virtual address
+has no file preview to open. Nor does a document the model only names in its
+prose — no channel parses the answer's wording. A turn that answered from memory
+or from what the conversation already carried therefore ends with no source at
+all, unless the agent reports something for it itself, which is the model's word
+rather than the collector's read of a tool result.
+
+That is why the header control never disables on an empty list while the answer
+footer stays unrendered: the panel owns the explanation, and a dead button hid
+the only surface that gives it. Its empty state names the classes that do appear
+and says plainly that an empty list is not a collection failure — and it is drawn
+only once the collection has settled, because an unsettled one already says which
+origins it is still waiting for, and a chat that has asked nothing yet has no
+answer to diagnose. Gating stays with the deployment — `sources.enabled` and
+`sources.display.sidebar` decide whether the control exists at all.
 
 Legacy sessions written by earlier releases can be repaired while DSH is
 stopped. Preview changes first, then apply them with an automatic backup:
@@ -698,6 +846,14 @@ interface changes nothing about tools, the sandbox, the permission preset or
 approvals: a skill invoked by hand carries exactly the permissions it carries
 when the model loads it.
 
+One part of that user list is not the role's to name. A skill the account keeps
+in its own skills root belongs to one person, and a role is shared by many, so
+the account's own user-invocable skills join its `/name` list directly: palette,
+typed gesture and the enforcement guard read the same field and cannot disagree,
+while the model's catalog stays the role's. The role ceiling still bounds the
+tools such a skill activates with, and an administrator's withdrawal of the name
+outright outranks the personal layer.
+
 The settings card carries the same policy under «Слеш-действия», with the
 allow lists as plain name lists — the config stores names, never ids.
 
@@ -788,8 +944,9 @@ export function apply(ctx: Context) {
 
 ### The signed-in account outside the dialog
 
-A card mounted in the host's own settings (`settings.plugin.item`) has no panel
-props to read the account from, so the same contract also publishes the session
+A card mounted outside the QA dialog — in the plugin's own row on the Host's
+Plugins panel (`plugins.row.config`) — has no panel props to read the account
+from, so the same contract also publishes the session
 as the `qaUserSession` client service: `checking`, `anonymous` or `authed` with
 the bearer credential the principal-scoped QA remotes authorize with. It follows
 the same account controller the pages use, so a card and the dialog never
@@ -805,9 +962,10 @@ export const inject = ["qaUserSession", "slots"];
 
 export function apply(ctx: Context) {
   ctx.effect(() =>
-    ctx.slots.inject("settings.plugin.item", () =>
+    ctx.slots.inject("plugins.row.config", () =>
       ctx.slots.register(
-        { name: "settings.plugin.item", key: "my-namespace" },
+        // `<package name>#<row id>`, the row id being the settings namespace.
+        { name: "plugins.row.config", key: "@yadsh/dsh-my-plugin#my-namespace" },
         MyCard,
       ),
     ),
@@ -1011,8 +1169,9 @@ can see what a conversation actually gained.
 
 `/qa/admin` is the review and administration surface. It is part of the QA page
 itself, not a separate application, and it is open to `admin` and `reviewer`
-accounts. Reviewer sees conversations, the review queue, feedback and
-analytics; only an administrator sees users, capability policies and audit.
+accounts. Reviewer sees conversations, the review queue, feedback, analytics and
+the experts' memory as it was recorded; only an administrator sees users,
+capability policies and audit, and corrects what an expert remembered.
 
 The console covers the quality loop end to end:
 
@@ -1044,6 +1203,14 @@ The console covers the quality loop end to end:
 - **Analytics** — rating coverage, positive share overall and per subrole,
   issue distribution and a daily trend. These are user-satisfaction signals;
   the console never presents them as accuracy.
+- **Expert memory** — what each domain expert recorded for itself, which the
+  plugin feeds back into every later answer of that domain. Searchable by key,
+  text and tag; a record's text and tags can be corrected in place, and one
+  record, a ticked selection or a whole namespace can be deleted. A reviewer
+  reads it — noticing a remembered inaccuracy is a review finding — and only an
+  administrator writes it. Wiping a namespace confirms the count the page
+  showed, and every write is audited with the line as it was before. The
+  section is empty on a stand that composes no domain experts.
 - **Audit** — one timeline of authorization changes, account status, subrole
   assignments, policy edits and review verdicts, each with its before/after
   image.
@@ -1067,7 +1234,7 @@ integration:
   enabled: true # requires accounts.enabled: true
   basePath: /qa/api # POST {basePath}/ask, GET {basePath}/session, GET {basePath}/health
   tokenTtlDays: 90
-  requestTimeoutMs: 90000
+  requestTimeoutMs: 90000 # the answer budget; a slow model wants a larger one, see docs/INTEGRATION-API.md §2.5
   maxConcurrent: 4
   requestsPerMinute: 60
   maxAnswerCharacters: 4096 # the answer the ticket comment can hold

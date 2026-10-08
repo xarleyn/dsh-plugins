@@ -1,3 +1,219 @@
+## 0.4.2 (2026-10-08)
+
+### 🩹 Fixes
+
+- An expert domain that inherits its model inherits the chat's model policy, not the ([#766](https://github.com/xarleyn/dsh-plugins/issues/766))
+  chat's model.
+
+  `DomainModelConfig.inherit` is the default, and inheriting meant taking the parent
+  agent's live `provider`/`model` — a fact about what the visitor had picked, not about
+  what the deployment decided. The QA surface already answers for a session
+  (`qa-principal.ts`); it now also answers `modelPolicyForSession(sessionId)`, declared
+  optional so an installed surface that predates model policies keeps resolving
+  principals and simply says nothing about models.
+
+  `agentOptionsOf(definition, policy)` sends that pair when the domain inherits and the
+  policy names one; a domain that pins its own model is untouched, and a domain that
+  inherits where no policy speaks sends no options at all, exactly as before. Because a
+  policy pair now reaches the runtime of an inheriting domain, the provider must be able
+  to compose agent options: such a run is refused with `UNSUPPORTED_SUBAGENT_CAPABILITY`
+  rather than silently dropping the pair.
+
+  Covered by `tests/execution.test.ts` (the policy pair is handed to an inheriting
+  domain, a domain that inherits without a policy still sends no options, a provider
+  without agent options refuses the run instead of ignoring the policy) and
+  `tests/qa-principal.test.ts` (the surface carries the optional read, and an older
+  surface resolves principals while answering nothing about models).
+
+### ❤️ Thank You
+
+- qoder-bot
+
+## 0.4.1 (2026-10-08)
+
+### 🩹 Fixes
+
+- A refusal block reads as a refusal again, and a token the Host never declares ([#717](https://github.com/xarleyn/dsh-plugins/issues/717))
+  cannot be written down unnoticed.
+
+  Unknown `var(--dsw-…)` is not a missing colour: the substitution yields the
+  guaranteed-invalid value, so the browser drops the whole declaration at
+  computed-value time and says nothing. `--dsw-alias-bg-error` and
+  `--dsw-alias-label-error` are named by no theme sheet — the error ramp is
+  `--dsw-alias-state-error-primary` — so every block of refusal text written with
+  them lost its fill and its ink together and rendered as ordinary small text,
+  which is how issue #717 looked on the Memory tab of a stand with no access to
+  the service. The same mechanic had already cost `dsh-sleev` its focus and
+  invalid borders (`--dsw-alias-border-brand`, `--dsw-alias-border-error`) and
+  `dsh-session-scope` its chip fill (`--dsw-alias-fill-tsp-secondary`).
+
+  Text and borders now take `--dsw-alias-state-error-primary` with a `#b3261e`
+  fallback. The theme declares no error *surface* alias — `state-success` and
+  `state-warn` have a tint, `state-error` does not — so a block mixes the state
+  token the way the Host's own danger control does,
+  `color-mix(in srgb, … 8%, transparent)`, and keeps its soft red in both themes.
+  Three names that only ever survived behind a fallback are retired where a live
+  token exists (`--dsw-alias-bg-elevated` → `--dsw-alias-button-elevated-fill`,
+  `--dsw-alias-label-inverse` → `--dsw-alias-label-primary-foreground`), and
+  `--dsw-font-family-mono`, for which the theme offers no alias at all, becomes
+  the `ui-monospace` stack the other bundles already write. No computed value
+  changes except where a dead name had been silently winning.
+
+  `pnpm verify:tokens` (`scripts/verify-design-tokens.mjs`) is the class turned
+  into a gate: it collects every `--dsw-*` name substituted under any package's
+  `src/` and refuses one the installed `@deepseek-ai/dsh-client-ui-theme` does not
+  declare — a dead name behind a fallback included, because the fallback paints a
+  colour the Host never chose. The vocabulary comes from the pinned package rather
+  than a hand-kept list, so the check needs no harness checkout and reads the same
+  version the plugins build against; where the theme cannot be found the gate
+  reports that instead of passing. `dsh-plugin-log-ui`'s own bundle pin flips from
+  requiring `--dsw-alias-bg-error` to forbidding the dead error names.
+
+- Every plugin row on the Host's Plugins page is named in words. ([fff88762](https://github.com/xarleyn/dsh-plugins/commit/fff88762))
+
+  The page titles a bundle's row and fills its description line from the package's
+  exported `locale/en.json`, which the Host resolves through the package's `exports`
+  map without activating the plugin (`@deepseek-ai/dsh-app-boot` `package-meta.ts`).
+  Only `dsh-documents` shipped that file, so the other twenty-five rows were signed by
+  their full package specifier — an operator read `@yadsh/dsh-jev-compaction` where a
+  first-party row read a phrase. Each package now exports `./locale/en.json`, publishes
+  `locale/*.json`, and carries English `meta.title` and `meta.description`; where the
+  package already had a configuration card, its `summary` one-liner and the row's
+  description are one string, pinned by a test against the shipped file rather than
+  against a copy in the test. `pnpm verify:packages` asks all three halves of every
+  plugin package, so a row cannot fall back to a specifier unnoticed.
+
+  Two pages still seated on the deleted-in-spirit `settings.plugins.tab` move to the
+  panel with them. `dsh-prompt-firewall` edits its own Config namespace, so it takes the
+  row seat keyed `@yadsh/dsh-prompt-firewall#dsh-prompt-firewall` — the row id is the
+  namespace the Host serves the form under, so no saved value is orphaned — and with the
+  seat it gives up its shell, its header badge and its show/hide labels, taking the
+  Host's `--dsw-focus-ring-*` pair for every control it draws and answering the
+  unavailable namespace with a sentence instead of an empty section.
+  `dsh-domain-experts` owns no form — it edits domains through its Remote services — so
+  it takes the bundle-level seat `plugins.bundle.config`, keyed by the package name, and
+  drops the `<h2>` heading and the intro line the panel already draws from the row's own
+  display metadata.
+
+### ❤️ Thank You
+
+- qoder-bot
+- xarleyn @xarleyn
+
+## 0.4.0 (2026-10-04)
+
+### 🚀 Features
+
+- An expert's memory now belongs to the account that learned it. Where the ([#369](https://github.com/xarleyn/dsh-plugins/issues/369), [#366](https://github.com/xarleyn/dsh-plugins/issues/366))
+  deployment has accounts, the writable namespace of a run is
+  `domain/payments/u/<account>`, and the domain's own namespace joins the
+  read-only tier every account of that domain shares — so a note one account's
+  expert wrote stops being a rule another account inherits. An account is read
+  from the caller's own session on the host, never from a tool argument, and a
+  delegated run keeps the account of the run that spawned it. With no accounts
+  surface mounted, or with `perUserMemory: false`, one namespace per domain stays
+  exactly as it was.
+
+  What that namespace is for is now said out loud. The composed policy tells the
+  expert to decide who a note is true for before recording it: a tool that was
+  refused, a source that was not mounted, a path that could not be read describes
+  this caller's access, not the domain, so it belongs in the answer and not in
+  memory that outlives the run. A run no account has claimed reads as before and
+  is refused a write, because the only namespace left to it is the one every
+  account reads — `MEMORY_SCOPE_DENIED` with the reason, instead of a note that
+  reads as domain truth tomorrow.
+
+  The inspector gained the note each memory namespace carries, the Memory tab says
+  which namespace a run of an account-scoped deployment really writes, and
+  `domain_memory` states the same rule in its own description.
+
+- Expert memory can be maintained, and junk stops being recorded. ([1c783708](https://github.com/xarleyn/dsh-plugins/commit/1c783708))
+
+  The QA admin console gained a "Expert memory" section: the records an expert
+  wrote to itself, listed per domain, searchable, correctable and deletable one at
+  a time or as a selection. A reviewer reads it; only an administrator writes it,
+  and every write is audited with the line as it was before.
+
+  On the write path, the `domain_memory` tool now refuses a note that records
+  nothing — an acknowledgement, a placeholder, an echoed command, or "nothing was
+  found" — and answers with the reason, so a wrong line stops being injected into
+  every later answer of that domain by the same expert that wrote it. Operators
+  are not gated: correcting or emptying a record from the console stays allowed.
+
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- The degradation codes a run records are documented one by one, with what each of them costs the expert. ([#305](https://github.com/xarleyn/dsh-plugins/issues/305))
+
+  `TOOL_UNVERIFIED` is the code an operator meets on every deployment: the resolver grades an allow-list name as unverifiable whenever it is neither a plugin alias nor a registered worker of this plugin, which is the case for an ordinary tool such as `read` or `grep`. It had no description anywhere, so a `degraded` chip or a `domain-expert/degraded` warning sitting next to `status="completed"` read as a fault in a run that had finished normally.
+
+  SPEC §2 now carries a table: for each of the six codes, when it is emitted and what the expert loses. `TOOL_UNVERIFIED` loses nothing — the name is passed to the harness unchanged and stays in the child's tool filter, which the resolution test now asserts next to the code. `TOOL_UNFILTERABLE` is the code that can name a tool the expert did not get, and it names that tool. The informational status is a property of the resolution, not an oversight: this plugin's worker registry is not the host's global tool registry and no seam asks the latter before the child starts, so the resolver can neither confirm nor deny such a name and says so instead of quietly dropping it and narrowing the expert.
+
+  The operator-facing half is in the README, all three languages, in the section that already separates `enforced` from `advisory`: the chip is not a broken expert and the codes are not equally severe. `docs/architecture.md` records the same trade-off where the tool mask is described. The machine-readable half — a severity carried by the degradation record rather than read off this table — would change the `DomainDegradation` contract and every surface that reads it, so it is written into SPEC §4 as deferred and the published contract is untouched.
+
+- The plugin's own configuration is edited live on a 0.1.7-rc.2 host. ([#529](https://github.com/xarleyn/dsh-plugins/issues/529), [#598](https://github.com/xarleyn/dsh-plugins/issues/598))
+
+  It published its knobs through a settings section it had installed itself, and the
+  `0.1.7` settings rewrite deleted that seam: a field belongs to the form the Host
+  serves exactly when its schema node carries `.volatile()`, and the settings
+  document of a profile is keyed by the profile entry id rather than by a name the
+  plugin invented. All ten knobs are volatile now, which is what keeps them
+  editable from the browser, and the `domain-experts` namespace goes with the
+  section that created it — an operator edits the `dsh-domain-experts` entry.
+
+  Reading moved with it. A volatile field is a stable reference, so the service
+  takes one plain snapshot per operation instead of holding the entry it was
+  composed with, and a value committed after startup is the value the next
+  operation sees. Turning `enabled` off still withdraws the three agent tools at
+  once: that is the one knob with an effect beyond the next read, and it is now
+  re-applied on the loader's volatile-update event rather than on the installation's
+  callback. `defaultMemoryProvider`, `memoryDbPath` and `auditLimit` keep the
+  restart caveat their descriptions already state — the provider set and the audit
+  ring are built once, when the plugin loads.
+
+- Every element the domain experts page renders can now be addressed by a stable test id. ([#465](https://github.com/xarleyn/dsh-plugins/issues/465), [#453](https://github.com/xarleyn/dsh-plugins/issues/453))
+
+  The browser half of the plugin carried no `data-testid` at all, so an automated
+  check could only reach a control through the caption it happened to show or the
+  class that painted it, and renaming a button or restyling a card broke checks
+  that never cared about either. Each control, state and shell the client owns now
+  carries an id prefixed with its zone — `domain-experts-page-*` for the list,
+  `domain-experts-editor-*` for the editor, `domain-experts-inspector-*` for the
+  resolved scope — and a shared control takes its id from the call site that
+  places it, so the same field in two tabs never answers to one selector. A row of
+  a table holds the id of its template rather than a number, so no index is baked
+  into a name. 337 distinct values, none of them reused by a second kind of node.
+
+  Nothing is displayed differently: only attributes were added, and the plugin's
+  own checks now find their nodes by id instead of by text, class or placeholder,
+  while the assertions that were about a role or an accessible name stayed as they
+  were.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+- Updated @yadsh/dsh-plugin-kit to 0.5.0
+
+### ❤️ Thank You
+
+- qoder-bot
+- xarleyn @xarleyn
+
 ## 0.3.0 (2026-09-24)
 
 ### 🚀 Features

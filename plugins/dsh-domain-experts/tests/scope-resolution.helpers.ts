@@ -1,4 +1,8 @@
-import type { ResolverDependencies } from "../src/host/resolver.js";
+import type {
+  MemoryOwner,
+  ResolverDependencies,
+} from "../src/host/resolver.js";
+import { DEPLOYMENT_MEMORY_OWNER } from "../src/host/resolver.js";
 import { DomainRegistry } from "../src/host/registry.js";
 import { createBuiltinMemoryProvider } from "../src/host/memory/builtin.js";
 import { MemoryProviderRegistry } from "../src/host/memory/registry.js";
@@ -88,11 +92,18 @@ export async function resolve(
   definition: DomainDefinition,
   callerDomain: string | null = null,
   depth = 1,
+  memoryOwner: MemoryOwner = DEPLOYMENT_MEMORY_OWNER,
 ) {
   return await resolveExpert(fixture.dependencies, {
     definition,
     workspaceDir: "/repo",
     callerDomain,
     depth,
+    memoryOwner,
   });
+}
+
+/** The account-scoped owner of one chat, as a run would carry it. */
+export function accountOf(userId: string): MemoryOwner {
+  return { mode: "per-user", userId };
 }

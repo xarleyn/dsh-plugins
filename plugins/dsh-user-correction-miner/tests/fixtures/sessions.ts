@@ -1,3 +1,4 @@
+import { SESSION_FORMAT_VERSION, SessionId } from "@deepseek-ai/dsh-session";
 import type { SessionEvent, SessionHeader } from "@deepseek-ai/dsh-session";
 
 export function header(
@@ -5,18 +6,18 @@ export function header(
   cwd = "C:\\work\\project",
 ): SessionHeader {
   return {
-    version: 3,
-    id,
+    version: SESSION_FORMAT_VERSION,
+    id: SessionId(id),
     createdAt: 1_700_000_000_000,
     cwd,
     isSeeded: false,
-  } as SessionHeader;
+  };
 }
 
 export function userEvent(
   seq: number,
   text: string,
-  source: "user" | "plugin" = "user",
+  source: "user" | "injected" = "user",
 ): SessionEvent {
   return {
     type: "user/message",
@@ -26,10 +27,7 @@ export function userEvent(
       id: `message-${seq}`,
       role: "user",
       content: [{ type: "text", text }],
-      source:
-        source === "user"
-          ? { kind: "user" }
-          : { kind: "plugin", plugin: "fixture" },
+      source: source === "user" ? { kind: "user" } : { kind: "system-prompt" },
     },
     surfaceOp: "append",
   } as unknown as SessionEvent;
@@ -77,15 +75,10 @@ export function toolResultEvent(seq: number, text: string): SessionEvent {
       step: 1,
       message: {
         id: `message-${seq}`,
-        role: "user",
+        role: "tool",
         source: { kind: "tool", callId: `call-${seq - 1}` },
-        content: [
-          {
-            type: "tool-result",
-            toolCallId: `call-${seq - 1}`,
-            content: [{ type: "text", text }],
-          },
-        ],
+        toolCallId: `call-${seq - 1}`,
+        content: [{ type: "text", text }],
       },
     },
     surfaceOp: "append",

@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-draft-sessions",
-  "version": "0.3.4",
+  "version": "0.3.6",
   "description": "Persistent unsent draft sessions for DeepSeek Harness",
   "repository": {
     "type": "git",
@@ -31,6 +31,7 @@
       "types": "./lib/types/shared/types.d.ts",
       "default": "./lib/shared/types.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -50,6 +51,7 @@
   "files": [
     "lib/**/*.js",
     "lib/types/**/*.d.ts",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "docs/images/*.png",
@@ -105,7 +107,7 @@
   },
   "dependencies": {
     "@yadsh/dsh-plugin-log": "workspace:^",
-    "zod": "^4.4.3"
+    "zod": "catalog:runtime"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",

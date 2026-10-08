@@ -20,6 +20,8 @@ import type {
   BrowserPanelState,
   BrowserPolicyRefusal,
   BrowserSessionInfo,
+  BrowserSessionStatus,
+  QaBrowserRuntimeMode,
 } from "../src/types.js";
 
 import { panelState, tab } from "./browser-panel.helpers.js";
@@ -276,5 +278,42 @@ describe("panelView", () => {
     expect(view.selected).toBeUndefined();
     expect(view.statusLine).toBe("Управляет агент");
     expect(view.emptyMessage).toBe("Получаем изображение…");
+  });
+});
+
+describe("the status line, per runtime mode", () => {
+  function withStatus(
+    state: BrowserPanelState,
+    status: BrowserSessionStatus,
+  ): BrowserPanelState {
+    return {
+      ...state,
+      session: state.session === null ? null : { ...state.session, status },
+    };
+  }
+
+  function lineFor(
+    status: BrowserSessionStatus,
+    runtimeMode: QaBrowserRuntimeMode,
+  ): string {
+    const state = withStatus(panelState([], null, { runtimeMode }), status);
+    return panelView(state, false, HOLDER, {
+      editing: false,
+      value: null,
+    }).statusLine;
+  }
+
+  it("promises a launch only to a deployment that owns the process", () => {
+    expect(lineFor("starting", "launch")).toBe("Запуск Chromium…");
+    // Attach borrows a browser this deployment never started, so the wait it
+    // shows is for a link, not for a process.
+    expect(lineFor("starting", "attach")).toBe("Подключение к браузеру…");
+  });
+
+  it("keeps a lost link apart from a crash the operator would go and read", () => {
+    expect(lineFor("crashed", "attach")).toBe("Chromium завершился с ошибкой");
+    expect(lineFor("disconnected", "attach")).toBe(
+      "Связь с браузером потеряна",
+    );
   });
 });

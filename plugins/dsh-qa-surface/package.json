@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-qa-surface",
-  "version": "0.13.0",
+  "version": "0.15.7",
   "description": "A focused end-user QA surface backed by native DeepSeek Harness sessions",
   "repository": {
     "type": "git",
@@ -48,6 +48,7 @@
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -61,12 +62,12 @@
       "inject": [
         "@deepseek-ai/dsh-api-gateway",
         "@deepseek-ai/dsh-api-session-controller",
-        "@deepseek-ai/dsh-agent-presets",
+        "@deepseek-ai/dsh-agent-preset-registry",
         "@deepseek-ai/dsh-client-connection",
         "@deepseek-ai/dsh-client-file-upload",
         "@deepseek-ai/dsh-client-ui-layout",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
         "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-settings-plugins",
         "@deepseek-ai/dsh-client-ui-theme"
       ],
       "platform": "web"
@@ -78,6 +79,7 @@
     "lib/**/*.d.ts",
     "scripts/repair-session-events.mjs",
     "scripts/attach-workspace-sessions.mjs",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "capability-policy.json",
@@ -90,6 +92,7 @@
     "lint": "eslint src tests scripts tsdown.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "verify:package": "node scripts/verify-package.mjs",
     "verify": "pnpm run verify:package && pnpm run verify:consumer",
     "verify:consumer": "tsc -p scripts/fixtures/tsconfig.json --noEmit",
@@ -118,7 +121,7 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/dsh-agent": "catalog:dsh",
-    "@deepseek-ai/dsh-agent-presets": "catalog:dsh",
+    "@deepseek-ai/dsh-agent-preset-registry": "catalog:dsh",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh",
     "@deepseek-ai/dsh-api-session-controller": "catalog:dsh",
     "@deepseek-ai/dsh-api-workspace-controller": "catalog:dsh",
@@ -126,9 +129,9 @@
     "@deepseek-ai/dsh-client-ui-chat": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-conversation": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-layout": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-theme": "catalog:dsh",
     "@deepseek-ai/dsh-host-webserver": "catalog:dsh",
@@ -151,14 +154,13 @@
     "@yadsh/dsh-documents": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^",
-    "mermaid": "^11.12.2",
     "yaml": "^2.9.0",
-    "zod": "^4.4.3"
+    "zod": "catalog:runtime"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-agent": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-agent-presets": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-agent-preset-registry": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-session-controller": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-workspace-controller": "catalog:dsh-dev",
@@ -166,9 +168,9 @@
     "@deepseek-ai/dsh-client-ui-chat": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-conversation": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-layout": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-theme": "catalog:dsh-dev",
     "@deepseek-ai/dsh-host-webserver": "catalog:dsh-dev",
@@ -188,6 +190,7 @@
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
     "@types/react-dom": "catalog:frontend-dev",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",

@@ -47,9 +47,47 @@ await runVerifyPackage({
       /viewBox: "0 0 14 14"/u,
       /wfa-icon-btn/u,
       /"http\(s\)"/u,
+      // The card mounts on the plugin's own row page of the Plugins panel:
+      // the keyed `settings.plugins.tab` seat of the old settings section is
+      // gone, and the entry registers into `plugins.row.config`.
+      /"plugins\.row\.config"/u,
+      /*
+       * The page opens a seat by `<package name>#<row id>`, and the row id is the
+       * `cordis.patch.yml` row — the same string as the `ctx.configForms`
+       * namespace, so a value saved before the move keeps reading under it. Only
+       * the two halves are asserted: how the source spells them (a template, a
+       * literal, one line or two) is the bundler's and the editor's business, and
+       * `client-registration.test.ts` pins the assembled runtime key against
+       * `package.json` and `cordis.patch.yml` instead.
+       */
+      /@yadsh\/dsh-web-fetch-authenticated#/u,
+      /key:\s*WEB_FETCH_AUTH_ROW_CONFIG_KEY/u,
+      /WEB_FETCH_AUTH_SETTINGS_NAMESPACE\s*=\s*"web-fetch-authenticated"/u,
+      /configForms\.get\(/u,
+      /*
+       * The page seats this one entry twice, and the seat contract asks an entry
+       * to answer both views (`slot-contract.ts`). The summary answer has to stay
+       * a sentence: mounting the body there puts a page inside a line of text and
+       * opens a second poll of the Remote. It is the fallback for the row's
+       * description line — for this row the page prints the `description` read off
+       * the bundle's manifest instead (`@deepseek-ai/dsh-app-boot`
+       * `src/package-meta.ts:157`) — and it is held to that same sentence, so one
+       * row never carries two descriptions and an edit of `package.json` alone
+       * cannot leave the fallback behind. The `page` answer prints neither that
+       * line nor a heading of its own, since the page already drew both above the
+       * body. Which text lands where is asserted rendered, in
+       * `client-card.test.tsx`.
+       */
+      /WEB_FETCH_AUTH_ROW_SUMMARY\s*=\s*"Authenticated, policy-gated WebFetchProvider/u,
+      /if \(view === "summary"\)\s*return WEB_FETCH_AUTH_ROW_SUMMARY/u,
     ],
     cardContract: {
-      legacyPatterns: [/\.wfa-card\{/u, /\.dsh-plugin-card \*/u],
+      legacyPatterns: [
+        /\.wfa-card\{/u,
+        /\.dsh-plugin-card \*/u,
+        // The body sits in the page's own section: no list wrapper of ours.
+        /["']wfa-cards/u,
+      ],
     },
   },
   extra: async ({ client, readFile }) => {

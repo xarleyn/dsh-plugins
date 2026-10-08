@@ -58,7 +58,15 @@ export type QaPermission =
   | "audit.read"
   | "settings.manage"
   /** Write access to skill files, personal and deployment-wide. */
-  | "skills.manage";
+  | "skills.manage"
+  /**
+   * What the domain experts wrote into their durable memory. Reading is split
+   * from correcting because a reviewer is the one who notices a remembered
+   * inaccuracy in an answer, and an answer the expert keeps getting wrong is
+   * the reviewer's business even though the fix is not.
+   */
+  | "memory.read"
+  | "memory.manage";
 
 /**
  * Tools split by how they become available. `always` is visible from the first
@@ -187,6 +195,17 @@ export interface QaSkillActivationRecord {
   readonly reason?: string;
 }
 
+/**
+ * One provider and model pair, fixed by policy rather than chosen in the
+ * interface. `provider` and `model` are named together or not at all, because
+ * the Host refuses either of them alone.
+ */
+export interface QaModelPair {
+  readonly provider: string;
+  readonly model: string;
+  readonly reasoningEffort?: string;
+}
+
 /** One agent capability profile. It never grants administrative access. */
 export interface QaSubrole {
   readonly id: string;
@@ -194,6 +213,12 @@ export interface QaSubrole {
   readonly description?: string;
   readonly enabled: boolean;
   readonly capabilities: QaCapabilitySelection;
+  /**
+   * The pair every chat of this role is opened on, whatever the visitor picks
+   * in the interface. Absent means the role keeps no opinion and the
+   * deployment's pair serves it.
+   */
+  readonly model?: QaModelPair;
   readonly ui?: {
     readonly icon?: string;
     readonly accent?: string;
@@ -209,10 +234,30 @@ export interface QaCapabilityConfig {
   readonly skillOverrides: readonly QaSkillAssignmentOverride[];
 }
 
+/**
+ * One pair the Host can serve right now, as the administration surface lists
+ * it. A projection of the harness catalog, so the browser never learns the
+ * provider's own catalog shape and a policy can only be written by picking one
+ * of these.
+ */
+export interface QaModelCatalogEntry {
+  readonly provider: string;
+  readonly model: string;
+  /** The catalog's display name for the model, or its id when it has none. */
+  readonly label: string;
+  readonly reasoningEfforts: readonly string[];
+}
+
 /** The QA profiles one account may choose, independently of its access role. */
 export interface QaUserAccess {
   readonly allowedSubroles: readonly string[];
   readonly defaultSubrole: string;
+  /**
+   * The pair this account is opened on, ahead of what its role says: a support
+   * desk runs on the local model even when it borrows a role the rest of the
+   * deployment shares. Absent means the account keeps no opinion.
+   */
+  readonly model?: QaModelPair;
 }
 
 export type QaCapabilitySourceKind =
@@ -244,7 +289,9 @@ export interface QaEffectiveCapabilityPolicy {
   readonly skills: readonly string[];
   /**
    * Visible skills a person may invoke with `/name`, including skills that
-   * opted out of model invocation and therefore stay out of the catalog.
+   * opted out of model invocation and therefore stay out of the catalog. The
+   * skills this account owns are here for it without a role grant, unless an
+   * administrator has withdrawn the name outright.
    */
   readonly userSkills: readonly string[];
   readonly sources: {
@@ -330,6 +377,8 @@ export interface QaAccountUserPublic {
   readonly profile: QaAccountProfile;
   /** The account's own starter buttons; empty until customized. */
   readonly starters: QaAccountStarters;
+  /** Which channels a finished turn may use for this reader. */
+  readonly notifications: QaAccountNotifications;
 }
 
 /** One external system the deployment collects a handle for. */
@@ -384,6 +433,33 @@ export interface QaAccountStarters {
 export interface QaAccountStartersInput {
   readonly items: readonly QaAccountStarter[];
   readonly hideDefaults: boolean;
+}
+
+/**
+ * What one account allows a finished turn to do to it. Pure UI preferences:
+ * unlike the profile, none of this reaches the agent prompt, and unlike the
+ * starter buttons, none of it is content — it is two switches over the
+ * channels the plugin already knows how to raise.
+ *
+ * The deployment's `config.notifications` sits above these: a channel the stand
+ * closed stays closed whatever an account asks for, which is the operator's
+ * answer to a laptop more than one person signs in on.
+ */
+export interface QaAccountNotifications {
+  /** Show the in-page line naming the chat whose turn ended. */
+  readonly inApp: boolean;
+  /**
+   * Hand the same fact to the operating system while this page is hidden or
+   * behind another window. Needs the browser's permission as well: without it
+   * the line stays inside the page and nothing asks a second time.
+   */
+  readonly desktop: boolean;
+}
+
+/** Full-replace notifications write: both channels are always sent. */
+export interface QaAccountNotificationsInput {
+  readonly inApp: boolean;
+  readonly desktop: boolean;
 }
 
 /** One successful login/registration: the bearer token plus the user. */
@@ -496,6 +572,7 @@ export type QaSkillDiagnosticCode =
   | "file-too-large"
   | "frontmatter-missing"
   | "skill-file-missing"
+  | "skill-file-truncated"
   | "frontmatter-invalid"
   | "unknown-field"
   | "resource-unsupported";
@@ -563,6 +640,44 @@ export interface QaAdminSkillsView {
   readonly rootPath: string;
 }
 
+/**
+ * One memory namespace as the console lists it: which expert it belongs to and
+ * whether it takes writes. `access` comes from the expert's own definition, so
+ * a shared carrier shows up as what its owner declared rather than as whatever
+ * the browser guessed.
+ */
+export interface QaExpertMemoryScope {
+  readonly domainId: string;
+  readonly domainName: string;
+  readonly namespace: string;
+  readonly access: "read-write" | "read-only";
+  readonly records: number;
+}
+
+/** One line an expert recorded. */
+export interface QaExpertMemoryRecord {
+  readonly namespace: string;
+  readonly key: string;
+  readonly text: string;
+  readonly tags: readonly string[];
+  readonly createdAt: number;
+  readonly updatedAt: number;
+}
+
+/** One page of a namespace, with the count the filter matched. */
+export interface QaExpertMemoryPage {
+  readonly records: readonly QaExpertMemoryRecord[];
+  readonly total: number;
+  readonly offset: number;
+  readonly limit: number;
+}
+
+/** What an operator says a record should hold. The key never moves. */
+export interface QaExpertMemoryDraft {
+  readonly text: string;
+  readonly tags: readonly string[];
+}
+
 export interface QaSkillSummary {
   readonly name: string;
   readonly description: string;
@@ -598,6 +713,12 @@ export interface QaSkillDocument extends QaSkillSummary {
   readonly sourcePath: string;
   /** The canonical file the serializer writes, built from the parsed content. */
   readonly preview: string;
+  /**
+   * True when the stored file is larger than the Host's read ceiling, so `body`
+   * and `preview` describe its head only. A save over such a document erases
+   * the unread tail, and the Host refuses it until the client confirms.
+   */
+  readonly truncated: boolean;
 }
 
 /** One tool the picker can offer, with this deployment's availability. */
@@ -619,6 +740,13 @@ export interface QaSkillDraftInput {
   readonly body: string;
   /** Echo of the revision the editor read; a stale one is refused. */
   readonly expectedRevision: string | null;
+  /**
+   * The client's acknowledgement that it is saving from an incomplete copy: the
+   * stored `SKILL.md` is over the read ceiling, so the draft carries the head
+   * of the file and a save would drop everything the read never loaded. A write
+   * without it is refused.
+   */
+  readonly confirmPartialOverwrite?: boolean;
 }
 
 /**
@@ -755,6 +883,14 @@ export interface QaSurfaceConfig {
     readonly provider?: string | null;
     readonly model?: string | null;
     readonly reasoningEffort?: string | null;
+    /**
+     * How many chat turns the deployment answers at once. A ceiling is what a
+     * locally hosted model needs: the card runs out long before the queue does,
+     * and a third request makes every answer on the stand slower instead of
+     * adding capacity. 0 leaves the count unbounded, which is the default
+     * because a hosted model has no such ceiling.
+     */
+    readonly maxActiveRequests?: number;
   };
   readonly ui?: {
     readonly showHeader?: boolean;
@@ -929,6 +1065,17 @@ export interface QaSurfaceConfig {
     /** Cookie-less /qa navigations go through the one-time ?token= exchange. */
     readonly cookieBootstrap?: boolean;
   };
+  /** Notices for a turn that ended in one of this browser's own chats. */
+  readonly notifications?: {
+    /** Master switch: with it off no channel raises anything. */
+    readonly enabled?: boolean;
+    /**
+     * Allow the desktop (operating-system) channel on this stand at all.
+     * A reader's own choice only applies while this is on: it is the answer
+     * for a shared laptop, where a personal notice is everybody's notice.
+     */
+    readonly allowOs?: boolean;
+  };
   readonly sources?: QaSourcesConfig;
   readonly attachments?: QaAttachmentsConfig;
   readonly notes?: QaNotesConfig;
@@ -1015,6 +1162,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly provider: string | null;
     readonly model: string | null;
     readonly reasoningEffort: string | null;
+    readonly maxActiveRequests: number;
   };
   readonly ui: {
     readonly showHeader: boolean;
@@ -1098,6 +1246,11 @@ export interface ResolvedQaSurfaceConfig {
   readonly entry: {
     readonly redirectNonLoopback: boolean;
     readonly cookieBootstrap: boolean;
+  };
+  /** Channels a finished turn of this browser's own chats may use. */
+  readonly notifications: {
+    readonly enabled: boolean;
+    readonly allowOs: boolean;
   };
   readonly tools: {
     readonly dynamicActivation: boolean;
@@ -1498,6 +1651,13 @@ export type QaMessage =
       readonly seq?: number;
       /** Host turn this answer belongs to; groups regenerations into variants. */
       readonly turn?: number;
+      /**
+       * Files this turn produced, in the order the tools reported them. The
+       * answer is the place a produced document is handed over: without these
+       * cards the file exists only as a path in a paragraph, and a reader who
+       * does not know the files tab concludes nothing was made.
+       */
+      readonly artifacts?: readonly QaArtifactView[];
       /** Canonical evidence snapshot shared with this answer's source drawer. */
       readonly sources?: readonly QaSource[];
       readonly sourcesComplete?: boolean;
@@ -1535,8 +1695,11 @@ export type QaMessage =
       readonly id: string;
       readonly role: "work";
       readonly turn: number;
-      /** "error" marks a turn the host ended with a provider failure. */
-      readonly status: "running" | "complete" | "error";
+      /**
+       * "error" marks a turn the host ended with a provider failure; "stopped"
+       * marks one the user ended, whose answer is a prefix rather than a reply.
+       */
+      readonly status: "running" | "complete" | "error" | "stopped";
       readonly startedAt?: number;
       readonly endedAt?: number;
       readonly items: readonly QaWorkItem[];
@@ -1637,6 +1800,26 @@ export interface QaFileView {
   readonly bytes: number;
 }
 
+/**
+ * A file the agent produced during the turn an answer belongs to.
+ *
+ * An artifact has no attachment-store handle: it lives in the chat's own
+ * workspace, so the card addresses it by the workspace-relative name the
+ * producing tool reported — the spelling the Host's workspace reads take, and
+ * the only spelling that cannot publish the directory the deployment keeps
+ * this account's workspace in.
+ */
+export interface QaArtifactView {
+  /** Workspace-relative path; the identifier every workspace read takes. */
+  readonly path: string;
+  /** Last path segment, which is what the card is signed with. */
+  readonly name: string;
+  /** Format the producing tool reported: `docx`, `pdf` or `md`. */
+  readonly format: string;
+  /** Bytes as the tool reported them; 0 when it reported no size. */
+  readonly bytes: number;
+}
+
 /** A subagent transcript opened read-only from the agents panel. */
 export interface QaSubagentView {
   readonly id: string;
@@ -1691,9 +1874,58 @@ export interface QaPendingQuestion {
   readonly createdAt: number;
 }
 
+/**
+ * One message that waits for the agent's next turn. Rows the Host already
+ * admitted carry their durable occurrence id, which is what a queue operation
+ * addresses; a row still in flight carries a browser id and edits nothing.
+ */
+export interface QaQueueRow {
+  readonly id: string;
+  /** Short single-line text for the strip; newlines are folded away. */
+  readonly preview: string;
+  /** Full text to edit, or null when the row is not plain text. */
+  readonly text: string | null;
+  /** Attachments the row carries besides its text. */
+  readonly attachments: number;
+  /** Set for a local row the Host queue has not echoed back yet. */
+  readonly sending: boolean;
+}
+
+/** What the queue strip may ask the Host to do with one waiting message. */
+export type QaQueueOperation = "edit" | "remove" | "steer";
+
+/**
+ * What `qaSurface/queueStatus` answers: how much of the deployment's request
+ * ceiling is in use right now. The Host counts the chats whose agent is running
+ * a turn, so the load is read where the whole of it is visible rather than
+ * guessed from one browser's view of the stand.
+ */
+export interface QaQueueStatus {
+  /** The configured ceiling; 0 means the deployment sets none. */
+  readonly limit: number;
+  /**
+   * Turns answering at the moment of the read, this visitor's own included —
+   * the stand cannot tell a place it owes someone from one it owes you.
+   */
+  readonly active: number;
+  /** Whether one more turn fits; false while no ceiling is set. */
+  readonly full: boolean;
+}
+
 export interface QaSessionState {
   readonly phase: QaSessionPhase;
   readonly sessionId: string | null;
+  /**
+   * Identity of the chat the surface is showing. Unique across every chat the
+   * page has opened — a controller that is re-created for a new chat is handed
+   * a new identity, so a component keyed by it cannot carry one chat's composer
+   * text into another. It is taken only when the chat changes: a draft that
+   * creates its session on the first prompt keeps its key, because the composer
+   * holds an unsent question in component state, and remounting it on the new
+   * session id would throw that text away before the Host has accepted
+   * anything. `0` means no chat — see `QA_SESSION_IDLE_STATE`.
+   */
+  readonly chatKey: number;
   readonly messages: readonly QaMessage[];
   /** Immediate send feedback, kept outside the durable transcript. */
   readonly pendingMessage: QaPendingUserMessage | null;
@@ -1706,6 +1938,14 @@ export interface QaSessionState {
   readonly compatibilityReadOnly?: boolean;
   readonly canSend: boolean;
   readonly canStop: boolean;
+  /**
+   * Messages waiting for the next turn, oldest first. Sending while the agent
+   * runs lands here instead of in the transcript, so the strip beside the
+   * composer is the only place the user can still see them.
+   */
+  readonly queue: readonly QaQueueRow[];
+  /** Whether a queue operation may be issued on this binding right now. */
+  readonly canEditQueue: boolean;
   /** Bumped whenever this browser's chat index changes (add/forget). */
   readonly chatsRevision: number;
   /** Tool-derived sources of the current chat (web targets and files read). */
@@ -1718,6 +1958,14 @@ export interface QaSessionState {
   readonly approvals: readonly QaPendingApproval[];
   /** Question requests parked for the operator's answer, oldest first. */
   readonly questions: readonly QaPendingQuestion[];
+  /**
+   * Set when a send was held back because the stand is already answering as
+   * many questions as it allows. The question never left the browser, so this
+   * is the whole of what the visitor is told about it; the surface answers with
+   * the request-ceiling dialog and the composer keeps the draft. Named apart
+   * from `queue`, which is the same chat's list of waiting messages.
+   */
+  readonly requestQueue: QaQueueStatus | null;
   /** Slash palette state, keyed to the chat this snapshot describes. */
   readonly slash: QaSlashView;
 }
@@ -1907,7 +2155,13 @@ export type QaAdminAuditAction =
   | "admin.settings.updated"
   | "skill.created"
   | "skill.updated"
-  | "skill.deleted";
+  | "skill.deleted"
+  /** An operator rewrote a line an expert had remembered. */
+  | "memory.corrected"
+  /** One or several remembered lines were deleted; the count is in the target. */
+  | "memory.deleted"
+  /** A whole namespace was emptied. */
+  | "memory.wiped";
 
 export interface QaAdminAuditEvent {
   readonly id: string;

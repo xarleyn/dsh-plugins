@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-domain-experts",
-  "version": "0.3.0",
+  "version": "0.4.2",
   "description": "Configurable domain-scoped expert agents for DeepSeek Harness",
   "repository": {
     "type": "git",
@@ -36,6 +36,7 @@
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -47,6 +48,7 @@
         "@deepseek-ai/dsh-api-gateway",
         "@deepseek-ai/dsh-api-session-controller",
         "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
         "@deepseek-ai/dsh-client-ui-settings"
       ],
       "platform": "web"
@@ -56,6 +58,7 @@
     "lib/**/*.js",
     "lib/**/*.js.map",
     "lib/**/*.d.ts",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
@@ -67,6 +70,7 @@
     "lint": "eslint src tests scripts tsdown.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "verify:package": "node scripts/verify-package.mjs",
     "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
@@ -90,13 +94,15 @@
   "dependencies": {
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^",
-    "zod": "^4.4.3"
+    "zod": "catalog:runtime"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/cordis-plugin-loader": "catalog:dsh",
     "@deepseek-ai/dsh-agent": "catalog:dsh",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
     "@deepseek-ai/dsh-session": "catalog:dsh",
     "@deepseek-ai/dsh-settings": "catalog:dsh",
@@ -110,9 +116,11 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/cordis-plugin-loader": "catalog:dsh-dev",
     "@deepseek-ai/dsh-agent": "catalog:dsh-dev",
     "@deepseek-ai/dsh-api-gateway": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
     "@deepseek-ai/dsh-session": "catalog:dsh-dev",
     "@deepseek-ai/dsh-settings": "catalog:dsh-dev",
@@ -126,6 +134,7 @@
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
     "@types/react-dom": "catalog:frontend-dev",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "@yadsh/dsh-test-kit": "workspace:^",

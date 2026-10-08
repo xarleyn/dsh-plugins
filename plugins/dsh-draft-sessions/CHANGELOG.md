@@ -1,3 +1,164 @@
+## 0.3.6 (2026-10-08)
+
+### 🩹 Fixes
+
+- A refusal block reads as a refusal again, and a token the Host never declares ([#717](https://github.com/xarleyn/dsh-plugins/issues/717))
+  cannot be written down unnoticed.
+
+  Unknown `var(--dsw-…)` is not a missing colour: the substitution yields the
+  guaranteed-invalid value, so the browser drops the whole declaration at
+  computed-value time and says nothing. `--dsw-alias-bg-error` and
+  `--dsw-alias-label-error` are named by no theme sheet — the error ramp is
+  `--dsw-alias-state-error-primary` — so every block of refusal text written with
+  them lost its fill and its ink together and rendered as ordinary small text,
+  which is how issue #717 looked on the Memory tab of a stand with no access to
+  the service. The same mechanic had already cost `dsh-sleev` its focus and
+  invalid borders (`--dsw-alias-border-brand`, `--dsw-alias-border-error`) and
+  `dsh-session-scope` its chip fill (`--dsw-alias-fill-tsp-secondary`).
+
+  Text and borders now take `--dsw-alias-state-error-primary` with a `#b3261e`
+  fallback. The theme declares no error *surface* alias — `state-success` and
+  `state-warn` have a tint, `state-error` does not — so a block mixes the state
+  token the way the Host's own danger control does,
+  `color-mix(in srgb, … 8%, transparent)`, and keeps its soft red in both themes.
+  Three names that only ever survived behind a fallback are retired where a live
+  token exists (`--dsw-alias-bg-elevated` → `--dsw-alias-button-elevated-fill`,
+  `--dsw-alias-label-inverse` → `--dsw-alias-label-primary-foreground`), and
+  `--dsw-font-family-mono`, for which the theme offers no alias at all, becomes
+  the `ui-monospace` stack the other bundles already write. No computed value
+  changes except where a dead name had been silently winning.
+
+  `pnpm verify:tokens` (`scripts/verify-design-tokens.mjs`) is the class turned
+  into a gate: it collects every `--dsw-*` name substituted under any package's
+  `src/` and refuses one the installed `@deepseek-ai/dsh-client-ui-theme` does not
+  declare — a dead name behind a fallback included, because the fallback paints a
+  colour the Host never chose. The vocabulary comes from the pinned package rather
+  than a hand-kept list, so the check needs no harness checkout and reads the same
+  version the plugins build against; where the theme cannot be found the gate
+  reports that instead of passing. `dsh-plugin-log-ui`'s own bundle pin flips from
+  requiring `--dsw-alias-bg-error` to forbidding the dead error names.
+
+- Every plugin row on the Host's Plugins page is named in words. ([fff88762](https://github.com/xarleyn/dsh-plugins/commit/fff88762))
+
+  The page titles a bundle's row and fills its description line from the package's
+  exported `locale/en.json`, which the Host resolves through the package's `exports`
+  map without activating the plugin (`@deepseek-ai/dsh-app-boot` `package-meta.ts`).
+  Only `dsh-documents` shipped that file, so the other twenty-five rows were signed by
+  their full package specifier — an operator read `@yadsh/dsh-jev-compaction` where a
+  first-party row read a phrase. Each package now exports `./locale/en.json`, publishes
+  `locale/*.json`, and carries English `meta.title` and `meta.description`; where the
+  package already had a configuration card, its `summary` one-liner and the row's
+  description are one string, pinned by a test against the shipped file rather than
+  against a copy in the test. `pnpm verify:packages` asks all three halves of every
+  plugin package, so a row cannot fall back to a specifier unnoticed.
+
+  Two pages still seated on the deleted-in-spirit `settings.plugins.tab` move to the
+  panel with them. `dsh-prompt-firewall` edits its own Config namespace, so it takes the
+  row seat keyed `@yadsh/dsh-prompt-firewall#dsh-prompt-firewall` — the row id is the
+  namespace the Host serves the form under, so no saved value is orphaned — and with the
+  seat it gives up its shell, its header badge and its show/hide labels, taking the
+  Host's `--dsw-focus-ring-*` pair for every control it draws and answering the
+  unavailable namespace with a sentence instead of an empty section.
+  `dsh-domain-experts` owns no form — it edits domains through its Remote services — so
+  it takes the bundle-level seat `plugins.bundle.config`, keyed by the package name, and
+  drops the `<h2>` heading and the intro line the panel already draws from the row's own
+  display metadata.
+
+### ❤️ Thank You
+
+- qoder-bot
+- xarleyn @xarleyn
+
+## 0.3.5 (2026-10-04)
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- Drafts now hold their Session the way the Host expects a feature to own one. ([#525](https://github.com/xarleyn/dsh-plugins/issues/525))
+
+  Opening a draft used to hand the Host a navigation request and then trust that
+  the Session behind the draft was ready. The Host no longer navigates on behalf
+  of a feature: a Session counts as open while the feature that asked for it keeps
+  holding it, and it is torn down once nothing holds it. The composer therefore
+  takes that hold when it starts mirroring a draft and gives it up when the draft
+  is closed, replaced by another, or deleted. Reopening also waits for the
+  Session's first history attempt to settle before the saved text is put into the
+  composer, so the text no longer lands in a scope that is still arriving; when
+  the Session never becomes usable, the composer still reports the draft as having
+  no client scope, and now releases the hold it took before saying so.
+
+  Which Workspace a new draft lands in is read from the same hold: the Session of
+  the draft being composed first, and the most recently active Workspace
+  otherwise. Deleting the draft currently on screen no longer asks the Host to
+  clear a selection — releasing the hold is what makes that Session not current
+  any more.
+
+- Reopening a draft no longer puts older text back into the composer. ([#357](https://github.com/xarleyn/dsh-plugins/issues/357))
+
+  Every seat that opens a draft hands the composer a record of its own, and a
+  record taken before an autosave had settled describes the draft as it was
+  earlier. The composer used to restore exactly what that record said: the words
+  on screen jumped back to the superseded text while the durable draft kept the
+  newer one, and the next edit was written against the revision that text had been
+  saved with. The Host answered `DRAFT_STALE_REVISION` — a conflict with another
+  browser that had never happened, on a draft whose saved text the composer had
+  just thrown away from view. Nothing was lost durably, and everything looked
+  lost.
+
+  Opening now restores the record the flush had just returned whenever that flush
+  concerned the same draft, so the composer shows the text the Host accepted and
+  the next save carries the revision that text earned. A draft that still needs
+  its Session shell is covered by the same repair: the shell is claimed with the
+  current revision rather than the one the caller happened to be holding.
+
+  Navigation is now serialized the way saving already was. Two reopen requests no
+  longer look up a Session and create a shell at the same time, so the slower one
+  can no longer finish after the faster one and leave the composer mirroring a
+  draft the Host is not showing.
+
+- Test coverage now comes from the shared Vitest preset, so `pnpm run ([#291](https://github.com/xarleyn/dsh-plugins/issues/291))
+  test:coverage` measures the same tree in every package and writes the same
+  machine-readable `coverage/coverage-summary.json` beside the printed table.
+
+  Until this release the preset carried no coverage block at all, so whatever a
+  package listed as its `include` was the whole denominator. That choice is gone:
+  `mergeConfig` concatenates arrays instead of replacing them, so a re-declared
+  `include` can only widen the tree and `exclude` is the only way left to measure
+  less. The blocks are dropped rather than rewritten, which means a package that
+  used to measure part of its sources now measures all of them, client code
+  included. Where that happens the percentage falls with the wider denominator
+  while not a single test changed, and the number is comparable with the other
+  packages of this workspace but not with what the same package printed before.
+  Neither is it comparable with the older test-lines-per-source-lines ratio, which
+  counted words instead of executed statements.
+
+  No thresholds on purpose: the percentage is a measurement to read before a
+  refactor, not a gate that competes with the per-file size budget. No runtime
+  change.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+
+### ❤️ Thank You
+
+- Claude
+- qoder-bot
+
 ## 0.3.4 (2026-09-22)
 
 ### 🩹 Fixes

@@ -27,7 +27,14 @@ Numbered guarantees:
    exactly that one — the spelling is corrected, the choice of session never is.
 4. Only when the analysis cannot name a session is the directory name
    consulted — as an exact session id, then as a unique prefix. A prefix
-   matching more than one session binds to none.
+   matching more than one session binds to none. A binding the session list
+   decided is provisional, whether the list settled it — on a name, or on a
+   unique prefix — or left it unfinished: no session found, or an id missing the
+   prefix the harness would spell it with. Either is attempted again when that
+   list changes, because a session appearing later can make a once-unique prefix
+   ambiguous, and an ambiguous prefix binds to none. Artefacts that never moved
+   are no reason to keep an audit unbound, and a list that never moved is no
+   reason to read them.
 5. The view shows the audit's report, its structured findings and its raw
    `analysis.json`, the last as both a tree and raw text.
 6. Modifying an audit's files updates the view. Replacing the bytes with
@@ -37,7 +44,10 @@ Numbered guarantees:
    report and raw document render, and the semantic tabs say why they are
    empty.
 9. A malformed, oversized, non-UTF-8 or symlinked audit never affects another
-   audit, the session list, or plugin startup.
+   audit, the session list, or plugin startup. Containment is physical: every
+   step from the audit root down to the artefact is walked and no link is
+   followed, so an audit directory replaced by a link or a junction is refused
+   rather than read.
 10. The plugin works with no other plugin installed, and no part of it requires
     `dsh-qa-surface`.
 11. Another plugin reads the same registry through the `sessionAudit` service
@@ -102,7 +112,13 @@ is no database, and a restart rebuilds the registry with one scan. A registry
 that cannot read a directory records a diagnostic and keeps going. An audit that
 is being rewritten in place never replaces a valid record with a broken one: the
 failure is logged and the previous record survives until its replacement
-validates.
+validates. It survives *readable* — the bytes that record was built from are
+held with it, so a reader never gets the kept summary of one version and the
+report of the half-written next one. That holding is bounded in total, not merely
+per file: together the snapshots hold what the configured caps allow two audits
+to be, and past that the one no reader asked for longest is dropped. That is
+what the bound costs: for the audit whose snapshot was dropped, a file that
+breaks afterwards leaves its summary standing over an empty detail view.
 
 ## 3. Lifecycle
 
@@ -121,7 +137,11 @@ filesystem event → settle → re-check → reload changed audits only
 ```
 
 A check compares size and mtime first and content hash second, so a pass costs a
-directory listing in the common case.
+directory listing in the common case. An audit whose binding the session list
+decided is the one exception: the list is looked at again — once per pass, for
+every such audit together — and only a list that actually changed costs a read.
+A list that cannot be looked at is reported once per run of failures, and the
+bindings waiting on it stay parked until it can be read again.
 
 ## 4. Configuration
 

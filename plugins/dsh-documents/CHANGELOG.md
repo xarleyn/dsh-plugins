@@ -1,3 +1,319 @@
+## 0.6.3 (2026-10-08)
+
+### 🩹 Fixes
+
+- The documents row names the programs it checks, and the Typst mode says whether ([#742](https://github.com/xarleyn/dsh-plugins/issues/742))
+  the engine is there.
+
+  The parsers section of the card sends an operator to the journal when a parse
+  comes back empty, but the only startup entry the package wrote —
+  `documents.installed` — named the tools, the storage root, the templates and the
+  Docling address, and said nothing about pandoc, LibreOffice, markitdown or
+  Typst. A boot on a machine without one of them logged no warning at all, so the
+  sentence pointed at a check nobody ran. The entry now carries the outcome of a
+  startup probe over those four programs and repeats the absent ones as
+  `documents.programs.missing`, which an ERROR-and-WARN pass over the container's
+  log answers. The card names the entry by the very key the Host writes, and a
+  test pins the sentence to the list the probe reports, so the promise and the log
+  cannot come apart again.
+
+  Choosing the Typst PDF mode was a guess: the label warned that the route needs
+  an engine, and nothing on the page or in the log said whether this deployment
+  has one. The pipeline section now reads the field the runtime itself refuses on
+  and states the engine's presence, so the outcome of the choice is known before
+  a document errors out. Where the browser cannot read the row at all, the notice
+  says it does not know and names the same entry, rather than passing the package
+  default off as this deployment.
+
+### ❤️ Thank You
+
+- qoder-bot
+
+## 0.6.2 (2026-10-08)
+
+### 🩹 Fixes
+
+- A generated DOCX opens with a title made of replacement characters no more. ([#738](https://github.com/xarleyn/dsh-plugins/issues/738))
+
+  `document_create` handed the document title and its metadata to Pandoc as
+  `--metadata=key=value` arguments, while the Markdown body went to the same run as a
+  file. A backend decodes the files it is given as UTF-8 and its own command line in
+  the locale the process runs under, so where no UTF-8 locale is set every byte above
+  0x7F of an argument arrives as U+FFFD. `«Отчёт по работе»` is fifteen characters,
+  twenty-eight UTF-8 bytes, twenty-six of them above 0x7F — which is exactly the
+  paragraph the stand produced: twenty-six replacement characters with the two spaces
+  left standing, while the section heading, the two paragraphs and the table, all read
+  out of `source.md`, came through intact.
+
+  Document text no longer rides the command line. The provider writes the title and the
+  metadata as a UTF-8 YAML file in the job's work directory and passes
+  `--metadata-file`, the channel the body already proved, for the DOCX renderer and the
+  Typst renderer alike; an explicit title still wins over the front-matter one. The work
+  directory is removed with the rest of the intermediates, so nothing of it survives
+  into the artifact bundle.
+
+  The regression test runs the provider against a stub that decodes its argv the way a
+  backend without a UTF-8 locale does, builds a real `word/document.xml` from the
+  metadata it received, and asserts that the Cyrillic title is in it and that no U+FFFD
+  is — so the class fails the test, not only the one string.
+
+- A refusal block reads as a refusal again, and a token the Host never declares ([#717](https://github.com/xarleyn/dsh-plugins/issues/717))
+  cannot be written down unnoticed.
+
+  Unknown `var(--dsw-…)` is not a missing colour: the substitution yields the
+  guaranteed-invalid value, so the browser drops the whole declaration at
+  computed-value time and says nothing. `--dsw-alias-bg-error` and
+  `--dsw-alias-label-error` are named by no theme sheet — the error ramp is
+  `--dsw-alias-state-error-primary` — so every block of refusal text written with
+  them lost its fill and its ink together and rendered as ordinary small text,
+  which is how issue #717 looked on the Memory tab of a stand with no access to
+  the service. The same mechanic had already cost `dsh-sleev` its focus and
+  invalid borders (`--dsw-alias-border-brand`, `--dsw-alias-border-error`) and
+  `dsh-session-scope` its chip fill (`--dsw-alias-fill-tsp-secondary`).
+
+  Text and borders now take `--dsw-alias-state-error-primary` with a `#b3261e`
+  fallback. The theme declares no error *surface* alias — `state-success` and
+  `state-warn` have a tint, `state-error` does not — so a block mixes the state
+  token the way the Host's own danger control does,
+  `color-mix(in srgb, … 8%, transparent)`, and keeps its soft red in both themes.
+  Three names that only ever survived behind a fallback are retired where a live
+  token exists (`--dsw-alias-bg-elevated` → `--dsw-alias-button-elevated-fill`,
+  `--dsw-alias-label-inverse` → `--dsw-alias-label-primary-foreground`), and
+  `--dsw-font-family-mono`, for which the theme offers no alias at all, becomes
+  the `ui-monospace` stack the other bundles already write. No computed value
+  changes except where a dead name had been silently winning.
+
+  `pnpm verify:tokens` (`scripts/verify-design-tokens.mjs`) is the class turned
+  into a gate: it collects every `--dsw-*` name substituted under any package's
+  `src/` and refuses one the installed `@deepseek-ai/dsh-client-ui-theme` does not
+  declare — a dead name behind a fallback included, because the fallback paints a
+  colour the Host never chose. The vocabulary comes from the pinned package rather
+  than a hand-kept list, so the check needs no harness checkout and reads the same
+  version the plugins build against; where the theme cannot be found the gate
+  reports that instead of passing. `dsh-plugin-log-ui`'s own bundle pin flips from
+  requiring `--dsw-alias-bg-error` to forbidding the dead error names.
+
+- A document the chat made arrives as a file, not as a path. ([#739](https://github.com/xarleyn/dsh-plugins/issues/739))
+
+  A stand that was asked to build a Word document built it and then said nothing
+  about it: the answer was a paragraph, the files tab said the chat had no
+  attachments, and the only trace of the artifact was a line of text the model had
+  copied out of a tool result — `/workspace/work/.qa-users/<account>/.qa/artifacts/…`,
+  which is the container's own layout and the account directory inside it. A chat
+  whose dialogs are readable by other accounts of the same server has no business
+  printing that.
+
+  The producing tools now report each file by its path inside the session
+  workspace — the same spelling their own input parameters accept, so a document
+  reported by one call is read back by the next — and the pipeline's absolute
+  paths stay where containment is checked, inside the runtime. The chat reads
+  those names out of the turn's tool results and cards the file under the answer
+  that made it: badge, name, size, `Открыть` into the workspace viewer with its
+  Word preview, `Скачать` for the bytes. The card is on the roster of the files tab
+  too, so the answer's document is listed with what the chat sent. It appears
+  whatever the tool-activity switch hides, because a file the reader asked for is
+  not tool noise, and where the Host refuses workspace reads the card still names
+  the file without offering a control that would be refused. An answer that quotes
+  an absolute path anyway — one written before this change, replayed from durable
+  history, or rebuilt by a model from the working directory it was given — is
+  projected with the workspace directory and the account partition masked out.
+
+### ❤️ Thank You
+
+- qoder-bot
+
+## 0.6.1 (2026-10-04)
+
+### 🩹 Fixes
+
+- The Plugins row of this bundle now reads in the language the host is set to. ([e68cf7d4](https://github.com/xarleyn/dsh-plugins/commit/e68cf7d4))
+
+  A row on the Plugins panel takes its title and description from the package's
+  exported display metadata at `./locale/en.json`, not from a label the card
+  supplies — that is what lets the same row speak the host's language without the
+  card knowing which language it is drawn in. This bundle's English file carried
+  its Russian text instead, so an operator on an English host saw the row named in
+  a language none of its neighbours used, and a Russian reader had no separate
+  string to fall back to.
+
+  The English strings are the ones the plugin has always meant: the pipeline that
+  converts Markdown to DOCX and PDF, extracts text, and reaches online sources.
+  Nothing moved, nothing was renamed, and the settings namespace the row resolves
+  its form under is untouched, so a saved value stays readable.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.6.0 (2026-10-04)
+
+### 🚀 Features
+
+- The documents card opens from the Plugins page now, inside that page's own card ([#656](https://github.com/xarleyn/dsh-plugins/issues/656), [#618](https://github.com/xarleyn/dsh-plugins/issues/618), [#646](https://github.com/xarleyn/dsh-plugins/issues/646))
+  rather than in a frame of its own.
+
+  The card sat as a tab of *Settings → Plugins* (`settings.plugins.tab`), the seat
+  a plugin takes for a page the Host does not own. This card is not such a page: it
+  edits exactly one thing — this bundle's own Config — and `0.1.7` grew a surface
+  for that. The Plugins page declares `plugins.row.config`, a keyed seat whose
+  entry opens as the configuration of one row, reached by that row's own configure
+  control. Registering there is the difference between a settings tab whose name a
+  operator has to remember, and a configure control on the row they were already
+  looking at.
+
+  The key is `@yadsh/dsh-documents#documents` — the package name joined to the row
+  id `cordis.patch.yml` declares. That join is what makes the move cheap and what
+  makes it safe: the row id is the same `documents` the Host has resolved this
+  plugin's volatile Config under since the `0.1.7` cutover, so the namespace the
+  page takes its form from and the namespace this plugin reads are one namespace.
+  **Nothing about where values are stored changed**, and a root, a mode or an
+  address saved by an older build is read back by this one. The tab's own seat id —
+  also `documents` — was the only name left behind, and it named nothing but the
+  seat.
+
+  What the card edits did not change: the same sections, the same path-addressed
+  writes that let a cleared field re-inherit the composition default. What it draws
+  did. The page renders the card surface, the row title, the row id and the
+  description line, and mounts the registrant's `page` view under them, so the
+  shell this card used to bring — `CardShell`, the canonical CSS, the
+  `dsh-plugin-card*` classes, the badge, the chevron and the `<li>` in a
+  plugin-owned `<ul>` — left the bundle: beside a first-party row it was a second
+  card inside the Host's one, and a heading that repeated the page's own. The
+  card-contract gate agrees, and now enforces it from the seat: decision D1 of the
+  cutover was reversed on 01.10 to "as the host does", the gate reads the seat off
+  the built bundle rather than trusting a declaration, and on a panel seat it
+  *rejects* the classes it once required. So the seat is named by a literal at the
+  registration, and each control the body still draws for itself — a field, a
+  switch, a button — takes its ring from the Host's `--dsw-focus-ring-width` and
+  `--dsw-focus-ring-color`, each with its fallback: where a token is undeclared the
+  whole `outline` shorthand would be dropped, and a hard-coded outline of ours loses
+  to the Host's `focus.css` under pointer modality.
+
+  Three details follow from the new
+  seat rather than from a redesign. The page hands its registrant a `ConfigPageForm`,
+  which is `{ state, mutate }` — no subscription, no single-field write — so the
+  card keeps resolving its own `ConfigForm` for the namespace and that form now
+  arrives through the injected face under the name `settingsForm`, where the owner
+  prop called `form` cannot shadow it. The page also draws the row's title and
+  one-liner itself, from the display metadata the Host reads at
+  `@yadsh/dsh-documents/locale/en.json` without activating the plugin, so the
+  package ships that file: the row is titled «Документы» — the word the tab's own
+  `label` used to carry — and its description is the sentence this entry answers the
+  seat's `summary` view with. Without the file the Plugins page names the row by its
+  full module name and the surface loses the only wording of its own it ever had. And
+  the entry answers two views: `page` is the body, `summary` is the one-liner the
+  page falls back to only for a row with no display description — a guard, so a row
+  that loses its metadata gets text inside the page's own paragraph rather than a
+  whole card.
+
+  The manifest followed the surface: the client half type-imports the Plugins
+  page's slot contract, so `@deepseek-ai/dsh-client-ui-plugin-manager` — new to
+  both catalogs — replaces `@deepseek-ai/dsh-client-ui-settings-plugins` as peer,
+  dev and `dsh.client.inject` entry, and `locale/en.json` is exported and published
+  so the Host can read it without activating the plugin. This is `minor` rather
+  than `patch` for two reasons. A browser running a host without the Plugins page
+  loses the card; and the card is now reached *from that page*, which reads its
+  inventory through `api-remotes` and reports itself unavailable on a Host without
+  a managed profile — a condition the Settings → Plugins tab never imposed. The
+  page is not the loopback-gated settings directory, so a browser on the LAN still
+  reaches the card. `compatibility.json` names the first: its required client
+  features say `plugins.row.config` where they named the tab, and its range already
+  starts at the release that grew the seat. The second is a consequence of the seat,
+  not of a version a consumer can fence on.
+  `scripts/verify-package.mjs` asserts the new pair (the slot literal and the
+  `@yadsh/dsh-documents#` key prefix in the shipped bundle, the tab seat banned so
+  the card cannot start rendering twice, the new package in the
+  inject list and on the peer list, `plugins.row.config` among the declared client
+  features) and that the published package carries display metadata with both fields
+  filled, and a new client test drives the real `apply()` against a bare context:
+  the keyed registration, the key built from the row `cordis.patch.yml` declares
+  rather than from the constant that names the namespace, the form arriving under a
+  name the slot cannot overwrite, the summary view staying text, and the row's
+  description being the sentence the entry answers with.
+
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- The plugin's backend suite stops losing to Vitest's default timeout on a loaded ([#290](https://github.com/xarleyn/dsh-plugins/issues/290))
+  Windows run.
+
+  Rendering goes through a configured executable, so each render costs a real
+  child process and its cold start. Vitest gives a test five seconds and this
+  package re-exported the shared preset with no override; a full
+  `nx run-many -t test` runs eight projects at once, and the test that renders
+  twice through a failing backend was observed hitting that cap at 5036ms while
+  its neighbours cost up to four seconds. The cap, not the renderer, is what
+  failed it. The package now budgets 30 seconds per test, the allowance the
+  browser plugin already gives its I/O-bound suites.
+
+  No runtime behavior changed: the fix is test configuration.
+
+- The documents settings card is now addressable by a stable hook. ([#471](https://github.com/xarleyn/dsh-plugins/issues/471), [#422](https://github.com/xarleyn/dsh-plugins/issues/422))
+
+  Every section of the card the operator edits — the pipeline, extraction, the
+  parsers, artifacts and the template/limit budgets — carries a `data-testid`, and
+  so does each control inside it and each section's reset button. The ids are ASCII
+  kebab-case under the `docs-` zone (`docs-pipeline`, `docs-extraction-ocr`,
+  `docs-artifacts-retain-source`, …), so a browser test reaches a knob without
+  reading the Russian caption or the BEM class that used to identify it, and no two
+  ids in the package collide.
+
+  Only an attribute was added: the markup, the shell contract and the rendered text
+  are unchanged. The comparison section is left untouched (its configuration is led
+  by #422), and the tools inventory keeps being asserted by the text it shows — the
+  tool names are the thing under test there, not a label to hang a hook on.
+
+  The card test that clicked the pipeline switch through its Russian caption now
+  reaches it through `docs-pipeline-enabled`: what that test asserts is the revision
+  each write is fenced with, not the wording of the label. The comparison assertions
+  stay as they were, since #422 owns that section.
+
+- The document pipeline runs live on a 0.1.7-rc.2 host, and its card moves to the surface that host still serves. ([#519](https://github.com/xarleyn/dsh-plugins/issues/519))
+
+  The pipeline configured itself through an installed settings section, which the
+  `0.1.7` settings rewrite deleted: a field is now editable without a remount
+  exactly when its schema node is marked volatile, and the namespace an operator
+  edits is the profile entry id rather than a section a plugin installs. Every
+  section of this plugin's `Config` is therefore volatile now, which is what keeps
+  all fifteen of them in the form the Host serves; the loader hands each as a
+  stable reference, so the entry reads one plain snapshot per operation instead of
+  copying the configuration at startup, and rebuilds the subsystem when a committed
+  write moves the resolved values. An operator turning the pipeline off stops the
+  five tools at once, as the card's own hint promises.
+
+  The card was registered into `settings.plugin.item`, and that slot no longer
+  exists. It is a tab of the Plugins settings page now — the surface the README
+  already described — where it keeps the shared card shell and edits the same
+  namespace through the Host's configuration form, writing with the revision it
+  just read so a stale view cannot overwrite a newer one. Clearing a field still
+  re-inherits the composition default rather than freezing today's value, and a
+  browser the Host serves read-only still gets disabled controls plus the notice
+  that says why.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+- Updated @yadsh/dsh-plugin-kit to 0.5.0
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.5.1 (2026-09-22)
 
 ### 🩹 Fixes

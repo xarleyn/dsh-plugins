@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -44,9 +45,29 @@ const QA_CHANGELOG_SOURCE = path.join(
   "components",
   "QaChangelog.tsx",
 );
-// A plugin registers its configuration card under this client slot, and the
-// registration must stay guarded by the shared verification contract.
-const SETTINGS_CARD_SLOT = "settings.plugin.item";
+// A plugin registers its configuration card under one of these client slots,
+// and the registration must stay guarded by the shared verification contract.
+// The Host renamed the card slot to `plugins.row.config` in `0.1.7`, so the
+// gate reads every name a card registration can arrive under — keying it on
+// one literal made enforcement quietly disappear the moment that literal left
+// the sources. The name says what it decides (this package owns a card), not
+// what the contract then asks of it: on the panel seats the card contract
+// forbids our own shell, because the page draws it, while a settings-surface
+// card must carry it. `settings.plugins.tab` is also the slot of feature-owned
+// pages that render no card at all, so it only counts with the shell the
+// contract asserts (see `findSettingsCardSlot`).
+const CARD_SEAT_SLOTS = [
+  "settings.plugin.item",
+  "plugins.row.config",
+  "plugins.bundle.config",
+];
+const CARD_TAB_SLOT = "settings.plugins.tab";
+const CARD_SHELL_MARKERS = [
+  "dsh-plugin-card",
+  "CardShell",
+  "PLUGIN_CARD_SHELL_CSS",
+  "registerSettingsCard",
+];
 const CARD_CONTRACT_MODULE = "verify-plugin-card-contract";
 const RELEASE_TYPES = new Set([
   "major",
@@ -136,6 +157,41 @@ const REQUIRED_PLUGIN_SCRIPTS = [
   "prepack",
 ];
 
+// A publishable shared package is not a Cordis bundle, so it owes the reduced
+// gate `run-verify-package` implements rather than the plugin contract above:
+// without a `verify` script nothing asks whether its declared exports were
+// built or whether its published ranges resolve, which is how the class of
+// "declared subpath with no file" reached a published library.
+const REQUIRED_SHARED_PACKAGE_SCRIPTS = ["verify"];
+
+// The two options a shared gate has to keep turning on. Packing rewrites the
+// ranges and ships whatever `exports` names, so only a source-level read sees
+// either; `docs/VERIFICATION.md` promises both, and an option a refactor drops
+// would quietly narrow the gate while its script still exited 0.
+const REQUIRED_SHARED_GATE_OPTIONS = [
+  "mainTypesMatchRootExport",
+  "publishedDependenciesResolve",
+];
+
+/** Names of `REQUIRED_SHARED_GATE_OPTIONS` a `runVerifyPackage({...})` call turns on. */
+function sharedGateOptions(source) {
+  const enabled = new Set();
+  for (const call of source.matchAll(/\brunVerifyPackage\s*\(/gu)) {
+    const callStart = (call.index ?? 0) + call[0].length;
+    const optionsStart = source.indexOf("{", callStart);
+    if (optionsStart === -1) continue;
+    const optionsEnd = objectEnd(source, optionsStart);
+    if (optionsEnd === -1) continue;
+    const options = source.slice(optionsStart, optionsEnd);
+    for (const name of REQUIRED_SHARED_GATE_OPTIONS) {
+      if (new RegExp(`\\b${name}\\s*:\\s*true\\b`, "u").test(options)) {
+        enabled.add(name);
+      }
+    }
+  }
+  return enabled;
+}
+
 function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
@@ -219,6 +275,40 @@ export function validatePublishablePlugin(directory) {
     errors.push('exports["./package.json"] must equal "./package.json"');
   }
 
+  // The Host titles and describes the bundle's row on the Plugins panel from
+  // `<package name>/locale/en.json`, which it resolves through the exports map
+  // without activating the plugin. Skip the file and the row is named by its
+  // full package specifier — an operator reads an identifier, not a name — and a
+  // locale field that is empty or not a string is not a fallback but a metadata
+  // diagnostic, which degrades the row the same way.
+  const localePath = path.join(directory, "locale", "en.json");
+  if (!existsSync(localePath)) {
+    errors.push(
+      "locale/en.json is missing; without it the Plugins panel names this row by its package specifier",
+    );
+  } else {
+    let locale;
+    try {
+      locale = readJson(localePath);
+    } catch (cause) {
+      errors.push(`locale/en.json is not readable JSON: ${String(cause)}`);
+    }
+    for (const field of ["title", "description"]) {
+      const value = locale?.meta?.[field];
+      if (typeof value !== "string" || value.trim() === "") {
+        errors.push(`locale/en.json meta.${field} must be a non-empty string`);
+      }
+    }
+  }
+  if (manifest.exports?.["./locale/en.json"] !== "./locale/en.json") {
+    errors.push(
+      'exports["./locale/en.json"] must equal "./locale/en.json"; the Host reads the row name through the exports map',
+    );
+  }
+  if (!isPublishedFile(manifest.files ?? [], "locale/en.json")) {
+    errors.push("locale/en.json is missing from package.json files");
+  }
+
   const rootExport = manifest.exports?.["."];
   const exportedTypes =
     typeof rootExport === "object" && rootExport !== null
@@ -260,6 +350,51 @@ export function validatePublishablePlugin(directory) {
     }
   }
 
+  return errors;
+}
+
+/**
+ * A publishable shared package keeps a gate of its own, so Nx and CI run its
+ * export and dependency checks instead of skipping the project silently.
+ */
+export function validatePublishableSharedPackage(directory) {
+  const scripts = readJson(path.join(directory, "package.json")).scripts ?? {};
+  const errors = [];
+  for (const name of REQUIRED_SHARED_PACKAGE_SCRIPTS) {
+    if (typeof scripts[name] !== "string") {
+      errors.push(
+        `scripts.${name} is required for every publishable shared package`,
+      );
+    }
+  }
+
+  // The manifest alone would accept a `verify` that checks nothing: a script
+  // exiting 0 while `docs/VERIFICATION.md` describes the two checks it stopped
+  // making. A package with no `verify` at all is reported once, above.
+  const scriptsDirectory = path.join(directory, "scripts");
+  if (typeof scripts.verify === "string") {
+    const enabled = new Set();
+    const gateFiles = existsSync(scriptsDirectory)
+      ? readdirSync(scriptsDirectory, { withFileTypes: true })
+      : [];
+    for (const entry of gateFiles) {
+      if (!entry.isFile() || !entry.name.endsWith(".mjs")) continue;
+      const source = readFileSync(
+        path.join(scriptsDirectory, entry.name),
+        "utf8",
+      );
+      for (const name of sharedGateOptions(source)) enabled.add(name);
+    }
+    const missing = REQUIRED_SHARED_GATE_OPTIONS.filter(
+      (name) => !enabled.has(name),
+    );
+    if (missing.length > 0) {
+      errors.push(
+        `no script under scripts/ calls runVerifyPackage with ${missing.join(" and ")} enabled; ` +
+          "a shared package gate keeps both options on — packing cannot show either",
+      );
+    }
+  }
   return errors;
 }
 
@@ -491,8 +626,8 @@ export function validateDiscoverability(directory, repoRoot = process.cwd()) {
  * The root README is the human entry point to the published set, so its package
  * table is a second catalog beside `plugins.json`: a package missing from it is
  * invisible to a reader who never opens the JSON, and a row that still calls a
- * published package "private" misstates which npm names `dsh plugin add` can
- * install. The gate keeps both catalogs listing the same package set.
+ * published package "private" misstates which npm names are published, and so
+ * installable at all. The gate keeps both catalogs listing the same package set.
  */
 export function findReadmeCatalogGaps(repoRoot = process.cwd()) {
   const readmePath = path.join(repoRoot, "README.md");
@@ -535,6 +670,9 @@ export function verifyPublishablePlugins(repoRoot = process.cwd()) {
       const errors = [
         // Only plugin directories carry the Cordis patch and client contract.
         ...(group === "plugins" ? validatePublishablePlugin(directory) : []),
+        ...(group === "packages"
+          ? validatePublishableSharedPackage(directory)
+          : []),
         ...validateDiscoverability(directory, repoRoot),
         ...validatePublishedContent(directory, repoRoot),
       ];
@@ -671,6 +809,173 @@ export function curatedChangelogVersions(changelogSource) {
 }
 
 /**
+ * The curated changelog split into one raw block per entry: the source text
+ * from a `version: "x.y.z"` literal up to the next one, cut at the closing of
+ * the array so the rendering code below the list is never part of an entry.
+ * Comparing blocks verbatim is what lets the frozen-section gate see a prose
+ * edit without parsing TypeScript, and it keeps an entry added above the
+ * released ones from changing the block of any entry already published.
+ */
+export function curatedChangelogBlocks(changelogSource) {
+  const matches = [...changelogSource.matchAll(/\bversion:\s*"([^"]+)"/gu)];
+  const arrayEnd = changelogSource.indexOf("\n];");
+  const blocks = new Map();
+  matches.forEach((match, index) => {
+    const next = matches[index + 1];
+    const ends = [next === undefined ? changelogSource.length : next.index];
+    if (arrayEnd !== -1) ends.push(arrayEnd);
+    blocks.set(match[1], changelogSource.slice(match.index, Math.min(...ends)));
+  });
+  return blocks;
+}
+
+/**
+ * AGENTS.md ("a released section is frozen"): a branch may not rewrite what a
+ * wave published. The sidebar test cannot see this — it compares the *list* of
+ * versions against CHANGELOG.md, so a line slipped into an already published
+ * section leaves the list untouched and stays green, while the deployed note
+ * now claims a fix that shipped in an earlier version.
+ *
+ * `baseSource` is the same file as the branch's own merge base. A section the
+ * branch did not write is not the branch's doing: a head that predates the wave
+ * simply carries an older file, and rebasing is what seats it back, so only a
+ * section whose current text differs from both the published text and the
+ * branch's own starting text is reported.
+ */
+export function validateQaChangelogFrozenSections(
+  changelogSource,
+  releasedSource,
+  baseSource = null,
+) {
+  // `git show` hands back the blob (LF through .gitattributes) while a checkout
+  // can hand back CRLF; a line-ending difference is not an edited section.
+  const normalize = (source) => source.replace(/\r\n/gu, "\n");
+  const released = curatedChangelogBlocks(normalize(releasedSource));
+  const working = curatedChangelogBlocks(normalize(changelogSource));
+  // Without a base there is nothing to attribute the difference to, so the
+  // published text is simply held to.
+  const blameEverything = baseSource === null || baseSource === undefined;
+  const base = blameEverything
+    ? new Map()
+    : curatedChangelogBlocks(normalize(baseSource));
+  const failures = [];
+  for (const [version, block] of released) {
+    const current = working.get(version);
+    if (current === block) continue;
+    if (!blameEverything && base.get(version) === current) continue;
+    if (current === undefined) {
+      failures.push(
+        `plugins/dsh-qa-surface: QaChangelog.tsx drops the entry of the released version ${version}; a published section is frozen — rebase onto the line and put your note in the entry of the version your plans bump to`,
+      );
+      continue;
+    }
+    failures.push(
+      `plugins/dsh-qa-surface: QaChangelog.tsx changes the entry of the released version ${version} away from what that wave published; a published section is frozen — rebase onto the line and put your note in the entry of the version your plans bump to`,
+    );
+  }
+  return failures;
+}
+
+/**
+ * A curated entry newer than the manifest version promises the user a release
+ * that only a version plan can produce. `validateQaChangelogCoverage` checks
+ * the other direction (a plan demands its entry); together they pin the set of
+ * pending entries to exactly the version the qa-surface plans bump to, so a
+ * note committed without its plan cannot reach the deployed sidebar as a
+ * version that never shipped. An entry the branch inherited from its own base
+ * is not the branch's doing — rebasing resolves it — so `baseChangelogSource`
+ * keeps the message on the note this branch actually added.
+ */
+export function validateQaChangelogPlannedEntries(
+  changelogSource,
+  currentVersion,
+  plans,
+  baseChangelogSource = null,
+) {
+  const qaSurfacePlans = plans.filter((plan) =>
+    planProjects(plan.content).includes(QA_SURFACE_PROJECT),
+  );
+  let allowed;
+  if (qaSurfacePlans.length === 0) {
+    allowed = new Set();
+  } else {
+    const bumpOrder = { patch: 0, minor: 1, major: 2 };
+    const bumps = qaSurfacePlans
+      .map((plan) => planBumpFor(plan.content, QA_SURFACE_PROJECT))
+      .filter((bump) => bump !== undefined);
+    // Unparseable front matter and a non-numeric manifest version are already
+    // reported by validateVersionPlan and validateQaChangelogCoverage; guessing
+    // a second version here would only add a misleading message.
+    if (bumps.length === 0) return [];
+    const highestBump = Object.keys(bumpOrder)
+      .filter((bump) => bumps.includes(bump))
+      .sort((a, b) => bumpOrder[b] - bumpOrder[a])
+      .at(0);
+    const plannedVersion = incrementVersion(currentVersion, highestBump);
+    if (plannedVersion === undefined) return [];
+    allowed = new Set([plannedVersion]);
+  }
+  const inherited = new Set(
+    baseChangelogSource === null
+      ? []
+      : curatedChangelogVersions(baseChangelogSource.replace(/\r\n/gu, "\n")),
+  );
+  return [
+    ...new Set(
+      curatedChangelogVersions(changelogSource).filter(
+        (version) =>
+          compareVersions(version, currentVersion) > 0 &&
+          !allowed.has(version) &&
+          !inherited.has(version),
+      ),
+    ),
+  ].map(
+    (version) =>
+      `plugins/dsh-qa-surface: QaChangelog.tsx has an entry for ${version}, newer than the released ${currentVersion}, but no qa-surface version plan bumps to it — a curated note without a plan names a release that will not happen`,
+  );
+}
+
+/**
+ * The two changelog baselines the frozen-section gate needs: as the newest
+ * reachable `release/*` tag published it, and as the branch's own merge base
+ * with that tag saw it. Returns null when there is nothing to freeze against —
+ * no wave tag yet, a shallow clone without tags, or a checkout where the file
+ * is missing at the tag — so the gate skips instead of inventing a baseline.
+ */
+export function qaChangelogBaselines(repoRoot) {
+  const git = (args) =>
+    spawnSync("git", args, { cwd: repoRoot, encoding: "utf8" });
+  const gitPath = path
+    .join(QA_SURFACE_DIRECTORY, QA_CHANGELOG_SOURCE)
+    .split(path.sep)
+    .join("/");
+  const describe = git([
+    "describe",
+    "--tags",
+    "--match",
+    "release/*",
+    "--abbrev=0",
+    "HEAD",
+  ]);
+  if (describe.status !== 0) return null;
+  const tag = describe.stdout.trim();
+  if (tag === "") return null;
+  const released = git(["show", `${tag}:${gitPath}`]);
+  if (released.status !== 0) return null;
+  const mergeBase = git(["merge-base", tag, "HEAD"]);
+  if (mergeBase.status !== 0) {
+    return { released: released.stdout, base: released.stdout };
+  }
+  const base = git(["show", `${mergeBase.stdout.trim()}:${gitPath}`]);
+  // No file at the merge base means this branch wrote the whole changelog, so
+  // every published section is its own doing.
+  return {
+    released: released.stdout,
+    base: base.status === 0 ? base.stdout : null,
+  };
+}
+
+/**
  * The semver bump a version plan declares for one project, read from the
  * front matter (`"project": patch|minor|major`).
  */
@@ -777,6 +1082,24 @@ export function validateQaChangelogCoverage(repoRoot, plans) {
 }
 
 /**
+ * The client slot a package mounts its configuration card under, or `null` when
+ * its sources register no card. A slot only a card can be seated on fires on its
+ * own — the panel seats included, whose contract is that the bundle carries *no*
+ * shell of ours; `settings.plugins.tab` fires only together with the shell, because
+ * that slot also carries feature-owned pages that render no card and would be asked
+ * to assert a shell they never claim.
+ */
+function findSettingsCardSlot(sources) {
+  const texts = walkFiles(sources).map((file) => readFileSync(file, "utf8"));
+  const mentions = (needle) => texts.some((text) => text.includes(needle));
+  const cardSlot = CARD_SEAT_SLOTS.find(mentions);
+  if (cardSlot !== undefined) return cardSlot;
+  return mentions(CARD_TAB_SLOT) && CARD_SHELL_MARKERS.some(mentions)
+    ? CARD_TAB_SLOT
+    : null;
+}
+
+/**
  * A plugin that ships a browser bundle must keep a verification script that
  * asserts the bundle registration id equals the full package name, and a
  * plugin registering a configuration card must route its client through the
@@ -813,11 +1136,8 @@ export function validateClientContractGates(directory, manifest) {
     }
   }
 
-  if (
-    walkFiles(sources).some((file) =>
-      readFileSync(file, "utf8").includes(SETTINGS_CARD_SLOT),
-    )
-  ) {
+  const cardSlot = findSettingsCardSlot(sources);
+  if (cardSlot !== null) {
     // The shared runner takes the contract as an option, so a manifest that
     // passes `clientBundle.cardContract` runs the same gate without importing
     // the module by path.
@@ -829,7 +1149,7 @@ export function validateClientContractGates(directory, manifest) {
         .some(runnerUsesCardContract);
     if (!routed) {
       errors.push(
-        `src registers a "${SETTINGS_CARD_SLOT}" card, but no script in scripts/ runs ${CARD_CONTRACT_MODULE}.mjs; call it from verify-package.mjs or verify-client-bundle.mjs, or pass clientBundle.cardContract to runVerifyPackage`,
+        `src registers a "${cardSlot}" card, but no script in scripts/ runs ${CARD_CONTRACT_MODULE}.mjs; call it from verify-package.mjs or verify-client-bundle.mjs, or pass clientBundle.cardContract to runVerifyPackage`,
       );
     }
   }
@@ -903,7 +1223,7 @@ export function validateVersionPlan(fileName, content, knownProjects) {
 
 export function verifyVersionPlans(
   repoRoot = process.cwd(),
-  { requirePlans = false } = {},
+  { requirePlans = false, changelogBaselines } = {},
 ) {
   const plansRoot = path.join(repoRoot, VERSION_PLANS_DIRECTORY);
   const planFiles = existsSync(plansRoot)
@@ -924,6 +1244,44 @@ export function verifyVersionPlans(
     );
   }
   failures.push(...validateQaChangelogCoverage(repoRoot, plans));
+
+  const changelogPath = path.join(
+    repoRoot,
+    QA_SURFACE_DIRECTORY,
+    QA_CHANGELOG_SOURCE,
+  );
+  const manifestPath = path.join(
+    repoRoot,
+    QA_SURFACE_DIRECTORY,
+    "package.json",
+  );
+  if (existsSync(changelogPath) && existsSync(manifestPath)) {
+    const changelogSource = readFileSync(changelogPath, "utf8");
+    const baselines =
+      changelogBaselines === undefined
+        ? qaChangelogBaselines(repoRoot)
+        : changelogBaselines;
+    const baseSource =
+      baselines === null || baselines === undefined ? null : baselines.base;
+    failures.push(
+      ...validateQaChangelogPlannedEntries(
+        changelogSource,
+        readJson(manifestPath).version,
+        plans,
+        baseSource,
+      ),
+    );
+    if (baselines !== null && baselines !== undefined) {
+      failures.push(
+        ...validateQaChangelogFrozenSections(
+          changelogSource,
+          baselines.released,
+          baselines.base,
+        ),
+      );
+    }
+  }
+
   if (requirePlans && planFiles.length === 0) {
     failures.push("at least one version plan file is required");
   }
@@ -935,12 +1293,24 @@ export function verifyVersionPlans(
 }
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
-  if (process.argv.includes("--version-plans-only")) {
-    const plans = verifyVersionPlans(process.cwd(), { requirePlans: true });
+  const plansOnly = process.argv.includes("--version-plans-only");
+  // Read the frozen baseline once and say out loud when there is none, so a
+  // skipped check is never mistaken for a passing one.
+  const changelogBaselines = qaChangelogBaselines(process.cwd());
+  if (changelogBaselines === null) {
+    process.stderr.write(
+      "package hygiene: frozen changelog sections NOT checked, no release/* tag reachable from HEAD\n",
+    );
+  }
+  if (plansOnly) {
+    const plans = verifyVersionPlans(process.cwd(), {
+      requirePlans: true,
+      changelogBaselines,
+    });
     process.stdout.write(`version plans: verified ${plans} plan file(s)\n`);
   } else {
     const verified = verifyPublishablePlugins();
-    const plans = verifyVersionPlans(process.cwd());
+    const plans = verifyVersionPlans(process.cwd(), { changelogBaselines });
     process.stdout.write(
       `package hygiene: verified ${verified} publishable plugins\n`,
     );

@@ -185,6 +185,10 @@ Settings
      -> Authenticated Web Fetch
 ```
 
+As shipped, neither tree is where the card lives: the Host moved plugin
+configuration out of the Settings dialog onto the **Plugins** page, and the card
+is the configuration of this bundle's own row there (`web-fetch-authenticated`).
+
 ### 6.1 Overview screen
 
 Show:
@@ -582,6 +586,15 @@ Classify resolved destinations at least as:
 - unspecified;
 - metadata/service ranges where known.
 
+Classify the bytes a connection would reach, not the syntax the address was
+written in. An IPv4 address spelled inside IPv6 (`::ffff:7f00:1`,
+`::ffff:127.0.0.1`) is that IPv4 destination, so it gets the IPv4 class and the
+rule's verdict for it, and the socket is pinned to the IPv4 text. The deprecated
+IPv4-compatible block (`::x.y.z.w`, except `::` and `::1`) and the NAT64
+well-known prefix (`64:ff9b::/96`) reach their embedded address only through a
+translation router the plugin cannot verify, so they classify as reserved and no
+allow-flag opens them.
+
 ### 10.2 DNS rebinding protection
 
 For every request:
@@ -592,7 +605,9 @@ For every request:
 4. connect in a way that does not allow re-resolution to bypass policy where feasible;
 5. repeat checks for redirects.
 
-Do not authorize based only on the hostname string.
+Do not authorize based only on the hostname string. Pin the connection to the
+same normalized address that was classified, so the approved bytes and the
+bytes the socket reaches cannot differ.
 
 ### 10.3 Cloud metadata
 

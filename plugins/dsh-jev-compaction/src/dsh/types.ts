@@ -39,6 +39,8 @@ export interface JevHostContext {
     ) => Promise<PreStepDecisionStruct>,
     options?: unknown,
   ): () => void;
+  /** Subscription seam for a listener that carries no decision continuation. */
+  on(event: string, listener: (payload: never) => void): () => void;
   inject(
     services: readonly string[],
     fn: (ctx: JevInjectedContext) => void,

@@ -135,6 +135,10 @@ export function draftIsSavable(draft: QaSkillDraft): boolean {
 export function draftInput(
   draft: QaSkillDraft,
   revision: string | null,
+  options?: {
+    /** Say so when saving over a file the Host could not read whole. */
+    readonly confirmPartialOverwrite?: boolean;
+  },
 ): QaSkillDraftInput {
   const whenToUse = draft.whenToUse.trim();
   return {
@@ -146,6 +150,9 @@ export function draftInput(
     allowedTools: [...draft.allowedTools],
     body: draft.body,
     expectedRevision: revision,
+    ...(options?.confirmPartialOverwrite === true
+      ? { confirmPartialOverwrite: true }
+      : {}),
   };
 }
 

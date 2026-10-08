@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-kv-persist",
-  "version": "0.2.7",
+  "version": "0.2.9",
   "description": "Persistent KV-cache/session-state manager for DeepSeek Harness (llama.cpp slot snapshots)",
   "keywords": [
     "deepseek",
@@ -32,10 +32,12 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
@@ -51,6 +53,7 @@
     "lint": "eslint src tests",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:llama": "vitest run tests/integration/llama-server.test.ts",
     "verify:package": "node scripts/verify-package.mjs",
     "verify": "pnpm run verify:package",
@@ -74,6 +77,7 @@
     "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",

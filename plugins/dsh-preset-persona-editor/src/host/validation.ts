@@ -1,9 +1,13 @@
 /**
- * Refusals that happen before anything reaches the file system.
+ * Refusals a composition must answer before it is used.
  *
  * Every rule here answers the same question: would this write leave a
  * composition a session could still compose from? A refusal returns a typed
- * failure and writes nothing.
+ * failure and applies nothing.
+ *
+ * Decision D2 took the write operations out of this plugin's namespace, so the
+ * rules have no caller inside it: they stay exported as the package's library
+ * for the write path `docs/DSH-0.1.7-MIGRATION.md` §10 describes.
  * @module host/validation
  */
 
@@ -28,7 +32,7 @@ export interface PersonaLimits {
   readonly maxSectionsBytes: number;
 }
 
-/** Defaults matching the plugin's own config schema. */
+/** The ceilings a write runs under when its caller sets none. */
 export const DEFAULT_LIMITS: PersonaLimits = {
   allowComplete: true,
   maxPersonaBytes: 262144,

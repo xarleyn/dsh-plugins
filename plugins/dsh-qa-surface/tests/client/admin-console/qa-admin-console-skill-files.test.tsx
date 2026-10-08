@@ -90,10 +90,8 @@ describe("admin console skill files", () => {
       ),
     );
     expect(
-      screen.getByText(
-        "Выберите пользователя, чтобы открыть его личные навыки.",
-      ),
-    ).toBeTruthy();
+      screen.getByTestId("qa-admin-skill-files-pick-user").textContent,
+    ).toContain("Выберите пользователя, чтобы открыть его личные навыки.");
     // No store was opened, so no personal catalog was asked for.
     expect(listSkills).not.toHaveBeenCalledWith(TOKEN, {
       kind: "user",
@@ -138,10 +136,12 @@ describe("admin console skill files", () => {
     fireEvent.change(screen.getByRole("combobox"), {
       target: { value: "u1" },
     });
-    expect(await screen.findByText("Личное хранилище alice")).toBeTruthy();
     expect(
-      screen.getByText("D:\\workspace\\.qa-users\\u1\\.dsh\\skills"),
-    ).toBeTruthy();
+      (await screen.findByTestId("qa-admin-skill-files-owner")).textContent,
+    ).toContain("Личное хранилище alice");
+    expect(screen.getByTestId("qa-admin-skill-files-path").textContent).toBe(
+      "D:\\workspace\\.qa-users\\u1\\.dsh\\skills",
+    );
   });
 
   it("shows the refusal and no editor when the role may not manage skills", async () => {
@@ -159,6 +159,6 @@ describe("admin console skill files", () => {
   it("keeps the section out of a reviewer's navigation", async () => {
     renderConsole(adminApi(), "/qa/admin/skills", "reviewer");
     expect(await screen.findByRole("heading", { name: "Навыки" })).toBeTruthy();
-    expect(screen.queryByText("Редактор навыков")).toBeNull();
+    expect(screen.queryByTestId("qa-admin-nav-skill-files")).toBeNull();
   });
 });

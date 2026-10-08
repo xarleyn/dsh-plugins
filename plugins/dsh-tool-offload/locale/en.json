@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Tool Result Offload",
+    "description": "Large, low-judgement tool results are summarized by one-shot workers before they reach the main context."
+  }
+}

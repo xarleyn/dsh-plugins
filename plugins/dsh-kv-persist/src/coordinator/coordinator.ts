@@ -22,7 +22,11 @@ import type { SnapshotRepository } from "../snapshots/repository.js";
 import type { KvPersistLogger } from "../observability/diagnostics.js";
 import { abbreviateSessionId } from "../observability/diagnostics.js";
 import type { KvPersistMetrics } from "../observability/metrics.js";
-import { KvPersistError, KvRestoreFailedError } from "../errors.js";
+import {
+  KvCoordinatorDisposedError,
+  KvPersistError,
+  KvRestoreFailedError,
+} from "../errors.js";
 import type { SnapshotInvalidationReason } from "../errors.js";
 import { CheckpointPolicy } from "./checkpoint-policy.js";
 import type { CheckpointTrigger } from "./checkpoint-policy.js";
@@ -41,6 +45,10 @@ import type {
   SessionRuntime,
   SnapshotResult,
 } from "./state-machine.js";
+
+/** Why `runSessionRequest` turns a request away after `dispose()`. */
+const COORDINATOR_DISPOSED =
+  "kv persistence coordinator is disposed and accepts no new work";
 
 /** One coordinated llm/stream request. */
 export interface CoordinatorRequest {
@@ -119,10 +127,14 @@ export class SingleSlotCoordinator {
    * terminal finish marks the session dirty. This internal API is entered by
    * the service's lazy generator only once consumption starts; its returned
    * iterable must always be consumed or closed so the lease can be released.
+   * A disposed coordinator refuses the request instead of starting work
+   * (SPEC §58), and so does a request that was already waiting for a lease.
    */
   async runSessionRequest(
     input: CoordinatorRequest,
   ): Promise<AsyncIterable<StreamChunk>> {
+    if (this.#disposed)
+      throw new KvCoordinatorDisposedError(COORDINATOR_DISPOSED);
     if (input.purpose !== undefined || input.sessionId === null) {
       this.#metrics.counters.auxiliaryRequests += 1;
       return this.#runAuxiliary(input);
@@ -131,6 +143,8 @@ export class SingleSlotCoordinator {
     this.#ensureRuntime(sessionId, input);
     const release = await this.#mutex.acquire();
     try {
+      if (this.#disposed)
+        throw new KvCoordinatorDisposedError(COORDINATOR_DISPOSED);
       this.#cancelIdleTimer();
       if (this.#breaker.isOpen(this.#now())) {
         this.#metrics.counters.circuitSkips += 1;
@@ -168,6 +182,8 @@ export class SingleSlotCoordinator {
   ): Promise<AsyncIterable<StreamChunk>> {
     const release = await this.#mutex.acquire();
     try {
+      if (this.#disposed)
+        throw new KvCoordinatorDisposedError(COORDINATOR_DISPOSED);
       this.#cancelIdleTimer();
       if (this.#breaker.isOpen(this.#now())) {
         this.#metrics.counters.circuitSkips += 1;
@@ -517,6 +533,15 @@ export class SingleSlotCoordinator {
   /** Save every dirty session that still owns the slot (flush/shutdown). */
   async flushOwned(trigger: CheckpointTrigger): Promise<void> {
     if (this.#disposed) return;
+    await this.#flushOwned(trigger);
+  }
+
+  /**
+   * Flush body. Kept separate from the disposal gate so shutdown can still
+   * checkpoint after new work is refused; the lease places it behind whatever
+   * inference or save is already in flight, so it sees the final dirty state.
+   */
+  async #flushOwned(trigger: CheckpointTrigger): Promise<void> {
     await this.#mutex.runExclusive(async () => {
       const owner = this.#slot.ownerSessionId;
       if (owner === null) return;
@@ -656,11 +681,43 @@ export class SingleSlotCoordinator {
     }
   }
 
-  /** Shutdown (SPEC §58): stop work, cancel timers, final checkpoint. */
+  /**
+   * Shutdown (SPEC §58): stop accepting work, cancel timers, run the final
+   * checkpoint. Waiting for that checkpoint is bounded (SPEC §59) by
+   * `checkpoint.shutdownGraceMs`, because the checkpoint queues behind the slot
+   * lease and a stream that never closes would otherwise hold the Cordis
+   * disposer forever. Only the wait is abandoned: the checkpoint keeps running
+   * and still writes when the lease frees.
+   */
   async dispose(): Promise<void> {
     this.#disposed = true;
     this.#cancelIdleTimer();
-    await this.flushOwned("shutdown").catch(() => undefined);
+    if (!this.#config.checkpoint.onShutdown) return;
+    const graceMs = this.#config.checkpoint.shutdownGraceMs;
+    const checkpointing = this.#flushOwned("shutdown").catch(
+      (error: unknown) => {
+        // A broken checkpoint must not fail the unload (SPEC §32); it stays
+        // observable here and in `saveFailures`.
+        this.#logger.warn("kv.session.shutdown_flush_failed", {
+          error: error instanceof Error ? error.message : String(error),
+        });
+      },
+    );
+    let stopGrace: () => void = () => undefined;
+    const graceExpired = new Promise<"abandoned">((resolve) => {
+      const timer = setTimeout(() => resolve("abandoned"), graceMs);
+      // A pending grace must never keep the host process alive.
+      timer.unref?.();
+      stopGrace = () => clearTimeout(timer);
+    });
+    const outcome = await Promise.race([
+      checkpointing.then(() => "settled" as const),
+      graceExpired,
+    ]);
+    stopGrace();
+    if (outcome === "abandoned") {
+      this.#logger.warn("kv.session.shutdown_flush_abandoned", { graceMs });
+    }
   }
 
   // ——— internals ———————————————————————————————————————————————————————

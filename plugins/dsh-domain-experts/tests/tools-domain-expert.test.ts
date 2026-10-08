@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { DEPLOYMENT_MEMORY_OWNER } from "../src/host/resolver.js";
 import { createDomainExpertTool } from "../src/host/tools/domain-expert.js";
 import { domainOf } from "./helpers/fakes.js";
 import {
@@ -46,6 +47,7 @@ describe("tools: domain_expert", () => {
       depth: 1,
       background: false,
       maxParallel: 3,
+      memoryOwner: DEPLOYMENT_MEMORY_OWNER,
     });
     const tool = createDomainExpertTool(harness.dependencies);
     await call(tool, { domain: "inventory", task: "stock rules" }, AGENT);
@@ -63,6 +65,7 @@ describe("tools: domain_expert", () => {
       depth: 1,
       background: false,
       maxParallel: 3,
+      memoryOwner: DEPLOYMENT_MEMORY_OWNER,
     });
     const tool = createDomainExpertTool(harness.dependencies);
     const error = await call(
@@ -88,6 +91,7 @@ describe("tools: domain_expert", () => {
       depth: 1,
       background: false,
       maxParallel: 3,
+      memoryOwner: DEPLOYMENT_MEMORY_OWNER,
     });
     const tool = createDomainExpertTool(harness.dependencies);
     const error = await call(
@@ -110,6 +114,7 @@ describe("tools: domain_expert", () => {
         depth: 1,
         background: false,
         maxParallel: 3,
+        memoryOwner: DEPLOYMENT_MEMORY_OWNER,
       });
     }
     const tool = createDomainExpertTool(harness.dependencies);

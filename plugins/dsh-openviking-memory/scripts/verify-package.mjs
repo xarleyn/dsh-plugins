@@ -30,8 +30,10 @@ await runVerifyPackage({
       // gateway client up before this entry applies — the same ordering every
       // other Remote plugin in this repository declares.
       "@deepseek-ai/dsh-api-gateway",
+      // The card sits in the configuration section of this bundle's row, so the
+      // Plugins page is an activation dependency of the client half.
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
       "@deepseek-ai/dsh-client-ui-settings",
-      "@deepseek-ai/dsh-client-ui-settings-plugins",
       // The account-scoped page mounts into the QA settings dialog, so the QA
       // client half has to be in the page before this bundle registers it.
       "@yadsh/dsh-qa-surface",
@@ -60,24 +62,49 @@ await runVerifyPackage({
   patch: { id: "dsh-openviking-memory" },
   compatibility: {
     node: "matchesEngines",
-    testedReleases: ["0.1.5-rc.2"],
-    clientFeatures: ["settings.plugin.item"],
+    testedReleases: ["0.1.7-rc.2"],
+    clientFeatures: ["plugins.row.config"],
   },
   clientBundle: {
     moduleLoaderId: true,
     cardContract: {
       legacyPatterns: [
-        // The card never had an older shell, but pin the rule against the
-        // plugin-specific outer shells the guidelines forbid.
+        // Pin the rule against a plugin-specific outer shell: on this seat the
+        // page draws the frame, so any shell of ours is the second one. The
+        // `dsh-plugin-card` family itself is banned outright in `notMatches`.
         /\.ovm-card\b/u,
-        /dsh-plugin-card\s*\*/u,
       ],
     },
+    matches: [
+      // The card opens from the Plugins page, in the keyed seat this bundle's own
+      // row owns: `<package name>#<row id>`.
+      /plugins\.row\.config/u,
+      /@yadsh\/dsh-openviking-memory#/u,
+      // The seat hands the same entry two views, and the `summary` half answers with
+      // the sentence rather than with the card — a build that lost the branch would
+      // mount a whole card inside the page's own `<p>`. Whether the page asks this row
+      // for the line is the Host's inventory and SPEC §2.1 says so; that the answer
+      // ships is measurable here.
+      /\.view === "summary"/u,
+      /Durable memory tools, conversation capture/u,
+    ],
     notMatches: [
       // The bundle is browser-only: a Node built-in import here would break
       // the host page's module table (client-bundle purity).
       /require\("node:/u,
       /from\s*"node:/u,
+      // A bundle still naming the deleted slot loads, registers nothing, and
+      // shows no card at all.
+      /settings\.plugin\.item/u,
+      // The card left the Settings → Plugins tab; a bundle naming it back renders
+      // a second copy of the page in a surface the cutover is emptying.
+      /settings\.plugins\.tab/u,
+      // The row's card is drawn by the Plugins page, so this bundle carries no
+      // shell of its own — not the classes, not the stylesheet that styles them.
+      // The shared gate reaches the same conclusion through the seat it reads;
+      // this is the acceptance the card states directly.
+      /dsh-plugin-card/u,
+      /PLUGIN_CARD_SHELL_CSS/u,
     ],
   },
   extra: async ({ manifest, readFile }) => {
@@ -187,8 +214,9 @@ await runVerifyPackage({
   },
 });
 
-// The settings card registers under `settings.plugin.item`, so the compiled
-// browser bundle has to satisfy the shared card shell contract.
+// The settings card registers in the configuration section of its own row on the
+// Plugins page, so the compiled browser bundle has to satisfy the shared card
+// shell contract.
 verifyPluginCardContract(
   await readFile(
     new URL("lib/client.js", new URL("../", import.meta.url)),

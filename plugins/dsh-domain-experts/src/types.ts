@@ -343,6 +343,10 @@ export type DomainErrorCode =
   | "SCOPE_PROVIDER_MISSING"
   | "MEMORY_PROVIDER_MISSING"
   | "MEMORY_SCOPE_DENIED"
+  /** A model-authored note that says nothing checkable was offered to store. */
+  | "MEMORY_NOISE_REFUSED"
+  /** Maintenance named a key that no longer holds a record. */
+  | "MEMORY_RECORD_MISSING"
   | "WORKER_UNAVAILABLE"
   | "DELEGATION_DENIED"
   | "DELEGATION_DEPTH_EXCEEDED"
@@ -492,6 +496,24 @@ export interface MemoryClearResult {
   readonly cleared: number;
 }
 
+/**
+ * One memory namespace as maintenance sees it: which expert owns it, whether it
+ * takes writes, and how much is in it.
+ */
+export interface MemoryScopeView {
+  readonly domainId: string;
+  readonly domainName: string;
+  readonly namespace: string;
+  readonly access: "read-write" | "read-only";
+  readonly records: number;
+}
+
+/** A page of one namespace's records, plus how many the filter matched. */
+export interface MemoryPageView {
+  readonly records: readonly MemoryRecord[];
+  readonly total: number;
+}
+
 export interface DraftInspectionResult {
   readonly ok: boolean;
   readonly code: string;
@@ -547,4 +569,16 @@ export function emptyDomainDraft(id: string, now = 0): DomainDefinition {
 /** Private memory namespace of a domain; the only place the convention lives. */
 export function defaultMemoryNamespace(id: string): string {
   return `domain/${id}`;
+}
+
+/**
+ * The memory namespace of one account inside a domain.
+ *
+ * `domain/payments` is what the payments domain knows for everyone;
+ * `domain/payments/u/<account>` is what one account's expert learned for that
+ * account. Keeping the layout in one function is what lets the tool, the
+ * persona and the inspector agree about where a note went.
+ */
+export function userMemoryNamespace(namespace: string, userId: string): string {
+  return `${namespace}/u/${userId}`;
 }

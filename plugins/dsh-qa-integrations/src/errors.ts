@@ -44,8 +44,57 @@ export type IntegrationErrorCode =
   | "SensitiveReadRequiresPersonalCredential"
   | "PersonalCredentialRequired";
 
+/**
+ * What a transport spent on the failure it handed back: the deadline one attempt
+ * was held to, how many further attempts the deployment allows, and how many
+ * attempts the call actually cost.
+ *
+ * The loop that made the attempts is the only party that knows these three, and
+ * the party that reports the failure to the operator — the broker, which knows
+ * the provider and the operation — has no view of them. So the loop writes them
+ * on the error it gives up with and the report reads them off. Numbers only: a
+ * budget names no address, no query, no body and no credential.
+ */
+export interface TransportBudget {
+  /** The per-attempt deadline, in milliseconds. */
+  readonly timeoutMs: number;
+  /** Attempts the deployment allows after the first one. */
+  readonly retries: number;
+  /** Attempts spent, the first included. */
+  readonly attempts: number;
+}
+
+/**
+ * What an upstream answer looked like, as far as a log may say it: the shape of
+ * the answer, never its content. A status, a media type and the class of a
+ * transport failure are what tells an expired key from a host that is down —
+ * and none of them is a body, an address or a credential.
+ */
+export interface TransportDiagnostics {
+  /** Status of an answer that arrived; absent when nothing answered. */
+  readonly status?: number;
+  /** Media type the answer declared for itself. */
+  readonly contentType?: string;
+  /** Class of the failure the fetch itself raised, when nothing answered. */
+  readonly errorClass?: string;
+}
+
 /** Safe domain error: message and code never include upstream bodies or secrets. */
 export class IntegrationError extends Error {
+  /**
+   * Set by a transport on the failure it refused a call with; absent on every
+   * error that never reached one.
+   */
+  budget?: TransportBudget;
+
+  /**
+   * Set by the transport that met the answer, on the failure it handed back.
+   * The broker logs it, because the call that failed is the one an operator is
+   * looking for and the party that decided the refusal no longer holds the
+   * response.
+   */
+  diagnostics?: TransportDiagnostics;
+
   constructor(
     readonly code: IntegrationErrorCode,
     message: string,

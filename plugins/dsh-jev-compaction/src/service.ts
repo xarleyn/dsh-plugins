@@ -14,10 +14,12 @@ import type { Context } from "@deepseek-ai/cordis";
 import type { Session } from "@deepseek-ai/dsh-session";
 import {
   JevCompactionConfigSchema,
+  plainJevCompactionConfig,
   resolveJevCompactionConfig,
   type JevCompactionConfig,
+  type JevCompactionLiveConfig,
   type ResolvedJevCompactionConfig,
-} from "./config.js";
+} from "./config/index.js";
 import { measurePressure, surfaceNodeTokens } from "./dsh/meter.js";
 import { captureSurfaceSnapshot } from "./dsh/surface.js";
 import type {
@@ -130,13 +132,18 @@ export class JevCompactionService extends Service {
 
   static Config = JevCompactionConfigSchema;
 
-  /** The composition entry: the base layer under any settings override. */
-  private readonly entryConfig: JevCompactionConfig;
+  /**
+   * The configuration object the Cordis loader mounted for this entry, kept by
+   * reference: the fields the settings card edits are stable references the
+   * loader updates in place, so the plugin never holds a copy of one.
+   */
+  private readonly liveConfig: JevCompactionConfig | JevCompactionLiveConfig;
 
   /**
-   * The active configuration source. It is the composition entry while no
-   * settings provider is attached and the resolved settings scope once one
-   * is, so a live settings change reaches the next run without a restart.
+   * The active configuration source: one plain snapshot of the live
+   * references, taken when an operation starts. That is what carries a settings
+   * change into the next run without a restart, and what keeps a running
+   * operation from seeing the configuration move underneath it.
    */
   private configSource: () => JevCompactionConfig;
 
@@ -158,13 +165,15 @@ export class JevCompactionService extends Service {
 
   constructor(
     ctx: Context,
-    config: JevCompactionConfig = {},
+    config: JevCompactionConfig | JevCompactionLiveConfig = {},
     backend?: SystemOneBackend,
   ) {
     super(ctx, "jevCompaction");
-    this.entryConfig = config;
-    this.configSource = () => this.entryConfig;
-    this.resolvedConfig = resolveJevCompactionConfig(config);
+    this.liveConfig = config;
+    this.configSource = () => plainJevCompactionConfig(this.liveConfig);
+    this.resolvedConfig = resolveJevCompactionConfig(
+      plainJevCompactionConfig(config),
+    );
     this.tokenMeter = (
       ctx as unknown as { tokenMeter: TokenMeterLike }
     ).tokenMeter;
@@ -217,20 +226,16 @@ export class JevCompactionService extends Service {
       this.disposers.push(registerJevCompactCommand(commands, this));
     });
 
-    installJevCompactionSettings({
-      owner: ctx,
-      entryConfig: this.entryConfig,
-      schema: JevCompactionConfigSchema,
-      setSource: (current) => {
-        this.configSource = current;
-      },
-      onChange: () => {
+    installJevCompactionSettings(ctx);
+    // The loader swaps a volatile reference in place and then tells the entry
+    // which paths moved. Re-resolving here is the whole live-settings path: the
+    // card writes the Host document, the Host updates our references, and the
+    // next operation reads the new values.
+    this.disposers.push(
+      (ctx as unknown as JevHostContext).on("loader/volatile-update", () => {
         this.reapply();
-      },
-      validate: (value) => {
-        resolveJevCompactionConfig(value);
-      },
-    });
+      }),
+    );
   }
 
   /**

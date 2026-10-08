@@ -378,7 +378,7 @@ export class QaProvenanceHost {
     const definition = defineTool({
       name: QA_REPORT_SOURCES_TOOL,
       description:
-        "Report the structured sources used by this delegated run so the parent QA answer can show provenance.",
+        "Report the structured sources a run used so the QA answer can show provenance: a delegated run reports its own, and the answering agent reports what it read or fetched itself.",
       parameters: {
         sources: {
           type: "array",
@@ -445,13 +445,16 @@ export class QaProvenanceHost {
         const turn = child === undefined ? 0 : currentTurn(child);
         // A report belongs to the delegated run it came from, and the turn that
         // started the run inherits it. Outside a run the report is the model's
-        // own entry, which only a deployment that turned reported-source
-        // validation off accepts: it lands in the reporting session's current
-        // turn, exactly where a tool-derived source of that turn would.
+        // own entry, and it lands in the reporting session's current turn,
+        // exactly where a tool-derived source of that turn would: who may
+        // report is not what `validateReportedSources` governs, that flag says
+        // only that an entry has to carry an address, and it is applied to each
+        // entry below. Refusing the channel here instead silently dropped every
+        // report a chat agent filed for itself.
         const home =
           lineage !== undefined
             ? { sessionId: lineage.rootSessionId, turn: lineage.rootTurn }
-            : validate || child === undefined
+            : child === undefined
               ? undefined
               : { sessionId: childId, turn };
         if (home === undefined) return { accepted: 0 };

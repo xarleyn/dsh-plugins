@@ -146,7 +146,7 @@ describe("testit request building", () => {
       `/api/v2/projects/${id}/configurations`,
     ]);
     expect(calls.every(({ init }) => init.method === "GET")).toBe(true);
-    expect(calls.every(({ init }) => init.redirect === "error")).toBe(true);
+    expect(calls.every(({ init }) => init.redirect === "manual")).toBe(true);
   });
 
   it("refuses an operation the catalog does not declare, without a request", async () => {

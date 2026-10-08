@@ -1,6 +1,7 @@
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { MemoryRecord } from "../../types.js";
 import { DomainExpertsError } from "../errors.js";
+import { checkMemoryText } from "../memory/quality.js";
 import { memoryEntries } from "../resolver.js";
 import {
   callerSessionIdOf,
@@ -45,12 +46,18 @@ const RECORD_SCHEMA = {
  * validated against the namespaces resolved from the persisted definition, and
  * a write is refused anywhere but the private one. This is what makes the
  * memory boundary real rather than a sentence in a prompt.
+ *
+ * The private one is the *account's* namespace when the deployment keeps memory
+ * per account, so what one account's expert learned cannot be inherited as a
+ * rule by another account's. The domain's own namespace and the shared ones
+ * stay readable and never writable, which is why the write refusal also names
+ * the reason a note may not belong there at all.
  */
 export function createDomainMemoryTool(dependencies: ToolDependencies) {
   return defineTool({
     name: "domain_memory",
     description:
-      "Read or write the memory of the domain expert you are running as. Only the namespaces configured for that expert are reachable, and only its own namespace accepts writes. Use it to record a durable finding or to recall what this domain already knows.",
+      "Read or write the memory of the domain expert you are running as. Only the namespaces configured for that expert are reachable, and only its own namespace accepts writes — the domain's common and shared namespaces are read for everyone and written by nobody. Use it to record a durable finding or to recall what this domain already knows. Record what holds for the domain whatever the caller asks; a tool, source or path that was missing for this run says nothing about the domain, so answer with it instead of recording it. A write is refused when the text is not a finding — an acknowledgement, a placeholder, or a note that nothing was found.",
     parameters: {
       action: {
         type: "string",
@@ -149,7 +156,7 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
         const definition = await dependencies.requireDefinition(
           active.domainId,
         );
-        const entries = memoryEntries(definition);
+        const entries = memoryEntries(definition, active.memoryOwner);
         const namespaces = entries.map(
           (entry) =>
             `${entry.namespace} (${entry.access === "read-write" ? "read/write" : "read-only"})`,
@@ -198,11 +205,22 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
           }
           case "write": {
             const key = (args.key ?? "").trim();
-            const text = (args.text ?? "").trim();
-            if (text === "") {
+            // Scope before substance: a refusal that names the namespace is the
+            // one the expert can act on without re-reading its own config, and
+            // checking the text first would hide it behind a noise verdict.
+            if (
+              active.memoryOwner.mode === "per-user" &&
+              active.memoryOwner.userId === undefined
+            ) {
+              // The writable namespace of an unattributed run *is* the domain's
+              // common one, so a note written here is what every later account
+              // of this domain inherits. Failing closed is the honest default:
+              // an observation from a run nobody claimed cannot be checked
+              // against another account's access at all.
               throw new DomainExpertsError(
-                "TASK_REJECTED",
-                "domain_memory write needs non-empty text.",
+                "MEMORY_SCOPE_DENIED",
+                `This run is not attributed to an account, so "${writable}" is what every account of this domain reads. A note recorded from here has to hold for the whole deployment; what only this run showed — a tool, a source, a path it could not use — belongs in your answer instead.`,
+                { refs: [writable] },
               );
             }
             if (args.namespace !== undefined && args.namespace !== "") {
@@ -210,11 +228,19 @@ export function createDomainMemoryTool(dependencies: ToolDependencies) {
               if (requested !== writable) {
                 throw new DomainExpertsError(
                   "MEMORY_SCOPE_DENIED",
-                  `Namespace "${requested}" is read-only for this expert; only "${writable}" accepts writes.`,
+                  `Namespace "${requested}" is read-only for this expert; only "${writable}" accepts writes. A read-only namespace is what this domain knows for every account, so a note that is only true for this caller does not belong in memory at all — report it in your answer.`,
                   { refs: [requested] },
                 );
               }
             }
+            const check = checkMemoryText(args.text ?? "");
+            if (check.verdict !== "ok") {
+              throw new DomainExpertsError(
+                "MEMORY_NOISE_REFUSED",
+                `domain_memory write refused (${check.verdict}): ${check.message}`,
+              );
+            }
+            const text = check.text;
             const record = await provider.remember(
               writable,
               key === "" ? derivedKey(text) : key,

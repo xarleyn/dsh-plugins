@@ -1,3 +1,171 @@
+## 0.7.7 (2026-10-08)
+
+### 🩹 Fixes
+
+- A refusal block reads as a refusal again, and a token the Host never declares ([#717](https://github.com/xarleyn/dsh-plugins/issues/717))
+  cannot be written down unnoticed.
+
+  Unknown `var(--dsw-…)` is not a missing colour: the substitution yields the
+  guaranteed-invalid value, so the browser drops the whole declaration at
+  computed-value time and says nothing. `--dsw-alias-bg-error` and
+  `--dsw-alias-label-error` are named by no theme sheet — the error ramp is
+  `--dsw-alias-state-error-primary` — so every block of refusal text written with
+  them lost its fill and its ink together and rendered as ordinary small text,
+  which is how issue #717 looked on the Memory tab of a stand with no access to
+  the service. The same mechanic had already cost `dsh-sleev` its focus and
+  invalid borders (`--dsw-alias-border-brand`, `--dsw-alias-border-error`) and
+  `dsh-session-scope` its chip fill (`--dsw-alias-fill-tsp-secondary`).
+
+  Text and borders now take `--dsw-alias-state-error-primary` with a `#b3261e`
+  fallback. The theme declares no error *surface* alias — `state-success` and
+  `state-warn` have a tint, `state-error` does not — so a block mixes the state
+  token the way the Host's own danger control does,
+  `color-mix(in srgb, … 8%, transparent)`, and keeps its soft red in both themes.
+  Three names that only ever survived behind a fallback are retired where a live
+  token exists (`--dsw-alias-bg-elevated` → `--dsw-alias-button-elevated-fill`,
+  `--dsw-alias-label-inverse` → `--dsw-alias-label-primary-foreground`), and
+  `--dsw-font-family-mono`, for which the theme offers no alias at all, becomes
+  the `ui-monospace` stack the other bundles already write. No computed value
+  changes except where a dead name had been silently winning.
+
+  `pnpm verify:tokens` (`scripts/verify-design-tokens.mjs`) is the class turned
+  into a gate: it collects every `--dsw-*` name substituted under any package's
+  `src/` and refuses one the installed `@deepseek-ai/dsh-client-ui-theme` does not
+  declare — a dead name behind a fallback included, because the fallback paints a
+  colour the Host never chose. The vocabulary comes from the pinned package rather
+  than a hand-kept list, so the check needs no harness checkout and reads the same
+  version the plugins build against; where the theme cannot be found the gate
+  reports that instead of passing. `dsh-plugin-log-ui`'s own bundle pin flips from
+  requiring `--dsw-alias-bg-error` to forbidding the dead error names.
+
+- Every plugin row on the Host's Plugins page is named in words. ([fff88762](https://github.com/xarleyn/dsh-plugins/commit/fff88762))
+
+  The page titles a bundle's row and fills its description line from the package's
+  exported `locale/en.json`, which the Host resolves through the package's `exports`
+  map without activating the plugin (`@deepseek-ai/dsh-app-boot` `package-meta.ts`).
+  Only `dsh-documents` shipped that file, so the other twenty-five rows were signed by
+  their full package specifier — an operator read `@yadsh/dsh-jev-compaction` where a
+  first-party row read a phrase. Each package now exports `./locale/en.json`, publishes
+  `locale/*.json`, and carries English `meta.title` and `meta.description`; where the
+  package already had a configuration card, its `summary` one-liner and the row's
+  description are one string, pinned by a test against the shipped file rather than
+  against a copy in the test. `pnpm verify:packages` asks all three halves of every
+  plugin package, so a row cannot fall back to a specifier unnoticed.
+
+  Two pages still seated on the deleted-in-spirit `settings.plugins.tab` move to the
+  panel with them. `dsh-prompt-firewall` edits its own Config namespace, so it takes the
+  row seat keyed `@yadsh/dsh-prompt-firewall#dsh-prompt-firewall` — the row id is the
+  namespace the Host serves the form under, so no saved value is orphaned — and with the
+  seat it gives up its shell, its header badge and its show/hide labels, taking the
+  Host's `--dsw-focus-ring-*` pair for every control it draws and answering the
+  unavailable namespace with a sentence instead of an empty section.
+  `dsh-domain-experts` owns no form — it edits domains through its Remote services — so
+  it takes the bundle-level seat `plugins.bundle.config`, keyed by the package name, and
+  drops the `<h2>` heading and the intro line the panel already draws from the row's own
+  display metadata.
+
+### ❤️ Thank You
+
+- qoder-bot
+- xarleyn @xarleyn
+
+## 0.7.6 (2026-10-04)
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- The browser client is several modules now, and nothing the shell sees changes. ([#317](https://github.com/xarleyn/dsh-plugins/issues/317))
+
+  `src/client.ts` was one 1429-line file holding everything the client renders and
+  all of the transport it uses. It is now a `src/client/` directory built by the
+  same tsdown entry: `index.ts` keeps what only a mounted plugin instance can own —
+  the Remote `$mount`, the durable `/scope` write, the read RPC, the composer seat
+  and the blank-session hero portal — while the copy, the stylesheet, the icons,
+  the path-comparison rules and the client half of the Remote contract each got
+  their own module, and the scope editor was separated into the draft state and
+  commands (`scope-editor.ts`) and the rendering of the modal
+  (`scope-editor-view.ts`). The largest client module is 400 lines.
+
+  Nothing observable moved. The bundle is still generated rather than authored,
+  still registers exactly `@yadsh/dsh-session-scope`, still takes `react` and
+  `react-dom` as shell statics, still contributes the Scope chip to the composer's
+  left seat, still resolves the workspace root from the sessions store and falls
+  back to the `session-scope` projection, and still reads one directory level
+  through the dedicated non-durable `sessionScope/list` RPC instead of a slash
+  command. `verify:client` asserts those shapes in the built artifact and runs the
+  registration against a module-loader stub, and the client tests still mount the
+  chip through a fake React; every string the client renders survived the move
+  verbatim.
+
+  Two boundaries became explicit instead of implicit. The editor no longer closes
+  over the transport — it is handed `runCommand` and `listLevel` as props, so what
+  a draft is saved through is visible where the editor starts. And clearing every
+  pending row is a named action of the editor rather than a raw state patch
+  written in the middle of the render tree, which is the one place the render had
+  been reaching into state.
+
+- The isolated Linux backend now hides the workspace from itself. ([#359](https://github.com/xarleyn/dsh-plugins/issues/359))
+
+  `isolated` masked the session workspace with mounts: the selected roots are
+  staged, the workspace is covered with an empty tmpfs, and the chosen roots are
+  bound back over it. That leaves the mount path as the only thing doing the
+  hiding. While the confined process shared a PID namespace with the host, every
+  unconfined process of the same UID stayed addressable inside the sandbox as
+  `/proc/<pid>` — and `/proc/<pid>/root` is that process's own root, so it is a
+  second path to the very workspace the tmpfs just covered. Whether a same-UID
+  reader may actually resolve the link is decided by Yama, `hidepid=` and the
+  target's dumpability, which means the guarantee the plugin advertises was being
+  granted by whichever host it happened to run on rather than by the sandbox.
+
+  The isolated profile therefore takes a PID namespace of its own: the rewritten
+  argv carries `--unshare-pid` alongside the provider's `--proc /proc`, so the
+  mounted procfs belongs to the new namespace and the confined process meets no
+  outside pid at all. The route is gone on every host, not only on strict ones.
+  Both isolated shapes get it — the narrowed view and the whole-workspace
+  selection — and the capability probe runs exactly this argv, so a kernel that
+  cannot create the namespace reports `isolated` as unavailable and fails closed
+  instead of promising a weaker isolation than the mode means. The recognized
+  provider profile is untouched: what has to match the host's own bwrap output is
+  the input, and the plugin still owns only the narrowing.
+
+  A fixture holds the line where the claim is made. Under bwrap it runs the same
+  probe twice — once in the provider's profile, once in the isolated one — against
+  an unconfined bystander of the same UID: the confined process must share the
+  host's PID namespace and be able to name the bystander by its argv in the first
+  run, and must be in a different namespace and unable to name it in the second,
+  with the hidden file unreachable and the selected file still readable. The
+  comparison is deliberately about the namespace and the addressability, not about
+  whether the bystander's proc-root read succeeds: that answer is the host's
+  policy, and a test asserting it would pass or fail for reasons this package does
+  control nothing of.
+
+  What `isolated` still does not promise is unchanged: a `read-only` permission
+  mode keeps the rest of the host filesystem visible, processes outside the
+  sandbox are not restricted by it, and memory of the confined process is readable
+  by whoever could read it before confinement.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.7.5 (2026-09-22)
 
 ### 🩹 Fixes

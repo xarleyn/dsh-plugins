@@ -6,7 +6,8 @@
       "default",
       "!{projectRoot}/tests/**/*",
       "!{projectRoot}/eslint.config.js"
-    ]
+    ],
+    "rootEslintConfig": ["{workspaceRoot}/eslint.config.js"]
   },
   "release": {
     "projects": [
@@ -18,7 +19,11 @@
     ],
     "projectsRelationship": "independent",
     "versionPlans": {
-      "ignorePatternsForPlanCheck": ["**/CHANGELOG.md", "**/package.json"]
+      "ignorePatternsForPlanCheck": [
+        "**/CHANGELOG.md",
+        "**/package.json",
+        "**/tests/**"
+      ]
     },
     "version": {
       "updateDependents": "never"
@@ -38,6 +43,7 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["production", "^production"],
+      "outputs": ["{projectRoot}/lib"],
       "cache": true
     },
     "test": {
@@ -45,13 +51,17 @@
       "inputs": ["default", "^production"],
       "cache": true
     },
+    "test:coverage": {
+      "dependsOn": ["build"],
+      "cache": false
+    },
     "typecheck": {
       "dependsOn": ["^build"],
       "inputs": ["default", "^production"],
       "cache": true
     },
     "lint": {
-      "inputs": ["default"],
+      "inputs": ["default", "rootEslintConfig"],
       "cache": true
     },
     "verify": {

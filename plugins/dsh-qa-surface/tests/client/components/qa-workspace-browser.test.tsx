@@ -58,14 +58,52 @@ describe("workspace browser", () => {
     render(
       <QaWorkspaceBrowser sessionId="s1" api={api({ listWorkspaceFiles })} />,
     );
-    expect(await screen.findByText(".qa")).toBeTruthy();
-    expect(screen.getByText("note.txt")).toBeTruthy();
-    expect(screen.getByText("12 Б")).toBeTruthy();
+    const names = await screen.findAllByTestId(
+      "qa-surface-workspace-entry-name",
+    );
+    expect(names.map((node) => node.textContent)).toEqual([".qa", "note.txt"]);
+    expect(
+      screen.getByTestId("qa-surface-workspace-entry-size").textContent,
+    ).toBe("12 Б");
     expect(listWorkspaceFiles).toHaveBeenCalledWith("s1", "");
-    fireEvent.click(screen.getByText(".qa"));
+    const entries = screen.getAllByTestId("qa-surface-workspace-entry");
+    fireEvent.click(entries[0]!);
     await waitFor(() =>
       expect(listWorkspaceFiles).toHaveBeenLastCalledWith("s1", ".qa"),
     );
+  });
+
+  it("names the root once and brings the trail back below it", async () => {
+    // The Files section already heads this listing with «Рабочий каталог»; a
+    // single crumb repeating it is the same line printed twice, one under the
+    // other. Deeper in, the trail is the way back up and it shows again.
+    const listWorkspaceFiles = vi.fn((_sessionId: string, path: string) =>
+      Promise.resolve({
+        ok: true as const,
+        value:
+          path === ""
+            ? {
+                path: "",
+                truncated: false,
+                entries: [
+                  { name: ".qa", type: "directory" as const, size: null },
+                ],
+              }
+            : { path, truncated: false, entries: [] },
+      }),
+    );
+    render(
+      <QaWorkspaceBrowser sessionId="s1" api={api({ listWorkspaceFiles })} />,
+    );
+    await screen.findByTestId("qa-surface-workspace-entry-name");
+    expect(screen.queryByTestId("qa-surface-workspace-crumbs")).toBeNull();
+    fireEvent.click(screen.getByTestId("qa-surface-workspace-entry"));
+    const crumbs = await screen.findByTestId("qa-surface-workspace-crumbs");
+    expect(
+      within(crumbs)
+        .getAllByTestId("qa-surface-workspace-crumb")
+        .map((node) => node.textContent),
+    ).toEqual(["Рабочий каталог", ".qa"]);
   });
 
   it("opens a text file and toggles a Markdown body between rendered and raw", async () => {
@@ -94,12 +132,18 @@ describe("workspace browser", () => {
         })}
       />,
     );
-    fireEvent.click(await screen.findByText("guide.md"));
+    const guide = await screen.findByTestId("qa-surface-workspace-entry-name");
+    expect(guide.textContent).toBe("guide.md");
+    fireEvent.click(screen.getByTestId("qa-surface-workspace-entry"));
     expect(await screen.findByRole("heading", { name: "Guide" })).toBeTruthy();
     fireEvent.click(
       screen.getByRole("button", { name: "Показать исходником" }),
     );
-    await waitFor(() => expect(screen.getByText("# Guide")).toBeTruthy());
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("qa-surface-workspace-text").textContent,
+      ).toContain("# Guide"),
+    );
   });
 
   it("offers a binary file as a download instead of previewing it", async () => {
@@ -140,8 +184,14 @@ describe("workspace browser", () => {
         })}
       />,
     );
-    fireEvent.click(await screen.findByText("report.docx"));
-    expect(await screen.findByText(/не читается как текст/u)).toBeTruthy();
+    const row = await screen.findByTestId("qa-surface-workspace-entry-name");
+    expect(row.textContent).toBe("report.docx");
+    fireEvent.click(screen.getByTestId("qa-surface-workspace-entry"));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("qa-surface-workspace-status").textContent,
+      ).toContain("не читается как текст"),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Скачать" }));
     expect(createObjectURL).toHaveBeenCalledTimes(1);
     expect(click).toHaveBeenCalledTimes(1);
@@ -173,7 +223,9 @@ describe("workspace browser", () => {
         })}
       />,
     );
-    fireEvent.click(await screen.findByText("guide.md"));
+    const opened = await screen.findByTestId("qa-surface-workspace-entry-name");
+    expect(opened.textContent).toBe("guide.md");
+    fireEvent.click(screen.getByTestId("qa-surface-workspace-entry"));
     fireEvent.click(
       await screen.findByRole("button", { name: "Развернуть файл" }),
     );
@@ -220,13 +272,13 @@ describe("workspace browser", () => {
         })}
       />,
     );
-    fireEvent.click(await screen.findByText("report.pdf"));
+    const listed = await screen.findByTestId("qa-surface-workspace-entry-name");
+    expect(listed.textContent).toBe("report.pdf");
+    fireEvent.click(screen.getByTestId("qa-surface-workspace-entry"));
     await waitFor(() =>
-      expect(document.querySelector("iframe.dsh-qa-ws__pdf")).toBeTruthy(),
+      expect(screen.getByTestId("qa-surface-workspace-pdf")).toBeTruthy(),
     );
-    const frame = document.querySelector(
-      "iframe.dsh-qa-ws__pdf",
-    ) as HTMLIFrameElement;
+    const frame = screen.getByTestId("qa-surface-workspace-pdf");
     expect(frame.getAttribute("src")).toBe("blob:pdf");
     expect(createObjectURL).toHaveBeenCalledTimes(1);
   });
@@ -276,14 +328,14 @@ describe("workspace browser", () => {
         })}
       />,
     );
-    fireEvent.click(await screen.findByText("report.docx"));
+    const word = await screen.findByTestId("qa-surface-workspace-entry-name");
+    expect(word.textContent).toBe("report.docx");
+    fireEvent.click(screen.getByTestId("qa-surface-workspace-entry"));
     await waitFor(() =>
-      expect(document.querySelector("iframe.dsh-qa-ws__pdf")).toBeTruthy(),
+      expect(screen.getByTestId("qa-surface-workspace-pdf")).toBeTruthy(),
     );
     expect(previewWorkspaceDocument).toHaveBeenCalledWith("s1", "report.docx");
-    const frame = document.querySelector(
-      "iframe.dsh-qa-ws__pdf",
-    ) as HTMLIFrameElement;
+    const frame = screen.getByTestId("qa-surface-workspace-pdf");
     expect(frame.getAttribute("src")).toBe("blob:converted");
   });
 
@@ -312,8 +364,16 @@ describe("workspace browser", () => {
         })}
       />,
     );
-    fireEvent.click(await screen.findByText("report.docx"));
-    expect(await screen.findByText(/не открывается в панели/u)).toBeTruthy();
+    const refusedEntry = await screen.findByTestId(
+      "qa-surface-workspace-entry-name",
+    );
+    expect(refusedEntry.textContent).toBe("report.docx");
+    fireEvent.click(screen.getByTestId("qa-surface-workspace-entry"));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId("qa-surface-workspace-status").textContent,
+      ).toContain("не открывается в панели"),
+    );
     expect(screen.getByRole("button", { name: "Скачать" })).toBeTruthy();
   });
 
@@ -324,11 +384,10 @@ describe("workspace browser", () => {
         api={api({ listWorkspaceFiles: refused("outside-roots") })}
       />,
     );
-    expect(
-      await screen.findByText(
-        /лежит вне каталогов, доступных для предпросмотра/u,
-      ),
-    ).toBeTruthy();
+    const status = await screen.findByTestId("qa-surface-workspace-status");
+    expect(status.textContent).toMatch(
+      /лежит вне каталогов, доступных для предпросмотра/u,
+    );
   });
 
   it("says an empty directory is empty rather than showing nothing", async () => {
@@ -344,6 +403,49 @@ describe("workspace browser", () => {
         })}
       />,
     );
-    expect(await screen.findByText("Каталог пуст.")).toBeTruthy();
+    const status = await screen.findByTestId("qa-surface-workspace-status");
+    expect(status.textContent).toBe("Каталог пуст.");
+  });
+
+  it("opens the file a card arrived with, instead of the listing", async () => {
+    const readWorkspaceFile = vi.fn(async () => ({
+      ok: true as const,
+      value: {
+        path: ".qa/artifacts/documents/doc_1/report.docx",
+        size: 12_595,
+        truncated: false,
+        markdown: false,
+        renderableMarkdown: false,
+        mime: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      },
+    }));
+    const previewWorkspaceDocument = vi.fn(refused("unsupported"));
+    render(
+      <QaWorkspaceBrowser
+        sessionId="s1"
+        api={api({ readWorkspaceFile, previewWorkspaceDocument })}
+        initialFile=".qa/artifacts/documents/doc_1/report.docx"
+      />,
+    );
+    // The arrival is the point of the card under an answer: the reader lands on
+    // the document, not on a directory they have to walk into.
+    await waitFor(() =>
+      expect(readWorkspaceFile).toHaveBeenCalledWith(
+        "s1",
+        ".qa/artifacts/documents/doc_1/report.docx",
+      ),
+    );
+    const preview = await screen.findByTestId("qa-surface-workspace-preview");
+    expect(
+      within(preview).getByTestId("qa-surface-workspace-preview-name")
+        .textContent,
+    ).toBe("report.docx");
+    // A Word file asks the Host for the copy the browser can draw.
+    await waitFor(() =>
+      expect(previewWorkspaceDocument).toHaveBeenCalledWith(
+        "s1",
+        ".qa/artifacts/documents/doc_1/report.docx",
+      ),
+    );
   });
 });

@@ -1,5 +1,9 @@
 import assert from "node:assert/strict";
-import { readFile, stat } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { mkdtemp, readFile, rm, stat, symlink } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import QaSurface, { name, resolveConfig } from "../lib/index.js";
 import { verifyPluginCardContract } from "../../../scripts/verify-plugin-card-contract.mjs";
 
@@ -60,6 +64,7 @@ const manifest = JSON.parse(
   await readFile(new URL("package.json", root), "utf8"),
 );
 assert.equal(manifest.name, "@yadsh/dsh-qa-surface");
+assert.equal(manifest.bin["qa-accounts"], "./lib/cli.js");
 assert.equal(
   manifest.bin["qa-repair-sessions"],
   "./scripts/repair-session-events.mjs",
@@ -102,11 +107,13 @@ assert(
 );
 assert(
   manifest.dsh.client.inject.includes(
-    "@deepseek-ai/dsh-client-ui-settings-plugins",
+    "@deepseek-ai/dsh-client-ui-plugin-manager",
   ),
-  "the settings card needs the plugin-cards tab in the client inject manifest",
+  "the settings card opens from the plugin's row in the Plugins panel, so its slot contract must arrive in the client inject manifest",
 );
-assert(manifest.dsh.client.inject.includes("@deepseek-ai/dsh-agent-presets"));
+assert(
+  manifest.dsh.client.inject.includes("@deepseek-ai/dsh-agent-preset-registry"),
+);
 assert(
   manifest.dsh.client.inject.includes("@deepseek-ai/dsh-client-file-upload"),
   "attached files stage through the upload service, so its bundle must arrive first",
@@ -234,6 +241,9 @@ assert.doesNotMatch(admission, /\.tools\.presentAs\("native"\)/u);
 assert.match(admission, /existing non-QA session cannot be adopted/u);
 assert.match(remote, /qaSurface\/secureSession/u);
 assert.match(remote, /qaSurface\/describe/u);
+// The queue read the browser takes before a send, so a browser cannot be the
+// one deciding how busy the stand is.
+assert.match(remote, /qaSurface\/queueStatus/u);
 for (const method of [
   "accessCurrent",
   "accessSession",
@@ -349,6 +359,11 @@ assert.match(
   client,
   /__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-qa-surface"/u,
 );
+assert.doesNotMatch(
+  client,
+  /require\s*\(\s*["']\.[^"']+["']\s*\)/u,
+  "client bundle must be self-contained because DSH does not materialize relative runtime chunks",
+);
 assert.match(
   client,
   new RegExp(`const QA_VERSION = "${escapedVersion}"`, "u"),
@@ -366,6 +381,21 @@ assert.match(client, /settings\.onboarding/u);
 assert.match(client, /"welcome-notice"/u);
 assert.match(client, /priority:\s*-1e3|priority:\s*-1000/u);
 assert.match(client, /Перед началом тестирования/u);
+// A question the stand has no room for is answered with the queue dialog, and
+// the dialog has to say where the question is: a visitor who cannot tell asks
+// it twice, which is the load the ceiling exists to prevent.
+assert.match(client, /Подождите в очереди/u);
+assert.match(client, /не отправлен и остался в поле ввода/u);
+// The dialog counts occupied places, never a queue of people ahead: the load it
+// reads includes this visitor's own turns, so "перед вами" would invent a
+// position the stand cannot attribute.
+assert.match(client, /все его места заняты: в работе/u);
+assert.doesNotMatch(client, /заняты: перед вами/u);
+// Own BEM block: `dsh-qa-queue*` belongs to the strip of messages waiting inside
+// one chat, and these two features must not share a block name in the bundle.
+assert.match(client, /\.dsh-qa-request-queue__notice\{/u);
+assert.doesNotMatch(client, /\.dsh-qa-queue__notice\{/u);
+assert.match(client, /maxActiveRequests/u);
 assert.match(client, /2026-09-12\.1/u);
 assert.match(client, /dsh-qa-onboarding/u);
 assert.match(client, /require\("react-dom"\)/u);
@@ -487,24 +517,81 @@ for (const builtin of ["process", "buffer", "node:fs", "node:path"]) {
 }
 assert.doesNotMatch(client, /node_modules\/yaml/u, "yaml stays on the Host");
 
-// The settings card (AGENTS.md shell contract): the canonical shell rules and
-// chevron path, the keyed `settings.plugin.item` registration under the
-// namespace the Host serves, and the plugin's own body classes.
+// The settings card (AGENTS.md card-shell contract). The seat is read off this
+// bundle by the contract, and it is the Plugins panel row, so the contract held
+// here is the host-chrome half: no shell classes, no chevron of ours, and every
+// focus ring built from the Host's `--dsw-focus-ring-*` token pair.
 verifyPluginCardContract(client, {
   legacyPatterns: [/dsh-plugin-card\s*\*/u, /\.qa-panel\b/u],
 });
-assert.match(client, /settings\.plugin\.item/u);
-assert.match(client, /Помощник QA/u);
-// The toggle's accessible label is assembled from the open state and the card
-// name, so the bundle carries the two halves rather than one sentence.
-assert.match(client, /Скрыть/u);
-assert.match(client, /настройки: Помощник QA/u);
+// The shared contract picks which half of itself applies from the seat named at
+// the registration, so the pin is the registration's own text rather than the
+// bare slot name — a comment or a leftover constant would answer the latter.
+assert.match(client, /name:\s*"plugins\.row\.config"/u);
+// The seat key is `<package name>#<row id>`, and a key that drifts from that
+// pair says nothing when it fails: the row keeps its place on the page and
+// never gains the control that opens the card. So the bundle carries the join.
+assert.match(client, /@yadsh\/dsh-qa-surface#/u);
+// One render site: the card must not register a second time on the tab seat of the
+// Plugins settings section, or it shows twice. The registration is what fails, the
+// way the shared contract reads a seat — esbuild carries `src/` comments into this
+// bundle, and a sentence about the seat this card left is prose, not a second seat.
+assert.doesNotMatch(
+  client,
+  /\bname:\s*["']settings\.plugins\.tab["']|\b(?:const|let|var)\s+[\w$]+\s*=\s*["']settings\.plugins\.tab["']/u,
+);
+// The row's one-liner is this entry's answer for the `summary` view, and the host
+// paints the same paragraph from the manifest's `description`. Read from there
+// rather than repeated here: a manifest edit must move this sentence with it, and
+// only the bundle would have gone stale.
+assert.ok(
+  typeof manifest.description === "string" && manifest.description.length > 0,
+  "the row's summary is the manifest description, so the manifest must declare one",
+);
+assert.ok(
+  client.includes(manifest.description),
+  "client bundle must carry the row's one-liner equal to the manifest description",
+);
+// The heading and the expand control belong to the page, so the bundle carries
+// neither of their halves any more — a surviving label here means the shell
+// came back inside the Host's card.
+assert.doesNotMatch(client, /настройки: Помощник QA/u);
 assert.match(client, /qa-card-body/u);
 assert.match(client, /qa-card-notice/u);
 // The sources section carries the reported-source validation switch, so a
 // deployment can test a provider that reports facts instead of documents.
 assert.match(client, /Проверять источники из отчёта/u);
 assert.match(client, /registerSettingsCard|slots\.register/u);
+
+// The palette choice the surface carries itself: the Host's own Appearance row
+// lives in settings the overlay suppresses, so `/qa` ships the three
+// preferences and writes the two fields the Host token sheet selects on. All
+// three labels have to survive bundling — a missing one leaves a theme
+// unreachable. The Host publishes its preference nowhere in the DOM, so a
+// marker attribute here would be a private invention the Host never reads and
+// never writes; reading the booted palette goes through the dark attribute.
+assert.match(client, /dsh-qa-theme__option/u);
+assert.match(client, /Тема оформления/u);
+for (const label of [/Светлая тема/u, /Тёмная тема/u, /Системная тема/u]) {
+  assert.match(
+    client,
+    label,
+    `the palette control must keep offering ${label}`,
+  );
+}
+assert.match(client, /data-ds-dark-theme/u);
+assert.doesNotMatch(client, /data-ds-theme-source/u);
+// A `--dsw-alias-*` name the Host's token sheet never declares is not an error:
+// the browser drops that one declaration at computed-value time and writes
+// nothing to the console, so the whole failure would be a pressed theme cube
+// with no pressed look — no DOM assertion catches that. Pin the selected state
+// to the pairing this bundle already ships for `aria-pressed` elsewhere, and
+// keep the name that reached review out of the surface.
+assert.match(
+  client,
+  /\.dsh-qa-theme__option\[aria-pressed="true"\]\{background:var\(--dsw-alias-bg-layer-1\)/u,
+);
+assert.doesNotMatch(client, /--dsw-alias-interactive-bg-active/u);
 
 // The settings dialog: one shell for the profile, the general page and the
 // skills editor, with the legacy profile classes gone.
@@ -541,4 +628,84 @@ assert.deepEqual(
   "every default allow-listed tool must have a reviewed capability entry",
 );
 
-console.log("verify-package: all gates passed");
+// Each bin must run when a package manager launches it the way it launches
+// everything else: through a `node_modules/.bin` link, whose path never equals
+// the linked file's realpath. An entry guard that compares the paths as spelled
+// executes the module body without ever calling `main`, which the operator sees
+// as an empty success — no output, exit 0 — so the launch is checked here, where
+// it fails the pack instead of the deployment.
+const binLaunches = [
+  {
+    bin: "qa-accounts",
+    file: "lib/cli.js",
+    argv: ["--help"],
+    pattern: /^Usage:/u,
+  },
+  {
+    bin: "qa-accounts",
+    file: "lib/cli.js",
+    // `--help` never opens the database: probe a command that does, the way the
+    // kit's own hint line does.
+    argv: (db) => ["--file", db, "list"],
+    pattern: /^no accounts yet/u,
+  },
+  {
+    bin: "qa-repair-sessions",
+    file: "scripts/repair-session-events.mjs",
+    argv: ["--help"],
+    pattern: /^Usage: qa-repair-sessions/u,
+  },
+  {
+    bin: "qa-attach-sessions",
+    file: "scripts/attach-workspace-sessions.mjs",
+    argv: ["--help"],
+    pattern: /^Usage: qa-attach-sessions/u,
+  },
+];
+const dbDir = await mkdtemp(path.join(tmpdir(), "qa-bin-db-"));
+const unlinked = [];
+for (const launch of binLaunches) {
+  const target = fileURLToPath(new URL(launch.file, root));
+  // The kit hands the link to the kernel, not to node: the shebang is what makes
+  // a bare `qa-accounts list` reach node at all.
+  assert.match(
+    await readFile(target, "utf8"),
+    /^#!\/usr\/bin\/env node/u,
+    `${launch.bin} must carry a node shebang to run from PATH`,
+  );
+  const argv =
+    typeof launch.argv === "function"
+      ? launch.argv(path.join(dbDir, "qa-accounts.db"))
+      : launch.argv;
+  const dir = await mkdtemp(path.join(tmpdir(), "qa-bin-"));
+  const link = path.join(dir, launch.bin);
+  let started;
+  try {
+    await symlink(target, link);
+    started = spawnSync(process.execPath, [link, ...argv], {
+      encoding: "utf8",
+    });
+  } catch (error) {
+    unlinked.push(`${launch.bin} (${error.code ?? error.message})`);
+    continue;
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+  assert.equal(
+    started.status,
+    0,
+    `${launch.bin} through .bin exited ${String(started.status)}: ${String(started.stderr ?? started.error ?? "")}`,
+  );
+  assert.match(
+    started.stdout,
+    launch.pattern,
+    `${launch.bin} through .bin printed nothing for ${argv.join(" ")}`,
+  );
+}
+await rm(dbDir, { recursive: true, force: true });
+
+console.log(
+  unlinked.length === 0
+    ? "verify-package: all gates passed"
+    : `verify-package: all gates passed, except the .bin launches this filesystem refused: ${unlinked.join(", ")}`,
+);

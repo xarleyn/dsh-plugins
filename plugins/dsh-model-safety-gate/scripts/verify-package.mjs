@@ -29,8 +29,8 @@ await runVerifyPackage({
     injectEquals: [
       "@deepseek-ai/dsh-api-gateway",
       "@deepseek-ai/dsh-client-connection",
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
       "@deepseek-ai/dsh-client-ui-settings",
-      "@deepseek-ai/dsh-client-ui-settings-plugins",
     ],
   },
   files: [
@@ -69,6 +69,14 @@ await runVerifyPackage({
   },
   clientBundle: {
     moduleLoaderId: true,
+    includes: [
+      // The card mounts on the Plugins page, in the keyed seat of this bundle's
+      // own row; the seat moved out of the Settings "Built-in plugins" section.
+      "plugins.row.config",
+      // That key is `<package name>#<row id>`, and the row id is the settings
+      // namespace, so a value saved before the move keeps reading under it.
+      "@yadsh/dsh-model-safety-gate#",
+    ],
     matches: [
       // Browser bundle identity (AGENTS.md): the registration id is the full
       // package name.
@@ -77,6 +85,11 @@ await runVerifyPackage({
       // redacted host-side, and the bundle itself never carries a literal key
       // field name pair.
       /apiKeyConfigured/u,
+    ],
+    notMatches: [
+      // The old tab seat of the Plugins settings section must not come back:
+      // one render site, or the card shows twice.
+      /"settings\.plugins\.tab"/u,
     ],
     cardContract: {
       legacyPatterns: [
@@ -106,6 +119,19 @@ await runVerifyPackage({
         `unexpected peer: ${peer}`,
       );
     }
+
+    // Since 0.1.7 the settings namespace of a configuration form is the profile
+    // entry id, so the key the card binds and the row the patch declares are one
+    // fact. A drift shows up as a card that renders no form, never as a compile
+    // error. The `patch.id` option above pins the row to the literal below.
+    const namespace = /SAFETY_GATE_SETTINGS_NAMESPACE\s*=\s*"([^"]+)"/u.exec(
+      await readFile("src/shared/settings.ts"),
+    )?.[1];
+    assert.equal(
+      namespace,
+      "dsh-model-safety-gate",
+      "the card's settings namespace must be the profile entry id",
+    );
 
     // Attribution contract of the plugin (design SPEC §2).
     const readme = await readFile("README.md");

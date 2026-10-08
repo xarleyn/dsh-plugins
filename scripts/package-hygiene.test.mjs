@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -11,6 +11,7 @@ import {
 } from "./generate-plugins-manifest.mjs";
 import {
   compareVersions,
+  curatedChangelogBlocks,
   curatedChangelogVersions,
   findReadmeCatalogGaps,
   globToRegExp,
@@ -18,10 +19,14 @@ import {
   isPublishedFile,
   planBumpFor,
   planProjects,
+  qaChangelogBaselines,
   validateClientContractGates,
   validateDiscoverability,
+  validateQaChangelogFrozenSections,
+  validateQaChangelogPlannedEntries,
   validatePublishedContent,
   validatePublishablePlugin,
+  validatePublishableSharedPackage,
   validateVersionPlan,
   validateWorkspaceScripts,
   verifyVersionPlans,
@@ -36,10 +41,14 @@ async function fixture(overrides = {}) {
   for (const file of ["cordis.patch.yml", "LICENSE", "README.md"]) {
     writeFileSync(path.join(directory, file), `${file}\n`);
   }
+  mkdirSync(path.join(directory, "locale"), { recursive: true });
+  writeJson(path.join(directory, "locale", "en.json"), {
+    meta: { title: "Fixture", description: "A fixture plugin." },
+  });
   writeJson(path.join(directory, "compatibility.json"), {
     deepseekHarness: {
-      range: ">=0.1.5-rc.2 <0.2.0",
-      testedReleases: ["0.1.5-rc.2"],
+      range: ">=0.1.7-rc.2 <0.2.0",
+      testedReleases: ["0.1.7-rc.2"],
     },
     node: ">=22",
   });
@@ -49,10 +58,12 @@ async function fixture(overrides = {}) {
     types: "./lib/index.d.ts",
     exports: {
       ".": { types: "./lib/index.d.ts", default: "./lib/index.js" },
+      "./locale/en.json": "./locale/en.json",
       "./package.json": "./package.json",
     },
     files: [
       "lib",
+      "locale/*.json",
       "compatibility.json",
       "cordis.patch.yml",
       "LICENSE",
@@ -62,6 +73,14 @@ async function fixture(overrides = {}) {
     ...overrides,
   });
   return directory;
+}
+
+const GATE_CALL =
+  "runVerifyPackage({ mainTypesMatchRootExport: true, publishedDependenciesResolve: true });\n";
+
+function writeGateScript(directory, name, source) {
+  mkdirSync(path.join(directory, "scripts"), { recursive: true });
+  writeFileSync(path.join(directory, "scripts", name), source);
 }
 
 test("matches `**/` across any depth of directories", () => {
@@ -109,6 +128,7 @@ test("accepts the bundled multi-entry declaration layout", async () => {
         types: "./lib/types/client/index.d.ts",
         default: "./lib/client.js",
       },
+      "./locale/en.json": "./locale/en.json",
       "./package.json": "./package.json",
     },
   });
@@ -135,6 +155,137 @@ test("rejects missing canonical package metadata", async () => {
     assert.ok(errors.some((error) => error.includes("declaration layout")));
   } finally {
     await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test("rejects a bundle that leaves its Plugins panel row unnamed", async () => {
+  // The Host titles and describes the row from `<package>/locale/en.json`, read
+  // through the exports map without activating the plugin. Without the file, or
+  // with a field that is empty or not a string, the row is named by its full
+  // package specifier — and a tarball that omits the locale directory shows the
+  // same fallback on an installed deployment even though the source has it.
+  const directory = await fixture();
+  try {
+    rmSync(path.join(directory, "locale", "en.json"));
+    assert.deepEqual(validatePublishablePlugin(directory), [
+      "locale/en.json is missing; without it the Plugins panel names this row by its package specifier",
+    ]);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+
+  const unpublished = await fixture({
+    exports: {
+      ".": { types: "./lib/index.d.ts", default: "./lib/index.js" },
+      "./package.json": "./package.json",
+    },
+    files: [
+      "lib",
+      "compatibility.json",
+      "cordis.patch.yml",
+      "LICENSE",
+      "README.md",
+    ],
+  });
+  try {
+    assert.deepEqual(validatePublishablePlugin(unpublished), [
+      'exports["./locale/en.json"] must equal "./locale/en.json"; the Host reads the row name through the exports map',
+      "locale/en.json is missing from package.json files",
+    ]);
+  } finally {
+    await rm(unpublished, { recursive: true, force: true });
+  }
+
+  const blank = await fixture();
+  try {
+    writeJson(path.join(blank, "locale", "en.json"), {
+      meta: { title: "  ", description: null },
+    });
+    const errors = validatePublishablePlugin(blank);
+    assert.ok(
+      errors.some((error) =>
+        error.includes("meta.title must be a non-empty string"),
+      ),
+      errors.join("\n"),
+    );
+    assert.ok(
+      errors.some((error) =>
+        error.includes("meta.description must be a non-empty string"),
+      ),
+      errors.join("\n"),
+    );
+  } finally {
+    await rm(blank, { recursive: true, force: true });
+  }
+});
+
+test("requires a package gate on a publishable shared package", async () => {
+  // A shared package without `verify` still publishes, and nothing asks whether
+  // its declared exports were built or its published ranges resolve.
+  const ungated = await fixture();
+  try {
+    assert.deepEqual(validatePublishableSharedPackage(ungated), [
+      "scripts.verify is required for every publishable shared package",
+    ]);
+  } finally {
+    await rm(ungated, { recursive: true, force: true });
+  }
+
+  const gated = await fixture({
+    scripts: { verify: "pnpm run verify:package" },
+  });
+  try {
+    writeGateScript(gated, "verify-package.mjs", GATE_CALL);
+    assert.deepEqual(validatePublishableSharedPackage(gated), []);
+  } finally {
+    await rm(gated, { recursive: true, force: true });
+  }
+});
+
+test("keeps the shared package gate on what packing cannot show", async () => {
+  // A `verify` that exists but stopped passing the options would exit 0 while the
+  // docs next to it still promise the two checks, so the script is read too.
+  const narrowed = await fixture({
+    scripts: { verify: "pnpm run verify:package" },
+  });
+  try {
+    writeGateScript(
+      narrowed,
+      "verify-package.mjs",
+      "runVerifyPackage({ exportsBuilt: true });\n",
+    );
+    assert.deepEqual(validatePublishableSharedPackage(narrowed), [
+      "no script under scripts/ calls runVerifyPackage with mainTypesMatchRootExport and publishedDependenciesResolve enabled; a shared package gate keeps both options on — packing cannot show either",
+    ]);
+
+    // One option dropped is the more likely accident: a refactor that keeps the
+    // other and still prints "all gates passed".
+    writeGateScript(
+      narrowed,
+      "verify-package.mjs",
+      "runVerifyPackage({ mainTypesMatchRootExport: true });\n",
+    );
+    assert.deepEqual(validatePublishableSharedPackage(narrowed), [
+      "no script under scripts/ calls runVerifyPackage with publishedDependenciesResolve enabled; a shared package gate keeps both options on — packing cannot show either",
+    ]);
+
+    // The call is what carries the options, so prose naming them helps nobody.
+    writeGateScript(
+      narrowed,
+      "verify-package.mjs",
+      "// mainTypesMatchRootExport: true\nrunVerifyPackage({ exportsBuilt: true });\n",
+    );
+    assert.equal(validatePublishableSharedPackage(narrowed).length, 1);
+
+    // An option turned off is not turned on.
+    writeGateScript(
+      narrowed,
+      "verify-package.mjs",
+      "runVerifyPackage({ mainTypesMatchRootExport: true, publishedDependenciesResolve: false });\n",
+    );
+    assert.equal(validatePublishableSharedPackage(narrowed).length, 1);
+  } finally {
+    await rm(narrowed, { recursive: true, force: true });
   }
 });
 
@@ -446,11 +597,24 @@ test("catalogs publishable packages and skips private ones", async () => {
   const root = await workspaceFixture({
     plugins: {
       "dsh-b": packageManifest("dsh-b", {
-        dsh: { client: { platform: "web" } },
+        dsh: {
+          bundle: { patch: "./cordis.patch.yml" },
+          client: { platform: "web" },
+        },
       }),
-      "dsh-a": packageManifest("dsh-a"),
+      "dsh-a": packageManifest("dsh-a", {
+        dsh: { bundle: { patch: "./cordis.patch.yml" } },
+      }),
     },
     packages: {
+      "plugin-kit": packageManifest("dsh-plugin-kit", {
+        repository: {
+          ...CANONICAL_REPOSITORY,
+          directory: "packages/plugin-kit",
+        },
+        homepage:
+          "https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-kit#readme",
+      }),
       "plugin-private": packageManifest("dsh-private", { private: true }),
     },
   });
@@ -458,20 +622,27 @@ test("catalogs publishable packages and skips private ones", async () => {
     const manifest = buildManifest(root);
     assert.deepEqual(
       manifest.plugins.map((entry) => entry.npm),
-      ["@yadsh/dsh-a", "@yadsh/dsh-b"],
+      ["@yadsh/dsh-plugin-kit", "@yadsh/dsh-a", "@yadsh/dsh-b"],
     );
     assert.deepEqual(manifest.plugins[0], {
-      name: "dsh-a",
-      npm: "@yadsh/dsh-a",
-      path: "plugins/dsh-a",
-      description: "dsh-a for DeepSeek Harness",
+      name: "plugin-kit",
+      npm: "@yadsh/dsh-plugin-kit",
+      path: "packages/plugin-kit",
+      description: "dsh-plugin-kit for DeepSeek Harness",
       keywords: CANONICAL_KEYWORDS,
-      install: "dsh plugin --profile <profile> add @yadsh/dsh-a",
+      kind: "library",
+      install: "pnpm add @yadsh/dsh-plugin-kit",
       homepage:
-        "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-a#readme",
+        "https://github.com/xarleyn/dsh-plugins/tree/main/packages/plugin-kit#readme",
       client: false,
     });
-    assert.equal(manifest.plugins[1].client, true);
+    assert.equal(manifest.plugins[1].kind, "plugin");
+    assert.equal(
+      manifest.plugins[1].install,
+      "dsh plugin --profile <profile> add @yadsh/dsh-a",
+    );
+    assert.equal(manifest.plugins[2].kind, "plugin");
+    assert.equal(manifest.plugins[2].client, true);
     assert.equal(manifest.repository, "https://github.com/xarleyn/dsh-plugins");
     assert.equal(manifest.githubTopic, "dsh-plugin");
   } finally {
@@ -536,7 +707,11 @@ test("fails on a catalog entry for a package that no longer exists", async () =>
 
 test("keeps the root README table listing every publishable package", async () => {
   const root = await workspaceFixture({
-    plugins: { "dsh-a": packageManifest("dsh-a") },
+    plugins: {
+      "dsh-a": packageManifest("dsh-a", {
+        dsh: { bundle: { patch: "./cordis.patch.yml" } },
+      }),
+    },
     packages: { "dsh-plugin-kit": packageManifest("dsh-plugin-kit") },
   });
   try {
@@ -550,9 +725,9 @@ test("keeps the root README table listing every publishable package", async () =
     // the table is invisible to a reader who never opens plugins.json.
     writeFileSync(
       path.join(root, "README.md"),
-      "| Directory | npm package | Purpose |\n" +
-        "| --- | --- | --- |\n" +
-        "| `plugins/dsh-a` | `@yadsh/dsh-a` | a |\n",
+      "| Directory | npm package | Kind | Purpose |\n" +
+        "| --- | --- | --- | --- |\n" +
+        "| `plugins/dsh-a` | `@yadsh/dsh-a` | DSH plugin | a |\n",
     );
     assert.deepEqual(findReadmeCatalogGaps(root), [
       "@yadsh/dsh-plugin-kit is missing from the root README package table (packages/dsh-plugin-kit)",
@@ -562,19 +737,19 @@ test("keeps the root README table listing every publishable package", async () =
     // table just as effectively, so the gate keys on the npm name.
     writeFileSync(
       path.join(root, "README.md"),
-      "| Directory | npm package | Purpose |\n" +
-        "| --- | --- | --- |\n" +
-        "| `plugins/dsh-a` | `@yadsh/dsh-a` | a |\n" +
-        "| `packages/dsh-plugin-kit` | private workspace package | kit |\n",
+      "| Directory | npm package | Kind | Purpose |\n" +
+        "| --- | --- | --- | --- |\n" +
+        "| `plugins/dsh-a` | `@yadsh/dsh-a` | DSH plugin | a |\n" +
+        "| `packages/dsh-plugin-kit` | private workspace package | not published | kit |\n",
     );
     assert.equal(findReadmeCatalogGaps(root).length, 1);
 
     writeFileSync(
       path.join(root, "README.md"),
-      "| Directory | npm package | Purpose |\n" +
-        "| --- | --- | --- |\n" +
-        "| `plugins/dsh-a` | `@yadsh/dsh-a` | a |\n" +
-        "| `packages/dsh-plugin-kit` | `@yadsh/dsh-plugin-kit` | kit |\n",
+      "| Directory | npm package | Kind | Purpose |\n" +
+        "| --- | --- | --- | --- |\n" +
+        "| `plugins/dsh-a` | `@yadsh/dsh-a` | DSH plugin | a |\n" +
+        "| `packages/dsh-plugin-kit` | `@yadsh/dsh-plugin-kit` | runtime library | kit |\n",
     );
     assert.deepEqual(findReadmeCatalogGaps(root), []);
   } finally {
@@ -849,6 +1024,236 @@ test("an empty plan set never trips the changelog tripwire", async () => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Frozen published sections: the sidebar test compares the *list* of versions,
+// so a sentence slipped into an already released entry leaves the list intact
+// and passes CI while the deployed changelog now claims a fix that shipped in
+// an earlier version. The hygiene gate compares the entry text against the
+// newest reachable release tag, blames only the sections the branch itself
+// wrote, and demands a plan for any entry newer than the released version.
+// ---------------------------------------------------------------------------
+
+const changelogOfItems = (entries) =>
+  `export const QA_CHANGELOG = [\n${entries
+    .map(
+      ([version, items]) =>
+        `  { version: "${version}", date: "2026-09-16", sections: [{ title: "Fixes", items: [${items
+          .map((item) => JSON.stringify(item))
+          .join(", ")}] }] }`,
+    )
+    .join(",\n")}\n];\n`;
+
+const releasedChangelog = changelogOfItems([["0.7.4", ["Fixed the QA chat."]]]);
+
+test("an entry added above the released ones does not disturb their blocks", () => {
+  const working = changelogOfItems([
+    ["0.7.5", ["Fixed the slash-command palette."]],
+    ["0.7.4", ["Fixed the QA chat."]],
+  ]);
+  assert.deepEqual(
+    validateQaChangelogFrozenSections(working, releasedChangelog),
+    [],
+  );
+  assert.deepEqual(
+    [...curatedChangelogBlocks(working).keys()],
+    ["0.7.5", "0.7.4"],
+  );
+});
+
+test("the rendering code below the array is not part of the last entry", () => {
+  const working = `${changelogOfItems([
+    ["0.7.4", ["Fixed the QA chat."]],
+  ])}\nexport const QaChangelogModal = () => [\n  <section key="a" />,\n];\n`;
+  assert.deepEqual(
+    validateQaChangelogFrozenSections(working, releasedChangelog),
+    [],
+  );
+});
+
+test("a sentence added inside a released section fails the gate", () => {
+  const working = changelogOfItems([
+    ["0.7.4", ["Fixed the QA chat.", "Fixed the palette too."]],
+  ]);
+  const failures = validateQaChangelogFrozenSections(
+    working,
+    releasedChangelog,
+  );
+  assert.equal(failures.length, 1);
+  assert.match(
+    failures[0],
+    /QaChangelog\.tsx changes the entry of the released version 0\.7\.4 away from what that wave published/u,
+  );
+});
+
+test("a released section cannot be renamed or dropped", () => {
+  const renamed = changelogOfItems([["0.7.4", ["Fixed the chat."]]]);
+  assert.match(
+    validateQaChangelogFrozenSections(renamed, releasedChangelog)[0],
+    /changes the entry of the released version 0\.7\.4/u,
+  );
+  const dropped = changelogOfItems([["0.7.5", ["Fixed the palette."]]]);
+  assert.match(
+    validateQaChangelogFrozenSections(dropped, releasedChangelog)[0],
+    /drops the entry of the released version 0\.7\.4/u,
+  );
+});
+
+test("a branch that predates the wave is not blamed for the published text", () => {
+  // The head started before 0.7.4 was published and never touched the file, so
+  // the difference is staleness; rebasing seats it back, this gate stays quiet.
+  const stale = changelogOfItems([["0.7.3", ["Fixed an older chat."]]]);
+  assert.deepEqual(
+    validateQaChangelogFrozenSections(stale, releasedChangelog, stale),
+    [],
+  );
+  // The same head that wrote its note into the section the wave later published
+  // is held to it: the note has to move to the version its plans bump to.
+  const rewrote = changelogOfItems([
+    ["0.7.4", ["Fixed the QA chat.", "And the palette."]],
+    ["0.7.3", ["Fixed an older chat."]],
+  ]);
+  assert.deepEqual(
+    validateQaChangelogFrozenSections(
+      rewrote,
+      releasedChangelog,
+      changelogOfItems([
+        ["0.7.4", ["Fixed the QA chat."]],
+        ["0.7.3", ["Fixed an older chat."]],
+      ]),
+    ).length,
+    1,
+  );
+});
+
+test("a curated entry newer than the released version needs a qa-surface plan", () => {
+  const pending = changelogOfItems([
+    ["0.7.5", ["Fixed the palette."]],
+    ["0.7.4", ["Fixed the QA chat."]],
+  ]);
+  const plansWith = [{ file: "plan.md", content: qaSurfacePlan }];
+  assert.deepEqual(
+    validateQaChangelogPlannedEntries(pending, "0.7.4", plansWith),
+    [],
+  );
+  const failures = validateQaChangelogPlannedEntries(pending, "0.7.4", []);
+  assert.equal(failures.length, 1);
+  assert.match(
+    failures[0],
+    /entry for 0\.7\.5, newer than the released 0\.7\.4, but no qa-surface version plan/u,
+  );
+});
+
+test("a pending entry inherited from the branch base is not its doing", () => {
+  const pending = changelogOfItems([
+    ["0.7.5", ["Fixed the palette."]],
+    ["0.7.4", ["Fixed the QA chat."]],
+  ]);
+  // A head that forked before the wave published 0.7.5 carries the note as it
+  // found it; rebasing, not this message, is what seats it.
+  assert.deepEqual(
+    validateQaChangelogPlannedEntries(pending, "0.7.4", [], pending),
+    [],
+  );
+});
+
+test("the pending entry must be the version the plans bump to", () => {
+  const minorPlan = [
+    "---",
+    '"@yadsh/dsh-qa-surface": minor',
+    "---",
+    "",
+    "Add something to the QA chat.",
+    "",
+  ].join("\n");
+  const failures = validateQaChangelogPlannedEntries(
+    changelogOfItems([
+      ["0.7.5", ["Fixed the palette."]],
+      ["0.7.4", ["x"]],
+    ]),
+    "0.7.4",
+    [{ file: "plan.md", content: minorPlan }],
+  );
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /entry for 0\.7\.5/u);
+  assert.deepEqual(
+    validateQaChangelogPlannedEntries(
+      changelogOfItems([
+        ["0.8.0", ["Added a panel."]],
+        ["0.7.4", ["x"]],
+      ]),
+      "0.7.4",
+      [{ file: "plan.md", content: minorPlan }],
+    ),
+    [],
+  );
+});
+
+test("verifyVersionPlans rejects a note written into a published section", async () => {
+  const root = await qaSurfaceFixture({ plans: [] });
+  try {
+    const rewritten = changelogOfItems([
+      ["0.7.4", ["Fixed the QA chat.", "And the palette."]],
+    ]);
+    writeFileSync(
+      path.join(
+        root,
+        "plugins",
+        "dsh-qa-surface",
+        "src",
+        "client",
+        "components",
+        "QaChangelog.tsx",
+      ),
+      rewritten,
+    );
+    const baselines = {
+      released: releasedChangelog,
+      base: changelogOfItems([["0.7.4", ["Fixed the QA chat."]]]),
+    };
+    assert.throws(
+      () => verifyVersionPlans(root, { changelogBaselines: baselines }),
+      /changes the entry of the released version 0\.7\.4/u,
+    );
+    // No tag to freeze against is a skip, not a failure.
+    assert.equal(verifyVersionPlans(root, { changelogBaselines: null }), 0);
+    // And a head that never wrote the section is not blamed for it.
+    assert.equal(
+      verifyVersionPlans(root, {
+        changelogBaselines: { released: releasedChangelog, base: rewritten },
+      }),
+      0,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("verifyVersionPlans rejects a curated entry its branch never planned", async () => {
+  const root = await qaSurfaceFixture({
+    plans: [],
+    changelogVersions: ["0.7.5", "0.7.4"],
+  });
+  try {
+    assert.throws(
+      () => verifyVersionPlans(root, { changelogBaselines: null }),
+      /no qa-surface version plan bumps to it/u,
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("the released changelog is read from the newest wave tag", async () => {
+  const root = await qaSurfaceFixture({ plans: [] });
+  try {
+    // A checkout without a reachable release tag has nothing frozen, and the
+    // gate says so instead of inventing a baseline.
+    assert.equal(qaChangelogBaselines(root), null);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("changelog coverage parses front matter, versions, and orders them", () => {
   assert.deepEqual(planProjects(qaSurfacePlan), ["@yadsh/dsh-qa-surface"]);
   assert.deepEqual(planProjects("no front matter"), []);
@@ -1040,6 +1445,65 @@ test("a card source demands a script that runs the card-contract gate", async ()
     );
   } finally {
     await rm(withGate.root, { recursive: true, force: true });
+  }
+});
+
+test("every card slot spelling keeps the card gate armed", async () => {
+  const withoutCardGate = [
+    "assert.match(client, /window\\.__ModuleLoader__\\.load/u);",
+    "assert.equal(name, '@yadsh/dsh-fixture');",
+  ].join("\n");
+
+  // The Host renamed the settings-card slot, and a card may equally stay on the
+  // feature tab, so every spelling a registration arrives under has to arm the
+  // gate — otherwise the contract quietly stops being enforced.
+  const cardSources = {
+    "settings.plugin.item": 'renderSlot("settings.plugin.item", Card);\n',
+    "plugins.row.config": 'renderSlot("plugins.row.config", Card);\n',
+    "settings.plugins.tab": [
+      'import { CardShell } from "@yadsh/dsh-plugin-kit/client";',
+      'renderSlot("settings.plugins.tab", CardShell);',
+      "",
+    ].join("\n"),
+  };
+  for (const [slot, source] of Object.entries(cardSources)) {
+    const fixture = await pluginFixture({
+      manifest: clientManifest,
+      scriptFiles: { "verify-package.mjs": withoutCardGate },
+      sourceFiles: { "client/card.tsx": source },
+    });
+    try {
+      const errors = validateClientContractGates(
+        fixture.directory,
+        fixture.manifest,
+      );
+      assert.equal(errors.length, 1, `"${slot}" must demand the card gate`);
+      assert.ok(
+        errors[0].includes(`"${slot}"`),
+        `the error must name the slot it found, got ${errors[0]}`,
+      );
+      assert.match(errors[0], /verify-plugin-card-contract/u);
+    } finally {
+      await rm(fixture.root, { recursive: true, force: true });
+    }
+  }
+
+  // The tab slot is also the home of feature-owned pages that render no card
+  // shell at all, and the contract asserts a shell they never claim.
+  const featureTab = await pluginFixture({
+    manifest: clientManifest,
+    scriptFiles: { "verify-package.mjs": withoutCardGate },
+    sourceFiles: {
+      "client/index.tsx": 'renderSlot("settings.plugins.tab", FeaturePage);\n',
+    },
+  });
+  try {
+    assert.deepEqual(
+      validateClientContractGates(featureTab.directory, featureTab.manifest),
+      [],
+    );
+  } finally {
+    await rm(featureTab.root, { recursive: true, force: true });
   }
 });
 

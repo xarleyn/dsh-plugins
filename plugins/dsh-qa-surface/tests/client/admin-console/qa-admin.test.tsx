@@ -1,5 +1,11 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { QaAdmin } from "../../../src/client/admin/QaAdmin.js";
 import type { QaAccessApi } from "../../../src/client/types.js";
@@ -134,17 +140,46 @@ function api() {
     session: vi.fn(),
     admin: vi.fn(async () => ({ ok: true as const, value: snapshot })),
     createSubrole: vi.fn(),
-    updateSubrole: vi.fn(),
+    updateSubrole: vi.fn(
+      async (_token: string, _id: string, input: unknown) => ({
+        ok: true as const,
+        value: input,
+      }),
+    ),
     deleteSubrole: vi.fn(),
     updateCommon: vi.fn(async (_token: string, input: unknown) => ({
       ok: true as const,
       value: input,
     })),
     updateAssignment: vi.fn(),
+    // The pairs the Host can serve, which is the only list a policy may be
+    // written from: a pair nobody offers fails the first question of every chat
+    // that policy opens.
+    modelCatalog: vi.fn(async () => ({
+      ok: true as const,
+      value: [
+        {
+          provider: "local",
+          model: "small",
+          label: "Small",
+          reasoningEfforts: [],
+        },
+        {
+          provider: "deepseek",
+          model: "chat",
+          label: "Chat",
+          reasoningEfforts: ["low", "high"],
+        },
+      ],
+    })),
     updateSkillOverride,
     skillActivations: vi.fn(),
   } as unknown as QaAccessApi;
-  return { value, updateSkillOverride };
+  return {
+    value,
+    updateSkillOverride,
+    updateSubrole: value.updateSubrole as ReturnType<typeof vi.fn>,
+  };
 }
 
 describe("QA administration", () => {
@@ -162,10 +197,19 @@ describe("QA administration", () => {
         onPreview={() => undefined}
       />,
     );
-    expect(await screen.findByText("Аналитик")).toBeTruthy();
-    expect(screen.getByText("1 инструментов")).toBeTruthy();
+    const card = (await screen.findAllByTestId("qa-admin-role-card"))[0]!;
+    expect(
+      within(card).getByRole("heading", { name: "Аналитик" }),
+    ).toBeTruthy();
+    expect(
+      within(card).getByTestId("qa-admin-role-count-tools").textContent,
+    ).toBe("1 инструментов");
     fireEvent.click(screen.getByRole("button", { name: "Общие возможности" }));
-    await waitFor(() => expect(screen.getByText("search")).toBeTruthy());
+    await waitFor(() =>
+      expect(
+        screen.getAllByTestId("qa-admin-common-capabilities-item"),
+      ).not.toHaveLength(0),
+    );
     expect(
       (screen.getByRole("checkbox", { name: /search/u }) as HTMLInputElement)
         .checked,
@@ -211,8 +255,8 @@ describe("QA administration", () => {
     );
     // The role editor: a third bucket next to the two grants, because a pinned
     // system tool can only be taken away through a denial.
-    await screen.findByText("Аналитик");
-    fireEvent.click(screen.getAllByText("Изменить →")[0]!);
+    await screen.findAllByTestId("qa-admin-role-card");
+    fireEvent.click(screen.getAllByTestId("qa-admin-role-edit")[0]!);
     fireEvent.click(screen.getByRole("button", { name: "Инструменты" }));
     expect(screen.getByRole("heading", { name: "Запрещённые" })).toBeTruthy();
     expect(screen.getByText(/Запрет сильнее/u)).toBeTruthy();
@@ -232,6 +276,45 @@ describe("QA administration", () => {
     );
   });
 
+  it("writes a role's model pair out of the catalog the Host serves", async () => {
+    const { value, updateSubrole } = api();
+    render(
+      <QaAdmin
+        api={value}
+        token="admin-token"
+        routePath="/qa"
+        onPreview={() => undefined}
+      />,
+    );
+    await screen.findAllByTestId("qa-admin-role-card");
+    fireEvent.click(screen.getAllByTestId("qa-admin-role-edit")[0]!);
+    fireEvent.click(await screen.findByRole("button", { name: "Модель" }));
+    const pair = (await screen.findByTestId(
+      "qa-admin-role-model-pair",
+    )) as HTMLSelectElement;
+    // The operator chooses a pair; nothing outside the Host's own catalog can
+    // be written, because such a policy fails inside the first chat it opens.
+    expect(Array.from(pair.options).map((option) => option.value)).toEqual([
+      "",
+      "local/small",
+      "deepseek/chat",
+    ]);
+    fireEvent.change(pair, { target: { value: "deepseek/chat" } });
+    const effort = screen.getByTestId(
+      "qa-admin-role-model-effort",
+    ) as HTMLSelectElement;
+    expect(Array.from(effort.options).map((option) => option.value)).toEqual([
+      "",
+      "low",
+      "high",
+    ]);
+    fireEvent.click(screen.getByTestId("qa-admin-role-save"));
+    await waitFor(() => expect(updateSubrole).toHaveBeenCalled());
+    expect(
+      (updateSubrole.mock.calls[0] as readonly unknown[])[2],
+    ).toMatchObject({ model: { provider: "deepseek", model: "chat" } });
+  });
+
   it("uses administrator-facing names for role tool buckets and grants", async () => {
     const { value } = api();
     render(
@@ -242,8 +325,10 @@ describe("QA administration", () => {
         onPreview={() => undefined}
       />,
     );
-    expect(await screen.findByText("Аналитик")).toBeTruthy();
-    fireEvent.click(screen.getAllByText("Изменить →")[0]!);
+    expect(await screen.findAllByTestId("qa-admin-role-card")).not.toHaveLength(
+      0,
+    );
+    fireEvent.click(screen.getAllByTestId("qa-admin-role-edit")[0]!);
 
     fireEvent.click(screen.getByRole("button", { name: "Инструменты" }));
     expect(
@@ -257,11 +342,17 @@ describe("QA administration", () => {
     ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Навыки" }));
-    expect(screen.getByText("Объявлены навыками")).toBeTruthy();
     expect(
-      screen.getAllByText("Выдаёт при активации: browser_open"),
-    ).not.toHaveLength(0);
-    expect(screen.getByText("Объявлено навыком")).toBeTruthy();
+      screen.getByRole("heading", { name: "Объявлены навыками" }),
+    ).toBeTruthy();
+    expect(
+      within(
+        screen.getAllByTestId("qa-admin-role-declared-item")[0]!,
+      ).getByTestId("qa-admin-role-declared-grants").textContent,
+    ).toContain("Выдаёт при активации: browser_open");
+    expect(screen.getByTestId("qa-admin-role-declared-mark").textContent).toBe(
+      "Объявлено навыком",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "Фактический доступ" }));
     expect(
@@ -270,9 +361,9 @@ describe("QA administration", () => {
     expect(
       screen.getByRole("heading", { name: "Доступны через навыки" }),
     ).toBeTruthy();
-    expect(
-      screen.getByText("Сейчас не используется ни одним назначенным навыком"),
-    ).toBeTruthy();
+    expect(screen.getByTestId("qa-admin-role-effective-via").textContent).toBe(
+      "Сейчас не используется ни одним назначенным навыком",
+    );
   });
 
   it("lists skills with health and writes an audience override", async () => {
@@ -286,23 +377,34 @@ describe("QA administration", () => {
       />,
     );
     fireEvent.click(await screen.findByRole("button", { name: "Навыки" }));
-    await waitFor(() =>
-      expect(screen.getByText("browser-research")).toBeTruthy(),
+    await screen.findByTestId("qa-admin-skill-row");
+    expect(screen.getByTestId("qa-admin-skill-name").textContent).toContain(
+      "browser-research",
     );
-    expect(screen.getByText("Аналитик")).toBeTruthy();
-    expect(screen.getByText("Заблокирован")).toBeTruthy();
+    expect(screen.getByTestId("qa-admin-skill-audience").textContent).toContain(
+      "Аналитик",
+    );
+    expect(screen.getByTestId("qa-admin-skill-health").textContent).toBe(
+      "Заблокирован",
+    );
 
-    fireEvent.click(screen.getByText("Изменить →"));
-    await waitFor(() => expect(screen.getByText("browser_open")).toBeTruthy());
-    expect(screen.getByText("Нет в реестре")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("qa-admin-skill-edit"));
+    await screen.findByTestId("qa-admin-skill-tool-id");
+    expect(
+      screen.getByTestId("qa-admin-skill-tool-uninstalled").textContent,
+    ).toBe("Нет в реестре");
     // The tool is beyond every visible role's ceiling, so the editor reports
     // the collapsed verdict instead of listing the same roles per row.
-    expect(screen.getByText("Недоступен ни одной роли")).toBeTruthy();
-    expect(screen.queryByText(/Недоступен: /u)).toBeNull();
+    expect(
+      screen.getByTestId("qa-admin-skill-tool-blocked-all").textContent,
+    ).toBe("Недоступен ни одной роли");
+    expect(
+      screen.queryByTestId("qa-admin-skill-tool-blocked-roles"),
+    ).toBeNull();
 
     // Grant the skill to a second role; the declared audience stays untouched.
     fireEvent.click(screen.getByRole("checkbox", { name: /Разработчик/u }));
-    fireEvent.click(screen.getByText("Сохранить"));
+    fireEvent.click(screen.getByTestId("qa-admin-skill-save"));
     await waitFor(() => expect(updateSkillOverride).toHaveBeenCalled());
     expect(updateSkillOverride.mock.calls[0]?.[1]).toEqual({
       skillName: "browser-research",

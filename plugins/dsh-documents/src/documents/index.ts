@@ -140,7 +140,11 @@ export {
   type ProviderSeams,
   type ProviderSet,
 } from "./providers/registry.js";
-export { documentCapabilities, documentHealth } from "./capabilities.js";
+export {
+  documentCapabilities,
+  documentHealth,
+  documentPrograms,
+} from "./capabilities.js";
 export { ArtifactStore, sha256Hex, sha256OfFile } from "./artifacts/store.js";
 export {
   CACHE_DIRECTORY,
@@ -233,7 +237,11 @@ import {
   resolveDocumentsConfig,
   retentionIntervalMs,
   type DocumentsConfig,
+  type ResolvedDocumentsConfig,
 } from "./config.js";
+import { documentPrograms } from "./capabilities.js";
+import { DOCUMENTS_STARTUP_ENTRY } from "../shared/settings.js";
+import type { BackendStatus } from "./types.js";
 import type { DocumentLogger } from "./orchestrator/runtime-deps.js";
 import type { DocumentFetchSource } from "./orchestrator/runtime-deps.js";
 import type { ProviderSeams } from "./providers/registry.js";
@@ -267,12 +275,63 @@ export interface InstallDocumentSubsystemOptions {
   readonly fetchSource?: DocumentFetchSource;
   /** Environment overrides are applied by the caller, which owns the process. */
   readonly now?: () => Date;
+  /**
+   * The availability check of the external programs whose outcome lands in
+   * `documents.installed`. Unset asks the configured executables for their
+   * version; a caller that asserts nothing about the record answers here
+   * instead of spawning a process per program.
+   */
+  readonly checkPrograms?: () => Promise<Record<string, BackendStatus>>;
 }
 
 export interface DocumentSubsystem {
   readonly runtime: DocumentRuntime;
   readonly toolNames: readonly string[];
+  /** Resolves once the startup record of this subsystem has been logged. */
+  readonly startup: Promise<void>;
   dispose(): void;
+}
+
+/**
+ * The startup record: what was wired, and whether the programs the pipeline
+ * shells out to are on this machine.
+ *
+ * The card sends an operator to the journal when a parse comes back empty, so
+ * the entry answers for every program the check covered and repeats the missing
+ * ones as a warning — a boot read through ERROR and WARN has to answer there,
+ * not only in an INFO line nobody greps. It lands after the check rather than
+ * with the wiring, because a probe that spawns a process per program must not
+ * hold up the tools that are already registered.
+ */
+async function reportPrograms(options: {
+  readonly logger: DocumentLogger;
+  readonly config: ResolvedDocumentsConfig;
+  readonly check: () => Promise<Record<string, BackendStatus>>;
+}): Promise<void> {
+  const { config, logger } = options;
+  let programs: Record<string, BackendStatus>;
+  try {
+    programs = await options.check();
+  } catch (error) {
+    logger.warn("documents.programs.unchecked", {
+      message: error instanceof Error ? error.message : String(error),
+    });
+    return;
+  }
+  const missingPrograms = Object.entries(programs)
+    .filter(([, status]) => status === "unavailable")
+    .map(([name]) => name);
+  logger.info(DOCUMENTS_STARTUP_ENTRY, {
+    tools: DOCUMENT_TOOL_NAMES,
+    storageRoot: config.storage.root,
+    templatesDefault: config.templates.default,
+    docling: config.docling.enabled ? config.docling.baseUrl : "disabled",
+    programs,
+    missingPrograms,
+  });
+  if (missingPrograms.length > 0) {
+    logger.warn("documents.programs.missing", { missingPrograms });
+  }
 }
 
 /**
@@ -323,16 +382,16 @@ export function installDocumentSubsystem(
     );
   }
 
-  options.logger.info("documents.installed", {
-    tools: DOCUMENT_TOOL_NAMES,
-    storageRoot: config.storage.root,
-    templatesDefault: config.templates.default,
-    docling: config.docling.enabled ? config.docling.baseUrl : "disabled",
+  const startup = reportPrograms({
+    logger: options.logger,
+    config,
+    check: options.checkPrograms ?? (() => documentPrograms(config)),
   });
 
   return {
     runtime,
     toolNames: documentToolNames(config),
+    startup,
     dispose: () => {
       disposeTools();
     },

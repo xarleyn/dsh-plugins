@@ -10,13 +10,16 @@ permissions:
   actions: read
   contents: read
 
+# A pull request is superseded by the next push to its branch. Main is not: a
+# cancelled run verifies nothing, and the next run only reaches back to the last
+# successful one, so a burst of merges could leave main unverified.
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: ${{ github.event_name != 'push' }}
 
 jobs:
   prepare:
-    name: Prepare affected projects
+    name: Prepare projects to verify
     runs-on: ubuntu-latest
     outputs:
       count: ${{ steps.projects.outputs.count }}
@@ -37,8 +40,12 @@ jobs:
           node-version: 22
           cache: pnpm
 
+      # Gitea does not populate github.workflow for push events, so the action
+      # cannot infer which successful workflow run anchors NX_BASE.
       - name: Set affected SHAs
         uses: nrwl/nx-set-shas@v4
+        with:
+          workflow-id: ci.yml
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
@@ -52,11 +59,20 @@ jobs:
       - name: Check formatting
         run: pnpm format
 
+      - name: Check file size budget
+        run: pnpm check:files
+
       - name: Verify plugin logging contract
         run: pnpm verify:logging
 
       - name: Verify button accessible names
         run: pnpm verify:a11y
+
+      - name: Verify test id conventions
+        run: pnpm verify:testids
+
+      - name: Verify design token existence
+        run: pnpm verify:tokens
 
       - name: Verify publishable plugin package hygiene
         run: pnpm verify:packages
@@ -72,12 +88,23 @@ jobs:
       - name: Check version plans
         run: pnpm release:check --base="$NX_BASE" --head="$NX_HEAD"
 
-      - name: Select affected projects
+      # A pull request is only asked about its own change: the base branch was
+      # verified when it moved. A push is the verification of the branch itself,
+      # so it takes the whole workspace. Selecting a push by `--affected` was a
+      # mask, not an optimization — the affected set is measured from the last
+      # *successful* run of this workflow, so once a run finishes without ever
+      # reaching a project, that project drops out of every later run on main
+      # until some pull request happens to name it again.
+      - name: Select projects to verify
         id: projects
         shell: bash
         run: |
-          affected_json="$(pnpm nx show projects --affected --base="$NX_BASE" --head="$NX_HEAD" --json)"
-          DSH_PROJECTS_JSON="$affected_json" node scripts/workspace-packages.mjs --format=github-matrix >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            projects_json="$(pnpm nx show projects --json)"
+          else
+            projects_json="$(pnpm nx show projects --affected --base="$NX_BASE" --head="$NX_HEAD" --json)"
+          fi
+          DSH_PROJECTS_JSON="$projects_json" node scripts/workspace-packages.mjs --format=github-matrix >> "$GITHUB_OUTPUT"
 
   projects:
     name: Project / ${{ matrix.project }}
@@ -110,6 +137,48 @@ jobs:
           NX_PROJECT: ${{ matrix.project }}
         run: pnpm nx run-many -t lint typecheck test build verify --projects="$NX_PROJECT" --output-style=static
 
+      # The unit suite pins both runtime modes against a fake browser, but the
+      # claim attach mode exists to keep — the browser we do not own is still
+      # running after our teardown — is only answerable against a real Chromium.
+      # So this project's own job asks for the opt-in run instead of leaving it
+      # to whoever remembers. The suite finds a browser the way the launch path
+      # finds one; where the image has none, Playwright's own build is the one
+      # that search reads. An asked-for run that finds nothing fails, which is
+      # the point: a skipped one would look like this check having passed.
+      #
+      # An image with no system browser has no Chromium libraries either, since a
+      # distro browser package is what normally pulls them in; a downloaded
+      # Chromium without `libnspr4` and its companions dies in the dynamic linker
+      # at exit 127, which the suite can only read as a browser it could not
+      # start. `--with-deps` asks for the libraries of the build this Playwright
+      # version names, and takes that build in the same command — so a registry
+      # cache baked for another revision leaves the launch short of neither half.
+      - name: Drive an external Chromium over CDP
+        if: matrix.project == '@yadsh/dsh-qa-browser'
+        env:
+          DSH_QA_BROWSER_E2E: "1"
+        run: |
+          found=0
+          for candidate in \
+            /usr/bin/google-chrome /usr/bin/google-chrome-stable \
+            /usr/bin/chromium /usr/bin/chromium-browser; do
+            if [ -x "$candidate" ]; then
+              found=1
+            fi
+          done
+          if [ "$found" = 0 ]; then
+            pnpm --filter @yadsh/dsh-qa-browser exec playwright install --with-deps chromium
+          fi
+          pnpm --filter @yadsh/dsh-qa-browser test:browser
+
+      # The budget gate in `prepare` runs on a checkout with no build output, so
+      # there its generated-bundle band measures nothing. This project has just
+      # been built, so its bundles exist on disk and the runaway tripwire — the
+      # one that catches a client bundle that swallowed a dependency tree — has
+      # to be pulled here rather than trusted to whoever built locally.
+      - name: Check built bundle size budget
+        run: pnpm check:files
+
       - name: Verify project tarball
         if: matrix.publishable
         env:
@@ -117,7 +186,7 @@ jobs:
         run: pnpm tarball:verify:packages "$PACKAGE_DIRECTORY"
 
   verify:
-    name: Verify affected projects
+    name: Verify projects
     if: always()
     needs: [prepare, projects]
     runs-on: ubuntu-latest

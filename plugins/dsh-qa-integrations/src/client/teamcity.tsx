@@ -1,5 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
-import { CredentialHelpNote } from "@yadsh/dsh-plugin-kit/client";
+import { CredentialHelpNote } from "./credential-help-note.js";
 import { useState } from "react";
 import type {
   CredentialSource,
@@ -94,6 +94,7 @@ interface TeamcityExtra {
 
 export function createTeamcityCard(remote: TeamcityRemote) {
   return createProviderCard<TeamcityExtra>({
+    provider: "teamcity",
     title: "TeamCity",
     portalFallback: "Сборки, тесты и причины падений вашего CI",
     accountFallback: "Пользователь TeamCity",
@@ -137,11 +138,15 @@ export function createTeamcityCard(remote: TeamcityRemote) {
         remote.serviceBoundary(token, { provider: "teamcity", selection }),
     },
     credentialSection: (state, help) => {
+      const zone = state.testIdZone;
       const server = state.extra.server;
       const configured = server !== null && server !== undefined;
       if (!configured) return null;
       const address = (
-        <span className="dsh-qa-integrations__muted">
+        <span
+          className="dsh-qa-integrations__muted"
+          data-testid={`${zone}-instance-static`}
+        >
           Адрес TeamCity: {server.label ?? ""} — задан оператором стенда
         </span>
       );
@@ -150,7 +155,10 @@ export function createTeamcityCard(remote: TeamcityRemote) {
       // and keeps only the instance line and the checkbox.
       if (state.useService) {
         return (
-          <div className="dsh-qa-integrations__section">
+          <div
+            className="dsh-qa-integrations__section"
+            data-testid={`${zone}-credential`}
+          >
             {address}
             {service}
             <div className="dsh-qa-integrations__actions">
@@ -158,6 +166,7 @@ export function createTeamcityCard(remote: TeamcityRemote) {
                 className="dsh-qa-integrations__button dsh-qa-integrations__button--primary"
                 type="button"
                 disabled={state.busy}
+                data-testid={`${zone}-connect`}
                 onClick={state.save}
               >
                 Подключить сервисный токен
@@ -167,6 +176,7 @@ export function createTeamcityCard(remote: TeamcityRemote) {
                   className="dsh-qa-integrations__button"
                   type="button"
                   disabled={state.busy}
+                  data-testid={`${zone}-credential-cancel`}
                   onClick={state.cancelCredential}
                 >
                   Отмена
@@ -177,13 +187,20 @@ export function createTeamcityCard(remote: TeamcityRemote) {
         );
       }
       return (
-        <div className="dsh-qa-integrations__section">
+        <div
+          className="dsh-qa-integrations__section"
+          data-testid={`${zone}-credential`}
+        >
           {address}
           {service}
-          <label className="dsh-qa-integrations__field">
+          <label
+            className="dsh-qa-integrations__field"
+            data-testid={`${zone}-credential-field`}
+          >
             Access token TeamCity
             <input
               className="dsh-qa-integrations__input"
+              data-testid={`${zone}-credential-input`}
               type="password"
               autoComplete="new-password"
               value={state.credential}
@@ -194,7 +211,10 @@ export function createTeamcityCard(remote: TeamcityRemote) {
             />
           </label>
           <CredentialHelpNote help={help} />
-          <p className="dsh-qa-integrations__hint">
+          <p
+            className="dsh-qa-integrations__hint"
+            data-testid={`${zone}-credential-hint`}
+          >
             Токен хранится в зашифрованном виде и после сохранения не
             отображается.
           </p>
@@ -203,6 +223,7 @@ export function createTeamcityCard(remote: TeamcityRemote) {
               className="dsh-qa-integrations__button dsh-qa-integrations__button--primary"
               type="button"
               disabled={state.busy || state.credential.trim() === ""}
+              data-testid={`${zone}-connect`}
               onClick={state.save}
             >
               Сохранить и проверить
@@ -212,6 +233,7 @@ export function createTeamcityCard(remote: TeamcityRemote) {
                 className="dsh-qa-integrations__button"
                 type="button"
                 disabled={state.busy}
+                data-testid={`${zone}-credential-cancel`}
                 onClick={state.cancelCredential}
               >
                 Отмена
@@ -223,7 +245,10 @@ export function createTeamcityCard(remote: TeamcityRemote) {
     },
     notConfiguredHint: (state) =>
       state.extra.server === null ? (
-        <p className="dsh-qa-integrations__hint">
+        <p
+          className="dsh-qa-integrations__hint"
+          data-testid={`${state.testIdZone}-not-configured`}
+        >
           Оператор не настроил адрес TeamCity, подключать нечего. Адрес стенда
           задаётся в конфигурации развёртывания — он один на всех.
         </p>

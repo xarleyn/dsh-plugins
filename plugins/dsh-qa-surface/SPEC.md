@@ -211,6 +211,23 @@ Example:
 
 No first-party DSH navigation or admin controls should be visible through the QA surface.
 
+A question asked while the agent is answering is not refused: it is admitted as
+the next turn, and the queue strip above the composer lists what waits. Each row
+carries the three operations the Host's queue offers — rewrite it, send it into
+the running turn, drop it — addressed by the occurrence id the Host's queue
+frame carried, so the strip never claims a row the server does not have. The
+queue is Host state read through the session snapshot: the stand keeps no queue
+of its own, and a message waiting in the queue is absent from the transcript
+until the agent claims it. The one thing the stand keeps about the queue is the
+list of sends the Host has already named — in its Inbox or as a durable
+transcript row — held for the bound chat and dropped by the unbinding that
+leaving a chat, a subagent view, a policy re-bind or entering a draft runs. That
+record hides nothing the session library would still draw: the removal is latched
+the moment the Inbox lists the echo, so what differs is the frame the library
+waits on, not the row that ends up on screen. What it keeps from the visitor is
+the ghost this plugin measured — a claimed question staying above the composer as
+an unsent one.
+
 ---
 
 ## 5. Scope
@@ -778,10 +795,13 @@ answers `ask` itself, in one of two modes:
   surface's own reason ("approval interactions are unavailable in QA"). Nothing
   is approved, and the pinned policy stays the fail-closed backstop for every
   ask that reaches the service directly.
-- `interaction.approvals: interactive` — the call is parked and listed in the
-  QA view; the operator's answer becomes the decision. An unanswered request
-  keeps the turn waiting until it is answered or the turn is stopped; a stopped
-  turn cancels it. No path approves without a person.
+- `interaction.approvals: interactive` — a call from the chat's own agent is
+  parked and listed in the QA view; the operator's answer becomes the decision.
+  An unanswered request does not own the turn indefinitely: it expires after
+  `QA_APPROVAL_PARK_TIMEOUT_MS` and is refused, and the turn's own cancellation
+  settles it sooner. A call from a delegated child is refused immediately in
+  either mode — parking it would hold the parent turn for an answer a child
+  cannot be given. No path approves without a person.
 
 References:
 
@@ -1006,19 +1026,34 @@ Do not register into `root`, `sidebar`, or `conversation` as the default impleme
 
 ### 12.3 Settings card
 
-The same namespace the page reads is editable in place from the Host settings
-page. Register one card into the shared keyed slot:
+The same namespace the page reads is editable in place from the plugin's own row
+on the Host's Plugins panel. Register the card into that row's keyed seat:
 
 ```text
-settings.plugin.item    (key = the `qa-surface` settings namespace)
+plugins.row.config    (key = `<package name>#<row id>`, here `@yadsh/dsh-qa-surface#dsh-qa-surface`)
 ```
 
-The card uses the canonical plugin-card shell of `@yadsh/dsh-plugin-kit/client`
-(the AGENTS.md contract: a direct `<li>` child of the host list, a full-width
-header button with `aria-expanded`, the title/description stack, an optional
-status badge, and the 14×14 SVG chevron), and renders nothing when the
-namespace is unavailable — a deployment that does not compose the plugin shows
-no trace of it.
+The row id is the profile entry `cordis.patch.yml` declares, which is also the
+settings namespace the Host serves the volatile `Config` under: seat and
+namespace are the same name, so a value saved before this card moved onto the
+row still reads back. The seat hands its registrant a `form` of its own —
+`{ state, mutate }`, unsubscribable and unable to write a single field — after
+the injected face, so the card resolves the full `ConfigForm` through
+`ctx.configForms` and passes it in its face under another name.
+
+The row's page owns the chrome: it paints the card surface, the heading, the row
+id and the expand control, so the bundle renders the configuration body and
+nothing around it (the AGENTS.md card-shell contract — no `dsh-plugin-card*`
+class, no `<li>` root, no chevron of ours, and a focus ring built from the
+Host's `--dsw-focus-ring-*` tokens rather than a hard-coded outline). When the
+namespace answers `unavailable` it says so in one sentence rather than mounting
+nothing: the page has already drawn the row's heading and its configure
+control, so an empty column would carry no reason. Where the page seats the
+same entry as the row's one-liner (`view: 'summary'`), it answers with that
+sentence rather than with a card — and with the manifest's `description`
+verbatim: the page fills the row's paragraph from that field and asks this seat
+only for a row that declares none, so two different sentences would make one row
+read two ways (pinned by the seat's test and by the package gate).
 
 Responsibilities:
 
@@ -1537,12 +1572,21 @@ any other session's `ask` is handed back to the chain untouched.
 - `interaction.approvals: blocked` — a downstream `ask` becomes a deny result
   stating that approval interactions are unavailable in QA, before the approval
   service records or routes a request.
-- `interaction.approvals: interactive` — a downstream `ask` is parked until the
-  operator answers in the QA view: the same two outcomes stock DSH offers
-  (`rejected`, `allowed-once`), recorded under the chat the request belongs to,
-  a delegated child's call included. The pending request is Host state, so it
-  survives a page reload and is polled while a turn runs. An unanswered request
-  never resolves on its own; the turn's own cancellation settles it.
+- `interaction.approvals: interactive` — a downstream `ask` from the chat's own
+  agent is parked until the operator answers in the QA view: the same two
+  outcomes stock DSH offers (`rejected`, `allowed-once`), recorded under the chat
+  the request belongs to. The pending request is Host state, so it survives a
+  page reload and is polled while a turn runs. An unanswered request does not own
+  the turn forever: after `QA_APPROVAL_PARK_TIMEOUT_MS` it expires and is refused
+  like a rejection.
+- A `ask` from a delegated child is refused on the spot and never parked, in
+  either mode. A child has no one to answer it — the harness refuses a question
+  from an agent owned by another live agent (`DELEGATED_CALLER`) — and a parked
+  approval of a child sits over the *parent's* composer, so the parent turn
+  waits for a reply that cannot arrive. This is the seam an answer reviewer hung
+  on: `approval.pending … delegated=true` for minutes at a stretch, one call
+  settled by an operator who was never told, and a stand that looked like it was
+  thinking for an hour.
 
 Either way the pinned `approval=never` policy remains the independent
 fail-closed backstop for every ask that reaches the approval service directly.
@@ -1737,7 +1781,19 @@ The plugin should automatically follow DSH's resolved theme.
 
 Do not independently implement another dark/light preference system in MVP.
 
-Optional future config may force a branded theme, but normal DSH semantic variables should remain the base.
+Optional future config may force a branded theme, but normal DSH semantic
+variables should remain the base.
+
+Amendment (`/qa`): the surface carries the Host's three preferences (light,
+dark, system) in its own header, because the overlay suppresses the settings
+that host the Appearance row. The choice is browser-local — this deployment's
+localStorage namespace, never the Host user-settings document — and a browser
+that never picked one makes the surface write nothing at all. What a pick
+writes is the Host's own two fields (`color-scheme` on the root, the dark
+palette attribute on the body), and they are handed back to the document when
+the surface stops being what the visitor sees; the font-size axis and a theme's
+token overrides stay the Host's. This is the Host's vocabulary on the Host's
+selectors, not a second palette: see `src/client/theme-preference.ts`.
 
 ---
 
@@ -1870,7 +1926,8 @@ Register the `qa-surface` settings namespace so values are manageable through no
 
 ### Phase C
 
-Optionally contribute a settings card under the DSH Plugins settings section.
+Optionally contribute a settings card, seated in the plugin's own row on the
+Host's Plugins panel.
 
 Fields suitable for UI editing:
 
@@ -2455,7 +2512,10 @@ Mitigation:
 
 - QA-specific permission preset;
 - explicit pending-request surface for `interaction.approvals: interactive`,
-  with the turn's own cancellation settling an unanswered request;
+  with an unanswered request expiring into a refusal and the turn's own
+  cancellation settling it earlier;
+- a delegated child's request refused where it is raised, never parked: a card
+  over the parent's composer is a wait the child cannot end;
 - `blocked` mode refuses rather than waits;
 - fail closed.
 
@@ -2698,7 +2758,16 @@ package.
   sources drawer had.
 - The tab strip sits at the top: one chip per tab (`Источники`, `Файлы`) with
   an item count, plus a close button. `role=tablist` / `role=tab` /
-  `role=tabpanel` semantics; the close control is «Закрыть панель».
+  `role=tabpanel` semantics; the close control names the tab it leaves
+  («Закрыть панель «Файлы» и вернуться к чату»), because on the phone layout the
+  panel is the whole surface and that button is the only exit on screen. Escape
+  closes the rail from anywhere on the page — answered on the window, since the
+  focus may still sit in the composer behind the panel — and yields to a dialog
+  standing over it.
+- While the rail or the agents drawer is open, the header's «Чат» marker becomes
+  the button that closes it and returns to the conversation; while nothing is
+  open it stays a plain label, because a button that leaves the reader where
+  they already stand is a dead control.
 - Tabs are mutually exclusive with the agents drawer: opening one side closes
   the other, exactly as the two drawers behaved.
 - Rail state is chat-local: switching or resetting a chat closes the rail and
@@ -2707,13 +2776,24 @@ package.
 - Sources tab:
   - available when `sources.enabled`; the header «Источники» button is
     additionally gated by `sources.display.sidebar`, unchanged;
+  - the button is gated by that configuration alone — an empty count never
+    disables it. It used to, and a turn that collected nothing (an answer built
+    from the conversation itself, or from recalled memory, which no extractor in
+    `src/provenance/extractors.ts` matches) then left a dead control and hid the
+    one surface that explains an empty list;
   - a message footnote opens the rail pinned to that message's source subset
     (`drawerSources`), a detail click opens the source preview — the pinned
     view offers «Все источники» to return to the whole-chat list;
   - the list/preview content is the former drawer's, unchanged (groups,
-    badges, safe local-file preview).
-- Files tab: a new header «Файлы» button (count badge, disabled when the chat
-  has no attachments and no readable workspace) opens the chat's own working
+    badges, safe local-file preview), plus an empty state naming the source
+    classes and saying that nothing listed is not a collection failure. It is
+    drawn only while the collection has settled (`complete`): an unsettled one
+    already says which delegated origins it is still waiting for, and a chat
+    that has asked nothing yet has no answer to diagnose.
+- Files tab: a new header «Файлы» button (count badge; when the chat has no
+  attachments and no readable workspace it is `aria-disabled` rather than
+  `disabled`, so it stays in the tab order and its accessible name says what is
+  missing) opens the chat's own working
   directory above a roster of everything the visitor attached in this chat.
   The browser section (`QaWorkspaceBrowser`) walks the chat's workspace one
   directory at a time through the Host's `listWorkspaceFiles`: crumbs from the
@@ -2739,16 +2819,32 @@ package.
   Any open file can be expanded out of the rail with `Развернуть файл` into the
   `document`-sized `QaModal` (the same body, more room), which closes back to
   the directory.
-  The roster below it is unchanged:
-  - grouped by sending message, newest message first, each group headed by
+  The roster below it lists:
+  - grouped by message, newest message first, each group headed by
     `formatDayTime` and a jump control that scrolls the transcript to that
-    user message via the existing `data-dsh-qa-turn-anchor` seam;
+    message via the existing `data-dsh-qa-turn-anchor` seam;
   - files render as the sent `QaFileAttachment` cards (badge, name, size —
     never a read-back: the attachment route serves images only);
   - images render as thumbnails resolved through the controller's asset
     repository (`resolveImage`), linking to the full-size object URL;
+  - a document the answer's own turn produced renders as an artifact card under
+    that answer and in this roster, addressed by the workspace-relative name the
+    producing tool reported: `chat-artifacts.ts` reads those lines out of the
+    turn's settled tool results whatever `ui.showToolActivity` says, because a
+    produced file is part of the answer rather than tool noise. Its controls are
+    the panel's own — `Открыть` lands on `QaWorkspaceBrowser` at exactly that
+    file (`initialFile`), `Скачать` uses `readWorkspaceFile` — and both are
+    omitted where `sources.filePreview.enabled` is off, since the Host refuses
+    the read anyway; the card still names the file.
   - pending composer drafts are not listed — they are already visible as
     composer chips.
+- An answer that quotes a path is made to name the file instead:
+  `client/workspace-paths.ts` masks the chat's own workspace directory (the
+  controller's `sourceAnchor`, the same directory sources are anchored on) and
+  the per-account `.qa-users/<account>/` partition out of projected assistant
+  text. The producing tools report workspace-relative names, which is the fix at
+  the source; the mask is the repair for what still arrives, including a durable
+  answer written before it, which replays through this projection.
 - Below 600px the rail goes full-bleed absolute, as the drawers did.
 - No new configuration fields: sources gating reuses `sources.enabled` /
   `sources.display.sidebar`; the files tab follows whatever the attachments
@@ -2871,6 +2967,11 @@ merges from.
   description, a legacy invocation key the shipped parser throws on. A file
   the harness would refuse never reaches the model catalog; it stays open in
   the editor with that reason attached.
+- A file larger than the read ceiling is loaded as its head, and the read says
+  so: the size the validator compares is the file's size on disk, never the
+  length of what was loaded, and `skill-file-truncated` is reported beside it.
+  A save therefore cannot mistake a prefix for a document and write the file
+  back without its tail — see §47.5.
 
 ### 47.4 Tool declaration is not a grant
 
@@ -2893,8 +2994,14 @@ enforce anything.
 - `src/personal-skills/service.ts` — `QaPersonalSkills`: list, get, create,
   update (rename included, resources moved with the directory), remove (into
   the trash), tools, validate, and the discovery reads. Revision is
-  `sha256(file bytes)`; an update compares the revision the editor read and
-  refuses a stale one.
+  `sha256(file bytes)` — the whole file, hashed through a bounded buffer so an
+  oversized one costs no memory — and an update compares the revision the
+  editor read and refuses a stale one, a change behind the read ceiling
+  included. Overwriting a document the read only loaded partly is refused
+  outright (`skill-truncated`) unless the draft carries
+  `confirmPartialOverwrite`, which is what the editor's second save click sets
+  after naming the loss; a removal needs no such flag because the whole
+  directory goes to the trash unchanged.
 - `src/personal-skills/provider.ts` — the `qa-user-skills` provider
   (`ctx.skills.registerProvider`), rank 50 so a personal skill wins a
   same-named duplicate inside the QA scope, `source: "qa-user"`; the
@@ -2934,7 +3041,9 @@ confirmation) own Escape through a small open-dialog stack in `QaModal`.
   (quoting, Unicode, foreign-field preservation), tool-list normalization,
   draft validation, path traversal and symlink escapes, service CRUD,
   conflict, rename with resources, trash, per-account isolation, the operator
-  limit, and the reason-marker refusals.
+  limit, the read ceiling (a partly loaded file is reported as one, its
+  revision covers every byte on disk, and a save over it is refused until the
+  draft confirms), and the reason-marker refusals.
 - `tests/personal-skills-provider.test.ts`: the provider against the real
   `SkillRegistry` — visibility per cwd and per account, invocation flags,
   refresh after a save, a hand edit, removal, skipped malformed files, and the
@@ -3042,3 +3151,71 @@ carries the actor and the revision it produced.
   skill they wrote.
 - `tests/client/admin-console/admin-routes.test.ts` and `tests/personal-skills/personal-skills-service.test.ts`: the
   new route round-trips, and discovery reports both roots.
+
+## 49. Expert memory maintenance
+
+### 49.1 Motivation
+
+A domain expert writes its own durable notes, and a weak model writes noise: a
+bare acknowledgement, a placeholder, a "nothing was found". Whatever is stored is
+injected into every later answer of that domain, so a wrong line keeps producing
+wrong answers until a person removes it. Until now the only lever was the
+plugin's own settings page, which the QA overlay does not reach: the console is
+the surface an operator actually has.
+
+### 49.2 Reach and authorization
+
+- Two permissions, not one: `memory.read` (admin, reviewer) and `memory.manage`
+  (admin only). The split is the review workflow — a reviewer is who notices that
+  an expert keeps repeating an inaccuracy, and reading is their half of the job;
+  what a domain remembers reaches other people's answers, so writing stays with
+  the deployment's administrator.
+- The console reaches memory through `ctx.get("domainExperts")` resolved per call
+  and typed structurally in `src/integration/expert-memory.ts` — no package
+  dependency, because a stand that composes no experts must still boot its
+  console, and its memory page answers `memory-unavailable` instead.
+- The sibling plugin's `@Remote` surface is deliberately **not** called from the
+  browser: those methods take no token and check no permission, being written for
+  a trusted in-Harness caller. This console answers a browser on a LAN port, so
+  it carries the identity and calls the host-plane `memoryAdmin` seam behind
+  `QaAdminService.require`.
+- Remotes on `qaSurface`: `adminMemoryScopes`, `adminMemoryRecords`,
+  `adminMemoryCorrect`, `adminMemoryForget`, `adminMemoryWipe`.
+- The plugin's refusals cross as reasons, never as messages:
+  `MEMORY_SCOPE_DENIED` → `forbidden`, `MEMORY_RECORD_MISSING` →
+  `memory-record-unknown`, `STORAGE_UNAVAILABLE`/`MEMORY_PROVIDER_MISSING` →
+  `memory-unavailable`, `TASK_REJECTED` → `invalid-memory`. A memory refusal
+  names namespaces and a storage refusal names a database file; neither belongs
+  in a browser. A fault with no recognized code is re-thrown untouched, so a
+  defect is not dressed up as a deployment state.
+- Wiping a namespace confirms the record count the page showed. Memory an expert
+  wrote while the operator was reading is not memory they agreed to erase.
+
+### 49.3 The page
+
+`src/client/admin/pages/ExpertMemory.tsx`, nav «Память экспертов» in the
+Качество group, route `/admin/memory`. A namespace picker over the experts that
+declare memory, a filter over key, text and tags, and the record list newest
+first. Editing is inline — the console keeps no modal editors — and covers the
+text and the tags only: the key is what the audit trail and the expert's own
+`forget` calls address. Rows tick for a bulk delete; a read-only namespace shows
+its records with no write control, and a reviewer sees the list without any of
+them. Audit rows `memory.corrected`, `memory.deleted`, `memory.wiped` carry the
+actor and the record image (`namespace`, `key`, `tags`, `updatedAt`, the head of
+the text); a bulk deletion records the keys and the count rather than copying
+every page it removed.
+
+### 49.4 Verification
+
+- `tests/admin/admin-expert-memory.test.ts`: every call refused to a plain
+  account, a reviewer reading and writing nothing (the seam is never reached),
+  the `memory-unavailable` answer with no experts composed, both images in the
+  audit row, the keys-only snapshot of a bulk delete, a wipe whose confirmed
+  count moved, and each refusal arriving with its reason.
+- `tests/client/admin-console/qa-admin-console-expert-memory.test.tsx`: the list
+  over the first expert, the namespace picker, an inline correction and its
+  read-back, the save staying dead for an unchanged or blank draft, deletion
+  gated by the confirmation, the bulk control appearing only once something is
+  ticked, the reviewer's console without a write control, and the empty and
+  unavailable copies.
+- `tests/client/admin-console/admin-routes.test.ts`: the new route round-trips.

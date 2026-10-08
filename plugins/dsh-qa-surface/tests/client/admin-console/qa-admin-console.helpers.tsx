@@ -167,6 +167,17 @@ export function accessApi(): QaAccessApi {
     deleteSubrole: vi.fn(),
     updateCommon: vi.fn(),
     updateAssignment: vi.fn(),
+    modelCatalog: vi.fn(async () => ({
+      ok: true as const,
+      value: [
+        {
+          provider: "demo",
+          model: "demo-model",
+          label: "Demo model",
+          reasoningEfforts: ["low", "high"],
+        },
+      ],
+    })),
     updateSkillOverride: vi.fn(),
     skillActivations: vi.fn(),
   };
@@ -233,6 +244,16 @@ export function adminApi(overrides: Partial<QaAdminApi> = {}): QaAdminApi {
     deleteSkill: vi.fn(),
     validateSkill: vi.fn(),
     skillTools: vi.fn(async () => ({ ok: true as const, value: [] })),
+    // No expert memory by default: a test that does not name its own namespaces
+    // sees the same page a stand without the domain-experts plugin shows.
+    memoryScopes: vi.fn(async () => ({ ok: true as const, value: [] })),
+    memoryRecords: vi.fn(async () => ({
+      ok: true as const,
+      value: { records: [], total: 0, offset: 0, limit: 25 },
+    })),
+    correctMemory: vi.fn(),
+    forgetMemory: vi.fn(async () => ({ ok: true as const, value: 0 })),
+    wipeMemory: vi.fn(async () => ({ ok: true as const, value: 0 })),
     ...overrides,
   };
 }

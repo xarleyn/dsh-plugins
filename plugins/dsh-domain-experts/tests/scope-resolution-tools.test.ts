@@ -41,6 +41,16 @@ describe("scope resolution: tools", () => {
     expect(profile.degradations.map((item) => item.code)).toContain(
       "TOOL_UNVERIFIED",
     );
+    // The code is informational: the entry stays available and the name reaches
+    // the child unchanged, so nothing in the expert's tool set is lost.
+    expect(profile.tools.find((tool) => tool.name === "bash")?.available).toBe(
+      true,
+    );
+    const degradation = profile.degradations.find(
+      (item) => item.code === "TOOL_UNVERIFIED",
+    );
+    expect(degradation?.refs).toEqual(["bash"]);
+    expect(degradation?.message).toContain("passed to the harness as-is");
   });
 
   it("removes a denied tool from the filter and the visible list", async () => {

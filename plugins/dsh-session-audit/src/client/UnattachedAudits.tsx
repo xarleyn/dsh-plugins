@@ -55,8 +55,13 @@ export function UnattachedAudits(props: UnattachedAuditsProps): ReactNode {
       : `${items.length} audits are not shown in any session`;
 
   return (
-    <div className="dsh-audit-unattached">
-      <p className="dsh-audit-unattached__title">{title}</p>
+    <div className="dsh-audit-unattached" data-testid="audit-unattached">
+      <p
+        className="dsh-audit-unattached__title"
+        data-testid="audit-unattached-title"
+      >
+        {title}
+      </p>
       <p className="dsh-audit-unattached__hint">
         They sit in the audit root, but no session is bound to them, so no
         session&rsquo;s view can open them. Fix the audit or the directory name
@@ -64,9 +69,16 @@ export function UnattachedAudits(props: UnattachedAuditsProps): ReactNode {
       </p>
       <ul className="dsh-audit-unattached__list">
         {items.map((item) => (
-          <li className="dsh-audit-unattached__item" key={item.auditId}>
+          <li
+            className="dsh-audit-unattached__item"
+            key={item.auditId}
+            data-testid="audit-unattached-row"
+          >
             <code className="dsh-audit-unattached__id">{item.auditId}</code>
-            <span className="dsh-audit-unattached__reason">
+            <span
+              className="dsh-audit-unattached__reason"
+              data-testid="audit-unattached-reason"
+            >
               {REASONS[item.code] ?? UNKNOWN_REASON}
             </span>
           </li>

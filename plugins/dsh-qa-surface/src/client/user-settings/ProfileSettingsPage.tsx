@@ -78,16 +78,29 @@ export function QaProfileSettingsPage(props: QaProfileSettingsPageProps) {
     });
   };
   return (
-    <form id={FORM_ID} className="dsh-qa-settings__page" onSubmit={submit}>
-      <h3 className="dsh-qa-settings__page-title">Профиль</h3>
-      <p className="dsh-qa-settings__lead">
+    <form
+      id={FORM_ID}
+      className="dsh-qa-settings__page"
+      data-testid="qa-settings-profile"
+      onSubmit={submit}
+    >
+      <h3
+        className="dsh-qa-settings__page-title"
+        data-testid="qa-settings-profile-title"
+      >
+        Профиль
+      </h3>
+      <p
+        className="dsh-qa-settings__lead"
+        data-testid="qa-settings-profile-lead"
+      >
         Эти данные видит ассистент в ваших чатах: по указанным логинам он ищет
         ваши задачи, заявки и MR.
       </p>
-      <QaSettingsField label="Email">
+      <QaSettingsField testId="qa-settings-profile-email" label="Email">
         <input value={props.email} readOnly />
       </QaSettingsField>
-      <QaSettingsField label="ФИО">
+      <QaSettingsField testId="qa-settings-profile-full-name" label="ФИО">
         <input
           value={fullName}
           maxLength={QA_PROFILE_MAX_FULL_NAME}
@@ -97,7 +110,11 @@ export function QaProfileSettingsPage(props: QaProfileSettingsPageProps) {
         />
       </QaSettingsField>
       {props.identities.map((field) => (
-        <QaSettingsField key={field.key} label={field.label}>
+        <QaSettingsField
+          key={field.key}
+          testId="qa-settings-profile-identity"
+          label={field.label}
+        >
           <input
             value={handles[field.key] ?? ""}
             maxLength={QA_PROFILE_MAX_IDENTITY_VALUE}
@@ -112,11 +129,17 @@ export function QaProfileSettingsPage(props: QaProfileSettingsPageProps) {
         </QaSettingsField>
       ))}
       {props.identities.length === 0 ? (
-        <p className="dsh-qa-settings__field-hint">
+        <p
+          className="dsh-qa-settings__field-hint"
+          data-testid="qa-settings-profile-no-identities"
+        >
           Внешние системы не настроены: доступны только ФИО и инструкции.
         </p>
       ) : null}
-      <QaSettingsField label="Общие инструкции для агента">
+      <QaSettingsField
+        testId="qa-settings-profile-instructions"
+        label="Общие инструкции для агента"
+      >
         <textarea
           rows={5}
           value={instructions}
@@ -125,20 +148,31 @@ export function QaProfileSettingsPage(props: QaProfileSettingsPageProps) {
           onChange={(event) => setInstructions(event.currentTarget.value)}
         />
       </QaSettingsField>
-      <p className="dsh-qa-settings__count">
+      <p
+        className="dsh-qa-settings__count"
+        data-testid="qa-settings-profile-instructions-count"
+      >
         {instructions.length} / {props.instructionsMaxLength}
       </p>
-      <p className="dsh-qa-settings__field-hint">
+      <p
+        className="dsh-qa-settings__field-hint"
+        data-testid="qa-settings-profile-instructions-hint"
+      >
         Инструкции задают стиль ответов, но не расширяют доступ к инструментам.
       </p>
       {error === null ? null : (
-        <QaSettingsNotice tone="error">{error}</QaSettingsNotice>
+        <QaSettingsNotice testId="qa-settings-profile-error" tone="error">
+          {error}
+        </QaSettingsNotice>
       )}
       {saved && error === null ? (
-        <QaSettingsNotice tone="info">Профиль сохранён.</QaSettingsNotice>
+        <QaSettingsNotice testId="qa-settings-profile-saved" tone="info">
+          Профиль сохранён.
+        </QaSettingsNotice>
       ) : null}
       <QaSettingsActions>
         <QaSettingsButton
+          testId="qa-settings-profile-save"
           type="submit"
           tone="primary"
           disabled={busy || tooLong}

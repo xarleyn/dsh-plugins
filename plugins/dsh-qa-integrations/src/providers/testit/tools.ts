@@ -5,9 +5,11 @@ import {
   requiredStringList,
   requiredText,
 } from "../../coerce.js";
-import type { IntegrationBroker } from "../../broker.js";
-import type { IntegrationPrincipal } from "../../types.js";
-import { createToolKit } from "../../tool-kit.js";
+import {
+  createToolKit,
+  type ProviderToolFactoryOptions,
+} from "../../tool-kit.js";
+import { TESTIT_OPERATIONS } from "./catalog.js";
 import {
   RESULT_OUTCOMES,
   TESTIT_LIMITS,
@@ -69,13 +71,14 @@ const OFFSET_PARAM = { type: "number" as const, description: OFFSET_HINT };
  * the QA user who owns the DSH session, and no tool schema carries a user,
  * credential, token or installation selector.
  */
-export function createTestitTools(options: {
-  readonly broker: IntegrationBroker;
-  readonly principalForSession: (
-    sessionId: string,
-  ) => IntegrationPrincipal | undefined;
-}): readonly ToolDefinition[] {
-  const kit = createToolKit({ ...options, provider: "testit" });
+export function createTestitTools(
+  options: ProviderToolFactoryOptions,
+): readonly ToolDefinition[] {
+  const kit = createToolKit({
+    ...options,
+    provider: "testit",
+    operations: TESTIT_OPERATIONS,
+  });
   const tool = kit.tool;
 
   return [

@@ -16,6 +16,11 @@ export interface QaChatRow {
   readonly running: boolean;
   readonly active: boolean;
   readonly meta: string;
+  /**
+   * The chat's whole name, held back from the row only because the row had to
+   * be cut to fit; absent when the title is shown in full.
+   */
+  readonly fullName?: string;
   readonly updatedAt: number;
   /** Chat owner's display name; present in the admin ownership view only. */
   readonly ownerName?: string;
@@ -41,12 +46,20 @@ export function buildChatRows(
     const summary = byId[id];
     if (summary === undefined || isDelegatedSession(summary)) continue;
     const ownerName = ownerNameOf?.(id);
+    const label = summary.blank ? "Новый чат" : summary.displayTitle;
+    // A label shorter than the durable title behind it has been cut by whoever
+    // projected it, and two chats sharing the cut read as one row: the row says
+    // so with an ellipsis and keeps the whole name for the tooltip.
+    const full = summary.title;
+    const clipped =
+      !summary.blank && full !== undefined && full.length > label.length;
     rows.push({
       id,
-      title: summary.blank ? "Новый чат" : summary.displayTitle,
+      title: clipped ? `${label.trimEnd()}…` : label,
       running: summary.running,
       active: id === activeId,
       meta: relativeTime(summary.updatedAt, now),
+      ...(clipped && full !== undefined ? { fullName: full } : {}),
       updatedAt: summary.updatedAt,
       ...(ownerName === undefined ? {} : { ownerName }),
     });
@@ -110,6 +123,20 @@ export interface QaSidebarProps {
   readonly onNewChat: () => void;
   /** Removes a chat from this browser's index; omit to hide the control. */
   readonly onDelete?: (sessionId: string) => void;
+  /**
+   * Whether the phone layout shows this sidebar as a drawer over the
+   * conversation. The state is the surface's, not the sidebar's: the control
+   * that opens it stands in the header, outside the subtree the phone layout
+   * switches off, and a drawer the collapsed rail alone could answer would leave
+   * a reader whose desktop state says collapsed with nothing to open.
+   */
+  readonly drawerOpen?: boolean;
+  /**
+   * Closes the drawer. Also what a row and «Новый чат» answer with, so the
+   * history does not stay standing over the chat the reader just chose. Never
+   * touched on a wide layout, where the collapse control keeps its own state.
+   */
+  readonly onDrawerClose?: () => void;
   /**
    * Audit summaries by chat id, for the row badge. Empty when the audit plugin
    * is not installed — the badge is then absent rather than empty.
@@ -198,10 +225,52 @@ function ChevronIcon() {
 }
 
 function rowMatches(row: QaChatRow, query: string): boolean {
+  // The whole name, not just what the row had room for: a chat whose row reads
+  // «Напиши двадцать…» is still found by the tail of its title.
   return (
     row.title.toLowerCase().includes(query) ||
+    (row.fullName?.toLowerCase().includes(query) ?? false) ||
     row.ownerName?.toLowerCase().includes(query) === true
   );
+}
+
+/**
+ * How each chat is named by the controls acting on it, keyed by id. A title is
+ * not unique — every chat reads «Новый чат» until its first answer lands — so
+ * a repeated title is numbered by its place in the list, which is the order
+ * the reader is shown. The numbering runs over every chat rather than only the
+ * rows a search leaves visible, so one chat's name does not change because
+ * another is filtered out, and a lone match still says how many share it.
+ */
+function nameChats(rows: readonly QaChatRow[]): Map<string, string> {
+  const totals = new Map<string, number>();
+  for (const row of rows) {
+    totals.set(row.title, (totals.get(row.title) ?? 0) + 1);
+  }
+  const seen = new Map<string, number>();
+  const names = new Map<string, string>();
+  for (const row of rows) {
+    const ordinal = (seen.get(row.title) ?? 0) + 1;
+    seen.set(row.title, ordinal);
+    const total = totals.get(row.title) ?? 1;
+    names.set(
+      row.id,
+      total > 1 ? `«${row.title}» (${ordinal} из ${total})` : `«${row.title}»`,
+    );
+  }
+  return names;
+}
+
+/**
+ * The name of one chat among the chats this browser lists. A row the list does
+ * not hold is the chat nobody has named yet, and that one reads «Новый чат».
+ */
+function nameOfChat(
+  names: ReadonlyMap<string, string>,
+  row: QaChatRow | undefined,
+): string {
+  if (row === undefined) return "«Новый чат»";
+  return names.get(row.id) ?? `«${row.title}»`;
 }
 
 /**
@@ -239,6 +308,17 @@ export const QaSidebar = memo(
     const [confirmingId, setConfirmingId] = useState<string | null>(null);
     const [changelogOpen, setChangelogOpen] = useState(false);
     const nav = useRef<HTMLElement | null>(null);
+    const chatList = useRef<HTMLDivElement | null>(null);
+    // The control the confirmation opened from. Rows shift up under a pointer
+    // that stays still while chats are removed, so the dialog has to remember
+    // which control it came from to hand the keyboard back to.
+    const deleteTrigger = useRef<HTMLButtonElement | null>(null);
+    const closeDeleteConfirmation = () => {
+      const trigger = deleteTrigger.current;
+      deleteTrigger.current = null;
+      setConfirmingId(null);
+      trigger?.focus({ preventScroll: true });
+    };
     const sidebarWidth = useQaSidebarWidth({
       active: !collapsed,
       root: nav,
@@ -250,15 +330,24 @@ export const QaSidebar = memo(
       setCollapsed(next);
       writeCollapsed(props.stateKey, next);
     };
-    if (collapsed) {
+    // The drawer is a phone affordance, so it answers only when it is the thing
+    // showing: on a wide layout the same control collapses the sidebar to a rail
+    // and writes that choice down, exactly as it always did.
+    const drawerOpen = props.drawerOpen === true;
+    const closeDrawer = () => {
+      if (drawerOpen) props.onDrawerClose?.();
+    };
+    if (collapsed && !drawerOpen) {
       return (
         <nav
           className="dsh-qa-sidebar dsh-qa-sidebar--collapsed"
+          data-testid="qa-surface-sidebar-collapsed"
           aria-label="История чатов"
         >
           <button
             type="button"
             className="dsh-qa-sidebar__expand"
+            data-testid="qa-surface-sidebar-expand"
             aria-label="Развернуть историю чатов"
             title="Развернуть историю чатов"
             onClick={toggleCollapsed}
@@ -269,6 +358,7 @@ export const QaSidebar = memo(
       );
     }
     const normalizedQuery = query.trim().toLowerCase();
+    const chatNames = nameChats(props.rows);
     const visibleRows =
       normalizedQuery === ""
         ? props.rows
@@ -282,6 +372,7 @@ export const QaSidebar = memo(
         ? buildOwnerSections(visibleRows)
         : [{ name: "", rows: visibleRows }];
     const renderRow = (row: QaChatRow) => {
+      const name = nameOfChat(chatNames, row);
       return (
         <div
           key={row.id}
@@ -290,18 +381,33 @@ export const QaSidebar = memo(
               ? "dsh-qa-sidebar__item dsh-qa-sidebar__item--active"
               : "dsh-qa-sidebar__item"
           }
+          data-testid="qa-surface-sidebar-item"
         >
           <button
             type="button"
             className="dsh-qa-sidebar__item-main"
+            data-testid="qa-surface-sidebar-item-open"
             aria-current={row.active ? "true" : undefined}
-            onClick={() => props.onSwitch(row.id)}
+            title={row.fullName ?? row.title}
+            onClick={() => {
+              props.onSwitch(row.id);
+              closeDrawer();
+            }}
           >
-            <span className="dsh-qa-sidebar__item-title">{row.title}</span>
-            <span className="dsh-qa-sidebar__item-meta">
+            <span
+              className="dsh-qa-sidebar__item-title"
+              data-testid="qa-surface-sidebar-item-title"
+            >
+              {row.title}
+            </span>
+            <span
+              className="dsh-qa-sidebar__item-meta"
+              data-testid="qa-surface-sidebar-item-meta"
+            >
               {row.running ? (
                 <span
                   className="dsh-qa-sidebar__dot"
+                  data-testid="qa-surface-sidebar-item-running"
                   role="img"
                   aria-label="Выполняется"
                 />
@@ -326,9 +432,13 @@ export const QaSidebar = memo(
             <button
               type="button"
               className="dsh-qa-sidebar__item-delete"
-              aria-label="Удалить чат"
-              title="Удалить чат"
-              onClick={() => setConfirmingId(row.id)}
+              data-testid="qa-surface-sidebar-item-delete"
+              aria-label={`Удалить чат ${name}`}
+              title={`Удалить чат ${name}`}
+              onClick={(event) => {
+                deleteTrigger.current = event.currentTarget;
+                setConfirmingId(row.id);
+              }}
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <path d="M2.5 4h11M6.5 4V2.5h3V4m-6.2 0 .6 9.5h7.2L12 4" />
@@ -345,40 +455,93 @@ export const QaSidebar = memo(
         <img src={props.logoUrl} alt="" />
       );
     return (
-      <nav ref={nav} className="dsh-qa-sidebar" aria-label="История чатов">
-        <div className="dsh-qa-sidebar__head">
-          <span className="dsh-qa-sidebar__brand" title={props.title}>
-            <span className="dsh-qa-sidebar__logo">{brand}</span>
-            <span className="dsh-qa-sidebar__name">{props.title}</span>
+      <nav
+        ref={nav}
+        className="dsh-qa-sidebar"
+        data-testid="qa-surface-sidebar"
+        data-qa-drawer={drawerOpen ? "open" : undefined}
+        aria-label="История чатов"
+        // The drawer stands over the header, so the control that opened it is
+        // behind it: the key the reader gives instead is the one every other
+        // overlay of this surface already answers.
+        onKeyDown={(event) => {
+          if (!drawerOpen || event.key !== "Escape") return;
+          event.stopPropagation();
+          closeDrawer();
+        }}
+      >
+        <div
+          className="dsh-qa-sidebar__head"
+          data-testid="qa-surface-sidebar-head"
+        >
+          <span
+            className="dsh-qa-sidebar__brand"
+            data-testid="qa-surface-sidebar-brand"
+            title={props.title}
+          >
+            <span
+              className="dsh-qa-sidebar__logo"
+              data-testid="qa-surface-sidebar-logo"
+            >
+              {brand}
+            </span>
+            <span
+              className="dsh-qa-sidebar__name"
+              data-testid="qa-surface-sidebar-name"
+            >
+              {props.title}
+            </span>
           </span>
           <button
             type="button"
             className="dsh-qa-sidebar__collapse"
-            aria-label="Свернуть историю чатов"
-            title="Свернуть историю чатов"
-            onClick={toggleCollapsed}
+            data-testid="qa-surface-sidebar-collapse"
+            aria-label={
+              drawerOpen ? "Закрыть историю чатов" : "Свернуть историю чатов"
+            }
+            title={
+              drawerOpen ? "Закрыть историю чатов" : "Свернуть историю чатов"
+            }
+            onClick={() => {
+              if (drawerOpen) {
+                closeDrawer();
+                return;
+              }
+              toggleCollapsed();
+            }}
           >
             <ChevronIcon />
           </button>
         </div>
         {props.showNewChat ? (
-          <div className="dsh-qa-sidebar__newbar">
+          <div
+            className="dsh-qa-sidebar__newbar"
+            data-testid="qa-surface-sidebar-newbar"
+          >
             <button
               type="button"
               className="dsh-qa-sidebar__new"
+              data-testid="qa-surface-sidebar-new"
               disabled={props.busy}
-              onClick={props.onNewChat}
+              onClick={() => {
+                props.onNewChat();
+                closeDrawer();
+              }}
             >
               <PlusIcon />
               Новый чат
             </button>
           </div>
         ) : null}
-        <div className="dsh-qa-sidebar__search">
+        <div
+          className="dsh-qa-sidebar__search"
+          data-testid="qa-surface-sidebar-search"
+        >
           <SearchIcon />
           <input
             type="search"
             value={query}
+            data-testid="qa-surface-sidebar-search-input"
             placeholder="Поиск по чатам"
             aria-label="Поиск по чатам"
             onChange={(event) => setQuery(event.currentTarget.value)}
@@ -387,6 +550,7 @@ export const QaSidebar = memo(
             <button
               type="button"
               className="dsh-qa-sidebar__search-clear"
+              data-testid="qa-surface-sidebar-search-clear"
               aria-label="Очистить поиск"
               title="Очистить поиск"
               onClick={() => setQuery("")}
@@ -395,19 +559,41 @@ export const QaSidebar = memo(
             </button>
           )}
         </div>
-        <div className="dsh-qa-sidebar__list">
+        <div
+          className="dsh-qa-sidebar__list"
+          data-testid="qa-surface-sidebar-list"
+          ref={chatList}
+          // A confirmed deletion removes the focused control, so focus goes to
+          // the list itself: the next Tab continues among the chats instead of
+          // restarting from the top of the document.
+          tabIndex={-1}
+        >
           {props.rows.length === 0 ? (
-            <p className="dsh-qa-sidebar__empty">Здесь пока пусто</p>
+            <p
+              className="dsh-qa-sidebar__empty"
+              data-testid="qa-surface-sidebar-empty"
+            >
+              Здесь пока пусто
+            </p>
           ) : visibleRows.length === 0 ? (
-            <p className="dsh-qa-sidebar__empty">Ничего не найдено</p>
+            <p
+              className="dsh-qa-sidebar__empty"
+              data-testid="qa-surface-sidebar-empty"
+            >
+              Ничего не найдено
+            </p>
           ) : (
             sections.map((section) => (
               <div
                 key={section.name || "__all"}
                 className="dsh-qa-sidebar__group"
+                data-testid="qa-surface-sidebar-group"
               >
                 {section.name === "" ? null : (
-                  <div className="dsh-qa-sidebar__group-name">
+                  <div
+                    className="dsh-qa-sidebar__group-name"
+                    data-testid="qa-surface-sidebar-group-name"
+                  >
                     {section.name} ({section.rows.length})
                   </div>
                 )}
@@ -416,20 +602,28 @@ export const QaSidebar = memo(
             ))
           )}
         </div>
-        <div className="dsh-qa-sidebar__footer">
+        <div
+          className="dsh-qa-sidebar__footer"
+          data-testid="qa-surface-sidebar-footer"
+        >
           {props.account === undefined ? null : (
             <div
               className="dsh-qa-sidebar__account"
+              data-testid="qa-surface-sidebar-account"
               title={`${props.account.email} (${props.account.role})`}
             >
               {props.account.settings === undefined ? (
-                <span className="dsh-qa-sidebar__account-name">
+                <span
+                  className="dsh-qa-sidebar__account-name"
+                  data-testid="qa-surface-sidebar-account-name"
+                >
                   {props.account.email}
                 </span>
               ) : (
                 <button
                   type="button"
                   className="dsh-qa-sidebar__account-name"
+                  data-testid="qa-surface-sidebar-account-name"
                   aria-haspopup="dialog"
                   title="Открыть настройки"
                   onClick={props.account.settings.onOpen}
@@ -438,11 +632,17 @@ export const QaSidebar = memo(
                 </button>
               )}
               {props.account.role === "admin" ? (
-                <span className="dsh-qa-sidebar__account-role">admin</span>
+                <span
+                  className="dsh-qa-sidebar__account-role"
+                  data-testid="qa-surface-sidebar-account-role"
+                >
+                  admin
+                </span>
               ) : null}
               <button
                 type="button"
                 className="dsh-qa-sidebar__account-exit"
+                data-testid="qa-surface-sidebar-account-logout"
                 title="Выйти из аккаунта"
                 aria-label="Выйти из аккаунта"
                 onClick={props.account.onLogout}
@@ -456,6 +656,7 @@ export const QaSidebar = memo(
           <button
             type="button"
             className="dsh-qa-sidebar__version"
+            data-testid="qa-surface-sidebar-version"
             aria-haspopup="dialog"
             title="История версий"
             onClick={() => setChangelogOpen(true)}
@@ -470,30 +671,37 @@ export const QaSidebar = memo(
         />
         <QaModal
           open={confirmingRow !== undefined}
-          title="Удалить чат"
+          // Not «Удалить чат»: that is the name of every row control, and a
+          // dialog sharing it cannot be told apart from the button behind it.
+          title="Подтвердите удаление чата"
           closeLabel="Закрыть подтверждение удаления чата"
-          onClose={() => setConfirmingId(null)}
+          onClose={closeDeleteConfirmation}
           footer={
             <>
               <QaSettingsButton
                 label="Отмена"
-                onClick={() => setConfirmingId(null)}
+                onClick={closeDeleteConfirmation}
               />
               <QaSettingsButton
                 tone="danger"
                 label="Удалить из истории"
                 onClick={() => {
                   if (confirmingRow === undefined) return;
+                  const sessionId = confirmingRow.id;
+                  // Its trigger is about to leave the list with the chat, so it
+                  // cannot take the focus back; the list holds it instead.
+                  deleteTrigger.current = null;
                   setConfirmingId(null);
-                  props.onDelete?.(confirmingRow.id);
+                  chatList.current?.focus({ preventScroll: true });
+                  props.onDelete?.(sessionId);
                 }}
               />
             </>
           }
         >
           <p className="dsh-qa-settings__lead">
-            Удалить чат «{confirmingRow?.title ?? "Новый чат"}» из истории в
-            этом браузере? Сам разговор останется на стенде.
+            Удалить чат {nameOfChat(chatNames, confirmingRow)} из истории в этом
+            браузере? Сам разговор останется на стенде.
           </p>
         </QaModal>
       </nav>
@@ -505,6 +713,8 @@ export const QaSidebar = memo(
     prev.stateKey === next.stateKey &&
     prev.showNewChat === next.showNewChat &&
     prev.busy === next.busy &&
+    prev.drawerOpen === next.drawerOpen &&
+    prev.onDrawerClose === next.onDrawerClose &&
     prev.groupByOwner === next.groupByOwner &&
     prev.onSwitch === next.onSwitch &&
     prev.onNewChat === next.onNewChat &&

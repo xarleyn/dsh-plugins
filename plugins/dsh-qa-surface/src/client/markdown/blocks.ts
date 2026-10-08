@@ -16,6 +16,15 @@
  * delimiters stay literal text, exactly as the Host renders them. Footnote
  * definitions (`[^id]: …`) are collected the way GitHub's dialect does, with
  * lazy and indented continuation lines.
+ *
+ * A frame of a live stream is parsed with `streaming: true`, which says one
+ * thing only: the text may still grow. Block boundaries stay the business of
+ * this module — a caller that knows the answer is being written passes the
+ * flag, and nothing here is re-detected elsewhere. Two readings change with
+ * it: a block whose region runs to the end of the text has not met its
+ * terminator, so a fence or a `$$` block reports `pending`, and a table treats
+ * its live last line as still written (a delimiter row being typed opens the
+ * header, a row being typed stays out of the cells).
  */
 
 /** `#`-through-`######` heading levels. */
@@ -39,7 +48,13 @@ export type MarkdownBlock =
       readonly depth: HeadingDepth;
       readonly text: string;
     }
-  | { readonly kind: "code"; readonly text: string; readonly lang?: string }
+  | {
+      readonly kind: "code";
+      readonly text: string;
+      readonly lang?: string;
+      /** The fence has not met its closing marker: the stream is inside it. */
+      readonly pending?: true;
+    }
   | { readonly kind: "quote"; readonly blocks: readonly MarkdownBlock[] }
   | {
       readonly kind: "list";
@@ -54,7 +69,12 @@ export type MarkdownBlock =
       readonly head: readonly string[];
       readonly rows: readonly (readonly string[])[];
     }
-  | { readonly kind: "math"; readonly text: string }
+  | {
+      readonly kind: "math";
+      readonly text: string;
+      /** The `$$` fence has not closed: the stream is still typing the TeX. */
+      readonly pending?: true;
+    }
   | { readonly kind: "rule" };
 
 /** A parsed document: its blocks plus the reference targets they resolve. */
@@ -64,6 +84,18 @@ export interface ParsedMarkdown {
   readonly definitions: ReadonlyMap<string, string>;
   /** Footnote bodies by upper-cased identifier; first definition wins. */
   readonly footnotes: ReadonlyMap<string, readonly MarkdownBlock[]>;
+}
+
+/** How to read the end of the text being parsed. */
+export interface MarkdownParseOptions {
+  /**
+   * The text is a frame of a live stream, so its last content line may be
+   * half-typed: a block that reaches the end of the text is reported as
+   * `pending` instead of being treated as settled, and a table leaves an
+   * unfinished last row out of its cells. Omitted for a settled answer, which
+   * is where the two readings must not drift apart.
+   */
+  readonly streaming?: boolean;
 }
 
 /** Container depth ceiling: enough for real answers, too low to recurse away.
@@ -78,6 +110,8 @@ const QUOTE = /^ {0,3}>[ \t]?(.*)$/u;
 const LIST_MARKER = /^( {0,3})([-+*]|\d{1,9}[.)])([ \t]+|$)/u;
 const DEFINITION = /^ {0,3}\[([^\]^][^\]]*)\]:[ \t]*<?([^\s>]+)>?[ \t]*$/u;
 const ALIGNMENT_CELL = /^:?-+:?$/u;
+/** A delimiter cell mid-typing: the colons and dashes a settled one carries. */
+const ALIGNMENT_PREFIX = /^:?-{0,}:?$/u;
 const CHECKBOX = /^\[([ xX])\][ \t]+/u;
 /** Display math opener: `$$` with the rest of the line as same-line content. */
 const MATH_FLOW = /^ {0,3}\$\$(.*)$/u;
@@ -123,27 +157,70 @@ export function splitTableRow(line: string): string[] {
  * Does a GFM table start at `index`? The header must carry a pipe and the
  * delimiter row must match it cell for cell — which is also what keeps a
  * setext underline (`---` after a paragraph) out of the table arm.
+ *
+ * While the stream is typing the delimiter row, that row is a shorter run of
+ * alignment prefixes, and the arm takes it: the header reaches the table
+ * instead of showing its pipes as prose. The same text parsed as settled reads
+ * as the paragraph GFM makes of an unfinished delimiter row, so a held frame
+ * never becomes the final one.
  */
 function tableAlignments(
   lines: readonly string[],
   index: number,
+  streaming: boolean,
 ): readonly TableAlign[] | undefined {
   const headerLine = lines[index];
   const delimiter = lines[index + 1];
   if (headerLine === undefined || delimiter === undefined) return undefined;
   if (!headerLine.includes("|")) return undefined;
   const cells = splitTableRow(delimiter);
-  if (cells.length === 0 || cells.length !== splitTableRow(headerLine).length) {
+  if (cells.length === 0) return undefined;
+  const head = splitTableRow(headerLine);
+  const settled = cells.length === head.length;
+  if (
+    !settled &&
+    (!streaming ||
+      cells.length > head.length ||
+      index + 1 !== lines.length - 1 ||
+      delimiter.trim() === "")
+  ) {
     return undefined;
   }
   const alignments: TableAlign[] = [];
   for (const cell of cells) {
-    if (!ALIGNMENT_CELL.test(cell)) return undefined;
+    if (!(settled ? ALIGNMENT_CELL : ALIGNMENT_PREFIX).test(cell)) {
+      return undefined;
+    }
     const left = cell.startsWith(":");
     const right = cell.endsWith(":");
     alignments.push(left && right ? "center" : right ? "right" : "left");
   }
   return alignments;
+}
+
+/**
+ * The index of the line this container's text may still be growing at, or -1
+ * when every line is settled: a last line carrying content has no newline under
+ * it yet, so the model is typing it. That is what keeps a half-written table row
+ * out of the cells and a `$$` opener with text after it still open. Settled text
+ * always reports -1, which is what keeps a held frame from changing how a
+ * finished answer reads.
+ */
+function liveEdge(lines: readonly string[], streaming: boolean): number {
+  if (!streaming) return -1;
+  const last = lines.length - 1;
+  return last >= 0 && (lines[last] ?? "").trim() !== "" ? last : -1;
+}
+
+/**
+ * The payload of a block the stream stopped inside. A frame that ends right
+ * after a line break carries that break as an empty last line, and those lines
+ * are the block's unwritten rest rather than its content.
+ */
+function livePayload(lines: readonly string[]): string {
+  let end = lines.length;
+  while (end > 0 && (lines[end - 1] ?? "").trim() === "") end -= 1;
+  return lines.slice(0, end).join("\n");
 }
 
 /** A fence closes on a run of its own marker at least as long as the opener's. */
@@ -158,14 +235,25 @@ function closesFence(line: string, marker: string): boolean {
 /**
  * Parse a whole document.
  * @param text - Markdown source with any line endings.
+ * @param options - How to read the end of the text; a live stream frame marks
+ * the block it stopped inside as pending.
  * @returns Blocks plus the definitions the inline pass resolves against.
  */
-export function parseMarkdown(text: string): ParsedMarkdown {
+export function parseMarkdown(
+  text: string,
+  options: MarkdownParseOptions = {},
+): ParsedMarkdown {
   const definitions = new Map<string, string>();
   const footnotes = new Map<string, readonly MarkdownBlock[]>();
   const lines = text.replace(/\r\n?/gu, "\n").split("\n");
   return {
-    blocks: parseBlocks(lines, definitions, footnotes, 0),
+    blocks: parseBlocks(
+      lines,
+      definitions,
+      footnotes,
+      0,
+      options.streaming === true,
+    ),
     definitions,
     footnotes,
   };
@@ -177,6 +265,8 @@ export function parseMarkdown(text: string): ParsedMarkdown {
  * @param definitions - Document-wide definition accumulator.
  * @param footnotes - Document-wide footnote accumulator.
  * @param depth - Container nesting depth.
+ * @param streaming - Whether the text is a live frame, so the container's last
+ * line may still be typed.
  * @returns The container's blocks.
  */
 export function parseBlocks(
@@ -184,8 +274,10 @@ export function parseBlocks(
   definitions: Map<string, string>,
   footnotes: Map<string, readonly MarkdownBlock[]>,
   depth: number,
+  streaming = false,
 ): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
+  const edge = liveEdge(lines, streaming);
   let index = 0;
   while (index < lines.length) {
     const line = lines[index] ?? "";
@@ -210,26 +302,38 @@ export function parseBlocks(
         );
         index += 1;
       }
-      if (index < lines.length) index += 1;
+      const closed = index < lines.length;
+      if (closed) index += 1;
       const lang = /^\S+/u.exec(fence[2]?.trim() ?? "")?.[0];
       blocks.push({
         kind: "code",
-        text: code.join("\n"),
+        text: closed || !streaming ? code.join("\n") : livePayload(code),
         ...(lang === undefined ? {} : { lang }),
+        ...(closed || !streaming ? {} : { pending: true as const }),
       });
       continue;
     }
 
     const math = MATH_FLOW.exec(line);
     if (math !== null) {
-      const parsed = parseMathFlow(lines, index, math[1] ?? "");
+      const parsed = parseMathFlow(
+        lines,
+        index,
+        math[1] ?? "",
+        edge,
+        streaming,
+      );
       if (parsed !== undefined) {
-        blocks.push({ kind: "math", text: parsed.text });
+        blocks.push({
+          kind: "math",
+          text: parsed.text,
+          ...(parsed.pending ? { pending: true as const } : {}),
+        });
         index = parsed.next;
         continue;
       }
-      // Unclosed or content-bearing without a same-line close: the line stays
-      // a paragraph, whose inline pass leaves the dollars literal.
+      // Settled text only: an unclosed or content-bearing opener line stays a
+      // paragraph, whose inline pass leaves the dollars literal.
     }
 
     const heading = ATX_HEADING.exec(line);
@@ -267,12 +371,12 @@ export function parseBlocks(
       }
       blocks.push({
         kind: "quote",
-        blocks: parseBlocks(body, definitions, footnotes, depth + 1),
+        blocks: parseBlocks(body, definitions, footnotes, depth + 1, streaming),
       });
       continue;
     }
 
-    const alignments = tableAlignments(lines, index);
+    const alignments = tableAlignments(lines, index, streaming);
     if (alignments !== undefined && LIST_MARKER.exec(line) === null) {
       const head = splitTableRow(line);
       const rows: string[][] = [];
@@ -280,7 +384,10 @@ export function parseBlocks(
       while (cursor < lines.length) {
         const row = lines[cursor] ?? "";
         if (isBlank(row) || !row.includes("|") || startsBlock(row)) break;
-        rows.push(splitTableRow(row));
+        // The row the stream is still typing stays inside the block but out of
+        // its cells: half a row would flash as a truncated one, and it is
+        // rendered by the next frame, which has the whole row.
+        if (cursor !== edge) rows.push(splitTableRow(row));
         cursor += 1;
       }
       blocks.push({ kind: "table", align: alignments, head, rows });
@@ -289,7 +396,14 @@ export function parseBlocks(
     }
 
     if (depth < MAX_DEPTH && LIST_MARKER.test(line)) {
-      const list = parseList(lines, index, definitions, footnotes, depth);
+      const list = parseList(
+        lines,
+        index,
+        definitions,
+        footnotes,
+        depth,
+        streaming,
+      );
       blocks.push(list.list);
       index = list.next;
       continue;
@@ -310,14 +424,14 @@ export function parseBlocks(
       if (!footnotes.has(id)) {
         footnotes.set(
           id,
-          parseBlocks(body.lines, definitions, footnotes, depth + 1),
+          parseBlocks(body.lines, definitions, footnotes, depth + 1, streaming),
         );
       }
       index = body.next;
       continue;
     }
 
-    const paragraph = collectParagraph(lines, index);
+    const paragraph = collectParagraph(lines, index, streaming);
     blocks.push(paragraph.block);
     index = paragraph.next;
   }
@@ -329,11 +443,13 @@ export function parseBlocks(
  * after it is an underline.
  * @param lines - Container lines.
  * @param start - Index of the paragraph's first line.
+ * @param streaming - Whether the text may still grow.
  * @returns The block and the index after it.
  */
 function collectParagraph(
   lines: readonly string[],
   start: number,
+  streaming: boolean,
 ): { readonly block: MarkdownBlock; readonly next: number } {
   const text: string[] = [];
   let index = start;
@@ -353,7 +469,7 @@ function collectParagraph(
         };
       }
       if (startsBlock(line)) break;
-      if (tableAlignments(lines, index) !== undefined) break;
+      if (tableAlignments(lines, index, streaming) !== undefined) break;
     }
     text.push(line.trimStart());
     index += 1;
@@ -372,29 +488,57 @@ function collectParagraph(
  * line must be empty and the content runs to a `$$` fence line, as GitHub's
  * dialect reads it. The Host drops content written after a fence opener's
  * `$$`; here such a line stays a paragraph instead, so no text is lost.
+ *
+ * A block whose region runs to the end of the text has not met its closer, so
+ * while the stream is writing it the block is reported as pending: the reader
+ * sees the formula being written instead of its dollars, and the settled frame
+ * of the same text decides what the block really is. Settled text keeps the
+ * reading above, because an answer that never closes a `$$` is prose.
  * @param lines - Container lines.
  * @param start - Index of the opener line.
  * @param rest - The opener line after its `$$`.
- * @returns The math text and the index after the closing fence.
+ * @param edge - The line the stream may still be typing, or -1.
+ * @param streaming - Whether the text is a live frame.
+ * @returns The TeX payload, the index after the block, and whether it is open.
  */
 function parseMathFlow(
   lines: readonly string[],
   start: number,
   rest: string,
-): { readonly text: string; readonly next: number } | undefined {
+  edge: number,
+  streaming: boolean,
+):
+  | {
+      readonly text: string;
+      readonly next: number;
+      readonly pending: boolean;
+    }
+  | undefined {
   const sameLine = rest.indexOf("$$");
   if (sameLine >= 0 && rest.slice(sameLine + 2).trim() === "") {
-    return { text: rest.slice(0, sameLine), next: start + 1 };
+    return { text: rest.slice(0, sameLine), next: start + 1, pending: false };
   }
-  if (rest.trim() !== "") return undefined;
+  if (start === edge) {
+    return { text: rest, next: lines.length, pending: true };
+  }
   const body: string[] = [];
+  if (rest.trim() !== "") {
+    if (!streaming) return undefined;
+    // The line break under the opener says the block went on below it rather
+    // than closing on its own line, so the opener's TeX starts the body.
+    body.push(rest);
+  }
   let index = start + 1;
   while (index < lines.length && !MATH_FLOW_CLOSE.test(lines[index] ?? "")) {
     body.push(lines[index] ?? "");
     index += 1;
   }
-  if (index >= lines.length) return undefined;
-  return { text: body.join("\n"), next: index + 1 };
+  if (index >= lines.length) {
+    return streaming
+      ? { text: livePayload(body), next: lines.length, pending: true }
+      : undefined;
+  }
+  return { text: body.join("\n"), next: index + 1, pending: false };
 }
 
 /**
@@ -446,6 +590,7 @@ function footnoteBody(
  * @param start - Index of the first item's marker.
  * @param definitions - Document-wide definition accumulator.
  * @param depth - Container nesting depth.
+ * @param streaming - Whether the text may still grow.
  * @returns The list block and the index after its last item.
  */
 function parseList(
@@ -454,6 +599,7 @@ function parseList(
   definitions: Map<string, string>,
   footnotes: Map<string, readonly MarkdownBlock[]>,
   depth: number,
+  streaming: boolean,
 ): { readonly list: MarkdownBlock; readonly next: number } {
   const first = LIST_MARKER.exec(lines[start] ?? "");
   const ordered = /^\d/u.test(first?.[2] ?? "-");
@@ -508,7 +654,7 @@ function parseList(
       // A lazy continuation line belongs to the item's paragraph; anything
       // that opens a block of its own ends the item instead.
       if (startsBlock(current)) break;
-      if (tableAlignments(lines, index) !== undefined) break;
+      if (tableAlignments(lines, index, streaming) !== undefined) break;
       itemLines.push(current.trimStart());
       index += 1;
     }
@@ -521,7 +667,7 @@ function parseList(
     const itemBlocks =
       depth >= MAX_DEPTH
         ? []
-        : parseBlocks(itemLines, definitions, footnotes, depth + 1);
+        : parseBlocks(itemLines, definitions, footnotes, depth + 1, streaming);
     // Only a blank line inside the item spreads it: an item that merely carries
     // a nested list or a fence still renders as a tight item, as GFM says.
     if (itemSpread) loose = true;
