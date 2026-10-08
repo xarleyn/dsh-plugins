@@ -145,6 +145,14 @@ jobs:
       # finds one; where the image has none, Playwright's own build is the one
       # that search reads. An asked-for run that finds nothing fails, which is
       # the point: a skipped one would look like this check having passed.
+      #
+      # An image with no system browser has no Chromium libraries either, since a
+      # distro browser package is what normally pulls them in; a downloaded
+      # Chromium without `libnspr4` and its companions dies in the dynamic linker
+      # at exit 127, which the suite can only read as a browser it could not
+      # start. `--with-deps` asks for the libraries of the build this Playwright
+      # version names, and takes that build in the same command — so a registry
+      # cache baked for another revision leaves the launch short of neither half.
       - name: Drive an external Chromium over CDP
         if: matrix.project == '@yadsh/dsh-qa-browser'
         env:
@@ -159,7 +167,7 @@ jobs:
             fi
           done
           if [ "$found" = 0 ]; then
-            pnpm --filter @yadsh/dsh-qa-browser exec playwright install chromium
+            pnpm --filter @yadsh/dsh-qa-browser exec playwright install --with-deps chromium
           fi
           pnpm --filter @yadsh/dsh-qa-browser test:browser
 
