@@ -181,6 +181,42 @@ export function normalizeCandidateText(text: string): string {
     .trim();
 }
 
+/**
+ * The review-disputation head: a draft that opens by naming the act of
+ * disputing — `Опровержение вывода ревизора: …`, `Rebuttal of the reviewer's
+ * finding: …` — and names the review it disputes in the same opening line.
+ * Either half alone is ordinary prose, so both are required: an answer may
+ * refute a benchmark, and an answer may discuss a code review.
+ *
+ * The two halves must also be fed by different words. `провер` is the stem of
+ * `опровержение` itself, so an unguarded stem lets one Russian word answer both
+ * halves and every legitimate «Опровержение мифа …» reads as the leak; the
+ * lookbehind keeps the stem for «вывод проверки» while refusing the overlap.
+ * `\b` cannot do this job — in Unicode mode JavaScript still defines a word
+ * character as ASCII, so no boundary separates two Cyrillic letters.
+ */
+const DISPUTATION_HEAD =
+  /^(?:опроверж|опроверг|rebut|refut|disproof|disprov|disagree)/iu;
+const REVIEW_HEAD = /ревизор|ревью|рецензент|review|(?<!о)провер/iu;
+const MAX_HEAD_CHARS = 240;
+
+/**
+ * Whether the candidate opens with the review rather than with an answer. The
+ * primary is steered to answer the request alone; a draft that opens with its
+ * disagreement is the review leaking into user-visible output, so the first
+ * such draft of a reviewed turn is neither handed to a reviewer nor certified
+ * (`SPEC.md`, "Revision behavior").
+ */
+export function opensWithReviewDisputation(text: string): boolean {
+  const line = text.split("\n").find((candidate) => candidate.trim() !== "");
+  if (line === undefined) return false;
+  const head = line
+    .trim()
+    .replace(/^[[({*_>#\-'"]+/u, "")
+    .slice(0, MAX_HEAD_CHARS);
+  return DISPUTATION_HEAD.test(head) && REVIEW_HEAD.test(head);
+}
+
 /** Stable candidate identity: SHA-256 over the normalized text. */
 export function candidateHash(text: string): string {
   return createHash("sha256")

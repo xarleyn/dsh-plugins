@@ -4,6 +4,7 @@ import {
   candidateHash,
   collectCandidate,
   normalizeCandidateText,
+  opensWithReviewDisputation,
   type CandidateSession,
 } from "../src/candidate.js";
 
@@ -276,5 +277,74 @@ describe("candidateHash", () => {
     const after = candidateHash("The answer is 42, within documented limits.");
     expect(before).not.toBe(after);
     expect(before).toMatch(/^[0-9a-f]{64}$/u);
+  });
+});
+
+describe("opensWithReviewDisputation", () => {
+  it("reads the head the stand shipped, in both languages", () => {
+    expect(
+      opensWithReviewDisputation(
+        "Опровержение вывода ревизора: утверждение о недоступном пути неверно для " +
+          "инструмента конвейера.\n\nОтвет: в файле три строки.",
+      ),
+    ).toBe(true);
+    expect(
+      opensWithReviewDisputation(
+        "Disproof of the reviewer's finding: the path is readable.\n\nAnswer: three lines.",
+      ),
+    ).toBe(true);
+  });
+
+  it("sees the head through markdown emphasis", () => {
+    expect(
+      opensWithReviewDisputation(
+        "**Опровержение** вывода ревизора — см. ниже.\nОтвет: да.",
+      ),
+    ).toBe(true);
+  });
+
+  it("leaves an ordinary answer alone", () => {
+    expect(
+      opensWithReviewDisputation(
+        "The file holds three lines: a header and two records.",
+      ),
+    ).toBe(false);
+  });
+
+  it("needs both halves on the opening line", () => {
+    // A refuted claim that never names the review is the answer's own content.
+    expect(
+      opensWithReviewDisputation("Refuted: the benchmark ran twice as fast."),
+    ).toBe(false);
+    // Review talk that does not open the draft is content too.
+    expect(
+      opensWithReviewDisputation(
+        "The answer is 42.\n\nThe reviewer's objection was rejected after re-verification.",
+      ),
+    ).toBe(false);
+  });
+
+  it("refuses a Russian word that feeds both halves", () => {
+    // `опровержение` contains the `провер` stem, so an unguarded stem would let
+    // this one word name both the disputing act and the review, and every
+    // legitimate refutation an answer opens with would read as the leak.
+    expect(
+      opensWithReviewDisputation("Опровержение мифа: тесты не врут."),
+    ).toBe(false);
+    expect(
+      opensWithReviewDisputation(
+        "Опровержение распространённого заблуждения о производительности.\n" +
+          "Ответ: да.",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps the Russian stem when a second word carries it", () => {
+    expect(
+      opensWithReviewDisputation(
+        "Опровержение выводов проверки: путь был доступен с самого начала.\n\n" +
+          "Ответ: в файле три строки.",
+      ),
+    ).toBe(true);
   });
 });

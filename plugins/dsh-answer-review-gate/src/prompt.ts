@@ -190,27 +190,82 @@ export const REVIEWER_OUTPUT_SCHEMA: Record<string, unknown> = {
   required: ["verdict"],
 };
 
-/** Revision demand steered into the primary agent after a REVISE verdict. */
+/**
+ * Reviewer prose is hostile input: a finding quoting the page it was asked to
+ * assess can carry this block's own closing marker, and everything after an
+ * early `</review_notes>` reads as the gate's instruction rather than as a
+ * quotation. That would defeat the very property the delimited block exists for
+ * (`SPEC.md`, "Revision behavior"), so the marker is neutralized inside the
+ * body and each field is bounded — one runaway field must not push the answer
+ * out of the context.
+ */
+const MAX_REVIEW_NOTE_CHARS = 2000;
+
+function reviewNoteField(text: string): string {
+  return text
+    .slice(0, MAX_REVIEW_NOTE_CHARS)
+    .replace(/<\/review_notes>/giu, "<\\/review_notes>");
+}
+
+/**
+ * Revision demand steered into the primary agent after a REVISE verdict.
+ *
+ * Exactly one visible artifact is admitted — the corrected answer — and the
+ * primary is never asked to account for the review anywhere else. Demanding
+ * that a disproved objection "state that disproof" while forbidding any mention
+ * of the review is what a live primary resolved literally: it opened the user's
+ * final answer with its argument against the reviewer (`SPEC.md`, "Revision
+ * behavior"). A rejection needs no channel either, because the reviewer re-reads
+ * the next version of the answer, and where it objects again the round budget
+ * ends the exchange under the configured failure policy.
+ *
+ * Findings arrive inside `<review_notes>` so the review reads as delimited input
+ * rather than as prose to continue, and the rule is phrased as the shape of the
+ * reply, never as a secret to keep: a visible thinking block that reasons about
+ * a concealment instruction reports the instruction.
+ */
 export function renderRevisionSteer(
   verdict: ReviewVerdict,
   round: number,
   maxRounds: number,
 ): string {
-  const lines = [
+  return [
     `The independent answer reviewer rejected the current draft (review round ${round} of ${maxRounds}).`,
-    verdict.summary === "" ? "" : `Reviewer summary: ${verdict.summary}`,
+    "",
+    "<review_notes>",
+    verdict.summary === ""
+      ? ""
+      : `Reviewer summary: ${reviewNoteField(verdict.summary)}`,
     verdict.issues.length > 0 ? "Findings:" : "",
     ...verdict.issues.map(
       (issue) =>
-        `- [${issue.severity}/${issue.category}] ${issue.claim} — ${issue.problem}` +
-        (issue.requiredFix === "" ? "" : ` Required fix: ${issue.requiredFix}`),
+        `- [${issue.severity}/${issue.category}] ${reviewNoteField(issue.claim)} — ${reviewNoteField(issue.problem)}` +
+        (issue.requiredFix === ""
+          ? ""
+          : ` Required fix: ${reviewNoteField(issue.requiredFix)}`),
     ),
+    "</review_notes>",
     "",
-    "Verify each finding against your own evidence. Correct what holds; you may reject an objection you can " +
-      "disprove with evidence, and must state that disproof. Then produce the corrected final answer. Do not " +
-      "mention this review process in the answer.",
-  ];
-  return lines.filter((line) => line !== "").join("\n");
+    "Check every finding against your own evidence, then answer the user's request again. The reply is exactly " +
+      "one artifact: the corrected answer, in the shape that request asked for. A finding your evidence confirms " +
+      "is fixed inside it; a finding your evidence disproves leaves the answer as it was. Neither is argued with: " +
+      "the block above is this turn's working material, and the user's own request is what the reply serves.",
+  ]
+    .filter((line) => line !== "")
+    .join("\n");
+}
+
+/**
+ * Correction demand for a candidate that opens with the review instead of an
+ * answer (`candidate.ts`, `opensWithReviewDisputation`): the shape the revision
+ * steer asks for did not arrive, so it is asked for once more, in one line.
+ */
+export function renderAnswerShapeSteer(): string {
+  return [
+    "Your draft opened as an argument with the review instead of an answer to the user's request.",
+    "Deliver the request's answer alone, in the length and shape the request asked for: the review notes are this " +
+      "turn's working material, and they are not part of the reply.",
+  ].join("\n");
 }
 
 /** Failure-policy instruction: the answer ships, but must be qualified. */

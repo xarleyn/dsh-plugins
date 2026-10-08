@@ -114,9 +114,18 @@ export interface PendingDelegation {
 
 // -------------------------------------------------------------------- audit
 
-/** Outcome of one gate decision at a turn-stopping boundary. */
+/**
+ * Outcome of one gate decision at a turn-stopping boundary. `answer-shape` is
+ * the gate's own demand that a draft which argues with the review be rewritten
+ * as an answer: no reviewer ran, so no PASS is possible for that candidate.
+ */
 export type ReviewAuditOutcome =
-  "pass" | "revise" | "waived" | "suppressed-pending-work" | "failure";
+  | "pass"
+  | "revise"
+  | "answer-shape"
+  | "waived"
+  | "suppressed-pending-work"
+  | "failure";
 
 /** One audit record (`SPEC.md`, "Audit"). Never carries prompt/response text. */
 export interface ReviewAuditEntry {
