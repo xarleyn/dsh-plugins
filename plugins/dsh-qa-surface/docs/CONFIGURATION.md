@@ -932,6 +932,16 @@ accounts:
   Invoking a skill as `/name` does not depend on the tool being allowed, so a
   deployment that skips that entry sees the command work and the catalog stay
   empty — the half-working state this paragraph exists to prevent.
+- A third fact is not a deployment choice: whose agent is looking. The role's
+  catalog is installed on the attested chat's own agent, and a delegated
+  assistant — an answer reviewer or a domain expert — composes from the preset
+  and receives neither that catalog nor the loader that enforces the role's
+  allow-list. A skill the stand's palette offered in the chat is therefore not
+  available inside a delegation, and this is the intended reading: a delegated
+  session has no owner to resolve a role from, so naming the role's skills to
+  it while the unfiltered standard loader stayed reachable would hand the child
+  more than the role grants the chat. Widening a delegation to skills needs the
+  enforcement installed in the child first, not just the list.
 - The user edits skills in the same Настройки dialog as the profile: a
   catalog with search, an editor with name, description, "when to use",
   invocation flags, declared tools and a Markdown body, a tool picker over the
