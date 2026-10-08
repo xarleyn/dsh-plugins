@@ -94,6 +94,9 @@ describe("plugin log UI integration", () => {
           instances: 1,
         },
       ],
+      // Nothing held: the snapshot the card reads always answers both halves, so
+      // a row cannot tell "no temporary level" from "a host too old to report it".
+      temporary: [],
     });
   });
 

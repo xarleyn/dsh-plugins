@@ -65,6 +65,37 @@ export interface Registration {
   readonly component: SeatComponent;
 }
 
+/** One level the stand was asked to hold, exactly as the card asked for it. */
+export interface HoldCall {
+  readonly pluginId: string;
+  readonly level: string;
+  readonly minutes: number | undefined;
+}
+
+/** The `pluginLogUi` namespace the stand mounts. */
+interface InspectorNamespace {
+  inspect(): Promise<{
+    ok: true;
+    value: {
+      consumers: readonly unknown[];
+      temporary: readonly unknown[];
+    };
+  }>;
+  tail(
+    cursor: number,
+    limit: number,
+  ): Promise<{
+    ok: true;
+    value: PluginLogTail;
+  }>;
+  setTemporaryLevel(
+    pluginId: string,
+    level: string,
+    minutes?: number,
+  ): Promise<{ ok: true; value: unknown }>;
+  clearTemporaryLevel(pluginId: string): Promise<{ ok: true; value: unknown }>;
+}
+
 export interface Harness {
   readonly ctx: Context;
   readonly types: TabType[];
@@ -79,6 +110,10 @@ export interface Harness {
     readonly tabs: number;
     readonly slots: number;
   };
+  /** Every hold the card asked for, in order. */
+  readonly holds: readonly HoldCall[];
+  /** Every plugin whose hold the card asked to release, in order. */
+  readonly releases: readonly string[];
 }
 
 export interface HarnessOptions {
@@ -91,24 +126,57 @@ export interface HarnessOptions {
   readonly settingsForm?: unknown;
 }
 
-/** The inspector answers the plugin's Remote calls with. */
-const NAMESPACE = {
-  inspect: () =>
-    Promise.resolve({
-      ok: true as const,
-      value: {
-        consumers: [
-          {
-            pluginId: "dsh-sample",
-            level: "info" as const,
-            format: "text" as const,
-            instances: 1,
-          },
-        ],
+/**
+ * The inspector the plugin's Remote calls answer with.
+ *
+ * It behaves like a Host that holds a level: the call is recorded, the consumer
+ * runs at that level from then on, and `inspect` reports the hold — which is what
+ * lets a suite tell "the row is running debug" apart from "the row is saved as
+ * debug". Nothing here writes settings: the holds are the only state, and the card
+ * suite asserts separately that no settings write accompanied them.
+ */
+function inspectorNamespace(
+  holds: HoldCall[],
+  releases: string[],
+): InspectorNamespace {
+  const temporary = () =>
+    holds.map((hold) => ({
+      pluginId: hold.pluginId,
+      level: hold.level,
+      scope: hold.minutes === undefined ? "session" : "timed",
+      ...(hold.minutes === undefined
+        ? {}
+        : { remainingMs: hold.minutes * 60_000 }),
+    }));
+  const snapshot = () => ({
+    consumers: [
+      {
+        pluginId: "dsh-sample",
+        level:
+          holds.find((hold) => hold.pluginId === "dsh-sample")?.level ?? "info",
+        format: "text",
+        instances: 1,
       },
-    }),
-  tail: () => Promise.resolve({ ok: true as const, value: EMPTY_TAIL }),
-};
+    ],
+    temporary: temporary(),
+  });
+  return {
+    inspect: () => Promise.resolve({ ok: true as const, value: snapshot() }),
+    tail: () => Promise.resolve({ ok: true as const, value: EMPTY_TAIL }),
+    setTemporaryLevel: (pluginId, level, minutes) => {
+      const held = holds.findIndex((hold) => hold.pluginId === pluginId);
+      if (held >= 0) holds.splice(held, 1);
+      holds.push({ pluginId, level, minutes });
+      return Promise.resolve({ ok: true as const, value: snapshot() });
+    },
+    clearTemporaryLevel: (pluginId) => {
+      releases.push(pluginId);
+      const held = holds.findIndex((hold) => hold.pluginId === pluginId);
+      if (held >= 0) holds.splice(held, 1);
+      return Promise.resolve({ ok: true as const, value: snapshot() });
+    },
+  };
+}
 
 export function harnessOf(options: HarnessOptions = {}): Harness {
   const ctx = new Context();
@@ -127,11 +195,14 @@ export function harnessOf(options: HarnessOptions = {}): Harness {
     getSnapshot: () => UNAVAILABLE_SNAPSHOT,
   };
   const settingsForm = options.settingsForm ?? unavailableForm;
+  const holds: HoldCall[] = [];
+  const releases: string[] = [];
+  const inspector = inspectorNamespace(holds, releases);
 
   // The namespace is a service of its own: `ctx.inject(['remote.pluginLogUi'])`
   // resolves the key, the code under test reads the property beside it.
   ctx.provide("remote", {
-    pluginLogUi: NAMESPACE,
+    pluginLogUi: inspector,
     $mount: () => {
       mounted.count += 1;
       return Promise.resolve(() => {
@@ -140,7 +211,7 @@ export function harnessOf(options: HarnessOptions = {}): Harness {
       });
     },
   });
-  ctx.provide("remote.pluginLogUi", NAMESPACE);
+  ctx.provide("remote.pluginLogUi", inspector);
   ctx.provide("configForms", {
     get: (namespace: string) => {
       configNamespaces.push(namespace);
@@ -202,6 +273,8 @@ export function harnessOf(options: HarnessOptions = {}): Harness {
     forms,
     mounted,
     disposed,
+    holds,
+    releases,
   };
 }
 

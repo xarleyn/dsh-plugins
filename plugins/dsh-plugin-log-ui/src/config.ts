@@ -50,7 +50,12 @@ export const ConfigSchema: z<PluginLogUiConfig, VolatilePluginLogUiConfig> =
     levels: z.dict(levelSchema).default({}).volatile(),
   });
 
-const PLUGIN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
+/**
+ * The shape of a logger id the Config accepts as an override key. A temporary
+ * level is addressed by the same identifier, so both paths validate it the same
+ * way and an operator cannot reach a logger through the door settings closed.
+ */
+export const PLUGIN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]*$/;
 
 export function resolveConfig(
   input: PluginLogUiConfig = {},

@@ -12,7 +12,12 @@ import {
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { ConfigSchema, resolveConfig } from "./config.js";
 import { PluginLogBuffer } from "./log-buffer.js";
+import {
+  TemporaryLevels,
+  type TemporaryLevelScheduler,
+} from "./temporary-levels.js";
 import type {
+  ManagedPluginLogLevel,
   PluginLogConsumerSnapshot,
   PluginLogTail,
   PluginLogUiConfig,
@@ -33,6 +38,17 @@ export const PLUGIN_LOG_ENTRY_ID = "dsh-plugin-log-ui";
 export type Config = PluginLogUiConfig;
 export const Config = ConfigSchema;
 
+/**
+ * Seams a test drives a held window through: the clock the window is counted
+ * against and the timer that closes it. A Host never passes either — a pending
+ * level then runs on `Date.now` and on the process timer, which is what an
+ * operator standing in front of the card needs.
+ */
+export interface PluginLogUiOptions {
+  readonly now?: (() => number) | undefined;
+  readonly schedule?: TemporaryLevelScheduler | undefined;
+}
+
 declare module "@deepseek-ai/cordis" {
   interface Context {
     pluginLogUi: PluginLogUiService;
@@ -47,18 +63,34 @@ export class PluginLogUi
   static Config = ConfigSchema;
 
   private readonly config: VolatilePluginLogUiConfig;
+  private readonly temporary: TemporaryLevels;
   private applying = false;
   private readonly logger: PluginLogger;
   /** Live output for the right-Sidebar panel; the file destination cannot serve it. */
   private readonly buffer = new PluginLogBuffer();
 
-  constructor(ctx: Context, input: VolatilePluginLogUiConfig) {
+  constructor(
+    ctx: Context,
+    input: VolatilePluginLogUiConfig,
+    options: PluginLogUiOptions = {},
+  ) {
     super(ctx, "pluginLogUi", { namespace: "pluginLogUi" });
     this.logger = getPluginLogger({
       pluginId: "dsh-plugin-log-ui",
       consoleSink: createHostLoggerSink(ctx.logger),
     });
     this.config = input;
+    this.temporary = new TemporaryLevels({
+      now: options.now,
+      schedule: options.schedule,
+      // The window closing is a change of policy: the plugin goes back to what
+      // its settings say without waiting for a browser to ask.
+      onLapse: () => this.applyPolicy(),
+    });
+    ctx.effect(
+      () => () => this.temporary.dispose(),
+      "dsh-plugin-log-ui.temporary-levels",
+    );
     ctx.effect(
       () => async () => this.logger.close(),
       "dsh-plugin-log-ui.logger",
@@ -113,7 +145,41 @@ export class PluginLogUi
       consumers: [...grouped.values()].sort((left, right) =>
         left.pluginId.localeCompare(right.pluginId),
       ),
+      temporary: this.temporary.list(),
     };
+  }
+
+  /**
+   * Hold one plugin at `level` for a window, or until it is revoked, and answer
+   * with the snapshot the card repaints from. Nothing here touches the Config: the
+   * level is the live call a saved override ends in, and it is gone on its own.
+   */
+  @Remote("setTemporaryLevel")
+  setTemporaryLevel(
+    pluginId: string,
+    level: ManagedPluginLogLevel,
+    minutes?: number,
+  ): PluginLogUiSnapshot {
+    this.temporary.set(pluginId, level, minutes);
+    this.applyPolicy();
+    this.logger.info("logging.temporary.set", {
+      pluginId,
+      level,
+      minutes: minutes ?? "until revoked",
+    });
+    return this.inspect();
+  }
+
+  /**
+   * Release one held level before its window closes and hand back what the
+   * settings say instead.
+   */
+  @Remote("clearTemporaryLevel")
+  clearTemporaryLevel(pluginId: string): PluginLogUiSnapshot {
+    this.temporary.clear(pluginId);
+    this.applyPolicy();
+    this.logger.info("logging.temporary.clear", { pluginId });
+    return this.inspect();
   }
 
   private applyPolicy(): void {
@@ -126,9 +192,15 @@ export class PluginLogUi
       for (const logger of getRegisteredPluginLoggers()) {
         if (seen.has(logger.pluginId)) continue;
         seen.add(logger.pluginId);
+        // The held window wins over the saved override, and it wins because the
+        // registry callback and the card's poll both land here: reading the
+        // settings alone would drop a DEBUG the operator is still watching on the
+        // next logger registration.
         setPluginLogLevel(
           logger.pluginId,
-          config.levels[logger.pluginId] ?? config.defaultLevel,
+          this.temporary.levelOf(logger.pluginId) ??
+            config.levels[logger.pluginId] ??
+            config.defaultLevel,
         );
       }
       this.logger.debug("logging.policy.applied", {
