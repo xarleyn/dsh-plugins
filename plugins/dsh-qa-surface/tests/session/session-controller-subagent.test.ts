@@ -104,6 +104,10 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    // A visit alone no longer makes a chat, and an unattested chat has nothing
+    // to ask the Host about: the count is only worth measuring once a real
+    // conversation is open.
+    await openChat(controller, world);
     await vi.waitFor(() => expect(sources).toHaveBeenCalled());
     const askedBefore = sources.mock.calls.length;
 
