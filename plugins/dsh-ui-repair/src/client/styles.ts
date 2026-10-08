@@ -52,6 +52,6 @@ export const styles: string = `.uir-body,.uir-body *{box-sizing:border-box}
 .uir-ignore-item{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:7px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;font-size:11px}
 .uir-ignore-item code{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-secondary)}
 .uir-ignore-add{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px}
-.uir-error{margin:0;color:var(--dsw-alias-label-error);font-size:11px;line-height:17px}
+.uir-error{margin:0;color:var(--dsw-alias-state-error-primary, #b3261e);font-size:11px;line-height:17px}
 @media(max-width:720px){.uir-grid{grid-template-columns:1fr}.uir-report{grid-template-columns:repeat(2,minmax(0,1fr))}}
 `;

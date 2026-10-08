@@ -33,7 +33,7 @@ const LEVEL_TINT: Record<PluginLogRecordLevel, string> = {
   warn: "color:var(--dsw-alias-state-warn-label)",
   error: "color:var(--dsw-alias-state-error-primary)",
   fatal:
-    "color:var(--dsw-alias-state-error-primary);background:var(--dsw-alias-bg-error)",
+    "color:var(--dsw-alias-state-error-primary);background:color-mix(in srgb, var(--dsw-alias-state-error-primary, #b3261e) 8%, transparent)",
 };
 
 /** One ink rule per level, for the line's severity token. */

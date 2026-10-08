@@ -40,7 +40,7 @@ export const styles: string = `.dsh-docs-body,.dsh-docs-body *{box-sizing:border
 .dsh-docs-btn:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
 .dsh-docs-btn:disabled{cursor:default;opacity:.45}
 .dsh-docs-notice{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.5}
-.dsh-docs-notice.warn{background:var(--dsw-alias-bg-error);color:var(--dsw-alias-label-error)}
+.dsh-docs-notice.warn{background:color-mix(in srgb, var(--dsw-alias-state-error-primary, #b3261e) 8%, transparent);color:var(--dsw-alias-state-error-primary, #b3261e)}
 .dsh-docs-facts{display:grid;gap:6px;margin:0}
 .dsh-docs-facts>div{display:grid;grid-template-columns:minmax(0,130px) minmax(0,1fr);gap:10px}
 .dsh-docs-facts dt{font-size:11px;color:var(--dsw-alias-label-tertiary)}

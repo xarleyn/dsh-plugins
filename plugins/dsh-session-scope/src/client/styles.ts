@@ -4,7 +4,7 @@
 // document refuses it. The classes are the client's own (no host CSS-module
 // names), so the chip and the editor keep working across DSH themes.
 export const CSS = [
-  ".wss-btnScope { box-sizing: border-box; height: 22px; display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: 6px; background: var(--dsw-alias-fill-tsp-secondary); color: var(--dsw-alias-label-secondary); padding: 0 8px; font: inherit; font-size: 12px; line-height: 22px; cursor: pointer; white-space: nowrap; }",
+  ".wss-btnScope { box-sizing: border-box; height: 22px; display: inline-flex; align-items: center; gap: 4px; border: none; border-radius: 6px; background: var(--dsw-alias-bg-module-platform); color: var(--dsw-alias-label-secondary); padding: 0 8px; font: inherit; font-size: 12px; line-height: 22px; cursor: pointer; white-space: nowrap; }",
   ".wss-btnScope:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }",
   ".wss-btnScope:disabled { cursor: default; opacity: .55; }",
   ".wss-btnScopeHero { height: 28px; min-height: 28px; border-radius: 16px; background: transparent; color: var(--dsw-alias-label-primary); font-size: 13px; line-height: 20px; font-weight: 500; }",
@@ -20,7 +20,7 @@ export const CSS = [
   ".wss-modes { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }",
   ".wss-mode { border: 1px solid var(--dsw-alias-border-l2); border-radius: 8px; background: transparent; color: var(--dsw-alias-label-secondary); padding: 7px 8px; font: inherit; font-size: 12px; cursor: pointer; }",
   ".wss-mode:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }",
-  ".wss-modeOn { border-color: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-label-primary); background: var(--dsw-alias-fill-tsp-secondary); }",
+  ".wss-modeOn { border-color: var(--dsw-alias-state-business-primary); color: var(--dsw-alias-label-primary); background: var(--dsw-alias-bg-module-platform); }",
   ".wss-modeUnavailable { opacity: .55; }",
   ".wss-crumbs { display: flex; align-items: center; gap: 2px; flex-wrap: wrap; font-size: 12px; line-height: 18px; }",
   ".wss-crumb { border: none; background: transparent; color: var(--dsw-alias-label-secondary); cursor: pointer; padding: 1px 4px; border-radius: 6px; font: inherit; }",
