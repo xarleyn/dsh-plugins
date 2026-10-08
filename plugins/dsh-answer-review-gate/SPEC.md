@@ -396,6 +396,20 @@ relevant tool/research summary
 
 It should NOT inherit the primary agent's hidden reasoning.
 
+It does not inherit the primary agent's skill catalog either, and this is a
+property of the delegation rather than of this plugin: `applyChildComposition`
+joins the parent's preset revision and installs the reviewer's own persona and
+`toolFilter`, and the harness publishes a model-facing catalog only where the
+`skill` tool is visible in that agent's scope. The review task and the persona
+are therefore the reviewer's whole instruction surface, and a skill the chat
+had in its palette is not available to the review — while a deployment that
+does list `skill` in `reviewer.allowedTools` gives the reviewer the
+deployment's unfiltered list, not the chat's role one. Naming the parent's
+skills inside the persona is the workaround this spec rejects: the reviewer
+would then read a list it cannot load under the chat's allow-list, because the
+consumer that enforces that list lives on the chat's agent and not on the
+child.
+
 Ideally reviewer uses:
 
 - another model/provider;
