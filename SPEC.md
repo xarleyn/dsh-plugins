@@ -610,7 +610,11 @@ Shipped configuration, as `release` in `nx.json`:
     "projectsRelationship": "independent",
 
     "versionPlans": {
-      "ignorePatternsForPlanCheck": ["**/CHANGELOG.md", "**/package.json"]
+      "ignorePatternsForPlanCheck": [
+        "**/CHANGELOG.md",
+        "**/package.json",
+        "**/tests/**"
+      ]
     },
 
     "version": {
