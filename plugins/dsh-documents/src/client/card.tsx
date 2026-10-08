@@ -76,11 +76,17 @@ const PDF_MODES = [
  * where the program is absent. The sentence therefore stops at what the field
  * answers and sends the rest to the entry the startup check writes, rather than
  * promising a PDF this deployment cannot confirm.
+ *
+ * `unreadable` is that same rule taken one step back: a browser the settings
+ * layer refuses gets no field at all, and the package default is not a fact
+ * about this deployment — asserting it would re-sell the lottery this note
+ * exists to close. The entry the startup check writes answers there instead.
  */
 const TYPST_ENGINE_STATE = {
   enabled: `Движок Typst включён в этом развёртывании: режим «Typst» соберёт PDF, если исполняемый файл на месте — его отсутствие называет стартовая запись лога: ${DOCUMENTS_STARTUP_ENTRY}.`,
   disabled:
     "Движок Typst в этом развёртывании не включён: режим «Typst» вернёт ошибку, а не PDF.",
+  unreadable: `Значения этого ряда не читаются данным браузером, поэтому состояние движка Typst страница не знает: его называет стартовая запись лога: ${DOCUMENTS_STARTUP_ENTRY}.`,
 } as const;
 
 const EXTRACTION_MODES = [
@@ -190,9 +196,16 @@ export function DocumentsCard({
 
   const enabled = config?.enabled ?? DEFAULT_DOCUMENTS_CONFIG.enabled;
   const fieldDisabled = disabled || !enabled;
-  /** Whether this deployment enabled the Typst route the PDF modes offer. */
-  const typstEnabled =
-    config?.typst?.enabled ?? DEFAULT_DOCUMENTS_CONFIG.typst.enabled;
+  /**
+   * Which of the engine sentences this row answers with — `unreadable` when the
+   * settings layer serves this browser nothing to answer from.
+   */
+  const typstEngine =
+    config === undefined
+      ? "unreadable"
+      : (config.typst?.enabled ?? DEFAULT_DOCUMENTS_CONFIG.typst.enabled)
+        ? "enabled"
+        : "disabled";
 
   return (
     // The Plugins page draws this card's frame, its heading and its expand
@@ -238,12 +251,10 @@ export function DocumentsCard({
           }}
         />
         <Notice
-          tone={typstEnabled ? "info" : "warn"}
+          tone={typstEngine === "enabled" ? "info" : "warn"}
           testId="docs-pipeline-typst-engine"
         >
-          {typstEnabled
-            ? TYPST_ENGINE_STATE.enabled
-            : TYPST_ENGINE_STATE.disabled}
+          {TYPST_ENGINE_STATE[typstEngine]}
         </Notice>
       </Section>
 

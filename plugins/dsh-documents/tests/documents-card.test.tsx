@@ -262,4 +262,17 @@ describe("what the card promises the journal will show", () => {
     // check writes, and the sentence has to send the operator there.
     expect(enabled.textContent).toContain(DOCUMENTS_STARTUP_ENTRY);
   });
+
+  it("states no deployment fact about the engine for a row this browser cannot read", () => {
+    // The Plugins panel is not the settings directory, so a non-loopback browser
+    // gets no field to read. What the page has left is the default the package
+    // ships, and calling that the state of this deployment is the same
+    // over-promise the card was filed for, only one row further down.
+    renderCard([], true, undefined, "unavailable");
+    const notice = screen.getByTestId("docs-pipeline-typst-engine");
+    expect(notice.textContent).not.toContain("включён в этом развёртывании");
+    expect(notice.textContent).not.toContain("не включён");
+    expect(notice.textContent).toContain(DOCUMENTS_STARTUP_ENTRY);
+    expect(notice.className).toContain("warn");
+  });
 });
