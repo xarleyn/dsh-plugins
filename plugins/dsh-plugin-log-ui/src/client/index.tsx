@@ -30,6 +30,7 @@ import type {
   ManagedPluginLogFormat,
   ManagedPluginLogLevel,
   PluginLogTail,
+  PluginLogTemporaryLevel,
   PluginLogUiConfig,
   PluginLogUiSnapshot,
 } from "../types.js";
@@ -66,10 +67,46 @@ const LEVELS: readonly ManagedPluginLogLevel[] = [
   "fatal",
   "silent",
 ];
+/**
+ * How long a level the operator does not save may hold. `session` is the last of
+ * them because it is the only one with no window to count: the Host keeps it until
+ * someone reverts it, and loses it when the Host stops — which is what keeps it
+ * out of the Config, where the same choice would outlive both.
+ */
+const WINDOWS: readonly { readonly value: string; readonly label: string }[] = [
+  { value: "5", label: "5 minutes" },
+  { value: "15", label: "15 minutes" },
+  { value: "30", label: "30 minutes" },
+  { value: "60", label: "1 hour" },
+  { value: "session", label: "Until revoked" },
+];
+/** The window and the level a diagnostics look starts on. */
+const DEFAULT_WINDOW = "15";
+const DEFAULT_TEMPORARY_LEVEL: ManagedPluginLogLevel = "debug";
+
+/**
+ * The window of a held level, as the card states it: a countdown for a timed one,
+ * the revocation itself for a session one. Recomputed on every poll, so the number
+ * the operator reads is the one the Host answered with.
+ */
+function windowText(level: PluginLogTemporaryLevel): string {
+  if (level.remainingMs === undefined) return "until revoked";
+  const seconds = Math.ceil(level.remainingMs / 1_000);
+  if (seconds < 60) return `${seconds} s left`;
+  return `${Math.floor(seconds / 60)} min left`;
+}
 
 interface InspectorRemote {
   inspect(): Promise<RemoteResult<PluginLogUiSnapshot>>;
   tail(cursor: number, limit: number): Promise<RemoteResult<PluginLogTail>>;
+  setTemporaryLevel(
+    pluginId: string,
+    level: ManagedPluginLogLevel,
+    minutes?: number,
+  ): Promise<RemoteResult<PluginLogUiSnapshot>>;
+  clearTemporaryLevel(
+    pluginId: string,
+  ): Promise<RemoteResult<PluginLogUiSnapshot>>;
 }
 
 interface ClientRemote {
@@ -89,6 +126,8 @@ interface CardFace {
    */
   readonly settingsForm: ConfigForm<PluginLogUiConfig>;
   readonly inspect: InspectorRemote["inspect"];
+  readonly setTemporaryLevel: InspectorRemote["setTemporaryLevel"];
+  readonly clearTemporaryLevel: InspectorRemote["clearTemporaryLevel"];
 }
 
 type CardProps = PropsRuntime<"plugins.row.config"> & InjectFace<CardFace>;
@@ -118,7 +157,12 @@ function LevelOptions({
   );
 }
 
-function PluginLogSettingsCard({ settingsForm, inspect }: CardProps) {
+function PluginLogSettingsCard({
+  settingsForm,
+  inspect,
+  setTemporaryLevel,
+  clearTemporaryLevel,
+}: CardProps) {
   const settingsStore = useMemo(
     () => bindSettingsExternalStore(settingsForm),
     [settingsForm],
@@ -130,14 +174,32 @@ function PluginLogSettingsCard({ settingsForm, inspect }: CardProps) {
   );
   const [snapshot, setSnapshot] = useState<PluginLogUiSnapshot>({
     consumers: [],
+    temporary: [],
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [holding, setHolding] = useState(false);
+  const [holdPlugin, setHoldPlugin] = useState("");
+  const [holdLevel, setHoldLevel] = useState<ManagedPluginLogLevel>(
+    DEFAULT_TEMPORARY_LEVEL,
+  );
+  const [holdWindow, setHoldWindow] = useState(DEFAULT_WINDOW);
   const config = settings.value;
   const defaultLevel = config?.defaultLevel ?? "info";
   const format = config?.format ?? "text";
   const levels = config?.levels ?? {};
   const writable = settings.status === "ready" && settings.writable;
+  /**
+   * What the Host is holding, by plugin id. The saved override a row's select
+   * shows and the level the row is actually running at part ways exactly here, so
+   * the row can say which of the two the operator is looking at.
+   */
+  const heldByPlugin = new Map(
+    snapshot.temporary.map((level): [string, PluginLogTemporaryLevel] => [
+      level.pluginId,
+      level,
+    ]),
+  );
 
   const refresh = useCallback(async () => {
     try {
@@ -159,6 +221,45 @@ function PluginLogSettingsCard({ settingsForm, inspect }: CardProps) {
     if (settings.status === "unavailable") return undefined;
     return startVisibilityAwarePolling(refresh, REFRESH_INTERVAL_MS);
   }, [refresh, settings.status]);
+
+  /**
+   * A level the Host holds for a moment. It goes through the plugin's Remote
+   * rather than through `settingsForm`, so nothing of it reaches the Config and
+   * nothing has to be undone after the look: `set` is never called here, and a
+   * test holds that to be true.
+   */
+  const hold = useCallback(async () => {
+    if (holdPlugin === "") return;
+    setHolding(true);
+    setError(null);
+    try {
+      const minutes = holdWindow === "session" ? undefined : Number(holdWindow);
+      const result = await setTemporaryLevel(holdPlugin, holdLevel, minutes);
+      if (result.ok) setSnapshot(result.value);
+      else setError(errorText(result.error));
+    } catch (cause) {
+      setError(errorText(cause));
+    } finally {
+      setHolding(false);
+    }
+  }, [holdLevel, holdPlugin, holdWindow, setTemporaryLevel]);
+
+  const release = useCallback(
+    async (pluginId: string) => {
+      setHolding(true);
+      setError(null);
+      try {
+        const result = await clearTemporaryLevel(pluginId);
+        if (result.ok) setSnapshot(result.value);
+        else setError(errorText(result.error));
+      } catch (cause) {
+        setError(errorText(cause));
+      } finally {
+        setHolding(false);
+      }
+    },
+    [clearTemporaryLevel],
+  );
 
   const write = useCallback(
     async (field: keyof PluginLogUiConfig, value: unknown) => {
@@ -260,8 +361,12 @@ function PluginLogSettingsCard({ settingsForm, inspect }: CardProps) {
           </label>
         </div>
         <p className="plu-hint">
-          Changes apply live. A format switch affects new lines; an existing
-          daily file can contain both formats until rotation.
+          What you pick here is saved to settings and stays until someone
+          changes it back; the running loggers take it on the next poll. A
+          format switch affects new lines; an existing daily file can contain
+          both formats until rotation. To look at a plugin without saving it,
+          hold a level for a moment under <strong>Registered plugins</strong>{" "}
+          instead.
         </p>
         <p className="plu-hint">
           Live output is the <strong>Plugin logs</strong> tab of the right
@@ -281,36 +386,152 @@ function PluginLogSettingsCard({ settingsForm, inspect }: CardProps) {
             No active plugin logger consumers yet.
           </p>
         ) : (
-          <div className="plu-list">
-            {snapshot.consumers.map((consumer) => (
-              <div
-                className="plu-row"
-                key={consumer.pluginId}
-                data-testid="log-card-plugin-row"
-              >
-                <div className="plu-plugin">
-                  <code>{consumer.pluginId}</code>
-                  <span>
-                    {consumer.instances} instance
-                    {consumer.instances === 1 ? "" : "s"} · active:{" "}
-                    {consumer.level} · {consumer.format}
-                  </span>
-                </div>
-                <select
-                  className="plu-select"
-                  aria-label={`Log level for ${consumer.pluginId}`}
-                  value={levels[consumer.pluginId] ?? ""}
-                  disabled={!writable || saving}
-                  data-testid="log-card-plugin-level"
-                  onChange={(event) =>
-                    setOverride(consumer.pluginId, event.currentTarget.value)
-                  }
+          <>
+            <div className="plu-hold" data-testid="log-card-hold-form">
+              <p className="plu-hint">
+                Hold a level for a moment to look. This is{" "}
+                <strong>not a settings write</strong>: nothing is saved, the
+                Host keeps the level for the window you pick — or until you
+                revert it — and then the plugin goes back to what its settings
+                say.
+              </p>
+              <div className="plu-hold-controls">
+                <label className="plu-field">
+                  <span>Plugin</span>
+                  <select
+                    className="plu-select"
+                    value={holdPlugin}
+                    disabled={!writable || holding}
+                    data-testid="log-card-hold-plugin"
+                    onChange={(event) =>
+                      setHoldPlugin(event.currentTarget.value)
+                    }
+                  >
+                    <option value="">Choose a plugin</option>
+                    {snapshot.consumers.map((consumer) => (
+                      <option value={consumer.pluginId} key={consumer.pluginId}>
+                        {consumer.pluginId}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="plu-field">
+                  <span>Level</span>
+                  <select
+                    className="plu-select"
+                    value={holdLevel}
+                    disabled={!writable || holding}
+                    data-testid="log-card-hold-level"
+                    onChange={(event) =>
+                      setHoldLevel(
+                        event.currentTarget.value as ManagedPluginLogLevel,
+                      )
+                    }
+                  >
+                    <LevelOptions />
+                  </select>
+                </label>
+                <label className="plu-field">
+                  <span>For</span>
+                  <select
+                    className="plu-select"
+                    value={holdWindow}
+                    disabled={!writable || holding}
+                    data-testid="log-card-hold-window"
+                    onChange={(event) =>
+                      setHoldWindow(event.currentTarget.value)
+                    }
+                  >
+                    {WINDOWS.map((option) => (
+                      <option value={option.value} key={option.value}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <button
+                  type="button"
+                  className="plu-button"
+                  disabled={!writable || holding || holdPlugin === ""}
+                  data-testid="log-card-hold-apply"
+                  onClick={() => void hold()}
                 >
-                  <LevelOptions inherit={defaultLevel} />
-                </select>
+                  Hold level
+                </button>
               </div>
-            ))}
-          </div>
+              {snapshot.temporary.length === 0 ? null : (
+                <div className="plu-hold-list" data-testid="log-card-hold-list">
+                  {snapshot.temporary.map((held) => (
+                    <div
+                      className="plu-hold-row"
+                      key={held.pluginId}
+                      data-testid="log-card-hold-row"
+                    >
+                      <code>{held.pluginId}</code>
+                      <span className="plu-hold-state">
+                        held at {held.level} · {windowText(held)} · not saved
+                      </span>
+                      <button
+                        type="button"
+                        className="plu-button"
+                        disabled={!writable || holding}
+                        aria-label={`Revert the held level of ${held.pluginId} now`}
+                        data-testid="log-card-hold-revert"
+                        onClick={() => void release(held.pluginId)}
+                      >
+                        Revert now
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="plu-list">
+              {snapshot.consumers.map((consumer) => {
+                const heldLevel = heldByPlugin.get(consumer.pluginId);
+                return (
+                  <div
+                    className="plu-row"
+                    key={consumer.pluginId}
+                    data-testid="log-card-plugin-row"
+                  >
+                    <div className="plu-plugin">
+                      <code>{consumer.pluginId}</code>
+                      <span>
+                        {consumer.instances} instance
+                        {consumer.instances === 1 ? "" : "s"} · active:{" "}
+                        {consumer.level} · {consumer.format}
+                      </span>
+                      {heldLevel === undefined ? null : (
+                        <span
+                          className="plu-tag"
+                          data-testid="log-card-hold-marker"
+                        >
+                          not saved: held at {heldLevel.level} ·{" "}
+                          {windowText(heldLevel)}
+                        </span>
+                      )}
+                    </div>
+                    <select
+                      className="plu-select"
+                      aria-label={`Saved log level for ${consumer.pluginId}`}
+                      value={levels[consumer.pluginId] ?? ""}
+                      disabled={!writable || saving}
+                      data-testid="log-card-plugin-level"
+                      onChange={(event) =>
+                        setOverride(
+                          consumer.pluginId,
+                          event.currentTarget.value,
+                        )
+                      }
+                    >
+                      <LevelOptions inherit={defaultLevel} />
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          </>
         )}
       </section>
     </div>
@@ -423,6 +644,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             inject: () => ({
               settingsForm: form,
               inspect: () => inspector.inspect(),
+              // The hold path is the Remote's own: a level that is not saved never
+              // goes near `settingsForm`, so the card cannot write it to the Config.
+              setTemporaryLevel: (pluginId, level, minutes) =>
+                inspector.setTemporaryLevel(pluginId, level, minutes),
+              clearTemporaryLevel: (pluginId) =>
+                inspector.clearTemporaryLevel(pluginId),
             }),
           },
           PluginLogSettingsEntry,

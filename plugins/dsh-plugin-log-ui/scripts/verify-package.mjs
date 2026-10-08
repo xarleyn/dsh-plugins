@@ -15,6 +15,7 @@ await runVerifyPackage({
   packageName: "@yadsh/dsh-plugin-log-ui",
   requiredFiles: [
     "lib/index.js",
+    "lib/temporary-levels.js",
     "lib/client.js",
     "lib/types/index.d.ts",
     "lib/typert.host.js",
@@ -193,5 +194,40 @@ await runVerifyPackage({
     );
     assert.ok(client.includes(".plu-grid{"), "the card sheet must ship");
     assert.ok(client.includes(".plu-log{"), "the panel sheet must ship");
+
+    /*
+     * The held level (#743). A level the operator does not save has to reach the
+     * Host, and the only road from this bundle to the Host is the Remote contract
+     * generated beside it: if the shipped remote client does not describe the two
+     * hold methods, the card calls a method no host answers and the hold is a
+     * control that does nothing.
+     */
+    for (const method of ["setTemporaryLevel", "clearTemporaryLevel"]) {
+      assert.ok(
+        client.includes(`pluginLogUi/${method}`),
+        `the Remote contract must describe pluginLogUi/${method}`,
+      );
+    }
+    // The hold form and the row it marks: without the marker the operator cannot
+    // tell a running level from a saved one, which is the confusion the card had.
+    assert.match(
+      client,
+      /["']data-testid["']\s*:\s*["']log-card-hold-apply["']/u,
+      "the card must draw the control that holds a level",
+    );
+    assert.match(
+      client,
+      /["']data-testid["']\s*:\s*["']log-card-hold-marker["']/u,
+      "a row running on a held level must say so",
+    );
+    // The sentence the issue asked for: the hold is stated as not a settings write.
+    assert.ok(
+      client.includes("not saved"),
+      "the card must state that a held level is not saved",
+    );
+    assert.ok(
+      client.includes("until revoked"),
+      "the hold with no window must be named by how it ends",
+    );
   },
 });

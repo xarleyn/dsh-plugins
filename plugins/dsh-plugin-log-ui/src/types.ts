@@ -35,13 +35,58 @@ export interface PluginLogConsumerSnapshot {
   readonly instances: number;
 }
 
+/**
+ * How a temporary level lapses. `timed` closes after a counted window; `session`
+ * has no window and closes when the operator revokes it or the Host stops — which
+ * is why it is not a setting: a setting outlives both.
+ */
+export type PluginLogTemporaryScope = "timed" | "session";
+
+/** One temporary level the Host is holding right now. */
+export interface PluginLogTemporaryLevel {
+  readonly pluginId: string;
+  readonly level: ManagedPluginLogLevel;
+  readonly scope: PluginLogTemporaryScope;
+  /**
+   * Milliseconds left when the snapshot was taken. Absent for a session level,
+   * which has nothing to count down.
+   */
+  readonly remainingMs?: number;
+}
+
 export interface PluginLogUiSnapshot {
   readonly consumers: readonly PluginLogConsumerSnapshot[];
+  readonly temporary: readonly PluginLogTemporaryLevel[];
 }
 
 export interface PluginLogUiService {
   inspect(): PluginLogUiSnapshot;
   getConfig(): ResolvedPluginLogUiConfig;
+  /**
+   * Hold `level` for one plugin without writing it to the Config.
+   *
+   * The saved overrides are a setting: they stay until someone reverts them, so a
+   * stand debugged for one question keeps answering it forever. This is the same
+   * `setPluginLogLevel` call a saved override ends in, with no Config behind it —
+   * the level lapses on its own and the plugin goes back to what its
+   * settings say.
+   * @param pluginId - the logger to hold, in the shape an override key takes.
+   * @param level - the threshold to hold it at.
+   * @param minutes - the window in minutes; omitted means the level holds until it
+   * is revoked.
+   * @returns the registry snapshot after the level took effect.
+   */
+  setTemporaryLevel(
+    pluginId: string,
+    level: ManagedPluginLogLevel,
+    minutes?: number,
+  ): PluginLogUiSnapshot;
+  /**
+   * Drop one temporary level early.
+   * @param pluginId - the logger whose held level is released.
+   * @returns the registry snapshot with the level back on its settings.
+   */
+  clearTemporaryLevel(pluginId: string): PluginLogUiSnapshot;
   /**
    * Read the records the ring buffer holds after `cursor`.
    *

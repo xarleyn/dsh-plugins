@@ -7,6 +7,8 @@ in two places:
   discovers active logger consumers automatically and provides
   a default logging level, per-plugin level overrides, and `text` or `json` file
   output, applied live to already-running and newly registered loggers;
+- a level held for a moment without saving it, for the operator who wants to look
+  at one plugin's `debug` lines and go back afterwards;
 - a **Plugin logs** panel in the host's right Sidebar, streaming the records the
   host is writing right now.
 
@@ -64,6 +66,26 @@ The default format is `text`, producing lines such as:
 Settings are stored under the plugin's own profile entry namespace,
 `dsh-plugin-log-ui`, in the configured DSH settings provider — the same namespace
 the Plugins page reads, so a value saved before the card moved is read back after it.
+
+## Looking without saving
+
+What the selects save is a setting, and a setting is durable: a plugin turned to
+`debug` to answer one question stays on `debug` until someone comes back and turns it
+off. To look instead of leaving, use **Hold level** in the _Registered plugins_
+section — pick the plugin, the level, and how long the look should take: 5, 15 or 30
+minutes, an hour, or until you revert it yourself.
+
+A held level is not written to settings, so nothing has to be undone afterwards. The
+Host keeps it for the window and then hands the plugin back to whatever its settings
+say — on its own timer, with or without a browser still watching the card, and to a
+logger that registers after the hold was set. A row running on a held level is marked
+`not saved: held at debug · 14 min left`, while its select keeps showing the saved
+value: looking now and leaving forever are two different actions.
+
+The level lives in the Host process alone. It is gone when the Host stops, and it is
+not part of the Config — neither the settings the Plugins page reads nor
+`pluginLogUi.getConfig()` report it; the registry snapshot the card polls does, which
+is where the marker comes from.
 
 ## Compatibility
 
