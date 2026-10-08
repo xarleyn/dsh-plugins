@@ -46,11 +46,27 @@ describe("attestation diagnostics", () => {
       "composition-mismatch",
       "permission-preset",
       "adoption-refused",
+      "subagent-session",
     ]) {
       expect(attestationHint(reason)).not.toBe(fallback);
     }
     expect(attestationHint("attestation-failed")).toBe(fallback);
     expect(attestationHint(null)).toBe(fallback);
+  });
+
+  it("tells a chat with no agent behind it from another conversation's child", () => {
+    // Both once read "agent is unavailable", which an operator could not
+    // separate from a stand that had just restarted — and they ask for opposite
+    // repairs: re-mount a preset, or leave the id alone. Each hint therefore has
+    // to name its own cause and the move that follows from it.
+    const noAgent = attestationHint("agent-unavailable");
+    const routing = attestationHint("subagent-session");
+    expect(noAgent).not.toBe(routing);
+    expect(noAgent).toContain("session.agent-resolve-rejected");
+    expect(noAgent).toContain("restart");
+    expect(noAgent).toContain("New chat");
+    expect(routing).toContain("subagent routing owns");
+    expect(routing).toContain("parent chat");
   });
 });
 

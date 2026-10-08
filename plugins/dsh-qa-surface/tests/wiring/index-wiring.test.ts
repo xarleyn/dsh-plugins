@@ -62,6 +62,8 @@ async function world(entry: Record<string, unknown> = {}) {
   const selected = new Map<string, Record<string, unknown>>();
   /** The chats this Host actually has a durable session for. */
   const hostSessions = new Set<string>();
+  /** Identities subagent routing owns: resumed, they answer `session/agent-busy`. */
+  const routed = new Set<string>();
   let resumable = true;
   /** The page policy the plugin registered for its own profile entry. */
   let presentation: { readonly auto?: boolean } | undefined;
@@ -143,6 +145,14 @@ async function world(entry: Record<string, unknown> = {}) {
     },
     resolveAgent: async (id: unknown) => {
       const sessionId = String(id);
+      if (routed.has(sessionId)) {
+        return {
+          error: {
+            code: "session/agent-busy",
+            message: `session "${sessionId}" is owned by subagent routing`,
+          },
+        };
+      }
       if (!resumable || !hostSessions.has(sessionId)) {
         return { error: { message: "no such session" } };
       }
@@ -186,6 +196,11 @@ async function world(entry: Record<string, unknown> = {}) {
     /** Make every chat look like one the Host can no longer wake up. */
     stopResuming: () => {
       resumable = false;
+    },
+    /** Make one identity one subagent routing owns. */
+    routeSession: (sessionId: string) => {
+      routed.add(sessionId);
+      hostSessions.add(sessionId);
     },
     dispose: () => fiber.dispose(),
   };
@@ -499,6 +514,64 @@ describe("wiring: the failed turn reaches the operator's log", () => {
     }) as typeof host.error;
     return lines;
   }
+
+  /** The same mirror, with each line tagged by the level it was written at. */
+  function mirrorLevels(ctx: Context): string[] {
+    const lines: string[] = [];
+    const host = ctx.logger;
+    const at =
+      (level: string) =>
+      (message: unknown): void => {
+        lines.push(`${level} ${String(message)}`);
+      };
+    host.warn = at("warn") as typeof host.warn;
+    host.error = at("error") as typeof host.error;
+    return lines;
+  }
+
+  /** The mirrored lines of one event, named after the plugin's own prefix. */
+  const written = (lines: string[], event: string): string[] =>
+    lines.filter((line) => line.includes(`] ${event} `));
+
+  it("keeps a refused chat's journal level with what it actually means", async () => {
+    // Both classes once wrote an ERROR pair per attestation, and a day of one
+    // stand read as twelve identical incidents: the identity subagent routing
+    // owns is a correct answer about another conversation, while a chat the
+    // deployment cannot stand an agent behind is the operator's problem.
+    const { ctx, surface, routeSession, stopResuming, dispose } = await world();
+    const lines = mirrorLevels(ctx);
+    routeSession("expert-1");
+    await expect(surface.secureSession("", "expert-1")).rejects.toThrow(
+      /\(reason: subagent-session\)$/u,
+    );
+    expect(written(lines, "session.agent-owned-by-routing")).toEqual([
+      expect.stringMatching(
+        /^warn \[dsh-qa-surface\] session\.agent-owned-by-routing/u,
+      ),
+    ]);
+    expect(written(lines, "lockdown.rejected")).toEqual([
+      expect.stringMatching(
+        /^warn \[dsh-qa-surface\] lockdown\.rejected.*subagent-session/u,
+      ),
+    ]);
+
+    lines.length = 0;
+    stopResuming();
+    await expect(surface.secureSession("", "chat-1")).rejects.toThrow(
+      /\(reason: agent-unavailable\)$/u,
+    );
+    expect(written(lines, "session.agent-resolve-rejected")).toEqual([
+      expect.stringMatching(
+        /^error \[dsh-qa-surface\] session\.agent-resolve-rejected/u,
+      ),
+    ]);
+    expect(written(lines, "lockdown.rejected")).toEqual([
+      expect.stringMatching(
+        /^error \[dsh-qa-surface\] lockdown\.rejected.*agent-unavailable/u,
+      ),
+    ]);
+    await dispose();
+  });
 
   /** One turn the Host closed with the registry refusal of the report. */
   function failedTurn(sessionId: string, turn: number): [unknown, unknown] {

@@ -82,6 +82,14 @@ export interface QaAccountsGate {
 const FRESH_SESSION_BOOTSTRAP_WINDOW_MS = QA_SESSION_CLAIM_WINDOW_MS;
 
 /**
+ * The one sentence both discovery paths use for a delegated child identity:
+ * the live path reads it off the session header, the cold path off the Host's
+ * refusal to resume an agent the routing owns.
+ */
+const DELEGATED_SESSION_REFUSAL =
+  "a delegated subagent session cannot be attested";
+
+/**
  * Compare session cwds the way the host records them: separator- and
  * case-normalized on Windows, so a deployment path written with either
  * separator or case still matches the session header cwd.
@@ -293,29 +301,54 @@ export class QaPolicyAdmission {
    * composition a stock prompt would produce — so a session composed outside
    * the QA preset still lands on the mismatch refusals below ("composition
    * mismatch"), and the adoption and permission checks stay the gate.
+   *
+   * Not every answer describes this deployment: the Host also names an identity
+   * subagent routing owns, which is a fact about another conversation's child
+   * rather than a failure of this chat. The two are refused apart below.
    */
   private async liveAgent(sessionId: string): Promise<Agent> {
     const live = this.ctx.agents.get(SessionId(sessionId));
     if (live !== undefined) return live;
+    let code: string | undefined;
+    let detail: string;
     try {
       const resolved = await this.ctx.sessionController.resolveAgent(
         SessionId(sessionId),
       );
       if (!("error" in resolved)) return resolved.agent;
-      this.logger.error("session.agent-resolve-rejected", {
-        sessionId,
-        error: resolved.error.message,
-      });
+      code = resolved.error.code;
+      detail = resolved.error.message;
     } catch (error) {
-      // Either the composition itself failed (a preset that no longer mounts,
-      // a log the Host refuses to read) or the resolution threw before it
-      // could classify itself. Both are the same coarse fact for the browser.
-      this.logger.error("session.agent-resolve-rejected", {
-        sessionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      // The resolution threw before it could classify itself, so there is no
+      // Session-domain code to read — only the message the Host wrote.
+      detail = error instanceof Error ? error.message : String(error);
     }
-    throw new QaAttestationError("agent-unavailable", "agent is unavailable");
+    // `session/agent-busy` is the Session domain's stable answer for an identity
+    // subagent routing owns, and a session with no live agent reaches it only
+    // through its durable `origin` — a delegated run recorded as one. So this is
+    // the cold twin of the header check in {@link secureSessionAs}: same fact,
+    // same reason and sentence, and a warning in the journal instead of an error.
+    if (code === "session/agent-busy") {
+      this.logger.warn("session.agent-owned-by-routing", {
+        sessionId,
+        error: detail,
+      });
+      throw new QaAttestationError(
+        "subagent-session",
+        DELEGATED_SESSION_REFUSAL,
+      );
+    }
+    // Either the composition itself failed (a preset that no longer mounts, a
+    // log the Host refuses to read) or the identity names no session at all.
+    // Both are the same coarse fact for the browser.
+    this.logger.error("session.agent-resolve-rejected", {
+      sessionId,
+      error: detail,
+    });
+    throw new QaAttestationError(
+      "agent-unavailable",
+      "the Host keeps this session's transcript but could not resume an agent behind it; the composition detail is in session.agent-resolve-rejected",
+    );
   }
 
   /**
@@ -448,8 +481,8 @@ export class QaPolicyAdmission {
     if (agent.session.header.parentSession !== undefined) {
       this.logger.warn("lockdown.subagent-attestation-refused", { sessionId });
       throw new QaAttestationError(
-        "adoption-refused",
-        "a delegated subagent session cannot be attested",
+        "subagent-session",
+        DELEGATED_SESSION_REFUSAL,
       );
     }
     if (this.accounts !== undefined) {

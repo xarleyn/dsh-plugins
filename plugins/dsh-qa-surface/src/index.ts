@@ -186,6 +186,21 @@ const CONFIGURATION_ERROR = "Assistant configuration is unavailable.";
 const ACCOUNTS_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
 
 /**
+ * Admission refusals that answer the browser correctly instead of reporting a
+ * broken deployment: the chat on screen is of an older composition, was created
+ * outside the QA policy, or is another conversation's delegated child. The
+ * browser keeps reading it as a transcript and asks the Host again on every
+ * panel refresh, so the journal takes a warning for these — a visitor opening a
+ * chat is not an incident, and one refused chat used to write an ERROR pair per
+ * Remote call.
+ */
+const ADMISSION_ANSWERS: ReadonlySet<string> = new Set([
+  "composition-mismatch",
+  "adoption-refused",
+  "subagent-session",
+]);
+
+/**
  * The preview refusal codes the browser branches on. `unavailable` covers a
  * disabled capability, a chat without a cwd and an unreadable file alike; the
  * panel tells the audience the file may be gone, which is true of all three.
@@ -1489,11 +1504,14 @@ export class QaSurface extends TypertRemoteService {
           : (ACCOUNTS_REASON_MARKER.exec(
               error instanceof Error ? error.message : "",
             )?.at(1) ?? "attestation-failed");
-      this.logger.error("lockdown.rejected", {
-        sessionId,
-        reason,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.logger[ADMISSION_ANSWERS.has(reason) ? "warn" : "error"](
+        "lockdown.rejected",
+        {
+          sessionId,
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       throw new Error(`${CONFIGURATION_ERROR} (reason: ${reason})`, {
         cause: error,
       });
