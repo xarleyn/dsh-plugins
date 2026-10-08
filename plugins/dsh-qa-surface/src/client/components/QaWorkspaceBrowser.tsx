@@ -507,28 +507,34 @@ export function QaWorkspaceBrowser({
     );
   }
   const crumbs = crumbsOf(directory);
+  // The trail starts where the section heading stops: at the root the only
+  // crumb would be the section's own title printed twice, one line under the
+  // other. Below the root the trail is the way back up, and it shows again.
+  const trail = directory === "" ? crumbs.slice(1) : crumbs;
   return (
     <div className="dsh-qa-ws" data-testid="qa-surface-workspace">
-      <nav
-        className="dsh-qa-ws__crumbs"
-        data-testid="qa-surface-workspace-crumbs"
-        aria-label="Путь в рабочем каталоге"
-      >
-        {crumbs.map((crumb, index) => (
-          <span key={crumb.path}>
-            {index > 0 ? <span aria-hidden="true">/</span> : null}
-            <button
-              type="button"
-              className="dsh-qa-ws__crumb"
-              data-testid="qa-surface-workspace-crumb"
-              aria-current={index === crumbs.length - 1 ? "true" : undefined}
-              onClick={() => setDirectory(crumb.path)}
-            >
-              {crumb.label}
-            </button>
-          </span>
-        ))}
-      </nav>
+      {trail.length === 0 ? null : (
+        <nav
+          className="dsh-qa-ws__crumbs"
+          data-testid="qa-surface-workspace-crumbs"
+          aria-label="Путь в рабочем каталоге"
+        >
+          {trail.map((crumb, index) => (
+            <span key={crumb.path}>
+              {index > 0 ? <span aria-hidden="true">/</span> : null}
+              <button
+                type="button"
+                className="dsh-qa-ws__crumb"
+                data-testid="qa-surface-workspace-crumb"
+                aria-current={index === trail.length - 1 ? "true" : undefined}
+                onClick={() => setDirectory(crumb.path)}
+              >
+                {crumb.label}
+              </button>
+            </span>
+          ))}
+        </nav>
+      )}
       {listStatus === "loading" ? (
         <p
           className="dsh-qa-ws__status"

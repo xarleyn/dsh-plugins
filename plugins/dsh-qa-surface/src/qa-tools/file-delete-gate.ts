@@ -6,9 +6,13 @@ import type { QaSessionOwnership } from "../session-ownership.js";
 /** The one QA tool whose every call is parked for the operator. */
 export const QA_FILE_DELETE_TOOL = "file_delete";
 
-/** Why the gate answers `ask` before the chain can decide alone. */
+/**
+ * Why the gate answers `ask` before the chain can decide alone. The card the
+ * operator reads shows this verbatim, so it is written in the language of the
+ * surface rather than in the language of the tool chain.
+ */
 export const QA_FILE_DELETE_ASK_REASON =
-  "deleting a workspace file requires operator confirmation";
+  "Удаление файла рабочего каталога требует подтверждения оператора.";
 
 /**
  * The inner half of `file_delete`'s safety: the decision that composes the

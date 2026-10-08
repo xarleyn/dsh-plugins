@@ -121,6 +121,9 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
       if (await props.onSend(text, attachments, pick?.id ?? null)) {
         setDraft("");
         props.onAttachmentsChange([]);
+        // The composer is empty again, so the refusal that emptied it is no
+        // longer about anything: it names a file that is not in the tray.
+        setAttachmentError(null);
       }
     } finally {
       setSubmitting(false);
