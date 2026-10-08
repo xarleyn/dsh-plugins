@@ -147,6 +147,21 @@ describe("Integrations TeamCity card", () => {
     await waitFor(() => expect(patched).toEqual(["logs.read:allow"]));
   });
 
+  it("names a capability row by the whole key, capitals and all", async () => {
+    const Card = createTeamcityCard(
+      remote({ getTeamcity: async () => ({ ok: true, value: connected }) }),
+    );
+    render(<Card token="qa-account-token" />);
+    await screen.findByLabelText("Читать сборки");
+    // `buildConfigs.read` keeps its capital: the row is reached by the id a
+    // selector spells from the key, not by one that ate the `C` (#715).
+    const row = screen.getByTestId(`${Z}-capability-build-configs-read`);
+    expect(row.textContent).toContain("Читать конфигурации сборки");
+    expect(
+      screen.queryByTestId(`${Z}-capability-build-onfigs-read`),
+    ).toBeNull();
+  });
+
   it("renders a policy failure instead of losing it", async () => {
     const Card = createTeamcityCard(
       remote({

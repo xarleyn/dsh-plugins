@@ -12,6 +12,7 @@ import type {
   PolicyPatch,
 } from "../types.js";
 import { dateTime, failureCopy } from "./copy.js";
+import { kebabSegment } from "./operator-controls.js";
 
 /**
  * What every provider card receives: the account token, plus the credential help
@@ -140,11 +141,6 @@ const SERVICE_REASON: Readonly<Record<CapabilityServiceState, string>> =
     sensitive: "Требуется личный аккаунт",
     unavailable: "Недоступно с сервисным токеном",
   });
-
-/** A provider-vocabulary key as a test id segment: `issues.read` is `issues-read`. */
-function testIdSegment(key: string): string {
-  return key.replace(/[^a-z0-9]+/gu, "-").replace(/^-|-$/gu, "");
-}
 
 /**
  * The managed-credential block of a connect form: one checkbox, what the mode
@@ -614,7 +610,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
                   return (
                     <div
                       className="dsh-qa-integrations__permission"
-                      data-testid={`${zone}-capability-${testIdSegment(capability)}`}
+                      data-testid={`${zone}-capability-${kebabSegment(capability)}`}
                       key={capability}
                     >
                       <label>
@@ -747,7 +743,7 @@ function BoundarySummary({
         return (
           <span
             className="dsh-qa-integrations__muted"
-            data-testid={`${testIdZone}-boundary-${testIdSegment(kind)}`}
+            data-testid={`${testIdZone}-boundary-${kebabSegment(kind)}`}
             key={kind}
           >
             {kind}: {chosen.length} из {allowed.length} доступно этому рабочему
@@ -794,7 +790,7 @@ function BoundaryEditor({
             {allowed.map((ref, index) => (
               <label
                 className="dsh-qa-integrations__check"
-                data-testid={`${testIdZone}-boundary-${testIdSegment(kind)}-entry-${index}`}
+                data-testid={`${testIdZone}-boundary-${kebabSegment(kind)}-entry-${index}`}
                 key={ref}
               >
                 <input
