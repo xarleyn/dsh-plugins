@@ -44,11 +44,6 @@ describe("admin console", () => {
     expect(
       screen.getByTestId("qa-admin-conversation-loaded-skills").textContent,
     ).toContain("release-notes");
-    // And the block says whose agent that was: a delegated assistant runs
-    // without the catalog, so a snapshot of the chat is not a snapshot of it.
-    expect(
-      screen.getByTestId("qa-admin-conversation-skill-scope").textContent,
-    ).toContain("Список описывает агента самого разговора");
     // Tool calls stay collapsed until asked for.
     const tools = within(screen.getByTestId("qa-admin-message-tools"));
     expect(tools.queryByTestId("qa-admin-message-tool-args")).toBeNull();

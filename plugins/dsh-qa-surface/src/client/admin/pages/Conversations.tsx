@@ -510,14 +510,6 @@ function RuntimeFacts(props: { readonly detail: QaConversationDetail }) {
           {loaded.length === 0 ? "—" : loaded.join(", ")}
         </dd>
       </dl>
-      <p
-        className="dsh-qa-admin__panel-note"
-        data-testid="qa-admin-conversation-skill-scope"
-      >
-        Список описывает агента самого разговора. Делегированные ассистенты —
-        ревьюер ответа и доменный эксперт — получают от него персона и фильтр
-        инструментов: каталог навыков и его проверка в поручение не переходят.
-      </p>
       {tools.length === 0 ? null : (
         <details data-testid="qa-admin-conversation-tools">
           <summary>Инструменты разговора ({tools.length})</summary>
