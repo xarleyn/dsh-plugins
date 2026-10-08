@@ -538,6 +538,11 @@ export default class OpenVikingMemory extends TypertRemoteService {
    * deployment's own configuration lives; a page in a person's settings dialog
    * is the place to *show* what the assistant remembers about them, not to let
    * them switch the product's memory off.
+   *
+   * The page is answered a failure *code*, while the endpoint, the status and
+   * the store's own sentence are recorded here: a transport string on the page
+   * names internals the reader cannot act on, and the same words in this log
+   * are what an operator greps for.
    */
   @Remote("userMemoryOverview")
   async userMemoryOverview(token: string): Promise<QaUserMemoryOverview> {
@@ -545,7 +550,12 @@ export default class OpenVikingMemory extends TypertRemoteService {
     const scoped = this.scoped();
     return await readUserMemoryOverview(
       this.runtime.readClientFor(userId, scoped),
-      { scoped },
+      {
+        scoped,
+        onFail: (failure) => {
+          this.logger.warn("qa_memory_overview_failed", { userId, ...failure });
+        },
+      },
     );
   }
 
