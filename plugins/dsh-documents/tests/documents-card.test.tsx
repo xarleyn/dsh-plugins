@@ -16,6 +16,10 @@ import type { DocumentsConfig } from "../src/documents/config.js";
 import { resolveDocumentsConfig } from "../src/documents/config.js";
 import { DocumentsCard } from "../src/client/card.js";
 import { styles } from "../src/client/styles.js";
+import {
+  DOCUMENTS_STARTUP_ENTRY,
+  DOCUMENTS_STARTUP_PROGRAMS,
+} from "../src/shared/settings.js";
 
 const CONFIG = resolveDocumentsConfig({}) as unknown as DocumentsConfig;
 
@@ -38,10 +42,11 @@ function makeForm(
   writable = true,
   fences?: (number | undefined)[],
   status: "ready" | "unavailable" = "ready",
+  value = CONFIG,
 ) {
   const snapshot = {
     status,
-    value: status === "ready" ? CONFIG : undefined,
+    value: status === "ready" ? value : undefined,
     base: undefined,
     user: {},
     revision: status === "ready" ? 1 : undefined,
@@ -70,11 +75,14 @@ function renderCard(
   writable = true,
   fences?: (number | undefined)[],
   status: "ready" | "unavailable" = "ready",
+  value = CONFIG,
 ) {
   return render(
     <DocumentsCard
       {...({} as never)}
-      settingsForm={makeForm(mutations, writable, fences, status) as never}
+      settingsForm={
+        makeForm(mutations, writable, fences, status, value) as never
+      }
     />,
   );
 }
@@ -209,5 +217,62 @@ describe("the body the Plugins page mounts", () => {
     // Still a body, not a card of our own: the unavailable state changes what the
     // controls accept, not who draws the frame around them.
     expect(container.querySelector('[class*="dsh-plugin-card"]')).toBeNull();
+  });
+});
+
+describe("what the card promises the journal will show", () => {
+  // The parsers hint sends an operator to the log, and for a while the log said
+  // nothing about the programs it names. Promise and record are one contract
+  // now: the entry the sentence points at is the one the Host writes, and every
+  // program it speaks of is one the startup check answers for.
+  it("points at the startup entry, for the programs the startup check probes", () => {
+    renderCard([]);
+    const parsers = screen.getByTestId("docs-parsers").textContent ?? "";
+    expect(parsers).toContain(DOCUMENTS_STARTUP_ENTRY);
+    // Docling is a service the record reports under its own field, so it is not
+    // on the program list; the three below are what this section can edit.
+    for (const program of ["pandoc", "libreoffice", "markitdown"]) {
+      expect(parsers.toLowerCase()).toContain(program);
+      expect([...DOCUMENTS_STARTUP_PROGRAMS]).toContain(program);
+    }
+  });
+
+  it("says whether this deployment runs the Typst engine its PDF mode offers", () => {
+    renderCard([]);
+    const disabled = screen.getByTestId("docs-pipeline-typst-engine");
+    expect(disabled.textContent).toContain("не включён");
+    expect(disabled.className).toContain("warn");
+
+    cleanup();
+    renderCard(
+      [],
+      true,
+      undefined,
+      "ready",
+      resolveDocumentsConfig({
+        typst: { enabled: true },
+      }) as unknown as DocumentsConfig,
+    );
+    const enabled = screen.getByTestId("docs-pipeline-typst-engine");
+    expect(enabled.textContent).toContain("включён в этом развёртывании");
+    expect(enabled.className).not.toContain("warn");
+    // The switch is the whole of what this row can read — the Typst executable
+    // is not one of its fields — so an enabled route confirms only that the
+    // route is on. Where the program itself is, says the entry the startup
+    // check writes, and the sentence has to send the operator there.
+    expect(enabled.textContent).toContain(DOCUMENTS_STARTUP_ENTRY);
+  });
+
+  it("states no deployment fact about the engine for a row this browser cannot read", () => {
+    // The Plugins panel is not the settings directory, so a non-loopback browser
+    // gets no field to read. What the page has left is the default the package
+    // ships, and calling that the state of this deployment is the same
+    // over-promise the card was filed for, only one row further down.
+    renderCard([], true, undefined, "unavailable");
+    const notice = screen.getByTestId("docs-pipeline-typst-engine");
+    expect(notice.textContent).not.toContain("включён в этом развёртывании");
+    expect(notice.textContent).not.toContain("не включён");
+    expect(notice.textContent).toContain(DOCUMENTS_STARTUP_ENTRY);
+    expect(notice.className).toContain("warn");
   });
 });
