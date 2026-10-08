@@ -85,7 +85,9 @@ describe("workspace browser", () => {
             ? {
                 path: "",
                 truncated: false,
-                entries: [{ name: ".qa", type: "directory", size: null }],
+                entries: [
+                  { name: ".qa", type: "directory" as const, size: null },
+                ],
               }
             : { path, truncated: false, entries: [] },
       }),
