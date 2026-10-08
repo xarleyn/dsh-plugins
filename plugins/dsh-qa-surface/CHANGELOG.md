@@ -1,3 +1,157 @@
+## 0.15.4 (2026-10-08)
+
+### 🩹 Fixes
+
+- The source list explains an empty result instead of hiding the control that ([#720](https://github.com/xarleyn/dsh-plugins/issues/720))
+  would show it.
+
+  A turn that answers from recalled memory, or from what this chat already said,
+  adds nothing to the source list. No extractor in the provenance registry
+  recognises a memory read, and the deployment notes name recalled memory as the
+  background an answer is written against rather than as one of its origins, so an
+  empty list after such a turn is the design working, not a collection that broke.
+  The interface said nothing either way: no chip appeared under the answer, and the
+  header's "Sources" control stayed disabled — no counter, no reason — which also
+  sealed the one surface that could have explained the emptiness.
+
+  The control is no longer gated on a non-zero count, so a deployment that shows it
+  keeps it clickable, and the panel answers an empty settled list by naming the kind
+  of material the list holds and saying that an empty list is not a failed
+  collection. That sentence is drawn only once the collection has settled: a turn
+  still running and a delegated run that still owes its origins already say so on
+  the line above, and two contradictory texts on one screen read worse than none.
+
+  `README.md` §Sources, `SPEC.md` §46.2 and
+  `docs/specs/sources-provenance.md` §20.1 now carry the definition itself: both
+  channels that write the list — matched tool results and the report the answering
+  agent files through `qa_report_sources` — and why a bridged memory read reaches
+  neither.
+
+  Covered by `tests/provenance/provenance.test.ts` (a memory read yields no
+  source), `tests/client/components/qa-sources-panel.test.tsx` (an empty settled
+  list explains itself, an unsettled one stays silent) and
+  `tests/client/components/qa-header-layout.test.tsx` (the control is clickable on
+  a completed chat that has no sources).
+
+- The first question into a new draft stops failing with «Не удалось начать чат.» ([#719](https://github.com/xarleyn/dsh-plugins/issues/719))
+  over a session the stand had in fact created.
+
+  The browser holds its own catalog of sessions, and `sessions.retain` answers from
+  that catalog: an identity it has not listed yet is refused with `sessions.retain:
+  unknown session`. A QA session is born on the server, through this plugin's own
+  Remote, so the create can answer before the row that lists it reaches the browser —
+  and the surface asked for the reference in exactly that window. The refusal was
+  reported as a chat that could not start, while the conversation the stand had
+  created was already there — one the visitor had no row of and could not open.
+
+  The adoption now waits for the catalog to name the id before it retains it, and asks
+  for a fresh baseline rather than only for whichever of the push or the pull happens
+  to come first. The patience is one round-trip, not a second adoption timeout: the row
+  is a push or a pull away, and a full window of waiting would stack onto the waits
+  that follow it and hold a chat that never opens on screen for two. When the row
+  really never arrives the operator reads the Host's own refusal, not a timeout nobody
+  asked for, and a refusal of a session the catalog already names stays the refusal it
+  is — no re-read asked for, no race printed beside an answer that was never a race. A
+  baseline the Host refuses is said out loud too, because a chat lost in that shape
+  reads as a slow catalog and is really an unreadable one. Because the failure is
+  intermittent, the two moments of the race are logged when it happens — the refused
+  retain with its timestamp, and the row that came for it with the time spent waiting —
+  so a round that loses the chat can tell which side of the create it lost it on. The
+  chat a page restores when it opens rides the same repaired path.
+
+- A turn a person stopped is reported as stopped, not as ready. ([#723](https://github.com/xarleyn/dsh-plugins/issues/723))
+
+  The work group closed a stopped turn with «Готово за 2 с» over an empty answer:
+  no notice over the fragment, and — because a turn stopped before its first
+  sentence commits no text row at all — no actions either. «Готово» claims a
+  complete answer, so the surface contradicted the click the reader had just made.
+  The surface already separates a provider failure, which has both a status of its
+  own and a row naming the code, so a human-stopped turn was the one turn outcome
+  left unreported.
+
+  The Host marks the difference. `AssistantMessageNode.interrupted` is set on the
+  message committed after a cancel, and on the prefix the Host assembles from the
+  streaming chunks when nothing was committed — that fallback is built at the
+  closed step boundary and is allowed without any prose as soon as reasoning or a
+  tool call counts as evidence (`dsh-client-ui-chat` `finalNode`). The projection
+  read `blocks`, `seq` and `timing` only, so a stopped turn carried no failure code
+  and settled into `complete`.
+
+  `QaTranscriptAdapter` now seats the flag on its turn and gives the turn a third
+  terminal status, `stopped`, which the work group prints as «Остановлено на N с»
+  and collapses the way it collapses a finished or failed turn, beside a notice row
+  that says the answer is incomplete and how to get the whole of it. A provider
+  failure still wins: a turn that stopped into a recorded `turn-error` keeps the
+  failure's own row rather than gaining a second banner. The text that did arrive
+  stays a committed answer row, so copy and rating stay reachable over a fragment —
+  stopping a turn to reword the question no longer eats what was written. A prefix
+  with no prose in it still gets the notice, which is the case that used to close
+  silently.
+
+  Covered by `tests/transcript/transcript-projection-stopped.test.ts` (both the
+  durable prefix and the chunk-only fallback read as stopped; the prefix keeps its
+  committed text row and the notice follows it; an unsettled variant of the same
+  fixture still reads `complete`; a failure suppresses the notice) and
+  `tests/client/components/qa-work-group.test.tsx` (the stopped label and the
+  automatic collapse off a running turn).
+
+- A reviewer can no longer ask to delete a file, and a delegated call is refused ([#732](https://github.com/xarleyn/dsh-plugins/issues/732))
+  where it asks instead of stopping the turn.
+
+  The gate's own child is now composed from an explicit read-only set
+  (`src/reviewer-tools.ts`): unset `reviewer.allowedTools` means reads and
+  searches rather than nothing, and the destructive names — `file_delete`, the
+  file-writing and shell tools, the catalog's own delete, and any `terminal_*` or
+  `job_*` tool — are removed both when the config is resolved and again at the
+  call that starts the child. The reviewer's two task texts say the same thing
+  the filter enforces: an obstacle is a finding about the candidate, not something
+  to clear. On the `domain-expert` branch the mask is the domain's and a tool the
+  surface attaches to the agent's own layer survives any inherited filter, so that
+  branch is held on the surface's side.
+
+  There the approval seam refuses a delegated child's request outright, in either
+  `interaction.approvals` mode: a card parked over the parent's composer waits for
+  an answer a child can never be given, which is how a stand came to look like it
+  was thinking for an hour over a yes/no about one tool call. `file_delete` from a
+  delegated call is refused by its own inner gate too, with a reason that tells the
+  caller to report the file rather than remove it, and a parked request an operator
+  never answers now expires into a refusal instead of holding the turn open.
+
+- The QA surface's small controls say what they are, and its body text reads at 16px. ([#727](https://github.com/xarleyn/dsh-plugins/issues/727), [#764](https://github.com/xarleyn/dsh-plugins/issues/764))
+
+  A browser round over the surface (1440/1280/390) collected eleven defects of one class —
+  a control that looks alive but is not, a hit target below the surface's own 44px minimum,
+  and body text at 11-15px. Each is fixed on its own:
+
+  - The `Агенты`, `Источники` and `Файлы` chips in the header were `disabled` at a zero
+    counter: dimmed, outside the Tab order, and silent about what had run out. They now stay
+    reachable as `aria-disabled` and name the empty state in their label and tooltip.
+  - `Чат` in the header carried the selected-tab treatment (`aria-current="page"`, accent
+    color, a 2px underline) while being an unclickable `<span>`. With a rail or drawer open it
+    is a real button that closes the panel and returns to the chat; with none open it stays a
+    caption, which is the only state where it is not a control.
+  - At 390px the panel covers the screen and its only exit was the 26x26 close button, while
+    the same stylesheet demands 44x44 for sidebar controls at that width. The close target,
+    the panel tabs and the per-message actions now meet 44px, Escape closes the rail from
+    anywhere, and the close control names the tab it dismisses.
+  - Assistant answers ran 15px (14px at 390px) against the user's 16px, and the settings and
+    sign-in cards sat at 11-13px. Body text moves to 16px in both stylesheets; the deliberate
+    exceptions (tooltips, counters, footer notes) are listed at the rule.
+  - A truncated conversation title in the history was cut at 20 characters with no ellipsis
+    and no tooltip, so two chats beginning `Напиши двадцать корот…` were indistinguishable.
+    The row now ellipsizes, carries the full name in its tooltip, and searches the full name.
+  - The third quick question was clipped at the right edge on a narrow screen and Tab did not
+    scroll it into view; the chips now wrap.
+  - A refused attachment (an 11MB drop) left its red line above an empty composer after a
+    successful send, and the Files panel printed `Рабочий каталог` twice — as the section
+    heading and again as the root crumb.
+  - The approval card for a workspace delete showed an English reason inside a Russian
+    interface, and the `/` palette mixed Russian badges with English command descriptions.
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.15.3 (2026-10-08)
 
 ### 🩹 Fixes
