@@ -1,13 +1,20 @@
 import { IntegrationError, type IntegrationErrorCode } from "../../errors.js";
-import { TLS_FAILURE, causeCode } from "./read-policy.js";
+import {
+  TLS_FAILURE,
+  causeCode,
+  credentialRedirectFailure,
+  isRedirectStatus,
+} from "./read-policy.js";
 
 /**
  * The error policy shared by every provider: upstream failures fold into the
  * same safe domain errors — a refused permission stays distinct from a
  * missing resource, neither answer ever carries the upstream body, and the
- * status mapping is alike wherever two upstreams answer alike. A provider
- * supplies only the word it calls itself in a message and, where it answers
- * differently from the common rule, the statuses it reads differently.
+ * status mapping is alike wherever two upstreams answer alike. A redirect and a
+ * sign-in page where data should be are read as a refused credential rather
+ * than as an outage, because that is the one answer a user can act on. A
+ * provider supplies only the word it calls itself in a message and, where it
+ * answers differently from the common rule, the statuses it reads differently.
  */
 
 export interface StatusErrorPolicy {
@@ -33,6 +40,9 @@ export function statusErrorOf(
     const override = policy.overrides?.[status];
     if (override !== undefined) {
       return new IntegrationError(override[0], override[1]);
+    }
+    if (isRedirectStatus(status)) {
+      return credentialRedirectFailure(label);
     }
     if (status === 401) {
       return new IntegrationError(

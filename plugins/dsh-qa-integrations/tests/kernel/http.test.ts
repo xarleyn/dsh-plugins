@@ -10,6 +10,10 @@ import { describe, expect, it } from "vitest";
 
 import { IntegrationError } from "../../src/errors.js";
 import {
+  statusErrorOf,
+  transportFailureOf,
+} from "../../src/providers/kernel/errors.js";
+import {
   fetchWithRetries,
   readBoundedJson,
   readBoundedText,
@@ -305,5 +309,148 @@ describe("fetchWithRetries", () => {
       ),
     ).resolves.toEqual({ ID: "7" });
     expect(attempts).toBe(1);
+  });
+});
+
+/**
+ * A spent personal key on a Jira Data Center or a TeamCity is not answered with
+ * a 401: the upstream sends the caller to its sign-in page. The loop used to
+ * refuse that answer at the socket (`redirect: "error"`), so the fetch raised an
+ * opaque failure and every transport folded it into one phrase — "request
+ * failed" — shared with a host that is down, with no action in it and nothing
+ * written back about the connection. The answer is now read as the answer it
+ * is, and it says what the user can do.
+ */
+describe("a refused credential", () => {
+  const credentialPolicy: FetchRetryPolicy = {
+    timeoutMs: 1_000,
+    retries: 2,
+    headers: { accept: "application/json" },
+    transportFailure: transportFailureOf({ label: "Jira" }),
+    statusFailure: statusErrorOf({ label: "Jira" }),
+  };
+
+  const readJson = (response: Response, signal: AbortSignal) =>
+    readBoundedJson<unknown>(response, 100_000, "Jira", signal);
+
+  function signInRedirect(): Response {
+    return new Response("<!doctype html><html><body>Sign in</body></html>", {
+      status: 302,
+      headers: {
+        location: "https://jira.example.test/login.jsp",
+        "content-type": "text/html; charset=utf-8",
+      },
+    });
+  }
+
+  it("reads a redirect as the provider's own answer instead of a socket failure", async () => {
+    const inits: RequestInit[] = [];
+    let reads = 0;
+    const fetcher: typeof fetch = async (_input, init) => {
+      inits.push(init ?? {});
+      return signInRedirect();
+    };
+    await expect(
+      fetchWithRetries(
+        fetcher,
+        TARGET,
+        credentialPolicy,
+        (response, signal) => {
+          reads += 1;
+          return readJson(response, signal);
+        },
+      ),
+    ).rejects.toMatchObject({
+      code: "CredentialRevoked",
+      message:
+        "Jira redirected to a sign-in page instead of answering; reconnect the integration",
+    });
+    // Never followed, so the credential stays with its own origin — but handed
+    // back rather than raised, which is what lets the fold name the reason.
+    expect(inits[0]?.redirect).toBe("manual");
+    expect(reads, "a refused answer is not read").toBe(0);
+  });
+
+  it("asks once, because asking again answers the same way", async () => {
+    let attempts = 0;
+    const fetcher: typeof fetch = async () => {
+      attempts += 1;
+      return signInRedirect();
+    };
+    await expect(
+      fetchWithRetries(fetcher, TARGET, credentialPolicy, readJson),
+    ).rejects.toMatchObject({ code: "CredentialRevoked" });
+    expect(attempts).toBe(1);
+  });
+
+  it("folds a sign-in page that arrived under a 200 the same way", async () => {
+    const fetcher: typeof fetch = async () =>
+      new Response("<html><head><title>Sign in</title></head></html>", {
+        status: 200,
+        headers: { "content-type": "text/html" },
+      });
+    await expect(
+      fetchWithRetries(fetcher, TARGET, credentialPolicy, readJson),
+    ).rejects.toMatchObject({
+      code: "CredentialRevoked",
+      message:
+        "Jira answered with a sign-in page instead of data; reconnect the integration",
+    });
+  });
+
+  it("names the answer's shape on the failure that carries it out", async () => {
+    // The broker reports the refusal and never held the response; these three
+    // fields are what turns "Jira request failed" back into a diagnosis.
+    const redirected = await fetchWithRetries(
+      async () => signInRedirect(),
+      TARGET,
+      credentialPolicy,
+      readJson,
+    ).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect((redirected as IntegrationError).diagnostics).toMatchObject({
+      status: 302,
+      contentType: "text/html; charset=utf-8",
+    });
+
+    const refused = await fetchWithRetries(
+      async () => {
+        throw Object.assign(new TypeError("fetch failed"), {
+          cause: Object.assign(new Error("connect"), { code: "ECONNREFUSED" }),
+        });
+      },
+      TARGET,
+      { ...credentialPolicy, retries: 0 },
+      readJson,
+    ).then(
+      () => undefined,
+      (error: unknown) => error,
+    );
+    expect((refused as IntegrationError).diagnostics).toMatchObject({
+      errorClass: "ECONNREFUSED",
+    });
+    expect((refused as IntegrationError).diagnostics?.status).toBeUndefined();
+  });
+
+  it("keeps an answer's body, address and secret out of the diagnostics", async () => {
+    const error = await fetchWithRetries(
+      async () =>
+        new Response(`<html>${"secret-token-value".padEnd(900, "x")}</html>`, {
+          status: 200,
+          headers: { "content-type": "text/html" },
+        }),
+      TARGET,
+      credentialPolicy,
+      readJson,
+    ).then(
+      () => undefined,
+      (cause: unknown) => cause,
+    );
+    const line = JSON.stringify((error as IntegrationError).diagnostics ?? {});
+    expect(line).not.toContain("secret-token-value");
+    expect(line).not.toContain("example.test");
+    expect(line).not.toMatch(/https?:\/\//u);
   });
 });

@@ -324,11 +324,12 @@ describe("probe-provider dialer", () => {
       const answer = await dialer(`http://127.0.0.1:${port}/answer`);
       expect(answer.status).toBe(200);
       expect(await answer.json()).toEqual({ deploymentType: "Server" });
-      // The provider asks for `redirect: "error"`: a credential must not travel
-      // to another origin, and the dialer keeps that promise at the socket.
-      await expect(dialer(`http://127.0.0.1:${port}/moved`)).rejects.toThrow(
-        /refusing to follow a redirect \(302\)/u,
-      );
+      // The provider asks for `redirect: "manual"`: the credential never
+      // travels to another origin, and the 3xx the dialer hands back is the
+      // answer the provider folds into its own verdict.
+      const moved = await dialer(`http://127.0.0.1:${port}/moved`);
+      expect(moved.status).toBe(302);
+      expect(moved.headers.get("location")).toBe("https://elsewhere.example");
     } finally {
       server.close();
     }

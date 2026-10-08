@@ -11,6 +11,7 @@ describeProviderConformance({
   secret: TOKEN,
   carrier: { kind: "header", name: "authorization", value: `Bearer ${TOKEN}` },
   statuses: [
+    [302, "CredentialRevoked"],
     [400, "InvalidRequest"],
     [401, "CredentialRevoked"],
     [403, "ProviderPermissionDenied"],

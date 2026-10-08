@@ -328,6 +328,6 @@ describe("Weblate tool surface", () => {
   it("sends the token in the Authorization header and nowhere else", () => {
     expect(TRANSPORT_SOURCE).toMatch(/authorization: `Token \$\{token\}`/u);
     expect(TRANSPORT_SOURCE).not.toMatch(/searchParams\.set\("token"/u);
-    expect(TRANSPORT_SOURCE).toMatch(/redirect: "error"|fetchWithRetries/u);
+    expect(TRANSPORT_SOURCE).toMatch(/redirect: "manual"|fetchWithRetries/u);
   });
 });

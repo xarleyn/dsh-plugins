@@ -244,7 +244,7 @@ describe("Jira capability catalog", () => {
     // what belongs to Jira is that its secret travels through that loop and
     // that the provider opens no second socket of its own.
     expect(READ_POLICY_SOURCE).toMatch(/method: "GET"/u);
-    expect(READ_POLICY_SOURCE).toMatch(/redirect: "error"/u);
+    expect(READ_POLICY_SOURCE).toMatch(/redirect: "manual"/u);
     // The fetcher this provider was given must be the loop's first argument,
     // however the call is wrapped: that is what makes the assertion below,
     // "Jira opens no socket of its own", mean anything.

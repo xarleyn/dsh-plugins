@@ -399,9 +399,10 @@ export async function catalogPaths(provider, operation) {
  *
  * What is probed does not change: the provider's own transport runs unchanged on
  * top of this dialer, so its catalog paths, its authentication and its parsing
- * are still what answer. A redirect is refused here for the same reason the
- * provider asks for `redirect: "error"` — a credential must never travel to
- * another origin.
+ * are still what answer. A redirect is never followed here, for the same reason
+ * the provider asks for `redirect: "manual"` — a credential must never travel to
+ * another origin — and the answer comes back unread, so what the probe prints
+ * for a spent key is the provider's own verdict on it.
  */
 export function probeFetcher() {
   return async (input, init = {}) => {
@@ -433,9 +434,7 @@ export function probeFetcher() {
       request.end();
     });
 
-    if (answer.status >= 300 && answer.status < 400) {
-      throw new Error(`refusing to follow a redirect (${answer.status})`);
-    }
+    // Never followed: the answer the provider got is the answer it reads.
     const headers = {};
     for (const [name, value] of Object.entries(answer.headers)) {
       // Hop-by-hop headers describe the socket we are closing, not the answer.
