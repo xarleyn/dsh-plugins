@@ -227,6 +227,20 @@ and both depend on QA Surface (`@yadsh/dsh-qa-surface`), which is optional:
   with the one `/api/v1/system/status` reports and answers `accountApplies:
   false` when they differ, which is what makes the page say "this is the shared
   space" rather than present someone else's memory as the reader's own.
+- **A failure reaches the page as a code, and its detail as a log line.** The
+  reader of the memory page cannot act on a transport string: `transport
+  failure for /api/openvikingMemory/userMemoryOverview: HTTP 403` names an RPC
+  method, an endpoint and a status, and answers neither "is my memory off" nor
+  "is the stand broken". So `userMemoryOverview` answers `failure` — one of
+  `QaMemoryFailure`: `unreachable`, `refused` (a 401/403 from the store, where
+  only the deployment's own configuration is at fault), `listing-failed` — and
+  the page renders its own sentence per code. The endpoint, the status and the
+  store's message go to `qa_memory_overview_failed` in the plugin log, which is
+  where an operator reads them. A call refused before it reached the plugin is
+  classified from what the browser's transport leaves behind (a status, or the
+  transport's own admission that the request never completed) and its line goes
+  to `console.debug`; anything the page cannot classify gets the one generic
+  sentence, never the string it could not classify.
 - **Overrides are narrowed, and operator-managed.** `effectiveInjectionPlan`
   intersects the account's stored overrides with the deployment's plan, so
   `autoInject: false` silences the profile and the recall for one account, a

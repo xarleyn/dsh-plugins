@@ -12,10 +12,17 @@
  * request of this module, so opening the page cannot change what the memory
  * holds, and a store that is slow or absent costs the page its content and
  * nothing else.
+ *
+ * A read that failed is reported to the page as a {@link QaMemoryFailure} code
+ * and to {@link MemoryOverviewOptions.onFail} as the endpoint, the status and
+ * the store's own sentence. The page turns the code into copy its reader can
+ * act on; the detail belongs to the plugin log, where naming an endpoint helps
+ * an operator and would only confuse a person looking at their memory.
  */
 
 import type { OpenVikingResult } from "../api-client.js";
 import type {
+  QaMemoryFailure,
   QaMemoryOverviewGroup,
   QaMemoryOverviewItem,
   QaMemoryOverviewProfile,
@@ -94,6 +101,56 @@ const NOTES_GROUP_TITLE = "Заметки";
 export interface MemoryOverviewOptions {
   /** Whether the deployment is configured to keep one space per account. */
   readonly scoped: boolean;
+  /**
+   * Called with the detail of every failed read. The page is handed a
+   * {@link QaMemoryFailure} code instead of these fields, because the endpoint
+   * and the status answer the operator's question and not the reader's — so
+   * without this sink the detail would be lost on its way to a code.
+   */
+  readonly onFail?: ((failure: OverviewFailure) => void) | undefined;
+}
+
+/** One read that failed: the code the page speaks from and the log's detail. */
+export interface OverviewFailure {
+  readonly failure: QaMemoryFailure;
+  /** The endpoint that failed, as this module asked for it. */
+  readonly endpoint: string;
+  /** The HTTP status, or `0` when the request never reached the store. */
+  readonly status: number;
+  /** The store's own sentence, kept for the log and never for the page. */
+  readonly detail: string;
+}
+
+/** The sink a failed read is reported to; absent options mean nobody listens. */
+type FailureReporter = (failure: OverviewFailure) => void;
+
+/**
+ * The code of a refused read: an authorization answer is a different thing to
+ * the reader than a store that says nothing, and only one of them means the
+ * deployment's own configuration is at fault.
+ */
+function failureCodeOf(response: OpenVikingResult): QaMemoryFailure {
+  return response.status === 401 || response.status === 403
+    ? "refused"
+    : "unreachable";
+}
+
+/** The store's own words about a failed read, as far as it sent any. */
+function failureDetail(response: OpenVikingResult): string {
+  const message = response.error?.message?.trim() ?? "";
+  if (message !== "") return message;
+  return response.status === 0 ? "no response" : `HTTP ${response.status}`;
+}
+
+/**
+ * The code of a listing that came back wrong. A store that refuses to answer
+ * for this caller is a different thing to report than one that answered and
+ * could not read the space, so only the second is a failed listing.
+ */
+function listingFailure(response: OpenVikingResult): QaMemoryFailure {
+  return !response.ok && failureCodeOf(response) === "refused"
+    ? "refused"
+    : "listing-failed";
 }
 
 /** One entry of an `ls` response, as far as this module reads it. */
@@ -269,7 +326,7 @@ export function memorySessions(
 /** An empty answer, so every early return reports the same shape. */
 function emptyOverview(
   scoped: boolean,
-  error: string | null,
+  failure: QaMemoryFailure | null,
   connected: boolean,
 ): QaUserMemoryOverview {
   return {
@@ -282,7 +339,7 @@ function emptyOverview(
     sessions: [],
     totals: { sections: 0, memories: 0, sessions: 0 },
     truncated: { memories: false, sessions: false },
-    error,
+    failure,
   };
 }
 
@@ -305,7 +362,11 @@ async function readFile(
 async function list(
   source: MemoryOverviewSource,
   uri: string,
-  options: { readonly recursive?: boolean; readonly nodeLimit: number },
+  options: {
+    readonly recursive?: boolean;
+    readonly nodeLimit: number;
+    readonly onFail?: FailureReporter | undefined;
+  },
 ): Promise<{
   readonly entries: readonly ListingEntry[];
   readonly truncated: boolean;
@@ -319,12 +380,17 @@ async function list(
     query.set("recursive", "true");
     query.set("abs_limit", String(ABSTRACT_LIMIT));
   }
-  const response = await source.fetchJSON(
-    `/api/v1/fs/ls?${query.toString()}`,
-    {},
-    { timeoutMs: 8000 },
-  );
-  if (!response.ok || !Array.isArray(response.result)) return null;
+  const endpoint = `/api/v1/fs/ls?${query.toString()}`;
+  const response = await source.fetchJSON(endpoint, {}, { timeoutMs: 8000 });
+  if (!response.ok || !Array.isArray(response.result)) {
+    options.onFail?.({
+      failure: listingFailure(response),
+      endpoint,
+      status: response.status,
+      detail: failureDetail(response),
+    });
+    return null;
+  }
   const root = uri.replace(/\/+$/u, "");
   const entries: ListingEntry[] = [];
   for (const raw of response.result) {
@@ -359,22 +425,28 @@ async function readProfile(
 }
 
 /** The identity the store resolved for this caller, and whether it answered. */
-async function readIdentity(source: MemoryOverviewSource): Promise<{
+async function readIdentity(
+  source: MemoryOverviewSource,
+  onFail?: FailureReporter,
+): Promise<{
   readonly ok: boolean;
   readonly identity: string;
-  readonly error: string | null;
+  readonly failure: QaMemoryFailure | null;
 }> {
-  const response = await source.fetchJSON(
-    "/api/v1/system/status",
-    {},
-    { timeoutMs: 5000 },
-  );
+  const endpoint = "/api/v1/system/status";
+  const response = await source.fetchJSON(endpoint, {}, { timeoutMs: 5000 });
   if (!response.ok) {
-    const message = response.error?.message || `HTTP ${response.status}`;
-    return { ok: false, identity: "", error: message };
+    const failure = failureCodeOf(response);
+    onFail?.({
+      failure,
+      endpoint,
+      status: response.status,
+      detail: failureDetail(response),
+    });
+    return { ok: false, identity: "", failure };
   }
   const identity = asString(asRecord(response.result)?.user).trim();
-  return { ok: true, identity, error: null };
+  return { ok: true, identity, failure: null };
 }
 
 /**
@@ -389,9 +461,10 @@ export async function readUserMemoryOverview(
   source: MemoryOverviewSource,
   options: MemoryOverviewOptions,
 ): Promise<QaUserMemoryOverview> {
-  const status = await readIdentity(source);
+  const onFail = options.onFail;
+  const status = await readIdentity(source, onFail);
   if (!status.ok) {
-    return emptyOverview(options.scoped, status.error, false);
+    return emptyOverview(options.scoped, status.failure, false);
   }
 
   const expected = source.config.user.trim();
@@ -410,12 +483,14 @@ export async function readUserMemoryOverview(
   const memoryListing = await list(source, MEMORIES_URI, {
     recursive: true,
     nodeLimit: MEMORY_NODE_LIMIT,
+    onFail,
   });
   if (memoryListing === null) {
-    return emptyOverview(options.scoped, "the memory listing failed", false);
+    return emptyOverview(options.scoped, "listing-failed", false);
   }
   const sessionListing = await list(source, SESSIONS_URI, {
     nodeLimit: SESSION_NODE_LIMIT,
+    onFail,
   });
 
   const profile = await readProfile(source, memoryListing.entries);
@@ -439,6 +514,6 @@ export async function readUserMemoryOverview(
       memories: memoryListing.truncated,
       sessions: sessionListing?.truncated ?? false,
     },
-    error: null,
+    failure: null,
   };
 }

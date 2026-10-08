@@ -197,6 +197,17 @@ the identity the store reports (`userMemoryOverview` → `accountApplies`), and
 names the shared space instead of presenting other accounts' memories as this
 one's own.
 
+A read that failed is reported the same way: the page shows its own sentence for
+the *kind* of failure — the store does not answer, it refuses this deployment,
+it could not open the account's space — and never the transport's line. What
+crosses the Remote boundary is a code (`userMemoryOverview` → `failure`), while
+the endpoint, the status and the store's own message go to the plugin log as
+`qa_memory_overview_failed`, where an operator can grep them. A call refused
+before it reached the plugin is answered from what the transport left in the
+browser (`HTTP 403` reads as "this session is not let through", an aborted
+request as "the deployment is not answering"), and its detail goes to
+`console.debug`.
+
 Per-account *overrides* of the deployment's plan still exist and are read from
 `openviking-memory-qa-users.json` under `$DSH_HOME` (`qaUserSettingsPath`
 overrides the path). An override can only narrow the plan, never widen it — and
