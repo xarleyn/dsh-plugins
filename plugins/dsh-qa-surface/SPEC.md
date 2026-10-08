@@ -2761,11 +2761,20 @@ package.
 - Sources tab:
   - available when `sources.enabled`; the header «Источники» button is
     additionally gated by `sources.display.sidebar`, unchanged;
+  - the button is gated by that configuration alone — an empty count never
+    disables it. It used to, and a turn that collected nothing (an answer built
+    from the conversation itself, or from recalled memory, which no extractor in
+    `src/provenance/extractors.ts` matches) then left a dead control and hid the
+    one surface that explains an empty list;
   - a message footnote opens the rail pinned to that message's source subset
     (`drawerSources`), a detail click opens the source preview — the pinned
     view offers «Все источники» to return to the whole-chat list;
   - the list/preview content is the former drawer's, unchanged (groups,
-    badges, safe local-file preview).
+    badges, safe local-file preview), plus an empty state naming the source
+    classes and saying that nothing listed is not a collection failure. It is
+    drawn only while the collection has settled (`complete`): an unsettled one
+    already says which delegated origins it is still waiting for, and a chat
+    that has asked nothing yet has no answer to diagnose.
 - Files tab: a new header «Файлы» button (count badge; when the chat has no
   attachments and no readable workspace it is `aria-disabled` rather than
   `disabled`, so it stays in the tab order and its accessible name says what is

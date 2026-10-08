@@ -62,6 +62,67 @@ describe("sources panel", () => {
     expect(screen.getByTestId("qa-sources-incomplete")).toBeTruthy();
   });
 
+  /**
+   * A turn that answered from memory or from what the conversation already
+   * carried collects no source, and the reader cannot tell that designed
+   * outcome from a broken collector unless the empty list says so.
+   */
+  it("explains an empty list instead of rendering nothing", () => {
+    const config = resolveConfig().sources;
+    render(
+      <QaSourcesPanel
+        sources={[]}
+        complete
+        sessionId="root"
+        sourceApi={{ sources: vi.fn(), readSourceFile: vi.fn() } as never}
+        display={config.display}
+        filePreview={config.filePreview}
+      />,
+    );
+    const empty = screen.getByTestId("qa-sources-empty");
+    expect(empty.textContent).toMatch(/памяти/u);
+    expect(empty.textContent).toMatch(/не сбой сбора/u);
+    expect(screen.queryByTestId("qa-sources-incomplete")).toBeNull();
+  });
+
+  /**
+   * An unsettled collection is not a settled one that found nothing. While the
+   * turn is still running, or a delegated origin still owes its sources, the
+   * line above names that gap, and asserting "an empty list is by design" next
+   * to it would put two contradictions on one screen.
+   */
+  it("withholds the explanation while the collection has not settled", () => {
+    const config = resolveConfig().sources;
+    render(
+      <QaSourcesPanel
+        sources={[]}
+        complete={false}
+        sessionId="root"
+        sourceApi={{ sources: vi.fn(), readSourceFile: vi.fn() } as never}
+        display={config.display}
+        filePreview={config.filePreview}
+      />,
+    );
+    expect(screen.queryByTestId("qa-sources-empty")).toBeNull();
+  });
+
+  it("does not explain away a list whose delegated origins are unreachable", () => {
+    const config = resolveConfig().sources;
+    render(
+      <QaSourcesPanel
+        sources={[]}
+        complete={false}
+        incompleteOrigins={[{ subagentRunId: "opaque-1", reason: "opaque" }]}
+        sessionId="root"
+        sourceApi={{ sources: vi.fn(), readSourceFile: vi.fn() } as never}
+        display={config.display}
+        filePreview={config.filePreview}
+      />,
+    );
+    expect(screen.getByTestId("qa-sources-incomplete")).toBeTruthy();
+    expect(screen.queryByTestId("qa-sources-empty")).toBeNull();
+  });
+
   it("opens Markdown rendered, toggles to raw and highlights referenced lines", async () => {
     const config = resolveConfig({
       sources: { display: { showOriginBadges: true } },
