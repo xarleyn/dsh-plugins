@@ -57,7 +57,7 @@ describe("gitlab operations", () => {
       {},
     );
     expect(calls[0]?.init.headers).toMatchObject({ "private-token": TOKEN });
-    expect(calls[0]?.init.redirect).toBe("error");
+    expect(calls[0]?.init.redirect).toBe("manual");
     expect(JSON.stringify(calls[0]?.url.href)).not.toContain(TOKEN);
   });
 

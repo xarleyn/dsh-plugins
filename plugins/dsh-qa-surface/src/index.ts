@@ -385,6 +385,11 @@ export class QaSurface extends TypertRemoteService {
         this.access.policyForSessionOwner(owner, sessionId, agent),
       () => this.tools?.catalogToolNames() ?? [],
       (sessionId) => this.access.modelPolicyFor(sessionId),
+      // The integration API's own attestation writes the principal here, because
+      // that is where the caller's account has just been matched against the
+      // ownership record. The browser's `secureSession` remote keeps its own
+      // write: there the compared identity is the token's.
+      this.integrationPrincipals,
     );
     this.provenance = new QaProvenanceHost(
       ctx,

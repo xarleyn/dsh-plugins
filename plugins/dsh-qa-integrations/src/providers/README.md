@@ -29,7 +29,7 @@ src/
                        собственные поля строки сверх общей формы
       token.ts         decodeCredentialFields/requireConfiguredEndpoint: разбор
                        зашифрованного credential и fail-closed резолв инстанса
-      read-policy.ts   fetchWithRetries (GET, `redirect: "error"`, таймаут на попытку,
+      read-policy.ts   fetchWithRetries (GET, `redirect: "manual"`, таймаут на попытку,
                        распространяется и на чтение тела, backoff с `Retry-After`,
                        ответ читается переданным колбэком `read`), readBoundedText,
                        readBoundedJson, withinCap, looksBinary, causeCode, numberFrom,
@@ -38,7 +38,11 @@ src/
                        другой: один `timeoutMs` на весь запрос) и
                        RESEND_AFTER_EVERY_FAULT (худший случай `retries × timeoutMs`)
       errors.ts        statusErrorOf/transportFailureOf: общая карта статусов апстрима
-                       в доменные ошибки; провайдер даёт только своё имя и отступления
+                       в доменные ошибки; провайдер даёт только своё имя и отступления.
+                       Развертка на страницу входа и HTML вместо JSON — тоже
+                       `CredentialRevoked`: так истёкший ключ не звучит как «провайдер
+                       не отвечает», а редирект при `redirect: "manual"` доходит до
+                       карты статусов, а не до исключения в сокете
     shared/            общий слой ответов: механика, одинаковая для всех провайдеров
       health.ts        healthFromFailure: безопасный код ошибки → состояние credential в карточке
       payload.ts       чтение полей ответа сервиса: recordOf/stringOf/numberOf/
@@ -295,29 +299,29 @@ src/
   чтение.
 - Число тулов = числу операций, и каждый тул назван в `INTEGRATION_TOOL_NAMES`.
 - В каталоге GitLab пути сверяются с allow-list читающих эндпоинтов, а
-  `transport.ts` обязан слать `GET`, `redirect: "error"` и токен только в
+  `transport.ts` обязан слать `GET`, `redirect: "manual"` и токен только в
   заголовке `PRIVATE-TOKEN`.
 - В каталоге TeamCity у каждой операции `method: "GET"`, пути не заходят в
   `/parameters`, тэги, комментарии, mute-ы и администрирование, а `transport.ts`
-  обязан слать `GET`, `redirect: "error"` и `Authorization: Bearer`.
+  обязан слать `GET`, `redirect: "manual"` и `Authorization: Bearer`.
 - В каталоге Jira у каждой операции `method: "GET"`, а её путь обязан быть
   объявлен в `JIRA_READ_PATHS` — allow-list читающих эндпоинтов именно этого
   провайдера. Легаси-эндпоинт `/rest/api/3/search` (Atlassian его удалил) и
   любой `jql`-аргумент в схеме тула — падение гейта: запросы собирает
-  `jql.ts`, а не модель. `transport.ts` обязан слать `GET`, `redirect: "error"`
+  `jql.ts`, а не модель. `transport.ts` обязан слать `GET`, `redirect: "manual"`
   и `Authorization: Basic …` из `email:token`.
 - В каталоге Confluence у каждой операции `method: "GET"`, пути лежат под
   `/wiki/api/v2` или `/wiki/rest/api` и не заходят в снятый v1 content API,
   администрирование, свойства, операции, лайки, наблюдателей и ограничения; у
   каждой списочной операции объявлено, как она листается (`cursor: "offset"` у
   поиска, `cursor: "upstream"` у v2), а `transport.ts` обязан слать `GET`,
-  `redirect: "error"` и пару `Authorization: Basic` — токен не попадает ни в
+  `redirect: "manual"` и пару `Authorization: Basic` — токен не попадает ни в
   URL, ни в тело. Политику пространств (`allowedSpaces`) провайдер применяет и
   к поиску, и к прямому чтению: отказ обязан быть `OperationDeniedByPolicy`.
 - В каталоге Test IT у каждой операции `method: "GET"`, путь лежит под `/api/v2` и не
   заходит ни в один search-эндпоинт (у Test IT они все POST), ни в like/move/purge/
   restore/actual/transform, ни в администрирование (webhooks, parameters, users,
-  backgroundJobs), а `transport.ts` обязан слать `GET`, `redirect: "error"` и
+  backgroundJobs), а `transport.ts` обязан слать `GET`, `redirect: "manual"` и
   `Authorization: PrivateToken …` — токен не попадает ни в URL, ни в тело. Адрес
   инсталляции объявляет оператор, поэтому `index.ts` резолвит её из конфига на каждом
   вызове (`credentialInstance`), а вложение читается только после `…/metadata`: вид и

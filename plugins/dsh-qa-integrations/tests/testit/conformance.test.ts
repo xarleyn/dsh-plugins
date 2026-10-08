@@ -15,6 +15,7 @@ describeProviderConformance({
     value: `PrivateToken ${TOKEN}`,
   },
   statuses: [
+    [302, "CredentialRevoked"],
     [400, "InvalidRequest"],
     [401, "CredentialRevoked"],
     [403, "ProviderPermissionDenied"],

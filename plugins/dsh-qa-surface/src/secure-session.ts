@@ -12,6 +12,7 @@ import {
   type QaSessionFacts,
 } from "./accounts/store.js";
 import { QaAttestationError } from "./attestation.js";
+import type { QaIntegrationPrincipalBindings } from "./integration-principals.js";
 import {
   qaCeilingDenial,
   qaToolDenial,
@@ -174,6 +175,15 @@ export class QaPolicyAdmission {
      * the answer a stand that keeps roles elsewhere still gets.
      */
     private readonly modelPolicy?: (sessionId: string) => QaSessionModelPolicy,
+    /**
+     * The runtime proof that a session was attested by its own account, which is
+     * what lets `@yadsh/dsh-qa-integrations` resolve a QA principal for a chat.
+     * The browser path fills it at its own remote, where the caller's identity is
+     * the token being compared (and an administrator reading a foreign chat is
+     * deliberately not a delegation); {@link secureSessionForUser} has no token
+     * to compare, so it fills it here, against the ownership record it checked.
+     */
+    private readonly principals?: QaIntegrationPrincipalBindings,
   ) {
     this.disposeWorkspaceGuard = ctx.tools.guard((execution) => {
       const session = execution.agent?.session;
@@ -450,10 +460,24 @@ export class QaPolicyAdmission {
     userId: string,
     sessionId: string,
   ): Promise<QaLockdownProof> {
-    return this.secureSessionAs(
-      () => this.ownerById(userId, sessionId),
-      sessionId,
-    );
+    try {
+      const proof = await this.secureSessionAs(
+        (id) => this.ownerById(userId, id),
+        sessionId,
+      );
+      // `ownerById` refused every account but this one, so caller and owner are
+      // the same fact by the time the admission succeeded — which is exactly the
+      // proof the integration tools are gated on. A chat this call could not
+      // attest keeps no principal: the refusal below clears whatever an earlier
+      // question of this session had bound.
+      if (this.accounts !== undefined) {
+        this.principals?.attest(sessionId, userId, userId);
+      }
+      return proof;
+    } catch (error) {
+      this.principals?.attest(sessionId, undefined, undefined);
+      throw error;
+    }
   }
 
   /**

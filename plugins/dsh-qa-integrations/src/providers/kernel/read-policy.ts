@@ -1,4 +1,8 @@
-import { IntegrationError, type TransportBudget } from "../../errors.js";
+import {
+  IntegrationError,
+  type TransportBudget,
+  type TransportDiagnostics,
+} from "../../errors.js";
 
 export const RETRY_CAP_MS = 2_000;
 export const BACKOFF_BASE_MS = 250;
@@ -10,6 +14,12 @@ export const TLS_FAILURE =
 /** Content types that must never be handed to the model as text. */
 export const BINARY_TYPE =
   /^(?:image|audio|video)\/|application\/(?:octet-stream|zip|gzip|pdf|x-tar|x-7z-compressed|wasm)/u;
+
+/** A sign-in page is HTML; a gateway that renders one is not a JSON API. */
+const HTML_TYPE = /^text\/html|^application\/xhtml/u;
+
+/** The head of a document, whether or not the answer declared what it is. */
+const HTML_HEAD = /^\s*<(?:!doctype\s+html|html(?:\s|>))/iu;
 
 /** A body read up to a cap; the text is empty for a payload that looks binary. */
 export interface BoundedText {
@@ -46,6 +56,55 @@ export function looksBinary(
   return false;
 }
 
+/**
+ * Whether an unreadable JSON body is a sign-in page. Either half answers it: the
+ * media type the gateway declared, or the document's own opening. An upstream
+ * that moved its login behind the API path answers 200 with HTML, and that is a
+ * refused credential, not a malformed one.
+ */
+export function looksLikeSignInPage(
+  contentType: string | null,
+  text: string,
+): boolean {
+  if (contentType !== null && HTML_TYPE.test(contentType)) return true;
+  return HTML_HEAD.test(text);
+}
+
+/**
+ * Whether an answer is a redirect rather than data.
+ *
+ * Every transport of this package refuses to follow one — the credential must
+ * not travel to another origin — so a 3xx is always an answer this deployment
+ * read itself, never an address it was told to try.
+ */
+export function isRedirectStatus(status: number): boolean {
+  return status >= 300 && status < 400;
+}
+
+/**
+ * What a redirect means here: an upstream that no longer accepts the stored
+ * credential sends its caller to the sign-in page instead of answering. Folding
+ * it into `ProviderUnavailable` is what made an expired key read as an outage —
+ * one phrase for a dead token and a host that is down, no action in either.
+ */
+export function credentialRedirectFailure(label: string): IntegrationError {
+  return new IntegrationError(
+    "CredentialRevoked",
+    `${label} redirected to a sign-in page instead of answering; reconnect the integration`,
+  );
+}
+
+/**
+ * The same refusal for the upstream that answers with a login page and calls it
+ * 200: the credential is spent either way, and the operator's action is one.
+ */
+export function credentialPageFailure(label: string): IntegrationError {
+  return new IntegrationError(
+    "CredentialRevoked",
+    `${label} answered with a sign-in page instead of data; reconnect the integration`,
+  );
+}
+
 export function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -60,6 +119,32 @@ export function causeCode(error: unknown): string {
     current = (current as { cause?: unknown }).cause;
   }
   return "";
+}
+
+/**
+ * The class of a transport failure, as a log may name it: the upstream code
+ * where there is one (`ECONNREFUSED`, `UND_ERR_SOCKET`), the error's own name
+ * otherwise. A short token, and nothing a header value or a message could
+ * smuggle into a log line.
+ */
+export function errorClassOf(error: unknown): string {
+  const code = causeCode(error);
+  const candidate =
+    code !== "" ? code : error instanceof Error ? error.name : typeof error;
+  return logToken(candidate) ?? "unclassified";
+}
+
+/**
+ * A value safe to print: a short token of the characters a media type or an
+ * error code is written with, or nothing at all. A control character never
+ * reaches a log line, whatever an upstream put in a header.
+ */
+function logToken(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const token = value.trim().slice(0, 64);
+  return token !== "" && /^[A-Za-z0-9_.:;/+=, -]+$/u.test(token)
+    ? token
+    : undefined;
 }
 
 export function backoff(response: Response, attempt: number): number {
@@ -186,7 +271,9 @@ export async function readBoundedText(
  * classification are the shared policy; a transport only supplies the label it
  * answers with, so the same limit cannot mean "narrow the request" in one
  * provider and "try again later" in another, and no transport can quietly skip
- * either of them.
+ * either of them. An unreadable body that is a sign-in page is the refused
+ * credential the status fold would have named, had the upstream answered with a
+ * status for it.
  */
 export async function readBoundedJson<T>(
   response: Response,
@@ -194,19 +281,25 @@ export async function readBoundedJson<T>(
   label: string,
   signal: AbortSignal,
 ): Promise<T> {
+  const facts = answerDiagnostics(response);
   const body = await readBoundedText(response, maxBytes, label, signal);
   if (body.truncated) {
-    throw new IntegrationError(
-      "ResultTooLarge",
-      `${label} response is too large`,
+    throw withTransportDiagnostics(
+      new IntegrationError("ResultTooLarge", `${label} response is too large`),
+      facts,
     );
   }
   try {
     return JSON.parse(body.text) as T;
   } catch {
-    throw new IntegrationError(
-      "ProviderUnavailable",
-      `${label} returned invalid JSON`,
+    throw withTransportDiagnostics(
+      looksLikeSignInPage(response.headers.get("content-type"), body.text)
+        ? credentialPageFailure(label)
+        : new IntegrationError(
+            "ProviderUnavailable",
+            `${label} returned invalid JSON`,
+          ),
+      facts,
     );
   }
 }
@@ -253,6 +346,36 @@ export function withTransportBudget(
 }
 
 /**
+ * Write what the upstream answer looked like onto the failure that carries it
+ * out, beside the budget that answer cost. The broker reports the refusal and
+ * knows the provider and the operation; only the loop ever held the response,
+ * and only the loop ever saw a fetch that raised. Facts about the shape of the
+ * answer — a status, a media type, a transport error class — and nothing of its
+ * content.
+ */
+export function withTransportDiagnostics(
+  error: IntegrationError,
+  facts: TransportDiagnostics,
+): IntegrationError {
+  error.diagnostics = { ...error.diagnostics, ...facts };
+  return error;
+}
+
+/**
+ * What an answer that arrived left for a log to say about it. Exported for the
+ * transports with a loop of their own, so a refusal reads alike whichever of
+ * them produced it.
+ */
+export function answerDiagnostics(response: Response): TransportDiagnostics {
+  const contentType = logToken(
+    response.headers.get("content-type") ?? undefined,
+  );
+  return contentType === undefined
+    ? { status: response.status }
+    : { status: response.status, contentType };
+}
+
+/**
  * How a provider folds transport outcomes into its own safe domain errors:
  * each transport keeps the wording, the shared loop keeps the mechanics.
  */
@@ -270,7 +393,11 @@ export interface FetchRetryPolicy {
    * DEADLINE_IS_THE_BUDGET} unless the provider names its choice.
    */
   readonly retriable?: TransportRetriable;
-  /** Fold a non-2xx answer into the provider's safe domain error. */
+  /**
+   * Fold a non-2xx answer into the provider's safe domain error. A redirect
+   * reaches it too: the loop refuses to follow one, so the answer the provider
+   * sees is the one the upstream gave the credential.
+   */
   readonly statusFailure: (response: Response) => IntegrationError;
 }
 
@@ -295,9 +422,10 @@ export type ResponseRead<T> = (
  * retried by this loop unless its status says the upstream fault may be gone on
  * a later try, and what `read` refuses on its own (a body over the cap, a body
  * that is not JSON) stays the domain error it named. Whatever the loop hands
- * back from a transport give-up carries the budget it spent, because the party
- * reporting that failure to the operator knows the call and none of the
- * arithmetic behind it.
+ * back from a transport give-up carries the budget it spent and the shape of the
+ * answer it met — a status, a media type, the class of the failure — because the
+ * party reporting that failure to the operator knows the call and none of the
+ * arithmetic or the exchange behind it.
  */
 export async function fetchWithRetries<T>(
   fetcher: typeof fetch,
@@ -326,13 +454,21 @@ export async function fetchWithRetries<T>(
         response = await fetcher(target, {
           method: "GET",
           // An upstream that answers with a redirect is never followed: the
-          // credential must not travel to another origin.
-          redirect: "error",
+          // credential must not travel to another origin. `manual` rather than
+          // `error` because the answer itself is the finding — a refused key
+          // redirects to a sign-in page, and the provider's status fold is what
+          // says so. Under `error` the fetch only raises an opaque failure.
+          redirect: "manual",
           headers: policy.headers,
           signal: controller.signal,
         });
       } catch (error) {
-        const failure = policy.transportFailure(error, timedOut);
+        const failure = withTransportDiagnostics(
+          policy.transportFailure(error, timedOut),
+          {
+            errorClass: errorClassOf(error),
+          },
+        );
         if (attempt >= policy.retries || !retriable(failure)) {
           throw withTransportBudget(failure, spent());
         }
@@ -340,7 +476,10 @@ export async function fetchWithRetries<T>(
         continue;
       }
       if (!response.ok) {
-        const failure = policy.statusFailure(response);
+        const failure = withTransportDiagnostics(
+          policy.statusFailure(response),
+          answerDiagnostics(response),
+        );
         // Only throttling and upstream faults are retried; an authorization or
         // not-found answer will not change by asking again.
         const transient = response.status === 429 || response.status >= 500;
@@ -356,10 +495,16 @@ export async function fetchWithRetries<T>(
         // refusal was: the attempts and the deadline are true of the call either
         // way, and only the reader knows which of them ended it.
         if (error instanceof IntegrationError) {
-          throw withTransportBudget(error, spent());
+          throw withTransportBudget(
+            withTransportDiagnostics(error, answerDiagnostics(response)),
+            spent(),
+          );
         }
         throw withTransportBudget(
-          policy.transportFailure(error, timedOut),
+          withTransportDiagnostics(
+            policy.transportFailure(error, timedOut),
+            answerDiagnostics(response),
+          ),
           spent(),
         );
       }
