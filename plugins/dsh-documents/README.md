@@ -45,6 +45,14 @@ lists bundles explicitly.
 | `document_compare` | Two documents → a deterministic comparison artifact, a summary and a bounded preview |
 | `document_diff_read` | Pages of a comparison's changes, filtered by section, kind and signal |
 
+Each producing tool reports its files by their path **inside the session
+workspace** — `.qa/artifacts/documents/<id>/report.docx` — which is also the
+spelling its own input parameters accept, so a file reported by one call can be
+read back by the next. The pipeline works in absolute paths internally and a
+tool never hands one to the model: a deployment keeps every account in its own
+directory, so an absolute path prints that directory, and the account with it,
+into an answer a person reads.
+
 Tool registration follows the configuration: `documents.enabled: false` (or a
 resolved `enabled: false` from the environment) leaves them unregistered rather
 than inert, and `documents.comparison.enabled: false` does the same for the

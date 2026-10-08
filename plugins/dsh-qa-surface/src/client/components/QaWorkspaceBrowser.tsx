@@ -7,16 +7,11 @@ import type {
 import type { QaBoundSourceApi } from "../types.js";
 import { formatFileSize } from "../attachments.js";
 import { base64ToBytes } from "../base64.js";
+import { downloadWorkspaceFile, fileNameOf } from "../workspace-download.js";
 import { isConvertibleDocument } from "../../shared/documents.js";
 import { sourcePreviewFailureCopy } from "../source-preview.js";
 import { Markdown } from "./Markdown.js";
 import { QaModal } from "./QaModal.js";
-
-/** Name of one entry: the last path segment, root spelled as the directory. */
-function entryName(path: string): string {
-  const parts = path.split("/");
-  return parts[parts.length - 1] ?? path;
-}
 
 /** Path join for the panel's own navigation, never leaving the chat root. */
 function joinPath(directory: string, name: string): string {
@@ -37,25 +32,6 @@ function crumbsOf(
     crumbs.push({ label: segment, path: current });
   }
   return crumbs;
-}
-
-/** Hand one file to the browser's download machinery. */
-function downloadFile(file: QaWorkspaceFile): void {
-  const bytes =
-    file.base64 === undefined
-      ? new TextEncoder().encode(file.text ?? "")
-      : base64ToBytes(file.base64);
-  const url = URL.createObjectURL(
-    new Blob([bytes as BlobPart], { type: file.mime }),
-  );
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = entryName(file.path);
-  anchor.rel = "noreferrer";
-  document.body.append(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(url);
 }
 
 /** One row of the listing: a directory to descend into or a file to open. */
@@ -162,7 +138,7 @@ function FileBody({
       <img
         className="dsh-qa-ws__image"
         data-testid="qa-surface-workspace-image"
-        alt={entryName(file.path)}
+        alt={fileNameOf(file.path)}
         src={`data:${file.mime};base64,${file.base64}`}
       />
     );
@@ -172,7 +148,7 @@ function FileBody({
       <iframe
         className="dsh-qa-ws__pdf"
         data-testid="qa-surface-workspace-pdf"
-        title={entryName(file.path)}
+        title={fileNameOf(file.path)}
         src={pdf}
       />
     );
@@ -278,7 +254,7 @@ function FilePreview({
           data-testid="qa-surface-workspace-preview-name"
           title={file.path}
         >
-          {entryName(file.path)}
+          {fileNameOf(file.path)}
         </span>
         <button
           type="button"
@@ -296,7 +272,7 @@ function FilePreview({
           type="button"
           className="dsh-qa-ws__download"
           data-testid="qa-surface-workspace-download"
-          onClick={() => downloadFile(file)}
+          onClick={() => downloadWorkspaceFile(file)}
         >
           Скачать
         </button>
@@ -330,6 +306,12 @@ function FilePreview({
 export interface QaWorkspaceBrowserProps {
   readonly sessionId: string;
   readonly api: QaBoundSourceApi;
+  /**
+   * A file to open on arrival, named inside this workspace. The card under an
+   * answer points here rather than carrying its own viewer, so a document the
+   * turn produced previews through the same fenced read a browsed file uses.
+   */
+  readonly initialFile?: string;
 }
 
 /**
@@ -343,6 +325,7 @@ export interface QaWorkspaceBrowserProps {
 export function QaWorkspaceBrowser({
   sessionId,
   api,
+  initialFile,
 }: QaWorkspaceBrowserProps) {
   const [directory, setDirectory] = useState("");
   const [entries, setEntries] = useState<readonly QaWorkspaceEntry[]>([]);
@@ -461,6 +444,17 @@ export function QaWorkspaceBrowser({
     [api, convert, sessionId],
   );
 
+  // One arrival from a card outside the panel: open exactly that file, once.
+  // The caller remounts the panel per request, so asking for the same file
+  // twice arrives as a fresh mount rather than as a path that never changed.
+  const arrivalOpened = useRef(false);
+  useEffect(() => {
+    if (arrivalOpened.current) return;
+    if (initialFile === undefined || initialFile === "") return;
+    arrivalOpened.current = true;
+    openFile(initialFile);
+  }, [initialFile, openFile]);
+
   if (opened !== null) {
     const closeFile = () => {
       setOpened(null);
@@ -483,7 +477,7 @@ export function QaWorkspaceBrowser({
         <QaModal
           open={expanded && file !== undefined}
           size="document"
-          title={file === undefined ? "" : entryName(file.path)}
+          title={file === undefined ? "" : fileNameOf(file.path)}
           closeLabel="Закрыть файл"
           onClose={() => setExpanded(false)}
         >

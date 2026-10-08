@@ -175,6 +175,34 @@ describe("document_create tool", () => {
     expect(rendered[0]?.text).toContain("manifest:");
   });
 
+  test("reports a created file inside the workspace, never by its absolute path", async () => {
+    const definition = toolNamed("document_create");
+    const value = (await definition.execute(
+      {
+        content: "# Report\n\nBody.",
+        formats: ["docx", "pdf"],
+        filename: "report",
+      },
+      exec(),
+    )) as Record<string, unknown>;
+    const files = value["files"] as { path: string }[];
+    const bundle = String(value["artifactId"]);
+    expect(files[0]?.path).toBe(
+      `.qa/artifacts/documents/${bundle}/report.docx`,
+    );
+    expect(files[1]?.path).toBe(`.qa/artifacts/documents/${bundle}/report.pdf`);
+    expect(value["manifestPath"]).toBe(
+      `.qa/artifacts/documents/${bundle}/manifest.json`,
+    );
+    // The rendered lines are what the model quotes back, so neither the
+    // workspace directory nor any separator-led absolute path may appear in
+    // them: a deployment keeps one workspace per account, and an absolute path
+    // therefore publishes the account along with the document.
+    const rendered = render(definition, value);
+    expect(rendered[0]?.text).not.toContain(workspace);
+    expect(rendered[0]?.text).not.toMatch(/(?:^|[\s(:])\/[A-Za-z0-9._-]+\//u);
+  });
+
   test("fails closed without a session working directory", async () => {
     const definition = toolNamed("document_create");
     await expect(

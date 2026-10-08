@@ -39,6 +39,11 @@ export interface QaBoundProjectionInput {
   /** Turn bundles with the Host provenance already merged in (Host wins). */
   readonly sourceBundles: readonly QaTurnSources[];
   /**
+   * The chat's own workspace directory, as the Host records it for this session.
+   * The transcript masks it out of an answer that quotes a file it made.
+   */
+  readonly workspaceRoot?: string;
+  /**
    * Tool calls and questions the Host parked for the operator. They are
    * host-side state, not part of the session snapshot, so the controller polls
    * them separately.
@@ -265,6 +270,7 @@ export function projectBoundSessionState(
     showReasoning: config.ui.showReasoning,
     subagentNames: input.subagentNames,
     subagentCodenames: config.ui.subagentCodenames,
+    workspaceRoot: input.workspaceRoot,
   }).map((message) => {
     if (message.role === "user" && input.author !== undefined) {
       return { ...message, author: input.author };

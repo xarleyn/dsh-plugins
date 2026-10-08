@@ -18,6 +18,7 @@ import {
   requireDocumentScope,
   toolFiles,
   toolWarnings,
+  workspacePathName,
   type DocumentToolExec,
   type DocumentToolOptions,
   warningsSchema,
@@ -27,7 +28,7 @@ export const DOCUMENT_CREATE_TOOL = "document_create";
 
 const DESCRIPTION = [
   "Create DOCX and/or PDF documents from Markdown content using the managed document pipeline and its templates.",
-  "Use this instead of invoking document conversion binaries directly: it writes an artifact bundle with the source, the assets and a manifest, and it returns the created file paths.",
+  "Use this instead of invoking document conversion binaries directly: it writes an artifact bundle with the source, the assets and a manifest, and it reports each created file by its path inside the session workspace.",
   "Assets referenced by the Markdown must be supplied through `assets`; remote images are never fetched.",
 ].join(" ");
 
@@ -138,7 +139,12 @@ export function createDocumentCreateTool(options: DocumentToolOptions) {
             type: "object",
             additionalProperties: false,
             properties: {
-              path: { type: "string", required: true },
+              path: {
+                type: "string",
+                required: true,
+                description:
+                  "The Markdown source inside the artifact bundle, relative to the session workspace.",
+              },
               mediaType: { type: "string", required: true },
             },
           },
@@ -150,7 +156,12 @@ export function createDocumentCreateTool(options: DocumentToolOptions) {
               additionalProperties: false,
               properties: {
                 format: { type: "string", required: true },
-                path: { type: "string", required: true },
+                path: {
+                  type: "string",
+                  required: true,
+                  description:
+                    "The created file, relative to the session workspace; pass it back unchanged to convert or read it.",
+                },
                 mediaType: { type: "string", required: true },
                 size: { type: "number", required: true },
                 sha256: { type: "string", required: true },
@@ -161,7 +172,12 @@ export function createDocumentCreateTool(options: DocumentToolOptions) {
           },
           template: { type: "string" },
           warnings: warningsSchema,
-          manifestPath: { type: "string", required: true },
+          manifestPath: {
+            type: "string",
+            required: true,
+            description:
+              "The bundle's manifest, relative to the session workspace.",
+          },
         },
       },
       render: (_args: unknown, value: unknown) => {
@@ -191,9 +207,10 @@ export function createDocumentCreateTool(options: DocumentToolOptions) {
       options.runtime.config.libreoffice.timeoutMs +
       30_000,
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
+      const scope = requireDocumentScope(exec, options);
       const result = await options.runtime.create(
         args as unknown as Parameters<DocumentRuntime["create"]>[0],
-        requireDocumentScope(exec, options),
+        scope,
       );
       return {
         artifactId: result.artifactId,
@@ -201,14 +218,20 @@ export function createDocumentCreateTool(options: DocumentToolOptions) {
           ? {}
           : {
               source: {
-                path: result.source.path,
+                path: await workspacePathName(
+                  scope.workspaceRoot,
+                  result.source.path,
+                ),
                 mediaType: result.source.mediaType,
               },
             }),
-        files: toolFiles(result.files),
+        files: await toolFiles(result.files, scope.workspaceRoot),
         ...(result.template === undefined ? {} : { template: result.template }),
         warnings: toolWarnings(result.warnings),
-        manifestPath: result.manifestPath,
+        manifestPath: await workspacePathName(
+          scope.workspaceRoot,
+          result.manifestPath,
+        ),
       };
     },
   });
