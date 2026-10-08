@@ -55,6 +55,7 @@ import { createQaIntegrationRunner } from "./integration/host-runner.js";
 import { QaIntegrationService } from "./integration/service.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaAccessService } from "./access/service.js";
+import { applySessionModelPolicy } from "./session-model.js";
 import { userInvocableSkillNames } from "./access/model.js";
 import type { QaPresetScopeLease } from "./access/capability-catalog.js";
 import { createQaSlashRemotes } from "./slash/remotes.js";
@@ -143,6 +144,8 @@ import type {
   QaFeedbackRow,
   QaMessageFeedback,
   QaMessageFeedbackInput,
+  QaModelCatalogEntry,
+  QaModelPair,
   QaQualityMetrics,
   QaReviewQueueItem,
   QaReviewQueueRow,
@@ -381,6 +384,7 @@ export class QaSurface extends TypertRemoteService {
       (owner, sessionId, agent) =>
         this.access.policyForSessionOwner(owner, sessionId, agent),
       () => this.tools?.catalogToolNames() ?? [],
+      (sessionId) => this.access.modelPolicyFor(sessionId),
     );
     this.provenance = new QaProvenanceHost(
       ctx,
@@ -673,6 +677,23 @@ export class QaSurface extends TypertRemoteService {
   /** Admit tools that independently enforce the same QA principal boundary. */
   registerPrincipalScopedTools(names: readonly string[]): () => void {
     return this.admission.registerPrincipalScopedTools(names);
+  }
+
+  /**
+   * The provider and model the QA policy fixes for one chat, for a plugin that
+   * launches work out of it.
+   *
+   * A delegated run composes its model from its own profile, and a profile that
+   * names nothing inherits the parent — which used to mean the model some
+   * visitor had picked. This answers with the pair the role was given instead,
+   * so a delegation follows the policy of the chat it serves rather than the
+   * selection made inside it. `undefined` is the deployment naming no pair at
+   * all, which leaves the caller's own configuration in force.
+   *
+   * @param sessionId - the chat the work is delegated from.
+   */
+  modelPolicyForSession(sessionId: string): QaModelPair | undefined {
+    return this.access.modelPolicyFor(sessionId).pair;
   }
 
   getConfig(): ResolvedQaSurfaceConfig {
@@ -975,16 +996,12 @@ export class QaSurface extends TypertRemoteService {
           ? {}
           : { agentPreset: config.session.agentPreset }),
       });
-      if (config.session.provider !== null && config.session.model !== null) {
-        await this.ctx.sessionController.selectModel({
-          sessionId: created.sessionId,
-          provider: config.session.provider,
-          model: config.session.model,
-          ...(config.session.reasoningEffort === null
-            ? {}
-            : { reasoningEffort: config.session.reasoningEffort }),
-        });
-      }
+      await applySessionModelPolicy(
+        this.ctx,
+        created.sessionId,
+        this.access.modelPolicyFor(String(created.sessionId)),
+        this.logger,
+      );
       const sessionId = String(created.sessionId);
       await this.admission.secureSession(token, sessionId);
       this.integrationPrincipals.attest(
@@ -1042,16 +1059,33 @@ export class QaSurface extends TypertRemoteService {
   }
 
   @Remote("accessCreateSubrole")
-  accessCreateSubrole(token: string, input: QaSubrole): QaSubrole {
-    return this.accountRemotes.run(() =>
+  async accessCreateSubrole(
+    token: string,
+    input: QaSubrole,
+  ): Promise<QaSubrole> {
+    return await this.accountRemotes.runAsync(() =>
       this.access.createSubrole(token, input),
     );
   }
 
   @Remote("accessUpdateSubrole")
-  accessUpdateSubrole(token: string, id: string, input: QaSubrole): QaSubrole {
-    return this.accountRemotes.run(() =>
+  async accessUpdateSubrole(
+    token: string,
+    id: string,
+    input: QaSubrole,
+  ): Promise<QaSubrole> {
+    return await this.accountRemotes.runAsync(() =>
       this.access.updateSubrole(token, id, input),
+    );
+  }
+
+  /** The pairs this Host can serve, for the surface that writes a policy. */
+  @Remote("accessModelCatalog")
+  async accessModelCatalog(
+    token: string,
+  ): Promise<readonly QaModelCatalogEntry[]> {
+    return await this.accountRemotes.runAsync(() =>
+      this.access.modelCatalog(token),
     );
   }
 
@@ -1078,12 +1112,12 @@ export class QaSurface extends TypertRemoteService {
   }
 
   @Remote("accessUpdateAssignment")
-  accessUpdateAssignment(
+  async accessUpdateAssignment(
     token: string,
     userId: string,
     input: QaUserAccess,
-  ): QaUserAccess {
-    return this.accountRemotes.run(() =>
+  ): Promise<QaUserAccess> {
+    return await this.accountRemotes.runAsync(() =>
       this.access.updateAssignment(token, userId, input),
     );
   }

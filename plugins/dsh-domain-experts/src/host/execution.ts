@@ -29,6 +29,7 @@ import {
   type MemoryOwner,
   type ResolverDependencies,
 } from "./resolver.js";
+import type { QaModelPolicyPair } from "./qa-principal.js";
 import { parseExpertAnswer, textOfBlocks } from "./result.js";
 
 /** The subagent surface this plugin consumes from the host context. */
@@ -140,6 +141,14 @@ export interface ExecutionDependencies {
    * such a chat, and the plugin never accepts an account from the model.
    */
   principalOf(sessionId: string): string | undefined;
+  /**
+   * The provider and model the deployment's QA policy fixes for one chat.
+   *
+   * Optional like the surface behind it: a deployment with no QA surface, or
+   * one whose roles name no pair, answers nothing here, and a domain that
+   * inherits its model keeps inheriting the caller's.
+   */
+  modelPolicyOf?(sessionId: string): QaModelPolicyPair | undefined;
 }
 
 export interface ExpertRunInput {
@@ -222,14 +231,22 @@ export async function runExpert(
       "an expert needs a per-child persona, tool masking and a recursion budget",
     );
   }
+  // A domain that inherits its model still takes the pair the chat's policy
+  // fixed, so the delegation follows the role the chat runs under rather than
+  // the model its visitor left in the picker.
+  const modelPolicy = definition.model.inherit
+    ? dependencies.modelPolicyOf?.(callerSessionId)
+    : undefined;
   if (
-    !definition.model.inherit &&
+    (!definition.model.inherit || modelPolicy !== undefined) &&
     provider.capabilities.agentOptions !== true
   ) {
     throw unsupportedCapability(
       provider.name,
       "agentOptions",
-      `domain "${definition.id}" pins its own model`,
+      definition.model.inherit
+        ? `domain "${definition.id}" runs on the model the chat's policy pins`
+        : `domain "${definition.id}" pins its own model`,
     );
   }
 
@@ -247,7 +264,7 @@ export async function runExpert(
     persona: profile.policy,
     toolFilter: profile.toolFilter,
     maxDepth: definition.delegation.maxDepth,
-    ...agentOptionsOf(definition),
+    ...agentOptionsOf(definition, modelPolicy),
   };
 
   if (input.request.background) {
@@ -605,9 +622,23 @@ type ReasoningEffortFace = NonNullable<AgentOptionsFace["reasoningEffort"]>;
 
 function agentOptionsOf(
   definition: DomainDefinition,
+  policy?: QaModelPolicyPair | undefined,
 ): Pick<SubagentStartRequest, "agentOptions"> {
   const { model } = definition;
-  if (model.inherit) return {};
+  if (model.inherit) {
+    if (policy === undefined) return {};
+    return {
+      agentOptions: {
+        provider: policy.provider,
+        model: policy.model,
+        ...(policy.reasoningEffort === undefined
+          ? {}
+          : {
+              reasoningEffort: policy.reasoningEffort as ReasoningEffortFace,
+            }),
+      },
+    };
+  }
   const agentOptions: AgentOptionsFace = {
     ...(model.provider === "" ? {} : { provider: model.provider }),
     ...(model.model === "" ? {} : { model: model.model }),

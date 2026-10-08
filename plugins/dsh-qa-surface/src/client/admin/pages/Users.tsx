@@ -15,6 +15,7 @@ import {
   adminErrorMessage,
   useAdminResource,
 } from "../shared.js";
+import { ModelPolicyEditor } from "../ModelPolicyEditor.js";
 
 const PAGE_SIZE = 25;
 
@@ -465,7 +466,13 @@ export function AdminUserDetail(props: {
     const defaultSubrole = allowed.includes(access.defaultSubrole)
       ? access.defaultSubrole
       : (allowed[0] as string);
-    void write({ access: { allowedSubroles: allowed, defaultSubrole } });
+    void write({
+      access: {
+        allowedSubroles: allowed,
+        defaultSubrole,
+        ...(access.model === undefined ? {} : { model: access.model }),
+      },
+    });
   };
 
   return (
@@ -570,6 +577,9 @@ export function AdminUserDetail(props: {
                   access: {
                     allowedSubroles: access.allowedSubroles,
                     defaultSubrole: event.currentTarget.value,
+                    ...(access.model === undefined
+                      ? {}
+                      : { model: access.model }),
                   },
                 })
               }
@@ -581,6 +591,23 @@ export function AdminUserDetail(props: {
               ))}
             </select>
           </FilterField>
+          <h3>Модель этого аккаунта</h3>
+          <ModelPolicyEditor
+            api={props.accessApi}
+            token={props.token}
+            disabled={busy}
+            testId="qa-admin-user-model"
+            value={access.model}
+            onChange={(model) =>
+              void write({
+                access: {
+                  allowedSubroles: access.allowedSubroles,
+                  defaultSubrole: access.defaultSubrole,
+                  ...(model === undefined ? {} : { model }),
+                },
+              })
+            }
+          />
           <h3>Действующие возможности</h3>
           <ul
             className="dsh-qa-admin__effective"

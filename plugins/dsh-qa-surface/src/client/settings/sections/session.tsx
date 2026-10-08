@@ -108,7 +108,7 @@ export function SessionSection(props: ConfigProps) {
           value={provider}
           disabled={disabled}
           placeholder="deepseek"
-          hint="Задаётся вместе с моделью: по отдельности хост отвергает конфигурацию, поэтому поле сохраняет оба значения сразу."
+          hint="Пара развёртывания: ею открывается чат любой роли, которая задала свою пару сама. Задаётся вместе с моделью: по отдельности хост отвергает конфигурацию, поэтому поле сохраняет оба значения сразу. Пару отдельной роли или аккаунта задаёт консоль QA на странице «Саброли» и в карточке пользователя."
           testId="qa-settings-session-provider"
           onChange={(value) => {
             props.writeMany([
@@ -122,7 +122,7 @@ export function SessionSection(props: ConfigProps) {
           value={model}
           disabled={disabled}
           placeholder="deepseek-chat"
-          hint="Сохраняется вместе с провайдером по той же причине."
+          hint="Вторая половина пары развёртывания; роль со своей парой её переопределяет. Сохраняется вместе с провайдером по той же причине. Значение, которого нет в каталоге хоста, отвергается при открытии чата — стенд не уходит в попытку выбрать несуществующую модель."
           testId="qa-settings-session-model"
           onChange={(value) => {
             props.writeMany([

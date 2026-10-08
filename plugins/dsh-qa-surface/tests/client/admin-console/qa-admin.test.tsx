@@ -140,17 +140,46 @@ function api() {
     session: vi.fn(),
     admin: vi.fn(async () => ({ ok: true as const, value: snapshot })),
     createSubrole: vi.fn(),
-    updateSubrole: vi.fn(),
+    updateSubrole: vi.fn(
+      async (_token: string, _id: string, input: unknown) => ({
+        ok: true as const,
+        value: input,
+      }),
+    ),
     deleteSubrole: vi.fn(),
     updateCommon: vi.fn(async (_token: string, input: unknown) => ({
       ok: true as const,
       value: input,
     })),
     updateAssignment: vi.fn(),
+    // The pairs the Host can serve, which is the only list a policy may be
+    // written from: a pair nobody offers fails the first question of every chat
+    // that policy opens.
+    modelCatalog: vi.fn(async () => ({
+      ok: true as const,
+      value: [
+        {
+          provider: "local",
+          model: "small",
+          label: "Small",
+          reasoningEfforts: [],
+        },
+        {
+          provider: "deepseek",
+          model: "chat",
+          label: "Chat",
+          reasoningEfforts: ["low", "high"],
+        },
+      ],
+    })),
     updateSkillOverride,
     skillActivations: vi.fn(),
   } as unknown as QaAccessApi;
-  return { value, updateSkillOverride };
+  return {
+    value,
+    updateSkillOverride,
+    updateSubrole: value.updateSubrole as ReturnType<typeof vi.fn>,
+  };
 }
 
 describe("QA administration", () => {
@@ -245,6 +274,45 @@ describe("QA administration", () => {
           .checked,
       ).toBe(false),
     );
+  });
+
+  it("writes a role's model pair out of the catalog the Host serves", async () => {
+    const { value, updateSubrole } = api();
+    render(
+      <QaAdmin
+        api={value}
+        token="admin-token"
+        routePath="/qa"
+        onPreview={() => undefined}
+      />,
+    );
+    await screen.findAllByTestId("qa-admin-role-card");
+    fireEvent.click(screen.getAllByTestId("qa-admin-role-edit")[0]!);
+    fireEvent.click(await screen.findByRole("button", { name: "Модель" }));
+    const pair = (await screen.findByTestId(
+      "qa-admin-role-model-pair",
+    )) as HTMLSelectElement;
+    // The operator chooses a pair; nothing outside the Host's own catalog can
+    // be written, because such a policy fails inside the first chat it opens.
+    expect(Array.from(pair.options).map((option) => option.value)).toEqual([
+      "",
+      "local/small",
+      "deepseek/chat",
+    ]);
+    fireEvent.change(pair, { target: { value: "deepseek/chat" } });
+    const effort = screen.getByTestId(
+      "qa-admin-role-model-effort",
+    ) as HTMLSelectElement;
+    expect(Array.from(effort.options).map((option) => option.value)).toEqual([
+      "",
+      "low",
+      "high",
+    ]);
+    fireEvent.click(screen.getByTestId("qa-admin-role-save"));
+    await waitFor(() => expect(updateSubrole).toHaveBeenCalled());
+    expect(
+      (updateSubrole.mock.calls[0] as readonly unknown[])[2],
+    ).toMatchObject({ model: { provider: "deepseek", model: "chat" } });
   });
 
   it("uses administrator-facing names for role tool buckets and grants", async () => {

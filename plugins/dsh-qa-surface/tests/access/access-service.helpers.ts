@@ -33,6 +33,10 @@ function harness(
     readonly onVanishedSessions?: (sessionIds: readonly string[]) => void;
     /** The standing scope lease of the QA preset, faked by the harness. */
     readonly presetScope?: () => Promise<QaPresetScopeLease | undefined>;
+    /**
+     * The deployment pair, as the policy's last layer reads it.
+     */
+    readonly session?: Record<string, unknown>;
   } = {},
 ) {
   const root = mkdtempSync(path.join(tmpdir(), "qa-access-"));
@@ -66,6 +70,35 @@ function harness(
     ],
   ]);
   const ctx = {
+    // The catalog a model policy is checked against: three pairs, and every
+    // policy naming anything else is refused before it reaches the store.
+    sessionController: {
+      modelCatalog: async () => ({
+        groups: [
+          {
+            id: "local",
+            name: "Local",
+            models: [{ id: "small", name: "Small" }],
+          },
+          {
+            id: "deepseek",
+            name: "DeepSeek",
+            models: [{ id: "chat", name: "Chat" }],
+          },
+          {
+            id: "premium",
+            name: "Premium",
+            models: [
+              {
+                id: "top",
+                name: "Top",
+                reasoning: { efforts: [{ id: "low" }, { id: "high" }] },
+              },
+            ],
+          },
+        ],
+      }),
+    },
     tools: {
       schemas: (scope?: unknown) => [
         ...[...tools].map((name) => ({
@@ -135,6 +168,7 @@ function harness(
     config: () =>
       resolveConfig({
         lockdown: { toolPolicy: { allow: ["read"] } },
+        ...(options.session === undefined ? {} : { session: options.session }),
         ...(options.retention === undefined
           ? {}
           : { accounts: { retention: options.retention } }),
