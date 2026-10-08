@@ -44,6 +44,39 @@ describe("sidebar version and changelog", () => {
     expect(screen.queryByTestId("qa-surface-modal")).toBeNull();
   });
 
+  it("does not draw a section heading with nothing under it", () => {
+    render(
+      <QaSidebar
+        rows={[]}
+        title="DeepSeek QA"
+        logoUrl={null}
+        stateKey="dsh-qa-surface.session:v1:/qa"
+        showNewChat={false}
+        busy={false}
+        onSwitch={vi.fn()}
+        onNewChat={vi.fn()}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: /Версия / }));
+    const sectionsWithContent = QA_CHANGELOG.flatMap((entry) =>
+      entry.sections.filter((section) =>
+        section.items.some((item) => item.trim() !== ""),
+      ),
+    );
+    const emptySections = QA_CHANGELOG.flatMap((entry) =>
+      entry.sections.filter(
+        (section) => !section.items.some((item) => item.trim() !== ""),
+      ),
+    );
+    expect(
+      document.querySelectorAll(".dsh-qa-changelog__section-title").length,
+    ).toBe(sectionsWithContent.length);
+    // The premise is real and unchangeable: `0.8.0` carries «Новое» with no
+    // items, and a published section is frozen by scripts/verify-package-hygiene.mjs,
+    // so the heading is the only half that can yield.
+    expect(emptySections.length).toBeGreaterThan(0);
+  });
+
   it("closes the changelog dialog on Escape and backdrop clicks", () => {
     render(
       <QaSidebar

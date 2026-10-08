@@ -22,6 +22,18 @@ export interface QaChangelogEntry {
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
+    version: "0.15.5",
+    date: "2026-10-08",
+    sections: [
+      {
+        title: "Исправления",
+        items: [
+          "История версий больше не рисует заголовок раздела, под которым нет ни одного пункта. Текст уже выпущенных версий остаётся ровно тем, что было опубликовано: пустой раздел не вычёркивается из данных, а просто не показывается — заголовок без содержимого читался как чейнджлог, у которого потеряли пункты.",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.15.4",
     date: "2026-10-08",
     sections: [
@@ -706,21 +718,30 @@ export function QaChangelogModal(props: QaChangelogModalProps) {
               <span className="dsh-qa-changelog__current">текущая</span>
             ) : null}
           </h3>
-          {entry.sections.map((section, index) => (
-            <div
-              key={`${section.title}:${index}`}
-              className="dsh-qa-changelog__section"
-            >
-              <h4 className="dsh-qa-changelog__section-title">
-                {section.title}
-              </h4>
-              <ul className="dsh-qa-changelog__list">
-                {section.items.map((item) => (
-                  <li key={item}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          ))}
+          {entry.sections
+            // A published entry can carry a section without items — `0.8.0`
+            // has «Новое» with nothing under it — and that text is frozen by
+            // the release tag, so the heading is what has to yield: a titled
+            // box with an empty list reads as a changelog that lost its
+            // content.
+            .filter((section) =>
+              section.items.some((item) => item.trim() !== ""),
+            )
+            .map((section, index) => (
+              <div
+                key={`${section.title}:${index}`}
+                className="dsh-qa-changelog__section"
+              >
+                <h4 className="dsh-qa-changelog__section-title">
+                  {section.title}
+                </h4>
+                <ul className="dsh-qa-changelog__list">
+                  {section.items.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+            ))}
         </section>
       ))}
     </QaModal>
