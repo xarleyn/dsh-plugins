@@ -180,6 +180,18 @@ const CONFIGURATION_ERROR = "Настройки помощника недост�
 const SLASH_CATALOG_STALE_MS = 3_000;
 
 /**
+ * How long a refused retain waits for its row to come into this browser's
+ * Session catalog. Short on purpose, and shorter than the adoption timeout: the
+ * row arrives either as a Host push or as the answer of the one pull asked for
+ * here, so it is a round-trip away — while a whole `timeoutMs` of patience
+ * would stack a second window onto the waits that follow and hold a chat that
+ * never opens on screen for two of them. A row that misses this window loses
+ * the chat, and the plate's «Повторить» re-runs the adoption on a catalog that
+ * has had the pull.
+ */
+const CATALOG_ROW_PATIENCE_MS = 5_000;
+
+/**
  * Spacing of the parked-request poll. A request is answered by a person, so a
  * second of latency is invisible; the poll only runs while a turn runs.
  */
@@ -1678,6 +1690,14 @@ export class QaSessionController {
         source: QA_SURFACE_SESSION_SOURCE,
       });
     } catch (error) {
+      if (this.catalogLists(id)) {
+        // The catalog of this browser already names the session, so the Host
+        // refused it for a reason of its own — a route, a policy, a generation
+        // that ended. Waiting for a row that is here would only delay that
+        // refusal, ask the catalog to re-read itself, and print a race in the
+        // one moment an operator is reading the failure.
+        throw error;
+      }
       // The Host resolves a retain target against the Session catalog *this*
       // browser holds and refuses an id it has not listed yet. A QA session is
       // born on the server, through this plugin's own Remote, so its create can
@@ -1689,6 +1709,9 @@ export class QaSessionController {
       ) {
         return false;
       }
+      // The row is here, so a refusal now answers a catalog that lists the
+      // session: a different fact than the race, and the caller reads it as it
+      // stands rather than as the stale refusal of the window before.
       reference = this.sessions.retain(id as SessionId, {
         source: QA_SURFACE_SESSION_SOURCE,
       });
@@ -1836,13 +1859,24 @@ export class QaSessionController {
   }
 
   /**
+   * Whether this browser's Session catalog names one id. The Host answers a
+   * retain from exactly this set, so a refusal of a listed session is a refusal
+   * of a session it knows — never the race this adoption can wait out.
+   */
+  private catalogLists(id: string): boolean {
+    return Object.hasOwn(this.sessions.list.getSnapshot().byId, id);
+  }
+
+  /**
    * Wait for this browser's Session catalog to come to know one id, after
    * {@link bind} was refused a reference to it, and answer whether the chat on
    * screen still belongs to the adoption that asked (`false` — it moved on, and
-   * nothing is retained). A refusal is only final once the row has had its
-   * chance: this is the one window where the race is repairable rather than
-   * reportable, so the failure the caller reads stays the Host's own refusal,
-   * not a timeout nobody asked for.
+   * nothing is retained). Only an id the catalog does not name reaches here: a
+   * refusal of a session it already lists is not this race and goes back as it
+   * came, so there is always a row to wait for. A refusal is only final once
+   * that row has had its chance: this is the one window where the race is
+   * repairable rather than reportable, so the failure the caller reads stays the
+   * Host's own refusal, not a timeout nobody asked for.
    *
    * Both timestamps are logged because the race is intermittent and the stand
    * keeps no other trace of it: the server never sees a retain, so its journal
@@ -1864,12 +1898,24 @@ export class QaSessionController {
     // loaded stand can put the create's answer ahead of the push that carries
     // it. Ask for a fresh baseline instead of waiting for whichever of the two
     // comes: the pull is single-flight and lands in the source waited on here.
-    void this.sessions.refresh();
+    // It is not awaited: a pull the Host refuses must not fail the adoption
+    // here, because the push still carries the row and the refusal the caller
+    // reads has to be the retain's own. The rejection would otherwise reach the
+    // browser as an unhandled one.
+    this.sessions.refresh().catch((cause: unknown) => {
+      // The patience below now rests on the Host's own push alone, which is a
+      // narrower window than this waited for. Say so, because a chat lost in
+      // this shape reads as a slow catalog and is really an unreadable one.
+      console.warn("dsh-qa-surface: session catalog refresh refused", {
+        sessionId: id,
+        cause: cause instanceof Error ? cause.message : String(cause),
+      });
+    });
     try {
       await waitFor(
         this.sessions.list,
         (snapshot) => Object.hasOwn(snapshot.byId, id),
-        this.timeoutMs,
+        Math.min(this.timeoutMs, CATALOG_ROW_PATIENCE_MS),
       );
     } catch {
       throw failure;

@@ -15,10 +15,15 @@ sidebar, one row the visitor had not opened and could not.
 
 The adoption now waits for the catalog to name the id before it retains it, and asks
 for a fresh baseline rather than only for whichever of the push or the pull happens
-to come first; the wait is bounded by the same timeout every other DSH wait uses, and
-when the row really never arrives the operator reads the Host's own refusal, not a
-timeout nobody asked for. Because the failure is intermittent, the two moments of the
-race are logged when it happens — the refused retain with its timestamp, and the row
-that came for it with the time spent waiting — so a round that loses the chat can
-tell which side of the create it lost it on. A first send that materializes its
-session lazily rides the same repaired path.
+to come first. The patience is one round-trip, not a second adoption timeout: the row
+is a push or a pull away, and a full window of waiting would stack onto the waits
+that follow it and hold a chat that never opens on screen for two. When the row
+really never arrives the operator reads the Host's own refusal, not a timeout nobody
+asked for, and a refusal of a session the catalog already names stays the refusal it
+is — no re-read asked for, no race printed beside an answer that was never a race. A
+baseline the Host refuses is said out loud too, because a chat lost in that shape
+reads as a slow catalog and is really an unreadable one. Because the failure is
+intermittent, the two moments of the race are logged when it happens — the refused
+retain with its timestamp, and the row that came for it with the time spent waiting —
+so a round that loses the chat can tell which side of the create it lost it on. A
+first send that materializes its session lazily rides the same repaired path.
