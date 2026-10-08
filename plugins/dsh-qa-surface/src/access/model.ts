@@ -11,6 +11,7 @@ import type {
   QaToolSelection,
   QaUserAccess,
 } from "../types.js";
+import { normalizeModelPair } from "./model-policy.js";
 import {
   normalizeSkillOverride,
   resolveSkillVisibility,
@@ -118,12 +119,14 @@ export function normalizeSubrole(value: QaSubrole): QaSubrole {
   }
   const icon = value.ui?.icon?.trim();
   const accent = value.ui?.accent?.trim();
+  const model = normalizeModelPair(value.model, `subrole ${id}.model`);
   return Object.freeze({
     id,
     name,
     ...(description === undefined || description === "" ? {} : { description }),
     enabled: value.enabled === true,
     capabilities: normalizeCapabilitySelection(value.capabilities),
+    ...(model === undefined ? {} : { model }),
     ...(icon === undefined && accent === undefined
       ? {}
       : {
@@ -264,9 +267,11 @@ export function normalizeUserAccess(
     requestedDefault !== undefined && allowed.includes(requestedDefault)
       ? requestedDefault
       : (allowed[0] as string);
+  const model = normalizeModelPair(value?.model, "account model");
   return Object.freeze({
     allowedSubroles: Object.freeze(allowed),
     defaultSubrole,
+    ...(model === undefined ? {} : { model }),
   });
 }
 

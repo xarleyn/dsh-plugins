@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-domain-experts",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "Configurable domain-scoped expert agents for DeepSeek Harness",
   "repository": {
     "type": "git",

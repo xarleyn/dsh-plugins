@@ -1,3 +1,63 @@
+## 0.2.6 (2026-10-08)
+
+### 🩹 Fixes
+
+- The reviewer child follows the QA model policy where its own configuration is ([#766](https://github.com/xarleyn/dsh-plugins/issues/766))
+  silent.
+
+  `reviewer.{provider,model,route,reasoningEffort}` stays the deployment's fixed
+  answer for the reviewer — a reviewer that changed with the role it was reviewing
+  would be a worse check, not a better one. What the gate could not do was say
+  anything when that configuration named no model: the child then inherited the
+  parent's live selection, which is the model some visitor had left in the picker.
+
+  `createSubagentBackend` now takes the pair the QA policy fixes for the chat under
+  review, read structurally from the host's `qaSurface` (`qa-policy.ts`, the method
+  optional so an installed QA surface that predates policies reads as "no opinion"
+  rather than as a failure). The policy applies only where the gate's own `model`
+  stays empty; the reviewer's route override still wins, and the audit line names the
+  pair the review actually ran on.
+
+  Covered by `tests/qa-model-policy.test.ts` (no surface, no method and a blank pair
+  all read as silence; the policy's pair reaches the child when the configuration is
+  empty; a pinned reviewer model ignores the policy; nothing is sent where neither
+  speaks).
+
+### ❤️ Thank You
+
+- qoder-bot
+
+## 0.2.5 (2026-10-08)
+
+### 🩹 Fixes
+
+- A corrected answer arrives alone — the gate no longer makes the primary argue with its reviewer in front of the user. ([#729](https://github.com/xarleyn/dsh-plugins/issues/729))
+
+  On a live deployment the final answer of a reviewed turn opened with the internal exchange:
+  «Опровержение вывода ревизора: …» followed, further down, by the short line the user had asked for. Another run put the same
+  leak in a visible thinking block, where the model wrote down that its instructions asked it to keep the review quiet.
+
+  The revision steer was the cause. It demanded, in one sentence, that a disproved objection "state that disproof" and that the
+  answer never mention the review. A primary resolves that contradiction literally and prints the disproof as the answer — and
+  the reviewer's own vocabulary arrives with it, because it came from the same text. The instruction to conceal is what the
+  visible reasoning then reports.
+
+  The steer now admits exactly one visible artifact: the corrected answer, in the shape the user's request asked for. Findings
+  come back inside a delimited `<review_notes>` block, framed as this turn's working material rather than as prose to continue,
+  and a rejected objection is dropped without a word — the reviewer re-reads the next version of the answer, and where the
+  exchange repeats the round budget ends it under the configured failure policy. No rule is phrased as a secret any more. The
+  text the reviewer sends is treated as input rather than as instructions: each field is bounded and cannot close that block
+  early, so a finding that quotes a hostile page stays a quotation.
+
+  As a guard, in a turn that has already been reviewed, a candidate that opens by disputing the review is not handed to a
+  reviewer and so cannot be certified as verified: the primary is steered once per user turn to deliver the answer's shape
+  instead, and the demand is recorded in the audit ring. A message the host has already committed cannot be edited at this seam,
+  so the guard stops the leak from passing for a reviewed answer rather than removing text the user has already read.
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.2.4 (2026-10-08)
 
 ### 🩹 Fixes

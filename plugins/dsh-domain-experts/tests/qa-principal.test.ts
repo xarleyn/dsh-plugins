@@ -22,4 +22,26 @@ describe("qa principal surface", () => {
       asQaPrincipalSurface({ principalForToken: () => ({ userId: "user-a" }) }),
     ).toBeUndefined();
   });
+
+  it("carries the model policy a newer surface answers with", () => {
+    const surface = asQaPrincipalSurface({
+      principalForSession: () => undefined,
+      modelPolicyForSession: (sessionId: string) =>
+        sessionId === "chat-1"
+          ? { provider: "local", model: "small", reasoningEffort: "low" }
+          : undefined,
+    });
+    expect(surface?.modelPolicyForSession?.("chat-1")).toEqual({
+      provider: "local",
+      model: "small",
+      reasoningEffort: "low",
+    });
+    // A surface installed before roles had opinions about models still resolves
+    // principals; it simply answers nothing about models.
+    const older = asQaPrincipalSurface({
+      principalForSession: () => ({ userId: "user-a" }),
+    });
+    expect(older?.modelPolicyForSession).toBeUndefined();
+    expect(older?.principalForSession("chat-1")).toEqual({ userId: "user-a" });
+  });
 });

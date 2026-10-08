@@ -477,6 +477,29 @@ describe("the roster screen", () => {
     );
   });
 
+  it("gives the row's text the break the badge would otherwise be painted on", async () => {
+    // The shell shrinks the head-text column beside a badge that never wraps, and
+    // hands it no break of its own: a name or description carrying a token with no
+    // break opportunity — a preset id, a module name — runs on past the column and
+    // under the badge. Measured in a browser at 390px, one such line painted 121px
+    // out of a 266px column and crossed the badge's own rect; the shell is not this
+    // page's to change, so the roster carries the break.
+    const rule = styles
+      .split("\n")
+      .find((line) => line.startsWith(".preset-persona__list{"));
+    expect(rule).toContain("overflow-wrap:break-word");
+
+    // The row reads that break as an inherited value, so the guard is the
+    // relation, not the declaration alone: text that left the element this rule is
+    // written on would keep the file green and paint under the badge again.
+    showPage(new PersonaPageController(faceOf()));
+    await screen.findByTestId("persona-roster");
+    const text = document.querySelector(
+      ".preset-persona__list .dsh-plugin-card__description",
+    );
+    expect(text?.textContent).toBe(strings.describedDefault);
+  });
+
   it("re-reads the roster from the screen that shows it", async () => {
     const refused: PersonaCatalog = {
       presets: [
