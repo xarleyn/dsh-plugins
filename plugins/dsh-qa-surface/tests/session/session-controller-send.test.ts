@@ -11,6 +11,7 @@ import {
   fileDraft,
   harness,
   landDurableUserRow,
+  openChat,
   publishChatSlice,
 } from "../helpers/session-fakes.js";
 import { until } from "../helpers/settle.js";
@@ -346,10 +347,10 @@ describe("QA session controller", () => {
         lockdown: { allowSessionReset: true },
       }),
     });
+    // A load is already a draft: nothing is spent until a question is sent.
     await controller.ensureSession();
-    expect(controller.getSnapshot().sessionId).toBe("created-1");
     await controller.startDraft();
-    expect(world.create).toHaveBeenCalledOnce();
+    expect(world.create).not.toHaveBeenCalled();
     expect(controller.getSnapshot()).toMatchObject({
       phase: "idle",
       sessionId: null,
@@ -358,10 +359,9 @@ describe("QA session controller", () => {
       canStop: false,
     });
     expect(await controller.send("hello draft")).toBe(true);
-    expect(world.create).toHaveBeenCalledTimes(2);
-    expect(controller.getSnapshot().sessionId).toBe("created-2");
-    expect(world.faces.has("created-1")).toBe(true);
-    expect(world.faces.get("created-2")?.prompt).toHaveBeenCalledWith(
+    expect(world.create).toHaveBeenCalledOnce();
+    expect(controller.getSnapshot().sessionId).toBe("created-1");
+    expect(world.faces.get("created-1")?.prompt).toHaveBeenCalledWith(
       [{ type: "text", text: "hello draft" }],
       "queue",
     );
@@ -571,8 +571,8 @@ describe("QA session controller", () => {
     const second = controller.send("two");
     expect(await second).toBe(false);
     expect(await first).toBe(true);
-    expect(world.create).toHaveBeenCalledTimes(2);
-    expect(world.faces.get("created-2")?.prompt).toHaveBeenCalledWith(
+    expect(world.create).toHaveBeenCalledOnce();
+    expect(world.faces.get("created-1")?.prompt).toHaveBeenCalledWith(
       [{ type: "text", text: "one" }],
       "queue",
     );
@@ -586,7 +586,9 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
-    const leaving = world.faces.get("created-1");
+    // The chat this browser talks to is the one its first prompt made.
+    const opened = await openChat(controller, world);
+    const leaving = world.faces.get(opened);
     let releasePrompt!: (value: {
       ok: true;
       value: { accepted: true };
@@ -604,13 +606,13 @@ describe("QA session controller", () => {
     });
 
     // The Host stopped listing the chat this send rides, and the surface
-    // bootstraps another one underneath: bind() takes a new identity for it, so
+    // re-boots underneath it: what it puts on screen is a draft of its own, so
     // the optimistic row and the busy flag of the abandoned chat have to end
-    // with that identity rather than be shown by the chat that replaced it.
+    // with that chat rather than be shown by what replaced it.
     world.list.set({ ...world.list.getSnapshot(), ids: [], byId: {} });
     await controller.ensureSession();
     expect(controller.getSnapshot()).toMatchObject({
-      sessionId: "created-2",
+      sessionId: null,
       pendingMessage: null,
       canSend: true,
     });
@@ -641,10 +643,9 @@ describe("QA session controller", () => {
     }));
 
     expect(await controller.send("Первый вопрос")).toBe(false);
-    // The bootstrap already spent one creation: this is the draft's own, and it
-    // brought no session back.
-    expect(world.createSession).toHaveBeenCalledTimes(2);
-    expect(world.faces.has("created-2")).toBe(false);
+    // The refused creation is the draft's own: a load spent nothing before it.
+    expect(world.createSession).toHaveBeenCalledOnce();
+    expect(world.faces.size).toBe(0);
     // The refusal is said out loud, and the chat identity holds still so the
     // composer keeps the text the user can send again.
     expect(controller.getSnapshot()).toMatchObject({
