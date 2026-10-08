@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaSessionController } from "../../src/client/QaSessionController.js";
 import { QA_REGENERATE_MARKER } from "../../src/client/QaTranscriptAdapter.js";
@@ -57,6 +57,65 @@ describe("QA session controller", () => {
     });
     // The subagent bind skipped attestation entirely; returning attests.
     expect(world.secureSession.mock.calls.length).toBe(secureCallsBefore + 1);
+    controller.dispose();
+  });
+
+  it("asks the Host for no bundles of a delegated child", async () => {
+    // Every session Remote admits the chat before reading it, and a delegated
+    // child is never admitted: asking for its source bundles answered nothing
+    // and wrote one rejected admission per publish into the operator's journal.
+    // The child's evidence reaches the chat through the inheritance flow, so the
+    // view reads its sources off the transcript projection alone.
+    const world = harness(["chat-1"]);
+    const childFace = sessionFace("child-1");
+    world.faces.set("child-1", childFace);
+    world.bindings.set("child-1", conversationBinding("child-1"));
+    const list = world.list.getSnapshot();
+    world.list.set({
+      ...list,
+      byId: {
+        ...list.byId,
+        "child-1": {
+          id: "child-1",
+          displayTitle: "Print a greeting",
+          running: true,
+          blank: false,
+          updatedAt: 5,
+        },
+      } as SessionListState["byId"],
+    });
+    const sources = vi.fn(async () => ({ ok: true as const, value: [] }));
+    const unavailable = vi.fn(async () => ({
+      ok: false as const,
+      error: { code: "not-found" },
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      sourceApi: {
+        sources,
+        readSourceFile: unavailable,
+        listWorkspaceFiles: unavailable,
+        readWorkspaceFile: unavailable,
+        previewWorkspaceDocument: unavailable,
+      },
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    await vi.waitFor(() => expect(sources).toHaveBeenCalled());
+    const askedBefore = sources.mock.calls.length;
+
+    await controller.viewSubagent("child-1", "Print a greeting");
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      sessionId: "child-1",
+      viewingSubagent: { id: "child-1", title: "Print a greeting" },
+    });
+
+    expect(sources.mock.calls.map((call) => call.at(1))).not.toContain(
+      "child-1",
+    );
+    // The chat the child belongs to stays the one the Host is asked about.
+    expect(sources.mock.calls.length).toBe(askedBefore);
     controller.dispose();
   });
 

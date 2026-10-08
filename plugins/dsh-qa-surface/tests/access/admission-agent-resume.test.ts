@@ -24,6 +24,8 @@ function world(
     /** How the question seam is configured, and what the policy may call. */
     questions?: "unsupported" | "interactive";
     allow?: readonly string[];
+    /** The Host's words for an identity subagent routing owns. */
+    routed?: string;
   } = {},
 ) {
   const workspace = mkdtempSync(path.join(tmpdir(), "qa-resume-"));
@@ -51,12 +53,31 @@ function world(
   };
   const resolved = { count: 0 };
   const logged: string[] = [];
+  /** The level each line was written at — the two refusal classes differ there. */
+  const levels: string[] = [];
+  const logAt =
+    (level: "warn" | "error") =>
+    (...args: unknown[]): void => {
+      levels.push(`${level} ${String(args[0])}`);
+      logged.push(
+        args
+          .map((value) =>
+            typeof value === "string" ? value : JSON.stringify(value),
+          )
+          .join(" "),
+      );
+    };
   const context = {
     on: () => () => undefined,
     agents: { get: () => (options.live === true ? agent : undefined) },
     sessionController: {
       resolveAgent: async () => {
         resolved.count += 1;
+        if (options.routed !== undefined) {
+          return {
+            error: { code: "session/agent-busy", message: options.routed },
+          };
+        }
         return options.fail === undefined
           ? { agent }
           : { error: { message: options.fail } };
@@ -101,24 +122,8 @@ function world(
     {
       debug() {},
       info() {},
-      warn(...args: unknown[]) {
-        logged.push(
-          args
-            .map((value) =>
-              typeof value === "string" ? value : JSON.stringify(value),
-            )
-            .join(" "),
-        );
-      },
-      error(...args: unknown[]) {
-        logged.push(
-          args
-            .map((value) =>
-              typeof value === "string" ? value : JSON.stringify(value),
-            )
-            .join(" "),
-        );
-      },
+      warn: logAt("warn"),
+      error: logAt("error"),
       close() {},
     } as never,
     undefined,
@@ -144,7 +149,7 @@ function world(
             }),
           }) as never,
   );
-  return { admission, restricted, resolved, logged };
+  return { admission, restricted, resolved, logged, levels };
 }
 
 describe("agent materialization in policy admission", () => {
@@ -273,7 +278,7 @@ describe("agent materialization in policy admission", () => {
   });
 
   it("refuses with agent-unavailable when the resume produces no agent", async () => {
-    const { admission, logged } = world({
+    const { admission, logged, levels } = world({
       fail: 'preset "qa-research" failed to mount: invalid config',
     });
     await expect(
@@ -284,6 +289,31 @@ describe("agent materialization in policy admission", () => {
     });
     // The composition detail stays Host-side; the browser only gets the class.
     expect(logged.join("\n")).toContain("failed to mount");
+    // A chat the deployment cannot stand an agent behind is the operator's
+    // problem, so it keeps the ERROR level the journal is watched at.
+    expect(levels).toContain("error session.agent-resolve-rejected");
+    admission.dispose();
+  });
+
+  it("names an identity the subagent routing owns as another conversation's child", async () => {
+    // The cold twin of the header refusal: the Host answers `session/agent-busy`
+    // for a delegated run whose agent it will not materialize. Reading that as
+    // `agent-unavailable` made another conversation's child look like a broken
+    // deployment — an ERROR pair per attestation, and a hint blaming a preset
+    // nobody had changed.
+    const { admission, logged, levels } = world({
+      routed: 'session "session-cold" is owned by subagent routing',
+    });
+    await admission
+      .secureSession("token", "session-cold")
+      .catch((error: unknown) => {
+        expect((error as QaAttestationError).reason).toBe("subagent-session");
+        expect((error as Error).message).toBe(
+          "a delegated subagent session cannot be attested",
+        );
+      });
+    expect(logged.join("\n")).toContain("session.agent-owned-by-routing");
+    expect(levels).toEqual(["warn session.agent-owned-by-routing"]);
     admission.dispose();
   });
 });

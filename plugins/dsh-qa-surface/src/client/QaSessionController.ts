@@ -1941,7 +1941,12 @@ export class QaSessionController {
       this.sourceAnchor(sessionId),
     );
     const sourceBundles = this.hostSources.merge(projectedSourceBundles);
-    if (!snapshot.running) {
+    // A delegated child is not attested, so every Host RPC that admits the
+    // session refuses it — and its evidence reaches the chat through the
+    // inheritance flow anyway. Asking for a child's bundles therefore answers
+    // nothing, costs the operator a rejected admission per publish, and leaves
+    // the view reading its sources off the transcript projection alone.
+    if (!snapshot.running && this.viewingSubagent === null) {
       void this.hostSources.refresh(sessionId, () => this.publish());
     }
     this.probePending(sessionId, connected);
