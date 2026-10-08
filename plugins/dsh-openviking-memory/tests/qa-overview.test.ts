@@ -11,6 +11,7 @@ import type { OpenVikingResult } from "../src/api-client.js";
 import {
   readUserMemoryOverview,
   type MemoryOverviewSource,
+  type OverviewFailure,
 } from "../src/qa/overview.js";
 
 interface FixtureOptions {
@@ -19,6 +20,9 @@ interface FixtureOptions {
   /** The identity the client speaks as; `""` means the deployment's own. */
   readonly headerUser?: string;
   readonly statusOk?: boolean;
+  /** The status the identity read answers with once it has failed. */
+  readonly statusStatus?: number;
+  /** The sentence the store attaches to that failure. */
   readonly statusError?: string;
   readonly memories?: readonly Record<string, unknown>[];
   readonly sessions?: readonly Record<string, unknown>[];
@@ -98,7 +102,7 @@ function fixture(options: FixtureOptions = {}): Fixture {
           return {
             ok: false,
             result: null,
-            status: 503,
+            status: options.statusStatus ?? 503,
             error: { message: options.statusError ?? "unreachable" },
           };
         }
@@ -321,13 +325,56 @@ describe("memory overview reader", () => {
   });
 
   it("reads nothing further once the store is down", async () => {
-    const { source, paths } = fixture({ statusOk: false, statusError: "boom" });
+    const { source, paths } = fixture({
+      statusOk: false,
+      statusError: "connect ECONNREFUSED",
+    });
 
     const view = await readUserMemoryOverview(source, { scoped: true });
 
     expect(view.connected).toBe(false);
-    expect(view.error).toBe("boom");
+    // The page is handed the kind of failure, never the store's sentence: a
+    // socket error names an internals the reader cannot act on.
+    expect(view.failure).toBe("unreachable");
+    expect(JSON.stringify(view)).not.toContain("ECONNREFUSED");
     expect(paths).toHaveLength(1);
+  });
+
+  it("tells a store that refuses this caller apart from one that is silent", async () => {
+    const { source } = fixture({
+      statusOk: false,
+      statusStatus: 403,
+      statusError: "invalid api key",
+    });
+
+    const view = await readUserMemoryOverview(source, { scoped: true });
+
+    expect(view.connected).toBe(false);
+    expect(view.failure).toBe("refused");
+    expect(JSON.stringify(view)).not.toContain("invalid api key");
+  });
+
+  it("hands the detail of a failed read to the log rather than to the page", async () => {
+    const failures: OverviewFailure[] = [];
+    const { source } = fixture({
+      statusOk: false,
+      statusStatus: 403,
+      statusError: "invalid api key",
+    });
+
+    await readUserMemoryOverview(source, {
+      scoped: true,
+      onFail: (failure) => failures.push(failure),
+    });
+
+    expect(failures).toEqual([
+      {
+        failure: "refused",
+        endpoint: "/api/v1/system/status",
+        status: 403,
+        detail: "invalid api key",
+      },
+    ]);
   });
 
   it("treats an unreadable listing as a store that cannot answer", async () => {
@@ -349,6 +396,6 @@ describe("memory overview reader", () => {
     const view = await readUserMemoryOverview(source, { scoped: true });
 
     expect(view.connected).toBe(false);
-    expect(view.error).toBe("the memory listing failed");
+    expect(view.failure).toBe("listing-failed");
   });
 });
