@@ -35,6 +35,7 @@ import { DEFAULT_DOCUMENTS_CONFIG } from "../documents/defaults.js";
 import {
   DOCUMENT_COMPARISON_TOOL_NAMES,
   DOCUMENT_TOOL_NAMES,
+  DOCUMENTS_STARTUP_ENTRY,
 } from "../shared/settings.js";
 import {
   Facts,
@@ -60,6 +61,33 @@ const PDF_MODES = [
   { value: "office", label: "Как в Word (DOCX → PDF)" },
   { value: "typst", label: "Typst (нужен движок)" },
 ] as const;
+
+/**
+ * What the card says about the Typst engine, by deployment state.
+ *
+ * `typst.enabled` is the switch the runtime refuses on: a route that is off in
+ * this deployment answers `BACKEND_UNAVAILABLE` whatever the template asks for.
+ * The mode list cannot say which of the two an operator is looking at, so the
+ * state is read from the same field the runtime resolves and shown next to the
+ * choice, instead of leaving the outcome to be discovered by an error.
+ *
+ * The switch is all this page can read: unlike pandoc and LibreOffice, the
+ * Typst executable is not a field of this row, so an enabled route still fails
+ * where the program is absent. The sentence therefore stops at what the field
+ * answers and sends the rest to the entry the startup check writes, rather than
+ * promising a PDF this deployment cannot confirm.
+ *
+ * `unreadable` is that same rule taken one step back: a browser the settings
+ * layer refuses gets no field at all, and the package default is not a fact
+ * about this deployment — asserting it would re-sell the lottery this note
+ * exists to close. The entry the startup check writes answers there instead.
+ */
+const TYPST_ENGINE_STATE = {
+  enabled: `Движок Typst включён в этом развёртывании: режим «Typst» соберёт PDF, если исполняемый файл на месте — его отсутствие называет стартовая запись лога: ${DOCUMENTS_STARTUP_ENTRY}.`,
+  disabled:
+    "Движок Typst в этом развёртывании не включён: режим «Typst» вернёт ошибку, а не PDF.",
+  unreadable: `Значения этого ряда не читаются данным браузером, поэтому состояние движка Typst страница не знает: его называет стартовая запись лога: ${DOCUMENTS_STARTUP_ENTRY}.`,
+} as const;
 
 const EXTRACTION_MODES = [
   { value: "accurate", label: "Точный" },
@@ -168,6 +196,16 @@ export function DocumentsCard({
 
   const enabled = config?.enabled ?? DEFAULT_DOCUMENTS_CONFIG.enabled;
   const fieldDisabled = disabled || !enabled;
+  /**
+   * Which of the engine sentences this row answers with — `unreadable` when the
+   * settings layer serves this browser nothing to answer from.
+   */
+  const typstEngine =
+    config === undefined
+      ? "unreadable"
+      : (config.typst?.enabled ?? DEFAULT_DOCUMENTS_CONFIG.typst.enabled)
+        ? "enabled"
+        : "disabled";
 
   return (
     // The Plugins page draws this card's frame, its heading and its expand
@@ -212,6 +250,12 @@ export function DocumentsCard({
             write(["create", "defaultPdfMode"], value);
           }}
         />
+        <Notice
+          tone={typstEngine === "enabled" ? "info" : "warn"}
+          testId="docs-pipeline-typst-engine"
+        >
+          {TYPST_ENGINE_STATE[typstEngine]}
+        </Notice>
       </Section>
 
       <Section
@@ -302,7 +346,7 @@ export function DocumentsCard({
 
       <Section
         title="Разборщики"
-        hint="Основной разбор — Docling; pandoc и LibreOffice рендерят документы. Отсутствие программы видно в логе при старте."
+        hint={`Основной разбор — Docling; pandoc и LibreOffice рендерят документы. Отсутствие программы видно в стартовой записи лога: ${DOCUMENTS_STARTUP_ENTRY}.`}
         testId="docs-parsers"
         reset={reset(
           [
