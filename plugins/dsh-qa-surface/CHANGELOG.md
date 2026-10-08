@@ -1,3 +1,171 @@
+## 0.15.2 (2026-10-08)
+
+### 🩹 Fixes
+
+- A chat the stand refuses now says why, and a delegated run stops looking like an outage. ([#718](https://github.com/xarleyn/dsh-plugins/issues/718))
+
+  One day of a stand's journal carried twelve ERROR lines of one shape —
+  `session.agent-resolve-rejected` followed by `lockdown.rejected reason="agent-unavailable"` —
+  over five sessions, some of them two or three times in a row within minutes. The Host had
+  answered `session/agent-busy` (`session "<id>" is owned by subagent routing`), which is the
+  Session domain saying the identity belongs to a delegated run rather than to a chat.
+  `liveAgent` folded that answer — a correct statement about another conversation's child — into
+  the same coarse `agent-unavailable` it uses when a restored chat's recorded preset no longer
+  mounts, so the operator read an outage where nothing needed repairing, and the visitor's console
+  hint blamed a preset nobody had changed.
+
+  The two classes are named apart now. A `session/agent-busy` answer is refused as
+  `subagent-session` with the one sentence the live-child header check already used, so a delegated
+  child is refused the same way whether or not its agent happens to be live; the Host answered
+  correctly, so the journal takes a warning, and `lockdown.rejected` follows it at that level for
+  the refusals that describe the browser's chat (`composition-mismatch`, `adoption-refused`,
+  `subagent-session`) while a chat with no agent behind it keeps its ERROR pair — that one is the
+  deployment's problem. Its message points at the line holding the composition detail, and both
+  console hints name the cause and the move that follows: re-mount the recorded preset and re-open,
+  against read the run from its parent chat and start a new one.
+
+  The repeat, not the refusal, made the noise. Admission is what lets the Host answer about a chat
+  at all, so the sources, approvals, questions and workspace Remotes each admit the session before
+  reading it and one refused chat met the gate once per panel refresh. It was no cycle — every line
+  belonged to a distinct browser call, and the bridge coalesces while one is in flight — but the
+  subagent view was asking for the bundles of a session the Host refuses to attest by design, so it
+  asks for none: a delegated run's sources reach the chat through the inheritance flow, and its
+  transcript reads them off the projection alone.
+
+  The harness stays out of this. `packages/api/session-controller` refuses to resume an identity its
+  subagent routing owns, reading the durable `origin` mark off the session record — the correct
+  answer about a child — and what needed repair was the caller flattening it.
+
+- A refusal block reads as a refusal again, and a token the Host never declares ([#717](https://github.com/xarleyn/dsh-plugins/issues/717))
+  cannot be written down unnoticed.
+
+  Unknown `var(--dsw-…)` is not a missing colour: the substitution yields the
+  guaranteed-invalid value, so the browser drops the whole declaration at
+  computed-value time and says nothing. `--dsw-alias-bg-error` and
+  `--dsw-alias-label-error` are named by no theme sheet — the error ramp is
+  `--dsw-alias-state-error-primary` — so every block of refusal text written with
+  them lost its fill and its ink together and rendered as ordinary small text,
+  which is how issue #717 looked on the Memory tab of a stand with no access to
+  the service. The same mechanic had already cost `dsh-sleev` its focus and
+  invalid borders (`--dsw-alias-border-brand`, `--dsw-alias-border-error`) and
+  `dsh-session-scope` its chip fill (`--dsw-alias-fill-tsp-secondary`).
+
+  Text and borders now take `--dsw-alias-state-error-primary` with a `#b3261e`
+  fallback. The theme declares no error *surface* alias — `state-success` and
+  `state-warn` have a tint, `state-error` does not — so a block mixes the state
+  token the way the Host's own danger control does,
+  `color-mix(in srgb, … 8%, transparent)`, and keeps its soft red in both themes.
+  Three names that only ever survived behind a fallback are retired where a live
+  token exists (`--dsw-alias-bg-elevated` → `--dsw-alias-button-elevated-fill`,
+  `--dsw-alias-label-inverse` → `--dsw-alias-label-primary-foreground`), and
+  `--dsw-font-family-mono`, for which the theme offers no alias at all, becomes
+  the `ui-monospace` stack the other bundles already write. No computed value
+  changes except where a dead name had been silently winning.
+
+  `pnpm verify:tokens` (`scripts/verify-design-tokens.mjs`) is the class turned
+  into a gate: it collects every `--dsw-*` name substituted under any package's
+  `src/` and refuses one the installed `@deepseek-ai/dsh-client-ui-theme` does not
+  declare — a dead name behind a fallback included, because the fallback paints a
+  colour the Host never chose. The vocabulary comes from the pinned package rather
+  than a hand-kept list, so the check needs no harness checkout and reads the same
+  version the plugins build against; where the theme cannot be found the gate
+  reports that instead of passing. `dsh-plugin-log-ui`'s own bundle pin flips from
+  requiring `--dsw-alias-bg-error` to forbidding the dead error names.
+
+- Every plugin row on the Host's Plugins page is named in words. ([fff88762](https://github.com/xarleyn/dsh-plugins/commit/fff88762))
+
+  The page titles a bundle's row and fills its description line from the package's
+  exported `locale/en.json`, which the Host resolves through the package's `exports`
+  map without activating the plugin (`@deepseek-ai/dsh-app-boot` `package-meta.ts`).
+  Only `dsh-documents` shipped that file, so the other twenty-five rows were signed by
+  their full package specifier — an operator read `@yadsh/dsh-jev-compaction` where a
+  first-party row read a phrase. Each package now exports `./locale/en.json`, publishes
+  `locale/*.json`, and carries English `meta.title` and `meta.description`; where the
+  package already had a configuration card, its `summary` one-liner and the row's
+  description are one string, pinned by a test against the shipped file rather than
+  against a copy in the test. `pnpm verify:packages` asks all three halves of every
+  plugin package, so a row cannot fall back to a specifier unnoticed.
+
+  Two pages still seated on the deleted-in-spirit `settings.plugins.tab` move to the
+  panel with them. `dsh-prompt-firewall` edits its own Config namespace, so it takes the
+  row seat keyed `@yadsh/dsh-prompt-firewall#dsh-prompt-firewall` — the row id is the
+  namespace the Host serves the form under, so no saved value is orphaned — and with the
+  seat it gives up its shell, its header badge and its show/hide labels, taking the
+  Host's `--dsw-focus-ring-*` pair for every control it draws and answering the
+  unavailable namespace with a sentence instead of an empty section.
+  `dsh-domain-experts` owns no form — it edits domains through its Remote services — so
+  it takes the bundle-level seat `plugins.bundle.config`, keyed by the package name, and
+  drops the `<h2>` heading and the intro line the panel already draws from the row's own
+  display metadata.
+
+- A document the chat made arrives as a file, not as a path. ([#739](https://github.com/xarleyn/dsh-plugins/issues/739))
+
+  A stand that was asked to build a Word document built it and then said nothing
+  about it: the answer was a paragraph, the files tab said the chat had no
+  attachments, and the only trace of the artifact was a line of text the model had
+  copied out of a tool result — `/workspace/work/.qa-users/<account>/.qa/artifacts/…`,
+  which is the container's own layout and the account directory inside it. A chat
+  whose dialogs are readable by other accounts of the same server has no business
+  printing that.
+
+  The producing tools now report each file by its path inside the session
+  workspace — the same spelling their own input parameters accept, so a document
+  reported by one call is read back by the next — and the pipeline's absolute
+  paths stay where containment is checked, inside the runtime. The chat reads
+  those names out of the turn's tool results and cards the file under the answer
+  that made it: badge, name, size, `Открыть` into the workspace viewer with its
+  Word preview, `Скачать` for the bytes. The card is on the roster of the files tab
+  too, so the answer's document is listed with what the chat sent. It appears
+  whatever the tool-activity switch hides, because a file the reader asked for is
+  not tool noise, and where the Host refuses workspace reads the card still names
+  the file without offering a control that would be refused. An answer that quotes
+  an absolute path anyway — one written before this change, replayed from durable
+  history, or rebuilt by a model from the working directory it was given — is
+  projected with the workspace directory and the account partition masked out.
+
+- Opening the QA surface no longer writes an empty chat into the history. ([#721](https://github.com/xarleyn/dsh-plugins/issues/721))
+
+  The page used to ask the Host for a session the moment it opened, so every visit
+  that sent nothing left a blank «Новый чат» line behind — six rounds on one
+  account were six empty rows, and the search over the history returned them. The
+  session was real too: the browser retained a reference to it and the account
+  claimed ownership of it, so the stand kept sessions nobody talked in.
+
+  A load now opens a draft, which is what the «Новый чат» button had already been
+  doing: nothing is created until the first prompt is sent into it
+  (`materializeDraft`). `ensureSessionNow` asks the browser whether it has a chat to
+  resume — only `browser-persistent` with a persisted id does — and takes the draft
+  path instead of `createQaSession` otherwise, including the case where the
+  persisted id names a session the Host no longer lists or a delegated child. A
+  fixed-policy deployment keeps its one session and cannot draft, so its bootstrap
+  is untouched, and so is the ladder that replaces a restored chat the current
+  policy refuses to attest.
+
+  Two supporting changes make the draft the same surface it was behind the button.
+  `enterDraft` is the tail of `startDraft` factored out, and it keeps the chat
+  identity when the draft on screen already names no session — taking another would
+  rebuild the composer over the question still sitting in it — while retiring the
+  send the abandoned attempt had in flight. `publish` treats a draft whose first
+  send created a session the stand then refused to attest as a draft rather than a
+  chat, because projecting that never-claimed binding leaves the composer disabled
+  with no retry over it; a proof still in flight keeps projecting the session its
+  question is waiting for.
+
+  Covered by `tests/session/session-controller-lazy-chat.test.ts` (a load spends
+  nothing under either policy; three visits leave no row and the first prompt leaves
+  one) and `tests/client/surface/qa-visit-leaves-no-chat.test.tsx` (the same over the
+  mounted page). The empty chats an account already has are user data and are not
+  touched by this change.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.6.2
+
+### ❤️ Thank You
+
+- qoder-bot
+- xarleyn @xarleyn
+
 ## 0.15.1 (2026-10-05)
 
 ### 🩹 Fixes

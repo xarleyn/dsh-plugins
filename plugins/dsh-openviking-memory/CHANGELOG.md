@@ -1,3 +1,107 @@
+## 0.5.1 (2026-10-08)
+
+### 🩹 Fixes
+
+- A refusal block reads as a refusal again, and a token the Host never declares ([#717](https://github.com/xarleyn/dsh-plugins/issues/717))
+  cannot be written down unnoticed.
+
+  Unknown `var(--dsw-…)` is not a missing colour: the substitution yields the
+  guaranteed-invalid value, so the browser drops the whole declaration at
+  computed-value time and says nothing. `--dsw-alias-bg-error` and
+  `--dsw-alias-label-error` are named by no theme sheet — the error ramp is
+  `--dsw-alias-state-error-primary` — so every block of refusal text written with
+  them lost its fill and its ink together and rendered as ordinary small text,
+  which is how issue #717 looked on the Memory tab of a stand with no access to
+  the service. The same mechanic had already cost `dsh-sleev` its focus and
+  invalid borders (`--dsw-alias-border-brand`, `--dsw-alias-border-error`) and
+  `dsh-session-scope` its chip fill (`--dsw-alias-fill-tsp-secondary`).
+
+  Text and borders now take `--dsw-alias-state-error-primary` with a `#b3261e`
+  fallback. The theme declares no error *surface* alias — `state-success` and
+  `state-warn` have a tint, `state-error` does not — so a block mixes the state
+  token the way the Host's own danger control does,
+  `color-mix(in srgb, … 8%, transparent)`, and keeps its soft red in both themes.
+  Three names that only ever survived behind a fallback are retired where a live
+  token exists (`--dsw-alias-bg-elevated` → `--dsw-alias-button-elevated-fill`,
+  `--dsw-alias-label-inverse` → `--dsw-alias-label-primary-foreground`), and
+  `--dsw-font-family-mono`, for which the theme offers no alias at all, becomes
+  the `ui-monospace` stack the other bundles already write. No computed value
+  changes except where a dead name had been silently winning.
+
+  `pnpm verify:tokens` (`scripts/verify-design-tokens.mjs`) is the class turned
+  into a gate: it collects every `--dsw-*` name substituted under any package's
+  `src/` and refuses one the installed `@deepseek-ai/dsh-client-ui-theme` does not
+  declare — a dead name behind a fallback included, because the fallback paints a
+  colour the Host never chose. The vocabulary comes from the pinned package rather
+  than a hand-kept list, so the check needs no harness checkout and reads the same
+  version the plugins build against; where the theme cannot be found the gate
+  reports that instead of passing. `dsh-plugin-log-ui`'s own bundle pin flips from
+  requiring `--dsw-alias-bg-error` to forbidding the dead error names.
+
+- Every plugin row on the Host's Plugins page is named in words. ([fff88762](https://github.com/xarleyn/dsh-plugins/commit/fff88762))
+
+  The page titles a bundle's row and fills its description line from the package's
+  exported `locale/en.json`, which the Host resolves through the package's `exports`
+  map without activating the plugin (`@deepseek-ai/dsh-app-boot` `package-meta.ts`).
+  Only `dsh-documents` shipped that file, so the other twenty-five rows were signed by
+  their full package specifier — an operator read `@yadsh/dsh-jev-compaction` where a
+  first-party row read a phrase. Each package now exports `./locale/en.json`, publishes
+  `locale/*.json`, and carries English `meta.title` and `meta.description`; where the
+  package already had a configuration card, its `summary` one-liner and the row's
+  description are one string, pinned by a test against the shipped file rather than
+  against a copy in the test. `pnpm verify:packages` asks all three halves of every
+  plugin package, so a row cannot fall back to a specifier unnoticed.
+
+  Two pages still seated on the deleted-in-spirit `settings.plugins.tab` move to the
+  panel with them. `dsh-prompt-firewall` edits its own Config namespace, so it takes the
+  row seat keyed `@yadsh/dsh-prompt-firewall#dsh-prompt-firewall` — the row id is the
+  namespace the Host serves the form under, so no saved value is orphaned — and with the
+  seat it gives up its shell, its header badge and its show/hide labels, taking the
+  Host's `--dsw-focus-ring-*` pair for every control it draws and answering the
+  unavailable namespace with a sentence instead of an empty section.
+  `dsh-domain-experts` owns no form — it edits domains through its Remote services — so
+  it takes the bundle-level seat `plugins.bundle.config`, keyed by the package name, and
+  drops the `<h2>` heading and the intro line the panel already draws from the row's own
+  display metadata.
+
+- The memory page of the QA settings dialog answers a failed read in the reader's ([#716](https://github.com/xarleyn/dsh-plugins/issues/716))
+  own words instead of repeating the transport's line.
+
+  A deployment that does not let this browser session reach the memory service
+  answered the «Память» tab with `client api: openvikingMemory/userMemoryOverview
+  failed: transport failure for /api/openvikingMemory/userMemoryOverview: HTTP 403`.
+  The page printed whatever the wire carried: an RPC method, an endpoint and a
+  status code — the inside of the surface, and a sentence nobody can act on,
+  because `HTTP 403` answers neither "is my memory switched off" nor "is the stand
+  broken". The store's own socket sentence reached the dialog the same way, from
+  the overview the plugin reads on the page's behalf.
+
+  Now a failure crosses that boundary as a kind, and each kind has its own copy:
+  a session the deployment does not let through is named as the operator's
+  allow-list, a store that does not answer is separated from one that refuses this
+  deployment, an expired sign-in tells the reader to sign in again, and a call the
+  transport could not complete reads as a stand that says nothing. What a page
+  cannot classify gets the one generic sentence — never the string it could not
+  classify. The method, the endpoint, the status and the store's own message are
+  not thrown away: they go to `console.debug` in the browser and to
+  `qa_memory_overview_failed` in the plugin log, where an operator greps them. That
+  is how the rest of the dialog already answers — the QA surface and the
+  Integrations page both map a failure to authored copy — and the memory tab was
+  the section that had not.
+
+  Nothing about where memory is stored or read changed, and the switches that
+  decide whether the assistant uses memory at all stay out of this page: it reads
+  and only reads.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.15.2
+
+### ❤️ Thank You
+
+- qoder-bot
+- xarleyn
+
 ## 0.5.0 (2026-10-04)
 
 ### 🚀 Features
