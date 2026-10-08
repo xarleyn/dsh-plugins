@@ -148,6 +148,67 @@ test("the CI workflow fans the projects it verifies out into a bounded matrix", 
   assert.match(workflow, /name: Verify projects\s+if: always\(\)/u);
 });
 
+/**
+ * The argument list of every `playwright install` the workflow runs, each read
+ * off the command line it appears on.
+ *
+ * The flag this file pins is named in the prose of the same step as well, so an
+ * occurrence search over the whole file cannot tell the command from the comment
+ * that explains it. Parsing the tail of the command is what keeps a reverted step
+ * red.
+ */
+function playwrightInstallCommands(workflow) {
+  return [...workflow.matchAll(/playwright install([^\n]*)/gu)].map(
+    ([, tail]) => tail.trim().split(/\s+/u).filter(Boolean),
+  );
+}
+
+test("the browser project's job installs Chromium together with its libraries", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  const commands = playwrightInstallCommands(workflow);
+
+  assert.equal(
+    commands.length,
+    1,
+    "Chromium has to be installed in one command of one job, or this gate no longer knows which install it checked",
+  );
+  const [args] = commands;
+  assert.ok(
+    args.includes("chromium"),
+    "the step takes only the browser the suite drives, not every Playwright build of the version",
+  );
+  assert.ok(
+    args.includes("--with-deps"),
+    "an image with no system browser has no Chromium libraries either, and a downloaded build without libnspr4 and its companions dies in the dynamic linker at exit 127, which the suite can only read as BROWSER_START_FAILED — so the build and its libraries have to arrive in one command",
+  );
+
+  // The revert this gate exists to catch: the flag leaves the command, the
+  // sentence that justifies it stays. Both halves are asserted so the next reader
+  // sees why the check parses rather than greps.
+  const reverted = workflow.replace(
+    "playwright install --with-deps chromium",
+    "playwright install chromium",
+  );
+  assert.notEqual(
+    reverted,
+    workflow,
+    "the install command has to read exactly `playwright install --with-deps chromium` for this mutation to be a mutation — a reformatted command needs this check updated with it",
+  );
+  assert.deepEqual(
+    playwrightInstallCommands(reverted),
+    [["chromium"]],
+    "the arguments are read off the command line, so a command that lost the flag reads as one that lost the flag",
+  );
+  assert.match(
+    reverted,
+    /--with-deps/u,
+    "the step's comment still names the flag: this is the text an occurrence search would have accepted as a passing install",
+  );
+});
+
 test("the PR workflow also builds pull requests that target a release branch", async () => {
   const workflow = await readFile(
     new URL("../.github/workflows/ci.yml", import.meta.url),
