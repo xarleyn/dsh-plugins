@@ -6,14 +6,22 @@ import { thinkingPhrase } from "./thinking-phrases.js";
 import { useNow } from "./use-now.js";
 
 export interface QaWorkGroupProps {
-  /** "error" marks a turn the host ended with a provider failure. */
-  readonly status: "running" | "complete" | "error";
+  /**
+   * "error" marks a turn the host ended with a provider failure; "stopped"
+   * marks one a person ended, whose answer arrived as a prefix.
+   */
+  readonly status: "running" | "complete" | "error" | "stopped";
   readonly startedAt?: number;
   readonly endedAt?: number;
   readonly items: readonly QaWorkItem[];
   readonly renderMarkdown: boolean;
   /** Operator-configured running phrases; omitted reads the built-in list. */
   readonly thinkingPhrases?: readonly string[];
+}
+
+/** Whether one turn is over: a settled group opens collapsed and stays closed. */
+function isSettled(status: QaWorkGroupProps["status"]): boolean {
+  return status === "complete" || status === "error" || status === "stopped";
 }
 
 function Chevron({ open }: { readonly open: boolean }) {
@@ -293,15 +301,9 @@ export const QaWorkGroup = memo(
     const previousStatus = useRef(status);
 
     useEffect(() => {
-      if (
-        previousStatus.current === "running" &&
-        (status === "complete" || status === "error")
-      ) {
+      if (previousStatus.current === "running" && isSettled(status)) {
         setOpen(false);
-      } else if (
-        previousStatus.current === "complete" ||
-        previousStatus.current === "error"
-      ) {
+      } else if (isSettled(previousStatus.current)) {
         if (status === "running") setOpen(true);
       }
       previousStatus.current = status;
@@ -317,9 +319,13 @@ export const QaWorkGroup = memo(
           ? duration === null
             ? "Ход прерван"
             : `Прервано за ${duration}`
-          : duration === null
-            ? "Ход работы"
-            : `Готово за ${duration}`;
+          : status === "stopped"
+            ? duration === null
+              ? "Ход остановлен"
+              : `Остановлено на ${duration}`
+            : duration === null
+              ? "Ход работы"
+              : `Готово за ${duration}`;
 
     return (
       <section

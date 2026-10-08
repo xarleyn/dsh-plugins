@@ -34,6 +34,14 @@ import {
 export const QA_REGENERATE_MARKER =
   "Перегенерируй свой предыдущий ответ — дай новый вариант, не повторяя предыдущий.";
 
+/**
+ * Terminal row of a turn a person stopped. "Готово" claims a complete answer,
+ * and a stopped turn commits a prefix instead, so the row says both what
+ * happened and what the reader is holding.
+ */
+const QA_TURN_STOPPED_COPY =
+  "Ход остановлен: ответ неполный. Отправь запрос ещё раз, чтобы получить ответ целиком.";
+
 interface OrderedWorkItem {
   readonly order: number;
   readonly item: QaWorkItem;
@@ -63,6 +71,12 @@ interface TurnBuffer {
   readonly work: OrderedWorkItem[];
   /** Files this turn's tools produced, in the order they were reported. */
   readonly artifacts: QaArtifactView[];
+  /**
+   * Position of the prefix the Host froze when a person stopped this turn, or
+   * undefined when nothing stopped it. A stopped turn is a separate outcome:
+   * its answer is a prefix, so it must not read as a finished one.
+   */
+  stoppedAt?: number;
 }
 
 interface ToolHead {
@@ -206,6 +220,9 @@ function collectAssistant(
   workspaceRoot: string | undefined,
 ): void {
   const turn = getTurn(turns, node.turn);
+  // The Host sets the flag on a message it committed after a stop, and on the
+  // frozen prefix it assembles from the chunks when nothing was committed.
+  if (node.interrupted === true) turn.stoppedAt = node.seq;
   const text = visibleAssistantText(node.blocks, workspaceRoot);
   if (text !== "") {
     turn.text.push({
@@ -374,6 +391,10 @@ function emitTurn(
   const timing = legacy.turnTimings.get(turn.turn);
   const completed =
     timing?.endTime !== undefined || legacy.turnEnds.has(turn.turn);
+  // A provider failure already names its own outcome on the row it adds, so it
+  // wins over the stop marker; a stopped turn is the other terminal outcome the
+  // surface must not print as a finished answer.
+  const stoppedAt = erroredCode === undefined ? turn.stoppedAt : undefined;
   const sortedText = [...turn.text].sort(
     (left, right) => left.order - right.order,
   );
@@ -420,9 +441,11 @@ function emitTurn(
         status:
           erroredCode !== undefined
             ? "error"
-            : completed || !running
-              ? "complete"
-              : "running",
+            : stoppedAt !== undefined
+              ? "stopped"
+              : completed || !running
+                ? "complete"
+                : "running",
         ...(timing?.startTime === undefined
           ? {}
           : { startedAt: timing.startTime }),
@@ -469,6 +492,21 @@ function emitTurn(
         // The files this turn produced are handed over under the answer that
         // produced them, whatever the work-view switch hides above.
         ...(turn.artifacts.length === 0 ? {} : { artifacts: turn.artifacts }),
+      },
+    });
+  }
+
+  if (stoppedAt !== undefined) {
+    // Shown even when the frozen prefix carried no text at all, because that is
+    // the case where the turn would otherwise close silently. The order keeps
+    // the row inside this turn's log slot, so a newer turn still follows it.
+    output.push({
+      order: stoppedAt + 0.5,
+      message: {
+        id: `turn-stopped:${turn.turn}`,
+        role: "system",
+        text: QA_TURN_STOPPED_COPY,
+        status: "info",
       },
     });
   }
