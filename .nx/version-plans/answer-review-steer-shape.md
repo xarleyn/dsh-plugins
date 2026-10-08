@@ -16,8 +16,11 @@ visible reasoning then reports.
 The steer now admits exactly one visible artifact: the corrected answer, in the shape the user's request asked for. Findings
 come back inside a delimited `<review_notes>` block, framed as this turn's working material rather than as prose to continue,
 and a rejected objection is dropped without a word — the reviewer re-reads the next version of the answer, and where the
-exchange repeats the round budget ends it under the configured failure policy. No rule is phrased as a secret any more.
+exchange repeats the round budget ends it under the configured failure policy. No rule is phrased as a secret any more. The
+text the reviewer sends is treated as input rather than as instructions: each field is bounded and cannot close that block
+early, so a finding that quotes a hostile page stays a quotation.
 
-As a guard, a candidate that opens by disputing the review is never handed to a reviewer and never passes: the primary is
-steered once per user turn to deliver the answer's shape instead. A message the host has already committed cannot be edited at
-this seam, so the guard stops the leak from being certified as verified rather than removing text the user has already read.
+As a guard, in a turn that has already been reviewed, a candidate that opens by disputing the review is not handed to a
+reviewer and so cannot be certified as verified: the primary is steered once per user turn to deliver the answer's shape
+instead, and the demand is recorded in the audit ring. A message the host has already committed cannot be edited at this seam,
+so the guard stops the leak from passing for a reviewed answer rather than removing text the user has already read.

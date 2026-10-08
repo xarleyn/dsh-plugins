@@ -188,20 +188,24 @@ export function normalizeCandidateText(text: string): string {
  * Either half alone is ordinary prose, so both are required: an answer may
  * refute a benchmark, and an answer may discuss a code review.
  *
- * This is the demonstrated signature, not a general detector of review talk in
- * answers; the revision steer carries the shape rule and the round budget
- * bounds what this guard misses.
+ * The two halves must also be fed by different words. `провер` is the stem of
+ * `опровержение` itself, so an unguarded stem lets one Russian word answer both
+ * halves and every legitimate «Опровержение мифа …» reads as the leak; the
+ * lookbehind keeps the stem for «вывод проверки» while refusing the overlap.
+ * `\b` cannot do this job — in Unicode mode JavaScript still defines a word
+ * character as ASCII, so no boundary separates two Cyrillic letters.
  */
 const DISPUTATION_HEAD =
   /^(?:опроверж|опроверг|rebut|refut|disproof|disprov|disagree)/iu;
-const REVIEW_HEAD = /ревизор|ревью|рецензент|провер|review/iu;
+const REVIEW_HEAD = /ревизор|ревью|рецензент|review|(?<!о)провер/iu;
 const MAX_HEAD_CHARS = 240;
 
 /**
  * Whether the candidate opens with the review rather than with an answer. The
  * primary is steered to answer the request alone; a draft that opens with its
- * disagreement is the review leaking into user-visible output, so it is never
- * handed to a reviewer or passed as an answer (`SPEC.md`, "Revision behavior").
+ * disagreement is the review leaking into user-visible output, so the first
+ * such draft of a reviewed turn is neither handed to a reviewer nor certified
+ * (`SPEC.md`, "Revision behavior").
  */
 export function opensWithReviewDisputation(text: string): boolean {
   const line = text.split("\n").find((candidate) => candidate.trim() !== "");

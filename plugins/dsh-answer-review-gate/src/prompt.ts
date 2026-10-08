@@ -191,6 +191,23 @@ export const REVIEWER_OUTPUT_SCHEMA: Record<string, unknown> = {
 };
 
 /**
+ * Reviewer prose is hostile input: a finding quoting the page it was asked to
+ * assess can carry this block's own closing marker, and everything after an
+ * early `</review_notes>` reads as the gate's instruction rather than as a
+ * quotation. That would defeat the very property the delimited block exists for
+ * (`SPEC.md`, "Revision behavior"), so the marker is neutralized inside the
+ * body and each field is bounded — one runaway field must not push the answer
+ * out of the context.
+ */
+const MAX_REVIEW_NOTE_CHARS = 2000;
+
+function reviewNoteField(text: string): string {
+  return text
+    .slice(0, MAX_REVIEW_NOTE_CHARS)
+    .replace(/<\/review_notes>/giu, "<\\/review_notes>");
+}
+
+/**
  * Revision demand steered into the primary agent after a REVISE verdict.
  *
  * Exactly one visible artifact is admitted — the corrected answer — and the
@@ -216,12 +233,16 @@ export function renderRevisionSteer(
     `The independent answer reviewer rejected the current draft (review round ${round} of ${maxRounds}).`,
     "",
     "<review_notes>",
-    verdict.summary === "" ? "" : `Reviewer summary: ${verdict.summary}`,
+    verdict.summary === ""
+      ? ""
+      : `Reviewer summary: ${reviewNoteField(verdict.summary)}`,
     verdict.issues.length > 0 ? "Findings:" : "",
     ...verdict.issues.map(
       (issue) =>
-        `- [${issue.severity}/${issue.category}] ${issue.claim} — ${issue.problem}` +
-        (issue.requiredFix === "" ? "" : ` Required fix: ${issue.requiredFix}`),
+        `- [${issue.severity}/${issue.category}] ${reviewNoteField(issue.claim)} — ${reviewNoteField(issue.problem)}` +
+        (issue.requiredFix === ""
+          ? ""
+          : ` Required fix: ${reviewNoteField(issue.requiredFix)}`),
     ),
     "</review_notes>",
     "",
