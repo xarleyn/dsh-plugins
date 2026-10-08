@@ -198,6 +198,30 @@ only our own overlay, and neither browser pass opens the Settings dialog or
 selects a provider by its rendered name or a preset by its title, so none of the
 five observations moves anything they check.
 
+Two of the card's own questions run the other way, and neither has a gate in its
+answer. Whether a step a *human* follows leans on those surfaces: exactly one
+live step in this repository walks the Host's section nav — the install step of
+`plugins/dsh-preset-persona-editor/README.md`, which opens
+**Settings → Persona** — and that step now names the width it needs, because at
+phone width the nav leaves the page no entry point. Every other mention of that
+nav is prose about a seat nothing registers today — a CHANGELOG recording a
+card's move, a phase plan, or a SPEC sketch — and the only settings dialog whose
+navigation this repository owns is QA Surface's own `Настройки` dialog, which
+none of the five observations reached. Whether a clipped Host row hides a card
+of ours: a `plugins.row.config` seat draws no heading of ours, because the card
+contract refuses our shell there, so the Host's row title has no card body of
+ours to cover. What the row shows of us is the `summary` sentence — a fallback
+for `meta.description`, printed inside the Host's own description paragraph, and
+each package holding both pins the pair equal in a test, as
+`plugins/dsh-jev-compaction/tests/client/client-bundle.test.tsx` does. The
+truncated-title pattern is not one our page repeats either: our preset name is
+the shell's wrapping `dsh-plugin-card__name`, not an ellipsis
+(`plugins/dsh-preset-persona-editor/src/client/PersonaPage.tsx`). Unmeasured,
+though, is the Plugins row's own open control at 390px — the two-step expand
+that half of the card rests on was confirmed live, at a width the round did not
+record — so whether a seated card stays reachable on a phone screen is still
+open, and the control is the Host's chrome wherever it lands.
+
 Two files [PLUGIN_GUIDELINES.md](PLUGIN_GUIDELINES.md) §4.1 lists are
 **not** gated, deliberately: `tsdown.config.ts`, which seven host-only plugins
 do not need (their `lib/` comes from `tsc` alone), and a local
