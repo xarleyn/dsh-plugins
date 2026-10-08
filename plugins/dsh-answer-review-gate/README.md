@@ -75,7 +75,8 @@ bounded single run).
 Starts a native reviewer child (`reviewer.provider`, default `spawn`) with a
 fresh context: it receives only the user request and the candidate answer, an
 optional persona (`reviewer.persona`), a read-only tool allow-list
-(`reviewer.allowedTools`, empty means no tools) and an optional model route
+(`reviewer.allowedTools`; unset means the read-only set, an explicitly empty
+list means no tools) and an optional model route
 (`reviewer.route` / `reviewer.model` / `reviewer.reasoningEffort`). The verdict
 is requested as structured JSON; unparseable output is a reviewer failure, not
 a pass. For correlated-failure reduction, route the reviewer to a different
@@ -110,7 +111,7 @@ reviewer:
   # model: ""
   # reasoningEffort: ""
   # persona: ""
-  # allowedTools: []
+  # allowedTools: []          # unset means the read-only set; [] means no tools
 maxReviewRounds: 3
 failMode: warn
 trackBackgroundDelegations: true
@@ -132,7 +133,7 @@ audit:
 | `reviewer.provider` | Subagent provider name for the `subagent` backend. |
 | `reviewer.route` / `reviewer.model` / `reviewer.reasoningEffort` | Reviewer route overrides for the `subagent` backend. |
 | `reviewer.persona` | Persona instruction for the `subagent` reviewer. |
-| `reviewer.allowedTools` | Read-only tool allow-list; empty means the reviewer works without tools. |
+| `reviewer.allowedTools` | Read-only tool allow-list. Unset means the read-only set (`read`, `read_image`, `glob`, `grep`, `docs_read`, `docs_search`); an explicitly empty list means the reviewer works without tools. Destructive and writing names are removed whatever the list says. |
 | `maxReviewRounds` | Review/revision rounds per user turn before the failure policy applies (1–10). |
 | `failMode` | `open` / `warn` / `closed`, see above. |
 | `trackBackgroundDelegations` | Suppress review while the session's background work is pending. |
@@ -169,7 +170,15 @@ The `--profile` flag is required.
   hidden reasoning.
 - The `domain-expert` backend's tool access is whatever the configured domain
   grants; configure the reviewer domain read-only. The `subagent` backend's
-  tools are exactly `reviewer.allowedTools` — keep it read-only.
+  tools are `reviewer.allowedTools` minus the names `src/reviewer-tools.ts`
+  excludes: an unset list gives the reviewer the read-only set (reads and
+  searches), and a listed `file_delete`, `write`, `edit`, `apply_patch`,
+  `str_replace_editor`, `bash`, `shell`, `run_code`, `lsp`,
+  `dsh_lightrag_delete` or a `terminal_`/`job_` tool is dropped before the child
+  is started. A reviewer that reaches for a deletion stops the turn it belongs
+  to: on a QA stand the call parked above the parent's composer for an approval
+  a delegated child can never receive, so the boundary is held both by the
+  allow-list and by the surface, which refuses a delegated call outright.
 - Reviewer output is untrusted model output: it is parsed and validated, a
   malformed verdict is a reviewer failure handled by the failure policy, and
   the primary remains responsible for checking reviewer evidence rather than

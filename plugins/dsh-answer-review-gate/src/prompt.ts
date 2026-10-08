@@ -27,6 +27,19 @@ const ATTACHMENT_PROTOCOL =
   "or fabrication finding about it — report that you could not verify that attachment.";
 
 /**
+ * The tool boundary every reviewer backend is told about, in step with the
+ * allow-list `reviewer-tools.ts` composes it from. A reviewer that investigates
+ * a missing answer can reach for the file in the way; on a QA stand that call
+ * deleted nothing and stopped everything — a delegated child's approval request
+ * waits for an answer it can never receive. So the prompt says what the filter
+ * enforces: read, report, never repair.
+ */
+const REVIEW_TOOL_BOUNDARY =
+  "You review and do not change: no tool you hold can delete, write or otherwise alter the workspace or an " +
+  "external system, and a call that would is refused at once. When the candidate seems to hinge on something in " +
+  "the way, that is a finding about the candidate — report it, and never try to clear it yourself.";
+
+/**
  * The `<user_request>` body: the request text, then — when the request carried
  * attachments — the host handle text for each, so the reviewer learns a named
  * attachment existed and what kind it was without being able to open it.
@@ -82,6 +95,8 @@ export function renderSubagentReviewerTask(input: {
       "take an explicit path: a pattern without one searches your own working directory and says nothing about the " +
       "source you meant. If a source is unavailable for this run, report that instead of guessing its contents.",
     "",
+    REVIEW_TOOL_BOUNDARY,
+    "",
     "<user_request>",
     request,
     "</user_request>",
@@ -130,6 +145,8 @@ export function renderExpertReviewTask(input: {
       "Lack of evidence is a valid finding.",
     "",
     ATTACHMENT_PROTOCOL,
+    "",
+    REVIEW_TOOL_BOUNDARY,
     "",
     "Work the evidence, not the tool in a loop: a call that errors, times out or is refused has already answered — " +
       "record it, change the source or the query, and never repeat the same call or a near-variant of it. Read tools " +

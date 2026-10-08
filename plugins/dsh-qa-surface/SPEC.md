@@ -795,10 +795,13 @@ answers `ask` itself, in one of two modes:
   surface's own reason ("approval interactions are unavailable in QA"). Nothing
   is approved, and the pinned policy stays the fail-closed backstop for every
   ask that reaches the service directly.
-- `interaction.approvals: interactive` — the call is parked and listed in the
-  QA view; the operator's answer becomes the decision. An unanswered request
-  keeps the turn waiting until it is answered or the turn is stopped; a stopped
-  turn cancels it. No path approves without a person.
+- `interaction.approvals: interactive` — a call from the chat's own agent is
+  parked and listed in the QA view; the operator's answer becomes the decision.
+  An unanswered request does not own the turn indefinitely: it expires after
+  `QA_APPROVAL_PARK_TIMEOUT_MS` and is refused, and the turn's own cancellation
+  settles it sooner. A call from a delegated child is refused immediately in
+  either mode — parking it would hold the parent turn for an answer a child
+  cannot be given. No path approves without a person.
 
 References:
 
@@ -1569,12 +1572,21 @@ any other session's `ask` is handed back to the chain untouched.
 - `interaction.approvals: blocked` — a downstream `ask` becomes a deny result
   stating that approval interactions are unavailable in QA, before the approval
   service records or routes a request.
-- `interaction.approvals: interactive` — a downstream `ask` is parked until the
-  operator answers in the QA view: the same two outcomes stock DSH offers
-  (`rejected`, `allowed-once`), recorded under the chat the request belongs to,
-  a delegated child's call included. The pending request is Host state, so it
-  survives a page reload and is polled while a turn runs. An unanswered request
-  never resolves on its own; the turn's own cancellation settles it.
+- `interaction.approvals: interactive` — a downstream `ask` from the chat's own
+  agent is parked until the operator answers in the QA view: the same two
+  outcomes stock DSH offers (`rejected`, `allowed-once`), recorded under the chat
+  the request belongs to. The pending request is Host state, so it survives a
+  page reload and is polled while a turn runs. An unanswered request does not own
+  the turn forever: after `QA_APPROVAL_PARK_TIMEOUT_MS` it expires and is refused
+  like a rejection.
+- A `ask` from a delegated child is refused on the spot and never parked, in
+  either mode. A child has no one to answer it — the harness refuses a question
+  from an agent owned by another live agent (`DELEGATED_CALLER`) — and a parked
+  approval of a child sits over the *parent's* composer, so the parent turn
+  waits for a reply that cannot arrive. This is the seam an answer reviewer hung
+  on: `approval.pending … delegated=true` for minutes at a stretch, one call
+  settled by an operator who was never told, and a stand that looked like it was
+  thinking for an hour.
 
 Either way the pinned `approval=never` policy remains the independent
 fail-closed backstop for every ask that reaches the approval service directly.
@@ -2500,7 +2512,10 @@ Mitigation:
 
 - QA-specific permission preset;
 - explicit pending-request surface for `interaction.approvals: interactive`,
-  with the turn's own cancellation settling an unanswered request;
+  with an unanswered request expiring into a refusal and the turn's own
+  cancellation settling it earlier;
+- a delegated child's request refused where it is raised, never parked: a card
+  over the parent's composer is a wait the child cannot end;
 - `blocked` mode refuses rather than waits;
 - fail closed.
 

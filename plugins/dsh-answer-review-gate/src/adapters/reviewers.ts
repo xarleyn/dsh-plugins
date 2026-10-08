@@ -6,6 +6,7 @@
 
 import type { ResolvedAnswerReviewGateConfig } from "../config.js";
 import { textOfBlocks } from "../candidate.js";
+import { restrictReviewerTools } from "../reviewer-tools.js";
 import {
   REVIEWER_OUTPUT_SCHEMA,
   renderExpertReviewTask,
@@ -135,7 +136,13 @@ export function createSubagentBackend(deps: {
           // `tools.restrict()` when a `toolFilter` is present, so omitting it
           // for an empty list handed the reviewer the parent's whole tool
           // surface — the opposite of the config's "empty means no tools".
-          toolFilter: { allow: deps.config.allowedTools },
+          // Re-read through the boundary here rather than trusting the resolved
+          // config: this is the call that composes the child, and a reviewer
+          // that could delete a workspace file parked the parent turn for an
+          // approval a delegated child can never receive.
+          toolFilter: {
+            allow: restrictReviewerTools(deps.config.allowedTools),
+          },
           ...(Object.keys(agentOptions).length > 0 ? { agentOptions } : {}),
           outputSchema: REVIEWER_OUTPUT_SCHEMA,
         });
