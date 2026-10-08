@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaSessionController } from "../../src/client/QaSessionController.js";
 import { harness } from "../helpers/session-fakes.js";
+import { until } from "../helpers/settle.js";
 
 /**
  * A QA session is born on the server, through this plugin's own Remote, while
@@ -120,6 +121,130 @@ describe("QA session controller: a retain that raced the session catalog", () =>
     expect(world.createSession).toHaveBeenCalledOnce();
     expect(world.stored.has("dsh-qa-surface.session:v1:/qa:session")).toBe(
       false,
+    );
+    controller.dispose();
+  });
+
+  it("opens the chat on the push alone when the re-read it asked for is refused", async () => {
+    // The catalog pull is the extra chance at the row, not the only one: a Host
+    // that refuses it (a transport answer it rethrows, not a business one) must
+    // not turn a repairable race into a failed chat, and its rejection must not
+    // reach the browser as an unhandled one beside the plate.
+    const world = harness();
+    const created: string[] = [];
+    world.createSession.mockImplementation(async () => {
+      const id = String(await world.serverSession());
+      created.push(id);
+      return { ok: true as const, value: id };
+    });
+    const refusals: string[] = [];
+    world.refresh.mockImplementation(async () => {
+      refusals.push("session.list: transport down");
+      throw new Error("session.list: transport down");
+    });
+    const raced: string[] = [];
+    const logged = vi
+      .spyOn(console, "warn")
+      .mockImplementation((...args: unknown[]) => {
+        raced.push(args.map((arg) => String(arg)).join(" "));
+      });
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    const opening = controller.ensureSession();
+    const push = setInterval(() => {
+      if (created.length === 0) return;
+      clearInterval(push);
+      world.publishRow(created[0]!);
+    }, 2);
+    await opening;
+    logged.mockRestore();
+
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      sessionId: "created-1",
+      error: null,
+    });
+    // The refused pull is said out loud — a chat lost in this shape reads as a
+    // slow catalog and is really an unreadable one — and it is the retain's own
+    // refusal that never had to be reported.
+    expect(refusals).toHaveLength(1);
+    expect(raced.join("\n")).toMatch(/session catalog refresh refused/u);
+    expect(raced.join("\n")).toMatch(/raced the session catalog/u);
+    clearInterval(push);
+    controller.dispose();
+  });
+
+  it("reports a refusal of a listed session as the refusal it is", async () => {
+    // The Host also refuses a retain for a session its catalog does name — a
+    // route, a policy, a generation that ended. That is not the race, so the
+    // surface must not print a race beside it, must not ask the catalog to
+    // re-read itself, and must hand the caller the answer it was given.
+    const world = harness();
+    const id = String(await world.serverSession());
+    world.publishRow(id);
+    world.retain.mockImplementationOnce(() => {
+      throw new Error("sessions.retain: session is not available here");
+    });
+    const lines: string[] = [];
+    const logged = vi
+      .spyOn(console, "warn")
+      .mockImplementation((...args: unknown[]) => {
+        lines.push(args.map((arg) => String(arg)).join(" "));
+      });
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+      timeoutMs: 40,
+    });
+
+    await controller.switchTo(id);
+    logged.mockRestore();
+
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "error",
+      error: expect.stringMatching(/Не удалось открыть этот чат/u),
+    });
+    expect(lines.join("\n")).toBe("");
+    expect(world.refresh).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+
+  it("waits for the Client Session behind a row the catalog already lists", async () => {
+    // The other half of the same window, which the fake used to skip: the row
+    // is here and the reference is held, while the Client Session the binding
+    // needs has not arrived — `bind()` waits on `reference.ready` for it, and a
+    // chat that opens after that answer is still a chat that opened.
+    const world = harness();
+    world.deferClientSession();
+    const id = String(await world.serverSession());
+    world.publishRow(id);
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+
+    const opening = controller.switchTo(id);
+    await until(() =>
+      world.retain.mock.calls.some(([retained]) => String(retained) === id),
+    );
+    expect(world.faces.has(id)).toBe(false);
+    expect(controller.getSnapshot()).toMatchObject({ phase: "creating" });
+
+    world.materializeSession(id);
+    await opening;
+
+    expect(controller.getSnapshot()).toMatchObject({
+      phase: "ready",
+      sessionId: id,
+      canSend: true,
+      error: null,
+    });
+    expect(await controller.send("Вопрос")).toBe(true);
+    expect(world.faces.get(id)?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "Вопрос" }],
+      "queue",
     );
     controller.dispose();
   });

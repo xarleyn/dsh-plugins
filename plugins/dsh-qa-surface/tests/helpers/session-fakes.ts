@@ -184,6 +184,10 @@ export interface QaSessionTestWorld {
   serverSession: Mock;
   /** Land one pending row in this browser's catalog, the way a Host push does. */
   publishRow: (id: string) => void;
+  /** Hold the Client Sessions of later retains back, past the reference itself. */
+  deferClientSession: () => void;
+  /** Settle one held reference: its row is listed, its Client Session arrives now. */
+  materializeSession: (id: string) => void;
   secureSession: Mock;
 }
 
@@ -284,6 +288,25 @@ export function harness(
   // `rc.2` has no Host navigation: binding a chat means retaining it, and the
   // reference is what a test proves the controller holds and releases.
   const references: SessionReferenceFake[] = [];
+  /** References whose Client Session the test has not materialized yet. */
+  const gates = new Map<string, () => void>();
+  let deferClientSessions = false;
+  /** Bring one held Client Session into being, the way the Host's reference settles. */
+  const materializeSession = (id: string): void => {
+    const release = gates.get(id);
+    if (release === undefined) return;
+    gates.delete(id);
+    release();
+  };
+  /** Hold the Client Sessions of later retains until the test releases them. */
+  const deferClientSession = (): void => {
+    deferClientSessions = true;
+  };
+  const mintSession = (id: string): void => {
+    if (faces.has(id)) return;
+    faces.set(id, sessionFace(id));
+    bindings.set(id, conversationBinding(id));
+  };
   // The Host resolves a retain target against the catalog this browser holds —
   // a resident Session, a listed row, or a discovered subagent address — and
   // refuses an id it has never heard of. The fake refuses the same way, so a
@@ -293,15 +316,21 @@ export function harness(
     if (!faces.has(key) && !Object.hasOwn(list.getSnapshot().byId, key)) {
       throw new Error(`sessions.retain: unknown session ${key}`);
     }
-    // A reference is what materializes the Client Session behind an id: a row
-    // the catalog just learned has no face to bind until something holds it.
-    if (!faces.has(key)) {
-      faces.set(key, sessionFace(key));
-      bindings.set(key, conversationBinding(key));
-    }
     const reference: SessionReferenceFake = {
       sessionId: key,
-      ready: Promise.resolve({}),
+      // A row the catalog only just learned has no Client Session behind it:
+      // the Host hands the reference out at once and materializes the Session as
+      // it settles, and `sessions.binding(id)` answers undefined until then. A
+      // fake that minted the face at retain would let every test step over both
+      // waits `bind()` takes after the retain.
+      ready: faces.has(key)
+        ? Promise.resolve({})
+        : new Promise<void>((resolve) => {
+            gates.set(key, resolve);
+            if (!deferClientSessions) {
+              queueMicrotask(() => materializeSession(key));
+            }
+          }).then(() => mintSession(key)),
       release: vi.fn(),
     };
     references.push(reference);
@@ -429,6 +458,8 @@ export function harness(
     refresh,
     serverSession,
     publishRow,
+    deferClientSession,
+    materializeSession,
     secureSession,
   };
 }
