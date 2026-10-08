@@ -213,6 +213,41 @@ describe("QA slash catalog remote", () => {
     expect(catalog.entries.map((entry) => entry.kind)).toEqual(["skill"]);
   });
 
+  it("withholds a skill outside the role's grant from a chat that has not run", async () => {
+    // The allow-list admits both names, so only the role can be what hides one.
+    const { remotes } = world({
+      config: ENABLED_WITH_USER_SKILL,
+      noAgent: true,
+      grant: ["generate-tkp"],
+    });
+    const catalog = await remotes.catalog("token", "session-1");
+    expect(catalog.entries.map((entry) => entry.id)).toEqual([
+      "skill:generate-tkp",
+    ]);
+    expect(catalog.deniedSkills).toEqual(["user-only"]);
+  });
+
+  it("shows the same skills to a cold chat and to a woken one", async () => {
+    const cold = world({
+      config: ENABLED_WITH_USER_SKILL,
+      noAgent: true,
+      grant: ["generate-tkp"],
+    });
+    const live = world({
+      config: ENABLED_WITH_USER_SKILL,
+      grant: ["generate-tkp"],
+    });
+    expect(
+      (await cold.remotes.catalog("token", "session-1")).entries.map(
+        (entry) => entry.id,
+      ),
+    ).toEqual(
+      (await live.remotes.catalog("token", "session-1")).entries.map(
+        (entry) => entry.id,
+      ),
+    );
+  });
+
   it("refuses to name anything for a chat the caller does not own", async () => {
     const { remotes } = world({ grantThrows: true });
     await expect(remotes.catalog("stale", "session-1")).rejects.toThrow(

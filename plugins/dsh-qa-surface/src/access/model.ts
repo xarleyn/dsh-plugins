@@ -487,6 +487,24 @@ export function resolveCapabilityPolicy({
   });
 }
 
+/**
+ * The skills a person may invoke under one policy — the whole of the
+ * user-facing allow-list, and the one place it is read.
+ *
+ * An empty `userSkills` means the role keeps no separate user list, not that it
+ * grants nothing, so the model-facing set stands in for it. A typed gesture is
+ * admitted or refused by this list and the palette is narrowed by it, so both
+ * have to derive it here: a name the palette offers but the line refuses, or
+ * one the palette hides while the line would accept, is one rule read two ways.
+ *
+ * @param policy - the effective capability policy of one session.
+ */
+export function userInvocableSkillNames(
+  policy: QaEffectiveCapabilityPolicy,
+): readonly string[] {
+  return policy.userSkills.length === 0 ? policy.skills : policy.userSkills;
+}
+
 export interface ResolveSkillAccessInput {
   readonly config: QaCapabilityConfig;
   /** Every discovered skill with its normalized metadata. */

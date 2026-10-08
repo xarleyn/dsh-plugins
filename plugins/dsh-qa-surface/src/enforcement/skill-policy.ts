@@ -10,6 +10,7 @@ import type {
   QaSkillActivationOrigin,
 } from "../types.js";
 import type { QaAgentToolGrants } from "./tool-grants.js";
+import { userInvocableSkillNames } from "../access/model.js";
 
 const SKILL_NOT_AVAILABLE = "SKILL_NOT_AVAILABLE";
 
@@ -71,9 +72,7 @@ export function installQaSkillPolicy(
   const { agent, policy, discovered, grants } = options;
   if (!policy.tools.includes("skill")) return () => undefined;
   const modelAllowed = new Set(policy.skills);
-  const userAllowed = new Set(
-    policy.userSkills.length === 0 ? policy.skills : policy.userSkills,
-  );
+  const userAllowed = new Set(userInvocableSkillNames(policy));
   const visible = policy.skills
     .map((name) => discovered.get(name))
     .filter((skill): skill is SkillSummary => skill !== undefined)
