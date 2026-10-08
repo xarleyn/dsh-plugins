@@ -143,6 +143,21 @@ async function world(entry: Record<string, unknown> = {}) {
         reasoningEffort: input.reasoningEffort,
       });
     },
+    // The policy's pair is checked against this before the Host is asked to
+    // select it, so a stand that names a model nobody offers refuses the chat
+    // rather than the first question inside it.
+    modelCatalog: async () => ({
+      default: { provider: "demo", model: "demo-model" },
+      routableProviders: ["demo"],
+      groups: [
+        {
+          id: "demo",
+          name: "Demo",
+          models: [{ id: "demo-model", name: "Demo model" }],
+        },
+      ],
+      failures: [],
+    }),
     resolveAgent: async (id: unknown) => {
       const sessionId = String(id);
       if (routed.has(sessionId)) {

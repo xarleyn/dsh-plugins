@@ -15,6 +15,13 @@ import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import type { ResolvedConfig } from "../config.js";
 import { DEPLOYMENT_MEMORY_OWNER, type MemoryOwner } from "./resolver.js";
 
+/** One provider and model pair, as the QA model policy names it. */
+export interface QaModelPolicyPair {
+  readonly provider: string;
+  readonly model: string;
+  readonly reasoningEffort?: string;
+}
+
 export interface QaPrincipalSurface {
   /** The account a chat root was attested by; never for a delegated child. */
   principalForSession(sessionId: string):
@@ -22,6 +29,12 @@ export interface QaPrincipalSurface {
         readonly userId: string;
       }
     | undefined;
+  /**
+   * The pair the deployment's model policy fixes for one chat. Optional:
+   * a QA surface installed before roles had opinions about models answers no
+   * such question, and its principals are still looked up correctly.
+   */
+  modelPolicyForSession?(sessionId: string): QaModelPolicyPair | undefined;
 }
 
 /**
@@ -96,6 +109,29 @@ export class PrincipalIdentities {
    */
   principalOf(sessionId: string): string | undefined {
     return this.surfaceOf()?.principalForSession(sessionId)?.userId;
+  }
+
+  /**
+   * The provider and model the deployment's policy fixes for one chat, or
+   * `undefined`.
+   *
+   * An expert domain that inherits its model from the caller takes this pair
+   * instead of the parent's live selection: the delegation then answers to the
+   * policy of the role the chat runs under, which is a decision the operator
+   * made, rather than to the model a visitor left in the picker.
+   */
+  modelPolicyOf(sessionId: string): QaModelPolicyPair | undefined {
+    const pair = this.surfaceOf()?.modelPolicyForSession?.(sessionId);
+    if (
+      pair === undefined ||
+      typeof pair.provider !== "string" ||
+      pair.provider === "" ||
+      typeof pair.model !== "string" ||
+      pair.model === ""
+    ) {
+      return undefined;
+    }
+    return pair;
   }
 
   /** Whether this deployment keeps a memory namespace per account. */

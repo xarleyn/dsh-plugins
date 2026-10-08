@@ -6,7 +6,9 @@
  * - `toolFilter: { allow: [] }` — the worker inherits no model-facing tools
  *   (SPEC §6.1: no authority expansion);
  * - an exact cheap model via `agentOptions` (keys omitted when unset so the
- *   child inherits the parent route, see `resolveChildAgentOptions`);
+ *   child inherits the parent route, see `resolveChildAgentOptions`); an
+ *   unset pair follows the QA policy of the chat the tool result came from,
+ *   when the deployment has one;
  * - a merged cancellation signal (parent `exec.signal` + worker timeout).
  *
  * Every failure mode normalizes into a `WorkerOutcome`; nothing throws across
@@ -21,6 +23,7 @@ import type {
 import type { ToolExecution } from "@deepseek-ai/dsh-tools";
 
 import type { ResolvedWorkerProfile } from "../config.js";
+import type { QaModelPolicyPair } from "../qa-policy.js";
 
 /** Structural surface of `ctx.subagents` consumed by this plugin. */
 export interface SubagentsServiceLike {
@@ -62,6 +65,13 @@ export const WORKER_LABEL_PREFIX = "dsh-tool-offload:";
 
 export function createSubagentRunner(
   subagents: SubagentsServiceLike,
+  /**
+   * The QA policy of one chat, asked by session id. A worker profile that names
+   * no model then follows the policy of the role the chat runs under rather than
+   * the model its visitor picked — the delegation answers to the same pair the
+   * chat was opened on.
+   */
+  modelPolicy?: (sessionId: string) => QaModelPolicyPair | undefined,
 ): WorkerRunnerLike {
   return {
     async run(request: WorkerRunRequest): Promise<WorkerOutcome> {
@@ -88,10 +98,16 @@ export function createSubagentRunner(
         AbortSignal.timeout(request.profile.timeoutMs),
       ]);
       const agentOptions: SubagentStartRequest["agentOptions"] = {};
-      if (request.profile.provider !== null)
-        agentOptions.provider = request.profile.provider;
-      if (request.profile.model !== null)
-        agentOptions.model = request.profile.model;
+      // A profile that pins no model follows the policy of the chat this tool
+      // result came from, rather than the model that chat happens to be on.
+      const policy =
+        request.profile.model === null
+          ? modelPolicy?.(String(request.parent.session.id))
+          : undefined;
+      const modelProvider = request.profile.provider ?? policy?.provider;
+      const modelId = request.profile.model ?? policy?.model;
+      if (modelProvider !== undefined) agentOptions.provider = modelProvider;
+      if (modelId !== undefined) agentOptions.model = modelId;
       if (request.profile.maxTokens !== null)
         agentOptions.maxTokens = request.profile.maxTokens;
 

@@ -195,6 +195,17 @@ export interface QaSkillActivationRecord {
   readonly reason?: string;
 }
 
+/**
+ * One provider and model pair, fixed by policy rather than chosen in the
+ * interface. `provider` and `model` are named together or not at all, because
+ * the Host refuses either of them alone.
+ */
+export interface QaModelPair {
+  readonly provider: string;
+  readonly model: string;
+  readonly reasoningEffort?: string;
+}
+
 /** One agent capability profile. It never grants administrative access. */
 export interface QaSubrole {
   readonly id: string;
@@ -202,6 +213,12 @@ export interface QaSubrole {
   readonly description?: string;
   readonly enabled: boolean;
   readonly capabilities: QaCapabilitySelection;
+  /**
+   * The pair every chat of this role is opened on, whatever the visitor picks
+   * in the interface. Absent means the role keeps no opinion and the
+   * deployment's pair serves it.
+   */
+  readonly model?: QaModelPair;
   readonly ui?: {
     readonly icon?: string;
     readonly accent?: string;
@@ -217,10 +234,30 @@ export interface QaCapabilityConfig {
   readonly skillOverrides: readonly QaSkillAssignmentOverride[];
 }
 
+/**
+ * One pair the Host can serve right now, as the administration surface lists
+ * it. A projection of the harness catalog, so the browser never learns the
+ * provider's own catalog shape and a policy can only be written by picking one
+ * of these.
+ */
+export interface QaModelCatalogEntry {
+  readonly provider: string;
+  readonly model: string;
+  /** The catalog's display name for the model, or its id when it has none. */
+  readonly label: string;
+  readonly reasoningEfforts: readonly string[];
+}
+
 /** The QA profiles one account may choose, independently of its access role. */
 export interface QaUserAccess {
   readonly allowedSubroles: readonly string[];
   readonly defaultSubrole: string;
+  /**
+   * The pair this account is opened on, ahead of what its role says: a support
+   * desk runs on the local model even when it borrows a role the rest of the
+   * deployment shares. Absent means the account keeps no opinion.
+   */
+  readonly model?: QaModelPair;
 }
 
 export type QaCapabilitySourceKind =

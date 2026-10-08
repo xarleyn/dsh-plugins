@@ -15,6 +15,7 @@ import type { QaProvenanceHost } from "../provenance/host-store.js";
 import type { QaSourceReference } from "../provenance/types.js";
 import type { QaPolicyAdmission } from "../secure-session.js";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
+import { applySessionModelPolicy } from "../session-model.js";
 import { prepareQaUserWorkspace } from "../user-workspace.js";
 import type { DocumentsFace } from "@yadsh/dsh-documents";
 import {
@@ -135,16 +136,12 @@ export function createQaIntegrationRunner(
           ? {}
           : { agentPreset: config.session.agentPreset }),
       });
-      if (config.session.provider !== null && config.session.model !== null) {
-        await ctx.sessionController.selectModel({
-          sessionId: created.sessionId,
-          provider: config.session.provider,
-          model: config.session.model,
-          ...(config.session.reasoningEffort === null
-            ? {}
-            : { reasoningEffort: config.session.reasoningEffort }),
-        });
-      }
+      await applySessionModelPolicy(
+        ctx,
+        created.sessionId,
+        options.access.modelPolicyFor(String(created.sessionId)),
+        logger,
+      );
       const sessionId = String(created.sessionId);
       await options.admission.secureSessionForUser(owner.id, sessionId);
       logger.info("integration.chat-opened", {

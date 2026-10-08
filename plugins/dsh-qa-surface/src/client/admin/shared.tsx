@@ -45,6 +45,9 @@ export function adminErrorMessage(error: unknown): string {
   if (/reason: invalid-memory/u.test(message)) {
     return "Плагин доменов отклонил правку.";
   }
+  if (/reason: policy-model-unknown/u.test(message)) {
+    return "Этой пары провайдера и модели хост не предлагает: выберите значение из каталога.";
+  }
   return message;
 }
 
