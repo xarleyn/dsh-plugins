@@ -55,6 +55,7 @@ import { createQaIntegrationRunner } from "./integration/host-runner.js";
 import { QaIntegrationService } from "./integration/service.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaAccessService } from "./access/service.js";
+import { userInvocableSkillNames } from "./access/model.js";
 import type { QaPresetScopeLease } from "./access/capability-catalog.js";
 import { createQaSlashRemotes } from "./slash/remotes.js";
 import type { QaSlashRemotes } from "./slash/remotes.js";
@@ -687,10 +688,12 @@ export class QaSurface extends TypertRemoteService {
    * check and the deployment's lockdown is the boundary, exactly as it is for
    * every other remote.
    *
-   * The grant mirrors `installQaSkillPolicy` to the letter — an empty
-   * `userSkills` list means the role keeps no separate user list, not that it
-   * grants nothing — so the palette can never offer a skill the typed gesture
-   * would refuse, nor hide one it would accept.
+   * The grant is {@link userInvocableSkillNames} — the one list the typed
+   * gesture is admitted or refused by — for every chat that has a role, woken
+   * or not: the palette a visitor sees before the chat runs is narrowed by that
+   * same rule, so it can neither offer a name the line would refuse nor hide
+   * one it would accept. `undefined` is answered only where the deployment has
+   * no roles to consult at all.
    */
   private async slashSessionGrant(
     token: string,
@@ -701,9 +704,12 @@ export class QaSurface extends TypertRemoteService {
     if (accounts === undefined) return undefined;
     if (agent === undefined) {
       // A cold chat has no capability snapshot to read, but it still has an
-      // owner, and that is what the catalog read must respect.
-      this.accountRemotes.run(() => this.access.session(token, sessionId));
-      return undefined;
+      // owner and a role, and both are what the catalog read must respect.
+      const policy = await this.accountRemotes.runAsync(
+        () => this.access.policyForColdSession(token, sessionId),
+        sessionId,
+      );
+      return userInvocableSkillNames(policy);
     }
     const resolved = await this.access.policyForSession(
       token,
@@ -711,8 +717,7 @@ export class QaSurface extends TypertRemoteService {
       agent as Agent,
     );
     if (resolved === undefined) return undefined;
-    const { policy } = resolved;
-    return policy.userSkills.length === 0 ? policy.skills : policy.userSkills;
+    return userInvocableSkillNames(resolved.policy);
   }
 
   /**
