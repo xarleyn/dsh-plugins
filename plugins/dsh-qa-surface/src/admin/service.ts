@@ -3,6 +3,7 @@ import type { QaAccounts } from "../accounts/store.js";
 import { QaAccountsError } from "../accounts/store.js";
 import type { QaAccessService } from "../access/service.js";
 import type { QaRoleRepository } from "../access/role-repository.js";
+import { normalizeModelPair } from "../access/model-policy.js";
 import {
   defaultCapabilityConfig,
   normalizeUserAccess,
@@ -847,6 +848,9 @@ export class QaAdminService {
       });
     }
     if (nextAccess !== undefined) {
+      await this.options
+        .access()
+        .assertPairServable(nextAccess.model, "assignment model");
       const access = this.exactAssignment(nextAccess, userId);
       accounts.setAccess(userId, access);
       this.options.quality().appendAudit({
@@ -951,9 +955,11 @@ export class QaAdminService {
         "an assignment must name enabled roles and select one of them",
       );
     }
+    const model = normalizeModelPair(input.model, "assignment model");
     return Object.freeze({
       allowedSubroles: Object.freeze(allowed),
       defaultSubrole: input.defaultSubrole,
+      ...(model === undefined ? {} : { model }),
     });
   }
 

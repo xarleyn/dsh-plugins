@@ -12,6 +12,7 @@ import {
   renderExpertReviewTask,
   renderSubagentReviewerTask,
 } from "../prompt.js";
+import type { QaModelPolicyPair } from "../qa-policy.js";
 import { ReviewerFailure } from "../types.js";
 import {
   deriveVerdictFromExpertResult,
@@ -87,15 +88,29 @@ export function createDomainExpertBackend(deps: {
  * plugin's persona/route settings, a read-only tool allow-list and the
  * structured verdict schema. The reviewer is exempt from the gate
  * structurally — it is a subagent child.
+ *
+ * Its model comes from this plugin's own configuration, which is what keeps the
+ * reviewer independent of whoever was answered. A deployment that leaves that
+ * configuration silent on the model — the reviewer following whatever chat it is
+ * reviewing — is where the QA policy speaks instead: the child then runs the
+ * pair the reviewed chat's role was given, not the model some visitor picked.
  */
 export function createSubagentBackend(deps: {
   readonly face: SubagentsFace | undefined;
   readonly config: ReviewerConfig;
   readonly parent: unknown;
+  readonly modelPolicy?: QaModelPolicyPair | undefined;
 }): ReviewerBackend {
+  const policy = deps.config.model === "" ? deps.modelPolicy : undefined;
+  const provider =
+    deps.config.route !== ""
+      ? deps.config.route
+      : (policy?.provider ?? "inherit");
+  const model =
+    deps.config.model !== "" ? deps.config.model : (policy?.model ?? "inherit");
   return {
     name: "subagent",
-    reviewer: reviewerRouteLabel(deps.config),
+    reviewer: `${deps.config.provider}/${provider}/${model}`,
     async review(input: ReviewInput) {
       if (deps.face === undefined) {
         throw new ReviewerFailure(
@@ -108,11 +123,13 @@ export function createSubagentBackend(deps: {
         model?: string;
         reasoningEffort?: string;
       } = {};
-      if (deps.config.route !== "") agentOptions.provider = deps.config.route;
-      if (deps.config.model !== "") agentOptions.model = deps.config.model;
-      if (deps.config.reasoningEffort !== "") {
-        agentOptions.reasoningEffort = deps.config.reasoningEffort;
-      }
+      if (provider !== "inherit") agentOptions.provider = provider;
+      if (model !== "inherit") agentOptions.model = model;
+      const effort =
+        deps.config.reasoningEffort !== ""
+          ? deps.config.reasoningEffort
+          : (policy?.reasoningEffort ?? "");
+      if (effort !== "") agentOptions.reasoningEffort = effort;
       let run;
       try {
         run = await deps.face.start(deps.config.provider, {
@@ -178,10 +195,4 @@ export function createSubagentBackend(deps: {
       }
     },
   };
-}
-
-function reviewerRouteLabel(config: ReviewerConfig): string {
-  const route = config.route !== "" ? config.route : "inherit";
-  const model = config.model !== "" ? config.model : "inherit";
-  return `${config.provider}/${route}/${model}`;
 }

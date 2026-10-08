@@ -16,7 +16,9 @@ describe("QA access service", () => {
     expect(service.current(admin.token).subroles.map(({ id }) => id)).toEqual([
       "general",
     ]);
-    expect(() =>
+    // A role write is asynchronous now that a named pair is checked against the
+    // Host's catalog; a non-admin is refused before that read is ever asked for.
+    await expect(
       service.createSubrole(user.token, {
         id: "sales",
         name: "Sales",
@@ -26,7 +28,7 @@ describe("QA access service", () => {
           skills: [],
         },
       }),
-    ).toThrow(QaAccountsError);
+    ).rejects.toThrow(QaAccountsError);
     await expect(service.adminSnapshot(user.token)).rejects.toThrow(
       QaAccountsError,
     );

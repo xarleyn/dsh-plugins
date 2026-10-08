@@ -17,6 +17,7 @@ import type {
   QaApprovalDecision,
   QaClaimResult,
   QaLockdownProof,
+  QaModelCatalogEntry,
   QaOwnershipEntry,
   QaPasswordResetRequest,
   QaPendingApproval,
@@ -154,6 +155,10 @@ export interface QaAccessApi {
     userId: string,
     input: QaUserAccess,
   ): Promise<RemoteResult<QaUserAccess>>;
+  /** The pairs the Host can serve, for writing a model policy by picking one. */
+  modelCatalog(
+    token: string,
+  ): Promise<RemoteResult<readonly QaModelCatalogEntry[]>>;
   updateSkillOverride(
     token: string,
     input: QaSkillAssignmentOverride,
