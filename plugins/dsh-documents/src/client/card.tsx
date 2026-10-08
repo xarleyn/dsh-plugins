@@ -35,6 +35,7 @@ import { DEFAULT_DOCUMENTS_CONFIG } from "../documents/defaults.js";
 import {
   DOCUMENT_COMPARISON_TOOL_NAMES,
   DOCUMENT_TOOL_NAMES,
+  DOCUMENTS_STARTUP_ENTRY,
 } from "../shared/settings.js";
 import {
   Facts,
@@ -60,6 +61,22 @@ const PDF_MODES = [
   { value: "office", label: "Как в Word (DOCX → PDF)" },
   { value: "typst", label: "Typst (нужен движок)" },
 ] as const;
+
+/**
+ * What the card says about the Typst engine, by deployment state.
+ *
+ * `typst.enabled` is the switch the runtime refuses on: a route that is off in
+ * this deployment answers `BACKEND_UNAVAILABLE` whatever the template asks for.
+ * The mode list cannot say which of the two an operator is looking at, so the
+ * state is read from the same field the runtime resolves and shown next to the
+ * choice, instead of leaving the outcome to be discovered by an error.
+ */
+const TYPST_ENGINE_STATE = {
+  enabled:
+    "Движок Typst включён в этом развёртывании: режим «Typst» соберёт PDF.",
+  disabled:
+    "Движок Typst в этом развёртывании не включён: режим «Typst» вернёт ошибку, а не PDF.",
+} as const;
 
 const EXTRACTION_MODES = [
   { value: "accurate", label: "Точный" },
@@ -168,6 +185,9 @@ export function DocumentsCard({
 
   const enabled = config?.enabled ?? DEFAULT_DOCUMENTS_CONFIG.enabled;
   const fieldDisabled = disabled || !enabled;
+  /** Whether this deployment enabled the Typst route the PDF modes offer. */
+  const typstEnabled =
+    config?.typst?.enabled ?? DEFAULT_DOCUMENTS_CONFIG.typst.enabled;
 
   return (
     // The Plugins page draws this card's frame, its heading and its expand
@@ -212,6 +232,14 @@ export function DocumentsCard({
             write(["create", "defaultPdfMode"], value);
           }}
         />
+        <Notice
+          tone={typstEnabled ? "info" : "warn"}
+          testId="docs-pipeline-typst-engine"
+        >
+          {typstEnabled
+            ? TYPST_ENGINE_STATE.enabled
+            : TYPST_ENGINE_STATE.disabled}
+        </Notice>
       </Section>
 
       <Section
@@ -302,7 +330,7 @@ export function DocumentsCard({
 
       <Section
         title="Разборщики"
-        hint="Основной разбор — Docling; pandoc и LibreOffice рендерят документы. Отсутствие программы видно в логе при старте."
+        hint={`Основной разбор — Docling; pandoc и LibreOffice рендерят документы. Отсутствие программы видно в стартовой записи лога: ${DOCUMENTS_STARTUP_ENTRY}.`}
         testId="docs-parsers"
         reset={reset(
           [

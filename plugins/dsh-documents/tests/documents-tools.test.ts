@@ -12,6 +12,7 @@ import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { resolveDocumentsConfig } from "../src/documents/config.js";
 import { DocumentError } from "../src/documents/errors.js";
 import { installDocumentSubsystem } from "../src/documents/index.js";
+import type { BackendStatus } from "../src/documents/index.js";
 import { DocumentRuntime } from "../src/documents/runtime.js";
 import {
   createDocumentTools,
@@ -19,6 +20,10 @@ import {
   DOCUMENT_TOOL_NAMES,
   registerDocumentTools,
 } from "../src/documents/tools/index.js";
+import {
+  DOCUMENTS_STARTUP_ENTRY,
+  DOCUMENTS_STARTUP_PROGRAMS,
+} from "../src/shared/settings.js";
 import { docxBytes, pdfBytes } from "./helpers/document-fixtures.js";
 import {
   stubProviderSet,
@@ -399,5 +404,87 @@ describe("installDocumentSubsystem", () => {
     });
     expect(subsystem).toBeUndefined();
     expect(fake.registered).toEqual([]);
+  });
+
+  /**
+   * Install with a logger that keeps what was written, and a program check the
+   * test answers.
+   *
+   * The record is what the card points an operator at, so a test of it must not
+   * spawn a real `--version` per program: the check comes in as a seam, and only
+   * `documentPrograms` itself is exercised against the machine.
+   */
+  async function installWithRecord(
+    programs: Record<string, BackendStatus>,
+  ): Promise<{
+    readonly entries: {
+      readonly level: string;
+      readonly event: string;
+      readonly fields: Record<string, unknown>;
+    }[];
+  }> {
+    const fake = fakeContext();
+    const entries: {
+      level: string;
+      event: string;
+      fields: Record<string, unknown>;
+    }[] = [];
+    const subsystem = installDocumentSubsystem(fake.ctx as never, {
+      config: {},
+      logger: {
+        debug: () => undefined,
+        info: (event, fields) =>
+          entries.push({ level: "info", event, fields: fields ?? {} }),
+        warn: (event, fields) =>
+          entries.push({ level: "warn", event, fields: fields ?? {} }),
+        error: () => undefined,
+      },
+      register: (definition) => {
+        fake.registered.push(definition.name);
+        return () => undefined;
+      },
+      checkPrograms: async () => programs,
+    });
+    await subsystem?.startup;
+    return { entries };
+  }
+
+  test("the startup record answers for every program and warns about the missing ones", async () => {
+    const programs: Record<string, BackendStatus> = {
+      pandoc: "ok",
+      libreoffice: "unavailable",
+      markitdown: "disabled",
+      typst: "disabled",
+    };
+    // The fixture is written against the same list the card is pinned to, so a
+    // program added to that list without a place in the record fails here.
+    expect(Object.keys(programs)).toEqual([...DOCUMENTS_STARTUP_PROGRAMS]);
+
+    const { entries } = await installWithRecord(programs);
+    const installed = entries.find(
+      (entry) => entry.event === DOCUMENTS_STARTUP_ENTRY,
+    );
+    expect(installed?.fields["programs"]).toEqual(programs);
+    expect(installed?.fields["missingPrograms"]).toEqual(["libreoffice"]);
+
+    const warnings = entries.filter((entry) => entry.level === "warn");
+    expect(warnings.map((entry) => entry.event)).toEqual([
+      "documents.programs.missing",
+    ]);
+    expect(warnings[0]?.fields["missingPrograms"]).toEqual(["libreoffice"]);
+  });
+
+  test("names nothing missing while every program the deployment asks for is there", async () => {
+    const { entries } = await installWithRecord({
+      pandoc: "ok",
+      libreoffice: "ok",
+      markitdown: "ok",
+      typst: "ok",
+    });
+    const installed = entries.find(
+      (entry) => entry.event === DOCUMENTS_STARTUP_ENTRY,
+    );
+    expect(installed?.fields["missingPrograms"]).toEqual([]);
+    expect(entries.filter((entry) => entry.level === "warn")).toEqual([]);
   });
 });
