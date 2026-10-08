@@ -37,10 +37,12 @@ User → primary agent → research / tools / background subagents
   asks for no account of the review — a demand to "state the disproof" of a
   rejected objection was resolved literally on a live stand, and the user read
   the primary's argument with its reviewer. A draft that opens by disputing the
-  review (`Опровержение вывода ревизора: …`) is that leak: the gate demands the
-  answer's shape once per user turn and never PASSes such a head. The honest
-  bound: a committed message cannot be edited at this seam, so a second such
-  draft goes through the ordinary review path.
+  review (`Опровержение вывода ревизора: …`) is that leak: in a turn that has
+  already been reviewed the gate demands the answer's shape once, and that draft
+  is not handed to a reviewer, so it cannot be certified as verified. The honest
+  bounds: a committed message cannot be edited at this seam, so a second such
+  draft goes through the ordinary review path, and a request the user waived is
+  settled before the guard runs.
 - The reviewer itself is exempt: it runs as a subagent child and subagents are
   never gated, so the reviewer cannot recursively review itself.
 

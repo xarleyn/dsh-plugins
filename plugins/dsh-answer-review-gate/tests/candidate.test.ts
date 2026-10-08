@@ -323,4 +323,28 @@ describe("opensWithReviewDisputation", () => {
       ),
     ).toBe(false);
   });
+
+  it("refuses a Russian word that feeds both halves", () => {
+    // `опровержение` contains the `провер` stem, so an unguarded stem would let
+    // this one word name both the disputing act and the review, and every
+    // legitimate refutation an answer opens with would read as the leak.
+    expect(
+      opensWithReviewDisputation("Опровержение мифа: тесты не врут."),
+    ).toBe(false);
+    expect(
+      opensWithReviewDisputation(
+        "Опровержение распространённого заблуждения о производительности.\n" +
+          "Ответ: да.",
+      ),
+    ).toBe(false);
+  });
+
+  it("keeps the Russian stem when a second word carries it", () => {
+    expect(
+      opensWithReviewDisputation(
+        "Опровержение выводов проверки: путь был доступен с самого начала.\n\n" +
+          "Ответ: в файле три строки.",
+      ),
+    ).toBe(true);
+  });
 });
