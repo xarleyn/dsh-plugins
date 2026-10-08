@@ -73,6 +73,9 @@ function mergeOwnershipIds(
   ];
 }
 
+/** The Host's password floor, mirrored so a refusal and its copy name the same number. */
+export const QA_MIN_PASSWORD_LENGTH = 8;
+
 /**
  * Audience-safe copy for the coarse account refusal codes; anything unknown
  * falls back to the generic line.
@@ -92,7 +95,7 @@ export function accountsErrorMessage(code: string | null): string {
     case "invalid-email":
       return "Введите корректный email.";
     case "weak-password":
-      return "Пароль должен быть не короче 8 символов.";
+      return `Пароль должен быть не короче ${QA_MIN_PASSWORD_LENGTH} символов.`;
     case "invalid-display-name":
       return "Слишком длинное имя.";
     case "invalid-profile":
