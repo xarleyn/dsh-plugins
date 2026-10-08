@@ -2,16 +2,16 @@
 "@yadsh/dsh-qa-surface": patch
 ---
 
-The first chat after a sign-in stops failing with «Не удалось начать чат.» over a
-session the stand had in fact created.
+The first question into a new draft stops failing with «Не удалось начать чат.»
+over a session the stand had in fact created.
 
 The browser holds its own catalog of sessions, and `sessions.retain` answers from
 that catalog: an identity it has not listed yet is refused with `sessions.retain:
 unknown session`. A QA session is born on the server, through this plugin's own
 Remote, so the create can answer before the row that lists it reaches the browser —
 and the surface asked for the reference in exactly that window. The refusal was
-reported as a chat that could not start, while the chat was already there in the
-sidebar, one row the visitor had not opened and could not.
+reported as a chat that could not start, while the conversation the stand had
+created was already there — one the visitor had no row of and could not open.
 
 The adoption now waits for the catalog to name the id before it retains it, and asks
 for a fresh baseline rather than only for whichever of the push or the pull happens
@@ -25,5 +25,5 @@ baseline the Host refuses is said out loud too, because a chat lost in that shap
 reads as a slow catalog and is really an unreadable one. Because the failure is
 intermittent, the two moments of the race are logged when it happens — the refused
 retain with its timestamp, and the row that came for it with the time spent waiting —
-so a round that loses the chat can tell which side of the create it lost it on. A
-first send that materializes its session lazily rides the same repaired path.
+so a round that loses the chat can tell which side of the create it lost it on. The
+chat a page restores when it opens rides the same repaired path.

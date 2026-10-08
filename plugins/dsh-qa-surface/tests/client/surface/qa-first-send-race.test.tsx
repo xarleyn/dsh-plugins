@@ -373,21 +373,16 @@ describe("first send from a new QA chat", () => {
   });
 
   it("starts a working chat from the plate's Повторить", async () => {
-    // The plate the report quotes is the one the page draws over the chat it
-    // opened by itself at login, so this is the failure the visitor has to be
-    // able to leave. Its button re-runs that bootstrap; the chat it comes back
-    // with has to be usable and carry no trace of the reason it repaired.
-    const world = harness();
-    world.createSession.mockImplementationOnce(async () => ({
-      ok: false as const,
-      error: {
-        code: "qa.session_create_refused",
-        message: "preset unavailable",
-      },
-    }));
+    // The plate with the button is the one drawn over the chat a load restores for
+    // itself, and the button re-runs that bootstrap. A refusal is a dead end only
+    // if the retry leads nowhere, so this proves it leads into a chat that takes
+    // the next question. A draft whose first send was refused needs no button:
+    // it stays a sendable draft and the case above already sends it again.
+    const world = harness([SAVED_SESSION]);
+    world.retain.mockImplementationOnce(() => {
+      throw new Error("sessions.retain: session is not available here");
+    });
     await mountSurface(world);
-    // The chat the page opened for itself at login is the one that failed, so the
-    // plate and its button are on screen before the visitor touches anything.
     const retry = await screen.findByTestId("qa-surface-error-retry");
     expect(retry.textContent).toBe("Повторить");
 
@@ -404,9 +399,8 @@ describe("first send from a new QA chat", () => {
     const promptField = () => screen.getByRole("combobox");
     fireEvent.change(promptField(), { target: { value: "Первый вопрос" } });
     fireEvent.click(screen.getByRole("button", { name: "Отправить" }));
-    const session = String(world.list.getSnapshot().ids[0]);
     await waitFor(() => {
-      expect(world.faces.get(session)?.prompt).toHaveBeenCalledWith(
+      expect(world.faces.get(SAVED_SESSION)?.prompt).toHaveBeenCalledWith(
         [{ type: "text", text: "Первый вопрос" }],
         "queue",
       );

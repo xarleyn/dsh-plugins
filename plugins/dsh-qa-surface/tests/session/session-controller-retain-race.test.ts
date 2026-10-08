@@ -11,6 +11,10 @@ import { until } from "../helpers/settle.js";
  * a retain asked in that window is refused with `sessions.retain: unknown
  * session` — which used to be reported as a chat that could not start, on a stand
  * that had in fact created it.
+ *
+ * The window sits on the path a load takes now: a visit leaves a draft on the
+ * screen and the first prompt materializes the session it belongs to, so every
+ * case here opens its chat with a send rather than with the bootstrap.
  */
 describe("QA session controller: a retain that raced the session catalog", () => {
   /** Route every creation through the server, leaving its row unlisted. */
@@ -33,11 +37,10 @@ describe("QA session controller: a retain that raced the session catalog", () =>
     });
 
     await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(true);
 
     expect(controller.getSnapshot()).toMatchObject({
-      phase: "ready",
       sessionId: "created-1",
-      canSend: true,
       error: null,
     });
     // The refused retain and the one the catalog made possible: the id is
@@ -48,8 +51,8 @@ describe("QA session controller: a retain that raced the session catalog", () =>
     const held = world.references.filter((ref) => ref.sessionId === created[0]);
     expect(held).toHaveLength(1);
     expect(held[0]?.release).not.toHaveBeenCalled();
-    // And the chat answers: the session the stand created is the one on screen.
-    expect(await controller.send("Первый вопрос")).toBe(true);
+    // And the chat answers: the question that paid for the session is the one
+    // the session the stand created received.
     expect(world.faces.get("created-1")?.prompt).toHaveBeenCalledWith(
       [{ type: "text", text: "Первый вопрос" }],
       "queue",
@@ -67,16 +70,18 @@ describe("QA session controller: a retain that raced the session catalog", () =>
       ...world,
       config: resolveConfig(),
     });
-    const opening = controller.ensureSession();
+    const opening = (async () => {
+      await controller.ensureSession();
+      return controller.send("Первый вопрос");
+    })();
     const push = setInterval(() => {
       if (created.length === 0) return;
       clearInterval(push);
       world.publishRow(created[0]!);
     }, 2);
-    await opening;
+    expect(await opening).toBe(true);
 
     expect(controller.getSnapshot()).toMatchObject({
-      phase: "ready",
       sessionId: "created-1",
       error: null,
     });
@@ -103,12 +108,16 @@ describe("QA session controller: a retain that raced the session catalog", () =>
     });
 
     await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(false);
 
     logged.mockRestore();
+    // The draft outlives its failed first send: the reason is on screen and the
+    // composer can send again, so the visitor is not left holding a chat that
+    // neither reads nor writes.
     expect(controller.getSnapshot()).toMatchObject({
-      phase: "error",
+      phase: "idle",
       error: expect.stringMatching(/Не удалось начать чат/u),
-      canSend: false,
+      canSend: true,
     });
     // The refusal the Host gave is what the surface logs, not the wait's own
     // timeout: an operator reading the console has to see the same sentence the
@@ -152,17 +161,19 @@ describe("QA session controller: a retain that raced the session catalog", () =>
       ...world,
       config: resolveConfig(),
     });
-    const opening = controller.ensureSession();
+    const opening = (async () => {
+      await controller.ensureSession();
+      return controller.send("Первый вопрос");
+    })();
     const push = setInterval(() => {
       if (created.length === 0) return;
       clearInterval(push);
       world.publishRow(created[0]!);
     }, 2);
-    await opening;
+    expect(await opening).toBe(true);
     logged.mockRestore();
 
     expect(controller.getSnapshot()).toMatchObject({
-      phase: "ready",
       sessionId: "created-1",
       error: null,
     });
