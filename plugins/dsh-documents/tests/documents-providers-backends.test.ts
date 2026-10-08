@@ -8,11 +8,13 @@
  * it.
  */
 
-import { mkdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { describe, expect, test } from "vitest";
 
+import { readZipEntryByName } from "../src/documents/inspect/zip.js";
 import { LibreOfficePdfConverter } from "../src/documents/providers/libreoffice.js";
+import { metadataArguments } from "../src/documents/providers/shared.js";
 import {
   PandocDocxRenderer,
   PandocTypstPdfRenderer,
@@ -59,8 +61,17 @@ describe("pandoc provider", () => {
     expect(argv).toContain(`--reference-doc=${reference}`);
     expect(argv).toContain(`--resource-path=${assets}`);
     expect(argv).toContain("--toc");
-    expect(argv).toContain("--metadata=title=Отчёт");
-    expect(argv).toContain("--metadata=author=QA");
+    // The metadata reaches the backend as a UTF-8 file, never as an argument
+    // whose decoding the backend's own locale decides (§13).
+    expect(argv.some((arg) => arg.startsWith("--metadata="))).toBe(false);
+    const metadataArg = argv.find((arg) => arg.startsWith("--metadata-file="));
+    expect(metadataArg).toBeDefined();
+    const metadataYaml = await readFile(
+      metadataArg?.slice("--metadata-file=".length) ?? "",
+      "utf8",
+    );
+    expect(metadataYaml).toContain('"title": "Отчёт"');
+    expect(metadataYaml).toContain('"author": "QA"');
     // No caller-supplied flags of any kind reach the backend (§26.1).
     for (const forbidden of [
       "--lua-filter",
@@ -69,6 +80,34 @@ describe("pandoc provider", () => {
     ]) {
       expect(argv.some((arg) => arg.startsWith(forbidden))).toBe(false);
     }
+  });
+
+  test("carries a Cyrillic title to the backend without losing its encoding", async () => {
+    const renderer = new PandocDocxRenderer(pandocOptions("locale-docx"));
+    const outputPath = path.join(dir, "out", "otchet.docx");
+    const artifact = await renderer.render({
+      sourcePath: path.join(dir, "source.md"),
+      outputPath,
+      workDir: dir,
+      title: "Отчёт по работе",
+    });
+    expect(artifact.size).toBeGreaterThan(0);
+
+    const [call] = await argvLog();
+    const argv = call?.argv ?? [];
+    // The command line carries no document text at all: an argument is decoded
+    // in whatever locale the backend runs under, and that is where the title
+    // used to be lost.
+    expect(argv.some((arg) => arg.includes("Отчёт"))).toBe(false);
+    expect(argv.some((arg) => arg.startsWith("--metadata="))).toBe(false);
+
+    const document = readZipEntryByName(
+      await readFile(outputPath),
+      "word/document.xml",
+    )?.toString("utf8");
+    expect(document).toContain('<w:pStyle w:val="Title"/>');
+    expect(document).toContain("Отчёт по работе");
+    expect(document).not.toContain("\uFFFD");
   });
 
   test("reports a failing backend with a sanitized message", async () => {
@@ -141,12 +180,37 @@ describe("pandoc provider", () => {
       workDir: dir,
       typstTemplateDir: templateDir,
       pageSize: "A4",
+      title: "Отчёт",
     });
     expect(artifact.backend.provider).toBe("typst");
     const argv = (await argvLog())[0]?.argv ?? [];
     expect(argv).toContain("--pdf-engine=typst");
     expect(argv).toContain(`--template=${path.join(templateDir, "main.typ")}`);
     expect(argv).toContain("-V=papersize=A4");
+    expect(argv.some((arg) => arg.startsWith("--metadata="))).toBe(false);
+    const metadataYaml = await readFile(
+      (argv.find((arg) => arg.startsWith("--metadata-file=")) ?? "").slice(
+        "--metadata-file=".length,
+      ),
+      "utf8",
+    );
+    expect(metadataYaml).toContain('"title": "Отчёт"');
+  });
+});
+
+describe("provider metadata", () => {
+  test("writes one quoted YAML entry per key into the work directory", async () => {
+    await expect(
+      metadataArguments(dir, "none.yml", undefined, {}),
+    ).resolves.toEqual([]);
+    const args = await metadataArguments(dir, "meta.yml", "Отчёт", {
+      "2024": "год",
+      multiline: "a\nb",
+    });
+    expect(args).toEqual([`--metadata-file=${path.join(dir, "meta.yml")}`]);
+    await expect(readFile(path.join(dir, "meta.yml"), "utf8")).resolves.toBe(
+      '"2024": "год"\n"multiline": "a b"\n"title": "Отчёт"\n',
+    );
   });
 });
 
