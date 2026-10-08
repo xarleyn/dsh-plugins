@@ -256,5 +256,10 @@ describe("what the card promises the journal will show", () => {
     const enabled = screen.getByTestId("docs-pipeline-typst-engine");
     expect(enabled.textContent).toContain("включён в этом развёртывании");
     expect(enabled.className).not.toContain("warn");
+    // The switch is the whole of what this row can read — the Typst executable
+    // is not one of its fields — so an enabled route confirms only that the
+    // route is on. Where the program itself is, says the entry the startup
+    // check writes, and the sentence has to send the operator there.
+    expect(enabled.textContent).toContain(DOCUMENTS_STARTUP_ENTRY);
   });
 });

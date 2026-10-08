@@ -70,10 +70,15 @@ const PDF_MODES = [
  * The mode list cannot say which of the two an operator is looking at, so the
  * state is read from the same field the runtime resolves and shown next to the
  * choice, instead of leaving the outcome to be discovered by an error.
+ *
+ * The switch is all this page can read: unlike pandoc and LibreOffice, the
+ * Typst executable is not a field of this row, so an enabled route still fails
+ * where the program is absent. The sentence therefore stops at what the field
+ * answers and sends the rest to the entry the startup check writes, rather than
+ * promising a PDF this deployment cannot confirm.
  */
 const TYPST_ENGINE_STATE = {
-  enabled:
-    "Движок Typst включён в этом развёртывании: режим «Typst» соберёт PDF.",
+  enabled: `Движок Typst включён в этом развёртывании: режим «Typst» соберёт PDF, если исполняемый файл на месте — его отсутствие называет стартовая запись лога: ${DOCUMENTS_STARTUP_ENTRY}.`,
   disabled:
     "Движок Typst в этом развёртывании не включён: режим «Typst» вернёт ошибку, а не PDF.",
 } as const;
