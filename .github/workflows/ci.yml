@@ -71,6 +71,9 @@ jobs:
       - name: Verify test id conventions
         run: pnpm verify:testids
 
+      - name: Verify design token existence
+        run: pnpm verify:tokens
+
       - name: Verify publishable plugin package hygiene
         run: pnpm verify:packages
 

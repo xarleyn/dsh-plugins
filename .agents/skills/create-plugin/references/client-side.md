@@ -222,16 +222,24 @@ No gate opens the page, so "green" is never evidence about layout:
 - Known-dead names to avoid (real incidents): `--dsw-alias-label-on-brand`
   (correct: `--dsw-alias-label-primary-foreground`), `--dsw-shadow-l2`
   (correct: `--dsw-shadow-lv2`), `--dsw-label-tertiary` (dropped `alias-`),
-  `--dsw-alias-bg-error` / `--dsw-alias-label-error` (theme has
-  `state-error-primary/secondary`), `--dsw-alias-border-brand`,
-  `--dsw-alias-bg-elevated`, `--dsw-font-family-mono`,
-  `--dsw-alias-fill-tsp-secondary`.
-- Hardening: collect every `var(--dsw-alias-*)` from the built bundle and
-  require each name to exist in the DSH theme source
-  (`packages/client/ui-theme/src/styles/design-platform.css` of the harness
-  checkout) — implemented in dsh-qa-integrations' `verify-package.mjs`; copy
-  it. Caveat: the deployed theme may be wider than a given checkout, so a
-  "dead" verdict is finally proven on a live stand.
+  `--dsw-alias-bg-error` / `--dsw-alias-label-error` / `--dsw-alias-border-error`
+  (theme has `state-error-primary`; it has no error *surface* alias, so a
+  refusal block mixes the state token —
+  `color-mix(in srgb, var(--dsw-alias-state-error-primary, #b3261e) 8%, transparent)`),
+  `--dsw-alias-border-brand`, `--dsw-alias-bg-elevated`
+  (correct: `--dsw-alias-button-elevated-fill`), `--dsw-font-family-mono` (no
+  mono alias exists; write the `ui-monospace,…` stack),
+  `--dsw-alias-fill-tsp-secondary` (correct: `--dsw-alias-bg-module-platform`).
+- Hardening: `pnpm verify:tokens` (`scripts/verify-design-tokens.mjs`) collects
+  every `var(--dsw-…)` substituted under any package's `src/` and refuses a name
+  the installed `@deepseek-ai/dsh-client-ui-theme` does not declare, so the list
+  above cannot grow and a fresh checkout needs no harness source. A dead name
+  fails even behind a fallback: the fallback keeps the declaration alive but
+  paints a colour the Host never chose. `dsh-qa-integrations' verify-package.mjs`
+  additionally pins its *own* bundle to a named set, which is the older,
+  narrower recipe. Caveat: the deployed theme may be wider than the pinned
+  package, so a "dead" verdict is finally proven on a live stand — and a name the
+  pinned theme does declare is still not proof it was the right colour.
 - `injectCardStyles(pluginName, css)` (from `@yadsh/dsh-plugin-kit/client`)
   keys `<style data-plugin="…">` by the NAME argument: two stylesheets under
   one name = the second is silently dropped. Use distinct keys
