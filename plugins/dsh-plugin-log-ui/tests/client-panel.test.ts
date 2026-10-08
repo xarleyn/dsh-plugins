@@ -117,6 +117,10 @@ describe("client apply()", () => {
       harness.forms.get("dsh-plugin-log-ui"),
     );
     expect(typeof card?.props["inspect"]).toBe("function");
+    // The hold path is handed to the card beside `inspect`, not through the form:
+    // a level that is not saved has no settings write to travel on.
+    expect(typeof card?.props["setTemporaryLevel"]).toBe("function");
+    expect(typeof card?.props["clearTemporaryLevel"]).toBe("function");
 
     await dispose();
     expect(harness.disposed.remote).toBe(1);
@@ -182,9 +186,9 @@ describe("client apply()", () => {
         /:focus(?:-visible)?[^{}]*\{[^}]*outline:\s*([^;}]+)/gu,
       ),
     ]);
-    // The card's selects, and the panel's level chips, action buttons, source
-    // filter and search field — four rules, one per control family.
-    expect(rules).toHaveLength(4);
+    // The card's selects and its hold buttons, and the panel's level chips, action
+    // buttons, source filter and search field — five rules, one per control family.
+    expect(rules).toHaveLength(5);
     for (const [, value] of rules) {
       for (const token of [
         "--dsw-focus-ring-width",
