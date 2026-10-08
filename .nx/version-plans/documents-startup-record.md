@@ -21,4 +21,6 @@ Choosing the Typst PDF mode was a guess: the label warned that the route needs
 an engine, and nothing on the page or in the log said whether this deployment
 has one. The pipeline section now reads the field the runtime itself refuses on
 and states the engine's presence, so the outcome of the choice is known before
-a document errors out.
+a document errors out. Where the browser cannot read the row at all, the notice
+says it does not know and names the same entry, rather than passing the package
+default off as this deployment.
