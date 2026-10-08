@@ -1,3 +1,27 @@
+## 0.2.2 (2026-10-08)
+
+### 🩹 Fixes
+
+- The install step in the package README names the width its navigation needs. ([#728](https://github.com/xarleyn/dsh-plugins/pull/728))
+
+  The step told the operator to open Settings → Persona, and that entry point
+  disappears at phone width on the Host the package now targets, so the published
+  README described a path a reader could not walk. The step says which width it
+  assumes and where to widen the layout instead, and the verification document
+  records the same limit for whoever repeats the check.
+
+- A preset row breaks its own text where the text is actually drawn. ([#724](https://github.com/xarleyn/dsh-plugins/pull/724))
+
+  A long persona name used to push the state badge across the row's description at
+  phone width. The word break now sits on the element the roster renders, so the
+  name and description wrap inside the row and the badge keeps its place; the guard
+  renders the roster screen and asks for the row's own description, so a sheet that
+  loses the break and a row that leaves the carrying element each fail on their own.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.1 (2026-10-08)
 
 ### 🩹 Fixes
