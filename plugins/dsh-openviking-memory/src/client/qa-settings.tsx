@@ -19,7 +19,11 @@ import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/settings";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-import type { QaMemoryOverviewGroup, QaUserMemoryOverview } from "../types.js";
+import type {
+  QaMemoryFailure,
+  QaMemoryOverviewGroup,
+  QaUserMemoryOverview,
+} from "../types.js";
 
 /** The Remote surface this page calls; the token authenticates the caller. */
 export interface MemoryOverviewRemote {
@@ -27,6 +31,9 @@ export interface MemoryOverviewRemote {
     token: string,
   ): Promise<RemoteResult<QaUserMemoryOverview>>;
 }
+
+/** The half of a Remote answer that carries a refusal instead of a value. */
+type RemoteCallFailure = Extract<RemoteResult<unknown>, { ok: false }>;
 
 /** The section id and title QA Surface registers this page under. */
 export const QA_MEMORY_SECTION_ID = "openviking-memory";
@@ -71,15 +78,95 @@ export const qaSettingsStyles: string = `
 .ovm-qa__muted{margin:0;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.5}
 `;
 
-/** The message a refused Remote call shows; the wire carries no detail. */
+/**
+ * The sentence the page answers with when nothing was read, because the reader
+ * cannot do anything with a transport string. What the wire sends names an RPC
+ * method, an endpoint and a status code — it says neither "the operator turned
+ * the memory off" nor "the stand is down", which are the two things a person
+ * here can act on — so the copy is this page's own and the detail it replaced
+ * goes to the console.
+ */
 const GENERIC_FAILURE =
-  "Не удалось прочитать память. Обновите страницу и попробуйте снова.";
+  "Память недоступна: её не удалось прочитать. Обновите страницу; если повторится — сообщите оператору развёртывания.";
 
-function failureMessage(result: RemoteResult<unknown>): string {
-  if (!result.ok && typeof result.error?.message === "string") {
-    return result.error.message;
-  }
-  return GENERIC_FAILURE;
+/** The copy for one failure the memory store itself reported, by its code. */
+const STORE_FAILURE_COPY: Readonly<Record<QaMemoryFailure, string>> = {
+  unreachable:
+    "Память недоступна: сервер памяти не отвечает. Записи разговоров при этом не теряются — они допишутся, когда он вернётся.",
+  refused:
+    "Память недоступна: сервер памяти отклоняет запросы этого развёртывания. Его ключ и доступ задаёт оператор.",
+  "listing-failed":
+    "Память недоступна: сервер памяти не смог прочитать ваш раздел. Обновите страницу; если повторится — сообщите оператору развёртывания.",
+};
+
+/**
+ * What a call that never reached this plugin means to the reader. The Host's
+ * transport line is the only evidence available, and it is read for a kind
+ * rather than repeated: what a person can do differs sharply between a session
+ * the deployment does not let through, a service nobody started, and a request
+ * that never came back.
+ */
+type CallFailure = "expired" | "refused" | "absent" | "silent" | "unknown";
+
+/** The HTTP status a transport line carries, when it carries one. */
+const TRANSPORT_STATUS = /HTTP (\d{3})/u;
+/** The transport's own admission that the request did not complete. */
+const TRANSPORT_FAILED = /transport failure/u;
+/** The gateway's admission that this browser has no connection to the Host. */
+const TRANSPORT_DISCONNECTED = /no active Connection/u;
+
+const CALL_FAILURE_COPY: Readonly<Record<CallFailure, string>> = {
+  expired:
+    "Память недоступна: эта сессия больше не авторизована. Войдите заново и откройте страницу снова.",
+  refused:
+    "Память недоступна: сервер не разрешает запрос этой сессии. Доступ к сервису памяти открывает оператор развёртывания.",
+  absent: "Память недоступна: на этом развёртывании сервис памяти не запущен.",
+  silent:
+    "Память недоступна: сервер развёртывания не отвечает. Попробуйте обновить страницу позже.",
+  unknown: GENERIC_FAILURE,
+};
+
+/**
+ * The kind of a call that never reached this plugin — whether the carrier
+ * folded a failure into the result or threw one — as far as its line says.
+ */
+function callFailureOf(detail: string): CallFailure {
+  const matched = TRANSPORT_STATUS.exec(detail);
+  const status = matched === null ? 0 : Number(matched[1]);
+  if (status === 401) return "expired";
+  if (status === 403) return "refused";
+  if (status === 404) return "absent";
+  // 502, 503 and 504 are the gateway saying it got no answer for it, and a
+  // status of `0` is the absence of one — the transport's own admission that
+  // the request never completed. Anything else the transport line means is a
+  // story this page cannot tell honestly, so it gets the one generic sentence.
+  if (status === 502 || status === 503 || status === 504) return "silent";
+  if (status === 0 && TRANSPORT_FAILED.test(detail)) return "silent";
+  // A call the gateway could not even hand to a connection throws instead of
+  // answering; the reader's move is the same as for a stand that says nothing.
+  if (TRANSPORT_DISCONNECTED.test(detail)) return "silent";
+  return "unknown";
+}
+
+/**
+ * The sentence for a refused call, with its detail left in the console: the
+ * method, the endpoint and the code are an operator's reading, and the browser
+ * they belong to is this one.
+ */
+function remoteFailureCopy(result: RemoteCallFailure): string {
+  const detail = result.error.message;
+  const failure = callFailureOf(detail);
+  console.debug("dsh-openviking-memory: userMemoryOverview failed", {
+    code: result.error.code,
+    failure,
+    detail,
+  });
+  return CALL_FAILURE_COPY[failure];
+}
+
+/** The sentence for a store that reported its own failure, by its code. */
+function storeFailureCopy(failure: QaMemoryFailure | null): string {
+  return failure === null ? GENERIC_FAILURE : STORE_FAILURE_COPY[failure];
 }
 
 /** A stored timestamp, as the page prints it; an unreadable one is left out. */
@@ -183,8 +270,7 @@ function MemoryOverview(props: {
   if (!view.connected) {
     return (
       <p className="ovm-qa__error" data-testid="openviking-memory-unavailable">
-        Память недоступна: {view.error ?? "сервер не ответил"}. Разговоры при
-        этом продолжают записываться, как только он вернётся.
+        {storeFailureCopy(view.failure)}
       </p>
     );
   }
@@ -374,12 +460,19 @@ export function createMemoryOverviewSection(remote: MemoryOverviewRemote) {
           setError(null);
         } else {
           setOverview(null);
-          setError(failureMessage(result));
+          setError(remoteFailureCopy(result));
         }
-      } catch {
+      } catch (thrown: unknown) {
         if (generation !== requestGeneration.current) return;
+        const detail =
+          thrown instanceof Error ? thrown.message : String(thrown);
+        console.debug("dsh-openviking-memory: userMemoryOverview threw", {
+          detail,
+        });
         setOverview(null);
-        setError(GENERIC_FAILURE);
+        // What the carrier throws rather than folds into a result — a browser
+        // left without its connection among it — is read the same way.
+        setError(CALL_FAILURE_COPY[callFailureOf(detail)]);
       } finally {
         if (generation === requestGeneration.current) setBusy(false);
       }
