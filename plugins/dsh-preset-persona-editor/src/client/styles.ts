@@ -17,7 +17,12 @@ const MONO = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
 const BODY = `
 .preset-persona{display:flex;flex-direction:column;gap:12px}
 .preset-persona__intro{color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:1.5;margin:0}
-.preset-persona__list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px}
+/* A row's name and description sit in a column the shell lets shrink to nothing
+   beside a badge that never wraps, so a token with no break opportunity — a
+   preset id, a module name — paints on past its own box and under the badge.
+   break-word gives the column that break and asks nothing of the shell; unlike
+   anywhere it leaves the column's min-content width alone. */
+.preset-persona__list{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:8px;overflow-wrap:break-word}
 .preset-persona__body{display:flex;flex-direction:column;gap:12px;padding:12px 0 4px}
 .preset-persona__field{display:flex;flex-direction:column;gap:6px;margin:0}
 .preset-persona__label{color:var(--dsw-alias-label-secondary);font-size:13px;font-weight:500}

@@ -19,6 +19,12 @@ import {
   qaToolPolicyPlan,
 } from "./lockdown-policy.js";
 import type { QaResolvedSessionPolicy } from "./access/service.js";
+import {
+  deploymentModelPair,
+  modelPolicySatisfied,
+  resolveModelPolicy,
+  type QaSessionModelPolicy,
+} from "./access/model-policy.js";
 import { installQaSkillPolicy } from "./enforcement/skill-policy.js";
 import { installInheritableMask } from "./enforcement/tool-mask.js";
 import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
@@ -163,6 +169,12 @@ export class QaPolicyAdmission {
     ) => Promise<QaResolvedSessionPolicy | undefined>,
     /** Scope-local catalog entries may be known before they are activated. */
     private readonly knownDynamicToolNames: () => readonly string[] = () => [],
+    /**
+     * The session's model policy, which is what the fixed-model lockdown holds
+     * the chat to. Without a resolver the deployment pair is the whole of it —
+     * the answer a stand that keeps roles elsewhere still gets.
+     */
+    private readonly modelPolicy?: (sessionId: string) => QaSessionModelPolicy,
     /**
      * The runtime proof that a session was attested by its own account, which is
      * what lets `@yadsh/dsh-qa-integrations` resolve a QA principal for a chat.
@@ -579,13 +591,14 @@ export class QaPolicyAdmission {
     const options = agent.options as Agent["options"] & {
       readonly reasoningEffort?: string;
     };
+    // The pair this chat belongs to is its own policy's, not the deployment's:
+    // a role served by another model is admitted on that model, while the
+    // switch still refuses a chat that moved outside its policy.
+    const modelPolicy =
+      this.modelPolicy?.(sessionId) ??
+      resolveModelPolicy({ deployment: deploymentModelPair(config.session) });
     const modelMatches =
-      !lockdown.enforceFixedModel ||
-      config.session.provider === null ||
-      (options.provider === config.session.provider &&
-        options.model === config.session.model &&
-        (config.session.reasoningEffort === null ||
-          options.reasoningEffort === config.session.reasoningEffort));
+      !lockdown.enforceFixedModel || modelPolicySatisfied(modelPolicy, options);
 
     if (!agentPresetMatches || !workspaceMatches || !modelMatches) {
       throw new QaAttestationError(

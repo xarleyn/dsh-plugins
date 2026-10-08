@@ -22,6 +22,7 @@ import { AdminAudit, AdminFeedback, AdminQuality } from "./pages/Quality.js";
 import { AdminSkillFiles } from "./pages/SkillFiles.js";
 import { AdminExpertMemory } from "./pages/ExpertMemory.js";
 import { AdminUserDetail, AdminUsers } from "./pages/Users.js";
+import { ModelPolicyEditor } from "./ModelPolicyEditor.js";
 
 type Page = QaAdminRoute["page"];
 type CapabilityType = "tool" | "skill";
@@ -450,6 +451,8 @@ function roleEffective(
 
 function RoleEditor(props: {
   readonly role: QaSubrole | null;
+  readonly api: QaAccessApi;
+  readonly token: string;
   readonly catalog: readonly QaCapabilityDescriptor[];
   readonly common: QaCapabilitySelection;
   readonly system: QaCapabilitySelection;
@@ -460,9 +463,9 @@ function RoleEditor(props: {
 }) {
   const existing = props.role !== null;
   const [draft, setDraft] = useState<QaSubrole>(props.role ?? emptyRole());
-  const [tab, setTab] = useState<"general" | "tools" | "skills" | "effective">(
-    "general",
-  );
+  const [tab, setTab] = useState<
+    "general" | "model" | "tools" | "skills" | "effective"
+  >("general");
   const [saving, setSaving] = useState(false);
   const setSkills = (values: readonly string[]) =>
     setDraft((current) => ({
@@ -509,6 +512,7 @@ function RoleEditor(props: {
         {(
           [
             ["general", "Общее"],
+            ["model", "Модель"],
             ["tools", "Инструменты"],
             ["skills", "Навыки"],
             ["effective", "Фактический доступ"],
@@ -581,6 +585,17 @@ function RoleEditor(props: {
             />
             Включена
           </label>
+        </div>
+      ) : tab === "model" ? (
+        <div data-testid="qa-admin-role-model-panel">
+          <ModelPolicyEditor
+            api={props.api}
+            token={props.token}
+            disabled={saving}
+            testId="qa-admin-role-model"
+            value={draft.model}
+            onChange={(model) => setDraft({ ...draft, model })}
+          />
         </div>
       ) : tab === "tools" ? (
         <div
@@ -1260,6 +1275,8 @@ export function QaAdmin(props: {
       >
         <RoleEditor
           role={editing}
+          api={props.api}
+          token={props.token}
           catalog={snapshot.catalog}
           common={snapshot.config.common}
           system={snapshot.systemRequired}

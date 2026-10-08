@@ -57,6 +57,15 @@ A plan file must open with its `---` front-matter fence. Nx silently ignores a
 plan it cannot parse, so the release gate and `pnpm verify:packages` reject such
 a file instead of letting the run release nothing.
 
+`release.versionPlans.ignorePatternsForPlanCheck` names the paths a plan is not
+asked for: a package's own `CHANGELOG.md` and `package.json` (the release writes
+them), and a package's `tests/`. Tests are excluded because they do not ship —
+`files` in every plugin manifest lists `lib/`, `locale/`, the patch and policy
+documents, and a published tarball contains no path under `tests/`. Without the
+rule, a change confined to tests demands a version whose release note would have
+nothing to say, and a curated QA-surface entry for a version no user can see a
+difference in.
+
 `pnpm release:check` is the same command locally and in CI
 (`scripts/check-release-plans.mjs`). The check reads each publishable release
 project against the newest release tag its history can reach — the

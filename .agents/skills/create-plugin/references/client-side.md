@@ -202,6 +202,22 @@ No gate opens the page, so "green" is never evidence about layout:
   renders into. Add what it does not cover: overlapping
   rects, and the computed radius and type scale read against the token, not
   against a memory of the design.
+- **A phone viewport measures the Host's navigation, not your page.** On
+  `0.1.7-rc.2` the section buttons of the settings dialog are invisible at 390px
+  and a section click sometimes closes the whole dialog with nothing in the
+  console (#728). A `settings.section` page has no entry point besides that nav,
+  so at that width nothing of it is reachable to measure: prove the narrow
+  layout by constraining the dialog's own container — which is what the
+  container-relative rule in §Configuration cards on the Plugins panel already
+  asks for, since viewport media queries do not fire inside that dialog — and
+  record a dialog that closes under your click as a Host finding, not as a
+  defect in the page.
+- **On the Plugins panel, a phone width measures the Host's row control, not
+  your card.** A `plugins.row.config` card renders no heading of its own, so a
+  Host row title clipped at 390px has no body of yours to hide; the control that
+  could keep the card out of reach is the row's own open button, which is
+  Host chrome and has not been measured at that width. Name which of the two
+  you looked at before reading a blank row as a card that failed to mount.
 - **Capture the states that can differ**: the states the card UI section of
   AGENTS.md asks you to compare against a first-party card — that section names
   them, this page does not copy the list — plus the empty, loading and refusal

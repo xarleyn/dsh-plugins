@@ -167,6 +167,17 @@ export function accessApi(): QaAccessApi {
     deleteSubrole: vi.fn(),
     updateCommon: vi.fn(),
     updateAssignment: vi.fn(),
+    modelCatalog: vi.fn(async () => ({
+      ok: true as const,
+      value: [
+        {
+          provider: "demo",
+          model: "demo-model",
+          label: "Demo model",
+          reasoningEfforts: ["low", "high"],
+        },
+      ],
+    })),
     updateSkillOverride: vi.fn(),
     skillActivations: vi.fn(),
   };

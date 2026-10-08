@@ -95,6 +95,39 @@ export async function documentHealth(
   return { status, required, optional };
 }
 
+/**
+ * The external programs of this deployment, probed for the startup record.
+ *
+ * `documentHealth` also asks the HTTP providers, and a boot must not wait on a
+ * service; this answers for the programs the pipeline shells out to, which is
+ * what an operator reads off the log when a parse came back empty. A program
+ * whose route was never enabled is not missing, so it reports `disabled`, the
+ * same way health reports an optional backend that is off.
+ */
+export async function documentPrograms(
+  config: ResolvedDocumentsConfig,
+): Promise<Record<string, BackendStatus>> {
+  return {
+    pandoc: await probeExecutable(
+      config.pandoc.executable,
+      config.pandoc.timeoutMs,
+    ),
+    libreoffice: await probeExecutable(
+      config.libreoffice.executable,
+      config.libreoffice.timeoutMs,
+    ),
+    markitdown: config.markitdown.enabled
+      ? await probeExecutable(
+          config.markitdown.executable,
+          config.markitdown.timeoutMs,
+        )
+      : "disabled",
+    typst: config.typst.enabled
+      ? await probeExecutable(config.typst.executable, config.typst.timeoutMs)
+      : "disabled",
+  };
+}
+
 export function documentCapabilities(options: {
   readonly config: ResolvedDocumentsConfig;
   readonly providers: ProviderSet;

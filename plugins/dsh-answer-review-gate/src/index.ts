@@ -148,6 +148,9 @@ export function apply(
     domainExperts: () =>
       ctx.get("domainExperts") as DomainExpertsFace | undefined,
     subagents: () => ctx.get("subagents") as SubagentsFace | undefined,
+    // The QA surface is read structurally and per call: an installation
+    // without it simply has no model policy to follow.
+    qaSurface: () => ctx.get("qaSurface"),
     steerMessage: (agent, text, summary) => {
       agent.steer(
         createUserMessage({

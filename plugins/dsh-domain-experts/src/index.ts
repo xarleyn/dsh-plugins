@@ -312,6 +312,7 @@ export class DomainExpertsService extends TypertRemoteService {
       now: Date.now,
       perUserMemory: this.principals.perUserMemory(),
       principalOf: (sessionId) => this.principals.principalOf(sessionId),
+      modelPolicyOf: (sessionId) => this.principals.modelPolicyOf(sessionId),
     };
   }
 

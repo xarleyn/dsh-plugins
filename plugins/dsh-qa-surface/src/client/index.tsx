@@ -49,6 +49,7 @@ import type {
   QaQueueStatus,
   QaClaimResult,
   QaLockdownProof,
+  QaModelCatalogEntry,
   QaOwnershipEntry,
   QaSkillDocument,
   QaSkillDraftInput,
@@ -458,6 +459,9 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
     userId: string,
     input: QaUserAccess,
   ): Promise<RemoteResult<QaUserAccess>>;
+  accessModelCatalog(
+    token: string,
+  ): Promise<RemoteResult<readonly QaModelCatalogEntry[]>>;
   accessUpdateSkillOverride(
     token: string,
     input: QaSkillAssignmentOverride,
@@ -629,6 +633,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           policyRemote.accessUpdateCommon(token, input),
         updateAssignment: (token, userId, input) =>
           policyRemote.accessUpdateAssignment(token, userId, input),
+        modelCatalog: (token) => policyRemote.accessModelCatalog(token),
         updateSkillOverride: (token, input) =>
           policyRemote.accessUpdateSkillOverride(token, input),
         skillActivations: (token, sessionId) =>
