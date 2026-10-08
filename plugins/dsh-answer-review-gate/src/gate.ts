@@ -30,6 +30,7 @@ import {
   renderRevisionSteer,
   steerSummary,
 } from "./prompt.js";
+import { qaModelPolicy } from "./qa-policy.js";
 import type {
   DomainExpertsFace,
   ReviewAuditEntry,
@@ -98,6 +99,12 @@ export interface AnswerReviewGateDeps {
   /** Per-call service resolvers keep optional backends soft. */
   readonly domainExperts: () => DomainExpertsFace | undefined;
   readonly subagents: () => SubagentsFace | undefined;
+  /**
+   * The host's QA surface, for the model policy of the chat under review.
+   * Optional and read per call: a deployment with no QA surface has no policy,
+   * and the reviewer then runs on this plugin's own configuration.
+   */
+  readonly qaSurface?: () => unknown;
   /**
    * Deliver one `answer-review`-sourced steer message to the agent
    * (production: `createUserMessage` with the gate's own source kind;
@@ -462,6 +469,9 @@ export class AnswerReviewGate {
         face: this.deps.subagents(),
         config: config.reviewer,
         parent: agent,
+        // The reviewed chat's policy, not its visitor's picker: a reviewer that
+        // followed the parent's model would change with every role on the stand.
+        modelPolicy: qaModelPolicy(this.deps.qaSurface?.(), String(agent.id)),
       });
     }
     return createDomainExpertBackend({

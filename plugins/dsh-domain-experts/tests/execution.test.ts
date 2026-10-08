@@ -60,6 +60,15 @@ function harnessOf(
   memory: {
     readonly perUser?: boolean;
     readonly principals?: Record<string, string>;
+    /** The model policy of one chat, as the QA surface answers it. */
+    readonly modelPolicy?: Record<
+      string,
+      {
+        readonly provider: string;
+        readonly model: string;
+        readonly reasoningEffort?: string;
+      }
+    >;
   } = {},
 ): Harness {
   const clock = fixedClock();
@@ -99,6 +108,7 @@ function harnessOf(
       now: () => 9_000,
       perUserMemory: memory.perUser ?? false,
       principalOf: (sessionId) => memory.principals?.[sessionId],
+      modelPolicyOf: (sessionId) => memory.modelPolicy?.[sessionId],
     },
   };
 }
@@ -161,6 +171,51 @@ describe("execution: composition handed to the runtime", () => {
     const harness = harnessOf();
     await run(harness);
     expect(harness.subagents.started[0]?.request.agentOptions).toBeUndefined();
+  });
+
+  // A domain that inherits its model used to inherit the model the visitor left
+  // in the picker. The deployment's policy is the operator's answer, so an
+  // expert delegated from a chat whose role names a pair runs on that pair.
+  it("sends the pair the chat's model policy pins when the domain inherits", async () => {
+    const harness = harnessOf(
+      PAYMENTS,
+      {},
+      {
+        modelPolicy: {
+          "session-1": {
+            provider: "local",
+            model: "small",
+            reasoningEffort: "low",
+          },
+        },
+      },
+    );
+    await run(harness);
+    expect(harness.subagents.started[0]?.request.agentOptions).toEqual({
+      provider: "local",
+      model: "small",
+      reasoningEffort: "low",
+    });
+  });
+
+  it("refuses a policy-pinned model on a provider without agent options", async () => {
+    const harness = harnessOf(
+      PAYMENTS,
+      {
+        capabilities: {
+          agentOptions: false,
+          outputSchema: true,
+          depthLimit: true,
+          toolFilter: true,
+          persona: true,
+        },
+      },
+      { modelPolicy: { "session-1": { provider: "local", model: "small" } } },
+    );
+    await expect(run(harness)).rejects.toMatchObject({
+      code: "UNSUPPORTED_SUBAGENT_CAPABILITY",
+    });
+    expect(harness.subagents.started).toEqual([]);
   });
 
   it("sends model options when the domain pins a route", async () => {
