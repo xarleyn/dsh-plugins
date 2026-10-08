@@ -1,3 +1,96 @@
+## 0.6.2 (2026-10-08)
+
+### 🩹 Fixes
+
+- A generated DOCX opens with a title made of replacement characters no more. ([#738](https://github.com/xarleyn/dsh-plugins/issues/738))
+
+  `document_create` handed the document title and its metadata to Pandoc as
+  `--metadata=key=value` arguments, while the Markdown body went to the same run as a
+  file. A backend decodes the files it is given as UTF-8 and its own command line in
+  the locale the process runs under, so where no UTF-8 locale is set every byte above
+  0x7F of an argument arrives as U+FFFD. `«Отчёт по работе»` is fifteen characters,
+  twenty-eight UTF-8 bytes, twenty-six of them above 0x7F — which is exactly the
+  paragraph the stand produced: twenty-six replacement characters with the two spaces
+  left standing, while the section heading, the two paragraphs and the table, all read
+  out of `source.md`, came through intact.
+
+  Document text no longer rides the command line. The provider writes the title and the
+  metadata as a UTF-8 YAML file in the job's work directory and passes
+  `--metadata-file`, the channel the body already proved, for the DOCX renderer and the
+  Typst renderer alike; an explicit title still wins over the front-matter one. The work
+  directory is removed with the rest of the intermediates, so nothing of it survives
+  into the artifact bundle.
+
+  The regression test runs the provider against a stub that decodes its argv the way a
+  backend without a UTF-8 locale does, builds a real `word/document.xml` from the
+  metadata it received, and asserts that the Cyrillic title is in it and that no U+FFFD
+  is — so the class fails the test, not only the one string.
+
+- A refusal block reads as a refusal again, and a token the Host never declares ([#717](https://github.com/xarleyn/dsh-plugins/issues/717))
+  cannot be written down unnoticed.
+
+  Unknown `var(--dsw-…)` is not a missing colour: the substitution yields the
+  guaranteed-invalid value, so the browser drops the whole declaration at
+  computed-value time and says nothing. `--dsw-alias-bg-error` and
+  `--dsw-alias-label-error` are named by no theme sheet — the error ramp is
+  `--dsw-alias-state-error-primary` — so every block of refusal text written with
+  them lost its fill and its ink together and rendered as ordinary small text,
+  which is how issue #717 looked on the Memory tab of a stand with no access to
+  the service. The same mechanic had already cost `dsh-sleev` its focus and
+  invalid borders (`--dsw-alias-border-brand`, `--dsw-alias-border-error`) and
+  `dsh-session-scope` its chip fill (`--dsw-alias-fill-tsp-secondary`).
+
+  Text and borders now take `--dsw-alias-state-error-primary` with a `#b3261e`
+  fallback. The theme declares no error *surface* alias — `state-success` and
+  `state-warn` have a tint, `state-error` does not — so a block mixes the state
+  token the way the Host's own danger control does,
+  `color-mix(in srgb, … 8%, transparent)`, and keeps its soft red in both themes.
+  Three names that only ever survived behind a fallback are retired where a live
+  token exists (`--dsw-alias-bg-elevated` → `--dsw-alias-button-elevated-fill`,
+  `--dsw-alias-label-inverse` → `--dsw-alias-label-primary-foreground`), and
+  `--dsw-font-family-mono`, for which the theme offers no alias at all, becomes
+  the `ui-monospace` stack the other bundles already write. No computed value
+  changes except where a dead name had been silently winning.
+
+  `pnpm verify:tokens` (`scripts/verify-design-tokens.mjs`) is the class turned
+  into a gate: it collects every `--dsw-*` name substituted under any package's
+  `src/` and refuses one the installed `@deepseek-ai/dsh-client-ui-theme` does not
+  declare — a dead name behind a fallback included, because the fallback paints a
+  colour the Host never chose. The vocabulary comes from the pinned package rather
+  than a hand-kept list, so the check needs no harness checkout and reads the same
+  version the plugins build against; where the theme cannot be found the gate
+  reports that instead of passing. `dsh-plugin-log-ui`'s own bundle pin flips from
+  requiring `--dsw-alias-bg-error` to forbidding the dead error names.
+
+- A document the chat made arrives as a file, not as a path. ([#739](https://github.com/xarleyn/dsh-plugins/issues/739))
+
+  A stand that was asked to build a Word document built it and then said nothing
+  about it: the answer was a paragraph, the files tab said the chat had no
+  attachments, and the only trace of the artifact was a line of text the model had
+  copied out of a tool result — `/workspace/work/.qa-users/<account>/.qa/artifacts/…`,
+  which is the container's own layout and the account directory inside it. A chat
+  whose dialogs are readable by other accounts of the same server has no business
+  printing that.
+
+  The producing tools now report each file by its path inside the session
+  workspace — the same spelling their own input parameters accept, so a document
+  reported by one call is read back by the next — and the pipeline's absolute
+  paths stay where containment is checked, inside the runtime. The chat reads
+  those names out of the turn's tool results and cards the file under the answer
+  that made it: badge, name, size, `Открыть` into the workspace viewer with its
+  Word preview, `Скачать` for the bytes. The card is on the roster of the files tab
+  too, so the answer's document is listed with what the chat sent. It appears
+  whatever the tool-activity switch hides, because a file the reader asked for is
+  not tool noise, and where the Host refuses workspace reads the card still names
+  the file without offering a control that would be refused. An answer that quotes
+  an absolute path anyway — one written before this change, replayed from durable
+  history, or rebuilt by a model from the working directory it was given — is
+  projected with the workspace directory and the account partition masked out.
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.6.1 (2026-10-04)
 
 ### 🩹 Fixes
