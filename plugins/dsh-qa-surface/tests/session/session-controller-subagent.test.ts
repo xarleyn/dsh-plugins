@@ -4,6 +4,7 @@ import { QaSessionController } from "../../src/client/QaSessionController.js";
 import { QA_REGENERATE_MARKER } from "../../src/client/QaTranscriptAdapter.js";
 import {
   harness,
+  openChat,
   sessionFace,
   conversationBinding,
 } from "../helpers/session-fakes.js";
@@ -35,6 +36,8 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    // The chat the surface shows is the one its first prompt made.
+    await openChat(controller, world);
     const chatId = controller.getSnapshot().sessionId;
     expect(chatId).toBe("created-2");
     const secureCallsBefore = world.secureSession.mock.calls.length;
@@ -126,6 +129,7 @@ describe("QA session controller", () => {
       config: resolveConfig({ session: { cwd: "D:/qa-docs" } }),
     });
     await controller.ensureSession();
+    await openChat(controller, world);
     expect(world.createSession).toHaveBeenCalledWith("", null, false);
     expect(world.create).toHaveBeenCalledWith();
     controller.dispose();
@@ -139,12 +143,13 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    await openChat(controller, world);
     expect(world.createSession).toHaveBeenLastCalledWith("", "analyst", false);
     const first = controller.activeSessionId();
 
     await controller.selectSubrole("developer");
     expect(controller.activeSessionId()).toBeNull();
-    await controller.send("Новый контекст роли", []);
+    expect(await controller.send("Новый контекст роли", [])).toBe(true);
 
     expect(controller.activeSessionId()).not.toBe(first);
     expect(world.createSession).toHaveBeenLastCalledWith(
@@ -162,6 +167,7 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    await openChat(controller, world);
     const face = world.faces.get("created-1");
     expect(await controller.regenerate()).toBe(true);
     expect(face?.prompt).toHaveBeenCalledWith(

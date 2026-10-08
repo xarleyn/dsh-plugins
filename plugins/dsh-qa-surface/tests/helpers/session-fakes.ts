@@ -224,6 +224,29 @@ export function fileDraft(name = "note.txt"): QaFileDraft {
   };
 }
 
+/**
+ * Open a chat the way the surface does now: a load drafts, and the first prompt
+ * materializes the session. The two frames after the send are what tell the
+ * surface that question arrived — until the Host names the submission, the next
+ * send still waits on the one in flight.
+ */
+export async function openChat(
+  controller: {
+    send: (text: string) => Promise<boolean>;
+    getSnapshot: () => { sessionId: string | null };
+  },
+  world: QaSessionTestWorld,
+  prompt = "первый вопрос",
+): Promise<string> {
+  await controller.send(prompt);
+  const sessionId = String(controller.getSnapshot().sessionId);
+  landDurableUserRow(world.bindings.get(sessionId), prompt, "request-1");
+  const face = world.faces.get(sessionId);
+  face?.source.set({ ...face.source.getSnapshot(), running: true });
+  face?.source.set({ ...face.source.getSnapshot(), running: false });
+  return sessionId;
+}
+
 export function harness(
   existing: string[] = [],
   options: { readonly subagents?: readonly string[] } = {},
