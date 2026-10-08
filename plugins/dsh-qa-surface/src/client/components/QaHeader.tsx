@@ -65,7 +65,9 @@ export interface QaHeaderProps {
   readonly onToggleAgents: () => void;
   /** Whether the deployment shows the sources control in the header at all. */
   readonly sourcesVisible: boolean;
+  /** Sources of the chat so far; 0 prints no badge but never closes the panel. */
   readonly sourcesCount: number;
+  /** Whether collection has settled: a running turn's 0 is not yet a none. */
   readonly sourcesComplete: boolean;
   readonly sourcesOpen: boolean;
   readonly onOpenSources: () => void;
@@ -235,13 +237,14 @@ export function QaHeader({
             {agentCount === 0 ? null : ` (${agentCount})`}
           </button>
           {sourcesVisible ? (
+            // An empty list is a fact the panel can explain, not a reason to
+            // withhold it: disabling this control on a turn that collected
+            // nothing made the only surface that says why unreachable, and left
+            // a dead button whose silence the reader has to guess at.
             <button
               type="button"
               className="dsh-qa-header__sources"
               data-testid="qa-surface-header-sources"
-              aria-disabled={
-                (sourcesCount === 0 && sourcesComplete) || undefined
-              }
               aria-expanded={sourcesOpen}
               {...(sourcesCount === 0 && sourcesComplete
                 ? {
@@ -254,10 +257,7 @@ export function QaHeader({
                   ? "Этот ответ обошёлся без источников"
                   : "Показать источники этого ответа"
               }
-              onClick={() => {
-                if (sourcesCount === 0 && sourcesComplete) return;
-                onOpenSources();
-              }}
+              onClick={onOpenSources}
             >
               <svg viewBox="0 0 16 16" aria-hidden="true">
                 <circle cx="8" cy="8" r="5.75" />
