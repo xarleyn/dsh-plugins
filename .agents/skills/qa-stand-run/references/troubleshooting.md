@@ -104,6 +104,16 @@ cleanup of a slice; that is where a stand that "will not boot" usually lives.
   preserved. The page spinning forever looks exactly like a dead stand and is not
   one, and the browser's network log tells them apart: a refused authorisation
   answers `403`, a dead stand answers nothing.
+- **The Host's "Select Workspace Directory" dialog just sits on "Loading…"** while
+  `GET /api/directoryPicker/list` answers `404` (seen on `0.1.7-rc.2`, measured
+  once, so "at least" is the honest form). The route is the Host's own —
+  `@deepseek-ai/dsh-host-directory-picker` is a peer of its workspace controller —
+  and no plugin of this repository calls it, because `dsh-session-scope`'s scope
+  picker lists directories itself. So this is neither a card that failed to mount
+  nor a `link:` that did not build. Set the workspace directory in `config/dsh/`
+  instead, which `SKILL.md` §1 names as what the entrypoint re-applies on every
+  start (and gates the write); an edit made through that dialog would have been
+  provisional even if the dialog had answered.
 
 ## Session journals after a stand move
 
