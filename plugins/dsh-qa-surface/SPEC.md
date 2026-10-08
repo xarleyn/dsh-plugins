@@ -2771,7 +2771,10 @@ package.
     view offers «Все источники» to return to the whole-chat list;
   - the list/preview content is the former drawer's, unchanged (groups,
     badges, safe local-file preview), plus an empty state naming the source
-    classes and saying that nothing listed is not a collection failure.
+    classes and saying that nothing listed is not a collection failure. It is
+    drawn only while the collection has settled (`complete`): an unsettled one
+    already says which delegated origins it is still waiting for, and a chat
+    that has asked nothing yet has no answer to diagnose.
 - Files tab: a new header «Файлы» button (count badge; when the chat has no
   attachments and no readable workspace it is `aria-disabled` rather than
   `disabled`, so it stays in the tab order and its accessible name says what is
