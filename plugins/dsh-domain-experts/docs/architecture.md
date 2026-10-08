@@ -126,6 +126,18 @@ domain_expert(domain, task, context, output, mode, background)
   concern — a top-level agent seeing `domain_memory` — is handled by refusing
   with `EXPERT_NOT_CALLER`, because the runtime offers no seam to register a
   tool inside a child's creation window.
+- **The expert sees no skill catalog.** `applyChildComposition` joins the
+  parent's preset revision and installs this run's persona and `toolFilter`,
+  and the harness publishes a model-facing catalog only where the `skill` tool
+  is visible in that agent's scope — so a skill the caller's conversation had
+  in its palette is not available inside the delegation, and a domain that does
+  name `skill` among its own tools sees the deployment's unfiltered list rather
+  than the chat's role one. Nothing here works around it by writing the parent's
+  skill names into the persona: the persona travels, but the loader that
+  enforces a role's allow-list does not, and a delegated agent pointed at the
+  standard loader could load any skill the deployment discovered. On a QA
+  Surface deployment the boundary is stated in its own documentation; making
+  skills reach an expert means installing that enforcement in the child first.
 - **The run tracker is process-local.** A continuable child resumed after a
   restart cannot be attributed to a domain, so delegation from it fails loudly
   instead of guessing.
