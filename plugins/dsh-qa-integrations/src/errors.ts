@@ -64,6 +64,21 @@ export interface TransportBudget {
   readonly attempts: number;
 }
 
+/**
+ * What an upstream answer looked like, as far as a log may say it: the shape of
+ * the answer, never its content. A status, a media type and the class of a
+ * transport failure are what tells an expired key from a host that is down —
+ * and none of them is a body, an address or a credential.
+ */
+export interface TransportDiagnostics {
+  /** Status of an answer that arrived; absent when nothing answered. */
+  readonly status?: number;
+  /** Media type the answer declared for itself. */
+  readonly contentType?: string;
+  /** Class of the failure the fetch itself raised, when nothing answered. */
+  readonly errorClass?: string;
+}
+
 /** Safe domain error: message and code never include upstream bodies or secrets. */
 export class IntegrationError extends Error {
   /**
@@ -71,6 +86,14 @@ export class IntegrationError extends Error {
    * error that never reached one.
    */
   budget?: TransportBudget;
+
+  /**
+   * Set by the transport that met the answer, on the failure it handed back.
+   * The broker logs it, because the call that failed is the one an operator is
+   * looking for and the party that decided the refusal no longer holds the
+   * response.
+   */
+  diagnostics?: TransportDiagnostics;
 
   constructor(
     readonly code: IntegrationErrorCode,

@@ -664,7 +664,20 @@ const gitlabTransport = await readFile(
   "utf8",
 );
 assert.match(readPolicy, /method: "GET"/u);
-assert.match(readPolicy, /redirect: "error"/u);
+// Never followed, but read: a redirect is the answer a spent credential gives,
+// and the loop hands it to the provider's status fold instead of raising an
+// opaque socket failure that would fold into "request failed".
+assert.match(readPolicy, /redirect: "manual"/u);
+assert.match(readPolicy, /export function isRedirectStatus/u);
+assert.match(readPolicy, /export function credentialRedirectFailure/u);
+// A sign-in page that arrives under a 200 is the same refusal, and a body that
+// is merely not JSON stays the transport failure it was.
+assert.match(readPolicy, /looksLikeSignInPage\(/u);
+assert.match(readPolicy, /export function credentialPageFailure/u);
+// The answer's shape rides out on the error that carries it, so whoever reports
+// the refusal can name a status, a media type and a transport error class.
+assert.match(readPolicy, /withTransportDiagnostics/u);
+assert.match(readPolicy, /errorClassOf/u);
 // The budget covers the whole exchange: a chunk is read against the attempt's
 // own signal, and the stream is released on every exit from the read — a body
 // that stops arriving is refused by the deadline, not waited on forever.
@@ -945,7 +958,7 @@ const teamcityTransport = await readFile(
   "utf8",
 );
 assert.match(readPolicy, /method: "GET"/u);
-assert.match(readPolicy, /redirect: "error"/u);
+assert.match(readPolicy, /redirect: "manual"/u);
 assert.match(teamcityTransport, /authorization: `Bearer \$\{token\}`/u);
 const teamcityHost = await readFile(
   new URL("src/providers/teamcity/index.ts", root),
@@ -1225,7 +1238,7 @@ const jiraTransport = await readFile(
   new URL("src/providers/jira/transport.ts", root),
   "utf8",
 );
-// The request goes through the kernel loop — GET-only, `redirect: "error"` and
+// The request goes through the kernel loop — GET-only, `redirect: "manual"` and
 // the bounded retries are asserted on `kernel/read-policy.ts` above, where the
 // single implementation lives; the provider supplies its own foldings only.
 // The fetcher this provider was given must be the loop's first argument, however

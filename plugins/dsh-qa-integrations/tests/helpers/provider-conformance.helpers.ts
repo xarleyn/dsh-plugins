@@ -167,7 +167,9 @@ export function describeProviderConformance(target: ConformanceTarget): void {
       expect(calls.length).toBeGreaterThan(0);
       for (const call of calls) {
         expect(call.init.method).toBe(target.method);
-        expect(call.init.redirect).toBe("error");
+        // `manual`, not `error`: the redirect is never followed either way, and
+        // only this one reaches the provider's fold as the answer it is.
+        expect(call.init.redirect).toBe("manual");
         // The deployment's own deadline travels with every attempt.
         expect(call.init.signal).toBeDefined();
       }

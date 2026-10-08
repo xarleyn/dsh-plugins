@@ -800,6 +800,7 @@ export class IntegrationBroker {
         serviceProfileId: resolved?.profile.id ?? null,
         sourceSessionId: request.sourceSessionId,
       });
+      this.healAfterCall(principal, integration);
       this.logger.debug("tool.call", {
         provider: request.provider,
         operation: request.operation,
@@ -827,6 +828,14 @@ export class IntegrationBroker {
       });
       this.logTransportTimeout(
         request.provider,
+        request.operation,
+        error,
+        resolved?.profile.id,
+      );
+      this.recordCallVerdict(principal, integration, error);
+      this.logCallFailure(
+        request.provider,
+        integration,
         request.operation,
         error,
         resolved?.profile.id,
@@ -874,6 +883,104 @@ export class IntegrationBroker {
             retries: budget.retries,
             attempts: budget.attempts,
           }),
+      ...(serviceProfileId === undefined
+        ? {}
+        : { serviceProfile: serviceProfileId }),
+    });
+  }
+
+  /**
+   * Write what one live call learned about its binding back onto that binding.
+   *
+   * `validate` already did this, but only for somebody who opened the connect
+   * form: a key that died between two visits left the row reading `connected`
+   * with an empty `last_error_code`, so the card kept promising the connection
+   * that was refusing every answer, and the only clue was the text the chat
+   * happened to show. A refused credential is a state of the row, so the call
+   * that met one records it.
+   *
+   * Only these codes are written. An unreachable host, a TLS chain the user
+   * cannot repair from the form, a rate limit or a resource that is not there
+   * say nothing about the validity of the binding, and a red card for those
+   * would send somebody to reconnect the very credential that was never the
+   * problem.
+   */
+  private recordCallVerdict(
+    principal: IntegrationPrincipal,
+    integration: StoredIntegration,
+    error: unknown,
+  ): void {
+    if (!(error instanceof IntegrationError)) return;
+    if (!REFUSED_CREDENTIAL_CODES.includes(error.code)) return;
+    this.recordValidation(
+      principal,
+      integration.provider,
+      integration,
+      false,
+      error.code,
+    );
+  }
+
+  /**
+   * Clear the verdict an earlier live call filed, once a later call got data
+   * through the same credential. `status` and `last_error_code` are the card's
+   * only statement about a connection, and without this a binding repaired
+   * upstream — a re-issued token, a key the administrator un-revoked — would
+   * stay red until somebody thought to press a button that answers nothing new.
+   */
+  private healAfterCall(
+    principal: IntegrationPrincipal,
+    integration: StoredIntegration,
+  ): void {
+    if (integration.status !== "error") return;
+    this.recordValidation(
+      principal,
+      integration.provider,
+      integration,
+      true,
+      null,
+    );
+  }
+
+  /**
+   * Say in this plugin's own log what a refused live call met.
+   *
+   * The chat carries the sentence the model was shown, the audit trail carries
+   * the result, and neither is where an operator looks; before this a live
+   * refusal left no line behind at all. The fields describe the shape of the
+   * answer — its status, its media type, the class of the transport failure —
+   * never its body, and never a credential.
+   *
+   * Two refusals are left to their own records: a call this deployment's
+   * deadline ended is `transport.timeout`, budget and all, and a refusal decided
+   * without any answer — a policy switch, a connection that is not there — has
+   * no upstream to report on, which is what the absence of diagnostics says.
+   */
+  private logCallFailure(
+    provider: IntegrationProviderId,
+    integration: StoredIntegration,
+    operation: string,
+    error: unknown,
+    serviceProfileId?: string | undefined,
+  ): void {
+    if (!(error instanceof IntegrationError)) return;
+    if (error.code === "UpstreamTimeout" || error.diagnostics === undefined) {
+      return;
+    }
+    const facts = error.diagnostics;
+    this.logger.warn("tool.call-failed", {
+      provider,
+      operation,
+      reason: error.code,
+      integrationId: integration.id,
+      credentialSource: integration.credentialSource,
+      ...(facts.status === undefined ? {} : { status: facts.status }),
+      ...(facts.contentType === undefined
+        ? {}
+        : { contentType: facts.contentType }),
+      ...(facts.errorClass === undefined
+        ? {}
+        : { errorClass: facts.errorClass }),
       ...(serviceProfileId === undefined
         ? {}
         : { serviceProfile: serviceProfileId }),
@@ -1243,6 +1350,15 @@ function healthCode(
       return "ProviderUnavailable";
   }
 }
+
+/**
+ * Codes that mean the binding's own credential was refused, wherever the
+ * upstream said so — a rejected token, an expired one, a redirect to a sign-in
+ * page. They are the ones the operator's card can act on by reconnecting.
+ */
+const REFUSED_CREDENTIAL_CODES: readonly IntegrationErrorCode[] = Object.freeze(
+  ["CredentialExpired", "CredentialRevoked", "InvalidCredential"],
+);
 
 /** Codes that mean "policy refused this", wherever the refusal was decided. */
 const DENIAL_CODES: readonly IntegrationErrorCode[] = Object.freeze([

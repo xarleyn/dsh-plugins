@@ -14,6 +14,7 @@ describeProviderConformance({
   // and must stay out of every header and out of the body.
   carrier: { kind: "url", value: "abcdefghijk" },
   statuses: [
+    [302, "CredentialRevoked"],
     [401, "ProviderPermissionDenied"],
     [403, "ProviderPermissionDenied"],
     [429, "ProviderUnavailable"],
