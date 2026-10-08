@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 
 import { act, fireEvent, render, within } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { Markdown } from "../../../src/client/components/Markdown.js";
 
 /** The answer shape that prompted this renderer: MR review with C# diff. */
@@ -53,7 +53,40 @@ if (etAttr != null) {
 \`\`\`
 `;
 
+/**
+ * A jsdom page has neither copy path, so the fence would render the manual hint
+ * in every test. Each case installs the browser it means to be: the secure
+ * context with the Clipboard API, the plain-HTTP stand with only the copy
+ * command, or a browser that refuses both.
+ */
+function withClipboardApi(writeText: (text: string) => Promise<void>): void {
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+}
+
+function withCopyCommand(result: boolean): void {
+  Object.defineProperty(document, "execCommand", {
+    configurable: true,
+    value: vi.fn(() => result),
+  });
+}
+
+function withoutCopyPaths(): void {
+  Object.defineProperty(window.navigator, "clipboard", {
+    configurable: true,
+    value: undefined,
+  });
+  Object.defineProperty(document, "execCommand", {
+    configurable: true,
+    value: undefined,
+  });
+}
+
 describe("assistant Markdown blocks", () => {
+  beforeEach(withoutCopyPaths);
+
   it("renders every ATX heading level instead of leaking the hashes", () => {
     const { container } = render(
       <Markdown
@@ -101,6 +134,7 @@ describe("assistant Markdown blocks", () => {
   });
 
   it("sets a fenced block's language, copy button, and highlight tokens", () => {
+    withClipboardApi(async () => undefined);
     const { container } = render(
       <Markdown text={'```json\n{"a": 1, "b": "x"}\n```'} />,
     );
@@ -120,8 +154,8 @@ describe("assistant Markdown blocks", () => {
   });
 
   it("copies the fence source, and says so once it did", async () => {
-    const writeText = vi.fn().mockResolvedValue(undefined);
-    Object.assign(navigator, { clipboard: { writeText } });
+    const writeText = vi.fn(async () => undefined);
+    withClipboardApi(writeText);
     const { container } = render(
       <Markdown text={"```sh\nnpm run build\n```"} />,
     );
@@ -132,6 +166,53 @@ describe("assistant Markdown blocks", () => {
     });
     expect(writeText).toHaveBeenCalledWith("npm run build");
     expect(copy.textContent).toBe("Скопировано");
+  });
+
+  it("copies the fence through the copy command on an insecure page", async () => {
+    // The stand over a LAN address: no `navigator.clipboard` at all, and the
+    // button used to answer such a click with nothing.
+    withCopyCommand(true);
+    const { container } = render(
+      <Markdown text={"```sh\nnpm run build\n```"} />,
+    );
+    const copy = within(container).getByTestId("qa-md-code-copy");
+    await act(async () => {
+      fireEvent.click(copy);
+      await Promise.resolve();
+    });
+    expect(document.execCommand).toHaveBeenCalledWith("copy");
+    expect(copy.textContent).toBe("Скопировано");
+  });
+
+  it("names the dead end instead of a copy button that cannot work", () => {
+    withoutCopyPaths();
+    const { container } = render(
+      <Markdown text={"```sh\nnpm run build\n```"} />,
+    );
+    expect(within(container).queryByTestId("qa-md-code-copy")).toBeNull();
+    expect(
+      within(container).getByTestId("qa-md-code-copy-hint").textContent,
+    ).toBe("Скопируйте вручную");
+  });
+
+  it("keeps the button and says to copy by hand once the browser refused", async () => {
+    withClipboardApi(async () => {
+      throw new DOMException("denied");
+    });
+    withCopyCommand(false);
+    const { container } = render(
+      <Markdown text={"```sh\nnpm run build\n```"} />,
+    );
+    const copy = within(container).getByTestId("qa-md-code-copy");
+    expect(within(container).queryByTestId("qa-md-code-copy-hint")).toBeNull();
+    await act(async () => {
+      fireEvent.click(copy);
+      await Promise.resolve();
+    });
+    expect(copy.textContent).toBe("Копировать");
+    expect(
+      within(container).getByTestId("qa-md-code-copy-hint").textContent,
+    ).toBe("Скопируйте вручную");
   });
 
   it("keeps nested lists, tight items, and task checkboxes", () => {

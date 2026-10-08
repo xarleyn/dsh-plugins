@@ -11,6 +11,50 @@ import { describe, expect, it, vi } from "vitest";
 import type { QaSource } from "../../../src/types.js";
 import { QaMessage } from "../../../src/client/components/QaMessage.js";
 
+/**
+ * Which copy paths the browser under test exposes. The plain-HTTP stand has no
+ * `navigator.clipboard` at all, and a jsdom page has neither.
+ */
+function withClipboardApi(writeText: (text: string) => Promise<void>): void {
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: { writeText },
+  });
+}
+
+function withCopyCommand(result: boolean): void {
+  Object.defineProperty(document, "execCommand", {
+    configurable: true,
+    value: vi.fn(() => result),
+  });
+}
+
+function withoutCopyPaths(): void {
+  Object.defineProperty(navigator, "clipboard", {
+    configurable: true,
+    value: undefined,
+  });
+  Object.defineProperty(document, "execCommand", {
+    configurable: true,
+    value: undefined,
+  });
+}
+
+function renderAnswer(text: string) {
+  return render(
+    <QaMessage
+      message={{
+        id: "assistant:1",
+        role: "assistant",
+        text,
+        status: "committed",
+      }}
+      renderMarkdown
+      showTimestamp={false}
+    />,
+  );
+}
+
 describe("QA message", () => {
   it("copies visible assistant text from the icon action", async () => {
     const writeText = vi.fn(async () => undefined);
@@ -37,6 +81,51 @@ describe("QA message", () => {
       expect(writeText).toHaveBeenCalledWith("Useful answer"),
     );
     expect(screen.getByRole("button", { name: "Скопировано" })).toBeTruthy();
+  });
+
+  it("copies the answer through the copy command on an insecure page", async () => {
+    withoutCopyPaths();
+    withCopyCommand(true);
+    renderAnswer("Useful answer");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Скопировать сообщение" }),
+    );
+    await waitFor(() =>
+      expect(document.execCommand).toHaveBeenCalledWith("copy"),
+    );
+    expect(screen.getByRole("button", { name: "Скопировано" })).toBeTruthy();
+  });
+
+  it("replaces the copy action with a manual hint where nothing can copy", () => {
+    withoutCopyPaths();
+    renderAnswer("Useful answer");
+    expect(
+      screen.queryByRole("button", { name: "Скопировать сообщение" }),
+    ).toBeNull();
+    expect(screen.getByTestId("qa-message-copy-hint").textContent).toBe(
+      "Скопируйте вручную",
+    );
+  });
+
+  it("keeps the action and names the dead end once the browser refused", async () => {
+    withClipboardApi(async () => {
+      throw new DOMException("denied");
+    });
+    withCopyCommand(false);
+    renderAnswer("Useful answer");
+    const action = screen.getByRole("button", {
+      name: "Скопировать сообщение",
+    });
+    expect(screen.queryByTestId("qa-message-copy-hint")).toBeNull();
+    fireEvent.click(action);
+    await waitFor(() =>
+      expect(screen.getByTestId("qa-message-copy-hint").textContent).toBe(
+        "Скопируйте вручную",
+      ),
+    );
+    expect(
+      screen.getByRole("button", { name: "Скопировать сообщение" }),
+    ).toBeTruthy();
   });
 
   it("reveals date, duration, TTFT and token speed for assistant answers", () => {
