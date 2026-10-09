@@ -160,9 +160,9 @@ export function buildState(
 /**
  * Progressive fitting (SPEC §19): shrink the state deterministically until it
  * fits `maxStateTokens`, oldest-first and metadata-first, never dropping the
- * goal. Stages: abridge long texts → drop oldest tool metadata → drop oldest
- * assistant entries → keep only the goal and the newest few entries. Throws
- * when even the last stage does not fit — the caller fails open.
+ * goal or the last three privacy-bounded user entries. Stages: abridge other
+ * long texts → drop oldest tool metadata → prefer the newest five entries →
+ * trim remaining unprotected history. Throws if protected context cannot fit.
  */
 export function fitState(
   state: JevState,
@@ -176,28 +176,56 @@ export function fitState(
     return { state: current, tokens: sizeOf(current), stage: "full" };
   }
 
-  // Stage 1: abridge long texts.
+  const protectedUsers = new Set(
+    state.history.filter((entry) => entry.label.startsWith("user ")).slice(-3),
+  );
+
+  // Stage 1: abridge long texts without losing recent user constraints.
   current = {
     ...current,
-    history: current.history.map((entry) => ({
-      ...entry,
-      text: abridge(entry.text, 400, 150),
-    })),
+    history: current.history.map((entry) =>
+      protectedUsers.has(entry)
+        ? entry
+        : {
+            ...entry,
+            text: abridge(entry.text, 400, 150),
+          },
+    ),
   };
   if (sizeOf(current) <= maxStateTokens) {
     return { state: current, tokens: sizeOf(current), stage: "abridged" };
   }
 
+  // Find the smallest oldest-first removal with logarithmic serializations;
+  // serializing the whole history after each deletion is quadratic on long logs.
+  const trim = (
+    canDrop: (entry: JevHistoryEntry, index: number) => boolean,
+  ): readonly JevHistoryEntry[] => {
+    const history = current.history;
+    const indices = history.flatMap((entry, index) =>
+      canDrop(entry, index) ? [index] : [],
+    );
+    const without = (count: number): readonly JevHistoryEntry[] => {
+      const dropped = new Set(indices.slice(0, count));
+      return history.filter((_, index) => !dropped.has(index));
+    };
+    let low = 0;
+    let high = indices.length;
+    while (low < high) {
+      const mid = Math.floor((low + high) / 2);
+      if (sizeOf({ ...current, history: without(mid) }) <= maxStateTokens)
+        high = mid;
+      else low = mid + 1;
+    }
+    return without(low);
+  };
+  const isProtected = (entry: JevHistoryEntry): boolean =>
+    protectedUsers.has(entry);
+
   // Stage 2: drop oldest tool metadata entries.
-  let history = current.history;
-  while (
-    history.length > 0 &&
-    sizeOf({ ...current, history }) > maxStateTokens
-  ) {
-    const dropIndex = history.findIndex((entry) => entry.callId !== undefined);
-    if (dropIndex < 0) break;
-    history = history.filter((_, index) => index !== dropIndex);
-  }
+  let history = trim(
+    (entry) => entry.callId !== undefined && !isProtected(entry),
+  );
   current = { ...current, history };
   if (sizeOf(current) <= maxStateTokens) {
     return {
@@ -207,13 +235,10 @@ export function fitState(
     };
   }
 
-  // Stage 3: drop oldest non-tool entries too, keep the newest five.
-  while (
-    history.length > 5 &&
-    sizeOf({ ...current, history }) > maxStateTokens
-  ) {
-    history = history.slice(1);
-  }
+  // Stage 3: prefer the newest five entries plus protected user constraints.
+  history = trim(
+    (entry, index) => index < current.history.length - 5 && !isProtected(entry),
+  );
   current = { ...current, history };
   if (sizeOf(current) <= maxStateTokens) {
     return {
@@ -223,7 +248,19 @@ export function fitState(
     };
   }
 
+  // Five entries are a preference, not a hard floor for a small local backend.
+  history = trim((entry) => !isProtected(entry));
+  current = { ...current, history };
+  if (sizeOf(current) <= maxStateTokens) {
+    return {
+      state: current,
+      tokens: sizeOf(current),
+      stage: "recent-context-trimmed",
+    };
+  }
+
   throw new Error(
-    "jev-compaction: the Jev state cannot fit within state.maxStateTokens",
+    `jev-compaction: the Jev state cannot fit within state.maxStateTokens ` +
+      `(protected context: ${sizeOf(current)} tokens, budget: ${maxStateTokens})`,
   );
 }
