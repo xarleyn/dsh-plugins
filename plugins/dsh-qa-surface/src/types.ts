@@ -1586,6 +1586,15 @@ export interface QaWorkspaceListing {
  * bytes when it does not. The panel needs both — documents the agent produced
  * are binary, while notes and transcripts preview as text.
  */
+export interface QaWorkspaceFileChunk {
+  readonly path: string;
+  readonly size: number;
+  readonly offset: number;
+  readonly version: string;
+  readonly base64: string;
+  readonly done: boolean;
+}
+
 export interface QaWorkspaceFile {
   readonly path: string;
   readonly size: number;
@@ -1810,6 +1819,12 @@ export interface QaFileView {
  * this account's workspace in.
  */
 export interface QaArtifactView {
+  readonly workflow?: {
+    readonly id: string;
+    readonly revision: number;
+    readonly sha256: string;
+    readonly status: string;
+  };
   /** Workspace-relative path; the identifier every workspace read takes. */
   readonly path: string;
   /** Last path segment, which is what the card is signed with. */
@@ -1818,6 +1833,15 @@ export interface QaArtifactView {
   readonly format: string;
   /** Bytes as the tool reported them; 0 when it reported no size. */
   readonly bytes: number;
+}
+
+/** Compact, authenticated state used by the approval action beside a draft. */
+export interface QaDocumentWorkflowStatus {
+  readonly id: string;
+  readonly revision: number;
+  readonly status: string;
+  readonly sha256: string | null;
+  readonly blockers: readonly string[];
 }
 
 /** A subagent transcript opened read-only from the agents panel. */

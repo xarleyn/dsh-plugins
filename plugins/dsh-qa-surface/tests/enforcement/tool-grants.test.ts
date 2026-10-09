@@ -43,6 +43,7 @@ async function setup(options: {
   readonly grantableTools: readonly string[];
   /** Tools the agent registers for itself, the way the QA catalog does. */
   readonly localTools?: readonly string[];
+  readonly presetTools?: readonly string[];
   readonly descriptors: readonly QaSkillDescriptor[];
 }) {
   const ctx = new Context();
@@ -58,7 +59,10 @@ async function setup(options: {
   await ctx.plugin(
     Object.assign(
       (inner: Context) => {
-        const scope = createScope(inner, agent);
+        const presetKey = {};
+        const preset = createScope(inner, presetKey);
+        for (const name of options.presetTools ?? []) preset.ctx.tools.register(globalTool(name));
+        const scope = createScope(inner, agent, { parent: presetKey });
         (agent as unknown as { ctx: Context }).ctx = scope.ctx;
         for (const name of options.localTools ?? []) {
           scope.ctx.tools.register(globalTool(name));
@@ -114,6 +118,24 @@ const visible = (ctx: Context, agent: Agent): readonly string[] =>
   ctx.tools.schemas(agent).map(({ name }) => name);
 
 describe("dynamic skill tool grants", () => {
+  it("activates a permitted tool inherited from a preset while the base mask hides it", async () => {
+    const { ctx, agent, grants } = await setup({
+      registered: [],
+      presetTools: ["read", "browser_open"],
+      baseTools: ["read"],
+      grantableTools: ["browser_open"],
+      descriptors: [descriptor("preset-research", {
+        version: 1,
+        audience: { type: "common" },
+        tools: { requires: ["browser_open"], grant: { lifecycle: "session", requireAll: true } },
+      })],
+    });
+    expect(visible(ctx, agent)).toEqual(["read"]);
+    expect(grants.activate("preset-research", "model")).toMatchObject({
+      status: "activated", grant: { grantedTools: ["browser_open"], deniedTools: [] },
+    });
+    expect(visible(ctx, agent)).toEqual(["read", "browser_open"]);
+  });
   it("expands the toolset only when the skill is activated", async () => {
     const { ctx, agent, grants } = await setup({
       registered: ["read", "browser_open", "browser_click", "shell"],

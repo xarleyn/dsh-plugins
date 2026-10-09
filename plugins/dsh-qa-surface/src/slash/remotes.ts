@@ -1,4 +1,5 @@
 import type { Context } from "@deepseek-ai/cordis";
+import { qaAgentScope } from "../agent-scope.js";
 import type { SkillListValue } from "@deepseek-ai/dsh-api-session-controller";
 import { SessionId } from "@deepseek-ai/dsh-session/types";
 import { isUserInvocable, type SkillSummary } from "@deepseek-ai/dsh-skill";
@@ -230,8 +231,10 @@ export function createQaSlashRemotes(
         readonly session: { readonly header: { readonly cwd?: string } };
       };
       const cwd = live.session.header.cwd;
-      const listed = await live.ctx.skills.list({
-        scope: agent as never,
+      const registry = live.ctx.get("skills") as Context["skills"] | undefined;
+      if (registry === undefined) return undefined;
+      const listed = await registry.list({
+        scope: qaAgentScope(agent),
         ...(cwd === undefined ? {} : { cwd }),
       });
       return listed.filter(isUserInvocable).map((skill: SkillSummary) => ({
@@ -256,7 +259,7 @@ export function createQaSlashRemotes(
   ): readonly QaSlashNativeCommand[] | undefined {
     if (nativeCommands === undefined || agent === undefined) return undefined;
     try {
-      return nativeCommands.list(agent).map((command) => ({
+      return nativeCommands.list(qaAgentScope(agent)).map((command) => ({
         name: command.name,
         description: command.description,
         ...(command.input === undefined
@@ -364,7 +367,7 @@ export function createQaSlashRemotes(
         return refusal("inactive-session");
       }
       const descriptor = nativeCommands
-        .list(agent)
+        .list(qaAgentScope(agent))
         .find((command) => command.name === name);
       if (descriptor === undefined) {
         logger.warn("slash.unknown", { sessionId, kind: "command", name });

@@ -1,5 +1,6 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
+import { qaAgentScope } from "./agent-scope.js";
 // The `types` subpath keeps the client ISessions Context merge authoritative;
 // the package root merges a conflicting host `sessions` service type.
 import { SessionId } from "@deepseek-ai/dsh-session/types";
@@ -27,6 +28,7 @@ import {
 } from "./access/model-policy.js";
 import { installQaSkillPolicy } from "./enforcement/skill-policy.js";
 import { installInheritableMask } from "./enforcement/tool-mask.js";
+import { isDelegatedStructuredResult } from "./enforcement/structured-result.js";
 import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
 import { QA_ASK_QUESTION_TOOL } from "./questions.js";
 import type { QaLockdownProof, ResolvedQaSurfaceConfig } from "./types.js";
@@ -210,6 +212,9 @@ export class QaPolicyAdmission {
       if (session === undefined) return undefined;
       const ceiling = this.ceilings.get(String(session.id));
       if (ceiling === undefined) return undefined;
+      if (isDelegatedStructuredResult(this.ctx, execution.agent, execution.name)) {
+        return undefined;
+      }
       return qaCeilingDenial(ceiling, execution.name);
     });
     ctx.on("session/created", (session) => {
@@ -644,7 +649,7 @@ export class QaPolicyAdmission {
     // this agent nor declared by the QA catalog is refused below, so nothing
     // may be added to the list without passing it.
     const isMounted = (toolName: string): boolean =>
-      this.ctx.tools.get(toolName, agent) !== undefined ||
+      this.ctx.tools.get(toolName, qaAgentScope(agent)) !== undefined ||
       this.knownDynamicToolNames().includes(toolName);
     // The provenance reporter is this plugin's own tool, mounted only while the
     // deployment runs the sources fallback. Naming it in a deployment that does

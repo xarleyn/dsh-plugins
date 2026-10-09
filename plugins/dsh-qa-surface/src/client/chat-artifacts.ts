@@ -24,6 +24,10 @@ const PRODUCED_FORMATS: Readonly<Record<string, readonly string[]>> =
     document_convert: ["docx", "pdf", "md"],
     document_to_markdown: ["markdown"],
     document_from_url: ["markdown"],
+    document_workflow_draft: ["markdown"],
+    document_workflow_read: ["markdown"],
+    document_workflow_review: ["markdown"],
+    document_workflow_export: ["docx", "pdf"],
   });
 
 /** One reported file: `<format>: <path>` with an optional `(<size>, …)`. */
@@ -87,6 +91,10 @@ export function artifactsOfToolResult(
   const formats = PRODUCED_FORMATS[toolName];
   if (formats === undefined || output === null) return [];
   const artifacts: QaArtifactView[] = [];
+  const workflowId = /^workflow:\s+(wf_[0-9a-f-]{36})$/mu.exec(output)?.[1];
+  const revision = Number(/^revision:\s+(\d+)$/mu.exec(output)?.[1]);
+  const sha256 = /^draft-sha256:\s+([0-9a-f]{64})$/mu.exec(output)?.[1];
+  const status = /^status:\s+(\w+)$/mu.exec(output)?.[1];
   for (const line of output.split(/\r?\n/u)) {
     const reported = FILE_LINE.exec(line.trim());
     if (reported === null) continue;
@@ -100,6 +108,12 @@ export function artifactsOfToolResult(
       name: baseName(path),
       format,
       bytes: reportedBytes(reported[3]),
+      ...(workflowId === undefined ||
+      !Number.isSafeInteger(revision) ||
+      sha256 === undefined ||
+      status === undefined
+        ? {}
+        : { workflow: { id: workflowId, revision, sha256, status } }),
     });
   }
   return artifacts;

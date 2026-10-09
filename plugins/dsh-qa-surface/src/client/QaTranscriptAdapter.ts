@@ -324,9 +324,11 @@ function collectTurnArtifacts(
     )) {
       // One file reported twice in a turn — a conversion that rewrote its own
       // bundle — is one card, not two.
-      if (buffer.artifacts.some((seen) => seen.path === artifact.path))
-        continue;
-      buffer.artifacts.push(artifact);
+      const existing = buffer.artifacts.findIndex(
+        (seen) => seen.path === artifact.path,
+      );
+      if (existing >= 0) buffer.artifacts[existing] = artifact;
+      else buffer.artifacts.push(artifact);
     }
   }
 }

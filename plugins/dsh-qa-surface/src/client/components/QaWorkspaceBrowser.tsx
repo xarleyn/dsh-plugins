@@ -7,7 +7,11 @@ import type {
 import type { QaBoundSourceApi } from "../types.js";
 import { formatFileSize } from "../attachments.js";
 import { base64ToBytes } from "../base64.js";
-import { downloadWorkspaceFile, fileNameOf } from "../workspace-download.js";
+import {
+  downloadWorkspaceFile,
+  downloadWorkspacePath,
+  fileNameOf,
+} from "../workspace-download.js";
 import { isConvertibleDocument } from "../../shared/documents.js";
 import { sourcePreviewFailureCopy } from "../source-preview.js";
 import { Markdown } from "./Markdown.js";
@@ -198,6 +202,7 @@ function FilePreview({
   onToggleRaw,
   onBack,
   onExpand,
+  onDownload,
 }: {
   readonly file: QaWorkspaceFile | undefined;
   readonly status: "loading" | "ready" | "refused";
@@ -208,6 +213,7 @@ function FilePreview({
   readonly onToggleRaw: () => void;
   readonly onBack: () => void;
   readonly onExpand: () => void;
+  readonly onDownload: () => void;
 }) {
   if (status !== "ready" || file === undefined) {
     return (
@@ -272,7 +278,7 @@ function FilePreview({
           type="button"
           className="dsh-qa-ws__download"
           data-testid="qa-surface-workspace-download"
-          onClick={() => downloadWorkspaceFile(file)}
+          onClick={onDownload}
         >
           Скачать
         </button>
@@ -344,6 +350,7 @@ export function QaWorkspaceBrowser({
   );
   const [converting, setConverting] = useState(false);
   const [conversionFailure, setConversionFailure] = useState("");
+  const [downloadFailure, setDownloadFailure] = useState("");
   const [raw, setRaw] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const generation = useRef(0);
@@ -473,7 +480,32 @@ export function QaWorkspaceBrowser({
           onToggleRaw={() => setRaw((value) => !value)}
           onBack={closeFile}
           onExpand={() => setExpanded(true)}
+          onDownload={() => {
+            if (file === undefined) return;
+            setDownloadFailure("");
+            const download = api.readWorkspaceFileChunk;
+            if (download === undefined) {
+              try {
+                downloadWorkspaceFile(file);
+              } catch {
+                setDownloadFailure("Полное скачивание файла недоступно.");
+              }
+              return;
+            }
+            void downloadWorkspacePath(file.path, (offset, version) =>
+              download(sessionId, file.path, offset, version),
+            ).catch(() =>
+              setDownloadFailure(
+                "Не удалось скачать файл целиком. Повторите скачивание.",
+              ),
+            );
+          }}
         />
+        {downloadFailure === "" ? null : (
+          <p role="status" data-testid="qa-workspace-download-error">
+            {downloadFailure}
+          </p>
+        )}
         <QaModal
           open={expanded && file !== undefined}
           size="document"

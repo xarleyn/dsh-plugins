@@ -1,4 +1,6 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
+import { qaAgentScope } from "../agent-scope.js";
+import { scopeChainOf } from "@deepseek-ai/dsh-scope";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { installInheritableMask } from "./tool-mask.js";
 import type {
@@ -93,7 +95,9 @@ export class QaAgentToolGrants {
     const tools = this.options.agent.ctx.tools;
     return (
       tools.get(tool) !== undefined ||
-      tools.get(tool, this.options.agent) !== undefined
+      scopeChainOf(qaAgentScope(this.options.agent)).some(
+        (scope) => tools.get(tool, scope) !== undefined,
+      )
     );
   }
 

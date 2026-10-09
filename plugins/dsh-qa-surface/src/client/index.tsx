@@ -706,6 +706,30 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           policyRemote.adminMemoryWipe(token, namespace, expectedRecords),
       };
       const sourceApi: QaSourceApi = {
+        documentWorkflowStatus: (token, sessionId, workflowId) =>
+          (
+            policyRemote as unknown as Required<QaSourceApi>
+          ).documentWorkflowStatus(token, sessionId, workflowId),
+        approveDocumentWorkflow: (
+          token,
+          sessionId,
+          workflowId,
+          revision,
+          sha256,
+        ) =>
+          (
+            policyRemote as unknown as Required<QaSourceApi>
+          ).approveDocumentWorkflow(
+            token,
+            sessionId,
+            workflowId,
+            revision,
+            sha256,
+          ),
+        readWorkspaceFileChunk: (token, sessionId, path, offset, version) =>
+          (
+            policyRemote as unknown as Required<QaSourceApi>
+          ).readWorkspaceFileChunk(token, sessionId, path, offset, version),
         sources: (token, sessionId) =>
           policyRemote.sources(token, sessionId) as unknown as ReturnType<
             QaSourceApi["sources"]

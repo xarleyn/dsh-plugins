@@ -1,6 +1,6 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
-import type { ScopeKey } from "@deepseek-ai/dsh-scope";
+import { scopeChainOf, type ScopeKey } from "@deepseek-ai/dsh-scope";
 import type { SkillSummary } from "@deepseek-ai/dsh-skill";
 import type {
   QaCapabilityDescriptor,
@@ -9,6 +9,7 @@ import type {
 } from "../types.js";
 import { QA_USER_SKILLS_SOURCE } from "../personal-skills/provider.js";
 import { parseQaSkillMetadata } from "./skill-metadata.js";
+import { qaAgentScope } from "../agent-scope.js";
 
 export interface CapabilityCatalogSnapshot {
   readonly descriptors: readonly QaCapabilityDescriptor[];
@@ -100,8 +101,16 @@ export class QaCapabilityCatalog {
     agent: Agent | undefined,
     scope: ScopeKey | undefined,
   ): Promise<CapabilityCatalogSnapshot> {
-    const toolDescriptors: QaCapabilityDescriptor[] = this.ctx.tools
-      .schemas(scope)
+    const viewingScope = agent === undefined ? scope : qaAgentScope(agent);
+    // Keep preset tools discoverable after the session mask hides capabilities
+    // awaiting a skill grant. Discovery never lifts a mask or admits execution.
+    const scopes = scopeChainOf(viewingScope);
+    const schemas = new Map(
+      (scopes.length === 0 ? [undefined] : scopes.reverse()).flatMap(
+        (key) => this.ctx.tools.schemas(key).map((schema) => [schema.name, schema] as const),
+      ),
+    );
+    const toolDescriptors: QaCapabilityDescriptor[] = [...schemas.values()]
       .map((schema) => ({
         type: "tool" as const,
         id: schema.name,
@@ -127,7 +136,7 @@ export class QaCapabilityCatalog {
 
     const registry = this.ctx.get("skills") as Context["skills"] | undefined;
     const lookup: { scope?: ScopeKey; cwd?: string } = {
-      ...(scope === undefined ? {} : { scope }),
+      ...(viewingScope === undefined ? {} : { scope: viewingScope }),
       ...(agent?.session.header.cwd === undefined
         ? {}
         : { cwd: agent.session.header.cwd }),

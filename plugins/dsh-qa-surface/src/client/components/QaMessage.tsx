@@ -118,6 +118,7 @@ export interface QaMessageProps {
   readonly onArtifactOpen?: (artifact: QaArtifactView) => void;
   /** Save a produced file. Omitted on the same terms as {@link onArtifactOpen}. */
   readonly onArtifactDownload?: (artifact: QaArtifactView) => void;
+  readonly onArtifactApprove?: (artifact: QaArtifactView) => Promise<void>;
   /** Operator-configured running phrases; omitted reads the built-in list. */
   readonly thinkingPhrases?: readonly string[];
   /**
@@ -248,7 +249,14 @@ function sameArtifacts(
       artifact.path === (b[index] as QaArtifactView).path &&
       artifact.name === (b[index] as QaArtifactView).name &&
       artifact.format === (b[index] as QaArtifactView).format &&
-      artifact.bytes === (b[index] as QaArtifactView).bytes,
+      artifact.bytes === (b[index] as QaArtifactView).bytes &&
+      artifact.workflow?.id === (b[index] as QaArtifactView).workflow?.id &&
+      artifact.workflow?.revision ===
+        (b[index] as QaArtifactView).workflow?.revision &&
+      artifact.workflow?.sha256 ===
+        (b[index] as QaArtifactView).workflow?.sha256 &&
+      artifact.workflow?.status ===
+        (b[index] as QaArtifactView).workflow?.status,
   );
 }
 
@@ -389,6 +397,7 @@ export const QaMessage = memo(
     onSourceDetail,
     onArtifactOpen,
     onArtifactDownload,
+    onArtifactApprove,
     thinkingPhrases,
     onRateFeedback,
   }: QaMessageProps) {
@@ -659,6 +668,12 @@ export const QaMessage = memo(
                       ? undefined
                       : () => onArtifactDownload(artifact)
                   }
+                  onApprove={
+                    onArtifactApprove === undefined ||
+                    artifact.workflow?.status !== "reviewed"
+                      ? undefined
+                      : () => onArtifactApprove(artifact)
+                  }
                 />
               ))}
             </div>
@@ -806,6 +821,7 @@ export const QaMessage = memo(
     prev.onOpenSources === next.onOpenSources &&
     prev.onSourceDetail === next.onSourceDetail &&
     prev.onArtifactOpen === next.onArtifactOpen &&
+    prev.onArtifactApprove === next.onArtifactApprove &&
     prev.onArtifactDownload === next.onArtifactDownload &&
     prev.thinkingPhrases === next.thinkingPhrases &&
     sameMessage(prev.message, next.message),

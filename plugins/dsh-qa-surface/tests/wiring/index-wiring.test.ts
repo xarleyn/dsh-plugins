@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it, vi } from "vitest";
 import { Context } from "@deepseek-ai/cordis";
 import type { IndexInjection } from "@deepseek-ai/dsh-host-webserver";
 import {
@@ -270,6 +270,9 @@ describe("wiring: the host entry point", () => {
       "sources",
       "slashCatalog",
       "adminOverview",
+      "readWorkspaceFileChunk",
+      "documentWorkflowStatus",
+      "approveDocumentWorkflow",
     ]) {
       expect(names).toContain(name);
     }
@@ -296,6 +299,73 @@ describe("wiring: the host entry point", () => {
     );
     expect(QA_SURFACE_SETTINGS_NAMESPACE).toBe("dsh-qa-surface");
     expect(patch).toContain(`id: ${QA_SURFACE_SETTINGS_NAMESPACE}`);
+  });
+});
+
+describe("wiring: document approval belongs to the authenticated chat owner", () => {
+  it("refuses unauthenticated callers and other accounts even when session admission allows an administrator", async () => {
+    const { surface, ctx, chat, dispose } = await world();
+    chat("document-chat", WORKSPACE);
+    const approve = vi.fn(async () => ({
+      id: "wf-demo",
+      revision: 3,
+      status: "approved",
+      draft: { sha256: "draft-hash" },
+      blockers: [],
+    }));
+    ctx.provide("documents", { workflow: { approve } } as never);
+    const admission = (
+      surface as unknown as {
+        admission: {
+          secureSession(token: string, id: string): Promise<unknown>;
+        };
+      }
+    ).admission;
+    vi.spyOn(admission, "secureSession").mockResolvedValue(undefined);
+    vi.spyOn(surface, "principalForSession").mockReturnValue({
+      userId: "owner",
+    });
+    const caller = vi
+      .spyOn(surface, "principalForToken")
+      .mockReturnValue(undefined);
+    await expect(
+      surface.approveDocumentWorkflow(
+        "",
+        "document-chat",
+        "wf-demo",
+        3,
+        "draft-hash",
+      ),
+    ).rejects.toThrow("chat owner's account");
+    caller.mockReturnValue({ userId: "other-admin" });
+    await expect(
+      surface.approveDocumentWorkflow(
+        "admin-token",
+        "document-chat",
+        "wf-demo",
+        3,
+        "draft-hash",
+      ),
+    ).rejects.toThrow("chat owner's account");
+    expect(approve).not.toHaveBeenCalled();
+    caller.mockReturnValue({ userId: "owner" });
+    expect(
+      await surface.approveDocumentWorkflow(
+        "owner-token",
+        "document-chat",
+        "wf-demo",
+        3,
+        "draft-hash",
+      ),
+    ).toMatchObject({ status: "approved", revision: 3, sha256: "draft-hash" });
+    expect(approve).toHaveBeenCalledWith(
+      { workspaceRoot: WORKSPACE, sessionId: "document-chat" },
+      "wf-demo",
+      3,
+      "draft-hash",
+      "owner",
+    );
+    await dispose();
   });
 });
 
