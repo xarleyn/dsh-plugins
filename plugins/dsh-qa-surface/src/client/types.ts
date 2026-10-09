@@ -39,6 +39,8 @@ import type {
   QaWhoamiResult,
   QaDocumentPreview,
   QaWorkspaceFile,
+  QaWorkspaceFileChunk,
+  QaDocumentWorkflowStatus,
   QaWorkspaceListing,
   QaCapabilitySelection,
   QaCurrentAccess,
@@ -375,6 +377,25 @@ export interface QaFileUpload {
 }
 
 export interface QaSourceApi {
+  documentWorkflowStatus?(
+    token: string,
+    sessionId: string,
+    workflowId: string,
+  ): Promise<RemoteResult<QaDocumentWorkflowStatus>>;
+  approveDocumentWorkflow?(
+    token: string,
+    sessionId: string,
+    workflowId: string,
+    revision: number,
+    sha256: string,
+  ): Promise<RemoteResult<QaDocumentWorkflowStatus>>;
+  readWorkspaceFileChunk?(
+    token: string,
+    sessionId: string,
+    path: string,
+    offset: number,
+    version: string | null,
+  ): Promise<RemoteResult<QaWorkspaceFileChunk>>;
   sources(
     token: string,
     sessionId: string,
@@ -444,6 +465,12 @@ export interface QaSlashApi {
 
 /** A source API with the account token already bound at the call site. */
 export type QaBoundSourceApi = {
+  readWorkspaceFileChunk?(
+    sessionId: string,
+    path: string,
+    offset: number,
+    version: string | null,
+  ): Promise<RemoteResult<QaWorkspaceFileChunk>>;
   sources(
     sessionId: string,
   ): Promise<

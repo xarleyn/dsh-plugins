@@ -1,4 +1,5 @@
 import { formatFileSize } from "../attachments.js";
+import { useState } from "react";
 
 /** Uppercase extension badge; a name without one falls back to a paper glyph. */
 function badgeText(name: string): string {
@@ -23,6 +24,7 @@ export interface QaFileAttachmentProps {
   readonly onOpen?: () => void;
   /** Save the file. Omitted where the surface cannot read its bytes. */
   readonly onDownload?: () => void;
+  readonly onApprove?: () => Promise<void>;
 }
 
 /**
@@ -38,7 +40,11 @@ export function QaFileAttachment({
   onRemove,
   onOpen,
   onDownload,
+  onApprove,
 }: QaFileAttachmentProps) {
+  const [approval, setApproval] = useState<
+    "idle" | "pending" | "approved" | "failed"
+  >("idle");
   const text = (
     <span className="dsh-qa-file__text">
       <span className="dsh-qa-file__name" data-testid="qa-file-name">
@@ -102,6 +108,34 @@ export function QaFileAttachment({
           </svg>
         </button>
       )}
+      {onApprove === undefined ? null : (
+        <button
+          type="button"
+          className="dsh-qa-file__download"
+          data-testid="qa-file-approve"
+          disabled={approval === "pending" || approval === "approved"}
+          aria-label={`Согласовать ${name} и сформировать DOCX`}
+          onClick={() => {
+            setApproval("pending");
+            void onApprove().then(
+              () => setApproval("approved"),
+              () => setApproval("failed"),
+            );
+          }}
+        >
+          {approval === "pending"
+            ? "Согласование…"
+            : approval === "approved"
+              ? "Согласовано"
+              : "Согласовать и сформировать DOCX"}
+        </button>
+      )}
+      {approval === "failed" ? (
+        <span role="status" data-testid="qa-file-approval-error">
+          Не удалось согласовать или отправить запрос. Проверьте текущую
+          редакцию и повторите.
+        </span>
+      ) : null}
     </span>
   );
 }

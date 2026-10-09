@@ -100,6 +100,7 @@ async function setup(options: {
     description: "Allowed instructions",
     source: "runtime",
     content: "Follow allowed instructions.",
+    resourceBase: { kind: "directory", path: "/opt/qa-skills/allowed-skill" },
   });
   ctx.skills.register({
     name: "personal-notes",
@@ -145,7 +146,9 @@ async function setup(options: {
         const scope = createScope(inner, agent);
         (agent as unknown as { ctx: Context }).ctx = scope.ctx;
       },
-      { inject: ["tools", "skills", "systemPrompt"] },
+      // Match the native agent-loop: skills is present on the Host, but not
+      // among the services this scoped Agent context is allowed to borrow.
+      { inject: ["tools", "systemPrompt"] },
     ),
   );
   const discovered = new Map<string, SkillSummary>(
@@ -231,6 +234,28 @@ async function propose(
 }
 
 describe("QA skill policy consumer", () => {
+  it("guides a mistaken resource prefix only after an admitted skill is loaded", async () => {
+    const { ctx, agent, discovered, grants } = await setup({});
+    const dispose = installQaSkillPolicy({ agent, policy, discovered, grants, logger: logger() });
+    const call = () => ctx.tools.execute({
+      callId: "resource-read" as never,
+      name: "read",
+      arguments: { file_path: "/workspace/project/opt/qa-skills/allowed-skill/references/workflow.md" },
+      agent,
+      signal: new AbortController().signal,
+    });
+    const before = await call();
+    expect(JSON.stringify(before)).not.toContain("Retry read");
+    const loaded = await load(agent, "allowed-skill") as { content: string };
+    expect(loaded.content).toContain("Preserve its leading slash");
+    const after = await call();
+    expect(after.isError).toBe(true);
+    expect(JSON.stringify(after)).toContain("/opt/qa-skills/allowed-skill/references/workflow.md");
+    expect(JSON.stringify(after)).toContain("Retry read");
+    dispose();
+    expect(JSON.stringify(await call())).not.toContain("Retry read");
+  });
+
   it("publishes only allowed skills and shadows the unfiltered loader", async () => {
     const { ctx, agent, discovered, grants } = await setup({});
     const dispose = installQaSkillPolicy({

@@ -13,6 +13,26 @@ const CREATED = [
 ].join("\n");
 
 describe("artifactsOfToolResult", () => {
+  it("binds a workflow approval action to the exact revision and draft hash", () => {
+    const output = [
+      "workflow: wf_00000000-0000-4000-8000-000000000001",
+      "revision: 2",
+      "status: reviewed",
+      `draft-sha256: ${"a".repeat(64)}`,
+      "markdown: .qa/artifacts/workflows/wf_00000000-0000-4000-8000-000000000001/draft-2.md",
+    ].join("\n");
+    expect(
+      artifactsOfToolResult("document_workflow_review", output)[0]?.workflow,
+    ).toEqual({
+      id: "wf_00000000-0000-4000-8000-000000000001",
+      revision: 2,
+      sha256: "a".repeat(64),
+      status: "reviewed",
+    });
+    expect(
+      artifactsOfToolResult("document_workflow_export", CREATED),
+    ).toHaveLength(2);
+  });
   it("reads the produced formats out of a document_create result", () => {
     expect(artifactsOfToolResult("document_create", CREATED)).toEqual([
       {

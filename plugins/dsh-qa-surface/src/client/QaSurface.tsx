@@ -73,7 +73,10 @@ import {
   collectSubagents,
 } from "./components/QaAgentsDrawer.js";
 import { collectChatFiles, countChatAttachments } from "./chat-files.js";
-import { downloadWorkspaceFile } from "./workspace-download.js";
+import {
+  downloadWorkspaceFile,
+  downloadWorkspacePath,
+} from "./workspace-download.js";
 import { QaFilesPanel } from "./components/QaFilesPanel.js";
 import { isQaModalOpen } from "./components/QaModal.js";
 import { QaRightRail, type QaRailTabModel } from "./components/QaRightRail.js";
@@ -607,6 +610,23 @@ export function QaSurface(props: QaSurfaceProps) {
           sessionId,
           path,
         ),
+      ...(props.sourceApi.readWorkspaceFileChunk === undefined
+        ? {}
+        : {
+            readWorkspaceFileChunk: (
+              sessionId: string,
+              path: string,
+              offset: number,
+              version: string | null,
+            ) =>
+              props.sourceApi.readWorkspaceFileChunk!(
+                accounts?.token() ?? "",
+                sessionId,
+                path,
+                offset,
+                version,
+              ),
+          }),
       readWorkspaceFile: (sessionId: string, path: string) =>
         props.sourceApi.readWorkspaceFile(
           accounts?.token() ?? "",
@@ -910,9 +930,24 @@ export function QaSurface(props: QaSurfaceProps) {
     (artifact: QaArtifactView) => {
       const sessionId = state.sessionId;
       if (sessionId === null) return;
+      if (boundSourceApi.readWorkspaceFileChunk !== undefined) {
+        void downloadWorkspacePath(artifact.path, (offset, version) =>
+          boundSourceApi.readWorkspaceFileChunk!(
+            sessionId,
+            artifact.path,
+            offset,
+            version,
+          ),
+        ).catch(() => handleArtifactOpen(artifact));
+        return;
+      }
       boundSourceApi.readWorkspaceFile(sessionId, artifact.path).then(
         (result) => {
           if (result.ok) {
+            if (result.value.truncated) {
+              handleArtifactOpen(artifact);
+              return;
+            }
             downloadWorkspaceFile(result.value);
             return;
           }
@@ -922,6 +957,36 @@ export function QaSurface(props: QaSurfaceProps) {
       );
     },
     [boundSourceApi, handleArtifactOpen, state.sessionId],
+  );
+  const handleArtifactApprove = useCallback(
+    async (artifact: QaArtifactView): Promise<void> => {
+      const sessionId = state.sessionId;
+      const workflow = artifact.workflow;
+      const approve = props.sourceApi.approveDocumentWorkflow;
+      if (sessionId === null || workflow === undefined || approve === undefined)
+        throw new Error("Document approval is unavailable");
+      const result = await approve(
+        accounts?.token() ?? "",
+        sessionId,
+        workflow.id,
+        workflow.revision,
+        workflow.sha256,
+      );
+      if (!result.ok)
+        throw new Error("The current revision could not be approved");
+      if (controller?.getSnapshot().sessionId !== sessionId)
+        throw new Error("The chat changed during approval");
+      const sent = await controller.send(
+        `Согласую редакцию ${workflow.revision} документа «${artifact.name}». Сформируй DOCX из согласованной редакции через процесс подготовки документа.`,
+        [],
+        null,
+      );
+      if (!sent)
+        throw new Error(
+          "Approval was saved but the export request was not sent",
+        );
+    },
+    [state.sessionId, props.sourceApi, accounts, controller],
   );
 
   const view = useTranscriptView(state.messages, variantOffsets);
@@ -1272,6 +1337,9 @@ export function QaSurface(props: QaSurfaceProps) {
           resolveImage={resolveImage}
           onJumpToMessage={handleJumpToMessage}
           onArtifactOpen={workspaceReadable ? handleArtifactOpen : undefined}
+          onArtifactApprove={
+            workspaceReadable ? handleArtifactApprove : undefined
+          }
           onArtifactDownload={
             workspaceReadable ? handleArtifactDownload : undefined
           }
@@ -1744,6 +1812,11 @@ export function QaSurface(props: QaSurfaceProps) {
                             }
                             onArtifactOpen={
                               workspaceReadable ? handleArtifactOpen : undefined
+                            }
+                            onArtifactApprove={
+                              workspaceReadable
+                                ? handleArtifactApprove
+                                : undefined
                             }
                             onArtifactDownload={
                               workspaceReadable

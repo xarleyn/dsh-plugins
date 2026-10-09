@@ -74,6 +74,7 @@ export interface QaFilesPanelProps {
   readonly onArtifactOpen?: (artifact: QaArtifactView) => void;
   /** Save a produced file. */
   readonly onArtifactDownload?: (artifact: QaArtifactView) => void;
+  readonly onArtifactApprove?: (artifact: QaArtifactView) => Promise<void>;
   /**
    * A file to open on arrival, with the request's stamp. The stamp is what makes
    * a second click on the same card a fresh arrival rather than a no-op.
@@ -103,6 +104,7 @@ export function QaFilesPanel({
   onJumpToMessage,
   onArtifactOpen,
   onArtifactDownload,
+  onArtifactApprove,
   openArtifact,
   sessionId,
   api,
@@ -199,6 +201,12 @@ export function QaFilesPanel({
                     onArtifactDownload === undefined
                       ? undefined
                       : () => onArtifactDownload(artifact)
+                  }
+                  onApprove={
+                    onArtifactApprove === undefined ||
+                    artifact.workflow?.status !== "reviewed"
+                      ? undefined
+                      : () => onArtifactApprove(artifact)
                   }
                 />
               ))}

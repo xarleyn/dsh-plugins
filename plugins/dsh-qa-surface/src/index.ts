@@ -71,6 +71,7 @@ import {
   FileQaProvenanceSnapshotStore,
 } from "./provenance/snapshot-store.js";
 import { previewConvertibleDocument } from "./provenance/document-preview.js";
+import { readWorkspaceFileChunk } from "./provenance/file-download.js";
 import {
   listWorkspaceDirectory,
   readSourceFilePreview,
@@ -93,6 +94,7 @@ import type {
   QaApprovalDecision,
   QaClaimResult,
   QaDocumentPreview,
+  QaDocumentWorkflowStatus,
   QaIssuedServiceToken,
   QaLockdownProof,
   QaOwnershipEntry,
@@ -120,6 +122,7 @@ import type {
   QaSourceFilePreview,
   QaWhoamiResult,
   QaWorkspaceFile,
+  QaWorkspaceFileChunk,
   QaWorkspaceListing,
   QaPrincipal,
   QaAccessAdminSnapshot,
@@ -1748,6 +1751,92 @@ export class QaSurface extends TypertRemoteService {
     } catch (error) {
       throw this.browseRefusal("workspace.read-refused", sessionId, error);
     }
+  }
+
+  /** Download one bounded chunk after revalidating this chat's ownership. */
+  @Remote("readWorkspaceFileChunk")
+  async readWorkspaceFileChunk(
+    token: string,
+    sessionId: string,
+    path: string,
+    offset: number,
+    version: string | null,
+  ): Promise<QaWorkspaceFileChunk> {
+    await this.admission.secureSession(token, sessionId);
+    const { config, cwd } = await this.browseContext(sessionId);
+    const attachmentRoot = this.admission.attachmentRoot();
+    try {
+      return await readWorkspaceFileChunk({
+        filePath: path ?? "",
+        cwd,
+        sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
+        ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
+        offset,
+        version,
+      });
+    } catch (error) {
+      throw this.browseRefusal("workspace.download-refused", sessionId, error);
+    }
+  }
+
+  @Remote("documentWorkflowStatus")
+  async documentWorkflowStatus(
+    token: string,
+    sessionId: string,
+    workflowId: string,
+  ): Promise<QaDocumentWorkflowStatus> {
+    await this.admission.secureSession(token, sessionId);
+    const { cwd } = await this.browseContext(sessionId);
+    const workflow = (this.ctx.get("documents") as DocumentsFace | undefined)
+      ?.workflow;
+    if (workflow === undefined)
+      throw new Error("Document workflow is unavailable.");
+    const view = await workflow.read(
+      { workspaceRoot: cwd, sessionId },
+      workflowId,
+    );
+    return {
+      id: view.id,
+      revision: view.revision,
+      status: view.status,
+      sha256: view.draft?.sha256 ?? null,
+      blockers: view.blockers,
+    };
+  }
+
+  /** Browser-authenticated human consent; intentionally absent from the agent's tool registry. */
+  @Remote("approveDocumentWorkflow")
+  async approveDocumentWorkflow(
+    token: string,
+    sessionId: string,
+    workflowId: string,
+    revision: number,
+    sha256: string,
+  ): Promise<QaDocumentWorkflowStatus> {
+    await this.admission.secureSession(token, sessionId);
+    const caller = this.principalForToken(token);
+    const owner = this.principalForSession(sessionId);
+    if (caller === undefined || owner?.userId !== caller.userId)
+      throw new Error("Document approval requires the chat owner's account.");
+    const { cwd } = await this.browseContext(sessionId);
+    const workflow = (this.ctx.get("documents") as DocumentsFace | undefined)
+      ?.workflow;
+    if (workflow === undefined)
+      throw new Error("Document workflow is unavailable.");
+    const view = await workflow.approve(
+      { workspaceRoot: cwd, sessionId },
+      workflowId,
+      revision,
+      sha256,
+      caller.userId,
+    );
+    return {
+      id: view.id,
+      revision: view.revision,
+      status: view.status,
+      sha256: view.draft?.sha256 ?? null,
+      blockers: view.blockers,
+    };
   }
 
   /**

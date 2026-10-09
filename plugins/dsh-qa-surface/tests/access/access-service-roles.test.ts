@@ -2,6 +2,26 @@ import { describe, expect, it } from "vitest";
 import { QaAccountsError } from "../../src/accounts/store.js";
 import { fakeAgent, harness, reader } from "./access-service.helpers.js";
 describe("QA access service", () => {
+  it("keeps a configured Common tool mounted only in the addressed agent's preset", async () => {
+    const { service, admin, user } = harness();
+    service.updateCommon(admin.token, {
+      tools: { always: ["preset_tool"], skillGrantable: [] },
+      skills: [],
+    });
+    service.reserveSession(
+      user.token,
+      "session-preset-tools",
+      "general",
+      false,
+    );
+    const resolved = await service.policyForSession(
+      user.token,
+      "session-preset-tools",
+      fakeAgent(),
+    );
+    expect(resolved?.policy.tools).toContain("preset_tool");
+  });
+
   it("keeps admin authorization separate from agent roles", async () => {
     const { service, admin, user } = harness();
     service.createSubrole(admin.token, {
