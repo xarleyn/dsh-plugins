@@ -149,6 +149,7 @@ export interface DocumentToolExec {
  * The options every document tool is created with.
  */
 export interface DocumentToolOptions {
+  readonly authorizeRender?: (scope: DocumentScope) => Promise<void>;
   readonly runtime: DocumentRuntime;
   /**
    * Extra readable input roots for the session a call comes from, resolved per

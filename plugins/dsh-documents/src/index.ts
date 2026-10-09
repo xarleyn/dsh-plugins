@@ -19,6 +19,14 @@
  */
 
 import { Context } from "@deepseek-ai/cordis";
+import path from "node:path";
+import os from "node:os";
+import { DocumentWorkflowService } from "./workflow/service.js";
+import { WorkflowStore } from "./workflow/store.js";
+import { createWorkflowTools } from "./workflow/tools.js";
+export type * from "./workflow/types.js";
+export { DocumentWorkflowService } from "./workflow/service.js";
+export { calculateCommercial } from "./workflow/pricing.js";
 // Type anchor only: the loader owns the `loader/volatile-update` event this
 // plugin listens to, and ships no runtime value this entry would import.
 import type {} from "@deepseek-ai/cordis-plugin-loader";
@@ -101,6 +109,7 @@ export const Config = ConfigSchema;
  * pays nothing for it.
  */
 export interface DocumentsFace {
+  readonly workflow?: DocumentWorkflowService;
   toMarkdown(
     input: DocumentToMarkdownInput,
     scope: DocumentScope,
@@ -149,6 +158,8 @@ export class DocumentsPlugin {
   private readonly entryConfig: DocumentsConfigSource;
   private readonly logger: PluginLogger;
   private documents: DocumentSubsystem | undefined;
+  private readonly workflows: DocumentWorkflowService;
+  private workflowToolsDispose: (() => void) | undefined;
   /** Disposer of the face published to sibling Host plugins. */
   private documentsFace: (() => void) | undefined;
   /** Identity of the installed subsystem, so unchanged config is a no-op. */
@@ -171,6 +182,72 @@ export class DocumentsPlugin {
     ctx.effect(() => async () => this.logger.close(), "dsh-documents.logger");
     this.hostCtx = ctx;
     this.entryConfig = config;
+    this.workflows = new DocumentWorkflowService(
+      () => this.runtime(),
+      new WorkflowStore(
+        path.join(
+          process.env["DSH_HOME"] ?? path.join(os.homedir(), ".dsh"),
+          "document-workflows",
+        ),
+      ),
+      {
+        review: async (task, sessionId, signal) => {
+          if (signal?.aborted) throw new Error("document review cancelled");
+          const face = (ctx as unknown as { get(name: string): unknown }).get(
+            "domainExperts",
+          ) as
+            | {
+                testExpert(
+                  domain: string,
+                  task: string,
+                  parentSessionId: string,
+                  structuredOutput?: boolean,
+                ): Promise<{
+                  ok: boolean;
+                  result: {
+                    structured: boolean;
+                    status: string;
+                    summary: string;
+                    findings: readonly { claim: string; evidence: string }[];
+                    conflicts: readonly string[];
+                    assumptions: readonly string[];
+                    followUps: readonly string[];
+                  } | null;
+                }>;
+              }
+            | undefined;
+          if (face === undefined)
+            throw new Error("independent document reviewer is unavailable");
+          const outcome = await face.testExpert(
+            "answer-reviewer",
+            task,
+            sessionId,
+            true,
+          );
+          if (
+            signal?.aborted ||
+            !outcome.ok ||
+            outcome.result === null ||
+            !outcome.result.structured
+          )
+            throw new Error(
+              "independent document review did not complete with a structured result",
+            );
+          const result = outcome.result;
+          const issues = [
+            ...result.findings.map((f) => `${f.claim}: ${f.evidence}`),
+            ...result.conflicts,
+            ...result.assumptions,
+            ...result.followUps,
+          ];
+          return {
+            pass: result.status === "completed" && issues.length === 0,
+            summary: result.summary,
+            issues,
+          };
+        },
+      },
+    );
 
     /*
      * There is no settings section to install any more: the namespace is the
@@ -211,17 +288,19 @@ export class DocumentsPlugin {
     });
 
     this.refresh();
-    // The skill teaches the comparison workflow, so it is mounted with it. The
+    // The provider carries comparison and grounded document workflows. The
     // decision is taken once, at startup: a Cordis plugin mount is not a
     // subscription, and an operator who turns comparison off later still gets
     // an honest answer from the tools rather than a missing instruction.
     const startup = this.resolved();
-    if (startup.enabled && startup.comparison.enabled) {
+    if (startup.enabled) {
       mountDocumentSkills(ctx);
       this.logger.info("documents.skill", { skill: CONTRACT_REVIEW_SKILL });
     }
     ctx.effect(
       () => () => {
+        this.workflowToolsDispose?.();
+        this.workflowToolsDispose = undefined;
         this.documentsFace?.();
         this.documentsFace = undefined;
         this.documents?.dispose();
@@ -263,6 +342,8 @@ export class DocumentsPlugin {
     const resolved = resolveDocumentsConfig(withEnv);
     const key = resolved.enabled ? JSON.stringify(resolved) : undefined;
     if (key === this.documentsKey) return;
+    this.workflowToolsDispose?.();
+    this.workflowToolsDispose = undefined;
     this.documents?.dispose();
     this.documents = undefined;
     this.documentsKey = key;
@@ -271,6 +352,7 @@ export class DocumentsPlugin {
       return;
     }
     this.documents = installDocumentSubsystem(this.hostCtx, {
+      authorizeRender: (scope) => this.workflows.authorizeGeneralRender(scope),
       config: withEnv,
       logger: this.logger,
       register: (definition) => this.hostCtx.tools.register(definition),
@@ -285,6 +367,16 @@ export class DocumentsPlugin {
         return await web.fetch({ url }, signal);
       },
     });
+    const toolDisposers = createWorkflowTools(
+      {
+        runtime: this.runtime(),
+        extraInputRoots: (sessionId) => this.grantedInputRoots(sessionId),
+      },
+      this.workflows,
+    ).map((tool) => this.hostCtx.tools!.register(tool));
+    this.workflowToolsDispose = () => {
+      for (const dispose of toolDisposers.reverse()) dispose();
+    };
     this.publishFace();
   }
 
@@ -299,6 +391,7 @@ export class DocumentsPlugin {
     this.documentsFace = undefined;
     if (this.documents === undefined) return;
     this.documentsFace = this.hostCtx.provide("documents", {
+      workflow: this.workflows,
       toMarkdown: (input, scope) => this.runtime().toMarkdown(input, scope),
       convert: (input, scope) => this.runtime().convert(input, scope),
       inspect: (input, scope) => this.runtime().inspect(input, scope),

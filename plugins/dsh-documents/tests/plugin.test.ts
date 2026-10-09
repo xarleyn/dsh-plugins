@@ -17,6 +17,8 @@ import DocumentsPlugin, {
 } from "../src/index.js";
 import { ConfigSchema } from "../src/schema.js";
 import { DOCUMENT_TOOL_NAMES } from "../src/shared/settings.js";
+import { DOCUMENT_WORKFLOW_TOOL_NAMES } from "../src/workflow/tools.js";
+import { buildDocumentSkillsConfig } from "../src/skills.js";
 import {
   DOCUMENT_TOOL_NAMES as REGISTERED_TOOL_NAMES,
   DOCUMENT_COMPARISON_TOOL_NAMES,
@@ -111,6 +113,7 @@ describe("documents plugin", () => {
     expect(registered).toEqual([
       ...REGISTERED_TOOL_NAMES,
       ...DOCUMENT_COMPARISON_TOOL_NAMES,
+      ...DOCUMENT_WORKFLOW_TOOL_NAMES,
     ]);
     expect(registered).toEqual([
       "document_create",
@@ -120,10 +123,14 @@ describe("documents plugin", () => {
       "document_inspect",
       "document_compare",
       "document_diff_read",
+      ...DOCUMENT_WORKFLOW_TOOL_NAMES,
     ]);
     // The comparison tools exist only while the feature is on (§31).
     const off = plugin({ comparison: { enabled: false } });
-    expect(off.registered).toEqual([...REGISTERED_TOOL_NAMES]);
+    expect(off.registered).toEqual([
+      ...REGISTERED_TOOL_NAMES,
+      ...DOCUMENT_WORKFLOW_TOOL_NAMES,
+    ]);
   });
 
   test("the card's inventory cannot drift from the registered tools", () => {
@@ -217,7 +224,7 @@ describe("documents plugin", () => {
       "documents",
     ]);
     const off = plugin({ comparison: { enabled: false } });
-    expect(off.mounted).toEqual([]);
+    expect(off.mounted).toEqual([buildDocumentSkillsConfig()]);
   });
 
   test("the config it resolves starts from the canonical defaults", () => {

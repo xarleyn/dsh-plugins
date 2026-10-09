@@ -148,6 +148,7 @@ export function createDocumentConvertTool(options: DocumentToolOptions) {
       30_000,
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
       const scope = requireDocumentScope(exec, options);
+      if (args["targetFormat"] !== "md") await options.authorizeRender?.(scope);
       const result = await options.runtime.convert(
         args as unknown as Parameters<DocumentRuntime["convert"]>[0],
         scope,

@@ -35,6 +35,44 @@ lists bundles explicitly.
 
 ## Tools
 
+For customer-specific proposals and specifications, the bundled
+`grounded-documents` skill uses `document_workflow_start/read/update/draft/review/export`
+and `document_calculate`. Requirements, facts, exclusions and Markdown revisions
+survive interruption. Independent review and authenticated human approval refer
+to the exact draft hash. A changed draft or template must be reviewed again.
+An active managed workflow refuses finalisation through the general converters.
+
+Workflow state lives under `$DSH_HOME/document-workflows` (or the Host user's
+`.dsh/document-workflows`) outside the model-writable workspace. Include it in
+the deployment backup. Markdown drafts remain in the session workspace and are
+shown as file attachments in QA; the approval action beside a reviewed draft
+requests export through the existing agent.
+
+Register a Markdown content template separately from Word styles:
+
+```yaml
+templates:
+  proposal:
+    kind: proposal
+    productVersion: "1.0"
+    markdown: ./proposal.md
+    docx: ./reference.docx
+    requiredFacts: [customer, projectGoal, functionalScope]
+    requiredSections: [Goal, Functional scope, Commercial terms]
+  specification:
+    kind: specification
+    productVersion: "1.0"
+    markdown: ./specification.md
+    docx: ./reference.docx
+    requiredFacts: [customer, projectGoal, functionalScope]
+    requiredSections: [Goal, Functional requirements, Acceptance]
+```
+
+Point `documents.templates.root` at this read-only registry directory. A template
+for another document kind or product version is refused. Price and quantity
+inputs require explicit sources; totals use exact decimal arithmetic with
+half-up rounding per line to two decimals. No price or tax treatment is inferred.
+
 | Tool | What it does |
 | --- | --- |
 | `document_create` | Markdown → DOCX and/or PDF through a registered template, as one artifact bundle |

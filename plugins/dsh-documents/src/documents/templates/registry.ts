@@ -35,6 +35,12 @@ export interface DocumentTemplate {
   readonly docx?: string;
   /** Absolute path of the Typst template directory, when it declares one. */
   readonly typst?: string;
+  /** Source structure of a managed proposal/specification, separate from Word styles. */
+  readonly markdown?: string;
+  readonly requiredFacts?: readonly string[];
+  readonly requiredSections?: readonly string[];
+  readonly kind?: "proposal" | "specification";
+  readonly productVersion?: string;
 }
 
 export interface TemplateRegistry {
@@ -139,7 +145,14 @@ export async function loadTemplateRegistry(
     const entry = rawEntry as Record<string, unknown>;
     const docx = readString(entry["docx"]);
     const typst = readString(entry["typst"]);
-    if (docx === undefined && typst === undefined) {
+    const markdown = readString(entry["markdown"]);
+    const kind = readString(entry["kind"]);
+    if (kind !== undefined && kind !== "proposal" && kind !== "specification")
+      throw new DocumentError(
+        "INVALID_TEMPLATE",
+        `template "${name}" has an unsupported document kind`,
+      );
+    if (docx === undefined && typst === undefined && markdown === undefined) {
       throw new DocumentError(
         "INVALID_TEMPLATE",
         `template "${name}" declares neither a docx nor a typst path`,
@@ -148,15 +161,64 @@ export async function loadTemplateRegistry(
     }
     templates.set(name, {
       name,
+      ...(kind === undefined ? {} : { kind }),
+      ...(readString(entry["productVersion"]) === undefined
+        ? {}
+        : { productVersion: readString(entry["productVersion"])! }),
       ...(docx === undefined
         ? {}
         : { docx: resolveTemplatePath(canonicalRoot, docx, name, "docx") }),
       ...(typst === undefined
         ? {}
         : { typst: resolveTemplatePath(canonicalRoot, typst, name, "typst") }),
+      ...(markdown === undefined
+        ? {}
+        : {
+            markdown: resolveTemplatePath(
+              canonicalRoot,
+              markdown,
+              name,
+              "markdown",
+            ),
+          }),
+      ...(entry["requiredFacts"] === undefined
+        ? {}
+        : {
+            requiredFacts: readStrings(
+              entry["requiredFacts"],
+              name,
+              "requiredFacts",
+            ),
+          }),
+      ...(entry["requiredSections"] === undefined
+        ? {}
+        : {
+            requiredSections: readStrings(
+              entry["requiredSections"],
+              name,
+              "requiredSections",
+            ),
+          }),
     });
   }
   return { root: canonicalRoot, templates, warnings: [] };
+}
+
+function readStrings(
+  value: unknown,
+  name: string,
+  field: string,
+): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    value.some((entry) => typeof entry !== "string" || entry.trim() === "")
+  ) {
+    throw new DocumentError(
+      "INVALID_TEMPLATE",
+      `template "${name}" ${field} must list non-empty strings`,
+    );
+  }
+  return [...new Set(value as string[])];
 }
 
 function resolveTemplatePath(

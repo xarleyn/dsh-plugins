@@ -208,6 +208,7 @@ export function createDocumentCreateTool(options: DocumentToolOptions) {
       30_000,
     async execute(args: Record<string, unknown>, exec: DocumentToolExec) {
       const scope = requireDocumentScope(exec, options);
+      await options.authorizeRender?.(scope);
       const result = await options.runtime.create(
         args as unknown as Parameters<DocumentRuntime["create"]>[0],
         scope,
