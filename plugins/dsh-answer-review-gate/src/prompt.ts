@@ -59,12 +59,42 @@ function renderUserRequest(
   ].join("\n");
 }
 
+function readableHumanContext(text: string): string {
+  return text.split("\n").flatMap((line) => {
+    const characters = Array.from(line);
+    const parts: string[] = [];
+    for (let offset = 0; offset < characters.length; offset += 1200) {
+      parts.push(characters.slice(offset, offset + 1200).join(""));
+    }
+    return parts.length === 0 ? [""] : parts;
+  }).join("\n");
+}
+
+function reviewContext(input: {
+  readonly conversationContext?: string;
+  readonly primaryTools?: readonly string[];
+}): string {
+  return [
+    "Your catalog is not the primary agent's catalog. Do not infer that a primary capability is absent from your own smaller tool/skill surface. When the primary manifest is unavailable, capability-absence claims are unverifiable, not hallucination findings.",
+    "The primary tool manifest establishes tool visibility, not credentials, source connectivity or that a tool was actually called. A document artifact must be checked in its own content; a PASS for its accompanying prose is not proof of the file's contents.",
+    // Keep the manifest separate from human prose, one name per line. A
+    // filesystem reader can shorten an oversized individual line even when
+    // the complete packet fits its requested line window.
+    JSON.stringify({ primaryVisibleTools: input.primaryTools ?? null }, null, 2),
+    "<accumulated_human_context>",
+    readableHumanContext(input.conversationContext ?? "Human context unavailable."),
+    "</accumulated_human_context>",
+  ].join("\n");
+}
+
 /**
  * Adversarial reviewer protocol for the `subagent` backend. The reviewer is
  * a verifier, not a second answering agent: its product is diagnosis plus
  * required corrections, never a rewritten answer.
  */
 export function renderSubagentReviewerTask(input: {
+  readonly conversationContext?: string;
+  readonly primaryTools?: readonly string[];
   readonly requestText: string | null;
   readonly candidateText: string;
   readonly requestAttachments?: readonly string[];
@@ -84,6 +114,7 @@ export function renderSubagentReviewerTask(input: {
       "valid finding: a claim you cannot support counts as unsupported even when you cannot prove it false.",
     "",
     ATTACHMENT_PROTOCOL,
+    reviewContext(input),
     "",
     "Check at least: factual correctness; alignment with documentation and source code; unsupported claims; lost " +
       "qualifications and limits; outdated information; signs of shallow research; contradictions with " +
@@ -129,6 +160,8 @@ export function renderSubagentReviewerTask(input: {
 
 /** Review task for the `domain-expert` backend: the expert speaks its own protocol. */
 export function renderExpertReviewTask(input: {
+  readonly conversationContext?: string;
+  readonly primaryTools?: readonly string[];
   readonly requestText: string | null;
   readonly candidateText: string;
   readonly requestAttachments?: readonly string[];
@@ -145,6 +178,7 @@ export function renderExpertReviewTask(input: {
       "Lack of evidence is a valid finding.",
     "",
     ATTACHMENT_PROTOCOL,
+    reviewContext(input),
     "",
     REVIEW_TOOL_BOUNDARY,
     "",

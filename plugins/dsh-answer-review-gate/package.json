@@ -42,7 +42,8 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/dsh-llm": "catalog:dsh",
-    "@deepseek-ai/schemastery": "catalog:dsh"
+    "@deepseek-ai/schemastery": "catalog:dsh",
+    "@deepseek-ai/dsh-scope": "catalog:dsh"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
@@ -55,7 +56,8 @@
     "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling",
-    "vitest": "catalog:tooling"
+    "vitest": "catalog:tooling",
+    "@deepseek-ai/dsh-scope": "catalog:dsh-dev"
   },
   "publishConfig": {
     "access": "public",

@@ -31,6 +31,7 @@ import {
   steerSummary,
 } from "./prompt.js";
 import { qaModelPolicy } from "./qa-policy.js";
+import { primaryReviewTools, reviewConversationContext } from "./context.js";
 import type {
   DomainExpertsFace,
   ReviewAuditEntry,
@@ -49,6 +50,7 @@ export interface GateAgent {
   readonly session: {
     readonly header: {
       readonly origin?: string;
+      readonly cwd?: string;
     };
   } & CandidateSession;
   steer(message: unknown): void;
@@ -317,6 +319,10 @@ export class AnswerReviewGate {
     const startedAt = this.deps.now();
     const backend = this.backendFor(agent, config);
     const input: ReviewInput = {
+      conversationContext: reviewConversationContext(agent.session),
+      ...(primaryReviewTools(agent) === undefined
+        ? {}
+        : { primaryTools: primaryReviewTools(agent)! }),
       sessionId,
       turn,
       requestText: collected.requestText,
@@ -477,6 +483,7 @@ export class AnswerReviewGate {
     return createDomainExpertBackend({
       face: this.deps.domainExperts(),
       config: config.reviewer,
+      ...(agent.session.header.cwd === undefined ? {} : { workspaceRoot: agent.session.header.cwd }),
     });
   }
 

@@ -154,6 +154,8 @@ export interface ReviewAuditEntry {
 
 /** The material the reviewer receives (`SPEC.md`, "Reviewer isolation"). */
 export interface ReviewInput {
+  readonly conversationContext?: string;
+  readonly primaryTools?: readonly string[];
   /** Session id of the reviewed (primary) agent. */
   readonly sessionId: string;
   /** Current turn number of the reviewed agent. */
@@ -194,6 +196,7 @@ export interface DomainExpertsFace {
     domainId: string,
     task: string,
     parentSessionId: string,
+    structuredOutput?: boolean,
   ): Promise<ExpertRunOutcome>;
 }
 

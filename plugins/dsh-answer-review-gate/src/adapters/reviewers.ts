@@ -5,6 +5,7 @@
  */
 
 import type { ResolvedAnswerReviewGateConfig } from "../config.js";
+import { expertReviewPacket } from "./review-packet.js";
 import { textOfBlocks } from "../candidate.js";
 import { restrictReviewerTools } from "../reviewer-tools.js";
 import {
@@ -44,6 +45,7 @@ export type ReviewerConfig = ResolvedAnswerReviewGateConfig["reviewer"];
 export function createDomainExpertBackend(deps: {
   readonly face: DomainExpertsFace | undefined;
   readonly config: ReviewerConfig;
+  readonly workspaceRoot?: string;
 }): ReviewerBackend {
   return {
     name: "domain-expert",
@@ -67,11 +69,14 @@ export function createDomainExpertBackend(deps: {
           "reviewer.domain is empty",
         );
       }
+      const packet = await expertReviewPacket(renderExpertReviewTask(input), deps.workspaceRoot);
       const outcome = await deps.face.testExpert(
         deps.config.domain,
-        renderExpertReviewTask(input),
+        packet.task,
         input.sessionId,
+        true,
       );
+      await packet.verify();
       if (!outcome.ok || outcome.result === null) {
         throw new ReviewerFailure(
           "expert-run-failed",
@@ -138,6 +143,12 @@ export function createSubagentBackend(deps: {
             {
               type: "text",
               text: renderSubagentReviewerTask({
+                ...(input.conversationContext === undefined
+                  ? {}
+                  : { conversationContext: input.conversationContext }),
+                ...(input.primaryTools === undefined
+                  ? {}
+                  : { primaryTools: input.primaryTools }),
                 requestText: input.requestText,
                 requestAttachments: input.requestAttachments,
                 candidateText: input.candidateText,

@@ -492,6 +492,9 @@ importers:
       '@deepseek-ai/dsh-llm':
         specifier: catalog:dsh-dev
         version: 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)
+      '@deepseek-ai/dsh-scope':
+        specifier: catalog:dsh-dev
+        version: 0.1.7-rc.2(@deepseek-ai/cordis@4.0.4)(@deepseek-ai/dsh-invariants@0.1.7-rc.2(@deepseek-ai/cordis@4.0.4))
       '@deepseek-ai/schemastery':
         specifier: catalog:dsh-dev
         version: 3.18.4
