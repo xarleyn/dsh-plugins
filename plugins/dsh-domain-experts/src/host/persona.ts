@@ -43,6 +43,7 @@ export const BASE_POLICY = [
 ].join("\n");
 
 export interface PersonaInput {
+  readonly structuredOutput?: boolean;
   readonly definition: DomainDefinition;
   readonly resources: readonly ResolvedResourceEntry[];
   readonly memory: readonly ResolvedMemoryEntry[];
@@ -97,7 +98,7 @@ function compose(input: PersonaInput, includeTask: boolean): string {
   }
 
   if (includeTask) sections.push("", "## Task", taskSection(input));
-  sections.push("", "## Answer format", ANSWER_FORMAT);
+  sections.push("", "## Answer format", input.structuredOutput === true ? NATIVE_REVIEW_ANSWER_FORMAT : ANSWER_FORMAT);
 
   const persona = sections.join("\n");
   if (persona.includes("{{")) {
@@ -313,6 +314,15 @@ export const ANSWER_FORMAT = [
   "```",
   "",
   "Use `high`, `medium` or `low` for confidence. Omit a list rather than inventing entries; an empty array is a valid answer.",
+].join("\n");
+
+/** Review-only contract: one native capture, with objections separate from confirmations. */
+export const NATIVE_REVIEW_ANSWER_FORMAT = [
+  "Finish by calling structured_output exactly once with the final result matching its schema. A text answer or fenced JSON block does not deliver this run's result.",
+  "Put successful checks, source-backed definitions and confirmed user decisions only in summary.",
+  "findings contains only objections requiring a correction; conflicts only unresolved contradictions; assumptions only unsupported assumptions; followUps only blocking corrections or verification gaps.",
+  "Do not invent a blocker or ask for additional scope. An accepted limitation, confirmed exclusion or explicitly unpriced document is not an unsupported assumption.",
+  "When no material blocker remains, call structured_output with a verification summary and findings: [], conflicts: [], assumptions: [], followUps: []. Unsupported claims and unavailable required evidence remain blockers.",
 ].join("\n");
 
 /** Opening fence the structured parser matches. */

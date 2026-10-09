@@ -59,6 +59,8 @@ const PREVIEW_REQUEST: DomainExpertRequest = {
 };
 
 export interface ResolveInput {
+  /** Native result capture replaces the ordinary prose answer contract. */
+  readonly structuredOutput?: boolean;
   readonly definition: DomainDefinition;
   /** Absolute session working directory; `''` when the caller has none. */
   readonly workspaceDir: string;
@@ -233,6 +235,7 @@ export async function resolveExpert(
   };
 
   const personaInput = {
+    ...(input.structuredOutput === true ? { structuredOutput: true } : {}),
     definition,
     resources,
     memory,

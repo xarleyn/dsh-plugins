@@ -493,6 +493,7 @@ export function testRunInput(
   parent: Agent,
   definition: DomainDefinition,
   task: string,
+  structuredOutput = false,
 ): ExpertRunInput {
   return {
     parent,
@@ -500,6 +501,7 @@ export function testRunInput(
     request: testRunRequest(task),
     signal: new AbortController().signal,
     callerDomain: null,
+    ...(structuredOutput ? { structuredOutput: true } : {}),
   };
 }
 

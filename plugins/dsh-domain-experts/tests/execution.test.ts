@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { assertObjectJsonSchema } from "@deepseek-ai/dsh-tools";
 import {
   RunTracker,
   runExpert,
@@ -121,6 +122,7 @@ async function run(
     readonly callerDomain?: string | null;
     readonly background?: boolean;
     readonly id?: string;
+    readonly structuredOutput?: boolean;
   } = {},
 ) {
   return await runExpert(harness.dependencies, {
@@ -133,10 +135,39 @@ async function run(
     request: { ...REQUEST, background: options.background ?? false },
     signal: new AbortController().signal,
     callerDomain: options.callerDomain ?? null,
+    ...(options.structuredOutput ? { structuredOutput: true } : {}),
   });
 }
 
 describe("execution: composition handed to the runtime", () => {
+  it("uses validated native capture rather than malformed prose for a structured review", async () => {
+    const result = { summary: 'Verified the "quoted" requirement', findings: [], conflicts: [], assumptions: [], followUps: [] };
+    const harness = harnessOf(PAYMENTS, { text: 'Invalid "JSON" prose', structured: result });
+    const outcome = await run(harness, PAYMENTS, { structuredOutput: true });
+    expect(harness.subagents.started[0]?.request.outputSchema).toMatchObject({ type: "object", required: ["summary", "findings", "conflicts", "assumptions", "followUps"] });
+    const request = harness.subagents.started[0]!.request;
+    expect(() => assertObjectJsonSchema(request.outputSchema)).not.toThrow();
+    expect(request.persona).toContain("Finish by calling structured_output exactly once");
+    expect(request.persona).not.toContain("Finish with one fenced code block");
+    expect(request.persona).toContain("confirmed user decisions only in summary");
+    expect(outcome.structured).toBe(true);
+    expect(outcome.summary).toBe(result.summary);
+  });
+
+  it("does not accept a prose PASS when structured capture was required", async () => {
+    const harness = harnessOf(PAYMENTS, { text: '{"summary":"PASS","findings":[]}' });
+    const outcome = await run(harness, PAYMENTS, { structuredOutput: true });
+    expect(outcome.structured).toBe(false);
+  });
+
+  it("refuses a structured review on a provider without schema capture", async () => {
+    const harness = harnessOf(PAYMENTS);
+    const provider = harness.dependencies.subagents.getProvider("spawn")!;
+    harness.dependencies.subagents.getProvider = () => ({ ...provider, capabilities: { ...provider.capabilities, outputSchema: false } });
+    await expect(run(harness, PAYMENTS, { structuredOutput: true })).rejects.toMatchObject({ code: "UNSUPPORTED_SUBAGENT_CAPABILITY" });
+    expect(harness.subagents.started).toHaveLength(0);
+  });
+
   it("hands the policy to the runtime as the persona and the request as the prompt", async () => {
     const harness = harnessOf();
     await run(harness);
@@ -148,6 +179,7 @@ describe("execution: composition handed to the runtime", () => {
     // answer) — that material belongs to the child's first message.
     expect(started?.request.persona).toContain("You are the designated expert");
     expect(started?.request.persona).toContain("## Answer format");
+    expect(started?.request.persona).toContain("Finish with one fenced code block");
     expect(started?.request.persona).not.toContain("## Task");
     expect(started?.request.persona).not.toContain(
       "Investigate the settlement status.",
