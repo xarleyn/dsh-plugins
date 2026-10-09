@@ -183,7 +183,9 @@ What the defaults assume:
   Markdown. `docling.enabled: false` turns that path off;
 - `typst` and `markitdown` are disabled. Requesting `pdfMode: typst` without
   `typst.enabled` is refused instead of silently rendering another layout;
-  `markitdown` is the optional fast fallback when Docling is unavailable.
+  `markitdown` is the optional fast fallback when Docling is unavailable. This
+  adapter extracts embedded text; it does not advertise OCR and refuses forced
+  OCR. Scanned documents need a separately provisioned OCR backend.
 
 ## Artifacts and sizes
 

@@ -359,7 +359,10 @@ function diffPair(
           right,
           before: leftNode.rawText,
           after: rightNode.rawText,
-          spans: [],
+          spans: diffText(
+            tokenize(leftNode.rawText),
+            tokenize(rightNode.rawText),
+          ),
           signals: ["FORMATTING_CHANGED"],
           confidence,
         },

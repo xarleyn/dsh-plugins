@@ -131,59 +131,56 @@ describe("the spans of a change reassemble the change", () => {
     }
   });
 
-  test.fails(
-    "a formatting-only change describes its text with spans too",
-    () => {
-      // DEFECT (#422 run report): with formatting in scope, two nodes whose texts
-      // fold to the same comparison key but whose formatting signatures differ are
-      // reported as a `replace` with `spans: []` and a full `before`/`after`. The
-      // engine's own rule is that the spans of a change reassemble both sides —
-      // `token-diff` says so and every other kind honors it — so an empty array
-      // reads as "there is nothing here" instead of "the whole text is equal". A
-      // reader that rebuilds the two texts from the spans of `changes.jsonl`,
-      // which is what §22 writes them for, gets two empty strings for a change
-      // that names a paragraph. The change is right; its spans are not.
-      const node = {
-        id: "body:0",
-        type: "paragraph" as const,
-        part: "body" as const,
-        path: [],
-        rawText: "Текст пункта.",
-        comparisonKey: "Текст пункта.",
-        source: { paragraph: 1 },
-      };
-      const changes = diffDocuments(
-        buildCanonicalDocument({
-          kind: "native-docx",
-          extractor: "native-docx",
-          nodes: [{ ...node, formatting: "b" }],
-        }),
-        buildCanonicalDocument({
-          kind: "native-docx",
-          extractor: "native-docx",
-          nodes: [{ ...node, formatting: "i" }],
-        }),
-        {
-          leftSha: "left-formatting",
-          rightSha: "right-formatting",
-          detectMoves: true,
-          ignoreWhitespace: true,
-          ignoreFormatting: false,
-          confidence: 1,
-          checkBudget: () => undefined,
-        },
-      );
-      expect(changes).toHaveLength(1);
-      const change = changes[0] as DocumentChange;
-      expect(change.signals).toContain("FORMATTING_CHANGED");
-      expect(
-        (change.spans ?? [])
-          .filter((span) => span.kind !== "insert")
-          .map((span) => span.text)
-          .join(""),
-      ).toBe(change.before);
-    },
-  );
+  test("a formatting-only change describes its text with spans too", () => {
+    // DEFECT (#422 run report): with formatting in scope, two nodes whose texts
+    // fold to the same comparison key but whose formatting signatures differ are
+    // reported as a `replace` with `spans: []` and a full `before`/`after`. The
+    // engine's own rule is that the spans of a change reassemble both sides —
+    // `token-diff` says so and every other kind honors it — so an empty array
+    // reads as "there is nothing here" instead of "the whole text is equal". A
+    // reader that rebuilds the two texts from the spans of `changes.jsonl`,
+    // which is what §22 writes them for, gets two empty strings for a change
+    // that names a paragraph. The change is right; its spans are not.
+    const node = {
+      id: "body:0",
+      type: "paragraph" as const,
+      part: "body" as const,
+      path: [],
+      rawText: "Текст пункта.",
+      comparisonKey: "Текст пункта.",
+      source: { paragraph: 1 },
+    };
+    const changes = diffDocuments(
+      buildCanonicalDocument({
+        kind: "native-docx",
+        extractor: "native-docx",
+        nodes: [{ ...node, formatting: "b" }],
+      }),
+      buildCanonicalDocument({
+        kind: "native-docx",
+        extractor: "native-docx",
+        nodes: [{ ...node, formatting: "i" }],
+      }),
+      {
+        leftSha: "left-formatting",
+        rightSha: "right-formatting",
+        detectMoves: true,
+        ignoreWhitespace: true,
+        ignoreFormatting: false,
+        confidence: 1,
+        checkBudget: () => undefined,
+      },
+    );
+    expect(changes).toHaveLength(1);
+    const change = changes[0] as DocumentChange;
+    expect(change.signals).toContain("FORMATTING_CHANGED");
+    expect(
+      (change.spans ?? [])
+        .filter((span) => span.kind !== "insert")
+        .map((span) => span.text)
+        .join(""),
+    ).toBe(change.before);
+  });
 });
 
 describe("an empty change set means the same document", () => {
