@@ -279,6 +279,20 @@ jev-compaction:
 Without a resolvable model context window the automatic trigger falls back to
 `trigger.minSurfaceTokens` on the metered total instead of guessing a ratio.
 
+State fitting preserves the goal and the last three user messages as bounded by
+the privacy settings. Other history is shortened and removed oldest-first as
+needed; the newest five entries are preferred, but are not a fixed minimum for
+a small local backend. If the protected context alone exceeds
+`state.maxStateTokens`, pruning fails open and the diagnostic reports its token
+estimate and the configured budget. The original conversation is unchanged.
+
+Automatic failures use per-session exponential retry delays of 30, 60, 120,
+240 and at most 300 seconds, including retries within the same turn. Manual
+`/jev-compact` runs bypass this delay. Successful decision plans (including
+keeping every candidate) and applied configuration changes reset it. Cancelled
+runs do not start a failure delay. The existing turn cooldown still applies to
+successful automatic pruning.
+
 ## Settings card
 
 The card is the configuration section of this plugin's own row on the host

@@ -72,6 +72,7 @@ export type JevSkipReason =
   | "busy"
   | "pressure-not-met"
   | "cooldown"
+  | "failure-backoff"
   | "not-enough-candidates"
   | "not-enough-candidate-chars"
   | "savings-gate"
@@ -105,6 +106,8 @@ export interface JevRunReport {
 
 interface SessionState {
   lastAutoTurn: number | undefined;
+  failures: number;
+  retryAfter: number;
   running: Promise<JevRunReport> | undefined;
   pendingManual: boolean;
 }
@@ -257,6 +260,11 @@ export class JevCompactionService extends Service {
    * every successful re-resolve, including the initial install.
    */
   protected onConfigChanged(): void {
+    // A corrected endpoint or budget should be usable immediately.
+    for (const state of this.sessions.values()) {
+      state.failures = 0;
+      state.retryAfter = 0;
+    }
     this.shaping.onConfigChanged();
     this.warnOnMissingCredential();
   }
@@ -371,6 +379,8 @@ export class JevCompactionService extends Service {
     if (state === undefined) {
       state = {
         lastAutoTurn: undefined,
+        failures: 0,
+        retryAfter: 0,
         running: undefined,
         pendingManual: false,
       };
@@ -406,12 +416,38 @@ export class JevCompactionService extends Service {
     if (state.running !== undefined) {
       return this.skippedReport(mode, sessionId, "busy", started);
     }
+    const failed = (error: unknown): JevRunReport => {
+      if (options.signal.aborted)
+        return this.skippedReport(mode, sessionId, "busy", started);
+      state.failures = Math.min(state.failures + 1, 5);
+      state.retryAfter =
+        Date.now() + Math.min(300_000, 30_000 * 2 ** (state.failures - 1));
+      this.reportFailure(error, sessionId);
+      return {
+        ...this.skippedReport(mode, sessionId, "jev-failed", started),
+        error: error instanceof Error ? error.message : String(error),
+      };
+    };
     const run = this.runPipeline(agent, options, {
       sessionId,
       started,
-    }).finally(() => {
-      if (state.running === run) state.running = undefined;
-    });
+    })
+      .then((report) => {
+        if (report.error !== undefined) {
+          // Preserve any applied entries in a partial-mutation report.
+          const failure = failed(new Error(report.error));
+          return report.applied.length > 0 ? report : failure;
+        }
+        if (report.plan !== undefined || report.skipped === "empty-plan") {
+          state.failures = 0;
+          state.retryAfter = 0;
+        }
+        return report;
+      })
+      .catch(failed)
+      .finally(() => {
+        if (state.running === run) state.running = undefined;
+      });
     state.running = run;
     return run;
   }
@@ -459,6 +495,8 @@ export class JevCompactionService extends Service {
       this.skippedReport(mode, sessionId, reason, started);
 
     if (!this.config.enabled) return skip("disabled");
+    if (mode === "auto" && Date.now() < state.retryAfter)
+      return skip("failure-backoff");
 
     const pressure = await measurePressure(
       session,
@@ -577,7 +615,7 @@ export class JevCompactionService extends Service {
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!signal.aborted) this.reportFailure(error, sessionId);
+      if (signal.aborted) return skip("busy");
       return { ...skip("jev-failed"), error: message };
     }
 
@@ -699,7 +737,6 @@ export class JevCompactionService extends Service {
     } catch (error: unknown) {
       if (error instanceof SurfaceChangedError) return skip("busy");
       const message = error instanceof Error ? error.message : String(error);
-      this.reportFailure(error, sessionId);
       return { ...skip("jev-failed"), error: message };
     }
 
