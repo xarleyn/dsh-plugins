@@ -108,7 +108,7 @@ describe("the canonical roundtrip", () => {
     }
   });
 
-  test.fails("a warning survives the roundtrip whole, details included", () => {
+  test("a warning survives the roundtrip whole, details included", () => {
     // DEFECT (#422 run report): `serializeCanonicalDocument` maps a warning to
     // `{code, message, backend}` and drops `details`, which is the field the
     // docx extractor puts the tracked-revision count in. Every other part of

@@ -54,6 +54,20 @@ describe("capabilities and health", () => {
     expect(capabilities.ocr).toBe(false);
   });
 
+  test("a text-only fallback supports extraction without advertising OCR", () => {
+    const config = resolveDocumentsConfig({
+      docling: { enabled: false },
+      markitdown: { enabled: true },
+    });
+    const capabilities = documentCapabilities({
+      config,
+      providers: createProviders(config),
+      templates: { templates: new Map(), warnings: [] },
+    });
+    expect(capabilities.extract).toEqual(["docx", "pdf"]);
+    expect(capabilities.ocr).toBe(false);
+  });
+
   test("health separates required from optional backends", async () => {
     const config = resolveDocumentsConfig();
     const health = await documentHealth({

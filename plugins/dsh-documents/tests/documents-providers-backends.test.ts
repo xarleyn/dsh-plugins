@@ -14,6 +14,7 @@ import { describe, expect, test } from "vitest";
 
 import { readZipEntryByName } from "../src/documents/inspect/zip.js";
 import { LibreOfficePdfConverter } from "../src/documents/providers/libreoffice.js";
+import { MarkItDownExtractor } from "../src/documents/providers/markitdown.js";
 import { metadataArguments } from "../src/documents/providers/shared.js";
 import {
   PandocDocxRenderer,
@@ -28,6 +29,27 @@ import {
   pandocOptions,
   sofficeOptions,
 } from "./documents-providers.helpers.js";
+
+describe("text-only extraction", () => {
+  test("refuses forced OCR before invoking the text extractor", async () => {
+    const extractor = new MarkItDownExtractor({
+      executable: "must-not-be-invoked",
+      timeoutMs: 1000,
+      maxStdoutBytes: 1024,
+    });
+    await expect(
+      extractor.extract({
+        inputPath: "scanned.pdf",
+        workDir: dir,
+        assetsDir: dir,
+        ocr: "force",
+        extractImages: false,
+        extractTables: true,
+        preservePageMarkers: true,
+      }),
+    ).rejects.toMatchObject({ code: "OCR_FAILED", backend: "markitdown" });
+  });
+});
 
 describe("pandoc provider", () => {
   test("renders DOCX with a fixed, orchestrator-owned command line", async () => {

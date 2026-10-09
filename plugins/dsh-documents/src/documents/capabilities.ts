@@ -149,7 +149,7 @@ export function documentCapabilities(options: {
     create,
     extract,
     convert,
-    ocr: config.docling.enabled || options.providers.markitdown !== undefined,
+    ocr: options.providers.docling !== undefined,
     templates: templateNames(options.templates),
     pdfModes: config.typst.enabled
       ? ["auto", "office", "typst"]

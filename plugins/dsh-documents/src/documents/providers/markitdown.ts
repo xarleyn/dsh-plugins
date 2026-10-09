@@ -69,6 +69,13 @@ export class MarkItDownExtractor implements DocumentExtractor {
   }
 
   async extract(input: ExtractInput): Promise<ExtractedDocument> {
+    if (input.ocr === "force") {
+      throw new DocumentError(
+        "OCR_FAILED",
+        "this extractor supports embedded text only; an OCR backend is required for forced recognition",
+        { backend: this.name },
+      );
+    }
     const result = await runProcess(
       this.options.executable,
       [input.inputPath],
