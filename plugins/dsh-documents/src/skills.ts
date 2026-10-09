@@ -31,6 +31,7 @@ export const DOCUMENT_SKILLS_DIR = fileURLToPath(
 
 /** The one skill this plugin ships. */
 export const CONTRACT_REVIEW_SKILL = "contract-review";
+export const GROUNDED_DOCUMENTS_SKILL = "grounded-documents";
 
 export function buildDocumentSkillsConfig(): {
   providerName: string;

@@ -11,6 +11,8 @@
  * The public entry point is {@link installDocumentSubsystem}.
  */
 
+import type { DocumentScope } from "./orchestrator/scope.js";
+
 export {
   DOCUMENT_ERROR_CODES,
   DocumentError,
@@ -267,6 +269,7 @@ export interface InstallDocumentSubsystemOptions {
    * already granted.
    */
   readonly extraInputRoots?: (sessionId?: string) => readonly string[];
+  readonly authorizeRender?: (scope: DocumentScope) => Promise<void>;
   /**
    * Retrieval for `document_from_url`, resolving the web provider at call time.
    * Omitted when the deployment has no web provider; that tool then answers
@@ -361,6 +364,9 @@ export function installDocumentSubsystem(
     { register: options.register },
     {
       runtime,
+      ...(options.authorizeRender === undefined
+        ? {}
+        : { authorizeRender: options.authorizeRender }),
       ...(options.extraInputRoots === undefined
         ? {}
         : { extraInputRoots: options.extraInputRoots }),
