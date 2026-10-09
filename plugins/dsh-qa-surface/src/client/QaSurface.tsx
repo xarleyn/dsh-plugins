@@ -754,9 +754,11 @@ export function QaSurface(props: QaSurfaceProps) {
   // One identity per configuration: the composer is memoized on shallow
   // comparison, so a fresh limits object would re-render it every frame.
   const limits = useMemo(() => attachmentLimits(config), [config]);
+  const [fastMode, setFastMode] = useState(false);
+  useEffect(() => { setFastMode(false); }, [state.chatKey]);
   const handleRegenerate = useCallback(() => {
-    void controller?.regenerate();
-  }, [controller]);
+    void controller?.regenerate(fastMode);
+  }, [controller, fastMode]);
   const handleSwitch = useCallback(
     (sessionId: string) => {
       void controller?.switchTo(sessionId);
@@ -795,8 +797,8 @@ export function QaSurface(props: QaSurfaceProps) {
       text: string,
       attachments: readonly QaAttachmentDraft[],
       pick: string | null,
-    ) => controller?.send(text, attachments, pick) ?? Promise.resolve(false),
-    [controller],
+    ) => controller?.send(text, attachments, pick, fastMode) ?? Promise.resolve(false),
+    [controller, fastMode],
   );
   // Closing the queue notice only uncovers the composer: the question the stand
   // had no room for is still the text in there, and asking it again is a
@@ -980,13 +982,14 @@ export function QaSurface(props: QaSurfaceProps) {
         `Согласую редакцию ${workflow.revision} документа «${artifact.name}». Сформируй DOCX из согласованной редакции через процесс подготовки документа.`,
         [],
         null,
+        fastMode,
       );
       if (!sent)
         throw new Error(
           "Approval was saved but the export request was not sent",
         );
     },
-    [state.sessionId, props.sourceApi, accounts, controller],
+    [state.sessionId, props.sourceApi, accounts, controller, fastMode],
   );
 
   const view = useTranscriptView(state.messages, variantOffsets);
@@ -1925,6 +1928,8 @@ export function QaSurface(props: QaSurfaceProps) {
                     yet. */}
                     <QaComposer
                       key={state.chatKey}
+                      fastMode={fastMode}
+                      onFastModeChange={setFastMode}
                       placeholder={config.branding.placeholder}
                       quickQuestions={empty ? quickQuestions : NO_QUESTIONS}
                       canSend={state.canSend}

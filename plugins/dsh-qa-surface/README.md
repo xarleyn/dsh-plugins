@@ -13,6 +13,14 @@ Session and Agent Loop.
 - renders only user text, assistant-visible text and safe status messages;
 - supports streaming, Stop, optional New chat, safe Markdown, copy actions and
   a responsive first-party-style conversation layout;
+- offers a Fast switch beside the composer with a visible warning while on.
+  New ordinary requests, regeneration and approved-document export requests use
+  the Host's trusted `/no-review` command for an audited, request-specific waiver.
+  Explicit slash commands keep their normal behavior. Fast starts off and resets
+  when the chat changes; it never disables mandatory document review or human
+  approval. The deployment must permit the native waiver command, including its
+  closed-mode policy; a refusal keeps the unsent prompt rather than silently
+  falling back to a reviewed request;
 - queues a question asked while the assistant is still answering: the strip
   above the composer lists what waits for the next turn, and each row can be
   edited, sent into the running turn, or dropped. The queue is the Host

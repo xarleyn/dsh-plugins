@@ -524,6 +524,7 @@ export class QaSessionController {
     text: string,
     attachments: readonly QaAttachmentDraft[] = [],
     pick: string | null = null,
+    fastReview = false,
   ): Promise<boolean> {
     const prompt = text.trim();
     // Images ride the prompt inline; files must be staged first, because the
@@ -591,6 +592,29 @@ export class QaSessionController {
         this.publish();
         return false;
       }
+    }
+    if (fastReview) {
+      this.requestQueueNotice = null;
+      const target = await this.liveTarget();
+      if (target === undefined) return false;
+      await this.refreshSlashCatalog(true);
+      if (this.disposed || this.session !== target) return false;
+      const command = this.slashEntries.find(
+        (entry) => entry.kind === "command" && entry.name === "no-review",
+      );
+      if (command === undefined) {
+        this.operationError =
+          "Fast недоступен в этом чате. Выключите Fast, чтобы отправить запрос с автоматическим ревью.";
+        this.publish();
+        return false;
+      }
+      return this.sendCommand(
+        `/no-review${prompt === "" ? "" : ` ${prompt}`}`,
+        attachments,
+        files,
+        command,
+        true,
+      );
     }
     this.operationError = null;
     this.requestQueueNotice = null;
@@ -734,6 +758,7 @@ export class QaSessionController {
     attachments: readonly QaAttachmentDraft[],
     files: readonly QaFileDraft[],
     entry: QaSlashCatalogEntry,
+    requireSuccess = false,
   ): Promise<boolean> {
     if (this.slashApi === undefined) {
       this.operationError = SLASH_DISABLED_COPY;
@@ -785,6 +810,11 @@ export class QaSessionController {
       }
       if (result.value.kind === "refused") {
         this.operationError = slashHostRefusalCopy(result.value);
+        this.publish();
+        return false;
+      }
+      if (requireSuccess && result.value.outcome.kind === "error") {
+        this.operationError = result.value.outcome.text;
         this.publish();
         return false;
       }
@@ -1000,8 +1030,8 @@ export class QaSessionController {
    * hides the marker message, and the consecutive turns read as variants of
    * the original question (switched in the surface).
    */
-  async regenerate(): Promise<boolean> {
-    return this.send(QA_REGENERATE_MARKER);
+  async regenerate(fastReview = false): Promise<boolean> {
+    return this.send(QA_REGENERATE_MARKER, [], null, fastReview);
   }
 
   async stop(): Promise<void> {
