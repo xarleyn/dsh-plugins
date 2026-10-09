@@ -495,6 +495,7 @@ export class DomainExpertsService extends TypertRemoteService {
     domainId: string,
     task: string,
     parentSessionId: string,
+    structuredOutput?: boolean,
   ): Promise<ExpertRunResult> {
     return guarded(async () => {
       const { handles, definition } = await this.stores.addressed(domainId);
@@ -508,7 +509,7 @@ export class DomainExpertsService extends TypertRemoteService {
       return accepted({
         result: await runExpert(
           this.executionDependencies(handles),
-          testRunInput(parent, definition, task),
+          testRunInput(parent, definition, task, structuredOutput),
         ),
       });
     }, expertRunRefusal);
