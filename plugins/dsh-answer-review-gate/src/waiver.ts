@@ -195,7 +195,7 @@ export function registerReviewWaiverCommand(
         return { kind: "error", text: "The no-review request was cancelled." };
       }
       const request = invocation.rawInput.trim();
-      if (request === "") {
+      if (request === "" && invocation.attachments.length === 0) {
         return { kind: "error", text: "Usage: /no-review <request>" };
       }
 

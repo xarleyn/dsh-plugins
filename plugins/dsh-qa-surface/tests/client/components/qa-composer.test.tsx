@@ -55,6 +55,27 @@ function pasteText(input: HTMLElement, text: string): void {
 }
 
 describe("QA composer", () => {
+  it("shows the Fast warning when enabled and keeps the mode explicit", () => {
+    const changed = vi.fn();
+    mount({ fastMode: true, onFastModeChange: changed });
+    const toggle = screen.getByTestId("qa-composer-fast");
+    expect(toggle.getAttribute("aria-pressed")).toBe("true");
+    expect(screen.getByTestId("qa-composer-fast-warning").textContent)
+      .toMatch(/Автоматическое ревью ответов пропускается/u);
+    expect(screen.getByTestId("qa-composer-fast-warning").textContent)
+      .toMatch(/Проверка документов перед согласованием сохраняется/u);
+    fireEvent.click(toggle);
+    expect(changed).toHaveBeenCalledWith(false);
+  });
+
+  it("starts without a Fast warning and enables the mode by an explicit click", () => {
+    const changed = vi.fn();
+    mount({ fastMode: false, onFastModeChange: changed });
+    expect(screen.queryByTestId("qa-composer-fast-warning")).toBeNull();
+    fireEvent.click(screen.getByTestId("qa-composer-fast"));
+    expect(changed).toHaveBeenCalledWith(true);
+  });
+
   it("sends on Enter and preserves Shift+Enter", async () => {
     const send = vi.fn(async () => true);
     mount({ onSend: send });

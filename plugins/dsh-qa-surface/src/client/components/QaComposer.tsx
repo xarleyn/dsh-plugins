@@ -16,6 +16,8 @@ import { useSlashNavigation } from "../slash/useSlashNavigation.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
 
 export interface QaComposerProps {
+  readonly fastMode?: boolean;
+  readonly onFastModeChange?: (enabled: boolean) => void;
   readonly placeholder: string;
   /** Shown while the chat is empty; the label reads, the prompt sends. */
   readonly quickQuestions?: readonly QaQuickQuestion[];
@@ -403,6 +405,20 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           >
             {hint}
           </span>
+          {props.onFastModeChange === undefined ? null : (
+            <button
+              type="button"
+              className={`dsh-qa-composer__fast${props.fastMode === true ? " dsh-qa-composer__fast--active" : ""}`}
+              data-testid="qa-composer-fast"
+              aria-label="Fast: без автоматического ревью ответов"
+              aria-pressed={props.fastMode === true}
+              title="Fast действует на следующие сообщения в этом чате"
+              disabled={!props.canSend || submitting}
+              onClick={() => props.onFastModeChange?.(props.fastMode !== true)}
+            >
+              Fast
+            </button>
+          )}
           {props.running && props.showStop ? (
             <button
               type="button"
@@ -448,6 +464,11 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           )}
         </div>
       </div>
+      {props.fastMode === true ? (
+        <p className="dsh-qa-composer__fast-warning" data-testid="qa-composer-fast-warning" role="status">
+          Fast включён для следующих сообщений. Автоматическое ревью ответов пропускается: ошибки и неподтверждённые утверждения могут остаться незамеченными. Проверка документов перед согласованием сохраняется.
+        </p>
+      ) : null}
     </div>
   );
 });
