@@ -63,10 +63,10 @@ describe("domain-expert backend", () => {
   });
 
   it("passes the stable domain id, the task, and the reviewed session id", async () => {
-    const calls: [string, string, string][] = [];
+    const calls: [string, string, string, boolean | undefined][] = [];
     const face: DomainExpertsFace = {
-      async testExpert(domainId, task, parentSessionId) {
-        calls.push([domainId, task, parentSessionId]);
+      async testExpert(domainId, task, parentSessionId, structuredOutput) {
+        calls.push([domainId, task, parentSessionId, structuredOutput]);
         const outcome: ExpertRunOutcome = {
           ok: true,
           code: "",
@@ -85,7 +85,8 @@ describe("domain-expert backend", () => {
     const verdict = await backend.review(reviewInput());
     expect(verdict.verdict).toBe("pass");
     expect(calls).toHaveLength(1);
-    const [domainId, task, parentSessionId] = calls[0]!;
+    const [domainId, task, parentSessionId, structuredOutput] = calls[0]!;
+    expect(structuredOutput).toBe(true);
     expect(domainId).toBe("answer-reviewer");
     expect(parentSessionId).toBe("session-1");
     expect(task).toContain("What locks does the runtime use?");
