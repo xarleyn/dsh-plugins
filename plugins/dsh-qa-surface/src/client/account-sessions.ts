@@ -30,8 +30,8 @@ export function createQaAccountSessions(ctx: Context, root: QaSessions, remote: 
     create: refuse, fork: refuse,
   } satisfies QaSessionRemotes["session"];
   const secured: QaSessionRemotes = { $stream: remote.$stream.bind(remote), session,
-    commands: { ...remote.commands, execute: refuse },
-    subagents: { ...remote.subagents, prompt: refuse, interruptByParent: refuse } };
+    commands: { execute: refuse },
+    subagents: { prompt: refuse, interruptByParent: refuse } };
   // rc.2 exposes the constructor on the public Session service instance. Keep
   // this compatibility seam isolated and prove it with the real installed SDK.
   const Constructor = root.constructor as new (context: Context, remotes: QaSessionRemotes) => NativeSessions;
@@ -50,10 +50,22 @@ export function createQaAccountSessions(ctx: Context, root: QaSessions, remote: 
     })();
   };
   let identity: string | null = null;
+  let connectedGeneration: ReturnType<ConnectionGenerationState["getSnapshot"]>;
   const reconcile = () => {
     const next = token();
-    if (identity !== next) { identity = next; control?.abort(); control = undefined; void sessions.refresh(); }
-    if (next !== null && generation.getSnapshot() !== undefined) { sessions.handleConnected(); startControl(); }
+    const currentGeneration = generation.getSnapshot();
+    const identityChanged = identity !== next;
+    if (identityChanged) {
+      identity = next; control?.abort(); control = undefined;
+      if (next === null || currentGeneration === undefined) void sessions.refresh();
+    }
+    // Catalog/account notifications are not new connections. Resetting the
+    // native baseline on each notification discards a slower in-flight list.
+    if (next !== null && currentGeneration !== undefined) {
+      if (identityChanged || connectedGeneration !== currentGeneration) sessions.handleConnected();
+      startControl();
+    }
+    connectedGeneration = currentGeneration;
   };
   const unsubscribe = subscribeAccount(reconcile);
   const unsubscribeGeneration = generation.subscribe(() => { control?.abort(); control = undefined; reconcile(); });
