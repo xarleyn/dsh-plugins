@@ -50,6 +50,7 @@ stays listed as a private workspace package with no kind.
 | `plugins/dsh-kv-persist` | `@yadsh/dsh-kv-persist` | DSH plugin | Persistent KV-cache/session-state manager for DeepSeek Harness (llama.cpp slot snapshots) |
 | `plugins/dsh-l10n-overrides` | `@yadsh/dsh-l10n-overrides` | DSH plugin | English localization overrides for DeepSeek Harness plugins |
 | `plugins/dsh-lightrag` | `@yadsh/dsh-lightrag` | DSH plugin | LightRAG knowledge-base tools for DeepSeek Harness agents |
+| `plugins/dsh-llm-provider-extended` | `@yadsh/dsh-llm-provider-extended` | DSH plugin | Full DSH provider adapter with generation controls and typed System One decisions |
 | `plugins/dsh-model-safety-gate` | `@yadsh/dsh-model-safety-gate` | DSH plugin | Independent two-layer safety gate around the DeepSeek Harness agent loop: deterministic and model-classifier verdicts for prompts, streamed output, tools, and tool results |
 | `plugins/dsh-openviking-memory` | `@yadsh/dsh-openviking-memory` | DSH plugin | OpenViking memory integration for DeepSeek Harness with configurable automatic context injection; derived from the official OpenViking DSH plugin. |
 | `plugins/dsh-plugin-log-ui` | `@yadsh/dsh-plugin-log-ui` | DSH plugin | DSH settings UI for shared plugin logging levels and file format |
