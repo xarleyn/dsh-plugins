@@ -31,6 +31,8 @@ export interface QaStoredSessionHeader {
   readonly cwd?: string;
   /** Set on a subagent's session; such sessions are not conversations. */
   readonly parentSessionId?: string;
+  /** Ordinary seeded branch; never a delegated run. */
+  readonly isFork?: boolean;
   readonly agentPreset?: string;
 }
 
@@ -167,6 +169,7 @@ function headerOf(header: unknown): QaStoredSessionHeader | undefined {
     createdAt,
     ...(cwd === undefined ? {} : { cwd }),
     ...(parentSessionId === undefined ? {} : { parentSessionId }),
+    ...(entry.isSeeded === true && entry.origin !== "subagent" ? { isFork: true } : {}),
     ...(agentPreset === undefined ? {} : { agentPreset }),
   };
 }

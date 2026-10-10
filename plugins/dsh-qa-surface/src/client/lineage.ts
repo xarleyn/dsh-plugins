@@ -7,7 +7,7 @@ import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/cli
  * A delegated run is an implementation detail of a single answer: the Host
  * refuses to attest it, its sources reach the parent chat through the
  * provenance inheritance flow, and it has no owner. The host list the surface
- * already follows carries both marks (`origin` and `parentId`), so every
+ * already follows marks delegated runs with `origin`; ordinary forks also carry `parentId`, so every
  * projection that talks about chats asks this one question instead of
  * re-deriving it — and a chat row, a chat count and a claim batch can never
  * disagree about what a chat is.
@@ -16,12 +16,12 @@ export function isDelegatedSession(
   summary: Pick<SessionSummary, "origin" | "parentId"> | undefined,
 ): boolean {
   if (summary === undefined) return false;
-  return summary.origin === "subagent" || summary.parentId !== undefined;
+  return summary.origin === "subagent";
 }
 
 /** The session-list slice the lineage walk reads. */
 export type SessionLineage = Readonly<
-  Record<string, Pick<SessionSummary, "parentId"> | undefined>
+  Record<string, Pick<SessionSummary, "parentId" | "origin"> | undefined>
 >;
 
 /**
@@ -39,7 +39,8 @@ export function chatRootOf(byId: SessionLineage, sessionId: string): string {
   const seen = new Set<string>();
   while (!seen.has(current)) {
     seen.add(current);
-    const parent = byId[current]?.parentId;
+    const row = byId[current];
+    const parent = row?.origin === "subagent" ? row.parentId : undefined;
     if (parent === undefined) return current;
     current = String(parent);
   }

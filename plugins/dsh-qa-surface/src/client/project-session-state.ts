@@ -22,6 +22,7 @@ export interface QaBoundProjectionInput {
   readonly sessionId: string;
   /** Chat identity from the controller; see `QaSessionState.chatKey`. */
   readonly chatKey: number;
+  readonly inheritedThroughSeq?: number;
   readonly sessionSnapshot: ReturnType<SessionFace["getSnapshot"]>;
   /**
    * The Host's Inbox projection for this session: the messages waiting for the
@@ -272,8 +273,16 @@ export function projectBoundSessionState(
     subagentNames: input.subagentNames,
     subagentCodenames: config.ui.subagentCodenames,
     workspaceRoot: input.workspaceRoot,
-  }).map((message) => {
-    if (message.role === "user" && input.author !== undefined) {
+  }).map((projected) => {
+    // The inherited workflow ledger belongs to the source session. Files still
+    // open and download, but approval cannot be offered in the branch.
+    const message = projected.role === "assistant" && projected.seq !== undefined &&
+      input.inheritedThroughSeq !== undefined && projected.seq <= input.inheritedThroughSeq
+      ? { ...projected, artifacts: projected.artifacts?.map((artifact) => {
+          const { workflow: _workflow, ...file } = artifact;
+          return file;
+        }) } : projected;
+    if (message.role === "user" && message.author === undefined && input.author !== undefined) {
       return { ...message, author: input.author };
     }
     if (message.role !== "assistant" || message.turn === undefined)

@@ -60,6 +60,7 @@ export type QaAccountsSnapshot =
       readonly ownership: readonly QaOwnershipEntry[];
       /** Bumped whenever ownedIds, ownIds or ownership changes; re-projects lists. */
       readonly ownedRevision: number;
+      readonly sharedChats?: readonly import("../chat-sharing/types.js").QaChatAccess[];
     };
 
 /** Union of the own chat ids and every mapped one, own ids first. */
@@ -661,10 +662,13 @@ export class QaAccountsController {
       }
     }
     if (this.disposed) return;
+    const sharedChats = await this.fetchSharedChats(token);
+    if (this.disposed) return;
     this.publish({
       stage: "authed",
       user,
-      ownedIds: mergeOwnershipIds(ownIds, ownership),
+      sharedChats,
+      ownedIds: [...new Set([...mergeOwnershipIds(ownIds, ownership), ...sharedChats.map(chat => chat.sessionId)])],
       ownIds,
       ownership,
       ownedRevision: 1,
@@ -696,13 +700,16 @@ export class QaAccountsController {
         ownership = [];
       }
       const ownIds = ids.value.ids;
-      const ownedIds = mergeOwnershipIds(ownIds, ownership);
+      const sharedChats = await this.fetchSharedChats(this.tokenValue);
+      if (this.disposed || this.snapshot.stage !== "authed") return;
+      const ownedIds = [...new Set([...mergeOwnershipIds(ownIds, ownership), ...sharedChats.map(chat => chat.sessionId)])];
       // The merged list is no proof about the strict one: a chat the ownership
       // map still names survives in it after the account stops owning it, so
       // the list a notice is bounded by has to be compared by itself.
       if (
         JSON.stringify(ownedIds) === JSON.stringify(this.snapshot.ownedIds) &&
         JSON.stringify(ownIds) === JSON.stringify(this.snapshot.ownIds) &&
+        JSON.stringify(sharedChats) === JSON.stringify(this.snapshot.sharedChats ?? []) &&
         JSON.stringify(ownership) === JSON.stringify(this.snapshot.ownership)
       ) {
         return;
@@ -711,6 +718,7 @@ export class QaAccountsController {
         ...this.snapshot,
         ownedIds,
         ownIds,
+        sharedChats,
         ownership,
         ownedRevision: this.snapshot.ownedRevision + 1,
       });
@@ -730,6 +738,12 @@ export class QaAccountsController {
       console.warn("dsh-qa-surface: ownership list failed", error);
       return [];
     }
+  }
+
+  /** Session id → owner display name; empty unless an admin is signed in. */
+  private async fetchSharedChats(token: string): Promise<readonly import("../chat-sharing/types.js").QaChatAccess[]> {
+    const result = await this.options.remote.chatVisible?.(token);
+    return result?.ok === true ? result.value.filter(chat => chat.mode !== "owner") : [];
   }
 
   /** Session id → owner display name; empty unless an admin is signed in. */

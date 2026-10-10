@@ -1,3 +1,4 @@
+import { qaDelegatedHeader } from "./shared/session-lineage.js";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
 import { qaAgentScope } from "./agent-scope.js";
@@ -393,6 +394,8 @@ export class QaPolicyAdmission {
                 readonly header: {
                   readonly createdAt?: number;
                   readonly parentSession?: unknown;
+                  readonly origin?: unknown;
+                  readonly isSeeded?: boolean;
                 };
               }
             | undefined;
@@ -405,7 +408,7 @@ export class QaPolicyAdmission {
       ...(header.createdAt === undefined
         ? {}
         : { createdAt: header.createdAt }),
-      ...(header.parentSession === undefined ? {} : { hasParent: true }),
+      ...(qaDelegatedHeader(header) ? { hasParent: true } : {}),
     };
   }
 
@@ -519,7 +522,7 @@ export class QaPolicyAdmission {
     // parent through the provenance inheritance flow. Attesting it from the
     // browser would pin a capability policy onto a conversation nobody can
     // open, name or review, so it is refused whatever the lockdown state is.
-    if (agent.session.header.parentSession !== undefined) {
+    if (qaDelegatedHeader(agent.session.header)) {
       this.logger.warn("lockdown.subagent-attestation-refused", { sessionId });
       throw new QaAttestationError(
         "subagent-session",

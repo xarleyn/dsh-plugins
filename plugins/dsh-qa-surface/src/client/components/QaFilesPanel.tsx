@@ -72,6 +72,8 @@ export interface QaFilesPanelProps {
   readonly onJumpToMessage: (messageId: string) => void;
   /** Open a produced file in the workspace viewer below. */
   readonly onArtifactOpen?: (artifact: QaArtifactView) => void;
+  readonly onAttachmentOpen?: (file: import("../../types.js").QaFileView) => void;
+  readonly materialsOnly?: boolean;
   /** Save a produced file. */
   readonly onArtifactDownload?: (artifact: QaArtifactView) => void;
   readonly onArtifactApprove?: (artifact: QaArtifactView) => Promise<void>;
@@ -103,6 +105,8 @@ export function QaFilesPanel({
   resolveImage,
   onJumpToMessage,
   onArtifactOpen,
+  onAttachmentOpen,
+  materialsOnly,
   onArtifactDownload,
   onArtifactApprove,
   openArtifact,
@@ -110,19 +114,20 @@ export function QaFilesPanel({
   api,
 }: QaFilesPanelProps) {
   const workspace =
-    sessionId === undefined || api === undefined ? null : (
+    sessionId === undefined || api === undefined || (materialsOnly && openArtifact === undefined) ? null : (
       <section
         className="dsh-qa-files__workspace"
         data-testid="qa-files-workspace"
       >
         <h3>
-          <span>Рабочий каталог</span>
+          <span>{materialsOnly ? "Материалы чата" : "Рабочий каталог"}</span>
         </h3>
         <QaWorkspaceBrowser
           key={openArtifact?.stamp ?? "browse"}
           sessionId={sessionId}
           api={api}
           initialFile={openArtifact?.path}
+          materialsOnly={materialsOnly}
         />
       </section>
     );
@@ -175,6 +180,7 @@ export function QaFilesPanel({
                   name={file.name}
                   bytes={file.bytes}
                   tone="sent"
+                  onOpen={onAttachmentOpen === undefined ? undefined : () => onAttachmentOpen(file)}
                 />
               ))}
               {group.images.map((image) =>

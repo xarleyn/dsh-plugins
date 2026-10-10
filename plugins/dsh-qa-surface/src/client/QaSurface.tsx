@@ -46,6 +46,7 @@ import type {
   QaIntegrationTokenApi,
   QaConversation,
   QaCreateSession,
+  QaForkSession,
   QaFileUpload,
   QaQueueStatusRemote,
   QaSecureSession,
@@ -128,6 +129,8 @@ import { QaAdmin } from "./admin/QaAdmin.js";
 import { isAdminPath } from "./admin/routes.js";
 import { QaAdminPreviewBanner, QaRoleSelector } from "./role/RoleSelector.js";
 import { useQaAdminPreview } from "./role/preview.js";
+import { QaChatSharing, qaChatModeLabel } from "./components/QaChatSharing.js";
+import type { QaSharingApi } from "./chat-sharing-api.js";
 
 const noopSubscribe = () => () => undefined;
 
@@ -150,6 +153,7 @@ const noopAccountsSnapshot = (): QaAccountsSnapshot =>
   ACCOUNTS_CHECKING_SNAPSHOT;
 
 export interface QaSurfaceFace {
+  readonly sharingApi?: QaSharingApi;
   readonly route: QaRouteController;
   readonly config: QaConfigController;
   readonly sessions: QaSessions;
@@ -160,6 +164,7 @@ export interface QaSurfaceFace {
   readonly connection: ConnectionGenerationState;
   readonly secureSession: QaSecureSession;
   readonly createSession: QaCreateSession;
+  readonly forkSession?: QaForkSession;
   readonly accessApi: QaAccessApi;
   /**
    * The administrative console's surface. Optional so an older Host that does
@@ -524,6 +529,8 @@ export function QaSurface(props: QaSurfaceProps) {
       connection: props.connection,
       secureSession: props.secureSession,
       createSession: props.createSession,
+      forkSession: props.forkSession,
+      sharingApi: props.sharingApi,
       sourceApi: props.sourceApi,
       ...(props.approvalApi === undefined
         ? {}
@@ -558,12 +565,14 @@ export function QaSurface(props: QaSurfaceProps) {
     props.conversation,
     props.connection,
     props.createSession,
+    props.forkSession,
     props.fileUpload,
     props.approvalApi,
     props.questionApi,
     props.queueStatus,
     props.secureSession,
     props.sourceApi,
+    props.sharingApi,
     props.sessions,
     route.active,
   ]);
@@ -761,6 +770,9 @@ export function QaSurface(props: QaSurfaceProps) {
   const handleRegenerate = useCallback(() => {
     void controller?.regenerate(fastMode);
   }, [controller, fastMode]);
+  const handleFork = useCallback((answerSeq: number) => {
+    return controller?.forkFromAnswer(answerSeq) ?? Promise.resolve();
+  }, [controller]);
   const handleSwitch = useCallback(
     (sessionId: string) => {
       void controller?.switchTo(sessionId);
@@ -962,6 +974,14 @@ export function QaSurface(props: QaSurfaceProps) {
     },
     [boundSourceApi, handleArtifactOpen, state.sessionId],
   );
+  const handleAttachmentOpen = useCallback((file: import("../types.js").QaFileView) => {
+    const id = state.sessionId;
+    const resolve = props.sharingApi?.attachmentPath;
+    if (id === null || resolve === undefined) return;
+    void resolve(accounts?.token() ?? "", id, file.attachmentId).then(result => {
+      if (result.ok) handleArtifactOpen({ path: result.value, name: file.name, bytes: file.bytes, format: "file" });
+    });
+  }, [state.sessionId, props.sharingApi, accounts, handleArtifactOpen]);
   const handleArtifactApprove = useCallback(
     async (artifact: QaArtifactView): Promise<void> => {
       const sessionId = state.sessionId;
@@ -1184,8 +1204,11 @@ export function QaSurface(props: QaSurfaceProps) {
         listState.byId,
         activeSessionId,
         (id) => ownerNames?.get(id),
-      ),
-    [controller, listState, activeSessionId, ownerNames, state.chatsRevision],
+      ).map(row => {
+        const shared = accountsSnapshot.stage === "authed" ? accountsSnapshot.sharedChats?.find(chat => chat.sessionId === row.id) : undefined;
+        return shared === undefined ? row : { ...row, ownerName: shared.ownerName, meta: `${qaChatModeLabel(shared.mode)} · ${row.meta}` };
+      }),
+    [controller, listState, activeSessionId, ownerNames, state.chatsRevision, accountsSnapshot],
   );
   // A turn that ends in one of this browser's own chats gets a notice: the
   // sidebar dot going out is otherwise the only sign, and it is easy to miss
@@ -1342,8 +1365,10 @@ export function QaSurface(props: QaSurfaceProps) {
           resolveImage={resolveImage}
           onJumpToMessage={handleJumpToMessage}
           onArtifactOpen={workspaceReadable ? handleArtifactOpen : undefined}
+          onAttachmentOpen={props.sharingApi?.attachmentPath === undefined ? undefined : handleAttachmentOpen}
+          materialsOnly={state.chatAccess !== undefined && state.chatAccess.mode !== "owner"}
           onArtifactApprove={
-            workspaceReadable ? handleArtifactApprove : undefined
+            workspaceReadable && (state.chatAccess === undefined || state.chatAccess.mode === "owner") ? handleArtifactApprove : undefined
           }
           onArtifactDownload={
             workspaceReadable ? handleArtifactDownload : undefined
@@ -1727,6 +1752,9 @@ export function QaSurface(props: QaSurfaceProps) {
             />
           ) : null}
 
+          {state.chatAccess !== undefined && props.sharingApi !== undefined ?
+            <QaChatSharing key={state.chatAccess.sessionId} access={state.chatAccess} token={accounts?.token() ?? ""} api={props.sharingApi} /> : null}
+
           <div
             className="dsh-qa-workspace"
             data-testid="qa-surface-workspace-split"
@@ -1818,8 +1846,9 @@ export function QaSurface(props: QaSurfaceProps) {
                             onArtifactOpen={
                               workspaceReadable ? handleArtifactOpen : undefined
                             }
+                            onAttachmentOpen={props.sharingApi?.attachmentPath === undefined ? undefined : handleAttachmentOpen}
                             onArtifactApprove={
-                              workspaceReadable
+                              workspaceReadable && (state.chatAccess === undefined || state.chatAccess.mode === "owner")
                                 ? handleArtifactApprove
                                 : undefined
                             }
@@ -1828,6 +1857,11 @@ export function QaSurface(props: QaSurfaceProps) {
                                 ? handleArtifactDownload
                                 : undefined
                             }
+                            onFork={props.forkSession !== undefined && controller !== undefined &&
+                              config.session.policy !== "fixed" && !state.compatibilityReadOnly &&
+                              state.viewingSubagent === null && (accounts === undefined ||
+                              (state.sessionId !== null && accounts.ownIds().includes(state.sessionId)))
+                                ? handleFork : undefined}
                             onRateFeedback={rateFeedback}
                           />
                           {group !== undefined && group.turns.length > 1 ? (
