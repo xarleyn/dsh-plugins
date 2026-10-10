@@ -324,6 +324,24 @@
       "client": false
     },
     {
+      "name": "dsh-llm-provider-extended",
+      "npm": "@yadsh/dsh-llm-provider-extended",
+      "path": "plugins/dsh-llm-provider-extended",
+      "description": "Full DSH provider adapter with generation controls and typed System One decisions",
+      "keywords": [
+        "deepseek",
+        "deepseek-harness",
+        "dsh",
+        "dsh-plugin",
+        "cordis",
+        "dsh-llm-provider-extended"
+      ],
+      "kind": "plugin",
+      "install": "dsh plugin --profile <profile> add @yadsh/dsh-llm-provider-extended",
+      "homepage": "https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-llm-provider-extended#readme",
+      "client": true
+    },
+    {
       "name": "dsh-model-safety-gate",
       "npm": "@yadsh/dsh-model-safety-gate",
       "path": "plugins/dsh-model-safety-gate",

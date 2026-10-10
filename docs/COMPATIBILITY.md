@@ -52,6 +52,7 @@ instance.
 | `@yadsh/dsh-jev-compaction` | Cordis, schemastery, LLM, session |
 | `@yadsh/dsh-lightrag` | tools, schemastery |
 | `@yadsh/dsh-model-safety-gate` | Cordis, schemastery, agent, LLM, session, tools |
+| `@yadsh/dsh-llm-provider-extended` | Cordis, schemastery, LLM, credentials/native authorization, attachments, settings, client plugin-manager/renderer/settings/slots, React |
 | `@yadsh/dsh-openviking-memory` | Cordis, schemastery, agent, LLM, session, tools, settings, MCP client, skill filesystem, gateway, Typert protocol, React |
 | `@yadsh/dsh-plugin-log-ui` | Cordis, schemastery, gateway, client connection/plugin-manager/renderer/settings/slots, settings, Typert protocol, React |
 | `@yadsh/dsh-preset-persona-editor` | Cordis, agent presets, system prompt, gateway, client renderer/settings/slots, Typert protocol, React |
