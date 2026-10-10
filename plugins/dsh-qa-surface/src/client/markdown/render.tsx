@@ -304,6 +304,8 @@ function inlineNodes(
           <del key={nodeKey}>{children(node.children, nodeKey, context)}</del>
         );
       case "link": {
+        const chip = linkChip(node.href, plainText(node.children), context);
+        if (chip !== undefined) return <Fragment key={nodeKey}>{chip}</Fragment>;
         const href = safeHref(node.href);
         if (href === undefined) {
           return (
@@ -311,10 +313,6 @@ function inlineNodes(
               {children(node.children, nodeKey, context)}
             </Fragment>
           );
-        }
-        const chip = linkChip(href, plainText(node.children), context);
-        if (chip !== undefined) {
-          return <Fragment key={nodeKey}>{chip}</Fragment>;
         }
         return (
           <a

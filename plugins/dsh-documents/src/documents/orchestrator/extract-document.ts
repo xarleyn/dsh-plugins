@@ -281,6 +281,7 @@ export async function extractToMarkdown(
     return {
       artifactId,
       markdown: inline,
+      sourcePath: inputPath,
       markdownPath: written.path,
       ...(extracted.assets.length === 0 ? {} : { assets: extracted.assets }),
       ...(extracted.pages === undefined ? {} : { pages: extracted.pages }),

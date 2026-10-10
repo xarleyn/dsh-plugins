@@ -7,6 +7,31 @@ import { QaSourcesPanel } from "../../../src/client/components/QaSourcesPanel.js
 import { resolveConfig } from "../../../src/resolve-config.js";
 
 describe("sources panel", () => {
+  it("renders a document in the native PDF viewer and revokes its URL on close", async () => {
+    const create = vi.fn(() => "blob:source-pdf");
+    const revoke = vi.fn();
+    const originalCreate = URL.createObjectURL;
+    const originalRevoke = URL.revokeObjectURL;
+    URL.createObjectURL = create;
+    URL.revokeObjectURL = revoke;
+    const config = resolveConfig().sources;
+    try {
+      const view = render(<QaSourcesPanel sources={[{ ...fileSource, path: "report.pdf", title: "report.pdf" }]}
+        complete sessionId="root" sourceApi={{ readSourceFile: async () => ({ ok: true, value: {
+          path: "report.pdf", content: "", size: 8, truncated: false, markdown: false, renderableMarkdown: false,
+          document: { kind: "pdf", name: "report.pdf", mime: "application/pdf", bytes: 8, base64: "JVBERi0xLjQ=" },
+        } }) } as never} display={config.display} filePreview={config.filePreview} />);
+      fireEvent.click(screen.getByRole("button", { name: /report.pdf/u }));
+      const frame = await screen.findByTestId("qa-source-preview-pdf");
+      expect(frame.getAttribute("src")).toBe("blob:source-pdf");
+      expect(screen.queryByTestId("qa-source-preview-raw")).toBeNull();
+      view.unmount();
+      expect(revoke).toHaveBeenCalledWith("blob:source-pdf");
+    } finally {
+      URL.createObjectURL = originalCreate;
+      URL.revokeObjectURL = originalRevoke;
+    }
+  });
   const fileSource: QaSource = {
     id: "file:docs/guide.md",
     kind: "file",
@@ -81,7 +106,7 @@ describe("sources panel", () => {
     );
     const empty = screen.getByTestId("qa-sources-empty");
     expect(empty.textContent).toMatch(/памяти/u);
-    expect(empty.textContent).toMatch(/не сбой сбора/u);
+    expect(empty.textContent).toMatch(/сам по себе не подтверждает/u);
     expect(screen.queryByTestId("qa-sources-incomplete")).toBeNull();
   });
 

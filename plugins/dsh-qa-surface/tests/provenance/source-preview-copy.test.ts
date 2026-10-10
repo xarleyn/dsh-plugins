@@ -17,7 +17,7 @@ describe("source preview failure copy", () => {
 
   it("says when the source left the chat's evidence", () => {
     expect(sourcePreviewFailureCopy(refusal("not-evidence"))).toMatch(
-      /не входит в доказательства/u,
+      /Сервер не подтвердил/u,
     );
   });
 

@@ -46,6 +46,15 @@ function toolsWithCommentWrite() {
 }
 
 describe("Bitrix24 capability catalog", () => {
+  it("publishes structured source metadata without changing the model's rendered data", () => {
+    const definition = tools()[0]!;
+    const value = { provider: "bitrix24", operation: "tasks.get", data: {
+      task: { id: "123", title: "Demo task" }, pagination: { next: 50 } } };
+    expect(definition.output?.render({}, value)).toEqual([
+      { type: "text", text: JSON.stringify(value.data) },
+    ]);
+    expect(definition.output?.presentationMeta?.({}, value)).toEqual(value);
+  });
   it("describes every operation and leaves no handler orphaned", () => {
     expect(Object.keys(BITRIX_HANDLERS).sort()).toEqual(
       Object.keys(BITRIX_OPERATIONS).sort(),

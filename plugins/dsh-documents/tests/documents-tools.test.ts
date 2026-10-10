@@ -276,6 +276,8 @@ describe("document_to_markdown tool", () => {
     const rendered = render(definition, value);
     expect(rendered[0]?.text).toContain("markdown:");
     expect(rendered[0]?.text).toContain("# Заголовок");
+    expect(definition.output?.presentationMeta?.({ file: pdf }, value as never))
+      .toMatchObject({ qaDocumentSource: { path: pdf, evidence: "read", truncated: false } });
   });
 });
 
@@ -326,6 +328,8 @@ describe("document_inspect tool", () => {
     const rendered = render(definition, value);
     expect(rendered[0]?.text).toContain("headings: 2");
     expect(rendered[0]?.text).toContain("title: T");
+    expect(definition.output?.presentationMeta?.({ file: docx }, value as never))
+      .toMatchObject({ qaDocumentSource: { path: docx, metadataOnly: true, evidence: "queried" } });
   });
 });
 

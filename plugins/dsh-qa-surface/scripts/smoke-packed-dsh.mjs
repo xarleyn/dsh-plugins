@@ -531,15 +531,21 @@ async function runBrowserPass({
         `historical incompatible Session was silently replaced: persisted=${JSON.stringify(historicalSession)} incompatible=${JSON.stringify(incompatibleSession.sessionId)}`,
       );
     }
-    // Simulate choosing New chat without exposing a reset button in this
-    // deliberately fixed smoke profile. The incompatible history remains on
-    // the Host; a reload with no active-id hint must create and attest a new
-    // Session under the current deployment composition.
+    // Create an attested blank fixture through QA's real admission, then
+    // restore it. A draft now materializes only on Send, which this model-less
+    // rig cannot exercise; attachment staging alone must not create a chat.
+    // The incompatible history remains on the Host.
     await page.evaluate(() =>
       globalThis.localStorage.removeItem(
         "dsh-qa-surface.session:v1:/qa:session",
       ),
     );
+    const attestedSession = await rpc(origin, "qaSurface/createSession", {
+      args: { token: "", subroleId: null, adminPreview: false },
+    }, cookie);
+    await page.evaluate((sessionId) => globalThis.localStorage.setItem(
+      "dsh-qa-surface.session:v1:/qa:session", sessionId,
+    ), attestedSession);
     await page.reload();
     await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
     await page
@@ -641,21 +647,15 @@ async function runBrowserPass({
     if ((await fileNames.nth(1).textContent()) !== "spec.md") {
       throw new Error("the picker did not attach a text file");
     }
-    // This rig configures no model, so DSH's blocking "Add an API key" step
-    // owns the page: it marks #root inert and portals its own modal above the
-    // QA overlay, which no click inside the surface can reach. That host-level
-    // block is orthogonal to the QA surface (a real deployment pins a model),
-    // so the scenario lifts it before driving the composer.
-    await page.evaluate(() => {
-      globalThis.document.getElementById("root")?.removeAttribute("inert");
-      const dialog = globalThis.document.querySelector(
-        '[role="dialog"][aria-modal="true"]',
-      );
-      const overlay = dialog?.parentElement;
-      if (overlay instanceof globalThis.HTMLElement) {
-        overlay.style.display = "none";
-      }
-    });
+    // The Host offers its supported deferral on this model-less fixture.
+    // Complete that step before interacting with the QA composer.
+    async function deferModelSetup() {
+      const dialog = page.getByRole("dialog", { name: "Add an API key to get started", exact: true });
+      await dialog.waitFor({ timeout: 15_000 });
+      await dialog.getByRole("button", { name: "Configure later", exact: true }).click();
+      await dialog.waitFor({ state: "hidden" });
+    }
+    await deferModelSetup();
     await page.getByRole("button", { name: "Убрать spec.md" }).click();
     await waitFor(
       async () => (await fileNames.count()) === 1,
@@ -720,6 +720,7 @@ async function runBrowserPass({
     if (new URL(page.url()).pathname !== "/qa/child") {
       throw new Error(`child QA navigation was not restored: ${page.url()}`);
     }
+    await deferModelSetup();
     // The palette the surface carries for itself. The Host's own Appearance row
     // lives in the settings this overlay suppresses, so every one of the three
     // preferences has to reach the Host token sheet from `/qa` alone — proven
@@ -867,6 +868,7 @@ async function runBrowserPass({
     await choosePalette("Светлая тема", false);
     await page.reload();
     await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
+    await deferModelSetup();
     const reloaded = await awaitPalette(false);
     if (
       reloaded.darkPalette ||
@@ -878,19 +880,10 @@ async function runBrowserPass({
       );
     }
     await expectChosenThemeIsVisible("after the reload");
-    // And the surface only borrows the document. A visitor who leaves `/qa` by
-    // the route the Host itself uses — `history.pushState`, which the surface
-    // watches — has to find the harness wearing what it wore before, because
-    // off its own route this control is not on screen to be turned back off.
-    // The OS is answered light first so the Host's own palette agrees with the
-    // one being restored, and the harness is painted by hand to make the two
-    // states distinguishable from a surface that simply never repainted.
-    await page.emulateMedia({ colorScheme: "light" });
-    await page.evaluate(() => {
-      globalThis.document.documentElement.style.colorScheme = "light";
-      globalThis.document.body.removeAttribute("data-ds-dark-theme");
-    });
-    await choosePalette("Тёмная тема", true);
+    // The Host booted this document under a dark OS; QA restored the stored
+    // light choice above. Leaving the route must return that borrowed native
+    // palette, which is visibly different from the browser's QA preference.
+    // Keep the OS stable so an independent Host repaint does not race cleanup.
     await page.evaluate(() => {
       globalThis.history.pushState(null, "", "/");
     });
@@ -901,7 +894,7 @@ async function runBrowserPass({
       darkPalette: globalThis.document.body.hasAttribute("data-ds-dark-theme"),
       scheme: globalThis.document.documentElement.style.colorScheme,
     }));
-    if (handedBack.darkPalette || handedBack.scheme !== "light") {
+    if (!handedBack.darkPalette || handedBack.scheme !== "dark") {
       throw new Error(
         `leaving /qa did not hand the harness palette back: ${JSON.stringify(handedBack)}`,
       );
@@ -1092,7 +1085,7 @@ try {
   if (packageEntry === undefined || batch === undefined) {
     throw new Error("packed QA client was absent from the DSH client graph");
   }
-  const bundleResponse = await fetch(`${origin}${batch.url}`, {
+  const bundleResponse = await fetch(new URL(batch.url, `${origin}/`), {
     headers: { cookie },
   });
   const bundle = await bundleResponse.text();

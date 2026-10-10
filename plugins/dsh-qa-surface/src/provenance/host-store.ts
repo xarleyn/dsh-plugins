@@ -60,22 +60,19 @@ interface LineageRecord extends SubagentInfo {
 }
 
 function eventCallId(event: SessionEvent<"tool/result">): string | undefined {
-  const block = event.data.message.content[0] as unknown as {
-    readonly callId?: unknown;
-    readonly toolCallId?: unknown;
-  };
-  // The Harness names the block's pairing field `toolCallId` and its validator
-  // requires it to equal `message.source.callId`; `callId` is read as well so a
-  // journal written while the block carried that name still collects sources.
-  const callId = block.toolCallId ?? block.callId;
-  return typeof callId === "string" ? callId : undefined;
+  const message = event.data.message as unknown as Record<string, unknown>;
+  const source = stringRecord(message.source);
+  const block = stringRecord(event.data.message.content[0]);
+  const ids = [source?.callId, message.toolCallId, block?.toolCallId, block?.callId]
+    .filter((id): id is string => typeof id === "string" && id !== "");
+  // Current messages pair at the message level. Old nested records remain
+  // readable, but contradictory identities never authorise an unrelated file.
+  return ids.length > 0 && ids.every((id) => id === ids[0]) ? ids[0] : undefined;
 }
 
 function eventResult(event: SessionEvent<"tool/result">): unknown {
-  const block = event.data.message.content[0] as unknown as {
-    readonly content?: unknown;
-  };
-  return block.content ?? event.data.message.content;
+  const block = stringRecord(event.data.message.content[0]);
+  return block?.content ?? event.data.message.content;
 }
 
 function currentTurn(session: Session): number {
@@ -236,6 +233,15 @@ export class QaProvenanceHost {
     for (const event of session.snapshotEvents())
       this.observeEvent(session, event);
     this.seededSessions.add(sessionId);
+    // Recovered evidence must survive the next idle teardown without requiring
+    // another model turn. Merge via the collector to retain reported/delegated data.
+    const ended = new Set(session.snapshotEvents().flatMap((event) =>
+      event.type === "turn/end" ? [event.data.turn] : []));
+    for (const [turn, collector] of this.collectors.get(sessionId) ?? []) {
+      if (!ended.has(turn)) continue;
+      const bundle = collector.snapshot();
+      if (this.persistSnapshot(bundle)) this.sessionSnapshots(sessionId).set(turn, bundle);
+    }
   }
 
   private observeEvent(session: Session, event: SessionEvent): void {
@@ -267,7 +273,9 @@ export class QaProvenanceHost {
       calls.delete(callId);
       if (calls.size === 0) this.calls.delete(sessionId);
     }
-    if (call === undefined || event.data.error !== undefined) return;
+    const block = stringRecord(event.data.message.content[0]);
+    if (call === undefined || event.data.error !== undefined ||
+      event.data.message.isError === true || block?.isError === true) return;
     if (!this.shouldCollect(session)) return;
     this.collector(sessionId, call.turn).observe({
       toolName: call.name,
@@ -286,6 +294,8 @@ export class QaProvenanceHost {
       ...(session.header.cwd === undefined
         ? {}
         : { workspaceRoot: session.header.cwd }),
+      ...(this.config().tools.docsRoot === undefined ? {} :
+        { documentationRoot: this.config().tools.docsRoot }),
     });
   }
 

@@ -154,6 +154,8 @@ export interface QaSurfaceFace {
   readonly config: QaConfigController;
   readonly sessions: QaSessions;
   readonly conversation: QaConversation;
+  /** Select the authenticated transport after asynchronous Host config loads. */
+  readonly resolveRuntime?: (accountsEnabled: boolean) => Pick<QaSurfaceFace, "sessions" | "conversation">;
   readonly api: QaSessionsApi;
   readonly connection: ConnectionGenerationState;
   readonly secureSession: QaSecureSession;

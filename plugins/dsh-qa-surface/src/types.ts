@@ -1548,6 +1548,7 @@ export interface QaSourceFilePreview {
   readonly truncated: boolean;
   readonly markdown: boolean;
   readonly renderableMarkdown: boolean;
+  readonly document?: QaDocumentPreview;
 }
 
 /**

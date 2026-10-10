@@ -17,7 +17,8 @@ export type QaConfigFallback = () => Promise<ResolvedQaSurfaceConfig>;
  * The DSH gateway pins settings RPCs to loopback, so a browser served over the
  * LAN always sees the namespace as `unavailable`. When the caller supplies the
  * `qaSurface/describe` Remote as a fallback, that channel answers instead: the
- * projection waits in `loading` until it settles, then reports the Host-owned
+ * projection asks this channel even while a fenced settings request remains
+ * in `loading`, then reports the Host-owned
  * configuration as `ready`. A rejected fallback returns the projection to
  * `unavailable`, exactly as when no fallback exists.
  */
@@ -56,14 +57,7 @@ export class QaConfigController {
 
   private project(): QaConfigSnapshot {
     const settings = this.scope.getSnapshot();
-    if (settings.status === "loading") {
-      return {
-        status: "loading",
-        config: DEFAULT_QA_SURFACE_CONFIG,
-        error: null,
-      };
-    }
-    if (settings.status === "unavailable") {
+    if (settings.status === "loading" || settings.status === "unavailable") {
       if (
         (this.fallbackState === "ready" ||
           this.fallbackState === "refreshing") &&
@@ -75,7 +69,8 @@ export class QaConfigController {
           error: null,
         };
       }
-      if (this.fallbackState === "pending") {
+      if (this.fallbackState === "pending" ||
+        (settings.status === "loading" && this.fallbackState !== "failed")) {
         return {
           status: "loading",
           config: DEFAULT_QA_SURFACE_CONFIG,
@@ -165,7 +160,7 @@ export class QaConfigController {
 
   /**
    * The fallback trigger rides every refresh: the scope flips to
-   * `unavailable` whenever the browser is served over the LAN, which a
+   * `unavailable` or stuck in `loading` when the gateway fences settings, which a
    * constructor-time check can miss. The state guard makes repeats a no-op,
    * so one fetch runs per controller lifetime; the recursive refresh lets the
    * pending state surface before the first notification pass.
@@ -175,7 +170,7 @@ export class QaConfigController {
       this.disposed ||
       this.fallback === undefined ||
       this.fallbackState !== "idle" ||
-      this.scope.getSnapshot().status !== "unavailable"
+      !["loading", "unavailable"].includes(this.scope.getSnapshot().status)
     ) {
       return;
     }

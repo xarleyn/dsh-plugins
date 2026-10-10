@@ -147,10 +147,13 @@ export function linkChip(
   label: string,
   context: MarkdownSourceContext,
 ): ReactNode | undefined {
+  const file = context.refs?.resolvePath(href);
+  if (file !== undefined && context.onSourceOpen !== undefined)
+    return <SourceChip source={file} label={label || sourceFileName(file)} onOpen={context.onSourceOpen} />;
   const source = context.refs?.resolveUrl(href);
   if (source === undefined) return undefined;
   return (
-    <SourceChip source={source} label={label || source.title} href={href} />
+    <SourceChip source={source} label={label || source.title} href={safeHref(source.uri ?? href)} />
   );
 }
 

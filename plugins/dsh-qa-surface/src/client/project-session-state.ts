@@ -14,6 +14,7 @@ import type {
 } from "../types.js";
 import { projectTranscript } from "./QaTranscriptAdapter.js";
 import { chatLegacyOf } from "./turn-sources.js";
+import { dedupeAndRankSources } from "../provenance/dedupe.js";
 
 /** Everything the bound-chat projection reads; the computation is pure. */
 export interface QaBoundProjectionInput {
@@ -298,7 +299,10 @@ export function projectBoundSessionState(
             : { incompleteSourceOrigins: bundle.incompleteOrigins }),
         };
   });
-  const latest = input.sourceBundles.at(-1);
+  const chatSources = dedupeAndRankSources(input.sourceBundles.flatMap((bundle) => [
+    ...bundle.sources,
+    ...(config.sources.display.showDiscovered ? (bundle.discovered ?? []) : []),
+  ]));
   const questions = input.compatibilityReadOnly === true ? [] : input.questions;
   // A parked question owns the composer until it is answered or the turn ends:
   // the operator is answering a tool call that is already waiting, and text
@@ -339,17 +343,9 @@ export function projectBoundSessionState(
     ),
     canEditQueue: canOperate,
     chatsRevision: input.chatsRevision,
-    sources:
-      latest === undefined
-        ? []
-        : [
-            ...latest.sources,
-            ...(config.sources.display.showDiscovered
-              ? (latest.discovered ?? [])
-              : []),
-          ],
-    sourcesComplete: latest?.complete ?? true,
-    incompleteSourceOrigins: latest?.incompleteOrigins,
+    sources: chatSources,
+    sourcesComplete: input.sourceBundles.every((bundle) => bundle.complete),
+    incompleteSourceOrigins: input.sourceBundles.flatMap((bundle) => bundle.incompleteOrigins ?? []),
     viewingSubagent: input.viewingSubagent,
     approvals: input.compatibilityReadOnly === true ? [] : input.approvals,
     questions,

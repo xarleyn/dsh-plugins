@@ -265,6 +265,9 @@ describe("docs_read", () => {
       agent: agentWithCwd(workspace),
     } as never)) as unknown;
     expect(render(tool, value)).toContain("Documentation root notes.");
+    expect(tool.output?.presentationMeta?.({ path: "docs/readme.md" }, value as never))
+      .toMatchObject({ path: path.join(workspace, "docs", "readme.md"),
+        aliases: ["docs/readme.md"], lines: [{ number: 1, text: "Documentation root notes." }] });
     cleanup();
   });
 });

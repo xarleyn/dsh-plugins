@@ -58,8 +58,10 @@ export async function previewConvertibleDocument({
   if (!isConvertibleDocument(mediaTypeOf(resolved.canonical))) {
     throw new QaSourcePreviewError("unsupported");
   }
-  const extraInputRoots =
-    file.attachmentRoot === undefined ? [] : [file.attachmentRoot];
+  const extraInputRoots = [
+    ...(file.sharedReadOnlyRoots ?? []),
+    ...(file.attachmentRoot === undefined ? [] : [file.attachmentRoot]),
+  ];
   let rendered: string;
   try {
     const converted = await face.convert(
@@ -85,4 +87,19 @@ export async function previewConvertibleDocument({
   if (bytes.byteLength > maxBytes)
     throw new QaSourcePreviewError("unsupported");
   return toPreview(bytes, basename(resolved.canonical));
+}
+
+/** Native PDF or pipeline preview, after the caller has verified chat evidence. */
+export async function previewSourceDocument(
+  request: QaDocumentPreviewRequest,
+): Promise<QaDocumentPreview> {
+  const file = await resolveAllowedFile(request);
+  if (mediaTypeOf(file.canonical) !== "application/pdf")
+    return previewConvertibleDocument(request);
+  if (file.size > request.maxBytes) throw new QaSourcePreviewError("unsupported");
+  const bytes = await readFile(file.canonical).catch(() => undefined);
+  if (bytes === undefined) throw new QaSourcePreviewError("unavailable");
+  if (bytes.byteLength > request.maxBytes || bytes.subarray(0, 5).toString() !== "%PDF-")
+    throw new QaSourcePreviewError("unsupported");
+  return toPreview(bytes, basename(file.canonical));
 }

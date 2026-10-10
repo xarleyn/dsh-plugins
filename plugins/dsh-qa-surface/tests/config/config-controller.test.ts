@@ -52,12 +52,24 @@ describe("qa config controller", () => {
     controller.dispose();
   });
 
-  it("defers the fallback while the namespace is still loading", () => {
-    const describe = vi.fn();
+  it("reads Host configuration even when a fenced settings request never finishes loading", async () => {
+    const describe = vi.fn(async () => resolveConfig({ enabled: true, branding: { title: "Host QA" } }));
     const scope = new FakeScope({ status: "loading" });
     const controller = new QaConfigController(scope.asForm(), describe);
     expect(controller.getSnapshot().status).toBe("loading");
-    expect(describe).not.toHaveBeenCalled();
+    expect(describe).toHaveBeenCalledTimes(1);
+    await settled();
+    expect(controller.getSnapshot()).toMatchObject({ status: "ready", config: { enabled: true, branding: { title: "Host QA" } } });
+    scope.set({ status: "loading" });
+    expect(describe).toHaveBeenCalledTimes(1);
+    scope.set({ status: "ready", value: { branding: { title: "Readable settings" } } });
+    expect(controller.getSnapshot().config.branding.title).toBe("Readable settings");
+    controller.dispose();
+  });
+
+  it("keeps an unsettled settings namespace loading without a Host channel", () => {
+    const controller = new QaConfigController(new FakeScope({ status: "loading" }).asForm());
+    expect(controller.getSnapshot().status).toBe("loading");
     controller.dispose();
   });
 
