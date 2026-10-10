@@ -1069,6 +1069,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             sessions: config.getSnapshot().config.accounts.enabled ? getAccountRuntime().sessions : ctx.sessions as unknown as QaSessions,
             sharingApi,
             conversation: config.getSnapshot().config.accounts.enabled ? getAccountRuntime().conversation : ctx.uiConversation,
+            resolveRuntime: (accountsEnabled) => accountsEnabled ? getAccountRuntime() : {
+              sessions: ctx.sessions as unknown as QaSessions, conversation: ctx.uiConversation,
+            },
             api: qaApi,
             connection: ctx.connection.generation,
             secureSession,

@@ -248,7 +248,7 @@ export class QaProvenanceHost {
       // replaying only its own copied tool results cannot reconstruct.
       if (session.header.isSeeded === true && session.header.origin !== "subagent" &&
         event.seq < session.inheritedEventCount && typeof turn === "number" &&
-        this.snapshots.get(sessionId)?.has(turn)) continue;
+        (this.snapshots.get(sessionId)?.get(turn)?.sources.length ?? 0) > 0) continue;
       this.observeEvent(session, event);
     }
     this.seededSessions.add(sessionId);
