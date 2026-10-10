@@ -70,7 +70,7 @@ import {
   defaultQaProvenanceDirectoryPath,
   FileQaProvenanceSnapshotStore,
 } from "./provenance/snapshot-store.js";
-import { previewConvertibleDocument } from "./provenance/document-preview.js";
+import { previewConvertibleDocument, previewSourceDocument } from "./provenance/document-preview.js";
 import { readWorkspaceFileChunk } from "./provenance/file-download.js";
 import {
   listWorkspaceDirectory,
@@ -1681,6 +1681,19 @@ export class QaSurface extends TypertRemoteService {
         maxBytes: config.sources.filePreview.maxBytes,
         maxMarkdownRenderBytes:
           config.sources.filePreview.maxMarkdownRenderBytes,
+      }).catch(async (error: unknown) => {
+        // Only a format refusal follows successful evidence and root checks.
+        if (!(error instanceof QaSourcePreviewError) || error.reason !== "unsupported")
+          throw error;
+        const document = await previewSourceDocument({
+          filePath: sourcePath, cwd, sessionId,
+          sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
+          ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
+          documents: () => this.ctx.get("documents") as DocumentsFace | undefined,
+          maxBytes: config.sources.filePreview.maxBytes,
+        });
+        return { path: sourcePath, content: "", size: document.bytes,
+          truncated: false, markdown: false, renderableMarkdown: false, document };
       });
     } catch (error) {
       this.logger.debug("source.preview-refused", {

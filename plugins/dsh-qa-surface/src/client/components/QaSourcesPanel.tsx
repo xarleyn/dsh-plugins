@@ -9,6 +9,7 @@ import type { QaBoundSourceApi } from "../types.js";
 import { sourcePreviewFailureCopy } from "../source-preview.js";
 import { Markdown } from "./Markdown.js";
 import { KIND_LABELS, SourceIcon } from "./source-icon.js";
+import { usePdfUrl } from "./QaWorkspaceBrowser.js";
 
 // Re-exported so the panel stays the icon's historical import site.
 export { SourceIcon } from "./source-icon.js";
@@ -27,7 +28,8 @@ function OriginBadges({
   const delegated =
     showOrigin && source.origins.some((origin) => origin.role === "subagent");
   const truncated = source.metadata?.truncated === true;
-  if (!delegated && !truncated && source.evidence !== "discovered") return null;
+  const metadataOnly = source.metadata?.metadataOnly === true;
+  if (!delegated && !truncated && !metadataOnly && source.evidence !== "discovered") return null;
   return (
     <span className="dsh-qa-sources__badges" data-testid="qa-source-badges">
       {delegated ? (
@@ -36,6 +38,7 @@ function OriginBadges({
       {truncated ? (
         <span data-testid="qa-source-badge-partial">Partial</span>
       ) : null}
+      {metadataOnly ? <span data-testid="qa-source-badge-metadata">Metadata only</span> : null}
       {source.evidence === "discovered" ? (
         <span data-testid="qa-source-badge-discovered">Discovered</span>
       ) : null}
@@ -161,6 +164,7 @@ function QaSourceDetail({
   const [preview, setPreview] = useState<QaSourceFilePreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [mode, setMode] = useState<"rendered" | "raw">("raw");
+  const pdfUrl = usePdfUrl(preview?.document?.base64);
   const external =
     source.uri?.match(/^https?:\/\//iu)?.[0] === undefined
       ? undefined
@@ -335,7 +339,11 @@ function QaSourceDetail({
                 ) : null}
               </p>
             )}
-            {mode === "rendered" && preview.renderableMarkdown ? (
+            {preview.document !== undefined ? (
+              pdfUrl === null ? <p>Готовлю предпросмотр…</p> :
+                <iframe className="dsh-qa-ws__pdf" data-testid="qa-source-preview-pdf"
+                  title={preview.document.name} src={pdfUrl} />
+            ) : mode === "rendered" && preview.renderableMarkdown ? (
               <div
                 className="dsh-qa-preview__markdown"
                 data-testid="qa-source-preview-markdown"
@@ -356,7 +364,9 @@ function QaSourceDetail({
               className="dsh-qa-sourcedetail__empty"
               data-testid="qa-source-detail-missing"
             >
-              У источника нет текстового фрагмента.
+              {source.metadata?.addressUnavailable === true
+                ? "Интеграция вернула запись без ссылки. Предпросмотр недоступен."
+                : "У источника нет текстового фрагмента."}
             </p>
           ) : (
             <p data-testid="qa-source-detail-snippet">{source.snippet}</p>
@@ -445,7 +455,7 @@ export function QaSourcesPanel({
               className="dsh-qa-sources__incomplete"
               data-testid="qa-sources-incomplete"
             >
-              Некоторые источники делегированных запусков недоступны (
+              Сбор источников неполон: некоторые результаты недоступны (
               {incompleteOrigins?.length ?? 1}).
             </p>
           ) : null}
@@ -461,12 +471,9 @@ export function QaSourcesPanel({
           */}
           {complete && sources.length === 0 ? (
             <p className="dsh-qa-sources__empty" data-testid="qa-sources-empty">
-              Здесь появляются материалы, которые ход читал или открывал сам:
-              файл рабочего каталога, веб-страница, выдача веб-поиска, ответ
-              Jira, Confluence или базы знаний. Ответ, собранный по памяти или
-              по тому, что уже было в этом разговоре, сюда ничего не добавляет —
-              поэтому пустой список после завершённого хода означает именно это,
-              а не сбой сбора.
+              {pinned ? "Для этого ответа" : "В этом чате"} пока нет зарегистрированных источников.
+              Здесь появляются прочитанные файлы, веб-страницы и результаты интеграций.
+              Пустой список сам по себе не подтверждает, что ответ составлен по памяти.
             </p>
           ) : null}
           {groups.map((group) => {

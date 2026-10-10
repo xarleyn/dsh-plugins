@@ -10,7 +10,7 @@ import type {
 } from "../../types.js";
 import { sameWorkItems } from "./QaWorkGroup.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
-import { buildSourceRefs, type QaSourceRefs } from "./source-refs.js";
+import { buildSourceRefs, sourceRefsSignature, type QaSourceRefs } from "./source-refs.js";
 
 /** The outcome line of a command row; the row already carries the name. */
 function commandStateCopy(activity: QaCommandActivity): string {
@@ -412,14 +412,14 @@ export const QaMessage = memo(
     const [rating, setRating] = useState<Rating | null>(null);
     // The negative flow asks why, once, without blocking the rating itself.
     const [askingWhy, setAskingWhy] = useState(false);
-    // Source-footnote registry, cached by the source-id set so the memoized
+    // Source-footnote registry, cached by the full source payload so the memoized
     // Markdown keeps one resolver identity across streaming frames.
     const refsCache = useRef<{ ids: string; refs: QaSourceRefs }>({
       ids: "",
       refs: buildSourceRefs([]),
     });
     if (message.role === "assistant") {
-      const ids = message.sources?.map((source) => source.id).join("|") ?? "";
+      const ids = sourceRefsSignature(message.sources ?? []);
       if (refsCache.current.ids !== ids) {
         refsCache.current = {
           ids,

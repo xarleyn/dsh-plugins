@@ -74,6 +74,8 @@ export interface SourceExtractorContext {
   readonly origin: QaSourceOrigin;
   /** Canonical session/workspace root used to make local paths portable. */
   readonly workspaceRoot?: string;
+  /** Configured documentation root for replaying legacy docs_read results. */
+  readonly documentationRoot?: string;
 }
 
 export interface QaReportedSource {

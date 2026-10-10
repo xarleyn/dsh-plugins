@@ -113,6 +113,16 @@ export function QaSurfaceGuard(props: QaSurfaceProps): ReactNode {
   return <QaSurfaceBoundary {...props} />;
 }
 
+/** Slot faces are assembled before the asynchronous configuration can settle. */
+function QaRuntimeSurface(props: QaSurfaceProps): ReactNode {
+  const accountsEnabled = useSyncExternalStore(
+    props.config?.subscribe ?? noopSubscribe,
+    () => props.config?.getSnapshot().config.accounts?.enabled ?? false,
+    () => props.config?.getSnapshot().config.accounts?.enabled ?? false,
+  );
+  return <QaSurface {...props} {...props.resolveRuntime?.(accountsEnabled)} />;
+}
+
 class QaSurfaceBoundary extends Component<QaSurfaceProps, { error: unknown }> {
   override state: { error: unknown } = { error: undefined };
 
@@ -126,7 +136,7 @@ class QaSurfaceBoundary extends Component<QaSurfaceProps, { error: unknown }> {
 
   override render(): ReactNode {
     if (this.state.error === undefined) {
-      return <QaSurface {...this.props} />;
+      return <QaRuntimeSurface {...this.props} />;
     }
     return (
       <main

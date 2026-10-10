@@ -425,7 +425,9 @@ export class QaSessionController {
     this.hostApprovals = new QaHostApprovalBridge(options.approvalApi);
     this.hostQuestions = new QaHostQuestionBridge(options.questionApi);
     this.queueRemote = options.queueStatus;
-    this.timeoutMs = options.timeoutMs ?? 15_000;
+    // Cold account catalogs can outlive one short network round trip.
+    // Keep bootstrap bounded without rejecting a valid slow restoration.
+    this.timeoutMs = options.timeoutMs ?? 60_000;
     this.streamPublisher = new StreamPublisher(options.streamIntervalMs ?? 66);
     this.connectedOnce = this.connection.getSnapshot() !== undefined;
     this.unsubscribeConnection = this.connection.subscribe(() => {
@@ -2122,6 +2124,7 @@ export class QaSessionController {
       conversationSnapshot,
       sessionId,
       this.sourceAnchor(sessionId),
+      this.config.tools.docsRoot,
     );
     const sourceBundles = this.hostSources.merge(projectedSourceBundles);
     // A delegated child is not attested, so every Host RPC that admits the

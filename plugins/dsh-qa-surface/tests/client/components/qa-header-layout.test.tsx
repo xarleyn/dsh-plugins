@@ -131,7 +131,7 @@ describe("header empty states and the chat tab", () => {
     ).toBe("Субагентов в этом чате пока нет");
     expect(
       screen.getByRole("button", {
-        name: /этот ответ обошёлся без источников/,
+        name: /в этом чате пока нет источников/,
       }),
     ).toBeTruthy();
   });

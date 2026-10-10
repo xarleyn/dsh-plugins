@@ -95,7 +95,7 @@ function EntryRow({
  * closes. A blob URL is what lets the browser's own viewer draw the document
  * without the bytes ever leaving the page.
  */
-function usePdfUrl(payload: string | undefined): string | null {
+export function usePdfUrl(payload: string | undefined): string | null {
   const [url, setUrl] = useState<string | null>(null);
   useEffect(() => {
     if (payload === undefined) {

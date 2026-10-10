@@ -29,7 +29,10 @@ export class QaSourceCollector {
   }
 
   observe(context: SourceExtractorContext): void {
-    this.collected.push(...this.options.registry.extract(context));
+    const sources = this.options.registry.extract(context);
+    this.collected.push(...sources);
+    if (sources.length === 0 && ["read", "docs_read", "document_to_markdown", "document_inspect"].includes(context.toolName))
+      this.markIncomplete({ provider: context.toolName, reason: "source-address-unavailable" });
   }
 
   add(sources: readonly QaSourceReference[]): void {
