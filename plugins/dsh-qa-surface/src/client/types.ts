@@ -119,6 +119,9 @@ export type QaCreateSession = (
   adminPreview: boolean,
 ) => Promise<RemoteResult<string>>;
 
+/** Owner-scoped exact-history branch; the Host chooses all child policy. */
+export type QaForkSession = (token: string, sourceId: string, answerSeq: number) => Promise<RemoteResult<string>>;
+
 /**
  * The Host's live read of the request ceiling (`qaSurface/queueStatus`), asked
  * per send: how many questions the stand is answering and whether one more
@@ -647,6 +650,7 @@ export interface QaIntegrationTokenApi {
 
 /** Account remotes exposed by the plugin's own typert namespace. */
 export interface QaAccountsApi {
+  chatVisible?(token: string): Promise<RemoteResult<readonly import("../chat-sharing/types.js").QaChatAccess[]>>;
   accountsWhoami(token: string): Promise<RemoteResult<QaWhoamiResult>>;
   accountsLogin(
     email: string,

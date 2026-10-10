@@ -1480,10 +1480,10 @@ export class QaAccounts {
    * API, which resolves its own service token — need the public shape the
    * token-shaped entries return, without a browser token to hand.
    */
-  accountById(userId: string): QaAccountUserPublic | undefined {
+  accountById(userId: string, includeDisabled = false): QaAccountUserPublic | undefined {
     this.reloadIfChanged();
     const user = this.file.users.find((candidate) => candidate.id === userId);
-    return user === undefined || user.disabled === true
+    return user === undefined || (!includeDisabled && user.disabled === true)
       ? undefined
       : toPublic(user);
   }

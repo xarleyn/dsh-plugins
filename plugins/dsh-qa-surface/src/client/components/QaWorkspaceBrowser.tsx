@@ -318,6 +318,7 @@ export interface QaWorkspaceBrowserProps {
    * turn produced previews through the same fenced read a browsed file uses.
    */
   readonly initialFile?: string;
+  readonly materialsOnly?: boolean;
 }
 
 /**
@@ -332,6 +333,7 @@ export function QaWorkspaceBrowser({
   sessionId,
   api,
   initialFile,
+  materialsOnly,
 }: QaWorkspaceBrowserProps) {
   const [directory, setDirectory] = useState("");
   const [entries, setEntries] = useState<readonly QaWorkspaceEntry[]>([]);
@@ -356,6 +358,7 @@ export function QaWorkspaceBrowser({
   const generation = useRef(0);
 
   useEffect(() => {
+    if (materialsOnly) { setListStatus("ready"); setEntries([]); return; }
     const current = generation.current + 1;
     generation.current = current;
     setListStatus("loading");
@@ -377,7 +380,7 @@ export function QaWorkspaceBrowser({
         setListStatus("refused");
       },
     );
-  }, [api, directory, sessionId]);
+  }, [api, directory, sessionId, materialsOnly]);
 
   /**
    * Ask the Host for a renderable copy when the bytes themselves are not

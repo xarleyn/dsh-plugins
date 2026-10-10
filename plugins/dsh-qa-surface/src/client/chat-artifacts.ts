@@ -50,14 +50,14 @@ const UNIT_SCALES: Readonly<Record<string, number>> = Object.freeze({
   gib: 1_073_741_824,
 });
 
-function reportedBytes(details: string | undefined): number {
+function reportedBytes(details: string | undefined): number | null {
   const size = /^([\d.]+)\s*([A-Za-z]+)$/u.exec(
     details?.split(",")[0]?.trim() ?? "",
   );
-  if (size === null) return 0;
+  if (size === null) return null;
   const value = Number.parseFloat(size[1] ?? "");
   const scale = UNIT_SCALES[(size[2] ?? "").toLowerCase()];
-  if (!Number.isFinite(value) || scale === undefined) return 0;
+  if (!Number.isFinite(value) || value < 0 || scale === undefined) return null;
   return Math.round(value * scale);
 }
 

@@ -1,3 +1,4 @@
+import { qaDelegatedHeader } from "../shared/session-lineage.js";
 import { createHash } from "node:crypto";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
@@ -331,6 +332,8 @@ export class QaAccessService {
                 readonly header?: {
                   readonly createdAt?: number;
                   readonly parentSession?: unknown;
+                  readonly origin?: unknown;
+                  readonly isSeeded?: boolean;
                 };
               }
             | undefined;
@@ -343,7 +346,7 @@ export class QaAccessService {
       ...(header.createdAt === undefined
         ? {}
         : { createdAt: header.createdAt }),
-      ...(header.parentSession === undefined ? {} : { hasParent: true }),
+      ...(qaDelegatedHeader(header) ? { hasParent: true } : {}),
     };
   }
 
@@ -465,7 +468,7 @@ export class QaAccessService {
         const { headers } = await reader.list();
         const children = new Set(
           headers
-            .filter((header) => header.parentSessionId !== undefined)
+            .filter((header) => header.parentSessionId !== undefined && header.isFork !== true)
             .map((header) => header.id),
         );
         for (const sessionId of children) {
@@ -768,6 +771,18 @@ export class QaAccessService {
     return this.policyForRecord(config, record, subroleId, catalog);
   }
 
+  /** A participant's own live ceiling, without claiming or changing the chat. */
+  async participantPolicy(userId: string, sessionId: string): Promise<QaEffectiveCapabilityPolicy> {
+    const accounts = this.requireAccounts();
+    if (accounts.accountById(userId) === undefined) throw new Error("Participant is unavailable.");
+    const config = this.roles.snapshot();
+    const assignment = normalizeUserAccess(accounts.accessOf(userId), config);
+    const subroleId = accounts.sessionAccess(sessionId)?.subroleId ?? assignment.defaultSubrole;
+    if (!assignment.allowedSubroles.includes(subroleId)) throw new Error("Participant cannot use this chat's role.");
+    const catalog = await this.catalog.snapshot();
+    return this.policyForRecord(config, undefined, subroleId, catalog);
+  }
+
   /** The browser's entry point: the token resolves the owning account. */
   async policyForSession(
     token: string,
@@ -778,9 +793,7 @@ export class QaAccessService {
     if (accounts === undefined) return undefined;
     const owner = accounts.ensureSessionAccess(token, sessionId, {
       createdAt: agent.session.header.createdAt,
-      ...(agent.session.header.parentSession === undefined
-        ? {}
-        : { hasParent: true }),
+      ...(qaDelegatedHeader(agent.session.header) ? { hasParent: true } : {}),
     });
     return this.policyForSessionOwner(owner, sessionId, agent);
   }

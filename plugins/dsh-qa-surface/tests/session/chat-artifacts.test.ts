@@ -13,6 +13,20 @@ const CREATED = [
 ].join("\n");
 
 describe("artifactsOfToolResult", () => {
+  it.each([
+    ["", null],
+    [" (unknown)", null],
+    [" (12 unknown-unit)", null],
+    [" (0 B, sha256 abc)", 0],
+  ])("distinguishes an unknown size from a reported empty file: %s", (details, bytes) => {
+    expect(
+      artifactsOfToolResult(
+        "document_workflow_draft",
+        `markdown: .qa/artifacts/workflows/demo/draft-9.md${details}`,
+      )[0]?.bytes,
+    ).toBe(bytes);
+  });
+
   it("binds a workflow approval action to the exact revision and draft hash", () => {
     const output = [
       "workflow: wf_00000000-0000-4000-8000-000000000001",
@@ -63,7 +77,7 @@ describe("artifactsOfToolResult", () => {
         path: ".qa/artifacts/documents/ext_01ABC/source.md",
         name: "source.md",
         format: "markdown",
-        bytes: 0,
+        bytes: null,
       },
     ]);
     // The bundle's own manifest line names no format the tool offers to the user.

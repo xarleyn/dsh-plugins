@@ -12,7 +12,7 @@ function badgeText(name: string): string {
 
 export interface QaFileAttachmentProps {
   readonly name: string;
-  readonly bytes: number;
+  readonly bytes: number | null;
   /** Pending draft vs already-sent attachment: pending offers removal. */
   readonly tone: "draft" | "sent";
   readonly onRemove?: () => void;
@@ -50,9 +50,11 @@ export function QaFileAttachment({
       <span className="dsh-qa-file__name" data-testid="qa-file-name">
         {name}
       </span>
-      <span className="dsh-qa-file__meta" data-testid="qa-file-size">
-        {formatFileSize(bytes)}
-      </span>
+      {bytes === null ? null : (
+        <span className="dsh-qa-file__meta" data-testid="qa-file-size">
+          {formatFileSize(bytes)}
+        </span>
+      )}
     </span>
   );
   return (
@@ -111,7 +113,7 @@ export function QaFileAttachment({
       {onApprove === undefined ? null : (
         <button
           type="button"
-          className="dsh-qa-file__download"
+          className="dsh-qa-file__download dsh-qa-file__approve"
           data-testid="qa-file-approve"
           disabled={approval === "pending" || approval === "approved"}
           aria-label={`Согласовать ${name} и сформировать DOCX`}
@@ -131,7 +133,7 @@ export function QaFileAttachment({
         </button>
       )}
       {approval === "failed" ? (
-        <span role="status" data-testid="qa-file-approval-error">
+        <span className="dsh-qa-file__error" role="status" data-testid="qa-file-approval-error">
           Не удалось согласовать или отправить запрос. Проверьте текущую
           редакцию и повторите.
         </span>

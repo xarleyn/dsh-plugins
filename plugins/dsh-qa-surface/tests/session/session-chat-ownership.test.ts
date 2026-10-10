@@ -104,6 +104,18 @@ describe("the chat list with accounts on", () => {
 });
 
 describe("session lineage", () => {
+  it("stops delegated ownership at an independent branch", () => {
+    const byId = listed([
+      { id: "parent" },
+      { id: "branch", parentId: "parent" },
+      { id: "expert", parentId: "branch", origin: "subagent" },
+    ]);
+    expect(chatRootOf(byId, "branch")).toBe("branch");
+    expect(chatRootOf(byId, "expert")).toBe("branch");
+    expect(visibleSubagentCandidates(byId, new Set(["parent"]))).toEqual([]);
+    expect(visibleSubagentCandidates(byId, new Set(["branch"]))).toEqual([{ id: "expert", label: "expert" }]);
+  });
+
   it("resolves a nested delegation to the chat it belongs to", () => {
     const byId = listed([
       { id: "chat" },

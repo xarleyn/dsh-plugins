@@ -58,7 +58,7 @@ export function buildChatRows(
       title: clipped ? `${label.trimEnd()}…` : label,
       running: summary.running,
       active: id === activeId,
-      meta: relativeTime(summary.updatedAt, now),
+      meta: `${summary.parentId === undefined ? "" : "Ветка · "}${relativeTime(summary.updatedAt, now)}`,
       ...(clipped && full !== undefined ? { fullName: full } : {}),
       updatedAt: summary.updatedAt,
       ...(ownerName === undefined ? {} : { ownerName }),

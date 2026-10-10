@@ -226,12 +226,31 @@ export class QaProvenanceHost {
     );
   }
 
+  /** Copy only evidence of turns present in the child's durable prefix. */
+  forkSnapshots(parentId: string, childId: string, throughTurn: number): void {
+    for (const bundle of this.bundles(parentId)) {
+      if (bundle.turn > throughTurn) continue;
+      const copy = { ...bundle, sessionId: childId };
+      if (!this.persistSnapshot(copy))
+        throw new Error("Fork source evidence could not be saved.");
+      this.sessionSnapshots(childId).set(copy.turn, copy);
+      this.collectors.get(childId)?.delete(copy.turn);
+    }
+  }
+
   private seed(session: Session): void {
     const sessionId = String(session.id);
     if (this.seededSessions.has(sessionId)) return;
     this.hydrateStored(sessionId);
-    for (const event of session.snapshotEvents())
+    for (const event of session.snapshotEvents()) {
+      const turn = stringRecord(event.data)?.turn;
+      // A branch snapshot also includes reported/delegated evidence which
+      // replaying only its own copied tool results cannot reconstruct.
+      if (session.header.isSeeded === true && session.header.origin !== "subagent" &&
+        event.seq < session.inheritedEventCount && typeof turn === "number" &&
+        this.snapshots.get(sessionId)?.has(turn)) continue;
       this.observeEvent(session, event);
+    }
     this.seededSessions.add(sessionId);
     // Recovered evidence must survive the next idle teardown without requiring
     // another model turn. Merge via the collector to retain reported/delegated data.

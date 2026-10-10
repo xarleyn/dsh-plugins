@@ -95,10 +95,18 @@ describe("QA sidebar", () => {
     expect(screen.getAllByTestId("qa-surface-sidebar-item")).toHaveLength(1);
   });
 
+  it("lists an ordinary fork independently and marks it as a branch", () => {
+    const branch = { ...byId["s-1"], parentId: "source" } as SessionSummary;
+    const rows = buildChatRows(["s-1"], { "s-1": branch }, "s-1", undefined, 90_000);
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.meta).toMatch(/^Ветка/u);
+    expect(rows[0]?.active).toBe(true);
+  });
+
   it("never shows a delegated child, even when the index still names one", () => {
     // A record from a release that could claim a subagent's session keeps such
     // an id in the browser index; a subagent's session is not a chat, and the
-    // host list marks it as one (`origin`) or as somebody's child (`parentId`).
+    // host list marks a delegated run with `origin`; ordinary forks also have a parent.
     const withChild = {
       ...byId,
       "sub-origin": {
@@ -113,6 +121,7 @@ describe("QA sidebar", () => {
         id: "sub-parent",
         displayTitle: "Собери глоссарий",
         parentId: "s-1",
+        origin: "subagent",
         running: false,
         blank: false,
         updatedAt: 4_000,

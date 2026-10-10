@@ -6,6 +6,18 @@ import { QaFileAttachment } from "../../../src/client/components/QaFileAttachmen
 
 afterEach(cleanup);
 describe("document approval action", () => {
+  it("does not present an unreported artifact size as an empty file", () => {
+    const view = render(
+      <QaFileAttachment name="draft-9.md" bytes={null} tone="sent" />,
+    );
+    expect(screen.getByTestId("qa-file-name").textContent).toBe("draft-9.md");
+    expect(screen.queryByTestId("qa-file-size")).toBeNull();
+    view.rerender(
+      <QaFileAttachment name="empty.md" bytes={0} tone="sent" />,
+    );
+    expect(screen.getByTestId("qa-file-size").textContent).toBe("0 Б");
+  });
+
   it("requires a human click and does not send a second approval while pending", async () => {
     let settle: () => void = () => {};
     const approve = vi.fn(

@@ -1611,7 +1611,10 @@ export interface QaWorkspaceFile {
 
 /** Host-attested facts required before the QA composer may become writable. */
 export interface QaLockdownProof {
+  readonly chatAccess?: import("./chat-sharing/types.js").QaChatAccess;
   readonly sessionId: string;
+  /** Last inherited event in an ordinary fork; absent on an original chat. */
+  readonly inheritedThroughSeq?: number;
   readonly enabled: boolean;
   readonly agentPresetMatches: boolean;
   readonly workspaceMatches: boolean;
@@ -1659,6 +1662,8 @@ export type QaMessage =
        * while the browser's own message id does not.
        */
       readonly seq?: number;
+      /** Final text of a completed turn with a durable fork boundary. */
+      readonly forkable?: boolean;
       /** Host turn this answer belongs to; groups regenerations into variants. */
       readonly turn?: number;
       /**
@@ -1832,8 +1837,8 @@ export interface QaArtifactView {
   readonly name: string;
   /** Format the producing tool reported: `docx`, `pdf` or `md`. */
   readonly format: string;
-  /** Bytes as the tool reported them; 0 when it reported no size. */
-  readonly bytes: number;
+  /** Bytes as the tool reported them; null when it reported no size. */
+  readonly bytes: number | null;
 }
 
 /** Compact, authenticated state used by the approval action beside a draft. */
@@ -1938,6 +1943,7 @@ export interface QaQueueStatus {
 }
 
 export interface QaSessionState {
+  readonly chatAccess?: import("./chat-sharing/types.js").QaChatAccess;
   readonly phase: QaSessionPhase;
   readonly sessionId: string | null;
   /**
@@ -2487,3 +2493,4 @@ export interface QaAdminUserUpdate {
   readonly disabled?: boolean | null;
   readonly access?: QaUserAccess | null;
 }
+export type { QaChatAccess, QaChatAuthor, QaChatGrant, QaChatMode, QaChatJson } from "./chat-sharing/types.js";

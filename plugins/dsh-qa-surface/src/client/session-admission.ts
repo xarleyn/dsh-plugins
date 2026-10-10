@@ -7,7 +7,7 @@ import type { QaSecureSession } from "./types.js";
 import type { ResolvedQaSurfaceConfig } from "../types.js";
 
 export type QaAttestationOutcome =
-  | { readonly ok: true }
+  | { readonly ok: true; readonly inheritedThroughSeq?: number; readonly chatAccess?: import("../chat-sharing/types.js").QaChatAccess }
   | {
       readonly ok: false;
       /** The identity is absent or expired; the caller returns to the gate. */
@@ -46,7 +46,8 @@ export async function attestQaPolicy(args: {
     if (!proofMatchesConfig(result.value, args.lockdown, args.sessionId)) {
       return reject(args, "proof-mismatch");
     }
-    return { ok: true };
+    return { ok: true, ...(result.value.chatAccess === undefined ? {} : { chatAccess: result.value.chatAccess }), ...(result.value.inheritedThroughSeq === undefined ? {} :
+      { inheritedThroughSeq: result.value.inheritedThroughSeq }) };
   } catch (error) {
     if (args.report) {
       console.error("dsh-qa-surface: policy attestation request failed", error);

@@ -219,7 +219,7 @@ function descendantsOf(
     const parent = queue.shift();
     if (parent === undefined) break;
     for (const header of headers) {
-      if (header.parentSessionId !== parent || found.includes(header.id)) {
+      if (header.isFork === true || header.parentSessionId !== parent || found.includes(header.id)) {
         continue;
       }
       found.push(header.id);
@@ -385,7 +385,7 @@ export class QaAdminService {
         const header = headers.get(record.sessionId);
         // A subagent's session is an implementation detail of one answer, not a
         // conversation a user had.
-        if (header?.parentSessionId !== undefined) {
+        if (header?.parentSessionId !== undefined && header.isFork !== true) {
           return undefined;
         }
         const createdAt = header?.createdAt ?? Date.parse(record.claimedAt);

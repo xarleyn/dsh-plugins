@@ -13,6 +13,8 @@ import type { ConversationBinding } from "@deepseek-ai/dsh-client-ui-conversatio
 import type { UserMessage } from "@deepseek-ai/dsh-llm";
 import { bytesToBase64 } from "./base64.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
+import type { QaSharingApi } from "./chat-sharing-api.js";
+import type { QaChatAccess } from "../chat-sharing/types.js";
 import type {
   QaAttachmentDraft,
   QaFileDraft,
@@ -58,6 +60,7 @@ import type {
   QaApprovalApi,
   QaConversation,
   QaCreateSession,
+  QaForkSession,
   QaFileUpload,
   QaQueueStatusRemote,
   QaSecureSession,
@@ -114,9 +117,11 @@ export interface QaAccountsFacade {
 }
 
 export interface QaSessionControllerOptions {
+  readonly sharingApi?: QaSharingApi;
   readonly sessions: QaSessions;
   readonly api: QaSessionsApi;
   readonly createSession: QaCreateSession;
+  readonly forkSession?: QaForkSession;
   /** Conversation assembly feeding the transcript projection. */
   readonly conversation: QaConversation;
   readonly connection: ConnectionGenerationState;
@@ -269,6 +274,9 @@ export class QaSessionController {
   private readonly listeners = new Set<() => void>();
   private readonly sessions: QaSessions;
   private readonly createSessionRemote: QaCreateSession;
+  private readonly forkSessionRemote?: QaForkSession;
+  private forking = false;
+  private inheritedThroughSeq: number | undefined;
   private readonly conversation: QaConversation;
   private readonly connection: ConnectionGenerationState;
   private readonly config: ResolvedQaSurfaceConfig;
@@ -321,6 +329,9 @@ export class QaSessionController {
   private viewingSubagent: QaSubagentView | null = null;
   private connectedOnce: boolean;
   private disposed = false;
+  private chatAccess: QaChatAccess | undefined;
+  private readonly sharingApi: QaSharingApi | undefined;
+  private accessPoll: ReturnType<typeof setInterval> | undefined;
   private generation = 0;
   /**
    * The session the current chat identity names, or null while the chat it
@@ -384,6 +395,7 @@ export class QaSessionController {
   constructor(options: QaSessionControllerOptions) {
     this.sessions = options.sessions;
     this.createSessionRemote = options.createSession;
+    this.forkSessionRemote = options.forkSession;
     this.conversation = options.conversation;
     this.connection = options.connection;
     this.config = options.config;
@@ -418,6 +430,8 @@ export class QaSessionController {
     this.selectedSubrole = options.initialSubrole ?? null;
     this.adminPreview = options.adminPreview === true;
     this.fileUpload = options.fileUpload ?? (() => undefined);
+    this.sharingApi = options.sharingApi;
+    if (this.sharingApi !== undefined && options.accounts !== undefined) this.accessPoll = setInterval(() => { void this.refreshChatAccess(); }, 1000);
     this.hostSources = new QaHostSourceBridge(
       this.sourceApi,
       () => this.accounts?.token() ?? "",
@@ -1163,6 +1177,7 @@ export class QaSessionController {
     this.unbind();
     this.operationError = null;
     this.policyReady = false;
+    this.inheritedThroughSeq = undefined;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
       chatKey: this.chatKey,
@@ -1221,6 +1236,41 @@ export class QaSessionController {
     return attempt;
   }
 
+  /** Branch a completed answer without submitting or cancelling a turn. */
+  async forkFromAnswer(answerSeq: number): Promise<void> {
+    const parent = this.session;
+    const remote = this.forkSessionRemote;
+    if (this.disposed || this.forking || remote === undefined || parent === undefined ||
+      this.viewingSubagent !== null || this.compatibilityReadOnly || !this.policyReady ||
+      this.config.session.policy === "fixed") return;
+    const operation = this.generation;
+    this.forking = true;
+    try {
+      const result = await remote(this.accounts?.token() ?? "", String(parent.sessionId), answerSeq);
+      if (!result.ok) throw new Error("The Host refused to create the branch.");
+      this.accounts?.onSessionCreated(result.value);
+      this.chats.addChat(result.value);
+      if (this.disposed || operation !== this.generation || parent !== this.session) return;
+      ++this.generation;
+      this.drafting = false;
+      this.openChat();
+      this.unbind();
+      this.operationError = null;
+      this.state = { ...QA_SESSION_IDLE_STATE, chatKey: this.chatKey,
+        chatsRevision: this.chatsRevision, phase: "creating" };
+      this.publish();
+      const adoption = this.generation;
+      if (await this.bind(result.value, { operation: adoption })) this.chats.saveActive(result.value);
+    } catch (error) {
+      if (!this.disposed && (parent === this.session || this.session === undefined))
+        {
+          this.operationError = "Не удалось создать ветку чата.";
+          console.error("dsh-qa-surface: session operation failed (fork)", error);
+          this.publish();
+        }
+    } finally { this.forking = false; }
+  }
+
   /**
    * Open one of this browser's indexed chats. The id must be present in the
    * host session list and pass policy attestation; an unknown id is forgotten
@@ -1240,6 +1290,7 @@ export class QaSessionController {
     this.unbind();
     this.operationError = null;
     this.policyReady = false;
+    this.inheritedThroughSeq = undefined;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
       chatKey: this.chatKey,
@@ -1311,6 +1362,7 @@ export class QaSessionController {
     this.unbind();
     this.operationError = null;
     this.policyReady = false;
+    this.inheritedThroughSeq = undefined;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
       chatKey: this.chatKey,
@@ -1437,6 +1489,7 @@ export class QaSessionController {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    clearInterval(this.accessPoll);
     this.generation += 1;
     this.streamPublisher.clear();
     this.unsubscribeConnection();
@@ -1606,6 +1659,7 @@ export class QaSessionController {
     const operation = ++this.generation;
     this.unbind();
     this.policyReady = false;
+    this.inheritedThroughSeq = undefined;
     this.state = { ...this.state, phase: "creating" };
     this.emit();
     try {
@@ -1791,6 +1845,7 @@ export class QaSessionController {
     this.session = binding.session;
     this.conversationBinding = this.conversation.binding(id as SessionId);
     this.policyReady = false;
+    this.inheritedThroughSeq = undefined;
     this.compatibilityReadOnly = false;
     this.unsubscribeSession = binding.session.subscribe(() => {
       this.admissionPending = false;
@@ -2033,6 +2088,7 @@ export class QaSessionController {
     // answers for its own sends.
     this.requestQueueNotice = null;
     this.policyReady = false;
+    this.inheritedThroughSeq = undefined;
     this.compatibilityReadOnly = false;
     // The catalog belongs to the chat that produced it: another chat has a
     // different cwd, composition and role, so carrying it across would offer
@@ -2146,6 +2202,7 @@ export class QaSessionController {
       chatKey: this.chatKey,
       sessionSnapshot: snapshot,
       conversationSnapshot,
+      inheritedThroughSeq: this.inheritedThroughSeq,
       sourceBundles,
       // The same directory the sources are anchored on: an answer that quotes a
       // file the turn made is masked to the name inside this workspace.
@@ -2200,6 +2257,14 @@ export class QaSessionController {
     }
     this.state = {
       ...projected,
+      chatAccess: this.chatAccess?.sessionId === sessionId ? this.chatAccess : undefined,
+      ...(this.chatAccess?.sessionId === sessionId && this.chatAccess.mode !== "owner" ? {
+        canSend: projected.canSend && this.chatAccess.mode === "collaborate",
+        canStop: false, canEditQueue: false, approvals: [], questions: [],
+        messages: projected.messages.map(message => message.role === "assistant" ? {
+          ...message, artifacts: message.artifacts?.map(artifact => { const { workflow: _workflow, ...file } = artifact; return file; }),
+        } : message),
+      } : {}),
       pendingMessage: this.pendingSubmission?.message ?? null,
     };
     this.emit();
@@ -2360,7 +2425,7 @@ export class QaSessionController {
   > {
     if (session === undefined) return { kind: "refused", reason: null };
     const sessionId = String(session.sessionId);
-    if (!this.config.lockdown.enabled && this.accounts === undefined) {
+    if (!this.config.lockdown.enabled && this.accounts === undefined && this.forkSessionRemote === undefined) {
       this.policyReady = true;
       return { kind: "ok", sessionId };
     }
@@ -2369,6 +2434,7 @@ export class QaSessionController {
     // lockdown, and skipping the call is what let a browser that restored
     // another account's chat write into it without ever being asked who spoke.
     this.policyReady = false;
+    this.inheritedThroughSeq = undefined;
     this.publish();
     const outcome = await attestQaPolicy({
       secureSession: this.secureSessionRemote,
@@ -2379,6 +2445,8 @@ export class QaSessionController {
     });
     if (this.session !== session) return { kind: "stale" };
     if (outcome.ok) {
+      this.chatAccess = outcome.chatAccess;
+      this.inheritedThroughSeq = outcome.inheritedThroughSeq;
       this.policyReady = true;
       this.operationError = null;
       this.publish();
@@ -2391,6 +2459,7 @@ export class QaSessionController {
       return { kind: "refused", reason: outcome.reason };
     }
     this.policyReady = false;
+    this.inheritedThroughSeq = undefined;
     this.operationError = CONFIGURATION_ERROR;
     this.publish();
     return { kind: "refused", reason: outcome.reason };
@@ -2398,6 +2467,23 @@ export class QaSessionController {
 
   private emit(): void {
     for (const listener of this.listeners) listener();
+  }
+
+  private async refreshChatAccess(): Promise<void> {
+    const session = this.session;
+    const token = this.accounts?.token();
+    if (session === undefined || token == null || this.sharingApi === undefined || this.disposed) return;
+    const id = String(session.sessionId);
+    try {
+      const result = await this.sharingApi.access(token, id);
+      if (this.session !== session || this.disposed) return;
+      if (!result.ok) {
+        this.unbind(); this.chatAccess = undefined;
+        this.fail("Доступ к чату отозван или аккаунт недоступен.", new QaPolicyAttestationError("session-owned-elsewhere"));
+        return;
+      }
+      if (JSON.stringify(this.chatAccess) !== JSON.stringify(result.value)) { this.chatAccess = result.value; this.publish(); }
+    } catch { /* Transport failures do not fabricate a revocation. Server writes still recheck access. */ }
   }
 
   /**

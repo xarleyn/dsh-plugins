@@ -1,4 +1,6 @@
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
+import { SessionId } from "@deepseek-ai/dsh-session/types";
+import { qaDelegatedHeader } from "./shared/session-lineage.js";
 import type { Context } from "@deepseek-ai/cordis";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { ContextSnapshotSection } from "@deepseek-ai/dsh-llm";
@@ -41,6 +43,7 @@ export const QA_DELEGATION_NOTE = "dsh-qa-surface:delegation-naming";
 export const QA_DOCUMENTS_NOTE = "dsh-qa-surface:attached-documents";
 /** Note name carrying the deployment's rule about where an answer comes from. */
 export const QA_SOURCE_PRIORITY_NOTE = "dsh-qa-surface:source-priority";
+export const QA_BRANCH_NOTE = "dsh-qa-surface:chat-branch";
 
 /**
  * Built-in note texts. Each is the fallback for its settings template
@@ -219,6 +222,7 @@ export class QaPromptNotes {
       ...this.delegationNotes(root),
       ...this.documentsNotes(root),
       ...this.sourcePriorityNotes(root),
+      ...this.branchNotes(root),
     ].filter((note) => this.carriedText(agent, note.name) !== note.text);
     if (pending.length === 0) return decision;
     return {
@@ -412,12 +416,20 @@ export class QaPromptNotes {
     let current = agent.session;
     for (let depth = 0; depth < QA_NOTES_MAX_DEPTH; depth += 1) {
       const parentId = current.header.parentSession;
-      if (parentId === undefined) break;
+      if (parentId === undefined || !qaDelegatedHeader(current.header)) break;
       const parent = this.ctx.sessions.get(parentId);
       if (parent === undefined) break;
       current = parent;
     }
     return String(current.id);
+  }
+
+  private branchNotes(rootSessionId: string): readonly QaPromptNote[] {
+    const header = this.ctx.sessions.get(SessionId(rootSessionId))?.header;
+    if (header?.isSeeded !== true || header.origin === "subagent" ||
+      !this.options.isQaSession(rootSessionId)) return [];
+    return [{ name: QA_BRANCH_NOTE, text:
+      "This chat is an independent branch. Copied messages, tool results, files and sources are historical context. Document workflow IDs in the inherited history belong to the source chat. To change or export such a document here, start a new workflow with document_workflow_begin and use the inherited draft as input. Review and human approval must be obtained again in this chat; inherited approvals do not authorize an export here. The user workspace is shared with the source chat. Runtime skill grants are fresh in this chat: activate any needed skill again before using the tools it grants." }];
   }
 
   /** The owner's email and profile, or nothing while the chat is anonymous. */
