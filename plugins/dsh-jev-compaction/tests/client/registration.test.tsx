@@ -93,10 +93,10 @@ describe("client entry registration", () => {
   it("registers one card in settings.plugin.item keyed by the namespace", () => {
     const { ctx, slots } = stub();
     apply(ctx);
-    expect(slots).toHaveLength(2);
-    expect(slots[0]!.name).toBe("settings.plugin.item");
-    expect(slots[0]!.key).toBe("jev-compaction");
-    expect(typeof slots[0]!.inject).toBe("function");
+    const seat = slots.find((entry) => entry.name === "settings.plugin.item");
+    expect(seat).toBeDefined();
+    expect(seat!.key).toBe("jev-compaction");
+    expect(typeof seat!.inject).toBe("function");
   });
 
   it("binds the same namespace the Host section installs", () => {
@@ -108,15 +108,19 @@ describe("client entry registration", () => {
   it("hands the card the bound scope", () => {
     const { ctx, slots } = stub();
     apply(ctx);
-    expect(slots[0]!.inject?.()).toEqual({
+    const seat = slots.find((entry) => entry.name === "settings.plugin.item");
+    expect(seat!.inject?.()).toEqual({
       scope: expect.objectContaining({ getSnapshot: expect.any(Function) }),
     });
   });
 
-  it("renders no card when the page exposes no settings binder", () => {
+  it("registers no settings card when the page exposes no binder", () => {
     const { ctx, slots } = stub({ withBinder: false });
     const dispose = apply(ctx);
-    expect(slots).toHaveLength(0);
+    expect(slots.some((entry) => entry.name === "settings.plugin.item")).toBe(
+      false,
+    );
+    expect(boundNamespaces).toEqual([]);
     expect(typeof dispose).toBe("function");
   });
 
@@ -145,21 +149,33 @@ describe("conversation contribution", () => {
   it("still shows the card on a page that serves no settings directory", () => {
     const { ctx, slots, definitions } = stub({ withBinder: false });
     apply(ctx);
-    // No settings card, and no crash either — the transcript half is
-    // independent of the settings binder.
-    expect(slots).toHaveLength(0);
-    expect(definitions).toHaveLength(0);
+    // No settings card, and no crash either. The transcript half is
+    // independent of the settings binder, which is the whole reason it reads
+    // no settings and no Remote.
+    expect(slots.some((entry) => entry.name === "settings.plugin.item")).toBe(
+      false,
+    );
+    expect(definitions).toHaveLength(1);
+    expect(slots.some((entry) => entry.name === "conversation.chat.node")).toBe(
+      true,
+    );
   });
 
-  it("keeps the transcript half alive when the conversation is absent", () => {
-    const { ctx, slots } = stub({ withConversation: false });
+  it("keeps the settings card when the conversation is absent", () => {
+    const { ctx, slots, definitions } = stub({ withConversation: false });
     const dispose = apply(ctx);
     expect(slots.some((entry) => entry.name === "settings.plugin.item")).toBe(
       true,
     );
+    expect(definitions).toHaveLength(0);
     expect(slots.some((entry) => entry.name === "conversation.chat.node")).toBe(
       false,
     );
+    expect(typeof dispose).toBe("function");
+  });
+
+  it("registers neither half without the slot registry", () => {
+    const dispose = apply({} as unknown as Context);
     expect(typeof dispose).toBe("function");
   });
 });

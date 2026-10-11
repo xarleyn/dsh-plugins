@@ -50,7 +50,7 @@ interface ClientFace {
     inject(slotName: string, factory: () => unknown): () => void;
     register(options: unknown, component: unknown): () => void;
   };
-  readonly settingsScope: {
+  readonly settingsScope?: {
     bind(spec: { namespace: string }): unknown;
   };
   readonly uiConversation?: {
@@ -58,42 +58,29 @@ interface ClientFace {
   };
 }
 
-/** Bind the settings namespace and register the native settings card. */
+/**
+ * Register both halves. They are deliberately independent: the conversation
+ * card reads no settings and no Remote, so a page that serves no settings
+ * directory — a non-loopback browser, a kiosk, a host without the settings
+ * surface — still shows what a compaction did. The settings card needs the
+ * binder and its namespace; without them it is simply not registered, and the
+ * conversation card carries on.
+ */
 export function apply(ctx: Context): () => void {
   const face = ctx as unknown as Partial<ClientFace>;
-  // Headless probes and older profiles may lack the binder; rendering no card
-  // beats crashing the page during module load (AGENTS.md: no namespace, no
-  // card).
-  if (
-    face.settingsScope === undefined ||
-    typeof face.settingsScope.bind !== "function" ||
-    face.slots === undefined
-  ) {
-    return noop;
-  }
-
-  const scope = face.settingsScope.bind({
-    namespace: JEV_COMPACTION_SETTINGS_NAMESPACE,
-  });
+  if (face.slots === undefined) return noop;
   const slots = face.slots;
+  const disposers: Array<() => void> = [];
 
-  const disposeCard = registerSettingsCard(face as never, {
-    key: JEV_COMPACTION_SETTINGS_NAMESPACE,
-    pluginName: CLIENT_PLUGIN_NAME,
-    styles,
-    component: JevCompactionCard,
-    inject: () => ({ scope }),
-  });
-
-  // The conversation card is independent of the settings binder: a page that
-  // serves no settings directory still shows what a compaction did. Register
-  // the Definition first — a node with no renderer would fall back to the
-  // host's raw-JSON row, which is exactly what this card exists to prevent.
-  const disposers: Array<() => void> = [disposeCard];
+  // The Definition goes in before its renderer: a view node with no occupant
+  // on `conversation.chat.node` falls back to the host's raw-JSON row, which
+  // is exactly what this card exists to prevent.
   const conversation = face.uiConversation;
   if (conversation !== undefined) {
     disposers.push(
       conversation.events.register(jevCompactionConversationDefinition),
+    );
+    disposers.push(
       slots.inject("conversation.chat.node", () =>
         slots.register(
           {
@@ -103,6 +90,24 @@ export function apply(ctx: Context): () => void {
           JevCompactionRunCard,
         ),
       ),
+    );
+  }
+
+  // Headless probes and older profiles may lack the binder; rendering no
+  // settings card beats crashing the page during module load (AGENTS.md: no
+  // namespace, no card).
+  const scope = face.settingsScope?.bind({
+    namespace: JEV_COMPACTION_SETTINGS_NAMESPACE,
+  });
+  if (scope !== undefined) {
+    disposers.push(
+      registerSettingsCard(face as never, {
+        key: JEV_COMPACTION_SETTINGS_NAMESPACE,
+        pluginName: CLIENT_PLUGIN_NAME,
+        styles,
+        component: JevCompactionCard,
+        inject: () => ({ scope }),
+      }),
     );
   }
 
