@@ -1456,12 +1456,16 @@ Rules:
 - **Durable.** The card is assembled from the log, so it survives refresh,
   reopen and fork, and one event is one card (keyed by its seq) — runs never
   merge.
-- **Registered while mounted.** These types are outside the harness's own
-  `SessionEventMap`, so `Session.append` cannot stamp the envelope's
-  `ignorable` marker and a reader without this plugin would refuse the log.
-  `registerJevCompactionSessionEventTypes` joins them into the harness's live
-  vocabulary for as long as the plugin is loaded and removes them on dispose,
-  which is the mechanism `dsh-session-scope` uses for `session-scope/set`.
+- **Registered while mounted, and opt-in.** These types are outside the
+  harness's own `SessionEventMap`, so `Session.append` cannot stamp the
+  envelope's `ignorable` marker and a reader without this plugin refuses the
+  log at history load. `registerJevCompactionSessionEventTypes` joins them into
+  the harness's live vocabulary for as long as the plugin is loaded and removes
+  them on dispose, which is the mechanism `dsh-session-scope` uses for
+  `session-scope/set`. Because the coupling cannot be removed, the record is
+  **off by default**: `diagnostics.sessionCards` gates it, and the portability
+  consequence is spelled out in `docs/compatibility.md` and warned about at
+  plugin start.
 
 Payload fields (`jev-compaction/applied`): `mode` (`auto` / `manual` /
 `dry-run`), `trigger`, the state-fitting `stage`, `candidates`, `mutations`,

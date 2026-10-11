@@ -155,12 +155,21 @@ Provider presets and their per-provider overrides are documented in the
 | ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | `logLevel`             | `info`  | Structured log level for the plugin's own log file.                                                                             |
 | `includeCandidateScores` | `false` | Include per-candidate scores in the `/jev-compact` report text.                                                               |
-| `sessionCards`         | `true`  | Write one durable, log-only `jev-compaction/applied` session event per run, so the conversation shows a card for it (SPEC §28). |
+| `sessionCards`         | `false` | Write one durable, log-only `jev-compaction/applied` session event per run, so the conversation shows a card for it (SPEC §28). Off by default: see the portability note below. |
 | `showSkipReasons`      | `false` | Also write `jev-compaction/skipped` with the reason a gate refused the run.                                                     |
 
 `sessionCards` is the only switch that affects what enters the session log.
 The events are log-only (no `surfaceOp`), carry metadata only, and are joined
 into the harness's live event vocabulary while the plugin is loaded.
+
+**Why it is off by default.** A session containing these events can only be
+interpreted by a build that has this plugin loaded — the harness offers a
+plugin no way to mark an event `ignorable`, and `Session.append` accepts only
+surface metadata. Disabling the plugin is enough to make those sessions refuse
+to load. That is the same trade immediate result shaping makes and gets the
+same answer: opt in, with the cost named on the switch and warned about at
+startup. The full analysis is in
+[docs/compatibility.md](compatibility.md#portability-of-a-session-that-contains-them).
 
 ## Live versus restart-scoped changes
 

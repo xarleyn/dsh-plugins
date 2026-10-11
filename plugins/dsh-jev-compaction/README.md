@@ -94,21 +94,36 @@ Collapsed by default; expanded it shows the trigger, the state-fitting stage,
 candidates / planned / applied, characters removed, the Jev request count with
 its concurrency, the resolved context window, the `KEEP_FULL` /
 `KEEP_TRUNCATED` / `KEEP_STUB` distribution, and one row per candidate with its
-tool, size, action, probability and `originalSeq → replacementSeq` pair —
-enough to address the replacement in the session log and read the original
-yourself. `/jev-compact --dry-run` produces the same card marked `dry-run`,
-with nothing replaced.
+tool, size, action, both probabilities and its `originalSeq → replacementSeq`
+pair — enough to address the replacement in the session log and read the
+original yourself.
+
+The three states are never blurred. `/jev-compact --dry-run` produces a card
+marked `dry-run`; the non-dry-run manual pass produces one marked `queued` when
+the plan is armed and another when it lands. Both previews say "would" and
+prefix the token figures with "estimated", because neither has touched the
+surface yet — and "Characters removed" counts what actually left, not what the
+plan promised, which matters when only some replacements landed.
 
 The card carries metadata only: no tool output, no prompt, no state body. It is
 assembled from the session log, so it survives a refresh and a reopen, and it
 never re-enters the model's context as extra material.
 
-Why a run was *skipped* stays silent by default — a cooldown firing three turns
-in a row is noise, not information. Turn on **"Say why a run was skipped"**
-(`diagnostics.showSkipReasons`) and each skip is recorded as a one-line note
-(`cooldown`, `pressure not met`, `not enough candidates`, `savings gate`, …).
-Turn off **"Show a compaction card in the conversation"**
-(`diagnostics.sessionCards`) and no event is written at all.
+A card is opt-in. **"Show a compaction card in the conversation"**
+(`diagnostics.sessionCards`) is off by default, because the card is durable and
+durability here has a price: the event type is this plugin's own, and a session
+recorded while it was on can only be opened by a build that has this plugin
+loaded. Disabling the plugin is enough to make those sessions refuse to load.
+The plugin warns about this at startup while the switch is on, and
+[the compatibility note](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-jev-compaction/docs/compatibility.md#portability-of-a-session-that-contains-them)
+analyses it. The record itself is metadata only — no tool output, no prompt —
+so a build without the plugin loses nothing by not reading it.
+
+Why a run was *skipped* stays silent even with the card on — a cooldown firing
+three turns in a row is noise, not information. Turn on **"Say why a run was
+skipped"** (`diagnostics.showSkipReasons`) and each skip is recorded as a
+one-line note (`cooldown`, `pressure not met`, `not enough candidates`,
+`savings gate`, …).
 
 ## Safety: what each layer can and cannot lose
 
@@ -305,7 +320,7 @@ jev-compaction:
   diagnostics:
     logLevel: info
     includeCandidateScores: false
-    sessionCards: true # one durable conversation card per run
+    sessionCards: false # one durable conversation card per run; see the portability note
     showSkipReasons: false # also say why a run was skipped
 ```
 
