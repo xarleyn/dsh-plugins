@@ -118,10 +118,6 @@ export const fileBudgetAllowlist = [
     path: "plugins/dsh-qa-surface/src/index.ts",
     reason: "legacy before the gate landed; owned by a refactor card",
   },
-  {
-    path: "plugins/dsh-qa-surface/src/types.ts",
-    reason: "legacy before the gate landed; owned by a refactor card",
-  },
 ];
 
 /**
