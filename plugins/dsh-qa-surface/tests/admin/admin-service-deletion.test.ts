@@ -4,11 +4,18 @@ import { fakeEraser, harness } from "./admin-service.helpers.js";
 describe("administrative deletion", () => {
   it("keeps an independent branch and its delegated children when deleting its source", async () => {
     const files = fakeEraser(["session-alice", "branch", "branch-child"]);
-    const { service, accounts, admin, alice } = harness({ sessionFiles: files,
+    const { service, accounts, admin, alice } = harness({
+      sessionFiles: files,
       extraSessions: [
-        { id: "branch", createdAt: 2, parentSessionId: "session-alice", isFork: true },
+        {
+          id: "branch",
+          createdAt: 2,
+          parentSessionId: "session-alice",
+          isFork: true,
+        },
         { id: "branch-child", createdAt: 3, parentSessionId: "branch" },
-      ] });
+      ],
+    });
     accounts.reserveSession(alice.token, "branch");
     await service.deleteConversation(admin.token, "session-alice");
     expect(files.calls).toEqual([["session-alice"]]);

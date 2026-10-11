@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { QA_BRANCH_NOTE } from "../../src/prompt-notes.js";
-import { config, harness, noteNames, noteText } from "./prompt-notes.helpers.js";
+import {
+  config,
+  harness,
+  noteNames,
+  noteText,
+} from "./prompt-notes.helpers.js";
 
 describe("branch model context", () => {
   it("uses the branch as root and explains the inherited workflow boundary once", async () => {

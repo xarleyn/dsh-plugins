@@ -36,7 +36,9 @@ const SKILL = slashEntry("skill", "generate-tkp", {
 const COMMAND = slashEntry("command", "compact", {
   description: "Compact conversation",
 });
-const FAST_COMMAND = slashEntry("command", "no-review", { acceptsAttachments: true });
+const FAST_COMMAND = slashEntry("command", "no-review", {
+  acceptsAttachments: true,
+});
 
 function world(
   options: {
@@ -120,8 +122,15 @@ function settle(built: ReturnType<typeof world>, text = "hello"): void {
 describe("QA session controller slash routing", () => {
   it("routes Fast through the trusted waiver command and restores ordinary submission when off", async () => {
     const built = await ready({ entries: [FAST_COMMAND, COMMAND] });
-    expect(await built.controller.send("  question  ", [], null, true)).toBe(true);
-    expect(built.execute).toHaveBeenCalledWith("", "saved", "/no-review question", []);
+    expect(await built.controller.send("  question  ", [], null, true)).toBe(
+      true,
+    );
+    expect(built.execute).toHaveBeenCalledWith(
+      "",
+      "saved",
+      "/no-review question",
+      [],
+    );
     expect(built.faces.get("saved")?.prompt).not.toHaveBeenCalled();
     built.execute.mockClear();
     expect(await built.controller.send("next question")).toBe(true);
@@ -132,7 +141,9 @@ describe("QA session controller slash routing", () => {
 
   it("preserves explicit native commands while Fast is on", async () => {
     const built = await ready({ entries: [FAST_COMMAND, COMMAND] });
-    await vi.waitFor(() => expect(built.controller.getSnapshot().slash.state).toBe("ready"));
+    await vi.waitFor(() =>
+      expect(built.controller.getSnapshot().slash.state).toBe("ready"),
+    );
     expect(await built.controller.send("/compact", [], null, true)).toBe(true);
     expect(built.execute).toHaveBeenCalledWith("", "saved", "/compact", []);
     built.controller.dispose();
@@ -148,11 +159,21 @@ describe("QA session controller slash routing", () => {
   });
 
   it("keeps the Fast request unsent when the deployment refuses the waiver", async () => {
-    const built = await ready({ entries: [FAST_COMMAND], execute: () => ({
-      kind: "executed", commandId: "denied", outcome: { kind: "error", text: "Review waivers are disabled by the deployment policy." },
-    }) });
+    const built = await ready({
+      entries: [FAST_COMMAND],
+      execute: () => ({
+        kind: "executed",
+        commandId: "denied",
+        outcome: {
+          kind: "error",
+          text: "Review waivers are disabled by the deployment policy.",
+        },
+      }),
+    });
     expect(await built.controller.send("question", [], null, true)).toBe(false);
-    expect(built.controller.getSnapshot().error).toMatch(/disabled by the deployment policy/u);
+    expect(built.controller.getSnapshot().error).toMatch(
+      /disabled by the deployment policy/u,
+    );
     expect(built.faces.get("saved")?.prompt).not.toHaveBeenCalled();
     built.controller.dispose();
   });

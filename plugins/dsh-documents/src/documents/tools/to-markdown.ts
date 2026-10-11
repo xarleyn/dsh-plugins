@@ -109,10 +109,14 @@ export function createDocumentToMarkdownTool(options: DocumentToolOptions) {
       },
       presentationMeta: (args, value) => ({
         qaDocumentSource: {
-          path: value.sourcePath ?? (typeof args.file === "string" ? args.file : null),
+          path:
+            value.sourcePath ??
+            (typeof args.file === "string" ? args.file : null),
           evidence: "read",
           snippet: value.markdown.slice(0, 240),
-          truncated: (value.warnings ?? []).some((warning) => warning.code === "MARKDOWN_TRUNCATED"),
+          truncated: (value.warnings ?? []).some(
+            (warning) => warning.code === "MARKDOWN_TRUNCATED",
+          ),
         },
       }),
       render: (_args: unknown, value: unknown) => {
@@ -149,7 +153,9 @@ export function createDocumentToMarkdownTool(options: DocumentToolOptions) {
       );
       return {
         artifactId: result.artifactId,
-        ...(result.sourcePath === undefined ? {} : { sourcePath: result.sourcePath }),
+        ...(result.sourcePath === undefined
+          ? {}
+          : { sourcePath: result.sourcePath }),
         markdown: result.markdown,
         markdownPath: await workspacePathName(
           scope.workspaceRoot,

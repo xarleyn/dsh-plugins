@@ -7,7 +7,8 @@ export function skillResourcePathHint(
   loaded: ReadonlyMap<string, SkillResourceBase>,
   exists: (candidate: string) => boolean = existsSync,
 ): string | undefined {
-  if (typeof requested !== "string" || requested.includes("\0")) return undefined;
+  if (typeof requested !== "string" || requested.includes("\0"))
+    return undefined;
   const candidate = requested.replaceAll("\\", "/");
   if (candidate.split("/").some((part) => part === ".." || part === "."))
     return undefined;
@@ -26,7 +27,9 @@ export function skillResourcePathHint(
   return undefined;
 }
 
-export function skillResourceGuidance(resource: SkillResourceBase | undefined): string {
+export function skillResourceGuidance(
+  resource: SkillResourceBase | undefined,
+): string {
   return resource?.kind === "directory"
     ? `Skill resources live in the absolute directory ${JSON.stringify(resource.path)}. Preserve its leading slash when using read. Resolve a relative reference against this directory only; never prepend the workspace or repository directory to an absolute resource path.`
     : "";

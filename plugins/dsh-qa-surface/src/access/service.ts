@@ -468,7 +468,10 @@ export class QaAccessService {
         const { headers } = await reader.list();
         const children = new Set(
           headers
-            .filter((header) => header.parentSessionId !== undefined && header.isFork !== true)
+            .filter(
+              (header) =>
+                header.parentSessionId !== undefined && header.isFork !== true,
+            )
             .map((header) => header.id),
         );
         for (const sessionId of children) {
@@ -772,13 +775,19 @@ export class QaAccessService {
   }
 
   /** A participant's own live ceiling, without claiming or changing the chat. */
-  async participantPolicy(userId: string, sessionId: string): Promise<QaEffectiveCapabilityPolicy> {
+  async participantPolicy(
+    userId: string,
+    sessionId: string,
+  ): Promise<QaEffectiveCapabilityPolicy> {
     const accounts = this.requireAccounts();
-    if (accounts.accountById(userId) === undefined) throw new Error("Participant is unavailable.");
+    if (accounts.accountById(userId) === undefined)
+      throw new Error("Participant is unavailable.");
     const config = this.roles.snapshot();
     const assignment = normalizeUserAccess(accounts.accessOf(userId), config);
-    const subroleId = accounts.sessionAccess(sessionId)?.subroleId ?? assignment.defaultSubrole;
-    if (!assignment.allowedSubroles.includes(subroleId)) throw new Error("Participant cannot use this chat's role.");
+    const subroleId =
+      accounts.sessionAccess(sessionId)?.subroleId ?? assignment.defaultSubrole;
+    if (!assignment.allowedSubroles.includes(subroleId))
+      throw new Error("Participant cannot use this chat's role.");
     const catalog = await this.catalog.snapshot();
     return this.policyForRecord(config, undefined, subroleId, catalog);
   }

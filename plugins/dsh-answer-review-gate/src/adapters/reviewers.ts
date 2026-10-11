@@ -69,7 +69,10 @@ export function createDomainExpertBackend(deps: {
           "reviewer.domain is empty",
         );
       }
-      const packet = await expertReviewPacket(renderExpertReviewTask(input), deps.workspaceRoot);
+      const packet = await expertReviewPacket(
+        renderExpertReviewTask(input),
+        deps.workspaceRoot,
+      );
       const outcome = await deps.face.testExpert(
         deps.config.domain,
         packet.task,

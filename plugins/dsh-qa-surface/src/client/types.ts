@@ -120,7 +120,11 @@ export type QaCreateSession = (
 ) => Promise<RemoteResult<string>>;
 
 /** Owner-scoped exact-history branch; the Host chooses all child policy. */
-export type QaForkSession = (token: string, sourceId: string, answerSeq: number) => Promise<RemoteResult<string>>;
+export type QaForkSession = (
+  token: string,
+  sourceId: string,
+  answerSeq: number,
+) => Promise<RemoteResult<string>>;
 
 /**
  * The Host's live read of the request ceiling (`qaSurface/queueStatus`), asked
@@ -650,7 +654,11 @@ export interface QaIntegrationTokenApi {
 
 /** Account remotes exposed by the plugin's own typert namespace. */
 export interface QaAccountsApi {
-  chatVisible?(token: string): Promise<RemoteResult<readonly import("../chat-sharing/types.js").QaChatAccess[]>>;
+  chatVisible?(
+    token: string,
+  ): Promise<
+    RemoteResult<readonly import("../chat-sharing/types.js").QaChatAccess[]>
+  >;
   accountsWhoami(token: string): Promise<RemoteResult<QaWhoamiResult>>;
   accountsLogin(
     email: string,

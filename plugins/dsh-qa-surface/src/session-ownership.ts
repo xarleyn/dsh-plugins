@@ -23,7 +23,12 @@ export class QaSessionOwnership {
     this.installed = true;
     this.disposeListener = ctx.on("session/created", (session) => {
       const parent = session.header.parentSession;
-      if (parent === undefined || (session.header.isSeeded === true && session.header.origin !== "subagent")) return;
+      if (
+        parent === undefined ||
+        (session.header.isSeeded === true &&
+          session.header.origin !== "subagent")
+      )
+        return;
       const root = this.rootOf(String(parent));
       if (root !== undefined) this.inherited.set(String(session.id), root);
     });

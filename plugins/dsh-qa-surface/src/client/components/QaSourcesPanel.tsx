@@ -29,7 +29,13 @@ function OriginBadges({
     showOrigin && source.origins.some((origin) => origin.role === "subagent");
   const truncated = source.metadata?.truncated === true;
   const metadataOnly = source.metadata?.metadataOnly === true;
-  if (!delegated && !truncated && !metadataOnly && source.evidence !== "discovered") return null;
+  if (
+    !delegated &&
+    !truncated &&
+    !metadataOnly &&
+    source.evidence !== "discovered"
+  )
+    return null;
   return (
     <span className="dsh-qa-sources__badges" data-testid="qa-source-badges">
       {delegated ? (
@@ -38,7 +44,9 @@ function OriginBadges({
       {truncated ? (
         <span data-testid="qa-source-badge-partial">Partial</span>
       ) : null}
-      {metadataOnly ? <span data-testid="qa-source-badge-metadata">Metadata only</span> : null}
+      {metadataOnly ? (
+        <span data-testid="qa-source-badge-metadata">Metadata only</span>
+      ) : null}
       {source.evidence === "discovered" ? (
         <span data-testid="qa-source-badge-discovered">Discovered</span>
       ) : null}
@@ -340,9 +348,16 @@ function QaSourceDetail({
               </p>
             )}
             {preview.document !== undefined ? (
-              pdfUrl === null ? <p>Готовлю предпросмотр…</p> :
-                <iframe className="dsh-qa-ws__pdf" data-testid="qa-source-preview-pdf"
-                  title={preview.document.name} src={pdfUrl} />
+              pdfUrl === null ? (
+                <p>Готовлю предпросмотр…</p>
+              ) : (
+                <iframe
+                  className="dsh-qa-ws__pdf"
+                  data-testid="qa-source-preview-pdf"
+                  title={preview.document.name}
+                  src={pdfUrl}
+                />
+              )
             ) : mode === "rendered" && preview.renderableMarkdown ? (
               <div
                 className="dsh-qa-preview__markdown"
@@ -471,9 +486,10 @@ export function QaSourcesPanel({
           */}
           {complete && sources.length === 0 ? (
             <p className="dsh-qa-sources__empty" data-testid="qa-sources-empty">
-              {pinned ? "Для этого ответа" : "В этом чате"} пока нет зарегистрированных источников.
-              Здесь появляются прочитанные файлы, веб-страницы и результаты интеграций.
-              Пустой список сам по себе не подтверждает, что ответ составлен по памяти.
+              {pinned ? "Для этого ответа" : "В этом чате"} пока нет
+              зарегистрированных источников. Здесь появляются прочитанные файлы,
+              веб-страницы и результаты интеграций. Пустой список сам по себе не
+              подтверждает, что ответ составлен по памяти.
             </p>
           ) : null}
           {groups.map((group) => {

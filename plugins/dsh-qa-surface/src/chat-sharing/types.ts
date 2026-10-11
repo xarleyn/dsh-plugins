@@ -19,4 +19,10 @@ export interface QaChatAuthor {
   readonly displayName: string;
 }
 /** JSON-shaped native frames; the local recursive codec owns the wire schema. */
-export type QaChatJson = null | string | number | boolean | readonly QaChatJson[] | { readonly [key: string]: QaChatJson };
+export type QaChatJson =
+  | null
+  | string
+  | number
+  | boolean
+  | readonly QaChatJson[]
+  | { readonly [key: string]: QaChatJson };

@@ -113,7 +113,9 @@ describe("session lineage", () => {
     expect(chatRootOf(byId, "branch")).toBe("branch");
     expect(chatRootOf(byId, "expert")).toBe("branch");
     expect(visibleSubagentCandidates(byId, new Set(["parent"]))).toEqual([]);
-    expect(visibleSubagentCandidates(byId, new Set(["branch"]))).toEqual([{ id: "expert", label: "expert" }]);
+    expect(visibleSubagentCandidates(byId, new Set(["branch"]))).toEqual([
+      { id: "expert", label: "expert" },
+    ]);
   });
 
   it("resolves a nested delegation to the chat it belongs to", () => {

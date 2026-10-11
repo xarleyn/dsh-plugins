@@ -234,9 +234,15 @@ export async function runExpert(
       "an expert needs a per-child persona, tool masking and a recursion budget",
     );
   }
-  if (input.structuredOutput === true &&
-      (input.request.background || provider.capabilities.outputSchema !== true))
-    throw unsupportedCapability(provider.name, "outputSchema", "a structured review needs one-shot native result capture");
+  if (
+    input.structuredOutput === true &&
+    (input.request.background || provider.capabilities.outputSchema !== true)
+  )
+    throw unsupportedCapability(
+      provider.name,
+      "outputSchema",
+      "a structured review needs one-shot native result capture",
+    );
   // A domain that inherits its model still takes the pair the chat's policy
   // fixed, so the delegation follows the role the chat runs under rather than
   // the model its visitor left in the picker.
@@ -271,7 +277,9 @@ export async function runExpert(
     toolFilter: profile.toolFilter,
     maxDepth: definition.delegation.maxDepth,
     ...agentOptionsOf(definition, modelPolicy),
-    ...(input.structuredOutput === true ? { outputSchema: EXPERT_REVIEW_OUTPUT_SCHEMA } : {}),
+    ...(input.structuredOutput === true
+      ? { outputSchema: EXPERT_REVIEW_OUTPUT_SCHEMA }
+      : {}),
   };
 
   if (input.request.background) {
@@ -335,9 +343,10 @@ export async function runExpert(
       };
     }
     const durationMs = dependencies.now() - startedAt;
-    const text = input.structuredOutput === true
-      ? JSON.stringify(result.structured ?? null)
-      : textOfBlocks(result.output);
+    const text =
+      input.structuredOutput === true
+        ? JSON.stringify(result.structured ?? null)
+        : textOfBlocks(result.output);
     const parsed = parseExpertAnswer(text);
     const status = statusOf(result.stopReason);
     recordAudit(dependencies, input, {

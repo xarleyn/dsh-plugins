@@ -60,14 +60,17 @@ function renderUserRequest(
 }
 
 function readableHumanContext(text: string): string {
-  return text.split("\n").flatMap((line) => {
-    const characters = Array.from(line);
-    const parts: string[] = [];
-    for (let offset = 0; offset < characters.length; offset += 1200) {
-      parts.push(characters.slice(offset, offset + 1200).join(""));
-    }
-    return parts.length === 0 ? [""] : parts;
-  }).join("\n");
+  return text
+    .split("\n")
+    .flatMap((line) => {
+      const characters = Array.from(line);
+      const parts: string[] = [];
+      for (let offset = 0; offset < characters.length; offset += 1200) {
+        parts.push(characters.slice(offset, offset + 1200).join(""));
+      }
+      return parts.length === 0 ? [""] : parts;
+    })
+    .join("\n");
 }
 
 function reviewContext(input: {
@@ -80,9 +83,15 @@ function reviewContext(input: {
     // Keep the manifest separate from human prose, one name per line. A
     // filesystem reader can shorten an oversized individual line even when
     // the complete packet fits its requested line window.
-    JSON.stringify({ primaryVisibleTools: input.primaryTools ?? null }, null, 2),
+    JSON.stringify(
+      { primaryVisibleTools: input.primaryTools ?? null },
+      null,
+      2,
+    ),
     "<accumulated_human_context>",
-    readableHumanContext(input.conversationContext ?? "Human context unavailable."),
+    readableHumanContext(
+      input.conversationContext ?? "Human context unavailable.",
+    ),
     "</accumulated_human_context>",
   ].join("\n");
 }

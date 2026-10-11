@@ -668,7 +668,12 @@ export class QaAccountsController {
       stage: "authed",
       user,
       sharedChats,
-      ownedIds: [...new Set([...mergeOwnershipIds(ownIds, ownership), ...sharedChats.map(chat => chat.sessionId)])],
+      ownedIds: [
+        ...new Set([
+          ...mergeOwnershipIds(ownIds, ownership),
+          ...sharedChats.map((chat) => chat.sessionId),
+        ]),
+      ],
       ownIds,
       ownership,
       ownedRevision: 1,
@@ -702,14 +707,20 @@ export class QaAccountsController {
       const ownIds = ids.value.ids;
       const sharedChats = await this.fetchSharedChats(this.tokenValue);
       if (this.disposed || this.snapshot.stage !== "authed") return;
-      const ownedIds = [...new Set([...mergeOwnershipIds(ownIds, ownership), ...sharedChats.map(chat => chat.sessionId)])];
+      const ownedIds = [
+        ...new Set([
+          ...mergeOwnershipIds(ownIds, ownership),
+          ...sharedChats.map((chat) => chat.sessionId),
+        ]),
+      ];
       // The merged list is no proof about the strict one: a chat the ownership
       // map still names survives in it after the account stops owning it, so
       // the list a notice is bounded by has to be compared by itself.
       if (
         JSON.stringify(ownedIds) === JSON.stringify(this.snapshot.ownedIds) &&
         JSON.stringify(ownIds) === JSON.stringify(this.snapshot.ownIds) &&
-        JSON.stringify(sharedChats) === JSON.stringify(this.snapshot.sharedChats ?? []) &&
+        JSON.stringify(sharedChats) ===
+          JSON.stringify(this.snapshot.sharedChats ?? []) &&
         JSON.stringify(ownership) === JSON.stringify(this.snapshot.ownership)
       ) {
         return;
@@ -741,9 +752,13 @@ export class QaAccountsController {
   }
 
   /** Session id → owner display name; empty unless an admin is signed in. */
-  private async fetchSharedChats(token: string): Promise<readonly import("../chat-sharing/types.js").QaChatAccess[]> {
+  private async fetchSharedChats(
+    token: string,
+  ): Promise<readonly import("../chat-sharing/types.js").QaChatAccess[]> {
     const result = await this.options.remote.chatVisible?.(token);
-    return result?.ok === true ? result.value.filter(chat => chat.mode !== "owner") : [];
+    return result?.ok === true
+      ? result.value.filter((chat) => chat.mode !== "owner")
+      : [];
   }
 
   /** Session id → owner display name; empty unless an admin is signed in. */

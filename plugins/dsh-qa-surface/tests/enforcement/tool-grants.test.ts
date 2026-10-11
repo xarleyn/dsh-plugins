@@ -61,7 +61,8 @@ async function setup(options: {
       (inner: Context) => {
         const presetKey = {};
         const preset = createScope(inner, presetKey);
-        for (const name of options.presetTools ?? []) preset.ctx.tools.register(globalTool(name));
+        for (const name of options.presetTools ?? [])
+          preset.ctx.tools.register(globalTool(name));
         const scope = createScope(inner, agent, { parent: presetKey });
         (agent as unknown as { ctx: Context }).ctx = scope.ctx;
         for (const name of options.localTools ?? []) {
@@ -124,15 +125,21 @@ describe("dynamic skill tool grants", () => {
       presetTools: ["read", "browser_open"],
       baseTools: ["read"],
       grantableTools: ["browser_open"],
-      descriptors: [descriptor("preset-research", {
-        version: 1,
-        audience: { type: "common" },
-        tools: { requires: ["browser_open"], grant: { lifecycle: "session", requireAll: true } },
-      })],
+      descriptors: [
+        descriptor("preset-research", {
+          version: 1,
+          audience: { type: "common" },
+          tools: {
+            requires: ["browser_open"],
+            grant: { lifecycle: "session", requireAll: true },
+          },
+        }),
+      ],
     });
     expect(visible(ctx, agent)).toEqual(["read"]);
     expect(grants.activate("preset-research", "model")).toMatchObject({
-      status: "activated", grant: { grantedTools: ["browser_open"], deniedTools: [] },
+      status: "activated",
+      grant: { grantedTools: ["browser_open"], deniedTools: [] },
     });
     expect(visible(ctx, agent)).toEqual(["read", "browser_open"]);
   });

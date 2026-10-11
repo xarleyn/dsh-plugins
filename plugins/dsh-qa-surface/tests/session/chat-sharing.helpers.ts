@@ -7,12 +7,20 @@ import { QaChatSharingStore } from "../../src/chat-sharing/store.js";
 export function sharingFixture() {
   const dir = mkdtempSync(path.join(tmpdir(), "qa-sharing-test-"));
   const accounts = new QaAccounts(path.join(dir, "accounts.db"), {
-    allowRegistration: true, sessionTtlDays: 30, maxAuthAttemptsPerMinute: 100,
+    allowRegistration: true,
+    sessionTtlDays: 30,
+    maxAuthAttemptsPerMinute: 100,
   });
-  const outsider = accounts.register("operator@example.com", "demo-password-123");
+  const outsider = accounts.register(
+    "operator@example.com",
+    "demo-password-123",
+  );
   const owner = accounts.register("owner@example.com", "demo-password-123");
   const reader = accounts.register("reader@example.com", "demo-password-123");
-  const collaborator = accounts.register("collaborator@example.com", "demo-password-123");
+  const collaborator = accounts.register(
+    "collaborator@example.com",
+    "demo-password-123",
+  );
   accounts.reserveSession(owner.token, "chat-a");
   const dbPath = path.join(dir, "sharing.db");
   const store = new QaChatSharingStore(dbPath, () => accounts);

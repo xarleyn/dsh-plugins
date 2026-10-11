@@ -97,7 +97,13 @@ describe("QA sidebar", () => {
 
   it("lists an ordinary fork independently and marks it as a branch", () => {
     const branch = { ...byId["s-1"], parentId: "source" } as SessionSummary;
-    const rows = buildChatRows(["s-1"], { "s-1": branch }, "s-1", undefined, 90_000);
+    const rows = buildChatRows(
+      ["s-1"],
+      { "s-1": branch },
+      "s-1",
+      undefined,
+      90_000,
+    );
     expect(rows).toHaveLength(1);
     expect(rows[0]?.meta).toMatch(/^Ветка/u);
     expect(rows[0]?.active).toBe(true);

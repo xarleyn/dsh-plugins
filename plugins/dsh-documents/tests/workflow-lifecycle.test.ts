@@ -15,22 +15,41 @@ describe("managed document lifecycle", () => {
   it("preserves the complete long review packet beyond the expert task limit", async () => {
     const base = await ready(fixture);
     const markdown = `${CONTENT}\n${"Long content\n".repeat(1800)}\nFINAL DRAFT MARKER`;
-    const draft = await fixture.service.draft(fixture.scope, base.id, base.revision, markdown);
+    const draft = await fixture.service.draft(
+      fixture.scope,
+      base.id,
+      base.revision,
+      markdown,
+    );
     const human = `${"Confirmed decision\n".repeat(1000)}FINAL HUMAN MARKER`;
     fixture.review.mockImplementationOnce(async (task) => {
       expect(task.length).toBeLessThan(12_000);
       const relative = task.match(/review-packet: ([^\n]+)/u)?.[1];
       expect(relative).toBeDefined();
-      const packet = await readFile(path.join(fixture.scope.workspaceRoot, relative!), "utf8");
+      const packet = await readFile(
+        path.join(fixture.scope.workspaceRoot, relative!),
+        "utf8",
+      );
       expect(packet.endsWith(markdown)).toBe(true);
       expect(packet).toContain(`## Original human context\n\n${human}`);
-      const metadata = JSON.parse(packet.slice(packet.indexOf("{"), packet.indexOf("\n\n## Original human context")));
+      const metadata = JSON.parse(
+        packet.slice(
+          packet.indexOf("{"),
+          packet.indexOf("\n\n## Original human context"),
+        ),
+      );
       expect(metadata.primaryVisibleTools).toEqual(["read"]);
       expect(metadata.document.draft.sha256).toBe(draft.draft!.sha256);
       expect(task).toContain("Read ALL lines");
       return { pass: true, summary: "Full packet verified", issues: [] };
     });
-    const reviewed = await fixture.service.review(fixture.scope, draft.id, draft.revision, human, ["read"]);
+    const reviewed = await fixture.service.review(
+      fixture.scope,
+      draft.id,
+      draft.revision,
+      human,
+      ["read"],
+    );
     expect(reviewed.status).toBe("reviewed");
   });
 
@@ -39,12 +58,23 @@ describe("managed document lifecycle", () => {
     fixture.review.mockImplementationOnce(async (task) => {
       const relative = task.match(/review-packet: ([^\n]+)/u)?.[1];
       expect(relative).toBeDefined();
-      await writeFile(path.join(fixture.scope.workspaceRoot, relative!), "Changed packet");
+      await writeFile(
+        path.join(fixture.scope.workspaceRoot, relative!),
+        "Changed packet",
+      );
       return { pass: true, summary: "Passing altered snapshot", issues: [] };
     });
-    await expect(fixture.service.review(fixture.scope, draft.id, draft.revision, "Human ".repeat(3000)))
-      .rejects.toMatchObject({ code: "REVIEW_PACKET_CHANGED" });
-    expect((await fixture.service.read(fixture.scope, draft.id)).draft?.review).toBeUndefined();
+    await expect(
+      fixture.service.review(
+        fixture.scope,
+        draft.id,
+        draft.revision,
+        "Human ".repeat(3000),
+      ),
+    ).rejects.toMatchObject({ code: "REVIEW_PACKET_CHANGED" });
+    expect(
+      (await fixture.service.read(fixture.scope, draft.id)).draft?.review,
+    ).toBeUndefined();
   });
 
   it.each(["proposal", "specification"] as const)(
@@ -74,8 +104,12 @@ describe("managed document lifecycle", () => {
       expect(fixture.review.mock.calls[0]?.[0]).toContain(
         CONTENT.replace(/\n/gu, "\\n"),
       );
-      expect(fixture.review.mock.calls[0]?.[0]).toContain("findings contain objections only");
-      expect(fixture.review.mock.calls[0]?.[0]).toContain("assumptions contain unsupported assumptions only");
+      expect(fixture.review.mock.calls[0]?.[0]).toContain(
+        "findings contain objections only",
+      );
+      expect(fixture.review.mock.calls[0]?.[0]).toContain(
+        "assumptions contain unsupported assumptions only",
+      );
       const approved = await fixture.service.approve(
         fixture.scope,
         draft.id,

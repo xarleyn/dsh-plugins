@@ -13,19 +13,67 @@ import {
 describe("independent review context", () => {
   it("recovers original human input through active nested checkpoints without reviving withdrawn input", () => {
     const events = [
-      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "Original monitoring request" }] } },
-      { type: "user/message", data: { source: { kind: "qa-notes" }, content: [{ type: "text", text: "Injected scope claim" }] } },
-      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "Withdrawn scope" }] } },
-      { type: "compaction/summary", data: { compactionId: "c1", shadowedSeqs: [0, 1] } },
-      { type: "user/message", data: { source: { kind: "compact-checkpoint", compactionId: "c1" }, content: [{ type: "text", text: "Model summary is not human" }] } },
-      { type: "compaction/summary", data: { compactionId: "c2", shadowedSeqs: [4] } },
-      { type: "user/message", data: { source: { kind: "compact-checkpoint", compactionId: "c2" }, content: [{ type: "text", text: "Nested model summary" }] } },
-      { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "Latest correction" }] } },
+      {
+        type: "user/message",
+        data: {
+          source: { kind: "user" },
+          content: [{ type: "text", text: "Original monitoring request" }],
+        },
+      },
+      {
+        type: "user/message",
+        data: {
+          source: { kind: "qa-notes" },
+          content: [{ type: "text", text: "Injected scope claim" }],
+        },
+      },
+      {
+        type: "user/message",
+        data: {
+          source: { kind: "user" },
+          content: [{ type: "text", text: "Withdrawn scope" }],
+        },
+      },
+      {
+        type: "compaction/summary",
+        data: { compactionId: "c1", shadowedSeqs: [0, 1] },
+      },
+      {
+        type: "user/message",
+        data: {
+          source: { kind: "compact-checkpoint", compactionId: "c1" },
+          content: [{ type: "text", text: "Model summary is not human" }],
+        },
+      },
+      {
+        type: "compaction/summary",
+        data: { compactionId: "c2", shadowedSeqs: [4] },
+      },
+      {
+        type: "user/message",
+        data: {
+          source: { kind: "compact-checkpoint", compactionId: "c2" },
+          content: [{ type: "text", text: "Nested model summary" }],
+        },
+      },
+      {
+        type: "user/message",
+        data: {
+          source: { kind: "user" },
+          content: [{ type: "text", text: "Latest correction" }],
+        },
+      },
     ];
-    const context = reviewConversationContext({ surface: { nodes: [6, 7] }, eventAt: seq => events[seq], snapshotEvents: () => events });
+    const context = reviewConversationContext({
+      surface: { nodes: [6, 7] },
+      eventAt: (seq) => events[seq],
+      snapshotEvents: () => events,
+    });
     expect(context).toContain("Original monitoring request");
     expect(context).toContain("Latest correction");
-    expect(context).not.toMatch(/Withdrawn scope|Injected scope claim|Model summary|Nested model summary/u);
+    expect(context).not.toMatch(
+      /Withdrawn scope|Injected scope claim|Model summary|Nested model summary/u,
+    );
   });
 
   it("reports the opaque native agent scope rather than global-only tools", async () => {
@@ -145,7 +193,11 @@ describe("independent review context", () => {
   it.each([renderExpertReviewTask, renderSubagentReviewerTask])(
     "preserves the primary manifest and a late human decision through line-shortening readers",
     (render) => {
-      const tools = ["document_workflow_draft", "document_workflow_review", "document_workflow_export"];
+      const tools = [
+        "document_workflow_draft",
+        "document_workflow_review",
+        "document_workflow_export",
+      ];
       const task = render({
         requestText: "Revise",
         candidateText: "Full draft",
@@ -154,9 +206,14 @@ describe("independent review context", () => {
       });
       // Native filesystem readers cap individual lines, independently of the
       // page's line limit. A one-line context JSON hid the manifest at its tail.
-      const readable = task.split("\n").map((line) => line.slice(0, 2000)).join("\n");
+      const readable = task
+        .split("\n")
+        .map((line) => line.slice(0, 2000))
+        .join("\n");
       for (const tool of tools) expect(readable).toContain(tool);
-      expect(readable).toContain("Accepted decision: survey compatibility during the pilot.");
+      expect(readable).toContain(
+        "Accepted decision: survey compatibility during the pilot.",
+      );
     },
   );
   it.each([renderExpertReviewTask, renderSubagentReviewerTask])(
@@ -169,7 +226,9 @@ describe("independent review context", () => {
         primaryTools: ["document_create"],
       });
       expect(task).toContain("Earlier: exclude events");
-      expect(task).toContain('"primaryVisibleTools": [\n    "document_create"\n  ]');
+      expect(task).toContain(
+        '"primaryVisibleTools": [\n    "document_create"\n  ]',
+      );
       expect(task).toContain("not proof of the file's contents");
       expect(task).toContain("capability-absence claims are unverifiable");
     },

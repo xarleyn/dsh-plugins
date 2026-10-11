@@ -483,7 +483,12 @@ function emitTurn(
         role: "assistant",
         text: finalText.text,
         status: finalText.status,
-        forkable: completed && erroredCode === undefined && stoppedAt === undefined && finalText.status === "committed" && finalText.seq !== undefined,
+        forkable:
+          completed &&
+          erroredCode === undefined &&
+          stoppedAt === undefined &&
+          finalText.status === "committed" &&
+          finalText.seq !== undefined,
         turn: turn.turn,
         // The durable log position is what a rating is filed under: an answer
         // that reaches the browser without it cannot be rated at all.
@@ -559,8 +564,9 @@ export function projectTranscript(
           id: `${node.kind}:${node.seq}`,
           role: "user",
           text,
-          ...((node.source as { qaAuthor?: string }).qaAuthor === undefined ? {} :
-            { author: (node.source as { qaAuthor: string }).qaAuthor }),
+          ...((node.source as { qaAuthor?: string }).qaAuthor === undefined
+            ? {}
+            : { author: (node.source as { qaAuthor: string }).qaAuthor }),
           status: "committed",
           timestamp: node.time,
           ...(images.length === 0 ? {} : { images }),

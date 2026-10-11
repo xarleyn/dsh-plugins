@@ -483,7 +483,9 @@ export class AnswerReviewGate {
     return createDomainExpertBackend({
       face: this.deps.domainExperts(),
       config: config.reviewer,
-      ...(agent.session.header.cwd === undefined ? {} : { workspaceRoot: agent.session.header.cwd }),
+      ...(agent.session.header.cwd === undefined
+        ? {}
+        : { workspaceRoot: agent.session.header.cwd }),
     });
   }
 

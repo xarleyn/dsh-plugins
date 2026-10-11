@@ -426,10 +426,18 @@ export class QaPromptNotes {
 
   private branchNotes(rootSessionId: string): readonly QaPromptNote[] {
     const header = this.ctx.sessions.get(SessionId(rootSessionId))?.header;
-    if (header?.isSeeded !== true || header.origin === "subagent" ||
-      !this.options.isQaSession(rootSessionId)) return [];
-    return [{ name: QA_BRANCH_NOTE, text:
-      "This chat is an independent branch. Copied messages, tool results, files and sources are historical context. Document workflow IDs in the inherited history belong to the source chat. To change or export such a document here, start a new workflow with document_workflow_begin and use the inherited draft as input. Review and human approval must be obtained again in this chat; inherited approvals do not authorize an export here. The user workspace is shared with the source chat. Runtime skill grants are fresh in this chat: activate any needed skill again before using the tools it grants." }];
+    if (
+      header?.isSeeded !== true ||
+      header.origin === "subagent" ||
+      !this.options.isQaSession(rootSessionId)
+    )
+      return [];
+    return [
+      {
+        name: QA_BRANCH_NOTE,
+        text: "This chat is an independent branch. Copied messages, tool results, files and sources are historical context. Document workflow IDs in the inherited history belong to the source chat. To change or export such a document here, start a new workflow with document_workflow_begin and use the inherited draft as input. Review and human approval must be obtained again in this chat; inherited approvals do not authorize an export here. The user workspace is shared with the source chat. Runtime skill grants are fresh in this chat: activate any needed skill again before using the tools it grants.",
+      },
+    ];
   }
 
   /** The owner's email and profile, or nothing while the chat is anonymous. */

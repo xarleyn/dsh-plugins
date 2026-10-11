@@ -16,11 +16,37 @@ describe("sources panel", () => {
     URL.revokeObjectURL = revoke;
     const config = resolveConfig().sources;
     try {
-      const view = render(<QaSourcesPanel sources={[{ ...fileSource, path: "report.pdf", title: "report.pdf" }]}
-        complete sessionId="root" sourceApi={{ readSourceFile: async () => ({ ok: true, value: {
-          path: "report.pdf", content: "", size: 8, truncated: false, markdown: false, renderableMarkdown: false,
-          document: { kind: "pdf", name: "report.pdf", mime: "application/pdf", bytes: 8, base64: "JVBERi0xLjQ=" },
-        } }) } as never} display={config.display} filePreview={config.filePreview} />);
+      const view = render(
+        <QaSourcesPanel
+          sources={[{ ...fileSource, path: "report.pdf", title: "report.pdf" }]}
+          complete
+          sessionId="root"
+          sourceApi={
+            {
+              readSourceFile: async () => ({
+                ok: true,
+                value: {
+                  path: "report.pdf",
+                  content: "",
+                  size: 8,
+                  truncated: false,
+                  markdown: false,
+                  renderableMarkdown: false,
+                  document: {
+                    kind: "pdf",
+                    name: "report.pdf",
+                    mime: "application/pdf",
+                    bytes: 8,
+                    base64: "JVBERi0xLjQ=",
+                  },
+                },
+              }),
+            } as never
+          }
+          display={config.display}
+          filePreview={config.filePreview}
+        />,
+      );
       fireEvent.click(screen.getByRole("button", { name: /report.pdf/u }));
       const frame = await screen.findByTestId("qa-source-preview-pdf");
       expect(frame.getAttribute("src")).toBe("blob:source-pdf");

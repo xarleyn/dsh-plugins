@@ -431,7 +431,10 @@ export class QaSessionController {
     this.adminPreview = options.adminPreview === true;
     this.fileUpload = options.fileUpload ?? (() => undefined);
     this.sharingApi = options.sharingApi;
-    if (this.sharingApi !== undefined && options.accounts !== undefined) this.accessPoll = setInterval(() => { void this.refreshChatAccess(); }, 1000);
+    if (this.sharingApi !== undefined && options.accounts !== undefined)
+      this.accessPoll = setInterval(() => {
+        void this.refreshChatAccess();
+      }, 1000);
     this.hostSources = new QaHostSourceBridge(
       this.sourceApi,
       () => this.accounts?.token() ?? "",
@@ -1240,35 +1243,61 @@ export class QaSessionController {
   async forkFromAnswer(answerSeq: number): Promise<void> {
     const parent = this.session;
     const remote = this.forkSessionRemote;
-    if (this.disposed || this.forking || remote === undefined || parent === undefined ||
-      this.viewingSubagent !== null || this.compatibilityReadOnly || !this.policyReady ||
-      this.config.session.policy === "fixed") return;
+    if (
+      this.disposed ||
+      this.forking ||
+      remote === undefined ||
+      parent === undefined ||
+      this.viewingSubagent !== null ||
+      this.compatibilityReadOnly ||
+      !this.policyReady ||
+      this.config.session.policy === "fixed"
+    )
+      return;
     const operation = this.generation;
     this.forking = true;
     try {
-      const result = await remote(this.accounts?.token() ?? "", String(parent.sessionId), answerSeq);
+      const result = await remote(
+        this.accounts?.token() ?? "",
+        String(parent.sessionId),
+        answerSeq,
+      );
       if (!result.ok) throw new Error("The Host refused to create the branch.");
       this.accounts?.onSessionCreated(result.value);
       this.chats.addChat(result.value);
-      if (this.disposed || operation !== this.generation || parent !== this.session) return;
+      if (
+        this.disposed ||
+        operation !== this.generation ||
+        parent !== this.session
+      )
+        return;
       ++this.generation;
       this.drafting = false;
       this.openChat();
       this.unbind();
       this.operationError = null;
-      this.state = { ...QA_SESSION_IDLE_STATE, chatKey: this.chatKey,
-        chatsRevision: this.chatsRevision, phase: "creating" };
+      this.state = {
+        ...QA_SESSION_IDLE_STATE,
+        chatKey: this.chatKey,
+        chatsRevision: this.chatsRevision,
+        phase: "creating",
+      };
       this.publish();
       const adoption = this.generation;
-      if (await this.bind(result.value, { operation: adoption })) this.chats.saveActive(result.value);
+      if (await this.bind(result.value, { operation: adoption }))
+        this.chats.saveActive(result.value);
     } catch (error) {
-      if (!this.disposed && (parent === this.session || this.session === undefined))
-        {
-          this.operationError = "Не удалось создать ветку чата.";
-          console.error("dsh-qa-surface: session operation failed (fork)", error);
-          this.publish();
-        }
-    } finally { this.forking = false; }
+      if (
+        !this.disposed &&
+        (parent === this.session || this.session === undefined)
+      ) {
+        this.operationError = "Не удалось создать ветку чата.";
+        console.error("dsh-qa-surface: session operation failed (fork)", error);
+        this.publish();
+      }
+    } finally {
+      this.forking = false;
+    }
   }
 
   /**
@@ -2257,14 +2286,30 @@ export class QaSessionController {
     }
     this.state = {
       ...projected,
-      chatAccess: this.chatAccess?.sessionId === sessionId ? this.chatAccess : undefined,
-      ...(this.chatAccess?.sessionId === sessionId && this.chatAccess.mode !== "owner" ? {
-        canSend: projected.canSend && this.chatAccess.mode === "collaborate",
-        canStop: false, canEditQueue: false, approvals: [], questions: [],
-        messages: projected.messages.map(message => message.role === "assistant" ? {
-          ...message, artifacts: message.artifacts?.map(artifact => { const { workflow: _workflow, ...file } = artifact; return file; }),
-        } : message),
-      } : {}),
+      chatAccess:
+        this.chatAccess?.sessionId === sessionId ? this.chatAccess : undefined,
+      ...(this.chatAccess?.sessionId === sessionId &&
+      this.chatAccess.mode !== "owner"
+        ? {
+            canSend:
+              projected.canSend && this.chatAccess.mode === "collaborate",
+            canStop: false,
+            canEditQueue: false,
+            approvals: [],
+            questions: [],
+            messages: projected.messages.map((message) =>
+              message.role === "assistant"
+                ? {
+                    ...message,
+                    artifacts: message.artifacts?.map((artifact) => {
+                      const { workflow: _workflow, ...file } = artifact;
+                      return file;
+                    }),
+                  }
+                : message,
+            ),
+          }
+        : {}),
       pendingMessage: this.pendingSubmission?.message ?? null,
     };
     this.emit();
@@ -2425,7 +2470,11 @@ export class QaSessionController {
   > {
     if (session === undefined) return { kind: "refused", reason: null };
     const sessionId = String(session.sessionId);
-    if (!this.config.lockdown.enabled && this.accounts === undefined && this.forkSessionRemote === undefined) {
+    if (
+      !this.config.lockdown.enabled &&
+      this.accounts === undefined &&
+      this.forkSessionRemote === undefined
+    ) {
       this.policyReady = true;
       return { kind: "ok", sessionId };
     }
@@ -2472,18 +2521,33 @@ export class QaSessionController {
   private async refreshChatAccess(): Promise<void> {
     const session = this.session;
     const token = this.accounts?.token();
-    if (session === undefined || token == null || this.sharingApi === undefined || this.disposed) return;
+    if (
+      session === undefined ||
+      token == null ||
+      this.sharingApi === undefined ||
+      this.disposed
+    )
+      return;
     const id = String(session.sessionId);
     try {
       const result = await this.sharingApi.access(token, id);
       if (this.session !== session || this.disposed) return;
       if (!result.ok) {
-        this.unbind(); this.chatAccess = undefined;
-        this.fail("Доступ к чату отозван или аккаунт недоступен.", new QaPolicyAttestationError("session-owned-elsewhere"));
+        this.unbind();
+        this.chatAccess = undefined;
+        this.fail(
+          "Доступ к чату отозван или аккаунт недоступен.",
+          new QaPolicyAttestationError("session-owned-elsewhere"),
+        );
         return;
       }
-      if (JSON.stringify(this.chatAccess) !== JSON.stringify(result.value)) { this.chatAccess = result.value; this.publish(); }
-    } catch { /* Transport failures do not fabricate a revocation. Server writes still recheck access. */ }
+      if (JSON.stringify(this.chatAccess) !== JSON.stringify(result.value)) {
+        this.chatAccess = result.value;
+        this.publish();
+      }
+    } catch {
+      /* Transport failures do not fabricate a revocation. Server writes still recheck access. */
+    }
   }
 
   /**

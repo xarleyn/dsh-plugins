@@ -133,7 +133,11 @@ export function QaFileAttachment({
         </button>
       )}
       {approval === "failed" ? (
-        <span className="dsh-qa-file__error" role="status" data-testid="qa-file-approval-error">
+        <span
+          className="dsh-qa-file__error"
+          role="status"
+          data-testid="qa-file-approval-error"
+        >
           Не удалось согласовать или отправить запрос. Проверьте текущую
           редакцию и повторите.
         </span>

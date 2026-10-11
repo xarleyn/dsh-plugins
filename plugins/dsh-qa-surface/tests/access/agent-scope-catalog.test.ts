@@ -15,24 +15,46 @@ describe("native agent scope catalog", () => {
     const agent = { session: { header: { cwd: "/demo" } } } as unknown as Agent;
     let preset!: Scope;
     let scope!: Scope;
-    await root.plugin(Object.assign((inner: Context) => {
-      preset = createScope(inner, presetKey);
-      scope = createScope(inner, agent, { parent: presetKey });
-      Object.assign(agent, { ctx: scope.ctx });
-      for (const name of ["read", "web_search"]) {
-        preset.ctx.tools.register(defineTool({
-          name, description: name, parameters: {},
-          output: { schema: { type: "string" }, render: (_args, value) => [{ type: "text", text: String(value) }] },
-          execute: async () => name,
-        }));
-      }
-    }, { inject: ["tools"] }));
+    await root.plugin(
+      Object.assign(
+        (inner: Context) => {
+          preset = createScope(inner, presetKey);
+          scope = createScope(inner, agent, { parent: presetKey });
+          Object.assign(agent, { ctx: scope.ctx });
+          for (const name of ["read", "web_search"]) {
+            preset.ctx.tools.register(
+              defineTool({
+                name,
+                description: name,
+                parameters: {},
+                output: {
+                  schema: { type: "string" },
+                  render: (_args, value) => [
+                    { type: "text", text: String(value) },
+                  ],
+                },
+                execute: async () => name,
+              }),
+            );
+          }
+        },
+        { inject: ["tools"] },
+      ),
+    );
     const catalog = new QaCapabilityCatalog(root);
     try {
-      expect([...((await catalog.snapshot(agent)).toolIds)]).toEqual(["read", "web_search"]);
+      expect([...(await catalog.snapshot(agent)).toolIds]).toEqual([
+        "read",
+        "web_search",
+      ]);
       scope.ctx.tools.restrict({ allow: ["read"] });
-      expect(root.tools.schemas(agent).map(({ name }) => name)).toEqual(["read"]);
-      expect([...((await catalog.snapshot(agent)).toolIds)]).toEqual(["read", "web_search"]);
+      expect(root.tools.schemas(agent).map(({ name }) => name)).toEqual([
+        "read",
+      ]);
+      expect([...(await catalog.snapshot(agent)).toolIds]).toEqual([
+        "read",
+        "web_search",
+      ]);
     } finally {
       await scope.dispose();
       await preset.dispose();

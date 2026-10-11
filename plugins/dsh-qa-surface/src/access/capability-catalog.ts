@@ -106,12 +106,14 @@ export class QaCapabilityCatalog {
     // awaiting a skill grant. Discovery never lifts a mask or admits execution.
     const scopes = scopeChainOf(viewingScope);
     const schemas = new Map(
-      (scopes.length === 0 ? [undefined] : scopes.reverse()).flatMap(
-        (key) => this.ctx.tools.schemas(key).map((schema) => [schema.name, schema] as const),
+      (scopes.length === 0 ? [undefined] : scopes.reverse()).flatMap((key) =>
+        this.ctx.tools
+          .schemas(key)
+          .map((schema) => [schema.name, schema] as const),
       ),
     );
-    const toolDescriptors: QaCapabilityDescriptor[] = [...schemas.values()]
-      .map((schema) => ({
+    const toolDescriptors: QaCapabilityDescriptor[] = [...schemas.values()].map(
+      (schema) => ({
         type: "tool" as const,
         id: schema.name,
         title: schema.name,
@@ -120,7 +122,8 @@ export class QaCapabilityCatalog {
           : { description: schema.description }),
         source: toolSource(schema.name),
         status: "available" as const,
-      }));
+      }),
+    );
     const mountedToolIds = new Set(toolDescriptors.map(({ id }) => id));
     for (const id of this.additionalToolNames()) {
       if (mountedToolIds.has(id)) continue;

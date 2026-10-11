@@ -142,13 +142,20 @@ export const readFileExtractor: SourceExtractor = {
             ? args.path
             : undefined;
     if (rawPath === undefined || rawPath.trim() === "") return [];
-    if (context.toolName === "docs_read" && meta?.path === undefined &&
-      !context.documentationRoot?.trim() && context.workspaceRoot === undefined &&
-      !/^(?:\/|[a-zA-Z]:[\\/])/u.test(rawPath)) return [];
-    const docsPath = context.toolName === "docs_read" && meta?.path === undefined &&
+    if (
+      context.toolName === "docs_read" &&
+      meta?.path === undefined &&
+      !context.documentationRoot?.trim() &&
+      context.workspaceRoot === undefined &&
       !/^(?:\/|[a-zA-Z]:[\\/])/u.test(rawPath)
-      ? `${context.documentationRoot?.trim() || `${context.workspaceRoot ?? ""}/docs`}/${rawPath.replace(/^docs\//u, "")}`
-      : rawPath;
+    )
+      return [];
+    const docsPath =
+      context.toolName === "docs_read" &&
+      meta?.path === undefined &&
+      !/^(?:\/|[a-zA-Z]:[\\/])/u.test(rawPath)
+        ? `${context.documentationRoot?.trim() || `${context.workspaceRoot ?? ""}/docs`}/${rawPath.replace(/^docs\//u, "")}`
+        : rawPath;
     const path = canonicalizeWorkspacePath(docsPath, context.workspaceRoot);
     const lines = Array.isArray(meta?.lines)
       ? meta.lines
@@ -190,11 +197,16 @@ export const readFileExtractor: SourceExtractor = {
         metadata: {
           absolutePath: /^(?:\/|[a-zA-Z]:[\\/])/u.test(docsPath)
             ? canonicalizeWorkspacePath(docsPath)
-            : context.workspaceRoot === undefined ? path
+            : context.workspaceRoot === undefined
+              ? path
               : canonicalizeWorkspacePath(`${context.workspaceRoot}/${path}`),
-          ...(Array.isArray(meta?.aliases) ? { aliases: meta.aliases.filter(
-            (alias): alias is string => typeof alias === "string",
-          ) } : {}),
+          ...(Array.isArray(meta?.aliases)
+            ? {
+                aliases: meta.aliases.filter(
+                  (alias): alias is string => typeof alias === "string",
+                ),
+              }
+            : {}),
           ...(meta?.truncated === true ? { truncated: true } : {}),
           ...(typeof meta?.totalLines === "number"
             ? { totalLines: meta.totalLines }
@@ -355,7 +367,8 @@ export const webFetchExtractor: SourceExtractor = createWebFetchExtractor();
 /** Document tools consume inputs; generated output paths stay artifacts. */
 export const documentSourceExtractor: SourceExtractor = {
   id: "document-input",
-  matches: (context) => ["document_to_markdown", "document_inspect"].includes(context.toolName),
+  matches: (context) =>
+    ["document_to_markdown", "document_inspect"].includes(context.toolName),
   extract(context) {
     const args = parsedArgs(context.args);
     const source = record(record(context.presentation)?.qaDocumentSource);
@@ -363,19 +376,34 @@ export const documentSourceExtractor: SourceExtractor = {
     if (typeof rawPath !== "string" || rawPath.trim() === "") return [];
     const path = canonicalizeWorkspacePath(rawPath, context.workspaceRoot);
     const metadataOnly = context.toolName === "document_inspect";
-    const sourceSnippet = typeof source?.snippet === "string" ? snippet(source.snippet) : undefined;
-    return [{
-      id: `file:${path}`, kind: "file", title: typeof source?.title === "string" ? source.title : basename(path),
-      path, locations: [{ path }], origins: [context.origin],
-      evidence: metadataOnly ? "queried" : "read", score: metadataOnly ? 60 : 100,
-      ...(sourceSnippet === undefined ? {} : { snippet: sourceSnippet }),
-      metadata: { metadataOnly, absolutePath: /^(?:\/|[a-zA-Z]:[\\/])/u.test(rawPath)
-        ? canonicalizeWorkspacePath(rawPath) : context.workspaceRoot === undefined ? path
-          : canonicalizeWorkspacePath(`${context.workspaceRoot}/${path}`),
-        ...(typeof source?.mediaType === "string" ? { mediaType: source.mediaType } : {}),
-        ...(source?.truncated === true ? { truncated: true } : {}),
+    const sourceSnippet =
+      typeof source?.snippet === "string" ? snippet(source.snippet) : undefined;
+    return [
+      {
+        id: `file:${path}`,
+        kind: "file",
+        title:
+          typeof source?.title === "string" ? source.title : basename(path),
+        path,
+        locations: [{ path }],
+        origins: [context.origin],
+        evidence: metadataOnly ? "queried" : "read",
+        score: metadataOnly ? 60 : 100,
+        ...(sourceSnippet === undefined ? {} : { snippet: sourceSnippet }),
+        metadata: {
+          metadataOnly,
+          absolutePath: /^(?:\/|[a-zA-Z]:[\\/])/u.test(rawPath)
+            ? canonicalizeWorkspacePath(rawPath)
+            : context.workspaceRoot === undefined
+              ? path
+              : canonicalizeWorkspacePath(`${context.workspaceRoot}/${path}`),
+          ...(typeof source?.mediaType === "string"
+            ? { mediaType: source.mediaType }
+            : {}),
+          ...(source?.truncated === true ? { truncated: true } : {}),
+        },
       },
-    }];
+    ];
   },
 };
 

@@ -17,19 +17,32 @@ export function isDelegatedStructuredResult(
 ): boolean {
   if (name !== "structured_output" || agent === undefined) return false;
   const header = agent.session.header;
-  if (header.origin !== "subagent" || header.parentSession === undefined ||
-      (header.delegationDepth ?? 0) < 1) return false;
+  if (
+    header.origin !== "subagent" ||
+    header.parentSession === undefined ||
+    (header.delegationDepth ?? 0) < 1
+  )
+    return false;
   const scope = qaAgentScope(agent);
   if (scope === undefined) return false;
   const definition = ctx.tools.get(name, scope);
-  if (definition === undefined || definition === ctx.tools.get(name)) return false;
-  if (scopeChainOf(scope).slice(1).some((parent) =>
-    ctx.tools.get(name, parent) === definition)) return false;
+  if (definition === undefined || definition === ctx.tools.get(name))
+    return false;
+  if (
+    scopeChainOf(scope)
+      .slice(1)
+      .some((parent) => ctx.tools.get(name, parent) === definition)
+  )
+    return false;
   const output = definition.output?.schema;
-  return definition.parameters.type === "object" &&
-    output?.type === "object" && output.additionalProperties === false &&
-    output.required?.length === 1 && output.required[0] === "recorded" &&
+  return (
+    definition.parameters.type === "object" &&
+    output?.type === "object" &&
+    output.additionalProperties === false &&
+    output.required?.length === 1 &&
+    output.required[0] === "recorded" &&
     Object.keys(output.properties ?? {}).length === 1 &&
     output.properties?.recorded?.type === "boolean" &&
-    output.properties.recorded.const === true;
+    output.properties.recorded.const === true
+  );
 }

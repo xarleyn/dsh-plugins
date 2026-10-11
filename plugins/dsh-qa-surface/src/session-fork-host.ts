@@ -25,14 +25,16 @@ import { applySessionModelPolicy } from "./session-model.js";
 export interface QaForkHostOptions {
   readonly ctx: Context;
   readonly config: ResolvedQaSurfaceConfig;
-  readonly accounts: Pick<
-    QaAccounts,
-    | "currentUser"
-    | "ownerIdOf"
-    | "sessionAccess"
-    | "updateSessionAccess"
-    | "releaseSessionReservation"
-  > | undefined;
+  readonly accounts:
+    | Pick<
+        QaAccounts,
+        | "currentUser"
+        | "ownerIdOf"
+        | "sessionAccess"
+        | "updateSessionAccess"
+        | "releaseSessionReservation"
+      >
+    | undefined;
   readonly access: Pick<
     QaAccessService,
     "isDelegatedChild" | "session" | "reserveSession" | "modelPolicyFor"
@@ -46,7 +48,11 @@ export interface QaForkHostOptions {
   readonly logger: PluginLogger;
   readonly sessionFiles: QaStoredSessionEraser;
   readonly sharing?: {
-    forkAuthors(sourceId: string, targetId: string, requests: readonly string[]): void;
+    forkAuthors(
+      sourceId: string,
+      targetId: string,
+      requests: readonly string[],
+    ): void;
     dropSession(id: string): void;
   };
 }
@@ -109,22 +115,43 @@ export async function forkQaSession(
       agentPreset: preset.id,
     };
     const seed = buildForkSeed(source.events, SessionSeq(boundary.atSeq));
-    const inbox = ctx.sessionProjections.restore({}, seed, SessionLogOffset(0),
-      meta, inheritedEventCount).snapshot.values.inbox;
-    if (inbox === undefined) throw new Error("The native Inbox projection is unavailable.");
+    const inbox = ctx.sessionProjections.restore(
+      {},
+      seed,
+      SessionLogOffset(0),
+      meta,
+      inheritedEventCount,
+    ).snapshot.values.inbox;
+    if (inbox === undefined)
+      throw new Error("The native Inbox projection is unavailable.");
     // A queued prompt may already exist before the selected turn finishes.
     // Keep its historical event, but cancel pending input in the child before
     // publication so creating a branch cannot launch an inherited request.
     for (const target of ["next-step", "next-turn"] as const) {
       if (inbox[target].length === 0) continue;
-      seed.push({ type: "agent/inbox/spliced", seq: SessionSeq(seed.length),
+      seed.push({
+        type: "agent/inbox/spliced",
+        seq: SessionSeq(seed.length),
         time: source.events[boundary.atSeq]?.time ?? Date.now(),
-        data: { target, start: 0, removedCount: inbox[target].length, inserted: [] } });
+        data: {
+          target,
+          start: 0,
+          removedCount: inbox[target].length,
+          inserted: [],
+        },
+      });
     }
     // Use native seed and lifecycle APIs, retaining the handle for rollback.
     // Ownership is reserved before either session/created or agent/created.
-    options.sharing?.forkAuthors(sourceId, childId, seed.flatMap(event =>
-      event.type === "user/message" && "rpcId" in event.data.source ? [String(event.data.source.rpcId)] : []));
+    options.sharing?.forkAuthors(
+      sourceId,
+      childId,
+      seed.flatMap((event) =>
+        event.type === "user/message" && "rpcId" in event.data.source
+          ? [String(event.data.source.rpcId)]
+          : [],
+      ),
+    );
     handle = await ctx.agents.create({
       sessionId: SessionId(childId),
       seed,

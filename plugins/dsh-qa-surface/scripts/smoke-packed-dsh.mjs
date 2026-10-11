@@ -540,12 +540,22 @@ async function runBrowserPass({
         "dsh-qa-surface.session:v1:/qa:session",
       ),
     );
-    const attestedSession = await rpc(origin, "qaSurface/createSession", {
-      args: { token: "", subroleId: null, adminPreview: false },
-    }, cookie);
-    await page.evaluate((sessionId) => globalThis.localStorage.setItem(
-      "dsh-qa-surface.session:v1:/qa:session", sessionId,
-    ), attestedSession);
+    const attestedSession = await rpc(
+      origin,
+      "qaSurface/createSession",
+      {
+        args: { token: "", subroleId: null, adminPreview: false },
+      },
+      cookie,
+    );
+    await page.evaluate(
+      (sessionId) =>
+        globalThis.localStorage.setItem(
+          "dsh-qa-surface.session:v1:/qa:session",
+          sessionId,
+        ),
+      attestedSession,
+    );
     await page.reload();
     await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
     await page
@@ -650,9 +660,14 @@ async function runBrowserPass({
     // The Host offers its supported deferral on this model-less fixture.
     // Complete that step before interacting with the QA composer.
     async function deferModelSetup() {
-      const dialog = page.getByRole("dialog", { name: "Add an API key to get started", exact: true });
+      const dialog = page.getByRole("dialog", {
+        name: "Add an API key to get started",
+        exact: true,
+      });
       await dialog.waitFor({ timeout: 15_000 });
-      await dialog.getByRole("button", { name: "Configure later", exact: true }).click();
+      await dialog
+        .getByRole("button", { name: "Configure later", exact: true })
+        .click();
       await dialog.waitFor({ state: "hidden" });
     }
     await deferModelSetup();

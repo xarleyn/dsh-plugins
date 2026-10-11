@@ -63,11 +63,17 @@ function eventCallId(event: SessionEvent<"tool/result">): string | undefined {
   const message = event.data.message as unknown as Record<string, unknown>;
   const source = stringRecord(message.source);
   const block = stringRecord(event.data.message.content[0]);
-  const ids = [source?.callId, message.toolCallId, block?.toolCallId, block?.callId]
-    .filter((id): id is string => typeof id === "string" && id !== "");
+  const ids = [
+    source?.callId,
+    message.toolCallId,
+    block?.toolCallId,
+    block?.callId,
+  ].filter((id): id is string => typeof id === "string" && id !== "");
   // Current messages pair at the message level. Old nested records remain
   // readable, but contradictory identities never authorise an unrelated file.
-  return ids.length > 0 && ids.every((id) => id === ids[0]) ? ids[0] : undefined;
+  return ids.length > 0 && ids.every((id) => id === ids[0])
+    ? ids[0]
+    : undefined;
 }
 
 function eventResult(event: SessionEvent<"tool/result">): unknown {
@@ -246,20 +252,31 @@ export class QaProvenanceHost {
       const turn = stringRecord(event.data)?.turn;
       // A branch snapshot also includes reported/delegated evidence which
       // replaying only its own copied tool results cannot reconstruct.
-      if (session.header.isSeeded === true && session.header.origin !== "subagent" &&
-        event.seq < session.inheritedEventCount && typeof turn === "number" &&
-        (this.snapshots.get(sessionId)?.get(turn)?.sources.length ?? 0) > 0) continue;
+      if (
+        session.header.isSeeded === true &&
+        session.header.origin !== "subagent" &&
+        event.seq < session.inheritedEventCount &&
+        typeof turn === "number" &&
+        (this.snapshots.get(sessionId)?.get(turn)?.sources.length ?? 0) > 0
+      )
+        continue;
       this.observeEvent(session, event);
     }
     this.seededSessions.add(sessionId);
     // Recovered evidence must survive the next idle teardown without requiring
     // another model turn. Merge via the collector to retain reported/delegated data.
-    const ended = new Set(session.snapshotEvents().flatMap((event) =>
-      event.type === "turn/end" ? [event.data.turn] : []));
+    const ended = new Set(
+      session
+        .snapshotEvents()
+        .flatMap((event) =>
+          event.type === "turn/end" ? [event.data.turn] : [],
+        ),
+    );
     for (const [turn, collector] of this.collectors.get(sessionId) ?? []) {
       if (!ended.has(turn)) continue;
       const bundle = collector.snapshot();
-      if (this.persistSnapshot(bundle)) this.sessionSnapshots(sessionId).set(turn, bundle);
+      if (this.persistSnapshot(bundle))
+        this.sessionSnapshots(sessionId).set(turn, bundle);
     }
   }
 
@@ -293,8 +310,13 @@ export class QaProvenanceHost {
       if (calls.size === 0) this.calls.delete(sessionId);
     }
     const block = stringRecord(event.data.message.content[0]);
-    if (call === undefined || event.data.error !== undefined ||
-      event.data.message.isError === true || block?.isError === true) return;
+    if (
+      call === undefined ||
+      event.data.error !== undefined ||
+      event.data.message.isError === true ||
+      block?.isError === true
+    )
+      return;
     if (!this.shouldCollect(session)) return;
     this.collector(sessionId, call.turn).observe({
       toolName: call.name,
@@ -313,8 +335,9 @@ export class QaProvenanceHost {
       ...(session.header.cwd === undefined
         ? {}
         : { workspaceRoot: session.header.cwd }),
-      ...(this.config().tools.docsRoot === undefined ? {} :
-        { documentationRoot: this.config().tools.docsRoot }),
+      ...(this.config().tools.docsRoot === undefined
+        ? {}
+        : { documentationRoot: this.config().tools.docsRoot }),
     });
   }
 

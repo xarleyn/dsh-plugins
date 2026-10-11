@@ -36,9 +36,16 @@ const OUTPUT = {
   presentationMeta: (
     _args: unknown,
     value: { provider: string; operation: string; data: object },
-  ) => JSON.parse(JSON.stringify({
-    provider: value.provider, operation: value.operation, data: value.data,
-  })) as ReturnType<NonNullable<NonNullable<ToolDefinition["output"]>["presentationMeta"]>>,
+  ) =>
+    JSON.parse(
+      JSON.stringify({
+        provider: value.provider,
+        operation: value.operation,
+        data: value.data,
+      }),
+    ) as ReturnType<
+      NonNullable<NonNullable<ToolDefinition["output"]>["presentationMeta"]>
+    >,
 } as const;
 
 /**

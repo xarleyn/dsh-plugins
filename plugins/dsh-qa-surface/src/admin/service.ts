@@ -219,7 +219,11 @@ function descendantsOf(
     const parent = queue.shift();
     if (parent === undefined) break;
     for (const header of headers) {
-      if (header.isFork === true || header.parentSessionId !== parent || found.includes(header.id)) {
+      if (
+        header.isFork === true ||
+        header.parentSessionId !== parent ||
+        found.includes(header.id)
+      ) {
         continue;
       }
       found.push(header.id);

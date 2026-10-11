@@ -54,13 +54,30 @@ export class QaHostSourceBridge {
         continue;
       merged.set(bundle.turn, bundle);
     }
-    const bundles = [...merged.values()].sort((left, right) => left.turn - right.turn);
+    const bundles = [...merged.values()].sort(
+      (left, right) => left.turn - right.turn,
+    );
     if (this.refusal === "") return bundles;
-    const incomplete = { provider: "host", reason: "source-bundle-unavailable" };
+    const incomplete = {
+      provider: "host",
+      reason: "source-bundle-unavailable",
+    };
     return bundles.length === 0
-      ? [{ version: 1, sessionId: this.sessionId, turn: 0, sources: [], complete: false, incompleteOrigins: [incomplete] }]
-      : bundles.map((bundle) => ({ ...bundle, complete: false,
-        incompleteOrigins: [...(bundle.incompleteOrigins ?? []), incomplete] }));
+      ? [
+          {
+            version: 1,
+            sessionId: this.sessionId,
+            turn: 0,
+            sources: [],
+            complete: false,
+            incompleteOrigins: [incomplete],
+          },
+        ]
+      : bundles.map((bundle) => ({
+          ...bundle,
+          complete: false,
+          incompleteOrigins: [...(bundle.incompleteOrigins ?? []), incomplete],
+        }));
   }
 
   /**
@@ -111,7 +128,10 @@ export class QaHostSourceBridge {
       const refusal = refusalKey(error) || "source-bundle-unavailable";
       if (refusal !== this.refusal) {
         this.refusal = refusal;
-        console.warn("dsh-qa-surface: source bundle transport is unavailable", error);
+        console.warn(
+          "dsh-qa-surface: source bundle transport is unavailable",
+          error,
+        );
         onChanged();
       }
     } finally {

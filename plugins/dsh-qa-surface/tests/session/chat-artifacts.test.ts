@@ -18,14 +18,17 @@ describe("artifactsOfToolResult", () => {
     [" (unknown)", null],
     [" (12 unknown-unit)", null],
     [" (0 B, sha256 abc)", 0],
-  ])("distinguishes an unknown size from a reported empty file: %s", (details, bytes) => {
-    expect(
-      artifactsOfToolResult(
-        "document_workflow_draft",
-        `markdown: .qa/artifacts/workflows/demo/draft-9.md${details}`,
-      )[0]?.bytes,
-    ).toBe(bytes);
-  });
+  ])(
+    "distinguishes an unknown size from a reported empty file: %s",
+    (details, bytes) => {
+      expect(
+        artifactsOfToolResult(
+          "document_workflow_draft",
+          `markdown: .qa/artifacts/workflows/demo/draft-9.md${details}`,
+        )[0]?.bytes,
+      ).toBe(bytes);
+    },
+  );
 
   it("binds a workflow approval action to the exact revision and draft hash", () => {
     const output = [
