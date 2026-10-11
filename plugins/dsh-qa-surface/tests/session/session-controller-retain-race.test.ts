@@ -23,16 +23,25 @@ describe("QA session controller: a retain that raced the session catalog", () =>
     world.stored.set("dsh-qa-surface.session:v1:/qa:session", "historical");
     const ready = world.list.getSnapshot();
     world.list.set({ ...ready, phase: "pending" });
-    const controller = new QaSessionController({ ...world, config: resolveConfig() });
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
     try {
       const restoring = controller.ensureSession();
       await vi.advanceTimersByTimeAsync(20_000);
       expect(controller.getSnapshot().phase).toBe("creating");
       world.list.set(ready);
       await restoring;
-      expect(controller.getSnapshot()).toMatchObject({ sessionId: "historical", error: null });
+      expect(controller.getSnapshot()).toMatchObject({
+        sessionId: "historical",
+        error: null,
+      });
       expect(world.createSession).not.toHaveBeenCalled();
-    } finally { controller.dispose(); vi.useRealTimers(); }
+    } finally {
+      controller.dispose();
+      vi.useRealTimers();
+    }
   });
 
   /** Route every creation through the server, leaving its row unlisted. */

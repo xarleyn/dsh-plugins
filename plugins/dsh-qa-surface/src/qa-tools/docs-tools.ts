@@ -1137,7 +1137,8 @@ export function createDocsReadTool(
         truncated: value.truncated,
         lang: "md",
         lines: value.text.split("\n").map((text, index) => ({
-          number: value.from + index, text,
+          number: value.from + index,
+          text,
         })),
       }),
       render: (_args, value) => {

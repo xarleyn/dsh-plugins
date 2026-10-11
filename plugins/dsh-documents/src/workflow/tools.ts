@@ -51,11 +51,21 @@ function humanContext(exec: DocumentToolExec): string {
   const summaries = new Map<string, readonly number[]>();
   for (const event of events) {
     if (event.type !== "compaction/summary") continue;
-    const data = event.data as { compactionId?: unknown; shadowedSeqs?: unknown };
-    if (typeof data.compactionId === "string" && Array.isArray(data.shadowedSeqs))
-      summaries.set(data.compactionId, data.shadowedSeqs.filter(
-        (seq): seq is number => typeof seq === "number" && Number.isSafeInteger(seq) && seq >= 0,
-      ));
+    const data = event.data as {
+      compactionId?: unknown;
+      shadowedSeqs?: unknown;
+    };
+    if (
+      typeof data.compactionId === "string" &&
+      Array.isArray(data.shadowedSeqs)
+    )
+      summaries.set(
+        data.compactionId,
+        data.shadowedSeqs.filter(
+          (seq): seq is number =>
+            typeof seq === "number" && Number.isSafeInteger(seq) && seq >= 0,
+        ),
+      );
   }
   // Expand only checkpoints represented on the current surface. Withdrawn
   // messages are not revived, and model-authored summaries are never human evidence.
@@ -64,8 +74,14 @@ function humanContext(exec: DocumentToolExec): string {
   for (let index = 0; index < pending.length; index++) {
     const event = session?.eventAt?.(pending[index]!);
     if (event?.type !== "user/message") continue;
-    const source = (event.data as { source?: { kind?: string; compactionId?: string } }).source;
-    if (source?.kind !== "compact-checkpoint" || source.compactionId === undefined) continue;
+    const source = (
+      event.data as { source?: { kind?: string; compactionId?: string } }
+    ).source;
+    if (
+      source?.kind !== "compact-checkpoint" ||
+      source.compactionId === undefined
+    )
+      continue;
     for (const seq of summaries.get(source.compactionId) ?? []) {
       if (nodes.has(seq)) continue;
       nodes.add(seq);
@@ -113,12 +129,12 @@ function humanContext(exec: DocumentToolExec): string {
       questions.has(message.toolCallId)
     ) {
       lines.push(
-        `Human question form:\n${readableQuestionData(questions.get(message.toolCallId)!)}\nRecorded human answer:\n${readableQuestionData((
-          message.content ?? []
-        )
-          .filter((b) => b.type === "text")
-          .map((b) => b.text ?? "")
-          .join("\n"))}`,
+        `Human question form:\n${readableQuestionData(questions.get(message.toolCallId)!)}\nRecorded human answer:\n${readableQuestionData(
+          (message.content ?? [])
+            .filter((b) => b.type === "text")
+            .map((b) => b.text ?? "")
+            .join("\n"),
+        )}`,
       );
     }
   }
@@ -173,9 +189,13 @@ function renderView(value: unknown): { type: "text"; text: string }[] {
               ...(view.draft.review.verdict === "revise"
                 ? [
                     "REVIEW DID NOT PASS. Human approval and final export are unavailable. A positive summary does not override this verdict. Resolve or explicitly disclose every review issue in the full draft, save a new revision and review it again. Do not tell the user this revision is ready for approval.",
-                    ...view.draft.review.issues.map((issue) => `blocking-review-issue: ${issue}`),
+                    ...view.draft.review.issues.map(
+                      (issue) => `blocking-review-issue: ${issue}`,
+                    ),
                   ]
-                : ["Review passed for this revision. The human must still approve this exact draft through QA before final export."]),
+                : [
+                    "Review passed for this revision. The human must still approve this exact draft through QA before final export.",
+                  ]),
             ]),
         `For the next write, copy revision ${view.revision} exactly. Do not increment it yourself; each successful write returns the new current revision.`,
         ...(view.draft === undefined

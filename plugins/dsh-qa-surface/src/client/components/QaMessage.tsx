@@ -10,7 +10,11 @@ import type {
 } from "../../types.js";
 import { sameWorkItems } from "./QaWorkGroup.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
-import { buildSourceRefs, sourceRefsSignature, type QaSourceRefs } from "./source-refs.js";
+import {
+  buildSourceRefs,
+  sourceRefsSignature,
+  type QaSourceRefs,
+} from "./source-refs.js";
 
 /** The outcome line of a command row; the row already carries the name. */
 function commandStateCopy(activity: QaCommandActivity): string {
@@ -161,7 +165,8 @@ export function sameMessage(a: QaMessageModel, b: QaMessageModel): boolean {
   if (a.text !== b.text || a.timestamp !== b.timestamp) return false;
   if (a.role === "assistant" && b.role === "assistant") {
     return (
-      a.forkable === b.forkable && a.seq === b.seq &&
+      a.forkable === b.forkable &&
+      a.seq === b.seq &&
       sameSources(a.sources, b.sources) &&
       sameArtifacts(a.artifacts, b.artifacts) &&
       (a.stats === undefined) === (b.stats === undefined) &&
@@ -622,7 +627,11 @@ export const QaMessage = memo(
                   name={file.name}
                   bytes={file.bytes}
                   tone="sent"
-                  onOpen={onAttachmentOpen === undefined ? undefined : () => onAttachmentOpen(file)}
+                  onOpen={
+                    onAttachmentOpen === undefined
+                      ? undefined
+                      : () => onAttachmentOpen(file)
+                  }
                 />
               ))}
             </div>
@@ -783,15 +792,25 @@ export const QaMessage = memo(
                     <path d="M12.75 9.75 9.9 15.1a1.3 1.3 0 0 1-2.4-.75v-3.1H4.4a1.38 1.38 0 0 1-1.33-1.72l1.05-4.2A1.75 1.75 0 0 1 5.82 4h6.93m0 5.75V4m0 5.75h2V4h-2" />
                   </svg>
                 </button>
-                {onFork !== undefined && message.role === "assistant" &&
-                 message.status === "committed" && message.forkable === true && message.seq !== undefined ? (
-                  <button type="button" data-testid="qa-message-fork"
-                    aria-label="Продолжить в новом чате" title="Продолжить в новом чате"
-                    disabled={forking} aria-busy={forking || undefined}
+                {onFork !== undefined &&
+                message.role === "assistant" &&
+                message.status === "committed" &&
+                message.forkable === true &&
+                message.seq !== undefined ? (
+                  <button
+                    type="button"
+                    data-testid="qa-message-fork"
+                    aria-label="Продолжить в новом чате"
+                    title="Продолжить в новом чате"
+                    disabled={forking}
+                    aria-busy={forking || undefined}
                     onClick={() => {
                       setForking(true);
-                      void onFork(message.seq as number).finally(() => setForking(false));
-                    }}>
+                      void onFork(message.seq as number).finally(() =>
+                        setForking(false),
+                      );
+                    }}
+                  >
                     <svg viewBox="0 0 18 18" aria-hidden="true">
                       <path d="M5 3.5v11m0-7h4a4 4 0 0 0 4-4m-2.5 2L13 3l2.5 2.5" />
                       <circle cx="5" cy="14.5" r="1.5" />

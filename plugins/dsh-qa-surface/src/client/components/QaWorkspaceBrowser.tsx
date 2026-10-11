@@ -358,7 +358,11 @@ export function QaWorkspaceBrowser({
   const generation = useRef(0);
 
   useEffect(() => {
-    if (materialsOnly) { setListStatus("ready"); setEntries([]); return; }
+    if (materialsOnly) {
+      setListStatus("ready");
+      setEntries([]);
+      return;
+    }
     const current = generation.current + 1;
     generation.current = current;
     setListStatus("loading");

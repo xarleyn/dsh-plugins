@@ -165,7 +165,11 @@ export async function readSourceFilePreview({
     sharedReadOnlyRoots,
     ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
   });
-  if (/\.(?:pdf|docx?|xlsx?|pptx?|odt|ods|odp|zip|png|jpe?g|gif|webp)$/iu.test(file.canonical))
+  if (
+    /\.(?:pdf|docx?|xlsx?|pptx?|odt|ods|odp|zip|png|jpe?g|gif|webp)$/iu.test(
+      file.canonical,
+    )
+  )
     throw new QaSourcePreviewError("unsupported");
   const limit = Math.min(maxBytes, file.size);
   const buffer = Buffer.alloc(limit);
@@ -178,9 +182,12 @@ export async function readSourceFilePreview({
     try {
       if (buffer.subarray(0, bytesRead).includes(0)) throw new Error("binary");
       content = new TextDecoder("utf-8", { fatal: true }).decode(
-        buffer.subarray(0, bytesRead), { stream: file.size > bytesRead },
+        buffer.subarray(0, bytesRead),
+        { stream: file.size > bytesRead },
       );
-    } catch { throw new QaSourcePreviewError("unsupported"); }
+    } catch {
+      throw new QaSourcePreviewError("unsupported");
+    }
     return {
       path: canonicalPath,
       content,

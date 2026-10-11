@@ -248,8 +248,7 @@ export function QaHeader({
               aria-expanded={sourcesOpen}
               {...(sourcesCount === 0 && sourcesComplete
                 ? {
-                    "aria-label":
-                      "Источники: в этом чате пока нет источников",
+                    "aria-label": "Источники: в этом чате пока нет источников",
                   }
                 : {})}
               title={

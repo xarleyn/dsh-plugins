@@ -36,17 +36,23 @@ function readEvents(path: string, legacyPairing = false) {
         step: 1,
         message: {
           role: legacyPairing ? "user" : "tool",
-          ...(legacyPairing ? {} : {
-            source: { kind: "tool", callId: "call-1" }, toolCallId: "call-1", isError: false,
-          }),
-          content: legacyPairing ? [
-            {
-              type: "tool-result",
-              ...pairing,
-              isError: false,
-              content: [{ type: "text", text: "# Guide" }],
-            },
-          ] : [{ type: "text", text: "# Guide" }],
+          ...(legacyPairing
+            ? {}
+            : {
+                source: { kind: "tool", callId: "call-1" },
+                toolCallId: "call-1",
+                isError: false,
+              }),
+          content: legacyPairing
+            ? [
+                {
+                  type: "tool-result",
+                  ...pairing,
+                  isError: false,
+                  content: [{ type: "text", text: "# Guide" }],
+                },
+              ]
+            : [{ type: "text", text: "# Guide" }],
         },
         meta: {
           card: "read",

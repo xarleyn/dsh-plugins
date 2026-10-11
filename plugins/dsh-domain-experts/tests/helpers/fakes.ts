@@ -194,7 +194,9 @@ export function fakeSubagents(
       attempts += 1;
       started.push({ provider: providerName, request });
       const result = {
-        ...(options.structured === undefined ? {} : { structured: options.structured }),
+        ...(options.structured === undefined
+          ? {}
+          : { structured: options.structured }),
         output: [{ type: "text", text: options.text ?? "plain answer" }],
         stopReason: options.stopReason ?? "completed",
         ...(options.diagnostic === undefined

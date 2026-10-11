@@ -169,7 +169,9 @@ function headerOf(header: unknown): QaStoredSessionHeader | undefined {
     createdAt,
     ...(cwd === undefined ? {} : { cwd }),
     ...(parentSessionId === undefined ? {} : { parentSessionId }),
-    ...(entry.isSeeded === true && entry.origin !== "subagent" ? { isFork: true } : {}),
+    ...(entry.isSeeded === true && entry.origin !== "subagent"
+      ? { isFork: true }
+      : {}),
     ...(agentPreset === undefined ? {} : { agentPreset }),
   };
 }

@@ -213,7 +213,9 @@ export class QaPolicyAdmission {
       if (session === undefined) return undefined;
       const ceiling = this.ceilings.get(String(session.id));
       if (ceiling === undefined) return undefined;
-      if (isDelegatedStructuredResult(this.ctx, execution.agent, execution.name)) {
+      if (
+        isDelegatedStructuredResult(this.ctx, execution.agent, execution.name)
+      ) {
         return undefined;
       }
       return qaCeilingDenial(ceiling, execution.name);

@@ -50,7 +50,11 @@ function world() {
     cancel: vi.fn(),
     prompt: vi.fn(),
   };
-  ctx.provide("sessionProjections", { restore: () => ({ snapshot: { values: { inbox: { "next-turn": [], "next-step": [] } } } }) } as never);
+  ctx.provide("sessionProjections", {
+    restore: () => ({
+      snapshot: { values: { inbox: { "next-turn": [], "next-step": [] } } },
+    }),
+  } as never);
   const dispose = vi.fn(async () => {
     order.push("dispose");
   });
@@ -167,19 +171,50 @@ function world() {
 describe("owner-scoped fork transaction", () => {
   it("clears inherited pending input in the seed without touching the parent's queue", async () => {
     const w = world();
-    const queued = { id: "queued", role: "user", source: { kind: "user" }, content: [{ type: "text", text: "Future request" }] };
+    const queued = {
+      id: "queued",
+      role: "user",
+      source: { kind: "user" },
+      content: [{ type: "text", text: "Future request" }],
+    };
     const events = [...w.events];
-    events.splice(1, 0, { type: "agent/inbox/spliced", seq: 1, time: 2,
-      data: { target: "next-turn", start: 0, removedCount: 0, inserted: [queued] } } as never);
+    events.splice(1, 0, {
+      type: "agent/inbox/spliced",
+      seq: 1,
+      time: 2,
+      data: {
+        target: "next-turn",
+        start: 0,
+        removedCount: 0,
+        inserted: [queued],
+      },
+    } as never);
     const source = events.map((event, seq) => ({ ...event, seq }));
-    w.inspect.mockResolvedValue({ meta: { cwd: "/workspace/demo", agentPreset: "demo-preset" }, events: source });
-    Object.assign(w.options.ctx.sessionProjections, { restore: () => ({ snapshot: { values: {
-      inbox: { "next-turn": [queued], "next-step": [] } } } }) });
+    w.inspect.mockResolvedValue({
+      meta: { cwd: "/workspace/demo", agentPreset: "demo-preset" },
+      events: source,
+    });
+    Object.assign(w.options.ctx.sessionProjections, {
+      restore: () => ({
+        snapshot: {
+          values: {
+            inbox: { "next-turn": [queued], "next-step": [] },
+          },
+        },
+      }),
+    });
     await forkQaSession(w.options, "token", "parent", 2);
     const seed = w.create.mock.calls[0]?.[0].seed;
     expect(seed?.slice(0, 4)).toEqual(source.slice(0, 4));
-    expect(seed?.at(-1)).toMatchObject({ type: "agent/inbox/spliced", data: {
-      target: "next-turn", start: 0, removedCount: 1, inserted: [] } });
+    expect(seed?.at(-1)).toMatchObject({
+      type: "agent/inbox/spliced",
+      data: {
+        target: "next-turn",
+        start: 0,
+        removedCount: 1,
+        inserted: [],
+      },
+    });
     expect(w.parent.cancel).not.toHaveBeenCalled();
     expect(source[1]?.data).toMatchObject({ inserted: [queued] });
   });
@@ -188,8 +223,13 @@ describe("owner-scoped fork transaction", () => {
     w.admission.secureSession.mockImplementation(async (_token, id) => {
       if (id !== "parent") throw new Error("rejected");
     });
-    w.sessionFiles.erase.mockImplementation(async () => ({ removed: [], absent: [] }));
-    await expect(forkQaSession(w.options, "token", "parent", 1)).rejects.toThrow("Unable to fork");
+    w.sessionFiles.erase.mockImplementation(async () => ({
+      removed: [],
+      absent: [],
+    }));
+    await expect(
+      forkQaSession(w.options, "token", "parent", 1),
+    ).rejects.toThrow("Unable to fork");
     expect(w.dispose).toHaveBeenCalledTimes(1);
     expect(w.accounts.releaseSessionReservation).not.toHaveBeenCalled();
   });

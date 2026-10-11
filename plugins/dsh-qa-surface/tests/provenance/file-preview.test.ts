@@ -50,10 +50,20 @@ describe("source file preview", () => {
   it("rejects binary previews after evidence authorization instead of decoding them as text", async () => {
     const cwd = await scratch("qa-source-binary-");
     await writeFile(join(cwd, "report.pdf"), "%PDF-1.4");
-    expect(await refusalReason({ cwd, sourcePath: "report.pdf", isEvidence: () => false })).toBe("not-evidence");
-    expect(await refusalReason({ cwd, sourcePath: "report.pdf" })).toBe("unsupported");
+    expect(
+      await refusalReason({
+        cwd,
+        sourcePath: "report.pdf",
+        isEvidence: () => false,
+      }),
+    ).toBe("not-evidence");
+    expect(await refusalReason({ cwd, sourcePath: "report.pdf" })).toBe(
+      "unsupported",
+    );
     await writeFile(join(cwd, "bytes.txt"), Buffer.from([0xff, 0x00, 0x80]));
-    expect(await refusalReason({ cwd, sourcePath: "bytes.txt" })).toBe("unsupported");
+    expect(await refusalReason({ cwd, sourcePath: "bytes.txt" })).toBe(
+      "unsupported",
+    );
   });
   it("recognizes Markdown and enforces byte/render limits", async () => {
     const cwd = await scratch("qa-source-preview-");

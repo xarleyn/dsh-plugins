@@ -69,8 +69,10 @@ export class QaConfigController {
           error: null,
         };
       }
-      if (this.fallbackState === "pending" ||
-        (settings.status === "loading" && this.fallbackState !== "failed")) {
+      if (
+        this.fallbackState === "pending" ||
+        (settings.status === "loading" && this.fallbackState !== "failed")
+      ) {
         return {
           status: "loading",
           config: DEFAULT_QA_SURFACE_CONFIG,

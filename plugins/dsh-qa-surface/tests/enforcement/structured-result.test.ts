@@ -14,8 +14,10 @@ function captureTool(execute: ToolDefinition["execute"]): ToolDefinition {
     parameters: { type: "object", properties: {} },
     output: {
       schema: {
-        type: "object", properties: { recorded: { type: "boolean", const: true } },
-        required: ["recorded"], additionalProperties: false,
+        type: "object",
+        properties: { recorded: { type: "boolean", const: true } },
+        required: ["recorded"],
+        additionalProperties: false,
       },
       render: () => [{ type: "text", text: "Recorded" }],
     },
@@ -29,19 +31,37 @@ async function setup() {
   await ctx.plugin(ToolRuntime);
   const root = { session: { header: {} } } as unknown as Agent;
   const child = {
-    session: { header: { origin: "subagent", parentSession: "root", delegationDepth: 1 } },
+    session: {
+      header: { origin: "subagent", parentSession: "root", delegationDepth: 1 },
+    },
   } as unknown as Agent;
-  await ctx.plugin(Object.assign((inner: Context) => {
-    (root as unknown as { ctx: Context }).ctx = createScope(inner, root).ctx;
-    (child as unknown as { ctx: Context }).ctx = createScope(inner, child, { parent: root }).ctx;
-  }, { inject: ["tools"] }));
+  await ctx.plugin(
+    Object.assign(
+      (inner: Context) => {
+        (root as unknown as { ctx: Context }).ctx = createScope(
+          inner,
+          root,
+        ).ctx;
+        (child as unknown as { ctx: Context }).ctx = createScope(inner, child, {
+          parent: root,
+        }).ctx;
+      },
+      { inject: ["tools"] },
+    ),
+  );
   ctx.tools.guard((execution) =>
     isDelegatedStructuredResult(ctx, execution.agent, execution.name)
-      ? undefined : qaCeilingDenial(new Set(), execution.name));
-  const call = (agent: Agent, name = "structured_output") => ctx.tools.execute({
-    callId: "capture" as never, name, arguments: {}, agent,
-    signal: new AbortController().signal,
-  });
+      ? undefined
+      : qaCeilingDenial(new Set(), execution.name),
+  );
+  const call = (agent: Agent, name = "structured_output") =>
+    ctx.tools.execute({
+      callId: "capture" as never,
+      name,
+      arguments: {},
+      agent,
+      signal: new AbortController().signal,
+    });
   return { ctx, root, child, call };
 }
 
@@ -49,7 +69,10 @@ describe("delegated structured result channel through the native tool pipeline",
   it("admits child-owned capture and preserves the denial for other tools", async () => {
     const { child, call } = await setup();
     let captured = false;
-    const definition = captureTool(async () => { captured = true; return { recorded: true }; });
+    const definition = captureTool(async () => {
+      captured = true;
+      return { recorded: true };
+    });
     child.ctx.tools.register(definition);
     child.ctx.tools.register({ ...definition, name: "unexpected_tool" });
     expect((await call(child)).isError).toBe(false);
@@ -60,7 +83,12 @@ describe("delegated structured result channel through the native tool pipeline",
   it("refuses the channel on the primary agent, even with the expected schema", async () => {
     const { root, call } = await setup();
     let dispatched = false;
-    root.ctx.tools.register(captureTool(async () => { dispatched = true; return { recorded: true }; }));
+    root.ctx.tools.register(
+      captureTool(async () => {
+        dispatched = true;
+        return { recorded: true };
+      }),
+    );
     expect((await call(root)).isError).toBe(true);
     expect(dispatched).toBe(false);
   });
@@ -68,7 +96,10 @@ describe("delegated structured result channel through the native tool pipeline",
   it("refuses global and ancestor registrations with the same name", async () => {
     const { ctx, root, child, call } = await setup();
     let dispatched = false;
-    const definition = captureTool(async () => { dispatched = true; return { recorded: true }; });
+    const definition = captureTool(async () => {
+      dispatched = true;
+      return { recorded: true };
+    });
     const removeGlobal = ctx.tools.register(definition);
     expect((await call(child)).isError).toBe(true);
     removeGlobal();
@@ -80,7 +111,10 @@ describe("delegated structured result channel through the native tool pipeline",
   it("refuses a child tool with a different result contract", async () => {
     const { child, call } = await setup();
     const definition = captureTool(async () => ({ recorded: true }));
-    child.ctx.tools.register({ ...definition, output: { ...definition.output!, schema: { type: "string" } } });
+    child.ctx.tools.register({
+      ...definition,
+      output: { ...definition.output!, schema: { type: "string" } },
+    });
     expect((await call(child)).isError).toBe(true);
   });
 });

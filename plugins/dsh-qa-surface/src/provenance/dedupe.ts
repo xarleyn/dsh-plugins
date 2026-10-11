@@ -87,9 +87,13 @@ function mergePair(
     evidence: stronger.evidence,
     origins: mergeOrigins(left.origins, right.origins),
     score: Math.max(left.score, right.score),
-    metadata: { ...left.metadata, ...right.metadata,
-      ...(left.metadata?.metadataOnly === undefined && right.metadata?.metadataOnly === undefined
-        ? {} : { metadataOnly: stronger.metadata?.metadataOnly === true }),
+    metadata: {
+      ...left.metadata,
+      ...right.metadata,
+      ...(left.metadata?.metadataOnly === undefined &&
+      right.metadata?.metadataOnly === undefined
+        ? {}
+        : { metadataOnly: stronger.metadata?.metadataOnly === true }),
     },
   };
 }

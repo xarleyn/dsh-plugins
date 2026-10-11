@@ -12,9 +12,7 @@ describe("document approval action", () => {
     );
     expect(screen.getByTestId("qa-file-name").textContent).toBe("draft-9.md");
     expect(screen.queryByTestId("qa-file-size")).toBeNull();
-    view.rerender(
-      <QaFileAttachment name="empty.md" bytes={0} tone="sent" />,
-    );
+    view.rerender(<QaFileAttachment name="empty.md" bytes={0} tone="sent" />);
     expect(screen.getByTestId("qa-file-size").textContent).toBe("0 Б");
   });
 

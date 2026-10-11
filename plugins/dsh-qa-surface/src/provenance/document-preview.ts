@@ -96,10 +96,14 @@ export async function previewSourceDocument(
   const file = await resolveAllowedFile(request);
   if (mediaTypeOf(file.canonical) !== "application/pdf")
     return previewConvertibleDocument(request);
-  if (file.size > request.maxBytes) throw new QaSourcePreviewError("unsupported");
+  if (file.size > request.maxBytes)
+    throw new QaSourcePreviewError("unsupported");
   const bytes = await readFile(file.canonical).catch(() => undefined);
   if (bytes === undefined) throw new QaSourcePreviewError("unavailable");
-  if (bytes.byteLength > request.maxBytes || bytes.subarray(0, 5).toString() !== "%PDF-")
+  if (
+    bytes.byteLength > request.maxBytes ||
+    bytes.subarray(0, 5).toString() !== "%PDF-"
+  )
     throw new QaSourcePreviewError("unsupported");
   return toPreview(bytes, basename(file.canonical));
 }

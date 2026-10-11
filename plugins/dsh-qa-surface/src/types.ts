@@ -2493,4 +2493,10 @@ export interface QaAdminUserUpdate {
   readonly disabled?: boolean | null;
   readonly access?: QaUserAccess | null;
 }
-export type { QaChatAccess, QaChatAuthor, QaChatGrant, QaChatMode, QaChatJson } from "./chat-sharing/types.js";
+export type {
+  QaChatAccess,
+  QaChatAuthor,
+  QaChatGrant,
+  QaChatMode,
+  QaChatJson,
+} from "./chat-sharing/types.js";

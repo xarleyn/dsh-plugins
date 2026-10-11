@@ -98,7 +98,13 @@ function compose(input: PersonaInput, includeTask: boolean): string {
   }
 
   if (includeTask) sections.push("", "## Task", taskSection(input));
-  sections.push("", "## Answer format", input.structuredOutput === true ? NATIVE_REVIEW_ANSWER_FORMAT : ANSWER_FORMAT);
+  sections.push(
+    "",
+    "## Answer format",
+    input.structuredOutput === true
+      ? NATIVE_REVIEW_ANSWER_FORMAT
+      : ANSWER_FORMAT,
+  );
 
   const persona = sections.join("\n");
   if (persona.includes("{{")) {

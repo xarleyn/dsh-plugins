@@ -13,7 +13,10 @@ import type {
 } from "../types.js";
 import type { QaAgentToolGrants } from "./tool-grants.js";
 import { userInvocableSkillNames } from "../access/model.js";
-import { skillResourceGuidance, skillResourcePathHint } from "./skill-resource-paths.js";
+import {
+  skillResourceGuidance,
+  skillResourcePathHint,
+} from "./skill-resource-paths.js";
 
 const SKILL_NOT_AVAILABLE = "SKILL_NOT_AVAILABLE";
 

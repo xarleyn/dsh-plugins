@@ -276,13 +276,24 @@ export function projectBoundSessionState(
   }).map((projected) => {
     // The inherited workflow ledger belongs to the source session. Files still
     // open and download, but approval cannot be offered in the branch.
-    const message = projected.role === "assistant" && projected.seq !== undefined &&
-      input.inheritedThroughSeq !== undefined && projected.seq <= input.inheritedThroughSeq
-      ? { ...projected, artifacts: projected.artifacts?.map((artifact) => {
-          const { workflow: _workflow, ...file } = artifact;
-          return file;
-        }) } : projected;
-    if (message.role === "user" && message.author === undefined && input.author !== undefined) {
+    const message =
+      projected.role === "assistant" &&
+      projected.seq !== undefined &&
+      input.inheritedThroughSeq !== undefined &&
+      projected.seq <= input.inheritedThroughSeq
+        ? {
+            ...projected,
+            artifacts: projected.artifacts?.map((artifact) => {
+              const { workflow: _workflow, ...file } = artifact;
+              return file;
+            }),
+          }
+        : projected;
+    if (
+      message.role === "user" &&
+      message.author === undefined &&
+      input.author !== undefined
+    ) {
       return { ...message, author: input.author };
     }
     if (message.role !== "assistant" || message.turn === undefined)
@@ -308,10 +319,14 @@ export function projectBoundSessionState(
             : { incompleteSourceOrigins: bundle.incompleteOrigins }),
         };
   });
-  const chatSources = dedupeAndRankSources(input.sourceBundles.flatMap((bundle) => [
-    ...bundle.sources,
-    ...(config.sources.display.showDiscovered ? (bundle.discovered ?? []) : []),
-  ]));
+  const chatSources = dedupeAndRankSources(
+    input.sourceBundles.flatMap((bundle) => [
+      ...bundle.sources,
+      ...(config.sources.display.showDiscovered
+        ? (bundle.discovered ?? [])
+        : []),
+    ]),
+  );
   const questions = input.compatibilityReadOnly === true ? [] : input.questions;
   // A parked question owns the composer until it is answered or the turn ends:
   // the operator is answering a tool call that is already waiting, and text
@@ -354,7 +369,9 @@ export function projectBoundSessionState(
     chatsRevision: input.chatsRevision,
     sources: chatSources,
     sourcesComplete: input.sourceBundles.every((bundle) => bundle.complete),
-    incompleteSourceOrigins: input.sourceBundles.flatMap((bundle) => bundle.incompleteOrigins ?? []),
+    incompleteSourceOrigins: input.sourceBundles.flatMap(
+      (bundle) => bundle.incompleteOrigins ?? [],
+    ),
     viewingSubagent: input.viewingSubagent,
     approvals: input.compatibilityReadOnly === true ? [] : input.approvals,
     questions,

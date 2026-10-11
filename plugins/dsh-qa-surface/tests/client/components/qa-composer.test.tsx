@@ -60,10 +60,12 @@ describe("QA composer", () => {
     mount({ fastMode: true, onFastModeChange: changed });
     const toggle = screen.getByTestId("qa-composer-fast");
     expect(toggle.getAttribute("aria-pressed")).toBe("true");
-    expect(screen.getByTestId("qa-composer-fast-warning").textContent)
-      .toMatch(/Автоматическое ревью ответов пропускается/u);
-    expect(screen.getByTestId("qa-composer-fast-warning").textContent)
-      .toMatch(/Проверка документов перед согласованием сохраняется/u);
+    expect(screen.getByTestId("qa-composer-fast-warning").textContent).toMatch(
+      /Автоматическое ревью ответов пропускается/u,
+    );
+    expect(screen.getByTestId("qa-composer-fast-warning").textContent).toMatch(
+      /Проверка документов перед согласованием сохраняется/u,
+    );
     fireEvent.click(toggle);
     expect(changed).toHaveBeenCalledWith(false);
   });

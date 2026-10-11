@@ -9,11 +9,21 @@ export function reviewConversationContext(session: CandidateSession): string {
   const summaries = new Map<string, readonly number[]>();
   for (const event of events) {
     if (event.type !== "compaction/summary") continue;
-    const data = event.data as { compactionId?: unknown; shadowedSeqs?: unknown };
-    if (typeof data.compactionId === "string" && Array.isArray(data.shadowedSeqs))
-      summaries.set(data.compactionId, data.shadowedSeqs.filter(
-        (seq): seq is number => typeof seq === "number" && Number.isSafeInteger(seq) && seq >= 0,
-      ));
+    const data = event.data as {
+      compactionId?: unknown;
+      shadowedSeqs?: unknown;
+    };
+    if (
+      typeof data.compactionId === "string" &&
+      Array.isArray(data.shadowedSeqs)
+    )
+      summaries.set(
+        data.compactionId,
+        data.shadowedSeqs.filter(
+          (seq): seq is number =>
+            typeof seq === "number" && Number.isSafeInteger(seq) && seq >= 0,
+        ),
+      );
   }
   // Recover original human input behind active (including nested) checkpoints;
   // neither model-authored summary text nor withdrawn messages become evidence.
@@ -22,8 +32,14 @@ export function reviewConversationContext(session: CandidateSession): string {
   for (let index = 0; index < pending.length; index++) {
     const event = session.eventAt(pending[index]!);
     if (event?.type !== "user/message") continue;
-    const source = (event.data as { source?: { kind?: string; compactionId?: string } }).source;
-    if (source?.kind !== "compact-checkpoint" || source.compactionId === undefined) continue;
+    const source = (
+      event.data as { source?: { kind?: string; compactionId?: string } }
+    ).source;
+    if (
+      source?.kind !== "compact-checkpoint" ||
+      source.compactionId === undefined
+    )
+      continue;
     for (const seq of summaries.get(source.compactionId) ?? []) {
       if (nodes.has(seq)) continue;
       nodes.add(seq);

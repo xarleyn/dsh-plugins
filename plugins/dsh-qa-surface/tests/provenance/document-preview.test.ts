@@ -4,7 +4,10 @@ import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { DocumentsFace } from "@yadsh/dsh-documents";
 import { QaSourcePreviewError } from "../../src/provenance/file-preview.js";
-import { previewConvertibleDocument, previewSourceDocument } from "../../src/provenance/document-preview.js";
+import {
+  previewConvertibleDocument,
+  previewSourceDocument,
+} from "../../src/provenance/document-preview.js";
 
 const temporary: string[] = [];
 
@@ -61,12 +64,26 @@ describe("workspace document preview", () => {
   it("previews a real PDF without a converter and refuses incomplete or oversized payloads", async () => {
     const cwd = await scratch("qa-source-pdf-");
     await writeFile(join(cwd, "report.pdf"), "%PDF-1.4");
-    const request = { filePath: "report.pdf", cwd, documents: () => undefined,
-      sessionId: "root", maxBytes: 10_000 };
-    expect(await previewSourceDocument(request)).toMatchObject({ kind: "pdf", bytes: 8 });
-    expect(await refusalReason(() => previewSourceDocument({ ...request, maxBytes: 4 }))).toBe("unsupported");
+    const request = {
+      filePath: "report.pdf",
+      cwd,
+      documents: () => undefined,
+      sessionId: "root",
+      maxBytes: 10_000,
+    };
+    expect(await previewSourceDocument(request)).toMatchObject({
+      kind: "pdf",
+      bytes: 8,
+    });
+    expect(
+      await refusalReason(() =>
+        previewSourceDocument({ ...request, maxBytes: 4 }),
+      ),
+    ).toBe("unsupported");
     await writeFile(join(cwd, "report.pdf"), "Not a PDF");
-    expect(await refusalReason(() => previewSourceDocument(request))).toBe("unsupported");
+    expect(await refusalReason(() => previewSourceDocument(request))).toBe(
+      "unsupported",
+    );
   });
 
   it("passes an accepted shared root to the document pipeline", async () => {
@@ -76,10 +93,19 @@ describe("workspace document preview", () => {
     const pdf = join(cwd, "report.pdf");
     await writeFile(pdf, "%PDF-1.4");
     const face = faceWriting(pdf);
-    await previewSourceDocument({ filePath: join(shared, "report.docx"), cwd,
-      sharedReadOnlyRoots: [shared], documents: () => face, sessionId: "root", maxBytes: 10_000 });
+    await previewSourceDocument({
+      filePath: join(shared, "report.docx"),
+      cwd,
+      sharedReadOnlyRoots: [shared],
+      documents: () => face,
+      sessionId: "root",
+      maxBytes: 10_000,
+    });
     expect(face.convert).toHaveBeenCalledWith(expect.anything(), {
-      workspaceRoot: cwd, sessionId: "root", extraInputRoots: [shared] });
+      workspaceRoot: cwd,
+      sessionId: "root",
+      extraInputRoots: [shared],
+    });
   });
   it("renders a Word document through the pipeline and returns the PDF bytes", async () => {
     const cwd = await scratch("qa-docpreview-");

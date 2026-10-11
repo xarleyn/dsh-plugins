@@ -236,21 +236,33 @@ async function propose(
 describe("QA skill policy consumer", () => {
   it("guides a mistaken resource prefix only after an admitted skill is loaded", async () => {
     const { ctx, agent, discovered, grants } = await setup({});
-    const dispose = installQaSkillPolicy({ agent, policy, discovered, grants, logger: logger() });
-    const call = () => ctx.tools.execute({
-      callId: "resource-read" as never,
-      name: "read",
-      arguments: { file_path: "/workspace/project/opt/qa-skills/allowed-skill/references/workflow.md" },
+    const dispose = installQaSkillPolicy({
       agent,
-      signal: new AbortController().signal,
+      policy,
+      discovered,
+      grants,
+      logger: logger(),
     });
+    const call = () =>
+      ctx.tools.execute({
+        callId: "resource-read" as never,
+        name: "read",
+        arguments: {
+          file_path:
+            "/workspace/project/opt/qa-skills/allowed-skill/references/workflow.md",
+        },
+        agent,
+        signal: new AbortController().signal,
+      });
     const before = await call();
     expect(JSON.stringify(before)).not.toContain("Retry read");
-    const loaded = await load(agent, "allowed-skill") as { content: string };
+    const loaded = (await load(agent, "allowed-skill")) as { content: string };
     expect(loaded.content).toContain("Preserve its leading slash");
     const after = await call();
     expect(after.isError).toBe(true);
-    expect(JSON.stringify(after)).toContain("/opt/qa-skills/allowed-skill/references/workflow.md");
+    expect(JSON.stringify(after)).toContain(
+      "/opt/qa-skills/allowed-skill/references/workflow.md",
+    );
     expect(JSON.stringify(after)).toContain("Retry read");
     dispose();
     expect(JSON.stringify(await call())).not.toContain("Retry read");

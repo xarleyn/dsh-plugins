@@ -1,5 +1,8 @@
 import type { QaSource } from "../../types.js";
-import { canonicalizeUrl, canonicalizeWorkspacePath } from "../../provenance/normalize.js";
+import {
+  canonicalizeUrl,
+  canonicalizeWorkspacePath,
+} from "../../provenance/normalize.js";
 
 /**
  * Match layer between assistant text and the canonical turn sources: markdown
@@ -21,7 +24,9 @@ function normalizeUrl(value: string): string | undefined {
 /** Separators normalized for comparison, not for display. */
 function normalizePath(value: string): string {
   const path = canonicalizeWorkspacePath(value.trim()).replace(/\/+$/u, "");
-  return /^(?:[a-zA-Z]:|[/\\]{2})/u.test(value.trim()) ? path.toLowerCase() : path;
+  return /^(?:[a-zA-Z]:|[/\\]{2})/u.test(value.trim())
+    ? path.toLowerCase()
+    : path;
 }
 
 function basename(value: string): string {
@@ -52,8 +57,11 @@ export function sourceRefsSignature(sources: readonly QaSource[]): string {
 export function buildSourceRefs(sources: readonly QaSource[]): QaSourceRefs {
   if (sources.length === 0) return NO_REFS;
   const byUrl = new Map<string, QaSource>();
-  const paths: { readonly normalized: string; readonly windows: boolean; readonly source: QaSource }[] =
-    [];
+  const paths: {
+    readonly normalized: string;
+    readonly windows: boolean;
+    readonly source: QaSource;
+  }[] = [];
   for (const source of sources) {
     if (source.uri !== undefined) {
       const key = normalizeUrl(source.uri);
@@ -61,15 +69,25 @@ export function buildSourceRefs(sources: readonly QaSource[]): QaSourceRefs {
     }
     if (source.path !== undefined) {
       const windows = /^(?:[a-zA-Z]:|[/\\]{2})/u.test(
-        typeof source.metadata?.absolutePath === "string" ? source.metadata.absolutePath : source.path);
-      const addPath = (value: string) => paths.push({
-        normalized: windows ? normalizePath(value).toLowerCase() : normalizePath(value), windows, source });
+        typeof source.metadata?.absolutePath === "string"
+          ? source.metadata.absolutePath
+          : source.path,
+      );
+      const addPath = (value: string) =>
+        paths.push({
+          normalized: windows
+            ? normalizePath(value).toLowerCase()
+            : normalizePath(value),
+          windows,
+          source,
+        });
       addPath(source.path);
       if (typeof source.metadata?.absolutePath === "string")
         addPath(source.metadata.absolutePath);
       const aliases = source.metadata?.aliases;
-      if (Array.isArray(aliases)) for (const alias of aliases)
-        if (typeof alias === "string") addPath(alias);
+      if (Array.isArray(aliases))
+        for (const alias of aliases)
+          if (typeof alias === "string") addPath(alias);
     }
   }
   return {
@@ -82,10 +100,15 @@ export function buildSourceRefs(sources: readonly QaSource[]): QaSourceRefs {
       const normalized = normalizePath(token);
       if (normalized === "") return undefined;
       const unique = (matches: typeof paths): QaSource | undefined => {
-        const candidates = new Map(matches.map((entry) => [entry.source.id, entry.source]));
-        return candidates.size === 1 ? candidates.values().next().value : undefined;
+        const candidates = new Map(
+          matches.map((entry) => [entry.source.id, entry.source]),
+        );
+        return candidates.size === 1
+          ? candidates.values().next().value
+          : undefined;
       };
-      const key = (path: typeof paths[number]) => path.windows ? normalized.toLowerCase() : normalized;
+      const key = (path: (typeof paths)[number]) =>
+        path.windows ? normalized.toLowerCase() : normalized;
       const exact = paths.filter((path) => path.normalized === key(path));
       if (exact.length > 0) return unique(exact);
       if (!normalized.includes("/")) {

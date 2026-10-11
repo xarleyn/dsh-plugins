@@ -48,17 +48,44 @@ function exec() {
 }
 describe("workflow tools and conversion boundary", () => {
   it("publishes an executable update schema that rejects keyed facts and fake commercial decisions", () => {
-    const tool = createWorkflowTools({ runtime: fixture.runtime }, fixture.service)
-      .find(t => t.name === "document_workflow_update")!;
+    const tool = createWorkflowTools(
+      { runtime: fixture.runtime },
+      fixture.service,
+    ).find((t) => t.name === "document_workflow_update")!;
     const args = { workflowId: "wf_demo", revision: 0, data: UPDATE };
-    const spec = { workflowId: { type: "string", required: true }, revision: { type: "number", required: true },
-      data: { type: "object", required: true, additionalProperties: false, properties: WORKFLOW_UPDATE_PROPERTIES } } as const;
-    expect(tool.parameters).toMatchObject({ properties: { data: { properties: { facts: { type: "array" }, requirements: { type: "array" } } } } });
+    const spec = {
+      workflowId: { type: "string", required: true },
+      revision: { type: "number", required: true },
+      data: {
+        type: "object",
+        required: true,
+        additionalProperties: false,
+        properties: WORKFLOW_UPDATE_PROPERTIES,
+      },
+    } as const;
+    expect(tool.parameters).toMatchObject({
+      properties: {
+        data: {
+          properties: {
+            facts: { type: "array" },
+            requirements: { type: "array" },
+          },
+        },
+      },
+    });
     expect(validateArgs(spec, args)).toEqual([]);
-    expect(validateArgs(spec, { ...args, data: { ...UPDATE, facts: { customer: UPDATE.facts[1] } } }).join("\n"))
-      .toMatch(/facts/u);
-    expect(validateArgs(spec, { ...args, data: { ...UPDATE, commercial: { value: "unpriced" } } }).join("\n"))
-      .toMatch(/commercial/u);
+    expect(
+      validateArgs(spec, {
+        ...args,
+        data: { ...UPDATE, facts: { customer: UPDATE.facts[1] } },
+      }).join("\n"),
+    ).toMatch(/facts/u);
+    expect(
+      validateArgs(spec, {
+        ...args,
+        data: { ...UPDATE, commercial: { value: "unpriced" } },
+      }).join("\n"),
+    ).toMatch(/commercial/u);
   });
 
   it("keeps a revise verdict visible before a positive summary and the long draft", async () => {
@@ -68,42 +95,117 @@ describe("workflow tools and conversion boundary", () => {
       summary: "All main claims are supported",
       issues: ["Disclose the conflict between the two cited formulas"],
     });
-    const tool = createWorkflowTools({ runtime: fixture.runtime }, fixture.service)
-      .find((t) => t.name === "document_workflow_review")!;
+    const tool = createWorkflowTools(
+      { runtime: fixture.runtime },
+      fixture.service,
+    ).find((t) => t.name === "document_workflow_review")!;
     const args = { workflowId: draft.id, revision: draft.revision };
     const result = await tool.execute(args, exec());
-    const text = tool.output.render(args, result as never).filter(b => b.type === "text")
-      .map(b => b.text).join("\n");
+    const text = tool.output
+      .render(args, result as never)
+      .filter((b) => b.type === "text")
+      .map((b) => b.text)
+      .join("\n");
     expect(text).toContain("review-verdict: revise");
     expect(text).toContain("Human approval and final export are unavailable");
-    expect(text.indexOf("blocking-review-issue:")).toBeLessThan(text.indexOf("All main claims are supported"));
-    await expect(fixture.service.approve(fixture.scope, draft.id, draft.revision, draft.draft!.sha256, "human-owner"))
-      .rejects.toMatchObject({ code: "WORKFLOW_NOT_REVIEWED" });
+    expect(text.indexOf("blocking-review-issue:")).toBeLessThan(
+      text.indexOf("All main claims are supported"),
+    );
+    await expect(
+      fixture.service.approve(
+        fixture.scope,
+        draft.id,
+        draft.revision,
+        draft.draft!.sha256,
+        "human-owner",
+      ),
+    ).rejects.toMatchObject({ code: "WORKFLOW_NOT_REVIEWED" });
   });
 
   it("reviews original human decisions behind nested active compaction checkpoints", async () => {
     const draft = await ready(fixture);
     const context = exec();
     const events = new Map([
-      [1, { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "Original exclusion after compaction" }] } }],
-      [2, { type: "user/message", data: { source: { kind: "qa-notes" }, content: [{ type: "text", text: "Injected decision" }] } }],
-      [3, { type: "user/message", data: { source: { kind: "user" }, content: [{ type: "text", text: "Withdrawn decision" }] } }],
-      [4, { type: "user/message", data: { source: { kind: "compact-checkpoint", compactionId: "c1" }, content: [{ type: "text", text: "Untrusted checkpoint claim" }] } }],
-      [6, { type: "user/message", data: { source: { kind: "compact-checkpoint", compactionId: "c2" }, content: [{ type: "text", text: "Nested checkpoint claim" }] } }],
+      [
+        1,
+        {
+          type: "user/message",
+          data: {
+            source: { kind: "user" },
+            content: [
+              { type: "text", text: "Original exclusion after compaction" },
+            ],
+          },
+        },
+      ],
+      [
+        2,
+        {
+          type: "user/message",
+          data: {
+            source: { kind: "qa-notes" },
+            content: [{ type: "text", text: "Injected decision" }],
+          },
+        },
+      ],
+      [
+        3,
+        {
+          type: "user/message",
+          data: {
+            source: { kind: "user" },
+            content: [{ type: "text", text: "Withdrawn decision" }],
+          },
+        },
+      ],
+      [
+        4,
+        {
+          type: "user/message",
+          data: {
+            source: { kind: "compact-checkpoint", compactionId: "c1" },
+            content: [{ type: "text", text: "Untrusted checkpoint claim" }],
+          },
+        },
+      ],
+      [
+        6,
+        {
+          type: "user/message",
+          data: {
+            source: { kind: "compact-checkpoint", compactionId: "c2" },
+            content: [{ type: "text", text: "Nested checkpoint claim" }],
+          },
+        },
+      ],
     ]);
     Object.assign(context.agent!.session, {
       surface: { nodes: [6] },
       eventAt: (seq: number) => events.get(seq),
       snapshotEvents: () => [
-        { type: "compaction/summary", data: { compactionId: "c1", shadowedSeqs: [1, 2] } },
-        { type: "compaction/summary", data: { compactionId: "c2", shadowedSeqs: [4] } },
+        {
+          type: "compaction/summary",
+          data: { compactionId: "c1", shadowedSeqs: [1, 2] },
+        },
+        {
+          type: "compaction/summary",
+          data: { compactionId: "c2", shadowedSeqs: [4] },
+        },
       ],
     });
-    const tool = createWorkflowTools({ runtime: fixture.runtime }, fixture.service).find(t => t.name === "document_workflow_review")!;
-    await tool.execute({ workflowId: draft.id, revision: draft.revision }, context);
+    const tool = createWorkflowTools(
+      { runtime: fixture.runtime },
+      fixture.service,
+    ).find((t) => t.name === "document_workflow_review")!;
+    await tool.execute(
+      { workflowId: draft.id, revision: draft.revision },
+      context,
+    );
     const task = fixture.review.mock.calls[0]?.[0] ?? "";
     expect(task).toContain("Original exclusion after compaction");
-    expect(task).not.toMatch(/Injected decision|Withdrawn decision|Untrusted checkpoint claim|Nested checkpoint claim/u);
+    expect(task).not.toMatch(
+      /Injected decision|Withdrawn decision|Untrusted checkpoint claim|Nested checkpoint claim/u,
+    );
   });
 
   it("gives document review the tool schemas of the native scoped agent context", async () => {
@@ -141,8 +243,9 @@ describe("workflow tools and conversion boundary", () => {
     );
     expect(tools.map((t) => t.name)).toEqual(DOCUMENT_WORKFLOW_TOOL_NAMES);
     expect(tools.some((t) => /approve/u.test(t.name))).toBe(false);
-    expect(tools.find(t => t.name === "document_workflow_review")?.timeoutMs)
-      .toBe(600_000);
+    expect(
+      tools.find((t) => t.name === "document_workflow_review")?.timeoutMs,
+    ).toBe(600_000);
   });
   it("passes source human history to the independent review without treating injected notes as human decisions", async () => {
     const draft = await ready(fixture);
@@ -227,27 +330,66 @@ describe("workflow tools and conversion boundary", () => {
   it("keeps native question answers visible after a reader shortens oversized lines", async () => {
     const draft = await ready(fixture);
     const context = exec();
-    const questions = { questions: Array.from({ length: 24 }, (_, i) => ({
-      id: `question-${i}`, text: "Clarification text ".repeat(30),
-    })) };
-    const answers = { answers: [{ id: "question-7", custom: "Confirmed local server; pilot one of four, then three after written acceptance." }] };
+    const questions = {
+      questions: Array.from({ length: 24 }, (_, i) => ({
+        id: `question-${i}`,
+        text: "Clarification text ".repeat(30),
+      })),
+    };
+    const answers = {
+      answers: [
+        {
+          id: "question-7",
+          custom:
+            "Confirmed local server; pilot one of four, then three after written acceptance.",
+        },
+      ],
+    };
     Object.assign(context.agent!.session, {
       snapshotEvents: () => [
-        { type: "tool/call", data: { name: "ask_user_question", callId: "long-form", arguments: JSON.stringify(questions) } },
-        { type: "tool/result", data: { message: { toolCallId: "long-form", isError: false, content: [{ type: "text", text: JSON.stringify(answers) }] } } },
+        {
+          type: "tool/call",
+          data: {
+            name: "ask_user_question",
+            callId: "long-form",
+            arguments: JSON.stringify(questions),
+          },
+        },
+        {
+          type: "tool/result",
+          data: {
+            message: {
+              toolCallId: "long-form",
+              isError: false,
+              content: [{ type: "text", text: JSON.stringify(answers) }],
+            },
+          },
+        },
       ],
     });
     fixture.review.mockImplementationOnce(async (task) => {
       const relative = task.match(/review-packet: ([^\n]+)/u)?.[1];
       expect(relative).toBeDefined();
-      const packet = await readFile(path.join(fixture.scope.workspaceRoot, relative!), "utf8");
-      const preview = packet.split("\n").map(line => line.slice(0, 2000)).join("\n");
+      const packet = await readFile(
+        path.join(fixture.scope.workspaceRoot, relative!),
+        "utf8",
+      );
+      const preview = packet
+        .split("\n")
+        .map((line) => line.slice(0, 2000))
+        .join("\n");
       expect(preview).toContain(answers.answers[0]!.custom);
       expect(preview).toContain('"id": "question-7"');
       return { pass: true, summary: "All human answers readable", issues: [] };
     });
-    const tool = createWorkflowTools({ runtime: fixture.runtime }, fixture.service).find(t => t.name === "document_workflow_review")!;
-    await tool.execute({ workflowId: draft.id, revision: draft.revision }, context);
+    const tool = createWorkflowTools(
+      { runtime: fixture.runtime },
+      fixture.service,
+    ).find((t) => t.name === "document_workflow_review")!;
+    await tool.execute(
+      { workflowId: draft.id, revision: draft.revision },
+      context,
+    );
   });
 
   it("refuses both general creation and conversion before an active draft is approved", async () => {
