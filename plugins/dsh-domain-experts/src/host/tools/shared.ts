@@ -42,13 +42,18 @@ export interface ToolDependencies {
   run(input: ExpertRunInput): Promise<DomainExpertResult>;
   /** The expert run a session belongs to, or `undefined` for a plain caller. */
   activeRun(sessionId: string): ActiveRun | undefined;
+  /** Verified delegation identity; unknown subagent identity is refused. */
+  callerDomain(agent: Agent, signal: AbortSignal): Promise<string | null>;
   /** Apply the caller expert's cross-domain policy to a target domain. */
   delegationVerdict(
     callerDomainId: string,
     targetDomainId: string,
   ): DelegationVerdict;
   /** Whether the caller may start another expert child right now. */
-  parallelBudget(callerSessionId: string): ParallelBudget;
+  parallelBudget(
+    callerSessionId: string,
+    callerDomain: string | null,
+  ): ParallelBudget;
   /** The memory provider the deployment selected. */
   memory(): DomainMemoryProvider;
   logger: LogSink;

@@ -19,6 +19,7 @@ src/
 │   ├── persona.ts      base policy + composed persona (template-safe)
 │   ├── resolver.ts     definition → resolved profile (scope, tools, memory, persona)
 │   ├── policy.ts       cross-domain verdict + parallel budget (pure)
+│   ├── caller.ts       live or durable caller identity, bounded catalog lookup
 │   ├── execution.ts    ctx.subagents orchestration, run tracker, audit emit
 │   ├── audit.ts        bounded audit ring
 │   ├── result.ts       structured-answer parser
@@ -28,7 +29,7 @@ src/
 │   ├── workers/        worker registry (scope-enforcement claims)
 │   └── tools/          the three agent-visible tools
 └── client/
-    ├── index.tsx       apply(): mount Remote, register the settings tab
+    ├── index.tsx       apply(): mount Remote, register the bundle page in Plugins
     ├── remote.ts       hand-written face of the generated Remote contract
     ├── session-id.ts   reads the current session without widening the host face
     ├── DomainExpertsPage.tsx  container: state, Remote calls, orchestration
@@ -126,9 +127,14 @@ domain_expert(domain, task, context, output, mode, background)
   concern — a top-level agent seeing `domain_memory` — is handled by refusing
   with `EXPERT_NOT_CALLER`, because the runtime offers no seam to register a
   tool inside a child's creation window.
-- **The run tracker is process-local.** A continuable child resumed after a
-  restart cannot be attributed to a domain, so delegation from it fails loudly
-  instead of guessing.
+- **The run tracker is process-local.** `callerDomainOf` in `host/caller.ts`
+  recovers delegation identity after restart or eviction from the Host's durable
+  direct-child catalog and the creation label `domain-expert:<domain>`. Unknown
+  identities fail closed; ordinary children remain supported when the catalog
+  identifies them. Reads receive the execution signal and have a five-second
+  deadline. The caller's current policy and parallel limit apply. A cold audit
+  records only the known caller-to-target suffix; account memory ownership is
+  never guessed from labels, so cold `domain_memory` remains refused.
 - **`resolveWithinRoot` follows symlinks on the nearest existing ancestor.** A
   path that does not exist yet is still checked lexically and against the real
   root, so a symlinked intermediate directory cannot smuggle a target out.

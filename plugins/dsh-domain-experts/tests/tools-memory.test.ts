@@ -42,6 +42,55 @@ function recordOf(namespace: string, key: string, text: string): MemoryRecord {
 }
 
 describe("tools: domain_memory", () => {
+  it("omits disabled direct-read namespaces and records from list", async () => {
+    const definition = domainOf("payments", {
+      delegation: {
+        ...PAYMENTS.delegation,
+        allowCrossDomain: false,
+        crossDomainMode: "direct-read",
+        directRead: ["domain/inventory"],
+      },
+    });
+    const harness = expertHarness(definition);
+    await harness.memoryTable.put(
+      "domain/inventory::stock",
+      recordOf("domain/inventory", "stock", "Stock is counted once per day."),
+    );
+    const value = await call(
+      createDomainMemoryTool(harness.dependencies),
+      { action: "list" },
+      AGENT,
+    );
+    expect(value["namespaces"]).toEqual(["domain/payments (read/write)"]);
+    expect(value["records"]).toEqual([]);
+  });
+  it.each(["read", "write"])(
+    "refuses disabled direct-read namespace for %s",
+    async (action) => {
+      const definition = domainOf("payments", {
+        delegation: {
+          ...PAYMENTS.delegation,
+          allowCrossDomain: false,
+          crossDomainMode: "direct-read",
+          directRead: ["domain/inventory"],
+        },
+      });
+      const harness = expertHarness(definition);
+      const tool = createDomainMemoryTool(harness.dependencies);
+      await expect(
+        call(
+          tool,
+          {
+            action,
+            namespace: "domain/inventory",
+            key: "stock",
+            text: "Stock is counted once per day.",
+          },
+          AGENT,
+        ),
+      ).rejects.toThrow("[MEMORY_SCOPE_DENIED]");
+    },
+  );
   it("refuses outside an expert run", async () => {
     const harness = harnessOf();
     const tool = createDomainMemoryTool(harness.dependencies);

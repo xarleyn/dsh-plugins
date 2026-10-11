@@ -17,6 +17,7 @@ import {
   type ResolvedToolEntry,
 } from "../types.js";
 import { degradation } from "./errors.js";
+import { effectiveCrossDomainMode } from "./policy.js";
 import type { MemoryProviderRegistry } from "./memory/registry.js";
 import {
   BASE_POLICY,
@@ -346,7 +347,7 @@ export function memoryEntries(
     });
   }
   const readOnly = new Set(definition.memory.sharedReadOnly);
-  if (definition.delegation.crossDomainMode === "direct-read") {
+  if (effectiveCrossDomainMode(definition) === "direct-read") {
     for (const namespace of definition.delegation.directRead)
       readOnly.add(namespace);
   }
@@ -523,9 +524,7 @@ function delegationSummary(
   dependencies: ResolverDependencies,
   degradations: DomainDegradation[],
 ): ResolvedExpertProfile["delegation"] {
-  const mode: CrossDomainMode = definition.delegation.allowCrossDomain
-    ? definition.delegation.crossDomainMode
-    : "disabled";
+  const mode: CrossDomainMode = effectiveCrossDomainMode(definition);
   const peers: ResolvedDelegationEntry[] = [];
   const missing: string[] = [];
 

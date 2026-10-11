@@ -1,5 +1,6 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type {
+  ContinuableStartSpec,
   SubagentCapabilities,
   SubagentProvider,
   SubagentRun,
@@ -110,6 +111,7 @@ export function agentOf(options: {
   readonly cwd?: string;
   readonly depth?: number;
   readonly origin?: "subagent";
+  readonly parentSession?: string;
   readonly createdAt?: number;
 }): Agent {
   return {
@@ -125,6 +127,9 @@ export function agentOf(options: {
           ? {}
           : { delegationDepth: options.depth }),
         ...(options.origin === undefined ? {} : { origin: options.origin }),
+        ...(options.parentSession === undefined
+          ? {}
+          : { parentSession: options.parentSession }),
       },
     },
   } as unknown as Agent;
@@ -216,8 +221,8 @@ export function fakeSubagents(
     ...(options.continuable === false
       ? {}
       : {
-          startContinuable: () => {
-            continued.push({ label: "continuable" });
+          startContinuable: (spec: ContinuableStartSpec) => {
+            continued.push({ label: spec.label });
             return Promise.resolve({ childId: `${runId}-bg`, messageId: "m1" });
           },
         }),
