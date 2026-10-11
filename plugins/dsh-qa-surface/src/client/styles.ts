@@ -512,7 +512,11 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-variants button:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:-1px}
 .dsh-qa-variants button svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round;stroke-linejoin:round}
 .dsh-qa-variants span{min-width:34px;text-align:center;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px;font-variant-numeric:tabular-nums}
-.dsh-qa-panel{flex:none;display:flex;flex-direction:column;width:360px;min-height:0;border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base)}
+.dsh-qa-panel{position:relative;flex:none;display:flex;flex-direction:column;width:var(--dsh-qa-panel-width,360px);min-height:0;border-left:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base)}
+.dsh-qa-panel__resize{position:absolute;top:0;bottom:0;left:-4px;width:8px;cursor:col-resize;touch-action:none;user-select:none;z-index:11;outline:0}
+.dsh-qa-panel__resize::after{content:"";position:absolute;inset:0 3px;background:transparent;transition:background .14s}
+.dsh-qa-panel__resize:hover::after,.dsh-qa-panel__resize:focus-visible::after,.dsh-qa-panel__resize[data-dragging]::after{background:var(--dsw-alias-label-dimmed)}
+@media(max-width:600px){.dsh-qa-panel__resize{display:none}}
 .dsh-qa-panel__strip{display:flex;align-items:center;gap:4px;flex:none;padding:10px 10px 8px 12px}
 .dsh-qa-panel__tab{display:inline-flex;align-items:center;gap:6px;padding:5px 10px;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-tertiary);font:inherit;font-size:13px;font-weight:500;line-height:20px;cursor:pointer}
 .dsh-qa-panel__tab span{display:inline-grid;place-items:center;min-width:19px;height:18px;padding:0 5px;border-radius:999px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-tertiary);font-size:10px;font-weight:400;line-height:18px}

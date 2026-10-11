@@ -2141,6 +2141,7 @@ export function QaSurface(props: QaSurfaceProps) {
         ) : null}
         {rail.railOpen ? (
           <QaRightRail
+            stateKey={stateKey}
             tabs={railTabs}
             activeTab={rail.railTab}
             onTabSelect={rail.selectTab}
