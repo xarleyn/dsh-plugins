@@ -755,6 +755,7 @@ pnpm verify:a11y
 pnpm verify:testids
 pnpm verify:tokens
 pnpm verify:packages
+pnpm verify:pr-rules --base="$NX_BASE" --head="$NX_HEAD"
 pnpm test:release
 pnpm release:check --base="$NX_BASE" --head="$NX_HEAD"
 
@@ -764,7 +765,7 @@ pnpm check:files                                    # the build output now exist
 pnpm tarball:verify:packages "$PACKAGE_DIRECTORY"   # every publishable project
 ```
 
-The `prepare` half is the workflow's own step list, and `scripts/repo-config.test.mjs` compares them command for command against `.github/workflows/ci.yml`; the project half names the gates that run per selected project rather than every step that job runs.
+`verify:pr-rules` runs only for a pull request and compares that branch with its target; pushes retain the full workspace gate set. The `prepare` half is the workflow's own step list, and `scripts/repo-config.test.mjs` compares them command for command against `.github/workflows/ci.yml`; the project half names the gates that run per selected project rather than every step that job runs.
 
 Tarball verification is not something CI reaches for where useful — it is a condition on the matrix row: every project `publishable` covers packs its tarball and installs that tarball in a clean environment, so no package can ship from a run that only read its source tree (§16). `pnpm check:files` runs a second time here for the opposite reason: the `prepare` checkout has no build output, so the generated-bundle band of the size budget measures nothing until this project has been built.
 

@@ -77,6 +77,10 @@ jobs:
       - name: Verify publishable plugin package hygiene
         run: pnpm verify:packages
 
+      - name: Verify pull request rules
+        if: github.event_name == 'pull_request'
+        run: pnpm verify:pr-rules --base="$NX_BASE" --head="$NX_HEAD"
+
       - name: Test repository tooling
         run: pnpm test:release
 
