@@ -20,7 +20,18 @@ export function identifierFindings(text, { names = [] } = {}) {
     });
   }
   for (const match of text.matchAll(internalHost)) {
-    if (match[0].split(".").includes("example")) continue;
+    const host = match[0].toLowerCase();
+    if (host.split(".").includes("example")) continue;
+    // Docker's documented host gateway alias is a platform name.
+    if (host === "host.docker.internal") continue;
+    // This exact override filename is not a network address. Keep URL uses
+    // and every other .local name subject to the host rule.
+    if (
+      host === "doc-impact.local" &&
+      text.slice(match.index - 5, match.index) === ".dsh/" &&
+      /^\.yml(?:[`'"\s)]|$)/u.test(text.slice(match.index + match[0].length))
+    )
+      continue;
     if (/^\.example\b/u.test(text.slice(match.index + match[0].length)))
       continue;
     findings.push({

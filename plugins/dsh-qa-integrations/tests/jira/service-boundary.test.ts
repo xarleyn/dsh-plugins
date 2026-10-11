@@ -26,7 +26,7 @@ describe("Jira boundary matching", () => {
     expect(projectAllowed(BOUNDARY, "PROJX")).toBe(false);
     // An issue key names a project only up to the dash; as a project
     // reference it matches nothing.
-    expect(projectAllowed(BOUNDARY, "PROJ-1")).toBe(false);
+    expect(projectAllowed(BOUNDARY, "PROJ-123")).toBe(false);
     expect(projectAllowed(BOUNDARY, "")).toBe(false);
   });
 
@@ -65,7 +65,7 @@ describe("Jira boundary matching", () => {
     const { fetcher, calls } = stub((url) =>
       url.searchParams.get("fields") === "security"
         ? { json: { fields: { security: null } } }
-        : { json: { key: "PROJ-3", fields: { summary: "x" } } },
+        : { json: { key: "PROJ-456", fields: { summary: "x" } } },
     );
     const { provider, plaintext } = credential(fetcher);
     await expect(
@@ -75,9 +75,9 @@ describe("Jira boundary matching", () => {
           ...serviceContext({ projects: ["proj"] }),
         },
         "issues.get",
-        { issueKey: "PROJ-3" },
+        { issueKey: "PROJ-456" },
       ),
-    ).resolves.toMatchObject({ key: "PROJ-3" });
+    ).resolves.toMatchObject({ key: "PROJ-456" });
     expect(calls).toHaveLength(2);
   });
 });

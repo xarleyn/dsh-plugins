@@ -18,7 +18,7 @@ import {
 /** An issue the stubbed site answers, inside the boundary. */
 const ISSUE = {
   id: "1",
-  key: "PROJ-1",
+  key: "PROJ-123",
   fields: {
     summary: "Payment timeout",
     project: { key: "PROJ", id: "10000" },
@@ -111,7 +111,7 @@ describe("Jira managed service credentials", () => {
       provider.execute(
         { credential: plaintext, ...serviceContext() },
         "issues.attachments",
-        { issueKey: "PROJ-1" },
+        { issueKey: "PROJ-123" },
       ),
     ).rejects.toMatchObject({
       code: "SensitiveReadRequiresPersonalCredential",
@@ -132,9 +132,9 @@ describe("Jira managed service credentials", () => {
       provider.execute(
         { credential: plaintext, ...serviceContext() },
         "issues.get",
-        { issueKey: "PROJ-1" },
+        { issueKey: "PROJ-123" },
       ),
-    ).resolves.toMatchObject({ key: "PROJ-1" });
+    ).resolves.toMatchObject({ key: "PROJ-123" });
     await expect(
       provider.execute(
         { credential: plaintext, ...serviceContext() },
@@ -169,15 +169,15 @@ describe("Jira managed service credentials", () => {
       json: {
         issues: [
           {
-            key: "PROJ-1",
+            key: "PROJ-123",
             fields: { project: { key: "PROJ", id: "10000" }, security: null },
           },
           // Matched by the listed numeric id: Jira reports the project on the
           // hit either way.
-          { key: "PROJ-2", fields: { project: { id: "10001" } } },
+          { key: "PROJ-456", fields: { project: { id: "10001" } } },
           { key: "TASK-5", fields: { project: { key: "TASK" } } },
           {
-            key: "PROJ-4",
+            key: "PROJ-456",
             fields: {
               project: { key: "PROJ" },
               security: { id: "10003", name: "Admins only" },
@@ -193,7 +193,10 @@ describe("Jira managed service credentials", () => {
       "issues.search",
       { query: "payment" },
     )) as { items: readonly { key: string }[] };
-    expect(answer.items.map((item) => item.key)).toEqual(["PROJ-1", "PROJ-2"]);
+    expect(answer.items.map((item) => item.key)).toEqual([
+      "PROJ-123",
+      "PROJ-456",
+    ]);
     // The service page asks for the security level, because the filter needs it.
     expect(calls[0]?.url.searchParams.get("fields")).toContain("security");
 
@@ -240,13 +243,13 @@ describe("Jira managed service credentials", () => {
       provider.execute(
         { credential: plaintext, ...serviceContext() },
         "issues.get",
-        { issueKey: "PROJ-7" },
+        { issueKey: "PROJ-123" },
       ),
     ).rejects.toMatchObject({ code: "ResourceNotFound" });
     // The refusal is the answer of the security probe alone: the read itself
     // never happens.
     expect(calls).toHaveLength(1);
-    expect(calls[0]?.url.pathname).toBe("/rest/api/3/issue/PROJ-7");
+    expect(calls[0]?.url.pathname).toBe("/rest/api/3/issue/PROJ-123");
     expect(calls[0]?.url.searchParams.get("fields")).toBe("security");
   });
 
@@ -261,12 +264,12 @@ describe("Jira managed service credentials", () => {
       provider.execute(
         { credential: plaintext, ...serviceContext() },
         "issues.comments",
-        { issueKey: "PROJ-1" },
+        { issueKey: "PROJ-123" },
       ),
     ).resolves.toBeDefined();
     expect(calls.map((call) => call.url.pathname)).toEqual([
-      "/rest/api/3/issue/PROJ-1",
-      "/rest/api/3/issue/PROJ-1/comment",
+      "/rest/api/3/issue/PROJ-123",
+      "/rest/api/3/issue/PROJ-123/comment",
     ]);
     expect(calls[0]?.url.searchParams.get("fields")).toBe("security");
   });
@@ -278,7 +281,7 @@ describe("Jira managed service credentials", () => {
       provider.execute(
         { credential: plaintext, credentialSource: "service" },
         "issues.get",
-        { issueKey: "PROJ-1" },
+        { issueKey: "PROJ-123" },
       ),
     ).rejects.toMatchObject({ code: "ServiceResourceNotAllowed" });
     expect(calls).toEqual([]);
@@ -296,7 +299,7 @@ describe("Jira managed service credentials", () => {
     ).resolves.toBeDefined();
     await expect(
       provider.execute({ credential: plaintext }, "issues.attachments", {
-        issueKey: "PROJ-1",
+        issueKey: "PROJ-123",
       }),
     ).resolves.toBeDefined();
     await expect(
@@ -382,7 +385,7 @@ describe("Jira managed service credentials", () => {
       provider.execute(
         { credential: plaintext, ...serviceContext() },
         "issues.transition",
-        { issueKey: "PROJ-1" },
+        { issueKey: "PROJ-123" },
       ),
     ).rejects.toBeInstanceOf(IntegrationError);
   });

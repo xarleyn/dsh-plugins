@@ -768,6 +768,7 @@ export function JevCompactionCard({
               />
               <Toggle
                 label="Show a compaction card in the conversation"
+                testId="jevc-session-cards"
                 description="One durable session event per run, so the chat shows what Jev did. Metadata only. Off by default: a session recorded with this on can only be opened by a build that has this plugin loaded."
                 checked={config.diagnostics?.sessionCards ?? false}
                 disabled={!writable}
@@ -778,6 +779,7 @@ export function JevCompactionCard({
               />
               <Toggle
                 label="Say why a run was skipped"
+                testId="jevc-show-skip-reasons"
                 description="Off by default: a cooldown firing three turns in a row is noise, not information."
                 checked={config.diagnostics?.showSkipReasons ?? false}
                 disabled={!writable}
