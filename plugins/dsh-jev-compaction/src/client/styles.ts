@@ -75,7 +75,7 @@ export const styles: string = String.raw`
 .jevc-run-header:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}
 .jevc-run-title{font-size:13px;font-weight:600;line-height:1.4}
 .jevc-run-badge{white-space:nowrap;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-module-platform);border-radius:999px;padding:1px 8px;font-size:11px;font-weight:500;line-height:17px}
-.jevc-run-badge--dry-run{color:var(--dsw-alias-state-warning-primary)}
+.jevc-run-badge--dry-run{color:var(--dsw-alias-state-warn-primary)}
 .jevc-run-badge--skip{color:var(--dsw-alias-label-tertiary)}
 .jevc-run-icon{width:14px;height:14px;color:var(--dsw-alias-label-tertiary);flex:none;margin-left:auto;fill:none;stroke:currentColor;stroke-width:1.4;stroke-linecap:round}
 .jevc-run-summary{display:flex;flex-wrap:wrap;align-items:baseline;gap:6px;color:var(--dsw-alias-label-secondary)}
@@ -94,7 +94,7 @@ export const styles: string = String.raw`
 .jevc-run-actions li{display:inline-flex;align-items:center;gap:6px;font-variant-numeric:tabular-nums}
 .jevc-run-chip{white-space:nowrap;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:0 8px;font-size:11px;font-weight:500;line-height:17px}
 .jevc-run-chip--KEEP_FULL{color:var(--dsw-alias-state-success-primary)}
-.jevc-run-chip--KEEP_TRUNCATED{color:var(--dsw-alias-state-warning-primary)}
+.jevc-run-chip--KEEP_TRUNCATED{color:var(--dsw-alias-state-warn-primary)}
 .jevc-run-items{width:100%;border-collapse:collapse;color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.5}
 .jevc-run-items th{color:var(--dsw-alias-label-tertiary);font-weight:500;text-align:left;border-bottom:1px solid var(--dsw-alias-border-l2);padding:4px 8px 4px 0}
 .jevc-run-items td{border-bottom:1px solid var(--dsw-alias-border-l2);padding:4px 8px 4px 0;vertical-align:top}
