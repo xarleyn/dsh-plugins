@@ -447,6 +447,18 @@ export const JevCompactionConfigSchema = z.object({
       .boolean()
       .default(DEFAULTS.diagnostics.includeCandidateScores)
       .description("Include per-candidate scores in reports."),
+    sessionCards: z
+      .boolean()
+      .default(DEFAULTS.diagnostics.sessionCards)
+      .volatile()
+      .description(
+        "Record durable session metadata for conversation cards. Reading a recorded session requires this plugin to be loaded.",
+      ),
+    showSkipReasons: z
+      .boolean()
+      .default(DEFAULTS.diagnostics.showSkipReasons)
+      .volatile()
+      .description("Record the reason a compaction gate refused a run."),
   }),
 });
 

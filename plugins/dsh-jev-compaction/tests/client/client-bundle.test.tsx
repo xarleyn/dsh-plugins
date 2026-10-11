@@ -89,7 +89,11 @@ describe("classic browser bundle", () => {
 
   it("declares exactly the client services it reads", async () => {
     const { exports } = await loadBundle();
-    expect([...exports.inject]).toEqual(["slots", "configForms"]);
+    expect([...exports.inject]).toEqual([
+      "slots",
+      "configForms",
+      "uiConversation",
+    ]);
   });
 
   it("mounts the card into the row's configuration seat as a bare body", async () => {

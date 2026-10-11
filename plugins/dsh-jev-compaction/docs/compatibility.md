@@ -110,8 +110,41 @@ our prepended listener the effective composition is
   natively (§3), and emitting it would pull a type-only dependency outside
   this repository's pnpm catalogs. Downstream consumers simply see a
   replacement with no shadow-price record.
-- **No durable plugin events** (SPEC §28): nothing custom enters the session
-  log, so the journal stays readable in builds without this plugin.
+- **Durable plugin events, log-only and registered while mounted** (SPEC §28):
+  `jev-compaction/applied` and `jev-compaction/skipped` carry run metadata for
+  the conversation card. They never carry a `surfaceOp`, so they enter neither
+  the model-visible surface nor request reconstruction.
+
+### Portability of a session that contains them
+
+The coupling is real and worth stating precisely, because it is the one thing
+this plugin does that can make a session unreadable:
+
+- the persistence read path refuses a stored event whose type it does not know
+  unless the writer marked it `ignorable`
+  (`assertEventsSupported` in `@deepseek-ai/dsh-session-persistence`);
+- `Session.append` offers a plugin no way to set that marker — it accepts only
+  surface metadata — so the marker is not available to us;
+- the plugin therefore joins its two types into `KNOWN_SESSION_EVENT_TYPES`
+  while it is loaded and removes them on dispose
+  (`src/observability/session-events.ts`), the same mechanism
+  `dsh-session-scope` uses for `session-scope/set`.
+
+So a session recorded while this plugin was loaded **cannot be interpreted by a
+build that does not have it loaded**, and disabling the row in the profile is
+enough to trigger that. The failure is a refusal at history load naming the
+event type and the seq, not a silent drop.
+
+Two things bound it. `diagnostics.sessionCards` is **off by default**, for the
+same reason immediate result shaping is: a durable effect that is not
+replay-safe everywhere is opt-in. And the warning at plugin start names the
+consequence while the switch is on. An operator who wants the card and also
+wants portable sessions should keep the plugin installed, or accept that those
+sessions belong to a build with the plugin.
+
+The record is metadata only — no tool output, no prompt, no state body — so a
+reader that does have the plugin loses nothing by ignoring it, and a reader
+that does not gets a clear refusal rather than a wrong session.
 
 ## 9. Supported versions
 

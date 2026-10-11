@@ -79,6 +79,52 @@ Fail-open by design at both layers: every failure (missing API key, timeout,
 malformed response, surface drift, cancellation, a downstream plugin's block)
 skips the work and leaves ordinary DSH behavior untouched.
 
+### Seeing what a run did
+
+Historical compaction used to be visible only in the plugin log. Every run now
+writes one durable, log-only session event (`jev-compaction/applied`), and the
+browser bundle renders it as a card in the conversation:
+
+```text
+Jev compaction                          [auto]                    +
+162 results replaced · 237 835 → 133 841 tokens · 104 006 saved (44%) · 11:14:43
+```
+
+Collapsed by default; expanded it shows the trigger, the state-fitting stage,
+candidates / planned / applied, characters removed, the Jev request count with
+its concurrency, the resolved context window, the `KEEP_FULL` /
+`KEEP_TRUNCATED` / `KEEP_STUB` distribution, and one row per candidate with its
+tool, size, action, both probabilities and its `originalSeq → replacementSeq`
+pair — enough to address the replacement in the session log and read the
+original yourself.
+
+The three states are never blurred. `/jev-compact --dry-run` produces a card
+marked `dry-run`; the non-dry-run manual pass produces one marked `queued` when
+the plan is armed and another when it lands. Both previews say "would" and
+prefix the token figures with "estimated", because neither has touched the
+surface yet — and "Characters removed" counts what actually left, not what the
+plan promised, which matters when only some replacements landed.
+
+The card carries metadata only: no tool output, no prompt, no state body. It is
+assembled from the session log, so it survives a refresh and a reopen, and it
+never re-enters the model's context as extra material.
+
+A card is opt-in. **"Show a compaction card in the conversation"**
+(`diagnostics.sessionCards`) is off by default, because the card is durable and
+durability here has a price: the event type is this plugin's own, and a session
+recorded while it was on can only be opened by a build that has this plugin
+loaded. Disabling the plugin is enough to make those sessions refuse to load.
+The plugin warns about this at startup while the switch is on, and
+[the compatibility note](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-jev-compaction/docs/compatibility.md#portability-of-a-session-that-contains-them)
+analyses it. The record itself is metadata only — no tool output, no prompt —
+so a build without the plugin loses nothing by not reading it.
+
+Why a run was *skipped* stays silent even with the card on — a cooldown firing
+three turns in a row is noise, not information. Turn on **"Say why a run was
+skipped"** (`diagnostics.showSkipReasons`) and each skip is recorded as a
+one-line note (`cooldown`, `pressure not met`, `not enough candidates`,
+`savings gate`, …).
+
 ## Safety: what each layer can and cannot lose
 
 Historical compaction is replay-safe. It shadows an already-durable
@@ -274,6 +320,8 @@ jev-compaction:
   diagnostics:
     logLevel: info
     includeCandidateScores: false
+    sessionCards: false # one durable conversation card per run; see the portability note
+    showSkipReasons: false # also say why a run was skipped
 ```
 
 Without a resolvable model context window the automatic trigger falls back to

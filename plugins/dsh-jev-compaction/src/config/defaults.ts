@@ -84,5 +84,7 @@ export const DEFAULTS: ResolvedJevCompactionConfig = Object.freeze({
   diagnostics: Object.freeze({
     logLevel: "info" as const,
     includeCandidateScores: false,
+    sessionCards: false,
+    showSkipReasons: false,
   }),
 });

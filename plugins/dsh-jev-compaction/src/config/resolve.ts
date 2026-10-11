@@ -382,6 +382,11 @@ export function resolveJevCompactionConfig(
       includeCandidateScores:
         raw.diagnostics?.includeCandidateScores ??
         DEFAULTS.diagnostics.includeCandidateScores,
+      sessionCards:
+        raw.diagnostics?.sessionCards ?? DEFAULTS.diagnostics.sessionCards,
+      showSkipReasons:
+        raw.diagnostics?.showSkipReasons ??
+        DEFAULTS.diagnostics.showSkipReasons,
     },
   };
 }

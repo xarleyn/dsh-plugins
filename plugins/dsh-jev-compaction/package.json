@@ -49,6 +49,7 @@
         "@deepseek-ai/dsh-client-ui-slots"
       ],
       "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-plugin-manager",
         "@deepseek-ai/dsh-client-ui-settings"
       ],
@@ -65,6 +66,9 @@
     "@deepseek-ai/dsh-compaction-basic": "catalog:dsh",
     "@deepseek-ai/dsh-llm": "catalog:dsh",
     "@deepseek-ai/dsh-session": "catalog:dsh",
+    "@deepseek-ai/dsh-api-session-controller": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-conversation": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-chat": "catalog:dsh",
     "@deepseek-ai/schemastery": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh",
@@ -80,6 +84,9 @@
     "@deepseek-ai/dsh-compaction-basic": "catalog:dsh-dev",
     "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
     "@deepseek-ai/dsh-session": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-api-session-controller": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-conversation": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-chat": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
     "@vitest/coverage-v8": "catalog:tooling",
