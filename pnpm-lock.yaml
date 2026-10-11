@@ -888,6 +888,15 @@ importers:
       '@deepseek-ai/cordis':
         specifier: catalog:dsh
         version: 4.0.2(@deepseek-ai/cordis-plugin-include@1.0.6)(@deepseek-ai/cordis-plugin-loader@1.0.2)
+      '@deepseek-ai/dsh-api-session-controller':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(580f8530bcd59eac05539a8cc5154a54)
+      '@deepseek-ai/dsh-client-ui-chat':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
+      '@deepseek-ai/dsh-client-ui-conversation':
+        specifier: catalog:dsh-dev
+        version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
       '@deepseek-ai/dsh-client-ui-renderer':
         specifier: catalog:dsh-dev
         version: 0.1.5-rc.2(@deepseek-ai/cordis@4.0.2)
