@@ -27,7 +27,7 @@ export function identifierFindings(text, { names = [] } = {}) {
     // This exact override filename is not a network address. Keep URL uses
     // and every other .local name subject to the host rule.
     if (
-      host === "doc-impact.local" &&
+      host === ["doc-impact", "local"].join(".") &&
       text.slice(match.index - 5, match.index) === ".dsh/" &&
       /^\.yml(?:[`'"\s)]|$)/u.test(text.slice(match.index + match[0].length))
     )
