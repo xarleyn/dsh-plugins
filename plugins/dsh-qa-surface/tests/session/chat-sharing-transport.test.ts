@@ -239,13 +239,12 @@ describe("authenticated QA chat transport", () => {
         lifetime.throwIfAborted();
       })(),
     );
-    const iterator = f.transport
-      .follow(
-        f.reader.token,
-        { address: { kind: "session", sessionId: "chat-a" } } as never,
-        signal(),
-      )
-      [Symbol.asyncIterator]();
+    const frames = f.transport.follow(
+      f.reader.token,
+      { address: { kind: "session", sessionId: "chat-a" } } as never,
+      signal(),
+    );
+    const iterator = frames[Symbol.asyncIterator]();
     expect((await iterator.next()).done).toBe(false);
     const result = iterator.next();
     const rejection = expect(result).rejects.toThrow();
