@@ -1,3 +1,29 @@
+## 0.5.0 (2026-10-11)
+
+### 🚀 Features
+
+- Prepare grounded proposals and specifications through a persistent Markdown workflow with accumulated requirements, independent document review, revision-specific human approval and managed DOCX/PDF export. Download complete files independently of preview limits and preserve document comparison metadata and formatting spans. ([997b1c69](https://github.com/xarleyn/dsh-plugins/commit/997b1c69))
+
+  Add a warned Fast composer switch for turn-scoped automatic answer-review waivers, preserving mandatory document verification and revision-specific approval.
+
+  Keep draft filenames and approval actions readable on narrow screens and distinguish unknown artifact sizes from empty files.
+
+
+### 🩹 Fixes
+
+- Apply domain delegation policy after an expert session resumes or leaves the live run index. Verify cold caller identity through the Host child catalog, refuse unknown identities, and retain the caller's configured parallel limit. ([ca07b4f4](https://github.com/xarleyn/dsh-plugins/commit/ca07b4f4))
+
+  Respect the cross-domain switch for direct memory reads, recall and inspection. Show direct-read settings only while the mode is active and preserve saved namespace selections.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.2
+- Updated @yadsh/dsh-plugin-kit to 0.5.1
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.4.2 (2026-10-08)
 
 ### 🩹 Fixes

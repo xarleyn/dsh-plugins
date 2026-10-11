@@ -1,3 +1,27 @@
+## 0.7.0 (2026-10-11)
+
+### 🚀 Features
+
+- Prepare grounded proposals and specifications through a persistent Markdown workflow with accumulated requirements, independent document review, revision-specific human approval and managed DOCX/PDF export. Download complete files independently of preview limits and preserve document comparison metadata and formatting spans. ([997b1c69](https://github.com/xarleyn/dsh-plugins/commit/997b1c69))
+
+  Add a warned Fast composer switch for turn-scoped automatic answer-review waivers, preserving mandatory document verification and revision-specific approval.
+
+  Keep draft filenames and approval actions readable on narrow screens and distinguish unknown artifact sizes from empty files.
+
+
+### 🩹 Fixes
+
+- Collect source evidence from current tool messages, documentation and document inputs, and structured integration results. Recover completed-turn evidence from journals, aggregate chat sources, resolve equivalent references consistently, and preview evidence documents through the native PDF viewer and document pipeline. ([92b29d42](https://github.com/xarleyn/dsh-plugins/commit/92b29d42))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.2
+- Updated @yadsh/dsh-plugin-kit to 0.5.1
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.6.3 (2026-10-08)
 
 ### 🩹 Fixes
