@@ -29,6 +29,7 @@ import type {
   QaSubagentView,
   ResolvedQaSurfaceConfig,
 } from "../types.js";
+import { slashDraftTarget } from "../slash/draft-target.js";
 import { resolveSlashRoute } from "./slash/slash-router.js";
 import {
   SLASH_DISABLED_COPY,
@@ -385,6 +386,7 @@ export class QaSessionController {
   private slashError: string | null = null;
   private slashLoadedAt = 0;
   private slashLoading: Promise<void> | undefined;
+  private slashReadRevision = 0;
   /** Last published view; its identity is the render signal. */
   private slashViewCache: QaSlashView | undefined;
   /** Bumped to re-open a palette the user dismissed; see `QaSlashView`. */
@@ -856,22 +858,29 @@ export class QaSessionController {
    * skill registry has no browser-facing change event, so a skill installed
    * while the page is open is only discovered by asking again.
    */
+  private slashReadTarget(): string | undefined {
+    if (this.session !== undefined) return String(this.session.sessionId);
+    return this.drafting
+      ? slashDraftTarget(this.selectedSubrole, this.adminPreview)
+      : undefined;
+  }
+
   async refreshSlashCatalog(force = false): Promise<void> {
-    const session = this.session;
-    if (session === undefined || this.disposed) return;
+    const sessionId = this.slashReadTarget();
+    if (sessionId === undefined || this.disposed) return;
     if (!this.config.slashCommands.enabled || this.compatibilityReadOnly) {
-      this.applySlashCatalog(String(session.sessionId), null);
+      this.applySlashCatalog(sessionId, null);
       return;
     }
     if (this.slashApi === undefined) {
-      this.applySlashCatalog(String(session.sessionId), undefined);
+      this.applySlashCatalog(sessionId, undefined);
       return;
     }
     if (this.slashLoading !== undefined) return this.slashLoading;
-    if (!force && this.slashSessionId === String(session.sessionId)) {
+    if (!force && this.slashSessionId === sessionId) {
       if (Date.now() - this.slashLoadedAt < SLASH_CATALOG_STALE_MS) return;
     }
-    const sessionId = String(session.sessionId);
+    const revision = this.slashReadRevision;
     this.slashState = "loading";
     this.publish();
     const operation = (async () => {
@@ -880,7 +889,12 @@ export class QaSessionController {
           this.accounts?.token() ?? "",
           sessionId,
         );
-        if (result === undefined) return;
+        if (
+          result === undefined ||
+          revision !== this.slashReadRevision ||
+          this.disposed
+        )
+          return;
         if (!result.ok) {
           this.applySlashCatalog(sessionId, undefined);
           return;
@@ -888,6 +902,7 @@ export class QaSessionController {
         this.applySlashCatalog(sessionId, result.value);
       } catch (error) {
         console.error("dsh-qa-surface: slash catalog failed", error);
+        if (revision !== this.slashReadRevision || this.disposed) return;
         this.applySlashCatalog(sessionId, undefined);
       }
     })().finally(() => {
@@ -907,12 +922,7 @@ export class QaSessionController {
     sessionId: string,
     catalog: QaSlashCatalog | null | undefined,
   ): void {
-    if (
-      this.session === undefined ||
-      String(this.session.sessionId) !== sessionId
-    ) {
-      return;
-    }
+    if (this.disposed || this.slashReadTarget() !== sessionId) return;
     this.slashSessionId = sessionId;
     this.slashLoadedAt = Date.now();
     if (catalog === null) {
@@ -943,7 +953,10 @@ export class QaSessionController {
 
   /** Whether the catalog of the bound chat was read successfully. */
   private slashCatalogReady(): boolean {
-    return this.slashState === "ready" || this.slashState === "loading";
+    return (
+      (this.slashState === "ready" || this.slashState === "loading") &&
+      this.slashSessionId === this.slashReadTarget()
+    );
   }
 
   /** The slash view of the current state; assembled where the state is. */
@@ -951,7 +964,7 @@ export class QaSessionController {
     const enabled =
       this.config.slashCommands.enabled &&
       !this.compatibilityReadOnly &&
-      this.slashSessionId !== null &&
+      this.slashReadTarget() !== undefined &&
       this.slashApi !== undefined;
     // Identity is the render signal: this runs on every publish, including
     // every stream frame of a running turn, and the composer is memoized on
@@ -1187,6 +1200,7 @@ export class QaSessionController {
       chatsRevision: this.chatsRevision,
     };
     this.publish();
+    void this.refreshSlashCatalog(true);
   }
 
   /**
@@ -2122,6 +2136,8 @@ export class QaSessionController {
     // The catalog belongs to the chat that produced it: another chat has a
     // different cwd, composition and role, so carrying it across would offer
     // actions this chat may not have.
+    this.slashLoading = undefined;
+    this.slashReadRevision += 1;
     this.slashSessionId = null;
     this.slashEntries = [];
     this.slashDenied = [];
@@ -2186,6 +2202,7 @@ export class QaSessionController {
         canSend: connected && !materializing,
         pendingMessage: this.pendingSubmission?.message ?? null,
         chatsRevision: this.chatsRevision,
+        slash: this.slashView(),
       };
       this.emit();
       return;

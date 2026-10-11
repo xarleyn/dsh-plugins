@@ -3,6 +3,7 @@ import { resolveConfig } from "../../../src/resolve-config.js";
 import { QaSessionController } from "../../../src/client/QaSessionController.js";
 import type { QaFileUpload } from "../../../src/client/types.js";
 import type {
+  QaSlashCatalog,
   QaSlashExecution,
   QaSlashSubmitAttachment,
 } from "../../../src/types.js";
@@ -74,18 +75,20 @@ function world(
         } as const),
     }),
   );
-  const catalog = vi.fn(async () => ({
-    ok: true as const,
-    value:
-      options.catalogOk === false
-        ? undefined
-        : {
-            enabled: true,
-            entries: options.entries ?? [SKILL, COMMAND],
-            commandSurface: "ready" as const,
-            deniedSkills: options.deniedSkills ?? [],
-          },
-  }));
+  const catalog = vi.fn(
+    async (): Promise<{ ok: true; value: QaSlashCatalog | undefined }> => ({
+      ok: true as const,
+      value:
+        options.catalogOk === false
+          ? undefined
+          : {
+              enabled: true,
+              entries: options.entries ?? [SKILL, COMMAND],
+              commandSurface: "ready" as const,
+              deniedSkills: options.deniedSkills ?? [],
+            },
+    }),
+  );
   const controller = new QaSessionController({
     ...base,
     config: options.config ?? ENABLED,
@@ -413,6 +416,74 @@ describe("QA session controller slash routing", () => {
     expect(await running).toBe(false);
     expect(built.execute).not.toHaveBeenCalled();
     expect(built.faces.get("other")?.prompt).not.toHaveBeenCalled();
+    built.controller.dispose();
+  });
+});
+
+describe("draft palette recovery", () => {
+  it("reads a catalog before the first session exists", async () => {
+    const built = world();
+    await built.controller.startDraft(true);
+    await built.controller.refreshSlashCatalog();
+    expect(built.controller.getSnapshot().sessionId).toBeNull();
+    expect(built.controller.getSnapshot().slash.enabled).toBe(true);
+    expect(built.controller.getSnapshot().slash.entries).toHaveLength(2);
+    expect(built.catalog.mock.calls[0]?.length).toBe(2);
+    built.controller.dispose();
+  });
+  it("reads the bound session while the draft request is still in flight", async () => {
+    const built = world();
+    let finish!: (value: Awaited<ReturnType<typeof built.catalog>>) => void;
+    built.catalog.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await built.controller.startDraft(true);
+    const pending = built.controller.refreshSlashCatalog();
+    expect(await built.controller.send("first question")).toBe(true);
+    await vi.waitFor(() =>
+      expect(built.controller.getSnapshot().slash.state).toBe("ready"),
+    );
+    const sessionId = built.controller.getSnapshot().sessionId;
+    expect(built.catalog).toHaveBeenCalledWith("", sessionId);
+    finish({
+      ok: true,
+      value: {
+        enabled: true,
+        entries: [],
+        deniedSkills: [],
+        commandSurface: "inactive",
+      },
+    });
+    await pending;
+    expect(built.controller.getSnapshot().slash.entries).toHaveLength(2);
+    built.controller.dispose();
+  });
+  it("calls an unread first catalog unavailable rather than unknown", async () => {
+    const built = world();
+    let finish!: (value: Awaited<ReturnType<typeof built.catalog>>) => void;
+    built.catalog.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await built.controller.startDraft(true);
+    const pending = built.controller.refreshSlashCatalog();
+    expect(await built.controller.send("/demo-action")).toBe(false);
+    expect(built.controller.getSnapshot().error).toMatch(/недоступен/u);
+    finish({
+      ok: true,
+      value: {
+        enabled: true,
+        entries: [],
+        deniedSkills: [],
+        commandSurface: "inactive",
+      },
+    });
+    await pending;
     built.controller.dispose();
   });
 });

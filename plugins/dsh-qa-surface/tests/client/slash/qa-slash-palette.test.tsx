@@ -302,3 +302,38 @@ describe("slash palette in the composer", () => {
     );
   });
 });
+
+describe("palette recovery", () => {
+  it("opens again on a fresh slash after Escape", () => {
+    mount({ slash: readySlash(SKILLS) });
+    type("/");
+    fireEvent.keyDown(input(), { key: "Escape" });
+    expect(screen.queryByRole("listbox")).toBeNull();
+    type("");
+    type("/");
+    expect(screen.getByRole("listbox")).toBeTruthy();
+  });
+  it("opens after a pick when the name is typed again", () => {
+    mount({ slash: readySlash(SKILLS) });
+    type("/");
+    fireEvent.keyDown(input(), { key: "Tab" });
+    type("/");
+    expect(screen.getByRole("listbox")).toBeTruthy();
+  });
+  it.each(["Tab", "ArrowDown", "ArrowUp"])(
+    "does not swallow %s when no row is selectable",
+    (key) => {
+      mount({ slash: readySlash([]) });
+      type("/");
+      expect(fireEvent.keyDown(input(), { key })).toBe(true);
+    },
+  );
+  it("sends Enter normally with an empty palette and keeps a refused draft", async () => {
+    const onSend = vi.fn(async () => false);
+    mount({ slash: readySlash([]), onSend });
+    type("/demo-action");
+    fireEvent.keyDown(input(), { key: "Enter" });
+    await waitFor(() => expect(onSend).toHaveBeenCalledOnce());
+    expect((input() as HTMLTextAreaElement).value).toBe("/demo-action");
+  });
+});

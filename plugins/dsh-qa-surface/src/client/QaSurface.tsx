@@ -1255,8 +1255,14 @@ export function QaSurface(props: QaSurfaceProps) {
   // and another account's turn is not this reader's news.
   const turnNotices = useQaTurnNotifications({
     chats: chatRows,
+    principal: accessPrincipal,
+    chatsReady: controller !== undefined && listState.phase === "ready",
     ownChatIds:
-      accountsSnapshot.stage === "authed" ? accountsSnapshot.ownIds : undefined,
+      accountsSnapshot.stage === "authed"
+        ? accountsSnapshot.ownIds
+        : config.accounts.enabled
+          ? []
+          : undefined,
     notifications: config.notifications,
     storage: window.localStorage,
     storageKey: `${stateKey}:notifications`,

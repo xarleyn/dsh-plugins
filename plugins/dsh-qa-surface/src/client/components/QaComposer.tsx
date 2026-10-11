@@ -335,12 +335,19 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           }
           onKeyDown={(event) => {
             if (navigation.open) {
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              if (
+                navigation.active !== -1 &&
+                (event.key === "ArrowDown" || event.key === "ArrowUp")
+              ) {
                 event.preventDefault();
                 navigation.move(event.key === "ArrowDown" ? 1 : -1);
                 return;
               }
-              if (event.key === "Tab") {
+              if (
+                event.key === "Tab" &&
+                navigation.active !== -1 &&
+                !event.shiftKey
+              ) {
                 // Tab inserts, it does not complete-and-run: the user still
                 // has to write the argument and press Enter again.
                 event.preventDefault();
@@ -353,6 +360,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
                 return;
               }
               if (
+                navigation.active !== -1 &&
                 event.key === "Enter" &&
                 !event.shiftKey &&
                 !event.nativeEvent.isComposing

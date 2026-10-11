@@ -174,6 +174,7 @@ function Probe(props: {
     [authed],
   );
   const notices = useQaTurnNotifications({
+    principal: null,
     chats: buildChatRows(authed?.ownedIds ?? [], props.list.byId, null),
     ownChatIds: authed?.ownIds,
     notifications: ON,
