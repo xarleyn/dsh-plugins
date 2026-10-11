@@ -63,7 +63,42 @@ checkout happens to hold.
 | Repo tooling tests | `pnpm test:release` (`node --test` over the `*.test.mjs` files of `scripts/` and `packages/plugin-scripts/`, each one named in the root `package.json`) | The command is a written-out list, not a mask, so the list is a gate of its own: `scripts/ci-verification.test.mjs` compares it against those two directories, and a test file that exists without being named there — or an entry whose file is gone — reddens the run rather than quietly leaving a check unexecuted. The CI/release scripts themselves are regression-tested with `node --test`, and so are the repository's own config files — the blame list, the `lint` cache key and the `build` cache outputs, the last two proven by running `nx` in a throwaway workspace built from `nx.json`, and the three blocks `SPEC.md` copies verbatim — the `release` configuration of §14, the `prepare` gate list of §17, the command excerpt of §22 — compared against `nx.json`, the `prepare` job of `.github/workflows/ci.yml` and the root `package.json`. Each copy is cut from the section its heading names, so a block that left its section is a miss rather than a match, and §20's tag census (no `name@version` tag among those `git ls-remote --tags` advertises on the remotes the checkout points at — the local ref store is not asked, since a clone that outlived a rewrite keeps the tags the repository dropped and accumulates housekeeping refs of its own) is re-run alongside them; a read that comes back short — the checkout points at no remote, one of its remotes does not answer, or none of them advertises a `release/*` wave — reports that case skipped rather than passed, so a census nobody measured, or measured only over the remotes that answered, is never read as coverage — which is what stops the Draft from drifting from the runbook in silence. `scripts/qa-stand-launch-token.test.mjs` lifts the `qa-stand-run` §3 recipe out of its own `SKILL.md` and runs it over the fake boot-log lines that section lists, so the token pattern cannot drift from what it claims |
 | File size budget | `pnpm check:files` (`scripts/check-file-budget.mjs`) | No source file under `plugins/*/src`, `packages/*/src`, `plugins/*/scripts`, or `packages/*/scripts` is over its line budget, no test file under `plugins/*/tests` or `packages/*/tests` is over the tighter one, and no generated bundle under a package's `lib/` ran away; the repository's own root `scripts/` is outside the scope, and the thresholds and the allowlist are [below](#file-size-budget) |
 | Test coverage (a measurement, not a gate) | `pnpm test:coverage` | V8-instrumented percentages per package over its `src` tree, printed and written to `<package>/coverage/coverage-summary.json` (see [COVERAGE.md](COVERAGE.md) for the last committed snapshot). It asserts nothing: there is no threshold to fail, because a red floor competes with the per-file size budget and buys tests that assert nothing. Read it before a refactor to find the untested corner, not to close a pull request |
+| PR change rules | `pnpm verify:pr-rules --base=<target-ref> --head=HEAD` (`scripts/check-pr-rules.mjs`) | Added public text rejects unknown ticket keys, corporate hosts and private addresses with ports; only the exact synthetic tickets and technical/document identifiers pass. A private `--names-file=<path>` adds person-name checks; absent input is reported as NOT checked. Deployment kits and lockfiles are excluded, tests are included, and inline opt-outs grant no exemption. Integration bundle URLs carry an existing full npm name; changed QA version plans update the curated changelog in the same range; published package versions are materialized by Nx release commits, never manually. The range starts at the merge base with the target, so target-only commits are not attributed to the PR. This supplements the existing package/client/card/token/release gates and runs in CI prepare on pull requests without changing the project matrix |
 | Version plans | `pnpm release:check` (`scripts/check-release-plans.mjs`) | Every publishable release project whose commits no release tag covers yet is named by a committed version plan; a project a tag already covers is not asked for one (see below) |
+
+### Retired registration seats
+
+`verify:packages` includes `scripts/verify-retired-seats.mjs`; `pnpm verify:seats`
+prints its standalone census. A TypeScript syntax tree reads actual registrations
+and injections under both `plugins/*/src` and `packages/*/src`. It rejects the
+retired settings item/tab and companion-list seats, and orphan `tab-labels` or
+`settings-tab-label` modules. It resolves literals, templates, local constants,
+relative imported static values, object options/spreads, helper calls and defaults.
+Audited modules are parsed, never executed. Comments, strings explaining a seat,
+JSX contractions and regex literals do not count as registrations. Dynamic values
+that cannot be resolved are counted and listed by the standalone command; this is
+static enforcement, not a proof of every runtime-produced slot name. No retired
+tab-label language, length or ordering policy is restored.
+
+### Curated QA changelog history
+
+`verify:packages` reads the shared contract in `scripts/qa-changelog-contract.mjs`.
+The newest available `release/*` wave supplies the published text and manifest
+version, including when the branch forked before that wave. A QA plan whose target
+is already published fails as consumed; rebase onto the released line before
+planning again. The tree's newer manifest version remains the floor after Nx
+materializes a release. A new future entry without a plan fails even with no
+version plans present, and any edit or removal inside a published entry fails.
+Moving or duplicating prose elsewhere does not exempt an edit to a frozen entry.
+
+The branch's merge base attributes edits: an unchanged inherited stale section is
+not blamed on the branch. `--base=<target-ref>` (or CI's `NX_BASE`) chooses that
+comparison explicitly; `--head=<ref>` defaults to `HEAD`. Explicit missing refs
+fail. A checkout with no wave tag reports that the frozen-section check was NOT
+performed; fetch complete release tags before relying on that result. A known tag
+whose curated file or manifest cannot be read fails rather than passing an empty
+check. Tree checks still run without history. The QA pin-test and product changelog
+remain unchanged; root git fixtures cover the no-plan and lagging-branch cases.
 
 ### File size budget
 

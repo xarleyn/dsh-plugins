@@ -266,6 +266,24 @@ test("the tooling test command still names every tooling test that exists", asyn
   );
 });
 
+test("PR change rules run only for pull requests with the affected SHA range", async () => {
+  const workflow = await readFile(
+    new URL("../.github/workflows/ci.yml", import.meta.url),
+    "utf8",
+  );
+  assert.match(
+    workflow,
+    /- name: Verify pull request rules\s+if: github\.event_name == 'pull_request'\s+run: pnpm verify:pr-rules --base="\$NX_BASE" --head="\$NX_HEAD"/u,
+  );
+  const manifest = JSON.parse(
+    await readFile(new URL("../package.json", import.meta.url), "utf8"),
+  );
+  assert.equal(
+    manifest.scripts["verify:pr-rules"],
+    "node scripts/check-pr-rules.mjs",
+  );
+});
+
 test("the CI matrix marks publishable plugins and shared packages for tarball verification", () => {
   const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
   const script = fileURLToPath(

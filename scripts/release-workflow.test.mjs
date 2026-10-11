@@ -203,7 +203,12 @@ function repositoryState(root) {
 
 afterEach(() => {
   for (const fixture of fixtures.splice(0)) {
-    rmSync(fixture, { recursive: true, force: true });
+    rmSync(fixture, {
+      recursive: true,
+      force: true,
+      maxRetries: 10,
+      retryDelay: 300,
+    });
   }
 });
 
