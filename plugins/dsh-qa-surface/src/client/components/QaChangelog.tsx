@@ -22,6 +22,18 @@ export interface QaChangelogEntry {
 
 export const QA_CHANGELOG: readonly QaChangelogEntry[] = [
   {
+    version: "0.13.1",
+    date: "2026-10-11",
+    sections: [
+      {
+        title: "Исправления",
+        items: [
+          "Обновили библиотеку отображения формул: ограничения на ссылки и внешние ресурсы сохраняются при обработке математических выражений в ответах и диаграммах.",
+        ],
+      },
+    ],
+  },
+  {
     version: "0.13.0",
     date: "2026-09-24",
     sections: [
