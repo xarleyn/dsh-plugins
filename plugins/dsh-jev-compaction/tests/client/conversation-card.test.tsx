@@ -215,6 +215,45 @@ describe("run card", () => {
     expect(container.textContent).toContain("7 \u2192 kept");
   });
 
+  it("marks a queued run as a promise, not a result", () => {
+    // The plan is recomputed when it lands, so the queued card must not read
+    // as though the context already shrank.
+    const queued = runData({
+      run: {
+        ...RUN,
+        mode: "manual",
+        applied: 0,
+        trigger: "queued",
+        items: RUN.items.map((item) => ({ ...item, replacementSeq: null })),
+      },
+    });
+    const container = renderCard(queued);
+    expect(container.textContent).toContain("queued");
+    expect(container.textContent).toContain(
+      "2 results queued for the next step",
+    );
+    expect(container.textContent).toContain("estimated 1 000 → 264 tokens");
+    expect(container.textContent).toContain("estimated 736 saved (74%)");
+    expect(container.textContent).not.toContain("2 results replaced");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the Jev compaction report" }),
+    );
+    expect(container.textContent).toContain("Characters that would go");
+    expect(container.textContent).toContain("7 → kept");
+  });
+
+  it("shows both scores when the backend answered both questions", () => {
+    const container = renderCard(runData());
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the Jev compaction report" }),
+    );
+    const rows = container.querySelectorAll(".jevc-run-items tbody tr");
+    expect(rows[1]!.textContent).toContain("need 0.11");
+    expect(rows[1]!.textContent).toContain("verbatim 0.50");
+    expect(rows[0]!.textContent).toContain("need 0.05");
+    expect(rows[0]!.textContent).not.toContain("verbatim");
+  });
+
   it("renders a skip as one line with its reason and no expander", () => {
     const container = renderCard({
       view: "skip",
