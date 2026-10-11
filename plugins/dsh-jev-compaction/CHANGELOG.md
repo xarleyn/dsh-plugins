@@ -1,3 +1,13 @@
+## 0.2.0 (2026-10-11)
+
+### 🚀 Features
+
+- Record every compaction run as a durable log-only session event and draw it as a card in the conversation: a run that produces a plan appends `jev-compaction/applied` with its mode, trigger, state-fitting stage, candidate/planned/applied counts, Jev request count and concurrency, characters removed, before/after tokens, context window, action distribution and one row per candidate carrying tool, size, action, probabilities and its original-to-replacement seq pair. `/jev-compact --dry-run` appends the same record marked dry-run with every replacement seq null. A run a gate refused appends `jev-compaction/skipped` only when `diagnostics.showSkipReasons` asks for it, and never for the per-session mutex. The card is collapsed by default and expands into the trigger, the scale, the action distribution, the per-candidate table and a provenance line; it is metadata only, carries no pruned output, and never enters the model-visible surface. `diagnostics.sessionCards` gates the record and both switches are editable from the settings card. ([b5af0b01](https://github.com/xarleyn/dsh-plugins/commit/b5af0b01))
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.1.1 (2026-09-22)
 
 ### 🩹 Fixes
