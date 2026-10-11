@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>QA Browser service worker fixture</title>
+  </head>
+  <body>
+    <p id="outcome">state: pending</p>
+    <script>
+      // Whether the registration call resolved is not the question: a worker
+      // that runs reports itself, and the silence is the answer the test needs.
+      const outcome = document.getElementById("outcome");
+      const note = (state) => {
+        outcome.textContent = `state: ${state}`;
+      };
+      navigator.serviceWorker.addEventListener("message", (event) => {
+        if (event.data === "worker-alive") note("worker-alive");
+      });
+      navigator.serviceWorker.register("/sw.js").catch(() => note("no-worker"));
+      setTimeout(() => {
+        if (outcome.textContent === "state: pending") note("no-worker");
+      }, 4000);
+    </script>
+  </body>
+</html>

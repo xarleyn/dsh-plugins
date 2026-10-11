@@ -60,10 +60,15 @@ export function QaSkillToolPicker(props: QaSkillToolPickerProps) {
   // document order: the offset carries the previous group's size.
   const groupRows = (tools: readonly QaSkillToolDescriptor[], offset: number) =>
     tools.map((tool, index) => (
-      <li key={tool.name} className="dsh-qa-toolpicker__row">
+      <li
+        key={tool.name}
+        className="dsh-qa-toolpicker__row"
+        data-testid="qa-settings-toolpicker-row"
+      >
         <label className="dsh-qa-toolpicker__label">
           <input
             type="checkbox"
+            data-testid="qa-settings-toolpicker-row-input"
             checked={draft.includes(tool.name)}
             onChange={(event) => toggle(tool.name, event.currentTarget.checked)}
             onKeyDown={(event) => {
@@ -76,10 +81,16 @@ export function QaSkillToolPicker(props: QaSkillToolPickerProps) {
               }
             }}
           />
-          <span className="dsh-qa-toolpicker__name">{tool.name}</span>
+          <span
+            className="dsh-qa-toolpicker__name"
+            data-testid="qa-settings-toolpicker-row-name"
+          >
+            {tool.name}
+          </span>
           {tool.description === "" ? null : (
             <span
               className="dsh-qa-toolpicker__description"
+              data-testid="qa-settings-toolpicker-row-description"
               title={tool.description}
             >
               {tool.description}
@@ -97,11 +108,19 @@ export function QaSkillToolPicker(props: QaSkillToolPickerProps) {
       onClose={props.onClose}
       footer={
         <>
-          <span className="dsh-qa-toolpicker__selected">
+          <span
+            className="dsh-qa-toolpicker__selected"
+            data-testid="qa-settings-toolpicker-selected"
+          >
             Выбрано: {draft.length}
           </span>
-          <QaSettingsButton label="Отмена" onClick={props.onClose} />
           <QaSettingsButton
+            testId="qa-settings-toolpicker-cancel"
+            label="Отмена"
+            onClick={props.onClose}
+          />
+          <QaSettingsButton
+            testId="qa-settings-toolpicker-apply"
             tone="primary"
             label="Применить"
             onClick={() => props.onApply(draft)}
@@ -110,26 +129,41 @@ export function QaSkillToolPicker(props: QaSkillToolPickerProps) {
       }
     >
       {props.toolsError === null ? null : (
-        <QaSettingsNotice tone="error">{props.toolsError}</QaSettingsNotice>
+        <QaSettingsNotice tone="error" testId="qa-settings-toolpicker-error">
+          {props.toolsError}
+        </QaSettingsNotice>
       )}
       <input
         className="dsh-qa-settings__search"
+        data-testid="qa-settings-toolpicker-search"
         type="search"
         value={query}
         placeholder="Поиск инструментов…"
         aria-label="Поиск инструментов"
         onChange={(event) => setQuery(event.currentTarget.value)}
       />
-      <ul ref={list} className="dsh-qa-toolpicker__list">
+      <ul
+        ref={list}
+        className="dsh-qa-toolpicker__list"
+        data-testid="qa-settings-toolpicker-list"
+      >
         {available.length === 0 ? null : (
           <>
-            <li className="dsh-qa-toolpicker__group">Доступные сейчас</li>
+            <li
+              className="dsh-qa-toolpicker__group"
+              data-testid="qa-settings-toolpicker-group"
+            >
+              Доступные сейчас
+            </li>
             {groupRows(available, 0)}
           </>
         )}
         {unavailable.length === 0 ? null : (
           <>
-            <li className="dsh-qa-toolpicker__group">
+            <li
+              className="dsh-qa-toolpicker__group"
+              data-testid="qa-settings-toolpicker-group"
+            >
               Недоступные в этой конфигурации
             </li>
             {groupRows(unavailable, available.length)}
@@ -137,7 +171,10 @@ export function QaSkillToolPicker(props: QaSkillToolPickerProps) {
         )}
       </ul>
       {visible.length === 0 ? (
-        <p className="dsh-qa-settings__field-hint">
+        <p
+          className="dsh-qa-settings__field-hint"
+          data-testid="qa-settings-toolpicker-no-match"
+        >
           Инструментов по запросу не нашлось.
         </p>
       ) : null}

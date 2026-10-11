@@ -115,6 +115,21 @@ describe("AuditJsonTree", () => {
     expect(container.textContent).not.toContain("▸");
   });
 
+  it("draws its arrow on the grid its viewBox declares", () => {
+    const { container } = render(<AuditJsonTree value={DOCUMENT} />);
+
+    const svg = container.querySelector(".dsh-audit-json__chevron");
+    /*
+     * The box is 12 by 12 CSS pixels, so the glyph's size is the ratio between the
+     * path and its viewBox — a 16-grid path dropped into a 14 box answers about 14 %
+     * larger than the arrows beside it. The 14 by 14 grid is the plugin-card shell's,
+     * and this sheet ships inside a bundle seated on the Plugins row, which may not
+     * carry that shell's chevron; moving the path therefore moves the viewBox with it.
+     */
+    expect(svg?.getAttribute("viewBox")).toBe("0 0 16 16");
+    expect(svg?.querySelector("path")?.getAttribute("d")).toBe("m4 6 4 4 4-4");
+  });
+
   it("survives a value that is not an object", () => {
     render(<AuditJsonTree value={"just a string"} />);
 

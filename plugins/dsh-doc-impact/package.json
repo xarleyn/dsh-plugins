@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-doc-impact",
-  "version": "0.4.1",
+  "version": "0.5.1",
   "description": "Deterministic documentation impact engine for DeepSeek Harness",
   "keywords": [
     "deepseek",
@@ -32,10 +32,12 @@
       "import": "./lib/index.js"
     },
     "./client": "./lib/client.js",
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
@@ -47,6 +49,7 @@
     "build": "pnpm run clean && tsc -p tsconfig.build.json && pnpm run build:client",
     "lint": "eslint src tests scripts tsdown.config.ts",
     "test": "pnpm run build:client && vitest run",
+    "test:coverage": "pnpm run build:client && vitest run --coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify:client": "node scripts/verify-client-bundle.mjs",
     "smoke:packed": "node scripts/smoke-packed.mjs",
@@ -82,6 +85,10 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
     "@deepseek-ai/dsh-llm": "catalog:dsh",
     "@deepseek-ai/dsh-tools": "catalog:dsh",
     "@deepseek-ai/schemastery": "catalog:dsh",
@@ -94,12 +101,17 @@
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
     "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
     "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
     "@types/picomatch": "^4.0.2",
     "@types/react": "catalog:frontend-dev",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-test-kit": "workspace:^",

@@ -141,7 +141,7 @@ export function createFileDeleteTool(): ToolDefinition {
   return defineTool({
     name: "file_delete",
     description:
-      "Delete one regular file inside this session's workspace. Use it to remove scratch files a task produced and no longer needs. Directories, missing paths and anything outside the workspace — including paths that escape through a symbolic link — are refused. Every deletion is confirmed by the operator before it runs.",
+      "Delete one regular file inside this session's workspace. Use it to remove scratch files a task produced and no longer needs. Directories, missing paths and anything outside the workspace — including paths that escape through a symbolic link — are refused. Every deletion is confirmed by the operator before it runs, and a call delegated from another agent is refused: nothing you delete on your own can be confirmed.",
     parameters: {
       path: {
         type: "string",

@@ -58,6 +58,7 @@ export function panelState(
     humanControlLeaseSeconds: 30,
     autoRevealOnAgentActivity: true,
     focusOnAutoReveal: false,
+    runtimeMode: "launch",
     coordinateInputEnabled: true,
     ...overrides,
   };

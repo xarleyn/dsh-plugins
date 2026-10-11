@@ -78,7 +78,8 @@ function renderValue(value: unknown, depth: number): string {
 
 /**
  * Render one record's fields for display.
- * @param fields - the caller's fields, as the logger received them.
+ * @param fields - the caller's fields as the logger recorded them, its own
+ * `redact` already applied; this buffer sanitizes for display, not for secrets.
  * @returns short key/value pairs, capped in count.
  */
 export function renderFields(

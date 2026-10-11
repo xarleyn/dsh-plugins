@@ -71,6 +71,46 @@ describe("jira people filters", () => {
     expect(needsUserLookup("Иванов", "cloud")).toBe(true);
   });
 
+  // A history clause asks about the person who moved the field, and the
+  // identifier is already in the issue's own change log: reading the directory
+  // for a name would be an unbounded read behind a filter whose job is to widen
+  // a search, and in service mode a project boundary cannot hold it at all.
+  it("reads no directory for the person a history clause names", async () => {
+    const { fetcher, calls } = search();
+    const provider = providerFor(fetcher);
+    await provider.execute(
+      { credential: credentialFor(provider) },
+      "issues.search",
+      {
+        projectKeys: ["PROJ"],
+        history: [
+          {
+            field: "assignee",
+            op: "changed",
+            value: "5b10ac8d82e05b22cc7d4ef5",
+          },
+        ],
+      },
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url.pathname).toBe("/rest/api/3/search/jql");
+    expect(jqlOf(calls[0])).toContain(
+      'assignee CHANGED TO "5b10ac8d82e05b22cc7d4ef5"',
+    );
+    await expect(
+      provider.execute(
+        { credential: credentialFor(provider) },
+        "issues.search",
+        {
+          projectKeys: ["PROJ"],
+          history: [{ field: "status", op: "changed", by: "Иванов" }],
+        },
+      ),
+    ).rejects.toMatchObject({ code: "InvalidRequest" });
+    // Refused before the query was built: no second read of any kind.
+    expect(calls).toHaveLength(1);
+  });
+
   it("refuses a name nobody matches instead of answering an empty page", async () => {
     const { fetcher, calls } = search([]);
     const provider = providerFor(fetcher);

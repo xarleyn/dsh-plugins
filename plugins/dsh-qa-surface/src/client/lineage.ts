@@ -7,7 +7,7 @@ import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/cli
  * A delegated run is an implementation detail of a single answer: the Host
  * refuses to attest it, its sources reach the parent chat through the
  * provenance inheritance flow, and it has no owner. The host list the surface
- * already follows carries both marks (`origin` and `parentId`), so every
+ * already follows marks delegated runs with `origin`; ordinary forks also carry `parentId`, so every
  * projection that talks about chats asks this one question instead of
  * re-deriving it — and a chat row, a chat count and a claim batch can never
  * disagree about what a chat is.
@@ -16,12 +16,12 @@ export function isDelegatedSession(
   summary: Pick<SessionSummary, "origin" | "parentId"> | undefined,
 ): boolean {
   if (summary === undefined) return false;
-  return summary.origin === "subagent" || summary.parentId !== undefined;
+  return summary.origin === "subagent";
 }
 
 /** The session-list slice the lineage walk reads. */
 export type SessionLineage = Readonly<
-  Record<string, Pick<SessionSummary, "parentId"> | undefined>
+  Record<string, Pick<SessionSummary, "parentId" | "origin"> | undefined>
 >;
 
 /**
@@ -39,7 +39,8 @@ export function chatRootOf(byId: SessionLineage, sessionId: string): string {
   const seen = new Set<string>();
   while (!seen.has(current)) {
     seen.add(current);
-    const parent = byId[current]?.parentId;
+    const row = byId[current];
+    const parent = row?.origin === "subagent" ? row.parentId : undefined;
     if (parent === undefined) return current;
     current = String(parent);
   }
@@ -53,24 +54,9 @@ export interface SubagentNameCandidate {
   readonly label: string;
 }
 
-/** One durable delegation catalog entry, as the Host lists it. */
-export interface SubagentCatalogEntry {
-  readonly kind?: string;
-  readonly id?: string;
-  readonly label?: string;
-}
-
-/** Direct delegation catalogs keyed by their parent chat. */
-export type SubagentCatalogs = Readonly<
-  Record<
-    string,
-    { readonly entries?: readonly SubagentCatalogEntry[] } | undefined
-  >
->;
-
 /**
- * Delegated sessions whose names a page may sign its notices with: the
- * children of the chats it lists, catalog labels first and list titles after.
+ * Delegated sessions whose names a page may sign its notices with: the children
+ * of the chats it lists, named by the row title the Host's session list carries.
  *
  * `chats` is the visible chat set — the account's own chats while accounts are
  * on, and `undefined` for a deployment without accounts, where every chat on
@@ -82,23 +68,12 @@ export type SubagentCatalogs = Readonly<
  */
 export function visibleSubagentCandidates(
   byId: Readonly<Record<string, SessionSummary>>,
-  catalogs: SubagentCatalogs,
   chats: ReadonlySet<string> | undefined,
 ): readonly SubagentNameCandidate[] {
   const visible = (chatId: string): boolean =>
     chats === undefined || chats.has(chatId);
   const candidates: SubagentNameCandidate[] = [];
   const seen = new Set<string>();
-  for (const [parentId, catalog] of Object.entries(catalogs)) {
-    if (!visible(parentId)) continue;
-    for (const entry of catalog?.entries ?? []) {
-      if (entry.kind !== "child") continue;
-      const id = entry.id;
-      if (id === undefined || seen.has(id)) continue;
-      seen.add(id);
-      candidates.push({ id, label: entry.label ?? "" });
-    }
-  }
   for (const [key, summary] of Object.entries(byId)) {
     if (summary.origin !== "subagent") continue;
     const id = String(summary.id ?? key);

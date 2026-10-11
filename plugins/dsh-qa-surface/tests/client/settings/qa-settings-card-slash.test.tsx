@@ -10,12 +10,7 @@ import {
 } from "@testing-library/react";
 
 import { resolveConfig } from "../../../src/resolve-config.js";
-import {
-  openCard,
-  renderCard,
-  section,
-  settle,
-} from "./qa-settings-card.helpers.js";
+import { renderCard, section, settle } from "./qa-settings-card.helpers.js";
 
 afterEach(async () => {
   // The status poll settles after the assertions; flush it inside act so the
@@ -28,14 +23,14 @@ describe("QA Surface card", () => {
   describe("slash section", () => {
     it("states that nothing below has an effect while the switch is off", async () => {
       await renderCard();
-      openCard();
-      expect(screen.getByText(/Слэш-действия выключены/u)).toBeTruthy();
+      expect(
+        screen.getByTestId("qa-settings-slash-notice-disabled").textContent,
+      ).toMatch(/Слэш-действия выключены/u);
     });
 
     it("writes the master switch through the lockdown path", async () => {
       const { mutate } = await renderCard();
-      openCard();
-      const slash = section("Слеш-действия");
+      const slash = section("qa-settings-slash");
       fireEvent.click(
         within(slash).getByRole("checkbox", {
           name: /Разрешить слэш-действия/u,
@@ -49,13 +44,22 @@ describe("QA Surface card", () => {
 
     it("keeps the allow list inert until its mode asks for one", async () => {
       await renderCard();
-      openCard();
-      const slash = section("Слеш-действия");
       // The default skills mode is allow-list, so its field is live; commands
       // default to deny-all and theirs is not.
-      const fields = within(slash).getAllByRole("textbox");
-      expect((fields[0] as HTMLTextAreaElement).disabled).toBe(false);
-      expect((fields[1] as HTMLTextAreaElement).disabled).toBe(true);
+      expect(
+        (
+          screen.getByTestId(
+            "qa-settings-slash-skills-allow",
+          ) as HTMLTextAreaElement
+        ).disabled,
+      ).toBe(false);
+      expect(
+        (
+          screen.getByTestId(
+            "qa-settings-slash-commands-allow",
+          ) as HTMLTextAreaElement
+        ).disabled,
+      ).toBe(true);
     });
 
     it("warns about the legacy compatibility mode", async () => {
@@ -67,11 +71,11 @@ describe("QA Surface card", () => {
           } as never),
         }),
       });
-      openCard();
       await waitFor(() => {
         expect(
-          screen.getByText(/устаревший режим совместимости/u),
-        ).toBeTruthy();
+          screen.getByTestId("qa-settings-slash-notice-legacy-defaults")
+            .textContent,
+        ).toMatch(/устаревший режим совместимости/u);
       });
     });
   });

@@ -1,0 +1,7 @@
+{
+  "extends": "@yadsh/dsh-config/tsconfig/client",
+  "compilerOptions": {
+    "noEmit": true
+  },
+  "include": ["src", "tests"]
+}

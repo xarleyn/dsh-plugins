@@ -266,6 +266,8 @@ export interface QaDocsSearchResult extends QaDocsIdentity {
 /** The outcome of one documentation read. */
 export interface QaDocsReadResult extends QaDocsIdentity {
   readonly path: string;
+  /** Actual read target, kept out of the model-facing rendering. */
+  readonly absolutePath: string;
   readonly from: number;
   readonly to: number;
   readonly totalLines: number;
@@ -907,6 +909,7 @@ export async function readDocumentation(
     ...docsIdentityOf(target.pathFromDocs),
     path: reportPath(target.pathFromDocs),
     from,
+    absolutePath: target.absolute,
     to,
     totalLines: lines.length,
     truncated: to < lines.length || from > 1,
@@ -1099,7 +1102,7 @@ export function createDocsReadTool(
       path: {
         type: "string",
         required: true,
-        description: `The documentation file, as docs_search reports it (\`${QA_DOCS_DIRECTORY}/<module>/<version>/<file>\`) or relative to ${QA_DOCS_DIRECTORY}/.`,
+        description: `The documentation file, as docs_search reports it (\`${QA_DOCS_DIRECTORY}/<module>/<version>/<file>\`), relative to ${QA_DOCS_DIRECTORY}/, or an absolute path inside the configured documentation root.`,
       },
       from: {
         type: "number",
@@ -1117,6 +1120,7 @@ export function createDocsReadTool(
         properties: {
           path: { type: "string", required: true },
           from: { type: "number", required: true },
+          absolutePath: { type: "string", required: true },
           to: { type: "number", required: true },
           totalLines: { type: "number", required: true },
           truncated: { type: "boolean", required: true },
@@ -1125,6 +1129,18 @@ export function createDocsReadTool(
           module: { type: "string" },
         },
       },
+      presentationMeta: (_args, value) => ({
+        path: value.absolutePath,
+        aliases: [value.path],
+        offset: value.from,
+        totalLines: value.totalLines,
+        truncated: value.truncated,
+        lang: "md",
+        lines: value.text.split("\n").map((text, index) => ({
+          number: value.from + index,
+          text,
+        })),
+      }),
       render: (_args, value) => {
         const result = value as QaDocsReadResult;
         const lines = [

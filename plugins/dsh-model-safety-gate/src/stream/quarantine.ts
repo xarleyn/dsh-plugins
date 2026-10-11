@@ -8,6 +8,10 @@
  *
  * One classifier in flight per channel: while `classifierRunning` is true the
  * channel keeps accumulating and the guard must not start another snapshot.
+ *
+ * Release follows coverage: a snapshot records the pending head it examined and
+ * a flush hands back no more than the head a *passed* check covered, so text
+ * larger than one window drains window by window instead of escaping the gate.
  */
 
 export type QuarantineAppend = "buffer" | "check" | "overflow";
@@ -30,6 +34,10 @@ export class ChannelQuarantine {
   private stashedBlockStart: unknown = null;
   private readonly pending: string[] = [];
   private pendingChars = 0;
+  /** Pending head a passed check covered, and therefore may be released. */
+  private verifiedChars = 0;
+  /** Pending head the snapshot currently being checked covers. */
+  private snapshotChars = 0;
   private charsSinceCheck = 0;
   private lastCheckAt = 0;
   private checksStarted = 0;
@@ -69,18 +77,26 @@ export class ChannelQuarantine {
   }
 
   /**
-   * Content for the next snapshot: lookbehind context plus the currently
-   * quarantined text, clamped to the window size so classifier requests stay
-   * bounded (lookbehind first, newest text last).
+   * Content for the next snapshot: the oldest quarantined text plus the
+   * released-text context in front of it, clamped to the window size so
+   * classifier requests stay bounded.
+   *
+   * Coverage wins over context: the window is filled from the head of the
+   * buffer and only its remainder is handed to the lookbehind. Slicing from the
+   * tail instead would let a buffer larger than the window ship its unscanned
+   * head on the next flush (SPEC §12, §13). Context is not lost either — the
+   * released prefix sits immediately before this head, so the lookbehind still
+   * re-reads the seam between two windows.
+   *
+   * The covered head is remembered so {@link markChecked} can promote it to
+   * releasable text once the check passes.
    */
   snapshotText(releasedTail: string): string {
     const lookbehind = releasedTail.slice(-this.options.lookbehindChars);
     const pending = this.pending.join("");
     const windowBudget = this.options.windowChars;
-    if (lookbehind.length + pending.length <= windowBudget)
-      return lookbehind + pending;
-    const pendingFrom = Math.max(0, pending.length - windowBudget);
-    const pendingSlice = pending.slice(pendingFrom);
+    const pendingSlice = pending.slice(0, windowBudget);
+    this.snapshotChars = pendingSlice.length;
     const remaining = windowBudget - pendingSlice.length;
     const lookbehindSlice = remaining > 0 ? lookbehind.slice(-remaining) : "";
     return lookbehindSlice + pendingSlice;
@@ -96,25 +112,46 @@ export class ChannelQuarantine {
   }
 
   /**
-   * Flush the ordered quarantined chunk texts (block-start first). Returns
-   * the text fragments in order; the caller wraps them back into delta
-   * chunks with the original channel/index.
+   * Flush the ordered quarantined chunk texts (block-start first), but no
+   * further than the head a passed check covered. Returns the text fragments in
+   * order; the caller wraps them back into delta chunks with the original
+   * channel/index. Anything past the verified head stays quarantined for the
+   * next window, and so does the stashed `block-start` — a header must not run
+   * ahead of the text it opens.
    */
   flush(): { blockStart: unknown; texts: string[] } {
-    const texts = [...this.pending];
-    const blockStart = this.stashedBlockStart;
-    this.pending.length = 0;
-    this.pendingChars = 0;
+    const texts: string[] = [];
+    let releaseChars = Math.min(this.verifiedChars, this.pendingChars);
+    while (releaseChars > 0 && this.pending.length > 0) {
+      const head = this.pending[0] ?? "";
+      const released = head.slice(0, releaseChars);
+      texts.push(released);
+      if (released.length === head.length) this.pending.shift();
+      else this.pending[0] = head.slice(released.length);
+      this.pendingChars -= released.length;
+      releaseChars -= released.length;
+    }
+    const releaseHeader =
+      this.stashedBlockStart !== null &&
+      (this.pendingChars === 0 || texts.length > 0);
+    const blockStart = releaseHeader ? this.stashedBlockStart : null;
+    if (releaseHeader) this.stashedBlockStart = null;
     this.charsSinceCheck = 0;
-    this.stashedBlockStart = null;
+    this.verifiedChars = 0;
+    this.snapshotChars = 0;
     return { blockStart, texts };
   }
 
-  /** Record that a snapshot started/finished at `now`. */
+  /**
+   * Record that a snapshot started/finished at `now`. Called on the way out of
+   * every check, and only a passing one is followed by a flush, so the range
+   * the snapshot covered is what the caller may release.
+   */
   markChecked(now: number): void {
     this.charsSinceCheck = 0;
     this.lastCheckAt = now;
     this.checksStarted += 1;
+    this.verifiedChars = Math.max(this.verifiedChars, this.snapshotChars);
   }
 }
 

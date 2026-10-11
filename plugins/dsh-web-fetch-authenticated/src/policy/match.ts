@@ -68,7 +68,7 @@ function isIpHost(host: string): boolean {
   return host.includes(":") || /^\d{1,3}(?:\.\d{1,3}){3}$/u.test(host);
 }
 
-function allowedSchemes(ruleMatch: RuleMatch): string[] {
+function allowedSchemes(ruleMatch: RuleMatch): readonly string[] {
   // Omitted AND schemastery-normalized-empty arrays both mean the default.
   if (ruleMatch.schemes === undefined || ruleMatch.schemes.length === 0)
     return ["https"];

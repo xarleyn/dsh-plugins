@@ -3,12 +3,17 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
-import type { ScopeKey } from "@deepseek-ai/dsh-scope";
+import type { SkillSummary } from "@deepseek-ai/dsh-skill";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { QaAccounts } from "../../src/accounts/store.js";
 import { QaAccessService } from "../../src/access/service.js";
+import type { QaPresetScopeLease } from "../../src/access/capability-catalog.js";
 import { QaRoleRepository } from "../../src/access/role-repository.js";
 import type { QaSessionLogReader } from "../../src/admin/session-log.js";
+import {
+  QA_USER_SKILLS_PROVIDER,
+  QA_USER_SKILLS_SOURCE,
+} from "../../src/personal-skills/provider.js";
 import { resolveConfig } from "../../src/resolve-config.js";
 function harness(
   options: {
@@ -26,8 +31,12 @@ function harness(
     };
     /** Collects the ids the ownership sweep reclaimed. */
     readonly onVanishedSessions?: (sessionIds: readonly string[]) => void;
-    /** The standing scope of the QA preset, faked by the harness. */
-    readonly presetScope?: () => Promise<ScopeKey | undefined>;
+    /** The standing scope lease of the QA preset, faked by the harness. */
+    readonly presetScope?: () => Promise<QaPresetScopeLease | undefined>;
+    /**
+     * The deployment pair, as the policy's last layer reads it.
+     */
+    readonly session?: Record<string, unknown>;
   } = {},
 ) {
   const root = mkdtempSync(path.join(tmpdir(), "qa-access-"));
@@ -38,7 +47,7 @@ function harness(
   const admin = accounts.register("admin@example.com", "password-1");
   const user = accounts.register("user@example.com", "password-1");
   const tools = new Set(["read", "search", "analytics", "git", "skill"]);
-  const skills = new Map([
+  const skills = new Map<string, SkillSummary>([
     [
       "company",
       {
@@ -59,8 +68,37 @@ function harness(
         provider: "test",
       },
     ],
-  ] as const);
+  ]);
   const ctx = {
+    // The catalog a model policy is checked against: three pairs, and every
+    // policy naming anything else is refused before it reaches the store.
+    sessionController: {
+      modelCatalog: async () => ({
+        groups: [
+          {
+            id: "local",
+            name: "Local",
+            models: [{ id: "small", name: "Small" }],
+          },
+          {
+            id: "deepseek",
+            name: "DeepSeek",
+            models: [{ id: "chat", name: "Chat" }],
+          },
+          {
+            id: "premium",
+            name: "Premium",
+            models: [
+              {
+                id: "top",
+                name: "Top",
+                reasoning: { efforts: [{ id: "low" }, { id: "high" }] },
+              },
+            ],
+          },
+        ],
+      }),
+    },
     tools: {
       schemas: (scope?: unknown) => [
         ...[...tools].map((name) => ({
@@ -130,6 +168,7 @@ function harness(
     config: () =>
       resolveConfig({
         lockdown: { toolPolicy: { allow: ["read"] } },
+        ...(options.session === undefined ? {} : { session: options.session }),
         ...(options.retention === undefined
           ? {}
           : { accounts: { retention: options.retention } }),
@@ -147,6 +186,21 @@ function harness(
       : { onVanishedSessions: options.onVanishedSessions }),
   });
   return { service, accounts, admin, user, tools, skills };
+}
+
+/**
+ * Add one skill the account owns to the registry the harness serves, exactly as
+ * the personal-skills provider publishes it: its own skills root, invocable by
+ * the person and not offered to the model.
+ */
+function personal(skills: Map<string, SkillSummary>, name: string): void {
+  skills.set(name, {
+    name,
+    description: `Personal ${name}`,
+    invocation: { modelInvocable: false, userInvocable: true },
+    source: QA_USER_SKILLS_SOURCE,
+    provider: QA_USER_SKILLS_PROVIDER,
+  });
 }
 
 function fakeAgent(): Agent {
@@ -171,4 +225,4 @@ function reader(
   };
 }
 
-export { fakeAgent, harness, reader };
+export { fakeAgent, harness, personal, reader };

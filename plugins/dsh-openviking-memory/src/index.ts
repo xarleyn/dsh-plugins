@@ -29,6 +29,7 @@ import type { PreStepDecision } from "@deepseek-ai/dsh-agent";
 import type { UserMessage } from "@deepseek-ai/dsh-llm";
 import type {} from "@deepseek-ai/dsh-session";
 import type { Session } from "@deepseek-ai/dsh-session";
+import type {} from "@deepseek-ai/dsh-settings";
 import type {} from "@deepseek-ai/dsh-tools";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
@@ -39,8 +40,10 @@ import {
   MCP_SERVER_NAME,
   resolveConfig,
   resolveInjectionPlan,
+  snapshotConfig,
   type Config,
   type InjectionPlan,
+  type LiveConfig,
   type ResolvedConfig,
 } from "./config.js";
 import { injectStartupProfile } from "./lifecycle.js";
@@ -52,7 +55,6 @@ import {
   QaUserMemorySettingsStore,
   effectiveInjectionPlan,
 } from "./qa/user-settings.js";
-import { installOpenVikingMemorySettings } from "./settings.js";
 import { OpenVikingRuntime, type SessionScoping } from "./runtime.js";
 import type { QaUserMemoryOverview } from "./types.js";
 import { mountOpenVikingSkills } from "./skills.js";
@@ -73,10 +75,12 @@ export {
   MCP_SERVER_NAME,
   resolveConfig,
   resolveInjectionPlan,
+  snapshotConfig,
 } from "./config.js";
 export type {
   Config as OpenVikingConfig,
   InjectionPlan,
+  LiveConfig,
   ResolvedConfig,
 } from "./config.js";
 export { OpenVikingClient } from "./api-client.js";
@@ -112,11 +116,11 @@ export default class OpenVikingMemory extends TypertRemoteService {
   static Config = ConfigSchema;
   static inject = inject;
 
-  /** The config exactly as the user wrote it, before defaults were resolved. */
+  /** The config this entry booted with, before anything was derived from it. */
   readonly entryConfig: Config;
   /**
    * Every knob resolved, plus the derived peer/user-agent fields. Re-resolved
-   * in place when the settings section reports a committed change.
+   * when a committed settings change moves one of the live references.
    */
   resolved: ResolvedConfig;
   /** Which automatic context additions are enabled after `autoInject` gating. */
@@ -131,21 +135,34 @@ export default class OpenVikingMemory extends TypertRemoteService {
   /** Per-account switches; the file behind the QA settings page. */
   private userSettings: QaUserMemorySettingsStore;
   /**
-   * Where the effective configuration is read from. The composition entry
-   * until the settings service hands over a reader over the merged layers.
+   * The configuration source: one live reference per knob, which the Host keeps
+   * current as the settings document changes.
    */
-  private configSource: () => Config;
+  private readonly liveConfig: Config | LiveConfig;
+  /**
+   * The last snapshot adopted. `resolveConfig()` reads files and probes the
+   * workspace, so a committed change is detected by comparing the cheap snapshot
+   * and only then re-resolved.
+   */
+  private adoptedConfig: Config;
   /** Set the first time a QA surface is actually reachable. */
   private surface: QaMemorySurface | undefined;
-  /** Sessions already reported as unattributed, so the log says it once. */
-  private readonly unattributed = new Set<string>();
+  /**
+   * Sessions asked about before any account claimed them, mapped to the moment
+   * they were first missing. One line per session, answered by
+   * `qa_memory_attributed` when the claim lands later — without that pair a
+   * reader cannot tell a chat that merely started before its browser half from
+   * one nobody is ever going to claim.
+   */
+  private readonly unattributed = new Map<string, number>();
 
-  constructor(ctx: Context, config: Config = {}) {
+  constructor(ctx: Context, config: Config | LiveConfig = {}) {
     super(ctx, "openvikingMemory", { namespace: "openvikingMemory" });
     this.owner = ctx;
-    this.entryConfig = config;
-    this.configSource = () => this.entryConfig;
-    this.resolved = resolveConfig(config);
+    this.liveConfig = config;
+    this.entryConfig = snapshotConfig(config);
+    this.adoptedConfig = this.entryConfig;
+    this.resolved = resolveConfig(this.entryConfig);
     this.injection = resolveInjectionPlan(this.resolved);
     this.logger = createOpenVikingLogger(ctx.logger);
     this.userSettings = new QaUserMemorySettingsStore(
@@ -185,42 +202,55 @@ export default class OpenVikingMemory extends TypertRemoteService {
       "dsh-openviking-memory.drainer",
     );
 
-    ctx.on("agent/session-start", ({ agent }) => {
-      // Registered before any decision to skip this session: attribution can
-      // arrive after the session starts (a restart resumes chats before their
-      // browser half claims them), and a state created once that happened still
-      // has to be committed and dropped when the agent is gone.
-      agent.ctx.effect(
-        () => () => {
-          // The commit runs inside this promise, so it is returned rather than
-          // dropped: callers await the disposer to know the session is gone.
-          const disposed = this.runtime.dispose(agent.session);
-          this.identity.forget(String(agent.session.id));
-          return disposed;
-        },
-        "openvikingMemory.disposeSession()",
-      );
-      const scoping = this.activeScoping(agent.session);
-      if (scoping === undefined || !scoping.plan.startupProfile) {
-        this.logger.debug("startup_profile_skipped", {
-          sessionId: String(agent.session.id),
-        });
-        return false;
-      }
-      // `emit` dispatch does not await the returned promise, and this is the
-      // very first thing a fresh agent does — so a failure has to be caught
-      // here rather than surfacing as an unhandled rejection. Per-step profile
-      // delivery covers the case where the agent left `idle` before this
-      // landed.
-      return injectStartupProfile(agent, this.runtime).catch(
-        (error: unknown) => {
-          this.logger.warn("startup_profile_failed", {
-            sessionId: String(agent.session.id),
-            error: error instanceof Error ? error.message : String(error),
+    // `agent/created` is a serial event: its listeners are awaited and a throw or
+    // rejection fails agent creation and skips the later listeners. So every
+    // failure below is logged and swallowed — a memory integration that cannot
+    // read a profile must never take a chat down with it.
+    ctx.on("agent/created", ({ agent }): undefined | Promise<undefined> => {
+      const sessionId = String(agent.session.id);
+      try {
+        // Registered before any decision to skip this session: attribution can
+        // arrive after the session starts (a restart resumes chats before their
+        // browser half claims them), and a state created once that happened still
+        // has to be committed and dropped when the agent is gone.
+        agent.ctx.effect(
+          () => () => {
+            // The commit runs inside this promise, so it is returned rather than
+            // dropped: callers await the disposer to know the session is gone.
+            const disposed = this.runtime.dispose(agent.session);
+            this.identity.forget(sessionId);
+            this.unattributed.delete(sessionId);
+            return disposed;
+          },
+          "openvikingMemory.disposeSession()",
+        );
+        const scoping = this.activeScoping(agent.session);
+        if (scoping === undefined || !scoping.plan.startupProfile) {
+          this.logger.debug("startup_profile_skipped", { sessionId });
+          return undefined;
+        }
+        // The host awaits `agent/created` listeners and holds queued input until
+        // they finish, which is exactly when a startup profile belongs in the
+        // context: before the agent's first step. A rejected read is swallowed
+        // here rather than thrown, because a throw would fail the creation this
+        // plugin was asked to observe; `agent/pre-step` still delivers a profile
+        // the agent left `idle` before this landed.
+        return injectStartupProfile(agent, this.runtime)
+          .then(() => undefined)
+          .catch((error: unknown) => {
+            this.logger.warn("startup_profile_failed", {
+              sessionId,
+              error: error instanceof Error ? error.message : String(error),
+            });
+            return undefined;
           });
-          return false;
-        },
-      );
+      } catch (error: unknown) {
+        this.logger.warn("startup_profile_failed", {
+          sessionId,
+          error: error instanceof Error ? error.message : String(error),
+        });
+      }
+      return undefined;
     });
 
     // prepend: downstream waterfall listeners run first, so this plugin sees
@@ -271,7 +301,11 @@ export default class OpenVikingMemory extends TypertRemoteService {
       await this.runtime.flush(session);
     });
 
-    ctx.on("tools/pre-execute", guardVikingUri);
+    // A profile plugin is mounted through a scoped Cordis context, while the
+    // tool execution is routed to the agent's scope.  Keep this policy global
+    // so every agent using the shared OpenViking bridge is protected; without
+    // the explicit option the listener only sees calls in the plugin's scope.
+    ctx.on("tools/pre-execute", guardVikingUri, { global: true });
 
     // Mounted last, and deliberately not awaited: the bridge's apply blocks on
     // its first tools/list, so a server that accepts the connection but never
@@ -291,23 +325,44 @@ export default class OpenVikingMemory extends TypertRemoteService {
       mcpServerName: MCP_SERVER_NAME,
     });
 
-    // Registered last: the section becomes this plugin's configuration source
-    // immediately, so everything it can re-resolve has to exist by now.
-    installOpenVikingMemorySettings({
-      owner: ctx,
-      entryConfig: this.entryConfig,
-      schema: ConfigSchema,
-      setSource: (current) => {
-        this.configSource = current;
-      },
-      onChange: () => {
-        this.reapplySettings();
-      },
+    // A volatile Config publishes the entry as a settings namespace, and the
+    // Host by default draws a page for it. This plugin ships its own card for
+    // that namespace, so the generated page is turned off and the operator has
+    // one editor of one document, as before the settings rewrite. `settings` is
+    // an *optional* service — a profile that mounts no settings provider simply
+    // keeps the generated page — and `configure` accepts one policy per fiber,
+    // so it is registered once, from the fiber that owns the entry.
+    ctx.inject(["settings"], (settingsCtx) => {
+      settingsCtx.effect(() => {
+        // Without a settings provider there is no generated page to turn off,
+        // so the effect simply has nothing to dispose.
+        const dispose = settingsCtx.settings?.configure(
+          { auto: false },
+          ctx.fiber,
+        );
+        return () => dispose?.();
+      }, "dsh-openviking-memory.settings-page");
     });
   }
 
   /**
-   * Adopt a committed settings change.
+   * Adopt a committed settings change, if there is one.
+   *
+   * Since 0.1.7 the plugin's configuration *is* the settings document: every
+   * knob of `static Config` is a volatile reference the Host keeps current, so
+   * no callback registers this plugin as a listener. The snapshot is cheap and
+   * re-resolving it is not (credentials files, workspace probes), so the change
+   * is detected by comparing snapshots at the start of an operation.
+   */
+  private refreshConfig(): void {
+    const next = snapshotConfig(this.liveConfig);
+    if (JSON.stringify(next) === JSON.stringify(this.adoptedConfig)) return;
+    this.adoptedConfig = next;
+    this.reapplySettings(next);
+  }
+
+  /**
+   * Put a fresh configuration to work.
    *
    * Everything the plugin decides per request is re-resolved and handed to the
    * runtime, so an edited switch — or a corrected endpoint — reaches a session
@@ -316,10 +371,10 @@ export default class OpenVikingMemory extends TypertRemoteService {
    * when it starts, so a connection change is logged to say so rather than
    * silently leaving the tools on the old server.
    */
-  private reapplySettings(): void {
-    let next: ResolvedConfig;
+  private reapplySettings(next: Config): void {
+    let resolved: ResolvedConfig;
     try {
-      next = resolveConfig(this.configSource());
+      resolved = resolveConfig(next);
     } catch (error: unknown) {
       // The schema rejected the stored value; keep running on what we have.
       this.logger.warn("settings_rejected", {
@@ -329,25 +384,25 @@ export default class OpenVikingMemory extends TypertRemoteService {
     }
 
     const previous = this.resolved;
-    this.resolved = next;
-    this.injection = resolveInjectionPlan(next);
-    this.runtime.reconfigure(next, this.injection);
-    if (next.qaUserSettingsPath !== previous.qaUserSettingsPath) {
+    this.resolved = resolved;
+    this.injection = resolveInjectionPlan(resolved);
+    this.runtime.reconfigure(resolved, this.injection);
+    if (resolved.qaUserSettingsPath !== previous.qaUserSettingsPath) {
       this.userSettings = new QaUserMemorySettingsStore(
-        next.qaUserSettingsPath,
+        resolved.qaUserSettingsPath,
         (stage, data) => this.logger.warn(stage, data),
       );
     }
 
     const connectionChanged =
-      next.endpoint !== previous.endpoint ||
-      next.apiKey !== previous.apiKey ||
-      next.account !== previous.account ||
-      next.user !== previous.user;
+      resolved.endpoint !== previous.endpoint ||
+      resolved.apiKey !== previous.apiKey ||
+      resolved.account !== previous.account ||
+      resolved.user !== previous.user;
     this.logger.info("settings_applied", {
       injection: this.injection,
-      endpoint: next.endpoint,
-      qaUserScoping: next.qaUserScoping,
+      endpoint: resolved.endpoint,
+      qaUserScoping: resolved.qaUserScoping,
       connectionChanged,
       note: connectionChanged
         ? "the bridged MCP tools keep the endpoint they were mounted with until the plugin reloads"
@@ -358,8 +413,13 @@ export default class OpenVikingMemory extends TypertRemoteService {
   /**
    * The account space and the effective plan for one session, or `undefined`
    * when this session must be left alone entirely.
+   *
+   * This is the gate every per-session operation passes through, so it is also
+   * where a committed settings change is picked up: an edit made in the browser
+   * reaches a session that is already running by the time it asks anything.
    */
   private activeScoping(session: Session): SessionScoping | undefined {
+    this.refreshConfig();
     if (
       this.resolved.skipSubagentSessions &&
       session.header?.origin === "subagent"
@@ -367,9 +427,7 @@ export default class OpenVikingMemory extends TypertRemoteService {
       return undefined;
     }
     const scoping = this.scopingFor(session);
-    if (scoping.allowed) return scoping;
-    this.noteUnattributed(session);
-    return undefined;
+    return scoping.allowed ? scoping : undefined;
   }
 
   /**
@@ -390,7 +448,11 @@ export default class OpenVikingMemory extends TypertRemoteService {
       return { allowed: true, plan };
     }
     const userId = this.identity.userIdFor(session);
-    if (userId === undefined) return { allowed: false, plan };
+    if (userId === undefined) {
+      this.noteUnattributed(session);
+      return { allowed: false, plan };
+    }
+    this.noteAttributed(session, userId);
     return {
       allowed: true,
       user: userId,
@@ -429,8 +491,27 @@ export default class OpenVikingMemory extends TypertRemoteService {
   private noteUnattributed(session: Session): void {
     const sessionId = String(session.id);
     if (this.unattributed.has(sessionId)) return;
-    this.unattributed.add(sessionId);
+    this.unattributed.set(sessionId, Date.now());
     this.logger.info("qa_memory_unattributed", { sessionId });
+  }
+
+  /**
+   * Say once, and with the delay it took, that a session which had been left
+   * alone is now claimed by an account. A chat is claimed when its browser half
+   * opens it, which regularly trails the moment the session starts, so without
+   * this line the two outcomes — late claim and never claimed — look identical
+   * in the log.
+   */
+  private noteAttributed(session: Session, userId: string): void {
+    const sessionId = String(session.id);
+    const since = this.unattributed.get(sessionId);
+    if (since === undefined) return;
+    this.unattributed.delete(sessionId);
+    this.logger.info("qa_memory_attributed", {
+      sessionId,
+      userId,
+      afterMs: Date.now() - since,
+    });
   }
 
   /** Whether this deployment is configured to keep one space per account. */
@@ -457,6 +538,11 @@ export default class OpenVikingMemory extends TypertRemoteService {
    * deployment's own configuration lives; a page in a person's settings dialog
    * is the place to *show* what the assistant remembers about them, not to let
    * them switch the product's memory off.
+   *
+   * The page is answered a failure *code*, while the endpoint, the status and
+   * the store's own sentence are recorded here: a transport string on the page
+   * names internals the reader cannot act on, and the same words in this log
+   * are what an operator greps for.
    */
   @Remote("userMemoryOverview")
   async userMemoryOverview(token: string): Promise<QaUserMemoryOverview> {
@@ -464,7 +550,12 @@ export default class OpenVikingMemory extends TypertRemoteService {
     const scoped = this.scoped();
     return await readUserMemoryOverview(
       this.runtime.readClientFor(userId, scoped),
-      { scoped },
+      {
+        scoped,
+        onFail: (failure) => {
+          this.logger.warn("qa_memory_overview_failed", { userId, ...failure });
+        },
+      },
     );
   }
 

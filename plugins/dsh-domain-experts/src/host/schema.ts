@@ -242,7 +242,7 @@ export function validateDomainDefinition(
     push(
       "warning",
       "delegation.allowCrossDomain",
-      "Cross-domain access is off, so the selected mode is unused.",
+      "Cross-domain access is off, so the selected mode and direct-read namespaces are unused.",
     );
   }
   if (

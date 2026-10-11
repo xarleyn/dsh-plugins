@@ -13,6 +13,9 @@ assert(manifest.dependencies?.["@yadsh/dsh-qa-surface"]);
 
 for (const file of [
   "lib/index.js",
+  // The published names are listed in one module that the entry re-exports, so
+  // the composition root and the surface do not live in the same file.
+  "lib/public-api.js",
   "lib/tools.js",
   "lib/tool-kit.js",
   "lib/client.js",
@@ -22,6 +25,10 @@ for (const file of [
   "lib/typert.remote-client.d.ts",
   "lib/types/index.d.ts",
   "lib/types/client/index.d.ts",
+  "lib/providers/kernel/address.js",
+  "lib/providers/kernel/errors.js",
+  "lib/providers/kernel/read-policy.js",
+  "lib/providers/kernel/token.js",
   "lib/providers/bitrix24/index.js",
   "lib/providers/bitrix24/catalog.js",
   "lib/providers/bitrix24/operations.js",
@@ -171,10 +178,19 @@ assert.match(client, /Инстанс Weblate/u);
 assert.match(client, /Оператор не настроил ни одного инстанса Weblate/u);
 assert.doesNotMatch(client, /ограничен одним проектом/u);
 
-// The credential help renders from metadata: the bundle carries the shared note
-// (and its sanitizer), never the addresses themselves, which belong to the
-// deployment and are replaced per provider.
-assert.match(client, /dsh-credential-help__trigger/u);
+// The credential help renders from metadata: the bundle carries the note (and its
+// sanitizer), never the addresses themselves, which belong to the deployment and
+// are replaced per provider. The block is this bundle's own name, not the kit's —
+// the shared note's selectors would collide with our copy at equal specificity.
+assert.match(client, /dsh-qa-integrations-help__trigger/u);
+// A *rule* for the kit's selector, not a mention of it: the copy and this bundle's
+// sheet must not claim the same elements at equal specificity, where the winner is
+// the order two `<style>` tags reach `document.head`.
+assert.doesNotMatch(
+  client,
+  /\.dsh-credential-help\w*\s*\{/u,
+  "the bundle ships a rule for the kit's credential-help selectors, and the two sheets then fight over one element by <style> order",
+);
 assert.match(client, /noopener noreferrer/u);
 assert.match(client, /\.home\.arpa/u);
 for (const address of [
@@ -193,23 +209,199 @@ for (const address of [
   );
 }
 
-// The feature-owned Plugins tab stays available without the loopback-only Host
-// settings directory. It may reuse the standard card shell inside its own list.
-// Beside it, the operator card edits the plugin's real settings namespace from
-// "Plugin configuration" — the namespace the Host plugin installs as its
-// configuration source, so the card's write re-applies the running service.
+// Both cards are seats of the Plugins page in this build, so neither draws a frame
+// of its own and neither needs the Settings dialog or the loopback-only settings
+// directory: the operator card opens from the configuration section of this
+// bundle's own row and the account card from the bundle's own section, reaching the
+// same QA session through `qaUserSession`. What the move did not remove is the
+// settings *service* — `configForms` is `@deepseek-ai/dsh-client-ui-settings`, still
+// a peer, still in `dsh.client.inject`, and still named in
+// `docs/COMPATIBILITY.md`. A seat says where a card renders, not which module hands
+// it a form.
+//
+// Which seat a configuration card takes is a different question from the chrome, and
+// the panel answers it per section: the row seat is this plugin's own configuration,
+// the bundle seat is the account page the bundle adds to its own package section.
+// Two registrations of one *card* would be the defect; two cards of one bundle, each
+// on the section it belongs to, is what the page is built to hold.
+//
+// The row seat is keyed `<package name>#<row id>` — `rowConfigKey` in the contract
+// the installed `@deepseek-ai/dsh-client-ui-plugin-manager` ships — and that row id is
+// also the namespace the Host resolves this plugin's volatile Config under. So one
+// string is both the render address and the place the saved values live: a patch row
+// that moves while the card binds the old one leaves a seat with no form and a stand
+// that reads its settings back as defaults, with every type check green.
 verifyPluginCardContract(client);
-assert.match(client, /"settings\.plugins\.tab"/u);
-assert.match(client, /"settings\.plugin\.item"/u);
-assert.match(client, /"qa-integrations"/u);
-assert.match(client, /dsh-qa-integrations__host-tab/u);
-assert.match(client, /Развернуть настройки интеграций/u);
-assert.match(client, /Свернуть настройки интеграций/u);
-assert.match(client, /Развернуть конфигурацию интеграций/u);
-assert.match(client, /Свернуть конфигурацию интеграций/u);
+assert.match(client, /"plugins\.row\.config"/u);
+assert.match(client, /"plugins\.bundle\.config"/u);
+// The seat is named at the registration and so is its key: the contract reads the
+// place off `name:` and the page asks for this entry by that key, while a
+// positional or helper-passed seat leaves the gate only the citations scattered over
+// the bundle to decide from. The key is one literal, which also means nothing here
+// depends on an identifier surviving the bundler.
+assert.match(
+  client,
+  /name:\s*"plugins\.row\.config",\s*key:\s*"@yadsh\/dsh-qa-integrations#qa-integrations"/u,
+  "the row seat must name itself and its key at the register call",
+);
+assert.match(
+  client,
+  /name:\s*"plugins\.bundle\.config",\s*key:\s*"@yadsh\/dsh-qa-integrations"/u,
+  "the bundle seat must name itself and its key at its register call",
+);
+
+// The join is one fact, so it is checked as one: the row id the patch declares, the
+// namespace the card resolves its form under, and the suffix of the seat key have to
+// agree. The namespace is read off `src/shared/settings.ts` rather than off the
+// artifact — the precedent #653 sets — because what the artifact proves is the
+// literal, and a source value it happens to inline is not a string to parse syntax
+// out of.
+const settingsSource = await readFile(
+  new URL("src/shared/settings.ts", root),
+  "utf8",
+);
+const namespace = /QA_INTEGRATIONS_SETTINGS_NAMESPACE\s*=\s*"([^"]+)"/u.exec(
+  settingsSource,
+)?.[1];
+assert.equal(
+  namespace,
+  /id:\s*([A-Za-z0-9_-]+)/u.exec(patch)?.[1],
+  "the namespace the operator card binds must be the row id cordis.patch.yml declares",
+);
+const ROW_SEAT_KEY = `@yadsh/dsh-qa-integrations#${namespace}`;
+assert.match(
+  client,
+  new RegExp(
+    `key:\\s*"${ROW_SEAT_KEY.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}"`,
+    "u",
+  ),
+  "the row seat's key literal must be this bundle joined to the namespace the card resolves under",
+);
+assert.ok(
+  client.includes(`"${namespace}"`),
+  "the namespace the seat key names must be the one the bundle resolves its form under",
+);
+assert.match(client, /"configForms"/u);
+// The one-liner is not decoration, but whether the live page reaches it is not
+// this bundle's to prove. The row's detail renders
+// `description ?? renderSlot("plugins.row.config", { view: "summary" })`, and that
+// description comes from `rowText(row)` over the Host-supplied `row.meta` text —
+// measured on the installed `0.1.7-rc.2` client — not from `cordis.patch.yml`,
+// whose rows carry no description field at all. A pin on the patch would assert a
+// mechanism the page does not have. What this artifact can answer is what kind of
+// reply the entry gives whenever the Host does dispatch the summary: a sentence,
+// never a second body, because the page mounts its answer inside a paragraph.
+// The sentence is read off this manifest rather than restated here: the Host fills
+// the row's line from `description`, so the two must not drift (§4.2).
+assert.ok(
+  client.includes(JSON.stringify(manifest.description)),
+  "the row's summary one-liner ships in the bundle the panel reads, equal to the manifest description",
+);
+assert.match(
+  client,
+  /\.view\s*===\s*"summary"/u,
+  "the row entry answers the summary view instead of mounting the card for it",
+);
+assert.doesNotMatch(
+  client,
+  /settings\.plugin\.item/u,
+  "the bundle must not register the settings slot the 0.1.7 host deleted",
+);
+assert.doesNotMatch(
+  client,
+  /settings\.plugins\.tab/u,
+  "this bundle registers both cards on the Plugins page, so naming the tab back would render a second copy of each card",
+);
+// What the two bodies are made of, now that nothing frames them: each seat's
+// registrant contributes one element and the page wraps it. The show/hide labels
+// the shell used to carry are gone with the shell — a disclosure inside the
+// page's own expanded section is a card inside a card — and so is the plugin-owned
+// list that used to hold their `<li>` roots.
+assert.match(client, /qai-op__body/u);
+assert.match(client, /dsh-qa-integrations__body/u);
+assert.doesNotMatch(
+  client,
+  /dsh-qa-integrations__host-tab/u,
+  "the plugin-owned host-tab list existed to hold the shell's li root, and the page frames the body now",
+);
+for (const label of [
+  "Развернуть настройки интеграций",
+  "Свернуть настройки интеграций",
+  "Развернуть конфигурацию интеграций",
+  "Свернуть конфигурацию интеграций",
+]) {
+  assert.doesNotMatch(
+    client,
+    new RegExp(label, "u"),
+    `the bundle still carries the shell's own disclosure label ${label}`,
+  );
+}
 assert.match(client, /Сбросить переопределения/u);
-assert.match(client, /dsh-plugin-card__header/u);
-assert.match(client, /dsh-plugin-card__chevron/u);
+// The rings belong to the Host's tokens, and the sheet the note dresses is this
+// bundle's own copy of the kit's block: the shared one states a hard-coded outline,
+// and a single rule with it anywhere in the bundle loses the ring under pointer
+// modality.
+//
+// Which controls carry a ring is not a list restated here. A hand-written list proves
+// only that those strings survive the build, so a control missing from the list passes
+// unnoticed while the comment claims every focusable thing is named. Both sides are
+// read instead: every `:focus-visible` rule of `src/client/styles.ts` has to reach the
+// artifact with its selector intact, and every ring rule of the sheet the artifact
+// ships has to state the Host's pair with a fallback on each half. The sheet is read
+// out of the bundle rather than the bundle out of the sheet, because the JS around it
+// is full of braces and colons that are not CSS: scanning the whole artifact would
+// score a `querySelector(":focus-visible")` as a rule missing its ring. What neither
+// check reaches is a control the sheet never names at all — that stays a review
+// question, and the shared card-contract gate weighs these same rules against the seat
+// it reads off the bundle.
+const RING =
+  /outline:var\(--dsw-focus-ring-width,\s*2px\)\s*solid\s*var\(--dsw-focus-ring-color,\s*var\(--dsw-alias-state-business-primary\)\)\s*;?/u;
+/** The `:focus-visible` rules of a sheet, as `{ selector, body }` per comma part. */
+function focusRules(css) {
+  const rules = [];
+  for (const [, selector, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/gu)) {
+    if (!selector.includes(":focus-visible")) continue;
+    for (const part of selector.split(",")) {
+      const name = part.replace(/\s+/gu, " ").trim();
+      if (name !== "") rules.push({ selector: name, body: body ?? "" });
+    }
+  }
+  return rules;
+}
+/** The stylesheet as the build ships it — the `String.raw` template the sheet becomes. */
+function builtSheet(artifact) {
+  const [, css] = /String\.raw`([\s\S]*?)`/u.exec(artifact) ?? [];
+  assert.ok(
+    css,
+    "the bundle ships its sheet in a form this gate cannot read out; retarget the ring scan instead of letting it weigh the JS around it as CSS",
+  );
+  return css;
+}
+
+const sheetRules = focusRules(
+  await readFile(new URL("src/client/styles.ts", root), "utf8"),
+);
+const bundleRules = focusRules(builtSheet(client));
+const built = new Set(bundleRules.map((rule) => rule.selector));
+assert.ok(sheetRules.length >= 12, "the sheet lost its focus rules");
+for (const rule of sheetRules) {
+  assert.ok(
+    built.has(rule.selector),
+    `the ring rule ${rule.selector} never reaches the built bundle`,
+  );
+}
+for (const rule of bundleRules) {
+  assert.match(
+    rule.body,
+    RING,
+    `${rule.selector} states a ring the Host's focus.css can out-specify`,
+  );
+}
+assert.doesNotMatch(
+  client,
+  /outline:2px solid var\(--dsw-alias-brand-primary\)/u,
+  "a hard-coded outline in this bundle is a ring the Host's focus.css suppresses",
+);
 assert.doesNotMatch(client, /⌄|▾/u);
 // The browser has no module table for Node builtins: one `require("node:…")`
 // left in the bundle is a card that never mounts.
@@ -253,12 +445,13 @@ const DESIGN_TOKENS = new Set([
   "label-primary-foreground",
   "label-secondary",
   "label-tertiary",
+  "state-business-primary",
   "state-error-primary",
   "state-success-primary",
 ]);
 assert.match(
   client,
-  /dsh-credential-help__trigger\{[^}]*color:var\(--dsw-alias-brand-primary\)/u,
+  /dsh-qa-integrations-help__trigger\{[^}]*color:var\(--dsw-alias-brand-primary\)/u,
 );
 for (const [, token] of client.matchAll(/var\(--dsw-alias-([a-z0-9-]+)\)/gu)) {
   assert(
@@ -462,16 +655,66 @@ for (const path of gitlabPaths) {
 // Every GitLab operation is a GET; the only write-shaped surface left in the
 // provider is the connect form, which never reaches a model tool.
 assert.doesNotMatch(gitlabCatalog, /method: "(?:POST|PUT|PATCH|DELETE)"/u);
-const sharedHttp = await readFile(
-  new URL("src/providers/shared/http.ts", root),
+const readPolicy = await readFile(
+  new URL("src/providers/kernel/read-policy.ts", root),
   "utf8",
 );
 const gitlabTransport = await readFile(
   new URL("src/providers/gitlab/transport.ts", root),
   "utf8",
 );
-assert.match(sharedHttp, /method: "GET"/u);
-assert.match(sharedHttp, /redirect: "error"/u);
+assert.match(readPolicy, /method: "GET"/u);
+// Never followed, but read: a redirect is the answer a spent credential gives,
+// and the loop hands it to the provider's status fold instead of raising an
+// opaque socket failure that would fold into "request failed".
+assert.match(readPolicy, /redirect: "manual"/u);
+assert.match(readPolicy, /export function isRedirectStatus/u);
+assert.match(readPolicy, /export function credentialRedirectFailure/u);
+// A sign-in page that arrives under a 200 is the same refusal, and a body that
+// is merely not JSON stays the transport failure it was.
+assert.match(readPolicy, /looksLikeSignInPage\(/u);
+assert.match(readPolicy, /export function credentialPageFailure/u);
+// The answer's shape rides out on the error that carries it, so whoever reports
+// the refusal can name a status, a media type and a transport error class.
+assert.match(readPolicy, /withTransportDiagnostics/u);
+assert.match(readPolicy, /errorClassOf/u);
+// The budget covers the whole exchange: a chunk is read against the attempt's
+// own signal, and the stream is released on every exit from the read — a body
+// that stops arriving is refused by the deadline, not waited on forever.
+assert.match(readPolicy, /withinDeadline\(reader\.read\(\), signal\)/u);
+assert.match(readPolicy, /void reader\.cancel\(\)/u);
+// The two budgets a deployment chooses between are the kernel's named rules, so
+// a transport that wants the longer one says which; an inline lambda is where a
+// provider's comment and its retry behaviour start to disagree.
+assert.match(readPolicy, /export const DEADLINE_IS_THE_BUDGET/u);
+assert.match(readPolicy, /export const RESEND_AFTER_EVERY_FAULT/u);
+// A call the deadline ended has to say what it cost. The loop that spent the
+// attempts is the only party that knows them, so it writes them on the error it
+// gives up with — and the report an operator greps is the broker's, which knows
+// the provider and the operation and nothing of the arithmetic. Losing either
+// half leaves the log with a failed call and no way to tell a timeout from any
+// other refusal, which is how a stand spent weeks unable to answer the question.
+assert.match(readPolicy, /export function withTransportBudget/u);
+assert.match(readPolicy, /throw withTransportBudget\(failure, spent\(\)\)/u);
+const brokerArtifact = await readFile(new URL("lib/broker.js", root), "utf8");
+assert.match(brokerArtifact, /"transport\.timeout"/u);
+// The harness arms no deadline for a tool that declares none, so an undeclared
+// budget is not a missing optimisation but an unbounded chat turn.
+const toolKitArtifact = await readFile(
+  new URL("lib/tool-kit.js", root),
+  "utf8",
+);
+assert.match(toolKitArtifact, /timeoutMs:/u);
+// One address policy for every provider list: the parts of a pasted browser URL
+// that are not an endpoint are refused here, fragment included, because
+// `<origin><path>` would otherwise fold it away and leave the operator
+// believing the row had said something it had not.
+const kernelAddress = await readFile(
+  new URL("src/providers/kernel/address.ts", root),
+  "utf8",
+);
+assert.match(kernelAddress, /url\.hash !== ""/u);
+assert.match(kernelAddress, /must carry no fragment/u);
 assert.match(gitlabTransport, /"private-token": token/u);
 
 // One directory per integration: the shared engine must not know any provider.
@@ -485,6 +728,10 @@ for (const file of [
   "src/secrets/key-provider.ts",
   "src/providers/contract.ts",
   "src/providers/registry.ts",
+  "src/providers/kernel/address.ts",
+  "src/providers/kernel/errors.ts",
+  "src/providers/kernel/read-policy.ts",
+  "src/providers/kernel/token.ts",
 ]) {
   const source = await readFile(new URL(file, root), "utf8");
   assert.doesNotMatch(
@@ -561,7 +808,7 @@ const READS_RESPONSE_STREAM =
 assert.match("response.body.getReader();", READS_RESPONSE_STREAM);
 assert.match('response.headers.get("content-length");', READS_RESPONSE_STREAM);
 assert.doesNotMatch(
-  "await readBoundedText(response, this.config.maxResponseBytes);",
+  'await readBoundedText(response, cap, "Provider", signal);',
   READS_RESPONSE_STREAM,
 );
 
@@ -569,7 +816,9 @@ for (const entry of await readdir(new URL("src/providers", root), {
   withFileTypes: true,
 })) {
   const provider = entry.name;
-  if (provider === "shared" || !entry.isDirectory()) continue;
+  if (provider === "shared" || provider === "kernel" || !entry.isDirectory()) {
+    continue;
+  }
   const dir = new URL(`src/providers/${provider}/`, root);
   for await (const file of providerSources(dir)) {
     const source = await readFile(file.url, "utf8");
@@ -583,7 +832,7 @@ for (const entry of await readdir(new URL("src/providers", root), {
     assert.doesNotMatch(
       source,
       READS_RESPONSE_STREAM,
-      `src/providers/${provider}/${file.path} reads the response stream itself; src/providers/shared/http.ts owns that policy`,
+      `src/providers/${provider}/${file.path} reads the response stream itself; src/providers/kernel/read-policy.ts owns that policy`,
     );
   }
 }
@@ -596,7 +845,9 @@ for (const entry of await readdir(new URL("src/providers", root), {
   withFileTypes: true,
 })) {
   const provider = entry.name;
-  if (provider === "shared" || !entry.isDirectory()) continue;
+  if (provider === "shared" || provider === "kernel" || !entry.isDirectory()) {
+    continue;
+  }
   const fixture = await readFile(
     new URL(`tests/${provider}/conformance.test.ts`, root),
     "utf8",
@@ -706,8 +957,8 @@ const teamcityTransport = await readFile(
   new URL("src/providers/teamcity/transport.ts", root),
   "utf8",
 );
-assert.match(sharedHttp, /method: "GET"/u);
-assert.match(sharedHttp, /redirect: "error"/u);
+assert.match(readPolicy, /method: "GET"/u);
+assert.match(readPolicy, /redirect: "manual"/u);
 assert.match(teamcityTransport, /authorization: `Bearer \$\{token\}`/u);
 const teamcityHost = await readFile(
   new URL("src/providers/teamcity/index.ts", root),
@@ -935,6 +1186,19 @@ assert.doesNotMatch(jiraJql, /customfield_\\d/u);
 // An empty version or custom field is a first-class filter, in both directions.
 assert.match(jiraJql, /IS \$\{isEmpty \? "" : "NOT "\}EMPTY/u);
 assert.match(jiraJql, /statusCategory/u);
+// The history is the same typed vocabulary rather than a clause the caller writes:
+// the fields are an allow-list of what Jira keeps a history for, the operators are
+// the two Jira spells, a value is quoted like any other, and a person in a history
+// clause is validated by the same boundary as a person in an equality filter.
+assert.match(jiraJql, /HISTORY_FIELDS/u);
+assert.match(jiraJql, /WAS \$\{value\}/u);
+assert.match(jiraJql, /CHANGED/u);
+assert.match(jiraJql, /userFilter\(text, label, deployment\)/u);
+assert.match(jiraTools, /history: \{/u);
+// No history clause is assembled from a value the builder did not read: a keyword
+// that cannot belong to the operator is a refusal, not a dropped bound.
+assert.match(jiraJql, /only history\.op changed answers/u);
+assert.match(jiraJql, /contradict each other/u);
 const jiraConfig = await readFile(
   new URL("src/providers/jira/config.ts", root),
   "utf8",
@@ -974,8 +1238,12 @@ const jiraTransport = await readFile(
   new URL("src/providers/jira/transport.ts", root),
   "utf8",
 );
-assert.match(jiraTransport, /method: "GET"/u);
-assert.match(jiraTransport, /redirect: "error"/u);
+// The request goes through the kernel loop — GET-only, `redirect: "manual"` and
+// the bounded retries are asserted on `kernel/read-policy.ts` above, where the
+// single implementation lives; the provider supplies its own foldings only.
+// The fetcher this provider was given must be the loop's first argument, however
+// the call is wrapped: that is what makes "no socket of its own" mean anything.
+assert.match(jiraTransport, /fetchWithRetries\(\s*this\.fetcher/u);
 // The HTTP boundary builds no scheme of its own: which product answers decides
 // whether the secret is an HTTP Basic pair over `email:token` or a bearer
 // token, and that decision lives in one place.
@@ -1137,7 +1405,12 @@ const testitConfig = await readFile(
   "utf8",
 );
 assert.match(testitConfig, /allowInsecureHttp/u);
-assert.match(testitConfig, /must carry no credentials or query/u);
+// Test IT is the provider that once refused a URL fragment on its own; its list
+// now goes through the shared address policy, which is where that rule and the
+// credentials/query refusal live (asserted above). A provider that resolved its
+// installation list beside that policy would be a rule drifting again.
+assert.match(testitConfig, /resolveEndpointList/u);
+assert.doesNotMatch(testitConfig, /url\.(?:hash|search|username)/u);
 
 // Capability labels come from the provider at runtime, so the card renders a
 // provider it has never heard of and the bundle stays free of every catalog.
@@ -1241,8 +1514,13 @@ const confluenceTransport = await readFile(
   new URL("src/providers/confluence/transport.ts", root),
   "utf8",
 );
-assert.match(confluenceTransport, /method: "GET"/u);
-assert.match(confluenceTransport, /redirect: "error"/u);
+// drift, and this one had already lost the timeout flag its siblings keep.
+assert.match(confluenceTransport, /fetchWithRetries\(\s*this\.fetcher/u);
+assert.doesNotMatch(confluenceTransport, /\bsetTimeout\(/u);
+assert.doesNotMatch(confluenceTransport, /\bnew AbortController\(/u);
+// What the provider still owns is the retry rule it chose, named rather than
+// written out as a lambda next to a comment about something else.
+assert.match(confluenceTransport, /retriable: RESEND_AFTER_EVERY_FAULT/u);
 // The credential reaches the service through the dialect's one scheme and
 // nowhere else: no query parameter is ever built out of a token.
 assert.match(confluenceTransport, /authorizationFor\(dialectOf\(instance\)/u);
@@ -1408,6 +1686,10 @@ for (const label of [
 const host = await readFile(new URL("lib/index.js", root), "utf8");
 assert.match(host, /principalForSession/u);
 assert.match(host, /DockerSecretKeyProvider/u);
+// The entry keeps carrying the published surface now that the list of names
+// lives in its own module: a consumer of `@yadsh/dsh-qa-integrations` resolves
+// through here and must still reach every provider, store and error type.
+assert.match(host, /export \* from "\.\/public-api\.js"/u);
 const secretStore = await readFile(
   new URL("lib/secrets/secret-store.js", root),
   "utf8",

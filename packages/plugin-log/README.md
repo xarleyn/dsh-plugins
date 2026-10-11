@@ -39,7 +39,11 @@ await log.close();
 
 The registry is process-wide and tracks active logger instances automatically;
 the record bus carries what those loggers actually record, so a live consumer
-needs neither the file nor a level of its own.
+needs neither the file nor a level of its own. A record's fields already have
+the emitting logger's `redact` paths applied — one pass over the fields feeds the
+file, the console mirror and the bus alike, and a record whose fields throw when
+read is dropped rather than emitted raw — and the logger never freezes the
+object its caller passed it.
 `@yadsh/dsh-plugin-log-ui` uses both: live defaults, per-plugin level overrides,
 and a `json`/`text` selector in DSH settings, plus a **Plugin logs** panel in the
 host's right Sidebar that streams the bus behind level and text filters.

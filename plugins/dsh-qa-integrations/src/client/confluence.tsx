@@ -1,5 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
-import { CredentialHelpNote } from "@yadsh/dsh-plugin-kit/client";
+import { CredentialHelpNote } from "./credential-help-note.js";
 import { useState } from "react";
 import type {
   CredentialSource,
@@ -70,6 +70,9 @@ const ERROR_COPY: Readonly<Record<string, string>> = {
   ResourceNotFound: "Confluence не нашёл страницу или аккаунт её не видит.",
   RateLimited: "Слишком много запросов. Попробуйте позже.",
   ResultTooLarge: "Ответ Confluence слишком большой для одного запроса.",
+  UpstreamTimeout: "Confluence не ответил вовремя. Попробуйте ещё раз.",
+  TlsFailure:
+    "Сертификат Confluence не принят стендом. Нужен сертификат, которому доверяет сервер.",
   OperationDeniedByPolicy:
     "Пространство вне списка, разрешённого оператором стенда.",
   ServiceCredentialUnavailable:
@@ -105,6 +108,7 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
   const serviceBoundary = remote.serviceBoundary;
   const managedServiceCredentials = remote.managedServiceCredentials;
   return createProviderCard<ConfluenceExtra>({
+    provider: "confluence",
     title: "Confluence",
     portalFallback: "База знаний и документация вашей команды",
     accountFallback: "Пользователь Atlassian",
@@ -188,6 +192,7 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
             );
           },
     credentialSection: (state, help) => {
+      const zone = state.testIdZone;
       const { sites, instanceId, email } = state.extra;
       const configured = sites.length > 0;
       if (!configured) return null;
@@ -206,10 +211,14 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
           : sites.find((site) => site.id === instanceId);
       const server = selected?.deploymentType === "server";
       const sitePicker = needsChoice ? (
-        <label className="dsh-qa-integrations__field">
+        <label
+          className="dsh-qa-integrations__field"
+          data-testid={`${zone}-instance-picker`}
+        >
           Сайт Confluence
           <select
             className="dsh-qa-integrations__input"
+            data-testid={`${zone}-instance`}
             value={instanceId}
             disabled={state.busy}
             onChange={(event) =>
@@ -225,12 +234,18 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
           </select>
         </label>
       ) : (
-        <span className="dsh-qa-integrations__muted">
+        <span
+          className="dsh-qa-integrations__muted"
+          data-testid={`${zone}-instance-static`}
+        >
           Сайт: {sites[0]?.label ?? ""}
         </span>
       );
       const deployment = (
-        <span className="dsh-qa-integrations__muted">
+        <span
+          className="dsh-qa-integrations__muted"
+          data-testid={`${zone}-deployment`}
+        >
           Развёртывание: {server ? "Server / Data Center" : "Atlassian Cloud"}
         </span>
       );
@@ -239,7 +254,10 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
       // and drops the e-mail and the secret field entirely.
       if (state.useService) {
         return (
-          <div className="dsh-qa-integrations__section">
+          <div
+            className="dsh-qa-integrations__section"
+            data-testid={`${zone}-credential`}
+          >
             {sitePicker}
             {deployment}
             {service}
@@ -248,6 +266,7 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
                 className="dsh-qa-integrations__button dsh-qa-integrations__button--primary"
                 type="button"
                 disabled={state.busy || (needsChoice && instanceId === "")}
+                data-testid={`${zone}-connect`}
                 onClick={state.save}
               >
                 Подключить сервисный токен
@@ -257,6 +276,7 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
                   className="dsh-qa-integrations__button"
                   type="button"
                   disabled={state.busy}
+                  data-testid={`${zone}-credential-cancel`}
                   onClick={state.cancelCredential}
                 >
                   Отмена
@@ -267,15 +287,22 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
         );
       }
       return (
-        <div className="dsh-qa-integrations__section">
+        <div
+          className="dsh-qa-integrations__section"
+          data-testid={`${zone}-credential`}
+        >
           {service}
           {sitePicker}
           {deployment}
           {server ? null : (
-            <label className="dsh-qa-integrations__field">
+            <label
+              className="dsh-qa-integrations__field"
+              data-testid={`${zone}-account-field`}
+            >
               Почта аккаунта Atlassian
               <input
                 className="dsh-qa-integrations__input"
+                data-testid={`${zone}-account`}
                 type="email"
                 autoComplete="off"
                 value={email}
@@ -287,10 +314,14 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
               />
             </label>
           )}
-          <label className="dsh-qa-integrations__field">
+          <label
+            className="dsh-qa-integrations__field"
+            data-testid={`${zone}-credential-field`}
+          >
             {server ? "Личный токен доступа (PAT)" : "Atlassian API token"}
             <input
               className="dsh-qa-integrations__input"
+              data-testid={`${zone}-credential-input`}
               type="password"
               autoComplete="new-password"
               value={state.credential}
@@ -302,7 +333,10 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
             />
           </label>
           <CredentialHelpNote help={help} />
-          <p className="dsh-qa-integrations__hint">
+          <p
+            className="dsh-qa-integrations__hint"
+            data-testid={`${zone}-credential-hint`}
+          >
             {server
               ? "Токен хранится в зашифрованном виде и после сохранения не отображается."
               : "Почта и токен хранятся в зашифрованном виде и после сохранения больше не отображаются."}
@@ -317,6 +351,7 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
                 (!server && email.trim() === "") ||
                 (needsChoice && instanceId === "")
               }
+              data-testid={`${zone}-connect`}
               onClick={state.save}
             >
               Сохранить и проверить
@@ -326,6 +361,7 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
                 className="dsh-qa-integrations__button"
                 type="button"
                 disabled={state.busy}
+                data-testid={`${zone}-credential-cancel`}
                 onClick={state.cancelCredential}
               >
                 Отмена
@@ -335,10 +371,14 @@ export function createConfluenceCard(remote: ConfluenceRemote) {
         </div>
       );
     },
-    notConfiguredHint: () => (
-      <p className="dsh-qa-integrations__hint">
-        Оператор не настроил ни одного сайта Confluence, подключать нечего.
-      </p>
-    ),
+    notConfiguredHint: (state) =>
+      state.extra.sites.length === 0 ? (
+        <p
+          className="dsh-qa-integrations__hint"
+          data-testid={`${state.testIdZone}-not-configured`}
+        >
+          Оператор не настроил ни одного сайта Confluence, подключать нечего.
+        </p>
+      ) : null,
   });
 }

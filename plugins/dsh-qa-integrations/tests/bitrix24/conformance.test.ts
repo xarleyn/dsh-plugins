@@ -1,6 +1,6 @@
 import { resolveConfig } from "../../src/config.js";
 import { Bitrix24Provider } from "../../src/providers/bitrix24/index.js";
-import { describeProviderConformance } from "../provider-conformance.helpers.js";
+import { describeProviderConformance } from "../helpers/provider-conformance.helpers.js";
 
 const WEBHOOK = "https://company.bitrix24.ru/rest/42/abcdefghijk";
 
@@ -14,6 +14,7 @@ describeProviderConformance({
   // and must stay out of every header and out of the body.
   carrier: { kind: "url", value: "abcdefghijk" },
   statuses: [
+    [302, "CredentialRevoked"],
     [401, "ProviderPermissionDenied"],
     [403, "ProviderPermissionDenied"],
     [429, "ProviderUnavailable"],
@@ -22,9 +23,9 @@ describeProviderConformance({
   // One attempt on purpose: this transport also carries the one write the
   // plugin offers, and a silently repeated write is worse than a failure.
   transient: { status: 429, attempts: 1, code: "ProviderUnavailable" },
-  build: ({ fetcher, maxResponseBytes }) => {
+  build: ({ fetcher, maxResponseBytes, timeoutMs }) => {
     const provider = new Bitrix24Provider(
-      resolveConfig({ maxResponseBytes }),
+      resolveConfig({ maxResponseBytes, timeoutMs }),
       fetcher,
     );
     const credential = JSON.stringify({ webhookBaseUrl: WEBHOOK });

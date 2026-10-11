@@ -1,3 +1,106 @@
+## 0.2.9 (2026-10-08)
+
+### 🩹 Fixes
+
+- Every plugin row on the Host's Plugins page is named in words. ([fff88762](https://github.com/xarleyn/dsh-plugins/commit/fff88762))
+
+  The page titles a bundle's row and fills its description line from the package's
+  exported `locale/en.json`, which the Host resolves through the package's `exports`
+  map without activating the plugin (`@deepseek-ai/dsh-app-boot` `package-meta.ts`).
+  Only `dsh-documents` shipped that file, so the other twenty-five rows were signed by
+  their full package specifier — an operator read `@yadsh/dsh-jev-compaction` where a
+  first-party row read a phrase. Each package now exports `./locale/en.json`, publishes
+  `locale/*.json`, and carries English `meta.title` and `meta.description`; where the
+  package already had a configuration card, its `summary` one-liner and the row's
+  description are one string, pinned by a test against the shipped file rather than
+  against a copy in the test. `pnpm verify:packages` asks all three halves of every
+  plugin package, so a row cannot fall back to a specifier unnoticed.
+
+  Two pages still seated on the deleted-in-spirit `settings.plugins.tab` move to the
+  panel with them. `dsh-prompt-firewall` edits its own Config namespace, so it takes the
+  row seat keyed `@yadsh/dsh-prompt-firewall#dsh-prompt-firewall` — the row id is the
+  namespace the Host serves the form under, so no saved value is orphaned — and with the
+  seat it gives up its shell, its header badge and its show/hide labels, taking the
+  Host's `--dsw-focus-ring-*` pair for every control it draws and answering the
+  unavailable namespace with a sentence instead of an empty section.
+  `dsh-domain-experts` owns no form — it edits domains through its Remote services — so
+  it takes the bundle-level seat `plugins.bundle.config`, keyed by the package name, and
+  drops the `<h2>` heading and the intro line the panel already draws from the row's own
+  display metadata.
+
+### ❤️ Thank You
+
+- xarleyn
+
+## 0.2.8 (2026-10-04)
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- A session request that arrives after shutdown is now refused out loud. ([#432](https://github.com/xarleyn/dsh-plugins/issues/432))
+
+  Disabling the plugin stopped its timers and wrote the final checkpoint, but it
+  did not close the door: a request that reached the coordinator afterwards was
+  still welcomed in. It created the session bookkeeping it had just been told to
+  forget, waited for the slot, asked the server for state, and streamed an answer
+  — persistence work running on a component that had already said it was done. A
+  request that was queued behind a stream still in flight joined it, and then ran
+  anyway once the slot came free. Both cases now get an explicit refusal that
+  names the disposal instead of the work: the request never reaches the server,
+  and the final checkpoint shutdown asked for still runs unobstructed.
+
+- A KV snapshot now survives both the shutdown it was written for and the restore ([#345](https://github.com/xarleyn/dsh-plugins/issues/345))
+  that failed.
+
+  Shutting DSH down discarded the conversation state the plugin had promised to
+  keep. The disposal sequence announced itself as disposed before asking the
+  coordinator for the final checkpoint, and the checkpoint saw that announcement
+  and stepped aside, so a session whose last turn was still unsaved was never
+  saved. Nothing complained: the snapshot simply described a conversation one turn
+  shorter than the one the user closed the session with. The shutdown checkpoint
+  now runs through its own path, still refused to everything that wants to start
+  new work, and it still waits behind an inference stream that has not finished so
+  it sees the turn that stream produced.
+
+  A snapshot that failed to come back could never come back again. A restore
+  failure marked the manifest invalid, which is right, and every later save then
+  rewrote the snapshot file underneath that manifest while leaving it invalid — so
+  the plugin kept saving work it would never read, and each new session started
+  cold no matter how many snapshots it had written. A successful save now returns
+  its manifest to the ready state and drops the reason, including after the runtime
+  fingerprint changed, where the saved bytes belong to the new runtime and the
+  manifest said otherwise.
+
+  Unloading the plugin now finishes even when it cannot finish saving. The final
+  checkpoint waits its turn behind an inference stream that still holds the slot,
+  so a stream that never closes used to hold the unload with it. Disposal waits
+  for the checkpoint up to the new `checkpoint.shutdownGraceMs` option (five
+  seconds by default) and then releases the host, logging
+  `kv.session.shutdown_flush_abandoned`; the checkpoint is not cancelled and still
+  writes as soon as the slot is free.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.2.7 (2026-09-22)
 
 ### 🩹 Fixes

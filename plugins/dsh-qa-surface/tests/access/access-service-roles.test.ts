@@ -2,6 +2,26 @@ import { describe, expect, it } from "vitest";
 import { QaAccountsError } from "../../src/accounts/store.js";
 import { fakeAgent, harness, reader } from "./access-service.helpers.js";
 describe("QA access service", () => {
+  it("keeps a configured Common tool mounted only in the addressed agent's preset", async () => {
+    const { service, admin, user } = harness();
+    service.updateCommon(admin.token, {
+      tools: { always: ["preset_tool"], skillGrantable: [] },
+      skills: [],
+    });
+    service.reserveSession(
+      user.token,
+      "session-preset-tools",
+      "general",
+      false,
+    );
+    const resolved = await service.policyForSession(
+      user.token,
+      "session-preset-tools",
+      fakeAgent(),
+    );
+    expect(resolved?.policy.tools).toContain("preset_tool");
+  });
+
   it("keeps admin authorization separate from agent roles", async () => {
     const { service, admin, user } = harness();
     service.createSubrole(admin.token, {
@@ -16,7 +36,9 @@ describe("QA access service", () => {
     expect(service.current(admin.token).subroles.map(({ id }) => id)).toEqual([
       "general",
     ]);
-    expect(() =>
+    // A role write is asynchronous now that a named pair is checked against the
+    // Host's catalog; a non-admin is refused before that read is ever asked for.
+    await expect(
       service.createSubrole(user.token, {
         id: "sales",
         name: "Sales",
@@ -26,7 +48,7 @@ describe("QA access service", () => {
           skills: [],
         },
       }),
-    ).toThrow(QaAccountsError);
+    ).rejects.toThrow(QaAccountsError);
     await expect(service.adminSnapshot(user.token)).rejects.toThrow(
       QaAccountsError,
     );

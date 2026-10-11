@@ -6,14 +6,22 @@ import { thinkingPhrase } from "./thinking-phrases.js";
 import { useNow } from "./use-now.js";
 
 export interface QaWorkGroupProps {
-  /** "error" marks a turn the host ended with a provider failure. */
-  readonly status: "running" | "complete" | "error";
+  /**
+   * "error" marks a turn the host ended with a provider failure; "stopped"
+   * marks one a person ended, whose answer arrived as a prefix.
+   */
+  readonly status: "running" | "complete" | "error" | "stopped";
   readonly startedAt?: number;
   readonly endedAt?: number;
   readonly items: readonly QaWorkItem[];
   readonly renderMarkdown: boolean;
   /** Operator-configured running phrases; omitted reads the built-in list. */
   readonly thinkingPhrases?: readonly string[];
+}
+
+/** Whether one turn is over: a settled group opens collapsed and stays closed. */
+function isSettled(status: QaWorkGroupProps["status"]): boolean {
+  return status === "complete" || status === "error" || status === "stopped";
 }
 
 function Chevron({ open }: { readonly open: boolean }) {
@@ -137,17 +145,40 @@ const QaToolWorkItem = memo(
     const delegation = isDelegationTool(item.name);
     const header = (
       <>
-        <span className="dsh-qa-work-item__icon" data-state={item.status}>
+        <span
+          className="dsh-qa-work-item__icon"
+          data-testid="qa-surface-work-tool-icon"
+          data-state={item.status}
+        >
           <WorkItemIcon item={item} />
         </span>
-        <span className="dsh-qa-work-item__label">{item.label}</span>
-        <span className="dsh-qa-work-item__summary">{item.summary}</span>
+        <span
+          className="dsh-qa-work-item__label"
+          data-testid="qa-surface-work-tool-label"
+        >
+          {item.label}
+        </span>
+        <span
+          className="dsh-qa-work-item__summary"
+          data-testid="qa-surface-work-tool-detail"
+        >
+          {item.summary}
+        </span>
         {item.subagentId === undefined ? null : (
-          <span className="dsh-qa-work-item__agent-id" title={item.subagentId}>
+          <span
+            className="dsh-qa-work-item__agent-id"
+            data-testid="qa-surface-work-tool-agent-id"
+            title={item.subagentId}
+          >
             {item.subagentId.slice(0, 8)}
           </span>
         )}
-        <span className="dsh-qa-sr-only">{toolStatusLabel(item.status)}</span>
+        <span
+          className="dsh-qa-sr-only"
+          data-testid="qa-surface-work-tool-status"
+        >
+          {toolStatusLabel(item.status)}
+        </span>
         {expandable ? <Chevron open={false} /> : null}
       </>
     );
@@ -156,6 +187,7 @@ const QaToolWorkItem = memo(
       return (
         <div
           className="dsh-qa-work-item dsh-qa-work-item--tool"
+          data-testid="qa-surface-work-tool"
           data-tool={delegation ? "subagent" : undefined}
         >
           {header}
@@ -165,20 +197,33 @@ const QaToolWorkItem = memo(
     return (
       <details
         className="dsh-qa-work-tool"
+        data-testid="qa-surface-work-tool"
         data-tool={delegation ? "subagent" : undefined}
       >
-        <summary className="dsh-qa-work-item dsh-qa-work-item--tool">
+        <summary
+          className="dsh-qa-work-item dsh-qa-work-item--tool"
+          data-testid="qa-surface-work-tool-toggle"
+        >
           {header}
         </summary>
-        <div className="dsh-qa-work-tool__body">
+        <div
+          className="dsh-qa-work-tool__body"
+          data-testid="qa-surface-work-tool-body"
+        >
           {item.input === null ? null : (
-            <section aria-label={`Входные данные: ${item.label}`}>
+            <section
+              aria-label={`Входные данные: ${item.label}`}
+              data-testid="qa-surface-work-tool-input"
+            >
               <span>Входные данные</span>
               <pre>{item.input}</pre>
             </section>
           )}
           {item.output === null ? null : (
-            <section aria-label={`Результат: ${item.label}`}>
+            <section
+              aria-label={`Результат: ${item.label}`}
+              data-testid="qa-surface-work-tool-output"
+            >
               <span>Результат</span>
               <pre>{item.output}</pre>
             </section>
@@ -201,19 +246,36 @@ const QaTextWorkItem = memo(
     return (
       <section
         className="dsh-qa-work-item dsh-qa-work-item--text"
+        data-testid="qa-surface-work-text"
         data-state={item.status}
         aria-label={item.kind === "reasoning" ? "Рассуждение" : "Ход работы"}
       >
-        <div className="dsh-qa-work-item__text-head">
-          <span className="dsh-qa-work-item__icon">
+        <div
+          className="dsh-qa-work-item__text-head"
+          data-testid="qa-surface-work-text-head"
+        >
+          <span
+            className="dsh-qa-work-item__icon"
+            data-testid="qa-surface-work-text-icon"
+          >
             <ThinkIcon />
           </span>
-          <span className="dsh-qa-work-item__label">
+          <span
+            className="dsh-qa-work-item__label"
+            data-testid="qa-surface-work-text-label"
+          >
             {item.kind === "reasoning" ? "Размышление" : "Ход работы"}
           </span>
         </div>
-        <div className="dsh-qa-work-item__text">
-          {renderMarkdown ? <Markdown text={item.text} /> : item.text}
+        <div
+          className="dsh-qa-work-item__text"
+          data-testid="qa-surface-work-text-body"
+        >
+          {renderMarkdown ? (
+            <Markdown text={item.text} streaming={item.status === "running"} />
+          ) : (
+            item.text
+          )}
         </div>
       </section>
     );
@@ -239,15 +301,9 @@ export const QaWorkGroup = memo(
     const previousStatus = useRef(status);
 
     useEffect(() => {
-      if (
-        previousStatus.current === "running" &&
-        (status === "complete" || status === "error")
-      ) {
+      if (previousStatus.current === "running" && isSettled(status)) {
         setOpen(false);
-      } else if (
-        previousStatus.current === "complete" ||
-        previousStatus.current === "error"
-      ) {
+      } else if (isSettled(previousStatus.current)) {
         if (status === "running") setOpen(true);
       }
       previousStatus.current = status;
@@ -263,26 +319,39 @@ export const QaWorkGroup = memo(
           ? duration === null
             ? "Ход прерван"
             : `Прервано за ${duration}`
-          : duration === null
-            ? "Ход работы"
-            : `Готово за ${duration}`;
+          : status === "stopped"
+            ? duration === null
+              ? "Ход остановлен"
+              : `Остановлено на ${duration}`
+            : duration === null
+              ? "Ход работы"
+              : `Готово за ${duration}`;
 
     return (
-      <section className="dsh-qa-work" data-state={status}>
+      <section
+        className="dsh-qa-work"
+        data-testid="qa-surface-work-group"
+        data-state={status}
+      >
         <button
           type="button"
           className="dsh-qa-work__toggle"
+          data-testid="qa-surface-work-toggle"
           aria-expanded={open}
           onClick={() => setOpen((value) => !value)}
         >
           {status === "running" ? (
-            <span className="dsh-qa-work__spinner" aria-hidden="true" />
+            <span
+              className="dsh-qa-work__spinner"
+              data-testid="qa-surface-work-spinner"
+              aria-hidden="true"
+            />
           ) : null}
-          <span>{label}</span>
+          <span data-testid="qa-surface-work-label">{label}</span>
           <Chevron open={open} />
         </button>
         {open ? (
-          <div className="dsh-qa-work__body">
+          <div className="dsh-qa-work__body" data-testid="qa-surface-work-body">
             {items.map((item) =>
               item.kind === "tool" ? (
                 <QaToolWorkItem key={item.id} item={item} />

@@ -101,12 +101,10 @@ function surfaceTextByCallId(session: DshSession): Map<string, string> {
     const data = event.data as {
       message: {
         source: { callId: string };
-        content: [{ content: { type: string; text?: string }[] }];
+        content: readonly { type: string; text?: string }[];
       };
     };
-    const text = data.message.content[0].content
-      .map((item) => item.text ?? "")
-      .join("\n");
+    const text = data.message.content.map((item) => item.text ?? "").join("\n");
     map.set(data.message.source.callId, text);
   }
   return map;

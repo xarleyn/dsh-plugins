@@ -990,6 +990,18 @@ Progressive fitting strategy:
 
 Do not delete recent user constraints merely to fit Jev.
 
+The fitter protects the goal and the last three user history entries after the
+configured privacy bounds. It may remove older user entries and assistant/tool
+history oldest-first. Keeping the newest five history entries is a preference,
+not a lower bound; when protected context alone cannot fit, fail open and report
+the required estimated token count and the configured budget. Search for the
+minimum oldest-first removal without serializing once per deleted entry.
+
+Automatic failures are retried after per-session exponential delays starting
+at 30 seconds and capped at 300 seconds. Manual runs bypass this delay, and a
+successful decision or configuration change resets it. Cancellation does not
+count as failure. The successful-run turn cooldown remains independent.
+
 Questions should be batched when necessary.
 
 Batch requests MAY run concurrently with a configurable cap.

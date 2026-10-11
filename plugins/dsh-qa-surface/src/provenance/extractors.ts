@@ -10,6 +10,7 @@ import {
   createJiraExtractor,
   createKnowledgeExtractor,
 } from "./connectors.js";
+import { integrationExtractor } from "./integration-extractor.js";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -125,6 +126,7 @@ export const readFileExtractor: SourceExtractor = {
     return (
       context.toolName === "read" ||
       context.toolName === "read_file" ||
+      context.toolName === "docs_read" ||
       (typeof meta?.path === "string" && Array.isArray(meta.lines))
     );
   },
@@ -140,7 +142,21 @@ export const readFileExtractor: SourceExtractor = {
             ? args.path
             : undefined;
     if (rawPath === undefined || rawPath.trim() === "") return [];
-    const path = canonicalizeWorkspacePath(rawPath, context.workspaceRoot);
+    if (
+      context.toolName === "docs_read" &&
+      meta?.path === undefined &&
+      !context.documentationRoot?.trim() &&
+      context.workspaceRoot === undefined &&
+      !/^(?:\/|[a-zA-Z]:[\\/])/u.test(rawPath)
+    )
+      return [];
+    const docsPath =
+      context.toolName === "docs_read" &&
+      meta?.path === undefined &&
+      !/^(?:\/|[a-zA-Z]:[\\/])/u.test(rawPath)
+        ? `${context.documentationRoot?.trim() || `${context.workspaceRoot ?? ""}/docs`}/${rawPath.replace(/^docs\//u, "")}`
+        : rawPath;
+    const path = canonicalizeWorkspacePath(docsPath, context.workspaceRoot);
     const lines = Array.isArray(meta?.lines)
       ? meta.lines
           .map(record)
@@ -179,6 +195,19 @@ export const readFileExtractor: SourceExtractor = {
         origins: [context.origin],
         score: 100,
         metadata: {
+          absolutePath: /^(?:\/|[a-zA-Z]:[\\/])/u.test(docsPath)
+            ? canonicalizeWorkspacePath(docsPath)
+            : context.workspaceRoot === undefined
+              ? path
+              : canonicalizeWorkspacePath(`${context.workspaceRoot}/${path}`),
+          ...(Array.isArray(meta?.aliases)
+            ? {
+                aliases: meta.aliases.filter(
+                  (alias): alias is string => typeof alias === "string",
+                ),
+              }
+            : {}),
+          ...(meta?.truncated === true ? { truncated: true } : {}),
           ...(typeof meta?.totalLines === "number"
             ? { totalLines: meta.totalLines }
             : {}),
@@ -335,6 +364,49 @@ export function createWebFetchExtractor(
 
 export const webFetchExtractor: SourceExtractor = createWebFetchExtractor();
 
+/** Document tools consume inputs; generated output paths stay artifacts. */
+export const documentSourceExtractor: SourceExtractor = {
+  id: "document-input",
+  matches: (context) =>
+    ["document_to_markdown", "document_inspect"].includes(context.toolName),
+  extract(context) {
+    const args = parsedArgs(context.args);
+    const source = record(record(context.presentation)?.qaDocumentSource);
+    const rawPath = typeof source?.path === "string" ? source.path : args.file;
+    if (typeof rawPath !== "string" || rawPath.trim() === "") return [];
+    const path = canonicalizeWorkspacePath(rawPath, context.workspaceRoot);
+    const metadataOnly = context.toolName === "document_inspect";
+    const sourceSnippet =
+      typeof source?.snippet === "string" ? snippet(source.snippet) : undefined;
+    return [
+      {
+        id: `file:${path}`,
+        kind: "file",
+        title:
+          typeof source?.title === "string" ? source.title : basename(path),
+        path,
+        locations: [{ path }],
+        origins: [context.origin],
+        evidence: metadataOnly ? "queried" : "read",
+        score: metadataOnly ? 60 : 100,
+        ...(sourceSnippet === undefined ? {} : { snippet: sourceSnippet }),
+        metadata: {
+          metadataOnly,
+          absolutePath: /^(?:\/|[a-zA-Z]:[\\/])/u.test(rawPath)
+            ? canonicalizeWorkspacePath(rawPath)
+            : context.workspaceRoot === undefined
+              ? path
+              : canonicalizeWorkspacePath(`${context.workspaceRoot}/${path}`),
+          ...(typeof source?.mediaType === "string"
+            ? { mediaType: source.mediaType }
+            : {}),
+          ...(source?.truncated === true ? { truncated: true } : {}),
+        },
+      },
+    ];
+  },
+};
+
 export const fileSearchExtractor: SourceExtractor = {
   id: "dsh-file-search",
   matches(context) {
@@ -410,11 +482,13 @@ export function createDefaultSourceExtractorRegistry(
   const registry = new SourceExtractorRegistry();
   // Strong consumers go first; dedupe promotes them over discovery candidates.
   registry.register(readFileExtractor);
+  registry.register(documentSourceExtractor);
   registry.register(createWebFetchExtractor(urlOptions));
   registry.register(createWebSearchExtractor(maxPromotedPerSearch, urlOptions));
   registry.register(fileSearchExtractor);
   registry.register(createJiraExtractor(urlOptions));
   registry.register(createConfluenceExtractor(urlOptions));
   registry.register(createKnowledgeExtractor(urlOptions));
+  registry.register(integrationExtractor(urlOptions));
   return registry;
 }

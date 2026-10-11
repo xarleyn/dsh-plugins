@@ -15,6 +15,7 @@ await runVerifyPackage({
   packageName: "@yadsh/dsh-plugin-log-ui",
   requiredFiles: [
     "lib/index.js",
+    "lib/temporary-levels.js",
     "lib/client.js",
     "lib/types/index.d.ts",
     "lib/typert.host.js",
@@ -30,40 +31,84 @@ await runVerifyPackage({
   },
   client: {
     platform: "web",
-    // The panel lives in the right Sidebar, so that package is an activation
-    // dependency of the client half and must be requested from the host.
-    injectIncludes: ["@deepseek-ai/dsh-client-ui-sidebar-right"],
+    // The panel lives in the right Sidebar and the card sits on the Plugins page,
+    // so both packages are activation dependencies of the client half and must be
+    // requested from the host.
+    injectIncludes: [
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
+      "@deepseek-ai/dsh-client-ui-sidebar-right",
+    ],
   },
   compatibility: {
-    clientFeatures: ["sidebar.right.pane.tab", "sidebarRightTabs"],
+    clientFeatures: [
+      "plugins.row.config",
+      "sidebar.right.pane.tab",
+      "sidebarRightTabs",
+    ],
   },
   clientBundle: {
     moduleLoaderId: true,
     includes: [
-      "settings.plugin.item",
-      "key: SETTINGS_NAMESPACE",
+      // The seat is named at the registration, in the shape the card contract reads
+      // the place off: `slots.register({ name: "plugins.row.config", … })`.
+      "plugins.row.config",
+      // The keyed seat this card occupies: `<package name>#<row id>`. The row id is
+      // also the settings namespace, so a value saved before the move reads back.
+      "@yadsh/dsh-plugin-log-ui#",
+      "configForms.get(SETTINGS_ENTRY_ID)",
       "pluginLogUi",
       "remote.pluginLogUi",
-      "dsh-plugin-card__name",
-      "m3.5 5.25 3.5 3.5 3.5-3.5",
+    ],
+    matches: [
+      /*
+       * One test id of the epic #453 pass is pinned, and this one carries more
+       * than a locator: `log-panel-line` is on the DOM translator's
+       * protected-surface table (plugins/dsh-l10n-overrides/src/runtime/
+       * protected-surfaces.ts), which is what keeps a logged line out of machine
+       * translation. The translator's own suite only imitates the id, so without
+       * this assertion a rename here would lift the protection silently. The
+       * attribute is asserted, not the bare value, so the id cannot pass on the
+       * strength of a class name.
+       */
+      /["']data-testid["']\s*:\s*["']log-panel-line["']/u,
+      // Every control this bundle draws takes the Host's ring pair, each half with a
+      // fallback: a hand-written outline loses to `focus.css` under pointer
+      // modality, and an undeclared token drops the whole declaration.
+      /outline:var\(--dsw-focus-ring-width, 2px\) solid var\(--dsw-focus-ring-color, /u,
     ],
     notMatches: [
       /useSyncExternalStore\)\(scope\.subscribe/u,
       /⌄/u,
       // Nothing claims a resource address: the panel is a page, opened by kind.
       /patterns:\s*\[/u,
+      // The old tab seat of the Plugins settings section must not come back: one
+      // render site, or the card shows twice.
+      /"settings\.plugins\.tab"/u,
+      // The Plugins page draws this card's frame, its heading and its expand
+      // control, so the bundle carries neither the shell nor its chevron — and no
+      // list element for that shell's `li` to sit in.
+      /dsh-plugin-card/u,
+      /m3\.5 5\.25 3\.5 3\.5 3\.5-3\.5/u,
+      /plu-card-list/u,
     ],
-    cardContract: { legacyPatterns: [/\.plu-card\{/u] },
+    cardContract: {
+      legacyPatterns: [/\.plu-card\{/u, /\.plu-card-list\{/u],
+    },
   },
   extra: async ({ manifest, client }) => {
     assert.equal(name, "plugin-log-ui");
     assert.equal(PluginLogUi.name, "PluginLogUi");
     assert.equal(resolveConfig().format, "text");
-    assert.equal(
-      manifest.peerDependencies["@deepseek-ai/dsh-client-ui-sidebar-right"],
-      "catalog:dsh",
-      "the right Sidebar package must be a peer dependency",
-    );
+    for (const dependency of [
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
+      "@deepseek-ai/dsh-client-ui-sidebar-right",
+    ]) {
+      assert.equal(
+        manifest.peerDependencies[dependency],
+        "catalog:dsh",
+        `${dependency} must be a peer dependency of the client half`,
+      );
+    }
 
     /*
      * Right-Sidebar panel contract.
@@ -104,10 +149,17 @@ await runVerifyPackage({
       "--dsw-alias-label-secondary",
       "--dsw-alias-state-warn-label",
       "--dsw-alias-state-error-primary",
-      "--dsw-alias-bg-error",
     ]) {
       assert.ok(client.includes(token), `panel styles must use ${token}`);
     }
+    // The tint is mixed from the error token rather than named: the theme has
+    // no error-surface alias, and a `--dsw-alias-bg-error` it never declares
+    // would cost this rule its whole declaration in silence (issue #717).
+    assert.doesNotMatch(
+      client,
+      /--dsw-alias-(bg|label|border)-error/u,
+      "the panel must not name a design token the Host theme does not declare",
+    );
     assert.ok(
       client.includes(".plu-log-time{color:var(--dsw-alias-label-secondary)"),
       "the clock must stay above the dimmed ink it started on",
@@ -142,5 +194,40 @@ await runVerifyPackage({
     );
     assert.ok(client.includes(".plu-grid{"), "the card sheet must ship");
     assert.ok(client.includes(".plu-log{"), "the panel sheet must ship");
+
+    /*
+     * The held level (#743). A level the operator does not save has to reach the
+     * Host, and the only road from this bundle to the Host is the Remote contract
+     * generated beside it: if the shipped remote client does not describe the two
+     * hold methods, the card calls a method no host answers and the hold is a
+     * control that does nothing.
+     */
+    for (const method of ["setTemporaryLevel", "clearTemporaryLevel"]) {
+      assert.ok(
+        client.includes(`pluginLogUi/${method}`),
+        `the Remote contract must describe pluginLogUi/${method}`,
+      );
+    }
+    // The hold form and the row it marks: without the marker the operator cannot
+    // tell a running level from a saved one, which is the confusion the card had.
+    assert.match(
+      client,
+      /["']data-testid["']\s*:\s*["']log-card-hold-apply["']/u,
+      "the card must draw the control that holds a level",
+    );
+    assert.match(
+      client,
+      /["']data-testid["']\s*:\s*["']log-card-hold-marker["']/u,
+      "a row running on a held level must say so",
+    );
+    // The sentence the issue asked for: the hold is stated as not a settings write.
+    assert.ok(
+      client.includes("not saved"),
+      "the card must state that a held level is not saved",
+    );
+    assert.ok(
+      client.includes("until revoked"),
+      "the hold with no window must be named by how it ends",
+    );
   },
 });

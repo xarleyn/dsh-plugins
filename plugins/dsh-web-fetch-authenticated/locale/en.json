@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Authenticated Web Fetch",
+    "description": "Authenticated, policy-gated WebFetchProvider for the DeepSeek Harness web capability seam (ctx.web)"
+  }
+}

@@ -247,8 +247,8 @@ findings for the backend entry (loader mechanics, exactly-one-engine rule,
 
 ## Configuration (defaults)
 
-Every value below is also editable from the settings card (**Settings →
-Plugins → Jev Compaction**) without editing YAML; the full reference, including
+Every value below is also editable from the settings card (the **Plugins** page,
+under this plugin's row) without editing YAML; the full reference, including
 the result-shaping and archive sections, is in
 [docs/configuration.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-jev-compaction/docs/configuration.md).
 
@@ -327,14 +327,33 @@ jev-compaction:
 Without a resolvable model context window the automatic trigger falls back to
 `trigger.minSurfaceTokens` on the metered total instead of guessing a ratio.
 
+State fitting preserves the goal and the last three user messages as bounded by
+the privacy settings. Other history is shortened and removed oldest-first as
+needed; the newest five entries are preferred, but are not a fixed minimum for
+a small local backend. If the protected context alone exceeds
+`state.maxStateTokens`, pruning fails open and the diagnostic reports its token
+estimate and the configured budget. The original conversation is unchanged.
+
+Automatic failures use per-session exponential retry delays of 30, 60, 120,
+240 and at most 300 seconds, including retries within the same turn. Manual
+`/jev-compact` runs bypass this delay. Successful decision plans (including
+keeping every candidate) and applied configuration changes reset it. Cancelled
+runs do not start a failure delay. The existing turn cooldown still applies to
+successful automatic pruning.
+
 ## Settings card
 
-**Settings → Plugins → Jev Compaction** edits the same configuration through
-the host settings service: every control writes as it is made and applies to
-the running plugin without a restart. The card shows which values your user
+The card is the configuration section of this plugin's own row on the host
+**Plugins** page: open the bundle, and the configure control of the row opens the
+card under it. It edits the same configuration through the host settings service:
+every control writes as it is made and applies to the running plugin without a
+restart. The card shows which values your user
 layer overrides, resets them back to the deployment default, and never renders
 an API key — the provider section edits the _name_ of the environment variable
-holding it and the key itself stays on the host.
+holding it and the key itself stays on the host. The configuration lives under
+the plugin's own profile entry namespace, `dsh-jev-compaction`, which is also the
+row the card is opened from — so a value saved before the card moved to the
+Plugins page is read back by this build.
 
 <!-- Screenshot of the card: `docs/images/settings-card.png` (added on release). -->
 
@@ -392,7 +411,7 @@ retained.
   replacing `dsh-compaction-basic` through the official capability seam;
   `/compact` keeps working unchanged.
 - **0.1 — immediate result shaping and the settings card (shipped, off by
-  default):** the `tools/post-execute` shaper plus the Plugins settings card.
+  default):** the `tools/post-execute` shaper plus the card on the Plugins page.
   Phase 0 API findings:
   [docs/RESULT_SHAPING_SPIKE.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-jev-compaction/docs/RESULT_SHAPING_SPIKE.md).
 - **Offline evaluation:** the twelve-scenario corpus runs in-repo via
@@ -402,9 +421,9 @@ retained.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`, tested against `0.1.5-rc.2` (see
-  `compatibility.json`); the settings card requires the
-  `settings.plugin.item` client slot, and immediate shaping requires the
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`, tested against `0.1.7-rc.2` (see
+  `compatibility.json`); the settings card requires the `plugins.row.config`
+  seat of the Plugins page, and immediate shaping requires the
   `tools/post-execute` waterfall. Phase 0 API findings:
   [docs/compatibility.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-jev-compaction/docs/compatibility.md)
   and

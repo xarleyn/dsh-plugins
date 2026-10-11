@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-session-scope",
-  "version": "0.7.5",
+  "version": "0.7.7",
   "description": "Per-session workspace visibility scopes for DeepSeek Harness.",
   "type": "module",
   "main": "./lib/index.js",
@@ -51,10 +51,12 @@
       "types": "./lib/tool-guard.d.ts",
       "import": "./lib/tool-guard.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
@@ -67,6 +69,7 @@
     "lint": "eslint src tests scripts tsdown.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "pnpm run build:client && vitest run",
+    "test:coverage": "pnpm run build:client && vitest run --coverage",
     "test:watch": "vitest",
     "verify:client": "node scripts/verify-client-bundle.mjs",
     "verify:compatibility": "node scripts/verify-compatibility.mjs",
@@ -149,6 +152,7 @@
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
     "@types/react-dom": "catalog:frontend-dev",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "@yadsh/dsh-test-kit": "workspace:^",

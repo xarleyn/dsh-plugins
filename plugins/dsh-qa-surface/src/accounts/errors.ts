@@ -18,6 +18,8 @@ export type QaAccountsErrorReason =
   | "profile-disabled"
   | "invalid-starters"
   | "starters-disabled"
+  /** The notifications payload named a channel that is not a yes or a no. */
+  | "invalid-notifications"
   /** The endpoint this credential is for is switched off on this deployment. */
   | "integration-disabled"
   | "invalid-role"
@@ -30,7 +32,13 @@ export type QaAccountsErrorReason =
   /** The Harness still holds the conversation open, so its log would come back. */
   | "conversation-live"
   /** This deployment cannot remove stored conversations at all. */
-  | "conversation-not-removable";
+  | "conversation-not-removable"
+  /** The record an operator edited is no longer the one stored. */
+  | "memory-record-unknown"
+  /** Expert memory is not reachable: no plugin composed it, or its store is down. */
+  | "memory-unavailable"
+  /** The Host refused the memory edit itself, not who asked for it. */
+  | "invalid-memory";
 
 export class QaAccountsError extends Error {
   constructor(

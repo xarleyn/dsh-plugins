@@ -73,6 +73,15 @@ tool allow-list, the QA tool attachment and the attestation record are one code
 path, not two. The only thing the integration path does differently is how the
 caller's identity is established — ownership record instead of browser token.
 
+Because that record has just been checked against the caller's own account, this
+path is also where the session's QA principal is bound: the tools of
+`@yadsh/dsh-qa-integrations` resolve the identity of the chat they run in from
+that binding and refuse a chat without one, so a continued chat re-attests
+before every question and a chat of a restarted container gets its integrations
+back the same way. A refusal of the admission clears the binding rather than
+leaving the previous one in place, and a delegated child is never attested, so
+it never inherits one.
+
 ### 2.4 The chat belongs to the account, and only to it
 
 A conversation opened over the API is owned by the account its token belongs
@@ -85,12 +94,38 @@ answer to "why can this service see my chat" is "it is your account's token".
 
 ### 2.5 A timeout is an answer, not an error
 
-The bridge's contract is a 90-second answer. When the turn is still running at
-`requestTimeoutMs`, the endpoint answers `200` with `escalate: true`, an empty
-`answer` and the `chat_id`, instead of a `504`: the bridge escalates the ticket
-to a specialist, and a later retry continues the same chat. A `5xx` there would
-send the bridge into retries against a turn that is still going to finish, and
-each retry would return the same nothing.
+The contract is not a fixed number of seconds: it is `requestTimeoutMs`, the
+budget the deployment gives the endpoint (90 seconds in the shipped default,
+and a stand running a local model typically raises it to the ceiling this
+build accepts). A bridge must read the budget from its own deployment
+configuration rather than assume a value, because the wait before an answer
+scales with how long the model takes to answer.
+
+When the turn is still running at `requestTimeoutMs`, the endpoint answers
+`200` with `escalate: true`, an empty `answer` and the `chat_id`, instead of a
+`504`: the bridge escalates the ticket to a specialist, and a later retry
+continues the same chat. A `5xx` there would send the bridge into retries
+against a turn that is still going to finish, and each retry would return the
+same nothing.
+
+Raising the budget buys answers at the cost of latency; it does not make the
+wait asynchronous. Where a bridge cannot hold a request open for the whole
+budget, the polling path is `GET {basePath}/session` with the `chat_id` from an
+escalated response — the turn keeps running, and the answer is picked up when it
+lands.
+
+A caller that disconnects is a different ending, and it is not covered by that
+polling path: nobody holds the `chat_id`, so nobody is ever going to read what
+the turn produces. The endpoint therefore stops the work as well as the wait —
+the session's active turn is cancelled, keeping the prompts other callers have
+queued in the same chat. Two things limit it, because a stopped turn cannot be
+asked again: only the caller's own abandonment stops one (an expired budget is
+the escalation a bridge polls, and must not orphan the answer it waits for), and
+only when the log still shows this question's own turn running — a question
+still queued behind another's, or one already answered while the agent moved on,
+leaves the stranger's turn alone. A dropped request is logged as
+`integration.dropped`, and the stop it caused as `integration.turn-abandoned`,
+because neither appears anywhere else on the answer path.
 
 A hard failure (the Host could not open a chat, the provider refused) is still
 `503`, because that is a transient condition a retry can fix.
@@ -396,7 +431,16 @@ copy, and it is the contract this implementation is tested against.
   malformed events are tolerated. Plus the publication budget: an answer that
   fits is untouched, an over-long one is cut at a paragraph or line boundary
   and marked, a hard cut keeps an unbroken answer inside the budget, and one
-  early paragraph break does not shrink a full answer to a line.
+  early paragraph break does not shrink a full answer to a line. Plus whose turn
+  the agent is running: a claimed row with no closer is ours, an unflushed
+  prompt and a closer already committed are not, and injected context never
+  reads as a prompt.
+- `tests/integration/integration-cancellation.test.ts` — the two endings of a
+  question that outlived its wait: a disconnected caller gets its own turn
+  cancelled and its concurrency slot back, an expired budget gets the escalation
+  with the chat and no cancellation, and a turn belonging to another question —
+  still queued, or already closed while the agent runs the next one — is left
+  running.
 - `tests/integration/integration-config.test.ts` — off by default, base path normalization
   and refusals, the accounts cross-check, and every numeric bound.
 - `tests/accounts/cli.test.ts` — `token create|list|revoke`, the secret printed once, a

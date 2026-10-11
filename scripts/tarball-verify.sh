@@ -12,6 +12,7 @@
 #      declare it unless explicitly needed (warning)
 #   4. cordis.patch.yml and mandatory plugin policy files are included
 #   5. every exported entrypoint (exports / main / types) exists in the tarball
+#   5b. every dsh.client entrypoint is one self-contained classic bundle
 #   6. no workspace: / catalog: protocol leaks into the packed manifest
 #   7. the tarball installs into a clean npm environment and its entry module
 #      loads under plain Node (smoke test). An install that fails the way a
@@ -195,6 +196,34 @@ export_paths() {
     if (typeof pkg.main === "string") seen.add(pkg.main);
     if (typeof pkg.types === "string") seen.add(pkg.types);
     for (const p of seen) process.stdout.write(p + "\n");
+  ' "$1"
+}
+
+# client_entry <package.json> — dsh.client's exported browser entrypoint
+client_entry() {
+  node -e '
+    const fs = require("fs");
+    let pkg;
+    try { pkg = JSON.parse(fs.readFileSync(process.argv[1], "utf8")); }
+    catch (e) { process.exit(0); }
+    if (!pkg.dsh?.client) process.exit(0);
+    const target = pkg.exports?.["./client"];
+    const entry = typeof target === "string" ? target : target?.default;
+    if (typeof entry === "string") process.stdout.write(entry);
+  ' "$1"
+}
+
+# relative_runtime_refs <client.js> — relative modules the DSH loader cannot
+# materialize. A dsh.client entry is fetched as one classic bundle, so its only
+# runtime requires may name factories already present in the boot graph.
+relative_runtime_refs() {
+  node -e '
+    const fs = require("fs");
+    const source = fs.readFileSync(process.argv[1], "utf8");
+    const seen = new Set();
+    const pattern = /require\s*\(\s*[\x22\x27](\.[^\x22\x27]+)[\x22\x27]\s*\)/gu;
+    for (const match of source.matchAll(pattern)) seen.add(match[1]);
+    for (const ref of [...seen].sort()) process.stdout.write(ref + "\n");
   ' "$1"
 }
 
@@ -699,6 +728,31 @@ verify_package() {
       fi
     done <<< "$export_list"
     [ "$missing_count" -eq 0 ] && ok "gate 5 — all exported entrypoints exist in the tarball"
+  fi
+
+  # ---- gate 5b: self-contained classic dsh.client bundle ------------------
+  local client_config client_path client_file relative_refs
+  client_config="$(jsonq "$packed_pkg" dsh.client)"
+  client_path="$(client_entry "$packed_pkg")"
+  if [ -z "$client_config" ]; then
+    ok "gate 5b — no dsh.client entrypoint (not applicable)"
+  elif [ -z "$client_path" ]; then
+    fail "gate 5b — dsh.client package has no ./client default export"
+  else
+    client_file="$packed/${client_path#./}"
+    if [ ! -f "$client_file" ]; then
+      # Gate 5 reports the missing exported entrypoint with its exact path.
+      fail "gate 5b — dsh.client entrypoint is unavailable for bundle inspection: $client_path"
+    else
+      relative_refs="$(relative_runtime_refs "$client_file")"
+      if [ -n "$relative_refs" ]; then
+        while IFS= read -r entry_path; do
+          [ -n "$entry_path" ] && fail "gate 5b — dsh.client bundle has an unsupported relative runtime dependency: $entry_path"
+        done <<< "$relative_refs"
+      else
+        ok "gate 5b — dsh.client bundle is self-contained"
+      fi
+    fi
   fi
 
   # ---- gate 6: no workspace:/catalog: protocol leaks -----------------------

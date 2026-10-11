@@ -32,6 +32,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+function queryByTestId(root: ParentNode, testId: string): Element | null {
+  return root.querySelector(`[data-testid="${testId}"]`);
+}
+
+export function getByTestId(root: ParentNode, testId: string): Element {
+  const node = queryByTestId(root, testId);
+  if (node === null) {
+    throw new Error(
+      `No element of the fixture carries data-testid="${testId}".`,
+    );
+  }
+  return node;
+}
+
 export async function flushMutations(): Promise<void> {
   await Promise.resolve();
   await Promise.resolve();

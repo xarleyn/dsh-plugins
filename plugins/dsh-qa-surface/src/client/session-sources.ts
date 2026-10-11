@@ -13,6 +13,7 @@ export class QaHostSourceBridge {
   private refreshing = false;
   /** The refusal already reported, so a repeating failure reaches the console once. */
   private refusal = "";
+  private sessionId = "";
   /** Bumped on reset so a stale in-flight fetch never lands. */
   private generation = 0;
 
@@ -28,6 +29,7 @@ export class QaHostSourceBridge {
     this.signature = "";
     this.refreshing = false;
     this.refusal = "";
+    this.sessionId = "";
   }
 
   /**
@@ -52,7 +54,30 @@ export class QaHostSourceBridge {
         continue;
       merged.set(bundle.turn, bundle);
     }
-    return [...merged.values()].sort((left, right) => left.turn - right.turn);
+    const bundles = [...merged.values()].sort(
+      (left, right) => left.turn - right.turn,
+    );
+    if (this.refusal === "") return bundles;
+    const incomplete = {
+      provider: "host",
+      reason: "source-bundle-unavailable",
+    };
+    return bundles.length === 0
+      ? [
+          {
+            version: 1,
+            sessionId: this.sessionId,
+            turn: 0,
+            sources: [],
+            complete: false,
+            incompleteOrigins: [incomplete],
+          },
+        ]
+      : bundles.map((bundle) => ({
+          ...bundle,
+          complete: false,
+          incompleteOrigins: [...(bundle.incompleteOrigins ?? []), incomplete],
+        }));
   }
 
   /**
@@ -74,23 +99,41 @@ export class QaHostSourceBridge {
     try {
       const result = await this.sourceApi.sources(this.token(), sessionId);
       if (generation !== this.generation) return;
+      this.sessionId = sessionId;
       if (!result.ok) {
-        const refusal = refusalKey(result.error);
+        const refusal = refusalKey(result.error) || "source-bundle-unavailable";
         if (refusal !== this.refusal) {
           this.refusal = refusal;
           console.warn(
             "dsh-qa-surface: the Host refused this chat's source bundles; showing only what the transcript itself carries",
             result.error,
           );
+          onChanged();
         }
         return;
       }
+      const recovered = this.refusal !== "";
       this.refusal = "";
       const signature = JSON.stringify(result.value);
-      if (signature === this.signature) return;
+      if (signature === this.signature) {
+        if (recovered) onChanged();
+        return;
+      }
       this.signature = signature;
       this.bundles = result.value;
       onChanged();
+    } catch (error) {
+      if (generation !== this.generation) return;
+      this.sessionId = sessionId;
+      const refusal = refusalKey(error) || "source-bundle-unavailable";
+      if (refusal !== this.refusal) {
+        this.refusal = refusal;
+        console.warn(
+          "dsh-qa-surface: source bundle transport is unavailable",
+          error,
+        );
+        onChanged();
+      }
     } finally {
       if (generation === this.generation) this.refreshing = false;
     }

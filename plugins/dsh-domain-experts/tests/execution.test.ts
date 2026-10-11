@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { assertObjectJsonSchema } from "@deepseek-ai/dsh-tools";
 import {
   RunTracker,
   runExpert,
@@ -8,6 +9,7 @@ import {
 import { AuditRing } from "../src/host/audit.js";
 import { DomainExpertsError } from "../src/host/errors.js";
 import { DomainRegistry } from "../src/host/registry.js";
+import { DEPLOYMENT_MEMORY_OWNER } from "../src/host/resolver.js";
 import { createBuiltinMemoryProvider } from "../src/host/memory/builtin.js";
 import { MemoryProviderRegistry } from "../src/host/memory/registry.js";
 import { ScopeProviderRegistry } from "../src/host/scopes/registry.js";
@@ -56,6 +58,19 @@ interface Harness {
 function harnessOf(
   definition: DomainDefinition = PAYMENTS,
   options: Parameters<typeof fakeSubagents>[0] = {},
+  memory: {
+    readonly perUser?: boolean;
+    readonly principals?: Record<string, string>;
+    /** The model policy of one chat, as the QA surface answers it. */
+    readonly modelPolicy?: Record<
+      string,
+      {
+        readonly provider: string;
+        readonly model: string;
+        readonly reasoningEffort?: string;
+      }
+    >;
+  } = {},
 ): Harness {
   const clock = fixedClock();
   const subagents = fakeSubagents(options);
@@ -92,6 +107,9 @@ function harnessOf(
       audits,
       logger: recordingLogger(log),
       now: () => 9_000,
+      perUserMemory: memory.perUser ?? false,
+      principalOf: (sessionId) => memory.principals?.[sessionId],
+      modelPolicyOf: (sessionId) => memory.modelPolicy?.[sessionId],
     },
   };
 }
@@ -104,6 +122,7 @@ async function run(
     readonly callerDomain?: string | null;
     readonly background?: boolean;
     readonly id?: string;
+    readonly structuredOutput?: boolean;
   } = {},
 ) {
   return await runExpert(harness.dependencies, {
@@ -116,10 +135,68 @@ async function run(
     request: { ...REQUEST, background: options.background ?? false },
     signal: new AbortController().signal,
     callerDomain: options.callerDomain ?? null,
+    ...(options.structuredOutput ? { structuredOutput: true } : {}),
   });
 }
 
 describe("execution: composition handed to the runtime", () => {
+  it("uses validated native capture rather than malformed prose for a structured review", async () => {
+    const result = {
+      summary: 'Verified the "quoted" requirement',
+      findings: [],
+      conflicts: [],
+      assumptions: [],
+      followUps: [],
+    };
+    const harness = harnessOf(PAYMENTS, {
+      text: 'Invalid "JSON" prose',
+      structured: result,
+    });
+    const outcome = await run(harness, PAYMENTS, { structuredOutput: true });
+    expect(harness.subagents.started[0]?.request.outputSchema).toMatchObject({
+      type: "object",
+      required: [
+        "summary",
+        "findings",
+        "conflicts",
+        "assumptions",
+        "followUps",
+      ],
+    });
+    const request = harness.subagents.started[0]!.request;
+    expect(() => assertObjectJsonSchema(request.outputSchema)).not.toThrow();
+    expect(request.persona).toContain(
+      "Finish by calling structured_output exactly once",
+    );
+    expect(request.persona).not.toContain("Finish with one fenced code block");
+    expect(request.persona).toContain(
+      "confirmed user decisions only in summary",
+    );
+    expect(outcome.structured).toBe(true);
+    expect(outcome.summary).toBe(result.summary);
+  });
+
+  it("does not accept a prose PASS when structured capture was required", async () => {
+    const harness = harnessOf(PAYMENTS, {
+      text: '{"summary":"PASS","findings":[]}',
+    });
+    const outcome = await run(harness, PAYMENTS, { structuredOutput: true });
+    expect(outcome.structured).toBe(false);
+  });
+
+  it("refuses a structured review on a provider without schema capture", async () => {
+    const harness = harnessOf(PAYMENTS);
+    const provider = harness.dependencies.subagents.getProvider("spawn")!;
+    harness.dependencies.subagents.getProvider = () => ({
+      ...provider,
+      capabilities: { ...provider.capabilities, outputSchema: false },
+    });
+    await expect(
+      run(harness, PAYMENTS, { structuredOutput: true }),
+    ).rejects.toMatchObject({ code: "UNSUPPORTED_SUBAGENT_CAPABILITY" });
+    expect(harness.subagents.started).toHaveLength(0);
+  });
+
   it("hands the policy to the runtime as the persona and the request as the prompt", async () => {
     const harness = harnessOf();
     await run(harness);
@@ -131,6 +208,9 @@ describe("execution: composition handed to the runtime", () => {
     // answer) — that material belongs to the child's first message.
     expect(started?.request.persona).toContain("You are the designated expert");
     expect(started?.request.persona).toContain("## Answer format");
+    expect(started?.request.persona).toContain(
+      "Finish with one fenced code block",
+    );
     expect(started?.request.persona).not.toContain("## Task");
     expect(started?.request.persona).not.toContain(
       "Investigate the settlement status.",
@@ -154,6 +234,51 @@ describe("execution: composition handed to the runtime", () => {
     const harness = harnessOf();
     await run(harness);
     expect(harness.subagents.started[0]?.request.agentOptions).toBeUndefined();
+  });
+
+  // A domain that inherits its model used to inherit the model the visitor left
+  // in the picker. The deployment's policy is the operator's answer, so an
+  // expert delegated from a chat whose role names a pair runs on that pair.
+  it("sends the pair the chat's model policy pins when the domain inherits", async () => {
+    const harness = harnessOf(
+      PAYMENTS,
+      {},
+      {
+        modelPolicy: {
+          "session-1": {
+            provider: "local",
+            model: "small",
+            reasoningEffort: "low",
+          },
+        },
+      },
+    );
+    await run(harness);
+    expect(harness.subagents.started[0]?.request.agentOptions).toEqual({
+      provider: "local",
+      model: "small",
+      reasoningEffort: "low",
+    });
+  });
+
+  it("refuses a policy-pinned model on a provider without agent options", async () => {
+    const harness = harnessOf(
+      PAYMENTS,
+      {
+        capabilities: {
+          agentOptions: false,
+          outputSchema: true,
+          depthLimit: true,
+          toolFilter: true,
+          persona: true,
+        },
+      },
+      { modelPolicy: { "session-1": { provider: "local", model: "small" } } },
+    );
+    await expect(run(harness)).rejects.toMatchObject({
+      code: "UNSUPPORTED_SUBAGENT_CAPABILITY",
+    });
+    expect(harness.subagents.started).toEqual([]);
   });
 
   it("sends model options when the domain pins a route", async () => {
@@ -230,6 +355,7 @@ describe("execution: results and bookkeeping", () => {
       depth: 1,
       background: false,
       maxParallel: 3,
+      memoryOwner: DEPLOYMENT_MEMORY_OWNER,
     });
     const target = domainOf("inventory");
     await run(harness, target, { callerDomain: "payments", depth: 1 });
@@ -449,5 +575,55 @@ describe("execution: refusals", () => {
       failWith: new Error("disk on fire"),
     });
     await expect(run(harness)).rejects.toThrowError("disk on fire");
+  });
+});
+
+describe("execution: whose memory a run gets", () => {
+  it("hands an attributed caller's account namespace to the child", async () => {
+    const harness = harnessOf(
+      PAYMENTS,
+      {},
+      {
+        perUser: true,
+        principals: { "session-1": "user-a" },
+      },
+    );
+    await run(harness);
+    const persona = harness.subagents.started[0]?.request.persona ?? "";
+    expect(persona).toContain("- domain/payments/u/user-a (read/write)");
+    expect(persona).toContain("- domain/payments (read-only)");
+  });
+
+  it("keeps the domain namespace writable without account scoping", async () => {
+    const harness = harnessOf(
+      PAYMENTS,
+      {},
+      {
+        perUser: false,
+        principals: { "session-1": "user-a" },
+      },
+    );
+    await run(harness);
+    const persona = harness.subagents.started[0]?.request.persona ?? "";
+    expect(persona).toContain("- domain/payments (read/write)");
+    expect(persona).not.toContain("/u/user-a");
+  });
+
+  it("inherits the account through a delegated run whose session nobody attested", async () => {
+    const harness = harnessOf(PAYMENTS, {}, { perUser: true });
+    harness.tracker.register({
+      domainId: "payments",
+      childSessionId: "session-1",
+      callerSessionId: "root-session",
+      callerDomain: null,
+      path: ["payments"],
+      depth: 1,
+      background: false,
+      maxParallel: 3,
+      memoryOwner: { mode: "per-user", userId: "user-a" },
+    });
+    await run(harness, PAYMENTS, { background: true, id: "session-1" });
+    const child = harness.tracker.find("child-session-bg");
+    expect(child?.memoryOwner).toEqual({ mode: "per-user", userId: "user-a" });
   });
 });

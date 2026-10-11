@@ -15,6 +15,7 @@ import type {
   QaSkillSummary,
 } from "../../../src/types.js";
 import type { QaBoundSkillApi } from "../../../src/client/types.js";
+import { settle } from "../../helpers/act.js";
 
 const FIELDS: readonly QaAccountIdentityField[] = [
   { key: "jira", label: "Jira" },
@@ -59,6 +60,7 @@ function skillDocument(
     extraFrontmatter: {},
     sourcePath: "/workspace/.dsh/skills/api-testing/SKILL.md",
     preview: "---\nname: api-testing\n---\n\n1. Шаг\n",
+    truncated: false,
     ...overrides,
   };
 }
@@ -161,11 +163,11 @@ function dialog(props: {
 
 describe("QA settings dialog", () => {
   it("opens on the profile with the stored values, inside one shell", () => {
-    const { container } = dialog({});
+    dialog({});
     expect(screen.getByRole("dialog", { name: "Настройки" })).toBeTruthy();
-    expect(
-      container.querySelector(".dsh-qa-modal__panel--settings"),
-    ).toBeTruthy();
+    expect(screen.getByTestId("qa-surface-modal-panel").className).toContain(
+      "dsh-qa-modal__panel--settings",
+    );
     expect((screen.getByLabelText("ФИО") as HTMLInputElement).value).toBe(
       "Иван Иванов",
     );
@@ -177,17 +179,22 @@ describe("QA settings dialog", () => {
     );
   });
 
-  it("navigates between sections without leaving the dialog", () => {
+  it("navigates between sections without leaving the dialog", async () => {
     const skills = skillApi({ skills: [summary()] });
     dialog({ skills: skills.api });
     expect(screen.getByRole("tab", { name: "Профиль" })).toBeTruthy();
     fireEvent.click(screen.getByRole("tab", { name: "Общие" }));
     expect(screen.getByRole("tabpanel", { name: "Общие" })).toBeTruthy();
-    expect(screen.getByText("i.ivanov@example.com")).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-general-fact-email").textContent,
+    ).toContain("i.ivanov@example.com");
     fireEvent.click(screen.getByRole("tab", { name: "Навыки" }));
     expect(screen.getByRole("tabpanel", { name: "Навыки" })).toBeTruthy();
+    // The skills page loads its list on mount, so its own update lands after
+    // the click; let it settle before the dialog-wide assertions.
+    await settle();
     // One dialog the whole time: the sections are pages, not further modals.
-    expect(document.querySelectorAll(".dsh-qa-modal").length).toBe(1);
+    expect(screen.getAllByTestId("qa-surface-modal")).toHaveLength(1);
   });
 
   it("hides the sections a deployment withheld", () => {
@@ -204,7 +211,9 @@ describe("QA settings dialog", () => {
     fireEvent.change(screen.getByLabelText("GitLab"), {
       target: { value: "@iivanov" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    const save = screen.getByTestId("qa-settings-profile-save");
+    expect(screen.getByRole("button", { name: "Сохранить" })).toBe(save);
+    fireEvent.click(save);
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith({
         fullName: "Иван Иванов",
@@ -212,12 +221,14 @@ describe("QA settings dialog", () => {
         instructions: "Отвечай кратко.",
       });
     });
-    expect(await screen.findByText("Профиль сохранён.")).toBeTruthy();
+    expect(
+      (await screen.findByTestId("qa-settings-profile-saved")).textContent,
+    ).toBe("Профиль сохранён.");
   });
 
   it("keeps the page open and shows the refusal copy", async () => {
     dialog({ onSave: async () => "Проверьте поля профиля." });
-    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    fireEvent.click(screen.getByTestId("qa-settings-profile-save"));
     expect((await screen.findByRole("alert")).textContent).toContain(
       "Проверьте поля профиля.",
     );
@@ -225,10 +236,10 @@ describe("QA settings dialog", () => {
 
   it("closes on Escape and on a backdrop click", () => {
     const onClose = vi.fn();
-    const { container } = dialog({ onClose });
+    dialog({ onClose });
     fireEvent.keyDown(window, { key: "Escape" });
     expect(onClose).toHaveBeenCalledTimes(1);
-    fireEvent.click(container.querySelector(".dsh-qa-modal") as HTMLElement);
+    fireEvent.click(screen.getByTestId("qa-surface-modal"));
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 });
@@ -242,10 +253,18 @@ describe("QA settings general page", () => {
         chatCount={7}
       />,
     );
-    expect(screen.getByText("i.ivanov@example.com")).toBeTruthy();
-    expect(screen.getByText("admin")).toBeTruthy();
-    expect(screen.getByText("7")).toBeTruthy();
-    expect(screen.getByText(/задаёт администратор/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-general-fact-email").textContent,
+    ).toContain("i.ivanov@example.com");
+    expect(
+      screen.getByTestId("qa-settings-general-fact-role").textContent,
+    ).toContain("admin");
+    expect(
+      screen.getByTestId("qa-settings-general-fact-chats").textContent,
+    ).toContain("7");
+    expect(
+      screen.getByTestId("qa-settings-general-lead").textContent,
+    ).toContain("задаёт администратор");
   });
 });
 
@@ -273,31 +292,46 @@ describe("QA settings starters page", () => {
     fireEvent.change(screen.getByLabelText("Промпт"), {
       target: { value: "Найди мои открытые задачи " },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Сохранить" }));
+    const save = screen.getByTestId("qa-settings-starters-save");
+    expect(screen.getByRole("button", { name: "Сохранить" })).toBe(save);
+    fireEvent.click(save);
     await waitFor(() => {
       expect(onSave).toHaveBeenCalledWith({
         items: [{ label: "Задачи", prompt: "Найди мои открытые задачи" }],
         hideDefaults: false,
       });
     });
-    expect(await screen.findByText("Подсказки сохранены.")).toBeTruthy();
+    expect(
+      (await screen.findByTestId("qa-settings-starters-saved")).textContent,
+    ).toBe("Подсказки сохранены.");
   });
 
   it("blocks the save while any row is incomplete", () => {
     startersPage({ starters: { items: [], hideDefaults: false } });
-    fireEvent.click(screen.getByRole("button", { name: "Добавить подсказку" }));
+    fireEvent.click(screen.getByTestId("qa-settings-starters-add"));
     expect(
-      (screen.getByRole("button", { name: "Сохранить" }) as HTMLButtonElement)
+      screen.getByRole("button", { name: "Добавить подсказку" }),
+    ).toBeTruthy();
+    expect(
+      (screen.getByTestId("qa-settings-starters-save") as HTMLButtonElement)
         .disabled,
     ).toBe(true);
-    expect(screen.getByText(/нужны и название, и промпт/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-starters-incomplete").textContent,
+    ).toContain("нужны и название, и промпт");
   });
 
   it("removes a row and hides the standard suggestions on request", () => {
-    const { container } = startersPage();
-    fireEvent.click(screen.getByRole("button", { name: "Удалить «Задачи»" }));
-    expect(screen.getByText(/Своих подсказок нет/u)).toBeTruthy();
-    expect(container.querySelectorAll(".dsh-qa-starters__item")).toHaveLength(
+    startersPage();
+    const remove = screen.getByTestId("qa-settings-starters-item-remove");
+    expect(screen.getByRole("button", { name: "Удалить «Задачи»" })).toBe(
+      remove,
+    );
+    fireEvent.click(remove);
+    expect(
+      screen.getByTestId("qa-settings-starters-empty").textContent,
+    ).toContain("Своих подсказок нет");
+    expect(screen.queryAllByTestId("qa-settings-starters-item")).toHaveLength(
       0,
     );
     const toggle = screen.getByLabelText(
@@ -330,7 +364,9 @@ describe("QA settings starters page", () => {
     expect((screen.getByLabelText("Название") as HTMLInputElement).value).toBe(
       "Мои задачи",
     );
-    expect(screen.getByText(/сразу отправляет промпт/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-starters-lead").textContent,
+    ).toContain("сразу отправляет промпт");
   });
 });
 

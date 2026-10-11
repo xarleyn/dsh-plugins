@@ -12,14 +12,14 @@ const CLIENT_EXTERNALS = ["react", "react-dom"];
 /**
  * The client half is the only half tsdown builds here: the host entry points
  * (`./core`, `./scope-*`, …) are plain Node modules and stay on `tsc`, which
- * also emits every declaration. This config exists to turn `src/client.ts`
- * into the shell's classic bundle — the same wrapper every other plugin's
- * client gets — instead of a hand-written `window.__ModuleLoader__.load(...)`
- * script that the TypeScript compiler copied through unchanged.
+ * also emits every declaration. This config exists to turn `src/client/` into
+ * the shell's classic bundle — the same wrapper every other plugin's client
+ * gets — instead of a hand-written `window.__ModuleLoader__.load(...)` script
+ * that the TypeScript compiler copied through unchanged.
  */
 const client = {
   name: `${ID}/client`,
-  entry: { client: "src/client.ts" },
+  entry: { client: "src/client/index.ts" },
   outDir: "lib",
   format: ["cjs"],
   platform: "browser",

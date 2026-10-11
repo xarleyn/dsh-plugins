@@ -26,6 +26,7 @@ function browserRequire(name: string): unknown {
       jsx: () => null,
       jsxs: () => null,
       useEffect: () => undefined,
+      useId: () => "persona-field",
       useSyncExternalStore: () => undefined,
       useState: () => [undefined, () => undefined],
     };
@@ -63,11 +64,11 @@ describe("client bundle", () => {
       expect(source).not.toContain(`require("${forbidden}")`);
     }
     // The card shell and the disclosure chevron ship with the page (AGENTS.md
-    // card contract), the page names the file it edits, and the advanced area
-    // names the registrar a preset ships for its prompt sections.
+    // card contract), the page names the composition it shows, and the advanced
+    // area names the registrar a preset ships for its prompt sections.
     expect(source).toContain(".dsh-plugin-card{");
     expect(source).toContain("m3.5 5.25 3.5 3.5 3.5-3.5");
-    expect(source).toContain("agent.cordis.yml");
+    expect(source).toContain("Declared composition");
     expect(source).toContain("prompt-sections.mjs");
     expect(source).toContain("Advanced: prompt sections");
   });

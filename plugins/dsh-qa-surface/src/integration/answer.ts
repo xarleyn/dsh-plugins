@@ -24,6 +24,16 @@ export interface QaTurnAnswer {
   readonly seq: number | null;
 }
 
+/** One request's answer, additionally attributed to the turn it came from. */
+export interface QaRequestAnswer extends QaTurnAnswer {
+  /**
+   * The harness turn number the answer was read out of, or null when the log
+   * named no turn for the request's own row. The provenance bundle of a turn is
+   * the evidence of its answer, so the caller cites the same number.
+   */
+  readonly turn: number | null;
+}
+
 /** The empty answer: what a turn that committed nothing readable looks like. */
 export const QA_EMPTY_ANSWER: QaTurnAnswer = Object.freeze({
   answer: "",
@@ -54,11 +64,77 @@ export function answerAfter(
   afterSeq: number,
 ): QaTurnAnswer {
   const ordered = [...events].sort((left, right) => left.seq - right.seq);
+  return projectTurn(ordered, (event) => event.seq > afterSeq);
+}
+
+/**
+ * Project the answer of the turn one request's own prompt opened.
+ *
+ * The harness stamps the prompt's rpc id onto the durable user row it claims,
+ * so the row is found by id rather than guessed from the newest human message:
+ * two questions in flight on one chat open two turns, and a selection by
+ * "latest" answers each caller with the other's turn. The turn that answers a
+ * request is the one its row was claimed into — `turn/start` opens a turn and
+ * the claimed rows follow it — so the answer is read out of that turn's
+ * assistant messages only, and its number travels with it for the citation.
+ *
+ * @param events - durable events, in any order.
+ * @param requestId - the rpc id the prompt was submitted with.
+ * @returns the answer of this request's turn, or `undefined` when the log
+ * holds no row for the request (an unflushed prompt, or a harness that does not
+ * echo the id), which leaves the choice of cursor to the caller.
+ */
+export function answerForRequest(
+  events: readonly StoredSessionEvent[],
+  requestId: string,
+): QaRequestAnswer | undefined {
+  const ordered = [...events].sort((left, right) => left.seq - right.seq);
+  let promptSeq: number | undefined;
+  let turn: number | undefined;
+  for (const event of ordered) {
+    if (promptSeq !== undefined) break;
+    if (event.type === "turn/start") {
+      const data = record(event.data);
+      if (typeof data?.turn === "number") turn = data.turn;
+    } else if (isPromptOf(event, requestId)) {
+      promptSeq = event.seq;
+    }
+  }
+  if (promptSeq === undefined) return undefined;
+  const ownSeq = promptSeq;
+  if (turn === undefined) {
+    // A row with no `turn/start` before it: the answer is whatever this prompt
+    // and the next human one bracket — the window the turn would have been.
+    let next = Number.POSITIVE_INFINITY;
+    for (const event of ordered) {
+      if (event.seq > ownSeq && isHumanPrompt(event) && event.seq < next) {
+        next = event.seq;
+      }
+    }
+    const bounded = projectTurn(
+      ordered,
+      (event) => event.seq > ownSeq && event.seq < next,
+    );
+    return Object.freeze({ ...bounded, turn: null });
+  }
+  const numbered = turn;
+  const projected = projectTurn(
+    ordered,
+    (event) => event.seq > ownSeq && record(event.data)?.turn === numbered,
+  );
+  return Object.freeze({ ...projected, turn: numbered });
+}
+
+/** Project one turn's answer out of the assistant messages it committed. */
+function projectTurn(
+  ordered: readonly StoredSessionEvent[],
+  belongs: (event: StoredSessionEvent) => boolean,
+): QaTurnAnswer {
   let answer = "";
   let seq: number | null = null;
   let lastWasInterrupted = false;
   for (const event of ordered) {
-    if (event.type !== "assistant/message" || event.seq <= afterSeq) continue;
+    if (event.type !== "assistant/message" || !belongs(event)) continue;
     const data = record(event.data);
     const message = record(data?.message);
     lastWasInterrupted = data?.interrupted === true;
@@ -68,6 +144,27 @@ export function answerAfter(
     seq = event.seq;
   }
   return Object.freeze({ answer, interrupted: lastWasInterrupted, seq });
+}
+
+/** The producing source of one durable message row, when it has one. */
+function sourceOf(
+  event: StoredSessionEvent,
+): Record<string, unknown> | undefined {
+  return record(record(event.data)?.source);
+}
+
+/** Whether one row is a human prompt, as opposed to injected context. */
+function isHumanPrompt(event: StoredSessionEvent): boolean {
+  return event.type === "user/message" && sourceOf(event)?.kind === "user";
+}
+
+/**
+ * Whether one row is the prompt submitted under `requestId`. The harness copies
+ * the prompt's rpc id onto its source, which is what ties a durable row back to
+ * the caller that wrote it.
+ */
+function isPromptOf(event: StoredSessionEvent, requestId: string): boolean {
+  return isHumanPrompt(event) && sourceOf(event)?.rpcId === requestId;
 }
 
 /**
@@ -104,6 +201,57 @@ export function boundAnswer(answer: string, maxCharacters: number): string {
 }
 
 /**
+ * Whether the turn one request's prompt opened is still the turn the agent runs.
+ *
+ * A caller that gives up may only stop its own work. Prompts are admitted with
+ * `mode: "queue"`, so a chat can hold several questions at once and the running
+ * turn belongs to whoever the harness claimed — not to whoever asked first, and
+ * not to whoever is still holding a connection. The two facts the log gives
+ * back decide it: this request's row exists only once the harness has claimed
+ * the prompt into a turn, and a turn that has committed its closer (or been
+ * followed by a newer `turn/start`, since the harness runs one turn at a time)
+ * is over whatever the agent is busy with afterwards.
+ *
+ * @param events - durable events, in any order.
+ * @param requestId - the rpc id the prompt was submitted with.
+ * @returns true only when a claimed row of this request has no closer yet.
+ */
+export function ownTurnStillRunning(
+  events: readonly StoredSessionEvent[],
+  requestId: string,
+): boolean {
+  const ordered = [...events].sort((left, right) => left.seq - right.seq);
+  let promptSeq: number | undefined;
+  let turn: number | undefined;
+  for (const event of ordered) {
+    if (promptSeq !== undefined) break;
+    if (event.type === "turn/start") {
+      const data = record(event.data);
+      if (typeof data?.turn === "number") turn = data.turn;
+    } else if (isPromptOf(event, requestId)) {
+      promptSeq = event.seq;
+    }
+  }
+  if (promptSeq === undefined) return false;
+  const own = turn;
+  for (const event of ordered) {
+    if (event.seq <= promptSeq) continue;
+    const numbered = record(event.data)?.turn;
+    const turnNumber = typeof numbered === "number" ? numbered : undefined;
+    if (event.type === "turn/start") {
+      // An unnumbered log gives no identity to compare, so any newer turn is
+      // taken as the end of ours; a numbered one has to differ from ours.
+      if (turnNumber === undefined || turnNumber !== own) return false;
+      continue;
+    }
+    if (event.type === "turn/end" && own !== undefined && turnNumber === own) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * The seq of the newest user-authored message in a log, which is the floor
  * `answerAfter` reads from when the caller has just submitted a prompt.
  * Synthetic context (injected notes, skill payloads) is skipped: it is model
@@ -115,11 +263,7 @@ export function boundAnswer(answer: string, maxCharacters: number): string {
 export function lastPromptSeq(events: readonly StoredSessionEvent[]): number {
   let seq = 0;
   for (const event of events) {
-    if (event.type !== "user/message") continue;
-    const data = record(event.data);
-    const source = record(data?.source);
-    if (source?.kind !== "user") continue;
-    if (event.seq > seq) seq = event.seq;
+    if (isHumanPrompt(event) && event.seq > seq) seq = event.seq;
   }
   return seq;
 }

@@ -36,25 +36,49 @@ export function SourceChip({
   const target = source.path ?? source.uri ?? source.title;
   const face = (
     <>
-      <span className="dsh-qa-srcref__icon" data-kind={source.kind}>
+      <span
+        className="dsh-qa-srcref__icon"
+        data-kind={source.kind}
+        data-testid="qa-source-chip-icon"
+      >
         <SourceIcon kind={source.kind} />
       </span>
-      <span className="dsh-qa-srcref__label">{label}</span>
+      <span className="dsh-qa-srcref__label" data-testid="qa-source-chip-label">
+        {label}
+      </span>
       <span
         className="dsh-qa-srcref__card"
+        data-testid="qa-source-chip-card"
         id={cardId}
         role="tooltip"
         aria-hidden="true"
       >
-        <span className="dsh-qa-srcref__card-title">
-          <span className="dsh-qa-srcref__icon" data-kind={source.kind}>
+        <span
+          className="dsh-qa-srcref__card-title"
+          data-testid="qa-source-chip-card-title"
+        >
+          <span
+            className="dsh-qa-srcref__icon"
+            data-kind={source.kind}
+            data-testid="qa-source-chip-card-icon"
+          >
             <SourceIcon kind={source.kind} />
           </span>
           {source.title || label}
         </span>
-        <span className="dsh-qa-srcref__card-target">{target}</span>
+        <span
+          className="dsh-qa-srcref__card-target"
+          data-testid="qa-source-chip-card-target"
+        >
+          {target}
+        </span>
         {source.snippet === undefined ? null : (
-          <span className="dsh-qa-srcref__card-snippet">{source.snippet}</span>
+          <span
+            className="dsh-qa-srcref__card-snippet"
+            data-testid="qa-source-chip-card-snippet"
+          >
+            {source.snippet}
+          </span>
         )}
       </span>
     </>
@@ -64,6 +88,7 @@ export function SourceChip({
       <a
         className="dsh-qa-srcref"
         data-kind={source.kind}
+        data-testid="qa-source-chip"
         href={href}
         target="_blank"
         rel="noopener noreferrer"
@@ -78,6 +103,7 @@ export function SourceChip({
       type="button"
       className="dsh-qa-srcref"
       data-kind={source.kind}
+      data-testid="qa-source-chip"
       aria-describedby={cardId}
       onClick={onOpen === undefined ? undefined : () => onOpen(source)}
     >
@@ -121,10 +147,23 @@ export function linkChip(
   label: string,
   context: MarkdownSourceContext,
 ): ReactNode | undefined {
+  const file = context.refs?.resolvePath(href);
+  if (file !== undefined && context.onSourceOpen !== undefined)
+    return (
+      <SourceChip
+        source={file}
+        label={label || sourceFileName(file)}
+        onOpen={context.onSourceOpen}
+      />
+    );
   const source = context.refs?.resolveUrl(href);
   if (source === undefined) return undefined;
   return (
-    <SourceChip source={source} label={label || source.title} href={href} />
+    <SourceChip
+      source={source}
+      label={label || source.title}
+      href={safeHref(source.uri ?? href)}
+    />
   );
 }
 

@@ -104,6 +104,20 @@ describe("the chat list with accounts on", () => {
 });
 
 describe("session lineage", () => {
+  it("stops delegated ownership at an independent branch", () => {
+    const byId = listed([
+      { id: "parent" },
+      { id: "branch", parentId: "parent" },
+      { id: "expert", parentId: "branch", origin: "subagent" },
+    ]);
+    expect(chatRootOf(byId, "branch")).toBe("branch");
+    expect(chatRootOf(byId, "expert")).toBe("branch");
+    expect(visibleSubagentCandidates(byId, new Set(["parent"]))).toEqual([]);
+    expect(visibleSubagentCandidates(byId, new Set(["branch"]))).toEqual([
+      { id: "expert", label: "expert" },
+    ]);
+  });
+
   it("resolves a nested delegation to the chat it belongs to", () => {
     const byId = listed([
       { id: "chat" },
@@ -130,40 +144,31 @@ describe("delegated names are the visible chats' own", () => {
     { id: "s-my-child", parentId: "s-mine", origin: "subagent" },
     { id: "s-their-child", parentId: "s-theirs", origin: "subagent" },
   ]);
-  const catalogs = {
-    "s-mine": {
-      entries: [{ kind: "child", id: "s-my-child", label: "Счёт за март" }],
-    },
-    "s-theirs": {
-      entries: [{ kind: "child", id: "s-their-child", label: "Чужой аудит" }],
-    },
-  };
 
   it("names only the children of the chats this page lists", () => {
-    const candidates = visibleSubagentCandidates(
-      byId,
-      catalogs,
-      new Set(["s-mine"]),
-    );
-    expect(candidates).toEqual([{ id: "s-my-child", label: "Счёт за март" }]);
+    const candidates = visibleSubagentCandidates(byId, new Set(["s-mine"]));
+    expect(candidates).toEqual([{ id: "s-my-child", label: "s-my-child" }]);
   });
 
   it("names every chat's children when the deployment has no accounts", () => {
-    const candidates = visibleSubagentCandidates(byId, catalogs, undefined);
+    const candidates = visibleSubagentCandidates(byId, undefined);
     expect(candidates.map((candidate) => candidate.id)).toEqual([
       "s-my-child",
       "s-their-child",
     ]);
   });
 
-  it("names a child the host listed without a catalog of its own", () => {
-    const candidates = visibleSubagentCandidates(
-      byId,
-      {},
-      new Set(["s-theirs"]),
-    );
-    expect(candidates).toEqual([
-      { id: "s-their-child", label: "s-their-child" },
+  it("names a child by the title the host list carries for it", () => {
+    const titled = listed([
+      { id: "s-theirs" },
+      {
+        id: "s-their-child",
+        parentId: "s-theirs",
+        origin: "subagent",
+        displayTitle: "Чужой аудит",
+      },
     ]);
+    const candidates = visibleSubagentCandidates(titled, new Set(["s-theirs"]));
+    expect(candidates).toEqual([{ id: "s-their-child", label: "Чужой аудит" }]);
   });
 });

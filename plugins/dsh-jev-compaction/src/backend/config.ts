@@ -17,7 +17,7 @@ import {
   resolveJevCompactionConfig,
   type JevCompactionConfig,
   type ResolvedJevCompactionConfig,
-} from "../config.js";
+} from "../config/index.js";
 
 /** Keys the engine consumes itself; everything else belongs to the prune service. */
 const ENGINE_ONLY_KEYS = new Set([
@@ -25,6 +25,7 @@ const ENGINE_ONLY_KEYS = new Set([
   "auto",
   "retainRatio",
   "retainTokens",
+  "headroomTokens",
   "summarizationProvider",
   "summarizationModel",
   "maxTokens",
@@ -50,6 +51,14 @@ export interface JevEngineConfig extends JevCompactionConfig {
   readonly retainRatio?: number;
   /** Absolute verbatim-tail budget forwarded to the basic engine. */
   readonly retainTokens?: number;
+  /**
+   * Pressure headroom forwarded to the basic engine. The entry's own `Config`
+   * is `z.any()` (the basic schema would strip the companion sections), so
+   * every basic knob has to be listed here or a deployment cannot reach it —
+   * and `0.1.7`'s basic engine rejects a model whose context window cannot
+   * cover the headroom it defaults to.
+   */
+  readonly headroomTokens?: number;
   /** Summarization route override forwarded to the basic engine. */
   readonly summarizationProvider?: string;
   readonly summarizationModel?: string;
@@ -122,6 +131,9 @@ export function resolveJevEngineConfig(
     ...(raw.retainTokens === undefined
       ? {}
       : { retainTokens: raw.retainTokens }),
+    ...(raw.headroomTokens === undefined
+      ? {}
+      : { headroomTokens: raw.headroomTokens }),
     ...(raw.summarizationProvider === undefined
       ? {}
       : { summarizationProvider: raw.summarizationProvider }),

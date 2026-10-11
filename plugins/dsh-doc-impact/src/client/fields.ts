@@ -1,12 +1,50 @@
 // Field renderers of the doc-impact settings card (createElement style,
 // matching the classic ModuleLoader client convention of this plugin).
-import { createElement } from "react";
+import { createElement, type ChangeEvent } from "react";
+import type { LocaleKey, Translate } from "./dictionary.js";
+import type { FieldState } from "./settings-form.js";
+
+interface FieldProps {
+  readonly t: Translate;
+  readonly id: string;
+  readonly labelKey: LocaleKey;
+  readonly hintKey: LocaleKey;
+  readonly state: FieldState;
+  readonly disabled: boolean;
+  readonly onReset: () => void;
+}
+
+/** The props of a field the card edits by typing. */
+interface DraftProps extends FieldProps {
+  readonly onEdit: (text: string) => void;
+}
+
+/** The props of the textarea that edits a steering template. */
+interface TemplateProps extends DraftProps {
+  readonly rows: number;
+}
+
+/**
+ * The props of a field the card edits by picking: `V` is that field's
+ * vocabulary, so the value handed back is always one of `options`.
+ */
+export interface ChoiceProps<V extends string> extends FieldProps {
+  readonly options: readonly V[];
+  readonly fallback: V;
+  readonly onChoose: (value: V) => void;
+}
+
+/** The props of an on/off field. */
+interface BoolProps extends FieldProps {
+  readonly fallback: boolean;
+  readonly onChoose: (value: boolean) => void;
+}
 
 export function FieldHead(
-  t: any,
+  t: Translate,
   id: string,
-  labelKey: string,
-  state: any,
+  labelKey: LocaleKey,
+  state: FieldState,
   disabled: boolean,
   onReset: () => void,
 ) {
@@ -38,7 +76,7 @@ export function FieldHead(
   );
 }
 
-export function TextField(props: any) {
+export function TextField(props: DraftProps) {
   const state = props.state;
   return createElement(
     "div",
@@ -57,7 +95,7 @@ export function TextField(props: any) {
       type: "text",
       value: state.text,
       disabled: props.disabled,
-      onChange: function (event: any) {
+      onChange: function (event: ChangeEvent<HTMLInputElement>) {
         props.onEdit(event.target.value);
       },
     }),
@@ -69,7 +107,7 @@ export function TextField(props: any) {
   );
 }
 
-export function TextAreaField(props: any) {
+export function TextAreaField(props: TemplateProps) {
   const state = props.state;
   return createElement(
     "div",
@@ -91,7 +129,7 @@ export function TextAreaField(props: any) {
       spellCheck: false,
       value: state.text,
       disabled: props.disabled,
-      onChange: function (event: any) {
+      onChange: function (event: ChangeEvent<HTMLTextAreaElement>) {
         props.onEdit(event.target.value);
       },
     }),
@@ -103,7 +141,7 @@ export function TextAreaField(props: any) {
   );
 }
 
-export function NumberField(props: any) {
+export function NumberField(props: DraftProps) {
   const state = props.state;
   return createElement(
     "div",
@@ -124,7 +162,7 @@ export function NumberField(props: any) {
       "aria-invalid": state.invalid ? "true" : undefined,
       value: state.text,
       disabled: props.disabled,
-      onChange: function (event: any) {
+      onChange: function (event: ChangeEvent<HTMLInputElement>) {
         props.onEdit(event.target.value);
       },
     }),
@@ -136,7 +174,7 @@ export function NumberField(props: any) {
   );
 }
 
-export function ChoiceField(props: any) {
+export function ChoiceField<V extends string>(props: ChoiceProps<V>) {
   const state = props.state;
   const current = state.value === undefined ? props.fallback : state.value;
   return createElement(
@@ -157,11 +195,12 @@ export function ChoiceField(props: any) {
         className: "ddi_select",
         value: String(current),
         disabled: props.disabled,
-        onChange: function (event: any) {
-          props.onChoose(event.target.value);
+        onChange: function (event: ChangeEvent<HTMLSelectElement>) {
+          // The select offers nothing but `options`, so its text is one of them.
+          props.onChoose(event.target.value as V);
         },
       },
-      props.options.map(function (option: string) {
+      props.options.map(function (option: V) {
         return createElement("option", { key: option, value: option }, option);
       }),
     ),
@@ -169,7 +208,7 @@ export function ChoiceField(props: any) {
   );
 }
 
-export function BoolField(props: any) {
+export function BoolField(props: BoolProps) {
   const state = props.state;
   const current = state.value === undefined ? props.fallback : state.value;
   return createElement(
@@ -190,7 +229,7 @@ export function BoolField(props: any) {
         className: "ddi_select",
         value: current === true ? "true" : "false",
         disabled: props.disabled,
-        onChange: function (event: any) {
+        onChange: function (event: ChangeEvent<HTMLSelectElement>) {
           props.onChoose(event.target.value === "true");
         },
       },

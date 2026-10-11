@@ -2,7 +2,7 @@
 
 [Русский гайд: настройка Jira и Confluence](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-web-fetch-authenticated/docs/JIRA-CONFLUENCE.ru.md)
 
-An authenticated, policy-gated [`WebFetchProvider`](../../docs/) for the
+An authenticated, policy-gated [`WebFetchProvider`](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-web-fetch-authenticated/SPEC.md) for the
 DeepSeek Harness web capability seam (`ctx.web`). It lets the existing
 model-facing `web_fetch(url)` tool retrieve content from approved
 authenticated resources — corporate Jira, Confluence, GitLab, internal wikis —
@@ -59,10 +59,12 @@ web_fetch(url)
 
 ## Configuration
 
-Everything is editable from the DSH Web UI (Settings → Plugins →
-Authenticated Web Fetch): rules, credential write-only fields, network
-policy, redirects, limits, connection tester, and diagnostics. Declarative
-config stays available:
+Everything is editable from the DSH Web UI — the configuration of this
+plugin's row on the host **Plugins** page: rules, credential write-only fields,
+network policy, redirects, limits, connection tester, and diagnostics. The row
+is headed with this package's name and its manifest description; the card under
+it is the configuration. The declarative profile config below edits the same
+document and stays available:
 
 ```yaml
 - id: web

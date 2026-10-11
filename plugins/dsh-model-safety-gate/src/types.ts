@@ -238,6 +238,13 @@ export interface SafetyGateInspect {
   /** Effective running configuration; `classifier.apiKey` is always empty here. */
   readonly config: ResolvedSafetyGateConfig;
   readonly classifier: SafetyGateClassifierState;
+  /**
+   * Why the stored configuration is not the one the gate runs, or `null` when
+   * they agree. The configuration form persists what the operator committed and
+   * the Host only applies schema constraints, so a combination the resolver
+   * cannot act on is refused here instead of at the write.
+   */
+  readonly configRejected: string | null;
   readonly metrics: SafetyMetricsSnapshot;
   /** Recent sanitized verdicts, newest first. */
   readonly audit: readonly SafetyGateAuditRow[];

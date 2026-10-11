@@ -8,6 +8,6 @@ export const settlementNode = (seq: number, text: string): ConversationNode =>
     time: seq * 10,
     content: [{ type: "text", text }],
     source: {},
-    provenance: { role: "inject", label: "subagent-settled" },
+    producer: { role: "inject", label: "subagent-settled" },
     form: null,
   }) as ConversationNode;

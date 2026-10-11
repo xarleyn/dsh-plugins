@@ -26,7 +26,8 @@ coverage/
 node_modules/
 .nx/
 
-# Machine-local workspace (leak-scan tooling, slice backups). It is ignored
-# through .git/info/exclude, which Prettier does not read, so it needs its own
-# entry or every machine with local files there fails `pnpm format`.
+# Machine-local workspace (leak-scan tooling, slice backups). The tracked root
+# .gitignore keeps it out of git now, and Prettier skips paths that file covers,
+# but this entry pins the same files for `pnpm format` on its own terms: a
+# machine with local files here must not fail the format check.
 .private/

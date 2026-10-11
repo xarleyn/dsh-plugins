@@ -25,6 +25,18 @@
 #   §27.9  No cross-package relative imports (`../../other-plugin/src/...`).
 #   §27.10 Workspace packages must be consumed through their declared
 #          package `exports` map only.
+#   §27.11 A plugin may depend on another plugin only through an explicit
+#          edge in plugin-dependency-allowlist.json (every dependency field
+#          counts; a missing file means no edge is allowed). The allow-list
+#          itself is validated: names must resolve to plugins and every edge
+#          must carry a reason.
+#   §27.12 A third-party range a catalog holds is declared through that
+#          catalog, never re-typed as a literal (peerDependencies excepted: a
+#          published peer range is deliberately wider than the version the
+#          catalog pins). The checker also lists the literal ranges no catalog
+#          covers, as advice — a one-off range needs no catalog, a range two
+#          manifests share does, and divergent ranges for one package are
+#          named as drift.
 #
 # This wrapper owns the bash-specific parts of the contract:
 #   - resolves the repo root (DSH_DEPS_ROOT override for testing) and exports

@@ -83,7 +83,14 @@ describe("host source bridge", () => {
       error: { code: "policy" },
     }));
     await bridge.refresh("saved", () => undefined);
-    expect(bridge.merge([])).toEqual([]);
+    expect(bridge.merge([])).toMatchObject([
+      {
+        complete: false,
+        incompleteOrigins: [
+          { provider: "host", reason: "source-bundle-unavailable" },
+        ],
+      },
+    ]);
 
     bridge.reset();
     expect(bridge.merge([])).toEqual([]);

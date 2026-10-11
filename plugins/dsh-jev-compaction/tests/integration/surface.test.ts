@@ -18,7 +18,8 @@ import {
   captureSurfaceSnapshot,
   isSnapshotFresh,
 } from "../../src/dsh/surface.js";
-import { resolveJevCompactionConfig } from "../../src/config.js";
+import { buildState } from "../../src/jev/state.js";
+import { resolveJevCompactionConfig } from "../../src/config/index.js";
 
 const MODEL = "test-model";
 // Small recent window so multi-turn fixtures keep old results eligible; the
@@ -163,9 +164,9 @@ describe("surface replacement lifecycle", () => {
     // Original event remains in the append-only log, unchanged.
     const original = session.snapshotEvents()[oldSeq]!;
     expect(original.type).toBe("tool/result");
-    expect(
-      (original.data as ReplacementView).message.content[0]!.content[0]!.text,
-    ).toBe("x".repeat(4000));
+    expect((original.data as ReplacementView).message.content[0]!.text).toBe(
+      "x".repeat(4000),
+    );
 
     // The surface now shows the replacement at that position.
     expect(session.surface.nodes).not.toContain(oldSeq);
@@ -178,8 +179,7 @@ describe("surface replacement lifecycle", () => {
       "old-call",
     );
     expect(
-      (replacement.data as ReplacementView).message.content[0]!.content[0]!
-        .text,
+      (replacement.data as ReplacementView).message.content[0]!.text,
     ).toContain("[dsh-jev-compaction]");
   });
 
@@ -292,6 +292,66 @@ describe("surface replacement lifecycle", () => {
 interface ReplacementView {
   message: {
     source: { callId: string };
-    content: [{ content: { type: string; text: string }[] }];
+    content: readonly { type: string; text: string }[];
   };
 }
+
+/**
+ * The dynamic tool-change blocks that 0.1.7 began emitting (migration map
+ * §8.4). No compiler warns about them: both blocks are legal `ContentBlock`s,
+ * so a pass that only fixed the type errors would leave this untested. What
+ * the pass measured here is that a replaced node can never lose one.
+ */
+describe("dynamic tool-change blocks", () => {
+  it("keeps a tool-change block out of the tool/result mutation domain", () => {
+    const session = Session.create(SessionId("tool-change"));
+    // The Host itself refuses the pairing: tool-change blocks are admitted on
+    // developer messages only, so a `tool/result` the plugin may replace can
+    // never carry one and the replacement cannot drop one.
+    expect(() =>
+      appendToolStep(session, 1, "changed-call", [
+        { type: "text", text: "y".repeat(4000) },
+        { type: "tool-addition", toolName: "bash" },
+      ]),
+    ).toThrow(/require developer role/u);
+  });
+
+  it("reads past a tool-change developer message on the surface", () => {
+    const session = Session.create(SessionId("tool-change-message"));
+    appendToolStep(session, 1, "old-call", [
+      { type: "text", text: "x".repeat(4000) },
+    ]);
+    session.append(
+      "developer/message",
+      {
+        turn: 2,
+        step: 1,
+        message: createMessage({
+          role: "developer",
+          content: [{ type: "tool-removal", toolName: "bash" }],
+          source: { kind: "tool-registry" },
+        }),
+      },
+      { surfaceOp: "append" },
+    );
+    appendToolStep(session, 3, "next-call", [
+      { type: "text", text: "z".repeat(4000) },
+    ]);
+    session.append("turn/start", { turn: 4 });
+
+    const { candidates, callIndex } = collectCandidates(session, CONFIG);
+    expect(candidates.map((item) => item.callId)).toEqual(["old-call"]);
+    // State building walks the whole log; an event type it does not model has
+    // to be skipped, not crash the run.
+    const { state } = buildState(
+      session,
+      {
+        candidates,
+        features: extractFeatures(candidates, callIndex),
+        callIndex,
+      },
+      CONFIG,
+    );
+    expect(state.history.length).toBeGreaterThan(0);
+  });
+});

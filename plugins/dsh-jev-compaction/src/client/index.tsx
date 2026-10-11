@@ -3,28 +3,32 @@
  *
  * The ModuleLoader registration (`window.__ModuleLoader__.load({ id, factory })`
  * with the full package name) is produced by the tsdown banner; this module
- * binds the plugin's settings namespace and registers the card in the shared
- * `settings.plugin.item` slot. Everything the card shows comes from the
- * settings scope, so the plugin needs no Remote namespace — and no API secret
- * ever crosses to the browser: the card edits the *name* of the environment
- * variable holding the key and only displays whether the Host can resolve it.
- *
- * The same bundle also registers the conversation contribution that draws one
- * card per recorded compaction run into the transcript (SPEC §28). That half
- * reads no settings and no Remote: it projects the plugin's own durable
- * session events, so it keeps working wherever the conversation does.
+ * resolves the Host form for the plugin's own configuration section and mounts
+ * the card as the configuration of this bundle's row on the Plugins page.
+ * Everything the card shows comes from that form, so the plugin needs no Remote
+ * namespace — and no API key ever crosses to the browser: the card edits the
+ * *name* of the environment variable holding the key and only displays whether
+ * the Host can resolve it.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
-import type {} from "@deepseek-ai/dsh-client-ui-slots";
-import { registerSettingsCard } from "@yadsh/dsh-plugin-kit/client";
+import type {
+  InjectFace,
+  PropsRuntime,
+} from "@deepseek-ai/dsh-client-ui-slots";
+import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 
+import type { JevCompactionConfig } from "../config/index.js";
 import { JEV_COMPACTION_SETTINGS_NAMESPACE } from "../shared/settings.js";
-import { JevCompactionCard } from "./card.js";
+import {
+  JEV_COMPACTION_ROW_SUMMARY,
+  JevCompactionCard,
+  type JevCompactionCardFace,
+} from "./card.js";
 import {
   JEV_COMPACTION_NODE_KIND,
   jevCompactionConversationDefinition,
@@ -36,11 +40,19 @@ import { styles } from "./styles.js";
 export const CLIENT_PLUGIN_NAME = "@yadsh/dsh-jev-compaction";
 
 /**
+ * The seat key: the package name joined to the row id as `cordis.patch.yml`
+ * declares it. That row id is also the namespace the Host resolves this plugin's
+ * volatile Config under, so the move changes where the card renders and nothing
+ * about where its values live — one an older build saved is read back by this one.
+ */
+const ROW_CONFIG_KEY = `@yadsh/dsh-jev-compaction#${JEV_COMPACTION_SETTINGS_NAMESPACE}`;
+
+/**
  * Client services this module reads. The client runtime resolves only
  * declared dependencies, so they must be listed here as well as in the
  * `dsh.client.inject` manifest.
  */
-export const inject = ["slots", "settingsScope", "uiConversation"];
+export const inject = ["slots", "configForms", "uiConversation"];
 
 function noop(): void {}
 
@@ -50,8 +62,8 @@ interface ClientFace {
     inject(slotName: string, factory: () => unknown): () => void;
     register(options: unknown, component: unknown): () => void;
   };
-  readonly settingsScope?: {
-    bind(spec: { namespace: string }): unknown;
+  readonly configForms?: {
+    get<T>(entryId: string): T;
   };
   readonly uiConversation?: {
     events: { register(definition: unknown): () => void };
@@ -59,59 +71,90 @@ interface ClientFace {
 }
 
 /**
- * Register both halves. They are deliberately independent: the conversation
- * card reads no settings and no Remote, so a page that serves no settings
- * directory — a non-loopback browser, a kiosk, a host without the settings
- * surface — still shows what a compaction did. The settings card needs the
- * binder and its namespace; without them it is simply not registered, and the
- * conversation card carries on.
+ * What the entry consumes. The seat's own `form` is deliberately not declared:
+ * it is the page's `ConfigPageForm` — `{ state, mutate }`, with no subscription
+ * and no single-field read — and this card cannot be built from it, so the entry
+ * resolves the full `ConfigForm` below. Declaring a prop and ignoring it would
+ * read as a card that binds to the page's values but does not.
  */
+type EntryProps = Omit<PropsRuntime<"plugins.row.config">, "form"> &
+  InjectFace<JevCompactionCardFace>;
+
+/**
+ * The entry the Plugins page renders for this bundle's row: the page draws the
+ * row's own card — surface, title, row id, module name, description line — and
+ * mounts this registrant's body inside it, so the bundle contributes the body
+ * and nothing around it (AGENTS.md).
+ *
+ * The page asks the one entry for two views. `page` is the body mounted above.
+ * `summary` is the row's one-liner, which the page asks the entry for only
+ * when the row carries no display description of its own (the seat contract in
+ * `@deepseek-ai/dsh-client-ui-plugin-manager`; the row's description is Host
+ * inventory data, so nothing in this bundle decides whether the fallback fires —
+ * the entry answers it because the contract names it). The view lands inside the
+ * page's own text, so it returns the sentence and never a second body.
+ */
+function JevCompactionEntry(props: EntryProps) {
+  if (props.view === "summary") return JEV_COMPACTION_ROW_SUMMARY;
+  return <JevCompactionCard settingsForm={props.settingsForm} />;
+}
+
+/** Resolve the settings form and register the card as the row's configuration. */
 export function apply(ctx: Context): () => void {
   const face = ctx as unknown as Partial<ClientFace>;
-  if (face.slots === undefined) return noop;
   const slots = face.slots;
+  if (slots === undefined) return noop;
   const disposers: Array<() => void> = [];
-
-  // The Definition goes in before its renderer: a view node with no occupant
-  // on `conversation.chat.node` falls back to the host's raw-JSON row, which
-  // is exactly what this card exists to prevent.
-  const conversation = face.uiConversation;
-  if (conversation !== undefined) {
+  if (face.uiConversation !== undefined) {
     disposers.push(
-      conversation.events.register(jevCompactionConversationDefinition),
-    );
-    disposers.push(
+      face.uiConversation.events.register(jevCompactionConversationDefinition),
       slots.inject("conversation.chat.node", () =>
         slots.register(
-          {
-            name: "conversation.chat.node",
-            key: JEV_COMPACTION_NODE_KIND,
-          },
+          { name: "conversation.chat.node", key: JEV_COMPACTION_NODE_KIND },
           JevCompactionRunCard,
         ),
       ),
     );
   }
-
-  // Headless probes and older profiles may lack the binder; rendering no
-  // settings card beats crashing the page during module load (AGENTS.md: no
-  // namespace, no card).
-  const scope = face.settingsScope?.bind({
-    namespace: JEV_COMPACTION_SETTINGS_NAMESPACE,
-  });
-  if (scope !== undefined) {
-    disposers.push(
-      registerSettingsCard(face as never, {
-        key: JEV_COMPACTION_SETTINGS_NAMESPACE,
-        pluginName: CLIENT_PLUGIN_NAME,
-        styles,
-        component: JevCompactionCard,
-        inject: () => ({ scope }),
-      }),
-    );
-  }
-
-  return () => {
+  const disposeAll = () => {
     for (const dispose of disposers.splice(0).reverse()) dispose();
   };
+  // Headless probes and profiles without the settings client have no form to
+  // bind; rendering no card beats crashing the page during module load
+  // (AGENTS.md: no namespace, no card).
+  if (
+    face.configForms === undefined ||
+    typeof face.configForms.get !== "function"
+  ) {
+    if (disposers.length > 0) {
+      disposers.unshift(injectCardStyles(CLIENT_PLUGIN_NAME, styles));
+    }
+    return disposeAll;
+  }
+
+  // The row seat hands the page's own `ConfigPageForm`, which is `{ state,
+  // mutate }` only — it cannot be subscribed to and carries no single-field
+  // write — so the entry resolves the full form itself. The join key into the
+  // Host settings document (`../shared/settings.ts`) is the row id.
+  const form = face.configForms.get<JevCompactionConfig>(
+    JEV_COMPACTION_SETTINGS_NAMESPACE,
+  );
+  const removeStyles = injectCardStyles(CLIENT_PLUGIN_NAME, styles);
+  // The seat is named as a literal in the call rather than through a constant:
+  // the card contract reads the surface this bundle registers on off the built
+  // bundle, and the registration is the statement it reads.
+  const disposeSlot = slots.inject("plugins.row.config", () =>
+    slots.register(
+      {
+        name: "plugins.row.config",
+        key: ROW_CONFIG_KEY,
+        inject: () => ({ settingsForm: form }),
+      },
+      JevCompactionEntry,
+    ),
+  );
+
+  disposers.unshift(removeStyles);
+  disposers.push(disposeSlot);
+  return disposeAll;
 }

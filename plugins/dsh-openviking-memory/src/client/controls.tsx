@@ -46,14 +46,23 @@ function useDraft(
 }
 
 /** Marker shown next to a field label when the user layer carries a value. */
-function OverrideMarker({ shown }: { shown: boolean }): ReactElement | null {
-  if (!shown) return null;
-  return <span className="ovm-override">override</span>;
+function OverrideMarker(props: {
+  shown: boolean;
+  /** The id of the control this marker belongs to; the marker derives its own. */
+  testId: string;
+}): ReactElement | null {
+  if (!props.shown) return null;
+  return (
+    <span className="ovm-override" data-testid={`${props.testId}-override`}>
+      override
+    </span>
+  );
 }
 
 /** Label line shared by every field. */
 function FieldLabel(props: {
   id: string;
+  testId: string;
   label: string;
   hint?: string;
   overridden: boolean;
@@ -64,7 +73,7 @@ function FieldLabel(props: {
       {props.hint === undefined ? null : (
         <span className="ovm-muted"> — {props.hint}</span>
       )}{" "}
-      <OverrideMarker shown={props.overridden} />
+      <OverrideMarker shown={props.overridden} testId={props.testId} />
     </span>
   );
 }
@@ -76,6 +85,8 @@ export function ToggleRow(props: {
   checked: boolean;
   disabled: boolean;
   overridden: boolean;
+  /** The stable hook a test reaches this switch by, whatever its label says. */
+  testId: string;
   onToggle: (checked: boolean) => void;
 }): ReactElement {
   const id = useControlId("toggle");
@@ -87,11 +98,12 @@ export function ToggleRow(props: {
         </strong>
         <span>{props.description}</span>
       </span>
-      <OverrideMarker shown={props.overridden} />
+      <OverrideMarker shown={props.overridden} testId={props.testId} />
       <input
         id={id}
         type="checkbox"
         className="ovm-toggle"
+        data-testid={props.testId}
         checked={props.checked}
         disabled={props.disabled}
         onChange={(event: ChangeEvent<HTMLInputElement>) => {
@@ -111,6 +123,8 @@ export function TextField(props: {
   secret?: boolean;
   disabled: boolean;
   overridden: boolean;
+  /** The stable hook a test reaches this field by, whatever its label says. */
+  testId: string;
   onCommit: (text: string) => void;
 }): ReactElement {
   const id = useControlId("text");
@@ -119,6 +133,7 @@ export function TextField(props: {
     <span className="ovm-field">
       <FieldLabel
         id={id}
+        testId={props.testId}
         label={props.label}
         hint={props.hint}
         overridden={props.overridden}
@@ -127,6 +142,7 @@ export function TextField(props: {
         id={id}
         type={props.secret === true ? "password" : "text"}
         className="ovm-control"
+        data-testid={props.testId}
         value={draft}
         placeholder={props.placeholder}
         disabled={props.disabled}
@@ -161,6 +177,8 @@ export function NumberField(props: {
   step?: number;
   disabled: boolean;
   overridden: boolean;
+  /** The stable hook a test reaches this field by, whatever its label says. */
+  testId: string;
   /** Receives the parsed draft; `null` (empty) means "clear the override". */
   onCommit: (value: number | null) => void;
   onInvalid: (text: string) => void;
@@ -186,6 +204,7 @@ export function NumberField(props: {
     <span className="ovm-field">
       <FieldLabel
         id={id}
+        testId={props.testId}
         label={props.label}
         hint={props.hint}
         overridden={props.overridden}
@@ -194,6 +213,7 @@ export function NumberField(props: {
         id={id}
         type="number"
         className="ovm-control"
+        data-testid={props.testId}
         value={draft}
         placeholder={props.placeholder}
         min={props.min}
@@ -227,6 +247,8 @@ export function SelectField(props: {
   options: readonly { readonly value: string; readonly label: string }[];
   disabled: boolean;
   overridden: boolean;
+  /** The stable hook a test reaches this select by, whatever its label says. */
+  testId: string;
   onSelect: (value: string) => void;
 }): ReactElement {
   const id = useControlId("select");
@@ -234,6 +256,7 @@ export function SelectField(props: {
     <span className="ovm-field">
       <FieldLabel
         id={id}
+        testId={props.testId}
         label={props.label}
         hint={props.hint}
         overridden={props.overridden}
@@ -241,6 +264,7 @@ export function SelectField(props: {
       <select
         id={id}
         className="ovm-control"
+        data-testid={props.testId}
         value={props.value ?? ""}
         disabled={props.disabled}
         onChange={(event) => {
@@ -266,6 +290,8 @@ export function FiltersField(props: {
   placeholder: string;
   disabled: boolean;
   overridden: boolean;
+  /** The stable hook a test reaches this area by, whatever its label says. */
+  testId: string;
   onCommit: (filters: string[]) => void;
 }): ReactElement {
   const id = useControlId("filters");
@@ -276,6 +302,7 @@ export function FiltersField(props: {
     <span className="ovm-field">
       <FieldLabel
         id={id}
+        testId={props.testId}
         label={props.label}
         hint={props.hint}
         overridden={props.overridden}
@@ -283,6 +310,7 @@ export function FiltersField(props: {
       <textarea
         id={id}
         className="ovm-area"
+        data-testid={props.testId}
         value={draft}
         placeholder={props.placeholder}
         disabled={props.disabled}

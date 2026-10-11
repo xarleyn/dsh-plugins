@@ -42,14 +42,15 @@ The observer never stores prompts, request headers, credentials, or secret value
 
 ## Settings UI
 
-Open **Settings → Plugins → Plugin Configuration → Sleev** to edit:
+Open the **Plugins** panel, choose the Sleev bundle, and press **Configure** on
+its `dsh-sleev` row to edit:
 
 - exact observed provider aliases;
 - observed provider-name prefixes;
 - the recent-call history limit;
 - structured telemetry logging at `off`, `info`, or `debug`.
 
-Edits are staged until **Save**. The card marks unsaved changes and lets each overridden field be reset to its composition default. Saved values apply to the next matching call without a host restart.
+Edits are staged until **Save**. The card marks unsaved changes and lets each overridden field be reset to its composition default. Saved values apply to the next matching call without a host restart. While the `dsh-sleev` namespace is not open to this session — a browser off the loopback address, or memory mode — the row says so instead of opening an empty section, and the observer keeps reporting with the last values the Host accepted; a namespace that has not served its first snapshot shows a loading line rather than a form of defaults.
 
 These settings decide what the plugin observes. Model endpoints and Sleev routing headers still belong under `llm-pi-ai.providers` in DSH model settings.
 
@@ -87,7 +88,7 @@ This establishes transport compatibility, not token savings. The small validatio
 
 - Node.js `^22.19.0` or `>=24.0.0`
 - pnpm 10.4.1 for development
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`
 - Cordis `^4.0.1`
 - a configured and running Sleev gateway for routed model calls
 

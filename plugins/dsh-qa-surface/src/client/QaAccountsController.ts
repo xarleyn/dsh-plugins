@@ -1,4 +1,5 @@
 import type {
+  QaAccountNotificationsInput,
   QaAccountProfileInput,
   QaAccountSession,
   QaAccountStartersInput,
@@ -46,12 +47,20 @@ export type QaAccountsSnapshot =
        */
       readonly ownedIds: readonly string[];
       /**
+       * The account's own chats alone — {@link ownedIds} without the
+       * cross-user view. Reading another account's chat is not a claim on its
+       * activity, so a surface that reports a chat's state outward is bounded
+       * by this list rather than by the sidebar's.
+       */
+      readonly ownIds: readonly string[];
+      /**
        * The full ownership map; admins only, empty for ordinary accounts and
        * whenever the admin listing was refused or unavailable.
        */
       readonly ownership: readonly QaOwnershipEntry[];
-      /** Bumped whenever ownedIds or ownership changes; re-projects lists. */
+      /** Bumped whenever ownedIds, ownIds or ownership changes; re-projects lists. */
       readonly ownedRevision: number;
+      readonly sharedChats?: readonly import("../chat-sharing/types.js").QaChatAccess[];
     };
 
 /** Union of the own chat ids and every mapped one, own ids first. */
@@ -64,6 +73,9 @@ function mergeOwnershipIds(
     ...new Set([...ownedIds, ...ownership.map((entry) => entry.sessionId)]),
   ];
 }
+
+/** The Host's password floor, mirrored so a refusal and its copy name the same number. */
+export const QA_MIN_PASSWORD_LENGTH = 8;
 
 /**
  * Audience-safe copy for the coarse account refusal codes; anything unknown
@@ -84,7 +96,7 @@ export function accountsErrorMessage(code: string | null): string {
     case "invalid-email":
       return "Введите корректный email.";
     case "weak-password":
-      return "Пароль должен быть не короче 8 символов.";
+      return `Пароль должен быть не короче ${QA_MIN_PASSWORD_LENGTH} символов.`;
     case "invalid-display-name":
       return "Слишком длинное имя.";
     case "invalid-profile":
@@ -95,6 +107,8 @@ export function accountsErrorMessage(code: string | null): string {
       return "Проверьте подсказки: заполните название и промпт, текст не слишком длинный.";
     case "starters-disabled":
       return "Свои подсказки отключены на этом сервере.";
+    case "invalid-notifications":
+      return "Не удалось прочитать настройки уведомлений: каждый канал — это да или нет.";
     case "integration-disabled":
       return "Интеграционный API выключен на этом стенде: такому токену некуда обращаться. Включите его в настройках стенда.";
     case "auth-required":
@@ -178,6 +192,15 @@ export class QaAccountsController {
   /** Server-owned chat ids (empty until authed); falls back to nothing. */
   ownedIds(): readonly string[] {
     return this.snapshot.stage === "authed" ? this.snapshot.ownedIds : [];
+  }
+
+  /**
+   * The chat ids this account owns outright (empty until authed): the set the
+   * admin's cross-user view may be wider than, and the scope a turn notice
+   * speaks within.
+   */
+  ownIds(): readonly string[] {
+    return this.snapshot.stage === "authed" ? this.snapshot.ownIds : [];
   }
 
   /** Boot probe: restore the stored token and ask the Host who it is. */
@@ -361,6 +384,9 @@ export class QaAccountsController {
    * created or opened after login enters it here — the next login is not a
    * reasonable price for a chat the visitor is looking at. Ids already known,
    * and the ones an admin's cross-user view contributed, are left as they are.
+   *
+   * A chat this page claimed is owned outright, so both lists gain it: the
+   * sidebar's wider read is not what decides that.
    */
   private noteOwnedSession(sessionId: string): void {
     const snapshot = this.snapshot;
@@ -370,6 +396,7 @@ export class QaAccountsController {
     this.publish({
       ...snapshot,
       ownedIds: [...snapshot.ownedIds, sessionId],
+      ownIds: [...snapshot.ownIds, sessionId],
       ownedRevision: snapshot.ownedRevision + 1,
     });
   }
@@ -425,6 +452,36 @@ export class QaAccountsController {
       return null;
     } catch (error) {
       console.warn("dsh-qa-surface: starters update failed", error);
+      return accountsErrorMessage(null);
+    }
+  }
+
+  /**
+   * Replace the signed-in user's own notification channels, mirroring
+   * {@link updateStarters}: refusal copy on rejection, null once the snapshot
+   * carries the stored record — which is also how the page learns the choice
+   * took effect, since it reads the same snapshot the notices plan with.
+   */
+  async updateNotifications(
+    input: QaAccountNotificationsInput,
+  ): Promise<string | null> {
+    const token = this.tokenValue;
+    if (this.disposed || token === null || this.snapshot.stage !== "authed") {
+      return accountsErrorMessage(null);
+    }
+    try {
+      const result = await this.options.remote.accountsUpdateNotifications(
+        token,
+        input,
+      );
+      if (this.disposed || this.snapshot.stage !== "authed") return null;
+      if (!result.ok) {
+        return accountsErrorMessage(accountsReasonOf(result.error));
+      }
+      this.publish({ ...this.snapshot, user: result.value });
+      return null;
+    } catch (error) {
+      console.warn("dsh-qa-surface: notifications update failed", error);
       return accountsErrorMessage(null);
     }
   }
@@ -562,7 +619,7 @@ export class QaAccountsController {
     user: QaAccountUserPublic,
   ): Promise<void> {
     const migration = this.options.legacyChatIds?.() ?? [];
-    let ownedIds: readonly string[] = [];
+    let ownIds: readonly string[] = [];
     let ownership: readonly QaOwnershipEntry[] = [];
     let ownershipKnown = false;
     try {
@@ -576,7 +633,7 @@ export class QaAccountsController {
         this.options.forgetChat?.(conflict);
       }
       const ids = await this.options.remote.accountsOwnedSessions(token);
-      ownedIds = ids.ok ? ids.value.ids : [];
+      ownIds = ids.ok ? ids.value.ids : [];
       ownershipKnown = ids.ok;
       // The cross-user ownership view is a separate operator opt-in. A
       // refusal only costs the grouping, never the admin's own chats.
@@ -598,17 +655,26 @@ export class QaAccountsController {
         await this.options.harvestRatings?.({
           token,
           accountId: user.id,
-          ownedIds,
+          ownedIds: ownIds,
         });
       } catch (error) {
         console.warn("dsh-qa-surface: rating harvest failed", error);
       }
     }
     if (this.disposed) return;
+    const sharedChats = await this.fetchSharedChats(token);
+    if (this.disposed) return;
     this.publish({
       stage: "authed",
       user,
-      ownedIds: mergeOwnershipIds(ownedIds, ownership),
+      sharedChats,
+      ownedIds: [
+        ...new Set([
+          ...mergeOwnershipIds(ownIds, ownership),
+          ...sharedChats.map((chat) => chat.sessionId),
+        ]),
+      ],
+      ownIds,
       ownership,
       ownedRevision: 1,
     });
@@ -638,9 +704,23 @@ export class QaAccountsController {
       } else {
         ownership = [];
       }
-      const ownedIds = mergeOwnershipIds(ids.value.ids, ownership);
+      const ownIds = ids.value.ids;
+      const sharedChats = await this.fetchSharedChats(this.tokenValue);
+      if (this.disposed || this.snapshot.stage !== "authed") return;
+      const ownedIds = [
+        ...new Set([
+          ...mergeOwnershipIds(ownIds, ownership),
+          ...sharedChats.map((chat) => chat.sessionId),
+        ]),
+      ];
+      // The merged list is no proof about the strict one: a chat the ownership
+      // map still names survives in it after the account stops owning it, so
+      // the list a notice is bounded by has to be compared by itself.
       if (
         JSON.stringify(ownedIds) === JSON.stringify(this.snapshot.ownedIds) &&
+        JSON.stringify(ownIds) === JSON.stringify(this.snapshot.ownIds) &&
+        JSON.stringify(sharedChats) ===
+          JSON.stringify(this.snapshot.sharedChats ?? []) &&
         JSON.stringify(ownership) === JSON.stringify(this.snapshot.ownership)
       ) {
         return;
@@ -648,6 +728,8 @@ export class QaAccountsController {
       this.publish({
         ...this.snapshot,
         ownedIds,
+        ownIds,
+        sharedChats,
         ownership,
         ownedRevision: this.snapshot.ownedRevision + 1,
       });
@@ -667,6 +749,16 @@ export class QaAccountsController {
       console.warn("dsh-qa-surface: ownership list failed", error);
       return [];
     }
+  }
+
+  /** Session id → owner display name; empty unless an admin is signed in. */
+  private async fetchSharedChats(
+    token: string,
+  ): Promise<readonly import("../chat-sharing/types.js").QaChatAccess[]> {
+    const result = await this.options.remote.chatVisible?.(token);
+    return result?.ok === true
+      ? result.value.filter((chat) => chat.mode !== "owner")
+      : [];
   }
 
   /** Session id → owner display name; empty unless an admin is signed in. */

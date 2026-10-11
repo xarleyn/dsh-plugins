@@ -17,7 +17,7 @@ import {
 } from "../dsh/surface.js";
 import { PRUNED_BY } from "../mutation/render.js";
 import { isShapedText, readArchiveRef } from "../result-shaping/reconstruct.js";
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 
 /** Normalized candidate model (SPEC §9.2) — no DSH event shapes. */
 export interface ToolResultCandidate {
@@ -74,31 +74,30 @@ function readRawResult(
     step: number;
     message: {
       source: { callId: string };
-      content: [
-        {
-          toolCallId: string;
-          isError?: boolean;
-          content: { type: string; text?: string }[];
-        },
-      ];
+      toolCallId: string;
+      isError?: boolean;
+      content: readonly { type: string; text?: string }[];
     };
   };
-  const block = data.message.content[0];
-  if (block === undefined || block.toolCallId !== data.message.source.callId)
-    return undefined;
-  const textOnly = block.content.every((inner) => inner.type === "text");
-  const text = block.content
+  // 0.1.7 folded the tool-result wrapper block away: the call identity and the
+  // outcome flag are message fields now and the blocks sit under the message
+  // directly. The cross-check survives because a result that answers some
+  // other call is still not a candidate for this one.
+  const message = data.message;
+  if (message.toolCallId !== message.source.callId) return undefined;
+  const textOnly = message.content.every((block) => block.type === "text");
+  const text = message.content
     .filter(
-      (inner): inner is { type: "text"; text: string } => inner.type === "text",
+      (block): block is { type: "text"; text: string } => block.type === "text",
     )
-    .map((inner) => inner.text)
+    .map((block) => block.text)
     .join("\n");
   return {
     seq: event.seq,
     turn: data.turn,
     step: data.step,
-    callId: data.message.source.callId,
-    isError: block.isError === true,
+    callId: message.source.callId,
+    isError: message.isError === true,
     text,
     textOnly,
   };

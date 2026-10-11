@@ -1,8 +1,10 @@
 import type { Agent, PreStepDecision } from "@deepseek-ai/dsh-agent";
+import type { Context } from "@deepseek-ai/cordis";
+import { qaAgentScope } from "../agent-scope.js";
 import { createUserMessage } from "@deepseek-ai/dsh-llm";
 import type { UserMessage } from "@deepseek-ai/dsh-llm";
 import { isModelInvocable, renderSkillContent } from "@deepseek-ai/dsh-skill";
-import type { SkillSummary } from "@deepseek-ai/dsh-skill";
+import type { SkillResourceBase, SkillSummary } from "@deepseek-ai/dsh-skill";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import type {
@@ -10,6 +12,11 @@ import type {
   QaSkillActivationOrigin,
 } from "../types.js";
 import type { QaAgentToolGrants } from "./tool-grants.js";
+import { userInvocableSkillNames } from "../access/model.js";
+import {
+  skillResourceGuidance,
+  skillResourcePathHint,
+} from "./skill-resource-paths.js";
 
 const SKILL_NOT_AVAILABLE = "SKILL_NOT_AVAILABLE";
 
@@ -71,14 +78,13 @@ export function installQaSkillPolicy(
   const { agent, policy, discovered, grants } = options;
   if (!policy.tools.includes("skill")) return () => undefined;
   const modelAllowed = new Set(policy.skills);
-  const userAllowed = new Set(
-    policy.userSkills.length === 0 ? policy.skills : policy.userSkills,
-  );
+  const userAllowed = new Set(userInvocableSkillNames(policy));
   const visible = policy.skills
     .map((name) => discovered.get(name))
     .filter((skill): skill is SkillSummary => skill !== undefined)
     .filter(isModelInvocable);
   const cwd = agent.session.header.cwd;
+  const loadedResources = new Map<string, SkillResourceBase>();
   const origin: QaSkillActivationOrigin =
     options.preview === true ? "preview" : "model";
   const definition = defineTool({
@@ -109,8 +115,11 @@ export function installQaSkillPolicy(
       if (!modelAllowed.has(args.name)) {
         throw new Error(`${SKILL_NOT_AVAILABLE}: ${args.name}`);
       }
-      const skill = await agent.ctx.skills.get(args.name, {
-        scope: agent,
+      // The agent-loop context injects tools and prompts, but not skills.
+      // Resolve the optional registry without borrowing an undeclared property.
+      const registry = agent.ctx.get("skills") as Context["skills"] | undefined;
+      const skill = await registry?.get(args.name, {
+        scope: qaAgentScope(agent),
         ...(cwd === undefined ? {} : { cwd }),
         signal: exec.signal,
       });
@@ -125,16 +134,28 @@ export function installQaSkillPolicy(
         });
         throw new Error(outcome.reason);
       }
-      const content = [renderSkillContent(skill), outcome.warning]
+      if (skill.resourceBase !== undefined)
+        loadedResources.set(skill.name, skill.resourceBase);
+      const content = [
+        skillResourceGuidance(skill.resourceBase),
+        renderSkillContent(skill),
+        outcome.warning,
+      ]
         .filter((part): part is string => part !== undefined && part !== "")
         .join("\n\n");
       return { name: skill.name, content };
     },
   });
   const disposeTool = agent.ctx.tools.register(definition);
+  let disposePaths: () => void = () => undefined;
   let disposePrompt: () => void = () => undefined;
   let disposeGesture: () => void = () => undefined;
   try {
+    disposePaths = agent.ctx.tools.guard((execution) => {
+      if (execution.name !== "read") return undefined;
+      const args = execution.arguments as { file_path?: unknown } | undefined;
+      return skillResourcePathHint(args?.file_path, loadedResources);
+    });
     disposePrompt = agent.ctx.systemPrompt.section({
       name: "qa-surface:available-skills",
       order: 2_750,
@@ -180,7 +201,11 @@ export function installQaSkillPolicy(
             return [];
           }
           const outcome = grants.activate(name, "user");
-          if (outcome.status === "activated") return [message];
+          if (outcome.status === "activated") {
+            const resource = discovered.get(name)?.resourceBase;
+            if (resource !== undefined) loadedResources.set(name, resource);
+            return [message];
+          }
           changed = true;
           options.logger.warn("skill-policy.activation-rejected", {
             skill: name,
@@ -202,12 +227,14 @@ export function installQaSkillPolicy(
   } catch (error) {
     disposeGesture();
     disposePrompt();
+    disposePaths();
     disposeTool();
     throw error;
   }
   return () => {
     disposeGesture();
     disposePrompt();
+    disposePaths();
     disposeTool();
   };
 }

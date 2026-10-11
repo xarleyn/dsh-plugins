@@ -2,8 +2,10 @@ import { describe, expect, it } from "vitest";
 import type { StoredSessionEvent } from "../../src/admin/conversation-log.js";
 import {
   answerAfter,
+  answerForRequest,
   boundAnswer,
   lastPromptSeq,
+  ownTurnStillRunning,
 } from "../../src/integration/answer.js";
 
 /**
@@ -109,6 +111,150 @@ describe("integration answer projection", () => {
   });
 });
 
+describe("answering one request's own turn", () => {
+  /** The durable rows the harness writes for one claimed question. */
+  function turn(
+    startSeq: number,
+    turnNumber: number,
+    requestId: string,
+    answerSeq: number,
+    answer: string,
+  ): StoredSessionEvent[] {
+    return [
+      event(startSeq, "turn/start", { turn: turnNumber }),
+      event(startSeq + 1, "user/message", {
+        role: "user",
+        source: { kind: "user", rpcId: requestId },
+        content: [{ type: "text", text: `вопрос ${requestId}` }],
+      }),
+      assistantMessage(answerSeq, [{ type: "text", text: answer }], {
+        turn: turnNumber,
+      }),
+    ];
+  }
+
+  it("reads the turn its own prompt opened, not the newest one", () => {
+    const events = [
+      ...turn(1, 1, "req-a", 3, "Ответ A"),
+      ...turn(4, 2, "req-b", 6, "Ответ B"),
+    ];
+    expect(answerForRequest(events, "req-a")).toEqual({
+      answer: "Ответ A",
+      interrupted: false,
+      seq: 3,
+      turn: 1,
+    });
+    expect(answerForRequest(events, "req-b")).toEqual({
+      answer: "Ответ B",
+      interrupted: false,
+      seq: 6,
+      turn: 2,
+    });
+  });
+
+  it("shares the answer of a turn that claimed both questions", () => {
+    // The loop admits whatever is queued when a turn starts, so one turn can
+    // answer two questions. Each caller then reads that same prose — it is the
+    // only thing their prompts produced.
+    const events = [
+      event(1, "turn/start", { turn: 1 }),
+      event(2, "user/message", {
+        role: "user",
+        source: { kind: "user", rpcId: "req-a" },
+        content: [{ type: "text", text: "первый" }],
+      }),
+      event(3, "user/message", {
+        role: "user",
+        source: { kind: "user", rpcId: "req-b" },
+        content: [{ type: "text", text: "второй" }],
+      }),
+      assistantMessage(4, [{ type: "text", text: "Общий ответ" }], {
+        turn: 1,
+      }),
+    ];
+    expect(answerForRequest(events, "req-a")?.answer).toBe("Общий ответ");
+    expect(answerForRequest(events, "req-b")?.answer).toBe("Общий ответ");
+  });
+
+  it("keeps injected context from ending the turn", () => {
+    // A note injected after the prompt is model input, not a competing
+    // question, and the answer that follows it still belongs to this turn.
+    const events = [
+      event(1, "turn/start", { turn: 1 }),
+      event(2, "user/message", {
+        role: "user",
+        source: { kind: "user", rpcId: "req-a" },
+        content: [{ type: "text", text: "вопрос" }],
+      }),
+      event(3, "user/message", {
+        role: "user",
+        source: { kind: "plugin", plugin: "dsh-notes" },
+        content: [{ type: "text", text: "заметка" }],
+      }),
+      assistantMessage(4, [{ type: "text", text: "ответ" }], { turn: 1 }),
+    ];
+    expect(answerForRequest(events, "req-a")).toEqual({
+      answer: "ответ",
+      interrupted: false,
+      seq: 4,
+      turn: 1,
+    });
+  });
+
+  it("reports an empty answer for a turn that committed no prose", () => {
+    const events = [
+      event(1, "turn/start", { turn: 1 }),
+      event(2, "user/message", {
+        role: "user",
+        source: { kind: "user", rpcId: "req-a" },
+        content: [{ type: "text", text: "вопрос" }],
+      }),
+      assistantMessage(3, [], { turn: 1, interrupted: true }),
+      ...turn(4, 2, "req-b", 6, "Ответ B"),
+    ];
+    expect(answerForRequest(events, "req-a")).toEqual({
+      answer: "",
+      interrupted: true,
+      seq: null,
+      turn: 1,
+    });
+  });
+
+  it("declines to answer for a prompt the log does not carry", () => {
+    // No row names this request: the caller has to choose a cursor itself, and
+    // pretending another turn's prose were the answer is worse than nothing.
+    const events = turn(1, 1, "req-a", 3, "Ответ A");
+    expect(answerForRequest(events, "req-unknown")).toBeUndefined();
+  });
+
+  it("brackets the window by the next question when no turn opened", () => {
+    // A log whose rows arrive without a `turn/start` (a truncated read, or a
+    // harness that writes the prompt before opening the turn) still separates
+    // the two questions by their own rows.
+    const events = [
+      event(1, "user/message", {
+        role: "user",
+        source: { kind: "user", rpcId: "req-a" },
+        content: [{ type: "text", text: "первый" }],
+      }),
+      assistantMessage(2, [{ type: "text", text: "Ответ A" }]),
+      event(3, "user/message", {
+        role: "user",
+        source: { kind: "user", rpcId: "req-b" },
+        content: [{ type: "text", text: "второй" }],
+      }),
+      assistantMessage(4, [{ type: "text", text: "Ответ B" }]),
+    ];
+    expect(answerForRequest(events, "req-a")).toEqual({
+      answer: "Ответ A",
+      interrupted: false,
+      seq: 2,
+      turn: null,
+    });
+    expect(answerForRequest(events, "req-b")?.answer).toBe("Ответ B");
+  });
+});
+
 describe("bounding the published answer", () => {
   it("leaves an answer that fits exactly as it is", () => {
     expect(boundAnswer("короткий ответ", 4096)).toBe("короткий ответ");
@@ -167,5 +313,107 @@ describe("bounding the published answer", () => {
     const bounded = boundAnswer("a".repeat(1000), 100);
     expect(bounded.length).toBe(100);
     expect(bounded.endsWith("…")).toBe(true);
+  });
+});
+
+/**
+ * Whose turn the agent is running, which is what decides whether an abandoned
+ * question may stop it. A prompt the harness has not claimed is still in the
+ * inbox, and a turn that committed its closer is over even while the agent is
+ * busy with the next one — in both cases the running turn belongs to somebody
+ * else and stopping it would spend their question.
+ */
+describe("integration turn ownership", () => {
+  const claimed = [
+    event(1, "turn/start", { turn: 1 }),
+    event(2, "user/message", {
+      source: { kind: "user", rpcId: "req-1" },
+      content: [{ type: "text", text: "вопрос" }],
+    }),
+  ];
+
+  it("counts a turn claimed into as running while it has no closer", () => {
+    expect(ownTurnStillRunning(claimed, "req-1")).toBe(true);
+    // A tool step commits assistant text without ending the turn.
+    expect(
+      ownTurnStillRunning(
+        [...claimed, event(3, "assistant/message", { turn: 1, message: {} })],
+        "req-1",
+      ),
+    ).toBe(true);
+  });
+
+  it("refuses a prompt the harness has not written yet", () => {
+    // Still queued behind another question's turn: that turn is not ours to stop.
+    expect(
+      ownTurnStillRunning(
+        [
+          event(1, "turn/start", { turn: 1 }),
+          event(2, "user/message", {
+            source: { kind: "user", rpcId: "req-2" },
+            content: [{ type: "text", text: "чужой вопрос" }],
+          }),
+        ],
+        "req-1",
+      ),
+    ).toBe(false);
+    expect(ownTurnStillRunning([], "req-1")).toBe(false);
+  });
+
+  it("refuses a turn that committed its closer, though the agent went on", () => {
+    expect(
+      ownTurnStillRunning(
+        [
+          ...claimed,
+          event(3, "turn/end", { turn: 1, reason: { kind: "done" } }),
+        ],
+        "req-1",
+      ),
+    ).toBe(false);
+    // The same fact, told by the next turn opening instead.
+    expect(
+      ownTurnStillRunning(
+        [...claimed, event(3, "turn/start", { turn: 2 })],
+        "req-1",
+      ),
+    ).toBe(false);
+  });
+
+  it("reads a turn/end of another turn as no closer of ours", () => {
+    // Interleaved logs: the closer of the earlier question says nothing about
+    // this one, which is still the newest claimed turn.
+    const events = [
+      event(1, "turn/start", { turn: 1 }),
+      event(2, "user/message", {
+        source: { kind: "user", rpcId: "req-1" },
+        content: [{ type: "text", text: "первый" }],
+      }),
+      event(3, "turn/end", { turn: 2, reason: { kind: "done" } }),
+    ];
+    expect(ownTurnStillRunning(events, "req-1")).toBe(true);
+  });
+
+  it("treats a newer turn in an unnumbered log as the end of ours", () => {
+    const unnumbered = [
+      event(1, "user/message", {
+        source: { kind: "user", rpcId: "req-1" },
+        content: [{ type: "text", text: "первый" }],
+      }),
+    ];
+    expect(ownTurnStillRunning(unnumbered, "req-1")).toBe(true);
+    expect(
+      ownTurnStillRunning([...unnumbered, event(2, "turn/start", {})], "req-1"),
+    ).toBe(false);
+  });
+
+  it("ignores injected context that is recorded as a user message", () => {
+    // Synthetic payloads carry a user role but no rpc id of the caller.
+    const events = [
+      event(1, "user/message", {
+        source: { kind: "system" },
+        content: [{ type: "text", text: "заметка" }],
+      }),
+    ];
+    expect(ownTurnStillRunning(events, "req-1")).toBe(false);
   });
 });

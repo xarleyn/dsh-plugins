@@ -1,7 +1,7 @@
 import { resolveConfig } from "../../src/config.js";
 import { TestitProvider } from "../../src/providers/testit/index.js";
 import { INSTANCE, TOKEN } from "./shared.js";
-import { describeProviderConformance } from "../provider-conformance.helpers.js";
+import { describeProviderConformance } from "../helpers/provider-conformance.helpers.js";
 
 describeProviderConformance({
   provider: "testit",
@@ -15,6 +15,7 @@ describeProviderConformance({
     value: `PrivateToken ${TOKEN}`,
   },
   statuses: [
+    [302, "CredentialRevoked"],
     [400, "InvalidRequest"],
     [401, "CredentialRevoked"],
     [403, "ProviderPermissionDenied"],
@@ -27,10 +28,11 @@ describeProviderConformance({
     [503, "ProviderUnavailable"],
   ],
   transient: { status: 429, attempts: 3, code: "RateLimited" },
-  build: ({ fetcher, retries, maxResponseBytes }) => {
+  build: ({ fetcher, retries, maxResponseBytes, timeoutMs }) => {
     const provider = new TestitProvider(
       resolveConfig({
         maxResponseBytes,
+        timeoutMs,
         testit: { instances: [{ ...INSTANCE }], retries },
       }),
       fetcher,

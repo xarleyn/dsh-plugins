@@ -205,6 +205,7 @@ describe("Bitrix24 provider", () => {
         }),
       } as never,
       principalForSession: () => ({ userId: "1" }),
+      managedServiceCredentialsEnabled: false,
     }).find((tool) => tool.name === "bitrix_search_crm");
     expect(search).toBeDefined();
     // The audited loop: an empty query answered with a bare "query is invalid"

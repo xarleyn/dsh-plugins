@@ -1,7 +1,7 @@
 import { resolveConfig } from "../../src/config.js";
 import { WeblateProvider } from "../../src/providers/weblate/index.js";
 import { INSTANCES, TOKEN } from "./shared.js";
-import { describeProviderConformance } from "../provider-conformance.helpers.js";
+import { describeProviderConformance } from "../helpers/provider-conformance.helpers.js";
 
 describeProviderConformance({
   provider: "weblate",
@@ -11,6 +11,7 @@ describeProviderConformance({
   secret: TOKEN,
   carrier: { kind: "header", name: "authorization", value: `Token ${TOKEN}` },
   statuses: [
+    [302, "CredentialRevoked"],
     [400, "InvalidRequest"],
     [401, "CredentialRevoked"],
     [403, "ProviderPermissionDenied"],
@@ -22,10 +23,11 @@ describeProviderConformance({
     [500, "ProviderUnavailable"],
   ],
   transient: { status: 429, attempts: 3, code: "RateLimited" },
-  build: ({ fetcher, retries, maxResponseBytes }) => {
+  build: ({ fetcher, retries, maxResponseBytes, timeoutMs }) => {
     const provider = new WeblateProvider(
       resolveConfig({
         maxResponseBytes,
+        timeoutMs,
         weblate: { instances: INSTANCES, retries },
       }),
       fetcher,

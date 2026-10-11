@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { QaSkillEditor } from "../../../src/client/user-settings/SkillEditor.js";
 import {
@@ -9,6 +9,26 @@ import {
   TOOLS,
   validation,
 } from "./qa-skills.helpers.js";
+
+/** What the editor says about the draft for one severity. */
+function diagnosticCopy(severity: "error" | "warning"): string[] {
+  return screen
+    .getAllByTestId(`qa-settings-skill-diagnostic-${severity}`)
+    .map((node) => node.textContent ?? "");
+}
+
+/** The row of one tool of the picker, found by the handle of its name. */
+function toolRow(name: string): HTMLElement {
+  const row = screen
+    .getAllByTestId("qa-settings-toolpicker-row")
+    .find(
+      (candidate) =>
+        within(candidate).getByTestId("qa-settings-toolpicker-row-name")
+          .textContent === name,
+    );
+  if (row === undefined) throw new Error(`no tool row for ${name}`);
+  return row;
+}
 
 describe("skill editor", () => {
   it("seeds every field and reports the tool availability in the chips", () => {
@@ -35,11 +55,15 @@ describe("skill editor", () => {
     expect(
       (screen.getByLabelText("Инструкции") as HTMLTextAreaElement).value,
     ).toBe("1. Шаг");
-    expect(screen.getByText("2 выбрано")).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-skill-tools-count").textContent,
+    ).toBe("2 выбрано");
     // A declared tool the session cannot reach stays visible and flagged.
     expect(
-      screen.getByText(/Инструмент write сейчас недоступен/u),
-    ).toBeTruthy();
+      diagnosticCopy("warning").some((text) =>
+        text.includes("Инструмент write сейчас недоступен"),
+      ),
+    ).toBe(true);
     expect(
       screen.getByRole("button", { name: "Убрать инструмент write" }),
     ).toBeTruthy();
@@ -63,23 +87,25 @@ describe("skill editor", () => {
         onReload={vi.fn()}
       />,
     );
-    const save = screen.getByRole("button", { name: "Сохранить" });
+    const save = screen.getByTestId("qa-settings-skill-save");
+    expect(screen.getByRole("button", { name: "Сохранить" })).toBe(save);
     expect((save as HTMLButtonElement).disabled).toBe(true);
-    expect(screen.getByText("Укажите название навыка.")).toBeTruthy();
+    expect(diagnosticCopy("error")).toContain("Укажите название навыка.");
     fireEvent.change(screen.getByLabelText("Название"), {
       target: { value: "Новый Навык" },
     });
-    expect(screen.getByText(/только строчные латинские/u)).toBeTruthy();
+    expect(
+      diagnosticCopy("error").some((text) =>
+        text.includes("только строчные латинские"),
+      ),
+    ).toBe(true);
     fireEvent.change(screen.getByLabelText("Название"), {
       target: { value: "brand-new" },
     });
     fireEvent.change(screen.getByLabelText("Описание"), {
       target: { value: "Что делает навык." },
     });
-    expect(
-      (screen.getByRole("button", { name: "Сохранить" }) as HTMLButtonElement)
-        .disabled,
-    ).toBe(false);
+    expect((save as HTMLButtonElement).disabled).toBe(false);
   });
 
   it("sends the draft with the revision it read", () => {
@@ -112,6 +138,61 @@ describe("skill editor", () => {
         expectedRevision: "rev-1",
       }),
     );
+    // A complete document needs no acknowledgement to save.
+    expect(onSave.mock.calls[0]?.[0]).not.toHaveProperty(
+      "confirmPartialOverwrite",
+    );
+  });
+
+  it("asks before saving over a file the Host only read partly", () => {
+    const onSave = vi.fn();
+    render(
+      <QaSkillEditor
+        mode="edit"
+        document={skillDocument({
+          truncated: true,
+          diagnostics: [
+            {
+              code: "skill-file-truncated",
+              severity: "error",
+              field: null,
+              detail: "307246",
+            },
+          ],
+        })}
+        validation={validation()}
+        onDraftChange={onDraftChange}
+        tools={TOOLS}
+        toolsError={null}
+        saving={false}
+        error={null}
+        conflict={false}
+        onBack={vi.fn()}
+        onSave={onSave}
+        onDelete={vi.fn()}
+        onReload={vi.fn()}
+      />,
+    );
+    // The user is told plainly that the copy in front of them is not the file.
+    expect(
+      diagnosticCopy("error").some((text) =>
+        text.includes("редактор прочитал только его начало"),
+      ),
+    ).toBe(true);
+    fireEvent.click(screen.getByTestId("qa-settings-skill-save"));
+    // The first click only asks.
+    expect(onSave).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Стереть непрочитанное и сохранить",
+      }),
+    );
+    expect(onSave).toHaveBeenCalledWith(
+      expect.objectContaining({
+        expectedRevision: "rev-1",
+        confirmPartialOverwrite: true,
+      }),
+    );
   });
 
   it("previews the file the serializer would write, preserving foreign fields", () => {
@@ -135,16 +216,15 @@ describe("skill editor", () => {
     fireEvent.click(screen.getByRole("button", { name: "Показать" }));
     // The panel renders what the Host serialized, byte for byte; the stored
     // foreign frontmatter is shown beside it as preserved.
-    expect(screen.getByText(/license/u).textContent).toContain("MIT");
-    const preview = screen.getByText(
-      (_, element) =>
-        element?.tagName === "PRE" &&
-        (element.textContent?.includes("description: Тестирование.") ?? false),
-    );
+    expect(
+      screen.getByTestId("qa-settings-skill-frontmatter-preview").textContent,
+    ).toContain('"license": "MIT"');
+    const preview = screen.getByTestId("qa-settings-skill-preview-file");
+    expect(preview.textContent).toContain("description: Тестирование.");
     expect(preview.textContent).toContain("name: api-testing");
     expect(
-      screen.getByText("/workspace/.dsh/skills/api-testing/SKILL.md"),
-    ).toBeTruthy();
+      screen.getByTestId("qa-settings-skill-source").textContent,
+    ).toContain("/workspace/.dsh/skills/api-testing/SKILL.md");
   });
 
   it("asks before leaving with unsaved changes", () => {
@@ -170,9 +250,14 @@ describe("skill editor", () => {
     fireEvent.change(screen.getByLabelText("Описание"), {
       target: { value: "Правка." },
     });
-    fireEvent.click(screen.getByRole("button", { name: "← Навыки" }));
+    fireEvent.click(screen.getByTestId("qa-settings-skill-back"));
     expect(onBack).not.toHaveBeenCalled();
-    expect(screen.getByText(/несохранённые изменения/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-skill-discard").textContent,
+    ).toContain("Есть несохранённые изменения.");
+    expect(screen.getByRole("button", { name: "← Навыки" })).toBe(
+      screen.getByTestId("qa-settings-skill-back"),
+    );
     fireEvent.click(
       screen.getByRole("button", { name: "Выйти без сохранения" }),
     );
@@ -198,10 +283,10 @@ describe("skill editor", () => {
         onReload={vi.fn()}
       />,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Удалить" }));
+    fireEvent.click(screen.getByTestId("qa-settings-skill-delete"));
     expect(
-      screen.getByText(/Его можно будет восстановить вручную/u),
-    ).toBeTruthy();
+      screen.getByTestId("qa-settings-skill-delete-lead").textContent,
+    ).toContain("Его можно будет восстановить вручную из корзины.");
     expect(onDelete).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "Удалить навык" }));
     expect(onDelete).toHaveBeenCalledTimes(1);
@@ -230,14 +315,21 @@ describe("skill editor", () => {
       screen.getByRole("button", { name: "Перезагрузить текущую версию" }),
     );
     expect(onReload).toHaveBeenCalledTimes(1);
-    fireEvent.click(
-      screen.getByRole("button", { name: "Добавить инструменты" }),
+    fireEvent.click(screen.getByTestId("qa-settings-skill-tools-add"));
+    expect(screen.getByRole("button", { name: "Добавить инструменты" })).toBe(
+      screen.getByTestId("qa-settings-skill-tools-add"),
     );
     // The row's description is clamped to two lines by CSS, so the full text
     // has to stay reachable as the row's title.
-    expect(screen.getByTitle("Search files").textContent).toBe("Search files");
+    const description = within(toolRow("grep")).getByTestId(
+      "qa-settings-toolpicker-row-description",
+    );
+    expect(description.getAttribute("title")).toBe("Search files");
+    expect(description.textContent).toBe("Search files");
     fireEvent.click(screen.getByRole("checkbox", { name: /grep/u }));
-    fireEvent.click(screen.getByRole("button", { name: "Применить" }));
-    expect(screen.getByText("2 выбрано")).toBeTruthy();
+    fireEvent.click(screen.getByTestId("qa-settings-toolpicker-apply"));
+    expect(
+      screen.getByTestId("qa-settings-skill-tools-count").textContent,
+    ).toBe("2 выбрано");
   });
 });

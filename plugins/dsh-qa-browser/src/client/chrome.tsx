@@ -22,7 +22,7 @@ import {
   type BrowserDevicePreset,
 } from "./devices.js";
 import { pageLabel } from "./url.js";
-import { VIEWPORT_BOUNDS } from "../host/viewport.js";
+import { VIEWPORT_BOUNDS } from "../shared/viewport.js";
 
 type PanelTab = BrowserPanelTab;
 
@@ -133,6 +133,7 @@ export function BrowserTabStrip({
   return (
     <div
       className="dsh-qa-browser-panel__tabs"
+      data-testid="tabs-strip"
       role="tablist"
       aria-label="Вкладки Browser"
     >
@@ -142,6 +143,7 @@ export function BrowserTabStrip({
         return (
           <div
             key={tab.id}
+            data-testid="tabs-tab"
             role="tab"
             aria-selected={active}
             tabIndex={active ? 0 : -1}
@@ -157,17 +159,33 @@ export function BrowserTabStrip({
               onSelect(tab.id);
             }}
           >
-            <span className="dsh-qa-browser-panel__tab-icon" aria-hidden="true">
+            <span
+              className="dsh-qa-browser-panel__tab-icon"
+              data-testid="tabs-tab-icon"
+              aria-hidden="true"
+            >
               {tab.status === "loading" ? (
-                <span className="dsh-qa-browser-panel__tab-spinner" />
+                <span
+                  className="dsh-qa-browser-panel__tab-spinner"
+                  data-testid="tabs-tab-spinner"
+                />
               ) : (
-                <span className="dsh-qa-browser-panel__tab-dot" />
+                <span
+                  className="dsh-qa-browser-panel__tab-dot"
+                  data-testid="tabs-tab-dot"
+                />
               )}
             </span>
-            <span className="dsh-qa-browser-panel__tab-label">{label}</span>
+            <span
+              className="dsh-qa-browser-panel__tab-label"
+              data-testid="tabs-tab-label"
+            >
+              {label}
+            </span>
             {tab.policyRefusals.length === 0 ? null : (
               <span
                 className="dsh-qa-browser-panel__tab-blocked"
+                data-testid="tabs-tab-blocked"
                 title={`Заблокировано запросов: ${String(tab.policyRefusals.length)}. Откройте вкладку, чтобы увидеть подробности.`}
                 aria-hidden="true"
               >
@@ -177,6 +195,7 @@ export function BrowserTabStrip({
             <button
               type="button"
               className="dsh-qa-browser-panel__tab-close"
+              data-testid="tabs-tab-close"
               aria-label={`Закрыть вкладку: ${label}`}
               disabled={!interactive}
               onClick={(event) => {
@@ -192,6 +211,7 @@ export function BrowserTabStrip({
       <button
         type="button"
         className="dsh-qa-browser-panel__newtab"
+        data-testid="tabs-new"
         aria-label="Новая вкладка"
         title="Новая вкладка"
         disabled={!interactive}
@@ -246,10 +266,11 @@ export function BrowserToolbar({
     onAddressSubmit();
   };
   return (
-    <div className="dsh-qa-browser-panel__toolbar">
+    <div className="dsh-qa-browser-panel__toolbar" data-testid="toolbar-bar">
       <button
         type="button"
         className="dsh-qa-browser-panel__nav"
+        data-testid="toolbar-back"
         aria-label="Назад"
         disabled={!editable || !canGoBack}
         onClick={onBack}
@@ -259,6 +280,7 @@ export function BrowserToolbar({
       <button
         type="button"
         className="dsh-qa-browser-panel__nav"
+        data-testid="toolbar-forward"
         aria-label="Вперёд"
         disabled={!editable || !canGoForward}
         onClick={onForward}
@@ -268,18 +290,28 @@ export function BrowserToolbar({
       <button
         type="button"
         className="dsh-qa-browser-panel__nav"
+        data-testid="toolbar-reload"
         aria-label="Перезагрузить страницу"
         disabled={!editable}
         onClick={onReload}
       >
         <ReloadIcon />
       </button>
-      <form className="dsh-qa-browser-panel__omni" onSubmit={submit}>
-        <span className="dsh-qa-browser-panel__address-icon" aria-hidden="true">
+      <form
+        className="dsh-qa-browser-panel__omni"
+        data-testid="toolbar-address-form"
+        onSubmit={submit}
+      >
+        <span
+          className="dsh-qa-browser-panel__address-icon"
+          data-testid="toolbar-address-icon"
+          aria-hidden="true"
+        >
           <GlobeIcon />
         </span>
         <input
           className="dsh-qa-browser-panel__address"
+          data-testid="toolbar-address"
           aria-label="Адрес Browser"
           spellCheck={false}
           autoComplete="off"
@@ -301,6 +333,7 @@ export function BrowserToolbar({
             ? "dsh-qa-browser-panel__tool dsh-qa-browser-panel__tool--on"
             : "dsh-qa-browser-panel__tool"
         }
+        data-testid="toolbar-device"
         aria-label="Устройство"
         aria-pressed={deviceOpen}
         title="Размер устройства"
@@ -315,6 +348,7 @@ export function BrowserToolbar({
             ? "dsh-qa-browser-panel__tool dsh-qa-browser-panel__tool--on"
             : "dsh-qa-browser-panel__tool"
         }
+        data-testid="toolbar-menu"
         aria-label="Действия Browser"
         aria-expanded={menuOpen}
         onClick={onToggleMenu}
@@ -383,10 +417,14 @@ export function BrowserDeviceRow({
   );
 
   return (
-    <div className="dsh-qa-browser-panel__device">
-      <div className="dsh-qa-browser-panel__device-size">
+    <div className="dsh-qa-browser-panel__device" data-testid="device-row">
+      <div
+        className="dsh-qa-browser-panel__device-size"
+        data-testid="device-size"
+      >
         <input
           className="dsh-qa-browser-panel__device-field"
+          data-testid="device-width"
           type="number"
           inputMode="numeric"
           aria-label="Ширина вьюпорта"
@@ -415,6 +453,7 @@ export function BrowserDeviceRow({
         <span aria-hidden="true">×</span>
         <input
           className="dsh-qa-browser-panel__device-field"
+          data-testid="device-height"
           type="number"
           inputMode="numeric"
           aria-label="Высота вьюпорта"
@@ -443,6 +482,7 @@ export function BrowserDeviceRow({
         <span className="dsh-qa-browser-panel__sr-only">Устройство</span>
         <select
           aria-label="Устройство"
+          data-testid="device-preset"
           value={preset?.id ?? "custom"}
           disabled={!interactive}
           onChange={(event) => {
@@ -464,6 +504,7 @@ export function BrowserDeviceRow({
         <span className="dsh-qa-browser-panel__sr-only">Масштаб</span>
         <select
           aria-label="Масштаб"
+          data-testid="device-scale"
           value={scaleId}
           onChange={(event) => onScale(event.currentTarget.value)}
         >
@@ -529,6 +570,7 @@ export function BrowserStage({
   return (
     <div
       className="dsh-qa-browser-panel__stage"
+      data-testid="stage-root"
       ref={onStageRef}
       tabIndex={interactive ? 0 : -1}
       aria-label={
@@ -538,17 +580,25 @@ export function BrowserStage({
       onPaste={onPaste}
       onWheel={onWheel}
     >
-      <div className="dsh-qa-browser-panel__canvas-scroll">
+      <div
+        className="dsh-qa-browser-panel__canvas-scroll"
+        data-testid="stage-scroll"
+      >
         <div
           className={
             fixed === null
               ? "dsh-qa-browser-panel__canvas dsh-qa-browser-panel__canvas--fit"
               : "dsh-qa-browser-panel__canvas"
           }
+          data-testid="stage-canvas"
           style={fixed ?? undefined}
         >
           {frame === null ? (
-            <div className="dsh-qa-browser-panel__empty" role="status">
+            <div
+              className="dsh-qa-browser-panel__empty"
+              data-testid="stage-empty"
+              role="status"
+            >
               {emptyMessage}
             </div>
           ) : (
@@ -558,6 +608,7 @@ export function BrowserStage({
                   ? "dsh-qa-browser-panel__page dsh-qa-browser-panel__page--live"
                   : "dsh-qa-browser-panel__page"
               }
+              data-testid="stage-page"
               src={frame.src}
               alt={frame.alt}
               draggable={false}
@@ -574,6 +625,7 @@ export function BrowserStage({
               ? "dsh-qa-browser-panel__chip dsh-qa-browser-panel__chip--human"
               : "dsh-qa-browser-panel__chip"
           }
+          data-testid="stage-chip"
           role="status"
         >
           {interactive && !coordinateInputEnabled
@@ -582,7 +634,11 @@ export function BrowserStage({
         </span>
       )}
       {busy ? (
-        <span className="dsh-qa-browser-panel__progress" role="status">
+        <span
+          className="dsh-qa-browser-panel__progress"
+          data-testid="stage-progress"
+          role="status"
+        >
           <span className="dsh-qa-browser-panel__sr-only">
             Обновляем изображение
           </span>
@@ -626,12 +682,18 @@ export function BrowserMenu({
   }, [onClose]);
 
   return (
-    <div className="dsh-qa-browser-panel__menu" role="menu" ref={ref}>
+    <div
+      className="dsh-qa-browser-panel__menu"
+      data-testid="menu-root"
+      role="menu"
+      ref={ref}
+    >
       {items.map((item) => (
         <button
           key={item.id}
           type="button"
           role="menuitem"
+          data-testid={`menu-item-${item.id}`}
           className="dsh-qa-browser-panel__menu-item"
           disabled={item.disabled === true}
           onClick={() => {
@@ -665,19 +727,23 @@ export function BrowserStatusBar({
   control,
 }: BrowserStatusBarProps) {
   return (
-    <footer className="dsh-qa-browser-panel__status">
-      <span>{status}</span>
-      <div className="dsh-qa-browser-panel__status-actions">
+    <footer className="dsh-qa-browser-panel__status" data-testid="status-bar">
+      <span data-testid="status-text">{status}</span>
+      <div
+        className="dsh-qa-browser-panel__status-actions"
+        data-testid="status-actions"
+      >
         {viewport === null ? null : (
-          <span>
+          <span data-testid="status-viewport">
             {viewport.width}×{viewport.height}
           </span>
         )}
-        <span>{tabCountLabel(tabCount)}</span>
+        <span data-testid="status-tabs">{tabCountLabel(tabCount)}</span>
         {control === null ? null : (
           <button
             type="button"
             className="dsh-qa-browser-panel__control"
+            data-testid="status-control"
             disabled={control.disabled}
             onClick={control.onSelect}
           >

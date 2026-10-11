@@ -21,6 +21,7 @@ export type KvPersistErrorCode =
   | "KV_MANIFEST_INVALID"
   | "KV_METADATA_IO"
   | "KV_OPERATION_TIMEOUT"
+  | "KV_COORDINATOR_DISPOSED"
   | "KV_INVARIANT";
 
 /** Base class of every typed kv-persist error. */
@@ -145,6 +146,13 @@ export class KvMetadataIoError extends KvPersistError {
 export class KvOperationTimeoutError extends KvPersistError {
   constructor(message: string, options?: ErrorOptions) {
     super("KV_OPERATION_TIMEOUT", message, options);
+  }
+}
+
+/** The coordinator was disposed and refuses to start any new work. */
+export class KvCoordinatorDisposedError extends KvPersistError {
+  constructor(message: string) {
+    super("KV_COORDINATOR_DISPOSED", message);
   }
 }
 

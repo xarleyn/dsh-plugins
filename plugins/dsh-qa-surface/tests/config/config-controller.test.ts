@@ -1,4 +1,4 @@
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import { describe, expect, it, vi } from "vitest";
 import { QaConfigController } from "../../src/client/QaConfigController.js";
 import {
@@ -27,8 +27,8 @@ class FakeScope {
     this.state = state;
     for (const listener of this.listeners) listener();
   }
-  asScope(): SettingsScope<QaSurfaceConfig> {
-    return this as unknown as SettingsScope<QaSurfaceConfig>;
+  asForm(): ConfigForm<QaSurfaceConfig> {
+    return this as unknown as ConfigForm<QaSurfaceConfig>;
   }
 }
 
@@ -45,25 +45,49 @@ describe("qa config controller", () => {
       status: "ready",
       value: { branding: { title: "DeepSeek QA" } },
     });
-    const controller = new QaConfigController(scope.asScope(), describe);
+    const controller = new QaConfigController(scope.asForm(), describe);
     expect(controller.getSnapshot().status).toBe("ready");
     expect(controller.getSnapshot().config.branding.title).toBe("DeepSeek QA");
     expect(describe).not.toHaveBeenCalled();
     controller.dispose();
   });
 
-  it("defers the fallback while the namespace is still loading", () => {
-    const describe = vi.fn();
+  it("reads Host configuration even when a fenced settings request never finishes loading", async () => {
+    const describe = vi.fn(async () =>
+      resolveConfig({ enabled: true, branding: { title: "Host QA" } }),
+    );
     const scope = new FakeScope({ status: "loading" });
-    const controller = new QaConfigController(scope.asScope(), describe);
+    const controller = new QaConfigController(scope.asForm(), describe);
     expect(controller.getSnapshot().status).toBe("loading");
-    expect(describe).not.toHaveBeenCalled();
+    expect(describe).toHaveBeenCalledTimes(1);
+    await settled();
+    expect(controller.getSnapshot()).toMatchObject({
+      status: "ready",
+      config: { enabled: true, branding: { title: "Host QA" } },
+    });
+    scope.set({ status: "loading" });
+    expect(describe).toHaveBeenCalledTimes(1);
+    scope.set({
+      status: "ready",
+      value: { branding: { title: "Readable settings" } },
+    });
+    expect(controller.getSnapshot().config.branding.title).toBe(
+      "Readable settings",
+    );
+    controller.dispose();
+  });
+
+  it("keeps an unsettled settings namespace loading without a Host channel", () => {
+    const controller = new QaConfigController(
+      new FakeScope({ status: "loading" }).asForm(),
+    );
+    expect(controller.getSnapshot().status).toBe("loading");
     controller.dispose();
   });
 
   it("stays unavailable with client defaults when no fallback exists", () => {
     const controller = new QaConfigController(
-      new FakeScope({ status: "unavailable" }).asScope(),
+      new FakeScope({ status: "unavailable" }).asForm(),
     );
     expect(controller.getSnapshot()).toEqual({
       status: "unavailable",
@@ -82,7 +106,7 @@ describe("qa config controller", () => {
         }),
     );
     const controller = new QaConfigController(
-      new FakeScope({ status: "unavailable" }).asScope(),
+      new FakeScope({ status: "unavailable" }).asForm(),
       describe,
     );
     expect(describe).toHaveBeenCalledTimes(1);
@@ -105,7 +129,7 @@ describe("qa config controller", () => {
       resolveConfig({ branding: { title: "DeepSeek QA" } }),
     );
     const scope = new FakeScope({ status: "ready" });
-    const controller = new QaConfigController(scope.asScope(), describe);
+    const controller = new QaConfigController(scope.asForm(), describe);
     expect(describe).not.toHaveBeenCalled();
     scope.set({ status: "unavailable" });
     expect(controller.getSnapshot().status).toBe("loading");
@@ -125,7 +149,7 @@ describe("qa config controller", () => {
         }),
     );
     const controller = new QaConfigController(
-      new FakeScope({ status: "unavailable" }).asScope(),
+      new FakeScope({ status: "unavailable" }).asForm(),
       describe,
     );
     const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
@@ -143,7 +167,7 @@ describe("qa config controller", () => {
       async () => ({ session: { policy: "fixed" } }) as ResolvedQaSurfaceConfig,
     );
     const controller = new QaConfigController(
-      new FakeScope({ status: "unavailable" }).asScope(),
+      new FakeScope({ status: "unavailable" }).asForm(),
       describe,
     );
     await settled();
@@ -161,7 +185,7 @@ describe("qa config controller", () => {
         }),
     );
     const controller = new QaConfigController(
-      new FakeScope({ status: "unavailable" }).asScope(),
+      new FakeScope({ status: "unavailable" }).asForm(),
       describe,
     );
     const listener = vi.fn();
@@ -179,7 +203,7 @@ describe("qa config controller reconnect refresh", () => {
     let answer = resolveConfig({ branding: { title: "Before" } });
     const describe = vi.fn(async () => answer);
     const controller = new QaConfigController(
-      new FakeScope({ status: "unavailable" }).asScope(),
+      new FakeScope({ status: "unavailable" }).asForm(),
       describe,
     );
     await settled();
@@ -206,7 +230,7 @@ describe("qa config controller reconnect refresh", () => {
       return resolveConfig({ branding: { title: "Kept" } });
     });
     const controller = new QaConfigController(
-      new FakeScope({ status: "unavailable" }).asScope(),
+      new FakeScope({ status: "unavailable" }).asForm(),
       describe,
     );
     await settled();
@@ -223,7 +247,7 @@ describe("qa config controller reconnect refresh", () => {
   it("does not refresh while the settings namespace is authoritative", async () => {
     const describe = vi.fn(async () => resolveConfig({}));
     const scope = new FakeScope({ status: "ready" });
-    const controller = new QaConfigController(scope.asScope(), describe);
+    const controller = new QaConfigController(scope.asForm(), describe);
     await controller.refreshFallback();
     expect(describe).not.toHaveBeenCalled();
     controller.dispose();

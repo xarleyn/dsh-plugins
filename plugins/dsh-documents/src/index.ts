@@ -19,6 +19,17 @@
  */
 
 import { Context } from "@deepseek-ai/cordis";
+import path from "node:path";
+import os from "node:os";
+import { DocumentWorkflowService } from "./workflow/service.js";
+import { WorkflowStore } from "./workflow/store.js";
+import { createWorkflowTools } from "./workflow/tools.js";
+export type * from "./workflow/types.js";
+export { DocumentWorkflowService } from "./workflow/service.js";
+export { calculateCommercial } from "./workflow/pricing.js";
+// Type anchor only: the loader owns the `loader/volatile-update` event this
+// plugin listens to, and ships no runtime value this entry would import.
+import type {} from "@deepseek-ai/cordis-plugin-loader";
 import type {} from "@deepseek-ai/dsh-settings";
 import type {} from "@deepseek-ai/dsh-tools";
 import {
@@ -26,8 +37,12 @@ import {
   getPluginLogger,
   type PluginLogger,
 } from "@yadsh/dsh-plugin-log";
-import { ConfigSchema } from "./schema.js";
-import { DOCUMENTS_SETTINGS_NAMESPACE } from "./shared/settings.js";
+import {
+  ConfigSchema,
+  snapshotDocumentsConfig,
+  type DocumentsConfigSource,
+  type DocumentsPluginConfig,
+} from "./schema.js";
 import { CONTRACT_REVIEW_SKILL, mountDocumentSkills } from "./skills.js";
 import {
   applyDocumentsEnvOverrides,
@@ -64,6 +79,7 @@ interface WebFetchSeam {
 }
 
 export { ConfigSchema } from "./schema.js";
+export type { DocumentsConfigSource, DocumentsPluginConfig } from "./schema.js";
 export { DOCUMENTS_SETTINGS_NAMESPACE } from "./shared/settings.js";
 export {
   buildDocumentSkillsConfig,
@@ -78,7 +94,8 @@ export * from "./documents/index.js";
 export const name = "documents";
 export const inject = ["tools"];
 
-export type Config = DocumentsConfig;
+/** The entry configuration as the Host holds it: every section a live reference. */
+export type Config = DocumentsPluginConfig;
 export const Config = ConfigSchema;
 
 /**
@@ -92,6 +109,7 @@ export const Config = ConfigSchema;
  * pays nothing for it.
  */
 export interface DocumentsFace {
+  readonly workflow?: DocumentWorkflowService;
   toMarkdown(
     input: DocumentToMarkdownInput,
     scope: DocumentScope,
@@ -132,11 +150,16 @@ export class DocumentsPlugin {
   static Config = ConfigSchema;
 
   private readonly hostCtx: Context;
-  private readonly entryConfig: DocumentsConfig;
+  /**
+   * The configuration the entry was started with. A volatile write is committed
+   * into these very references, so the object stays correct for the life of the
+   * fiber and is read through {@link configSource} rather than copied.
+   */
+  private readonly entryConfig: DocumentsConfigSource;
   private readonly logger: PluginLogger;
-  /** Live configuration: the settings section once it is installed. */
-  private configSource: () => DocumentsConfig;
   private documents: DocumentSubsystem | undefined;
+  private readonly workflows: DocumentWorkflowService;
+  private workflowToolsDispose: (() => void) | undefined;
   /** Disposer of the face published to sibling Host plugins. */
   private documentsFace: (() => void) | undefined;
   /** Identity of the installed subsystem, so unchanged config is a no-op. */
@@ -150,7 +173,7 @@ export class DocumentsPlugin {
   /** Resolved per call: a provider that arrives late is still picked up. */
   private web: WebFetchSeam | undefined;
 
-  constructor(ctx: Context, config: DocumentsConfig = {}) {
+  constructor(ctx: Context, config: DocumentsConfigSource = {}) {
     this.logger = getPluginLogger({
       pluginId: "dsh-documents",
       console: "trace",
@@ -158,25 +181,98 @@ export class DocumentsPlugin {
     });
     ctx.effect(() => async () => this.logger.close(), "dsh-documents.logger");
     this.hostCtx = ctx;
-    this.entryConfig = structuredClone(config);
-    this.configSource = () => this.entryConfig;
-
-    ctx.inject(["settings"], (settingsCtx) => {
-      settingsCtx.settings.installSection(
-        ctx,
-        DOCUMENTS_SETTINGS_NAMESPACE,
-        ConfigSchema,
-        this.entryConfig,
-        {
-          setSource: (current) => {
-            this.configSource = current;
-          },
-          onChange: () => {
-            this.refresh();
-          },
+    this.entryConfig = config;
+    this.workflows = new DocumentWorkflowService(
+      () => this.runtime(),
+      new WorkflowStore(
+        path.join(
+          process.env["DSH_HOME"] ?? path.join(os.homedir(), ".dsh"),
+          "document-workflows",
+        ),
+      ),
+      {
+        review: async (task, sessionId, signal) => {
+          if (signal?.aborted) throw new Error("document review cancelled");
+          const face = (ctx as unknown as { get(name: string): unknown }).get(
+            "domainExperts",
+          ) as
+            | {
+                testExpert(
+                  domain: string,
+                  task: string,
+                  parentSessionId: string,
+                  structuredOutput?: boolean,
+                ): Promise<{
+                  ok: boolean;
+                  result: {
+                    structured: boolean;
+                    status: string;
+                    summary: string;
+                    findings: readonly { claim: string; evidence: string }[];
+                    conflicts: readonly string[];
+                    assumptions: readonly string[];
+                    followUps: readonly string[];
+                  } | null;
+                }>;
+              }
+            | undefined;
+          if (face === undefined)
+            throw new Error("independent document reviewer is unavailable");
+          const outcome = await face.testExpert(
+            "answer-reviewer",
+            task,
+            sessionId,
+            true,
+          );
+          if (
+            signal?.aborted ||
+            !outcome.ok ||
+            outcome.result === null ||
+            !outcome.result.structured
+          )
+            throw new Error(
+              "independent document review did not complete with a structured result",
+            );
+          const result = outcome.result;
+          const issues = [
+            ...result.findings.map((f) => `${f.claim}: ${f.evidence}`),
+            ...result.conflicts,
+            ...result.assumptions,
+            ...result.followUps,
+          ];
+          return {
+            pass: result.status === "completed" && issues.length === 0,
+            summary: result.summary,
+            issues,
+          };
         },
+      },
+    );
+
+    /*
+     * There is no settings section to install any more: the namespace is the
+     * profile entry id and a field is editable live exactly when its schema node
+     * carries `.volatile()`, which every section of `ConfigSchema` does. What
+     * this plugin still decides is the page — its own card owns the namespace,
+     * so the Host is told not to generate a second editor over the same fields.
+     */
+    ctx.inject(["settings"], (settingsCtx) => {
+      settingsCtx.effect(
+        () => settingsCtx.settings.configure({ auto: false }, ctx.fiber),
+        "dsh-documents.settings-presentation",
       );
     });
+
+    /*
+     * A volatile change is committed into the running references and no fiber is
+     * remounted, so keeping the subsystem in step is this plugin's job. The
+     * event is dispatched to the owning fiber only, and `refresh` costs nothing
+     * while the resolved configuration has not moved.
+     */
+    ctx.effect(
+      () => ctx.on("loader/volatile-update", () => this.refresh()),
+      "dsh-documents.volatile-config",
+    );
 
     // Retrieval for `document_from_url` is the web layer's business: this plugin
     // never opens a socket of its own, so the deployment's rules, credentials,
@@ -192,17 +288,19 @@ export class DocumentsPlugin {
     });
 
     this.refresh();
-    // The skill teaches the comparison workflow, so it is mounted with it. The
+    // The provider carries comparison and grounded document workflows. The
     // decision is taken once, at startup: a Cordis plugin mount is not a
     // subscription, and an operator who turns comparison off later still gets
     // an honest answer from the tools rather than a missing instruction.
     const startup = this.resolved();
-    if (startup.enabled && startup.comparison.enabled) {
+    if (startup.enabled) {
       mountDocumentSkills(ctx);
       this.logger.info("documents.skill", { skill: CONTRACT_REVIEW_SKILL });
     }
     ctx.effect(
       () => () => {
+        this.workflowToolsDispose?.();
+        this.workflowToolsDispose = undefined;
         this.documentsFace?.();
         this.documentsFace = undefined;
         this.documents?.dispose();
@@ -211,6 +309,17 @@ export class DocumentsPlugin {
       },
       "dsh-documents.tools",
     );
+  }
+
+  /**
+   * One plain snapshot of the live configuration.
+   *
+   * Taken per operation rather than once: the references themselves never
+   * change, their values do, and a resolver that read them field by field
+   * mid-operation could mix two generations of the same document.
+   */
+  private configSource(): DocumentsConfig {
+    return snapshotDocumentsConfig(this.entryConfig);
   }
 
   /** The configuration the running subsystem resolves to. */
@@ -233,6 +342,8 @@ export class DocumentsPlugin {
     const resolved = resolveDocumentsConfig(withEnv);
     const key = resolved.enabled ? JSON.stringify(resolved) : undefined;
     if (key === this.documentsKey) return;
+    this.workflowToolsDispose?.();
+    this.workflowToolsDispose = undefined;
     this.documents?.dispose();
     this.documents = undefined;
     this.documentsKey = key;
@@ -241,6 +352,7 @@ export class DocumentsPlugin {
       return;
     }
     this.documents = installDocumentSubsystem(this.hostCtx, {
+      authorizeRender: (scope) => this.workflows.authorizeGeneralRender(scope),
       config: withEnv,
       logger: this.logger,
       register: (definition) => this.hostCtx.tools.register(definition),
@@ -255,6 +367,16 @@ export class DocumentsPlugin {
         return await web.fetch({ url }, signal);
       },
     });
+    const toolDisposers = createWorkflowTools(
+      {
+        runtime: this.runtime(),
+        extraInputRoots: (sessionId) => this.grantedInputRoots(sessionId),
+      },
+      this.workflows,
+    ).map((tool) => this.hostCtx.tools!.register(tool));
+    this.workflowToolsDispose = () => {
+      for (const dispose of toolDisposers.reverse()) dispose();
+    };
     this.publishFace();
   }
 
@@ -269,6 +391,7 @@ export class DocumentsPlugin {
     this.documentsFace = undefined;
     if (this.documents === undefined) return;
     this.documentsFace = this.hostCtx.provide("documents", {
+      workflow: this.workflows,
       toMarkdown: (input, scope) => this.runtime().toMarkdown(input, scope),
       convert: (input, scope) => this.runtime().convert(input, scope),
       inspect: (input, scope) => this.runtime().inspect(input, scope),

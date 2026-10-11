@@ -43,24 +43,66 @@ describe("ChannelQuarantine", () => {
     expect(quarantine.append("z".repeat(40), 0)).toBe("overflow");
   });
 
-  it("includes lookbehind and clamps snapshots to the window", () => {
+  it("fills a snapshot from the pending head with released context in front", () => {
     const quarantine = new ChannelQuarantine(options);
-    quarantine.append("pending".repeat(30), 0);
+    quarantine.append("pending".repeat(4), 0);
     const tail = new ReleasedTail(options.lookbehindChars);
     tail.append("r".repeat(100));
-    const snapshot = quarantine.snapshotText(tail.tail());
-    expect(snapshot.length).toBeLessThanOrEqual(options.windowChars);
-    expect(snapshot.endsWith(quarantine.snapshotText("").slice(-7))).toBe(true);
+    expect(quarantine.snapshotText(tail.tail())).toBe(
+      "r".repeat(32) + "pending".repeat(4),
+    );
   });
 
-  it("flushes pending content in order with the stashed block-start", () => {
+  it("clamps a snapshot to the window without dropping the pending head", () => {
+    const quarantine = new ChannelQuarantine(options);
+    quarantine.append("pending".repeat(30), 0);
+    // A buffer wider than the window spends the window on coverage, not on
+    // context: the head is what the next flush would release.
+    expect(quarantine.snapshotText("r".repeat(32))).toBe(
+      "pending".repeat(30).slice(0, options.windowChars),
+    );
+  });
+
+  it("flushes verified pending content in order with the stashed block-start", () => {
     const quarantine = new ChannelQuarantine(options);
     quarantine.stashBlockStart({ type: "block-start", index: 0 });
     quarantine.append("a", 0);
     quarantine.append("b", 0);
+    quarantine.snapshotText("");
+    quarantine.markChecked(0);
     const flushed = quarantine.flush();
     expect(flushed.blockStart).toEqual({ type: "block-start", index: 0 });
     expect(flushed.texts).toEqual(["a", "b"]);
+    expect(quarantine.hasPending).toBe(false);
+  });
+
+  it("withholds everything no check has covered", () => {
+    const quarantine = new ChannelQuarantine(options);
+    quarantine.stashBlockStart({ type: "block-start", index: 0 });
+    quarantine.append("never examined", 0);
+    const flushed = quarantine.flush();
+    expect(flushed.texts).toEqual([]);
+    // The header opens this text, so it stays stashed with it.
+    expect(flushed.blockStart).toBeNull();
+    expect(quarantine.size).toBe(14);
+    expect(quarantine.hasPending).toBe(true);
+  });
+
+  it("releases one window of an oversized buffer and keeps the rest quarantined", () => {
+    const quarantine = new ChannelQuarantine(options);
+    quarantine.stashBlockStart({ type: "block-start", index: 0 });
+    quarantine.append("a".repeat(64) + "b".repeat(36), 0);
+    expect(quarantine.snapshotText("")).toBe("a".repeat(64));
+    quarantine.markChecked(0);
+    expect(quarantine.flush().texts).toEqual(["a".repeat(64)]);
+    expect(quarantine.size).toBe(36);
+    // The next window re-reads the released seam in front of the rest, so the
+    // two windows leave no range unchecked between them.
+    expect(quarantine.snapshotText("a".repeat(64))).toBe(
+      "a".repeat(28) + "b".repeat(36),
+    );
+    quarantine.markChecked(0);
+    expect(quarantine.flush().texts).toEqual(["b".repeat(36)]);
     expect(quarantine.hasPending).toBe(false);
   });
 });

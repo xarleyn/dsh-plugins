@@ -122,6 +122,8 @@ export interface DocumentToMarkdownInput {
 
 export interface DocumentToMarkdownResult {
   readonly artifactId: string;
+  /** Canonical consumed input; presentation provenance, not a generated artifact. */
+  readonly sourcePath?: string;
   /** Extracted Markdown; truncated to the configured inline budget. */
   readonly markdown: string;
   readonly markdownPath: string;

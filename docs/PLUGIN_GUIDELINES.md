@@ -81,11 +81,21 @@ scaffolding и запишите его в SPEC.md.
 
 ### 3.1 Границы монорепо и зависимости
 
-Полный свод правил — SPEC §27, автоматически проверяется `pnpm deps:check`
-(см. приложение A). Суть:
+Полный свод правил — SPEC §27, направление зависимостей — SPEC §5.3. Большинство
+пунктов проверяет `pnpm deps:check`; что именно за каждым пунктом — в
+приложении A. Суть:
 
 1. **Плагины зависят от shared-пакетов, но не друг от друга.** Никаких
-   `@yadsh/dsh-<other-plugin>` в зависимостях плагина. Общая логика — в
+   `@yadsh/dsh-<other-plugin>` в зависимостях плагина — ни в одном поле
+   манифеста, `devDependencies` тоже считается. Исключение оформляется явно:
+   конкретное ребро `from` → `to` с причиной в
+   `plugin-dependency-allowlist.json` (§27.11). Тот же гейт проверяет и сам
+   список: ребро без причины или с пакетом, которого нет среди `plugins/*`,
+   краснеет. Общая логика — в `packages/plugin-kit`, тестовая — в
+   `packages/test-kit`, конфиги — в `packages/config`.
+1. **Плагины зависят от shared-пакетов, а друг от друга — только через
+   разрешённый extension API (см. ниже).** `@yadsh/dsh-<other-plugin>` в
+   зависимостях плагина по умолчанию нет. Общая логика — в
    `packages/plugin-kit`, тестовая — в `packages/test-kit`, конфиги — в
    `packages/config`.
 2. **Shared-пакеты не знают о плагинах.** `packages/*` не может импортировать
@@ -94,8 +104,8 @@ scaffolding и запишите его в SPEC.md.
    (`catalog:dsh-dev`) для локальной разработки. `react`/`react-dom` у
    UI-плагинов — тоже пиры (`^18.2.0`).
 4. **Обычные `dependencies` — только для внешних рантайм-библиотек**, у которых
-   нет аналога в хосте (пример: `zod`). Прежде чем добавить зависимость,
-   проверьте, нет ли её среди пиров хоста.
+   нет аналога в хосте (пример: `zod`, диапазон — из `catalog:runtime`). Прежде
+   чем добавить зависимость, проверьте, нет ли её среди пиров хоста.
 5. **`test-kit` — только в `devDependencies`.**
 6. **Каждый импорт объявлен в манифесте; никаких надежд на hoisting**
    (`nodeLinker: isolated` делает это физически невозможным).
@@ -106,6 +116,38 @@ scaffolding и запишите его в SPEC.md.
 Если двум плагинам нужен общий код — поднимайте его в `packages/plugin-kit`
 (рантайм) или `packages/test-kit` (тесты). Убедитесь, что код действительно
 общий, а не «пока похожий»: shared-пакет — это публичный контракт для всех.
+
+#### Extension API: когда плагин может зависеть от плагина
+
+Нормативно — SPEC §5.3. Ребро «plugin → plugin» легально, когда это осознанный
+extension API провайдера, а не случайная связка, и выполняются все условия:
+
+1. Провайдер публикует поверхность через свои `exports` и описывает её в
+   README/SPEC как поддерживаемый контракт потребителей. Потребление —
+   `@yadsh/dsh-<provider>/<entry>`, не deep-импорт (§27.8, §27.10).
+2. Это поверхность собственной фичи провайдера (слот панели, страница настроек,
+   face сервиса), а не общие утилиты: второму место в `packages/*`.
+3. Потребитель объявил зависимость в манифесте (§27.6), а для клиентской
+   поверхности добавил провайдера в `dsh.client.inject`, чтобы загрузчик поднял
+   его раньше.
+4. Граф остаётся ацикличным (§27.5).
+5. Для провайдера это публичный контракт: ломка формы — major (§9.3), и его
+   Version Plan перечисляет потребляющие плагины.
+
+Разрешённые рёбра (срез `main`; новое ребро записывается в этот список тем же
+изменением, которое его заводит):
+
+| Провайдер | Потребитель | Поверхность |
+| --- | --- | --- |
+| `dsh-qa-surface` | `dsh-qa-browser` | `./client/panels` — панель фичи в лаунчере QA-оболочки |
+| `dsh-qa-surface` | `dsh-qa-integrations` | `./client/settings` — страница в диалоге настроек QA; корень — тип `QaSurface` (face Host-сервиса) |
+| `dsh-qa-surface` | `dsh-openviking-memory` (`devDependencies`) | `./client/settings` — типы аккаунт-страницы |
+| `dsh-documents` | `dsh-qa-surface` | корневой экспорт — `DocumentsFace`, контракт пайплайна документов |
+
+`deps:check` из этого перечня проверяет только направление «shared не знает о
+плагинах» (§27.2) и отсутствие циклов (§27.5); произвольное «plugin → plugin»
+сегодня отсекается на ревью, машинная проверка по этому списку — отдельная
+задача.
 
 ### 3.2 Структура исходников
 
@@ -245,6 +287,14 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   для человека. Коды не переиспользуются под другой смысл.
 - **Опциональные протоколы фиксируйте в `compatibility.json`**
   (`requiredClientFeatures`, `optionalClientProtocols`).
+- **Карточка конфигурации плагина регистрируется в панели Plugins** — в слоте
+  `plugins.row.config` собственного ряда бандла, с ключом
+  `<npm-имя>#<id строки из cordis.patch.yml>`. Диалог настроек для этой цели не
+  служит: слот `settings.plugin.item` удалён в 0.1.7, а `settings.plugins.tab`
+  больше не точка регистрации карточки (хост слот сохранил). Оболочка карточки,
+  её CSS и проверка — `AGENTS.md` §Plugin configuration card UI; ключ ряда,
+  две вью посадочного места (`page` и `summary`) и форма, которую ряд отдаёт, —
+  `docs/DSH-0.1.7-MIGRATION.md` §4.2.
 - **Не блокируйте загрузку**: тяжёлая инициализация — после первого кадра или
   лениво по событию.
 
@@ -270,7 +320,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
 | `package.json` | ✔ | Манифест по §4.2 |
 | `cordis.patch.yml` | ✔ | Вставка в composition хоста |
 | `README.md` | ✔ | См. §8 |
-| `SPEC.md` | ✔ | Продуктовый контракт; единственная спека в корне, спеки доработок — `docs/SPEC-<plugin>-<topic>.md`, см. §8.2. В tarball не публикуется (§4.2) |
+| `SPEC.md` | ✔ | Продуктовый контракт; единственная спека в корне, спеки доработок — `docs/specs/<topic>.md`, см. §8.2. В tarball не публикуется (§4.2) |
 | `LICENSE` | ✔ | Копия корневого MIT |
 | `compatibility.json` | ✔ (publishable) | Машиночитаемая совместимость, см. §7 |
 | `tsconfig.json` / `tsconfig.build.json` | ✔ | Расширяют `@yadsh/dsh-config` |
@@ -328,6 +378,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
     "lint": "eslint src tests scripts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "verify:package": "node scripts/verify-package.mjs && node scripts/verify-client-bundle.mjs && node scripts/verify-compatibility.mjs",
     "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",
@@ -367,13 +418,19 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   репозитория». Генератор нового плагина сразу ставит весь канонический набор.
 - **Каталоги в корне: `plugins.json` и таблица пакетов в `README.md`.** Оба
   генерируются из манифестов (`pnpm plugins:manifest`): `plugins.json`
-  связывает npm-имя, директорию, описание, keywords, команду установки и
-  homepage, а таблица в README описывает весь лэйаут — публичные пакеты
-  с npm-именем, приватная сборка как `private workspace package`.
-  `pnpm verify:packages` падает, пока устарел любой из них, а `plugins.json`
-  дополнительно валидируется по `docs/plugins.schema.json`. После изменения
-  описания/keywords или появления нового пакета их нужно перегенерировать —
-  руками не редактировать. Расширяя схему новым ключевым словом, добавь его в
+  связывает npm-имя, директорию, описание, keywords, вид пакета (`kind`),
+  команду установки и homepage, а таблица в README описывает весь лэйаут —
+  публичные пакеты с npm-именем и видом, приватная сборка как
+  `private workspace package`. Вид выводится из манифеста, а не задаётся
+  вручную: объявленный `dsh.bundle` — это самостоятельный плагин (`plugin`),
+  который Host регистрирует профилем (`dsh plugin --profile <profile> add`);
+  без него пакет — общая библиотека (`library`), которую потребитель ставит
+  как зависимость (`pnpm add`) и которой каталог не вправе предлагать команду
+  регистрации. `pnpm verify:packages` падает, пока устарел любой из них, а
+  `plugins.json` дополнительно валидируется по `docs/plugins.schema.json`
+  (`kind` там закрыт enum-ом). После изменения описания/keywords или появления
+  нового пакета их нужно перегенерировать — руками не редактировать.
+  Расширяя схему новым ключевым словом, добавь его в
   `scripts/json-schema-validate.mjs`: незнакомое ключевое слово там не
   игнорируется, а роняет проверку.
 - **`exports` — исчерпывающая карта публичных входов.** Всё, что не в `exports`,
@@ -426,6 +483,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   `id` не участвует в URL клиентского бандла — тот собирается из полного
   npm-имени (`/plugins/@yadsh/dsh-<name>/client.js`, см. §1) — но `id`
   адресует строку из patch-слоёв, поэтому держите его без `/`, `@` и пробелов.
+  Тот же `id` — неймспейс live-настроек и вторая половина ключа ряда панели
+  Plugins (§3.6): хост резолвит по нему volatile `Config`, поэтому смена `id`
+  отпускает и сохранённые значения, и карточку, которая их читает.
 - **`name` = точное npm-имя `"@yadsh/dsh-<name>"`** — по нему хост резолвит
   пакет (package.json → `dsh.bundle.patch`, `dsh.client`, exports) и сверяет
   строку при override-патчах: патч с `name`, не совпавшим со строкой,
@@ -447,9 +507,14 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   `lib/types/**/*.d.ts`. Поля `types` и `exports` обязаны указывать на реально
   существующий layout, оба варианта проверяются packed smoke.
 - Plain Node packages наследуют `@yadsh/dsh-config/tsconfig/node`; packages с
-  browser/client entrypoint наследуют `@yadsh/dsh-config/tsconfig/browser` или
+  browser/client entrypoint наследуют `@yadsh/dsh-config/tsconfig/client` или
   сохраняют более строгий явный mixed config. Генератор выбирает preset по
-  флагу `client`.
+  флагу `client`. По subpath наследовать можно только те пресеты, которые не
+  выходят за границы пакета: `tsconfig/base` и `tsconfig/browser` в `exports`
+  не объявлены — резолвер Vite теряет в таком наследовании корневой
+  `tsconfig.base.json` и вся пачка тестов падает ещё до первого assert (#687),
+  а `tsc` этого не видит. Нужны опции из `base` — берут их путём внутри
+  worktree: `"extends": "../config/tsconfig/base.json"`.
 - Относительные импорты внутри пакета — **всегда с расширением `.js`**
   (`verbatimModuleSyntax` + ESM).
 - `lib/` не коммитится, кроме случаев, явно оговорённых в `.gitignore`
@@ -543,15 +608,20 @@ CI (`ci.yml`) гоняет `deps:check`, affected `lint/typecheck/test/build/ver
 Базовая линия и политика — `docs/COMPATIBILITY.md`. Правила плагина:
 
 1. **Пиры — только из `catalog:dsh`**, dev-копии — из `catalog:dsh-dev`.
-   Вручную диапазоны не писать.
+   Общий сторонний рантайм-диапазон — из `catalog:runtime` (сегодня это `zod`).
+   Библиотека, нужная одному пакету, держит литерал в его манифесте: делить
+   нечего, а `pnpm deps:check` печатает такой список (§27.12), чтобы он оставался
+   видимым решением, а не случайностью. `react`/`react-dom` в пирах остаются
+   литералами намеренно — публикуемый peer-диапазон шире точной версии, которую
+   каталог закрепляет для сборок.
 2. **`compatibility.json` в корне плагина** отражает реальность:
 
 ```json
 {
   "deepseekHarness": {
     "channel": "next",
-    "range": ">=0.1.5-rc.2 <0.2.0",
-    "testedReleases": ["0.1.5-rc.2"],
+    "range": ">=0.1.7-rc.2 <0.2.0",
+    "testedReleases": ["0.1.7-rc.2"],
     "requiredClientFeatures": ["sidebar.footer.action"],
     "optionalClientProtocols": ["__dshNativeTabs@1"]
   },
@@ -709,7 +779,9 @@ docs: add plugin guidelines
 
 | ❌ Анти-паттерн | Почему плохо | Вместо |
 | --- | --- | --- |
-| Зависимость плагина от плагина | Связывает релизные циклы | Общий код в `packages/*` |
+| Зависимость плагина от плагина | Связывает релизные циклы | Общий код в `packages/*`; явно разрешённое ребро в `plugin-dependency-allowlist.json`, если цель публикует extension API |
+| Зависимость плагина от плагина вне extension API (§3.1) | Связывает релизные циклы | Общий код — в `packages/*`; сознанный контракт потребителя — в список §3.1 |
+| Зависимость плагина от плагина вне extension API (§3.1) | Связывает релизные циклы | Общий код — в `packages/*`; осознанный контракт потребителя — в список §3.1 |
 | `@deepseek-ai/*` в `dependencies` | Дублирует фреймворк в рантайме | `peerDependencies` + каталоги |
 | Deep-импорт `@yadsh/x/src/…` | Обходит публичный контракт | `exports`-вход пакета |
 | Молчаливый сброс повреждённых данных | Теряет пользовательские данные | Fail loudly + восстановление |
@@ -737,6 +809,9 @@ docs: add plugin guidelines
 | §27.8 | Нет deep-импортов `/src/` чужих пакетов | `pnpm deps:check` |
 | §27.9 | Нет кросс-пакетных относительных/абсолютных импортов | `pnpm deps:check` |
 | §27.10 | Workspace-пакеты потребляются через `exports` | `pnpm deps:check` |
+| §27.11 | Плагин не зависит от плагина, если ребро явно не разрешено | `pnpm deps:check` + `plugin-dependency-allowlist.json` |
+| §27.12 | Диапазон, закреплённый в каталоге, не переписывается литералом (пиры — исключение); прочие литералы гейт перечисляет как список | `pnpm deps:check` |
+| §5.3 / §3.1 | `plugin → plugin` — только разрешённый extension API из списка §3.1 | пока ревью: `deps:check` отсекает обратное направление (§27.2) и циклы (§27.5), гейт по allowlist — отдельная задача |
 | Tarball 1–7 | lib есть; манифест корректен; патч объявлен и упакован; exports существуют; нет `workspace:`/`catalog:` утечек; чистая установка + smoke-импорт | `scripts/tarball-verify.sh` |
 | Release gates | Version plan обязателен; публикация через npm Trusted Publishing | `pnpm release:check`, `release.yml` |
 
@@ -747,20 +822,29 @@ docs: add plugin guidelines
 1. **Исправлено (2026-09-05):** корневой `dsh-plugins-monorepo-SPEC.md`
    перенесён из `.agents/notes/draft/` в корень репозитория; ссылки из
    `CONTRIBUTING.md` и скриптов («SPEC §27», «SPEC §16») теперь разрешаются.
-2. **Генератор `pnpm nx g dsh-plugin`**: шаблон `cordis.patch.yml` приведён к
-   каноническому формату (§4.3); README-шаблон базлайна DSH исправлен.
-   Оставшийся пробел: starter-плагин не покрыт verify-скриптами
-   (`verify-package` / `verify:client`).
+2. **Исправлено (2026-09-25):** генератор `pnpm nx g dsh-plugin` покрывает
+   starter-плагин verify-скриптами — `scripts/verify-package.mjs`
+   (`verify:package`) и, для `--client`, `scripts/verify-client-bundle.mjs`
+   (`verify:client`) с проверкой полной npm-идентичности бандла; контракт
+   карточки и набор keywords по-прежнему проверяет репозиторный
+   `pnpm verify:packages`. Шаблон `cordis.patch.yml` — канонический (§4.3).
 3. **Мигрировано**: runtime-id без префикса (`draft-sessions`, `sleev`, …) и
    unscoped `name` заменены на канонические `id: dsh-*` / `name: @yadsh/dsh-*`
    во всех плагинах; `dsh-session-scope` — эталон по `id`. Пользовательские
    override-слои, таргетившие старые короткие `id`, будут пропускаться с
    warning «entry not found» — обновите их на новые `id`.
-4. **ESLint-исключения** для `plugins/**` (off `no-explicit-any`,
-   `consistent-type-imports`) — временное послабление: в новых плагинах
-   держите уровень корневых правил, где это не блокирует интеграцию.
+4. **ESLint-послабления** для `plugins/**`: `consistent-type-imports` выключен
+   для всего дерева плагинов, `no-explicit-any` — только для клиентских
+   источников (`src/client.ts`, `src/client/**`) и тестов, где код опирается на
+   нетипизированные поверхности слотов хоста; host-источники плагинов остаются
+   `any`-free. В новых плагинах держите уровень корневых правил, где это не
+   блокирует интеграцию.
+5. **Extension API без гейта**: `deps:check` запрещает зависимость shared-пакета
+   от плагина (§27.2) и циклы (§27.5), но не сверяет рёбра «plugin → plugin» со
+   списком §3.1 — это правило ревью; машинная проверка по allowlist — отдельная
+   задача.
 
-## Приложение C: статус разбиения крупных файлов (обновлено 2026-09-21)
+## Приложение C: статус разбиения крупных файлов (обновлено 2026-09-25)
 
 - `dsh-l10n-overrides/tests/` — **выполнено**: мегатесты разбиты на тематические
   файлы (`dom-translator-*`, `locale-hook-*`, `registry-*`,
@@ -771,8 +855,18 @@ docs: add plugin guidelines
   `window.__ModuleLoader__.load` и фабрику вокруг модуля). Файл исключён из
   `tsc`-сборки, поэтому `./client` в манифесте указывает прямо на бандл;
   `@ts-nocheck` снят, файл типизирован, lint-игнор убран, ручной правки
-  `lib/client.js` больше нет. Осталось модульное разбиение одного файла
-  (css/icons/paths/remote/editor — отдельные модули) и общий с `core.ts` хелпер
-  путей — по-прежнему отдельный проект.
+  `lib/client.js` больше нет.
+- `dsh-session-scope/src/client.ts` (1429 строк) — **выполнено (2026-09-25):**
+  тот же файл разбит на `src/client/`, вход tsdown переехал на
+  `src/client/index.ts`. По модулям: `index.ts` — корень композиции (монт Remote,
+  запись durable-командой `/scope`, read-RPC, место в композере и hero-портал),
+  `copy.ts` / `styles.ts` / `icons.ts` / `paths.ts` / `remote.ts` — текст,
+  оформление, иконки, правила сравнения хостовых путей и клиентский контракт
+  Remote, `scope-editor.ts` — состояние и команды черновика,
+  `scope-editor-view.ts` — рендер модалки. Самый крупный модуль — 400 строк
+  вместо 1429, поведение не менялось: контракт бандла как и прежде проверяет
+  `verify:client`, а монтирование чипа — `tests/client-registration.test.ts`.
+  Не сделано: общий с `core.ts` хелпер путей (`isUnder` в клиенте и в
+  `core.ts:233` по-прежнему две формулировки одного правила).
 - `dsh-session-scope/src/index.ts` (907 строк) — разбиение на scope-patches/
-  scope-commands/projections отложено вместе с клиентом.
+  scope-commands/projections отложено; теперь это самый крупный файл пакета.

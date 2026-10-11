@@ -54,8 +54,8 @@ recall HTTP request (not "the request is made and the result dropped").
   of silently clamping it. Out-of-range defaults still resolve to the upstream
   behaviour.
 - **A settings card in the web UI.** The plugin ships a browser bundle, so its
-  configuration is editable from **Settings → Plugins** without touching a
-  patch file. See [Settings card](#settings-card).
+  configuration is editable from the **Plugins** page — on this plugin's own row —
+  without touching a patch file. See [Settings card](#settings-card).
 - **Memory per QA account.** On a deployment with QA Surface mounted, each
   account gets its own OpenViking space, and its QA settings dialog shows what
   that space holds about it — read-only, because the switches that decide
@@ -162,13 +162,19 @@ memories, and capture files one user's conversation where the next user's recall
 finds it.
 
 With QA Surface (`@yadsh/dsh-qa-surface`) mounted, the plugin asks it who owns
-the session and sends that account as `X-OpenViking-User`:
+the session and sends that account as `X-OpenViking-User`. The behaviour is on
+by default and is the operator's: **Multi-user memory → `qaUserScoping`** on the
+card below, applied to sessions that are already open.
 
 - A chat root resolves to the account that attested it; a delegated child
   inherits the chat that created it.
 - A session nobody has claimed yet is left **entirely alone** — no profile, no
   recall, no capture — until the account's browser half claims it. A
   conversation never reads from, or writes into, a space it does not belong to.
+  The log says `qa_memory_unattributed` once when a session is asked about too
+  early and `qa_memory_attributed`, with the delay, when the claim lands: the
+  first line on its own means only "not yet", and the ones that never get the
+  second are the chats no account will own.
 - An admin viewing somebody else's chat resolves to nobody (QA Surface fails
   closed there), so that view neither reads nor writes memory.
 - Without a QA Surface, or with `qaUserScoping: false`, the plugin keeps the
@@ -191,6 +197,17 @@ the identity the store reports (`userMemoryOverview` → `accountApplies`), and
 names the shared space instead of presenting other accounts' memories as this
 one's own.
 
+A read that failed is reported the same way: the page shows its own sentence for
+the *kind* of failure — the store does not answer, it refuses this deployment,
+it could not open the account's space — and never the transport's line. What
+crosses the Remote boundary is a code (`userMemoryOverview` → `failure`), while
+the endpoint, the status and the store's own message go to the plugin log as
+`qa_memory_overview_failed`, where an operator can grep them. A call refused
+before it reached the plugin is answered from what the transport left in the
+browser (`HTTP 403` reads as "this session is not let through", an aborted
+request as "the deployment is not answering"), and its detail goes to
+`console.debug`.
+
 Per-account *overrides* of the deployment's plan still exist and are read from
 `openviking-memory-qa-users.json` under `$DSH_HOME` (`qaUserSettingsPath`
 overrides the path). An override can only narrow the plan, never widen it — and
@@ -204,23 +221,51 @@ config:
   qaUserScoping: false
 ```
 
-> **Where the settings live.** The Host's own "Plugin configuration" card is
-> discovered from the Host settings directory, which a browser reaching the
-> deployment over the network never gets (and a QA overlay does not render the
-> native settings tree at all). That card stays the operator's surface on a
-> local installation — it is where the memory is configured; the QA page above
-> only reports what the memory holds.
+> **Where the settings live.** The configuration card opens from this plugin's row
+> on the Host's **Plugins** page, and it edits the settings document of the profile
+> that mounts this plugin. A browser reaching the deployment over the network is
+> served that document in `memory` mode — the Host's own contract calls it
+> process-local and never writable — and while its form reports that state the card
+> says so in one sentence instead of drawing controls, so the operator configures on
+> the machine that serves the
+> installation. That is how the tab this card left behaved too: the provider that
+> decides it is shared, and §6.17 of
+> [SPEC.md](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-openviking-memory/SPEC.md)
+> carries the citations, plus the one thing a live stand still owes — whether the
+> deployed page serves that row to a non-loopback connection at all. So the card is
+> the operator's surface in access as well as in effect: the QA page above is the
+> face a network browser is meant to use, and it only reports what the memory
+> holds.
 >
-> The card needs its namespace registered in that directory to be served at
-> all — which is what `src/settings.ts` does. A plugin that only declares its
-> configuration schema publishes no namespace, and its card renders nowhere,
-> loopback included.
+> There is no namespace for the card to register. Since 0.1.7 a field is an
+> editable form field exactly when its schema node is volatile, and the profile
+> entry id *is* the namespace; `ctx.configForms.get('dsh-openviking-memory')` is
+> how the card reaches it. A configuration that declares no volatile knob has no
+> form to edit, and its card renders nothing.
 
-> **Switching scoping on moves the memory.** The space is chosen by the
-> `X-OpenViking-User` header, so turning `qaUserScoping` on means the memories
-> written before it were filed under the deployment-wide user and will not show
-> up in any account's space. Turn it on from the start of a deployment, or
-> re-file what matters to you by hand.
+> **Switching scoping on moves the memory — and nothing moves it back.** The
+> space is chosen by the `X-OpenViking-User` header, so memories written before
+> the switch were filed under the deployment-wide user and appear in no
+> account's space afterwards. There is no merge operation in this plugin, and
+> the QA page is read-only on purpose, so re-filing is an operator's act against
+> the memory API. The path, in order:
+>
+> 1. Read which identity the store answers with — the account page shows it
+>    (`userMemoryOverview` → `serverIdentity`). Off, that is the shared space
+>    every chat uses; on, it is the account's own.
+> 2. Confirm the store honours the header before moving anything. A store in
+>    `api_key` mode strips it and answers as the key's own user (`accountApplies:
+>    false` on every page), and then every write lands in that one space
+>    whatever the plugin sends — re-filing would relocate nothing until the
+>    store runs in `trusted` or `dev` mode.
+> 3. List what the shared space holds (the deployment's own page reads it, and
+>    the bridged `mcp__openviking__*` tools see it as their caller), decide what
+>    is worth keeping, and write those notes into the owning account's space.
+> 4. Leave the rest where it is. Turning `qaUserScoping` off again returns every
+>    chat to the deployment space, so the older memory becomes reachable as it
+>    was without two accounts' histories being stitched together.
+>
+> Turn scoping on at the start of a deployment and there is nothing to migrate.
 >
 > **The header is an assertion, not a guarantee.** Whether a space is really
 > per account is the memory store's decision: its `trusted` and `dev` auth modes
@@ -231,12 +276,14 @@ config:
 
 **What is still deployment-wide.** The bridged `mcp__openviking__*` tools are
 one MCP server for the whole process, and DSH's MCP client carries a single
-identity for it — so a *model-initiated* `search` or `read` is issued as the
-deployment identity, not as the account that asked for it. Automatic context
-(profile and recall) and everything the plugin writes are per account; a tool
-call the model makes on its own is not. Closing that gap needs either a
-per-session MCP identity in DSH's MCP client or native tool implementations in
-this plugin.
+identity for it — so a *model-initiated* `search`, `read` or `remember` is
+issued as the deployment identity, not as the account that asked for it. A fact
+the model stored through a tool is therefore shared by every account on the
+deployment, and no account's **Память** page will claim it as that account's
+own. Automatic context (profile and recall) and everything the plugin writes for
+a session are per account; a tool call the model makes on its own is not.
+Closing that gap needs either a per-session MCP identity in DSH's MCP client or
+native tool implementations in this plugin.
 
 ## Behaviour matrix
 
@@ -260,14 +307,14 @@ key is absent, and it matches upstream.
 
 ## Settings card
 
-The package ships a browser bundle, so the plugin gets a card under
-**Settings → Plugins** in the DSH web UI. It edits the plugin's
+The package ships a browser bundle, so the plugin gets a card on the **Plugins**
+page, opened from its own row in the DSH web UI. It edits the plugin's
 `dsh-openviking-memory` settings namespace directly — no patch file required:
 
 - **Sections** follow the reference tables below: automatic context
-  presentation, connection, peer identity, recall, capture and commit, plus an
-  advanced group with `skipSubagentSessions`, the timeouts and the deprecated
-  `captureMode`.
+  presentation, connection, peer identity, recall, capture and commit, the
+  multi-user memory switch, plus an advanced group with
+  `skipSubagentSessions`, the timeouts and the deprecated `captureMode`.
 - **Writes are immediate.** Toggles and selects apply on change; text and
   number fields commit on blur or Enter. Emptying a field clears the override,
   so the value falls back to the profile's composition layer — and for the
@@ -278,9 +325,23 @@ The package ships a browser bundle, so the plugin gets a card under
   because they are a child process whose transport is fixed when it starts.
 - **Overrides are visible.** A field the profile's user layer carries is
   marked, and a reset action clears every override in one step.
-- **The badge is configuration, not status.** It shows `Auto-inject` or
-  `Manual recall` from the master switch. Runtime diagnostics live in the
-  plugin log under `<$DSH_HOME>/logs/dsh-openviking-memory/`.
+- **The card draws no chrome of its own.** The Plugins page draws the row's card —
+  its surface, heading, description line and expand control — and this bundle
+  mounts the body inside it. The master switch therefore reads from its own
+  `autoInject` toggle rather than from a header badge. Runtime diagnostics live in
+  the plugin log under `<$DSH_HOME>/logs/dsh-openviking-memory/`; the card shows
+  the configuration and nothing else, because it has no Remote face.
+- **The card edits the Host's document from loopback.** The settings document a
+  card writes is the profile the Host serves, and a page that reaches the
+  deployment over the network is served it in `memory` mode — process-local, and
+  never writable, in the Host contract's own words — which this card reports as one
+  sentence naming the state, not as a disabled form and not as an empty section.
+  So the operator sets these switches on
+  the machine that serves the installation, including a stand through its loopback
+  port; the surface a network browser is meant to use is the read-only account page
+  described in §Per-account memory. The split is deliberate: the switches below
+  change one shared deployment (endpoint, credentials, which memory is injected),
+  so they belong to the operator, not to whoever opens a chat.
 
 ### Injection
 
@@ -409,7 +470,7 @@ project, and no upstream copyright or attribution notice was removed.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0`
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0`
 - Node.js `^22.19.0 || >=24.0.0`
 
 See `compatibility.json` in the installed package for the machine-readable form.

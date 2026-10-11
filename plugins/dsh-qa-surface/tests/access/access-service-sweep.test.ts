@@ -1,5 +1,6 @@
 import type { ScopeKey } from "@deepseek-ai/dsh-scope";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { QaPresetScopeLease } from "../../src/access/capability-catalog.js";
 import { harness, reader } from "./access-service.helpers.js";
 describe("QA access service: the vanished-chat sweep", () => {
   /** The tightest retention the resolver allows; the clock then passes it. */
@@ -86,8 +87,9 @@ describe("the admin catalog's viewing scope", () => {
     // A kit's skill catalog and the preset's tool family are mounted in the
     // preset's scope; a global-only read showed an administrator almost
     // nothing to grant.
-    const presetScope = async (): Promise<ScopeKey | undefined> => ({
-      agentPreset: "qa-research",
+    const presetScope = async (): Promise<QaPresetScopeLease | undefined> => ({
+      key: { agentPreset: "qa-research" } as ScopeKey,
+      release: async () => {},
     });
     const { service, admin } = harness({ presetScope });
 

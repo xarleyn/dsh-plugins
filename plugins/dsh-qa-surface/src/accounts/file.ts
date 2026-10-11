@@ -21,6 +21,17 @@ export interface StoredStarters {
   hideDefaults?: boolean;
 }
 
+/**
+ * One account's notification channels as they rest in the accounts store. Every
+ * field is optional because the record is read, not parsed: an account created
+ * before the settings form existed has none of it, and a hand-edited row must
+ * not decide anything the reader never chose.
+ */
+export interface StoredNotifications {
+  inApp?: boolean;
+  desktop?: boolean;
+}
+
 export interface StoredUser {
   readonly id: string;
   readonly email: string;
@@ -41,6 +52,8 @@ export interface StoredUser {
   profile?: StoredProfile;
   /** Absent until the owner customizes the starter buttons. */
   starters?: StoredStarters;
+  /** Absent until the owner opens the notifications form for the first time. */
+  notifications?: StoredNotifications;
   /** Agent capability profiles assigned by an administrator. */
   qaAccess?: QaUserAccess;
 }

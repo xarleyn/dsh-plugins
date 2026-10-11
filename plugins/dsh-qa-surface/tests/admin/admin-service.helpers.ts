@@ -16,6 +16,7 @@ import {
 } from "../../src/admin/session-log.js";
 import type { StoredSessionEvent } from "../../src/admin/conversation-log.js";
 import { QaPersonalSkills } from "../../src/personal-skills/index.js";
+import type { QaExpertMemoryAdmin } from "../../src/integration/expert-memory.js";
 import { resolveConfig } from "../../src/resolve-config.js";
 
 /**
@@ -136,6 +137,11 @@ export function harness(
     readonly sessionLog?: QaSessionLogReader;
     /** The clock the service measures its caches on. */
     readonly clock?: { readonly now: () => number };
+    /**
+     * The domain-experts memory seam the console maintains. Absent is the
+     * default, and it means what it says: this stand composes no experts.
+     */
+    readonly memory?: QaExpertMemoryAdmin;
   } = {},
 ) {
   const root = mkdtempSync(path.join(tmpdir(), "qa-admin-"));
@@ -270,6 +276,7 @@ export function harness(
     ),
     "session-bob": logFor("SQL migration", "Write the migration", "Done"),
   };
+  const memoryAdmin = catalog.memory;
   const service = new QaAdminService({
     accounts: () => accounts,
     quality: () => quality,
@@ -300,6 +307,13 @@ export function harness(
           dropSources: (sessionId: string) => {
             catalog.droppedSources?.push(sessionId);
           },
+        }),
+    ...(memoryAdmin === undefined
+      ? {}
+      : {
+          // The same shape the Host resolves: a face, or nothing when the stand
+          // runs no experts.
+          domainExperts: () => ({ memoryAdmin }),
         }),
     logger,
     ...(catalog.clock === undefined ? {} : { clock: catalog.clock }),

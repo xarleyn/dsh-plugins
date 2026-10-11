@@ -1188,20 +1188,27 @@ ctx.settings.installSection(...)
 Browser side:
 
 ```text
-settings.plugin.item
+plugins.row.config
 ```
 
-The namespace is the join key.
+The bundle's own row is the join key: the seat is keyed `<package name>#<row id>`,
+where the row id is the entry id `cordis.patch.yml` declares — the same string the
+Host resolves the plugin's volatile Config under, so row id and namespace are one
+name and a seat move never orphans a saved value.
 
 Use:
 
 ```text
-jev-compaction
+dsh-jev-compaction
 ```
 
 unless the plugin already owns another stable settings namespace.
 
 Do not invent a second namespace if an existing one can be migrated safely.
+
+`settings.plugin.item` no longer exists: the Host deleted that slot in `0.1.7`.
+`settings.plugins.tab` survives as a tab of the native Plugins section and is not a
+registration point a card of this plugin adds to.
 
 ---
 
@@ -1273,18 +1280,23 @@ src/
 Client registration concept:
 
 ```ts
-ctx.slots.inject("settings.plugin.item", () =>
+ctx.slots.inject("plugins.row.config", () =>
   ctx.slots.register(
     {
-      name: "settings.plugin.item",
-      key: "jev-compaction",
-      locale: "settings.jevCompaction",
-      inject: () => controller.inject(),
+      name: "plugins.row.config",
+      key: `@yadsh/dsh-jev-compaction#${JEV_COMPACTION_SETTINGS_NAMESPACE}`,
+      inject: () => ({ settingsForm: form }),
     },
-    JevCompactionSettingsCard,
+    JevCompactionRowConfigEntry,
   ),
 );
 ```
+
+The seat accepts two views of the same entry — `view: 'page'`, which is the card, and
+`view: 'summary'`, the row's one-liner the page asks the entry for only when the row
+carries no display description of its own — and it passes its own owner prop
+named `form`, so the card's full `ConfigForm` enters through the injected face under
+another name. `AGENTS.md`, §Plugin configuration card UI, carries both traps.
 
 The implementation should follow the current official DSH cookbook instead of cloning a core UI component through deep private imports.
 
@@ -2440,7 +2452,7 @@ archive if recoverability matters.
 Show:
 
 ```text
-Settings → Plugins → Jev Compaction
+Plugins → Configure @yadsh/dsh-jev-compaction
 ```
 
 with screenshot.

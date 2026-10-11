@@ -514,16 +514,22 @@ describe("the install check", () => {
       releaseRow("@yadsh/dsh-kit", "0.3.0"),
     ];
     const events = [];
+    let installs = 0;
 
     const failures = await verifyInstalls(rows, {
-      install: async (row) =>
-        row.name === "@yadsh/dsh-surface"
+      install: async (row) => {
+        installs += 1;
+        return row.name === "@yadsh/dsh-surface"
           ? {
               ok: false,
               output:
-                "npm error code ETARGET\nnpm error notarget No matching version found for @yadsh/dsh-kit@^0.3.0.",
+                "npm error code ETARGET\nnpm error notarget No matching version found for @yadsh/dsh-missing@^0.3.0.",
             }
-          : { ok: true, output: "" },
+          : { ok: true, output: "" };
+      },
+      wait: async () => {
+        throw new Error("a package outside the release must not be waited for");
+      },
       onEvent: (line) => events.push(line),
     });
 
@@ -531,6 +537,7 @@ describe("the install check", () => {
       failures.map((item) => item.name),
       ["@yadsh/dsh-surface"],
     );
+    assert.equal(installs, 2, "only the versions of this wave are polled");
     assert.match(events.join("\n"), /Installs @yadsh\/dsh-kit@0\.3\.0/u);
   });
 
@@ -551,14 +558,74 @@ describe("the install check", () => {
           : { ok: true, output: "" };
       },
       wait: async (milliseconds) => waits.push(milliseconds),
-      retryDelayMs: 5,
+      lagStepMs: 5,
       onEvent: (line) => events.push(line),
     });
 
     assert.deepEqual(failures, []);
     assert.equal(attempts, 3);
-    assert.deepEqual(waits, [5, 5]);
-    assert.match(events.join("\n"), /npm has not caught up with the publish/u);
+    assert.deepEqual(waits, [5, 10], "the wait grows instead of staying fixed");
+    const report = events.join("\n");
+    assert.match(report, /npm has not caught up with the publish/u);
+    assert.match(report, /attempt 1 says/u);
+    assert.match(
+      report,
+      /Installs @yadsh\/dsh-surface@0\.9\.0 after 3 attempt\(s\)/u,
+    );
+  });
+
+  test("a dependency of the wave the registry has not caught up with is waited for too", async () => {
+    const dependent = releaseRow("@yadsh/dsh-qa-integrations", "0.8.3");
+    const dependency = releaseRow("@yadsh/dsh-qa-surface", "0.12.0");
+    const waits = [];
+    let attempts = 0;
+
+    const failures = await verifyInstalls([dependency, dependent], {
+      install: async (row) => {
+        if (row === dependency) return { ok: true, output: "" };
+        attempts += 1;
+        return attempts < 3
+          ? {
+              ok: false,
+              output: `npm error notarget No matching version found for ${dependency.name}@^${dependency.version}.`,
+            }
+          : { ok: true, output: "" };
+      },
+      wait: async (milliseconds) => waits.push(milliseconds),
+      lagStepMs: 5,
+      onEvent: () => {},
+    });
+
+    assert.deepEqual(failures, []);
+    assert.equal(attempts, 3);
+    assert.deepEqual(waits, [5, 10]);
+  });
+
+  test("polling stops at its ceiling and the version is reported", async () => {
+    const row = releaseRow("@yadsh/dsh-surface", "0.9.0");
+    const events = [];
+    const waits = [];
+
+    const failures = await verifyInstalls([row], {
+      install: async () => ({
+        ok: false,
+        output: `npm error notarget No matching version found for ${row.name}@${row.version}.`,
+      }),
+      wait: async (milliseconds) => waits.push(milliseconds),
+      lagStepMs: 5,
+      lagBudgetMs: 20,
+      onEvent: (line) => events.push(line),
+    });
+
+    assert.deepEqual(waits, [5, 10], "5s and 10s fit, the next 20s does not");
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0].lagged, true);
+    assert.equal(failures[0].attempts, 3);
+    assert.equal(failures[0].waitedMs, 15);
+    assert.match(
+      events.join("\n"),
+      /Giving up on @yadsh\/dsh-surface@0\.9\.0: npm had not served it after 3 attempt\(s\)/u,
+    );
   });
 
   test("a dependency that cannot resolve is failed at once, not retried", async () => {
@@ -582,6 +649,36 @@ describe("the install check", () => {
 
     assert.equal(attempts, 1);
     assert.equal(failures.length, 1);
+  });
+
+  test("a wave dependency the wave's own version does not satisfy is not a lag", async () => {
+    const row = releaseRow("@yadsh/dsh-surface", "0.9.0");
+    let attempts = 0;
+
+    const failures = await verifyInstalls(
+      [row, releaseRow("@yadsh/dsh-kit", "0.3.0")],
+      {
+        install: async (installRow) => {
+          if (installRow !== row) return { ok: true, output: "" };
+          attempts += 1;
+          return {
+            ok: false,
+            output:
+              "npm error notarget No matching version found for @yadsh/dsh-kit@^0.4.0.",
+          };
+        },
+        wait: async () => {
+          throw new Error(
+            "a range the release does not publish must not be waited for",
+          );
+        },
+        onEvent: () => {},
+      },
+    );
+
+    assert.equal(attempts, 1);
+    assert.equal(failures.length, 1);
+    assert.equal(failures[0].lagged, false);
   });
 });
 

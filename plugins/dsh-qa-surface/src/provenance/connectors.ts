@@ -13,15 +13,23 @@ function record(value: unknown): UnknownRecord | undefined {
     : undefined;
 }
 
-function records(value: unknown, depth = 0): UnknownRecord[] {
-  if (depth > 4) return [];
+function records(
+  value: unknown,
+  depth = 0,
+  budget = { remaining: 400 },
+): UnknownRecord[] {
+  if (depth > 4 || budget.remaining-- <= 0) return [];
   if (Array.isArray(value))
-    return value.flatMap((item) => records(item, depth + 1));
+    return value
+      .slice(0, 400)
+      .flatMap((item) => records(item, depth + 1, budget));
   const item = record(value);
   if (item === undefined) return [];
   return [
     item,
-    ...Object.values(item).flatMap((child) => records(child, depth + 1)),
+    ...Object.values(item)
+      .slice(0, 400)
+      .flatMap((child) => records(child, depth + 1, budget)),
   ];
 }
 
@@ -33,17 +41,50 @@ function text(item: UnknownRecord, ...keys: string[]): string | undefined {
   return undefined;
 }
 
-function contextRecords(context: SourceExtractorContext): UnknownRecord[] {
-  return [...records(context.presentation), ...records(context.result)];
+export function contextRecords(
+  context: SourceExtractorContext,
+): UnknownRecord[] {
+  const blocks = Array.isArray(context.result) ? context.result : [];
+  // Decode only a complete JSON result of a known retrieval tool. Never scan
+  // assistant prose, JSON-looking excerpts or arbitrary URLs inside strings.
+  const decoded = blocks.slice(0, 8).flatMap((block) => {
+    const item = record(block);
+    if (
+      item?.type !== "text" ||
+      typeof item.text !== "string" ||
+      item.text.length > 500_000
+    )
+      return [];
+    try {
+      return records(JSON.parse(item.text));
+    } catch {
+      return [];
+    }
+  });
+  return [
+    ...records(context.presentation),
+    ...records(context.result),
+    ...decoded,
+  ];
 }
 
 type UrlOptions = Parameters<typeof canonicalizeUrl>[1];
 
-function canonicalUri(
+export function canonicalUri(
   item: UnknownRecord,
   urlOptions: UrlOptions,
 ): string | undefined {
-  const raw = text(item, "url", "uri", "webUrl", "browseUrl", "self");
+  const raw = text(
+    item,
+    "webUrl",
+    "web_url",
+    "browseUrl",
+    "permalink",
+    "html_url",
+    "url",
+    "uri",
+    "self",
+  );
   if (raw === undefined) return undefined;
   return canonicalizeUrl(raw, urlOptions) ?? undefined;
 }

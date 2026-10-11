@@ -72,6 +72,15 @@ export function createDocumentInspectTool(options: DocumentToolOptions) {
           warnings: warningsSchema,
         },
       },
+      presentationMeta: (args, value) => ({
+        qaDocumentSource: {
+          path: typeof args.file === "string" ? args.file : null,
+          evidence: "queried",
+          title: value.filename,
+          mediaType: value.mediaType,
+          metadataOnly: true,
+        },
+      }),
       render: (_args: unknown, value: unknown) => {
         const result = value as DocumentInspectResult;
         return [

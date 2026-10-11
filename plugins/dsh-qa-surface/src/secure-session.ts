@@ -1,5 +1,7 @@
+import { qaDelegatedHeader } from "./shared/session-lineage.js";
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
+import { qaAgentScope } from "./agent-scope.js";
 // The `types` subpath keeps the client ISessions Context merge authoritative;
 // the package root merges a conflicting host `sessions` service type.
 import { SessionId } from "@deepseek-ai/dsh-session/types";
@@ -12,14 +14,22 @@ import {
   type QaSessionFacts,
 } from "./accounts/store.js";
 import { QaAttestationError } from "./attestation.js";
+import type { QaIntegrationPrincipalBindings } from "./integration-principals.js";
 import {
   qaCeilingDenial,
   qaToolDenial,
   qaToolPolicyPlan,
 } from "./lockdown-policy.js";
 import type { QaResolvedSessionPolicy } from "./access/service.js";
+import {
+  deploymentModelPair,
+  modelPolicySatisfied,
+  resolveModelPolicy,
+  type QaSessionModelPolicy,
+} from "./access/model-policy.js";
 import { installQaSkillPolicy } from "./enforcement/skill-policy.js";
 import { installInheritableMask } from "./enforcement/tool-mask.js";
+import { isDelegatedStructuredResult } from "./enforcement/structured-result.js";
 import { QA_REPORT_SOURCES_TOOL } from "./provenance/host-store.js";
 import { QA_ASK_QUESTION_TOOL } from "./questions.js";
 import type { QaLockdownProof, ResolvedQaSurfaceConfig } from "./types.js";
@@ -80,6 +90,14 @@ export interface QaAccountsGate {
  * the same notion of "fresh".
  */
 const FRESH_SESSION_BOOTSTRAP_WINDOW_MS = QA_SESSION_CLAIM_WINDOW_MS;
+
+/**
+ * The one sentence both discovery paths use for a delegated child identity:
+ * the live path reads it off the session header, the cold path off the Host's
+ * refusal to resume an agent the routing owns.
+ */
+const DELEGATED_SESSION_REFUSAL =
+  "a delegated subagent session cannot be attested";
 
 /**
  * Compare session cwds the way the host records them: separator- and
@@ -154,6 +172,21 @@ export class QaPolicyAdmission {
     ) => Promise<QaResolvedSessionPolicy | undefined>,
     /** Scope-local catalog entries may be known before they are activated. */
     private readonly knownDynamicToolNames: () => readonly string[] = () => [],
+    /**
+     * The session's model policy, which is what the fixed-model lockdown holds
+     * the chat to. Without a resolver the deployment pair is the whole of it —
+     * the answer a stand that keeps roles elsewhere still gets.
+     */
+    private readonly modelPolicy?: (sessionId: string) => QaSessionModelPolicy,
+    /**
+     * The runtime proof that a session was attested by its own account, which is
+     * what lets `@yadsh/dsh-qa-integrations` resolve a QA principal for a chat.
+     * The browser path fills it at its own remote, where the caller's identity is
+     * the token being compared (and an administrator reading a foreign chat is
+     * deliberately not a delegation); {@link secureSessionForUser} has no token
+     * to compare, so it fills it here, against the ownership record it checked.
+     */
+    private readonly principals?: QaIntegrationPrincipalBindings,
   ) {
     this.disposeWorkspaceGuard = ctx.tools.guard((execution) => {
       const session = execution.agent?.session;
@@ -180,6 +213,11 @@ export class QaPolicyAdmission {
       if (session === undefined) return undefined;
       const ceiling = this.ceilings.get(String(session.id));
       if (ceiling === undefined) return undefined;
+      if (
+        isDelegatedStructuredResult(this.ctx, execution.agent, execution.name)
+      ) {
+        return undefined;
+      }
       return qaCeilingDenial(ceiling, execution.name);
     });
     ctx.on("session/created", (session) => {
@@ -293,29 +331,54 @@ export class QaPolicyAdmission {
    * composition a stock prompt would produce — so a session composed outside
    * the QA preset still lands on the mismatch refusals below ("composition
    * mismatch"), and the adoption and permission checks stay the gate.
+   *
+   * Not every answer describes this deployment: the Host also names an identity
+   * subagent routing owns, which is a fact about another conversation's child
+   * rather than a failure of this chat. The two are refused apart below.
    */
   private async liveAgent(sessionId: string): Promise<Agent> {
     const live = this.ctx.agents.get(SessionId(sessionId));
     if (live !== undefined) return live;
+    let code: string | undefined;
+    let detail: string;
     try {
       const resolved = await this.ctx.sessionController.resolveAgent(
         SessionId(sessionId),
       );
       if (!("error" in resolved)) return resolved.agent;
-      this.logger.error("session.agent-resolve-rejected", {
-        sessionId,
-        error: resolved.error.message,
-      });
+      code = resolved.error.code;
+      detail = resolved.error.message;
     } catch (error) {
-      // Either the composition itself failed (a preset that no longer mounts,
-      // a log the Host refuses to read) or the resolution threw before it
-      // could classify itself. Both are the same coarse fact for the browser.
-      this.logger.error("session.agent-resolve-rejected", {
-        sessionId,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      // The resolution threw before it could classify itself, so there is no
+      // Session-domain code to read — only the message the Host wrote.
+      detail = error instanceof Error ? error.message : String(error);
     }
-    throw new QaAttestationError("agent-unavailable", "agent is unavailable");
+    // `session/agent-busy` is the Session domain's stable answer for an identity
+    // subagent routing owns, and a session with no live agent reaches it only
+    // through its durable `origin` — a delegated run recorded as one. So this is
+    // the cold twin of the header check in {@link secureSessionAs}: same fact,
+    // same reason and sentence, and a warning in the journal instead of an error.
+    if (code === "session/agent-busy") {
+      this.logger.warn("session.agent-owned-by-routing", {
+        sessionId,
+        error: detail,
+      });
+      throw new QaAttestationError(
+        "subagent-session",
+        DELEGATED_SESSION_REFUSAL,
+      );
+    }
+    // Either the composition itself failed (a preset that no longer mounts, a
+    // log the Host refuses to read) or the identity names no session at all.
+    // Both are the same coarse fact for the browser.
+    this.logger.error("session.agent-resolve-rejected", {
+      sessionId,
+      error: detail,
+    });
+    throw new QaAttestationError(
+      "agent-unavailable",
+      "the Host keeps this session's transcript but could not resume an agent behind it; the composition detail is in session.agent-resolve-rejected",
+    );
   }
 
   /**
@@ -333,6 +396,8 @@ export class QaPolicyAdmission {
                 readonly header: {
                   readonly createdAt?: number;
                   readonly parentSession?: unknown;
+                  readonly origin?: unknown;
+                  readonly isSeeded?: boolean;
                 };
               }
             | undefined;
@@ -345,7 +410,7 @@ export class QaPolicyAdmission {
       ...(header.createdAt === undefined
         ? {}
         : { createdAt: header.createdAt }),
-      ...(header.parentSession === undefined ? {} : { hasParent: true }),
+      ...(qaDelegatedHeader(header) ? { hasParent: true } : {}),
     };
   }
 
@@ -405,10 +470,24 @@ export class QaPolicyAdmission {
     userId: string,
     sessionId: string,
   ): Promise<QaLockdownProof> {
-    return this.secureSessionAs(
-      () => this.ownerById(userId, sessionId),
-      sessionId,
-    );
+    try {
+      const proof = await this.secureSessionAs(
+        (id) => this.ownerById(userId, id),
+        sessionId,
+      );
+      // `ownerById` refused every account but this one, so caller and owner are
+      // the same fact by the time the admission succeeded — which is exactly the
+      // proof the integration tools are gated on. A chat this call could not
+      // attest keeps no principal: the refusal below clears whatever an earlier
+      // question of this session had bound.
+      if (this.accounts !== undefined) {
+        this.principals?.attest(sessionId, userId, userId);
+      }
+      return proof;
+    } catch (error) {
+      this.principals?.attest(sessionId, undefined, undefined);
+      throw error;
+    }
   }
 
   /**
@@ -445,11 +524,11 @@ export class QaPolicyAdmission {
     // parent through the provenance inheritance flow. Attesting it from the
     // browser would pin a capability policy onto a conversation nobody can
     // open, name or review, so it is refused whatever the lockdown state is.
-    if (agent.session.header.parentSession !== undefined) {
+    if (qaDelegatedHeader(agent.session.header)) {
       this.logger.warn("lockdown.subagent-attestation-refused", { sessionId });
       throw new QaAttestationError(
-        "adoption-refused",
-        "a delegated subagent session cannot be attested",
+        "subagent-session",
+        DELEGATED_SESSION_REFUSAL,
       );
     }
     if (this.accounts !== undefined) {
@@ -522,13 +601,14 @@ export class QaPolicyAdmission {
     const options = agent.options as Agent["options"] & {
       readonly reasoningEffort?: string;
     };
+    // The pair this chat belongs to is its own policy's, not the deployment's:
+    // a role served by another model is admitted on that model, while the
+    // switch still refuses a chat that moved outside its policy.
+    const modelPolicy =
+      this.modelPolicy?.(sessionId) ??
+      resolveModelPolicy({ deployment: deploymentModelPair(config.session) });
     const modelMatches =
-      !lockdown.enforceFixedModel ||
-      config.session.provider === null ||
-      (options.provider === config.session.provider &&
-        options.model === config.session.model &&
-        (config.session.reasoningEffort === null ||
-          options.reasoningEffort === config.session.reasoningEffort));
+      !lockdown.enforceFixedModel || modelPolicySatisfied(modelPolicy, options);
 
     if (!agentPresetMatches || !workspaceMatches || !modelMatches) {
       throw new QaAttestationError(
@@ -574,7 +654,7 @@ export class QaPolicyAdmission {
     // this agent nor declared by the QA catalog is refused below, so nothing
     // may be added to the list without passing it.
     const isMounted = (toolName: string): boolean =>
-      this.ctx.tools.get(toolName, agent) !== undefined ||
+      this.ctx.tools.get(toolName, qaAgentScope(agent)) !== undefined ||
       this.knownDynamicToolNames().includes(toolName);
     // The provenance reporter is this plugin's own tool, mounted only while the
     // deployment runs the sources fallback. Naming it in a deployment that does
@@ -641,6 +721,10 @@ export class QaPolicyAdmission {
       policy.allow,
       capability?.policy.skills ?? [],
       capability?.policy.grantableTools ?? [],
+      // The account's own skills are the one part of the user list that moves
+      // while a chat stays open, and the installed gesture must not lag the
+      // palette that already offers them.
+      [...(capability?.policy.userSkills ?? [])].sort(),
     ]);
     const prior = this.appliedPolicies.get(agent);
     if (prior?.fingerprint !== fingerprint) {
@@ -693,8 +777,9 @@ export class QaPolicyAdmission {
                 ]),
           ]),
         );
-        // A role snapshot cannot change for this session, but a restarted Host
-        // materializes a new Agent and therefore a fresh scoped loader.
+        // What the administrator configured cannot change for this session, but
+        // the account's own skills can, and a restarted Host materializes a new
+        // Agent and therefore a fresh scoped loader.
         prior?.disposeSkillPolicy();
         if (capability !== undefined && grants !== undefined) {
           disposeSkillPolicy = installQaSkillPolicy({

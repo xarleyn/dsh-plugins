@@ -49,6 +49,15 @@ await runVerifyPackage({
       "dsh-audit-unattached__item",
       "not shown in any session",
     ],
+    /*
+     * One test id of the epic #453 pass is pinned: the page's root. Every
+     * browser test of the view reaches it first, and it is the one id that must
+     * not go back to naming a render branch — both the audited and the empty
+     * page answer to `audit-page`, while the empty notice carries its own
+     * `audit-page-empty`. Asserted on the attribute, so the class family
+     * `dsh-audit-page*` cannot stand in for it.
+     */
+    matches: [/["']data-testid["']\s*:\s*["']audit-page["']/u],
     notMatches: [
       // A Node builtin in a browser bundle is a load error, not a fallback.
       /require\(["']node:/u,

@@ -1,14 +1,17 @@
 import type { ResolvedQaIntegrationsConfig } from "../../config.js";
-import { IntegrationError } from "../../errors.js";
+import { statusErrorOf, transportFailureOf } from "../kernel/errors.js";
 import {
-  TLS_FAILURE,
-  causeCode,
   fetchWithRetries,
   numberFrom,
   readBoundedJson,
   readBoundedText,
   type BoundedText,
-} from "../shared/http.js";
+  type ResponseRead,
+} from "../kernel/read-policy.js";
+import {
+  decodeCredentialFields,
+  requireConfiguredEndpoint,
+} from "../kernel/token.js";
 import {
   gitlabInstance,
   type GitlabFlags,
@@ -27,52 +30,25 @@ export interface GitlabCredential {
 }
 
 export function credentialFromPlaintext(plaintext: string): GitlabCredential {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(plaintext);
-  } catch {
-    throw new IntegrationError(
-      "CredentialRevoked",
-      "Stored credential is invalid",
-    );
-  }
-  if (typeof parsed !== "object" || parsed === null) {
-    throw new IntegrationError(
-      "CredentialRevoked",
-      "Stored credential is invalid",
-    );
-  }
-  const record = parsed as Record<string, unknown>;
-  if (
-    typeof record["instanceId"] !== "string" ||
-    typeof record["token"] !== "string" ||
-    record["token"] === ""
-  ) {
-    throw new IntegrationError(
-      "CredentialRevoked",
-      "Stored credential is invalid",
-    );
-  }
-  return { instanceId: record["instanceId"], token: record["token"] };
+  const { instanceId, token } = decodeCredentialFields(plaintext, {
+    instanceId: "text",
+    token: "nonempty",
+  });
+  return { instanceId, token };
 }
 
 /**
- * The configured instance a credential belongs to. A credential minted for an
- * instance the operator has since removed fails closed: it never falls back to
- * another instance, however permissive that one is.
+ * The configured instance a credential belongs to: a credential minted for an
+ * instance the operator has since removed fails closed.
  */
 export function credentialInstance(
   flags: GitlabFlags,
   credential: GitlabCredential,
 ): GitlabInstance {
-  const instance = gitlabInstance(flags, credential.instanceId);
-  if (instance === undefined) {
-    throw new IntegrationError(
-      "CredentialRevoked",
-      "GitLab instance is no longer configured",
-    );
-  }
-  return instance;
+  return requireConfiguredEndpoint(
+    gitlabInstance(flags, credential.instanceId),
+    "GitLab instance is no longer configured",
+  );
 }
 
 export interface GitlabQuery {
@@ -107,6 +83,17 @@ function pageFrom(headers: Headers): GitlabPage | undefined {
   };
 }
 
+/** How GitLab reads an upstream status: the shared folding, in its own words. */
+const statusFailure = statusErrorOf({ label: "GitLab" });
+
+// Aborts, DNS failures and refused connections: a transient network fault is
+// worth one more attempt, a permanent one keeps failing. The deadline is this
+// deployment's own, so a request it already gave up on is not sent again.
+const transportFailure = transportFailureOf({
+  label: "GitLab",
+  unreachable: "Provider request failed",
+});
+
 /**
  * HTTP boundary of the provider: one documented GitLab REST call, bounded in
  * time and size, with upstream failures folded into safe domain errors and
@@ -125,14 +112,22 @@ export class GitlabTransport {
     path: string,
     query: GitlabQuery = {},
   ): Promise<GitlabJsonResponse<T>> {
-    const response = await this.request(instance, token, path, query);
-    const data = await readBoundedJson<T>(
-      response,
-      this.config.maxResponseBytes,
-      "Provider",
+    return this.request(
+      instance,
+      token,
+      path,
+      query,
+      async (response, signal) => {
+        const data = await readBoundedJson<T>(
+          response,
+          this.config.maxResponseBytes,
+          "Provider",
+          signal,
+        );
+        const page = pageFrom(response.headers);
+        return page === undefined ? { data } : { data, page };
+      },
     );
-    const page = pageFrom(response.headers);
-    return page === undefined ? { data } : { data, page };
   }
 
   /** Plain-text read: the CI job trace, and anything we never parse as JSON. */
@@ -143,10 +138,13 @@ export class GitlabTransport {
     query: GitlabQuery = {},
     maxBytes = this.config.maxResponseBytes,
   ): Promise<GitlabTextResponse> {
-    const response = await this.request(instance, token, path, query);
-    return readBoundedText(
-      response,
-      Math.min(maxBytes, this.config.maxResponseBytes),
+    return this.request(instance, token, path, query, (response, signal) =>
+      readBoundedText(
+        response,
+        Math.min(maxBytes, this.config.maxResponseBytes),
+        "Provider",
+        signal,
+      ),
     );
   }
 
@@ -163,66 +161,30 @@ export class GitlabTransport {
     return url.toString();
   }
 
-  private async request(
+  private async request<T>(
     instance: GitlabInstance,
     token: string,
     path: string,
     query: GitlabQuery,
-  ): Promise<Response> {
-    return fetchWithRetries(this.fetcher, this.url(instance, path, query), {
-      timeoutMs: this.config.timeoutMs,
-      retries: this.flags.retries,
-      headers: {
-        "private-token": token,
-        accept: "application/json",
+    read: ResponseRead<T>,
+  ): Promise<T> {
+    return fetchWithRetries(
+      this.fetcher,
+      this.url(instance, path, query),
+      {
+        timeoutMs: this.config.timeoutMs,
+        retries: this.flags.retries,
+        headers: {
+          "private-token": token,
+          accept: "application/json",
+        },
+        // The deadline is this deployment's own, so a request it already gave
+        // up on is not sent again — which is the shared default, so this
+        // provider names no rule of its own.
+        transportFailure,
+        statusFailure,
       },
-      // Aborts, DNS failures and refused connections: a transient network
-      // fault is worth one more attempt, a permanent one keeps failing. The
-      // deadline is this deployment's own, so a request it already gave up on
-      // is not sent again.
-      transportFailure: (error, timedOut) =>
-        timedOut
-          ? new IntegrationError("UpstreamTimeout", "GitLab did not answer")
-          : TLS_FAILURE.test(causeCode(error))
-            ? new IntegrationError("TlsFailure", "GitLab TLS handshake failed")
-            : new IntegrationError(
-                "ProviderUnavailable",
-                "Provider request failed",
-              ),
-      retriable: (error) => error.code !== "UpstreamTimeout",
-      statusFailure: (response) => this.failure(response),
-    });
-  }
-
-  private failure(response: Response): IntegrationError {
-    const status = response.status;
-    if (status === 401) {
-      return new IntegrationError(
-        "CredentialRevoked",
-        "GitLab rejected the stored token",
-      );
-    }
-    if (status === 403) {
-      return new IntegrationError(
-        "ProviderPermissionDenied",
-        "GitLab denied this operation",
-      );
-    }
-    if (status === 404) {
-      return new IntegrationError(
-        "ResourceNotFound",
-        "GitLab resource not found",
-      );
-    }
-    if (status === 429) {
-      return new IntegrationError("RateLimited", "GitLab rate limit reached");
-    }
-    if (status === 400 || status === 422) {
-      return new IntegrationError(
-        "InvalidRequest",
-        "GitLab rejected the request",
-      );
-    }
-    return new IntegrationError("ProviderUnavailable", "GitLab request failed");
+      read,
+    );
   }
 }

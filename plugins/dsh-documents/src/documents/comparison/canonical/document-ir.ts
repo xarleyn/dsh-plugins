@@ -213,6 +213,7 @@ export function serializeCanonicalDocument(
       code: warning.code,
       message: warning.message,
       ...(warning.backend === undefined ? {} : { backend: warning.backend }),
+      ...(warning.details === undefined ? {} : { details: warning.details }),
     })),
     nodes: document.nodes.map((node) => serializeNode(node)),
   };

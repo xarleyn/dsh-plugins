@@ -36,6 +36,24 @@ function denied(
   return { allowed: false, code, message };
 }
 
+/**
+ * The refusal a model relays to the user word for word, so it has to carry the
+ * reason on its own: naming the capability says which rule fired, and naming the
+ * service ceiling says that neither the user's token nor the deployment's
+ * capability switch is at fault. The switch is not lying — it permits the
+ * capability for a personal connection, which is the account this answer needs.
+ */
+function sensitiveReadMessage(
+  profile: ServiceCredentialProfile,
+  capability: IntegrationCapability | undefined,
+): string {
+  const name =
+    capability === undefined
+      ? "This operation"
+      : `${profile.provider}.${capability}`;
+  return `${name} can return text a build or another person produced, which the deployment's managed service credential never reads. Switch this integration to your personal account to read it: neither your token nor the deployment's capability switch is at fault.`;
+}
+
 export interface ServiceOperationQuery {
   readonly metadata: OperationSecurityMetadata;
   /** Capability the operation belongs to, when its provider declares one. */
@@ -65,7 +83,7 @@ export function evaluateServiceOperation(
   if (metadata.sensitivity !== "normal") {
     return denied(
       "SensitiveReadRequiresPersonalCredential",
-      "This operation can return personal or otherwise sensitive data",
+      sensitiveReadMessage(profile, capability),
     );
   }
   if (metadata.serviceCredential !== "allow") {

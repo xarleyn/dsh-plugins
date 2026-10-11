@@ -1,6 +1,26 @@
+import {
+  compareVersions,
+  qaChangelogBaselines,
+  validateQaChangelogCoverage,
+  validateQaChangelogPlannedEntries,
+  validateQaChangelogFrozenSections,
+} from "./qa-changelog-contract.mjs";
+export {
+  compareVersions,
+  planProjects,
+  curatedChangelogVersions,
+  curatedChangelogBlocks,
+  validateQaChangelogFrozenSections,
+  validateQaChangelogPlannedEntries,
+  qaChangelogBaselines,
+  planBumpFor,
+  incrementVersion,
+  validateQaChangelogCoverage,
+} from "./qa-changelog-contract.mjs";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { verifyRetiredSeats } from "./verify-retired-seats.mjs";
 import {
   collectPluginEntries,
   findManifestDrift,
@@ -37,16 +57,35 @@ const REQUIRED_KEYWORDS = ["deepseek-harness", "dsh", "dsh-plugin", "cordis"];
 const VERSION_PLANS_DIRECTORY = path.join(".nx", "version-plans");
 const FRONT_MATTER_FENCE = "---";
 const QA_SURFACE_DIRECTORY = path.join("plugins", "dsh-qa-surface");
-const QA_SURFACE_PROJECT = "@yadsh/dsh-qa-surface";
 const QA_CHANGELOG_SOURCE = path.join(
   "src",
   "client",
   "components",
   "QaChangelog.tsx",
 );
-// A plugin registers its configuration card under this client slot, and the
-// registration must stay guarded by the shared verification contract.
-const SETTINGS_CARD_SLOT = "settings.plugin.item";
+// A plugin registers its configuration card under one of these client slots,
+// and the registration must stay guarded by the shared verification contract.
+// The Host renamed the card slot to `plugins.row.config` in `0.1.7`, so the
+// gate reads every name a card registration can arrive under — keying it on
+// one literal made enforcement quietly disappear the moment that literal left
+// the sources. The name says what it decides (this package owns a card), not
+// what the contract then asks of it: on the panel seats the card contract
+// forbids our own shell, because the page draws it, while a settings-surface
+// card must carry it. `settings.plugins.tab` is also the slot of feature-owned
+// pages that render no card at all, so it only counts with the shell the
+// contract asserts (see `findSettingsCardSlot`).
+const CARD_SEAT_SLOTS = [
+  "settings.plugin.item",
+  "plugins.row.config",
+  "plugins.bundle.config",
+];
+const CARD_TAB_SLOT = "settings.plugins.tab";
+const CARD_SHELL_MARKERS = [
+  "dsh-plugin-card",
+  "CardShell",
+  "PLUGIN_CARD_SHELL_CSS",
+  "registerSettingsCard",
+];
 const CARD_CONTRACT_MODULE = "verify-plugin-card-contract";
 const RELEASE_TYPES = new Set([
   "major",
@@ -136,6 +175,41 @@ const REQUIRED_PLUGIN_SCRIPTS = [
   "prepack",
 ];
 
+// A publishable shared package is not a Cordis bundle, so it owes the reduced
+// gate `run-verify-package` implements rather than the plugin contract above:
+// without a `verify` script nothing asks whether its declared exports were
+// built or whether its published ranges resolve, which is how the class of
+// "declared subpath with no file" reached a published library.
+const REQUIRED_SHARED_PACKAGE_SCRIPTS = ["verify"];
+
+// The two options a shared gate has to keep turning on. Packing rewrites the
+// ranges and ships whatever `exports` names, so only a source-level read sees
+// either; `docs/VERIFICATION.md` promises both, and an option a refactor drops
+// would quietly narrow the gate while its script still exited 0.
+const REQUIRED_SHARED_GATE_OPTIONS = [
+  "mainTypesMatchRootExport",
+  "publishedDependenciesResolve",
+];
+
+/** Names of `REQUIRED_SHARED_GATE_OPTIONS` a `runVerifyPackage({...})` call turns on. */
+function sharedGateOptions(source) {
+  const enabled = new Set();
+  for (const call of source.matchAll(/\brunVerifyPackage\s*\(/gu)) {
+    const callStart = (call.index ?? 0) + call[0].length;
+    const optionsStart = source.indexOf("{", callStart);
+    if (optionsStart === -1) continue;
+    const optionsEnd = objectEnd(source, optionsStart);
+    if (optionsEnd === -1) continue;
+    const options = source.slice(optionsStart, optionsEnd);
+    for (const name of REQUIRED_SHARED_GATE_OPTIONS) {
+      if (new RegExp(`\\b${name}\\s*:\\s*true\\b`, "u").test(options)) {
+        enabled.add(name);
+      }
+    }
+  }
+  return enabled;
+}
+
 function readJson(file) {
   return JSON.parse(readFileSync(file, "utf8"));
 }
@@ -219,6 +293,40 @@ export function validatePublishablePlugin(directory) {
     errors.push('exports["./package.json"] must equal "./package.json"');
   }
 
+  // The Host titles and describes the bundle's row on the Plugins panel from
+  // `<package name>/locale/en.json`, which it resolves through the exports map
+  // without activating the plugin. Skip the file and the row is named by its
+  // full package specifier — an operator reads an identifier, not a name — and a
+  // locale field that is empty or not a string is not a fallback but a metadata
+  // diagnostic, which degrades the row the same way.
+  const localePath = path.join(directory, "locale", "en.json");
+  if (!existsSync(localePath)) {
+    errors.push(
+      "locale/en.json is missing; without it the Plugins panel names this row by its package specifier",
+    );
+  } else {
+    let locale;
+    try {
+      locale = readJson(localePath);
+    } catch (cause) {
+      errors.push(`locale/en.json is not readable JSON: ${String(cause)}`);
+    }
+    for (const field of ["title", "description"]) {
+      const value = locale?.meta?.[field];
+      if (typeof value !== "string" || value.trim() === "") {
+        errors.push(`locale/en.json meta.${field} must be a non-empty string`);
+      }
+    }
+  }
+  if (manifest.exports?.["./locale/en.json"] !== "./locale/en.json") {
+    errors.push(
+      'exports["./locale/en.json"] must equal "./locale/en.json"; the Host reads the row name through the exports map',
+    );
+  }
+  if (!isPublishedFile(manifest.files ?? [], "locale/en.json")) {
+    errors.push("locale/en.json is missing from package.json files");
+  }
+
   const rootExport = manifest.exports?.["."];
   const exportedTypes =
     typeof rootExport === "object" && rootExport !== null
@@ -260,6 +368,51 @@ export function validatePublishablePlugin(directory) {
     }
   }
 
+  return errors;
+}
+
+/**
+ * A publishable shared package keeps a gate of its own, so Nx and CI run its
+ * export and dependency checks instead of skipping the project silently.
+ */
+export function validatePublishableSharedPackage(directory) {
+  const scripts = readJson(path.join(directory, "package.json")).scripts ?? {};
+  const errors = [];
+  for (const name of REQUIRED_SHARED_PACKAGE_SCRIPTS) {
+    if (typeof scripts[name] !== "string") {
+      errors.push(
+        `scripts.${name} is required for every publishable shared package`,
+      );
+    }
+  }
+
+  // The manifest alone would accept a `verify` that checks nothing: a script
+  // exiting 0 while `docs/VERIFICATION.md` describes the two checks it stopped
+  // making. A package with no `verify` at all is reported once, above.
+  const scriptsDirectory = path.join(directory, "scripts");
+  if (typeof scripts.verify === "string") {
+    const enabled = new Set();
+    const gateFiles = existsSync(scriptsDirectory)
+      ? readdirSync(scriptsDirectory, { withFileTypes: true })
+      : [];
+    for (const entry of gateFiles) {
+      if (!entry.isFile() || !entry.name.endsWith(".mjs")) continue;
+      const source = readFileSync(
+        path.join(scriptsDirectory, entry.name),
+        "utf8",
+      );
+      for (const name of sharedGateOptions(source)) enabled.add(name);
+    }
+    const missing = REQUIRED_SHARED_GATE_OPTIONS.filter(
+      (name) => !enabled.has(name),
+    );
+    if (missing.length > 0) {
+      errors.push(
+        `no script under scripts/ calls runVerifyPackage with ${missing.join(" and ")} enabled; ` +
+          "a shared package gate keeps both options on — packing cannot show either",
+      );
+    }
+  }
   return errors;
 }
 
@@ -491,8 +644,8 @@ export function validateDiscoverability(directory, repoRoot = process.cwd()) {
  * The root README is the human entry point to the published set, so its package
  * table is a second catalog beside `plugins.json`: a package missing from it is
  * invisible to a reader who never opens the JSON, and a row that still calls a
- * published package "private" misstates which npm names `dsh plugin add` can
- * install. The gate keeps both catalogs listing the same package set.
+ * published package "private" misstates which npm names are published, and so
+ * installable at all. The gate keeps both catalogs listing the same package set.
  */
 export function findReadmeCatalogGaps(repoRoot = process.cwd()) {
   const readmePath = path.join(repoRoot, "README.md");
@@ -511,6 +664,11 @@ export function findReadmeCatalogGaps(repoRoot = process.cwd()) {
 export function verifyPublishablePlugins(repoRoot = process.cwd()) {
   const failures = [];
   let verified = 0;
+  for (const finding of verifyRetiredSeats(repoRoot).findings) {
+    failures.push(
+      `${path.relative(repoRoot, finding.file)}:${finding.line}: [${finding.rule}] ${finding.message}`,
+    );
+  }
 
   for (const group of ["plugins", "packages"]) {
     const groupRoot = path.join(repoRoot, group);
@@ -535,6 +693,9 @@ export function verifyPublishablePlugins(repoRoot = process.cwd()) {
       const errors = [
         // Only plugin directories carry the Cordis patch and client contract.
         ...(group === "plugins" ? validatePublishablePlugin(directory) : []),
+        ...(group === "packages"
+          ? validatePublishableSharedPackage(directory)
+          : []),
         ...validateDiscoverability(directory, repoRoot),
         ...validatePublishedContent(directory, repoRoot),
       ];
@@ -600,180 +761,22 @@ function anyScriptMentions(directory, needle) {
   );
 }
 
-/** Semver precedence for the versions the curated changelog declares. */
-export function compareVersions(a, b) {
-  const parse = (version) => {
-    const separator = version.indexOf("-");
-    const core = separator === -1 ? version : version.slice(0, separator);
-    const prerelease = separator === -1 ? "" : version.slice(separator + 1);
-    const [major = 0, minor = 0, patch = 0] = core
-      .split(".")
-      .map((part) => Number(part));
-    return { major, minor, patch, prerelease };
-  };
-
-  const left = parse(a);
-  const right = parse(b);
-  for (const key of ["major", "minor", "patch"]) {
-    if (left[key] !== right[key]) return left[key] < right[key] ? -1 : 1;
-  }
-
-  // A prerelease precedes the release of the same core.
-  if (left.prerelease !== right.prerelease) {
-    if (left.prerelease === "") return 1;
-    if (right.prerelease === "") return -1;
-    const ids = [left.prerelease.split("."), right.prerelease.split(".")];
-    for (
-      let index = 0;
-      index < Math.max(ids[0].length, ids[1].length);
-      index += 1
-    ) {
-      const [x, y] = [ids[0][index], ids[1][index]];
-      if (x === undefined) return -1;
-      if (y === undefined) return 1;
-      const numeric = [/^\d+$/u.test(x), /^\d+$/u.test(y)];
-      if (numeric[0] && numeric[1]) {
-        const delta = Number(x) - Number(y);
-        if (delta !== 0) return delta < 0 ? -1 : 1;
-      } else if (numeric[0] !== numeric[1]) {
-        return numeric[0] ? -1 : 1;
-      } else if (x !== y) {
-        return x < y ? -1 : 1;
-      }
-    }
-  }
-  return 0;
-}
-
-/** Project names a plan's front matter declares bumps for. */
-export function planProjects(content) {
-  const lines = content.split("\n");
-  if (lines[0]?.trim() !== FRONT_MATTER_FENCE) return [];
-  const closingFence = lines.findIndex(
-    (line, index) => index > 0 && line.trim() === FRONT_MATTER_FENCE,
-  );
-  if (closingFence === -1) return [];
-  return lines
-    .slice(1, closingFence)
-    .map((line) => /^(?<key>.+?)\s*:\s*\S+$/u.exec(line.trim())?.groups.key)
-    .filter((key) => key !== undefined)
-    .map((key) => key.replace(/^"|"$/gu, ""));
-}
-
 /**
- * The version literals of the curated end-user changelog (QaChangelog.tsx),
- * where each entry declares `version: "x.y.z"` as a plain literal.
+ * The client slot a package mounts its configuration card under, or `null` when
+ * its sources register no card. A slot only a card can be seated on fires on its
+ * own — the panel seats included, whose contract is that the bundle carries *no*
+ * shell of ours; `settings.plugins.tab` fires only together with the shell, because
+ * that slot also carries feature-owned pages that render no card and would be asked
+ * to assert a shell they never claim.
  */
-export function curatedChangelogVersions(changelogSource) {
-  return [...changelogSource.matchAll(/\bversion:\s*"([^"]+)"/gu)].map(
-    (match) => match[1],
-  );
-}
-
-/**
- * The semver bump a version plan declares for one project, read from the
- * front matter (`"project": patch|minor|major`).
- */
-export function planBumpFor(content, project) {
-  const lines = content.split("\n");
-  if (lines[0]?.trim() !== FRONT_MATTER_FENCE) return undefined;
-  const closingFence = lines.findIndex(
-    (line, index) => index > 0 && line.trim() === FRONT_MATTER_FENCE,
-  );
-  if (closingFence === -1) return undefined;
-  const escaped = project.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
-  const match = lines
-    .slice(1, closingFence)
-    .map((line) =>
-      new RegExp(`^"${escaped}"\\s*:\\s*(patch|minor|major)\\s*$`, "u").exec(
-        line.trim(),
-      ),
-    )
-    .find((match) => match !== null);
-  return match?.[1];
-}
-
-/**
- * The version one semver bump step away from `version`. A version outside
- * the numeric `x.y.z` core (prerelease suffixes are tolerated but ignored)
- * yields undefined, so callers can fall back to a weaker check.
- */
-export function incrementVersion(version, bump) {
-  const core = /^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)/u.exec(version);
-  if (core === null) return undefined;
-  const [major, minor, patch] = [
-    Number(core.groups.major),
-    Number(core.groups.minor),
-    Number(core.groups.patch),
-  ];
-  if (bump === "major") return `${major + 1}.0.0`;
-  if (bump === "minor") return `${major}.${minor + 1}.0`;
-  return `${major}.${minor}.${patch + 1}`;
-}
-
-/**
- * AGENTS.md ("QA surface release notes"): a version plan for the qa-surface
- * project must come with a curated changelog entry for exactly the version
- * the plans currently bump to — the highest bump across the qa-surface plans
- * applied to the manifest's current version. Tying the gate to the computed
- * version keeps it satisfied by a stale future entry: once 0.8.0 exists, the
- * next planned release must update QaChangelog.tsx again.
- */
-export function validateQaChangelogCoverage(repoRoot, plans) {
-  const qaSurfacePlans = plans.filter((plan) =>
-    planProjects(plan.content).includes(QA_SURFACE_PROJECT),
-  );
-  if (qaSurfacePlans.length === 0) return [];
-
-  const packageDirectory = path.join(repoRoot, QA_SURFACE_DIRECTORY);
-  const manifestPath = path.join(packageDirectory, "package.json");
-  if (!existsSync(manifestPath)) {
-    return [
-      "plugins/dsh-qa-surface: version plans declare the project, but its package.json is missing",
-    ];
-  }
-  const currentVersion = readJson(manifestPath).version;
-
-  const changelogPath = path.join(packageDirectory, QA_CHANGELOG_SOURCE);
-  if (!existsSync(changelogPath)) {
-    return [
-      "plugins/dsh-qa-surface: version plans declare the project, but src/client/components/QaChangelog.tsx is missing",
-    ];
-  }
-  const versions = curatedChangelogVersions(
-    readFileSync(changelogPath, "utf8"),
-  );
-  const bumpOrder = { patch: 0, minor: 1, major: 2 };
-  const bumps = qaSurfacePlans
-    .map((plan) => planBumpFor(plan.content, QA_SURFACE_PROJECT))
-    .filter((bump) => bump !== undefined);
-  if (bumps.length === 0) {
-    // Unparseable plans fall back to the weaker tripwire: some entry newer
-    // than the current version. validateVersionPlan already rejects damaged
-    // front matter, so this is a safety net rather than the main check.
-    if (
-      versions.some((version) => compareVersions(version, currentVersion) > 0)
-    ) {
-      return [];
-    }
-    return [
-      `plugins/dsh-qa-surface: a version plan declares the project, but QaChangelog.tsx has no entry newer than the current ${currentVersion}; add the planned version to QA_CHANGELOG in the same change`,
-    ];
-  }
-  const highestBump = Object.keys(bumpOrder)
-    .filter((bump) => bumps.includes(bump))
-    .sort((a, b) => bumpOrder[b] - bumpOrder[a])
-    .at(0);
-  const plannedVersion = incrementVersion(currentVersion, highestBump);
-  if (plannedVersion === undefined) {
-    return [
-      `plugins/dsh-qa-surface: the manifest version ${currentVersion} is not a numeric x.y.z release, so the planned changelog version cannot be derived`,
-    ];
-  }
-  if (versions.includes(plannedVersion)) return [];
-  return [
-    `plugins/dsh-qa-surface: the qa-surface version plans bump to ${plannedVersion}, but QaChangelog.tsx has no entry for it; add the planned version to QA_CHANGELOG in the same change`,
-  ];
+function findSettingsCardSlot(sources) {
+  const texts = walkFiles(sources).map((file) => readFileSync(file, "utf8"));
+  const mentions = (needle) => texts.some((text) => text.includes(needle));
+  const cardSlot = CARD_SEAT_SLOTS.find(mentions);
+  if (cardSlot !== undefined) return cardSlot;
+  return mentions(CARD_TAB_SLOT) && CARD_SHELL_MARKERS.some(mentions)
+    ? CARD_TAB_SLOT
+    : null;
 }
 
 /**
@@ -813,11 +816,8 @@ export function validateClientContractGates(directory, manifest) {
     }
   }
 
-  if (
-    walkFiles(sources).some((file) =>
-      readFileSync(file, "utf8").includes(SETTINGS_CARD_SLOT),
-    )
-  ) {
+  const cardSlot = findSettingsCardSlot(sources);
+  if (cardSlot !== null) {
     // The shared runner takes the contract as an option, so a manifest that
     // passes `clientBundle.cardContract` runs the same gate without importing
     // the module by path.
@@ -829,7 +829,7 @@ export function validateClientContractGates(directory, manifest) {
         .some(runnerUsesCardContract);
     if (!routed) {
       errors.push(
-        `src registers a "${SETTINGS_CARD_SLOT}" card, but no script in scripts/ runs ${CARD_CONTRACT_MODULE}.mjs; call it from verify-package.mjs or verify-client-bundle.mjs, or pass clientBundle.cardContract to runVerifyPackage`,
+        `src registers a "${cardSlot}" card, but no script in scripts/ runs ${CARD_CONTRACT_MODULE}.mjs; call it from verify-package.mjs or verify-client-bundle.mjs, or pass clientBundle.cardContract to runVerifyPackage`,
       );
     }
   }
@@ -903,7 +903,7 @@ export function validateVersionPlan(fileName, content, knownProjects) {
 
 export function verifyVersionPlans(
   repoRoot = process.cwd(),
-  { requirePlans = false } = {},
+  { requirePlans = false, changelogBaselines, base, head = "HEAD" } = {},
 ) {
   const plansRoot = path.join(repoRoot, VERSION_PLANS_DIRECTORY);
   const planFiles = existsSync(plansRoot)
@@ -923,7 +923,50 @@ export function verifyVersionPlans(
       ...validateVersionPlan(plan.file, plan.content, knownProjects),
     );
   }
-  failures.push(...validateQaChangelogCoverage(repoRoot, plans));
+  const baselines =
+    changelogBaselines === undefined
+      ? qaChangelogBaselines(repoRoot, { base, head })
+      : changelogBaselines;
+  failures.push(
+    ...validateQaChangelogCoverage(repoRoot, plans, baselines?.version),
+  );
+
+  const changelogPath = path.join(
+    repoRoot,
+    QA_SURFACE_DIRECTORY,
+    QA_CHANGELOG_SOURCE,
+  );
+  const manifestPath = path.join(
+    repoRoot,
+    QA_SURFACE_DIRECTORY,
+    "package.json",
+  );
+  if (existsSync(changelogPath) && existsSync(manifestPath)) {
+    const changelogSource = readFileSync(changelogPath, "utf8");
+    const baseSource =
+      baselines === null || baselines === undefined ? null : baselines.base;
+    failures.push(
+      ...validateQaChangelogPlannedEntries(
+        changelogSource,
+        baselines?.version !== undefined &&
+          compareVersions(baselines.version, readJson(manifestPath).version) > 0
+          ? baselines.version
+          : readJson(manifestPath).version,
+        plans,
+        baseSource,
+      ),
+    );
+    if (baselines !== null && baselines !== undefined) {
+      failures.push(
+        ...validateQaChangelogFrozenSections(
+          changelogSource,
+          baselines.released,
+          baselines.base,
+        ),
+      );
+    }
+  }
+
   if (requirePlans && planFiles.length === 0) {
     failures.push("at least one version plan file is required");
   }
@@ -935,12 +978,38 @@ export function verifyVersionPlans(
 }
 
 if (path.resolve(process.argv[1] ?? "") === fileURLToPath(import.meta.url)) {
-  if (process.argv.includes("--version-plans-only")) {
-    const plans = verifyVersionPlans(process.cwd(), { requirePlans: true });
+  const plansOnly = process.argv.includes("--version-plans-only");
+  // Read the frozen baseline once and say out loud when there is none, so a
+  // skipped check is never mistaken for a passing one.
+  const args = process.argv.slice(2);
+  const allowed = /^(?:--version-plans-only|--base=.+|--head=.+)$/u;
+  if (args.some((argument) => !allowed.test(argument)))
+    throw new Error("unknown package hygiene argument");
+  const base =
+    args.find((argument) => argument.startsWith("--base="))?.slice(7) ??
+    process.env.NX_BASE;
+  const head =
+    args.find((argument) => argument.startsWith("--head="))?.slice(7) ??
+    process.env.NX_HEAD ??
+    "HEAD";
+  const changelogBaselines = qaChangelogBaselines(process.cwd(), {
+    base,
+    head,
+  });
+  if (changelogBaselines === null) {
+    process.stderr.write(
+      "package hygiene: frozen changelog sections NOT checked, no release/* tag available\n",
+    );
+  }
+  if (plansOnly) {
+    const plans = verifyVersionPlans(process.cwd(), {
+      requirePlans: true,
+      changelogBaselines,
+    });
     process.stdout.write(`version plans: verified ${plans} plan file(s)\n`);
   } else {
     const verified = verifyPublishablePlugins();
-    const plans = verifyVersionPlans(process.cwd());
+    const plans = verifyVersionPlans(process.cwd(), { changelogBaselines });
     process.stdout.write(
       `package hygiene: verified ${verified} publishable plugins\n`,
     );

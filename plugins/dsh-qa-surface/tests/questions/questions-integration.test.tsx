@@ -16,6 +16,7 @@ import { QaHostQuestionBridge } from "../../src/client/questions.js";
 import { QaQuestions } from "../../src/client/components/QaQuestions.js";
 import type { QaQuestionApi } from "../../src/client/types.js";
 import { fakeContext, sessionAgent } from "../helpers/context-fakes.js";
+import { settle } from "../helpers/act.js";
 
 const SILENT_LOGGER = {
   debug() {},
@@ -103,7 +104,9 @@ describe("answering a model's question from the QA view", () => {
     fireEvent.click(screen.getByText("Далее"));
     // A single-select advances by itself.
     fireEvent.click(screen.getByText("Расширенный"));
-    fireEvent.click(screen.getByText("Отправить"));
+    // Submitting hands the form to the bridge, and the form's own state moves
+    // when that round trip resolves.
+    await settle(() => fireEvent.click(screen.getByText("Отправить")));
 
     await expect(asked).resolves.toEqual({
       answers: [
@@ -128,7 +131,7 @@ describe("answering a model's question from the QA view", () => {
     await openForm(bridge);
     fireEvent.click(screen.getByText("Пропустить"));
     fireEvent.click(screen.getByText("Минимальный"));
-    fireEvent.click(screen.getByText("Отправить"));
+    await settle(() => fireEvent.click(screen.getByText("Отправить")));
 
     await expect(asked).resolves.toEqual({
       answers: [
@@ -149,10 +152,14 @@ describe("answering a model's question from the QA view", () => {
     );
 
     await openForm(bridge);
-    fireEvent.click(screen.getByText("Отмена"));
+    // The refusal is a rejection, so its handler has to be on the promise
+    // before the click lets the gate raise it — otherwise Node reports the
+    // rejection as unhandled and only then learns the test was watching.
+    const refused = expect(asked).rejects.toThrow(/closed the question/u);
+    await settle(() => fireEvent.click(screen.getByText("Отмена")));
 
     // The model reads a reason it can act on instead of a turn that waits.
-    await expect(asked).rejects.toThrow(/closed the question/u);
+    await refused;
     await waitFor(() => {
       expect(gate.list("chat-1")).toEqual([]);
     });

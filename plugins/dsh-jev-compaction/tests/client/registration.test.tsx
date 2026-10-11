@@ -1,46 +1,76 @@
 // @vitest-environment jsdom
 
 /**
- * The client entry's wiring: one card in the shared `settings.plugin.item`
- * slot keyed by the plugin's settings namespace, and one conversation
- * contribution that renders a card per recorded compaction run into the
- * transcript (SPEC §28). A wrong key means the card renders in a namespace the
- * Host never installed, so the key is the whole contract.
+ * The client entry's wiring: one card, in the configuration seat the Plugins page
+ * gives this bundle's own row, bound to the Host settings section keyed by the
+ * plugin's profile entry id. A wrong key means the card edits a section the Host
+ * never serves, so the key is the whole contract.
  */
 
 import type { Context } from "@deepseek-ai/cordis";
-import { beforeEach, describe, expect, it } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { createElement } from "react";
+import type { ComponentType } from "react";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { CLIENT_PLUGIN_NAME, apply, inject } from "../../src/client/index.js";
 import { JEV_COMPACTION_NODE_KIND } from "../../src/client/conversation.js";
+import { JEV_COMPACTION_ROW_SUMMARY } from "../../src/client/card.js";
+import { JEV_COMPACTION_SETTINGS_NAMESPACE } from "../../src/shared/settings.js";
 
 interface SlotRegistration {
   readonly name: string;
   readonly key?: string;
-  readonly locale?: string;
   readonly inject?: () => unknown;
+  readonly component?: unknown;
 }
 
-const boundNamespaces: string[] = [];
+/** One write the card issues against a form. */
+interface WriteOp {
+  readonly op: string;
+  readonly path: readonly string[];
+  readonly value?: unknown;
+}
+
+const resolvedNamespaces: string[] = [];
 
 beforeEach(() => {
-  boundNamespaces.length = 0;
+  resolvedNamespaces.length = 0;
 });
 
+afterEach(cleanup);
+
 function stub(
-  options: { withBinder?: boolean; withConversation?: boolean } = {},
+  options: {
+    withForms?: boolean;
+    withConversation?: boolean;
+    writes?: WriteOp[];
+  } = {},
 ) {
+  const definitions: Record<string, unknown>[] = [];
   const slots: SlotRegistration[] = [];
-  const styles: string[] = [];
-  const definitions: Array<Record<string, unknown>> = [];
   const face = {
-    settingsScope: {
-      bind: (spec: { namespace: string }) => {
-        boundNamespaces.push(spec.namespace);
+    configForms: {
+      get: (entryId: string) => {
+        resolvedNamespaces.push(entryId);
+        // One stable snapshot object: the card reads it through
+        // `useSyncExternalStore`, which re-renders on every identity change.
+        const snapshot = {
+          status: "ready",
+          value: { enabled: true },
+          base: {},
+          // One override, so the reset control the write test clicks exists.
+          user: { enabled: true },
+          revision: 1,
+          writable: true,
+          mode: "host",
+        };
         return {
-          getSnapshot: () => ({ status: "ready", value: {}, writable: true }),
+          getSnapshot: () => snapshot,
           subscribe: () => () => {},
-          mutate: async () => {},
+          mutate: async (ops: WriteOp[]) => {
+            options.writes?.push(...ops);
+          },
           set: async () => {},
           unset: async () => {},
         };
@@ -51,76 +81,143 @@ function stub(
         factory();
         return () => {};
       },
-      register: (registration: SlotRegistration) => {
-        slots.push(registration);
+      register: (registration: SlotRegistration, component: unknown) => {
+        slots.push({ ...registration, component });
         return () => {};
       },
     },
-    uiConversation: {
-      events: {
-        register: (definition: Record<string, unknown>) => {
-          definitions.push(definition);
-          return () => {};
-        },
-      },
+  };
+  const context = {
+    slots: face.slots,
+    ...(options.withForms === false ? {} : { configForms: face.configForms }),
+    ...(options.withConversation === true
+      ? {
+          uiConversation: {
+            events: {
+              register: (definition: Record<string, unknown>) => {
+                definitions.push(definition);
+                return () => {};
+              },
+            },
+          },
+        }
+      : {}),
+  };
+  return { ctx: context as unknown as Context, slots, definitions };
+}
+
+function registeredCard(): SlotRegistration {
+  const { ctx, slots } = stub();
+  apply(ctx);
+  expect(slots).toHaveLength(1);
+  return slots[0]!;
+}
+
+/**
+ * The `ConfigPageForm` the row seat hands its registrant: `{ state, mutate }`,
+ * beside the form this plugin resolved for itself.
+ */
+function pageForm(writes: WriteOp[]) {
+  return {
+    state: { status: "ready", value: {}, revision: 1, writable: true },
+    mutate: async (ops: WriteOp[]) => {
+      writes.push(...ops);
     },
   };
-  if (options.withBinder === false || options.withConversation === false) {
-    const bare = {
-      slots: face.slots,
-      ...(options.withBinder === false
-        ? {}
-        : { settingsScope: face.settingsScope }),
-      ...(options.withConversation === false
-        ? {}
-        : { uiConversation: face.uiConversation }),
-    };
-    return {
-      ctx: bare as unknown as Context,
-      slots,
-      styles,
-      definitions,
-    };
-  }
-  return { ctx: face as unknown as Context, slots, styles, definitions };
+}
+
+/**
+ * The entry as the row's configuration section renders it. The page's `form` is
+ * passed after the injected face because that is the order the seat spreads its own
+ * owner props in: a face key named `form` would be shadowed here, and silently —
+ * only a live host shows it, which is why the decoy belongs in the test.
+ */
+function mountRowSection(settingsWrites: WriteOp[]) {
+  const { ctx, slots } = stub({ writes: settingsWrites });
+  apply(ctx);
+  const registration = slots[0]!;
+  const Component = registration.component as ComponentType<
+    Record<string, unknown>
+  >;
+  const pageWrites: WriteOp[] = [];
+  const result = render(
+    createElement(Component, {
+      ...(registration.inject?.() as Record<string, unknown>),
+      view: "page",
+      form: pageForm(pageWrites),
+    }),
+  );
+  return { ...result, pageWrites };
 }
 
 describe("client entry registration", () => {
   it("declares the client services the runtime must resolve", () => {
-    expect([...inject]).toEqual(["slots", "settingsScope", "uiConversation"]);
+    expect([...inject]).toEqual(["slots", "configForms", "uiConversation"]);
   });
 
-  it("registers one card in settings.plugin.item keyed by the namespace", () => {
-    const { ctx, slots } = stub();
-    apply(ctx);
-    const seat = slots.find((entry) => entry.name === "settings.plugin.item");
-    expect(seat).toBeDefined();
-    expect(seat!.key).toBe("jev-compaction");
-    expect(typeof seat!.inject).toBe("function");
+  it("registers one card on the Plugins page row seat", () => {
+    const registration = registeredCard();
+    expect(registration.name).toBe("plugins.row.config");
+    expect(typeof registration.inject).toBe("function");
   });
 
-  it("binds the same namespace the Host section installs", () => {
-    const { ctx } = stub();
-    apply(ctx);
-    expect(boundNamespaces).toEqual(["jev-compaction"]);
+  it("keys the seat by the package name and the row id whose section it edits", () => {
+    const registration = registeredCard();
+    // `<package name>#<row id>`, the row id as cordis.patch.yml declares it —
+    // the same string the Host files this plugin's volatile Config under.
+    expect(registration.key).toBe(
+      `${CLIENT_PLUGIN_NAME}#${JEV_COMPACTION_SETTINGS_NAMESPACE}`,
+    );
+    expect(resolvedNamespaces).toEqual([JEV_COMPACTION_SETTINGS_NAMESPACE]);
   });
 
-  it("hands the card the bound scope", () => {
-    const { ctx, slots } = stub();
-    apply(ctx);
-    const seat = slots.find((entry) => entry.name === "settings.plugin.item");
-    expect(seat!.inject?.()).toEqual({
-      scope: expect.objectContaining({ getSnapshot: expect.any(Function) }),
+  it("hands the card the resolved form under a name the slot cannot overwrite", () => {
+    const props = registeredCard().inject?.();
+    // The seat renders its registrant with the page's own `form`, so the plugin's
+    // ConfigForm arrives as `settingsForm` or the card would bind to the wrong one.
+    expect(props).toEqual({
+      settingsForm: expect.objectContaining({
+        getSnapshot: expect.any(Function),
+      }),
     });
   });
 
-  it("registers no settings card when the page exposes no binder", () => {
-    const { ctx, slots } = stub({ withBinder: false });
-    const dispose = apply(ctx);
-    expect(slots.some((entry) => entry.name === "settings.plugin.item")).toBe(
-      false,
+  it("answers the summary view with the one-liner, not a second body", () => {
+    const component = registeredCard().component;
+    expect(component).toBeDefined();
+    const { container } = render(
+      createElement(component as ComponentType<{ view: "summary" }>, {
+        view: "summary",
+      }),
     );
-    expect(boundNamespaces).toEqual([]);
+    // The page puts this view inside its own text, so it stays a sentence: a body
+    // here would nest the card under the row's description.
+    expect(container.textContent).toBe(JEV_COMPACTION_ROW_SUMMARY);
+    expect(container.querySelector(".jevc-body")).toBeNull();
+    // And no control of the form reaches the collapsed row.
+    expect(container.querySelector("input, select, button")).toBeNull();
+  });
+
+  it("mounts the card in the row's section and writes through the injected form", () => {
+    const settingsWrites: WriteOp[] = [];
+    const { container, pageWrites } = mountRowSection(settingsWrites);
+    // The seat really renders the body. The Plugins page draws this card's frame,
+    // heading and expand control, so the bundle mounts the controls directly and
+    // brings no surface of its own (AGENTS.md).
+    expect(container.querySelector(".jevc-body")).not.toBeNull();
+    expect(container.querySelector("input, select, button")).not.toBeNull();
+    fireEvent.click(screen.getByTestId("jevc-reset-overrides"));
+    // The card binds to the form it resolved for its own namespace — the one that
+    // can be subscribed to and read field by field — and never to the page's
+    // `{ state, mutate }`, whatever the seat passes beside it.
+    expect(settingsWrites).toEqual([{ op: "unset", path: ["enabled"] }]);
+    expect(pageWrites).toEqual([]);
+  });
+
+  it("renders no card when the page exposes no settings forms", () => {
+    const { ctx, slots } = stub({ withForms: false });
+    const dispose = apply(ctx);
+    expect(slots).toHaveLength(0);
     expect(typeof dispose).toBe("function");
   });
 
@@ -129,53 +226,39 @@ describe("client entry registration", () => {
   });
 });
 
-describe("conversation contribution", () => {
-  it("registers the run Definition and its renderer on the same kind", () => {
-    const { ctx, slots, definitions } = stub();
+describe("conversation registration beside the configuration row", () => {
+  it("registers the event definition and its transcript renderer", () => {
+    const { ctx, slots, definitions } = stub({ withConversation: true });
     apply(ctx);
     expect(definitions).toHaveLength(1);
-    expect(definitions[0]!.kind).toBe(JEV_COMPACTION_NODE_KIND);
-    expect(definitions[0]!.target).toBe("chat");
-    // The renderer is the second seat on the row seat of the transcript, keyed
-    // by the very kind the Definition publishes: one without the other is
-    // either an invisible card or the host's raw-JSON fallback row.
-    const chatSeat = slots.find(
-      (entry) => entry.name === "conversation.chat.node",
-    );
-    expect(chatSeat).toBeDefined();
-    expect(chatSeat!.key).toBe(JEV_COMPACTION_NODE_KIND);
+    expect(
+      slots.find((seat) => seat.name === "conversation.chat.node")?.key,
+    ).toBe(JEV_COMPACTION_NODE_KIND);
+    expect(slots.some((seat) => seat.name === "plugins.row.config")).toBe(true);
   });
-
-  it("still shows the card on a page that serves no settings directory", () => {
-    const { ctx, slots, definitions } = stub({ withBinder: false });
-    apply(ctx);
-    // No settings card, and no crash either. The transcript half is
-    // independent of the settings binder, which is the whole reason it reads
-    // no settings and no Remote.
-    expect(slots.some((entry) => entry.name === "settings.plugin.item")).toBe(
-      false,
-    );
+  it("keeps the transcript contribution without configuration forms", () => {
+    const { ctx, slots, definitions } = stub({
+      withForms: false,
+      withConversation: true,
+    });
+    const dispose = apply(ctx);
     expect(definitions).toHaveLength(1);
-    expect(slots.some((entry) => entry.name === "conversation.chat.node")).toBe(
+    expect(slots.some((seat) => seat.name === "conversation.chat.node")).toBe(
       true,
     );
+    expect(slots.some((seat) => seat.name === "plugins.row.config")).toBe(
+      false,
+    );
+    dispose();
   });
-
-  it("keeps the settings card when the conversation is absent", () => {
+  it("keeps the configuration row without the conversation service", () => {
     const { ctx, slots, definitions } = stub({ withConversation: false });
     const dispose = apply(ctx);
-    expect(slots.some((entry) => entry.name === "settings.plugin.item")).toBe(
-      true,
-    );
     expect(definitions).toHaveLength(0);
-    expect(slots.some((entry) => entry.name === "conversation.chat.node")).toBe(
+    expect(slots.some((seat) => seat.name === "conversation.chat.node")).toBe(
       false,
     );
-    expect(typeof dispose).toBe("function");
-  });
-
-  it("registers neither half without the slot registry", () => {
-    const dispose = apply({} as unknown as Context);
-    expect(typeof dispose).toBe("function");
+    expect(slots.some((seat) => seat.name === "plugins.row.config")).toBe(true);
+    dispose();
   });
 });

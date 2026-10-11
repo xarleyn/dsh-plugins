@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { Markdown } from "../../src/client/components/Markdown.js";
 import { QaSourcesPanel } from "../../src/client/components/QaSourcesPanel.js";
@@ -104,18 +104,20 @@ describe("QA inline source chips", () => {
         sourceRefs={refs}
       />,
     );
-    const chip = document.querySelector("a.dsh-qa-srcref");
-    expect(chip).not.toBeNull();
-    expect(chip?.getAttribute("href")).toBe(
+    const chip = screen.getByTestId("qa-source-chip");
+    expect(chip.tagName).toBe("A");
+    expect(chip.getAttribute("href")).toBe(
       "https://github.com/deepseek-ai/dsh-session-kb",
     );
-    expect(chip?.getAttribute("target")).toBe("_blank");
-    expect(chip?.getAttribute("rel")).toContain("noopener");
-    expect(chip?.getAttribute("data-kind")).toBe("web");
-    expect(chip?.textContent).toContain("GitHub");
-    const card = document.querySelector(".dsh-qa-srcref__card");
-    expect(card?.textContent).toContain("GitHub");
-    expect(card?.textContent).toContain("past sessions");
+    expect(chip.getAttribute("target")).toBe("_blank");
+    expect(chip.getAttribute("rel")).toContain("noopener");
+    expect(chip.getAttribute("data-kind")).toBe("web");
+    expect(
+      within(chip).getByTestId("qa-source-chip-label").textContent,
+    ).toContain("GitHub");
+    const card = within(chip).getByTestId("qa-source-chip-card");
+    expect(card.textContent).toContain("GitHub");
+    expect(card.textContent).toContain("past sessions");
   });
 
   it("keeps unmatched links plain", () => {
@@ -125,7 +127,7 @@ describe("QA inline source chips", () => {
         sourceRefs={buildSourceRefs([webSource()])}
       />,
     );
-    expect(document.querySelector("a.dsh-qa-srcref")).toBeNull();
+    expect(screen.queryByTestId("qa-source-chip")).toBeNull();
     const plain = screen.getByRole("link", { name: "Сторонний" });
     expect(plain.className).toBe("");
   });
@@ -140,10 +142,12 @@ describe("QA inline source chips", () => {
         onSourceOpen={onSourceOpen}
       />,
     );
-    const chip = document.querySelector("button.dsh-qa-srcref");
-    expect(chip).not.toBeNull();
-    expect(chip?.textContent).toContain("index.ts");
-    if (chip !== null) fireEvent.click(chip);
+    const chip = screen.getByTestId("qa-source-chip");
+    expect(chip.tagName).toBe("BUTTON");
+    expect(
+      within(chip).getByTestId("qa-source-chip-label").textContent,
+    ).toContain("index.ts");
+    fireEvent.click(chip);
     expect(onSourceOpen).toHaveBeenCalledWith(source);
   });
 
@@ -155,7 +159,7 @@ describe("QA inline source chips", () => {
     render(
       <Markdown text="`npm run build` и `src/index.ts`" sourceRefs={refs} />,
     );
-    expect(document.querySelector(".dsh-qa-srcref")).toBeNull();
+    expect(screen.queryByTestId("qa-source-chip")).toBeNull();
     expect(screen.getAllByRole("code")).toHaveLength(2);
   });
 });
@@ -194,8 +198,9 @@ describe("QA sources panel direct detail", () => {
         initialDetail={fileSource()}
       />,
     );
-    expect(screen.queryByText(/Web/)).toBeNull();
-    const title = document.querySelector(".dsh-qa-sourcedetail__title");
-    expect(title?.textContent).toBe("index.ts");
+    expect(screen.queryByTestId("qa-sources-group-web")).toBeNull();
+    expect(screen.getByTestId("qa-source-detail-title").textContent).toBe(
+      "index.ts",
+    );
   });
 });

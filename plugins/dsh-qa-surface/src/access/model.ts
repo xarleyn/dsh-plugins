@@ -11,6 +11,7 @@ import type {
   QaToolSelection,
   QaUserAccess,
 } from "../types.js";
+import { normalizeModelPair } from "./model-policy.js";
 import {
   normalizeSkillOverride,
   resolveSkillVisibility,
@@ -118,12 +119,14 @@ export function normalizeSubrole(value: QaSubrole): QaSubrole {
   }
   const icon = value.ui?.icon?.trim();
   const accent = value.ui?.accent?.trim();
+  const model = normalizeModelPair(value.model, `subrole ${id}.model`);
   return Object.freeze({
     id,
     name,
     ...(description === undefined || description === "" ? {} : { description }),
     enabled: value.enabled === true,
     capabilities: normalizeCapabilitySelection(value.capabilities),
+    ...(model === undefined ? {} : { model }),
     ...(icon === undefined && accent === undefined
       ? {}
       : {
@@ -264,9 +267,11 @@ export function normalizeUserAccess(
     requestedDefault !== undefined && allowed.includes(requestedDefault)
       ? requestedDefault
       : (allowed[0] as string);
+  const model = normalizeModelPair(value?.model, "account model");
   return Object.freeze({
     allowedSubroles: Object.freeze(allowed),
     defaultSubrole,
+    ...(model === undefined ? {} : { model }),
   });
 }
 
@@ -276,6 +281,12 @@ export interface CapabilityAvailability {
   readonly skills: ReadonlySet<string>;
   /** Installed skills a person may invoke; defaults to the model-facing set. */
   readonly userSkills?: ReadonlySet<string>;
+  /**
+   * User-invocable skills the account of this session owns. They join
+   * `userSkills` for their owner whatever the role lists, because a personal
+   * skill belongs to one account and cannot be named in a shared role at all.
+   */
+  readonly ownSkills?: ReadonlySet<string>;
 }
 
 export interface ResolveCapabilityPolicyInput {
@@ -352,6 +363,44 @@ function resolveVisibleSkills(
   };
 }
 
+/**
+ * Names an administrator withdrew outright, which is every account at once,
+ * its owner included.
+ * @param config - the role configuration the withdrawal was recorded in.
+ */
+export function withdrawnSkillNames(
+  config: QaCapabilityConfig,
+): ReadonlySet<string> {
+  return new Set(
+    config.skillOverrides
+      .filter(({ disabled }) => disabled)
+      .map(({ skillName }) => skillName),
+  );
+}
+
+/**
+ * The personal layer of one session's user-invoke list.
+ *
+ * Only an outright administrator withdrawal reaches a skill the account owns:
+ * the role overlay edits per-role audiences, and a personal skill is not a role
+ * grant, while `disabled` withdraws the name from the deployment for everyone,
+ * its owner included.
+ * @param config - the role configuration the policy is resolved against.
+ * @param ownSkills - the account's own user-invocable skills, if any.
+ */
+export function personalUserSkillNames(
+  config: QaCapabilityConfig,
+  ownSkills: ReadonlySet<string> | undefined,
+): readonly string[] {
+  if (ownSkills === undefined) return Object.freeze([]);
+  const withdrawn = withdrawnSkillNames(config);
+  return Object.freeze(
+    [...ownSkills]
+      .filter((name) => !withdrawn.has(name))
+      .sort((left, right) => left.localeCompare(right)),
+  );
+}
+
 export function resolveCapabilityPolicy({
   config,
   subroleId,
@@ -390,9 +439,15 @@ export function resolveCapabilityPolicy({
     installed.tools,
   );
   const skills = available(configuredSkills, installed.skills);
+  const userInstalled = installed.userSkills ?? installed.skills;
   const userSkills = available(
-    configuredSkills,
-    installed.userSkills ?? installed.skills,
+    [
+      ...new Set([
+        ...configuredSkills,
+        ...personalUserSkillNames(config, installed.ownSkills),
+      ]),
+    ],
+    userInstalled,
   );
 
   // The filtered skill loader is transport for the selected skill set. It is
@@ -432,12 +487,27 @@ export function resolveCapabilityPolicy({
       [...new Set([...configuredBase, ...configuredGrantable])],
       installed.tools,
     ),
-    missingSkills: missing(
-      configuredSkills,
-      installed.userSkills ?? installed.skills,
-    ),
+    missingSkills: missing(configuredSkills, userInstalled),
     policyRevision: revision ?? "",
   });
+}
+
+/**
+ * The skills a person may invoke under one policy — the whole of the
+ * user-facing allow-list, and the one place it is read.
+ *
+ * An empty `userSkills` means the role keeps no separate user list, not that it
+ * grants nothing, so the model-facing set stands in for it. A typed gesture is
+ * admitted or refused by this list and the palette is narrowed by it, so both
+ * have to derive it here: a name the palette offers but the line refuses, or
+ * one the palette hides while the line would accept, is one rule read two ways.
+ *
+ * @param policy - the effective capability policy of one session.
+ */
+export function userInvocableSkillNames(
+  policy: QaEffectiveCapabilityPolicy,
+): readonly string[] {
+  return policy.userSkills.length === 0 ? policy.skills : policy.userSkills;
 }
 
 export interface ResolveSkillAccessInput {

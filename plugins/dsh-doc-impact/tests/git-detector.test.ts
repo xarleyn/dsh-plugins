@@ -13,6 +13,21 @@ vi.setConfig({ testTimeout: 30_000 });
 
 const run = promisify(execFile);
 
+/** Counts the file reads the detector actually performs (see the hashing spy). */
+const hashing = vi.hoisted(() => ({ reads: [] as string[] }));
+
+vi.mock("../src/utils/hashing.js", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("../src/utils/hashing.js")>();
+  return {
+    ...actual,
+    hashFile: async (path: string) => {
+      hashing.reads.push(path);
+      return actual.hashFile(path);
+    },
+  };
+});
+
 const selectors: DetectorOptions["selectors"] = [
   { include: ["src/**"], exclude: [] },
   { include: ["docs/authentication.md"], exclude: [] },
@@ -192,6 +207,25 @@ describe("git baseline detector", () => {
     const detected = paths(diff);
     expect(detected.get("src/new-name.ts")).toBeDefined();
     expect(detected.get("src/old-name.ts")).toBeDefined();
+  });
+
+  it("caps the reads it performs at maxFiles instead of only trimming the report", async () => {
+    // Unborn branch: every file below is untracked, so all of them are dirty.
+    const cwd = await initRepo();
+    repos.push(cwd);
+    await mkdir(join(cwd, "src"), { recursive: true });
+    for (const name of ["a.ts", "b.ts", "c.ts"])
+      await writeFile(join(cwd, "src", name), `${name}\n`);
+
+    hashing.reads.length = 0;
+    const detector = createGitDetector({ selectors, maxFiles: 1 });
+    const baseline = await detector.captureBaseline(cwd);
+
+    expect(hashing.reads.map((path) => path.split(/[\\/]/u).pop())).toEqual([
+      "a.ts",
+    ]);
+    expect(baseline.files.keys().next().value).toBe("src/a.ts");
+    expect(baseline.degraded).toBe(true);
   });
 
   it("falls back to filesystem enumeration when git is absent", async () => {

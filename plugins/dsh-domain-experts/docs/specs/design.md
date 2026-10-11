@@ -768,8 +768,17 @@ Recommended conceptual memory tiers:
 ```text
 shared
 domain
+domain/account
 session/task
 ```
+
+`domain/account` is what one account's expert of this domain learned
+(`domains/payments/u/<account>`). A deployment with more than one account keeps
+a note there rather than in `domains/payments`, because the latter is what every
+account of the domain reads. Anything recorded as a rule of the domain has to
+hold whoever asked — the absence of a tool, a source or a path is a property of
+the caller's access, and a note about it belongs to that caller's tier or to the
+answer, never below it.
 
 ---
 
@@ -859,6 +868,10 @@ Expert can ask another Domain Expert but cannot directly read foreign domain mem
 ### direct-read
 
 Explicitly configured domains/resources may be directly queried.
+
+The `allowCrossDomain` switch governs this mode as well: when it is off,
+`directRead` grants no foreign memory namespaces to recall, tools or inspection.
+Saved selections remain configuration for a later enabled mode.
 
 Useful for tightly coupled product areas.
 
@@ -980,7 +993,7 @@ The DomainScope should behave like execution metadata, not prose copied into arb
 
 The plugin should run primarily in the **host plane**.
 
-Reason: DSH's current user-settings UI only exposes namespaces registered by live host-plane plugins; plugins mounted solely inside an agent preset cannot register their own settings namespace for this UI.
+Reason: the settings document an operator edits is the one belonging to a plugin's profile entry, and only a plugin mounted in the host plane has such an entry with live fields; a plugin mounted solely inside an agent preset cannot expose its own configuration to this UI.
 
 Recommended integrations:
 

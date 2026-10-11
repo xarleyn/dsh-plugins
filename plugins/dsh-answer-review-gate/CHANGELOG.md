@@ -1,3 +1,219 @@
+## 0.2.6 (2026-10-08)
+
+### 🩹 Fixes
+
+- The reviewer child follows the QA model policy where its own configuration is ([#766](https://github.com/xarleyn/dsh-plugins/issues/766))
+  silent.
+
+  `reviewer.{provider,model,route,reasoningEffort}` stays the deployment's fixed
+  answer for the reviewer — a reviewer that changed with the role it was reviewing
+  would be a worse check, not a better one. What the gate could not do was say
+  anything when that configuration named no model: the child then inherited the
+  parent's live selection, which is the model some visitor had left in the picker.
+
+  `createSubagentBackend` now takes the pair the QA policy fixes for the chat under
+  review, read structurally from the host's `qaSurface` (`qa-policy.ts`, the method
+  optional so an installed QA surface that predates policies reads as "no opinion"
+  rather than as a failure). The policy applies only where the gate's own `model`
+  stays empty; the reviewer's route override still wins, and the audit line names the
+  pair the review actually ran on.
+
+  Covered by `tests/qa-model-policy.test.ts` (no surface, no method and a blank pair
+  all read as silence; the policy's pair reaches the child when the configuration is
+  empty; a pinned reviewer model ignores the policy; nothing is sent where neither
+  speaks).
+
+### ❤️ Thank You
+
+- qoder-bot
+
+## 0.2.5 (2026-10-08)
+
+### 🩹 Fixes
+
+- A corrected answer arrives alone — the gate no longer makes the primary argue with its reviewer in front of the user. ([#729](https://github.com/xarleyn/dsh-plugins/issues/729))
+
+  On a live deployment the final answer of a reviewed turn opened with the internal exchange:
+  «Опровержение вывода ревизора: …» followed, further down, by the short line the user had asked for. Another run put the same
+  leak in a visible thinking block, where the model wrote down that its instructions asked it to keep the review quiet.
+
+  The revision steer was the cause. It demanded, in one sentence, that a disproved objection "state that disproof" and that the
+  answer never mention the review. A primary resolves that contradiction literally and prints the disproof as the answer — and
+  the reviewer's own vocabulary arrives with it, because it came from the same text. The instruction to conceal is what the
+  visible reasoning then reports.
+
+  The steer now admits exactly one visible artifact: the corrected answer, in the shape the user's request asked for. Findings
+  come back inside a delimited `<review_notes>` block, framed as this turn's working material rather than as prose to continue,
+  and a rejected objection is dropped without a word — the reviewer re-reads the next version of the answer, and where the
+  exchange repeats the round budget ends it under the configured failure policy. No rule is phrased as a secret any more. The
+  text the reviewer sends is treated as input rather than as instructions: each field is bounded and cannot close that block
+  early, so a finding that quotes a hostile page stays a quotation.
+
+  As a guard, in a turn that has already been reviewed, a candidate that opens by disputing the review is not handed to a
+  reviewer and so cannot be certified as verified: the primary is steered once per user turn to deliver the answer's shape
+  instead, and the demand is recorded in the audit ring. A message the host has already committed cannot be edited at this seam,
+  so the guard stops the leak from passing for a reviewed answer rather than removing text the user has already read.
+
+### ❤️ Thank You
+
+- qoder-bot
+
+## 0.2.4 (2026-10-08)
+
+### 🩹 Fixes
+
+- A reviewer can no longer ask to delete a file, and a delegated call is refused ([#732](https://github.com/xarleyn/dsh-plugins/issues/732))
+  where it asks instead of stopping the turn.
+
+  The gate's own child is now composed from an explicit read-only set
+  (`src/reviewer-tools.ts`): unset `reviewer.allowedTools` means reads and
+  searches rather than nothing, and the destructive names — `file_delete`, the
+  file-writing and shell tools, the catalog's own delete, and any `terminal_*` or
+  `job_*` tool — are removed both when the config is resolved and again at the
+  call that starts the child. The reviewer's two task texts say the same thing
+  the filter enforces: an obstacle is a finding about the candidate, not something
+  to clear. On the `domain-expert` branch the mask is the domain's and a tool the
+  surface attaches to the agent's own layer survives any inherited filter, so that
+  branch is held on the surface's side.
+
+  There the approval seam refuses a delegated child's request outright, in either
+  `interaction.approvals` mode: a card parked over the parent's composer waits for
+  an answer a child can never be given, which is how a stand came to look like it
+  was thinking for an hour over a yes/no about one tool call. `file_delete` from a
+  delegated call is refused by its own inner gate too, with a reason that tells the
+  caller to report the file rather than remove it, and a parked request an operator
+  never answers now expires into a refusal instead of holding the turn open.
+
+### ❤️ Thank You
+
+- qoder-bot
+
+## 0.2.3 (2026-10-08)
+
+### 🩹 Fixes
+
+- Every plugin row on the Host's Plugins page is named in words. ([fff88762](https://github.com/xarleyn/dsh-plugins/commit/fff88762))
+
+  The page titles a bundle's row and fills its description line from the package's
+  exported `locale/en.json`, which the Host resolves through the package's `exports`
+  map without activating the plugin (`@deepseek-ai/dsh-app-boot` `package-meta.ts`).
+  Only `dsh-documents` shipped that file, so the other twenty-five rows were signed by
+  their full package specifier — an operator read `@yadsh/dsh-jev-compaction` where a
+  first-party row read a phrase. Each package now exports `./locale/en.json`, publishes
+  `locale/*.json`, and carries English `meta.title` and `meta.description`; where the
+  package already had a configuration card, its `summary` one-liner and the row's
+  description are one string, pinned by a test against the shipped file rather than
+  against a copy in the test. `pnpm verify:packages` asks all three halves of every
+  plugin package, so a row cannot fall back to a specifier unnoticed.
+
+  Two pages still seated on the deleted-in-spirit `settings.plugins.tab` move to the
+  panel with them. `dsh-prompt-firewall` edits its own Config namespace, so it takes the
+  row seat keyed `@yadsh/dsh-prompt-firewall#dsh-prompt-firewall` — the row id is the
+  namespace the Host serves the form under, so no saved value is orphaned — and with the
+  seat it gives up its shell, its header badge and its show/hide labels, taking the
+  Host's `--dsw-focus-ring-*` pair for every control it draws and answering the
+  unavailable namespace with a sentence instead of an empty section.
+  `dsh-domain-experts` owns no form — it edits domains through its Remote services — so
+  it takes the bundle-level seat `plugins.bundle.config`, keyed by the package name, and
+  drops the `<h2>` heading and the intro line the panel already draws from the row's own
+  display metadata.
+
+### ❤️ Thank You
+
+- xarleyn
+
+## 0.2.2 (2026-10-05)
+
+### 🩹 Fixes
+
+- A reviewer no longer treats an attachment it cannot open as proof that the ([4fa58cfe](https://github.com/xarleyn/dsh-plugins/commit/4fa58cfe))
+  answer invented its content.
+
+  The gate handed the reviewer two strings — the request and the draft — because
+  the text collector kept only text blocks, so a question asked about an uploaded
+  report or a photo reached the reviewer with the attachment erased. The reviewer
+  was instructed that a lack of evidence is a valid finding, so it raised exactly
+  the finding it could not avoid, and since an expert finding carries no concrete
+  fix to apply, the loop had no way to converge: the round budget ran out and the
+  answer was delivered as-is with a disclaimer. That is the shape of the
+  `max-rounds` failures the stand counts.
+
+  The reviewer now receives the same handle lines the host shows a model that
+  cannot receive the file — a named attachment, its kind, and no read path — and
+  the protocol in both shipped reviewer prompts says what follows from that: an
+  attachment you cannot inspect is reported as unverifiable, never as a
+  fabrication. The bytes are still not passed; giving the reviewer the file
+  itself needs a read tool in its allow-list and an image-capable reviewer model,
+  which is a separate decision.
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
+## 0.2.1 (2026-10-04)
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- An empty `reviewer.allowedTools` now really leaves the reviewer without tools, ([#340](https://github.com/xarleyn/dsh-plugins/issues/340))
+  and unloading the plugin closes what it opened.
+
+  The subagent backend attached a tool filter only when the allow-list was
+  non-empty. The host restricts a child's tools only when a filter arrives, so
+  `allowedTools: []` — the value that promises a reviewer working from its own
+  knowledge only — was precisely the one that handed the reviewer the parent
+  agent's whole tool surface. The list is now always sent, empty included.
+
+  The teardown paths close as well. `apply` returns an unload disposer that
+  closes the shared plugin logger, the one resource the plugin fiber does not
+  own; a review now waits for the subagent child's disposal instead of leaving it
+  running past the verdict; and a domain-expert review whose turn was already
+  cancelled at entry says so instead of launching a run it has no way to stop —
+  the reviewer face that plugin exposes owns the run and takes no signal.
+
+- The gate attributes its steers to its own producer kind and builds against a 0.1.7-rc.2 host. ([#527](https://github.com/xarleyn/dsh-plugins/issues/527), [#511](https://github.com/xarleyn/dsh-plugins/issues/511))
+
+  The revision and failure-policy messages the gate puts back into the reviewed
+  agent were attributed to a catch-all `plugin` source kind. `0.1.7-rc.2` does not
+  define one: the source map — the harness's answer to *who produced this*, kept
+  separate from the `notice`/`snapshot`/`catalog` vocabulary that answers *what
+  kind of thing it is* — ships only `user`, `model`, `tool` and `system-prompt`,
+  and every other producer declares its own kind through a module augmentation
+  (`tool-registry`, `subagent-settled`, `model-selection`). Naming a kind the host
+  deleted is a compile error, so the package did not build against an rc.2 host at
+  all; and a kind no declaration carries would leave a consumer with nothing to
+  match the row against, falling through to opaque content.
+
+  The package now declares `answer-review` as its own source kind and steers under
+  it. The form it already used is rc.2's vocabulary unchanged — a `notice` with a
+  bounded one-line account — so a steered row still reads "Answer review requested
+  corrections (round 1 of 2)" instead of unlabelled text, and which candidate the
+  gate reviews, when it suppresses an interim turn, and what it steers are all
+  untouched. What changed is that an rc.2 host can say who wrote the message.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+
+### ❤️ Thank You
+
+- Qoder
+- qoder-bot
+
 ## 0.2.0 (2026-09-24)
 
 ### 🚀 Features

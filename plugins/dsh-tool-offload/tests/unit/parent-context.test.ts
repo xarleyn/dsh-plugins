@@ -1,6 +1,6 @@
 /**
  * Unit tests for the ParentContextExtractor (SPEC §9.3: latest user task
- * only, bounded, plugin-injected user-role context excluded).
+ * only, bounded, injected user-role context excluded).
  */
 
 import { describe, expect, it } from "vitest";
@@ -19,14 +19,14 @@ describe("extractParentTask", () => {
     expect(task).not.toContain("</PARENT_TASK>");
   });
 
-  it("prefers the last human message over plugin-injected user-role events", () => {
+  it("prefers the last human message over injected user-role context", () => {
     const agent = fakeAgent({ userMessage: "older human task" });
     (
       agent as unknown as { session: { events: unknown[] } }
     ).session.events.unshift({
       type: "user/message",
       data: {
-        source: { kind: "plugin" },
+        source: { kind: "time-context" },
         content: [{ type: "text", text: "injected context" }],
       },
     });

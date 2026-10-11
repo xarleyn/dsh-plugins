@@ -73,6 +73,35 @@ describe("collectChatFiles", () => {
     expect(countChatAttachments(groups)).toBe(1);
   });
 
+  it("lists a document the answer produced as an attachment of that answer", () => {
+    const messages: readonly QaMessage[] = [
+      userMessage({ id: "user:1", timestamp: 1_000 }),
+      {
+        id: "assistant:1",
+        role: "assistant",
+        text: "Готово, собрал отчёт.",
+        status: "committed",
+        timestamp: 2_000,
+        artifacts: [
+          {
+            path: ".qa/artifacts/documents/doc_1/report.docx",
+            name: "report.docx",
+            format: "docx",
+            bytes: 40_000,
+          },
+        ],
+      },
+    ];
+    const groups = collectChatFiles(messages);
+    // The produced document is on the roster under the answer that made it.
+    expect(groups.map((group) => group.messageId)).toEqual(["assistant:1"]);
+    expect(groups[0]?.artifacts).toHaveLength(1);
+    expect(groupHasAttachments(groups[0]!)).toBe(true);
+    // The header badge counts what the turn produced: a chat whose only file is
+    // an answer's document is not an empty chat.
+    expect(countChatAttachments(groups)).toBe(1);
+  });
+
   it("returns nothing for an empty transcript", () => {
     expect(collectChatFiles([])).toEqual([]);
     expect(countChatAttachments(collectChatFiles([]))).toBe(0);
