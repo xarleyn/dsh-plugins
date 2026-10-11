@@ -83,7 +83,11 @@ describe("classic browser bundle", () => {
 
   it("declares exactly the client services it reads", async () => {
     const { exports } = await loadBundle();
-    expect([...exports.inject]).toEqual(["slots", "settingsScope"]);
+    expect([...exports.inject]).toEqual([
+      "slots",
+      "settingsScope",
+      "uiConversation",
+    ]);
   });
 
   it("mounts the card into settings.plugin.item and renders the shell", async () => {
