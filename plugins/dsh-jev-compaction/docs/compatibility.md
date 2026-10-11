@@ -110,8 +110,15 @@ our prepended listener the effective composition is
   natively (§3), and emitting it would pull a type-only dependency outside
   this repository's pnpm catalogs. Downstream consumers simply see a
   replacement with no shadow-price record.
-- **No durable plugin events** (SPEC §28): nothing custom enters the session
-  log, so the journal stays readable in builds without this plugin.
+- **Durable plugin events, log-only and registered while mounted** (SPEC §28):
+  `jev-compaction/applied` and `jev-compaction/skipped` carry run metadata for
+  the conversation card. They never carry a `surfaceOp`, so they enter neither
+  the model-visible surface nor request reconstruction. Because they are
+  outside the harness's own vocabulary, the plugin joins them into
+  `KNOWN_SESSION_EVENT_TYPES` while it is loaded and removes them on dispose
+  (`src/observability/session-events.ts`): a session recorded by this plugin
+  and read without it is a required-event refusal, exactly as for any other
+  third-party event type.
 
 ## 9. Supported versions
 

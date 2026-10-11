@@ -79,6 +79,37 @@ Fail-open by design at both layers: every failure (missing API key, timeout,
 malformed response, surface drift, cancellation, a downstream plugin's block)
 skips the work and leaves ordinary DSH behavior untouched.
 
+### Seeing what a run did
+
+Historical compaction used to be visible only in the plugin log. Every run now
+writes one durable, log-only session event (`jev-compaction/applied`), and the
+browser bundle renders it as a card in the conversation:
+
+```text
+Jev compaction                          [auto]                    +
+162 results replaced · 237 835 → 133 841 tokens · 104 006 saved (44%) · 11:14:43
+```
+
+Collapsed by default; expanded it shows the trigger, the state-fitting stage,
+candidates / planned / applied, characters removed, the Jev request count with
+its concurrency, the resolved context window, the `KEEP_FULL` /
+`KEEP_TRUNCATED` / `KEEP_STUB` distribution, and one row per candidate with its
+tool, size, action, probability and `originalSeq → replacementSeq` pair —
+enough to address the replacement in the session log and read the original
+yourself. `/jev-compact --dry-run` produces the same card marked `dry-run`,
+with nothing replaced.
+
+The card carries metadata only: no tool output, no prompt, no state body. It is
+assembled from the session log, so it survives a refresh and a reopen, and it
+never re-enters the model's context as extra material.
+
+Why a run was *skipped* stays silent by default — a cooldown firing three turns
+in a row is noise, not information. Turn on **"Say why a run was skipped"**
+(`diagnostics.showSkipReasons`) and each skip is recorded as a one-line note
+(`cooldown`, `pressure not met`, `not enough candidates`, `savings gate`, …).
+Turn off **"Show a compaction card in the conversation"**
+(`diagnostics.sessionCards`) and no event is written at all.
+
 ## Safety: what each layer can and cannot lose
 
 Historical compaction is replay-safe. It shadows an already-durable
@@ -274,6 +305,8 @@ jev-compaction:
   diagnostics:
     logLevel: info
     includeCandidateScores: false
+    sessionCards: true # one durable conversation card per run
+    showSkipReasons: false # also say why a run was skipped
 ```
 
 Without a resolvable model context window the automatic trigger falls back to

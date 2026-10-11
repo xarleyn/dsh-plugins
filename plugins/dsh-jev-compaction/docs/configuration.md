@@ -149,6 +149,19 @@ settings service refuses the write otherwise.
 Provider presets and their per-provider overrides are documented in the
 [README](../README.md#decision-provider-presets).
 
+## `diagnostics` — logging and conversation observability
+
+| Field                  | Default | Meaning                                                                                                                        |
+| ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `logLevel`             | `info`  | Structured log level for the plugin's own log file.                                                                             |
+| `includeCandidateScores` | `false` | Include per-candidate scores in the `/jev-compact` report text.                                                               |
+| `sessionCards`         | `true`  | Write one durable, log-only `jev-compaction/applied` session event per run, so the conversation shows a card for it (SPEC §28). |
+| `showSkipReasons`      | `false` | Also write `jev-compaction/skipped` with the reason a gate refused the run.                                                     |
+
+`sessionCards` is the only switch that affects what enters the session log.
+The events are log-only (no `surfaceOp`), carry metadata only, and are joined
+into the harness's live event vocabulary while the plugin is loaded.
+
 ## Live versus restart-scoped changes
 
 Everything on the card applies to the running plugin without a restart, with
