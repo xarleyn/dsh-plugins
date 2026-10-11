@@ -192,7 +192,7 @@
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",
     "jsdom": "catalog:tooling",
-    "katex": "^0.16.47",
+    "katex": "^0.18.2",
     "playwright": "catalog:tooling",
     "react": "catalog:frontend-dev",
     "react-dom": "catalog:frontend-dev",
