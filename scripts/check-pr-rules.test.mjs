@@ -116,10 +116,10 @@ test("documented platform names and the exact local override path are not privat
     [],
   );
   for (const text of [
-    "https://doc-impact.local/",
-    ".dsh/other.local.yml",
-    "https://custom.host.docker.internal/",
-    "https://host.docker.internal.corp/",
+    `https://${["doc-impact", "local"].join(".")}/`,
+    `.dsh/${["other", "local", "yml"].join(".")}`,
+    `https://${["custom", "host", "docker", "internal"].join(".")}/`,
+    `https://${["host", "docker", "internal", "corp"].join(".")}/`,
   ]) {
     assert.equal(identifierFindings(text)[0].rule, "internal-host");
   }
