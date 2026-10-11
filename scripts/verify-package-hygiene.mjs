@@ -875,6 +875,12 @@ export function validateVersionPlan(fileName, content, knownProjects) {
       continue;
     }
 
+    if (match.groups.key.startsWith("@")) {
+      errors.push(
+        `${fileName}: quote scoped package names in the front matter; YAML forbids a key starting with @`,
+      );
+    }
+
     const project = match.groups.key.replace(/^"|"$/gu, "");
     if (!knownProjects.has(project)) {
       errors.push(`${fileName}: ${project} is not a workspace package`);
