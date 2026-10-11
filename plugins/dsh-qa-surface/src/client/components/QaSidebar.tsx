@@ -6,11 +6,13 @@ import { auditMark, type QaAuditSummary } from "../audit/types.js";
 import { QaSettingsButton } from "../user-settings/fields.js";
 import { QA_VERSION, QaChangelogModal } from "./QaChangelog.js";
 import { QaModal } from "./QaModal.js";
+import { QaChatActions } from "./QaChatActions.js";
 import { relativeTime } from "./format.js";
 import { QaSidebarHandle, useQaSidebarWidth } from "./QaWidthHandle.js";
 
 /** One renderable row of the chat-history sidebar. */
 export interface QaChatRow {
+  readonly shareable?: boolean;
   readonly id: string;
   readonly title: string;
   readonly running: boolean;
@@ -123,6 +125,7 @@ export interface QaSidebarProps {
   readonly onNewChat: () => void;
   /** Removes a chat from this browser's index; omit to hide the control. */
   readonly onDelete?: (sessionId: string) => void;
+  readonly onShare?: (sessionId: string) => void;
   /**
    * Whether the phone layout shows this sidebar as a drawer over the
    * conversation. The state is the surface's, not the sidebar's: the control
@@ -428,7 +431,20 @@ export const QaSidebar = memo(
                   />
                 );
               })()}
-          {props.onDelete === undefined ? null : (
+          {row.shareable && props.onShare !== undefined ? (
+            <QaChatActions
+              name={name}
+              onShare={() => props.onShare?.(row.id)}
+              {...(props.onDelete === undefined
+                ? {}
+                : {
+                    onDelete: (trigger: HTMLButtonElement) => {
+                      deleteTrigger.current = trigger;
+                      setConfirmingId(row.id);
+                    },
+                  })}
+            />
+          ) : props.onDelete === undefined ? null : (
             <button
               type="button"
               className="dsh-qa-sidebar__item-delete"
@@ -719,6 +735,7 @@ export const QaSidebar = memo(
     prev.onSwitch === next.onSwitch &&
     prev.onNewChat === next.onNewChat &&
     prev.onDelete === next.onDelete &&
+    prev.onShare === next.onShare &&
     prev.onAudit === next.onAudit &&
     prev.audits === next.audits &&
     prev.account?.email === next.account?.email &&

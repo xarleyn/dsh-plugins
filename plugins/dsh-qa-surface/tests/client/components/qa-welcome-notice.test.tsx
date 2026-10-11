@@ -36,6 +36,18 @@ describe("QA welcome notice", () => {
 
   afterEach(() => cleanup());
 
+  it("requires a new acknowledgement after the old local-only disclosure", () => {
+    window.localStorage.setItem(STORAGE_KEY, "2026-09-12.1");
+    const complete = mount();
+    const text = screen.getByTestId("qa-surface-welcome-description").textContent;
+
+    expect(text).toContain("При выборе внешнего провайдера");
+    expect(text).toContain("содержимое прочитанных источников");
+    expect(text).not.toContain("никуда за его пределы не передаются");
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(complete).not.toHaveBeenCalled();
+  });
+
   it("renders the QA-specific disclosure and acknowledges its exact version", () => {
     const complete = mount();
     const dialog = screen.getByRole("dialog", {
