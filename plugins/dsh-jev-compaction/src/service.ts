@@ -145,6 +145,8 @@ export class JevCompactionService extends Service {
   private readonly sessions = new Map<string, SessionState>();
   /** Backends whose key warning was already logged, keyed provider+variable. */
   private readonly warnedCredentials = new Set<string>();
+  /** Whether this process already said what `sessionCards` costs. */
+  private warnedSessionCardPortability = false;
   private readonly disposers: Array<() => void> = [];
   /** Immediate result shaping at `tools/post-execute` (SPEC result-shaping). */
   readonly shaping: ResultShapingSubsystem;
@@ -219,6 +221,9 @@ export class JevCompactionService extends Service {
     // have to be part of the harness's live vocabulary while this plugin is
     // mounted (see src/observability/session-events.ts).
     this.disposers.push(registerJevCompactionSessionEventTypes());
+    if (this.resolvedConfig.diagnostics.sessionCards) {
+      this.warnSessionCardPortability();
+    }
 
     installJevCompactionSettings({
       owner: ctx,
@@ -257,6 +262,9 @@ export class JevCompactionService extends Service {
   protected onConfigChanged(): void {
     this.shaping.onConfigChanged();
     this.warnOnMissingCredential();
+    if (this.resolvedConfig.diagnostics.sessionCards) {
+      this.warnSessionCardPortability();
+    }
   }
 
   /**
@@ -385,6 +393,24 @@ export class JevCompactionService extends Service {
   }
 
   /**
+   * Say once per process what `sessionCards` costs.
+   *
+   * The event types are this plugin's own, and the harness offers a plugin no
+   * way to mark an event `ignorable`, so a session recorded while this is on
+   * can only be interpreted by a build that has this plugin loaded. An operator
+   * who learns that from a refused history load learns it too late; the switch
+   * is off by default precisely because of it, and this line is what makes the
+   * trade explicit when it is on.
+   */
+  private warnSessionCardPortability(): void {
+    if (this.warnedSessionCardPortability) return;
+    this.warnedSessionCardPortability = true;
+    jevLogger.warn(JEV_EVENTS.sessionCardPortability, {
+      note: "diagnostics.sessionCards is on: every compaction run is recorded as a jev-compaction/applied session event, which only a build with this plugin loaded can interpret — a session recorded while it was on refuses to load without the plugin",
+    });
+  }
+
+  /**
    * Append the durable record of one run (SPEC §28).
    *
    * Fail-open by construction: the card is a view over work that already
@@ -431,7 +457,14 @@ export class JevCompactionService extends Service {
       applied: report.applied.length,
       batches: detail.batches,
       maxConcurrency: this.config.jev.maxConcurrency,
-      charsSaved: report.charsBefore - report.charsAfter,
+      // What actually left the surface, not what the plan promised: a run
+      // that landed only some of its replacements saved only those, and a run
+      // that landed none saved nothing. The planned estimate stays available
+      // through the token line, which is labelled as an estimate.
+      charsSaved: report.applied.reduce(
+        (sum, entry) => sum + (entry.charsBefore - entry.charsAfter),
+        0,
+      ),
       tokensBefore: report.tokensBefore ?? null,
       tokensAfter: report.tokensAfter ?? null,
       contextWindow: detail.contextWindow,

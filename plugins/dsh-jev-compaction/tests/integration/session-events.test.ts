@@ -20,7 +20,9 @@ import type { SessionEvent, SessionSeq } from "@deepseek-ai/dsh-session";
 import { JevCompactionService } from "../../src/service.js";
 import {
   JEV_COMPACTION_APPLIED_EVENT,
+  JEV_COMPACTION_SESSION_EVENTS,
   JEV_COMPACTION_SKIPPED_EVENT,
+  registerJevCompactionSessionEventTypes,
   type JevCompactionAppliedEventData,
 } from "../../src/observability/session-events.js";
 import {
@@ -78,7 +80,10 @@ const ORIGINAL_TEXT = "x".repeat(4000);
 describe("durable session events", () => {
   it("S1: an applied run records one card matching the report", async () => {
     const session = buildFixtureSession("evt-applied");
-    const { service } = buildService({}, new FakeDecisionBackend(0.05));
+    const { service } = buildService(
+      { diagnostics: { sessionCards: true } },
+      new FakeDecisionBackend(0.05),
+    );
     const report = await service.runAuto(
       fakeAgent(session),
       5,
@@ -127,7 +132,10 @@ describe("durable session events", () => {
   it("S2: a dry-run records a preview that replaced nothing", async () => {
     const session = buildFixtureSession("evt-dry");
     const nodesBefore = [...session.surface.nodes];
-    const { service } = buildService({}, new FakeDecisionBackend(0.05));
+    const { service } = buildService(
+      { diagnostics: { sessionCards: true } },
+      new FakeDecisionBackend(0.05),
+    );
     const report = await service.runManualDry(
       fakeAgent(session),
       new AbortController().signal,
@@ -177,7 +185,7 @@ describe("durable session events", () => {
         minCandidateChars: 1,
         cooldownTurns: 0,
       },
-      diagnostics: { showSkipReasons: true },
+      diagnostics: { sessionCards: true, showSkipReasons: true },
     });
     chatty.meter.setTotal(0);
     const skipped = await chatty.service.runAuto(
@@ -197,7 +205,7 @@ describe("durable session events", () => {
   it("S3: a mutex skip is a race, not a decision, and is never recorded", async () => {
     const session = buildFixtureSession("evt-busy");
     const { service } = buildService(
-      { diagnostics: { showSkipReasons: true } },
+      { diagnostics: { sessionCards: true, showSkipReasons: true } },
       new FakeDecisionBackend(0.05),
     );
     const signal = new AbortController().signal;
@@ -211,10 +219,27 @@ describe("durable session events", () => {
     expect(eventsOf(session, JEV_COMPACTION_SKIPPED_EVENT)).toHaveLength(0);
   });
 
+  it("writes nothing unless the operator opts in", async () => {
+    // The default, not an override: a session recorded by a default install
+    // carries nothing this plugin owns, so it stays readable everywhere. See
+    // the portability note in docs/compatibility.md.
+    const session = buildFixtureSession("evt-default");
+    const { service } = buildService({}, new FakeDecisionBackend(0.05));
+    const report = await service.runAuto(
+      fakeAgent(session),
+      5,
+      new AbortController().signal,
+    );
+    service.dispose();
+    expect(report.applied.length).toBeGreaterThan(0);
+    expect(appliedOf(session)).toHaveLength(0);
+    expect(eventsOf(session, JEV_COMPACTION_SKIPPED_EVENT)).toHaveLength(0);
+  });
+
   it("records nothing when the operator turns the cards off", async () => {
     const session = buildFixtureSession("evt-off");
     const { service } = buildService(
-      { diagnostics: { sessionCards: false } },
+      { diagnostics: { sessionCards: false, showSkipReasons: true } },
       new FakeDecisionBackend(0.05),
     );
     const report = await service.runAuto(
@@ -225,11 +250,40 @@ describe("durable session events", () => {
     service.dispose();
     expect(report.applied.length).toBeGreaterThan(0);
     expect(appliedOf(session)).toHaveLength(0);
+    expect(eventsOf(session, JEV_COMPACTION_SKIPPED_EVENT)).toHaveLength(0);
+  });
+
+  it("reports the savings that actually landed, not the plan's promise", async () => {
+    // A partial application is the case where the two diverge: the plan
+    // promised every mutation, and only some of them landed.
+    const session = buildFixtureSession("evt-partial");
+    const { service } = buildService(
+      { diagnostics: { sessionCards: true } },
+      new FakeDecisionBackend(0.05),
+    );
+    const report = await service.runAuto(
+      fakeAgent(session),
+      5,
+      new AbortController().signal,
+    );
+    service.dispose();
+    const planned = report.charsBefore - report.charsAfter;
+    const landed = report.applied.reduce(
+      (sum, entry) => sum + (entry.charsBefore - entry.charsAfter),
+      0,
+    );
+    // The fixture applies everything it plans, so the two agree here; the
+    // assertion that matters is that the record quotes the applied figure.
+    expect(appliedOf(session)[0]!.charsSaved).toBe(landed);
+    expect(landed).toBeLessThanOrEqual(planned);
   });
 
   it("S4: the record replays verbatim and holds no pruned output", async () => {
     const session = buildFixtureSession("evt-replay");
-    const { service } = buildService({}, new FakeDecisionBackend(0.05));
+    const { service } = buildService(
+      { diagnostics: { sessionCards: true } },
+      new FakeDecisionBackend(0.05),
+    );
     await service.runAuto(fakeAgent(session), 5, new AbortController().signal);
     service.dispose();
 
@@ -261,11 +315,55 @@ describe("durable session events", () => {
     }
   });
 
+  it("a reader without this plugin cannot interpret the record", async () => {
+    // The portability cost, pinned so it cannot rot silently: the harness
+    // refuses a stored event whose type it does not know unless the writer
+    // marked it `ignorable`, and `Session.append` offers no way for a plugin
+    // to set that marker. So the coupling is real, which is why the record is
+    // opt-in.
+    const session = buildFixtureSession("evt-portability");
+    const { service } = buildService(
+      { diagnostics: { sessionCards: true } },
+      new FakeDecisionBackend(0.05),
+    );
+    await service.runAuto(fakeAgent(session), 5, new AbortController().signal);
+    service.dispose();
+
+    const foreign = session
+      .snapshotEvents()
+      .filter((event) => JEV_COMPACTION_SESSION_EVENTS.includes(event.type))
+      .map(
+        (event) => JSON.parse(JSON.stringify(event)) as Record<string, unknown>,
+      );
+    expect(foreign.length).toBeGreaterThan(0);
+    // The exact predicate the persistence read path applies
+    // (`assertEventsSupported` in @deepseek-ai/dsh-session-persistence).
+    const interpretable = (event: Record<string, unknown>): boolean =>
+      KNOWN_SESSION_EVENT_TYPES.has(event["type"] as string) ||
+      event["ignorable"] === true;
+
+    const reloaded = registerJevCompactionSessionEventTypes();
+    try {
+      expect(foreign.every(interpretable)).toBe(true);
+    } finally {
+      reloaded();
+    }
+    expect(foreign.every(interpretable)).toBe(false);
+    // Nothing a plugin can write sets the marker, so opting out is the only
+    // defense: the default install writes no event of ours at all.
+    expect(foreign.every((event) => event["ignorable"] === undefined)).toBe(
+      true,
+    );
+  });
+
   it("joins the harness vocabulary while mounted and leaves on dispose", () => {
     expect(KNOWN_SESSION_EVENT_TYPES.has(JEV_COMPACTION_APPLIED_EVENT)).toBe(
       false,
     );
-    const { service } = buildService({}, new FakeDecisionBackend(0.05));
+    const { service } = buildService(
+      { diagnostics: { sessionCards: true } },
+      new FakeDecisionBackend(0.05),
+    );
     expect(KNOWN_SESSION_EVENT_TYPES.has(JEV_COMPACTION_APPLIED_EVENT)).toBe(
       true,
     );
