@@ -135,3 +135,36 @@ per-package work breakdown.
 If a future DSH line needs incompatible code, use feature detection or a new
 major package release. Do not widen peer ranges without executing the full
 compatibility and packed-install tests.
+
+## Built-in plugin tabs and Host-owned limits
+
+This workspace's configuration cards use the Plugins panel. A card editing its
+own Host Config occupies `plugins.row.config`, keyed by
+`<package name>#<row id>`; a feature page backed by its own Remote or session
+state occupies `plugins.bundle.config`, keyed by package name. The row id remains
+the settings namespace, so the move preserves saved values. Row entries render
+the body alone and answer `summary` with text; the Host draws their frame and
+heading. Display names and descriptions come from the exported
+`locale/en.json`, independently of client activation.
+
+The former workspace contributions to the built-in settings tab strip have been
+removed. Their label tables and the unused tab-label helper were retired with
+them. The old fourteen-character limit and preferred tab order therefore have no
+workspace registrations to govern; they must not be restored by bringing the old
+registration code back. New configuration cards follow the row contract above.
+
+The Host still publishes the built-in tab extension point for other packages.
+Its `0.1.7-rc.2` section limits content width to 760 px and uses a flex tab row with
+a 22 px gap; the row supplies neither horizontal scrolling nor wrapping. Long
+labels have no no-wrap rule. Moving this workspace's cards removes its
+contributions to that overflow, but does not establish that an arbitrary row of
+third-party tabs is reachable. A Host change must supply scrolling, wrapping or an
+overflow menu and verify keyboard access on a live populated row. Source and CSS
+inspection are not a measurement of the last visible tab in a browser.
+
+The remaining Host request is tracked in issue #714. It also asks how a deployment
+selects a Russian interface: the pinned Host locale catalog contains `zh` and
+`en`, and registering a dictionary does not itself add a language to that
+catalog. A plugin must not select a deployment language by calling `addLanguage`
+on its own. Until the deployment supplies another language, the exported English
+metadata remains the discovery anchor for Plugins rows.
