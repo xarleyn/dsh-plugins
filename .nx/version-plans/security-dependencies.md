@@ -3,4 +3,4 @@
 "@yadsh/dsh-session-audit": patch
 ---
 
-Update bundled math rendering dependencies and stabilize audit ordering regression coverage.
+Update bundled math rendering dependencies, keep the client self-contained, and stabilize audit ordering regression coverage.
