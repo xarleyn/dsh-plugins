@@ -2,7 +2,7 @@
  * The scanner, the registry and the service: the SPEC §73 scenarios, plus the
  * §74 security cases that belong to the pipeline rather than to a component.
  */
-import { writeFile } from "node:fs/promises";
+import { utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { AuditRegistryEvent } from "@yadsh/dsh-audit-core";
@@ -226,20 +226,31 @@ describe("AuditService refresh", () => {
 
   it("lists every audit of a session, newest first", async () => {
     const { service } = testService(root);
-    await writeAudit(root, AUDIT_DIRECTORY, {
+    const older = await writeAudit(root, AUDIT_DIRECTORY, {
       analysis: analysis(),
       report: REPORT,
     });
+    // File writes can share an mtime on CI; ordering needs distinct timestamps.
+    const olderTime = new Date("2026-01-01T00:00:00Z");
+    await utimes(join(older, "analysis.json"), olderTime, olderTime);
+    await utimes(join(older, "REPORT.md"), olderTime, olderTime);
     await service.refresh();
-    await writeAudit(root, `${AUDIT_DIRECTORY}-2`, {
+    const newer = await writeAudit(root, `${AUDIT_DIRECTORY}-2`, {
       analysis: analysis(SESSION_ID, { verdict: "good" }),
       report: REPORT,
     });
+    const newerTime = new Date("2026-01-02T00:00:00Z");
+    await utimes(join(newer, "analysis.json"), newerTime, newerTime);
+    await utimes(join(newer, "REPORT.md"), newerTime, newerTime);
     await service.refresh();
 
     const audits = await service.listSessionAudits(SESSION_ID);
 
     expect(audits).toHaveLength(2);
+    expect(audits.map((audit) => audit.auditId)).toEqual([
+      `${AUDIT_DIRECTORY}-2`,
+      AUDIT_DIRECTORY,
+    ]);
     expect((await service.getSessionAuditSummary(SESSION_ID))?.verdict).toBe(
       "good",
     );
