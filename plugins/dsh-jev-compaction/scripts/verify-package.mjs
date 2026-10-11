@@ -54,7 +54,7 @@ await runVerifyPackage({
   compatibility: {
     node: "matchesEngines",
     testedReleases: ["0.1.5-rc.2"],
-    clientFeatures: ["settings.plugin.item"],
+    clientFeatures: ["settings.plugin.item", "conversation.chat.node"],
   },
   clientBundle: {
     moduleLoaderId: true,
@@ -66,7 +66,20 @@ await runVerifyPackage({
         /dsh-plugin-card\s*\*/u,
       ],
     },
-    includes: ["settings.plugin.item", "jev-compaction"],
+    includes: [
+      "settings.plugin.item",
+      "conversation.chat.node",
+      "jev-compaction",
+    ],
+    matches: [
+      // The conversation card names its seat at the registration itself. The
+      // seat is what the Host reads at runtime, so it survives minification,
+      // and a name at the registration proves the registration is real rather
+      // than a surviving string. (The settings card reaches its seat through
+      // the kit's `registerSettingsCard`, which inlines the default seat name
+      // rather than a `name:` this bundle writes.)
+      /name:\s*"conversation\.chat\.node"/u,
+    ],
     notMatches: [
       // The bundle is browser-only: a Node built-in import here would break
       // the host page's module table (client-bundle purity).
@@ -102,6 +115,36 @@ await runVerifyPackage({
       "the card keeps the slot registry external",
     );
 
+    // The conversation half reads `ctx.uiConversation` and seats a renderer on
+    // `conversation.chat.node`. Both are core: the conversation assembly and
+    // the Chat target ship with the host the way the session controller does,
+    // and `dsh-qa-surface` reads the same service without listing it. So the
+    // manifest's inject list stays the settings packages it was.
+    assert.deepEqual(
+      manifest.dsh.client.inject,
+      [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins",
+      ],
+      "the conversation assembly is a core service, not an added dependency",
+    );
+    for (const name of [
+      "@deepseek-ai/dsh-client-ui-conversation",
+      "@deepseek-ai/dsh-client-ui-chat",
+      "@deepseek-ai/dsh-api-session-controller",
+    ]) {
+      assert.equal(
+        manifest.dependencies[name],
+        undefined,
+        `${name} must not become a runtime dependency`,
+      );
+      assert.notEqual(
+        manifest.peerDependencies[name],
+        undefined,
+        `${name} is a type-only peer of the conversation contribution`,
+      );
+    }
+
     // Host and client must agree on the settings namespace, and the Host must
     // expose both seams the SPEC depends on.
     const settingsModule = await read("lib/shared/settings.js");
@@ -131,6 +174,48 @@ await runVerifyPackage({
       serviceModule,
       /tools\/post-execute/u,
       "the service registers the immediate result-shaping listener",
+    );
+    // The vocabulary both halves agree on: the event type names live in the
+    // shared module, the Host imports them to append, the browser card imports
+    // them to read.
+    const eventModule = await read("lib/shared/session-events.js");
+    assert.match(
+      eventModule,
+      /jev-compaction\/applied/u,
+      "the shared module declares the run event type",
+    );
+    assert.match(
+      eventModule,
+      /jev-compaction\/skipped/u,
+      "the shared module declares the skip event type",
+    );
+    assert.match(
+      serviceModule,
+      /JEV_COMPACTION_APPLIED_EVENT/u,
+      "the pipeline records every run as a durable session event",
+    );
+    assert.match(
+      serviceModule,
+      /JEV_COMPACTION_SKIPPED_EVENT/u,
+      "the pipeline records a skip reason when asked for one",
+    );
+    assert.match(
+      serviceModule,
+      /registerJevCompactionSessionEventTypes/u,
+      "the plugin joins its event types into the harness vocabulary while mounted",
+    );
+
+    // The conversation card is the other half of that record: it projects the
+    // same two event types, so the bundle has to name them.
+    assert.match(
+      client ?? "",
+      /jev-compaction\/applied/u,
+      "the card reads the run event the Host writes",
+    );
+    assert.match(
+      client ?? "",
+      /jev-compaction\/skipped/u,
+      "the card reads the skip event the Host writes",
     );
 
     const compatibility = JSON.parse(await read("compatibility.json"));

@@ -677,6 +677,26 @@ export function JevCompactionCard({ scope }: CardProps): ReactElement | null {
                   write(["diagnostics", "logLevel"], value);
                 }}
               />
+              <Toggle
+                label="Show a compaction card in the conversation"
+                description="One durable session event per run, so the chat shows what Jev did. Metadata only. Off by default: a session recorded with this on can only be opened by a build that has this plugin loaded."
+                checked={config.diagnostics?.sessionCards ?? false}
+                disabled={!writable}
+                overridden={overridden(["diagnostics", "sessionCards"])}
+                onToggle={(checked) => {
+                  write(["diagnostics", "sessionCards"], checked);
+                }}
+              />
+              <Toggle
+                label="Say why a run was skipped"
+                description="Off by default: a cooldown firing three turns in a row is noise, not information."
+                checked={config.diagnostics?.showSkipReasons ?? false}
+                disabled={!writable}
+                overridden={overridden(["diagnostics", "showSkipReasons"])}
+                onToggle={(checked) => {
+                  write(["diagnostics", "showSkipReasons"], checked);
+                }}
+              />
             </div>
           </details>
 

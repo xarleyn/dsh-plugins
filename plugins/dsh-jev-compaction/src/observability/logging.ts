@@ -26,6 +26,12 @@ export const JEV_EVENTS = {
    * line the first sign is a refused prune minutes later.
    */
   credentialMissing: "jev-compaction/credential-missing",
+  /**
+   * `diagnostics.sessionCards` is on. The cost is a session that only a build
+   * with this plugin loaded can interpret, so it is said once per process
+   * rather than discovered at a refused history load.
+   */
+  sessionCardPortability: "jev-compaction/session-card-portability",
   queued: "jev-compaction/queued",
   /** Immediate result shaping at `tools/post-execute`. */
   shapingSkip: "jev-compaction/result-shaping-skip",
