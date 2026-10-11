@@ -212,6 +212,15 @@ test("a genuine version materialization does not exempt a later manual bump", (t
   assert.equal(f.inspect().findings[0].rule, "manual-version-bump");
 });
 
+test("a later release materialization cannot hide an earlier manual bump", (t) => {
+  const f = fixture(t);
+  f.manifest("1.0.1");
+  f.commit([packageFile], "fixture: manual version edit");
+  f.manifest("1.0.2");
+  f.commit([packageFile], "chore(release): publish");
+  assert.equal(f.inspect().findings[0].rule, "manual-version-bump");
+});
+
 test("CLI returns 1 for violations, 2 for missing refs/options and 0 for a clean range", (t) => {
   const f = fixture(t);
   const script = fileURLToPath(
