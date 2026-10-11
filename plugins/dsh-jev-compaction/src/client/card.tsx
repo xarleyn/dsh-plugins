@@ -679,8 +679,8 @@ export function JevCompactionCard({ scope }: CardProps): ReactElement | null {
               />
               <Toggle
                 label="Show a compaction card in the conversation"
-                description="One durable session event per run, so the chat shows what Jev did. Metadata only."
-                checked={config.diagnostics?.sessionCards ?? true}
+                description="One durable session event per run, so the chat shows what Jev did. Metadata only. Off by default: a session recorded with this on can only be opened by a build that has this plugin loaded."
+                checked={config.diagnostics?.sessionCards ?? false}
                 disabled={!writable}
                 overridden={overridden(["diagnostics", "sessionCards"])}
                 onToggle={(checked) => {
