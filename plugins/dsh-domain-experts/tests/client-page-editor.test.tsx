@@ -4,6 +4,35 @@ import { fireEvent, screen, waitFor } from "@testing-library/react";
 import { DEFINITION, ok, renderPage } from "./client-page.helpers.js";
 
 describe("client page: editor", () => {
+  it("hides inactive direct-read settings while retaining the saved namespaces", async () => {
+    const getDomain = () =>
+      Promise.resolve(
+        ok({
+          domain: {
+            ...DEFINITION,
+            delegation: {
+              ...DEFINITION.delegation,
+              allowCrossDomain: false,
+              crossDomainMode: "direct-read" as const,
+              directRead: ["domain/inventory"],
+            },
+          },
+        }),
+      );
+    renderPage({ getDomain });
+    fireEvent.click(await screen.findByTestId("domain-experts-page-open"));
+    fireEvent.click(await screen.findByRole("tab", { name: "Delegation" }));
+    expect(
+      screen.queryByTestId("domain-experts-editor-direct-read-input"),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByTestId("domain-experts-editor-allow-cross-domain"),
+    );
+    expect(
+      await screen.findByTestId("domain-experts-editor-direct-read-input"),
+    ).toBeTruthy();
+    expect(screen.getByText("domain/inventory")).toBeTruthy();
+  });
   it("opens a domain and shows the resolved scope with enforcement labels", async () => {
     renderPage();
     fireEvent.click(await screen.findByTestId("domain-experts-page-open"));

@@ -426,6 +426,16 @@ export function subagentsFaceOf(runtime: Context["subagents"]): SubagentsFace {
       providerName: string,
       request: SubagentStartRequest,
     ): Promise<SubagentRun> => runtime.start(providerName, request),
+    childrenOf: async (parentSessionId: string, signal: AbortSignal) => {
+      const rows = await runtime.listChildren(
+        parentSessionId as Parameters<Context["subagents"]["listChildren"]>[0],
+        signal,
+      );
+      return rows.map((row) => ({
+        sessionId: String(row.id),
+        label: row.label,
+      }));
+    },
     ...(typeof runtime.startContinuable === "function"
       ? {
           startContinuable: runtime.startContinuable.bind(

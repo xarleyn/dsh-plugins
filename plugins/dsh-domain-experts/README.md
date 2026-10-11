@@ -150,6 +150,20 @@ Domain definitions are **not** plugin configuration: they are durable records in
 the plugin's own storage domain, edited in the Domain Experts tab. That keeps an
 arbitrarily large expert catalog out of `cordis.yml`.
 
+Cross-domain access has one effective switch: turning off `allowCrossDomain`
+also turns off the namespaces selected in `directRead`. They remain saved but
+are absent from automatic recall, the memory tools and the inspector.
+
+A resumed expert still answers to its current domain's delegation policy.
+After restart or live-index eviction, the plugin reads the creation label from
+the Host's durable parent-owned child catalog. Missing or unreadable identity
+is refused with `EXPERT_NOT_CALLER`; a positively identified ordinary subagent
+keeps ordinary caller access. A catalog read has a five-second deadline and
+honours tool cancellation. Cold attribution recovers delegation identity, not
+account memory ownership: `domain_memory` continues to require a live expert
+record, and a cold delegation audit records only the known caller-to-target
+suffix.
+
 ## Enforcement model
 
 DSH tool filtering is capability scoping, not an operating-system sandbox, so

@@ -51,6 +51,7 @@ import {
 } from "./host/memory/registry.js";
 import type { SqliteMemoryProvider } from "./host/memory/sqlite.js";
 import { parallelBudgetOf } from "./host/policy.js";
+import { callerDomainOf } from "./host/caller.js";
 import { PrincipalIdentities } from "./host/qa-principal.js";
 import type { ResolverDependencies } from "./host/resolver.js";
 import { createFilesystemProvider } from "./host/scopes/filesystem.js";
@@ -254,16 +255,27 @@ export class DomainExpertsService extends TypertRemoteService {
       requireDefinition: (id) => this.requireDefinition(id),
       run: (input) => this.runExpertSafely(input),
       activeRun: (sessionId) => this.tracker.find(sessionId),
+      callerDomain: (agent, signal) =>
+        callerDomainOf(
+          this.tracker,
+          subagentsFaceOf(this.ctx.subagents),
+          agent,
+          signal,
+        ),
       delegationVerdict: (callerDomainId, targetDomainId) =>
         delegationVerdictFrom(
           this.stores.handles,
           callerDomainId,
           targetDomainId,
         ),
-      parallelBudget: (callerSessionId) =>
+      parallelBudget: (callerSessionId, callerDomain) =>
         parallelBudgetOf(
           this.tracker.countForCaller(callerSessionId),
           this.tracker.find(callerSessionId)?.maxParallel ??
+            (callerDomain === null
+              ? undefined
+              : this.stores.handles?.domains.get(callerDomain)?.delegation
+                  .maxParallel) ??
             this.config().defaultMaxParallel,
         ),
       memory: () => this.memoryProvider(),

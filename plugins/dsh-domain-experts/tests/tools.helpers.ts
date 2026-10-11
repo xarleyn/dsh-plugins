@@ -154,6 +154,10 @@ export function harnessOf(
       } satisfies DomainExpertResult);
     },
     activeRun: (sessionId) => tracker.find(sessionId),
+    callerDomain: (agent) =>
+      Promise.resolve(
+        tracker.find(String(agent.session.header.id))?.domainId ?? null,
+      ),
     delegationVerdict: (callerDomainId, targetDomainId) =>
       delegationVerdictOf(
         domains.get(callerDomainId),

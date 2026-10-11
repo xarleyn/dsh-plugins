@@ -567,10 +567,11 @@ export function DomainEditor(props: EditorProps) {
               }}
             />
           </div>
-          {draft.delegation.crossDomainMode === "direct-read" ? (
+          {draft.delegation.allowCrossDomain &&
+          draft.delegation.crossDomainMode === "direct-read" ? (
             <ListEditor
               label="Directly readable foreign namespaces"
-              hint="Only used in direct-read mode."
+              hint="Used only while cross-domain access is enabled in direct-read mode."
               placeholder="domain/inventory"
               values={draft.delegation.directRead}
               testId="domain-experts-editor-direct-read"

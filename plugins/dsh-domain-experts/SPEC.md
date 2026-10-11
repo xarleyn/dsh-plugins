@@ -76,6 +76,14 @@ Each numbered item is a verifiable guarantee, phrased as behaviour.
 17. Cross-domain policy is machine-enforced: `disabled` refuses every
     delegation, an explicit target list restricts which domains are reachable,
     and self-delegation is refused even when everything else allows it.
+    `allowCrossDomain: false` disables both delegation and the namespaces in
+    `directRead`, including recall, explicit memory tools and the inspector.
+    After a restart or live-index eviction, the Host's parent-owned child
+    catalog identifies the caller by its creation label. Its current domain
+    policy applies, and a missing or disabled caller domain refuses delegation.
+    An unknown child, missing parent, unreadable catalog or a lookup exceeding
+    five seconds fails with `EXPERT_NOT_CALLER`; a positively identified ordinary
+    child keeps the plugin default policy. Cancellation starts no child.
 18. Delegation depth is capped by `delegation.maxDepth`, checked by the plugin
     before the call (`DELEGATION_DEPTH_EXCEEDED`) and again by the runtime.
 19. Parallel expert runs per calling session are capped: the caller's own
@@ -99,7 +107,9 @@ Each numbered item is a verifiable guarantee, phrased as behaviour.
     appear as a named degradation with the references that caused it.
 23. Each run records one audit entry — domain, caller domain, caller session,
     child session, mode, status, duration, delegation path and degradation
-    codes — mirrored to the plugin log. No task text, retrieved memory or
+    codes — mirrored to the plugin log. After cold attribution, the delegation
+    path records the known suffix (caller and target); earlier ancestors are
+    available only from a live run. No task text, retrieved memory or
     credential is recorded.
 24. The plugin never throws from load. A storage failure is reported as
     `STORAGE_UNAVAILABLE` with the underlying message, and the plugin keeps
@@ -296,7 +306,7 @@ audit ring mirrored to the plugin log.
 | Per-provider typed configuration UI | `scope.providers` is an opaque JSON map validated by its owner; a provider-owned editor is a UI seam of its own. |
 | Automatic domain routing (`domain_route`) | Deliberately out of v1: routing stays separate from expert execution. |
 | Domain hierarchy (`parent`) | The record keeps a flat id space, which a future `parent` field can extend without a breaking change. |
-| Continuable-child delegation after a restart | A resumed durable child is no longer attributable to a domain, so delegation from it fails with `EXPERT_NOT_CALLER` rather than guessing. |
+| Restoring account memory ownership after a restart | Delegation identity is recovered from the Host child catalog; memory ownership is not inferred from a label. `domain_memory` still requires a live expert record and refuses with `EXPERT_NOT_CALLER` after a restart or eviction. |
 | Enforcing an arbitrary global shell tool | A path restriction is only enforced by a worker that consumes the scope; the UI says `advisory` when none does. |
 | A severity field on the degradation record | `DomainDegradation` carries code, message and refs only; §2's table is the grading a reader applies by hand. Putting the tier in the record means changing the contract and every surface that reads it, so it is tracked as its own card rather than folded into documenting a code. |
 
