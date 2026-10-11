@@ -254,6 +254,17 @@ export interface JevCompactionConfig {
       "trace" | "debug" | "info" | "warn" | "error" | "silent";
     /** Include per-candidate scores in reports. */
     readonly includeCandidateScores?: boolean;
+    /**
+     * Write one durable `jev-compaction/applied` session event per run, so the
+     * conversation shows a card for it (SPEC §28). Metadata only.
+     */
+    readonly sessionCards?: boolean;
+    /**
+     * Also record why a run was skipped, as a `jev-compaction/skipped` session
+     * event. Silent by default: a cooldown firing three turns in a row is
+     * noise, not information.
+     */
+    readonly showSkipReasons?: boolean;
   };
 }
 
@@ -341,6 +352,8 @@ export interface ResolvedJevCompactionConfig {
   readonly diagnostics: {
     readonly logLevel: "trace" | "debug" | "info" | "warn" | "error" | "silent";
     readonly includeCandidateScores: boolean;
+    readonly sessionCards: boolean;
+    readonly showSkipReasons: boolean;
   };
 }
 
@@ -422,6 +435,8 @@ export const DEFAULTS: ResolvedJevCompactionConfig = Object.freeze({
   diagnostics: Object.freeze({
     logLevel: "info" as const,
     includeCandidateScores: false,
+    sessionCards: true,
+    showSkipReasons: false,
   }),
 });
 
@@ -846,6 +861,11 @@ export function resolveJevCompactionConfig(
       includeCandidateScores:
         raw.diagnostics?.includeCandidateScores ??
         DEFAULTS.diagnostics.includeCandidateScores,
+      sessionCards:
+        raw.diagnostics?.sessionCards ?? DEFAULTS.diagnostics.sessionCards,
+      showSkipReasons:
+        raw.diagnostics?.showSkipReasons ??
+        DEFAULTS.diagnostics.showSkipReasons,
     },
   };
 }
@@ -1257,6 +1277,18 @@ export const JevCompactionConfigSchema = z.object({
       .boolean()
       .default(DEFAULTS.diagnostics.includeCandidateScores)
       .description("Include per-candidate scores in reports."),
+    sessionCards: z
+      .boolean()
+      .default(DEFAULTS.diagnostics.sessionCards)
+      .description(
+        "Record one durable session event per compaction run, so the conversation shows a card for it.",
+      ),
+    showSkipReasons: z
+      .boolean()
+      .default(DEFAULTS.diagnostics.showSkipReasons)
+      .description(
+        "Also record why a run was skipped (cooldown, pressure, candidates, savings).",
+      ),
   }),
 });
 
