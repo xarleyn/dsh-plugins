@@ -7,6 +7,7 @@
  */
 
 import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
+import type { ComponentProps } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -56,7 +57,17 @@ function stubScope(
 
 function renderCard(options: Parameters<typeof stubScope>[0] = {}) {
   const { scope, ops } = stubScope(options);
-  const result = render(<JevCompactionCard scope={scope} />);
+  // The conversation contribution this bundle also registers declares the
+  // workspace selector on the framework's global seat, so the card's props now
+  // carry it. The settings card never reads it: a refusing stub keeps the
+  // dependency honest without inventing a hook the card would call.
+  const useWorkspaces = () => {
+    throw new Error("the settings card does not read the workspace selector");
+  };
+  const props = { scope, useWorkspaces } as unknown as ComponentProps<
+    typeof JevCompactionCard
+  >;
+  const result = render(<JevCompactionCard {...props} />);
   return { ...result, ops };
 }
 
