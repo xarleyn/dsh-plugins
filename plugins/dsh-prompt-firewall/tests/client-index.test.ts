@@ -67,10 +67,11 @@ describe("client activation", () => {
       head: { appendChild: vi.fn() },
     });
 
+    const getForm = vi.fn(() => form);
     const dispose = await apply({
       remote,
       inject,
-      configForms: { get: vi.fn(() => form) },
+      configForms: { get: getForm },
       slots: readyCtx.slots,
     } as never);
     const face = cardFace?.() as {
@@ -86,9 +87,11 @@ describe("client activation", () => {
     // The seat is this bundle's own row on the Plugins page, keyed by the package
     // name joined to the row id `cordis.patch.yml` declares — and that row id is the
     // namespace the Host serves this form under, so the move orphans no saved value.
-    expect(cardOptions).toMatchObject({
+    expect(getForm).toHaveBeenCalledWith("dsh-prompt-firewall");
+    expect(cardOptions).toEqual({
       name: "plugins.row.config",
       key: "@yadsh/dsh-prompt-firewall#dsh-prompt-firewall",
+      inject: expect.any(Function),
     });
     // The form travels under a name the seat's own `form` owner prop cannot shadow.
     expect(face.settingsForm).toBe(form);
