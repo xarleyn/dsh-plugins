@@ -257,6 +257,12 @@ export interface JevCompactionConfig {
     /**
      * Write one durable `jev-compaction/applied` session event per run, so the
      * conversation shows a card for it (SPEC §28). Metadata only.
+     *
+     * Off by default for the same reason immediate result shaping is: the event
+     * type is this plugin's own, and a session that contains it can only be
+     * interpreted by a build that has this plugin loaded. Turning this on
+     * trades a card in the chat for that coupling — see the portability note
+     * in docs/compatibility.md.
      */
     readonly sessionCards?: boolean;
     /**
@@ -435,7 +441,7 @@ export const DEFAULTS: ResolvedJevCompactionConfig = Object.freeze({
   diagnostics: Object.freeze({
     logLevel: "info" as const,
     includeCandidateScores: false,
-    sessionCards: true,
+    sessionCards: false,
     showSkipReasons: false,
   }),
 });
@@ -1281,7 +1287,8 @@ export const JevCompactionConfigSchema = z.object({
       .boolean()
       .default(DEFAULTS.diagnostics.sessionCards)
       .description(
-        "Record one durable session event per compaction run, so the conversation shows a card for it.",
+        "Record one durable session event per compaction run, so the conversation shows a card for it. " +
+          "A session recorded with this on can only be read by a build that has this plugin loaded.",
       ),
     showSkipReasons: z
       .boolean()
