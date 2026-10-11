@@ -183,7 +183,7 @@ test("integration URLs name an existing full scoped package", (t) => {
   f.write(source, `fetch("/plugins/${"dsh-fixture"}/client.js");\n`);
   f.commit([source]);
   assert.equal(f.inspect().findings[0].rule, "client-bundle-path");
-  f.write(source, 'fetch("/plugins/@yadsh/dsh-fixture/client.js");\n');
+  f.write(source, `fetch("/plugins/${"@yadsh/dsh-fixture"}/client.js");\n`);
   f.commit([source]);
   assert.equal(f.inspect().findings.length, 0);
 });
