@@ -76,14 +76,29 @@ function RunCard({
       ? `${((saved / run.tokensBefore) * 100).toFixed(0)}%`
       : null;
 
-  const headline =
-    run.mode === "dry-run"
+  // Three states, and the card never blurs them: a queued run has not
+  // touched the surface, a dry-run deliberately never would, and only an
+  // applied run has. Anything an operator could read as "my context just got
+  // smaller" has to be true.
+  const landed = run.applied > 0;
+  const queued = !landed && run.trigger === "queued";
+  const preview = !landed;
+  const headline = queued
+    ? `${group(run.mutations)} results queued for the next step`
+    : run.mode === "dry-run"
       ? `${group(run.mutations)} results would be replaced`
       : `${group(run.applied)} results replaced`;
   const tokens =
     run.tokensBefore !== null && run.tokensAfter !== null
-      ? `${group(run.tokensBefore)} → ${group(run.tokensAfter)} tokens`
+      ? `${preview ? "estimated " : ""}${group(run.tokensBefore)} → ${group(
+          run.tokensAfter,
+        )} tokens`
       : "token estimate unavailable";
+  const badge = queued
+    ? "queued"
+    : run.mode === "dry-run"
+      ? "dry-run"
+      : run.mode;
 
   return (
     <div className="jevc-run">
@@ -99,8 +114,12 @@ function RunCard({
         onClick={() => setExpanded((open) => !open)}
       >
         <span className="jevc-run-title">Jev compaction</span>
-        <span className={`jevc-run-badge jevc-run-badge--${run.mode}`}>
-          {run.mode === "dry-run" ? "dry-run" : run.mode}
+        <span
+          className={`jevc-run-badge jevc-run-badge--${
+            queued ? "queued" : run.mode
+          }`}
+        >
+          {badge}
         </span>
         <DisclosureIcon open={expanded} />
       </button>
@@ -112,6 +131,7 @@ function RunCard({
           <>
             <span className="jevc-run-sep">·</span>
             <span className="jevc-run-saved">
+              {preview ? "estimated " : ""}
               {group(saved)} saved ({percent})
             </span>
           </>
@@ -134,7 +154,9 @@ function RunCard({
               <dd>{group(run.applied)}</dd>
             </div>
             <div className="jevc-run-fact">
-              <dt>Characters removed</dt>
+              <dt>
+                {preview ? "Characters that would go" : "Characters removed"}
+              </dt>
               <dd>{group(run.charsSaved)}</dd>
             </div>
             <div className="jevc-run-fact">
@@ -182,7 +204,7 @@ function RunCard({
                 <th scope="col">Chars</th>
                 <th scope="col">Decision</th>
                 <th scope="col">Original → replacement</th>
-                <th scope="col">Score</th>
+                <th scope="col">Scores</th>
               </tr>
             </thead>
             <tbody>
@@ -206,7 +228,12 @@ function RunCard({
                   <td className="jevc-run-num">
                     {item.needContents === undefined
                       ? "—"
-                      : item.needContents.toFixed(2)}
+                      : `need ${item.needContents.toFixed(2)}`}
+                    {item.needVerbatim === undefined ? null : (
+                      <span className="jevc-run-note">
+                        {` verbatim ${item.needVerbatim.toFixed(2)}`}
+                      </span>
+                    )}
                   </td>
                 </tr>
               ))}
