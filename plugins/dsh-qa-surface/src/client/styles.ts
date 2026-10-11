@@ -153,6 +153,16 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-sidebar__item-audit-verdict--bad{color:var(--dsw-alias-state-error-primary)}
 .dsh-qa-sidebar__item-delete:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsh-qa-accent));outline-offset:-2px}
 .dsh-qa-sidebar__item-delete svg{width:14px;height:14px;display:block;fill:none;stroke:currentColor;stroke-width:1.3;stroke-linecap:round;stroke-linejoin:round}
+.dsh-qa-chat-actions{position:absolute;top:50%;right:4px;transform:translateY(-50%)}
+.dsh-qa-chat-actions__trigger{appearance:none;display:flex;align-items:center;justify-content:center;width:28px;height:28px;padding:6px;border:0;border-radius:6px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-tertiary);cursor:pointer;opacity:0;transition:opacity .12s,color .12s}
+.dsh-qa-sidebar__item:hover .dsh-qa-chat-actions__trigger,.dsh-qa-chat-actions:focus-within .dsh-qa-chat-actions__trigger,.dsh-qa-chat-actions__trigger[aria-expanded=true]{opacity:1}
+.dsh-qa-chat-actions__trigger:hover{color:var(--dsw-alias-label-primary)}
+.dsh-qa-chat-actions__trigger svg{width:16px;height:16px;fill:currentColor}
+.dsh-qa-chat-actions__menu{position:fixed;z-index:1200;width:180px;padding:4px;border:1px solid var(--dsw-alias-border-l2);border-radius:10px;background:var(--dsw-alias-bg-layer-2);box-shadow:0 6px 24px #0002;display:grid;gap:2px}
+.dsh-qa-chat-actions__menu button{appearance:none;font:inherit;font-size:13px;text-align:left;color:var(--dsw-alias-label-primary);background:transparent;border:0;border-radius:6px;padding:8px 10px;cursor:pointer}
+.dsh-qa-chat-actions__menu button:hover{background:var(--dsw-alias-bg-layer-3)}
+.dsh-qa-chat-actions__trigger:focus-visible,.dsh-qa-chat-actions__menu button:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsh-qa-accent));outline-offset:-2px}
+@media(hover:none){.dsh-qa-chat-actions__trigger{opacity:1}}
 .dsh-qa-sidebar__item-title{flex:1;min-width:0;overflow:hidden;color:var(--dsw-alias-label-secondary);font-size:13px;line-height:18px;text-overflow:ellipsis;white-space:nowrap}
 .dsh-qa-sidebar__item--active .dsh-qa-sidebar__item-title{color:var(--dsw-alias-label-primary);font-weight:500}
 .dsh-qa-sidebar__item-meta{flex:none;display:flex;align-items:center;gap:5px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:14px}
