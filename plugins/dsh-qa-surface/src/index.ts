@@ -412,6 +412,28 @@ export class QaSurface extends TypertRemoteService {
     });
     this.slashRemotes = createQaSlashRemotes({
       ctx,
+      draftSkills: async (token, target) => {
+        this.accountRemotes.resolve(this.getConfig());
+        const preview = await this.access.slashDraftSkills(
+          token,
+          target.subroleId,
+          target.adminPreview,
+        );
+        return {
+          skills: preview.skills.map((skill) => ({
+            name: skill.name,
+            description: skill.description,
+            modelInvocable: skill.invocation.modelInvocable,
+            ...(skill.whenToUse === undefined
+              ? {}
+              : { whenToUse: skill.whenToUse }),
+          })),
+          grantedSkills:
+            preview.policy === undefined
+              ? undefined
+              : userInvocableSkillNames(preview.policy),
+        };
+      },
       getConfig: () => this.getConfig(),
       logger: this.logger,
       sessionGrant: (token, sessionId, agent) =>

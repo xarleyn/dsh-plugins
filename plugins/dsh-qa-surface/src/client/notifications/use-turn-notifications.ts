@@ -1,4 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import type {
   QaAccountNotifications,
   QaAccountNotificationsInput,
@@ -6,6 +13,7 @@ import type {
 } from "../../types.js";
 import type { StorageLike } from "../types.js";
 import {
+  QaDesktopNotices,
   isPageFocused,
   planTurnNotice,
   raiseDesktopNotice,
@@ -28,10 +36,20 @@ import {
 
 /** Lines the stack holds; an older one is dropped rather than pushed away. */
 const MAX_NOTICES = 3;
+const NO_NOTICES: readonly QaTurnNoticeItem[] = Object.freeze([]);
+interface NoticeQueue {
+  readonly principal: string | null;
+  readonly epoch: object;
+  readonly items: readonly QaTurnNoticeItem[];
+}
 
 export interface QaTurnNotificationsInput {
   /** The sidebar's rows: this browser's chats with their running state. */
   readonly chats: readonly QaChatActivity[];
+  /** Authenticated identity, null behind the gate or with accounts disabled. */
+  readonly principal: string | null;
+  /** False while the controller or host list is still restoring. */
+  readonly chatsReady?: boolean;
   /**
    * The chats this account owns outright, which is narrower than the rows: an
    * admin's shared history lists chats it only reads, and the turn of such a
@@ -83,6 +101,8 @@ export function useQaTurnNotifications(
 ): QaTurnNotifications {
   const {
     chats,
+    principal,
+    chatsReady = true,
     ownChatIds,
     notifications,
     storage,
@@ -93,7 +113,25 @@ export function useQaTurnNotifications(
     onSwitch,
   } = input;
   const seen = useRef(new Map<string, QaTurnSighting>());
-  const [items, setItems] = useState<readonly QaTurnNoticeItem[]>([]);
+  const [queue, setQueue] = useState<NoticeQueue>(() => ({
+    principal,
+    epoch: {},
+    items: NO_NOTICES,
+  }));
+  // Adjust before commit: an effect alone would expose the previous reader's
+  // titles for the first committed frame of the replacement account.
+  if (queue.principal !== principal) {
+    setQueue({ principal, epoch: {}, items: NO_NOTICES });
+  }
+  const epoch = queue.epoch;
+  const [desktopNotices] = useState(() => new QaDesktopNotices());
+  const live = useRef<{
+    epoch: object;
+    ids: ReadonlySet<string>;
+    onSwitch: (sessionId: string) => void;
+    enabled: boolean;
+    desktop: boolean;
+  }>();
   const [prefs, setPrefs] = useState<QaNotificationPrefs>(() =>
     readNotificationPrefs(storage, storageKey),
   );
@@ -118,6 +156,91 @@ export function useQaTurnNotifications(
     [storage, storageKey],
   );
 
+  const ownedIds = useMemo(
+    () => new Set(ownedChats.map((chat) => chat.id)),
+    [ownedChats],
+  );
+  const authoritative = chatsReady && !paused;
+  const items = useMemo(
+    () =>
+      queue.principal !== principal
+        ? NO_NOTICES
+        : authoritative &&
+            queue.items.some((item) => !ownedIds.has(item.sessionId))
+          ? queue.items.filter((item) => ownedIds.has(item.sessionId))
+          : queue.items,
+    [queue, principal, authoritative, ownedIds],
+  );
+  const desktopAllowed =
+    notifications.enabled && notifications.allowOs && channels.desktop;
+
+  useLayoutEffect(() => {
+    seen.current.clear();
+    return () => {
+      live.current = undefined;
+      desktopNotices.close();
+    };
+  }, [epoch, desktopNotices]);
+
+  useLayoutEffect(() => {
+    live.current = {
+      epoch,
+      ids: ownedIds,
+      onSwitch,
+      enabled: notifications.enabled,
+      desktop: desktopAllowed,
+    };
+    if (!desktopAllowed) desktopNotices.close();
+    if (authoritative) desktopNotices.keep(ownedIds);
+  }, [
+    epoch,
+    ownedIds,
+    onSwitch,
+    notifications.enabled,
+    desktopAllowed,
+    desktopNotices,
+    authoritative,
+  ]);
+
+  const rewrite = useCallback(
+    (
+      next: (
+        previous: readonly QaTurnNoticeItem[],
+      ) => readonly QaTurnNoticeItem[],
+    ) => {
+      if (live.current?.epoch !== epoch) return;
+      setQueue((previous) => {
+        if (previous.epoch !== epoch) return previous;
+        const items = next(previous.items);
+        return items === previous.items ? previous : { ...previous, items };
+      });
+    },
+    [epoch],
+  );
+
+  const open = useCallback(
+    (sessionId: string) => {
+      const page = live.current;
+      if (page?.epoch !== epoch || !page.enabled || !page.ids.has(sessionId))
+        return;
+      rewrite((previous) =>
+        previous.filter((item) => item.sessionId !== sessionId),
+      );
+      desktopNotices.close(sessionId);
+      page.onSwitch(sessionId);
+    },
+    [epoch, rewrite, desktopNotices],
+  );
+
+  useEffect(() => {
+    if (authoritative)
+      rewrite((previous) =>
+        previous.some((item) => !ownedIds.has(item.sessionId))
+          ? previous.filter((item) => ownedIds.has(item.sessionId))
+          : previous,
+      );
+  }, [authoritative, ownedIds, rewrite]);
+
   useEffect(() => {
     const completions = settleTurnCompletions(seen.current, ownedChats, {
       paused,
@@ -135,36 +258,41 @@ export function useQaTurnNotifications(
         activeSessionId,
       });
       if (planned === null) continue;
-      if (planned.desktop) raiseDesktopNotice(completion);
+      if (planned.desktop)
+        raiseDesktopNotice(
+          completion,
+          (sessionId) => {
+            if (live.current?.desktop) open(sessionId);
+          },
+          desktopNotices,
+        );
       if (planned.inApp) added.push(planned.item);
     }
     if (added.length === 0) return;
-    setItems((previous) =>
-      [...added.reverse(), ...previous].slice(0, MAX_NOTICES),
-    );
-  }, [channels, activeSessionId, ownedChats, notifications, paused]);
+    const newestFirst = added.reverse();
+    rewrite((previous) => [...newestFirst, ...previous].slice(0, MAX_NOTICES));
+  }, [
+    channels,
+    activeSessionId,
+    ownedChats,
+    notifications,
+    paused,
+    epoch,
+    rewrite,
+    open,
+    desktopNotices,
+  ]);
 
   // Opening a chat by any other means is an answer to its notice.
   useEffect(() => {
     if (activeSessionId === null) return;
-    setItems((previous) =>
+    rewrite((previous) =>
       previous.some((item) => item.sessionId === activeSessionId)
         ? previous.filter((item) => item.sessionId !== activeSessionId)
         : previous,
     );
-  }, [activeSessionId]);
-
-  const open = useCallback(
-    (sessionId: string) => {
-      setItems((previous) =>
-        previous.some((item) => item.sessionId === sessionId)
-          ? previous.filter((item) => item.sessionId !== sessionId)
-          : previous,
-      );
-      onSwitch(sessionId);
-    },
-    [onSwitch],
-  );
+    desktopNotices.close(activeSessionId);
+  }, [activeSessionId, rewrite, desktopNotices]);
 
   // The offer is a single question per browser: asked when the desktop channel
   // is still allowed by the deployment, unanswered, and the browser has not
@@ -179,10 +307,11 @@ export function useQaTurnNotifications(
   // offer too: it never returns to ask a second time.
   const dismiss = useCallback(
     (key: string) => {
-      setItems((previous) => previous.filter((item) => item.key !== key));
+      if (live.current?.epoch !== epoch) return;
+      rewrite((previous) => previous.filter((item) => item.key !== key));
       if (offered) savePrefs({ ...prefs, osOffered: true });
     },
-    [offered, prefs, savePrefs],
+    [epoch, offered, prefs, rewrite, savePrefs],
   );
 
   // Answering the offer writes the choice where it belongs: on the account once
@@ -191,7 +320,9 @@ export function useQaTurnNotifications(
   // is that the question has been asked here, which is a fact about this
   // browser's permission prompt rather than about the person.
   const enableDesktop = useCallback(() => {
+    if (live.current?.epoch !== epoch) return;
     void requestNotificationPermission().then((permission) => {
+      if (live.current?.epoch !== epoch || !live.current.enabled) return;
       const granted = permission === "granted";
       savePrefs({ ...prefs, osEnabled: granted, osOffered: true });
       if (account === undefined) return;
@@ -200,7 +331,7 @@ export function useQaTurnNotifications(
         desktop: granted,
       });
     });
-  }, [account, prefs, savePrefs]);
+  }, [account, epoch, prefs, savePrefs]);
 
   return {
     items,
