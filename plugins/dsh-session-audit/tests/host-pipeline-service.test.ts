@@ -236,33 +236,27 @@ describe("AuditService refresh", () => {
 
   it("lists every audit of a session, newest first", async () => {
     const { service } = testService(root);
-    await writeAudit(root, AUDIT_DIRECTORY, {
+    const older = await writeAudit(root, AUDIT_DIRECTORY, {
       analysis: analysis(),
       report: REPORT,
     });
+    // File writes can share an mtime on CI; ordering needs distinct timestamps.
+    const olderTime = new Date("2026-01-01T00:00:00Z");
+    await utimes(join(older, "analysis.json"), olderTime, olderTime);
+    await utimes(join(older, "REPORT.md"), olderTime, olderTime);
     await service.refresh();
-    // Two audits stamped in the same millisecond tie, and the tie breaks on the
-    // id, which would put the older one first: the second audit is stamped at
-    // an instant this test chooses, floored to a whole second so `utimes` does
-    // not read it back a millisecond lower on a nanosecond filesystem.
-    const newerStamp = new Date(
-      Math.floor(
-        (await stat(join(root, AUDIT_DIRECTORY, "REPORT.md"))).mtimeMs / 1000,
-      ) *
-        1000 +
-        60_000,
-    );
-    const second = await writeAudit(root, `${AUDIT_DIRECTORY}-2`, {
+    const newer = await writeAudit(root, `${AUDIT_DIRECTORY}-2`, {
       analysis: analysis(SESSION_ID, { verdict: "good" }),
       report: REPORT,
     });
-    for (const artefact of ["analysis.json", "REPORT.md"]) {
-      await utimes(join(second, artefact), newerStamp, newerStamp);
-    }
+    const newerTime = new Date("2026-01-02T00:00:00Z");
+    await utimes(join(newer, "analysis.json"), newerTime, newerTime);
+    await utimes(join(newer, "REPORT.md"), newerTime, newerTime);
     await service.refresh();
 
     const audits = await service.listSessionAudits(SESSION_ID);
 
+    expect(audits).toHaveLength(2);
     expect(audits.map((audit) => audit.auditId)).toEqual([
       `${AUDIT_DIRECTORY}-2`,
       AUDIT_DIRECTORY,

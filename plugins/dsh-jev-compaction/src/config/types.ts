@@ -189,6 +189,10 @@ export interface JevCompactionConfig {
       "trace" | "debug" | "info" | "warn" | "error" | "silent";
     /** Include per-candidate scores in reports. */
     readonly includeCandidateScores?: boolean;
+    /** Record durable session metadata for conversation cards; requires this plugin to read it. */
+    readonly sessionCards?: boolean;
+    /** Record the reason a compaction gate refused a run. */
+    readonly showSkipReasons?: boolean;
   };
 }
 
@@ -276,6 +280,8 @@ export interface ResolvedJevCompactionConfig {
   readonly diagnostics: {
     readonly logLevel: "trace" | "debug" | "info" | "warn" | "error" | "silent";
     readonly includeCandidateScores: boolean;
+    readonly sessionCards: boolean;
+    readonly showSkipReasons: boolean;
   };
 }
 

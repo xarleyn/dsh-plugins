@@ -101,6 +101,25 @@ describe("assistant math", () => {
     const { container } = render(<Markdown text={"$\\frac{$"} />);
     expect(container.querySelector(".katex-error")).toBeTruthy();
   });
+
+  it("does not inherit trusted rendering from a polluted prototype", () => {
+    const previous = Object.getOwnPropertyDescriptor(Object.prototype, "trust");
+    Object.defineProperty(Object.prototype, "trust", {
+      configurable: true,
+      writable: true,
+      value: true,
+    });
+    try {
+      const { container } = render(
+        <Markdown text={"$\\href{https://example.com}{demo}$"} />,
+      );
+      expect(container.querySelector(".katex")).toBeTruthy();
+      expect(container.querySelector("a[href]")).toBeNull();
+    } finally {
+      if (previous) Object.defineProperty(Object.prototype, "trust", previous);
+      else Reflect.deleteProperty(Object.prototype, "trust");
+    }
+  });
 });
 
 describe("assistant footnotes", () => {

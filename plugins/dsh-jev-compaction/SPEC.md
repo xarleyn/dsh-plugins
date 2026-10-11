@@ -1445,23 +1445,46 @@ Future: OpenTelemetry spans and metrics.
 
 ---
 
-## 28. Optional durable diagnostic events
+## 28. Durable session events (conversation observability)
 
-v1 may avoid adding custom durable session events to minimize compatibility risk.
+One recorded compaction run is one durable, log-only session event
+(`src/shared/session-events.ts`), so the conversation can show what a run did
+without a reader opening the plugin log. The event types are
+`jev-compaction/applied` (a run that produced a plan) and
+`jev-compaction/skipped` (a run a gate refused, written only when
+`diagnostics.showSkipReasons` is on).
 
-If later needed, custom log-only events could record a compaction plan without entering the model surface.
+Rules:
 
-Possible future types:
+- **Metadata only.** Counts, seq pairs and probabilities. No tool output, no
+  prompt, no Jev state body, no archive path. The originals stay in the
+  session log and the card says so.
+- **Log-only.** Custom event types never carry a `surfaceOp`, so they enter
+  neither the model-visible surface nor the request reconstruction. Nothing
+  here feeds back into the model as context.
+- **Never the core `compaction/*` vocabulary.** The core engine decides state
+  on replay of `compaction/start` / `compaction/end`; a third-party event there
+  would drive its state machine.
+- **Durable.** The card is assembled from the log, so it survives refresh,
+  reopen and fork, and one event is one card (keyed by its seq) — runs never
+  merge.
+- **Registered while mounted, and opt-in.** These types are outside the
+  harness's own `SessionEventMap`, so `Session.append` cannot stamp the
+  envelope's `ignorable` marker and a reader without this plugin refuses the
+  log at history load. `registerJevCompactionSessionEventTypes` joins them into
+  the harness's live vocabulary for as long as the plugin is loaded and removes
+  them on dispose, which is the mechanism `dsh-session-scope` uses for
+  `session-scope/set`. Because the coupling cannot be removed, the record is
+  **off by default**: `diagnostics.sessionCards` gates it, and the portability
+  consequence is spelled out in `docs/compatibility.md` and warned about at
+  plugin start.
 
-```text
-jev-compaction/start
-jev-compaction/end
-jev-compaction/error
-```
-
-Do not give custom event types a `surfaceOp`.
-
-Before adding any durable plugin event, verify DSH persistence/plugin event extension rules for the target version.
+Payload fields (`jev-compaction/applied`): `mode` (`auto` / `manual` /
+`dry-run`), `trigger`, the state-fitting `stage`, `candidates`, `mutations`,
+`applied`, `batches`, `maxConcurrency`, `charsSaved`, `tokensBefore`,
+`tokensAfter`, `contextWindow`, the `KEEP_FULL` / `KEEP_TRUNCATED` / `KEEP_STUB`
+distribution and one row per candidate carrying tool, chars, action, the two
+probabilities and `originalSeq -> replacementSeq`.
 
 ---
 

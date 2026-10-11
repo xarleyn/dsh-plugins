@@ -13,6 +13,7 @@
 
 import type { Context } from "@deepseek-ai/cordis";
 import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
+import type {} from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {
@@ -28,6 +29,11 @@ import {
   JevCompactionCard,
   type JevCompactionCardFace,
 } from "./card.js";
+import {
+  JEV_COMPACTION_NODE_KIND,
+  jevCompactionConversationDefinition,
+} from "./conversation.js";
+import { JevCompactionRunCard } from "./run-card.js";
 import { styles } from "./styles.js";
 
 /** Package name: the style-tag key and the card's own plugin identity. */
@@ -46,7 +52,7 @@ const ROW_CONFIG_KEY = `@yadsh/dsh-jev-compaction#${JEV_COMPACTION_SETTINGS_NAME
  * declared dependencies, so they must be listed here as well as in the
  * `dsh.client.inject` manifest.
  */
-export const inject = ["slots", "configForms"];
+export const inject = ["slots", "configForms", "uiConversation"];
 
 function noop(): void {}
 
@@ -58,6 +64,9 @@ interface ClientFace {
   };
   readonly configForms?: {
     get<T>(entryId: string): T;
+  };
+  readonly uiConversation?: {
+    events: { register(definition: unknown): () => void };
   };
 }
 
@@ -94,15 +103,33 @@ function JevCompactionEntry(props: EntryProps) {
 export function apply(ctx: Context): () => void {
   const face = ctx as unknown as Partial<ClientFace>;
   const slots = face.slots;
+  if (slots === undefined) return noop;
+  const disposers: Array<() => void> = [];
+  if (face.uiConversation !== undefined) {
+    disposers.push(
+      face.uiConversation.events.register(jevCompactionConversationDefinition),
+      slots.inject("conversation.chat.node", () =>
+        slots.register(
+          { name: "conversation.chat.node", key: JEV_COMPACTION_NODE_KIND },
+          JevCompactionRunCard,
+        ),
+      ),
+    );
+  }
+  const disposeAll = () => {
+    for (const dispose of disposers.splice(0).reverse()) dispose();
+  };
   // Headless probes and profiles without the settings client have no form to
   // bind; rendering no card beats crashing the page during module load
   // (AGENTS.md: no namespace, no card).
   if (
     face.configForms === undefined ||
-    typeof face.configForms.get !== "function" ||
-    slots === undefined
+    typeof face.configForms.get !== "function"
   ) {
-    return noop;
+    if (disposers.length > 0) {
+      disposers.unshift(injectCardStyles(CLIENT_PLUGIN_NAME, styles));
+    }
+    return disposeAll;
   }
 
   // The row seat hands the page's own `ConfigPageForm`, which is `{ state,
@@ -127,8 +154,7 @@ export function apply(ctx: Context): () => void {
     ),
   );
 
-  return () => {
-    disposeSlot();
-    removeStyles();
-  };
+  disposers.unshift(removeStyles);
+  disposers.push(disposeSlot);
+  return disposeAll;
 }

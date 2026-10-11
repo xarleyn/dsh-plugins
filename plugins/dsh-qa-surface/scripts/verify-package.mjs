@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { mkdtemp, readFile, rm, stat, symlink } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -354,6 +355,36 @@ assert.match(attach, /--write/u);
 assert.doesNotMatch(attach, /require\(/u);
 
 const client = await readFile(new URL("lib/client.js", root), "utf8");
+// Parse executable calls so type imports in dependency JSDoc do not count.
+// The repository tooling retains the compiler API; the plugin's TypeScript 7
+// compiler does not expose that API.
+const ts = createRequire(new URL("../../../package.json", import.meta.url))(
+  "typescript",
+);
+const clientSyntax = ts.createSourceFile(
+  "client.js",
+  client,
+  ts.ScriptTarget.Latest,
+  false,
+  ts.ScriptKind.JS,
+);
+function verifyNoRelativeChunks(node) {
+  if (
+    ts.isCallExpression(node) &&
+    (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+      (ts.isIdentifier(node.expression) && node.expression.text === "require"))
+  ) {
+    const specifier = node.arguments[0];
+    if (specifier && ts.isStringLiteralLike(specifier)) {
+      assert(
+        !specifier.text.startsWith("./") && !specifier.text.startsWith("../"),
+        `client bundle must inline relative dependency ${specifier.text}`,
+      );
+    }
+  }
+  ts.forEachChild(node, verifyNoRelativeChunks);
+}
+verifyNoRelativeChunks(clientSyntax);
 const escapedVersion = manifest.version.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 assert.match(
   client,

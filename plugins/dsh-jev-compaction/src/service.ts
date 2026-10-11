@@ -53,9 +53,20 @@ import {
 import { decideAction, type CandidateScores } from "./planner/policy.js";
 import { meetsSavingsGate } from "./planner/savings.js";
 import { JEV_EVENTS, jevLogger } from "./observability/logging.js";
+import {
+  JEV_COMPACTION_APPLIED_EVENT,
+  JEV_COMPACTION_SKIPPED_EVENT,
+  registerJevCompactionSessionEventTypes,
+  type JevCompactionAppliedEventData,
+  type JevCompactionItemRecord,
+  type JevCompactionTrigger,
+  type JevSkipReason,
+} from "./observability/session-events.js";
 import { registerJevCompactCommand } from "./commands/jev-compact.js";
 import { installJevCompactionSettings } from "./settings/install.js";
 import { ResultShapingSubsystem } from "./result-shaping/index.js";
+
+export type { JevSkipReason } from "./observability/session-events.js";
 
 declare module "@deepseek-ai/cordis" {
   interface Context {
@@ -65,20 +76,6 @@ declare module "@deepseek-ai/cordis" {
 
 /** Why a run started; drives trigger and reporting behavior. */
 export type JevRunMode = "auto" | "manual";
-
-/** Terse reason a run produced no mutation. */
-export type JevSkipReason =
-  | "disabled"
-  | "busy"
-  | "pressure-not-met"
-  | "cooldown"
-  | "failure-backoff"
-  | "not-enough-candidates"
-  | "not-enough-candidate-chars"
-  | "savings-gate"
-  | "no-candidates"
-  | "jev-failed"
-  | "empty-plan";
 
 /** Result of one completed run (successful, skipped, or failed). */
 export interface JevRunReport {
@@ -157,6 +154,8 @@ export class JevCompactionService extends Service {
   private readonly sessions = new Map<string, SessionState>();
   /** Backends whose key warning was already logged, keyed provider+variable. */
   private readonly warnedCredentials = new Set<string>();
+  /** Whether this process already said what `sessionCards` costs. */
+  private warnedSessionCardPortability = false;
   private readonly disposers: Array<() => void> = [];
   /** Immediate result shaping at `tools/post-execute` (SPEC result-shaping). */
   readonly shaping: ResultShapingSubsystem;
@@ -229,6 +228,10 @@ export class JevCompactionService extends Service {
       this.disposers.push(registerJevCompactCommand(commands, this));
     });
 
+    this.disposers.push(registerJevCompactionSessionEventTypes());
+    if (this.resolvedConfig.diagnostics.sessionCards) {
+      this.warnSessionCardPortability();
+    }
     installJevCompactionSettings(ctx);
     // The loader swaps a volatile reference in place and then tells the entry
     // which paths moved. Re-resolving here is the whole live-settings path: the
@@ -267,6 +270,9 @@ export class JevCompactionService extends Service {
     }
     this.shaping.onConfigChanged();
     this.warnOnMissingCredential();
+    if (this.resolvedConfig.diagnostics.sessionCards) {
+      this.warnSessionCardPortability();
+    }
   }
 
   /**
@@ -396,6 +402,121 @@ export class JevCompactionService extends Service {
     });
   }
 
+  /**
+   * Say once per process what `sessionCards` costs.
+   *
+   * The event types are this plugin's own, and the harness offers a plugin no
+   * way to mark an event `ignorable`, so a session recorded while this is on
+   * can only be interpreted by a build that has this plugin loaded. An operator
+   * who learns that from a refused history load learns it too late; the switch
+   * is off by default precisely because of it, and this line is what makes the
+   * trade explicit when it is on.
+   */
+  private warnSessionCardPortability(): void {
+    if (this.warnedSessionCardPortability) return;
+    this.warnedSessionCardPortability = true;
+    jevLogger.warn(JEV_EVENTS.sessionCardPortability, {
+      note: "diagnostics.sessionCards is on: every compaction run is recorded as a jev-compaction/applied session event, which only a build with this plugin loaded can interpret — a session recorded while it was on refuses to load without the plugin",
+    });
+  }
+
+  /**
+   * Append the durable record of one run (SPEC §28).
+   *
+   * Fail-open by construction: the card is a view over work that already
+   * happened, so a rejected append is logged and the run keeps its result.
+   * The payload is metadata only — counts, seqs and scores; never a tool
+   * result, a prompt, or the Jev state.
+   */
+  private emitRunEvent(
+    session: Session,
+    report: JevRunReport,
+    detail: {
+      trigger: JevCompactionTrigger;
+      stage: string;
+      batches: number;
+      contextWindow: number | null;
+    },
+  ): void {
+    if (!this.config.diagnostics.sessionCards) return;
+    if (report.plan === undefined) return;
+    const replacements = new Map<number, number>();
+    for (const entry of report.applied) {
+      replacements.set(Number(entry.originalSeq), Number(entry.replacementSeq));
+    }
+    const items: JevCompactionItemRecord[] = report.plan.items.map((item) => ({
+      tool: item.candidate.toolName ?? "tool",
+      chars: item.candidate.originalChars,
+      action: item.action,
+      ...(item.scores?.needContents === undefined
+        ? {}
+        : { needContents: item.scores.needContents }),
+      ...(item.scores?.needVerbatim === undefined
+        ? {}
+        : { needVerbatim: item.scores.needVerbatim }),
+      originalSeq: Number(item.candidate.surfaceSeq),
+      replacementSeq:
+        replacements.get(Number(item.candidate.surfaceSeq)) ?? null,
+    }));
+    const data: JevCompactionAppliedEventData = {
+      mode: report.mode,
+      trigger: detail.trigger,
+      stage: detail.stage,
+      candidates: report.candidates,
+      mutations: report.plan.mutations.length,
+      applied: report.applied.length,
+      batches: detail.batches,
+      maxConcurrency: this.config.jev.maxConcurrency,
+      // What actually left the surface, not what the plan promised: a run
+      // that landed only some of its replacements saved only those, and a run
+      // that landed none saved nothing. The planned estimate stays available
+      // through the token line, which is labelled as an estimate.
+      charsSaved: report.applied.reduce(
+        (sum, entry) => sum + (entry.charsBefore - entry.charsAfter),
+        0,
+      ),
+      tokensBefore: report.tokensBefore ?? null,
+      tokensAfter: report.tokensAfter ?? null,
+      contextWindow: detail.contextWindow,
+      actions: {
+        KEEP_FULL: report.keptFull,
+        KEEP_TRUNCATED: report.truncated,
+        KEEP_STUB: report.stubbed,
+      },
+      items,
+    };
+    try {
+      session.append(JEV_COMPACTION_APPLIED_EVENT, data);
+    } catch (error: unknown) {
+      this.reportFailure(error, report.sessionId);
+    }
+  }
+
+  /**
+   * Append the durable record of a skipped run, when the operator asked for
+   * skip reasons. A `busy` skip is a race, not a decision: it never lands.
+   */
+  private emitSkipEvent(
+    session: Session,
+    report: JevRunReport,
+    candidates: number,
+    tokensBefore: number | null,
+  ): void {
+    if (!this.config.diagnostics.sessionCards) return;
+    if (!this.config.diagnostics.showSkipReasons) return;
+    if (report.skipped === undefined || report.skipped === "busy") return;
+    try {
+      session.append(JEV_COMPACTION_SKIPPED_EVENT, {
+        mode: report.mode,
+        reason: report.skipped,
+        candidates,
+        tokensBefore,
+      });
+    } catch (error: unknown) {
+      this.reportFailure(error, report.sessionId);
+    }
+  }
+
   private async compact(
     agent: AgentLike,
     options: {
@@ -491,8 +612,17 @@ export class JevCompactionService extends Service {
     const { sessionId, started } = context;
     const session = agent.session;
     const state = this.sessionState(sessionId);
-    const skip = (reason: JevSkipReason): JevRunReport =>
-      this.skippedReport(mode, sessionId, reason, started);
+    // Facts a skip record quotes, filled in as the pipeline learns them: the
+    // measured surface tokens and how many candidates the gate saw. Read only
+    // when the operator asked for skip reasons, so the default path measures
+    // nothing extra.
+    let measuredTokens: number | null = null;
+    let seenCandidates = 0;
+    const skip = (reason: JevSkipReason): JevRunReport => {
+      const report = this.skippedReport(mode, sessionId, reason, started);
+      this.emitSkipEvent(session, report, seenCandidates, measuredTokens);
+      return report;
+    };
 
     if (!this.config.enabled) return skip("disabled");
     if (mode === "auto" && Date.now() < state.retryAfter)
@@ -505,6 +635,8 @@ export class JevCompactionService extends Service {
       signal,
     );
     if (signal.aborted) return skip("busy");
+
+    measuredTokens = pressure.estimatedSurfaceTokens;
 
     // Automatic trigger policy (SPEC §8). Without a resolvable context
     // window the ratio check falls back to the absolute token floor.
@@ -540,6 +672,7 @@ export class JevCompactionService extends Service {
       (sum, candidate) => sum + candidate.originalChars,
       0,
     );
+    seenCandidates = candidates.length;
     if (
       mode === "auto" &&
       candidates.length < this.config.trigger.minCandidates
@@ -653,6 +786,23 @@ export class JevCompactionService extends Service {
     });
     const plan = buildPlan(surfaceSnapshot, items);
 
+    // Facts the conversation card carries (SPEC §28). `trigger` names why the
+    // run happened, `stage` how far the Jev state had to be fitted to fit the
+    // request budget — both are the answers a reader has after a shrink.
+    const detail = {
+      trigger:
+        mode === "auto"
+          ? pressure.contextWindow !== undefined
+            ? ("context-ratio" as const)
+            : ("token-floor" as const)
+          : mode === "dry-run"
+            ? ("command" as const)
+            : ("queued" as const),
+      stage: fitted.stage,
+      batches: batches.length,
+      contextWindow: pressure.contextWindow ?? null,
+    };
+
     // Minimum savings gate (SPEC §20): auto skips; dry-run and manual
     // previews always report the plan.
     if (mode === "auto" && !meetsSavingsGate(plan.savings, this.config)) {
@@ -676,7 +826,7 @@ export class JevCompactionService extends Service {
     };
 
     if (options.dryRun === true || plan.mutations.length === 0) {
-      return {
+      const report: JevRunReport = {
         mode,
         sessionId,
         pressure,
@@ -691,6 +841,10 @@ export class JevCompactionService extends Service {
         applied: [],
         plan: plan.mutations.length > 0 ? plan : undefined,
       };
+      // A dry-run preview is a card like any other — marked `dry-run`, with
+      // every item's replacement seq still null because nothing landed.
+      this.emitRunEvent(session, report, detail);
+      return report;
     }
 
     // Manual non-dry-run previews queue the application for the next
@@ -704,7 +858,7 @@ export class JevCompactionService extends Service {
         sessionId,
         mutations: plan.mutations.length,
       });
-      return {
+      const report: JevRunReport = {
         mode,
         sessionId,
         pressure,
@@ -719,6 +873,8 @@ export class JevCompactionService extends Service {
         queuedForNextStep: true,
         plan,
       };
+      this.emitRunEvent(session, report, detail);
+      return report;
     }
 
     // Automatic application inside the open turn: revalidate, then land
@@ -757,7 +913,7 @@ export class JevCompactionService extends Service {
       tokensBefore: pressure.estimatedSurfaceTokens,
       tokensAfter,
     });
-    return {
+    const report: JevRunReport = {
       mode,
       sessionId,
       pressure,
@@ -772,6 +928,10 @@ export class JevCompactionService extends Service {
       error: failureMessage,
       plan,
     };
+    // The replacements are already durable, so the record of what they were
+    // goes in right after them: one card per run, in log order.
+    this.emitRunEvent(session, report, detail);
+    return report;
   }
 
   private llmRuntime(): LlmRuntimeLike | undefined {

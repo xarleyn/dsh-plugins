@@ -14,6 +14,7 @@ import type { ComponentType } from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { CLIENT_PLUGIN_NAME, apply, inject } from "../../src/client/index.js";
+import { JEV_COMPACTION_NODE_KIND } from "../../src/client/conversation.js";
 import { JEV_COMPACTION_ROW_SUMMARY } from "../../src/client/card.js";
 import { JEV_COMPACTION_SETTINGS_NAMESPACE } from "../../src/shared/settings.js";
 
@@ -39,7 +40,14 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-function stub(options: { withForms?: boolean; writes?: WriteOp[] } = {}) {
+function stub(
+  options: {
+    withForms?: boolean;
+    withConversation?: boolean;
+    writes?: WriteOp[];
+  } = {},
+) {
+  const definitions: Record<string, unknown>[] = [];
   const slots: SlotRegistration[] = [];
   const face = {
     configForms: {
@@ -79,10 +87,23 @@ function stub(options: { withForms?: boolean; writes?: WriteOp[] } = {}) {
       },
     },
   };
-  if (options.withForms === false) {
-    return { ctx: { slots: face.slots } as unknown as Context, slots };
-  }
-  return { ctx: face as unknown as Context, slots };
+  const context = {
+    slots: face.slots,
+    ...(options.withForms === false ? {} : { configForms: face.configForms }),
+    ...(options.withConversation === true
+      ? {
+          uiConversation: {
+            events: {
+              register: (definition: Record<string, unknown>) => {
+                definitions.push(definition);
+                return () => {};
+              },
+            },
+          },
+        }
+      : {}),
+  };
+  return { ctx: context as unknown as Context, slots, definitions };
 }
 
 function registeredCard(): SlotRegistration {
@@ -131,7 +152,7 @@ function mountRowSection(settingsWrites: WriteOp[]) {
 
 describe("client entry registration", () => {
   it("declares the client services the runtime must resolve", () => {
-    expect([...inject]).toEqual(["slots", "configForms"]);
+    expect([...inject]).toEqual(["slots", "configForms", "uiConversation"]);
   });
 
   it("registers one card on the Plugins page row seat", () => {
@@ -202,5 +223,42 @@ describe("client entry registration", () => {
 
   it("identifies itself by the full package name", () => {
     expect(CLIENT_PLUGIN_NAME).toBe("@yadsh/dsh-jev-compaction");
+  });
+});
+
+describe("conversation registration beside the configuration row", () => {
+  it("registers the event definition and its transcript renderer", () => {
+    const { ctx, slots, definitions } = stub({ withConversation: true });
+    apply(ctx);
+    expect(definitions).toHaveLength(1);
+    expect(
+      slots.find((seat) => seat.name === "conversation.chat.node")?.key,
+    ).toBe(JEV_COMPACTION_NODE_KIND);
+    expect(slots.some((seat) => seat.name === "plugins.row.config")).toBe(true);
+  });
+  it("keeps the transcript contribution without configuration forms", () => {
+    const { ctx, slots, definitions } = stub({
+      withForms: false,
+      withConversation: true,
+    });
+    const dispose = apply(ctx);
+    expect(definitions).toHaveLength(1);
+    expect(slots.some((seat) => seat.name === "conversation.chat.node")).toBe(
+      true,
+    );
+    expect(slots.some((seat) => seat.name === "plugins.row.config")).toBe(
+      false,
+    );
+    dispose();
+  });
+  it("keeps the configuration row without the conversation service", () => {
+    const { ctx, slots, definitions } = stub({ withConversation: false });
+    const dispose = apply(ctx);
+    expect(definitions).toHaveLength(0);
+    expect(slots.some((seat) => seat.name === "conversation.chat.node")).toBe(
+      false,
+    );
+    expect(slots.some((seat) => seat.name === "plugins.row.config")).toBe(true);
+    dispose();
   });
 });

@@ -63,6 +63,20 @@ export type { JevCompactionPlan, PlanItem } from "./planner/plan.js";
 export { buildState, fitState } from "./jev/state.js";
 export { batchCandidates, mapWithConcurrency } from "./jev/batch.js";
 export { questionsFor } from "./jev/questions.js";
+export {
+  JEV_COMPACTION_APPLIED_EVENT,
+  JEV_COMPACTION_SESSION_EVENTS,
+  JEV_COMPACTION_SKIPPED_EVENT,
+  registerJevCompactionSessionEventTypes,
+} from "./observability/session-events.js";
+export type {
+  JevCompactionAppliedEventData,
+  JevCompactionItemAction,
+  JevCompactionItemRecord,
+  JevCompactionRunMode,
+  JevCompactionSkippedEventData,
+  JevCompactionTrigger,
+} from "./shared/session-events.js";
 
 declare module "@deepseek-ai/cordis" {
   interface Context {
