@@ -32,6 +32,9 @@ const client: UserConfig = {
       specifier !== "react/jsx-runtime",
   },
   outputOptions: {
+    // The Host evaluates only client.js through ModuleLoader, so every
+    // dependency must stay inside this registered factory.
+    codeSplitting: false,
     entryFileNames: "client.js",
     sourcemapExcludeSources: false,
     banner: `window.__ModuleLoader__.load({ id: ${JSON.stringify(PACKAGE_NAME)}, factory: (require) => {`,
