@@ -108,6 +108,23 @@ test("private marker shapes cannot exempt themselves with an inline comment", ()
   );
 });
 
+test("documented platform names and the exact local override path are not private hosts", () => {
+  assert.deepEqual(
+    identifierFindings(
+      "https://Team.Example.CORP/root/ http://host.docker.internal:9222 `.dsh/doc-impact.local.yml`",
+    ),
+    [],
+  );
+  for (const text of [
+    "https://doc-impact.local/",
+    ".dsh/other.local.yml",
+    "https://custom.host.docker.internal/",
+    "https://host.docker.internal.corp/",
+  ]) {
+    assert.equal(identifierFindings(text)[0].rule, "internal-host");
+  }
+});
+
 test("the range scanner reads added text, including tests, and exempts only deployment kits and locks", (t) => {
   const f = fixture(t);
   const marker = ["TEAM", "789"].join("-");

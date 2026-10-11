@@ -34,7 +34,7 @@ import { adapterSettings } from "./adapters.helpers.js";
 import { SECRET, expectCode } from "./provider.helpers.js";
 
 const ISSUE_JSON = JSON.stringify({
-  key: "PROJ-1",
+  key: "PROJ-123",
   fields: {
     summary: "Hop issue",
     status: { name: "Open" },
@@ -44,16 +44,16 @@ const ISSUE_JSON = JSON.stringify({
 
 /**
  * The request target of the hop a Server-flavored Jira rule answers for
- * `PROJ-1`. Path and query do not depend on the origin, so one constant names
+ * `PROJ-123`. Path and query do not depend on the origin, so one constant names
  * the route on every fixture port.
  */
 const HOP_TARGET = (() => {
-  const url = issueApiUrl("http://127.0.0.1:1", "PROJ-1", adapterSettings());
+  const url = issueApiUrl("http://127.0.0.1:1", "PROJ-123", adapterSettings());
   return `${url.pathname}${url.search}`;
 })();
 
 /** A second REST path on the same origin, for the followed-redirect case. */
-const CANONICAL_TARGET = "/rest/api/2/issue/PROJ-1/canonical";
+const CANONICAL_TARGET = "/rest/api/2/issue/PROJ-123/canonical";
 
 /** A Jira rule aimed at a loopback fixture, covering both REST paths. */
 function jiraRule(
@@ -92,7 +92,7 @@ function hopContext(source: AuthenticatedFetchRule): AdapterRequestContext {
 /** Ask the seam for a browse URL, letting it fetch its own hop for real. */
 function takeHop(server: FixtureServer, rule?: AuthenticatedFetchRule) {
   return applyAdapter(
-    new URL(`${server.origin}/browse/PROJ-1`),
+    new URL(`${server.origin}/browse/PROJ-123`),
     hopContext(rule ?? jiraRule(server.origin)),
   );
 }
@@ -117,7 +117,7 @@ describe("adapter REST hops over the authenticated transport", () => {
   test("the hop leaves on the rewritten path with the rule's credential", async () => {
     const server = await fixture({ [HOP_TARGET]: { body: ISSUE_JSON } });
     const result = await takeHop(server);
-    expect(result?.body.content).toContain("# PROJ-1: Hop issue");
+    expect(result?.body.content).toContain("# PROJ-123: Hop issue");
     expect(result?.body.content).toContain("hop body");
     // The page URL the caller asked for is never what goes on the wire, and
     // the auth the rule configures is what the REST endpoint receives.
@@ -134,7 +134,7 @@ describe("adapter REST hops over the authenticated transport", () => {
       [CANONICAL_TARGET]: { body: ISSUE_JSON },
     });
     const result = await takeHop(server);
-    expect(result?.body.content).toContain("# PROJ-1: Hop issue");
+    expect(result?.body.content).toContain("# PROJ-123: Hop issue");
     expect(server.requests.map((request) => request.url)).toEqual([
       HOP_TARGET,
       CANONICAL_TARGET,

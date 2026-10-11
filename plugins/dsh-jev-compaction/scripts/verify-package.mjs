@@ -26,7 +26,6 @@ await runVerifyPackage({
   client: {
     platform: "web",
     injectEquals: [
-      "@deepseek-ai/dsh-client-ui-conversation",
       "@deepseek-ai/dsh-client-ui-plugin-manager",
       "@deepseek-ai/dsh-client-ui-settings",
     ],
@@ -120,12 +119,12 @@ await runVerifyPackage({
     // `conversation.chat.node`. Both are core: the conversation assembly and
     // the Chat target ship with the host the way the session controller does,
     // and `dsh-qa-surface` reads the same service without listing it. So the
-    // manifest's inject list stays the settings packages it was.
+    // manifest's inject list names only the row and settings assemblies.
     assert.deepEqual(
       manifest.dsh.client.inject,
       [
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
         "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-settings-plugins",
       ],
       "the conversation assembly is a core service, not an added dependency",
     );
