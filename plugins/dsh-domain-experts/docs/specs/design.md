@@ -869,6 +869,10 @@ Expert can ask another Domain Expert but cannot directly read foreign domain mem
 
 Explicitly configured domains/resources may be directly queried.
 
+The `allowCrossDomain` switch governs this mode as well: when it is off,
+`directRead` grants no foreign memory namespaces to recall, tools or inspection.
+Saved selections remain configuration for a later enabled mode.
+
 Useful for tightly coupled product areas.
 
 ---

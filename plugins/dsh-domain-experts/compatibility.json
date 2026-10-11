@@ -8,6 +8,7 @@
       "tools/restrict",
       "agents.get",
       "subagents.start",
+      "subagents.listChildren",
       "subagents.provider-capabilities",
       "storageDomain.open"
     ],

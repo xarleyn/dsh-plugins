@@ -62,7 +62,12 @@ await runVerifyPackage({
   compatibility: {
     range: true,
     testedReleases: true,
-    hostFeatures: ["tools/register", "subagents.start", "storageDomain.open"],
+    hostFeatures: [
+      "tools/register",
+      "subagents.start",
+      "subagents.listChildren",
+      "storageDomain.open",
+    ],
     clientFeatures: ["plugins.bundle.config"],
   },
   clientBundle: {

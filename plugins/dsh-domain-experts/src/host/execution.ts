@@ -32,12 +32,23 @@ import {
 import type { QaModelPolicyPair } from "./qa-principal.js";
 import { parseExpertAnswer, textOfBlocks } from "./result.js";
 import { EXPERT_REVIEW_OUTPUT_SCHEMA } from "./review-output.js";
+import { expertLabelOf } from "./caller.js";
 
 /** The subagent surface this plugin consumes from the host context. */
 export interface SubagentsFace {
   getProvider(name: string): SubagentProvider | undefined;
   start(name: string, request: SubagentStartRequest): Promise<SubagentRun>;
   startContinuable?(spec: ContinuableStartSpec): Promise<ContinuableStart>;
+  /** Direct children from the Host's durable parent-owned catalog. */
+  childrenOf?(
+    parentSessionId: string,
+    signal: AbortSignal,
+  ): Promise<
+    readonly {
+      readonly sessionId: string;
+      readonly label: string | undefined;
+    }[]
+  >;
 }
 
 /** Minimal logger surface; `PluginLogger` satisfies it structurally. */
@@ -74,10 +85,10 @@ export interface ActiveRun {
  *
  * `domain_delegate` needs to know which domain its own child belongs to, and
  * the runtime exposes no domain marker on a session. The coordinator
- * therefore records the mapping when it starts a run. It is process-local by
- * design: a continuable child resumed after a restart is no longer
- * attributable, and delegation from it fails loudly with EXPERT_NOT_CALLER
- * instead of guessing.
+ * therefore records the mapping when it starts a run. It is process-local;
+ * callerDomainOf recovers delegation identity from the Host's durable child
+ * catalog after eviction or restart and refuses unknown identity. Memory
+ * ownership still requires this live record rather than a creation label.
  */
 export class RunTracker {
   private readonly runs = new Map<string, ActiveRun>();
@@ -234,9 +245,15 @@ export async function runExpert(
       "an expert needs a per-child persona, tool masking and a recursion budget",
     );
   }
-  if (input.structuredOutput === true &&
-      (input.request.background || provider.capabilities.outputSchema !== true))
-    throw unsupportedCapability(provider.name, "outputSchema", "a structured review needs one-shot native result capture");
+  if (
+    input.structuredOutput === true &&
+    (input.request.background || provider.capabilities.outputSchema !== true)
+  )
+    throw unsupportedCapability(
+      provider.name,
+      "outputSchema",
+      "a structured review needs one-shot native result capture",
+    );
   // A domain that inherits its model still takes the pair the chat's policy
   // fixed, so the delegation follows the role the chat runs under rather than
   // the model its visitor left in the picker.
@@ -257,7 +274,7 @@ export async function runExpert(
   }
 
   const request: SubagentStartRequest = {
-    label: `domain-expert:${definition.id}`,
+    label: expertLabelOf(definition.id),
     // The policy travels as the persona (a system section); the child's first
     // message is the caller's request. Sending the persona as the prompt as
     // well made the deployment's instructions read as user text.
@@ -271,7 +288,9 @@ export async function runExpert(
     toolFilter: profile.toolFilter,
     maxDepth: definition.delegation.maxDepth,
     ...agentOptionsOf(definition, modelPolicy),
-    ...(input.structuredOutput === true ? { outputSchema: EXPERT_REVIEW_OUTPUT_SCHEMA } : {}),
+    ...(input.structuredOutput === true
+      ? { outputSchema: EXPERT_REVIEW_OUTPUT_SCHEMA }
+      : {}),
   };
 
   if (input.request.background) {
@@ -302,7 +321,10 @@ export async function runExpert(
     throw relabelCapabilityFailure(error, dependencies.subagentProvider);
   }
 
-  const path = [...pathOf(dependencies, callerSessionId), definition.id];
+  const path = [
+    ...pathOf(dependencies, callerSessionId, input.callerDomain),
+    definition.id,
+  ];
   dependencies.tracker.register({
     domainId: definition.id,
     childSessionId: String(run.id),
@@ -335,9 +357,10 @@ export async function runExpert(
       };
     }
     const durationMs = dependencies.now() - startedAt;
-    const text = input.structuredOutput === true
-      ? JSON.stringify(result.structured ?? null)
-      : textOfBlocks(result.output);
+    const text =
+      input.structuredOutput === true
+        ? JSON.stringify(result.structured ?? null)
+        : textOfBlocks(result.output);
     const parsed = parseExpertAnswer(text);
     const status = statusOf(result.stopReason);
     recordAudit(dependencies, input, {
@@ -408,7 +431,7 @@ async function startBackground(
       (filter) =>
         startContinuable.call(dependencies.subagents, {
           provider: dependencies.subagentProvider,
-          label: request.label ?? `domain-expert:${definition.id}`,
+          label: request.label ?? expertLabelOf(definition.id),
           request: withToolFilter(continuableRequest, filter),
           signal: request.signal,
         }),
@@ -420,7 +443,11 @@ async function startBackground(
   }
   const childSessionId = String(started.childId);
   const path = [
-    ...pathOf(dependencies, String(input.parent.session.header.id)),
+    ...pathOf(
+      dependencies,
+      String(input.parent.session.header.id),
+      input.callerDomain,
+    ),
     definition.id,
   ];
   dependencies.tracker.register({
@@ -451,8 +478,14 @@ async function startBackground(
 function pathOf(
   dependencies: ExecutionDependencies,
   callerSessionId: string,
+  callerDomain: string | null,
 ): readonly string[] {
-  return dependencies.tracker.find(callerSessionId)?.path ?? [];
+  // After a restart only the immediate caller is known; record that suffix
+  // rather than fabricating earlier ancestors or omitting the caller entirely.
+  return (
+    dependencies.tracker.find(callerSessionId)?.path ??
+    (callerDomain === null ? [] : [callerDomain])
+  );
 }
 
 function emptyResult(

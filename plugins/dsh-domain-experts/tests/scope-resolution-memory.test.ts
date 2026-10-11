@@ -9,6 +9,44 @@ import { domainOf } from "./helpers/fakes.js";
 import { PAYMENTS, fixtureOf, resolve } from "./scope-resolution.helpers.js";
 
 describe("scope resolution: memory namespaces", () => {
+  it("excludes disabled direct reads from scope, persona and automatic recall", async () => {
+    const definition = domainOf("payments", {
+      delegation: {
+        ...PAYMENTS.delegation,
+        allowCrossDomain: false,
+        crossDomainMode: "direct-read",
+        directRead: ["domain/inventory"],
+      },
+    });
+    const fixture = fixtureOf([definition]);
+    await fixture.memoryProviders
+      .require("builtin")
+      .remember("domain/inventory", "stock", "Stock is counted once per day.");
+    const profile = await resolveExpert(
+      fixture.dependencies,
+      {
+        definition,
+        workspaceDir: "",
+        callerDomain: null,
+        depth: 1,
+        memoryOwner: DEPLOYMENT_MEMORY_OWNER,
+      },
+      {
+        task: "stock",
+        context: "",
+        output: "",
+        mode: "answer",
+        background: false,
+      },
+    );
+    expect(profile.memory.map((entry) => entry.namespace)).toEqual([
+      "domain/payments",
+    ]);
+    expect(profile.scope.memory.sharedNamespaces).toEqual([]);
+    expect(profile.persona).toContain("Cross-domain access is disabled");
+    expect(profile.persona).not.toContain("domain/inventory");
+    expect(profile.persona).not.toContain("Stock is counted");
+  });
   it("grants read/write on the private namespace and read-only on shared ones", async () => {
     const fixture = fixtureOf([PAYMENTS]);
     const profile = await resolve(fixture, PAYMENTS);
