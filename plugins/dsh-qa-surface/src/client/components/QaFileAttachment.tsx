@@ -1,4 +1,5 @@
 import { formatFileSize } from "../attachments.js";
+import { useState } from "react";
 
 /** Uppercase extension badge; a name without one falls back to a paper glyph. */
 function badgeText(name: string): string {
@@ -11,35 +12,95 @@ function badgeText(name: string): string {
 
 export interface QaFileAttachmentProps {
   readonly name: string;
-  readonly bytes: number;
+  readonly bytes: number | null;
   /** Pending draft vs already-sent attachment: pending offers removal. */
   readonly tone: "draft" | "sent";
   readonly onRemove?: () => void;
+  /**
+   * Open the file: shown as a control on a card the reader can act on, and left
+   * out of a chip that only records what was sent. A produced document is
+   * worthless as a name in a paragraph — this is what makes it reachable.
+   */
+  readonly onOpen?: () => void;
+  /** Save the file. Omitted where the surface cannot read its bytes. */
+  readonly onDownload?: () => void;
+  readonly onApprove?: () => Promise<void>;
 }
 
 /**
- * One attached file: the extension badge, the name and the size. The browser
- * never re-reads these bytes (the Host attachment route serves images), so
- * both the composer card and the sent row show the same handle.
+ * One attached file: the extension badge, the name and the size. A sent
+ * attachment shows the handle the model resolved and the browser never
+ * re-reads its bytes; a file the turn produced is the same chip with the two
+ * controls that make it usable — open it, or take it away.
  */
 export function QaFileAttachment({
   name,
   bytes,
   tone,
   onRemove,
+  onOpen,
+  onDownload,
+  onApprove,
 }: QaFileAttachmentProps) {
+  const [approval, setApproval] = useState<
+    "idle" | "pending" | "approved" | "failed"
+  >("idle");
+  const text = (
+    <span className="dsh-qa-file__text">
+      <span className="dsh-qa-file__name" data-testid="qa-file-name">
+        {name}
+      </span>
+      {bytes === null ? null : (
+        <span className="dsh-qa-file__meta" data-testid="qa-file-size">
+          {formatFileSize(bytes)}
+        </span>
+      )}
+    </span>
+  );
   return (
-    <span className="dsh-qa-file" data-tone={tone} title={name}>
-      <span className="dsh-qa-file__badge" aria-hidden="true">
+    <span
+      className="dsh-qa-file"
+      data-testid="qa-file"
+      data-tone={tone}
+      title={name}
+    >
+      <span
+        className="dsh-qa-file__badge"
+        data-testid="qa-file-badge"
+        aria-hidden="true"
+      >
         {badgeText(name)}
       </span>
-      <span className="dsh-qa-file__text">
-        <span className="dsh-qa-file__name">{name}</span>
-        <span className="dsh-qa-file__meta">{formatFileSize(bytes)}</span>
-      </span>
+      {onOpen === undefined ? (
+        text
+      ) : (
+        <button
+          type="button"
+          className="dsh-qa-file__open"
+          data-testid="qa-file-open"
+          aria-label={`Открыть ${name}`}
+          title={`Открыть ${name}`}
+          onClick={onOpen}
+        >
+          {text}
+        </button>
+      )}
+      {onDownload === undefined ? null : (
+        <button
+          type="button"
+          className="dsh-qa-file__download"
+          data-testid="qa-file-download"
+          aria-label={`Скачать ${name}`}
+          title="Скачать"
+          onClick={onDownload}
+        >
+          Скачать
+        </button>
+      )}
       {onRemove === undefined ? null : (
         <button
           type="button"
+          data-testid="qa-file-remove"
           aria-label={`Убрать ${name}`}
           title="Убрать"
           onClick={onRemove}
@@ -49,6 +110,38 @@ export function QaFileAttachment({
           </svg>
         </button>
       )}
+      {onApprove === undefined ? null : (
+        <button
+          type="button"
+          className="dsh-qa-file__download dsh-qa-file__approve"
+          data-testid="qa-file-approve"
+          disabled={approval === "pending" || approval === "approved"}
+          aria-label={`Согласовать ${name} и сформировать DOCX`}
+          onClick={() => {
+            setApproval("pending");
+            void onApprove().then(
+              () => setApproval("approved"),
+              () => setApproval("failed"),
+            );
+          }}
+        >
+          {approval === "pending"
+            ? "Согласование…"
+            : approval === "approved"
+              ? "Согласовано"
+              : "Согласовать и сформировать DOCX"}
+        </button>
+      )}
+      {approval === "failed" ? (
+        <span
+          className="dsh-qa-file__error"
+          role="status"
+          data-testid="qa-file-approval-error"
+        >
+          Не удалось согласовать или отправить запрос. Проверьте текущую
+          редакцию и повторите.
+        </span>
+      ) : null}
     </span>
   );
 }

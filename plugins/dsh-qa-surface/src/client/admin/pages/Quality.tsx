@@ -76,7 +76,11 @@ export function AdminFeedback(props: {
   }, [load]);
 
   return (
-    <section className="dsh-qa-admin__page" aria-label="Обратная связь">
+    <section
+      className="dsh-qa-admin__page"
+      data-testid="qa-admin-feedback"
+      aria-label="Обратная связь"
+    >
       <div className="dsh-qa-admin__title-row">
         <div>
           <h1>Обратная связь</h1>
@@ -86,9 +90,13 @@ export function AdminFeedback(props: {
           </p>
         </div>
       </div>
-      <div className="dsh-qa-admin__filters">
-        <FilterField label="Оценка">
+      <div
+        className="dsh-qa-admin__filters"
+        data-testid="qa-admin-feedback-filters"
+      >
+        <FilterField label="Оценка" testId="qa-admin-feedback-filter-rating">
           <select
+            data-testid="qa-admin-feedback-rating"
             value={rating}
             onChange={(event) =>
               setRating(event.currentTarget.value as QaFeedbackRating | "")
@@ -99,8 +107,9 @@ export function AdminFeedback(props: {
             <option value="negative">👎</option>
           </select>
         </FilterField>
-        <FilterField label="Причина">
+        <FilterField label="Причина" testId="qa-admin-feedback-filter-reason">
           <select
+            data-testid="qa-admin-feedback-reason"
             value={reason}
             onChange={(event) =>
               setReason(event.currentTarget.value as QaFeedbackReason | "")
@@ -116,8 +125,9 @@ export function AdminFeedback(props: {
             )}
           </select>
         </FilterField>
-        <FilterField label="Разбор">
+        <FilterField label="Разбор" testId="qa-admin-feedback-filter-review">
           <select
+            data-testid="qa-admin-feedback-review-status"
             value={reviewStatus}
             onChange={(event) => setReviewStatus(event.currentTarget.value)}
           >
@@ -129,11 +139,17 @@ export function AdminFeedback(props: {
         </FilterField>
       </div>
       {rows.length === 0 ? (
-        <p className="dsh-qa-admin__empty">
+        <p
+          className="dsh-qa-admin__empty"
+          data-testid="qa-admin-feedback-empty"
+        >
           {loading ? "Загружаю…" : "Оценок пока нет."}
         </p>
       ) : (
-        <table className="dsh-qa-admin__table">
+        <table
+          className="dsh-qa-admin__table"
+          data-testid="qa-admin-feedback-table"
+        >
           <thead>
             <tr>
               <th>Оценка</th>
@@ -148,11 +164,15 @@ export function AdminFeedback(props: {
           </thead>
           <tbody>
             {rows.map((row) => (
-              <tr key={row.id}>
-                <td>{row.rating === "positive" ? "👍" : "👎"}</td>
+              <tr key={row.id} data-testid="qa-admin-feedback-row">
+                <td data-testid="qa-admin-feedback-rating-value">
+                  {row.rating === "positive" ? "👍" : "👎"}
+                </td>
                 <td>{row.displayName}</td>
                 <td>{row.subroleId === "" ? "—" : row.subroleId}</td>
-                <td>{row.conversationTitle ?? row.conversationId}</td>
+                <td data-testid="qa-admin-feedback-conversation">
+                  {row.conversationTitle ?? row.conversationId}
+                </td>
                 <td>
                   {(row.reasons ?? [])
                     .map((value) => FEEDBACK_REASON_LABELS[value])
@@ -162,7 +182,7 @@ export function AdminFeedback(props: {
                   )}
                 </td>
                 <td>{formatStamp(row.createdAt)}</td>
-                <td>
+                <td data-testid="qa-admin-feedback-review">
                   <Badge
                     tone={
                       row.reviewStatus === "reviewed" ? "positive" : "neutral"
@@ -174,6 +194,7 @@ export function AdminFeedback(props: {
                 <td>
                   <button
                     type="button"
+                    data-testid="qa-admin-feedback-open"
                     onClick={() =>
                       props.onOpenConversation(
                         row.conversationId,
@@ -212,7 +233,11 @@ export function AdminQuality(props: {
   );
   const metrics: QaQualityMetrics | undefined = resource.data;
   return (
-    <section className="dsh-qa-admin__page" aria-label="Аналитика качества">
+    <section
+      className="dsh-qa-admin__page"
+      data-testid="qa-admin-quality"
+      aria-label="Аналитика качества"
+    >
       <div className="dsh-qa-admin__title-row">
         <div>
           <h1>Аналитика</h1>
@@ -221,47 +246,94 @@ export function AdminQuality(props: {
             не измеренная точность.
           </p>
         </div>
-        <button type="button" onClick={() => void resource.reload()}>
+        <button
+          type="button"
+          data-testid="qa-admin-quality-reload"
+          onClick={() => void resource.reload()}
+        >
           Обновить
         </button>
       </div>
       {resource.error === undefined ? null : (
-        <p className="dsh-qa-admin__error" role="alert">
+        <p
+          className="dsh-qa-admin__error"
+          data-testid="qa-admin-quality-error"
+          role="alert"
+        >
           {adminErrorMessage(resource.error)}
         </p>
       )}
       {metrics === undefined ? (
-        <p className="dsh-qa-admin__empty">Загружаю…</p>
+        <p
+          className="dsh-qa-admin__empty"
+          data-testid="qa-admin-quality-loading"
+        >
+          Загружаю…
+        </p>
       ) : (
         <>
-          <dl className="dsh-qa-admin__facts dsh-qa-admin__facts--wide">
+          <dl
+            className="dsh-qa-admin__facts dsh-qa-admin__facts--wide"
+            data-testid="qa-admin-quality-facts"
+          >
             <dt>Разговоры</dt>
-            <dd>{formatCount(metrics.conversations)}</dd>
+            <dd data-testid="qa-admin-quality-conversations">
+              {formatCount(metrics.conversations)}
+            </dd>
             <dt>Пользователи с разговорами</dt>
-            <dd>{formatCount(metrics.activeUsers)}</dd>
+            <dd data-testid="qa-admin-quality-active-users">
+              {formatCount(metrics.activeUsers)}
+            </dd>
             <dt>Ответы ассистента</dt>
-            <dd>{formatCount(metrics.assistantMessages)}</dd>
+            <dd data-testid="qa-admin-quality-assistant-messages">
+              {formatCount(metrics.assistantMessages)}
+            </dd>
             <dt>Оценённые ответы</dt>
-            <dd>{formatCount(metrics.ratedMessages)}</dd>
+            <dd data-testid="qa-admin-quality-rated-messages">
+              {formatCount(metrics.ratedMessages)}
+            </dd>
             <dt>Доля оценённых</dt>
-            <dd>{formatRate(metrics.ratingRate)}</dd>
+            <dd data-testid="qa-admin-quality-rating-rate">
+              {formatRate(metrics.ratingRate)}
+            </dd>
             <dt>Положительных</dt>
-            <dd>{formatCount(metrics.positiveRatings)}</dd>
+            <dd data-testid="qa-admin-quality-positive-ratings">
+              {formatCount(metrics.positiveRatings)}
+            </dd>
             <dt>Негативных</dt>
-            <dd>{formatCount(metrics.negativeRatings)}</dd>
+            <dd data-testid="qa-admin-quality-negative-ratings">
+              {formatCount(metrics.negativeRatings)}
+            </dd>
             <dt>Положительная доля</dt>
-            <dd>{formatRate(metrics.positiveRate)}</dd>
+            <dd data-testid="qa-admin-quality-positive-rate">
+              {formatRate(metrics.positiveRate)}
+            </dd>
             <dt>Неразобранных негативных</dt>
-            <dd>{formatCount(metrics.unreviewedNegatives)}</dd>
+            <dd data-testid="qa-admin-quality-unreviewed-negatives">
+              {formatCount(metrics.unreviewedNegatives)}
+            </dd>
             <dt>Разобрано</dt>
-            <dd>{formatCount(metrics.reviewedItems)}</dd>
+            <dd data-testid="qa-admin-quality-reviewed-items">
+              {formatCount(metrics.reviewedItems)}
+            </dd>
           </dl>
-          <section className="dsh-qa-admin__panel">
+          <section
+            className="dsh-qa-admin__panel"
+            data-testid="qa-admin-quality-by-subrole"
+          >
             <h2>Положительная доля по профилям</h2>
             {metrics.bySubrole.length === 0 ? (
-              <p className="dsh-qa-admin__empty">Оценок по профилям нет.</p>
+              <p
+                className="dsh-qa-admin__empty"
+                data-testid="qa-admin-quality-subrole-empty"
+              >
+                Оценок по профилям нет.
+              </p>
             ) : (
-              <table className="dsh-qa-admin__table">
+              <table
+                className="dsh-qa-admin__table"
+                data-testid="qa-admin-quality-subrole-table"
+              >
                 <thead>
                   <tr>
                     <th>Профиль</th>
@@ -273,44 +345,83 @@ export function AdminQuality(props: {
                 </thead>
                 <tbody>
                   {metrics.bySubrole.map((row) => (
-                    <tr key={row.key}>
+                    <tr
+                      key={row.key}
+                      data-testid="qa-admin-quality-subrole-row"
+                    >
                       <td>{row.label}</td>
                       <td>{formatCount(row.rated)}</td>
                       <td>{formatCount(row.positive)}</td>
                       <td>{formatCount(row.negative)}</td>
-                      <td>{formatRate(row.positiveRate)}</td>
+                      <td data-testid="qa-admin-quality-subrole-rate">
+                        {formatRate(row.positiveRate)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             )}
           </section>
-          <section className="dsh-qa-admin__panel">
+          <section
+            className="dsh-qa-admin__panel"
+            data-testid="qa-admin-quality-issues"
+          >
             <h2>Проблемы по вердиктам ревьюеров</h2>
             {metrics.issues.length === 0 ? (
-              <p className="dsh-qa-admin__empty">Разборов пока нет.</p>
+              <p
+                className="dsh-qa-admin__empty"
+                data-testid="qa-admin-quality-issues-empty"
+              >
+                Разборов пока нет.
+              </p>
             ) : (
-              <ul className="dsh-qa-admin__issues-list">
+              <ul
+                className="dsh-qa-admin__issues-list"
+                data-testid="qa-admin-quality-issues-list"
+              >
                 {metrics.issues.map((row) => (
-                  <li key={row.issue}>
+                  <li
+                    key={row.issue}
+                    data-testid="qa-admin-quality-issues-item"
+                  >
                     <span>{row.issue}</span>
-                    <strong>{formatCount(row.count)}</strong>
+                    <strong data-testid="qa-admin-quality-issues-count">
+                      {formatCount(row.count)}
+                    </strong>
                   </li>
                 ))}
               </ul>
             )}
           </section>
-          <section className="dsh-qa-admin__panel">
+          <section
+            className="dsh-qa-admin__panel"
+            data-testid="qa-admin-quality-trend"
+          >
             <h2>Оценки по дням</h2>
             {metrics.trend.length === 0 ? (
-              <p className="dsh-qa-admin__empty">Оценок пока нет.</p>
+              <p
+                className="dsh-qa-admin__empty"
+                data-testid="qa-admin-quality-trend-empty"
+              >
+                Оценок пока нет.
+              </p>
             ) : (
-              <ul className="dsh-qa-admin__trend">
+              <ul
+                className="dsh-qa-admin__trend"
+                data-testid="qa-admin-quality-trend-list"
+              >
                 {metrics.trend.map((point) => (
-                  <li key={point.date}>
+                  <li
+                    key={point.date}
+                    data-testid="qa-admin-quality-trend-item"
+                  >
                     <span>{point.date}</span>
-                    <span>👍 {formatCount(point.positive)}</span>
-                    <span>👎 {formatCount(point.negative)}</span>
+                    <span data-testid="qa-admin-quality-trend-positive">
+                      👍 {formatCount(point.positive)}
+                    </span>
+                    <span data-testid="qa-admin-quality-trend-negative">
+                      👎 {formatCount(point.negative)}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -356,7 +467,11 @@ export function AdminAudit(props: {
   }, [load]);
 
   return (
-    <section className="dsh-qa-admin__page" aria-label="Аудит">
+    <section
+      className="dsh-qa-admin__page"
+      data-testid="qa-admin-audit"
+      aria-label="Аудит"
+    >
       <div className="dsh-qa-admin__title-row">
         <div>
           <h1>Аудит</h1>
@@ -366,9 +481,13 @@ export function AdminAudit(props: {
           </p>
         </div>
       </div>
-      <div className="dsh-qa-admin__filters">
-        <FilterField label="Действие">
+      <div
+        className="dsh-qa-admin__filters"
+        data-testid="qa-admin-audit-filters"
+      >
+        <FilterField label="Действие" testId="qa-admin-audit-filter-action">
           <select
+            data-testid="qa-admin-audit-action-select"
             value={action}
             onChange={(event) => setAction(event.currentTarget.value)}
           >
@@ -392,24 +511,28 @@ export function AdminAudit(props: {
         </FilterField>
       </div>
       {rows.length === 0 ? (
-        <p className="dsh-qa-admin__empty">
+        <p className="dsh-qa-admin__empty" data-testid="qa-admin-audit-empty">
           {loading ? "Загружаю…" : "Изменений пока нет."}
         </p>
       ) : (
-        <ol className="dsh-qa-audit">
+        <ol className="dsh-qa-audit" data-testid="qa-admin-audit-list">
           {rows.map((event) => (
-            <li key={event.id}>
+            <li key={event.id} data-testid="qa-admin-audit-item">
               <time title={event.timestamp}>
                 {formatStamp(event.timestamp)}
               </time>
-              <strong>{event.action}</strong>
-              <span>{event.targetId ?? event.targetType ?? "—"}</span>
-              <code>{event.actorId}</code>
+              <strong data-testid="qa-admin-audit-event-action">
+                {event.action}
+              </strong>
+              <span data-testid="qa-admin-audit-target">
+                {event.targetId ?? event.targetType ?? "—"}
+              </span>
+              <code data-testid="qa-admin-audit-actor">{event.actorId}</code>
               {event.before === undefined &&
               event.after === undefined ? null : (
-                <details>
+                <details data-testid="qa-admin-audit-details">
                   <summary>Показать изменение</summary>
-                  <pre>
+                  <pre data-testid="qa-admin-audit-diff">
                     {event.before ?? "—"}
                     {"\n→\n"}
                     {event.after ?? "—"}

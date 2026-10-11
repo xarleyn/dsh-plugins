@@ -146,6 +146,46 @@ export function createSqliteMemoryProvider(
      VALUES (?, ?, ?, ?, ?, ?, ?)`,
   );
 
+  const upsert = db.prepare(
+    `INSERT INTO ${TABLE}
+       (namespace, key, text, tags, created_at, updated_at, search_text)
+     VALUES (?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(namespace, key) DO UPDATE SET
+       text = excluded.text,
+       tags = excluded.tags,
+       updated_at = excluded.updated_at,
+       search_text = excluded.search_text`,
+  );
+
+  /**
+   * Store one record built from `draft`.
+   *
+   * `existing` is the row the key held, or nothing when the key was free —
+   * which is exactly where {@link SqliteMemoryProvider.replace} and
+   * `remember` differ, so the two share the write and disagree only on it.
+   */
+  const writeRecord = (
+    existing: MemoryRecord | undefined,
+    draft: {
+      readonly namespace: string;
+      readonly key: string;
+      readonly text: string;
+      readonly tags: readonly string[];
+    },
+  ): MemoryRecord => {
+    const record = buildMemoryRecord(draft, existing, now());
+    upsert.run(
+      record.namespace,
+      record.key,
+      record.text,
+      JSON.stringify(record.tags),
+      record.createdAt,
+      record.updatedAt,
+      searchTextOf(record),
+    );
+    return record;
+  };
+
   const provider: SqliteMemoryProvider = {
     id: SQLITE_MEMORY_PROVIDER_ID,
     title: "SQLite memory",
@@ -220,30 +260,30 @@ export function createSqliteMemoryProvider(
       const trimmedKey = key.trim();
       return store.transaction(() => {
         const existing = rowOf(normalizedNamespace, trimmedKey);
-        const record = buildMemoryRecord(
-          { namespace: normalizedNamespace, key, text, tags },
+        return writeRecord(
           existing === undefined ? undefined : restore(existing),
-          now(),
+          { namespace: normalizedNamespace, key, text, tags },
         );
-        db.prepare(
-          `INSERT INTO ${TABLE}
-             (namespace, key, text, tags, created_at, updated_at, search_text)
-           VALUES (?, ?, ?, ?, ?, ?, ?)
-           ON CONFLICT(namespace, key) DO UPDATE SET
-             text = excluded.text,
-             tags = excluded.tags,
-             updated_at = excluded.updated_at,
-             search_text = excluded.search_text`,
-        ).run(
-          record.namespace,
-          record.key,
-          record.text,
-          JSON.stringify(record.tags),
-          record.createdAt,
-          record.updatedAt,
-          searchTextOf(record),
-        );
-        return record;
+      });
+    },
+
+    async replace(
+      namespace: string,
+      key: string,
+      text: string,
+      tags: readonly string[] = [],
+    ): Promise<MemoryRecord | undefined> {
+      const normalizedNamespace = normalizeNamespace(namespace);
+      const trimmedKey = key.trim();
+      return store.transaction(() => {
+        const existing = rowOf(normalizedNamespace, trimmedKey);
+        if (existing === undefined) return undefined;
+        return writeRecord(restore(existing), {
+          namespace: normalizedNamespace,
+          key,
+          text,
+          tags,
+        });
       });
     },
 

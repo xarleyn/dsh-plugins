@@ -70,7 +70,7 @@ describe("transcript projection", () => {
       time: seq * 10,
       content: [{ type: "text" as const, text }],
       source: {},
-      provenance: { role: "context", label },
+      producer: { role: "context", label },
       form: null,
     });
     const messages = projectTranscript(

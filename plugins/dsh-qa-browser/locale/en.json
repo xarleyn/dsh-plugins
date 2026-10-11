@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "QA Browser",
+    "description": "Session-scoped Chromium runtime: one browser per QA session, driven by the browser tools."
+  }
+}

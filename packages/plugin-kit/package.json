@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-plugin-kit",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Shared runtime helpers for DSH plugins: logging scaffolds, config validation, compatibility checks and SQLite store plumbing",
   "license": "MIT",
   "type": "module",
@@ -61,7 +61,9 @@
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
     "@types/react-dom": "catalog:frontend-dev",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
+    "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",
     "jsdom": "catalog:tooling",
     "react": "catalog:frontend-dev",
@@ -73,6 +75,9 @@
     "build": "tsc -p tsconfig.build.json",
     "lint": "eslint src tests",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc --noEmit",
+    "verify:package": "node scripts/verify-package.mjs",
+    "verify": "pnpm run verify:package"
   }
 }

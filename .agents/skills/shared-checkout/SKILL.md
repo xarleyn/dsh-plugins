@@ -160,8 +160,9 @@ report the cleanup as unfinished rather than retrying harder.
   `node_modules`).
 - Before deleting anything, look for what is not in git: foreign uncommitted
   work (`git status --porcelain --untracked-files=no`) and ignored valuables
-  (local `.env`, local databases). Build output is disposable; credentials are
-  not.
+  (local `.env`, local databases, a test round's screenshots and measurements —
+  round evidence is what the next incident starts from, and it has no copy).
+  Build output is disposable; credentials and evidence are not.
 - Keep the backup branch until the PR is merged — it costs nothing locally.
 
 Details, including the junction recipe and the object-safety sweep, are in

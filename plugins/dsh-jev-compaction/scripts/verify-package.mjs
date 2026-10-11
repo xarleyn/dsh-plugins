@@ -26,8 +26,8 @@ await runVerifyPackage({
   client: {
     platform: "web",
     injectEquals: [
+      "@deepseek-ai/dsh-client-ui-plugin-manager",
       "@deepseek-ai/dsh-client-ui-settings",
-      "@deepseek-ai/dsh-client-ui-settings-plugins",
     ],
   },
   files: [
@@ -53,8 +53,8 @@ await runVerifyPackage({
   patch: { headerComment: true, id: "dsh-jev-compaction" },
   compatibility: {
     node: "matchesEngines",
-    testedReleases: ["0.1.5-rc.2"],
-    clientFeatures: ["settings.plugin.item", "conversation.chat.node"],
+    testedReleases: ["0.1.7-rc.2"],
+    clientFeatures: ["plugins.row.config", "conversation.chat.node"],
   },
   clientBundle: {
     moduleLoaderId: true,
@@ -67,17 +67,17 @@ await runVerifyPackage({
       ],
     },
     includes: [
-      "settings.plugin.item",
+      "plugins.row.config",
       "conversation.chat.node",
-      "jev-compaction",
+      // The keyed seat this card occupies: `<package name>#<row id>`.
+      "@yadsh/dsh-jev-compaction#",
+      "dsh-jev-compaction",
     ],
     matches: [
-      // The conversation card names its seat at the registration itself. The
-      // seat is what the Host reads at runtime, so it survives minification,
-      // and a name at the registration proves the registration is real rather
-      // than a surviving string. (The settings card reaches its seat through
-      // the kit's `registerSettingsCard`, which inlines the default seat name
-      // rather than a `name:` this bundle writes.)
+      // The shared contract decides which half of itself applies from the seat it
+      // reads off this bundle's registration, so the seat has to be named there in
+      // text — not only quoted somewhere in the bundle.
+      /name:\s*"plugins\.row\.config"/u,
       /name:\s*"conversation\.chat\.node"/u,
     ],
     notMatches: [
@@ -119,12 +119,12 @@ await runVerifyPackage({
     // `conversation.chat.node`. Both are core: the conversation assembly and
     // the Chat target ship with the host the way the session controller does,
     // and `dsh-qa-surface` reads the same service without listing it. So the
-    // manifest's inject list stays the settings packages it was.
+    // manifest's inject list names only the row and settings assemblies.
     assert.deepEqual(
       manifest.dsh.client.inject,
       [
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
         "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-settings-plugins",
       ],
       "the conversation assembly is a core service, not an added dependency",
     );
@@ -146,17 +146,29 @@ await runVerifyPackage({
     }
 
     // Host and client must agree on the settings namespace, and the Host must
-    // expose both seams the SPEC depends on.
+    // expose both seams the SPEC depends on. Since 0.1.7 the namespace is not
+    // free-floating: it is the profile entry id the loader keys the volatile
+    // section by, so the patch manifest is the third party to that agreement.
     const settingsModule = await read("lib/shared/settings.js");
     assert.match(
       settingsModule,
-      /JEV_COMPACTION_SETTINGS_NAMESPACE\s*=\s*"jev-compaction"/u,
+      /JEV_COMPACTION_SETTINGS_NAMESPACE\s*=\s*"dsh-jev-compaction"/u,
       "the settings namespace constant is the join key with the card",
     );
     assert.match(
+      await read("cordis.patch.yml"),
+      /id:\s*dsh-jev-compaction\b/u,
+      "the profile entry id the namespace is derived from",
+    );
+    assert.match(
       client ?? "",
-      /"jev-compaction"/u,
-      "the card binds the same settings namespace as the Host section",
+      /"dsh-jev-compaction"/u,
+      "the card resolves the same entry section the Host serves",
+    );
+    assert.match(
+      client ?? "",
+      /configForms/u,
+      "the card reads the Host settings form, not a plugin-owned namespace",
     );
 
     const serviceModule = await read("lib/service.js");
@@ -168,7 +180,12 @@ await runVerifyPackage({
     assert.match(
       serviceModule,
       /installJevCompactionSettings/u,
-      "the service installs the settings section the card writes to",
+      "the service declines the generated page for the section the card writes to",
+    );
+    assert.match(
+      serviceModule,
+      /loader\/volatile-update/u,
+      "the service re-resolves when the loader moves a volatile field",
     );
     assert.match(
       serviceModule,
@@ -228,8 +245,10 @@ await runVerifyPackage({
   },
 });
 
-// The settings card registers under `settings.plugin.item`, so the compiled
-// browser bundle has to satisfy the shared card shell contract.
+// The settings card registers under `plugins.row.config`, the keyed seat the
+// Plugins page gives the row this bundle declares, and keeps our own shell
+// (decision D1 of the 0.1.7 cutover), so the compiled browser bundle has to
+// satisfy the shared card shell contract.
 verifyPluginCardContract(
   await readFile(
     new URL("lib/client.js", new URL("../", import.meta.url)),

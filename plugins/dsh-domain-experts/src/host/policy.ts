@@ -1,4 +1,4 @@
-import type { DomainDefinition } from "../types.js";
+import type { CrossDomainMode, DomainDefinition } from "../types.js";
 import type { DelegationVerdict, ParallelBudget } from "./tools/shared.js";
 
 /**
@@ -8,23 +8,47 @@ import type { DelegationVerdict, ParallelBudget } from "./tools/shared.js";
  * a host context, and so the tool layer and the UI can never disagree about
  * whether a delegation is allowed.
  */
+/**
+ * The verdict of a service whose durable store is not open.
+ *
+ * There is no caller definition to read, so no mode can be evaluated: the
+ * answer is the most restrictive one, and it says which fact is missing.
+ */
+export const STORE_CLOSED_VERDICT: DelegationVerdict = {
+  allowed: false,
+  mode: "disabled",
+  targets: [],
+  message:
+    "Domain storage is not open, so cross-domain policy cannot be evaluated.",
+};
+
+/** The switch governs both delegation and explicitly configured direct reads. */
+export function effectiveCrossDomainMode(
+  definition: DomainDefinition,
+): CrossDomainMode {
+  return definition.delegation.allowCrossDomain
+    ? definition.delegation.crossDomainMode
+    : "disabled";
+}
+
 export function delegationVerdictOf(
   caller: DomainDefinition | undefined,
   callerDomainId: string,
   target: DomainDefinition | undefined,
   targetDomainId: string,
 ): DelegationVerdict {
-  if (caller === undefined) {
+  if (caller === undefined || !caller.enabled) {
     return {
       allowed: false,
       mode: "disabled",
       targets: [],
-      message: `Caller domain "${callerDomainId}" no longer exists.`,
+      message:
+        caller === undefined
+          ? `Caller domain "${callerDomainId}" no longer exists.`
+          : `Caller domain "${callerDomainId}" is disabled.`,
     };
   }
-  const mode = caller.delegation.allowCrossDomain
-    ? caller.delegation.crossDomainMode
-    : "disabled";
+  const mode = effectiveCrossDomainMode(caller);
   const targets = [...caller.delegation.targets];
 
   if (mode === "disabled") {

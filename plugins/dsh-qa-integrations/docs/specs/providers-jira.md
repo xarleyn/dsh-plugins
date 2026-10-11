@@ -326,6 +326,16 @@ Input:
   labels?: string[]
   updatedAfter?: string
   createdAfter?: string
+  history?: {
+    field: "status" | "assignee" | "reporter" | "priority" | "resolution" | "fixVersion"
+    op: "was" | "changed"
+    value?: string
+    from?: string
+    by?: "me" | string
+    on?: string
+    after?: string
+    before?: string
+  }[]
   limit?: number
   cursor?: string
 }
@@ -337,7 +347,8 @@ Tool не принимает `principalId`, `accountId`, `cloudId` или token.
 
 Provider сам строит безопасный JQL.
 
-Опционально позднее можно добавить отдельный advanced tool с JQL, но только после sanitizer/validator layer.
+Отдельный advanced tool с JQL не добавляется (см. §JQL policy): не хватает фильтра —
+растёт словарь typed-фильтров и builder, как это произошло с историей.
 
 ### Tool: `jira_get_issue`
 
@@ -381,6 +392,50 @@ ORDER BY updated DESC
 ```
 
 Все values должны экранироваться builder'ом.
+
+### История поля (`WAS` / `CHANGED`)
+
+Фильтрация по истории не вынесена в отдельную фазу: вопрос «побывали ли задачи в
+этом статусе» — это тот же `jira_search_issues`, у которого клауза читает changelog
+поля, а не его текущее значение. Словарь остаётся типизированным:
+
+```text
+status WAS "In Progress"
+status WAS "Done" AFTER -2w BEFORE -1w
+priority WAS "High" ON "2026-09-01"
+resolution CHANGED FROM "Отклонено" TO "Fixed" BY currentUser() AFTER -3w
+```
+
+Границы, которые держат этот фильтр в тех же правилах, что и остальные:
+
+- поле — только то, у чего Jira ищет историю: `status`, `assignee`, `reporter`,
+  `priority`, `resolution`, `fixVersion`; кастомное поле отказывается (для него
+  `customFields`, а его история читается внутри одной задачи);
+- оператор — `was` или `changed`; `was` требует `value` и не принимает `from`,
+  `changed` принимает `from` и `value` как «куда ушло»;
+- дата — один день (`on`) или край окна (`after`/`before`, включительно); день
+  вместе с окном — противоречие, которое отказывается, а не разрешается в пользу
+  одного из них;
+- человек (`by`, значение у `assignee`/`reporter`) — `me` или идентификатор,
+  по которому фильтрует этот продукт (accountId у Cloud, user name у Server / DC);
+  имя здесь не разрешается справочником: каталог пользователей — чтение за
+  границей проекта, а в history-клаузе идентификатор уже лежит в `changelog_summary`
+  самой задачи;
+- не больше трёх history-клауз на поиск, они AND'ятся с остальными фильтрами;
+- значение экранируется как любое другое — `OR project = SECRET` внутри `value`
+  остаётся текстом в кавычках и не становится клаузой.
+
+Неразборчивая запись отказывается целиком. Builder не собирает клаузу «из того, что
+удалось распарсить»: молча потерянная граница ответила бы на другой вопрос, а её
+ответ выглядел бы как факт о задачах.
+
+### Точное число результатов
+
+Размер ответа ищет продукт, а не provider. Server / Data Center страницит поиск по
+позиции и отдаёт `total`, поэтому провайдер пробрасывает его в `pagination` вместе с
+`startAt` и следующим offset в `nextCursor`. Atlassian Cloud на `/search/jql` число
+не сообщает — там в конверте только `nextCursor` и `isLast`. Оценку провайдер не
+выдумывает: нет счётчика в ответе Jira — нет поля в ответе модели.
 
 ### Future advanced mode
 
@@ -1042,7 +1097,8 @@ Bob QA   -> Jira Bob
 - malicious issue content не может изменить provider identity;
 - issue description с инструкциями агенту остаётся untrusted content;
 - JQL values экранируются;
-- model не может внедрить `OR project = SECRET` через text filter.
+- model не может внедрить `OR project = SECRET` через text filter;
+- model не может внедрить лишнюю клаузу через значение history-фильтра (`WAS`/`CHANGED`).
 
 ---
 

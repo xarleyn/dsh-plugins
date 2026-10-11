@@ -1,47 +1,49 @@
 # @yadsh/dsh-preset-persona-editor
 
-Edit an agent preset's persona — its system-prompt prefix and suffix, complete
-mode, and runtime-context toggle — from the DeepSeek Harness settings UI,
-without hand-editing the preset's `agent.cordis.yml`. An advanced area edits the
-prompt sections the preset contributes in its own name.
+Read what an agent preset contributes to the prompt — its system-prompt prefix
+and suffix, complete mode, runtime-context toggle, and the named sections it
+registers in its own name — from the DeepSeek Harness settings UI, without
+hand-editing the preset's composition.
 
 The page appears in Settings as **Persona**, right beside the deployment's own
-**Agent Presets** page, and edits the same thing that page composes: the
-rows of a preset composition.
+**Agent Presets** page, and reads the same thing that page composes: the rows of
+a preset composition.
+
+It reads, and does not write. Since DeepSeek Harness `0.1.7-rc.2` the Host has
+no durable preset-authoring path — the roster's `authorable` root and its `copy`
+operation were deleted, not relocated — so this page reports what a preset
+composes rather than changing it. The decision is D2 of §10 of the
+[migration guide](https://github.com/xarleyn/dsh-plugins/blob/main/docs/DSH-0.1.7-MIGRATION.md),
+and §0 of the
+[package specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-preset-persona-editor/SPEC.md)
+names the issue a restored write path is waiting on. Neither document ships in
+the tarball, so both are linked where the repository keeps them.
 
 ## Features
 
-- **One card per preset**, with an `Inherited` / `Custom` / `Shipped` badge, so
-  it is visible at a glance which presets carry their own persona.
-- **Prefix and suffix editing** with the persona's own semantics: the prefix
+- **One card per preset**, badged `Cannot compose`, `Unreadable`, `Two rows`,
+  `Custom` or `Inherited` — the first two say what the registry could not do,
+  the rest say which persona the composition carries.
+- **The persona's four values** in the persona's own semantics: the prefix
   replaces the deployment's persona prefix for this preset, the suffix renders
   after the first-party guidance.
-- **Complete mode** with an explicit warning that this persona then replaces the
-  agent's other system-prompt sections; never enabled silently.
-- **Runtime context toggle** (`includeRuntimeContext`, on by default) for a
-  persona that should not receive the dynamic sandbox/approval snapshots.
+- **Complete mode**, with the warning that this persona then replaces the
+  agent's other system-prompt sections — stated wherever it is found on.
+- **Runtime context** (`includeRuntimeContext`, on by default) shown per preset:
+  whether its sessions receive the dynamic sandbox/approval snapshots.
 - **Prompt sections (advanced)** — a preset can contribute named, ordered
-  sections of its own: name, order, text, and an `enabled` switch. A section
+  sections of its own: name, order, text, and the `enabled` value each row
+  carries. A section
   registered under a first-party name (`deployment:*`, `tool:*`, …) shadows that
   section for this preset's sessions. The list is data in the composition row;
   the preset ships a small registrar (`prompt-sections.mjs`) that mounts it, so
-  the sections keep working with this plugin uninstalled, and a hand-edited
-  registrar is never overwritten.
-- **Preview** of both what will be written (the exact YAML blocks) and where the
-  persona and the sections land in the assembled prompt, ordered by the
-  harness's own section vocabulary.
-- **Surgical writes.** The preset's comments, `!!js` expressions, `{{cwd}}`
-  templates, sibling rows, line endings, and byte-order mark survive every edit;
-  only the values this page owns move.
-- **Revision guard.** A save that races an external edit is refused with both
-  revisions and reloads, instead of overwriting someone else's change.
-- **Reset** removes the persona row, returning the preset to the deployment's
-  persona; a shipped preset is never written at all, and can be copied into your
-  own presets for editing.
-
-The persona and the sections are stored where they belong: in the preset.
-Uninstalling this plugin leaves every preset you edited working exactly as
-edited.
+  the sections keep working with this plugin uninstalled.
+- **Preview** of the persona and the section list in the YAML shape the
+  composition carries, and of where they land in the assembled prompt, ordered by
+  the harness's own section vocabulary.
+- **The composition itself**, for the cases this page can only describe: a row
+  that carries keys beyond the four, a managed key set to a `!!js` expression, or
+  more than one persona row in one preset.
 
 ## Install
 
@@ -58,30 +60,24 @@ dsh plugin --profile web add ./plugins/dsh-preset-persona-editor
 ```
 
 Restart the deployment (or reload the browser page) and open
-**Settings → Persona**.
+**Settings → Persona**, on a desktop-width viewport. That step walks the Host's
+own section nav, and on `0.1.7-rc.2` the nav's buttons are invisible at 390px
+with nothing in their place, so at phone width this page has no entry point —
+the Host's operator layer, not this page. To check this page at a narrow width,
+constrain the settings dialog's container rather than the viewport.
 
 ## Configuration
 
-The plugin takes its configuration from its row in the deployment composition:
+The plugin takes no configuration: it writes nothing, so it has no ceilings to
+enforce. Its row in the deployment composition is the plain two-field entry the
+install command above creates.
 
-```yaml
-- id: dsh-preset-persona-editor
-  name: "@yadsh/dsh-preset-persona-editor"
-  config:
-    allowComplete: true
-    maxPersonaBytes: 262144
-    maxSections: 32
-    maxSectionsBytes: 262144
-```
-
-| Field | Default | Meaning |
-| --- | --- | --- |
-| `allowComplete` | `true` | Whether `complete` may be written at all. With `false`, the complete-mode toggle is refused with an explanation, so a deployment can forbid replacing the whole system prompt. |
-| `maxPersonaBytes` | `262144` | Ceiling for prefix plus suffix, in bytes. A larger persona is refused. |
-| `maxSections` | `32` | How many prompt sections one preset may contribute. |
-| `maxSectionsBytes` | `262144` | Ceiling for the section texts together, in bytes. |
-
-All four are enforced on the host; the page only reports the refusal.
+A row that still names the four ceilings the write path carried —
+`allowComplete`, `maxPersonaBytes`, `maxSections`, `maxSectionsBytes` — changes
+nothing, and it is worth knowing why rather than finding out by experiment: the
+plugin declares no Config schema, so the Host hands that block to it unvalidated
+and the plugin reads none of it. Drop the `config:` key with the writer that
+needed it.
 
 ## What a preset with sections looks like
 
@@ -98,35 +94,63 @@ All four are enforced on the host; the page only reports the refusal.
         enabled: true
 ```
 
-`prompt-sections.mjs` is a small registrar the plugin writes into the preset
-directory (it is created on the first save that adds a section). It reads the
-row's list and registers each enabled section through `ctx.systemPrompt`, which
-is what makes a section of this preset shadow a deployment-global section of the
-same name. It imports nothing from this plugin, so the preset keeps composing
-with the plugin uninstalled — and because it is code, the editor never rewrites
-it: if you edit or replace that file, the page says so and keeps writing the
-list only.
+`prompt-sections.mjs` is a small registrar the preset carries beside its
+composition. It reads the row's list and registers each enabled section through
+`ctx.systemPrompt`, which is what makes a section of this preset shadow a
+deployment-global section of the same name. It imports nothing from this plugin,
+so the preset keeps composing with the plugin uninstalled. It is code, so this
+page does not read it as data: it reports the list the composition names, and
+that is what the preset declares — whether the module beside it matches is the
+Loader's answer at mount, and a preset that cannot compose arrives as broken,
+with the registry's own reason on the card.
 
-## How the write behaves
+## What the page shows
 
-- A save rewrites the values inside the existing rows, inserting missing keys,
-  creating a row when the preset has none, and removing the sections row when
-  the list is emptied.
-- Keys the editor does not manage are preserved and listed on the card; reset
-  removes them together with the persona row (the page says which ones).
-- A persona row whose managed key is set to a `!!js` expression, a sections list
-  that is not a plain block sequence, or a composition naming more than one of
-  either row, is reported and refused rather than rewritten.
-- Saving an untouched, inherited preset writes nothing at all: the editor does
-  not create empty rows.
-- Changes apply to **new sessions**: DSH composes an agent from the preset it
+- The persona's four values as the composition carries them, plus the section
+  list, in the same YAML shape a hand edit would use.
+- Keys the page does not describe: a persona row that carries more than the four,
+  a managed key set to a `!!js` expression (whose value is not the text shown),
+  or more than one persona row in one preset — each is named on the card,
+  because then no single value is "the" persona.
+- The composition text itself, for every case the four fields cannot hold.
+- Two failures that are not the same failure: a preset the registry calls
+  `broken` cannot start a session, yet its declarations still render, so its
+  readings are real; a preset whose composition the registry will not render has
+  no readings, and the card carries the registry's reason for that. The registry
+  answers a `broken` preset with a tree — the row that refused, and beneath it
+  each cause it wrapped — so the closed card states that tree's first line and
+  the opened card states every line, breaks included: a settings card has room
+  for one line of description, and the line it uses is the host's own.
+- A host that answers differently than either of those says so too. Inside the
+  `<0.2.0` half of the compatibility range a deployment may publish no
+  `readDocument()` at all, or answer it with something that is not a
+  composition; the card names which of the two happened, in this page's words,
+  rather than blaming the preset or showing a `TypeError`. What the host's own
+  reason may contain is bounded by §2 of the
+  [package specification](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-preset-persona-editor/SPEC.md):
+  the registry's failures name preset ids, and that text is already on the
+  host's own `list` Remote.
+- A roster that refuses to refresh says so. The rows stay on screen — dropping
+  them would answer a failed `list()` with a deployment that composes no
+  presets — and the reason arrives above them: the screen that draws a list
+  draws no failure of its own otherwise, and rows held on screen after a
+  refused refresh are rows the page has not told anyone are stale. The notice
+  carries a Dismiss control, because the page keeps the message for the user
+  and opening a preset is not the same as having read it.
+- A roster that has gone stale on its own can be asked again. **Reload the
+  roster** re-reads the list under the rows it draws: a preset waiting on a
+  service that has not mounted yet becomes healthy by itself, and the page that
+  read it once would otherwise keep saying so after the deployment stopped
+  agreeing. The reader's own Reload re-reads the open preset; the roster's
+  re-reads the list.
+- Presets apply to **new sessions**: DSH composes an agent from the preset it
   names when the session starts, and a running session keeps the composition it
   began with. The page states this instead of implying a live swap.
 
 ## Compatibility
 
-- DeepSeek Harness `>=0.1.5-rc.2 <0.2.0` (tested against `0.1.5-rc.2`).
-- Requires the deployment to mount `@deepseek-ai/dsh-agent-presets` (the
+- DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (tested against `0.1.7-rc.2`).
+- Requires the deployment to mount `@deepseek-ai/dsh-agent-preset-registry` (the
   `agentPresets` service) and `@deepseek-ai/dsh-system-prompt`.
 - Client surface: `settings.section` and the Typert Remote namespace
   `presetPersonaEditor`.
@@ -139,7 +163,7 @@ pnpm install
 pnpm --filter @yadsh/dsh-preset-persona-editor check
 ```
 
-`check` runs lint, typecheck, the test suite (composition surgery, the file
+`check` runs lint, typecheck, the test suite (composition surgery, the reading
 layer, the service's wire surface, the page's store and wiring, and the built
 browser bundle), the build, and the package gate.
 

@@ -38,6 +38,7 @@ export function projectTurnSources(
   snapshot: ConversationSnapshot | undefined,
   sessionId = "unknown",
   workspaceRoot?: string,
+  documentationRoot?: string,
 ): readonly QaTurnSources[] {
   const legacy = chatLegacyOf(snapshot);
   const heads = new Map<string, SourceCallHead>();
@@ -103,6 +104,7 @@ export function projectTurnSources(
         role: "parent",
       },
       ...(workspaceRoot === undefined ? {} : { workspaceRoot }),
+      ...(documentationRoot === undefined ? {} : { documentationRoot }),
     });
   }
   return [...collectors.entries()]

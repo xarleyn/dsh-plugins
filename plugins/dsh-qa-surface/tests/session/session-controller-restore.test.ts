@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { QaSessionController } from "../../src/client/QaSessionController.js";
+import { QA_SESSION_IDLE_STATE } from "../../src/client/types.js";
 import { harness } from "../helpers/session-fakes.js";
 import { legacy, snapshot } from "../helpers/conversation-fakes.js";
 import type {
@@ -23,7 +24,9 @@ describe("QA session controller", () => {
       canSend: true,
     });
     expect(world.create).not.toHaveBeenCalled();
-    expect(world.open).toHaveBeenCalledWith("saved");
+    expect(world.retain).toHaveBeenCalledWith("saved", {
+      source: "qaSurface",
+    });
     controller.dispose();
   });
 
@@ -103,7 +106,7 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it("replaces a stale id through Host-authoritative creation", async () => {
+  it("opens a draft instead of a chat when the persisted id is gone", async () => {
     const world = harness();
     world.stored.set("dsh-qa-surface.session:v1:/qa:session", "gone");
     const controller = new QaSessionController({
@@ -117,11 +120,21 @@ describe("QA session controller", () => {
       }),
     });
     await controller.ensureSession();
+    // Nothing on the Host answers to the id this browser kept, and the answer
+    // is not a fresh session nobody asked for: the stale id is dropped and the
+    // screen shows a draft, which pays for its chat on the first prompt.
+    expect(world.createSession).not.toHaveBeenCalled();
+    expect(controller.getSnapshot().sessionId).toBeNull();
+    expect(world.stored.has("dsh-qa-surface.session:v1:/qa:session")).toBe(
+      false,
+    );
+
+    expect(await controller.send("Первый вопрос")).toBe(true);
     expect(controller.getSnapshot().sessionId).toBe("created-1");
+    expect(world.createSession).toHaveBeenCalledWith("", null, false);
     expect(world.stored.get("dsh-qa-surface.session:v1:/qa:session")).toBe(
       "created-1",
     );
-    expect(world.createSession).toHaveBeenCalledWith("", null, false);
     expect(world.api.selectModel).not.toHaveBeenCalled();
     controller.dispose();
   });
@@ -172,7 +185,123 @@ describe("QA session controller", () => {
     controller.dispose();
   });
 
-  it.each(["composition-mismatch", "agent-unavailable", "adoption-refused"])(
+  it("opens the chat that replaces a refused restore as a chat of its own", async () => {
+    const world = harness(["saved"]);
+    const storageKey = "dsh-qa-surface.session:v1:/qa:session";
+    world.stored.set(storageKey, "saved");
+    const proof = (sessionId: string) => ({
+      ok: true as const,
+      value: {
+        sessionId,
+        enabled: true,
+        agentPresetMatches: true,
+        workspaceMatches: true,
+        modelMatches: true,
+        sandboxModeMatches: true,
+        approvalIsNever: true,
+        permissionPreset: "qa-read-only",
+        toolPolicyLoaded: true,
+        toolAllowList: [],
+      },
+    });
+    world.secureSession.mockImplementation(
+      async (_token: string, sessionId: string) =>
+        sessionId === "saved"
+          ? { ok: false as const, error: { code: "policy-unavailable" } }
+          : proof(sessionId),
+    );
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    const seen: number[] = [];
+    const stop = controller.subscribe(() =>
+      seen.push(controller.getSnapshot().chatKey),
+    );
+    await controller.ensureSession();
+    stop();
+
+    expect(controller.getSnapshot().sessionId).toBe("created-2");
+    // The refused chat was on screen under one identity, and an empty chat took
+    // its place with no prompt in flight: that is a move between chats, so the
+    // replacement arrives under its own identity and the surface drops the
+    // draft, the staged attachments and the drawers of the refused one instead
+    // of handing them to a conversation nobody chose to open.
+    expect(seen[0]).toBeGreaterThan(QA_SESSION_IDLE_STATE.chatKey);
+    expect(controller.getSnapshot().chatKey).not.toBe(seen[0]);
+    controller.dispose();
+  });
+
+  it("keeps the refused chat on screen when its replacement cannot be created", async () => {
+    const world = harness(["saved"]);
+    const storageKey = "dsh-qa-surface.session:v1:/qa:session";
+    world.stored.set(storageKey, "saved");
+    world.secureSession.mockImplementation(async () => ({
+      ok: false as const,
+      error: { code: "policy-unavailable" },
+    }));
+    world.createSession.mockImplementation(async () => ({
+      ok: false as const,
+      error: {
+        code: "qa.session_create_refused",
+        message: "preset unavailable",
+      },
+    }));
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    const seen: number[] = [];
+    const stop = controller.subscribe(() =>
+      seen.push(controller.getSnapshot().chatKey),
+    );
+    await controller.ensureSession();
+    stop();
+
+    // The replacement never arrived, so no chat was opened and nobody moved
+    // between chats: the identity the surface started with still names what is
+    // on screen, and the composer keeps the text the visitor was reading
+    // instead of being rebuilt over an empty chat and an error.
+    expect(controller.getSnapshot()).toMatchObject({
+      sessionId: null,
+      error: expect.stringMatching(/Не удалось начать чат/u),
+    });
+    expect(new Set(seen).size).toBe(1);
+    expect(controller.getSnapshot().chatKey).toBe(seen[0]);
+    controller.dispose();
+  });
+
+  it("treats a chat that disappeared under the surface as another chat", async () => {
+    const world = harness();
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(true);
+    expect(controller.getSnapshot().sessionId).toBe("created-1");
+    const firstKey = controller.getSnapshot().chatKey;
+
+    // The Host stopped listing the chat this browser had persisted, and the
+    // operator pressed retry: what the bootstrap puts on screen is a draft of
+    // its own, so the surface is looking at another chat than the one it named.
+    world.list.set({ ...world.list.getSnapshot(), ids: [], byId: {} });
+    await controller.ensureSession();
+
+    expect(controller.getSnapshot().sessionId).toBeNull();
+    expect(world.create).toHaveBeenCalledOnce();
+    // What the vanished chat was holding — an unsent question, an attachment,
+    // an open drawer — has to die with it rather than be inherited.
+    expect(controller.getSnapshot().chatKey).not.toBe(firstKey);
+    controller.dispose();
+  });
+
+  it.each([
+    "composition-mismatch",
+    "agent-unavailable",
+    "adoption-refused",
+    "subagent-session",
+  ] as const)(
     "opens a persisted %s chat as a read-only historical transcript",
     async (reason) => {
       const world = harness(["saved"]);
@@ -291,6 +420,7 @@ describe("QA session controller", () => {
       config: resolveConfig(),
     });
     await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(true);
     const current = controller.getSnapshot().sessionId;
 
     await controller.switchTo("historical");
@@ -302,6 +432,9 @@ describe("QA session controller", () => {
       canSend: false,
       error: null,
     });
+    // Opening a transcript the stand will not write into spends no session of
+    // its own: the only chat this browser made is the one its first prompt asked
+    // for.
     expect(world.create).toHaveBeenCalledOnce();
     expect(current).not.toBe("historical");
     controller.dispose();
@@ -320,10 +453,9 @@ describe("QA session controller", () => {
     });
 
     await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(false);
 
     expect(controller.getSnapshot()).toMatchObject({
-      phase: "error",
-      canSend: false,
       error: "Настройки помощника недоступны.",
     });
     expect(world.stored.has(storageKey)).toBe(false);
@@ -347,11 +479,10 @@ describe("QA session controller", () => {
     });
 
     await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(false);
 
     expect(controller.getSnapshot()).toMatchObject({
-      phase: "error",
       compatibilityReadOnly: false,
-      canSend: false,
       error: "Настройки помощника недоступны.",
     });
     controller.dispose();
@@ -366,6 +497,7 @@ describe("QA session controller", () => {
       }),
     });
     await controller.ensureSession();
+    expect(await controller.send("Первый вопрос")).toBe(true);
     expect(world.createSession).toHaveBeenCalledWith("", null, false);
     expect(world.selectAgentPreset).not.toHaveBeenCalled();
     expect(world.secureSession).toHaveBeenCalledWith("", "created-1");

@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveExpert } from "../src/host/resolver.js";
+import {
+  DEPLOYMENT_MEMORY_OWNER,
+  resolveExpert,
+} from "../src/host/resolver.js";
 import { PAYMENTS, fixtureOf, resolve } from "./scope-resolution.helpers.js";
 
 describe("scope resolution: persona wiring", () => {
@@ -28,6 +31,7 @@ describe("scope resolution: persona wiring", () => {
         workspaceDir: "",
         callerDomain: null,
         depth: 1,
+        memoryOwner: DEPLOYMENT_MEMORY_OWNER,
       },
       {
         task: "When does settlement close?",

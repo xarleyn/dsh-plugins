@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Correction Miner",
+    "description": "Mines durable project-rule candidates from user corrections in session logs."
+  }
+}

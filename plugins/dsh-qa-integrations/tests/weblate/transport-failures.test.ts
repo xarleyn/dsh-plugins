@@ -32,7 +32,7 @@ describe("weblate transport failures", () => {
     ).rejects.toMatchObject({ code: "TlsFailure" });
   });
 
-  it("answers a non-JSON body with a safe failure", async () => {
+  it("answers an HTML page with the refusal it names, and no body", async () => {
     const html: typeof fetch = async () =>
       new Response("<html>maintenance</html>", {
         status: 200,
@@ -41,6 +41,20 @@ describe("weblate transport failures", () => {
     const p = provider(html);
     await expect(
       p.execute({ credential: credentialFor() }, "projects.list", {}),
+    ).rejects.toMatchObject({
+      code: "CredentialRevoked",
+    });
+    const plain: typeof fetch = async () =>
+      new Response("gateway is thinking", {
+        status: 200,
+        headers: { "content-type": "text/plain" },
+      });
+    await expect(
+      provider(plain).execute(
+        { credential: credentialFor() },
+        "projects.list",
+        {},
+      ),
     ).rejects.toMatchObject({ code: "ProviderUnavailable" });
   });
 

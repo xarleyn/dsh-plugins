@@ -35,7 +35,8 @@ export function DocsSection(props: ConfigProps) {
     <Section
       title="Документация"
       modified={overriddenAny(props, paths)}
-      aside={resetAside(props, paths)}
+      testId="qa-settings-docs"
+      aside={resetAside(props, paths, "qa-settings-docs-reset")}
     >
       <p className="qa-card-muted">
         Поиск и чтение документации ходят по корпусу стенда — дереву
@@ -48,6 +49,7 @@ export function DocsSection(props: ConfigProps) {
         hint="Поиск, которому не назвали версию и не сузили подкаталог, остаётся внутри этой редакции корпуса. Явные version или path сильнее: они решают сами."
         checked={enabled}
         disabled={disabled}
+        testId="qa-settings-docs-default-version-enabled"
         onChange={(checked) => {
           props.write(["tools", "docsDefaultVersionEnabled"], checked);
         }}
@@ -58,22 +60,25 @@ export function DocsSection(props: ConfigProps) {
         disabled={disabled}
         placeholder="3.8"
         hint="Как в пути к документу: 3.8, v2, 2024.1. Пусто — дефолта нет, поиск идёт по всем редакциям. Другое значение Host отклонит: версия, которой нет в дереве, отвечала бы «документа нет»."
+        testId="qa-settings-docs-default-version"
         onChange={(value) => {
           props.write(["tools", "docsDefaultVersion"], value);
         }}
       />
       {enabled && version === "" ? (
-        <Notice tone="warn">
+        <Notice tone="warn" testId="qa-settings-docs-notice-version-missing">
           Флаг включён, а версия не задана: поиск по-прежнему идёт по всем
           редакциям корпуса.
         </Notice>
       ) : null}
       {props.effective === null ? null : (
         <Facts
+          testId="qa-settings-docs-root-facts"
           items={[
             {
               label: "Корень документации",
               value: root === "" ? "docs/ рабочего каталога чата" : root,
+              testId: "qa-settings-docs-root",
               note:
                 root === ""
                   ? "развёртывание не назвало общий корпус"

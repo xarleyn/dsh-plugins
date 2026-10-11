@@ -1,0 +1,541 @@
+import { describe, expect, it } from "vitest";
+import { resolveConfig } from "../../src/resolve-config.js";
+import { QaSessionController } from "../../src/client/QaSessionController.js";
+import type { QaImageDraft } from "../../src/types.js";
+import {
+  harness,
+  landDurableUserRow,
+  queuedMessage,
+  type FakeSessionSnapshot,
+  type QaSessionTestWorld,
+} from "../helpers/session-fakes.js";
+
+type QueueWorld = QaSessionTestWorld & { controller: QaSessionController };
+
+/** The bound chat, plus any further chat the test navigates to. */
+async function ready(
+  listed: readonly [string, ...string[]] = ["saved"],
+  streamIntervalMs?: number,
+): Promise<QueueWorld> {
+  const world = harness([...listed]);
+  world.stored.set("dsh-qa-surface.session:v1:/qa:session", listed[0]);
+  const controller = new QaSessionController({
+    ...world,
+    config: resolveConfig(),
+    ...(streamIntervalMs === undefined ? {} : { streamIntervalMs }),
+  });
+  await controller.ensureSession();
+  return { ...world, controller };
+}
+
+/** One queued submission echo, as the Host's snapshot registers it. */
+function queued(requestId: string, text: string): Record<string, unknown> {
+  return { requestId, placement: "queued", time: 1, text, attachments: [] };
+}
+
+/** Drive a bound chat's snapshot the way a Host frame would. */
+function setSnapshot(
+  world: QueueWorld,
+  snapshot: Partial<FakeSessionSnapshot>,
+  chatId = "saved",
+): void {
+  const face = world.faces.get(chatId);
+  if (face === undefined) return;
+  face.source.set({ ...face.source.getSnapshot(), ...snapshot });
+}
+
+/**
+ * Drive the Host's Inbox projection: `next-turn` is the queue strip, and
+ * `next-step` is steering input the strip must not list.
+ */
+function setInbox(
+  world: QueueWorld,
+  nextTurn: readonly Record<string, unknown>[],
+  nextStep: readonly Record<string, unknown>[] = [],
+  chatId = "saved",
+): void {
+  world.faces
+    .get(chatId)
+    ?.inbox.set({ "next-turn": nextTurn, "next-step": nextStep });
+}
+
+describe("QA message queue", () => {
+  it("keeps the composer open while a turn runs", async () => {
+    const world = await ready();
+    const { controller } = world;
+    setSnapshot(world, { running: true });
+    expect(controller.getSnapshot().canSend).toBe(true);
+    controller.dispose();
+  });
+
+  it("queues a message on the Host echo instead of echoing it into the transcript", async () => {
+    const world = await ready();
+    const { controller } = world;
+    setSnapshot(world, { running: true });
+    expect(await controller.send(" второй вопрос ")).toBe(true);
+    const saved = world.faces.get("saved");
+    expect(saved?.beginSubmission).toHaveBeenCalledWith({
+      mode: "queue",
+      text: "второй вопрос",
+      attachments: [],
+    });
+    expect(saved?.prompt).toHaveBeenCalledWith(
+      [{ type: "text", text: "второй вопрос" }],
+      "queue",
+      undefined,
+      "request-1",
+    );
+    // The transcript echo is for a send the agent takes right now; a queued
+    // message belongs to the strip, and showing it in both places reads as two
+    // copies of one question.
+    expect(controller.getSnapshot().pendingMessage).toBeNull();
+    controller.dispose();
+  });
+
+  it("carries an image into the queue echo as a data URL the composer cannot revoke", async () => {
+    const world = await ready();
+    const { controller } = world;
+    setSnapshot(world, { running: true });
+    const image: QaImageDraft = {
+      kind: "image",
+      id: "draft-image",
+      mediaType: "image/png",
+      name: "shot.png",
+      data: "AAAA",
+      previewUrl: "blob:composer-preview",
+    };
+    expect(await controller.send("смотри картинку", [image])).toBe(true);
+    expect(
+      world.faces.get("saved")?.beginSubmission.mock.calls[0]?.[0],
+    ).toMatchObject({
+      attachments: [
+        {
+          type: "image",
+          value: { previewUrl: "data:image/png;base64,AAAA", name: "shot.png" },
+        },
+      ],
+    });
+    controller.dispose();
+  });
+
+  it("projects the Host queue rows with the echo still in flight folded in", async () => {
+    const world = await ready();
+    const { controller } = world;
+    setInbox(
+      world,
+      [
+        queuedMessage(
+          "message-1",
+          [{ type: "text", text: "первый в очереди" }],
+          "request-1",
+        ),
+        queuedMessage("message-2", [
+          { type: "text", text: "с картинкой" },
+          { type: "image", attachment: { attachmentId: "a-1" } },
+        ]),
+      ],
+      [
+        queuedMessage("message-3", [
+          { type: "text", text: "напоминание навыка" },
+        ]),
+      ],
+    );
+    setSnapshot(world, {
+      running: true,
+      pendingSubmissions: [
+        // Already admitted: the queue row above carries the same identity.
+        {
+          requestId: "request-1",
+          placement: "queued",
+          time: 1,
+          text: "уже принят",
+          attachments: [],
+        },
+        {
+          requestId: "request-2",
+          placement: "queued",
+          time: 2,
+          text: "летит через транспорт",
+          attachments: [],
+        },
+        // A transcript echo is the conversation's business, not the strip's.
+        {
+          requestId: "request-3",
+          placement: "transcript",
+          time: 3,
+          text: "обычная отправка",
+          attachments: [],
+        },
+      ],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "message-1",
+        preview: "первый в очереди",
+        text: "первый в очереди",
+        attachments: 0,
+        sending: false,
+      },
+      {
+        id: "message-2",
+        preview: "с картинкой",
+        text: null,
+        attachments: 1,
+        sending: false,
+      },
+      {
+        id: "request-2",
+        preview: "летит через транспорт",
+        text: "летит через транспорт",
+        attachments: 0,
+        sending: true,
+      },
+    ]);
+    controller.dispose();
+  });
+
+  it("keeps a message the turn has taken out of the strip", async () => {
+    const world = await ready();
+    const { controller } = world;
+    setInbox(world, [
+      queuedMessage(
+        "message-1",
+        [{ type: "text", text: "второй вопрос" }],
+        "request-1",
+      ),
+    ]);
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "message-1",
+        preview: "второй вопрос",
+        text: "второй вопрос",
+        attachments: 0,
+        sending: false,
+      },
+    ]);
+    // The turn ends and claims the queue: the Inbox goes empty, and the Host
+    // leaves the echo of the message it admitted registered. Another question
+    // is on its way, so the strip must keep exactly that one — a row the server
+    // already answered for must not come back as a question still crossing the
+    // transport, and one that never reached the queue must not be swallowed.
+    setInbox(world, []);
+    setSnapshot(world, {
+      pendingSubmissions: [
+        queued("request-1", "второй вопрос"),
+        queued("request-2", "третий вопрос"),
+      ],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "request-2",
+        preview: "третий вопрос",
+        text: "третий вопрос",
+        attachments: 0,
+        sending: true,
+      },
+    ]);
+    controller.dispose();
+  });
+
+  it("settles an admission the stream spacing absorbed", async () => {
+    // The card's own sequence: a question sent while the agent answers is
+    // admitted mid-turn, inside a spacing window, and the turn claims it before
+    // the window closes. Neither of those frames reaches the projection — an
+    // absorbed frame is dropped, not replayed — so the first frame the browser
+    // renders is an empty queue over an echo the session library left behind.
+    // Measuring the receipt on the projected frame would leave the buttonless
+    // «отправляется…» row there, which is the ghost this card reports.
+    //
+    // The window is deliberately wider than the test: the case must not depend
+    // on two calls fitting inside a real-time interval, and the frame that ends
+    // it projects at once because the turn is no longer running.
+    const world = await ready(["saved"], 60_000);
+    const { controller } = world;
+    let projected = 0;
+    controller.subscribe(() => {
+      projected += 1;
+    });
+    // The turn starts: the first frame of a window projects and opens it.
+    setSnapshot(world, { running: true });
+    const windowOpened = projected;
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    setInbox(world, [
+      queuedMessage(
+        "message-1",
+        [{ type: "text", text: "второй вопрос" }],
+        "request-1",
+      ),
+    ]);
+    // The premise of the case: the admission never reached the projection.
+    expect(projected).toBe(windowOpened);
+    // Still inside the window: the turn ends and claims the queue, leaving the
+    // echo registered. This frame projects, and it is the first one the strip
+    // ever shows.
+    setInbox(world, []);
+    setSnapshot(world, {
+      running: false,
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    expect(controller.getSnapshot().queue).toEqual([]);
+    controller.dispose();
+  });
+
+  it("keeps a receipt for the rest of the binding", async () => {
+    // A request id is minted per submission, so the id the Host named belongs to
+    // the message it named and to nothing else: the receipt cannot hide a later
+    // send. Dropping it instead is what re-draws this card's ghost — the echo the
+    // library never retired is back on the next frame, over a message the queue
+    // has already answered for.
+    const world = await ready();
+    const { controller } = world;
+    setInbox(world, [
+      queuedMessage(
+        "message-1",
+        [{ type: "text", text: "второй вопрос" }],
+        "request-1",
+      ),
+    ]);
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "message-1",
+        preview: "второй вопрос",
+        text: "второй вопрос",
+        attachments: 0,
+        sending: false,
+      },
+    ]);
+    // The Host retires the echo along with the queue row: nothing waits, and
+    // nothing is in transport.
+    setInbox(world, []);
+    setSnapshot(world, { pendingSubmissions: [] });
+    expect(controller.getSnapshot().queue).toEqual([]);
+    // The same id registered again is the send the queue already named, not a new
+    // one — and the row it would draw is the buttonless «отправляется…» this card
+    // reports over a question the transcript has answered.
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    expect(controller.getSnapshot().queue).toEqual([]);
+    controller.dispose();
+  });
+
+  it("settles a send the transcript names though no queue frame did", async () => {
+    // The hole the queue alone leaves: a send admitted and claimed *between* two
+    // notifications is never listed by a queue frame this browser is handed, so
+    // reading the receipt off the Inbox would leave the ghost exactly as the card
+    // measured it. The durable row is the order-independent half of the same
+    // fact — the message crossed, and the transcript keeps saying so however
+    // late the frame arrives — so the claim surviving in the echo is settled by
+    // it, even though the spacing absorbed the frame that landed the row.
+    const world = await ready(["saved"], 60_000);
+    const { controller } = world;
+    let projected = 0;
+    controller.subscribe(() => {
+      projected += 1;
+    });
+    // The turn starts: the first frame of a window projects and opens it.
+    setSnapshot(world, { running: true });
+    const windowOpened = projected;
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    // The Host claims the queue and hands the durable row, all inside the window:
+    // neither frame reaches the projection, and no delivered frame ever listed
+    // the message in the Inbox — the queue named it and lost it between two
+    // notifications this browser was handed.
+    setInbox(world, []);
+    landDurableUserRow(
+      world.bindings.get("saved"),
+      "второй вопрос",
+      "request-1",
+    );
+    expect(projected).toBe(windowOpened);
+    // The turn ends: this frame projects, and the echo the claim left behind is
+    // the only thing the strip could still draw for that message.
+    setSnapshot(world, { running: false });
+    expect(controller.getSnapshot().queue).toEqual([]);
+    // The message is not hidden — it is where a claimed send belongs.
+    expect(
+      controller
+        .getSnapshot()
+        .messages.filter((message) => message.role === "user")
+        .map((message) => message.text),
+    ).toEqual(["второй вопрос"]);
+    controller.dispose();
+  });
+
+  it("leaves nothing of a message the Host took out of its queue", async () => {
+    // The case the mask is charged with losing: the queue listed the message and
+    // then dropped it without ever handing it to the turn, so no durable row names
+    // it and the only thing the strip could draw is the echo the claim left behind.
+    // Hiding it costs nothing, because the removal is already decided: the Inbox
+    // frame that lists a queued echo latches the library's retirement at that very
+    // moment (`observeSubmissionMessage` hands it to `scheduleObservedRetirement`),
+    // whether the message is claimed afterwards or taken out. So the record hides a
+    // row whose retirement is latched and only waits on a frame — never a send the
+    // Host has not named, which stays on screen with its honest status, as the last
+    // step of this test shows.
+    const world = await ready();
+    const { controller } = world;
+    setInbox(world, [
+      queuedMessage(
+        "message-1",
+        [{ type: "text", text: "второй вопрос" }],
+        "request-1",
+      ),
+    ]);
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "message-1",
+        preview: "второй вопрос",
+        text: "второй вопрос",
+        attachments: 0,
+        sending: false,
+      },
+    ]);
+    // Gone from the queue, never claimed: the row disappears instead of staying
+    // above the composer as a question that has not been sent.
+    setInbox(world, []);
+    expect(controller.getSnapshot().queue).toEqual([]);
+    // And it swallows only what the Host named. A send this browser registered
+    // after that, which no queue frame has ever listed, keeps its honest status.
+    setSnapshot(world, {
+      pendingSubmissions: [
+        queued("request-1", "второй вопрос"),
+        queued("request-2", "третий вопрос"),
+      ],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "request-2",
+        preview: "третий вопрос",
+        text: "третий вопрос",
+        attachments: 0,
+        sending: true,
+      },
+    ]);
+    controller.dispose();
+  });
+
+  it("keeps one chat's receipt from swallowing another chat's row", async () => {
+    // Request ids are minted per submission inside one session, so an id one
+    // chat's queue has named says nothing about a send another chat still has
+    // crossing the transport. Carrying the record across the binding hides a
+    // live row the moment the operator switches chats.
+    const world = await ready(["saved", "other"]);
+    const { controller } = world;
+    setInbox(world, [
+      queuedMessage(
+        "message-1",
+        [{ type: "text", text: "второй вопрос" }],
+        "request-1",
+      ),
+    ]);
+    setSnapshot(world, {
+      pendingSubmissions: [queued("request-1", "второй вопрос")],
+    });
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "message-1",
+        preview: "второй вопрос",
+        text: "второй вопрос",
+        attachments: 0,
+        sending: false,
+      },
+    ]);
+    // The other chat's Host registers an echo of its own under the same id, and
+    // its queue has never named it.
+    setSnapshot(
+      world,
+      { pendingSubmissions: [queued("request-1", "вопрос другого чата")] },
+      "other",
+    );
+    await controller.switchTo("other");
+    expect(controller.getSnapshot().sessionId).toBe("other");
+    expect(controller.getSnapshot().queue).toEqual([
+      {
+        id: "request-1",
+        preview: "вопрос другого чата",
+        text: "вопрос другого чата",
+        attachments: 0,
+        sending: true,
+      },
+    ]);
+    controller.dispose();
+  });
+
+  it("sends an edit, a send-now and a removal to the Host queue", async () => {
+    const world = await ready();
+    const { controller } = world;
+    const saved = world.faces.get("saved");
+    expect(
+      await controller.queueAction("item-1", "edit", "исправленный текст"),
+    ).toBeNull();
+    expect(saved?.updateQueue).toHaveBeenCalledWith("item-1", {
+      kind: "edit",
+      content: [{ type: "text", text: "исправленный текст" }],
+    });
+    expect(await controller.queueAction("item-1", "steer")).toBeNull();
+    expect(saved?.updateQueue).toHaveBeenCalledWith("item-1", {
+      kind: "steer",
+    });
+    expect(await controller.queueAction("item-1", "remove")).toBeNull();
+    expect(saved?.updateQueue).toHaveBeenCalledWith("item-1", {
+      kind: "remove",
+    });
+    expect(controller.getSnapshot().error).toBeNull();
+    controller.dispose();
+  });
+
+  it("answers a refused operation with the text the strip shows", async () => {
+    const world = await ready();
+    const { controller } = world;
+    const saved = world.faces.get("saved");
+    saved?.updateQueue.mockResolvedValueOnce({
+      ok: false,
+      error: { code: "session/queue-item-not-found", message: "claimed" },
+    });
+    expect(await controller.queueAction("item-9", "remove")).toMatch(
+      /уже отправлено/u,
+    );
+    // The strip owns this answer: the shared error line is cleared by the very
+    // next session frame, which is exactly what a refused steer produces.
+    expect(controller.getSnapshot().error).toBeNull();
+    controller.dispose();
+  });
+
+  it("answers a transport failure the same way, without stalling the strip", async () => {
+    const world = await ready();
+    const { controller } = world;
+    world.faces
+      .get("saved")
+      ?.updateQueue.mockRejectedValueOnce(new Error("connection lost"));
+    expect(await controller.queueAction("item-1", "steer")).toMatch(/сразу/u);
+    controller.dispose();
+  });
+
+  it("edits and drops a waiting row after the turn has already ended", async () => {
+    const world = await ready();
+    const { controller } = world;
+    setInbox(world, [
+      queuedMessage("message-1", [{ type: "text", text: "вопрос" }]),
+    ]);
+    setSnapshot(world, { running: false });
+    // Nothing is interrupting, so only "send now" is unavailable — and that is
+    // the strip's decision, not the binding's.
+    expect(controller.getSnapshot().canEditQueue).toBe(true);
+    expect(await controller.queueAction("message-1", "remove")).toBeNull();
+    controller.dispose();
+  });
+});

@@ -144,6 +144,7 @@ export class QaBrowserService extends TypertRemoteService {
     this.logger.info("browser.plugin-ready", {
       enabled: this.config.enabled,
       provider: this.config.runtime.provider,
+      mode: this.config.runtime.mode,
       headless: this.config.runtime.headless,
     });
   }
@@ -379,6 +380,7 @@ export class QaBrowserService extends TypertRemoteService {
       humanControlLeaseSeconds: this.config.humanControl.leaseSeconds,
       autoRevealOnAgentActivity: this.config.ui.autoRevealOnAgentActivity,
       focusOnAutoReveal: this.config.ui.focusOnAutoReveal,
+      runtimeMode: this.config.runtime.mode,
       coordinateInputEnabled: this.config.capabilities.coordinateInput,
     };
   }

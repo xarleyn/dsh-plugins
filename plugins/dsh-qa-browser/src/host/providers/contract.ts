@@ -7,11 +7,16 @@ import type {
   BrowserWaitRequest,
   ElementFingerprint,
   LocatorPlan,
+  QaBrowserRuntimeMode,
 } from "../../types.js";
 
 export interface BrowserProviderStartOptions {
+  /** `launch` owns the browser process; `attach` borrows one over its CDP endpoint. */
+  readonly mode: QaBrowserRuntimeMode;
   readonly executablePath: string | null;
   readonly browserChannel: string;
+  /** The CDP endpoint to join, resolved and validated by the config layer. */
+  readonly cdpEndpoint: string | null;
   readonly headless: boolean;
   readonly chromiumSandbox: boolean;
 }
@@ -28,7 +33,8 @@ export interface BrowserRequestInfo {
   readonly kind: BrowserRequestKind;
   /**
    * The page that made the request, i.e. `BrowserPageHandle.id`. Absent for a
-   * request with no page behind it, such as one a service worker dials.
+   * request with no page behind it, such as one a service worker dials, and for
+   * a WebSocket, whose Playwright route carries no frame at all.
    */
   readonly pageId?: string;
 }

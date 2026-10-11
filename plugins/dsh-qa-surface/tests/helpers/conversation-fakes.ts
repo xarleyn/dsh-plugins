@@ -22,7 +22,10 @@ export function snapshot(
 ): ConversationSnapshot {
   const chat = { legacy: slice } as unknown as ChatSnapshot;
   return {
-    views: { get: (target) => (target === "chat" ? chat : undefined) },
+    views: {
+      get: (target) => (target === "chat" ? chat : undefined),
+      grouped: () => undefined,
+    },
     activeTargets: new Set(["chat"]),
   };
 }

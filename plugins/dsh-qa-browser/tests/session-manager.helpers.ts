@@ -1,4 +1,5 @@
-import { resolveQaBrowserConfig } from "../src/config.js";
+import { resolveQaBrowserConfig, type QaBrowserConfig } from "../src/config.js";
+import { QaBrowserError, type QaBrowserErrorCode } from "../src/errors.js";
 import { BrowserNetworkPolicy } from "../src/host/policy.js";
 import type {
   BrowserContextHandle,
@@ -8,6 +9,7 @@ import type {
   BrowserProviderStartOptions,
 } from "../src/host/providers/contract.js";
 import { QaBrowserSessionManager } from "../src/host/session-manager.js";
+import type { BrowserRuntimeLogger } from "../src/host/session/index.js";
 import type {
   BrowserNavigationRequest,
   BrowserSnapshotMode,
@@ -225,11 +227,14 @@ export class FakeContext implements BrowserContextHandle {
 export class FakeProvider implements BrowserProvider {
   starts = 0;
   stops = 0;
+  /** What each start was asked for, so a test can read the mode through. */
+  readonly startOptions: BrowserProviderStartOptions[] = [];
   readonly contexts = new Map<string, FakeContext>();
   private readonly crashListeners = new Set<(error: Error) => void>();
 
-  async start(_options: BrowserProviderStartOptions): Promise<void> {
+  async start(options: BrowserProviderStartOptions): Promise<void> {
     this.starts += 1;
+    this.startOptions.push(options);
   }
 
   async stop(): Promise<void> {
@@ -262,27 +267,62 @@ export class FakeProvider implements BrowserProvider {
     return () => this.crashListeners.delete(listener);
   }
 
-  crash(): void {
-    for (const listener of this.crashListeners) listener(new Error("boom"));
+  /**
+   * The browser is gone. Which of the two ways that happened is the point a
+   * test checks: `crash()` for our own process dying, the lost code for an
+   * attached browser we simply cannot reach any more.
+   */
+  crash(code: QaBrowserErrorCode = "BROWSER_CRASHED"): void {
+    const error = new QaBrowserError(
+      code,
+      code === "BROWSER_CONNECTION_LOST"
+        ? "CDP connection to Chromium was lost."
+        : "Chromium disconnected.",
+    );
+    for (const listener of this.crashListeners) listener(error);
   }
 }
 
+/** One line the runtime wrote for the operator to read. */
+export interface LoggedEvent {
+  readonly level: "debug" | "info" | "warn" | "error";
+  readonly event: string;
+  readonly fields?: Record<string, unknown>;
+}
+
 export function createHarness(
-  options: { now?: () => number; maxTabs?: number } = {},
+  options: {
+    now?: () => number;
+    maxTabs?: number;
+    /** The runtime block to resolve on top of the secure defaults. */
+    runtime?: Partial<NonNullable<QaBrowserConfig["runtime"]>>;
+  } = {},
 ) {
   const provider = new FakeProvider();
   const config = resolveQaBrowserConfig({
+    runtime: options.runtime,
     session: { maxTabs: options.maxTabs },
     security: { network: { allowHosts: ["*.example"] } },
   });
+  // The log is a surface an operator reads, so it is recorded rather than
+  // dropped on the floor: the two ways a browser can go away have to reach it
+  // under different keys, the same way they reach the panel.
+  const logged: LoggedEvent[] = [];
+  const logger: BrowserRuntimeLogger = {
+    debug: (event, fields) => logged.push({ level: "debug", event, fields }),
+    info: (event, fields) => logged.push({ level: "info", event, fields }),
+    warn: (event, fields) => logged.push({ level: "warn", event, fields }),
+    error: (event, fields) => logged.push({ level: "error", event, fields }),
+  };
   const manager = new QaBrowserSessionManager({
     config,
     provider,
+    logger,
     policy: new BrowserNetworkPolicy(config.security.network, {
       lookup: (async () => [{ address: "203.0.113.10", family: 4 }]) as never,
     }),
     now: options.now,
     startIdleTimer: false,
   });
-  return { config, manager, provider };
+  return { config, manager, provider, logged };
 }

@@ -39,11 +39,15 @@ describe("QA work group", () => {
       name: "Готово за 1 мин 40 с",
     });
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
-    expect(screen.queryByText("Inspect the repository first.")).toBeNull();
+    expect(screen.queryByTestId("qa-surface-work-text-body")).toBeNull();
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText("Inspect the repository first.")).toBeTruthy();
-    expect(screen.getByText("Find TODOs")).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-surface-work-text-body").textContent,
+    ).toContain("Inspect the repository first.");
+    expect(screen.getByTestId("qa-surface-work-tool-detail").textContent).toBe(
+      "Find TODOs",
+    );
   });
 
   it("collapses automatically when a running turn completes", async () => {
@@ -117,7 +121,9 @@ describe("QA work group", () => {
     expect(toggle.getAttribute("aria-expanded")).toBe("false");
     fireEvent.click(toggle);
     expect(toggle.getAttribute("aria-expanded")).toBe("true");
-    expect(screen.getByText("Reading the tree.")).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-surface-work-text-body").textContent,
+    ).toContain("Reading the tree.");
   });
 
   it("collapses automatically when a running turn fails", async () => {
@@ -159,6 +165,74 @@ describe("QA work group", () => {
       expect(
         screen
           .getByRole("button", { name: "Прервано за 5 с" })
+          .getAttribute("aria-expanded"),
+      ).toBe("false"),
+    );
+  });
+
+  it("labels a turn a person stopped by its own outcome, not as ready", () => {
+    render(
+      <QaWorkGroup
+        status="stopped"
+        startedAt={1_000}
+        endedAt={3_000}
+        renderMarkdown={false}
+        items={[
+          {
+            id: "reasoning:1",
+            kind: "reasoning",
+            text: "Reading the question.",
+            status: "complete",
+          },
+        ]}
+      />,
+    );
+
+    const toggle = screen.getByRole("button", { name: "Остановлено на 2 с" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    const group = screen.getByTestId("qa-surface-work-group");
+    expect(group.getAttribute("data-state")).toBe("stopped");
+  });
+
+  it("collapses automatically when a running turn is stopped", async () => {
+    const startedAt = Date.now() - 5_000;
+    const view = render(
+      <QaWorkGroup
+        status="running"
+        startedAt={startedAt}
+        renderMarkdown={false}
+        items={[
+          {
+            id: "reasoning:live",
+            kind: "reasoning",
+            text: "Still thinking",
+            status: "running",
+          },
+        ]}
+      />,
+    );
+
+    view.rerender(
+      <QaWorkGroup
+        status="stopped"
+        startedAt={startedAt}
+        endedAt={startedAt + 5_000}
+        renderMarkdown={false}
+        items={[
+          {
+            id: "reasoning:live",
+            kind: "reasoning",
+            text: "Still thinking",
+            status: "complete",
+          },
+        ]}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(
+        screen
+          .getByRole("button", { name: "Остановлено на 5 с" })
           .getAttribute("aria-expanded"),
       ).toBe("false"),
     );

@@ -29,6 +29,26 @@ export const silentLogger: KvPersistLogger = {
   error() {},
 };
 
+/** Logger that keeps `warn` and `error` event names for assertions. */
+export function recordingLogger(): {
+  readonly logger: KvPersistLogger;
+  readonly events: string[];
+} {
+  const events: string[] = [];
+  const record = (event: string): void => {
+    events.push(event);
+  };
+  return {
+    events,
+    logger: {
+      debug() {},
+      info() {},
+      warn: record,
+      error: record,
+    },
+  };
+}
+
 export interface Harness {
   root: string;
   config: ResolvedKvPersistConfig;
@@ -42,6 +62,7 @@ export interface Harness {
 export async function createHarness(
   configOverrides: KvPersistConfig = {},
   backend = new FakeKvBackend(),
+  logger: KvPersistLogger = silentLogger,
 ): Promise<Harness> {
   const root = await mkdtemp(join(tmpdir(), "dsh-kv-persist-test-"));
   const config = resolveKvPersistConfig({
@@ -57,7 +78,7 @@ export async function createHarness(
     backend,
     repository,
     metrics,
-    logger: silentLogger,
+    logger,
   });
   return {
     root,

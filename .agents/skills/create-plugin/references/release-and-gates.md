@@ -2,7 +2,8 @@
 
 ## Gates map (what catches what)
 
-`pnpm check` = lint → format → typecheck → test → build → verify → deps:check.
+`pnpm check` = lint → format → typecheck → test → build → check:files → verify
+→ deps:check.
 It does NOT run `tarball:verify`, `release:check`, or the browser smoke — run
 those separately before pushing. Per-project equivalent (what CI's matrix
 runs): `pnpm nx run-many -t lint typecheck test build verify
@@ -13,7 +14,8 @@ package name).
 | Gate | Catches |
 | --- | --- |
 | `pnpm verify:logging` | plugin must depend on `@yadsh/dsh-plugin-log` (exactly `workspace:^`, in `dependencies`) and import it somewhere in `src/**`; forbidden in `src/client/**`. Scans ALL `plugins/*` — no opt-out |
-| `pnpm verify:packages` (hygiene) | canonical metadata (`repository{type,url,directory}`, `homepage`, `bugs.url`, scope `@yadsh/`, description naming DeepSeek Harness/DSH, canonical keywords `deepseek`, `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis` + feature words, lowercase, no dupes); required files exist AND are in `files` (`cordis.patch.yml`, `compatibility.json`, `LICENSE`, `README.md`); `exports["./package.json"]`; `types === exports["."].types` in the standard `lib/` layout; `compatibility.node === engines.node` verbatim; scripts contract (`lint`, `typecheck`, `test`, `build`, `verify` — nx derives targets from them); docs must NOT be in `files`; published README links must resolve inside the tarball (use absolute GitHub URLs for non-published docs); `plugins.json` matches manifests; every `.nx/version-plans/*.md` parses as Nx reads it (fence, known package, valid bump, changelog message); a qa-surface plan requires a newer `QaChangelog.tsx` entry; `dsh.client` ⇒ a script asserting the full-name registration; `settings.plugin.item` card ⇒ a script running the card contract |
+| `pnpm verify:packages` (hygiene) | canonical metadata (`repository{type,url,directory}`, `homepage`, `bugs.url`, scope `@yadsh/`, description naming DeepSeek Harness/DSH, canonical keywords `deepseek`, `deepseek-harness`, `dsh`, `dsh-plugin`, `cordis` + feature words, lowercase, no dupes); required files exist AND are in `files` (`cordis.patch.yml`, `compatibility.json`, `LICENSE`, `README.md`); `exports["./package.json"]`; `types === exports["."].types` in the standard `lib/` layout; `compatibility.node === engines.node` verbatim; scripts contract (`lint`, `typecheck`, `test`, `build`, `verify` — nx derives targets from them); docs must NOT be in `files`; published README links must resolve inside the tarball (use absolute GitHub URLs for non-published docs); `plugins.json` matches manifests; every `.nx/version-plans/*.md` parses as Nx reads it (fence, known package, valid bump, changelog message); a qa-surface plan requires a `QaChangelog.tsx` entry whose `version:` is exactly the planned version (§Docs sync owns the arithmetic); `dsh.client` ⇒ a script asserting the full-name registration; a configuration card (`plugins.row.config`, the `0.1.7` name of the card slot; a page that stays on `settings.plugins.tab` counts only when its sources carry the shell) ⇒ a script running the card contract |
+| `pnpm check:files` | a package source file (`src/**` or `scripts/**`) over 1400 lines, a package test file over 900, a generated bundle under `lib/` over a runaway limit (1200 and 700 warn; all line counts, no byte budget; the repository root's `scripts/` is not measured). The files already over budget when the gate landed are the allowlist inside `scripts/check-file-budget.mjs`, each entry with its reason on the same line, and it only shrinks: split the oversized file instead of raising a threshold or adding a path. Thresholds and exemption classes: `docs/VERIFICATION.md` |
 | `pnpm deps:check` | plugins never become dependencies of shared packages; `@deepseek-ai/*` runtime packages are peers, not dependencies; no cross-package relative imports; includes `pnpm dedupe --check` — after touching dependencies run `pnpm install` (and `pnpm dedupe` if you removed one), or this gate reddens on a dirty lockfile |
 | `pnpm tarball:verify` | gates 1–7 on the packed tarball: canonical metadata, `dsh.bundle.patch`, every declared `exports` subpath present in the tarball, clean `npm install`, bare-Node import smoke. Gate 5 is the ONLY gate that compares `exports` against the real build — a copied exports map pointing at a module you never had passes everything until this gate (first push/CI) |
 | `pnpm release:check` | every publishable project with commits its newest reachable release tag does not cover carries a COMMITTED version plan |
@@ -67,7 +69,32 @@ in the test wiring — fix it, never write it off as flaky.
   SERVICE of it is read — the service name in the client face's `inject`.
 - Shared code goes to `packages/*` (plugin-kit has client helpers like
   `injectCardStyles`, plus sqlite/retention helpers) — plugin-to-plugin
-  dependencies are an anti-pattern `pnpm deps:check` enforces.
+  dependencies are an anti-pattern `pnpm deps:check` enforces (SPEC §27.11).
+  The one way to keep one is to declare that exact edge, with the reason, in
+  `plugin-dependency-allowlist.json`; justify it by the target publishing a
+  real extension API, and expect the reviewer to ask.
+
+## Docs sync (what to update after what)
+
+The recurring failure is not a wrong rule but a stale neighbour document: code
+lands, and the manifest, the README, the changelog surface or the compatibility
+row keeps describing the previous behavior. Update these in the same commit as
+the change they describe:
+
+| The change | What to update | Who checks it |
+| --- | --- | --- |
+| a package added/renamed, or a manifest field changed | `pnpm plugins:manifest`, which regenerates the root `plugins.json` **and** the root `README.md` package table | `pnpm verify:packages` fails on manifest drift |
+| user-visible behavior | the plugin's `README.md`; its `SPEC.md` when the product contract moved (config surface, tool names, degradation) | review only — no gate reads prose |
+| a config knob added/renamed | the schema field's JSDoc, the plugin's `cordis.patch.yml` example, the README config section | the file's existence is gated; the values it names are on you |
+| any change inside `plugins/<dir>/` a diff attributes to the project — code, tests, README, docs | a version plan `.nx/version-plans/<topic>.md`; its text IS the CHANGELOG entry, so a missing plan means the feature never appears in any changelog | `pnpm release:check` — what it counts and what it ignores is §Version plans and releases — plus `pnpm verify:packages` |
+| a `dsh-qa-surface` plan | the obligation is `AGENTS.md` §QA surface release notes and this row does not restate it; what lives here is the arithmetic the two checkers share | `pnpm verify:packages` takes the manifest version, applies the highest bump across the qa-surface plans, and fails unless `plugins/dsh-qa-surface/src/client/components/QaChangelog.tsx` has an entry whose `version:` literal is exactly that planned version; `qa-sidebar-changelog.test.tsx` demands the same version at the head of the array, `QA_VERSION` equal to the manifest, and the shipped entries mirroring `CHANGELOG.md`'s release headers |
+| host/peer requirements | `compatibility.json`, plus `docs/COMPATIBILITY.md` (the peer matrix) for a new package | the hygiene gate compares `compatibility.node` with `engines.node` verbatim |
+| a release landed | nothing by hand: `CHANGELOG.md` and the consumed plans are the release commit's business, and work after it needs a new plan | the release workflow (`release-plugins`) |
+
+Never hand-edit `CHANGELOG.md`, never add a feature row to a version that
+already shipped, and never write into a plan or changelog text that something
+internal was removed or renamed (AGENTS.md): plan text is published twice — in
+the repository and in the wave's release notes.
 
 ## Version plans and releases
 
@@ -80,9 +107,14 @@ in the test wiring — fix it, never write it off as flaky.
   Changelog paragraph (what the user gets; neutral wording).
   ```
 
-- A plan is required for ANY publishable-package change — source, tests,
-  client cosmetics, packaging. Plans of one package merge into the highest
-  bump. The plan text IS the changelog entry nx generates.
+- A plan is required for ANY publishable-package change — source, tests, client
+  cosmetics, and README or docs under the package. `pnpm release:check` counts
+  every file `git diff` puts under the project directory EXCEPT the ones
+  `release.versionPlans.ignorePatternsForPlanCheck` in `nx.json` names (today
+  `**/package.json` and `**/CHANGELOG.md`), so a commit that touches only those
+  asks for no plan — a manifest edit is gated by `pnpm verify:packages` and
+  `pnpm tarball:verify`, not by plan check. Plans of one package merge into the
+  highest bump. The plan text IS the changelog entry nx generates.
 - Missing plan = the feature never appears in any changelog (nx is silent).
   Broken fence = nx silently ignores the plan (no bump, no entry, not even
   counted). `pnpm verify:packages` validates plans the way Nx reads them.

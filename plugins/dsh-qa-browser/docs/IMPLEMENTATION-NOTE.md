@@ -35,6 +35,17 @@ should first exist without a server-enforced boundary. Redirect and subresource
 requests are rechecked by Playwright routing; metadata endpoints remain denied
 even when a hostname is explicitly allowed.
 
+Two dials sit outside that request route, and the context closes both. A
+WebSocket handshake never appears as a request, so the context installs a socket
+route — before it has any page, since only sockets created after the
+registration are routed — and asks the same gate about it; a refused handshake
+is ended without ever being put on the wire, which is why a socket the policy
+has no scheme for is denied by default rather than silently allowed. And a
+service worker dials from outside every page, so Playwright's routing cannot see
+its traffic at all: the context is created with workers blocked, which is also
+what keeps an unattributable request from reaching a destination the operator
+never opened.
+
 Because Chromium resolves DNS with its own recursive resolver, a policy check
 that resolves the host server-side can be detached from the address the browser
 finally dials: an authoritative DNS answerer is free to hand the two resolvers

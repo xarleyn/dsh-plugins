@@ -11,6 +11,10 @@ rules are:
   user-resizable transcript/composer width; the page is the only ceiling (the
   content grows until its drag handles reach the edge budget), and each QA
   route persists its chosen width in browser storage;
+- `session.maxActiveRequests` is an integer from 0 through 50 and bounds how
+  many chat turns the stand answers at once; 0 sets no ceiling. A question that
+  finds no place left is held back in the browser rather than refused by the
+  Host — nothing is created, and the composer keeps the text;
 - the transcript's gutter is shared: fenced code blocks alone may break up to
   32px per side out of the text column, never further than the live gutter and
   never into the drag handles' lane, while markdown tables stay in the column,
@@ -126,7 +130,9 @@ Browser persistence stores only the DSH session id under
 enabled — a per-browser chat index under `<storageKey>:v1:<route>:chats`
 (session ids only, capped at 50). Transcript content, credentials and tool
 results remain in the Host-owned DSH Session and are never copied to browser
-storage.
+storage. The stored id is a hint about which chat to open, not a grant: it is
+scoped to the deployment and route, not to the account, so the Host ownership
+gate is what decides whether this browser may speak in that chat.
 
 When either work-detail flag is enabled, the QA transcript groups reasoning,
 intermediate assistant progress, and tool rows by DSH turn. Running work is
@@ -141,24 +147,47 @@ disables Send with the generic message `Настройки помощника н
 Detailed mismatch facts are written only to Host logs; the
 browser console additionally prints one line with a stable coarse reason code
 (`reason: unknown-tools`, `workspace-unavailable`, `composition-mismatch`, `permission-preset`,
-`adoption-refused`, `agent-unavailable`, `proof-mismatch` or `attestation-failed`) plus an operator
+`adoption-refused`, `subagent-session`, `agent-unavailable`, `proof-mismatch`
+or `attestation-failed`) plus an operator
 hint, so a refused surface can be diagnosed without Host log access.
+Attestation is also what lets the Host answer about a chat at all, so the
+sources, approvals, questions and workspace-browsing Remotes admit the session
+before reading it: one refused chat therefore meets the gate once per panel
+refresh rather than once per visit.
+`lockdown.enabled: false` drops the pins, not the request: with `accounts.enabled`
+on, the browser still asks, because account identity and ownership are checked
+in the Host whatever the lockdown state, and a deployment that turned policy
+pinning off keeps refusing a chat another account owns. Without accounts the
+surface has one principal and nothing to prove, so the call is skipped.
 
 An existing indexed chat rejected as `composition-mismatch`,
-`agent-unavailable` or `adoption-refused` is retained as a historical
-read-only transcript. This compatibility path never marks the session
+`agent-unavailable`, `adoption-refused` or `subagent-session` is retained as a
+historical read-only transcript. This compatibility path never marks the session
 attested: Send, stop, approvals and questions remain disabled, while New chat
 creates a session from the current deployment configuration. Other refusals
 (including authentication, ownership, permission-preset and unknown-tool
 failures) remain fail-closed errors.
 
-`agent-unavailable` means the Host could not put a live agent behind the chat:
-attestation resumes a session the Host has not materialized in this process —
-DSH builds an agent on demand, so a chat restored from an earlier Host run has a
-transcript but no agent — and the resume composes the composition that session
-recorded. The refusal therefore reports a session whose recorded preset no
-longer mounts (or whose log the Host refuses to read); the composition detail is
-in the Host logs under `session.agent-resolve-rejected`.
+`agent-unavailable` means the Host has the chat's transcript but could not stand
+an agent behind it: attestation resumes a session the Host has not materialized
+in this process — DSH builds an agent on demand, so a chat restored from an
+earlier Host run has a transcript but no agent — and the resume composes the
+composition that session recorded. The refusal therefore reports a session whose
+recorded preset no longer mounts, or whose log the Host refuses to read; it is
+not what a restart of the stand looks like, since after a restart the next open
+simply resumes the chat. The composition detail is in the Host logs under
+`session.agent-resolve-rejected`, and this class keeps its ERROR level: the
+deployment is what must be repaired.
+
+`subagent-session` means the opposite of a repair: the identity this browser
+asked about is a delegated subagent run, not a chat. The Host owns such an
+identity through subagent routing and will not materialize a sendable agent
+behind it — it says so with `session/agent-busy` when the run's agent is gone,
+and the surface reads the durable `parentSession` when it is still live — so the
+two paths refuse it with one reason and one sentence. Its sources reach the
+parent chat through the provenance inheritance flow, which is why the subagent
+view asks the Host for none of them. A journal line here is a warning: the Host
+answered correctly about another conversation.
 
 The built-in branding, controls, status messages and accessibility labels are
 Russian. The default quick questions are rendered directly above the composer
@@ -176,6 +205,48 @@ When adding tools, update the deployment's reviewed capability inventory as
 part of the same change. The package's
 [default inventory](../capability-policy.json) is intentionally empty, matching
 the default `toolPolicy.allow`.
+
+## Answering a bounded number of questions at once
+
+`session.maxActiveRequests` (integer 0 through 50, default 0 = no ceiling) caps
+how many chat turns the stand answers simultaneously. A deployment hosting its
+model on a single card needs it: the third question does not add capacity, it
+slows the two already running.
+
+The count is read from the Host, because only the Host can see it. It is the
+harness's own `running` on the top-level agents, so a question that arrived
+through the HTTP API occupies a place, a chat another account is reading does,
+and nothing has to be reported back by a browser that closed mid-answer. A
+delegated expert's requests belong to the turn that delegated it, so they do not
+cost a second place.
+
+Before a send the browser asks `qaSurface/queueStatus`. When the stand is full,
+the question is not sent at all: it arrives neither at the Host nor in the
+transcript, the chat of a first question is never created, the composer keeps
+the text, and the visitor reads how many requests the stand already has in work.
+That number is the whole load, this visitor's own turns included, so the notice
+names occupied places rather than a queue ahead of the question it refused to
+send. Closing that notice uncovers the same text, and asking again is the
+visitor's own keystroke.
+
+The ceiling bounds questions, not every send the composer can make. A message
+typed while its own chat is answering joins that chat's queue — the Host takes it
+as the next turn of a driver that is busy either way — so it is admitted without
+the read, and a stand capped at one still lets a visitor add to the conversation
+it is holding. A human command, the slash palette, goes to the Host's command
+runtime and is not held back either: that surface is how a visitor inspects or
+repairs a saturated deployment, and a plugin cannot tell which commands wake the
+model. A command that does wake it is counted by the same Host read, so the next
+question waits behind it as behind any other turn.
+
+Two properties are deliberate, and both come from the same fact — a prompt rides
+the native session RPC, which this plugin does not own:
+
+- the ceiling is a ceiling, not a lock. Two questions pressed in the same
+  instant can overshoot by one; the next read sees both and the stand settles
+  back. What the setting buys is the steady state.
+- an unreadable count sends the question. A deployment that cannot say how busy
+  it is has not earned the right to refuse a visitor.
 
 ## Attachments
 
@@ -241,14 +312,14 @@ opaque delegated provider must call `qa_report_sources`. The note travels as
 injected context on the conversation (see the profile notes below), so a QA
 preset cannot suppress it.
 
-A report is checked before it is recorded, in two places. The caller must be
-a delegated run — a report from anywhere else is refused, because provenance
-is collected rather than authored. And every entry must carry a path or a URL
-that survives normalization, so an entry describing a fact is dropped and the
-tool answers with a lower count.
-`sources.subagents.validateReportedSources` (default true) turns both checks
-off: a report from the QA agent itself is recorded into that session's current
-turn, and an entry with no address keeps its `kind`, title and snippet instead
+A report is checked entry by entry: every entry must carry a path or a URL that
+survives normalization, so an entry describing a fact is dropped and the tool
+answers with a lower count. Who files the report is not a check — a delegated
+run's report inherits the turn that started the run, and a report the QA agent
+files from its own chat is recorded into that session's current turn, exactly
+where a tool-derived source of the same turn would be.
+`sources.subagents.validateReportedSources` (default true) turns the address
+check off: an entry with no address keeps its `kind`, title and snippet instead
 of being rejected. A URL the normalizer cannot parse is then kept verbatim,
 and a missing title falls back to the last path or URL segment; an entry with
 neither a title nor an address is still dropped, because there would be
@@ -469,6 +540,110 @@ sent to the one-time `/?token=…` exchange (relative redirect, token resolved
 from the host connection service) before the marker hand-off. This makes the
 transparent entry work without the deploy proxy; with the proxy in front,
 either side may perform the exchange and the other becomes a no-op.
+
+## Turn completion notices
+
+A chat whose turn has just ended says so: one line in the page naming the chat,
+and — once the reader allowed it — the same line from the operating system.
+
+The scope is what this reader owns, not what the stand holds. A notice exists
+only for a chat the signed-in account owns outright — and on a stand without
+accounts, for this browser's own chat history. An administrator's shared history
+(`accounts.showOtherUsersChats`) puts other accounts' chats in the sidebar to be
+*read*, and the turn of such a chat is that other account's business: reading it
+is not being told when it stops, so another account's turn ends silently here.
+
+The notice is for a turn this page saw the whole of: the idle its run began
+from, the run, and its end, each read in a frame the browser could vouch for. A
+chat found already running when the page opened is not attributed to this
+reader: that run ends in silence, and the same chat's next turn, whose start the
+page does see, notifies again.
+
+The rule runs across a gap in the link, and there it costs more than the turn
+the gap falls inside. A frame read while the browser was reconnecting vouches
+for nothing, and the gaps this rule counts are the ones that put such a frame in
+front of the page, so every turn a dropped link interrupts ends unreported —
+including one whose start this page did watch. While the link was down that chat
+may have run a different turn, and the rows that come back do not say which of
+the two this is; claiming the watched start anyway would announce a turn the page
+never saw begin. A run the first live frame shows under way is found rather than
+watched, so it passes silently too — which is also the fate of a question the
+reader queued before the drop and that went out only as the link returned.
+
+A chat whose row never moved across the gap is short of that evidence still. The
+page learns about the connection from the connection itself, while its chat rows
+come from the host list store, and the re-pull that store makes once the link is
+back is not awaited — measured on the installed host client in #479: its answer
+lands in a frame later than the one that cleared the flag, so the live frames
+right after a gap carry — normally — the rows the drop left. An idle row that has
+not moved since the gap therefore says only what the gap left it saying, and arms
+nothing.
+
+What a gap takes back is a baseline, and a baseline is given back by a turn, not
+by a frame: the chat is credited again once its own row moves, and the move that
+does it is a run this page watches end without reporting it. So the silence
+reaches from the gap to the end of the first turn that finishes on the recovered
+link, whether or not that turn was the interrupted one — read on the built
+differ, a live idle, a paused idle, a live idle, then a full live run that ends
+live raises nothing although both of its frames sit on the live link, and the
+turn after it raises the notice. A turn that ended while the link was down is
+lost on top of that, since no frame after the gap names it, and that chat then
+passes two turns in silence. Which of those readings the stale list was showing
+is not something this page can tell, and nothing the host client publishes would
+tell it either: the list the page subscribes to carries no mark of having been
+read again, so the chat's own row moving is the only arrival it can be given,
+and the silence is bounded by that row rather than by the link. The promise is
+therefore not one silent turn per chat: on a stand whose link drops inside every
+long turn, and whose screen reflects each of those drops, every turn there pays
+for its own drop and none is announced. That is the honest price of a page that
+claims no start it did not watch and credits no idle it could not vouch for.
+
+A gap the page was never shown is the one case this rule does not cover. The
+silence is assembled from the frames the page was handed while it reported
+itself reconnecting, and a loss of the link that came and went between two screen
+updates hands over none of them — a chat that was idle before that blink is then
+credited with a start nobody saw, so a turn that began inside it arrives as one
+you had been waiting for, while a turn you watched begin only arrives late.
+
+A chat this page stops reading is the same gap in the same evidence: while its
+row is away from the sidebar there is no frame naming it at all, so a run that
+returns to the list is found running again rather than watched beginning, and it
+ends unreported too. A row that comes back saying idle is the corner this page
+cannot see: the differ drops the reading of a row that leaves the list, so the
+returning idle is credited the way a cold start credits it, and the run after it
+is announced even though it may have begun back inside the gap. Nothing the host
+list fails to carry keeps this corner open — the page drops the reading itself,
+and keeping it across the absence, as `stale`, is a decision of this page, not
+the evidence question #479 measured. It is left unmade on purpose: dropping is
+the rule the differ was built on, it keeps the readings bounded to the rows on
+screen, and it is what makes a chat that comes back running a run found rather
+than watched. Keeping the row instead would cost it a silent turn on every
+return and go on naming chats this page no longer lists. So a test pins the
+corner as measured behaviour rather than as a rule that holds.
+
+A turn that ends in the chat already on screen, with this window active,
+produces nothing: the answer is in front of the reader.
+
+What a notice may carry is the chat's own title and the fact that the turn
+ended — never the answer, a path, an account or a session id. The operating
+system writes down what it is handed and shows it over a shoulder.
+
+`notifications.enabled: true` (default) is the master switch. With it off the
+page raises nothing at all, whatever a reader chose earlier.
+
+`notifications.allowOs: true` (default) permits the operating-system channel —
+the one a hidden or backgrounded tab can use. With it off a finished turn stays
+inside the page, which is the answer for a shared laptop, where a personal
+notice is everybody's notice.
+
+The reader's own answer about both channels lives in the settings dialog, on the
+account: it follows the person to another browser, and what they chose yesterday
+in this browser decides nothing about who signs in today. On a stand without
+accounts there is no account to write to, so the desktop choice stays in the
+browser that made it. Either way the answer is asked for once — from a click,
+never on load or once per turn — and a denial, or a browser that offers no such
+API (which includes a stand served over plain HTTP), leaves the in-page line
+standing.
 
 ## Configuration channel over the LAN
 

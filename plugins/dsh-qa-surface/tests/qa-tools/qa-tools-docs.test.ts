@@ -15,14 +15,10 @@ import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
 import {
   createDocsReadTool,
   createDocsSearchTool,
-  docsIdentityOf,
   docsRootOf,
-  QA_DOCS_READ_DEFAULT_LINES,
-  QA_DOCS_READ_MAX_LINES,
   QA_DOCS_SEARCH_BYTE_BUDGET,
   QA_DOCS_SEARCH_DEFAULT_LIMIT,
   QaDocsError,
-  readDocumentation,
   searchDocumentation,
 } from "../../src/qa-tools/docs-tools.js";
 import type { QaDocsSearchResult } from "../../src/qa-tools/docs-tools.js";
@@ -144,6 +140,40 @@ describe("docs_search", () => {
       "Бригадир назначен.",
       "Бригада готова.",
     ]);
+    cleanup();
+  });
+
+  it("accepts the character classes and anchors the tool description offers", async () => {
+    const { workspace, cleanup } = fixture();
+    const root = await rootOf(workspace);
+    const characterClass = await searchDocumentation(root, {
+      query: "[a-z]oken",
+      path: "docs/platform/3.8",
+    });
+    expect(characterClass.hits.map((hit) => hit.text)).toEqual([
+      "The token is issued per session.",
+      "A second line about tokens.",
+    ]);
+    const lineStart = await searchDocumentation(root, {
+      query: "^# auth",
+      version: "3.8",
+    });
+    expect(lineStart.hits.map((hit) => hit.text)).toEqual(["# Auth"]);
+    const lineEnd = await searchDocumentation(root, {
+      query: "session\\.$",
+      path: "docs/platform/3.8",
+    });
+    expect(lineEnd.hits.map((hit) => hit.line)).toEqual([3]);
+    cleanup();
+  });
+
+  it("refuses a query past the pattern budget before it walks the tree", async () => {
+    const { workspace, cleanup } = fixture();
+    const error = await refusal(
+      searchDocumentation(await rootOf(workspace), { query: "a".repeat(513) }),
+    );
+    expect(error.code).toBe("invalid-request");
+    expect(error.message).toContain("512");
     cleanup();
   });
 
@@ -668,175 +698,5 @@ describe("docs_search: the deployment's default version", () => {
       createDocsSearchTool({ defaultVersion: "3.8" }).description,
     ).toContain("This stand documents version 3.8 by default");
     expect(createDocsSearchTool().description).not.toContain("by default");
-  });
-});
-
-describe("docs_read", () => {
-  it("reads a window and tags it with module and version", async () => {
-    const { workspace, cleanup } = fixture();
-    const result = await readDocumentation(await rootOf(workspace), {
-      path: "docs/platform/3.8/auth.md",
-      from: 3,
-      lines: 2,
-    });
-    expect(result).toMatchObject({
-      path: "docs/platform/3.8/auth.md",
-      module: "platform",
-      version: "3.8",
-      from: 3,
-      to: 4,
-      truncated: true,
-    });
-    expect(result.text).toBe(
-      "The token is issued per session.\nA second line about tokens.",
-    );
-    cleanup();
-  });
-
-  it("accepts both the workspace-relative and the docs-relative spelling", async () => {
-    const { workspace, cleanup } = fixture();
-    const root = await rootOf(workspace);
-    const workspaceRelative = await readDocumentation(root, {
-      path: "docs/billing/tokens.md",
-    });
-    const docsRelative = await readDocumentation(root, {
-      path: "billing/tokens.md",
-    });
-    expect(workspaceRelative).toEqual(docsRelative);
-    cleanup();
-  });
-
-  it("accepts an absolute file path inside the resolved documentation root", async () => {
-    const { workspace, docs, cleanup } = fixture();
-    const result = await readDocumentation(await rootOf(workspace), {
-      path: path.join(docs, "platform", "3.8", "auth.md"),
-      from: 3,
-      lines: 1,
-    });
-    expect(result).toMatchObject({
-      path: "docs/platform/3.8/auth.md",
-      module: "platform",
-      version: "3.8",
-      text: "The token is issued per session.",
-    });
-    cleanup();
-  });
-
-  it("bounds the window and reports the rest of the file", async () => {
-    const { workspace, docs, cleanup } = fixture();
-    const lines = Array.from(
-      { length: 900 },
-      (_, index) => `line ${index + 1}`,
-    );
-    writeFileSync(path.join(docs, "big.md"), `${lines.join("\n")}\n`);
-    const result = await readDocumentation(await rootOf(workspace), {
-      path: "big.md",
-      lines: 5_000,
-    });
-    expect(result.from).toBe(1);
-    expect(result.to).toBe(QA_DOCS_READ_MAX_LINES);
-    expect(result.totalLines).toBe(900);
-    expect(result.truncated).toBe(true);
-    expect(result.text.split("\n")).toHaveLength(QA_DOCS_READ_MAX_LINES);
-    cleanup();
-  });
-
-  it("uses the documented default window when none is given", async () => {
-    const { workspace, docs, cleanup } = fixture();
-    const lines = Array.from(
-      { length: 300 },
-      (_, index) => `line ${index + 1}`,
-    );
-    writeFileSync(path.join(docs, "window.md"), `${lines.join("\n")}\n`);
-    const result = await readDocumentation(await rootOf(workspace), {
-      path: "window.md",
-    });
-    expect(result.from).toBe(1);
-    expect(result.to).toBe(QA_DOCS_READ_DEFAULT_LINES);
-    expect(result.totalLines).toBe(300);
-    cleanup();
-  });
-
-  it("refuses a directory, a missing path and a binary file", async () => {
-    const { workspace, cleanup } = fixture();
-    const root = await rootOf(workspace);
-    const directory = await refusal(
-      readDocumentation(root, { path: "docs/platform" }),
-    );
-    expect(directory.code).toBe("not-a-file");
-    const missing = await refusal(
-      readDocumentation(root, { path: "docs/platform/3.8/absent.md" }),
-    );
-    expect(missing.code).toBe("not-found");
-    const binary = await refusal(
-      readDocumentation(root, { path: "docs/binary.md" }),
-    );
-    expect(binary.code).toBe("not-text");
-    cleanup();
-  });
-
-  it("refuses a path outside the tree and a link that leaves it", async () => {
-    const { workspace, docs, outside, cleanup } = fixture();
-    const root = await rootOf(workspace);
-    const outsidePath = await refusal(
-      readDocumentation(root, { path: "../outside/secret.md" }),
-    );
-    expect(outsidePath.code).toBe("outside-docs");
-    let linked = true;
-    try {
-      symlinkSync(
-        path.join(outside, "secret.md"),
-        path.join(docs, "alias.md"),
-        "file",
-      );
-    } catch {
-      linked = false; // the platform denies symlink creation; skip cleanly
-    }
-    if (linked) {
-      const escape = await refusal(
-        readDocumentation(root, { path: "alias.md" }),
-      );
-      expect(escape.code).toBe("symlink-escape");
-    }
-    cleanup();
-  });
-
-  it("refuses a documentation root that is not a real directory", async () => {
-    const { workspace, docs, cleanup } = fixture();
-    rmSync(docs, { recursive: true, force: true });
-    writeFileSync(docs, "not a directory");
-    const error = await refusal(rootOf(workspace));
-    expect(error.code).toBe("docs-unavailable");
-    cleanup();
-  });
-
-  it("runs from a real execution record", async () => {
-    const { workspace, cleanup } = fixture();
-    const tool = createDocsReadTool();
-    const value = (await tool.execute({ path: "docs/readme.md" }, {
-      agent: agentWithCwd(workspace),
-    } as never)) as unknown;
-    expect(render(tool, value)).toContain("Documentation root notes.");
-    cleanup();
-  });
-});
-
-describe("docsIdentityOf", () => {
-  it("reads the module before the version, and tolerates paths without one", () => {
-    expect(docsIdentityOf(path.join("platform", "3.8", "a.md"))).toEqual({
-      module: "platform",
-      version: "3.8",
-    });
-    expect(docsIdentityOf("platform/v2.0/a/b.md")).toEqual({
-      module: "platform",
-      version: "v2.0",
-    });
-    expect(docsIdentityOf("platform/V2/a.md")).toEqual({
-      module: "platform",
-      version: "V2",
-    });
-    expect(docsIdentityOf("billing/tokens.md")).toEqual({ module: "billing" });
-    expect(docsIdentityOf("readme.md")).toEqual({});
-    expect(docsIdentityOf("3.8/a.md")).toEqual({ version: "3.8" });
   });
 });

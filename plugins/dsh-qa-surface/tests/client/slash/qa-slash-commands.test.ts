@@ -1,11 +1,18 @@
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../../src/resolve-config.js";
 import { QaSessionController } from "../../../src/client/QaSessionController.js";
+import type { QaFileUpload } from "../../../src/client/types.js";
 import type {
+  QaSlashCatalog,
   QaSlashExecution,
   QaSlashSubmitAttachment,
 } from "../../../src/types.js";
-import { harness } from "../../helpers/session-fakes.js";
+import {
+  deferredUpload,
+  fileDraft,
+  harness,
+  landDurableUserRow,
+} from "../../helpers/session-fakes.js";
 import { slashEntry } from "../../helpers/slash.js";
 
 /**
@@ -30,6 +37,9 @@ const SKILL = slashEntry("skill", "generate-tkp", {
 const COMMAND = slashEntry("command", "compact", {
   description: "Compact conversation",
 });
+const FAST_COMMAND = slashEntry("command", "no-review", {
+  acceptsAttachments: true,
+});
 
 function world(
   options: {
@@ -41,9 +51,12 @@ function world(
     ) => QaSlashExecution;
     readonly catalogOk?: boolean;
     readonly deniedSkills?: readonly string[];
+    /** The chats this browser indexes; the first one is the open chat. */
+    readonly chats?: readonly string[];
+    readonly fileUpload?: () => QaFileUpload | undefined;
   } = {},
 ) {
-  const base = harness(["saved"]);
+  const base = harness([...(options.chats ?? ["saved"])]);
   base.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
   const execute = vi.fn(
     async (
@@ -62,21 +75,26 @@ function world(
         } as const),
     }),
   );
-  const catalog = vi.fn(async () => ({
-    ok: true as const,
-    value:
-      options.catalogOk === false
-        ? undefined
-        : {
-            enabled: true,
-            entries: options.entries ?? [SKILL, COMMAND],
-            commandSurface: "ready" as const,
-            deniedSkills: options.deniedSkills ?? [],
-          },
-  }));
+  const catalog = vi.fn(
+    async (): Promise<{ ok: true; value: QaSlashCatalog | undefined }> => ({
+      ok: true as const,
+      value:
+        options.catalogOk === false
+          ? undefined
+          : {
+              enabled: true,
+              entries: options.entries ?? [SKILL, COMMAND],
+              commandSurface: "ready" as const,
+              deniedSkills: options.deniedSkills ?? [],
+            },
+    }),
+  );
   const controller = new QaSessionController({
     ...base,
     config: options.config ?? ENABLED,
+    ...(options.fileUpload === undefined
+      ? {}
+      : { fileUpload: options.fileUpload }),
     slashApi: {
       catalog: catalog as never,
       execute: execute as never,
@@ -92,18 +110,77 @@ async function ready(options: Parameters<typeof world>[0] = {}) {
 }
 
 /**
- * Retire the optimistic submission of the previous send. The composer stays
- * busy until the Host's own user row lands, and the harness only produces one
- * when the turn runs — which is exactly what this reproduces.
+ * Retire the optimistic submission of the previous send the way the Host does:
+ * one turn runs and ends, and then the Chat slice lands the durable user row
+ * that replaces the browser's copy of the question.
  */
-function settle(built: ReturnType<typeof world>): void {
+function settle(built: ReturnType<typeof world>, text = "hello"): void {
   const face = built.faces.get("saved");
   if (face === undefined) return;
   face.source.set({ ...face.source.getSnapshot(), running: true });
   face.source.set({ ...face.source.getSnapshot(), running: false });
+  landDurableUserRow(built.bindings.get("saved"), text);
 }
 
 describe("QA session controller slash routing", () => {
+  it("routes Fast through the trusted waiver command and restores ordinary submission when off", async () => {
+    const built = await ready({ entries: [FAST_COMMAND, COMMAND] });
+    expect(await built.controller.send("  question  ", [], null, true)).toBe(
+      true,
+    );
+    expect(built.execute).toHaveBeenCalledWith(
+      "",
+      "saved",
+      "/no-review question",
+      [],
+    );
+    expect(built.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    built.execute.mockClear();
+    expect(await built.controller.send("next question")).toBe(true);
+    expect(built.execute).not.toHaveBeenCalled();
+    expect(built.faces.get("saved")?.prompt).toHaveBeenCalled();
+    built.controller.dispose();
+  });
+
+  it("preserves explicit native commands while Fast is on", async () => {
+    const built = await ready({ entries: [FAST_COMMAND, COMMAND] });
+    await vi.waitFor(() =>
+      expect(built.controller.getSnapshot().slash.state).toBe("ready"),
+    );
+    expect(await built.controller.send("/compact", [], null, true)).toBe(true);
+    expect(built.execute).toHaveBeenCalledWith("", "saved", "/compact", []);
+    built.controller.dispose();
+  });
+
+  it("refuses Fast when unavailable without silently submitting a normal prompt", async () => {
+    const built = await ready();
+    expect(await built.controller.send("question", [], null, true)).toBe(false);
+    expect(built.controller.getSnapshot().error).toMatch(/Fast недоступен/u);
+    expect(built.execute).not.toHaveBeenCalled();
+    expect(built.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    built.controller.dispose();
+  });
+
+  it("keeps the Fast request unsent when the deployment refuses the waiver", async () => {
+    const built = await ready({
+      entries: [FAST_COMMAND],
+      execute: () => ({
+        kind: "executed",
+        commandId: "denied",
+        outcome: {
+          kind: "error",
+          text: "Review waivers are disabled by the deployment policy.",
+        },
+      }),
+    });
+    expect(await built.controller.send("question", [], null, true)).toBe(false);
+    expect(built.controller.getSnapshot().error).toMatch(
+      /disabled by the deployment policy/u,
+    );
+    expect(built.faces.get("saved")?.prompt).not.toHaveBeenCalled();
+    built.controller.dispose();
+  });
+
   it("keeps the pre-feature refusal while the switch is off", async () => {
     const built = await ready({ config: resolveConfig() });
     expect(await built.controller.send("hello")).toBe(true);
@@ -311,6 +388,102 @@ describe("QA session controller slash routing", () => {
       prompts,
     );
     expect(built.execute).not.toHaveBeenCalled();
+    built.controller.dispose();
+  });
+
+  it("never runs a command whose attachment finished staging after the chat was left", async () => {
+    // Issue #339: the upload is a round-trip, and the operator may switch
+    // chats during it. A human command mutates the chat on the Host's side, so
+    // the binding is re-checked after the staging and before the execute.
+    const upload = deferredUpload();
+    const built = await ready({
+      chats: ["saved", "other"],
+      entries: [{ ...COMMAND, acceptsAttachments: true }, SKILL],
+      fileUpload: () => upload.service,
+    });
+    await vi.waitFor(() => {
+      expect(built.controller.getSnapshot().slash.state).toBe("ready");
+    });
+
+    const running = built.controller.send("/compact", [fileDraft()]);
+    await vi.waitFor(() =>
+      expect(upload.service.upload).toHaveBeenCalledOnce(),
+    );
+
+    await built.controller.switchTo("other");
+    upload.settle();
+
+    expect(await running).toBe(false);
+    expect(built.execute).not.toHaveBeenCalled();
+    expect(built.faces.get("other")?.prompt).not.toHaveBeenCalled();
+    built.controller.dispose();
+  });
+});
+
+describe("draft palette recovery", () => {
+  it("reads a catalog before the first session exists", async () => {
+    const built = world();
+    await built.controller.startDraft(true);
+    await built.controller.refreshSlashCatalog();
+    expect(built.controller.getSnapshot().sessionId).toBeNull();
+    expect(built.controller.getSnapshot().slash.enabled).toBe(true);
+    expect(built.controller.getSnapshot().slash.entries).toHaveLength(2);
+    expect(built.catalog.mock.calls[0]?.length).toBe(2);
+    built.controller.dispose();
+  });
+  it("reads the bound session while the draft request is still in flight", async () => {
+    const built = world();
+    let finish!: (value: Awaited<ReturnType<typeof built.catalog>>) => void;
+    built.catalog.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await built.controller.startDraft(true);
+    const pending = built.controller.refreshSlashCatalog();
+    expect(await built.controller.send("first question")).toBe(true);
+    await vi.waitFor(() =>
+      expect(built.controller.getSnapshot().slash.state).toBe("ready"),
+    );
+    const sessionId = built.controller.getSnapshot().sessionId;
+    expect(built.catalog).toHaveBeenCalledWith("", sessionId);
+    finish({
+      ok: true,
+      value: {
+        enabled: true,
+        entries: [],
+        deniedSkills: [],
+        commandSurface: "inactive",
+      },
+    });
+    await pending;
+    expect(built.controller.getSnapshot().slash.entries).toHaveLength(2);
+    built.controller.dispose();
+  });
+  it("calls an unread first catalog unavailable rather than unknown", async () => {
+    const built = world();
+    let finish!: (value: Awaited<ReturnType<typeof built.catalog>>) => void;
+    built.catalog.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    );
+    await built.controller.startDraft(true);
+    const pending = built.controller.refreshSlashCatalog();
+    expect(await built.controller.send("/demo-action")).toBe(false);
+    expect(built.controller.getSnapshot().error).toMatch(/недоступен/u);
+    finish({
+      ok: true,
+      value: {
+        enabled: true,
+        entries: [],
+        deniedSkills: [],
+        commandSurface: "inactive",
+      },
+    });
+    await pending;
     built.controller.dispose();
   });
 });

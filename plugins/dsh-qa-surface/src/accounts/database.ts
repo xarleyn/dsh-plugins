@@ -12,6 +12,7 @@ import type {
 import {
   snapshotDigest,
   type AccountsFile,
+  type StoredNotifications,
   type StoredOwnership,
   type StoredProfile,
   type StoredStarters,
@@ -110,6 +111,16 @@ const MIGRATIONS: readonly SqliteMigration[] = [
         ON qa_service_tokens (user_id, created_at);
     `,
   },
+  {
+    version: 3,
+    up: `
+      -- Which channels a finished turn may use for each reader. Its own column
+      -- rather than a field bolted onto the profile: the profile is content the
+      -- agent prompt renders, this is a switch the prompt must never see, and a
+      -- reader who has never opened the form stores nothing at all.
+      ALTER TABLE qa_accounts ADD COLUMN notifications_json TEXT;
+    `,
+  },
 ];
 
 interface AccountRow {
@@ -126,6 +137,8 @@ interface AccountRow {
   readonly profile_json: string | null;
   readonly starters_json: string | null;
   readonly qa_access_json: string | null;
+  /** Added by migration 3, so physically last. */
+  readonly notifications_json: string | null;
 }
 
 interface PasswordResetRow {
@@ -191,6 +204,9 @@ function toServiceToken(row: ServiceTokenRow): StoredServiceToken {
   };
 }
 
+/** How many times a read is retried before a stale model is handed back. */
+const CONSISTENT_READ_ATTEMPTS = 4;
+
 /** One ownership record as it is written, before it becomes a row. */
 export interface OwnershipWrite {
   readonly sessionId: string;
@@ -211,6 +227,9 @@ function toUser(row: AccountRow): StoredUser {
   const profile = parseJsonColumn<StoredProfile>(row.profile_json);
   const starters = parseJsonColumn<StoredStarters>(row.starters_json);
   const qaAccess = parseJsonColumn<QaUserAccess>(row.qa_access_json);
+  const notifications = parseJsonColumn<StoredNotifications>(
+    row.notifications_json,
+  );
   return {
     id: row.id,
     email: row.email,
@@ -224,6 +243,7 @@ function toUser(row: AccountRow): StoredUser {
     ...(profile === undefined ? {} : { profile }),
     ...(starters === undefined ? {} : { starters }),
     ...(qaAccess === undefined ? {} : { qaAccess }),
+    ...(notifications === undefined ? {} : { notifications }),
   };
 }
 
@@ -267,13 +287,36 @@ export class QaAccountsDatabase {
     return this.readDataVersion() === this.observedDataVersion;
   }
 
-  /** Take the current data version as the baseline a caller's model reflects. */
-  markLoaded(): void {
-    this.observedDataVersion = this.readDataVersion();
+  /** Every account, ownership record and skill activation, as one snapshot. */
+  loadAll(): AccountsFile {
+    for (let attempt = 0; attempt < CONSISTENT_READ_ATTEMPTS; attempt += 1) {
+      const versionBefore = this.readDataVersion();
+      const file = this.readModel();
+      if (this.readDataVersion() === versionBefore) {
+        this.observedDataVersion = versionBefore;
+        return file;
+      }
+      // The version moved while the rows were being read, so the model above
+      // combines two database states and cannot be labeled current. Read again.
+    }
+    // Another connection is committing faster than this store can read. Hand
+    // back a model whose baseline is deliberately the version it does *not*
+    // reflect, so the next access reloads rather than trusting it.
+    return this.readModel();
   }
 
-  /** Every account, ownership record and skill activation, in one read. */
-  loadAll(): AccountsFile {
+  /**
+   * The accounts model, read as the rows stand right now.
+   *
+   * Read through {@link loadAll}, never on its own: in autocommit every
+   * statement is a snapshot of its own, so these SELECTs are only one state
+   * when no other connection committed while they ran — which is exactly what
+   * the surrounding `PRAGMA data_version` check proves. The baseline used to be
+   * taken *after* the reads, which labeled a model of two states, and the token
+   * versions in it, as current: a token revoked by the `qa-accounts` CLI into
+   * this window kept working until some later write moved the version again.
+   */
+  private readModel(): AccountsFile {
     const users = asRows<AccountRow>(
       this.storage.db.prepare("SELECT * FROM qa_accounts ORDER BY seq").all(),
     );
@@ -314,7 +357,6 @@ export class QaAccountsDatabase {
             }),
       };
     }
-    this.markLoaded();
     return {
       version: 1,
       secret: this.secret,
@@ -667,6 +709,9 @@ export class QaAccountsDatabase {
       user.profile === undefined ? null : JSON.stringify(user.profile),
       user.starters === undefined ? null : JSON.stringify(user.starters),
       user.qaAccess === undefined ? null : JSON.stringify(user.qaAccess),
+      user.notifications === undefined
+        ? null
+        : JSON.stringify(user.notifications),
     ];
   }
 
@@ -682,7 +727,8 @@ export class QaAccountsDatabase {
               SET email = ?, display_name = ?, role = ?, disabled = ?,
                   token_version = ?, created_at = ?, last_login_at = ?,
                   password_salt = ?, password_hash = ?, profile_json = ?,
-                  starters_json = ?, qa_access_json = ?
+                  starters_json = ?, qa_access_json = ?,
+                  notifications_json = ?
             WHERE id = ?`,
         )
         .run(...columns, user.id);
@@ -698,8 +744,8 @@ export class QaAccountsDatabase {
         `INSERT INTO qa_accounts
            (id, seq, email, display_name, role, disabled, token_version,
             created_at, last_login_at, password_salt, password_hash,
-            profile_json, starters_json, qa_access_json)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+            profile_json, starters_json, qa_access_json, notifications_json)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(user.id, next.next, ...columns);
   }

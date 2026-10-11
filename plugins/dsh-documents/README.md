@@ -35,6 +35,44 @@ lists bundles explicitly.
 
 ## Tools
 
+For customer-specific proposals and specifications, the bundled
+`grounded-documents` skill uses `document_workflow_start/read/update/draft/review/export`
+and `document_calculate`. Requirements, facts, exclusions and Markdown revisions
+survive interruption. Independent review and authenticated human approval refer
+to the exact draft hash. A changed draft or template must be reviewed again.
+An active managed workflow refuses finalisation through the general converters.
+
+Workflow state lives under `$DSH_HOME/document-workflows` (or the Host user's
+`.dsh/document-workflows`) outside the model-writable workspace. Include it in
+the deployment backup. Markdown drafts remain in the session workspace and are
+shown as file attachments in QA; the approval action beside a reviewed draft
+requests export through the existing agent.
+
+Register a Markdown content template separately from Word styles:
+
+```yaml
+templates:
+  proposal:
+    kind: proposal
+    productVersion: "1.0"
+    markdown: ./proposal.md
+    docx: ./reference.docx
+    requiredFacts: [customer, projectGoal, functionalScope]
+    requiredSections: [Goal, Functional scope, Commercial terms]
+  specification:
+    kind: specification
+    productVersion: "1.0"
+    markdown: ./specification.md
+    docx: ./reference.docx
+    requiredFacts: [customer, projectGoal, functionalScope]
+    requiredSections: [Goal, Functional requirements, Acceptance]
+```
+
+Point `documents.templates.root` at this read-only registry directory. A template
+for another document kind or product version is refused. Price and quantity
+inputs require explicit sources; totals use exact decimal arithmetic with
+half-up rounding per line to two decimals. No price or tax treatment is inferred.
+
 | Tool | What it does |
 | --- | --- |
 | `document_create` | Markdown → DOCX and/or PDF through a registered template, as one artifact bundle |
@@ -44,6 +82,14 @@ lists bundles explicitly.
 | `document_inspect` | Type, metadata, page/heading/table counts, encryption and macro flags — without converting |
 | `document_compare` | Two documents → a deterministic comparison artifact, a summary and a bounded preview |
 | `document_diff_read` | Pages of a comparison's changes, filtered by section, kind and signal |
+
+Each producing tool reports its files by their path **inside the session
+workspace** — `.qa/artifacts/documents/<id>/report.docx` — which is also the
+spelling its own input parameters accept, so a file reported by one call can be
+read back by the next. The pipeline works in absolute paths internally and a
+tool never hands one to the model: a deployment keeps every account in its own
+directory, so an absolute path prints that directory, and the account with it,
+into an answer a person reads.
 
 Tool registration follows the configuration: `documents.enabled: false` (or a
 resolved `enabled: false` from the environment) leaves them unregistered rather
@@ -118,8 +164,8 @@ fallback to a shell and no request that the model compare the documents itself.
 
 ## Configuration
 
-The namespace is `documents`, edited in the plugin's own card (Settings →
-Plugins → Документы) or declaratively:
+The namespace is `documents`, edited in the plugin's own card — the configuration
+of this plugin's row on the host **Plugins** page — or declaratively:
 
 ```yaml
 - id: documents
@@ -165,14 +211,19 @@ Plugins → Документы) or declaratively:
 
 What the defaults assume:
 
-- `pandoc` and a headless `libreoffice` exist in the deployment image. Missing
-  executables surface as `BACKEND_UNAVAILABLE`, never worked around;
+- `pandoc` and a headless `libreoffice` exist in the deployment image. A missing
+  executable is answered at boot by the `documents.installed` record, which names
+  every program the check covered and repeats the absent ones as a
+  `documents.programs.missing` warning; in a call it surfaces as
+  `BACKEND_UNAVAILABLE`, never worked around;
 - `docling` is reachable at `http://docling:5001` — the default of the
   `docling-serve` container — and is the backend that reads PDF and DOCX into
   Markdown. `docling.enabled: false` turns that path off;
 - `typst` and `markitdown` are disabled. Requesting `pdfMode: typst` without
   `typst.enabled` is refused instead of silently rendering another layout;
-  `markitdown` is the optional fast fallback when Docling is unavailable.
+  `markitdown` is the optional fast fallback when Docling is unavailable. This
+  adapter extracts embedded text; it does not advertise OCR and refuses forced
+  OCR. Scanned documents need a separately provisioned OCR backend.
 
 ## Artifacts and sizes
 

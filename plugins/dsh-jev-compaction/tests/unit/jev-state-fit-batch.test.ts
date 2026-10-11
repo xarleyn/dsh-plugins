@@ -64,6 +64,62 @@ describe("state fitting", () => {
     };
     expect(() => fitState(state, 1200)).toThrow(/cannot fit/);
   });
+
+  it("fits long Russian assistant history below the former five-entry floor", () => {
+    const state: JevState = {
+      context: STATE_CONTEXT,
+      goal: "Проверить импорт отчёта",
+      history: Array.from({ length: 12 }, (_, index) => ({
+        label: `assistant t${index}`,
+        text: "Синтетический пример длинного русского ответа. ".repeat(40),
+      })),
+    };
+    const fitted = fitState(state, 1200);
+    expect(fitted.tokens).toBeLessThanOrEqual(1200);
+    expect(fitted.state.goal).toBe(state.goal);
+    expect(fitted.state.history.length).toBeLessThan(5);
+    expect(fitted.state.history.at(-1)?.label).toBe("assistant t11");
+    expect(fitState(state, 1200)).toEqual(fitted);
+    expect(state.history).toHaveLength(12);
+  });
+
+  it("preserves the last three user constraints verbatim while trimming other history", () => {
+    const constraints = Array.from({ length: 3 }, (_, index) => ({
+      label: `user t${index + 1}`,
+      text: `Constraint ${index}: ${"Keep the original data. ".repeat(28)}Do not overwrite files.`,
+    }));
+    const state: JevState = {
+      context: STATE_CONTEXT,
+      goal: "Inspect import",
+      history: [
+        { label: "user t0", text: "Old request. ".repeat(300) },
+        ...constraints.flatMap((entry) => [
+          entry,
+          {
+            label: "assistant t1",
+            text: "Синтетический длинный ответ. ".repeat(100),
+          },
+        ]),
+      ],
+    };
+    const fitted = fitState(state, 1200);
+    expect(fitted.tokens).toBeLessThanOrEqual(1200);
+    expect(
+      fitted.state.history.filter((entry) => entry.label.startsWith("user ")),
+    ).toEqual(constraints);
+  });
+
+  it("fails open rather than abridging protected user constraints", () => {
+    const state: JevState = {
+      context: STATE_CONTEXT,
+      goal: "g",
+      history: [
+        { label: "user t1", text: "Не удалять исходные данные. ".repeat(100) },
+      ],
+    };
+    expect(() => fitState(state, 1200)).toThrow(/cannot fit/);
+    expect(state.history[0]?.text).toContain("Не удалять исходные данные.");
+  });
 });
 
 describe("questions and batching", () => {

@@ -11,6 +11,7 @@ import { Context } from "@deepseek-ai/cordis";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import QaBrowser from "../src/index.js";
+import type { QaBrowserConfig } from "../src/config.js";
 import type { QaBrowserService } from "../src/host/service.js";
 
 const REFUSAL = /^QA Browser panel authorization is unavailable\.$/u;
@@ -28,7 +29,7 @@ afterEach(async () => {
 });
 
 /** Load the plugin the way the Host does: one fiber, four provided services. */
-async function loadPlugin(): Promise<Surface> {
+async function loadPlugin(config: QaBrowserConfig = {}): Promise<Surface> {
   const ctx = new Context();
   // `enabled: false` keeps the tool set out of this harness, so the four
   // services the plugin declares are the whole dependency surface.
@@ -36,7 +37,7 @@ async function loadPlugin(): Promise<Surface> {
   ctx.provide("attachments", {});
   ctx.provide("tools", { register: () => () => undefined });
   ctx.provide("webServer", { port: 0, host: "127.0.0.1" });
-  await ctx.plugin(QaBrowser, { enabled: false });
+  await ctx.plugin(QaBrowser, { enabled: false, ...config });
   surface = { ctx, service: ctx.qaBrowser };
   return surface;
 }
@@ -69,9 +70,21 @@ describe("QA Browser panel authorization", () => {
       humanControlLeaseSeconds: 30,
       autoRevealOnAgentActivity: true,
       focusOnAutoReveal: false,
+      runtimeMode: "launch",
       coordinateInputEnabled: true,
     });
     expect(secureSession).toHaveBeenCalledWith("qa-token", "session-x");
+  });
+
+  it("tells the panel it is waiting on someone else's browser", async () => {
+    const { ctx, service } = await loadPlugin({
+      runtime: { mode: "attach", cdpEndpoint: "http://127.0.0.1:9222" },
+    });
+    ctx.provide("qaSurface", { secureSession: async () => ({}) });
+
+    await expect(
+      service.panelState("qa-token", "session-x"),
+    ).resolves.toMatchObject({ runtimeMode: "attach" });
   });
 
   it("authorizes every chrome mutation before it touches the browser", async () => {

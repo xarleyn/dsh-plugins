@@ -46,11 +46,27 @@ describe("attestation diagnostics", () => {
       "composition-mismatch",
       "permission-preset",
       "adoption-refused",
+      "subagent-session",
     ]) {
       expect(attestationHint(reason)).not.toBe(fallback);
     }
     expect(attestationHint("attestation-failed")).toBe(fallback);
     expect(attestationHint(null)).toBe(fallback);
+  });
+
+  it("tells a chat with no agent behind it from another conversation's child", () => {
+    // Both once read "agent is unavailable", which an operator could not
+    // separate from a stand that had just restarted — and they ask for opposite
+    // repairs: re-mount a preset, or leave the id alone. Each hint therefore has
+    // to name its own cause and the move that follows from it.
+    const noAgent = attestationHint("agent-unavailable");
+    const routing = attestationHint("subagent-session");
+    expect(noAgent).not.toBe(routing);
+    expect(noAgent).toContain("session.agent-resolve-rejected");
+    expect(noAgent).toContain("restart");
+    expect(noAgent).toContain("New chat");
+    expect(routing).toContain("subagent routing owns");
+    expect(routing).toContain("parent chat");
   });
 });
 
@@ -66,6 +82,29 @@ describe("proofMatchesConfig", () => {
     expect(
       proofMatchesConfig(proof({ enabled: false }), lockdown, "session-1"),
     ).toBe(false);
+  });
+
+  it("reads the vacuous proof of an unpinned deployment as an admission", () => {
+    // With lockdown off the Host evaluates none of the pins and answers with
+    // their empty shapes, having admitted the session for this account. There
+    // is nothing to compare but the session the proof names.
+    const off = resolveConfig({ lockdown: { enabled: false } }).lockdown;
+    expect(
+      proofMatchesConfig(
+        proof({
+          enabled: false,
+          sandboxModeMatches: false,
+          approvalIsNever: false,
+          permissionPreset: "",
+          toolPolicyLoaded: false,
+        }),
+        off,
+        "session-1",
+      ),
+    ).toBe(true);
+    expect(proofMatchesConfig(proof({ enabled: false }), off, "other")).toBe(
+      false,
+    );
   });
 
   it("refuses when any verified fact is false", () => {

@@ -56,6 +56,7 @@ export interface DomainExpertsRemote {
     domainId: string,
     task: string,
     parentSessionId: string,
+    structuredOutput?: boolean,
   ): Promise<RemoteResult<ExpertRunResult>>;
   recentAudits(limit: number): Promise<RemoteResult<AuditListResult>>;
 }

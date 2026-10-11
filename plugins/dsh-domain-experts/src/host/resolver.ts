@@ -1,6 +1,7 @@
 import {
   EXPERT_MODES,
   defaultMemoryNamespace,
+  userMemoryNamespace,
   type CrossDomainMode,
   type DomainDefinition,
   type DomainDegradation,
@@ -16,6 +17,7 @@ import {
   type ResolvedToolEntry,
 } from "../types.js";
 import { degradation } from "./errors.js";
+import { effectiveCrossDomainMode } from "./policy.js";
 import type { MemoryProviderRegistry } from "./memory/registry.js";
 import {
   BASE_POLICY,
@@ -24,6 +26,7 @@ import {
   composeTask,
 } from "./persona.js";
 import type { DomainRegistry } from "./registry.js";
+import { isValidNamespace } from "./schema.js";
 import type { ScopeProviderRegistry } from "./scopes/registry.js";
 import type { WorkerRegistry } from "./workers/registry.js";
 
@@ -57,6 +60,8 @@ const PREVIEW_REQUEST: DomainExpertRequest = {
 };
 
 export interface ResolveInput {
+  /** Native result capture replaces the ordinary prose answer contract. */
+  readonly structuredOutput?: boolean;
   readonly definition: DomainDefinition;
   /** Absolute session working directory; `''` when the caller has none. */
   readonly workspaceDir: string;
@@ -64,7 +69,25 @@ export interface ResolveInput {
   readonly callerDomain: string | null;
   /** Delegation depth of the child that will run this profile. */
   readonly depth: number;
+  /** Whose memory namespaces this run reads and writes. */
+  readonly memoryOwner: MemoryOwner;
 }
+
+/**
+ * Whose memory one run touches.
+ *
+ * `per-user` is the deployment-wide fact that accounts exist and each keeps its
+ * own notes; `userId` is the account this particular run was attributed to. The
+ * two are separate because they answer different questions: the mode decides
+ * whether the domain's own namespace stays common, the account decides which
+ * namespace a note is written to. {@link memoryEntries} reads them together.
+ */
+export type MemoryOwner =
+  | { readonly mode: "deployment" }
+  | { readonly mode: "per-user"; readonly userId: string | undefined };
+
+/** The whole deployment shares one memory namespace per domain. */
+export const DEPLOYMENT_MEMORY_OWNER: MemoryOwner = { mode: "deployment" };
 
 export interface ResolverDependencies {
   readonly domains: DomainRegistry;
@@ -160,7 +183,7 @@ export async function resolveExpert(
     );
   }
 
-  const memory = memoryEntries(definition);
+  const memory = memoryEntries(definition, input.memoryOwner);
   const memoryProvider = dependencies.memoryProviders.get(
     dependencies.memoryProviderId,
   );
@@ -213,6 +236,7 @@ export async function resolveExpert(
   };
 
   const personaInput = {
+    ...(input.structuredOutput === true ? { structuredOutput: true } : {}),
     definition,
     resources,
     memory,
@@ -263,33 +287,76 @@ function hasFilesystemScope(definition: DomainDefinition): boolean {
 }
 
 /**
- * Namespace access for one expert: its own namespace read/write, its shared
- * namespaces read-only, and — only in `direct-read` mode — the foreign
- * namespaces it explicitly listed.
+ * Namespace access for one expert (design §15), for one owner.
+ *
+ * The model never picks a namespace that is trusted, so this is the only place
+ * the per-account layout is decided. Three cases:
+ *
+ * - `deployment` — one namespace per domain: what an installation without
+ *   accounts always did, and still does.
+ * - `per-user` with an account — the account's own namespace is the only
+ *   writable one; the domain's namespace and the configured shared namespaces
+ *   stay readable, so what a deployment agrees on is not cut away.
+ * - `per-user` without an account — the session was never attributed to one (a
+ *   chat whose browser half has not claimed it yet), so the only namespace left
+ *   to write is what every account of this domain reads. The entry says so, and
+ *   `domain_memory` refuses the write rather than teaching every account
+ *   something one unclaimed run happened to see.
+ *
+ * A name that cannot be a namespace segment is treated as no account at all, so
+ * nothing crafted reaches the storage key layout.
  */
 export function memoryEntries(
   definition: DomainDefinition,
+  owner: MemoryOwner = DEPLOYMENT_MEMORY_OWNER,
 ): readonly ResolvedMemoryEntry[] {
-  const own =
+  const base =
     definition.memory.namespace.trim() === ""
       ? defaultMemoryNamespace(definition.id)
       : definition.memory.namespace;
+  const requested =
+    owner.mode === "per-user" && owner.userId !== undefined
+      ? userMemoryNamespace(base, owner.userId.trim())
+      : "";
+  // An account id that cannot be a namespace segment is no account at all: the
+  // note then names the unattributed case, and nothing crafted reaches the
+  // storage key layout.
+  const own =
+    requested !== "" && isValidNamespace(requested) ? requested : base;
+  const scoped = own !== base;
   const entries: ResolvedMemoryEntry[] = [
     {
       namespace: own,
       access: "read-write",
       enforcement: "enforced",
       provider: "namespace",
-      note: "Private to this domain; the storage key layout keeps other namespaces out of reach.",
+      note: scoped
+        ? "Private to one account of this domain; the storage key layout keeps other accounts and other domains out of reach."
+        : owner.mode === "per-user"
+          ? `Not attributed to an account, so this namespace is what every account of this domain reads and recording here is refused; a run an account did claim writes "${base}/u/<account>".`
+          : "Private to this domain; the storage key layout keeps other namespaces out of reach.",
     },
   ];
+  if (scoped) {
+    entries.push({
+      namespace: base,
+      access: "read-only",
+      enforcement: "enforced",
+      provider: "namespace",
+      note: "What this domain knows for every account. An expert reads it and never writes it: a note that is only true for one account belongs to that account.",
+    });
+  }
   const readOnly = new Set(definition.memory.sharedReadOnly);
-  if (definition.delegation.crossDomainMode === "direct-read") {
+  if (effectiveCrossDomainMode(definition) === "direct-read") {
     for (const namespace of definition.delegation.directRead)
       readOnly.add(namespace);
   }
   for (const namespace of readOnly) {
-    if (namespace === own) continue;
+    // The domain's own namespace is listed above, and one of its account
+    // namespaces never becomes reachable through configuration: a list written
+    // before per-account memory existed must not expose one account to another.
+    if (namespace === own || namespace === base) continue;
+    if (namespace.startsWith(`${base}/u/`)) continue;
     entries.push({
       namespace,
       access: "read-only",
@@ -310,6 +377,25 @@ export function readableNamespaces(
   entries: readonly ResolvedMemoryEntry[],
 ): readonly string[] {
   return entries.map((entry) => entry.namespace);
+}
+
+/**
+ * Whose memory a run about to start touches.
+ *
+ * A chat an account itself attested answers for the caller. A run started from
+ * inside another expert has no such session — the child's session is created by
+ * the runtime, never claimed by a browser — so it inherits the account of the
+ * run that spawned it: one delegation chain answers to one account, and the
+ * notes a delegated child records stay its own account's.
+ */
+export function memoryOwnerOf(
+  perUserMemory: boolean,
+  callerOwner: MemoryOwner | undefined,
+  principal: string | undefined,
+): MemoryOwner {
+  if (!perUserMemory) return DEPLOYMENT_MEMORY_OWNER;
+  if (callerOwner?.mode === "per-user") return callerOwner;
+  return { mode: "per-user", userId: principal };
 }
 
 function toolEntries(
@@ -438,9 +524,7 @@ function delegationSummary(
   dependencies: ResolverDependencies,
   degradations: DomainDegradation[],
 ): ResolvedExpertProfile["delegation"] {
-  const mode: CrossDomainMode = definition.delegation.allowCrossDomain
-    ? definition.delegation.crossDomainMode
-    : "disabled";
+  const mode: CrossDomainMode = effectiveCrossDomainMode(definition);
   const peers: ResolvedDelegationEntry[] = [];
   const missing: string[] = [];
 

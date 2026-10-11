@@ -3,12 +3,15 @@ import { IntegrationError } from "../../errors.js";
 import {
   TLS_FAILURE,
   causeCode,
+  credentialRedirectFailure,
   fetchWithRetries,
+  isRedirectStatus,
   numberFrom,
   readBoundedJson,
   readBoundedText,
   type BoundedText,
-} from "../shared/http.js";
+  type ResponseRead,
+} from "../kernel/read-policy.js";
 import {
   testitInstance,
   type TestitFlags,
@@ -136,20 +139,23 @@ export class TestitTransport {
     path: string,
     query: TestitQuery = {},
   ): Promise<TestitJsonResponse<T>> {
-    const response = await this.request(
+    return this.request(
       instance,
       token,
       path,
       query,
       this.config.timeoutMs,
+      async (response, signal) => {
+        const data = await readBoundedJson<T>(
+          response,
+          this.config.maxResponseBytes,
+          "Test IT",
+          signal,
+        );
+        const page = pageFrom(response.headers);
+        return page === undefined ? { data } : { data, page };
+      },
     );
-    const data = await readBoundedJson<T>(
-      response,
-      this.config.maxResponseBytes,
-      "Test IT",
-    );
-    const page = pageFrom(response.headers);
-    return page === undefined ? { data } : { data, page };
   }
 
   /**
@@ -163,16 +169,19 @@ export class TestitTransport {
     maxBytes: number,
     query: TestitQuery = {},
   ): Promise<TestitTextResponse> {
-    const response = await this.request(
+    return this.request(
       instance,
       token,
       path,
       query,
       this.flags.attachmentTimeoutMs,
-    );
-    return readBoundedText(
-      response,
-      Math.min(maxBytes, this.config.maxResponseBytes),
+      (response, signal) =>
+        readBoundedText(
+          response,
+          Math.min(maxBytes, this.config.maxResponseBytes),
+          "Test IT",
+          signal,
+        ),
     );
   }
 
@@ -189,34 +198,43 @@ export class TestitTransport {
     return url.toString();
   }
 
-  private async request(
+  private async request<T>(
     instance: TestitInstance,
     token: string,
     path: string,
     query: TestitQuery,
     timeoutMs: number,
-  ): Promise<Response> {
-    return fetchWithRetries(this.fetcher, this.url(instance, path, query), {
-      timeoutMs,
-      retries: this.flags.retries,
-      headers: {
-        authorization: `PrivateToken ${token}`,
-        accept: "application/json",
+    read: ResponseRead<T>,
+  ): Promise<T> {
+    return fetchWithRetries(
+      this.fetcher,
+      this.url(instance, path, query),
+      {
+        timeoutMs,
+        retries: this.flags.retries,
+        headers: {
+          authorization: `PrivateToken ${token}`,
+          accept: "application/json",
+        },
+        // The deadline is this deployment's own, so a request it already gave
+        // up on is not sent again — which is the shared default, so this
+        // provider names no rule of its own.
+        transportFailure: (error, timedOut) =>
+          timedOut
+            ? new IntegrationError("UpstreamTimeout", "Test IT did not answer")
+            : TLS_FAILURE.test(causeCode(error))
+              ? new IntegrationError(
+                  "TlsFailure",
+                  "Test IT TLS handshake failed",
+                )
+              : new IntegrationError(
+                  "ProviderUnavailable",
+                  "Test IT request failed",
+                ),
+        statusFailure: (response) => this.failure(response),
       },
-      transportFailure: (error, timedOut) =>
-        timedOut
-          ? new IntegrationError("UpstreamTimeout", "Test IT did not answer")
-          : TLS_FAILURE.test(causeCode(error))
-            ? new IntegrationError("TlsFailure", "Test IT TLS handshake failed")
-            : new IntegrationError(
-                "ProviderUnavailable",
-                "Test IT request failed",
-              ),
-      // A refused connection stays refused; a slow installation is more often
-      // busy than gone, so anything else earns another bounded attempt.
-      retriable: (error) => error.code !== "UpstreamTimeout",
-      statusFailure: (response) => this.failure(response),
-    });
+      read,
+    );
   }
 
   /**
@@ -227,6 +245,11 @@ export class TestitTransport {
    */
   private failure(response: Response): IntegrationError {
     const status = response.status;
+    // A spent token is answered with the login redirect rather than a 401, and
+    // only the first of these two says what the user can do about it.
+    if (isRedirectStatus(status)) {
+      return credentialRedirectFailure("Test IT");
+    }
     if (status === 401) {
       return new IntegrationError(
         "CredentialRevoked",

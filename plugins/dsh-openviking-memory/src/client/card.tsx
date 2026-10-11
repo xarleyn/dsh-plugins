@@ -2,25 +2,28 @@
  * The OpenViking Memory settings card.
  *
  * One source feeds everything here: the `dsh-openviking-memory` settings
- * namespace, which is the plugin's configuration on the Host. Every change is
+ * namespace, which since 0.1.7 *is* the plugin's configuration — every knob of
+ * `static Config` is a volatile field the Host serves as a form. Every change is
  * written immediately as a scalar set (or clear, which drops the user-layer
  * override and re-inherits the composition layer); text-like controls keep a
  * local draft so keystrokes do not produce out-of-range intermediate writes.
- * The card has no Remote face — the plugin is host-only — so the header badge
- * projects the configuration, not live runtime state.
+ * The card has no Remote face — the plugin is host-only — so nothing here polls
+ * a runtime: every value on the surface is the configuration itself.
+ *
+ * The card renders the body and nothing around it. It is seated on the row of its
+ * own bundle on the Plugins page, and that page draws the card surface, the
+ * heading, the row id and the expand control before this body is mounted, so a
+ * shell of ours would be a second frame inside the first (`AGENTS.md`).
  */
 
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import {
-  CardShell,
-  bindSettingsExternalStore,
-} from "@yadsh/dsh-plugin-kit/client";
+import { bindSettingsExternalStore } from "@yadsh/dsh-plugin-kit/client";
 import { useCallback, useMemo, useState, useSyncExternalStore } from "react";
 
 import type { Config } from "../config.js";
@@ -31,18 +34,39 @@ import {
   TextField,
   ToggleRow,
 } from "./controls.js";
-import { badgeText, isOverridden, overriddenKeys } from "./format.js";
+import { isOverridden, overriddenKeys } from "./format.js";
 
 /** The face the slot entry injects into this card. */
 export interface OpenVikingCardFace {
-  readonly scope: SettingsScope<Config>;
+  /**
+   * The live Config of this plugin's namespace.
+   *
+   * Named `settingsForm`, not `form`: the row seat hands its registrant a `form`
+   * of its own — the Host's `ConfigPageForm`, `{ state, mutate }` and nothing
+   * else (`lib/types/client/slot-contract.d.ts:150-155` of
+   * `@deepseek-ai/dsh-client-ui-plugin-manager` `0.1.7-rc.2`, delivered as the
+   * optional owner prop `form` of `PluginConfigViewProps` at `:20-25`) — and the
+   * renderer spreads that owner prop after this face, so a face member called
+   * `form` would be overwritten by it. What the page's form cannot do is carry a
+   * subscription: its `state` is one snapshot, refreshed when the page owner
+   * renders, so the card follows the resolved `ConfigForm` for the values it
+   * displays. Writes are different — the page's `mutate` is the very same form's
+   * `mutate`, reached through the row id the seat is keyed by — so the card hands
+   * them to the page's form whenever the seat supplies one, and to this form only
+   * on a seat that supplies none.
+   */
+  readonly settingsForm: ConfigForm<Config>;
 }
 
-type CardProps = PropsRuntime<"settings.plugin.item"> &
+type CardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<OpenVikingCardFace>;
 
-/** Mutation operations as the bound scope declares them. */
-type ScopeOps = Parameters<SettingsScope<Config>["mutate"]>[0];
+/** The sentence the row's `summary` seat answers with — the row's description line. */
+export const OPENVIKING_MEMORY_ROW_SUMMARY =
+  "Durable memory tools, conversation capture, and automatic profile/recall injection against one OpenViking server.";
+
+/** Mutation operations as the namespace's form declares them. */
+type FormOps = Parameters<ConfigForm<Config>["mutate"]>[0];
 
 function displayError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -59,8 +83,11 @@ function rangeError(text: string): string {
   return `"${text}" is outside this field's configured range.`;
 }
 
-export function OpenVikingMemoryCard({ scope }: CardProps) {
-  const store = useMemo(() => bindSettingsExternalStore(scope), [scope]);
+export function OpenVikingMemoryCard({ form, settingsForm }: CardProps) {
+  const store = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const settings = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -71,22 +98,37 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
 
   const [error, setError] = useState<string | null>(null);
 
+  // One write path for every change the card makes: the page's own form when the
+  // seat supplies one, the form this entry resolved when it does not. The two are
+  // the same object — the seat resolves `configForms.get(rowId)` and the row id is
+  // this namespace — and `set`/`unset` are one-op `mutate`s, so routing a scalar
+  // write through `mutate` keeps the revision fence, the ordering and the recovery
+  // read of the path it replaces.
+  const commit = useCallback(
+    (ops: FormOps) => (form ?? settingsForm).mutate(ops),
+    [form, settingsForm],
+  );
+
   const write = useCallback(
     (key: string, value: unknown) => {
-      scope.set(key, value).catch((cause: unknown) => {
-        setError(displayError(cause));
-      });
+      commit([{ op: "set", path: [key], value }] as unknown as FormOps).catch(
+        (cause: unknown) => {
+          setError(displayError(cause));
+        },
+      );
     },
-    [scope],
+    [commit],
   );
 
   const clear = useCallback(
     (key: string) => {
-      scope.unset(key).catch((cause: unknown) => {
-        setError(displayError(cause));
-      });
+      commit([{ op: "unset", path: [key] }] as unknown as FormOps).catch(
+        (cause: unknown) => {
+          setError(displayError(cause));
+        },
+      );
     },
-    [scope],
+    [commit],
   );
 
   const commitText = useCallback(
@@ -136,35 +178,52 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
     const ops = overrides.map((key) => ({
       op: "unset",
       path: [key],
-    })) as unknown as ScopeOps;
-    scope.mutate(ops).catch((cause: unknown) => {
+    })) as unknown as FormOps;
+    commit(ops).catch((cause: unknown) => {
       setError(displayError(cause));
     });
-  }, [overrides, scope]);
+  }, [commit, overrides]);
 
-  if (settings.status === "unavailable") return null;
+  // The frame here is the page's, so returning nothing would leave the reader inside
+  // an opened row with no section at all and no reason. A card that draws its own
+  // shell can stay invisible; this one owes a sentence.
+  if (settings.status === "unavailable") {
+    return (
+      <div className="ovm-body">
+        <p className="ovm-muted" data-testid="openviking-card-unavailable">
+          The OpenViking Memory settings are not available in this session, so
+          nothing here can be read or changed yet. The plugin keeps the
+          configuration it last resolved.
+        </p>
+      </div>
+    );
+  }
 
   const autoInject = config?.autoInject ?? true;
 
   return (
-    <CardShell
-      title="OpenViking Memory"
-      description="Durable memory tools, conversation capture, and automatic profile/recall injection against one OpenViking server."
-      badge={
-        <span className="dsh-plugin-card__badge">{badgeText(autoInject)}</span>
-      }
-      label={(open) => `${open ? "Hide" : "Show"} settings: OpenViking Memory`}
-      bodyClassName="ovm-body"
-    >
+    // The Plugins page draws this card's frame, its heading and its expand
+    // control, so the bundle renders the body and nothing around it (AGENTS.md).
+    <div className="ovm-body">
       {settings.status === "loading" ? (
-        <p className="ovm-muted">
+        <p className="ovm-muted" data-testid="openviking-card-loading">
           Loading the OpenViking Memory configuration…
         </p>
       ) : (
         <>
-          {error !== null ? <div className="ovm-error">{error}</div> : null}
+          {error !== null ? (
+            <div
+              className="ovm-error"
+              data-testid="openviking-card-write-error"
+            >
+              {error}
+            </div>
+          ) : null}
 
-          <section className="ovm-section">
+          <section
+            className="ovm-section"
+            data-testid="openviking-card-presentation"
+          >
             <div className="ovm-section-title">
               <h3>Automatic context presentation</h3>
             </div>
@@ -174,6 +233,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
               checked={autoInject}
               disabled={!writable}
               overridden={overridden("autoInject")}
+              testId="openviking-card-presentation-auto-inject"
               onToggle={(checked) => {
                 write("autoInject", checked);
               }}
@@ -184,6 +244,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
               checked={config?.injectStartupProfile ?? true}
               disabled={!writable}
               overridden={overridden("injectStartupProfile")}
+              testId="openviking-card-presentation-inject-startup-profile"
               onToggle={(checked) => {
                 write("injectStartupProfile", checked);
               }}
@@ -194,6 +255,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
               checked={config?.injectStepProfile ?? true}
               disabled={!writable}
               overridden={overridden("injectStepProfile")}
+              testId="openviking-card-presentation-inject-step-profile"
               onToggle={(checked) => {
                 write("injectStepProfile", checked);
               }}
@@ -204,6 +266,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
               checked={config?.autoRecall ?? true}
               disabled={!writable}
               overridden={overridden("autoRecall")}
+              testId="openviking-card-presentation-auto-recall"
               onToggle={(checked) => {
                 write("autoRecall", checked);
               }}
@@ -219,7 +282,10 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
             </p>
           </section>
 
-          <section className="ovm-section">
+          <section
+            className="ovm-section"
+            data-testid="openviking-card-connection"
+          >
             <div className="ovm-section-title">
               <h3>Connection</h3>
             </div>
@@ -231,6 +297,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 placeholder="http://127.0.0.1:1933"
                 disabled={!writable}
                 overridden={overridden("endpoint")}
+                testId="openviking-card-connection-endpoint"
                 onCommit={commitText("endpoint")}
               />
               <TextField
@@ -241,6 +308,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 secret
                 disabled={!writable}
                 overridden={overridden("apiKey")}
+                testId="openviking-card-connection-api-key"
                 onCommit={commitText("apiKey")}
               />
               <TextField
@@ -250,6 +318,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 placeholder="(from OPENVIKING_ACCOUNT)"
                 disabled={!writable}
                 overridden={overridden("account")}
+                testId="openviking-card-connection-account"
                 onCommit={commitText("account")}
               />
               <TextField
@@ -259,6 +328,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 placeholder="(from OPENVIKING_USER)"
                 disabled={!writable}
                 overridden={overridden("user")}
+                testId="openviking-card-connection-user"
                 onCommit={commitText("user")}
               />
             </div>
@@ -270,7 +340,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
             </p>
           </section>
 
-          <section className="ovm-section">
+          <section className="ovm-section" data-testid="openviking-card-peer">
             <div className="ovm-section-title">
               <h3>Peer identity</h3>
             </div>
@@ -280,6 +350,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
               checked={config?.workspacePeer ?? true}
               disabled={!writable}
               overridden={overridden("workspacePeer")}
+              testId="openviking-card-peer-workspace-peer"
               onToggle={(checked) => {
                 write("workspacePeer", checked);
               }}
@@ -292,6 +363,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 placeholder="(derived from the workspace)"
                 disabled={!writable}
                 overridden={overridden("peerId")}
+                testId="openviking-card-peer-id"
                 onCommit={commitText("peerId")}
               />
               <TextField
@@ -301,12 +373,13 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 placeholder="git | cwd | none | team-{dir}"
                 disabled={!writable}
                 overridden={overridden("peerSource")}
+                testId="openviking-card-peer-source"
                 onCommit={commitText("peerSource")}
               />
             </div>
           </section>
 
-          <section className="ovm-section">
+          <section className="ovm-section" data-testid="openviking-card-recall">
             <div className="ovm-section-title">
               <h3>Recall</h3>
             </div>
@@ -321,6 +394,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 ]}
                 disabled={!writable}
                 overridden={overridden("recallPeerScope")}
+                testId="openviking-card-recall-peer-scope"
                 onSelect={commitSelect("recallPeerScope")}
               />
               <SelectField
@@ -333,6 +407,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 ]}
                 disabled={!writable}
                 overridden={overridden("recallQueryExpansion")}
+                testId="openviking-card-recall-query-expansion"
                 onSelect={commitSelect("recallQueryExpansion")}
               />
               <SelectField
@@ -348,6 +423,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 ]}
                 disabled={!writable}
                 overridden={overridden("recallRewrite")}
+                testId="openviking-card-recall-rewrite"
                 onSelect={commitSelect("recallRewrite")}
               />
               <NumberField
@@ -359,6 +435,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("recallTokenBudget")}
+                testId="openviking-card-recall-token-budget"
                 onCommit={commitNumber("recallTokenBudget")}
                 onInvalid={invalidInput}
               />
@@ -371,6 +448,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("recallMaxContentChars")}
+                testId="openviking-card-recall-max-content-chars"
                 onCommit={commitNumber("recallMaxContentChars")}
                 onInvalid={invalidInput}
               />
@@ -384,6 +462,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("recallLimit")}
+                testId="openviking-card-recall-limit"
                 onCommit={commitNumber("recallLimit")}
                 onInvalid={invalidInput}
               />
@@ -396,6 +475,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={0.05}
                 disabled={!writable}
                 overridden={overridden("scoreThreshold")}
+                testId="openviking-card-recall-score-threshold"
                 onCommit={commitNumber("scoreThreshold")}
                 onInvalid={invalidInput}
               />
@@ -408,6 +488,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("minQueryLength")}
+                testId="openviking-card-recall-min-query-length"
                 onCommit={commitNumber("minQueryLength")}
                 onInvalid={invalidInput}
               />
@@ -420,6 +501,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("profileTokenBudget")}
+                testId="openviking-card-recall-profile-token-budget"
                 onCommit={commitNumber("profileTokenBudget")}
                 onInvalid={invalidInput}
               />
@@ -433,6 +515,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("recallDedupTurns")}
+                testId="openviking-card-recall-dedup-turns"
                 onCommit={commitNumber("recallDedupTurns")}
                 onInvalid={invalidInput}
               />
@@ -446,6 +529,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("recallContextTimeoutMs")}
+                testId="openviking-card-recall-context-timeout-ms"
                 onCommit={commitNumber("recallContextTimeoutMs")}
                 onInvalid={invalidInput}
               />
@@ -459,6 +543,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("recallMaxTokens")}
+                testId="openviking-card-recall-max-tokens"
                 onCommit={commitNumber("recallMaxTokens")}
                 onInvalid={invalidInput}
               />
@@ -472,6 +557,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("recallCompressMaxBullets")}
+                testId="openviking-card-recall-compress-max-bullets"
                 onCommit={commitNumber("recallCompressMaxBullets")}
                 onInvalid={invalidInput}
               />
@@ -482,13 +568,17 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
               checked={config?.recallPreferAbstract ?? true}
               disabled={!writable}
               overridden={overridden("recallPreferAbstract")}
+              testId="openviking-card-recall-prefer-abstract"
               onToggle={(checked) => {
                 write("recallPreferAbstract", checked);
               }}
             />
           </section>
 
-          <section className="ovm-section">
+          <section
+            className="ovm-section"
+            data-testid="openviking-card-capture"
+          >
             <div className="ovm-section-title">
               <h3>Capture and commit</h3>
             </div>
@@ -498,6 +588,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
               checked={config?.syncTurns ?? true}
               disabled={!writable}
               overridden={overridden("syncTurns")}
+              testId="openviking-card-capture-sync-turns"
               onToggle={(checked) => {
                 write("syncTurns", checked);
               }}
@@ -508,6 +599,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
               checked={config?.captureToolResults ?? false}
               disabled={!writable}
               overridden={overridden("captureToolResults")}
+              testId="openviking-card-capture-tool-results"
               onToggle={(checked) => {
                 write("captureToolResults", checked);
               }}
@@ -518,6 +610,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
               checked={config?.captureAssistantTurns ?? true}
               disabled={!writable}
               overridden={overridden("captureAssistantTurns")}
+              testId="openviking-card-capture-assistant-turns"
               onToggle={(checked) => {
                 write("captureAssistantTurns", checked);
               }}
@@ -532,6 +625,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("captureMaxLength")}
+                testId="openviking-card-capture-max-length"
                 onCommit={commitNumber("captureMaxLength")}
                 onInvalid={invalidInput}
               />
@@ -544,6 +638,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("captureToolMaxChars")}
+                testId="openviking-card-capture-tool-max-chars"
                 onCommit={commitNumber("captureToolMaxChars")}
                 onInvalid={invalidInput}
               />
@@ -557,6 +652,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("commitTokenThreshold")}
+                testId="openviking-card-capture-commit-token-threshold"
                 onCommit={commitNumber("commitTokenThreshold")}
                 onInvalid={invalidInput}
               />
@@ -569,6 +665,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 step={1}
                 disabled={!writable}
                 overridden={overridden("commitKeepRecentCount")}
+                testId="openviking-card-capture-commit-keep-recent-count"
                 onCommit={commitNumber("commitKeepRecentCount")}
                 onInvalid={invalidInput}
               />
@@ -580,11 +677,51 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
               placeholder={"s/internal/stable/\nd|debug noise|"}
               disabled={!writable}
               overridden={overridden("captureFilters")}
+              testId="openviking-card-capture-filters"
               onCommit={commitFilters("captureFilters")}
             />
           </section>
 
-          <details className="ovm-advanced">
+          <section
+            className="ovm-section"
+            data-testid="openviking-card-multi-user"
+          >
+            <div className="ovm-section-title">
+              <h3>Multi-user memory</h3>
+            </div>
+            <ToggleRow
+              label="qaUserScoping"
+              description="With a QA Surface mounted, keep one memory space per account: a chat reads and writes only the memory of the account that owns it."
+              checked={config?.qaUserScoping ?? true}
+              disabled={!writable}
+              overridden={overridden("qaUserScoping")}
+              testId="openviking-card-multi-user-scoping"
+              onToggle={(checked) => {
+                write("qaUserScoping", checked);
+              }}
+            />
+            <p className="ovm-notice">
+              The account travels as{" "}
+              <span className="ovm-mono">X-OpenViking-User</span> on every
+              request this plugin makes for a session, and a session no account
+              has claimed is left alone entirely. Two things this switch does
+              not change: the bridged{" "}
+              <span className="ovm-mono">mcp__openviking__*</span> tools answer
+              as the <span className="ovm-mono">user</span> configured above,
+              not as the account that asked; and a store running in{" "}
+              <span className="ovm-mono">api_key</span> mode strips the header
+              and serves its own single space. Each account&apos;s{" "}
+              <span className="ovm-mono">Память</span> page in the QA settings
+              dialog reports which of the two it is showing. Switching this on
+              starts a fresh space — memory written under the deployment
+              identity before it stays there.
+            </p>
+          </section>
+
+          <details
+            className="ovm-advanced"
+            data-testid="openviking-card-advanced"
+          >
             <summary>Advanced</summary>
             <div className="ovm-advanced-content">
               <ToggleRow
@@ -593,6 +730,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                 checked={config?.skipSubagentSessions ?? false}
                 disabled={!writable}
                 overridden={overridden("skipSubagentSessions")}
+                testId="openviking-card-advanced-skip-subagent-sessions"
                 onToggle={(checked) => {
                   write("skipSubagentSessions", checked);
                 }}
@@ -608,6 +746,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("requestTimeoutMs")}
+                  testId="openviking-card-advanced-request-timeout-ms"
                   onCommit={commitNumber("requestTimeoutMs")}
                   onInvalid={invalidInput}
                 />
@@ -621,6 +760,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                   step={1}
                   disabled={!writable}
                   overridden={overridden("mcpToolCallTimeoutMs")}
+                  testId="openviking-card-advanced-mcp-tool-call-timeout-ms"
                   onCommit={commitNumber("mcpToolCallTimeoutMs")}
                   onInvalid={invalidInput}
                 />
@@ -635,6 +775,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
                   ]}
                   disabled={!writable}
                   overridden={overridden("captureMode")}
+                  testId="openviking-card-advanced-capture-mode"
                   onSelect={commitSelect("captureMode")}
                 />
               </div>
@@ -657,6 +798,7 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
               <button
                 type="button"
                 className="ovm-btn"
+                data-testid="openviking-card-reset-all"
                 disabled={!writable}
                 onClick={resetAll}
               >
@@ -669,6 +811,36 @@ export function OpenVikingMemoryCard({ scope }: CardProps) {
           </div>
         </>
       )}
-    </CardShell>
+    </div>
   );
+}
+
+/**
+ * The entry the Plugins page renders for this bundle's row, seated twice.
+ *
+ * `RowDetail` fills the row's description line with `description ??
+ * renderSlot('plugins.row.config', { view: 'summary' }, { entryKey: key })` and
+ * renders the same entry again as the configuration body with
+ * `{ view: 'page', form }` — `@deepseek-ai/dsh-client-ui-plugin-manager`
+ * `0.1.7-rc.2` at `lib/client.js:1841` and `:1852`, the fallback documented in the
+ * shipped contract at `lib/types/client/slot-contract.d.ts:105-116`. SPEC §7.1
+ * carries the commands that print both sites from the installed package.
+ *
+ * Answering the second seat with a sentence rather than with the card is what
+ * `AGENTS.md` requires of a row card: the fallback lands inside the page's own
+ * `<p>`, so mounting the form there would draw a page within a line of text.
+ *
+ * Whether the page asks *this* row for the line is the Host's inventory, not
+ * something this checkout can read. `description` comes from `rowText`, which
+ * folds in `row.meta?.description` and nothing else (`lib/client.js:211-215`); the
+ * patch declares its row as `id` + `name` — no description — and
+ * `tests/bundle.test.ts` holds it there, so adding a row description is what would
+ * close this branch. The reader that fills `row.meta` lives in
+ * `@deepseek-ai/dsh-package-manifest`, which no package of this repository
+ * installs, so the branch stands on the seat's contract rather than on a measured
+ * render, and the live pass SPEC §7 names is what sees the line.
+ */
+export function OpenVikingMemoryCardEntry(props: CardProps) {
+  if (props.view === "summary") return OPENVIKING_MEMORY_ROW_SUMMARY;
+  return <OpenVikingMemoryCard {...props} />;
 }

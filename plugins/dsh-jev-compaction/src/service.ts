@@ -14,10 +14,12 @@ import type { Context } from "@deepseek-ai/cordis";
 import type { Session } from "@deepseek-ai/dsh-session";
 import {
   JevCompactionConfigSchema,
+  plainJevCompactionConfig,
   resolveJevCompactionConfig,
   type JevCompactionConfig,
+  type JevCompactionLiveConfig,
   type ResolvedJevCompactionConfig,
-} from "./config.js";
+} from "./config/index.js";
 import { measurePressure, surfaceNodeTokens } from "./dsh/meter.js";
 import { captureSurfaceSnapshot } from "./dsh/surface.js";
 import type {
@@ -101,6 +103,8 @@ export interface JevRunReport {
 
 interface SessionState {
   lastAutoTurn: number | undefined;
+  failures: number;
+  retryAfter: number;
   running: Promise<JevRunReport> | undefined;
   pendingManual: boolean;
 }
@@ -128,13 +132,18 @@ export class JevCompactionService extends Service {
 
   static Config = JevCompactionConfigSchema;
 
-  /** The composition entry: the base layer under any settings override. */
-  private readonly entryConfig: JevCompactionConfig;
+  /**
+   * The configuration object the Cordis loader mounted for this entry, kept by
+   * reference: the fields the settings card edits are stable references the
+   * loader updates in place, so the plugin never holds a copy of one.
+   */
+  private readonly liveConfig: JevCompactionConfig | JevCompactionLiveConfig;
 
   /**
-   * The active configuration source. It is the composition entry while no
-   * settings provider is attached and the resolved settings scope once one
-   * is, so a live settings change reaches the next run without a restart.
+   * The active configuration source: one plain snapshot of the live
+   * references, taken when an operation starts. That is what carries a settings
+   * change into the next run without a restart, and what keeps a running
+   * operation from seeing the configuration move underneath it.
    */
   private configSource: () => JevCompactionConfig;
 
@@ -158,13 +167,15 @@ export class JevCompactionService extends Service {
 
   constructor(
     ctx: Context,
-    config: JevCompactionConfig = {},
+    config: JevCompactionConfig | JevCompactionLiveConfig = {},
     backend?: SystemOneBackend,
   ) {
     super(ctx, "jevCompaction");
-    this.entryConfig = config;
-    this.configSource = () => this.entryConfig;
-    this.resolvedConfig = resolveJevCompactionConfig(config);
+    this.liveConfig = config;
+    this.configSource = () => plainJevCompactionConfig(this.liveConfig);
+    this.resolvedConfig = resolveJevCompactionConfig(
+      plainJevCompactionConfig(config),
+    );
     this.tokenMeter = (
       ctx as unknown as { tokenMeter: TokenMeterLike }
     ).tokenMeter;
@@ -217,28 +228,20 @@ export class JevCompactionService extends Service {
       this.disposers.push(registerJevCompactCommand(commands, this));
     });
 
-    // The conversation card reads a durable session event, so the event types
-    // have to be part of the harness's live vocabulary while this plugin is
-    // mounted (see src/observability/session-events.ts).
     this.disposers.push(registerJevCompactionSessionEventTypes());
     if (this.resolvedConfig.diagnostics.sessionCards) {
       this.warnSessionCardPortability();
     }
-
-    installJevCompactionSettings({
-      owner: ctx,
-      entryConfig: this.entryConfig,
-      schema: JevCompactionConfigSchema,
-      setSource: (current) => {
-        this.configSource = current;
-      },
-      onChange: () => {
+    installJevCompactionSettings(ctx);
+    // The loader swaps a volatile reference in place and then tells the entry
+    // which paths moved. Re-resolving here is the whole live-settings path: the
+    // card writes the Host document, the Host updates our references, and the
+    // next operation reads the new values.
+    this.disposers.push(
+      (ctx as unknown as JevHostContext).on("loader/volatile-update", () => {
         this.reapply();
-      },
-      validate: (value) => {
-        resolveJevCompactionConfig(value);
-      },
-    });
+      }),
+    );
   }
 
   /**
@@ -260,6 +263,11 @@ export class JevCompactionService extends Service {
    * every successful re-resolve, including the initial install.
    */
   protected onConfigChanged(): void {
+    // A corrected endpoint or budget should be usable immediately.
+    for (const state of this.sessions.values()) {
+      state.failures = 0;
+      state.retryAfter = 0;
+    }
     this.shaping.onConfigChanged();
     this.warnOnMissingCredential();
     if (this.resolvedConfig.diagnostics.sessionCards) {
@@ -377,6 +385,8 @@ export class JevCompactionService extends Service {
     if (state === undefined) {
       state = {
         lastAutoTurn: undefined,
+        failures: 0,
+        retryAfter: 0,
         running: undefined,
         pendingManual: false,
       };
@@ -527,12 +537,38 @@ export class JevCompactionService extends Service {
     if (state.running !== undefined) {
       return this.skippedReport(mode, sessionId, "busy", started);
     }
+    const failed = (error: unknown): JevRunReport => {
+      if (options.signal.aborted)
+        return this.skippedReport(mode, sessionId, "busy", started);
+      state.failures = Math.min(state.failures + 1, 5);
+      state.retryAfter =
+        Date.now() + Math.min(300_000, 30_000 * 2 ** (state.failures - 1));
+      this.reportFailure(error, sessionId);
+      return {
+        ...this.skippedReport(mode, sessionId, "jev-failed", started),
+        error: error instanceof Error ? error.message : String(error),
+      };
+    };
     const run = this.runPipeline(agent, options, {
       sessionId,
       started,
-    }).finally(() => {
-      if (state.running === run) state.running = undefined;
-    });
+    })
+      .then((report) => {
+        if (report.error !== undefined) {
+          // Preserve any applied entries in a partial-mutation report.
+          const failure = failed(new Error(report.error));
+          return report.applied.length > 0 ? report : failure;
+        }
+        if (report.plan !== undefined || report.skipped === "empty-plan") {
+          state.failures = 0;
+          state.retryAfter = 0;
+        }
+        return report;
+      })
+      .catch(failed)
+      .finally(() => {
+        if (state.running === run) state.running = undefined;
+      });
     state.running = run;
     return run;
   }
@@ -589,6 +625,8 @@ export class JevCompactionService extends Service {
     };
 
     if (!this.config.enabled) return skip("disabled");
+    if (mode === "auto" && Date.now() < state.retryAfter)
+      return skip("failure-backoff");
 
     const pressure = await measurePressure(
       session,
@@ -710,7 +748,7 @@ export class JevCompactionService extends Service {
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : String(error);
-      if (!signal.aborted) this.reportFailure(error, sessionId);
+      if (signal.aborted) return skip("busy");
       return { ...skip("jev-failed"), error: message };
     }
 
@@ -855,7 +893,6 @@ export class JevCompactionService extends Service {
     } catch (error: unknown) {
       if (error instanceof SurfaceChangedError) return skip("busy");
       const message = error instanceof Error ? error.message : String(error);
-      this.reportFailure(error, sessionId);
       return { ...skip("jev-failed"), error: message };
     }
 

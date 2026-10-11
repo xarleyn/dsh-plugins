@@ -20,7 +20,9 @@ import {
 import { AdminReviewQueue } from "./pages/Review.js";
 import { AdminAudit, AdminFeedback, AdminQuality } from "./pages/Quality.js";
 import { AdminSkillFiles } from "./pages/SkillFiles.js";
+import { AdminExpertMemory } from "./pages/ExpertMemory.js";
 import { AdminUserDetail, AdminUsers } from "./pages/Users.js";
+import { ModelPolicyEditor } from "./ModelPolicyEditor.js";
 
 type Page = QaAdminRoute["page"];
 type CapabilityType = "tool" | "skill";
@@ -52,7 +54,8 @@ const NAV: readonly {
     | "reviews.read"
     | "analytics.read"
     | "audit.read"
-    | "skills.manage";
+    | "skills.manage"
+    | "memory.read";
 }[] = [
   {
     page: "overview",
@@ -114,6 +117,12 @@ const NAV: readonly {
     group: "Качество",
     permission: "analytics.read",
   },
+  {
+    page: "memory",
+    label: "Память экспертов",
+    group: "Качество",
+    permission: "memory.read",
+  },
   { page: "audit", label: "Аудит", group: "Система", permission: "audit.read" },
 ];
 
@@ -128,6 +137,7 @@ const CONSOLE_PAGES = new Set<Page>([
   "review",
   "feedback",
   "quality",
+  "memory",
   "audit",
 ]);
 
@@ -146,7 +156,11 @@ function canOpen(role: QaAccountRole | undefined, page: Page): boolean {
     return (
       permission === "conversations.read.all" ||
       permission === "reviews.read" ||
-      permission === "analytics.read"
+      permission === "analytics.read" ||
+      // A reviewer reads expert memory because that is where a wrong answer
+      // starts repeating itself; the `memory.manage` check the Host makes on
+      // every write is what keeps the edit away from them.
+      permission === "memory.read"
     );
   }
   // A plain user never reaches the console; the Host refuses every
@@ -160,6 +174,15 @@ function canOpen(role: QaAccountRole | undefined, page: Page): boolean {
  * this decides what to draw, not what is allowed.
  */
 function canDeleteConversation(role: QaAccountRole | undefined): boolean {
+  return role === undefined || role === "admin";
+}
+
+/**
+ * Whether the console draws the memory-edit controls. `memory.read` opens the
+ * list for a reviewer as well; only `memory.manage` — the admin role — writes,
+ * and the Host re-checks that on every call.
+ */
+function canManageMemory(role: QaAccountRole | undefined): boolean {
   return role === undefined || role === "admin";
 }
 
@@ -208,6 +231,8 @@ function bucketOf(
 
 function CapabilityPicker(props: {
   readonly type: CapabilityType;
+  /** The zone this picker is mounted in, so its rows stay addressable. */
+  readonly testId?: string;
   readonly catalog: readonly QaCapabilityDescriptor[];
   readonly selected: readonly string[];
   readonly inherited?: readonly string[];
@@ -215,6 +240,7 @@ function CapabilityPicker(props: {
   readonly skillDetails?: readonly QaSkillAccess[];
   readonly onChange?: (next: readonly string[]) => void;
 }) {
+  const zone = props.testId ?? "qa-admin-capabilities";
   const [query, setQuery] = useState("");
   const [selectedOnly, setSelectedOnly] = useState(false);
   const inherited = new Set(props.inherited ?? []);
@@ -241,17 +267,21 @@ function CapabilityPicker(props: {
     groups.set(group, [...(groups.get(group) ?? []), row]);
   }
   return (
-    <div className="dsh-qa-capabilities">
-      <div className="dsh-qa-capabilities__toolbar">
+    <div className="dsh-qa-capabilities" data-testid={zone}>
+      <div
+        className="dsh-qa-capabilities__toolbar"
+        data-testid={`${zone}-toolbar`}
+      >
         <input
           type="search"
+          data-testid={`${zone}-search`}
           value={query}
           placeholder={
             props.type === "tool" ? "Поиск инструментов…" : "Поиск навыков…"
           }
           onChange={(event) => setQuery(event.currentTarget.value)}
         />
-        <label>
+        <label data-testid={`${zone}-selected-only`}>
           <input
             type="checkbox"
             checked={selectedOnly}
@@ -261,10 +291,16 @@ function CapabilityPicker(props: {
         </label>
       </div>
       {rows.length === 0 ? (
-        <p className="dsh-qa-admin__empty">Ничего не найдено.</p>
+        <p className="dsh-qa-admin__empty" data-testid={`${zone}-empty`}>
+          Ничего не найдено.
+        </p>
       ) : (
         [...groups].map(([group, entries]) => (
-          <section key={group} className="dsh-qa-capabilities__group">
+          <section
+            key={group}
+            className="dsh-qa-capabilities__group"
+            data-testid={`${zone}-group`}
+          >
             <h4>{group.toLocaleUpperCase()}</h4>
             {entries.map((capability) => {
               const required = system.has(capability.id);
@@ -277,6 +313,7 @@ function CapabilityPicker(props: {
                 <label
                   key={`${capability.type}:${capability.id}`}
                   className="dsh-qa-capability"
+                  data-testid={`${zone}-item`}
                   title={
                     required
                       ? "Системная возможность"
@@ -298,7 +335,10 @@ function CapabilityPicker(props: {
                       props.onChange?.([...next]);
                     }}
                   />
-                  <span className="dsh-qa-capability__copy">
+                  <span
+                    className="dsh-qa-capability__copy"
+                    data-testid={`${zone}-item-copy`}
+                  >
                     <strong>{capability.title}</strong>
                     {capability.description === undefined ? null : (
                       <small>{capability.description}</small>
@@ -323,15 +363,18 @@ function CapabilityPicker(props: {
                     ) : null}
                   </span>
                   {required ? (
-                    <em>Системное</em>
+                    <em data-testid={`${zone}-item-system`}>Системное</em>
                   ) : common ? (
-                    <em>Общее</em>
+                    <em data-testid={`${zone}-item-common`}>Общее</em>
                   ) : capability.type === "skill" &&
                     selected.has(capability.id) ? (
-                    <em>Администратор</em>
+                    <em data-testid={`${zone}-item-admin`}>Администратор</em>
                   ) : null}
                   {capability.status === "missing" ? (
-                    <em className="dsh-qa-capability__missing">
+                    <em
+                      className="dsh-qa-capability__missing"
+                      data-testid={`${zone}-item-missing`}
+                    >
                       Не установлен
                     </em>
                   ) : null}
@@ -408,6 +451,8 @@ function roleEffective(
 
 function RoleEditor(props: {
   readonly role: QaSubrole | null;
+  readonly api: QaAccessApi;
+  readonly token: string;
   readonly catalog: readonly QaCapabilityDescriptor[];
   readonly common: QaCapabilitySelection;
   readonly system: QaCapabilitySelection;
@@ -418,9 +463,9 @@ function RoleEditor(props: {
 }) {
   const existing = props.role !== null;
   const [draft, setDraft] = useState<QaSubrole>(props.role ?? emptyRole());
-  const [tab, setTab] = useState<"general" | "tools" | "skills" | "effective">(
-    "general",
-  );
+  const [tab, setTab] = useState<
+    "general" | "model" | "tools" | "skills" | "effective"
+  >("general");
   const [saving, setSaving] = useState(false);
   const setSkills = (values: readonly string[]) =>
     setDraft((current) => ({
@@ -448,12 +493,13 @@ function RoleEditor(props: {
     effective.declared.includes(name),
   );
   return (
-    <section className="dsh-qa-role-editor">
+    <section className="dsh-qa-role-editor" data-testid="qa-admin-role-editor">
       <div className="dsh-qa-admin__title-row">
         <div>
           <button
             type="button"
             className="dsh-qa-admin__back"
+            data-testid="qa-admin-role-back"
             onClick={props.onCancel}
           >
             ← Саброли
@@ -462,10 +508,11 @@ function RoleEditor(props: {
           <p>{draft.description || "Профиль возможностей QA-ассистента"}</p>
         </div>
       </div>
-      <div className="dsh-qa-admin__tabs">
+      <div className="dsh-qa-admin__tabs" data-testid="qa-admin-role-tabs">
         {(
           [
             ["general", "Общее"],
+            ["model", "Модель"],
             ["tools", "Инструменты"],
             ["skills", "Навыки"],
             ["effective", "Фактический доступ"],
@@ -474,6 +521,7 @@ function RoleEditor(props: {
           <button
             key={id}
             type="button"
+            data-testid={`qa-admin-role-tab-${id}`}
             aria-current={tab === id ? "page" : undefined}
             onClick={() => setTab(id)}
           >
@@ -482,10 +530,14 @@ function RoleEditor(props: {
         ))}
       </div>
       {tab === "general" ? (
-        <div className="dsh-qa-role-editor__general">
-          <label>
+        <div
+          className="dsh-qa-role-editor__general"
+          data-testid="qa-admin-role-general"
+        >
+          <label data-testid="qa-admin-role-name-field">
             Название
             <input
+              data-testid="qa-admin-role-name"
               value={draft.name}
               maxLength={100}
               onChange={(event) =>
@@ -493,9 +545,10 @@ function RoleEditor(props: {
               }
             />
           </label>
-          <label>
+          <label data-testid="qa-admin-role-slug-field">
             Slug / ID
             <input
+              data-testid="qa-admin-role-slug"
               value={draft.id}
               disabled={existing}
               pattern="[a-z0-9][a-z0-9-]*"
@@ -504,9 +557,13 @@ function RoleEditor(props: {
               }
             />
           </label>
-          <label className="dsh-qa-role-editor__wide">
+          <label
+            className="dsh-qa-role-editor__wide"
+            data-testid="qa-admin-role-description-field"
+          >
             Описание
             <textarea
+              data-testid="qa-admin-role-description"
               value={draft.description ?? ""}
               maxLength={500}
               onChange={(event) =>
@@ -514,9 +571,13 @@ function RoleEditor(props: {
               }
             />
           </label>
-          <label className="dsh-qa-role-editor__check">
+          <label
+            className="dsh-qa-role-editor__check"
+            data-testid="qa-admin-role-enabled-field"
+          >
             <input
               type="checkbox"
+              data-testid="qa-admin-role-enabled"
               checked={draft.enabled}
               onChange={(event) =>
                 setDraft({ ...draft, enabled: event.currentTarget.checked })
@@ -525,13 +586,28 @@ function RoleEditor(props: {
             Включена
           </label>
         </div>
+      ) : tab === "model" ? (
+        <div data-testid="qa-admin-role-model-panel">
+          <ModelPolicyEditor
+            api={props.api}
+            token={props.token}
+            disabled={saving}
+            testId="qa-admin-role-model"
+            value={draft.model}
+            onChange={(model) => setDraft({ ...draft, model })}
+          />
+        </div>
       ) : tab === "tools" ? (
-        <div className="dsh-qa-tool-buckets">
-          <section>
+        <div
+          className="dsh-qa-tool-buckets"
+          data-testid="qa-admin-role-tool-buckets"
+        >
+          <section data-testid="qa-admin-role-bucket-always">
             <h3>{TOOL_BUCKET_LABELS.always}</h3>
             <p>Видны агенту с первого шага разговора.</p>
             <CapabilityPicker
               type="tool"
+              testId="qa-admin-role-tools-always"
               catalog={props.catalog}
               inherited={props.common.tools.always}
               system={props.system.tools.always}
@@ -539,7 +615,7 @@ function RoleEditor(props: {
               onChange={(values) => setTools("always", values)}
             />
           </section>
-          <section>
+          <section data-testid="qa-admin-role-bucket-skill-grantable">
             <h3>{TOOL_BUCKET_LABELS.skillGrantable}</h3>
             <p>
               Эти инструменты не показываются агенту по умолчанию. Они
@@ -548,6 +624,7 @@ function RoleEditor(props: {
             </p>
             <CapabilityPicker
               type="tool"
+              testId="qa-admin-role-tools-skill-grantable"
               catalog={props.catalog}
               inherited={props.common.tools.skillGrantable}
               system={props.system.tools.skillGrantable}
@@ -555,11 +632,14 @@ function RoleEditor(props: {
               onChange={(values) => setTools("skillGrantable", values)}
             />
             {effective.via.size === 0 ? null : (
-              <div className="dsh-qa-skill-grants">
+              <div
+                className="dsh-qa-skill-grants"
+                data-testid="qa-admin-role-skill-grants"
+              >
                 <h4>Используют назначенные навыки</h4>
-                <ul>
+                <ul data-testid="qa-admin-role-skill-grant-list">
                   {[...effective.via].map(([tool, skills]) => (
-                    <li key={tool}>
+                    <li key={tool} data-testid="qa-admin-role-skill-grant">
                       <code>{tool}</code>
                       <span>Доступен через: {skills.join(", ")}</span>
                     </li>
@@ -568,7 +648,7 @@ function RoleEditor(props: {
               </div>
             )}
           </section>
-          <section>
+          <section data-testid="qa-admin-role-bucket-deny">
             <h3>{TOOL_BUCKET_LABELS.deny}</h3>
             <p>
               Инструменты, которые снимаются с этой саброли, даже если их выдают
@@ -578,6 +658,7 @@ function RoleEditor(props: {
             </p>
             <CapabilityPicker
               type="tool"
+              testId="qa-admin-role-tools-deny"
               catalog={props.catalog}
               selected={draft.capabilities.tools.deny ?? []}
               onChange={(values) => setTools("deny", values)}
@@ -585,28 +666,39 @@ function RoleEditor(props: {
           </section>
         </div>
       ) : tab === "skills" ? (
-        <div className="dsh-qa-role-skills">
+        <div className="dsh-qa-role-skills" data-testid="qa-admin-role-skills">
           <p>
             Навык сам объявляет, каким сабролям он доступен. Здесь настраиваются
             общие навыки и назначения, добавленные вручную.
           </p>
-          <section>
+          <section data-testid="qa-admin-role-declared-skills">
             <h4>Объявлены навыками</h4>
             {declaredSkills.length === 0 ? (
-              <p className="dsh-qa-admin__empty">
+              <p
+                className="dsh-qa-admin__empty"
+                data-testid="qa-admin-role-declared-empty"
+              >
                 Ни один навык не объявляет эту саброль.
               </p>
             ) : (
-              <ul className="dsh-qa-skill-list">
+              <ul
+                className="dsh-qa-skill-list"
+                data-testid="qa-admin-role-declared-list"
+              >
                 {declaredSkills.map((skill) => (
-                  <li key={skill.name}>
+                  <li
+                    key={skill.name}
+                    data-testid="qa-admin-role-declared-item"
+                  >
                     <strong>{skill.name}</strong>
-                    <span>
+                    <span data-testid="qa-admin-role-declared-grants">
                       {skill.descriptor.requiredTools.length === 0
                         ? "Не выдаёт инструменты"
                         : `Выдаёт при активации: ${skill.descriptor.requiredTools.join(", ")}`}
                     </span>
-                    <em>Объявлено навыком</em>
+                    <em data-testid="qa-admin-role-declared-mark">
+                      Объявлено навыком
+                    </em>
                   </li>
                 ))}
               </ul>
@@ -615,10 +707,11 @@ function RoleEditor(props: {
               Отозвать объявленный навык можно на странице «Навыки».
             </p>
           </section>
-          <section>
+          <section data-testid="qa-admin-role-granted-skills">
             <h4>Общие и ролевые навыки</h4>
             <CapabilityPicker
               type="skill"
+              testId="qa-admin-role-skills-picker"
               catalog={props.catalog}
               inherited={props.common.skills}
               system={props.system.skills}
@@ -629,36 +722,50 @@ function RoleEditor(props: {
           </section>
         </div>
       ) : (
-        <div className="dsh-qa-effective">
+        <div className="dsh-qa-effective" data-testid="qa-admin-role-effective">
           <h3>
             Фактический доступ для {draft.name || draft.id || "новой роли"}
           </h3>
-          <section>
+          <section data-testid="qa-admin-role-effective-always">
             <h4>{TOOL_BUCKET_LABELS.always}</h4>
             {effective.alwaysTools.length === 0 ? (
-              <p className="dsh-qa-admin__empty">Нет инструментов.</p>
+              <p
+                className="dsh-qa-admin__empty"
+                data-testid="qa-admin-role-effective-always-empty"
+              >
+                Нет инструментов.
+              </p>
             ) : (
-              <ul className="dsh-qa-effective__list">
+              <ul
+                className="dsh-qa-effective__list"
+                data-testid="qa-admin-role-effective-list"
+              >
                 {effective.alwaysTools.map((tool) => (
-                  <li key={tool}>
+                  <li key={tool} data-testid="qa-admin-role-effective-item">
                     <code>{tool}</code>
                   </li>
                 ))}
               </ul>
             )}
           </section>
-          <section>
+          <section data-testid="qa-admin-role-effective-grantable">
             <h4>{TOOL_BUCKET_LABELS.skillGrantable}</h4>
             {effective.grantable.length === 0 ? (
-              <p className="dsh-qa-admin__empty">
+              <p
+                className="dsh-qa-admin__empty"
+                data-testid="qa-admin-role-effective-grantable-empty"
+              >
                 Роль не может выдавать инструменты.
               </p>
             ) : (
-              <ul className="dsh-qa-effective__list">
+              <ul
+                className="dsh-qa-effective__list"
+                data-testid="qa-admin-role-effective-list"
+              >
                 {effective.grantable.map((tool) => (
-                  <li key={tool}>
+                  <li key={tool} data-testid="qa-admin-role-effective-item">
                     <code>{tool}</code>
-                    <span>
+                    <span data-testid="qa-admin-role-effective-via">
                       {effective.via.get(tool) === undefined
                         ? "Сейчас не используется ни одним назначенным навыком"
                         : `Доступен через: ${effective.via.get(tool)?.join(", ")}`}
@@ -669,11 +776,14 @@ function RoleEditor(props: {
             )}
           </section>
           {effective.denied.length === 0 ? null : (
-            <section>
+            <section data-testid="qa-admin-role-effective-denied">
               <h4>{TOOL_BUCKET_LABELS.deny}</h4>
-              <ul className="dsh-qa-effective__list">
+              <ul
+                className="dsh-qa-effective__list"
+                data-testid="qa-admin-role-effective-list"
+              >
                 {effective.denied.map((tool) => (
-                  <li key={tool}>
+                  <li key={tool} data-testid="qa-admin-role-effective-item">
                     <code>{tool}</code>
                     <span>Снят с этой саброли</span>
                   </li>
@@ -681,14 +791,17 @@ function RoleEditor(props: {
               </ul>
             </section>
           )}
-          <section>
+          <section data-testid="qa-admin-role-effective-skills">
             <h4>Навыки</h4>
-            <ul className="dsh-qa-effective__list">
+            <ul
+              className="dsh-qa-effective__list"
+              data-testid="qa-admin-role-effective-list"
+            >
               {[...unique([...effective.managed, ...effective.declared])].map(
                 (skill) => (
-                  <li key={skill}>
+                  <li key={skill} data-testid="qa-admin-role-effective-item">
                     <code>{skill}</code>
-                    <span>
+                    <span data-testid="qa-admin-role-effective-source">
                       {effective.declared.includes(skill)
                         ? "Назначен навыком"
                         : "Назначен администратором"}
@@ -700,14 +813,22 @@ function RoleEditor(props: {
           </section>
         </div>
       )}
-      <div className="dsh-qa-admin__savebar">
+      <div
+        className="dsh-qa-admin__savebar"
+        data-testid="qa-admin-role-savebar"
+      >
         <span>Изменения применяются к новым разговорам.</span>
-        <button type="button" onClick={props.onCancel}>
+        <button
+          type="button"
+          data-testid="qa-admin-role-cancel"
+          onClick={props.onCancel}
+        >
           Отмена
         </button>
         <button
           type="button"
           className="dsh-qa-admin__primary"
+          data-testid="qa-admin-role-save"
           disabled={
             saving || draft.id.trim() === "" || draft.name.trim() === ""
           }
@@ -760,12 +881,16 @@ function SkillAssignmentEditor(props: {
     };
   };
   return (
-    <section className="dsh-qa-skill-detail">
+    <section
+      className="dsh-qa-skill-detail"
+      data-testid="qa-admin-skill-editor"
+    >
       <div className="dsh-qa-admin__title-row">
         <div>
           <button
             type="button"
             className="dsh-qa-admin__back"
+            data-testid="qa-admin-skill-back"
             onClick={props.onCancel}
           >
             ← Навыки
@@ -779,36 +904,48 @@ function SkillAssignmentEditor(props: {
           </p>
         </div>
       </div>
-      <div className="dsh-qa-skill-detail__grid">
-        <section>
+      <div
+        className="dsh-qa-skill-detail__grid"
+        data-testid="qa-admin-skill-editor-grid"
+      >
+        <section data-testid="qa-admin-skill-access">
           <h4>Доступ</h4>
-          <label className="dsh-qa-role-editor__check">
+          <label
+            className="dsh-qa-role-editor__check"
+            data-testid="qa-admin-skill-force-common-field"
+          >
             <input
               type="checkbox"
+              data-testid="qa-admin-skill-force-common"
               checked={forceCommon}
               onChange={(event) => setForceCommon(event.currentTarget.checked)}
             />
             Доступен всем включённым сабролям
           </label>
-          <label className="dsh-qa-role-editor__check">
+          <label
+            className="dsh-qa-role-editor__check"
+            data-testid="qa-admin-skill-disabled-field"
+          >
             <input
               type="checkbox"
+              data-testid="qa-admin-skill-disabled"
               checked={disabled}
               onChange={(event) => setDisabled(event.currentTarget.checked)}
             />
             Отключён для всех
           </label>
-          <ul className="dsh-qa-skill-roles">
+          <ul className="dsh-qa-skill-roles" data-testid="qa-admin-skill-roles">
             {props.roles.map((role) => {
               const grant = props.skill.roles.find(
                 ({ roleId }) => roleId === role.id,
               );
               const checked = !disabled && visible.has(role.id);
               return (
-                <li key={role.id}>
+                <li key={role.id} data-testid="qa-admin-skill-role">
                   <label>
                     <input
                       type="checkbox"
+                      data-testid="qa-admin-skill-role-check"
                       disabled={disabled}
                       checked={checked}
                       onChange={(event) => {
@@ -820,47 +957,81 @@ function SkillAssignmentEditor(props: {
                     />
                     {role.name}
                   </label>
-                  {grant?.declared === true ? <em>Объявлено навыком</em> : null}
+                  {grant?.declared === true ? (
+                    <em data-testid="qa-admin-skill-role-declared">
+                      Объявлено навыком
+                    </em>
+                  ) : null}
                   {grant?.addedByAdmin === true ? (
-                    <em>Добавлено админом</em>
+                    <em data-testid="qa-admin-skill-role-added">
+                      Добавлено админом
+                    </em>
                   ) : null}
                   {grant?.removedByAdmin === true ? (
-                    <em>Отозвано админом</em>
+                    <em data-testid="qa-admin-skill-role-removed">
+                      Отозвано админом
+                    </em>
                   ) : null}
                 </li>
               );
             })}
           </ul>
           {props.skill.descriptor.warnings.length === 0 ? null : (
-            <ul className="dsh-qa-skill-warnings">
+            <ul
+              className="dsh-qa-skill-warnings"
+              data-testid="qa-admin-skill-warnings"
+            >
               {props.skill.descriptor.warnings.map((warning) => (
                 <li key={warning}>⚠ {warning}</li>
               ))}
             </ul>
           )}
         </section>
-        <section>
+        <section data-testid="qa-admin-skill-tools-panel">
           <h4>Инструменты навыка</h4>
           {props.skill.tools.length === 0 ? (
-            <p className="dsh-qa-admin__empty">
+            <p
+              className="dsh-qa-admin__empty"
+              data-testid="qa-admin-skill-tools-empty"
+            >
               Навык не требует инструментов.
             </p>
           ) : (
-            <ul className="dsh-qa-skill-tools">
+            <ul
+              className="dsh-qa-skill-tools"
+              data-testid="qa-admin-skill-tools"
+            >
               {props.skill.tools.map((tool) => (
-                <li key={tool.id}>
-                  <code>{tool.id}</code>
-                  <span className="dsh-qa-skill-tools__state">
+                <li key={tool.id} data-testid="qa-admin-skill-tool">
+                  <code data-testid="qa-admin-skill-tool-id">{tool.id}</code>
+                  <span
+                    className="dsh-qa-skill-tools__state"
+                    data-testid="qa-admin-skill-tool-state"
+                  >
                     {tool.grantableBy.length > 0 ? (
-                      <em>Доступен: {tool.grantableBy.join(", ")}</em>
+                      <em data-testid="qa-admin-skill-tool-grantable">
+                        Доступен: {tool.grantableBy.join(", ")}
+                      </em>
                     ) : null}
                     {tool.installed ? null : (
-                      <em className="dsh-qa-capability__missing">
+                      <em
+                        className="dsh-qa-capability__missing"
+                        data-testid="qa-admin-skill-tool-uninstalled"
+                      >
                         Нет в реестре
                       </em>
                     )}
                     {tool.blockedFor.length > 0 ? (
-                      <em className="dsh-qa-capability__missing">
+                      <em
+                        className="dsh-qa-capability__missing"
+                        data-testid={
+                          tool.grantableBy.length === 0 &&
+                          tool.blockedFor.length ===
+                            props.skill.visibleTo.length
+                            ? "qa-admin-skill-tool-blocked-all"
+                            : "qa-admin-skill-tool-blocked-roles"
+                        }
+                      >
                         {tool.grantableBy.length === 0 &&
                         tool.blockedFor.length === props.skill.visibleTo.length
                           ? "Недоступен ни одной роли"
@@ -889,14 +1060,22 @@ function SkillAssignmentEditor(props: {
           ) : null}
         </section>
       </div>
-      <div className="dsh-qa-admin__savebar">
+      <div
+        className="dsh-qa-admin__savebar"
+        data-testid="qa-admin-skill-savebar"
+      >
         <span>Назначения хранятся отдельно и не изменяют SKILL.md.</span>
-        <button type="button" onClick={props.onCancel}>
+        <button
+          type="button"
+          data-testid="qa-admin-skill-cancel"
+          onClick={props.onCancel}
+        >
           Отмена
         </button>
         <button
           type="button"
           className="dsh-qa-admin__primary"
+          data-testid="qa-admin-skill-save"
           disabled={saving}
           onClick={() => {
             setSaving(true);
@@ -918,7 +1097,7 @@ function SkillTable(props: {
   const name = (id: string) =>
     props.roles.find((role) => role.id === id)?.name ?? id;
   return (
-    <div className="dsh-qa-skills">
+    <div className="dsh-qa-skills" data-testid="qa-admin-skill-table">
       <table>
         <thead>
           <tr>
@@ -932,31 +1111,46 @@ function SkillTable(props: {
         </thead>
         <tbody>
           {props.skills.map((skill) => (
-            <tr key={skill.name}>
-              <td>
+            <tr key={skill.name} data-testid="qa-admin-skill-row">
+              <td data-testid="qa-admin-skill-name">
                 <strong>{skill.name}</strong>
-                {skill.overridden ? <em>Изменён</em> : null}
+                {skill.overridden ? (
+                  <em data-testid="qa-admin-skill-overridden">Изменён</em>
+                ) : null}
                 {skill.status === "missing" ? (
-                  <em className="dsh-qa-capability__missing">Не установлен</em>
+                  <em
+                    className="dsh-qa-capability__missing"
+                    data-testid="qa-admin-skill-uninstalled"
+                  >
+                    Не установлен
+                  </em>
                 ) : null}
               </td>
-              <td>
+              <td data-testid="qa-admin-skill-audience">
                 {skill.disabled
                   ? "Отключён"
                   : skill.visibleTo.length === 0
                     ? "Не назначен"
                     : skill.visibleTo.map(name).join(", ")}
               </td>
-              <td>{skill.descriptor.requiredTools.length}</td>
-              <td>{HEALTH_LABELS[skill.health]}</td>
-              <td>
+              <td data-testid="qa-admin-skill-tool-count">
+                {skill.descriptor.requiredTools.length}
+              </td>
+              <td data-testid="qa-admin-skill-health">
+                {HEALTH_LABELS[skill.health]}
+              </td>
+              <td data-testid="qa-admin-skill-source">
                 {SOURCE_LABELS[skill.source.kind]}
                 {skill.source.name === undefined
                   ? ""
                   : ` · ${skill.source.name}`}
               </td>
               <td>
-                <button type="button" onClick={() => props.onSelect(skill)}>
+                <button
+                  type="button"
+                  data-testid="qa-admin-skill-edit"
+                  onClick={() => props.onSelect(skill)}
+                >
                   Изменить →
                 </button>
               </td>
@@ -965,7 +1159,12 @@ function SkillTable(props: {
         </tbody>
       </table>
       {props.skills.length === 0 ? (
-        <p className="dsh-qa-admin__empty">Навыки не найдены.</p>
+        <p
+          className="dsh-qa-admin__empty"
+          data-testid="qa-admin-skill-table-empty"
+        >
+          Навыки не найдены.
+        </p>
       ) : null}
     </div>
   );
@@ -1056,16 +1255,28 @@ export function QaAdmin(props: {
   };
   if (snapshot === undefined) {
     return (
-      <main className="dsh-qa-admin" aria-label="Администрирование QA">
-        <div className="dsh-qa-admin__loading">{error ?? "Загружаю роли…"}</div>
+      <main
+        className="dsh-qa-admin"
+        data-testid="qa-admin-root"
+        aria-label="Администрирование QA"
+      >
+        <div className="dsh-qa-admin__loading" data-testid="qa-admin-loading">
+          {error ?? "Загружаю роли…"}
+        </div>
       </main>
     );
   }
   if (editing !== undefined) {
     return (
-      <main className="dsh-qa-admin" aria-label="Редактор саброли">
+      <main
+        className="dsh-qa-admin"
+        data-testid="qa-admin-root"
+        aria-label="Редактор саброли"
+      >
         <RoleEditor
           role={editing}
+          api={props.api}
+          token={props.token}
           catalog={snapshot.catalog}
           common={snapshot.config.common}
           system={snapshot.systemRequired}
@@ -1082,14 +1293,20 @@ export function QaAdmin(props: {
           }}
         />
         {error === undefined ? null : (
-          <div className="dsh-qa-admin__error">{error}</div>
+          <div className="dsh-qa-admin__error" data-testid="qa-admin-error">
+            {error}
+          </div>
         )}
       </main>
     );
   }
   if (editingSkill !== undefined) {
     return (
-      <main className="dsh-qa-admin" aria-label="Назначения навыка">
+      <main
+        className="dsh-qa-admin"
+        data-testid="qa-admin-root"
+        aria-label="Назначения навыка"
+      >
         <SkillAssignmentEditor
           skill={editingSkill}
           roles={enabledRoles}
@@ -1102,27 +1319,34 @@ export function QaAdmin(props: {
           }}
         />
         {error === undefined ? null : (
-          <div className="dsh-qa-admin__error">{error}</div>
+          <div className="dsh-qa-admin__error" data-testid="qa-admin-error">
+            {error}
+          </div>
         )}
       </main>
     );
   }
   return (
-    <main className="dsh-qa-admin" aria-label="Администрирование QA">
-      <header className="dsh-qa-admin__header">
+    <main
+      className="dsh-qa-admin"
+      data-testid="qa-admin-root"
+      aria-label="Администрирование QA"
+    >
+      <header className="dsh-qa-admin__header" data-testid="qa-admin-header">
         <div>
           <strong>QA Administration</strong>
           <span>Роли и возможности</span>
         </div>
         <button
           type="button"
+          data-testid="qa-admin-back-to-chat"
           onClick={() => window.history.pushState(null, "", props.routePath)}
         >
           ← В чат
         </button>
       </header>
       <div className="dsh-qa-admin__layout">
-        <nav aria-label="Разделы администрирования">
+        <nav data-testid="qa-admin-nav" aria-label="Разделы администрирования">
           {["QA Admin", "Пользователи", "Доступ", "Качество", "Система"].map(
             (group) => {
               const entries = NAV.filter(
@@ -1131,12 +1355,17 @@ export function QaAdmin(props: {
               );
               if (entries.length === 0) return null;
               return (
-                <div key={group} className="dsh-qa-admin__nav-group">
+                <div
+                  key={group}
+                  className="dsh-qa-admin__nav-group"
+                  data-testid="qa-admin-nav-group"
+                >
                   <strong>{group}</strong>
                   {entries.map((entry) => (
                     <button
                       key={entry.page}
                       type="button"
+                      data-testid={`qa-admin-nav-${entry.page}`}
                       aria-current={
                         isCurrentEntry(route, entry.page) ? "page" : undefined
                       }
@@ -1154,9 +1383,14 @@ export function QaAdmin(props: {
             },
           )}
         </nav>
-        <section className="dsh-qa-admin__content">
+        <section
+          className="dsh-qa-admin__content"
+          data-testid="qa-admin-content"
+        >
           {error === undefined ? null : (
-            <div className="dsh-qa-admin__error">{error}</div>
+            <div className="dsh-qa-admin__error" data-testid="qa-admin-error">
+              {error}
+            </div>
           )}
           {adminApi !== undefined && page === "overview" ? (
             <AdminOverview
@@ -1258,36 +1492,51 @@ export function QaAdmin(props: {
                 <button
                   type="button"
                   className="dsh-qa-admin__primary"
+                  data-testid="qa-admin-subrole-create"
                   onClick={() => setEditing(null)}
                 >
                   Создать саброль
                 </button>
               </div>
-              <div className="dsh-qa-role-grid">
+              <div
+                className="dsh-qa-role-grid"
+                data-testid="qa-admin-role-grid"
+              >
                 {roles.map((role) => (
-                  <article key={role.id} className="dsh-qa-role-card">
+                  <article
+                    key={role.id}
+                    className="dsh-qa-role-card"
+                    data-testid="qa-admin-role-card"
+                  >
                     <div className="dsh-qa-role-card__head">
                       <span>{role.ui?.icon ?? "◇"}</span>
                       <div>
                         <h2>{role.name}</h2>
                         <code>{role.id}</code>
                       </div>
-                      <em>{role.enabled ? "Включена" : "Выключена"}</em>
+                      <em data-testid="qa-admin-role-state">
+                        {role.enabled ? "Включена" : "Выключена"}
+                      </em>
                     </div>
                     <p>{role.description ?? "Без описания"}</p>
-                    <div className="dsh-qa-role-card__counts">
-                      <span>
+                    <div
+                      className="dsh-qa-role-card__counts"
+                      data-testid="qa-admin-role-counts"
+                    >
+                      <span data-testid="qa-admin-role-count-tools">
                         {role.capabilities.tools.always.length} инструментов
                       </span>
-                      <span>
+                      <span data-testid="qa-admin-role-count-grantable">
                         +{role.capabilities.tools.skillGrantable.length} по
                         навыкам
                       </span>
-                      <span>
+                      <span data-testid="qa-admin-role-count-denied">
                         {(role.capabilities.tools.deny ?? []).length} запрещено
                       </span>
-                      <span>{role.capabilities.skills.length} навыков</span>
-                      <span>
+                      <span data-testid="qa-admin-role-count-skills">
+                        {role.capabilities.skills.length} навыков
+                      </span>
+                      <span data-testid="qa-admin-role-count-common">
                         +{" "}
                         {snapshot.config.common.tools.always.length +
                           snapshot.config.common.tools.skillGrantable.length +
@@ -1295,18 +1544,27 @@ export function QaAdmin(props: {
                         общих
                       </span>
                     </div>
-                    <div className="dsh-qa-role-card__actions">
+                    <div
+                      className="dsh-qa-role-card__actions"
+                      data-testid="qa-admin-role-actions"
+                    >
                       <button
                         type="button"
+                        data-testid="qa-admin-role-preview"
                         onClick={() => props.onPreview(role)}
                       >
                         Просмотреть
                       </button>
-                      <button type="button" onClick={() => setEditing(role)}>
+                      <button
+                        type="button"
+                        data-testid="qa-admin-role-edit"
+                        onClick={() => setEditing(role)}
+                      >
                         Изменить →
                       </button>
                       <button
                         type="button"
+                        data-testid="qa-admin-role-toggle"
                         onClick={() =>
                           void mutate(() =>
                             props.api.updateSubrole(props.token, role.id, {
@@ -1320,6 +1578,7 @@ export function QaAdmin(props: {
                       </button>
                       <button
                         type="button"
+                        data-testid="qa-admin-role-duplicate"
                         onClick={() => {
                           const ids = new Set(roles.map(({ id }) => id));
                           let id = `${role.id}-copy`;
@@ -1339,6 +1598,7 @@ export function QaAdmin(props: {
                       <button
                         type="button"
                         className="dsh-qa-admin__danger"
+                        data-testid="qa-admin-role-delete"
                         disabled={roles.length <= 1}
                         onClick={() => {
                           if (
@@ -1366,6 +1626,12 @@ export function QaAdmin(props: {
             </>
           ) : adminApi !== undefined && page === "skill-files" ? (
             <AdminSkillFiles api={adminApi} token={props.token} />
+          ) : adminApi !== undefined && page === "memory" ? (
+            <AdminExpertMemory
+              api={adminApi}
+              token={props.token}
+              canManage={canManageMemory(props.role)}
+            />
           ) : page === "skills" ? (
             <>
               <div className="dsh-qa-admin__title-row">
@@ -1395,9 +1661,13 @@ export function QaAdmin(props: {
                   </p>
                 </div>
               </div>
-              <div className="dsh-qa-admin__tabs">
+              <div
+                className="dsh-qa-admin__tabs"
+                data-testid="qa-admin-common-tabs"
+              >
                 <button
                   type="button"
+                  data-testid="qa-admin-common-tab-tool"
                   aria-current={commonType === "tool" ? "page" : undefined}
                   onClick={() => setCommonType("tool")}
                 >
@@ -1405,6 +1675,7 @@ export function QaAdmin(props: {
                 </button>
                 <button
                   type="button"
+                  data-testid="qa-admin-common-tab-skill"
                   aria-current={commonType === "skill" ? "page" : undefined}
                   onClick={() => setCommonType("skill")}
                 >
@@ -1412,9 +1683,13 @@ export function QaAdmin(props: {
                 </button>
               </div>
               {commonType === "tool" ? (
-                <div className="dsh-qa-admin__tabs">
+                <div
+                  className="dsh-qa-admin__tabs"
+                  data-testid="qa-admin-common-bucket-tabs"
+                >
                   <button
                     type="button"
+                    data-testid="qa-admin-common-bucket-always"
                     aria-current={
                       commonToolBucket === "always" ? "page" : undefined
                     }
@@ -1424,6 +1699,7 @@ export function QaAdmin(props: {
                   </button>
                   <button
                     type="button"
+                    data-testid="qa-admin-common-bucket-skill-grantable"
                     aria-current={
                       commonToolBucket === "skillGrantable" ? "page" : undefined
                     }
@@ -1433,6 +1709,7 @@ export function QaAdmin(props: {
                   </button>
                   <button
                     type="button"
+                    data-testid="qa-admin-common-bucket-deny"
                     aria-current={
                       commonToolBucket === "deny" ? "page" : undefined
                     }
@@ -1444,6 +1721,7 @@ export function QaAdmin(props: {
               ) : null}
               <CapabilityPicker
                 type={commonType}
+                testId="qa-admin-common-capabilities"
                 catalog={snapshot.catalog}
                 skillDetails={snapshot.skills}
                 selected={
@@ -1465,16 +1743,23 @@ export function QaAdmin(props: {
                   )
                 }
               />
-              <div className="dsh-qa-admin__impact">
+              <div
+                className="dsh-qa-admin__impact"
+                data-testid="qa-admin-common-impact"
+              >
                 ⚠ Изменение затронет {enabledRoles.length} сабролей и{" "}
                 {snapshot.users.filter(({ disabled }) => !disabled).length}{" "}
                 пользователей. Оно применяется только к новым разговорам.
               </div>
-              <div className="dsh-qa-admin__savebar">
+              <div
+                className="dsh-qa-admin__savebar"
+                data-testid="qa-admin-common-savebar"
+              >
                 <span />
                 <button
                   type="button"
                   className="dsh-qa-admin__primary"
+                  data-testid="qa-admin-common-save"
                   onClick={() =>
                     void mutate(() =>
                       props.api.updateCommon(props.token, common),
@@ -1486,7 +1771,12 @@ export function QaAdmin(props: {
               </div>
             </>
           ) : (
-            <p className="dsh-qa-admin__empty">Раздел недоступен.</p>
+            <p
+              className="dsh-qa-admin__empty"
+              data-testid="qa-admin-section-unavailable"
+            >
+              Раздел недоступен.
+            </p>
           )}
         </section>
       </div>

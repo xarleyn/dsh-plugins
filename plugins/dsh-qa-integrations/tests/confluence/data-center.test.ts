@@ -474,7 +474,7 @@ describe("Confluence Server / Data Center transport", () => {
     const { fetcher, calls } = stub(() => ({ json: PAGE }));
     await callServer("pages.get", { pageId: "123456" }, { fetcher });
     const [call] = calls;
-    expect(call?.init.redirect).toBe("error");
+    expect(call?.init.redirect).toBe("manual");
     expect(call?.init.method).toBe("GET");
     expect(call?.url.toString()).not.toContain(PAT);
   });

@@ -31,3 +31,25 @@ export const DOCUMENT_COMPARISON_TOOL_NAMES: readonly string[] = [
   "document_compare",
   "document_diff_read",
 ];
+
+/**
+ * The external programs the startup record answers for. The card sends an
+ * operator to the journal when a parse comes back wrong, so this is the list
+ * both halves are pinned to: the pipeline reports every name here in
+ * {@link DOCUMENTS_STARTUP_ENTRY}, and the card only promises about one it
+ * finds on it. Like the tool names above, the pipeline keeps its own copy next
+ * to the probe, because this module is the browser's side of the namespace.
+ */
+export const DOCUMENTS_STARTUP_PROGRAMS: readonly string[] = [
+  "pandoc",
+  "libreoffice",
+  "markitdown",
+  "typst",
+];
+
+/**
+ * The journal entry a boot writes for this pipeline, named in one place so the
+ * card can point an operator at it and the Host can write it, without either
+ * half copying a string the other one cannot see.
+ */
+export const DOCUMENTS_STARTUP_ENTRY = "documents.installed";

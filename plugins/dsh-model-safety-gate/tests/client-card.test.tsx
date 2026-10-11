@@ -4,6 +4,9 @@
  * classifier disclosure, and the status projection the Remote feeds it.
  */
 
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   act,
   cleanup,
@@ -16,9 +19,37 @@ import {
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ReactElement } from "react";
 
+import type {
+  ConfigForm,
+  ConfigFormSnapshot,
+} from "@deepseek-ai/dsh-client-ui-settings/client";
 import type { ModelSafetyGateConfig } from "../src/config.js";
 import type { SafetyGateInspect } from "../src/types.js";
-import { SafetyGateCard } from "../src/client/card.js";
+import {
+  SAFETY_GATE_ROW_SUMMARY,
+  SafetyGateCard,
+  SafetyGateEntry,
+} from "../src/client/card.js";
+
+/*
+ * The row's display copy as the Host reads it, without activating the plugin.
+ * Read from the shipped file rather than restated here, and through
+ * `fileURLToPath` because the jsdom environment replaces the global `URL` while
+ * Node's `readFileSync` only recognises its own.
+ */
+const rowMeta = (
+  JSON.parse(
+    readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "..", "locale/en.json"),
+      "utf8",
+    ),
+  ) as {
+    readonly meta: { readonly description: string; readonly title: string };
+  }
+).meta;
+
+/** The form's atomic write, as the card calls it. */
+type FormOps = ConfigForm<ModelSafetyGateConfig>["mutate"];
 
 const CONFIG: ModelSafetyGateConfig = {
   enabled: true,
@@ -68,6 +99,7 @@ const INSPECT: SafetyGateInspect = {
     reason: null,
     apiKeyConfigured: false,
   },
+  configRejected: null,
   metrics: {
     checks: { input: 4, text: 9, reasoning: 1, tool: 2, "tool-result": 1 },
     blocks: { input: 1, output: 0, reasoning: 0, tools: 1, "tool-results": 0 },
@@ -103,25 +135,38 @@ const INSPECT: SafetyGateInspect = {
       rawContent: null,
       policyVersion: "1",
     },
+    {
+      turn: 3,
+      step: null,
+      direction: "output",
+      channel: "text",
+      toolName: null,
+      decision: "warn",
+      categories: ["self_harm"],
+      summary: "ideation",
+      confidence: 0.62,
+      classifierProvider: "local",
+      classifierModel: "safety-small",
+      classifierRan: true,
+      latencyMs: 34,
+      contentSha256: "b".repeat(64),
+      contentChars: 96,
+      errorCode: null,
+      rawContent: null,
+      policyVersion: "1",
+    },
   ],
   startedAt: Date.now() - 65_000,
 };
 
-type ScopeSnapshot = {
-  status: "loading" | "ready" | "unavailable";
-  value: ModelSafetyGateConfig | undefined;
-  base: unknown;
-  user: unknown;
-  revision: number | undefined;
-  writable: boolean;
-  mode: "host" | "memory";
-};
+type FormSnapshot = ConfigFormSnapshot<ModelSafetyGateConfig>;
 
-function makeScope(
-  snapshot: Partial<ScopeSnapshot> = {},
-  mutate: (ops: unknown) => Promise<void> = () => Promise.resolve(),
+/** The configuration form the slot injects as the card's write path. */
+function makeForm(
+  snapshot: Partial<FormSnapshot> = {},
+  mutate: FormOps = () => Promise.resolve(true),
 ) {
-  const current: ScopeSnapshot = {
+  const current: FormSnapshot = {
     status: "ready",
     value: CONFIG,
     base: undefined,
@@ -132,46 +177,50 @@ function makeScope(
     ...snapshot,
   };
   return {
-    scope: {
+    settingsForm: {
       getSnapshot: () => current,
       subscribe: () => () => undefined,
       mutate,
-      set: () => Promise.resolve(),
-      unset: () => Promise.resolve(),
+      set: () => Promise.resolve(true),
+      unset: () => Promise.resolve(true),
     },
   };
 }
 
 /** The slot runtime props do not exist outside the host; only the face does. */
 const Card = SafetyGateCard as unknown as (props: {
-  scope: unknown;
+  view: "page" | "summary";
+  settingsForm: unknown;
+  inspect: () => Promise<{ ok: true; value: SafetyGateInspect }>;
+}) => ReactElement;
+
+/** The registered entry, which also answers the page's `summary` view. */
+const Entry = SafetyGateEntry as unknown as (props: {
+  view: "page" | "summary";
+  settingsForm: unknown;
   inspect: () => Promise<{ ok: true; value: SafetyGateInspect }>;
 }) => ReactElement;
 
 async function renderCard(
   options: {
-    snapshot?: Partial<ScopeSnapshot>;
-    mutate?: (ops: unknown) => Promise<void>;
+    snapshot?: Partial<FormSnapshot>;
+    mutate?: FormOps;
     inspect?: () => Promise<{ ok: true; value: SafetyGateInspect }>;
   } = {},
 ) {
-  const { scope } = makeScope(options.snapshot, options.mutate);
+  const { settingsForm } = makeForm(options.snapshot, options.mutate);
   const inspect =
     options.inspect ?? (async () => ({ ok: true, value: INSPECT }));
   let result: ReturnType<typeof render> | undefined;
   // The card polls once on mount; awaiting inside act keeps that first update
   // inside the test rather than after it.
   await act(async () => {
-    result = render(<Card scope={scope} inspect={inspect} />);
+    result = render(
+      <Card view="page" settingsForm={settingsForm} inspect={inspect} />,
+    );
     await Promise.resolve();
   });
   return result as ReturnType<typeof render>;
-}
-
-function openCard(): void {
-  fireEvent.click(
-    screen.getByRole("button", { name: /Show settings: Model Safety Gate/u }),
-  );
 }
 
 afterEach(async () => {
@@ -184,41 +233,85 @@ afterEach(async () => {
 });
 
 describe("Safety Gate card", () => {
-  it("renders the canonical shell closed with the running mode as its badge", async () => {
+  it("renders the body without a shell of its own, because the page draws the card", async () => {
     const { container } = await renderCard();
-    const card = container.querySelector("li.dsh-plugin-card");
-    expect(card).not.toBeNull();
-    expect(container.querySelector(".dsh-plugin-card__body")).toBeNull();
-    expect(screen.getByText("Model Safety Gate")).toBeTruthy();
+    // The Plugins page seats this bundle inside its own row card: the frame, the
+    // heading and the expand control are the page's, so the body arrives with no
+    // shell class and no chevron of ours (AGENTS.md, the owner's word of 01.10).
+    expect(container.querySelector("[class*='dsh-plugin-card']")).toBeNull();
     expect(
-      container.querySelector(".dsh-plugin-card__badge")?.textContent,
-    ).toBe("Warn");
-    expect(container.querySelector(".dsh-plugin-card__chevron")).not.toBeNull();
+      screen.queryByRole("button", {
+        name: /Show settings: Model Safety Gate/u,
+      }),
+    ).toBeNull();
+    // Nothing folds the body away, so the live status section is mounted directly —
+    // and it, not a header badge, is where the running mode reads.
+    expect(screen.getByTestId("safety-section-status")).toBeTruthy();
+    expect(container.querySelector(".msg-body")).not.toBeNull();
   });
 
-  it("renders nothing when the settings namespace is unavailable", async () => {
+  it("answers the page's summary view with the sentence, not a second card", async () => {
+    const { settingsForm } = makeForm();
+    const inspect = vi.fn(async () => ({ ok: true as const, value: INSPECT }));
+    let result: ReturnType<typeof render> | undefined;
+    await act(async () => {
+      result = render(
+        <Entry view="summary" settingsForm={settingsForm} inspect={inspect} />,
+      );
+      await Promise.resolve();
+    });
+    const container = (result as ReturnType<typeof render>).container;
+    // The row's description seat sits inside the page's own text, so it carries
+    // no shell and starts no poll of the Remote.
+    expect(container.querySelector("li.dsh-plugin-card")).toBeNull();
+    expect(container.textContent).toBe(SAFETY_GATE_ROW_SUMMARY);
+    expect(inspect).not.toHaveBeenCalled();
+  });
+
+  it("describes the row with the sentence the seat falls back to", () => {
+    // The page titles and describes this row from `locale/en.json` and prints the
+    // entry's own answer only where that file carries no description, so two
+    // different sentences here would let the row describe something other than
+    // the page it opens.
+    expect(rowMeta.title).toBe("Model Safety Gate");
+    expect(rowMeta.description).toBe(SAFETY_GATE_ROW_SUMMARY);
+  });
+
+  it("explains rather than vanishes when the settings namespace is unavailable", async () => {
     const { container } = await renderCard({
       snapshot: { status: "unavailable", value: undefined },
     });
-    expect(container.innerHTML).toBe("");
+    // The row's frame is the page's, so an empty return would leave an opened row with
+    // no section and no reason — a card that owns its shell may stay invisible, this
+    // one owes a sentence.
+    expect(container.querySelector("li.dsh-plugin-card")).toBeNull();
+    expect(screen.getByTestId("safety-card-unavailable").textContent).toContain(
+      "not available in this session",
+    );
+    expect(screen.queryByTestId("safety-section-status")).toBeNull();
   });
 
   it("opens into the configuration and status sections", async () => {
     await renderCard();
-    openCard();
-    for (const title of [
-      "Status",
-      "Gate",
-      "Input guard",
-      "Output stream",
-      "Tools and results",
-      "Classifier",
-      "Audit",
-      "Recent verdicts",
-      "Advanced",
-    ]) {
+    for (const [plane, title] of [
+      ["status", "Status"],
+      ["gate", "Gate"],
+      ["input", "Input guard"],
+      ["output", "Output stream"],
+      ["tools", "Tools and results"],
+      ["classifier", "Classifier"],
+      ["audit", "Audit"],
+      ["verdicts", "Recent verdicts"],
+      ["advanced", "Advanced"],
+    ] as const) {
+      const section = screen.getByTestId(`safety-section-${plane}`);
+      // The frame of this plane carries the heading of this plane: the id says
+      // which frame is open, the accessible name says what it is called.
       expect(
-        screen.getByRole("heading", { name: new RegExp(title, "u") }),
+        within(section).getByRole("heading", {
+          level: 3,
+          name: new RegExp(title, "u"),
+        }),
       ).toBeTruthy();
     }
     await waitFor(() => {
@@ -227,24 +320,59 @@ describe("Safety Gate card", () => {
         screen.getByText(/Average classifier latency/u).textContent,
       ).toContain("50.0 ms"); // 300 ms over 6 classifier calls
     });
-    expect(screen.getByRole("button", { name: /Hide settings/u })).toBeTruthy();
+    for (const [group, tile, value] of [
+      ["safety-status-counters", "safety-status-checks", "17"],
+      ["safety-status-counters", "safety-status-blocks", "2"],
+      ["safety-status-counters", "safety-status-warnings", "3"],
+      ["safety-status-counters", "safety-status-classifier-requests", "6"],
+      ["safety-status-detail-counters", "safety-status-blocked-prompts", "1"],
+      ["safety-status-detail-counters", "safety-status-classifier-errors", "1"],
+    ] as const) {
+      // A tile counts one figure, so it is its own hook: no caption, and no
+      // walk through the group, stands between a check and the number.
+      const node = within(screen.getByTestId(group)).getByTestId(tile);
+      expect(node.querySelector("b")?.textContent).toBe(value);
+    }
+    // The body belongs to the page's card, which draws its own expand control: the
+    // bundle has no show/hide button of its own, open or closed.
+    expect(
+      screen.queryByRole("button", { name: /Hide settings|Show settings/u }),
+    ).toBeNull();
+    expect(screen.getByTestId("safety-status-counters")).toBeTruthy();
   });
 
   it("writes a path-addressed mutation when a control changes", async () => {
-    const mutate = vi.fn(() => Promise.resolve());
+    const mutate = vi.fn(() => Promise.resolve(true));
     await renderCard({ mutate });
-    openCard();
 
-    const gate = screen
-      .getByRole("heading", { name: /^Gate/u })
-      .closest("section");
-    const enabled = within(gate as HTMLElement).getByRole("checkbox", {
-      name: /Gate enabled/u,
-    });
+    const gate = screen.getByTestId("safety-section-gate");
+    const enabled = within(gate).getByTestId("safety-gate-enabled");
+    // The switch is still a checkbox reachable by its accessible name.
+    expect(within(gate).getByRole("checkbox", { name: /Gate enabled/u })).toBe(
+      enabled,
+    );
     fireEvent.click(enabled);
-    expect(mutate).toHaveBeenCalledWith([
-      { op: "set", path: ["enabled"], value: false },
-    ]);
+    // The revision the card read fences the write, so an edit that raced this
+    // surface is refused instead of silently overwritten.
+    expect(mutate).toHaveBeenCalledWith(
+      [{ op: "set", path: ["enabled"], value: false }],
+      1,
+    );
+  });
+
+  it("says which configuration the running gate refused to apply", async () => {
+    await renderCard({
+      inspect: async () => ({
+        ok: true,
+        value: {
+          ...INSPECT,
+          configRejected: `config "mode" is unknown`,
+        },
+      }),
+    });
+    expect(
+      screen.getByTestId("safety-card-config-rejected").textContent,
+    ).toContain("is unknown");
   });
 
   it("states that the classifier is remote, and where it sends content", async () => {
@@ -260,11 +388,8 @@ describe("Safety Gate card", () => {
         },
       },
     });
-    openCard();
-    const notice = screen
-      .getByText(/Safety classifier is remote/u)
-      .closest(".msg-notice");
-    expect(notice?.textContent).toContain("https://moderator.example/v1");
+    const notice = screen.getByTestId("safety-classifier-notice-remote");
+    expect(notice.textContent).toContain("https://moderator.example/v1");
   });
 
   it("warns when raw content logging is switched on", async () => {
@@ -273,56 +398,71 @@ describe("Safety Gate card", () => {
         value: { ...CONFIG, audit: { enabled: true, includeRawContent: true } },
       },
     });
-    openCard();
-    expect(screen.getByText(/Raw content is on/u)).toBeTruthy();
+    expect(
+      screen.getByTestId("safety-audit-notice-raw-content").textContent,
+    ).toContain("Raw content is on.");
   });
 
   it("offers a reset for the fields the user layer overrides", async () => {
-    const mutate = vi.fn(() => Promise.resolve());
+    const mutate = vi.fn(() => Promise.resolve(true));
     await renderCard({
       snapshot: { user: { mode: "enforce", output: { mode: "observe" } } },
       mutate,
     });
-    openCard();
 
-    expect(screen.getAllByText("modified").length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByRole("button", { name: /Reset 2 overrides/u }));
-    expect(mutate).toHaveBeenCalledWith([
-      { op: "unset", path: ["mode"] },
-      { op: "unset", path: ["output"] },
-    ]);
+    expect(screen.getByTestId("safety-section-gate-modified")).toBeTruthy();
+    expect(screen.getByTestId("safety-section-output-modified")).toBeTruthy();
+    const reset = screen.getByTestId("safety-card-reset-overrides");
+    // The button still announces the number of overrides it clears.
+    expect(screen.getByRole("button", { name: "Reset 2 overrides" })).toBe(
+      reset,
+    );
+    fireEvent.click(reset);
+    expect(mutate).toHaveBeenCalledWith(
+      [
+        { op: "unset", path: ["mode"] },
+        { op: "unset", path: ["output"] },
+      ],
+      1,
+    );
   });
 
   it("disables the controls while a remote browser cannot write", async () => {
     await renderCard({ snapshot: { writable: false } });
-    openCard();
-    const gate = screen
-      .getByRole("heading", { name: /^Gate/u })
-      .closest("section");
-    const enabled = within(gate as HTMLElement).getByRole("checkbox", {
-      name: /Gate enabled/u,
-    });
+    const gate = screen.getByTestId("safety-section-gate");
+    const enabled = within(gate).getByTestId("safety-gate-enabled");
+    expect(within(gate).getByRole("checkbox", { name: /Gate enabled/u })).toBe(
+      enabled,
+    );
     expect((enabled as HTMLInputElement).disabled).toBe(true);
   });
 
   it("shows a loading note until the first section arrives", async () => {
     await renderCard({ snapshot: { status: "loading", value: undefined } });
-    openCard();
-    expect(
-      screen.getByText(/Loading the Safety Gate configuration/u),
-    ).toBeTruthy();
-    expect(
-      screen.queryByRole("heading", { name: /Recent verdicts/u }),
-    ).toBeNull();
+    expect(screen.getByTestId("safety-card-loading")).toBeTruthy();
+    expect(screen.queryByTestId("safety-section-verdicts")).toBeNull();
+    expect(screen.queryAllByRole("heading", { level: 3 })).toHaveLength(0);
   });
 
   it("surfaces recent verdicts with their decision and channel", async () => {
     await renderCard();
-    openCard();
     await waitFor(() => {
-      expect(screen.getByText("prompt_injection")).toBeTruthy();
+      expect(screen.queryByTestId("safety-verdicts-table")).not.toBeNull();
     });
-    expect(screen.getByText("block")).toBeTruthy();
-    expect(screen.getByText("input")).toBeTruthy();
+    const table = screen.getByTestId("safety-verdicts-table");
+    // Every row of the template carries the same id, so a repeated node is read
+    // as a collection and each cell is addressed through its own row.
+    const rows = within(table).getAllByTestId("safety-verdicts-row");
+    expect(rows).toHaveLength(2);
+    // The projection is still a table, so assistive tech reads the verdicts.
+    expect(within(table).getAllByRole("row")).toHaveLength(3);
+    const cell = (testId: string) =>
+      rows.map((row) => within(row).getByTestId(testId).textContent);
+    expect(cell("safety-verdicts-decision")).toEqual(["block", "warn"]);
+    expect(cell("safety-verdicts-channel")).toEqual(["input", "text"]);
+    expect(cell("safety-verdicts-categories")).toEqual([
+      "prompt_injection",
+      "self_harm",
+    ]);
   });
 });

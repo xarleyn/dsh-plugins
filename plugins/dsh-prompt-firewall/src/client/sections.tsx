@@ -32,6 +32,8 @@ export function Toggle(props: {
   disabled: boolean;
   label: string;
   hint: string;
+  /** The stable hook a test reaches this switch by, whatever its label says. */
+  testId?: string;
   onChange(checked: boolean): void;
 }) {
   return (
@@ -43,6 +45,7 @@ export function Toggle(props: {
       <input
         className="pf-toggle"
         type="checkbox"
+        data-testid={props.testId}
         checked={props.checked}
         disabled={props.disabled}
         onChange={(event) => {
@@ -70,7 +73,7 @@ export function PolicySection(props: {
         ? "audit"
         : "blocklist");
   return (
-    <section className="pf-section">
+    <section className="pf-section" data-testid="pf-policy">
       <div className="pf-section-title">
         <h3>Policy</h3>
         <span className="pf-muted">Changes apply live</span>
@@ -81,6 +84,7 @@ export function PolicySection(props: {
           disabled={!writable}
           label="Firewall enabled"
           hint="Keep auditing available when policy is off."
+          testId="pf-policy-enabled"
           onChange={(value) => {
             setPath(["enabled"], value);
           }}
@@ -90,6 +94,7 @@ export function PolicySection(props: {
           disabled={!writable}
           label="Protect core sections"
           hint="Prevents ordinary rules from removing Harness internals."
+          testId="pf-policy-protect-core"
           onChange={(value) => {
             setPath(["protectCoreSections"], value);
           }}
@@ -98,6 +103,7 @@ export function PolicySection(props: {
           <span>Mode</span>
           <select
             className="pf-control"
+            data-testid="pf-policy-mode"
             value={configuredMode}
             disabled={!writable}
             onChange={(event) => {
@@ -114,6 +120,7 @@ export function PolicySection(props: {
           <span>Preset</span>
           <select
             className="pf-control"
+            data-testid="pf-policy-preset"
             value={config?.preset ?? ""}
             disabled={!writable}
             onChange={(event) => {
@@ -132,6 +139,7 @@ export function PolicySection(props: {
           <span>Unknown plugin sections</span>
           <select
             className="pf-control"
+            data-testid="pf-policy-unknown"
             value={config?.unknownPluginPolicy ?? "allow"}
             disabled={!writable}
             onChange={(event) => {
@@ -157,11 +165,12 @@ export function LastRequestSection(props: {
   const effectiveMode =
     props.inspector?.config.mode ?? props.config?.mode ?? "blocklist";
   return (
-    <section className="pf-section">
+    <section className="pf-section" data-testid="pf-last-request">
       <div className="pf-section-title">
         <h3>Last request</h3>
         <button
           className="pf-btn"
+          data-testid="pf-last-request-refresh"
           disabled={props.refreshing}
           onClick={() => {
             props.onRefresh();
@@ -171,21 +180,21 @@ export function LastRequestSection(props: {
         </button>
       </div>
       <div className="pf-stats">
-        <div className="pf-stat">
+        <div className="pf-stat" data-testid="pf-last-request-sections">
           <b>{last?.totalSections ?? "—"}</b>
           <span>sections</span>
         </div>
-        <div className="pf-stat">
+        <div className="pf-stat" data-testid="pf-last-request-blocked">
           <b>{last?.blockedSections ?? "—"}</b>
           <span>blocked</span>
         </div>
-        <div className="pf-stat">
+        <div className="pf-stat" data-testid="pf-last-request-tokens">
           <b>
             {last === null ? "—" : "~" + String(last.estimatedTokensRemoved)}
           </b>
           <span>tokens removed (estimate)</span>
         </div>
-        <div className="pf-stat">
+        <div className="pf-stat" data-testid="pf-last-request-mode">
           <b>{effectiveMode}</b>
           <span>effective mode</span>
         </div>
@@ -274,7 +283,7 @@ export function RulesSection(props: {
   ];
 
   return (
-    <section className="pf-section">
+    <section className="pf-section" data-testid="pf-rules">
       <div className="pf-section-title">
         <h3>Rules</h3>
         <span className="pf-muted">
@@ -284,6 +293,7 @@ export function RulesSection(props: {
       <form className="pf-editor" onSubmit={addRule}>
         <input
           className="pf-control"
+          data-testid="pf-rules-input"
           value={rule}
           disabled={!writable}
           placeholder="plugin:example or announcement:*"
@@ -293,6 +303,7 @@ export function RulesSection(props: {
         />
         <select
           className="pf-control"
+          data-testid="pf-rules-kind"
           value={ruleKind}
           disabled={!writable || ruleAction === "protect"}
           onChange={(event) => {
@@ -305,6 +316,7 @@ export function RulesSection(props: {
         </select>
         <select
           className="pf-control"
+          data-testid="pf-rules-action"
           value={ruleAction}
           disabled={!writable}
           onChange={(event) => {
@@ -320,6 +332,7 @@ export function RulesSection(props: {
         <button
           className="pf-btn primary"
           type="submit"
+          data-testid="pf-rules-add"
           disabled={!writable || rule.trim().length === 0}
         >
           Add rule
@@ -327,15 +340,22 @@ export function RulesSection(props: {
       </form>
       <div className="pf-rules">
         {explicitRules.length === 0 && (
-          <div className="pf-empty">No explicit rules yet.</div>
+          <div className="pf-empty" data-testid="pf-rules-empty">
+            No explicit rules yet.
+          </div>
         )}
-        {explicitRules.map((item) => (
-          <div className="pf-rule" key={`${item.field}:${item.value}`}>
+        {explicitRules.map((item, index) => (
+          <div
+            className="pf-rule"
+            key={`${item.field}:${item.value}`}
+            data-testid={`pf-rules-row-${String(index)}`}
+          >
             <code title={item.value}>{item.value}</code>
             <span className="pf-pill pf-kind">{item.kind}</span>
             <span className={`pf-pill ${item.action}`}>{item.action}</span>
             <button
               className="pf-btn link danger"
+              data-testid={`pf-rules-row-${String(index)}-remove`}
               disabled={!writable}
               onClick={() => {
                 setPath(
@@ -362,7 +382,7 @@ export function AuditSection(props: {
 }) {
   const { config, writable, setPath } = props;
   return (
-    <details className="pf-advanced">
+    <details className="pf-advanced" data-testid="pf-audit">
       <summary>Audit & metrics</summary>
       <div className="pf-advanced-content pf-grid">
         <Toggle
@@ -370,6 +390,7 @@ export function AuditSection(props: {
           disabled={!writable}
           label="Audit history"
           hint="Keep recent assemblies in Host memory."
+          testId="pf-audit-history"
           onChange={(value) => {
             setPath(["audit", "enabled"], value);
           }}
@@ -379,6 +400,7 @@ export function AuditSection(props: {
           disabled={!writable}
           label="Section preview"
           hint="Expose only the configured prefix in Inspector."
+          testId="pf-audit-preview"
           onChange={(value) => {
             setPath(["audit", "includePreview"], value);
           }}
@@ -388,6 +410,7 @@ export function AuditSection(props: {
           disabled={!writable}
           label="Log blocked sections"
           hint="Names and sizes only unless preview is enabled."
+          testId="pf-audit-log-blocked"
           onChange={(value) => {
             setPath(["audit", "logBlocked"], value);
           }}
@@ -397,6 +420,7 @@ export function AuditSection(props: {
           disabled={!writable}
           label="Log allowed sections"
           hint="Useful for initial policy discovery."
+          testId="pf-audit-log-allowed"
           onChange={(value) => {
             setPath(["audit", "logAllowed"], value);
           }}
@@ -406,6 +430,7 @@ export function AuditSection(props: {
           disabled={!writable}
           label="Highlight new plugin sections"
           hint="Informational only; never blocks automatically."
+          testId="pf-audit-highlight-new"
           onChange={(value) => {
             setPath(["audit", "highlightNewSections"], value);
           }}
@@ -415,6 +440,7 @@ export function AuditSection(props: {
           disabled={!writable}
           label="Aggregate metrics"
           hint="No arbitrary section-name labels."
+          testId="pf-metrics-enabled"
           onChange={(value) => {
             setPath(["metrics", "enabled"], value);
           }}
@@ -424,6 +450,7 @@ export function AuditSection(props: {
           <input
             className="pf-control"
             type="number"
+            data-testid="pf-audit-preview-chars"
             min="0"
             step="1"
             value={config?.audit?.previewChars ?? 160}
@@ -441,6 +468,7 @@ export function AuditSection(props: {
           <input
             className="pf-control"
             type="number"
+            data-testid="pf-audit-history-size"
             min="0"
             step="1"
             value={config?.audit?.historySize ?? 100}
@@ -465,14 +493,16 @@ export function InspectorSection(props: {
 }) {
   const last = props.inspector?.last ?? null;
   return (
-    <section className="pf-section">
+    <section className="pf-section" data-testid="pf-inspector">
       <div className="pf-section-title">
         <h3>Prompt Inspector</h3>
         <span className="pf-muted">Updates every 3 seconds</span>
       </div>
       <div className="pf-table-wrap">
         {last === null ? (
-          <div className="pf-empty">No audited prompt assembly yet.</div>
+          <div className="pf-empty" data-testid="pf-inspector-empty">
+            No audited prompt assembly yet.
+          </div>
         ) : (
           <table className="pf-table">
             <thead>
@@ -486,13 +516,32 @@ export function InspectorSection(props: {
             </thead>
             <tbody>
               {last.sections.map((section, index) => (
-                <tr key={`${section.name}:${index}`}>
+                <tr
+                  key={`${section.name}:${index}`}
+                  data-testid={`pf-inspector-row-${String(index)}`}
+                >
                   <td>
                     <div className="pf-section-name">
-                      <span>{section.name}</span>
-                      {section.isNew && <span className="pf-new">NEW</span>}
+                      <span
+                        data-testid={`pf-inspector-row-${String(index)}-name`}
+                      >
+                        {section.name}
+                      </span>
+                      {section.isNew && (
+                        <span
+                          className="pf-new"
+                          data-testid={`pf-inspector-row-${String(index)}-new`}
+                        >
+                          NEW
+                        </span>
+                      )}
                       {section.suspicious && (
-                        <span className="pf-warn">POSSIBLE ANNOUNCEMENT</span>
+                        <span
+                          className="pf-warn"
+                          data-testid={`pf-inspector-row-${String(index)}-warn`}
+                        >
+                          POSSIBLE ANNOUNCEMENT
+                        </span>
                       )}
                     </div>
                     {section.preview !== undefined && (
@@ -506,6 +555,7 @@ export function InspectorSection(props: {
                   <td>
                     <span
                       className={`pf-pill ${section.decision === "blocked" ? "block" : section.decision === "protected" ? "protect" : "allow"}`}
+                      data-testid={`pf-inspector-row-${String(index)}-decision`}
                     >
                       {section.decision}
                     </span>
@@ -515,6 +565,7 @@ export function InspectorSection(props: {
                     <div className="pf-actions">
                       <button
                         className="pf-btn link"
+                        data-testid={`pf-inspector-row-${String(index)}-allow`}
                         disabled={!props.writable}
                         onClick={() => {
                           void props.setPolicy(section.name, "allow");
@@ -524,6 +575,7 @@ export function InspectorSection(props: {
                       </button>
                       <button
                         className="pf-btn link danger"
+                        data-testid={`pf-inspector-row-${String(index)}-block`}
                         disabled={!props.writable}
                         onClick={() => {
                           void props.setPolicy(section.name, "block");
@@ -533,6 +585,7 @@ export function InspectorSection(props: {
                       </button>
                       <button
                         className="pf-btn link"
+                        data-testid={`pf-inspector-row-${String(index)}-protect`}
                         disabled={!props.writable}
                         onClick={() => {
                           void props.setPolicy(section.name, "protect");
@@ -542,6 +595,7 @@ export function InspectorSection(props: {
                       </button>
                       <button
                         className="pf-btn link"
+                        data-testid={`pf-inspector-row-${String(index)}-clear`}
                         disabled={!props.writable}
                         onClick={() => {
                           void props.setPolicy(section.name, "clear");
@@ -557,7 +611,7 @@ export function InspectorSection(props: {
           </table>
         )}
       </div>
-      <p className="pf-footer-note">
+      <p className="pf-footer-note" data-testid="pf-inspector-footer">
         Token counts are estimates. Prompt Firewall is a hygiene and
         observability layer, not a security boundary.
       </p>

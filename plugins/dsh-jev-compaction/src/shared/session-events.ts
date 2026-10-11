@@ -100,6 +100,7 @@ export type JevSkipReason =
   | "busy"
   | "pressure-not-met"
   | "cooldown"
+  | "failure-backoff"
   | "not-enough-candidates"
   | "not-enough-candidate-chars"
   | "savings-gate"

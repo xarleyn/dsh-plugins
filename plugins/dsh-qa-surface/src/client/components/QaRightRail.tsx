@@ -1,5 +1,6 @@
-import type { ReactNode } from "react";
+import { useEffect, type ReactNode } from "react";
 import type { QaRailTab } from "../use-session-ui-state.js";
+import { isQaModalOpen } from "./QaModal.js";
 
 /** One rail tab's strip chip: label, live count, and its body is the panel. */
 export interface QaRailTabModel {
@@ -21,6 +22,12 @@ export interface QaRightRailProps {
  * The chat's right rail: a fixed column whose top edge is the tab strip,
  * mirroring the Harness right Sidebar's chrome. Tabs are plain chips with
  * counts; the strip's last control collapses the whole column.
+ *
+ * On the phone layout the column is the whole surface, so the strip's control
+ * is the only way back and Escape has to answer from anywhere on the page —
+ * the focus may well still sit in the composer behind the panel. A dialog above
+ * the rail keeps the key: the innermost thing on the page is what the reader
+ * means to dismiss.
  */
 export function QaRightRail({
   tabs,
@@ -29,11 +36,25 @@ export function QaRightRail({
   onClose,
 }: QaRightRailProps) {
   const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent): void => {
+      if (event.key !== "Escape" || event.defaultPrevented) return;
+      if (isQaModalOpen()) return;
+      onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
   if (active === undefined) return null;
   return (
-    <aside className="dsh-qa-panel" aria-label="Сведения о чате">
+    <aside
+      className="dsh-qa-panel"
+      data-testid="qa-surface-rail"
+      aria-label="Сведения о чате"
+    >
       <div
         className="dsh-qa-panel__strip"
+        data-testid="qa-surface-rail-tabs"
         role="tablist"
         aria-label="Вкладки панели"
       >
@@ -42,6 +63,7 @@ export function QaRightRail({
             key={tab.id}
             type="button"
             role="tab"
+            data-testid={`qa-surface-rail-tab-${tab.id}`}
             aria-selected={tab.id === active.id}
             className={
               tab.id === active.id
@@ -51,14 +73,19 @@ export function QaRightRail({
             onClick={() => onTabSelect(tab.id)}
           >
             {tab.title}
-            {tab.count > 0 ? <span>{tab.count}</span> : null}
+            {tab.count > 0 ? (
+              <span data-testid={`qa-surface-rail-tab-${tab.id}-count`}>
+                {tab.count}
+              </span>
+            ) : null}
           </button>
         ))}
         <button
           type="button"
           className="dsh-qa-panel__close"
-          aria-label="Закрыть панель"
-          title="Закрыть"
+          data-testid="qa-surface-rail-close"
+          aria-label={`Закрыть панель «${active.title}» и вернуться к чату`}
+          title={`Закрыть панель «${active.title}»`}
           onClick={onClose}
         >
           <svg viewBox="0 0 16 16" aria-hidden="true">
@@ -68,6 +95,7 @@ export function QaRightRail({
       </div>
       <div
         className="dsh-qa-panel__body"
+        data-testid="qa-surface-rail-body"
         role="tabpanel"
         aria-label={active.title}
       >

@@ -3,21 +3,30 @@ import type {
   ConnectionHandle,
   SessionId,
 } from "@deepseek-ai/dsh-client-connection/client";
-import type { SettingsScopeBinder } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import qaSurfaceRemote from "@yadsh/dsh-qa-surface/remote";
 import type { ClientRemote } from "@deepseek-ai/dsh-api-gateway/client";
 import type {} from "@deepseek-ai/dsh-api-session-controller/remote";
-import type {} from "@deepseek-ai/dsh-agent-presets/remote";
+import type {} from "@deepseek-ai/dsh-agent-preset-registry/remote";
 import type {} from "@deepseek-ai/dsh-client-ui-conversation/client";
 import type {} from "@deepseek-ai/dsh-client-ui-layout/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
-import { registerSettingsCard } from "@yadsh/dsh-plugin-kit/client";
+import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 import { QaConfigController } from "./QaConfigController.js";
 import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
 import { QaAccountsController } from "./QaAccountsController.js";
+import { createQaAccountSessions } from "./account-sessions.js";
+import { createQaAccountUpload } from "./account-upload.js";
+import type { QaUploadCarrier } from "./account-upload.js";
+import { createQaAccountConversation } from "./account-conversation.js";
+import type {
+  QaChatWire,
+  QaSessionRemotes,
+  QaSharingApi,
+} from "./chat-sharing-api.js";
+import { QA_SHARING_STYLES } from "./components/QaChatSharing.js";
 import { QaChatIndex } from "./chat-index.js";
 import { harvestLocalRatings } from "./rating-harvest.js";
 import { isDelegatedSession } from "./lineage.js";
@@ -31,6 +40,7 @@ import type {
   QaApprovalApi,
   QaFileUpload,
   QaQuestionApi,
+  QaQueueStatusRemote,
   QaSecureSession,
   QaSessions,
   QaSessionsApi,
@@ -46,8 +56,10 @@ import type {
   QaAccountSession,
   QaApprovalDecision,
   QaQuestionAnswerItem,
+  QaQueueStatus,
   QaClaimResult,
   QaLockdownProof,
+  QaModelCatalogEntry,
   QaOwnershipEntry,
   QaSkillDocument,
   QaSkillDraftInput,
@@ -84,6 +96,10 @@ import type {
   QaConversationReview,
   QaConversationReviewInput,
   QaConversationSummary,
+  QaExpertMemoryDraft,
+  QaExpertMemoryPage,
+  QaExpertMemoryRecord,
+  QaExpertMemoryScope,
   QaFeedbackHarvestEntry,
   QaFeedbackHarvestResult,
   QaFeedbackQuery,
@@ -96,9 +112,15 @@ import type {
   QaReviewQueueRow,
   QaUserQuery,
 } from "../types.js";
-import { QA_SURFACE_SETTINGS_NAMESPACE } from "../shared/settings.js";
+import {
+  QA_SURFACE_ROW_CONFIG_KEY,
+  QA_SURFACE_SETTINGS_NAMESPACE,
+} from "../shared/settings.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
-import { QaSettingsCard, type QaSettingsCardFace } from "./settings/card.js";
+import {
+  QaSettingsCardEntry,
+  type QaSettingsCardFace,
+} from "./settings/card.js";
 import { QA_SETTINGS_STYLES } from "./settings/styles.js";
 import { QaSurfacePanelRegistry } from "./panels/registry.js";
 import { QaUserSettingsSectionRegistry } from "./settings-extensions/index.js";
@@ -238,9 +260,40 @@ interface QaAdminRemote {
   ): Promise<
     RemoteResult<{ readonly tools: readonly QaSkillToolDescriptor[] }>
   >;
+  adminMemoryScopes(
+    token: string,
+  ): Promise<RemoteResult<readonly QaExpertMemoryScope[]>>;
+  adminMemoryRecords(
+    token: string,
+    namespace: string,
+    query: string,
+    limit: number | null,
+    offset: number,
+  ): Promise<RemoteResult<QaExpertMemoryPage>>;
+  adminMemoryCorrect(
+    token: string,
+    namespace: string,
+    key: string,
+    draft: QaExpertMemoryDraft,
+  ): Promise<RemoteResult<QaExpertMemoryRecord>>;
+  adminMemoryForget(
+    token: string,
+    namespace: string,
+    keys: readonly string[],
+  ): Promise<RemoteResult<number>>;
+  adminMemoryWipe(
+    token: string,
+    namespace: string,
+    expectedRecords: number | null,
+  ): Promise<RemoteResult<number>>;
 }
 
 interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
+  forkSession(
+    token: string,
+    sourceId: string,
+    answerSeq: number,
+  ): Promise<RemoteResult<string>>;
   createSession(
     token: string,
     subroleId: string | null,
@@ -251,6 +304,7 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
     sessionId: string,
   ): Promise<RemoteResult<QaLockdownProof>>;
   describe(): Promise<RemoteResult<ResolvedQaSurfaceConfig>>;
+  queueStatus(): Promise<RemoteResult<QaQueueStatus>>;
   sources(
     token: string,
     sessionId: string,
@@ -420,6 +474,9 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
     userId: string,
     input: QaUserAccess,
   ): Promise<RemoteResult<QaUserAccess>>;
+  accessModelCatalog(
+    token: string,
+  ): Promise<RemoteResult<readonly QaModelCatalogEntry[]>>;
   accessUpdateSkillOverride(
     token: string,
     input: QaSkillAssignmentOverride,
@@ -495,7 +552,7 @@ export const inject = [
   "sessions",
   "uiConversation",
   "connection",
-  "settingsScope",
+  "configForms",
   "remote",
 ];
 
@@ -555,7 +612,30 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         const mounted = auditContext.remote as unknown as {
           sessionAudit: QaAuditRemote;
         };
-        audit.attach(createQaAuditApi(mounted.sessionAudit));
+        audit.attach(
+          createQaAuditApi({
+            summary: (id) =>
+              config.getSnapshot().config?.accounts.enabled
+                ? ((
+                    injectedRemote.qaSurface as unknown as QaChatWire
+                  ).chatAudit(
+                    accounts.token() ?? "",
+                    id,
+                    false,
+                  ) as unknown as ReturnType<QaAuditRemote["summary"]>)
+                : mounted.sessionAudit.summary(id),
+            audit: (id) =>
+              config.getSnapshot().config?.accounts.enabled
+                ? ((
+                    injectedRemote.qaSurface as unknown as QaChatWire
+                  ).chatAudit(
+                    accounts.token() ?? "",
+                    id,
+                    true,
+                  ) as unknown as ReturnType<QaAuditRemote["audit"]>)
+                : mounted.sessionAudit.audit(id),
+          }),
+        );
         return () => audit.detach();
       });
       // Keep source checks independent of a previously generated lib/ Remote
@@ -568,8 +648,17 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           token,
           sessionId,
         ) as unknown as ReturnType<QaSecureSession>;
+      // The stand's live load, asked once per send. Only the Host can say it:
+      // a browser sees its own chats and never the HTTP API's questions.
+      const queueStatus: QaQueueStatusRemote = () => policyRemote.queueStatus();
       const qaApi: QaSessionsApi = {
-        selectModel: (request) => injectedRemote.session.selectModel(request),
+        selectModel: (request) =>
+          config.getSnapshot().config?.accounts.enabled
+            ? (policyRemote as unknown as QaChatWire).chatSelectModel(
+                accounts.token() ?? "",
+                request,
+              )
+            : injectedRemote.session.selectModel(request),
         selectAgentPreset: (agentId, agentPreset) =>
           injectedRemote.agentPresets.select(agentId, agentPreset),
       };
@@ -588,6 +677,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           policyRemote.accessUpdateCommon(token, input),
         updateAssignment: (token, userId, input) =>
           policyRemote.accessUpdateAssignment(token, userId, input),
+        modelCatalog: (token) => policyRemote.accessModelCatalog(token),
         updateSkillOverride: (token, input) =>
           policyRemote.accessUpdateSkillOverride(token, input),
         skillActivations: (token, sessionId) =>
@@ -643,8 +733,47 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             ? { ok: true, value: result.value.tools }
             : { ok: false, error: result.error };
         },
+        memoryScopes: (token) => policyRemote.adminMemoryScopes(token),
+        memoryRecords: (token, namespace, query, limit, offset) =>
+          policyRemote.adminMemoryRecords(
+            token,
+            namespace,
+            query,
+            limit,
+            offset,
+          ),
+        correctMemory: (token, namespace, key, draft) =>
+          policyRemote.adminMemoryCorrect(token, namespace, key, draft),
+        forgetMemory: (token, namespace, keys) =>
+          policyRemote.adminMemoryForget(token, namespace, keys),
+        wipeMemory: (token, namespace, expectedRecords) =>
+          policyRemote.adminMemoryWipe(token, namespace, expectedRecords),
       };
       const sourceApi: QaSourceApi = {
+        documentWorkflowStatus: (token, sessionId, workflowId) =>
+          (
+            policyRemote as unknown as Required<QaSourceApi>
+          ).documentWorkflowStatus(token, sessionId, workflowId),
+        approveDocumentWorkflow: (
+          token,
+          sessionId,
+          workflowId,
+          revision,
+          sha256,
+        ) =>
+          (
+            policyRemote as unknown as Required<QaSourceApi>
+          ).approveDocumentWorkflow(
+            token,
+            sessionId,
+            workflowId,
+            revision,
+            sha256,
+          ),
+        readWorkspaceFileChunk: (token, sessionId, path, offset, version) =>
+          (
+            policyRemote as unknown as Required<QaSourceApi>
+          ).readWorkspaceFileChunk(token, sessionId, path, offset, version),
         sources: (token, sessionId) =>
           policyRemote.sources(token, sessionId) as unknown as ReturnType<
             QaSourceApi["sources"]
@@ -783,15 +912,54 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       // Publish the account this controller tracks to the extension service, so
       // a card mounted outside the overlay sees the same session the pages do.
       userSession.attach(accounts);
+      const sharingRemote = policyRemote as unknown as QaChatWire;
+      let accountRuntime:
+        | { sessions: QaSessions; conversation: typeof ctx.uiConversation }
+        | undefined;
+      const getAccountRuntime = () => {
+        if (accountRuntime !== undefined) return accountRuntime;
+        const sessions = createQaAccountSessions(
+          ctx,
+          ctx.sessions as unknown as QaSessions,
+          injectedRemote as unknown as QaSessionRemotes,
+          sharingRemote,
+          () => accounts.token(),
+          ctx.connection.generation,
+          (listener) => accounts.subscribe(listener),
+        );
+        return (accountRuntime = {
+          sessions,
+          conversation: createQaAccountConversation(
+            ctx,
+            sessions,
+            ctx.uiConversation,
+          ),
+        });
+      };
+      const sharingApi: QaSharingApi = {
+        attachmentPath: (token, id, attachmentId) =>
+          sharingRemote.chatAttachmentPath(token, id, attachmentId),
+        access: (token, id) => sharingRemote.chatAccess(token, id),
+        visible: (token) => sharingRemote.chatVisible(token),
+        grants: (token, id) => sharingRemote.chatGrants(token, id),
+        set: (token, id, email, mode) =>
+          sharingRemote.chatSetGrant(token, id, email, mode),
+      };
+      const refreshSharing = setInterval(() => {
+        if (accounts.token() !== null) void accounts.refreshOwned();
+      }, 1000);
+      ctx.effect(
+        () => () => clearInterval(refreshSharing),
+        "qa.shared-chat-catalog",
+      );
       const route = new QaRouteController();
-      // One binding for both readers: the surface projects it into the page's
+      // One form for both readers: the surface projects it into the page's
       // configuration, the settings card edits the same namespace through it.
-      const settingsScope = (
-        ctx.settingsScope as SettingsScopeBinder
-      ).bind<QaSurfaceConfig>({
-        namespace: QA_SURFACE_SETTINGS_NAMESPACE,
-      });
-      const config = new QaConfigController(settingsScope, async () => {
+      // The namespace is this bundle's profile entry id.
+      const configForm = ctx.configForms.get<QaSurfaceConfig>(
+        QA_SURFACE_SETTINGS_NAMESPACE,
+      );
+      const config = new QaConfigController(configForm, async () => {
         // Settings RPCs are loopback-pinned by the gateway, so a browser the
         // Host serves over the LAN reads the effective configuration here.
         const described = await policyRemote.describe();
@@ -802,22 +970,39 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         // declarations during an incremental source typecheck.
         return described.value as unknown as ResolvedQaSurfaceConfig;
       });
-      // The operator edits this deployment through the shared plugin-cards
-      // tab: the same namespace the page reads, plus the Host's own answer
-      // about what it resolved. Its stylesheet is the card shell, not the QA
-      // page's palette.
+      // The operator edits this deployment from the plugin's own row in the
+      // Plugins panel: the same namespace the page reads, plus the Host's own
+      // answer about what it resolved. The row's page draws the card surface,
+      // the heading and the expand control, so this bundle supplies the body
+      // only (AGENTS.md, card-shell contract).
+      // The seat is keyed `<package name>#<row id>`, and the row id is the
+      // namespace above, so the move never orphans a saved value. The seat hands
+      // its registrant a `ConfigPageForm` for that namespace — `{ state, mutate }`
+      // only, unsubscribable and unable to write one field — which is why the
+      // card reads the `configForm` resolved above rather than the page's view.
       ctx.effect(() => {
         const cardFace: QaSettingsCardFace = {
-          scope: settingsScope,
+          settingsForm: configForm,
           describe: () => policyRemote.describe(),
         };
-        return registerSettingsCard(remoteContext, {
-          key: QA_SURFACE_SETTINGS_NAMESPACE,
-          pluginName: "@yadsh/dsh-qa-surface",
-          styles: QA_SETTINGS_STYLES,
-          component: QaSettingsCard,
-          inject: () => cardFace,
-        });
+        const removeStyles = injectCardStyles(
+          "@yadsh/dsh-qa-surface",
+          QA_SETTINGS_STYLES,
+        );
+        const removeRowConfig = ctx.slots.inject("plugins.row.config", () =>
+          ctx.slots.register(
+            {
+              name: "plugins.row.config",
+              key: QA_SURFACE_ROW_CONFIG_KEY,
+              inject: () => cardFace,
+            },
+            QaSettingsCardEntry,
+          ),
+        );
+        return () => {
+          removeRowConfig();
+          removeStyles();
+        };
       }, "dsh-qa-surface: settings-card");
       const syncRoute = () => {
         const snapshot = config.getSnapshot();
@@ -905,7 +1090,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         style.dataset.dshQaSurface = "styles";
         // The kiosk sheet carries no host-hiding rules: nothing native mounts
         // beneath the surface in that composition, so there is nothing to hide.
-        style.textContent = kiosk ? QA_ROOT_STYLES : QA_OVERLAY_STYLES;
+        style.textContent =
+          (kiosk ? QA_ROOT_STYLES : QA_OVERLAY_STYLES) + QA_SHARING_STYLES;
         document.head.append(style);
         return () => style.remove();
       }, "dsh-qa-surface: styles");
@@ -914,6 +1100,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         () => () => {
           unsubscribeConfig();
           unsubscribeConnection();
+          // The boot whoami otherwise outlives this callback: its answer
+          // clears the token the *next* instance stored under the same key.
+          accounts.dispose();
           config.dispose();
           route.dispose();
         },
@@ -930,8 +1119,20 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             config,
             // The host dsh-session merge types ctx.sessions as SessionStore in
             // this program; the client assembly provides the ISessions face.
-            sessions: ctx.sessions as unknown as QaSessions,
-            conversation: ctx.uiConversation,
+            sessions: config.getSnapshot().config.accounts.enabled
+              ? getAccountRuntime().sessions
+              : (ctx.sessions as unknown as QaSessions),
+            sharingApi,
+            conversation: config.getSnapshot().config.accounts.enabled
+              ? getAccountRuntime().conversation
+              : ctx.uiConversation,
+            resolveRuntime: (accountsEnabled) =>
+              accountsEnabled
+                ? getAccountRuntime()
+                : {
+                    sessions: ctx.sessions as unknown as QaSessions,
+                    conversation: ctx.uiConversation,
+                  },
             api: qaApi,
             connection: ctx.connection.generation,
             secureSession,
@@ -940,6 +1141,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
               subroleId: string | null,
               adminPreview: boolean,
             ) => policyRemote.createSession(token, subroleId, adminPreview),
+            forkSession: (token: string, sourceId: string, answerSeq: number) =>
+              policyRemote.forkSession(token, sourceId, answerSeq),
+            queueStatus,
             accessApi,
             adminApi,
             sourceApi,
@@ -957,11 +1161,16 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             // the untyped service lookup on purpose — the QA bundle does not
             // link the upload package.
             fileUpload: () =>
-              (
-                ctx as unknown as {
-                  get(service: string): unknown;
-                }
-              ).get("fileUpload") as QaFileUpload | undefined,
+              config.getSnapshot().config.accounts.enabled
+                ? createQaAccountUpload(
+                    () => ctx.get("fileUpload") as QaUploadCarrier | undefined,
+                    () => accounts.token(),
+                  )
+                : ((
+                    ctx as unknown as {
+                      get(service: string): unknown;
+                    }
+                  ).get("fileUpload") as QaFileUpload | undefined),
           };
         } catch {
           return {} as QaSurfaceFace;

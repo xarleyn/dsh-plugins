@@ -17,7 +17,8 @@
  * maxRetries/TTL) or by a long-running drainer that passes
  * `consumeRetries: false` so transient failures stay retryable.
  *
- * Each file contains: { type, sessionId, payload, createdAt, retries, dedupKey }
+ * Each file contains: { type, sessionId, payload, createdAt, retries, dedupKey,
+ * user }
  *
  * Config (env vars):
  *   OPENVIKING_PENDING_DIR         pending queue directory
@@ -73,6 +74,15 @@ export interface PendingEntry {
   createdAt: number;
   retries: number;
   dedupKey: string;
+  /**
+   * FORK LOCAL EDIT (see docs/upstream-sync.md): the OpenViking user this write
+   * has to be replayed as. The queue outlives the process that filled it, and
+   * an entry whose identity only lived in that process's memory could not be
+   * replayed at all after a restart, so the routing identity travels with the
+   * entry. Absent in entries written by an older version, and in a deployment
+   * that has one identity for everybody there is nothing to record.
+   */
+  user?: string;
 }
 
 /** A pending queue file and its parsed entry. */
@@ -109,15 +119,30 @@ export interface ReplayLog {
 }
 
 /**
+ * Which identity one replayed request has to be sent as. The queue module does
+ * not route anything itself: it hands the entry's own identity to the transport
+ * it was injected with, which is the only place that knows how to speak as it.
+ */
+export interface PendingRouting {
+  readonly user?: string;
+}
+
+/**
  * Injected HTTP transport, i.e. the configured `fetchJSON`.
  *
  * FORK LOCAL EDIT (see docs/upstream-sync.md): `traceId` admits an explicit
  * `undefined`, because the transport reports "the server sent no trace id"
  * that way. Type-level only; the wire values are unchanged.
+ *
+ * FORK LOCAL EDIT (see docs/upstream-sync.md): the third parameter carries
+ * {@link PendingRouting}, so a replay can be sent as the account that queued
+ * the write. Upstream's transport takes the two first parameters and ignores
+ * this one.
  */
 export type PendingFetchJSON = (
   path: string,
   init?: { readonly method?: string; readonly body?: string },
+  routing?: PendingRouting,
 ) => Promise<{
   readonly ok?: boolean;
   readonly status?: number;
@@ -220,6 +245,15 @@ function isRetryableReplayFailure(
   return isRetryableFailure(res as RetryableResult);
 }
 
+/**
+ * The routing identity stored with one entry. Entries come off disk, so a
+ * hand-edited or half-migrated file can hold anything in this field, and only a
+ * real string is worth handing to the transport as an identity.
+ */
+function routingOf(entry: PendingEntry): PendingRouting {
+  return typeof entry.user === "string" ? { user: entry.user } : {};
+}
+
 async function readEntry(dir: string, filename: string): Promise<PendingEntry> {
   const raw = await readFile(join(dir, filename), "utf-8");
   return JSON.parse(raw) as PendingEntry;
@@ -291,13 +325,14 @@ async function recoverStaleProcessing(dir: string): Promise<number> {
  * @param type - "addMessage" or "commitSession"
  * @param sessionId - OV session ID
  * @param payload - the data that failed to send
- * @param options - `createdAt` is an optional queue timestamp override
+ * @param options - `createdAt` is an optional queue timestamp override; `user`
+ *   is the identity the replay has to be sent as
  */
 export async function enqueue(
   type: PendingEntryType,
   sessionId: string,
   payload: unknown,
-  options: { readonly createdAt?: number } = {},
+  options: { readonly createdAt?: number; readonly user?: string } = {},
 ): Promise<EnqueueResult> {
   const dir = getPendingDir();
   const now = Number.isFinite(options.createdAt)
@@ -312,6 +347,7 @@ export async function enqueue(
     createdAt: now,
     retries: 0,
     dedupKey,
+    ...(options.user === undefined ? {} : { user: options.user }),
   };
 
   try {
@@ -553,16 +589,25 @@ export async function replayPending(
     let res: PendingFetchResult | undefined;
     try {
       const encodedSid = encodeURIComponent(entry.sessionId);
+      const routing = routingOf(entry);
       if (entry.type === "addMessage") {
-        res = await fetchJSON(`/api/v1/sessions/${encodedSid}/messages`, {
-          method: "POST",
-          body: JSON.stringify(entry.payload),
-        });
+        res = await fetchJSON(
+          `/api/v1/sessions/${encodedSid}/messages`,
+          {
+            method: "POST",
+            body: JSON.stringify(entry.payload),
+          },
+          routing,
+        );
       } else if (entry.type === "commitSession") {
-        res = await fetchJSON(`/api/v1/sessions/${encodedSid}/commit`, {
-          method: "POST",
-          body: JSON.stringify(entry.payload || {}),
-        });
+        res = await fetchJSON(
+          `/api/v1/sessions/${encodedSid}/commit`,
+          {
+            method: "POST",
+            body: JSON.stringify(entry.payload || {}),
+          },
+          routing,
+        );
       } else {
         await dequeue(claimedFilename);
         skipped++;

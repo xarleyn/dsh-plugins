@@ -1,4 +1,6 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
+import { qaAgentScope } from "../agent-scope.js";
+import { scopeChainOf } from "@deepseek-ai/dsh-scope";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { installInheritableMask } from "./tool-mask.js";
 import type {
@@ -93,7 +95,9 @@ export class QaAgentToolGrants {
     const tools = this.options.agent.ctx.tools;
     return (
       tools.get(tool) !== undefined ||
-      tools.get(tool, this.options.agent) !== undefined
+      scopeChainOf(qaAgentScope(this.options.agent)).some(
+        (scope) => tools.get(tool, scope) !== undefined,
+      )
     );
   }
 
@@ -119,16 +123,17 @@ export class QaAgentToolGrants {
   ): QaSkillActivationOutcome {
     const descriptor = this.options.descriptors.get(skillName);
     const requested = [...(descriptor?.requiredTools ?? [])];
-    const candidates = requested.filter((tool) =>
-      this.options.grantableTools.includes(tool),
+    // A requirement met by a tool the scope already holds is met, not denied:
+    // the ceiling lists only what a grant may still ADD, because the policy
+    // subtracts the base set from it.
+    const satisfied = requested.filter((tool) => this.tools.has(tool));
+    const candidates = requested.filter(
+      (tool) =>
+        !satisfied.includes(tool) && this.options.grantableTools.includes(tool),
     );
     const before = [...this.tools];
-    const accepted: string[] = [];
+    const accepted: string[] = [...satisfied];
     for (const tool of candidates) {
-      if (this.tools.has(tool)) {
-        accepted.push(tool);
-        continue;
-      }
       // A name no layer holds cannot be granted; an agent-local one is already
       // visible to the model, so it needs no mask of its own.
       if (!this.mounted(tool)) continue;

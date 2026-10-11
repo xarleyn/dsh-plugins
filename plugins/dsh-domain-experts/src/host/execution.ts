@@ -23,14 +23,32 @@ import {
   SUBAGENT_UNSUPPORTED_CODE,
   unsupportedCapability,
 } from "./errors.js";
-import { resolveExpert, type ResolverDependencies } from "./resolver.js";
+import {
+  memoryOwnerOf,
+  resolveExpert,
+  type MemoryOwner,
+  type ResolverDependencies,
+} from "./resolver.js";
+import type { QaModelPolicyPair } from "./qa-principal.js";
 import { parseExpertAnswer, textOfBlocks } from "./result.js";
+import { EXPERT_REVIEW_OUTPUT_SCHEMA } from "./review-output.js";
+import { expertLabelOf } from "./caller.js";
 
 /** The subagent surface this plugin consumes from the host context. */
 export interface SubagentsFace {
   getProvider(name: string): SubagentProvider | undefined;
   start(name: string, request: SubagentStartRequest): Promise<SubagentRun>;
   startContinuable?(spec: ContinuableStartSpec): Promise<ContinuableStart>;
+  /** Direct children from the Host's durable parent-owned catalog. */
+  childrenOf?(
+    parentSessionId: string,
+    signal: AbortSignal,
+  ): Promise<
+    readonly {
+      readonly sessionId: string;
+      readonly label: string | undefined;
+    }[]
+  >;
 }
 
 /** Minimal logger surface; `PluginLogger` satisfies it structurally. */
@@ -51,6 +69,15 @@ export interface ActiveRun {
   readonly background: boolean;
   /** Parallel budget the caller's own configuration allows. */
   readonly maxParallel: number;
+  /**
+   * Whose memory namespaces this run reads and writes.
+   *
+   * Carried by the run rather than re-resolved per call: a child's session was
+   * never attested by an account, so `domain_memory` inside it has to ask the
+   * run, not the session, and the persona the child was started with has to
+   * agree with the answer.
+   */
+  readonly memoryOwner: MemoryOwner;
 }
 
 /**
@@ -58,10 +85,10 @@ export interface ActiveRun {
  *
  * `domain_delegate` needs to know which domain its own child belongs to, and
  * the runtime exposes no domain marker on a session. The coordinator
- * therefore records the mapping when it starts a run. It is process-local by
- * design: a continuable child resumed after a restart is no longer
- * attributable, and delegation from it fails loudly with EXPERT_NOT_CALLER
- * instead of guessing.
+ * therefore records the mapping when it starts a run. It is process-local;
+ * callerDomainOf recovers delegation identity from the Host's durable child
+ * catalog after eviction or restart and refuses unknown identity. Memory
+ * ownership still requires this live record rather than a creation label.
  */
 export class RunTracker {
   private readonly runs = new Map<string, ActiveRun>();
@@ -112,9 +139,32 @@ export interface ExecutionDependencies {
   readonly audits: AuditRing;
   readonly logger: LogSink;
   readonly now: () => number;
+  /**
+   * Whether this deployment keeps a memory namespace per account.
+   *
+   * The operator's answer, not the session's: it decides whether the domain's
+   * own namespace is the writable one or the read-only common tier.
+   */
+  readonly perUserMemory: boolean;
+  /**
+   * The account a session belongs to, or `undefined`.
+   *
+   * Only a chat an account itself attested answers; the caller of an expert is
+   * such a chat, and the plugin never accepts an account from the model.
+   */
+  principalOf(sessionId: string): string | undefined;
+  /**
+   * The provider and model the deployment's QA policy fixes for one chat.
+   *
+   * Optional like the surface behind it: a deployment with no QA surface, or
+   * one whose roles name no pair, answers nothing here, and a domain that
+   * inherits its model keeps inheriting the caller's.
+   */
+  modelPolicyOf?(sessionId: string): QaModelPolicyPair | undefined;
 }
 
 export interface ExpertRunInput {
+  readonly structuredOutput?: boolean;
   readonly parent: Agent;
   readonly definition: DomainDefinition;
   readonly request: DomainExpertRequest;
@@ -155,6 +205,11 @@ export async function runExpert(
     );
   }
 
+  const memoryOwner = memoryOwnerOf(
+    dependencies.perUserMemory,
+    dependencies.tracker.find(callerSessionId)?.memoryOwner,
+    dependencies.principalOf(callerSessionId),
+  );
   const profile = await resolveExpert(
     dependencies.resolver,
     {
@@ -162,6 +217,8 @@ export async function runExpert(
       workspaceDir: input.parent.session.header.cwd ?? "",
       callerDomain: input.callerDomain,
       depth,
+      memoryOwner,
+      ...(input.structuredOutput === true ? { structuredOutput: true } : {}),
     },
     input.request,
   );
@@ -189,18 +246,35 @@ export async function runExpert(
     );
   }
   if (
-    !definition.model.inherit &&
+    input.structuredOutput === true &&
+    (input.request.background || provider.capabilities.outputSchema !== true)
+  )
+    throw unsupportedCapability(
+      provider.name,
+      "outputSchema",
+      "a structured review needs one-shot native result capture",
+    );
+  // A domain that inherits its model still takes the pair the chat's policy
+  // fixed, so the delegation follows the role the chat runs under rather than
+  // the model its visitor left in the picker.
+  const modelPolicy = definition.model.inherit
+    ? dependencies.modelPolicyOf?.(callerSessionId)
+    : undefined;
+  if (
+    (!definition.model.inherit || modelPolicy !== undefined) &&
     provider.capabilities.agentOptions !== true
   ) {
     throw unsupportedCapability(
       provider.name,
       "agentOptions",
-      `domain "${definition.id}" pins its own model`,
+      definition.model.inherit
+        ? `domain "${definition.id}" runs on the model the chat's policy pins`
+        : `domain "${definition.id}" pins its own model`,
     );
   }
 
   const request: SubagentStartRequest = {
-    label: `domain-expert:${definition.id}`,
+    label: expertLabelOf(definition.id),
     // The policy travels as the persona (a system section); the child's first
     // message is the caller's request. Sending the persona as the prompt as
     // well made the deployment's instructions read as user text.
@@ -213,7 +287,10 @@ export async function runExpert(
     persona: profile.policy,
     toolFilter: profile.toolFilter,
     maxDepth: definition.delegation.maxDepth,
-    ...agentOptionsOf(definition),
+    ...agentOptionsOf(definition, modelPolicy),
+    ...(input.structuredOutput === true
+      ? { outputSchema: EXPERT_REVIEW_OUTPUT_SCHEMA }
+      : {}),
   };
 
   if (input.request.background) {
@@ -224,6 +301,7 @@ export async function runExpert(
       request,
       startedAt,
       depth,
+      memoryOwner,
     );
   }
 
@@ -243,7 +321,10 @@ export async function runExpert(
     throw relabelCapabilityFailure(error, dependencies.subagentProvider);
   }
 
-  const path = [...pathOf(dependencies, callerSessionId), definition.id];
+  const path = [
+    ...pathOf(dependencies, callerSessionId, input.callerDomain),
+    definition.id,
+  ];
   dependencies.tracker.register({
     domainId: definition.id,
     childSessionId: String(run.id),
@@ -253,6 +334,7 @@ export async function runExpert(
     depth,
     background: false,
     maxParallel: definition.delegation.maxParallel,
+    memoryOwner,
   });
 
   const childSessionId = String(run.id);
@@ -275,7 +357,10 @@ export async function runExpert(
       };
     }
     const durationMs = dependencies.now() - startedAt;
-    const text = textOfBlocks(result.output);
+    const text =
+      input.structuredOutput === true
+        ? JSON.stringify(result.structured ?? null)
+        : textOfBlocks(result.output);
     const parsed = parseExpertAnswer(text);
     const status = statusOf(result.stopReason);
     recordAudit(dependencies, input, {
@@ -312,6 +397,7 @@ async function startBackground(
   request: SubagentStartRequest,
   startedAt: number,
   depth: number,
+  memoryOwner: MemoryOwner,
 ): Promise<DomainExpertResult> {
   const definition = input.definition;
   const degradations = [...profile.degradations];
@@ -345,7 +431,7 @@ async function startBackground(
       (filter) =>
         startContinuable.call(dependencies.subagents, {
           provider: dependencies.subagentProvider,
-          label: request.label ?? `domain-expert:${definition.id}`,
+          label: request.label ?? expertLabelOf(definition.id),
           request: withToolFilter(continuableRequest, filter),
           signal: request.signal,
         }),
@@ -357,7 +443,11 @@ async function startBackground(
   }
   const childSessionId = String(started.childId);
   const path = [
-    ...pathOf(dependencies, String(input.parent.session.header.id)),
+    ...pathOf(
+      dependencies,
+      String(input.parent.session.header.id),
+      input.callerDomain,
+    ),
     definition.id,
   ];
   dependencies.tracker.register({
@@ -369,6 +459,7 @@ async function startBackground(
     depth,
     background: true,
     maxParallel: definition.delegation.maxParallel,
+    memoryOwner,
   });
   const durationMs = dependencies.now() - startedAt;
   recordAudit(dependencies, input, {
@@ -387,8 +478,14 @@ async function startBackground(
 function pathOf(
   dependencies: ExecutionDependencies,
   callerSessionId: string,
+  callerDomain: string | null,
 ): readonly string[] {
-  return dependencies.tracker.find(callerSessionId)?.path ?? [];
+  // After a restart only the immediate caller is known; record that suffix
+  // rather than fabricating earlier ancestors or omitting the caller entirely.
+  return (
+    dependencies.tracker.find(callerSessionId)?.path ??
+    (callerDomain === null ? [] : [callerDomain])
+  );
 }
 
 function emptyResult(
@@ -567,9 +664,23 @@ type ReasoningEffortFace = NonNullable<AgentOptionsFace["reasoningEffort"]>;
 
 function agentOptionsOf(
   definition: DomainDefinition,
+  policy?: QaModelPolicyPair | undefined,
 ): Pick<SubagentStartRequest, "agentOptions"> {
   const { model } = definition;
-  if (model.inherit) return {};
+  if (model.inherit) {
+    if (policy === undefined) return {};
+    return {
+      agentOptions: {
+        provider: policy.provider,
+        model: policy.model,
+        ...(policy.reasoningEffort === undefined
+          ? {}
+          : {
+              reasoningEffort: policy.reasoningEffort as ReasoningEffortFace,
+            }),
+      },
+    };
+  }
   const agentOptions: AgentOptionsFace = {
     ...(model.provider === "" ? {} : { provider: model.provider }),
     ...(model.model === "" ? {} : { model: model.model }),

@@ -10,7 +10,7 @@ Designed to be reusable for Jira, Confluence, generic MCP and other user-scoped 
 
 Add a new **`Интеграции` / `Integrations`** page to the existing user Settings UI in `qa-surface`, next to pages such as Profile, General and Skills.
 
-The same connections are also mounted as a card of the host's own plugin settings (`Настройки → Плагины → Конфигурация плагинов`), where every other external plugin exposes its settings. Both mounts render the same provider cards and reach the account through the same QA session, so a user finds the connections wherever they look for them.
+The same connections are also mounted as the configuration section of this plugin's own page on the host's **Plugins** panel (`plugins.bundle.config`, keyed by the package name), where every bundle exposes what belongs to it. Both mounts render the same provider cards and reach the account through the same QA session, so a user finds the connections wherever they look for them.
 
 The page lets each authenticated user connect their own external services — Bitrix24 by incoming-webhook URL, GitLab by personal access token — using OAuth or a manually supplied secret/token. Credentials are stored server-side, encrypted, never returned to the browser after saving, never exposed to the LLM, and never shared across users.
 
@@ -77,7 +77,7 @@ Avoid naming the whole subsystem `dsh-bitrix24`; Bitrix24 should be the first pr
 
 The new page should be a normal Settings page, not a nested modal.
 
-The card mount in the host's plugin settings follows the shared card contract of the platform (`AGENTS.md`): it is a direct `<li class="dsh-plugin-card">` child of the host's list, its header is a full-width button with `aria-expanded`, an accessible show/hide label, the title/description stack and the inline-SVG chevron, and its body renders only while open. One card represents the plugin; each mounted provider is a card of the plugin's own inside that body. The card says when no QA account is signed in instead of showing connect forms whose calls the Host would refuse, and it reads nothing until it is opened.
+The card mount on the host's Plugins panel follows the shared card contract of the platform (`AGENTS.md`, "Two kinds of card: who owns the chrome"): on the panel seats the page draws the card surface, the row title, the row id and the description line, so the bundle renders the body only — no `dsh-plugin-card` classes, no `<li>` root in a plugin-owned `<ul>`, no header and no chevron of ours — and every control it draws itself takes its focus ring from the Host's `--dsw-focus-ring-width` / `--dsw-focus-ring-color` pair, with a fallback on each half. One card represents the plugin; each mounted provider is a card of the plugin's own inside that body. The card says when no QA account is signed in instead of showing connect forms whose calls the Host would refuse. The body mounts with the seat rather than behind a disclosure of its own, so what it reads starts when the page opens the row.
 
 Suggested left navigation:
 
@@ -151,6 +151,11 @@ After saving, replace the input with:
 ```
 
 There must be no `show token` / `copy existing token` action.
+
+A deployment that manages a service credential starts a new connection on it, so
+the form has to name the way out: an action labelled «Ввести свой токен» reaches
+these fields without the user first working out that unchecking «Использовать
+сервисный токен» is how one connects as themselves.
 
 ---
 
@@ -1652,11 +1657,14 @@ The MVP is ready when all of the following are true:
 ## 38. Detailed specifications
 
 `SPEC.md` is the entry point; the design documents that carry the per-area
-details live under [`docs/specs/`](./docs/specs/):
+details live under `docs/specs/`, each one linked to its file below:
 
 - [`docs/specs/managed-service-credentials.md`](./docs/specs/managed-service-credentials.md)
   — the deployment-managed service-token mode: capability classification, the
   broker's ceiling, and what a provider must declare to support it.
+- [`docs/specs/providers-deferred.md`](./docs/specs/providers-deferred.md)
+  — everything the GitLab and Weblate providers left out, one row per item: what
+  the code does today, the default already on record, and what blocks it.
 - [`docs/specs/providers-confluence.md`](./docs/specs/providers-confluence.md)
 - [`docs/specs/providers-gitlab.md`](./docs/specs/providers-gitlab.md)
 - [`docs/specs/providers-jira.md`](./docs/specs/providers-jira.md)

@@ -70,8 +70,14 @@ function bridgeOptions(
     },
     drafts: { update } as never,
     sessions: {
-      open: ((sessionId: string) => {
-        events.push(`open:${sessionId}`);
+      retain: ((sessionId: string) => {
+        events.push(`retain:${sessionId}`);
+        return {
+          ready: Promise.resolve({}),
+          release: () => {
+            events.push(`release:${sessionId}`);
+          },
+        };
       }) as never,
       scope: (() => new Context()) as never,
     },
@@ -89,7 +95,7 @@ afterEach(() => {
 });
 
 describe("DraftComposerBridge", () => {
-  it("opens the backing Session and restores exact text through InputHub", async () => {
+  it("retains the backing Session and restores exact text through InputHub", async () => {
     const composer = input();
     const events: string[] = [];
     const bridge = new DraftComposerBridge(
@@ -100,7 +106,7 @@ describe("DraftComposerBridge", () => {
     const ready = draft("draft-a", "session-a", "  exact\ntext  ");
     await expect(bridge.open(ready)).resolves.toBe(ready);
 
-    expect(events).toEqual(["open:session-a"]);
+    expect(events).toEqual(["retain:session-a"]);
     expect(composer.setDraft).toHaveBeenCalledWith("  exact\ntext  ");
   });
 
@@ -186,9 +192,10 @@ describe("DraftComposerBridge", () => {
     await bridge.open(second);
 
     expect(events).toEqual([
-      "open:session-a",
+      "retain:session-a",
       "save:draft-a:AAA saved",
-      "open:session-b",
+      "release:session-a",
+      "retain:session-b",
     ]);
     expect(secondInput.setDraft).toHaveBeenCalledWith("BBB");
   });
@@ -242,6 +249,100 @@ describe("DraftComposerBridge", () => {
     });
   });
 
+  it("restores the flushed text when a reopened draft record is stale", async () => {
+    vi.useFakeTimers();
+    const composer = input();
+    const persisted = draft("draft-a", "session-a", "old");
+    let onDisk = persisted;
+    const update = vi.fn(async (request: Record<string, unknown>) => {
+      if (request.expectedRevision !== onDisk.revision) {
+        return {
+          ok: false as const,
+          error: {
+            code: "DRAFT_STALE_REVISION",
+            message: "draft changed in another browser",
+            details: {},
+          },
+        };
+      }
+      onDisk = {
+        ...onDisk,
+        text: request.text as string,
+        revision: onDisk.revision + 1,
+      };
+      return { ok: true as const, value: onDisk };
+    });
+    const bridge = new DraftComposerBridge(
+      new Context(),
+      bridgeOptions([composer, composer], update as never),
+    );
+    await bridge.open(persisted);
+
+    composer.edit("new");
+    await vi.advanceTimersByTimeAsync(350);
+    expect(update).toHaveBeenCalledOnce();
+
+    // Reopening hands over the record rendered before that autosave landed.
+    await expect(bridge.open(persisted)).resolves.toMatchObject({
+      text: "new",
+      revision: 2,
+    });
+    expect(composer.setDraft).toHaveBeenLastCalledWith("new");
+
+    composer.edit("newer");
+    await vi.advanceTimersByTimeAsync(350);
+    expect(update).toHaveBeenNthCalledWith(2, {
+      id: "draft-a",
+      expectedRevision: 2,
+      text: "newer",
+    });
+    expect(onDisk.text).toBe("newer");
+  });
+
+  it("serializes navigation so a slower open cannot be overtaken", async () => {
+    const firstInput = input();
+    const secondInput = input();
+    const events: string[] = [];
+    const first = draft("draft-a", "session-a", "AAA");
+    const second = draft("draft-b", "session-b", "BBB");
+    let releaseFirstShell: (() => void) | undefined;
+    const firstShell = new Promise<void>((resolve) => {
+      releaseFirstShell = resolve;
+    });
+    const bridge = new DraftComposerBridge(new Context(), {
+      ...bridgeOptions([firstInput, secondInput], vi.fn(), events),
+      lifecycle: {
+        ensureShell: async (draft) => {
+          events.push(`shell:${draft.id}`);
+          if (draft.id === "draft-a") await firstShell;
+          return draft;
+        },
+        onBeforeFinalize: () => () => undefined,
+      },
+    });
+
+    const openingFirst = bridge.open(first);
+    await vi.waitFor(() => expect(events).toEqual(["shell:draft-a"]));
+
+    const openingSecond = bridge.open(second);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(events).toEqual(["shell:draft-a"]);
+
+    releaseFirstShell?.();
+    await expect(openingFirst).resolves.toBe(first);
+    await expect(openingSecond).resolves.toBe(second);
+    expect(events).toEqual([
+      "shell:draft-a",
+      "retain:session-a",
+      "release:session-a",
+      "shell:draft-b",
+      "retain:session-b",
+    ]);
+    expect(firstInput.setDraft).toHaveBeenCalledWith("AAA");
+    expect(secondInput.setDraft).toHaveBeenCalledWith("BBB");
+    await expect(bridge.flush()).resolves.toMatchObject({ id: "draft-b" });
+  });
+
   it("surfaces revision conflicts and blocks the Session switch", async () => {
     const firstInput = input();
     const secondInput = input();
@@ -272,7 +373,7 @@ describe("DraftComposerBridge", () => {
       "error",
       expect.stringContaining("draft changed in another browser"),
     );
-    expect(events).toEqual(["open:session-a"]);
+    expect(events).toEqual(["retain:session-a"]);
     expect(secondInput.setDraft).not.toHaveBeenCalled();
   });
 });

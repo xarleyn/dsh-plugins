@@ -6,23 +6,23 @@
  * big a document may be. Nothing here is a document operation — those are the
  * five tools, which an allow-list decides about, not this card.
  *
+ * This is the *body* of the row's configuration page: the Plugins panel draws the
+ * card surface, the title and the description line around it, so nothing here
+ * repeats that chrome (AGENTS.md).
+ *
  * The card writes path-addressed mutations into the `documents` settings
  * namespace, so a field the operator clears re-inherits the composition default
  * instead of freezing a copy of today's value.
  */
 
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
-import {
-  CardShell,
-  bindSettingsExternalStore,
-} from "@yadsh/dsh-plugin-kit/client";
+import { bindSettingsExternalStore } from "@yadsh/dsh-plugin-kit/client";
 import {
   useCallback,
   useMemo,
@@ -35,6 +35,7 @@ import { DEFAULT_DOCUMENTS_CONFIG } from "../documents/defaults.js";
 import {
   DOCUMENT_COMPARISON_TOOL_NAMES,
   DOCUMENT_TOOL_NAMES,
+  DOCUMENTS_STARTUP_ENTRY,
 } from "../shared/settings.js";
 import {
   Facts,
@@ -61,6 +62,33 @@ const PDF_MODES = [
   { value: "typst", label: "Typst (нужен движок)" },
 ] as const;
 
+/**
+ * What the card says about the Typst engine, by deployment state.
+ *
+ * `typst.enabled` is the switch the runtime refuses on: a route that is off in
+ * this deployment answers `BACKEND_UNAVAILABLE` whatever the template asks for.
+ * The mode list cannot say which of the two an operator is looking at, so the
+ * state is read from the same field the runtime resolves and shown next to the
+ * choice, instead of leaving the outcome to be discovered by an error.
+ *
+ * The switch is all this page can read: unlike pandoc and LibreOffice, the
+ * Typst executable is not a field of this row, so an enabled route still fails
+ * where the program is absent. The sentence therefore stops at what the field
+ * answers and sends the rest to the entry the startup check writes, rather than
+ * promising a PDF this deployment cannot confirm.
+ *
+ * `unreadable` is that same rule taken one step back: a browser the settings
+ * layer refuses gets no field at all, and the package default is not a fact
+ * about this deployment — asserting it would re-sell the lottery this note
+ * exists to close. The entry the startup check writes answers there instead.
+ */
+const TYPST_ENGINE_STATE = {
+  enabled: `Движок Typst включён в этом развёртывании: режим «Typst» соберёт PDF, если исполняемый файл на месте — его отсутствие называет стартовая запись лога: ${DOCUMENTS_STARTUP_ENTRY}.`,
+  disabled:
+    "Движок Typst в этом развёртывании не включён: режим «Typst» вернёт ошибку, а не PDF.",
+  unreadable: `Значения этого ряда не читаются данным браузером, поэтому состояние движка Typst страница не знает: его называет стартовая запись лога: ${DOCUMENTS_STARTUP_ENTRY}.`,
+} as const;
+
 const EXTRACTION_MODES = [
   { value: "accurate", label: "Точный" },
   { value: "auto", label: "Автоматически" },
@@ -73,16 +101,42 @@ const OCR_MODES = [
   { value: "force", label: "Всегда" },
 ] as const;
 
-/** The face the slot entry injects into this card. */
+/**
+ * The sentence this entry answers the seat's `summary` view with.
+ *
+ * The panel titles and describes the row from this package's exported locale
+ * `meta` (`locale/en.json`), which carries the same string in `meta.description`;
+ * a test pins the pair, so the row's description and the one-liner the page falls
+ * back to cannot drift apart. The row's title lives only in that file — the card
+ * is the body the page draws under its own heading, not a heading of its own.
+ */
+export const DOCUMENTS_CARD_SUMMARY =
+  "Document pipeline: Markdown ↔ DOCX/PDF, text extraction, online sources.";
+
+/** The face the row entry injects into this card. */
 export interface DocumentsCardFace {
-  readonly scope: SettingsScope<DocumentsConfig>;
+  /**
+   * The live `ConfigForm` of this plugin's namespace.
+   *
+   * Named `settingsForm`, not `form`: the row seat hands its registrant a `form`
+   * of its own — the Host's `ConfigPageForm`, which is only `{ state, mutate }`
+   * and so can neither be subscribed to nor written field by field. This plugin's
+   * form comes through the injected face, where that owner prop cannot shadow it.
+   */
+  readonly settingsForm: ConfigForm<DocumentsConfig>;
 }
 
-type CardProps = PropsRuntime<"settings.plugin.item"> &
+/** The props the Plugins page renders this card with. */
+export type DocumentsCardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<DocumentsCardFace>;
 
-export function DocumentsCard({ scope }: CardProps): ReactElement {
-  const store = useMemo(() => bindSettingsExternalStore(scope), [scope]);
+export function DocumentsCard({
+  settingsForm,
+}: DocumentsCardProps): ReactElement {
+  const store = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const snapshot = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -95,13 +149,19 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
   /** Write one value; `undefined` clears the field back to the default. */
   const write = useCallback(
     (path: readonly string[], value: unknown) => {
-      void scope.mutate([
-        value === undefined
-          ? { op: "unset" as const, path: [...path] }
-          : { op: "set" as const, path: [...path], value: value as never },
-      ]);
+      void settingsForm.mutate(
+        [
+          value === undefined
+            ? { op: "unset" as const, path: [...path] }
+            : { op: "set" as const, path: [...path], value: value as never },
+        ],
+        // The revision is re-read at write time rather than captured with the
+        // rendered snapshot: a stale fence would refuse a write the Host would
+        // otherwise accept.
+        settingsForm.getSnapshot().revision,
+      );
     },
-    [scope],
+    [settingsForm],
   );
 
   /** Whether the user layer carries any of these paths (i.e. has an override). */
@@ -113,16 +173,19 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
 
   const reset = (
     paths: readonly (readonly string[])[],
+    testId?: string,
   ): ReactElement | null => {
     const dirty = overridden(paths);
     return (
       <button
         type="button"
         className="dsh-docs-btn link"
+        data-testid={testId}
         disabled={disabled || !dirty}
         onClick={() => {
-          void scope.mutate(
+          void settingsForm.mutate(
             paths.map((path) => ({ op: "unset" as const, path: [...path] })),
+            settingsForm.getSnapshot().revision,
           );
         }}
       >
@@ -133,21 +196,23 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
 
   const enabled = config?.enabled ?? DEFAULT_DOCUMENTS_CONFIG.enabled;
   const fieldDisabled = disabled || !enabled;
+  /**
+   * Which of the engine sentences this row answers with — `unreadable` when the
+   * settings layer serves this browser nothing to answer from.
+   */
+  const typstEngine =
+    config === undefined
+      ? "unreadable"
+      : (config.typst?.enabled ?? DEFAULT_DOCUMENTS_CONFIG.typst.enabled)
+        ? "enabled"
+        : "disabled";
 
   return (
-    <CardShell
-      title="Документы"
-      description="Конвейер документов: Markdown ↔ DOCX/PDF, извлечение текста, онлайн-источники."
-      badge={
-        <span className="dsh-plugin-card__badge">
-          {enabled ? "Включён" : "Выключен"}
-        </span>
-      }
-      label={(open) => `${open ? "Скрыть" : "Показать"} настройки: Документы`}
-      bodyClassName="dsh-docs-body"
-    >
+    // The Plugins page draws this card's frame, its heading and its expand
+    // control, so the bundle renders the body and nothing around it (AGENTS.md).
+    <div className="dsh-docs-body">
       {snapshot.status === "unavailable" ? (
-        <Notice tone="warn">
+        <Notice tone="warn" testId="docs-settings-unavailable">
           Раздел настроек недоступен этому браузеру: значения ниже не читаются и
           не записываются.
         </Notice>
@@ -155,13 +220,18 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
 
       <Section
         title="Конвейер"
-        reset={reset([["enabled"], ["create", "defaultPdfMode"]])}
+        testId="docs-pipeline"
+        reset={reset(
+          [["enabled"], ["create", "defaultPdfMode"]],
+          "docs-pipeline-reset",
+        )}
       >
         <Toggle
           label="Конвейер документов"
           hint="Пять инструментов: создание DOCX/PDF из Markdown, извлечение Markdown, документ по ссылке, конвертация и просмотр структуры. Пока выключено, инструменты не регистрируются."
           checked={enabled}
           disabled={disabled}
+          testId="docs-pipeline-enabled"
           onChange={(value) => {
             write(["enabled"], value);
           }}
@@ -174,22 +244,33 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
           }
           disabled={fieldDisabled}
           options={PDF_MODES}
+          testId="docs-pipeline-pdf-mode"
           hint="«Как в Word» рендерит DOCX и экспортирует его в PDF — оформление совпадает с файлом Word."
           onCommit={(value) => {
             write(["create", "defaultPdfMode"], value);
           }}
         />
+        <Notice
+          tone={typstEngine === "enabled" ? "info" : "warn"}
+          testId="docs-pipeline-typst-engine"
+        >
+          {TYPST_ENGINE_STATE[typstEngine]}
+        </Notice>
       </Section>
 
       <Section
         title="Извлечение"
-        reset={reset([
-          ["extraction", "defaultMode"],
-          ["extraction", "ocr"],
-          ["extraction", "extractImages"],
-          ["extraction", "extractTables"],
-          ["extraction", "maxInlineChars"],
-        ])}
+        testId="docs-extraction"
+        reset={reset(
+          [
+            ["extraction", "defaultMode"],
+            ["extraction", "ocr"],
+            ["extraction", "extractImages"],
+            ["extraction", "extractTables"],
+            ["extraction", "maxInlineChars"],
+          ],
+          "docs-extraction-reset",
+        )}
       >
         <Grid>
           <SelectField
@@ -200,6 +281,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             }
             disabled={fieldDisabled}
             options={EXTRACTION_MODES}
+            testId="docs-extraction-mode"
             hint="Точный использует структурный разборщик; быстрый — облегчённый, если он включён."
             onCommit={(value) => {
               write(["extraction", "defaultMode"], value);
@@ -212,6 +294,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             }
             disabled={fieldDisabled}
             options={OCR_MODES}
+            testId="docs-extraction-ocr"
             hint="Политика распознавания для документов без текстового слоя."
             onCommit={(value) => {
               write(["extraction", "ocr"], value);
@@ -226,6 +309,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             DEFAULT_DOCUMENTS_CONFIG.extraction.extractImages
           }
           disabled={fieldDisabled}
+          testId="docs-extraction-images"
           onChange={(value) => {
             write(["extraction", "extractImages"], value);
           }}
@@ -238,6 +322,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             DEFAULT_DOCUMENTS_CONFIG.extraction.extractTables
           }
           disabled={fieldDisabled}
+          testId="docs-extraction-tables"
           onChange={(value) => {
             write(["extraction", "extractTables"], value);
           }}
@@ -251,6 +336,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
           min={1_000}
           max={5_000_000}
           disabled={fieldDisabled}
+          testId="docs-extraction-max-chars"
           hint="Сколько извлечённого Markdown возвращается модели. Артефакт всегда хранит весь текст."
           onCommit={(value) => {
             write(["extraction", "maxInlineChars"], value);
@@ -260,15 +346,19 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
 
       <Section
         title="Разборщики"
-        hint="Основной разбор — Docling; pandoc и LibreOffice рендерят документы. Отсутствие программы видно в логе при старте."
-        reset={reset([
-          ["docling", "enabled"],
-          ["docling", "baseUrl"],
-          ["pandoc", "executable"],
-          ["libreoffice", "executable"],
-          ["markitdown", "enabled"],
-          ["markitdown", "executable"],
-        ])}
+        hint={`Основной разбор — Docling; pandoc и LibreOffice рендерят документы. Отсутствие программы видно в стартовой записи лога: ${DOCUMENTS_STARTUP_ENTRY}.`}
+        testId="docs-parsers"
+        reset={reset(
+          [
+            ["docling", "enabled"],
+            ["docling", "baseUrl"],
+            ["pandoc", "executable"],
+            ["libreoffice", "executable"],
+            ["markitdown", "enabled"],
+            ["markitdown", "executable"],
+          ],
+          "docs-parsers-reset",
+        )}
       >
         <Toggle
           label="Разборщик Docling"
@@ -277,6 +367,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             config?.docling?.enabled ?? DEFAULT_DOCUMENTS_CONFIG.docling.enabled
           }
           disabled={fieldDisabled}
+          testId="docs-parsers-docling"
           onChange={(value) => {
             write(["docling", "enabled"], value);
           }}
@@ -285,6 +376,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
           label="Адрес Docling"
           value={config?.docling?.baseUrl ?? ""}
           placeholder={DEFAULT_DOCUMENTS_CONFIG.docling.baseUrl}
+          testId="docs-parsers-docling-url"
           disabled={
             fieldDisabled ||
             !(
@@ -303,6 +395,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             value={config?.pandoc?.executable ?? ""}
             placeholder={DEFAULT_DOCUMENTS_CONFIG.pandoc.executable}
             disabled={fieldDisabled}
+            testId="docs-parsers-pandoc"
             onCommit={(value) => {
               write(["pandoc", "executable"], value.trim());
             }}
@@ -312,6 +405,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             value={config?.libreoffice?.executable ?? ""}
             placeholder={DEFAULT_DOCUMENTS_CONFIG.libreoffice.executable}
             disabled={fieldDisabled}
+            testId="docs-parsers-libreoffice"
             onCommit={(value) => {
               write(["libreoffice", "executable"], value.trim());
             }}
@@ -325,6 +419,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             DEFAULT_DOCUMENTS_CONFIG.markitdown.enabled
           }
           disabled={fieldDisabled}
+          testId="docs-parsers-markitdown"
           onChange={(value) => {
             write(["markitdown", "enabled"], value);
           }}
@@ -334,19 +429,24 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
       <Section
         title="Артефакты"
         hint="Каждая операция складывает исходник, результат, вложения и manifest.json в один каталог."
-        reset={reset([
-          ["storage", "root"],
-          ["storage", "retainSource"],
-          ["storage", "retainInputs"],
-          ["retention", "enabled"],
-          ["retention", "maxAgeDays"],
-        ])}
+        testId="docs-artifacts"
+        reset={reset(
+          [
+            ["storage", "root"],
+            ["storage", "retainSource"],
+            ["storage", "retainInputs"],
+            ["retention", "enabled"],
+            ["retention", "maxAgeDays"],
+          ],
+          "docs-artifacts-reset",
+        )}
       >
         <TextField
           label="Каталог артефактов"
           value={config?.storage?.root ?? ""}
           placeholder="<рабочая папка сессии>/.qa/artifacts/documents"
           disabled={fieldDisabled}
+          testId="docs-artifacts-root"
           hint="Абсолютный путь для общего тома. Пусто — каждая сессия хранит документы в своей рабочей папке."
           onCommit={(value) => {
             write(
@@ -363,6 +463,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             DEFAULT_DOCUMENTS_CONFIG.storage.retainSource
           }
           disabled={fieldDisabled}
+          testId="docs-artifacts-retain-source"
           onChange={(value) => {
             write(["storage", "retainSource"], value);
           }}
@@ -375,6 +476,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             DEFAULT_DOCUMENTS_CONFIG.storage.retainInputs
           }
           disabled={fieldDisabled}
+          testId="docs-artifacts-retain-inputs"
           onChange={(value) => {
             write(["storage", "retainInputs"], value);
           }}
@@ -387,6 +489,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             DEFAULT_DOCUMENTS_CONFIG.retention.enabled
           }
           disabled={fieldDisabled || (config?.storage?.root ?? "") === ""}
+          testId="docs-artifacts-retention"
           onChange={(value) => {
             write(["retention", "enabled"], value);
           }}
@@ -399,6 +502,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
           }
           min={1}
           max={3_650}
+          testId="docs-artifacts-max-age-days"
           disabled={
             fieldDisabled ||
             (config?.storage?.root ?? "") === "" ||
@@ -415,14 +519,18 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
 
       <Section
         title="Шаблоны и лимиты"
-        reset={reset([
-          ["templates", "root"],
-          ["templates", "default"],
-          ["limits", "maxInputBytes"],
-          ["limits", "maxMarkdownChars"],
-          ["limits", "maxPages"],
-          ["limits", "maxExtractedImages"],
-        ])}
+        testId="docs-templates"
+        reset={reset(
+          [
+            ["templates", "root"],
+            ["templates", "default"],
+            ["limits", "maxInputBytes"],
+            ["limits", "maxMarkdownChars"],
+            ["limits", "maxPages"],
+            ["limits", "maxExtractedImages"],
+          ],
+          "docs-templates-reset",
+        )}
       >
         <Grid>
           <TextField
@@ -430,6 +538,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             value={config?.templates?.root ?? ""}
             placeholder="<рабочая папка сессии>/document-templates"
             disabled={fieldDisabled}
+            testId="docs-templates-root"
             hint="Абсолютный путь; внутри должен лежать manifest.yml со списком шаблонов."
             onCommit={(value) => {
               write(
@@ -445,6 +554,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
               DEFAULT_DOCUMENTS_CONFIG.templates.default
             }
             disabled={fieldDisabled}
+            testId="docs-templates-default"
             hint="Имя шаблона, который применяется, когда агент не назвал свой."
             onCommit={(value) => {
               write(["templates", "default"], value.trim());
@@ -461,6 +571,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             min={1_024}
             max={4_294_967_296}
             disabled={fieldDisabled}
+            testId="docs-templates-max-input-bytes"
             onCommit={(value) => {
               write(["limits", "maxInputBytes"], value);
             }}
@@ -474,6 +585,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             min={1_000}
             max={50_000_000}
             disabled={fieldDisabled}
+            testId="docs-templates-max-markdown-chars"
             onCommit={(value) => {
               write(["limits", "maxMarkdownChars"], value);
             }}
@@ -489,6 +601,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             min={1}
             max={100_000}
             disabled={fieldDisabled}
+            testId="docs-templates-max-pages"
             onCommit={(value) => {
               write(["limits", "maxPages"], value);
             }}
@@ -502,6 +615,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
             min={0}
             max={10_000}
             disabled={fieldDisabled}
+            testId="docs-templates-max-images"
             onCommit={(value) => {
               write(["limits", "maxExtractedImages"], value);
             }}
@@ -697,7 +811,7 @@ export function DocumentsCard({ scope }: CardProps): ReactElement {
           им свои параметры — командную строку собирает только плагин.
         </Notice>
       </Section>
-    </CardShell>
+    </div>
   );
 }
 

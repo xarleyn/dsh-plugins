@@ -23,7 +23,12 @@ export class QaSessionOwnership {
     this.installed = true;
     this.disposeListener = ctx.on("session/created", (session) => {
       const parent = session.header.parentSession;
-      if (parent === undefined) return;
+      if (
+        parent === undefined ||
+        (session.header.isSeeded === true &&
+          session.header.origin !== "subagent")
+      )
+        return;
       const root = this.rootOf(String(parent));
       if (root !== undefined) this.inherited.set(String(session.id), root);
     });
@@ -31,6 +36,7 @@ export class QaSessionOwnership {
 
   /** The attested chat behind a session: itself, or the root it inherited. */
   rootOf(sessionId: string): string | undefined {
+    if (this.isAttested(sessionId)) return sessionId;
     const inherited = this.inherited.get(sessionId);
     if (inherited !== undefined) return inherited;
     return this.isAttested(sessionId) ? sessionId : undefined;

@@ -18,16 +18,32 @@ import {
  */
 
 function Metric(props: {
+  readonly testId: string;
   readonly label: string;
   readonly value: string;
   readonly hint?: string;
 }) {
   return (
-    <article className="dsh-qa-admin__metric">
-      <span className="dsh-qa-admin__metric-label">{props.label}</span>
-      <strong className="dsh-qa-admin__metric-value">{props.value}</strong>
+    <article className="dsh-qa-admin__metric" data-testid={props.testId}>
+      <span
+        className="dsh-qa-admin__metric-label"
+        data-testid={`${props.testId}-label`}
+      >
+        {props.label}
+      </span>
+      <strong
+        className="dsh-qa-admin__metric-value"
+        data-testid={`${props.testId}-value`}
+      >
+        {props.value}
+      </strong>
       {props.hint === undefined ? null : (
-        <small className="dsh-qa-admin__metric-hint">{props.hint}</small>
+        <small
+          className="dsh-qa-admin__metric-hint"
+          data-testid={`${props.testId}-hint`}
+        >
+          {props.hint}
+        </small>
       )}
     </article>
   );
@@ -47,37 +63,60 @@ export function AdminOverview(props: {
     [props.api, props.token],
   );
   return (
-    <section className="dsh-qa-admin__page" aria-label="Обзор">
+    <section
+      className="dsh-qa-admin__page"
+      data-testid="qa-admin-overview"
+      aria-label="Обзор"
+    >
       <div className="dsh-qa-admin__title-row">
         <div>
           <h1>Обзор</h1>
           <p>Пользователи, использование, обратная связь и разбор ответов.</p>
         </div>
-        <button type="button" onClick={() => void reload()}>
+        <button
+          type="button"
+          data-testid="qa-admin-overview-reload"
+          onClick={() => void reload()}
+        >
           Обновить
         </button>
       </div>
       {error === undefined ? null : (
-        <p className="dsh-qa-admin__error" role="alert">
+        <p
+          className="dsh-qa-admin__error"
+          data-testid="qa-admin-overview-error"
+          role="alert"
+        >
           {error}
         </p>
       )}
       {data === undefined ? (
-        <p className="dsh-qa-admin__empty">Загружаю…</p>
+        <p
+          className="dsh-qa-admin__empty"
+          data-testid="qa-admin-overview-loading"
+        >
+          Загружаю…
+        </p>
       ) : (
         <>
-          <div className="dsh-qa-admin__metrics">
+          <div
+            className="dsh-qa-admin__metrics"
+            data-testid="qa-admin-overview-metrics"
+          >
             <Metric
+              testId="qa-admin-metric-conversations"
               label="Разговоры"
               value={formatCount(data.metrics.conversations)}
               hint={`${formatCount(data.metrics.activeUsers)} пользователей`}
             />
             <Metric
+              testId="qa-admin-metric-rated"
               label="Оценённые ответы"
               value={formatCount(data.metrics.ratedMessages)}
               hint={`${formatRate(data.metrics.ratingRate)} от ответов`}
             />
             <Metric
+              testId="qa-admin-metric-positive"
               label="Положительные оценки"
               value={formatRate(data.metrics.positiveRate)}
               hint={`👍 ${formatCount(data.metrics.positiveRatings)} · 👎 ${formatCount(
@@ -85,22 +124,33 @@ export function AdminOverview(props: {
               )}`}
             />
             <Metric
+              testId="qa-admin-metric-unreviewed"
               label="Ждут разбора"
               value={formatCount(data.metrics.unreviewedNegatives)}
               hint={`разобрано: ${formatCount(data.metrics.reviewedItems)}`}
             />
           </div>
-          <section className="dsh-qa-admin__panel">
+          <section
+            className="dsh-qa-admin__panel"
+            data-testid="qa-admin-overview-alerts"
+          >
             <h2>Требует внимания</h2>
             {data.alerts.length === 0 ? (
-              <p className="dsh-qa-admin__empty">
+              <p
+                className="dsh-qa-admin__empty"
+                data-testid="qa-admin-overview-alerts-empty"
+              >
                 Ничего срочного: неразобранных негативных оценок нет.
               </p>
             ) : (
-              <ul className="dsh-qa-admin__alerts">
+              <ul
+                className="dsh-qa-admin__alerts"
+                data-testid="qa-admin-overview-alert-list"
+              >
                 {data.alerts.map((alert, index) => (
                   <li
                     key={`${alert.code}:${alert.subject ?? index}`}
+                    data-testid="qa-admin-overview-alert"
                     className={`dsh-qa-admin__alert dsh-qa-admin__alert--${alert.level}`}
                   >
                     {alert.code === "unreviewed-negatives"
@@ -119,10 +169,17 @@ export function AdminOverview(props: {
               </ul>
             )}
           </section>
-          <section className="dsh-qa-admin__panel">
+          <section
+            className="dsh-qa-admin__panel"
+            data-testid="qa-admin-overview-queue"
+          >
             <div className="dsh-qa-admin__panel-head">
               <h2>Очередь разбора</h2>
-              <button type="button" onClick={props.onOpenQueue}>
+              <button
+                type="button"
+                data-testid="qa-admin-overview-open-queue"
+                onClick={props.onOpenQueue}
+              >
                 Вся очередь
               </button>
             </div>
@@ -131,19 +188,34 @@ export function AdminOverview(props: {
               onOpenConversation={props.onOpenConversation}
             />
           </section>
-          <section className="dsh-qa-admin__panel">
+          <section
+            className="dsh-qa-admin__panel"
+            data-testid="qa-admin-overview-feedback"
+          >
             <h2>Последние оценки</h2>
             {data.recentFeedback.length === 0 ? (
-              <p className="dsh-qa-admin__empty">Оценок пока нет.</p>
+              <p
+                className="dsh-qa-admin__empty"
+                data-testid="qa-admin-overview-feedback-empty"
+              >
+                Оценок пока нет.
+              </p>
             ) : (
-              <ul className="dsh-qa-admin__recent">
+              <ul
+                className="dsh-qa-admin__recent"
+                data-testid="qa-admin-overview-feedback-list"
+              >
                 {data.recentFeedback.map((row) => (
-                  <li key={row.id}>
+                  <li
+                    key={row.id}
+                    data-testid="qa-admin-overview-feedback-item"
+                  >
                     <span aria-hidden="true">
                       {row.rating === "positive" ? "👍" : "👎"}
                     </span>
                     <button
                       type="button"
+                      data-testid="qa-admin-overview-feedback-open"
                       onClick={() =>
                         props.onOpenConversation(
                           row.conversationId,
@@ -176,30 +248,53 @@ export function QueuePreview(props: {
   ) => void;
 }) {
   return props.rows.length === 0 ? (
-    <p className="dsh-qa-admin__empty">Очередь пуста.</p>
+    <p
+      className="dsh-qa-admin__empty"
+      data-testid="qa-admin-overview-queue-empty"
+    >
+      Очередь пуста.
+    </p>
   ) : (
-    <ul className="dsh-qa-admin__queue">
+    <ul
+      className="dsh-qa-admin__queue"
+      data-testid="qa-admin-overview-queue-list"
+    >
       {props.rows.map((row, index) => (
         <li
           key={`${row.conversationId}:${row.messageId ?? ""}:${index}`}
+          data-testid="qa-admin-overview-queue-item"
           className={`dsh-qa-admin__queue-item dsh-qa-admin__queue-item--${row.priority}`}
         >
-          <div className="dsh-qa-admin__queue-head">
-            <span className="dsh-qa-admin__queue-priority">
+          <div
+            className="dsh-qa-admin__queue-head"
+            data-testid="qa-admin-overview-queue-head"
+          >
+            <span
+              className="dsh-qa-admin__queue-priority"
+              data-testid="qa-admin-overview-queue-priority"
+            >
               {REVIEW_PRIORITY_LABELS[row.priority]}
             </span>
-            <span>{REVIEW_REASON_LABELS[row.reason]}</span>
+            <span data-testid="qa-admin-overview-queue-reason">
+              {REVIEW_REASON_LABELS[row.reason]}
+            </span>
             <time title={row.raisedAt}>{formatRelative(row.raisedAt)}</time>
           </div>
           <button
             type="button"
+            data-testid="qa-admin-overview-queue-open"
             onClick={() =>
               props.onOpenConversation(row.conversationId, row.messageId)
             }
           >
             {row.title ?? row.conversationId}
           </button>
-          <span className="dsh-qa-admin__queue-owner">{row.displayName}</span>
+          <span
+            className="dsh-qa-admin__queue-owner"
+            data-testid="qa-admin-overview-queue-owner"
+          >
+            {row.displayName}
+          </span>
         </li>
       ))}
     </ul>

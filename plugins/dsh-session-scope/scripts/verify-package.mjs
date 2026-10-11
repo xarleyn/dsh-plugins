@@ -52,7 +52,12 @@ await runVerifyPackage({
     for (const [subpath, descriptor] of Object.entries(
       manifest.exports ?? {},
     )) {
-      if (subpath === "./package.json") continue;
+      // `./package.json` and `./locale/en.json` are data the Host reads through the
+      // resolver — the manifest, and the row's display metadata it titles the bundle
+      // from — not modules a consumer imports, so neither carries a typed descriptor.
+      if (subpath === "./package.json" || subpath === "./locale/en.json") {
+        continue;
+      }
       // The client half is the browser bundle: the shell fetches it and
       // registers it through the module loader, so it is not an importable
       // module and carries no declarations to point `types` at. Every other

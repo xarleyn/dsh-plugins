@@ -48,6 +48,11 @@ export interface BuildSlashCatalogOptions {
    * The session role's own user-skill grant, when the access system is on.
    * `undefined` means the role system has no opinion, which is its state on a
    * deployment that never enabled roles — not "grant nothing".
+   *
+   * This is the only grant a read may answer with, whatever the chat looks
+   * like: a chat that is running and a chat nobody has woken are narrowed by
+   * the same allow-list and the same role, because the palette that names a
+   * skill this chat may not invoke teaches the visitor a gesture that fails.
    */
   readonly grantedSkills?: readonly string[] | undefined;
   readonly commandSurface: QaSlashCommandSurface;

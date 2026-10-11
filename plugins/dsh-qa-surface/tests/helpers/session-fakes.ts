@@ -1,11 +1,16 @@
 import { vi, type Mock } from "vitest";
-import type { ConversationSnapshot } from "@deepseek-ai/dsh-client-ui-conversation/client";
+import type {
+  ConversationNode,
+  ConversationSnapshot,
+} from "@deepseek-ai/dsh-client-ui-conversation/client";
+import { legacy, snapshot as chatView } from "./conversation-fakes.js";
 import type {
   SessionFace,
   SessionListState,
 } from "@deepseek-ai/dsh-api-session-controller/client";
 import type { SessionId } from "@deepseek-ai/dsh-client-connection/client";
 import type { QaSessionControllerOptions } from "../../src/client/QaSessionController.js";
+import type { QaFileDraft } from "../../src/types.js";
 import type { StorageLike } from "../../src/client/types.js";
 
 export class Source<T> {
@@ -25,17 +30,49 @@ export class Source<T> {
 export function conversation(_id: string): ConversationSnapshot {
   // No Chat view is registered in tests, so the transcript projects empty.
   return {
-    views: { get: () => undefined },
+    views: { get: () => undefined, grouped: () => undefined },
     activeTargets: new Set(),
   };
 }
 
+/**
+ * The session snapshot a test drives. The queue rows are not part of it at
+ * `rc.2`: pending input rides the session's Inbox projection, which a test sets
+ * through {@link sessionFace}'s `inbox` source.
+ */
+export interface FakeSessionSnapshot {
+  running: boolean;
+  openState: string;
+  blank: boolean;
+  removed: boolean;
+  pendingSubmissions: readonly Record<string, unknown>[];
+}
+
+/** One queued message of the Inbox projection, as the Host publishes it. */
+export function queuedMessage(
+  id: string,
+  content: readonly Record<string, unknown>[],
+  rpcId?: string,
+): Record<string, unknown> {
+  return {
+    id,
+    role: "user",
+    content,
+    source: { kind: "user", ...(rpcId === undefined ? {} : { rpcId }) },
+  };
+}
+
 export function sessionFace(id: string) {
-  const source = new Source({
+  const source = new Source<FakeSessionSnapshot>({
     running: false,
     openState: "open",
     blank: true,
     removed: false,
+    pendingSubmissions: [],
+  });
+  // The Host's Inbox projection: the messages waiting for the next turn.
+  const inbox = new Source<Record<string, unknown> | undefined>({
+    "next-turn": [],
   });
   const prompt = vi.fn(async () => ({
     ok: true as const,
@@ -45,15 +82,36 @@ export function sessionFace(id: string) {
     ok: true as const,
     value: { accepted: true as const },
   }));
+  const updateQueue: Mock<(...args: unknown[]) => Promise<unknown>> = vi.fn(
+    async () => ({
+      ok: true as const,
+      value: { accepted: true as const },
+    }),
+  );
+  let submissions = 0;
+  const beginSubmission: Mock<
+    (input: Record<string, unknown>) => {
+      requestId: string;
+      abandon: () => void;
+    }
+  > = vi.fn(() => ({
+    requestId: `request-${++submissions}`,
+    abandon: vi.fn(),
+  }));
   const face = {
     sessionId: id as SessionId,
-    projections: { faceOf: vi.fn() },
+    projections: {
+      faceOf: (key: string) =>
+        key === "inbox" ? inbox : new Source(undefined),
+    },
     getSnapshot: source.getSnapshot,
     subscribe: source.subscribe,
     prompt,
     cancel,
+    updateQueue,
+    beginSubmission,
   } as unknown as SessionFace;
-  return { face, source, prompt, cancel };
+  return { face, source, inbox, prompt, cancel, updateQueue, beginSubmission };
 }
 
 export function conversationBinding(id: string) {
@@ -62,6 +120,45 @@ export function conversationBinding(id: string) {
     // Subscribing the Chat target activates it; tests never register one.
     target: vi.fn(() => new Source(undefined)),
   };
+}
+
+/**
+ * Replace the Chat slice the bound surface projects and notify it, the way the
+ * Host publishes one assembled transcript frame.
+ */
+export function publishChatSlice(
+  binding: ReturnType<typeof conversationBinding> | undefined,
+  slice: ReturnType<typeof legacy>,
+): void {
+  if (binding === undefined) return;
+  binding.snapshot.set(chatView(slice));
+  binding.target.mock.results[0]?.value.set(undefined);
+}
+
+/**
+ * Land one durable user row in the Chat slice: the hand the Host makes when
+ * the prompt it admitted reaches the transcript, which is what replaces the
+ * browser's optimistic copy of the question.
+ */
+export function landDurableUserRow(
+  binding: ReturnType<typeof conversationBinding> | undefined,
+  text: string,
+  rpcId?: string,
+): void {
+  publishChatSlice(
+    binding,
+    legacy({
+      nodes: [
+        {
+          kind: "user",
+          seq: 1,
+          time: 10,
+          source: rpcId === undefined ? {} : { kind: "user", rpcId },
+          content: [{ type: "text", text }],
+        },
+      ] as ConversationNode[],
+    }),
+  );
 }
 
 /** One controller world: the fake injects plus the handles tests assert on. */
@@ -77,9 +174,87 @@ export interface QaSessionTestWorld {
   create: Mock;
   createSession: Mock;
   selectAgentPreset: Mock;
-  open: Mock;
+  retain: Mock;
+  /** Every reference `retain` handed out, in the order it asked for them. */
+  references: SessionReferenceFake[];
   list: Source<SessionListState>;
+  /** The catalog baseline pull, which lands the rows a server session left pending. */
+  refresh: Mock;
+  /** Create one session the way this plugin's Remote does: listed only after a pull or a push. */
+  serverSession: Mock;
+  /** Land one pending row in this browser's catalog, the way a Host push does. */
+  publishRow: (id: string) => void;
+  /** Hold the Client Sessions of later retains back, past the reference itself. */
+  deferClientSession: () => void;
+  /** Settle one held reference: its row is listed, its Client Session arrives now. */
+  materializeSession: (id: string) => void;
   secureSession: Mock;
+}
+
+/** One Host session reference, as `sessions.retain` hands it out. */
+export interface SessionReferenceFake {
+  sessionId: string;
+  ready: Promise<unknown>;
+  release: Mock;
+}
+
+/**
+ * An upload service whose answer the test releases when it wants to.
+ *
+ * Staging an attachment is the one external round-trip a send makes *after* its
+ * target was chosen, so the moment its answer arrives is what a chat switch has
+ * to be proved against.
+ */
+export function deferredUpload() {
+  const outcome = {
+    ok: true as const,
+    value: {
+      receiptId: "receipt-late",
+      file: { attachmentId: "sha256:late", name: "note.txt", bytes: 5 },
+    },
+  };
+  let release: (value: typeof outcome) => void = () => {};
+  const pending = new Promise<typeof outcome>((resolve) => {
+    release = resolve;
+  });
+  return {
+    service: { upload: vi.fn(() => pending) },
+    settle: () => release(outcome),
+  };
+}
+
+/** One attached file, as the composer hands it to `send`. */
+export function fileDraft(name = "note.txt"): QaFileDraft {
+  return {
+    kind: "file",
+    id: `draft-${name}`,
+    name,
+    bytes: 5,
+    blob: new Blob(["hello"]),
+  };
+}
+
+/**
+ * Open a chat the way the surface does now: a load drafts, and the first prompt
+ * materializes the session. The two frames after the send are what tell the
+ * surface that question arrived — until the Host names the submission, the next
+ * send still waits on the one in flight.
+ */
+export async function openChat(
+  controller: {
+    send: (text: string) => Promise<boolean>;
+    getSnapshot: () => { sessionId: string | null };
+  },
+  world: QaSessionTestWorld,
+  prompt = "первый вопрос",
+): Promise<string> {
+  await controller.send(prompt);
+  const sessionId = String(controller.getSnapshot().sessionId);
+  landDurableUserRow(world.bindings.get(sessionId), prompt, "request-1");
+  const face = world.faces.get(sessionId);
+  face?.source.set({ ...face.source.getSnapshot(), running: true });
+  face?.source.set({ ...face.source.getSnapshot(), running: false });
+  return sessionId;
 }
 
 export function harness(
@@ -107,16 +282,63 @@ export function harness(
     byId: Object.fromEntries(
       listed.map((id) => [id, summaryOf(id)]),
     ) as SessionListState["byId"],
-    current: undefined,
     phase: "ready",
-    subagentsByParent: {},
-    jobsBySession: {},
-    currentAddress: undefined,
+    projectionsBySession: {},
   });
-  const open = vi.fn();
+  // `rc.2` has no Host navigation: binding a chat means retaining it, and the
+  // reference is what a test proves the controller holds and releases.
+  const references: SessionReferenceFake[] = [];
+  /** References whose Client Session the test has not materialized yet. */
+  const gates = new Map<string, () => void>();
+  let deferClientSessions = false;
+  /** Bring one held Client Session into being, the way the Host's reference settles. */
+  const materializeSession = (id: string): void => {
+    const release = gates.get(id);
+    if (release === undefined) return;
+    gates.delete(id);
+    release();
+  };
+  /** Hold the Client Sessions of later retains until the test releases them. */
+  const deferClientSession = (): void => {
+    deferClientSessions = true;
+  };
+  const mintSession = (id: string): void => {
+    if (faces.has(id)) return;
+    faces.set(id, sessionFace(id));
+    bindings.set(id, conversationBinding(id));
+  };
+  // The Host resolves a retain target against the catalog this browser holds —
+  // a resident Session, a listed row, or a discovered subagent address — and
+  // refuses an id it has never heard of. The fake refuses the same way, so a
+  // session created on the server cannot be adopted out of thin air.
+  const retain = vi.fn((id: unknown) => {
+    const key = String(id);
+    if (!faces.has(key) && !Object.hasOwn(list.getSnapshot().byId, key)) {
+      throw new Error(`sessions.retain: unknown session ${key}`);
+    }
+    const reference: SessionReferenceFake = {
+      sessionId: key,
+      // A row the catalog only just learned has no Client Session behind it:
+      // the Host hands the reference out at once and materializes the Session as
+      // it settles, and `sessions.binding(id)` answers undefined until then. A
+      // fake that minted the face at retain would let every test step over both
+      // waits `bind()` takes after the retain.
+      ready: faces.has(key)
+        ? Promise.resolve({})
+        : new Promise<void>((resolve) => {
+            gates.set(key, resolve);
+            if (!deferClientSessions) {
+              queueMicrotask(() => materializeSession(key));
+            }
+          }).then(() => mintSession(key)),
+      release: vi.fn(),
+    };
+    references.push(reference);
+    return reference;
+  });
   const sessions = {
     list,
-    open,
+    retain,
     binding: (id: never) => {
       const found = bindings.get(String(id));
       return found === undefined
@@ -125,8 +347,24 @@ export function harness(
     },
   } as unknown as QaSessionControllerOptions["sessions"];
   let sequence = listed.length;
+  /** Rows the Host has created but this browser's catalog does not list yet. */
+  const pending = new Map<string, SessionListState["byId"][SessionId]>();
+  const rowOf = (id: string) =>
+    ({ ...summaryOf(id), updatedAt: 2 }) as SessionListState["byId"][SessionId];
+  const publishRow = (id: string): void => {
+    const summary = pending.get(id);
+    if (summary === undefined) return;
+    pending.delete(id);
+    const before = list.getSnapshot();
+    list.set({
+      ...before,
+      ids: [id as SessionId, ...before.ids],
+      byId: { ...before.byId, [id]: summary },
+    } as SessionListState);
+  };
+  const mintId = (): string => `created-${(sequence += 1)}`;
   const create = vi.fn(async () => {
-    const id = `created-${++sequence}`;
+    const id = mintId();
     faces.set(id, sessionFace(id));
     bindings.set(id, conversationBinding(id));
     const before = list.getSnapshot();
@@ -140,7 +378,12 @@ export function harness(
     } as SessionListState);
     return id as never;
   });
-  Object.assign(sessions, { create });
+  // The catalog baseline pull the surface asks for when a retain was refused:
+  // it is what delivers the rows the Host created without telling this browser.
+  const refresh = vi.fn(async () => {
+    for (const id of [...pending.keys()]) publishRow(id);
+  });
+  Object.assign(sessions, { create, refresh });
   const selectModel = vi.fn(async () => ({
     ok: true as const,
     value: { selected: {} },
@@ -185,6 +428,18 @@ export function harness(
   const createSession = vi.fn<QaSessionControllerOptions["createSession"]>(
     async () => ({ ok: true, value: String(await create()) }),
   );
+  /**
+   * Create a session the way this plugin's own Remote does: the server has it,
+   * while this browser holds neither its catalog row nor its Client Session —
+   * `sessions.retain` is refused for it, and the reference is only materialized
+   * once {@link publishRow} or {@link refresh} has landed the row. That gap is
+   * the window the surface has to wait out rather than fail in.
+   */
+  const serverSession = vi.fn(async () => {
+    const id = mintId();
+    pending.set(id, rowOf(id));
+    return id;
+  });
   return {
     sessions,
     api,
@@ -197,8 +452,14 @@ export function harness(
     create,
     createSession,
     selectAgentPreset,
-    open,
+    retain,
+    references,
     list,
+    refresh,
+    serverSession,
+    publishRow,
+    deferClientSession,
+    materializeSession,
     secureSession,
   };
 }

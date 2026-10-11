@@ -8,7 +8,7 @@ Module map for `@yadsh/dsh-domain-experts`. The product contract is
 ```text
 src/
 ├── index.ts            host entry: Config, DomainExpertsService, Typert Remote,
-│                       settings namespace, tool registration, extension APIs
+│                       volatile config, tool registration, extension APIs
 ├── config.ts           Schemastery Config + resolveConfig
 ├── types.ts            the domain model, shared verbatim with the browser
 ├── host/
@@ -19,15 +19,17 @@ src/
 │   ├── persona.ts      base policy + composed persona (template-safe)
 │   ├── resolver.ts     definition → resolved profile (scope, tools, memory, persona)
 │   ├── policy.ts       cross-domain verdict + parallel budget (pure)
+│   ├── caller.ts       live or durable caller identity, bounded catalog lookup
 │   ├── execution.ts    ctx.subagents orchestration, run tracker, audit emit
 │   ├── audit.ts        bounded audit ring
 │   ├── result.ts       structured-answer parser
+│   ├── qa-principal.ts optional host seam: which account a session belongs to
 │   ├── scopes/         provider registry, filesystem provider, path guard
 │   ├── memory/         provider registry, built-in namespace-partitioned store
 │   ├── workers/        worker registry (scope-enforcement claims)
 │   └── tools/          the three agent-visible tools
 └── client/
-    ├── index.tsx       apply(): mount Remote, register the settings tab
+    ├── index.tsx       apply(): mount Remote, register the bundle page in Plugins
     ├── remote.ts       hand-written face of the generated Remote contract
     ├── session-id.ts   reads the current session without widening the host face
     ├── DomainExpertsPage.tsx  container: state, Remote calls, orchestration
@@ -109,13 +111,30 @@ domain_expert(domain, task, context, output, mode, background)
   alias keeps design-vocabulary configurations from being reported as degraded.
   Only real registered names reach the runtime's tool filter, which rejects
   unknown names loudly.
+- **A global tool name cannot be verified at resolve time.** `toolEntries` grades
+  an allow-list entry `worker` only when this plugin's `WorkerRegistry` knows it,
+  `infrastructure` when it is one of the plugin's own tools, and `tool` for
+  everything else — which is exactly the set that records `TOOL_UNVERIFIED`. The
+  host's global tool registry is not reachable from here, and `restrict()` at
+  child start is the only component that can settle a name, so the code annotates
+  the resolution rather than reporting a fault: the name still reaches
+  `toolFilter.allow` (`filterNamesOf` keeps every available entry). Dropping it
+  would quietly narrow the expert on a deployment that does mount the tool;
+  keeping it costs one audit code. Where the runtime does refuse a name, the run
+  is retried without it and records `TOOL_UNFILTERABLE`, which names what went
+  missing.
 - **Expert-only tools are globally registered.** `domain_delegate`'s sibling
   concern — a top-level agent seeing `domain_memory` — is handled by refusing
   with `EXPERT_NOT_CALLER`, because the runtime offers no seam to register a
   tool inside a child's creation window.
-- **The run tracker is process-local.** A continuable child resumed after a
-  restart cannot be attributed to a domain, so delegation from it fails loudly
-  instead of guessing.
+- **The run tracker is process-local.** `callerDomainOf` in `host/caller.ts`
+  recovers delegation identity after restart or eviction from the Host's durable
+  direct-child catalog and the creation label `domain-expert:<domain>`. Unknown
+  identities fail closed; ordinary children remain supported when the catalog
+  identifies them. Reads receive the execution signal and have a five-second
+  deadline. The caller's current policy and parallel limit apply. A cold audit
+  records only the known caller-to-target suffix; account memory ownership is
+  never guessed from labels, so cold `domain_memory` remains refused.
 - **`resolveWithinRoot` follows symlinks on the nearest existing ancestor.** A
   path that does not exist yet is still checked lexically and against the real
   root, so a symlinked intermediate directory cannot smuggle a target out.

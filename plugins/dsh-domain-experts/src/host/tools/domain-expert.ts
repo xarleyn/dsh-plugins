@@ -193,11 +193,11 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
     async execute(args, exec) {
       const agent = requireAgent(exec.agent, "domain_expert");
       const sessionId = callerSessionIdOf(agent);
-      const caller = dependencies.activeRun(sessionId);
-      const callerDomain = caller?.domainId ?? null;
+      let callerDomain: string | null = null;
 
       try {
         const definition = await dependencies.requireDefinition(args.domain);
+        callerDomain = await dependencies.callerDomain(agent, exec.signal);
         if (callerDomain !== null) {
           if (callerDomain === definition.id) {
             throw new DomainExpertsError(
@@ -216,7 +216,7 @@ export function createDomainExpertTool(dependencies: ToolDependencies) {
             });
           }
         }
-        const budget = dependencies.parallelBudget(sessionId);
+        const budget = dependencies.parallelBudget(sessionId, callerDomain);
         if (budget.exceeded) {
           throw new DomainExpertsError(
             "PARALLELISM_EXCEEDED",

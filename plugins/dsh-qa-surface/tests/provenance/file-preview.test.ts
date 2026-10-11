@@ -47,6 +47,24 @@ async function refusalReason(fields: Request): Promise<string | null> {
 }
 
 describe("source file preview", () => {
+  it("rejects binary previews after evidence authorization instead of decoding them as text", async () => {
+    const cwd = await scratch("qa-source-binary-");
+    await writeFile(join(cwd, "report.pdf"), "%PDF-1.4");
+    expect(
+      await refusalReason({
+        cwd,
+        sourcePath: "report.pdf",
+        isEvidence: () => false,
+      }),
+    ).toBe("not-evidence");
+    expect(await refusalReason({ cwd, sourcePath: "report.pdf" })).toBe(
+      "unsupported",
+    );
+    await writeFile(join(cwd, "bytes.txt"), Buffer.from([0xff, 0x00, 0x80]));
+    expect(await refusalReason({ cwd, sourcePath: "bytes.txt" })).toBe(
+      "unsupported",
+    );
+  });
   it("recognizes Markdown and enforces byte/render limits", async () => {
     const cwd = await scratch("qa-source-preview-");
     await writeFile(join(cwd, "guide.md"), "# Guide\n0123456789", "utf8");
@@ -137,8 +155,8 @@ describe("source file preview", () => {
     await mkdir(cwd, { recursive: true });
     await mkdir(store, { recursive: true });
     await mkdir(neighbour, { recursive: true });
-    const upload = join(store, "upload-1.png");
-    await writeFile(upload, "png", "utf8");
+    const upload = join(store, "upload-1.txt");
+    await writeFile(upload, "attachment text", "utf8");
     await writeFile(join(neighbour, "other.txt"), "other", "utf8");
     expect(
       await refusalReason({
@@ -150,7 +168,7 @@ describe("source file preview", () => {
     const preview = await readSourceFilePreview(
       request({ cwd, attachmentRoot: store, sourcePath: upload }),
     );
-    expect(preview.content).toBe("png");
+    expect(preview.content).toBe("attachment text");
   });
 
   it("separates a moved file from a directory outside the roots", async () => {

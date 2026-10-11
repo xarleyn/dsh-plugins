@@ -28,7 +28,7 @@ node scripts/publish-release.mjs --check --tsv="$TMPDIR/rows.tsv"
 
 | Command | Covers | Does **not** cover |
 | --- | --- | --- |
-| `pnpm check` | `lint`, `format`, `typecheck`, `test`, `build`, `verify` (→ `verify:packages`, `verify:logging`, per-package `verify`), `deps:check` | `tarball:verify`, `release:check`, the browser smoke |
+| `pnpm check` | `lint`, `format`, `typecheck`, `test`, `build`, `check:files`, `verify` (→ `verify:packages`, `verify:logging`, per-package `verify`), `deps:check` | `tarball:verify`, `release:check`, the browser smoke |
 | `pnpm test:release` | the release/CI workflow contracts: publish-before-push order, the fan-out, the plan gate, the publication gate, wave notes | whether the workflow actually runs |
 | `pnpm release:check` | a committed plan for every publishable project whose newest reachable release tag does not cover its commits | uncommitted work — it reads commits |
 | `pnpm tarball:verify` | gates 1–7 on the packed tarball, including `exports` vs the real build and "no `workspace:`/`catalog:` leaks into the manifest" | anything about the registry |
@@ -63,8 +63,10 @@ Three ways a green run lies, all of them observed here:
 
 ## Environment traps that look like your bug
 
-- `node --test scripts/…` and `npm run test:release` both fail on
-  `npm_execpath`; only `pnpm test:release` is valid.
+- `node --test scripts/…` and `npm run test:release` work too: the release test
+  resolves pnpm and npm itself (`npm_execpath` → the install beside this node →
+  PATH) and spawns each in the form its install uses, so it no longer needs
+  `pnpm run` to export `npm_execpath`.
 - Node resolves `/tmp/...` to `D:\tmp` (a path that does not exist) on Windows.
   Use `$TMPDIR` / `os.tmpdir()`.
 - A run in a second checkout or worktree needs `NX_DAEMON=false
@@ -87,5 +89,6 @@ Three ways a green run lies, all of them observed here:
   hand, and the wave will treat it as adopted rather than its own.
 - An install check is the only thing that proves a wave is consumable:
   `node scripts/publish-release.mjs --verify-install --tsv=<rows>` runs a real
-  `npm install <name>@<version> --dry-run` per package and retries while the
-  registry catches up.
+  `npm install <name>@<version> --dry-run` per package and polls each version
+  the registry has not caught up with, doubling the wait up to a five-minute
+  ceiling before it reports the version as uninstallable.

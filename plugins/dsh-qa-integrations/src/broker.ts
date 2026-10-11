@@ -1,7 +1,12 @@
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 import { IntegrationError, type IntegrationErrorCode } from "./errors.js";
+import type { IntegrationProvider } from "./providers/contract.js";
 import type { IntegrationProviderRegistry } from "./providers/registry.js";
-import type { IntegrationRepository } from "./repository.js";
+import type {
+  IntegrationBindingGeneration,
+  IntegrationRepository,
+  IntegrationWriteFate,
+} from "./repository.js";
 import type { SecretStore } from "./secrets/secret-store.js";
 import { DEFAULT_SERVICE_RATE_LIMIT } from "./service-credentials/config.js";
 import {
@@ -133,7 +138,8 @@ export class IntegrationBroker {
         service,
       };
     }
-    const policy = integration.capabilities.map((capability) => ({
+    const granted = this.grantedCapabilities(integration, provider);
+    const policy = granted.map((capability) => ({
       capability,
       mode: this.repository.policy(integration, capability),
     }));
@@ -146,7 +152,7 @@ export class IntegrationBroker {
       externalAccountName: integration.displayName,
       credentialConfigured: secret !== undefined,
       credentialUpdatedAt: secret?.updatedAt ?? null,
-      capabilities: integration.capabilities,
+      capabilities: granted,
       capabilityInfo: provider.capabilityInfo,
       policy,
       lastValidatedAt: integration.lastValidatedAt,
@@ -154,6 +160,25 @@ export class IntegrationBroker {
       credentialSource: integration.credentialSource,
       service,
     };
+  }
+
+  /**
+   * The capabilities a connection may use as it stands: the stored grant, with
+   * anything this deployment has since withdrawn from the provider removed.
+   * Everything that decides or displays the reach of a connection reads through
+   * here — the call gate, the operator card, and the policy editor — so a
+   * capability the deployment has taken away is neither served, nor offered as a
+   * switch, nor able to collect a fresh allowance. A grant that survives only in
+   * the database stops being served, rather than running until the connection is
+   * next established.
+   */
+  private grantedCapabilities(
+    integration: StoredIntegration,
+    provider: IntegrationProvider,
+  ): readonly IntegrationCapability[] {
+    return integration.capabilities.filter((capability) =>
+      provider.capabilities.includes(capability),
+    );
   }
 
   /**
@@ -278,7 +303,13 @@ export class IntegrationBroker {
         // refuse: the ceiling already bounds what the token can reach here, and
         // the finding is recorded for the operator instead.
         if (code !== undefined && health?.status !== "unsafe_scope") {
-          this.repository.updateValidation(principal, providerId, false, code);
+          this.recordValidation(
+            principal,
+            providerId,
+            integration,
+            false,
+            code,
+          );
           this.repository.audit({
             ownerUserId: principal.userId,
             provider: providerId,
@@ -296,9 +327,10 @@ export class IntegrationBroker {
           });
           throw new IntegrationError(code, "Service credential is unusable");
         }
-        this.repository.updateValidation(
+        this.recordValidation(
           principal,
           providerId,
+          integration,
           true,
           code ?? null,
         );
@@ -313,7 +345,7 @@ export class IntegrationBroker {
         });
         return this.summary(principal, providerId);
       }
-      const credential = await this.decrypt(principal, providerId);
+      const credential = await this.decrypt(principal, providerId, integration);
       const validation = await this.providers
         .get(providerId)
         .validate({ credential, credentialSource: "personal" });
@@ -321,9 +353,10 @@ export class IntegrationBroker {
       // here, and a revoked one must stop being offered. Policies are left
       // untouched, so a newly detected capability starts denied until the user
       // enables it in Settings.
-      this.repository.updateValidation(
+      this.recordValidation(
         principal,
         providerId,
+        integration,
         true,
         null,
         validation.capabilities,
@@ -341,7 +374,7 @@ export class IntegrationBroker {
     } catch (error) {
       const code =
         error instanceof IntegrationError ? error.code : "ProviderUnavailable";
-      this.repository.updateValidation(principal, providerId, false, code);
+      this.recordValidation(principal, providerId, integration, false, code);
       this.repository.audit({
         ownerUserId: principal.userId,
         provider: providerId,
@@ -356,8 +389,69 @@ export class IntegrationBroker {
         integrationId: integration.id,
         reason: code,
       });
+      // A probe the upstream never answered is the same invisible failure as a
+      // read that did: the row goes to `error` and nothing says the deadline
+      // ended the probe rather than the credential being wrong.
+      this.logTransportTimeout(providerId, "credential.validate", error);
       throw error;
     }
+  }
+
+  /**
+   * The identity a write-back has to compare against: the row, its revision and
+   * the credential of the binding this operation started from. Every field is
+   * needed — the revision alone cannot tell a replaced connection from a newly
+   * created one, because a disconnect erases the row and the next connect starts
+   * its revision over at the first number.
+   */
+  private bindingGeneration(
+    integration: StoredIntegration,
+  ): IntegrationBindingGeneration {
+    return {
+      bindingId: integration.id,
+      bindingRevision: integration.bindingRevision,
+      secretRef: integration.secretRef,
+      serviceProfileId: integration.serviceProfileId,
+    };
+  }
+
+  /**
+   * Store one validation verdict against the binding it was produced from. A
+   * probe outlives its binding whenever the account reconnects or switches
+   * credential mode while the provider is being reached: what it found describes
+   * a credential no longer in use, so that verdict is dropped and logged instead
+   * of overwriting the live binding's account and capabilities.
+   */
+  private recordValidation(
+    principal: IntegrationPrincipal,
+    providerId: IntegrationProviderId,
+    integration: StoredIntegration,
+    success: boolean,
+    errorCode: string | null,
+    capabilities?: readonly IntegrationCapability[],
+  ): void {
+    const fate = this.repository.updateValidation(
+      principal,
+      providerId,
+      success,
+      errorCode,
+      capabilities,
+      this.bindingGeneration(integration),
+    );
+    if (fate === "applied") return;
+    // Two races, two keys: a binding that moved on to another generation and a
+    // binding that was disconnected and never made again read as the same lost
+    // verdict under one key, which is not what the log is for.
+    this.logger.warn(
+      fate === "missing"
+        ? "credential.validation-unbound"
+        : "credential.validation-stale",
+      {
+        provider: providerId,
+        integrationId: integration.id,
+        bindingRevision: integration.bindingRevision,
+      },
+    );
   }
 
   /**
@@ -394,7 +488,10 @@ export class IntegrationBroker {
   /**
    * Move one binding between credential sources. Both directions invalidate
    * everything derived from the previous identity by bumping the binding
-   * revision, and neither direction ever falls back on its own.
+   * revision, and neither direction ever falls back on its own. A switch that
+   * reaches upstream first (the personal direction validates the stored token)
+   * only lands on the binding it started from, so a reconnect during that probe
+   * costs the switch rather than rewriting the new connection.
    */
   async setCredentialSource(
     principal: IntegrationPrincipal,
@@ -411,7 +508,7 @@ export class IntegrationBroker {
     }
     if (source === "service") {
       const resolved = this.resolveService(principal, integration);
-      this.repository.setCredentialSource({
+      const switched = this.repository.setCredentialSource({
         principal,
         provider: providerId,
         source: "service",
@@ -420,7 +517,11 @@ export class IntegrationBroker {
         tenantId: resolved.profile.portal,
         externalUserId: `service:${resolved.profile.id}`,
         displayName: resolved.profile.label,
+        expected: this.bindingGeneration(integration),
       });
+      if (switched !== "applied") {
+        throw this.refuseStaleSwitch(providerId, integration, switched);
+      }
       this.repository.audit({
         ownerUserId: principal.userId,
         provider: providerId,
@@ -437,7 +538,15 @@ export class IntegrationBroker {
       });
       return this.summary(principal, providerId);
     }
-    const secret = this.repository.secretFor(principal, providerId);
+    // Read the credential this binding names, not whatever the live row points
+    // at: the write below is guarded by the generation captured above, and a
+    // probe that spent another generation's token would be answering for a
+    // credential this switch was never asked to install.
+    const secret = this.repository.secretByRef(
+      principal,
+      providerId,
+      integration.secretRef,
+    );
     if (secret === undefined) {
       throw new IntegrationError(
         "PersonalCredentialRequired",
@@ -448,7 +557,11 @@ export class IntegrationBroker {
       credential: await this.secrets.decrypt(secret),
       credentialSource: "personal",
     });
-    this.repository.setCredentialSource({
+    // The probe above reached upstream, so the binding may have moved while it
+    // was away. The switch carries the identity that probe found; writing it
+    // unconditionally would put a replaced token's account and grant onto
+    // whatever connection the account has now.
+    const switched = this.repository.setCredentialSource({
       principal,
       provider: providerId,
       source: "personal",
@@ -457,7 +570,11 @@ export class IntegrationBroker {
       tenantId: validation.tenantId,
       externalUserId: validation.externalUserId,
       displayName: validation.displayName,
+      expected: this.bindingGeneration(integration),
     });
+    if (switched !== "applied") {
+      throw this.refuseStaleSwitch(providerId, integration, switched);
+    }
     this.repository.audit({
       ownerUserId: principal.userId,
       provider: providerId,
@@ -472,6 +589,36 @@ export class IntegrationBroker {
       credentialSource: "personal",
     });
     return this.summary(principal, providerId);
+  }
+
+  /**
+   * Refuse a switch the store would not apply: the account reconnected while the
+   * request was on its way, so the binding it was asked against is gone and the
+   * identity it carries is a token that has already been replaced. Nothing was
+   * written, so the answer names the lost generation rather than claiming a
+   * change of mode the store never made. The log separates the two ways the
+   * guard can refuse — a binding that moved to another generation from a binding
+   * that was disconnected outright — because they are different races to chase.
+   */
+  private refuseStaleSwitch(
+    providerId: IntegrationProviderId,
+    integration: StoredIntegration,
+    fate: Exclude<IntegrationWriteFate, "applied">,
+  ): IntegrationError {
+    this.logger.warn(
+      fate === "missing"
+        ? "credential.switch-unbound"
+        : "credential.switch-stale",
+      {
+        provider: providerId,
+        integrationId: integration.id,
+        bindingRevision: integration.bindingRevision,
+      },
+    );
+    return new IntegrationError(
+      "IntegrationNotConnected",
+      "The connection changed while the credential was being switched",
+    );
   }
 
   /**
@@ -509,7 +656,16 @@ export class IntegrationBroker {
     patch: PolicyPatch,
   ): IntegrationSummary {
     const integration = this.requireConnected(principal, providerId);
-    if (!integration.capabilities.includes(patch.operation)) {
+    // An allowance is written only for a capability the connection has as it
+    // stands. A row set against one the deployment has withdrawn would sit inert
+    // and start serving the moment that capability came back — a permission
+    // nobody asked for, against the rule `validate` keeps for a capability the
+    // credential newly reveals: it stays denied until somebody enables it.
+    const granted = this.grantedCapabilities(
+      integration,
+      this.providers.get(providerId),
+    );
+    if (!granted.includes(patch.operation)) {
       throw new IntegrationError("InvalidRequest", "Capability is unavailable");
     }
     if (!(["allow", "confirm", "deny"] as const).includes(patch.mode)) {
@@ -578,8 +734,15 @@ export class IntegrationBroker {
             sourceSessionId: request.sourceSessionId,
           })
         : undefined;
+    // The stored grant is only half of the answer: a capability this deployment
+    // has since withdrawn stays served until the connection is re-established
+    // unless the live provider set is consulted as well. Denied here — before
+    // the secret is decrypted and before anything reaches upstream.
     const mode = this.repository.policy(integration, capability);
-    if (mode !== "allow" || !integration.capabilities.includes(capability)) {
+    if (
+      mode !== "allow" ||
+      !this.grantedCapabilities(integration, provider).includes(capability)
+    ) {
       this.repository.audit({
         ownerUserId: principal.userId,
         provider: request.provider,
@@ -603,7 +766,7 @@ export class IntegrationBroker {
     try {
       const credential =
         resolved === undefined
-          ? await this.decrypt(principal, request.provider)
+          ? await this.decrypt(principal, request.provider, integration)
           : this.buildServiceCredential(request.provider, resolved);
       const boundary =
         resolved === undefined
@@ -637,6 +800,7 @@ export class IntegrationBroker {
         serviceProfileId: resolved?.profile.id ?? null,
         sourceSessionId: request.sourceSessionId,
       });
+      this.healAfterCall(principal, integration);
       this.logger.debug("tool.call", {
         provider: request.provider,
         operation: request.operation,
@@ -662,10 +826,165 @@ export class IntegrationBroker {
         serviceProfileId: resolved?.profile.id ?? null,
         sourceSessionId: request.sourceSessionId,
       });
+      this.logTransportTimeout(
+        request.provider,
+        request.operation,
+        error,
+        resolved?.profile.id,
+      );
+      this.recordCallVerdict(principal, integration, error);
+      this.logCallFailure(
+        request.provider,
+        integration,
+        request.operation,
+        error,
+        resolved?.profile.id,
+      );
       throw error;
     } finally {
       releaseSlot?.();
     }
+  }
+
+  /**
+   * Record a call this deployment's own deadline ended.
+   *
+   * Without it the failure is invisible where an operator looks for it: the
+   * audit row says `error`, the trail of the reason code is the chat, and the
+   * log — the one surface that outlives both — carried nothing about a provider
+   * that stopped answering. The provider and the operation are this call's; the
+   * deadline and the attempts come written on the error by the transport loop
+   * that spent them, which is the only party that ever knew them.
+   *
+   * Nothing upstream is named here: no address, no query, no body, no
+   * credential. Numbers, a provider id and an operation are enough to find the
+   * call again in the trail.
+   */
+  private logTransportTimeout(
+    provider: IntegrationProviderId,
+    operation: string,
+    error: unknown,
+    serviceProfileId?: string | undefined,
+  ): void {
+    if (
+      !(error instanceof IntegrationError) ||
+      error.code !== "UpstreamTimeout"
+    ) {
+      return;
+    }
+    const budget = error.budget;
+    this.logger.warn("transport.timeout", {
+      provider,
+      operation,
+      ...(budget === undefined
+        ? {}
+        : {
+            timeoutMs: budget.timeoutMs,
+            retries: budget.retries,
+            attempts: budget.attempts,
+          }),
+      ...(serviceProfileId === undefined
+        ? {}
+        : { serviceProfile: serviceProfileId }),
+    });
+  }
+
+  /**
+   * Write what one live call learned about its binding back onto that binding.
+   *
+   * `validate` already did this, but only for somebody who opened the connect
+   * form: a key that died between two visits left the row reading `connected`
+   * with an empty `last_error_code`, so the card kept promising the connection
+   * that was refusing every answer, and the only clue was the text the chat
+   * happened to show. A refused credential is a state of the row, so the call
+   * that met one records it.
+   *
+   * Only these codes are written. An unreachable host, a TLS chain the user
+   * cannot repair from the form, a rate limit or a resource that is not there
+   * say nothing about the validity of the binding, and a red card for those
+   * would send somebody to reconnect the very credential that was never the
+   * problem.
+   */
+  private recordCallVerdict(
+    principal: IntegrationPrincipal,
+    integration: StoredIntegration,
+    error: unknown,
+  ): void {
+    if (!(error instanceof IntegrationError)) return;
+    if (!REFUSED_CREDENTIAL_CODES.includes(error.code)) return;
+    this.recordValidation(
+      principal,
+      integration.provider,
+      integration,
+      false,
+      error.code,
+    );
+  }
+
+  /**
+   * Clear the verdict an earlier live call filed, once a later call got data
+   * through the same credential. `status` and `last_error_code` are the card's
+   * only statement about a connection, and without this a binding repaired
+   * upstream — a re-issued token, a key the administrator un-revoked — would
+   * stay red until somebody thought to press a button that answers nothing new.
+   */
+  private healAfterCall(
+    principal: IntegrationPrincipal,
+    integration: StoredIntegration,
+  ): void {
+    if (integration.status !== "error") return;
+    this.recordValidation(
+      principal,
+      integration.provider,
+      integration,
+      true,
+      null,
+    );
+  }
+
+  /**
+   * Say in this plugin's own log what a refused live call met.
+   *
+   * The chat carries the sentence the model was shown, the audit trail carries
+   * the result, and neither is where an operator looks; before this a live
+   * refusal left no line behind at all. The fields describe the shape of the
+   * answer — its status, its media type, the class of the transport failure —
+   * never its body, and never a credential.
+   *
+   * Two refusals are left to their own records: a call this deployment's
+   * deadline ended is `transport.timeout`, budget and all, and a refusal decided
+   * without any answer — a policy switch, a connection that is not there — has
+   * no upstream to report on, which is what the absence of diagnostics says.
+   */
+  private logCallFailure(
+    provider: IntegrationProviderId,
+    integration: StoredIntegration,
+    operation: string,
+    error: unknown,
+    serviceProfileId?: string | undefined,
+  ): void {
+    if (!(error instanceof IntegrationError)) return;
+    if (error.code === "UpstreamTimeout" || error.diagnostics === undefined) {
+      return;
+    }
+    const facts = error.diagnostics;
+    this.logger.warn("tool.call-failed", {
+      provider,
+      operation,
+      reason: error.code,
+      integrationId: integration.id,
+      credentialSource: integration.credentialSource,
+      ...(facts.status === undefined ? {} : { status: facts.status }),
+      ...(facts.contentType === undefined
+        ? {}
+        : { contentType: facts.contentType }),
+      ...(facts.errorClass === undefined
+        ? {}
+        : { errorClass: facts.errorClass }),
+      ...(serviceProfileId === undefined
+        ? {}
+        : { serviceProfile: serviceProfileId }),
+    });
   }
 
   /**
@@ -962,15 +1281,35 @@ export class IntegrationBroker {
     return integration;
   }
 
+  /**
+   * Unlock the credential of one captured binding. The lookup starts from the
+   * principal that asked and the provider being reached, as every lookup in the
+   * store does, and the binding's own reference selects the generation of that
+   * connection: an operation that read the live row instead would spend the
+   * credential of whoever holds it now while filing its verdict against the
+   * generation it started from, and those two are only the same object when the
+   * reference is still the one the row carries.
+   */
   private async decrypt(
     principal: IntegrationPrincipal,
     provider: IntegrationProviderId,
+    integration: StoredIntegration,
   ): Promise<string> {
-    const record = this.repository.secretFor(principal, provider);
+    const record = this.repository.secretByRef(
+      principal,
+      provider,
+      integration.secretRef,
+    );
     if (record === undefined) {
+      // The binding named a credential that is no longer stored: it was spent by
+      // a reconnect while this read was under way. Refuse it as the missing
+      // connection it is, the same way `requireConnected` refuses a binding that
+      // has gone, and never as a policy refusal — `PersonalCredentialRequired`
+      // would tell the user to store a token they just replaced, and the audit
+      // trail would file a lost race among the calls policy declined.
       throw new IntegrationError(
-        "PersonalCredentialRequired",
-        "This operation needs a personal credential",
+        "IntegrationNotConnected",
+        "The credential this request started from is no longer stored",
       );
     }
     if (
@@ -1011,6 +1350,15 @@ function healthCode(
       return "ProviderUnavailable";
   }
 }
+
+/**
+ * Codes that mean the binding's own credential was refused, wherever the
+ * upstream said so — a rejected token, an expired one, a redirect to a sign-in
+ * page. They are the ones the operator's card can act on by reconnecting.
+ */
+const REFUSED_CREDENTIAL_CODES: readonly IntegrationErrorCode[] = Object.freeze(
+  ["CredentialExpired", "CredentialRevoked", "InvalidCredential"],
+);
 
 /** Codes that mean "policy refused this", wherever the refusal was decided. */
 const DENIAL_CODES: readonly IntegrationErrorCode[] = Object.freeze([

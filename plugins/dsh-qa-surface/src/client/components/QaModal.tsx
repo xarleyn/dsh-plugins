@@ -7,6 +7,16 @@ import { useEffect, useRef, type ReactNode } from "react";
  */
 const openDialogs: symbol[] = [];
 
+/**
+ * Whether a dialog of this shell is on screen. The keyboard belongs to it: the
+ * page under it, and anything painted beside it — the notice stack is such a
+ * neighbour — have to stop steering Tab while it holds, or a reader working in
+ * the dialog is turned back into a page under the scrim.
+ */
+export function isQaModalOpen(): boolean {
+  return openDialogs.length > 0;
+}
+
 export interface QaModalProps {
   readonly open: boolean;
   /** Dialog title; also the dialog's accessible name. */
@@ -56,6 +66,7 @@ export function QaModal(props: QaModalProps) {
   return (
     <div
       className="dsh-qa-modal"
+      data-testid="qa-surface-modal"
       role="dialog"
       aria-modal="true"
       aria-label={props.title}
@@ -63,13 +74,25 @@ export function QaModal(props: QaModalProps) {
         if (event.target === event.currentTarget) props.onClose();
       }}
     >
-      <div className={`dsh-qa-modal__panel${panelModifier(props)}`}>
-        <header className="dsh-qa-modal__head">
-          <h2 className="dsh-qa-modal__title">{props.title}</h2>
+      <div
+        className={`dsh-qa-modal__panel${panelModifier(props)}`}
+        data-testid="qa-surface-modal-panel"
+      >
+        <header
+          className="dsh-qa-modal__head"
+          data-testid="qa-surface-modal-head"
+        >
+          <h2
+            className="dsh-qa-modal__title"
+            data-testid="qa-surface-modal-title"
+          >
+            {props.title}
+          </h2>
           <button
             ref={closeButton}
             type="button"
             className="dsh-qa-modal__close"
+            data-testid="qa-surface-modal-close"
             aria-label={props.closeLabel}
             onClick={props.onClose}
           >
@@ -78,9 +101,16 @@ export function QaModal(props: QaModalProps) {
             </svg>
           </button>
         </header>
-        <div className="dsh-qa-modal__body">{props.children}</div>
+        <div className="dsh-qa-modal__body" data-testid="qa-surface-modal-body">
+          {props.children}
+        </div>
         {props.footer === undefined ? null : (
-          <footer className="dsh-qa-modal__footer">{props.footer}</footer>
+          <footer
+            className="dsh-qa-modal__footer"
+            data-testid="qa-surface-modal-footer"
+          >
+            {props.footer}
+          </footer>
         )}
       </div>
     </div>

@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -172,6 +172,42 @@ export function changedFiles(repoRoot, from, to, directory) {
     { allowFailure: false },
   ).map(toPosixPath);
 }
+
+/**
+ * Whether `ancestor` is reachable from `descendant`. `git merge-base
+ * --is-ancestor` answers 0 for yes and 1 for no, and any other outcome is not
+ * an answer at all: an unresolvable ref, a missing object, a truncated history.
+ * Reading that as "not an ancestor" would keep the older tag and reopen the
+ * released work the tag covers, which is the failure this clamp exists to stop.
+ */
+function isAncestorOf(repoRoot, ancestor, descendant) {
+  const result = spawnSync(
+    "git",
+    ["merge-base", "--is-ancestor", ancestor, descendant],
+    { cwd: repoRoot, encoding: "utf8", windowsHide: true },
+  );
+  if (result.status === 0) return true;
+  if (result.status === 1) return false;
+  const reason =
+    result.stderr?.trim() ||
+    result.error?.message ||
+    (result.status === null
+      ? "the comparison was killed by a signal"
+      : `exit code ${result.status}`);
+  throw new Error(
+    `cannot tell whether ${ancestor} is reachable from ${descendant}: ${reason}`,
+  );
+}
+
+/**
+ * A starting ref that never lands earlier than `floor`. When one ref contains
+ * the other the newer one is the honest start; refs that diverged keep the
+ * candidate, because neither has absorbed the other's releases yet.
+ */
+function notBefore(repoRoot, candidate, floor) {
+  return isAncestorOf(repoRoot, candidate, floor) ? floor : candidate;
+}
+
 /**
  * Paths Nx itself ignores when it decides whether a project is touched. A
  * release commit only rewrites versions and changelogs, so a gate that counted
@@ -195,6 +231,12 @@ function planIgnoreMatchers(repoRoot) {
  * first wave ships, the per-project tags of the previous release scheme keep
  * this meaning. A project without any reachable tag has never shipped, so its
  * whole change against the base is unreleased.
+ *
+ * A tag is only a starting point while the base has not already reached it.
+ * A remote that never received a release's tag still has that release in its
+ * default branch, and resolving the range back to the older tag reopens every
+ * project the release already consumed: the gate then asks a pull request for
+ * plans of work it never touched.
  */
 export function unreleasedProjects({ repoRoot, base, head = "HEAD" }) {
   const ignoreMatchers = planIgnoreMatchers(repoRoot);
@@ -202,11 +244,20 @@ export function unreleasedProjects({ repoRoot, base, head = "HEAD" }) {
 
   return publishableReleaseProjects(repoRoot).map((project) => {
     const tag = waveTag ?? lastReleaseTag(repoRoot, project.name, head);
-    const from = tag ?? base;
+    const from = tag ? notBefore(repoRoot, tag, base) : base;
     const files = changedFiles(repoRoot, from, head, project.directory).filter(
       (file) => !ignoreMatchers.some((matcher) => matcher.test(file)),
     );
-    return { ...project, tag, from, files };
+    const superseded = Boolean(tag) && from !== tag;
+    return {
+      ...project,
+      tag,
+      from,
+      since: superseded
+        ? `since ${base} (release tag ${tag} is already in the base)`
+        : `since ${tag ?? base}`,
+      files,
+    };
   });
 }
 
@@ -333,8 +384,8 @@ function report(result, { verbose = false } = {}) {
     ];
     for (const project of result.missing) {
       const since = project.tag
-        ? `since ${project.tag}`
-        : `since ${result.base} (never released)`;
+        ? project.since
+        : `${project.since} (never released)`;
       lines.push(
         `  ${project.name}: ${project.files.length} file(s) ${since}`,
         `    ${describeFiles(project.files)}`,
@@ -357,16 +408,14 @@ function report(result, { verbose = false } = {}) {
   if (verbose) {
     for (const project of result.covered) {
       lines.push(
-        `  covered: ${project.name} (${project.files.length} file(s) since ${project.tag})`,
+        `  covered: ${project.name} (${project.files.length} file(s) ${project.since})`,
         ...result.planned
           .get(project.name)
           .map((entry) => `    ${entry.bump} in ${entry.plan}`),
       );
     }
     for (const project of result.released) {
-      lines.push(
-        `  released: ${project.name} (no change since ${project.tag ?? result.base})`,
-      );
+      lines.push(`  released: ${project.name} (no change ${project.since})`);
     }
   }
   if (result.uncommitted.length > 0) {

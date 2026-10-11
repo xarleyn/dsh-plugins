@@ -461,7 +461,7 @@ function isValidOrigin(value: unknown): value is string {
 }
 
 /** Schemes a match section accepts; an omitted/empty list means the https default. */
-function schemesOf(match: AuthenticatedFetchRule["match"]): string[] {
+function schemesOf(match: AuthenticatedFetchRule["match"]): readonly string[] {
   return match.schemes === undefined || match.schemes.length === 0
     ? ["https"]
     : match.schemes;

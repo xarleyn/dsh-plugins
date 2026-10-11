@@ -316,6 +316,32 @@ describe("structured extractors", () => {
     }
   });
 
+  /**
+   * The registry is the definition of a source: a workspace read, a fetched or
+   * searched web page, a file-search match, a Jira, Confluence or knowledge
+   * record. Memory is none of those — a recall reaches the surface as bridged
+   * MCP text over a virtual address the file preview could not open even if it
+   * listed one — and the deployment's own note treats recalled memory as
+   * background, not the source an answer is looked up in. A turn answered from
+   * memory therefore collects nothing by design; this is the line that says so.
+   */
+  it("collects nothing from a memory read, which is not a source class", () => {
+    const registry = createDefaultSourceExtractorRegistry();
+    expect(
+      registry.extract({
+        toolName: "mcp__openviking__read",
+        args: { uris: "viking://memory/user/preferences" },
+        result: [
+          {
+            type: "text",
+            text: "viking://memory/user/preferences\nThe operator prefers ...",
+          },
+        ],
+        origin: { ...parentOrigin, toolName: "mcp__openviking__read" },
+      }),
+    ).toEqual([]);
+  });
+
   it("normalizes structured fallback reports without parsing prose", () => {
     expect(
       normalizeReportedSource(

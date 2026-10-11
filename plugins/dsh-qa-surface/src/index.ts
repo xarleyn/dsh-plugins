@@ -1,6 +1,41 @@
 import { randomUUID } from "node:crypto";
+import path from "node:path";
+import { defaultAccountsFilePath } from "./accounts/store.js";
+import { QaChatSharingStore } from "./chat-sharing/store.js";
+import { QaChatTransport } from "./chat-sharing/transport.js";
+import { QaChatTurnGuard } from "./chat-sharing/turn-guard.js";
+import { installQaNativeFence } from "./chat-sharing/native-fence.js";
+import {
+  qaChatPublishedFile,
+  qaChatAttachmentPath,
+} from "./chat-sharing/resources.js";
+import { installQaChatUploads } from "./chat-sharing/uploads.js";
+import type {
+  QaChatAccess,
+  QaChatGrant,
+  QaChatMode,
+  QaChatAuthor,
+  QaChatJson,
+} from "./chat-sharing/types.js";
+import type {
+  SessionPageRequest,
+  SessionFollowRequest,
+  SessionPromptRequest,
+  SessionPromptValue,
+  SessionAttachmentRequest,
+  SessionAttachmentValue,
+  SessionRenameRequest,
+  SessionRenameValue,
+  SessionCancelValue,
+  SessionUpdateQueueRequest,
+  SessionUpdateQueueValue,
+  SessionSearchRequest,
+  SessionSelectModelRequest,
+  SessionSelectModelValue,
+} from "@deepseek-ai/dsh-api-session-controller/types";
+import { forkQaSession } from "./session-fork-host.js";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
-import type {} from "@deepseek-ai/dsh-agent-presets";
+import type {} from "@deepseek-ai/dsh-agent-preset-registry";
 import type {} from "@deepseek-ai/dsh-permission-presets";
 import type {} from "@deepseek-ai/dsh-settings";
 import type {} from "@deepseek-ai/dsh-tools";
@@ -16,7 +51,13 @@ import {
   getPluginLogger,
   type PluginLogger,
 } from "@yadsh/dsh-plugin-log";
-import { ConfigSchema, qaSurfaceVersion, resolveConfig } from "./config.js";
+import {
+  ConfigSchema,
+  qaSurfaceVersion,
+  readConfigRefs,
+  resolveConfig,
+} from "./config.js";
+import type { QaSurfaceConfigRefs } from "./config.js";
 import { createQaAccountRemotes } from "./account-remotes.js";
 import type { QaAccountRemotes } from "./account-remotes.js";
 import { QaAdminService } from "./admin/service.js";
@@ -38,6 +79,7 @@ import {
 import { QaFileDeleteGate } from "./qa-tools/file-delete-gate.js";
 import { QaQuestionGate } from "./questions.js";
 import { QaSessionOwnership } from "./session-ownership.js";
+import { registerTurnFailureLog } from "./turn-failure-log.js";
 import { entryRedirectRow } from "./entry-redirect.js";
 import { qaKioskDeployment } from "./ui-mode.js";
 import { registerQaNavigationRoute } from "./host-route.js";
@@ -48,9 +90,13 @@ import { createQaIntegrationRunner } from "./integration/host-runner.js";
 import { QaIntegrationService } from "./integration/service.js";
 import { QaPolicyAdmission } from "./secure-session.js";
 import { QaAccessService } from "./access/service.js";
+import { applySessionModelPolicy } from "./session-model.js";
+import { userInvocableSkillNames } from "./access/model.js";
+import type { QaPresetScopeLease } from "./access/capability-catalog.js";
 import { createQaSlashRemotes } from "./slash/remotes.js";
 import type { QaSlashRemotes } from "./slash/remotes.js";
 import { QaPromptNotes } from "./prompt-notes.js";
+import { qaActiveRequests, qaQueueStatus } from "./request-queue.js";
 import { QaTools } from "./qa-tools/index.js";
 import { docsDefaultVersionOf } from "./config-resolvers/tools.js";
 import { QaProvenanceHost } from "./provenance/host-store.js";
@@ -59,7 +105,11 @@ import {
   defaultQaProvenanceDirectoryPath,
   FileQaProvenanceSnapshotStore,
 } from "./provenance/snapshot-store.js";
-import { previewConvertibleDocument } from "./provenance/document-preview.js";
+import {
+  previewConvertibleDocument,
+  previewSourceDocument,
+} from "./provenance/document-preview.js";
+import { readWorkspaceFileChunk } from "./provenance/file-download.js";
 import {
   listWorkspaceDirectory,
   readSourceFilePreview,
@@ -71,6 +121,8 @@ import {
   prepareQaUserWorkspace,
 } from "./user-workspace.js";
 import type { DocumentsFace } from "@yadsh/dsh-documents";
+import type { QaAccountNotificationsInput } from "./types.js";
+import type { QaDomainExpertsFace } from "./integration/expert-memory.js";
 import type { QaTurnSources } from "./provenance/types.js";
 import type {
   QaAccountProfileInput,
@@ -80,6 +132,7 @@ import type {
   QaApprovalDecision,
   QaClaimResult,
   QaDocumentPreview,
+  QaDocumentWorkflowStatus,
   QaIssuedServiceToken,
   QaLockdownProof,
   QaOwnershipEntry,
@@ -87,12 +140,17 @@ import type {
   QaPendingApproval,
   QaPendingQuestion,
   QaQuestionAnswerItem,
+  QaQueueStatus,
   QaServiceTokenCreateInput,
   QaServiceTokenSummary,
   QaSurfaceConfig,
   ResolvedQaSurfaceConfig,
   QaAdminSkillScope,
   QaAdminSkillsView,
+  QaExpertMemoryDraft,
+  QaExpertMemoryPage,
+  QaExpertMemoryRecord,
+  QaExpertMemoryScope,
   QaSkillDocument,
   QaSkillDraftInput,
   QaSkillRemoval,
@@ -102,6 +160,7 @@ import type {
   QaSourceFilePreview,
   QaWhoamiResult,
   QaWorkspaceFile,
+  QaWorkspaceFileChunk,
   QaWorkspaceListing,
   QaPrincipal,
   QaAccessAdminSnapshot,
@@ -126,6 +185,8 @@ import type {
   QaFeedbackRow,
   QaMessageFeedback,
   QaMessageFeedbackInput,
+  QaModelCatalogEntry,
+  QaModelPair,
   QaQualityMetrics,
   QaReviewQueueItem,
   QaReviewQueueRow,
@@ -170,6 +231,21 @@ const CONFIGURATION_ERROR = "Assistant configuration is unavailable.";
 const ACCOUNTS_REASON_MARKER = /\(reason: ([a-z-]+)\)/u;
 
 /**
+ * Admission refusals that answer the browser correctly instead of reporting a
+ * broken deployment: the chat on screen is of an older composition, was created
+ * outside the QA policy, or is another conversation's delegated child. The
+ * browser keeps reading it as a transcript and asks the Host again on every
+ * panel refresh, so the journal takes a warning for these — a visitor opening a
+ * chat is not an incident, and one refused chat used to write an ERROR pair per
+ * Remote call.
+ */
+const ADMISSION_ANSWERS: ReadonlySet<string> = new Set([
+  "composition-mismatch",
+  "adoption-refused",
+  "subagent-session",
+]);
+
+/**
  * The preview refusal codes the browser branches on. `unavailable` covers a
  * disabled capability, a chat without a cwd and an unreadable file alike; the
  * panel tells the audience the file may be gone, which is true of all three.
@@ -182,12 +258,27 @@ function sourcePreviewRefusal(reason: QaSourcePreviewRefusal): Error {
   return new Error(`QA source preview refused the request (reason: ${reason})`);
 }
 
+/**
+ * Key of the preset-registry scope lease's disposer. The registry implements it
+ * as `Symbol.asyncDispose`; this project compiles against the ES2022 lib, which
+ * does not name that well-known symbol, and a well-known symbol is reachable
+ * through the global registry under the same key.
+ */
+const ASYNC_DISPOSE = Symbol.for("Symbol.asyncDispose");
+
+function releaseScopeLease(lease: unknown): Promise<void> {
+  const dispose = (lease as Record<symbol, (() => Promise<void>) | undefined>)[
+    ASYNC_DISPOSE
+  ];
+  return dispose?.call(lease) ?? Promise.resolve();
+}
+
 /** Host companion: validates config, owns the admission boundary and the route. */
 export class QaSurface extends TypertRemoteService {
   static inject = inject;
   static Config = ConfigSchema;
 
-  private source: () => QaSurfaceConfig;
+  private readonly source: () => QaSurfaceConfig;
   private readonly logger: PluginLogger;
   private readonly admission: QaPolicyAdmission;
   private readonly approvals: QaApprovalGate;
@@ -236,11 +327,30 @@ export class QaSurface extends TypertRemoteService {
    * opens the admin console never grows one.
    */
   private qualityStore: QaQualityStore | undefined;
+  private chatSharingStore: QaChatSharingStore | undefined;
+  private readonly chatTransport: QaChatTransport;
+  private readonly chatTurnGuard: QaChatTurnGuard;
 
-  constructor(ctx: Context, entry: QaSurfaceConfig = {}) {
+  private sharing(): QaChatSharingStore {
+    const accounts = () => {
+      const store = this.accountRemotes.resolve(this.getConfig());
+      if (store === undefined)
+        throw new Error("QA accounts are required for chat sharing.");
+      return store;
+    };
+    accounts();
+    return (this.chatSharingStore ??= new QaChatSharingStore(
+      path.join(path.dirname(defaultAccountsFilePath()), "qa-chat-sharing.db"),
+      accounts,
+    ));
+  }
+
+  constructor(ctx: Context, entry: Partial<QaSurfaceConfigRefs> = {}) {
     super(ctx, "qaSurface", { namespace: "qaSurface" });
-    const resolvedEntry = resolveConfig(entry);
-    this.source = () => resolvedEntry;
+    // Every Config field is volatile, so the reference the Host hands here is
+    // the one live source: each read folds its current snapshots, and a settings
+    // write is visible on the next read without reloading the plugin.
+    this.source = () => readConfigRefs(entry);
     this.logger = getPluginLogger({
       pluginId: "dsh-qa-surface",
       consoleSink: createHostLoggerSink(ctx.logger),
@@ -281,11 +391,17 @@ export class QaSurface extends TypertRemoteService {
       // Deletion is the console's alone: the sidebar's delete stays a
       // per-browser row, and only an administrator removes the chat itself.
       sessionFiles: createSessionEraser(),
+      ...(this.getConfig().accounts.enabled ? { sharing: this.sharing() } : {}),
       dropSources: (sessionId) => this.provenance.dropSession(sessionId),
       // The console writes skills through the same service the owner's editor
       // uses, so an administrator's save is path-checked, validated and
       // published to DSH by exactly the one code path that already does it.
       skills: () => this.personalSkills.service,
+      // Expert memory lives in another plugin, which a stand may not compose at
+      // all and which may install after this one — so it is resolved per call,
+      // exactly like the document service.
+      domainExperts: () =>
+        this.ctx.get("domainExperts") as QaDomainExpertsFace | undefined,
       logger: this.logger,
     });
     this.skillRemotes = createQaPersonalSkillRemotes({
@@ -296,6 +412,28 @@ export class QaSurface extends TypertRemoteService {
     });
     this.slashRemotes = createQaSlashRemotes({
       ctx,
+      draftSkills: async (token, target) => {
+        this.accountRemotes.resolve(this.getConfig());
+        const preview = await this.access.slashDraftSkills(
+          token,
+          target.subroleId,
+          target.adminPreview,
+        );
+        return {
+          skills: preview.skills.map((skill) => ({
+            name: skill.name,
+            description: skill.description,
+            modelInvocable: skill.invocation.modelInvocable,
+            ...(skill.whenToUse === undefined
+              ? {}
+              : { whenToUse: skill.whenToUse }),
+          })),
+          grantedSkills:
+            preview.policy === undefined
+              ? undefined
+              : userInvocableSkillNames(preview.policy),
+        };
+      },
       getConfig: () => this.getConfig(),
       logger: this.logger,
       sessionGrant: (token, sessionId, agent) =>
@@ -327,6 +465,12 @@ export class QaSurface extends TypertRemoteService {
       (owner, sessionId, agent) =>
         this.access.policyForSessionOwner(owner, sessionId, agent),
       () => this.tools?.catalogToolNames() ?? [],
+      (sessionId) => this.access.modelPolicyFor(sessionId),
+      // The integration API's own attestation writes the principal here, because
+      // that is where the caller's account has just been matched against the
+      // ownership record. The browser's `secureSession` remote keeps its own
+      // write: there the compared identity is the token's.
+      this.integrationPrincipals,
     );
     this.provenance = new QaProvenanceHost(
       ctx,
@@ -343,6 +487,40 @@ export class QaSurface extends TypertRemoteService {
           message: error instanceof Error ? error.message : String(error),
         }),
     );
+    this.chatTransport = new QaChatTransport(
+      ctx,
+      () => this.sharing(),
+      (token, id) => this.secureSession(token, id),
+      (userId, id) => this.access.participantPolicy(userId, id),
+    );
+    this.chatTurnGuard = new QaChatTurnGuard(
+      ctx,
+      () => this.sharing(),
+      (userId, id) => this.access.participantPolicy(userId, id),
+      () => this.getConfig().accounts.enabled,
+    );
+    ctx.effect(
+      () => () => {
+        this.chatTurnGuard.dispose();
+        this.chatSharingStore?.storage.close();
+      },
+      "dsh-qa-surface.chat-sharing",
+    );
+    ctx.inject(["typertGateway", "connection"], () => {
+      const dispose = installQaNativeFence(
+        ctx,
+        () => this.getConfig().accounts.enabled,
+      );
+      const disposeUploads = installQaChatUploads(
+        ctx,
+        () => this.sharing(),
+        (token, id) => this.secureSession(token, id),
+      );
+      return async () => {
+        dispose();
+        await disposeUploads();
+      };
+    });
     this.integration = new QaIntegrationService({
       getConfig: () => this.getConfig(),
       accounts: () => this.accountRemotes.resolve(this.getConfig()),
@@ -391,6 +569,19 @@ export class QaSurface extends TypertRemoteService {
     this.approvals.install();
     this.userQuestions.install();
     this.fileDeleteGate.install();
+    // A turn the Host ended with a provider failure is written to the plugin's
+    // log with its code and the provider the request was routed to. The chat row
+    // names the code only, and the durable journal that holds the rest is a zstd
+    // archive, so without this line a stand that lost its adapters is diagnosed
+    // by decoding frames. The ownership map is passed through rather than
+    // reduced to a boolean: the record has to carry the chat an operator can
+    // find in /qa, which for a turn that died inside a delegated expert is that
+    // expert's root, not the expert's own id.
+    const disposeTurnFailureLog = registerTurnFailureLog(
+      ctx,
+      this.logger,
+      (sessionId) => ownership.rootOf(sessionId),
+    );
     // The identity note and the provenance rule ride the conversation as
     // durable context messages, delegated experts included: the QA preset's
     // complete persona closes the system prompt to plugins, the conversation
@@ -444,6 +635,10 @@ export class QaSurface extends TypertRemoteService {
       () => () => this.personalSkills.dispose(),
       "dsh-qa-surface.personal-skills",
     );
+    ctx.effect(
+      () => () => disposeTurnFailureLog(),
+      "dsh-qa-surface.turn-failure-log",
+    );
     this.warnDocumentsMoved();
     this.warnLegacySlashDefaults();
     // The QA tool catalog is attached per agent, never at boot: nothing here
@@ -472,34 +667,35 @@ export class QaSurface extends TypertRemoteService {
         if (row !== undefined) table.push(row);
       });
     }
-    ctx.inject(["settings"], (settingsCtx) => {
-      settingsCtx.settings.installSection(
-        ctx,
-        QA_SURFACE_SETTINGS_NAMESPACE,
-        ConfigSchema,
-        entry,
-        {
-          setSource: (source) => {
-            this.source = source;
-          },
-          onChange: () => {
-            const config = this.getConfig();
-            this.refreshRoute();
-            this.refreshIntegrationRoutes();
-            this.warnDocumentsMoved();
-            this.warnLegacySlashDefaults();
-            this.logger.info("config.updated", {
-              enabled: config.enabled,
-              route: config.route.path,
-              sessionPolicy: config.session.policy,
-            });
-          },
-          validate: (value) => {
-            resolveConfig(value);
-          },
-        },
-      );
-    });
+    // The settings namespace is this profile entry itself, and every Config
+    // field is volatile: there is no section left to install. The browser half
+    // registers the card that edits this entry, so the Host's generated page is
+    // switched off here — one page for these settings, drawn by the card.
+    ctx.inject(["settings"], (settingsCtx) =>
+      settingsCtx.effect(() =>
+        settingsCtx.settings.configure({ auto: false }, ctx.fiber),
+      ),
+    );
+    // A write to the namespace lands in the volatile references; this is the
+    // signal that the parts of the plugin which are not read-per-operation (the
+    // registered routes, the one-time configuration warnings) need re-running.
+    ctx.effect(
+      () =>
+        ctx.on("settings/document-updated", (namespace) => {
+          if (String(namespace) !== QA_SURFACE_SETTINGS_NAMESPACE) return;
+          const config = this.getConfig();
+          this.refreshRoute();
+          this.refreshIntegrationRoutes();
+          this.warnDocumentsMoved();
+          this.warnLegacySlashDefaults();
+          this.logger.info("config.updated", {
+            enabled: config.enabled,
+            route: config.route.path,
+            sessionPolicy: config.session.policy,
+          });
+        }),
+      "dsh-qa-surface.config-changed",
+    );
     ctx.inject(["webServer"], (webContext) => {
       this.webServer = webContext.webServer;
       this.refreshRoute();
@@ -517,15 +713,16 @@ export class QaSurface extends TypertRemoteService {
         "dsh-qa-surface.navigation-route",
       );
     });
+    const ready = this.getConfig();
     this.logger.info("plugin.ready", {
-      enabled: resolvedEntry.enabled,
-      route: resolvedEntry.route.path,
-      sessionPolicy: resolvedEntry.session.policy,
+      enabled: ready.enabled,
+      route: ready.route.path,
+      sessionPolicy: ready.session.policy,
       // What the two parked-interaction seams resolve to on this deployment:
       // the attestation path warns per session when the question seam and the
       // tool policy disagree, and this is the config they are read against.
-      approvals: resolvedEntry.interaction.approvals,
-      questions: resolvedEntry.interaction.questions,
+      approvals: ready.interaction.approvals,
+      questions: ready.interaction.questions,
     });
   }
 
@@ -543,11 +740,16 @@ export class QaSurface extends TypertRemoteService {
    * the preset composes it but starts no agent, no session and no turn;
    * without a pinned preset there is nothing to borrow, and the read stays
    * global.
+   *
+   * The registry answers with a lease on one preset revision, so the scope is
+   * handed to the caller that reads with it and released when that read ends.
    */
-  private async qaPresetScope(): Promise<ScopeKey | undefined> {
+  private async qaPresetScope(): Promise<QaPresetScopeLease | undefined> {
     const preset = this.getConfig().session.agentPreset;
     if (preset === null || preset === undefined) return undefined;
-    return await this.ctx.agentPresets.standingKeyFor(preset);
+    const lease: { key: ScopeKey } =
+      await this.ctx.agentPresets.acquireScope(preset);
+    return { key: lease.key, release: () => releaseScopeLease(lease) };
   }
 
   /**
@@ -583,6 +785,7 @@ export class QaSurface extends TypertRemoteService {
 
   /** Resolve only a directly QA-owned root session; delegated children fail closed. */
   principalForSession(sessionId: string): QaPrincipal | undefined {
+    if (this.chatTurnGuard.collaborative(sessionId)) return undefined;
     const accounts = this.accountRemotes.resolve(this.getConfig());
     if (accounts === undefined) return undefined;
     const userId = accounts.ownerIdOf(sessionId);
@@ -595,6 +798,23 @@ export class QaSurface extends TypertRemoteService {
   /** Admit tools that independently enforce the same QA principal boundary. */
   registerPrincipalScopedTools(names: readonly string[]): () => void {
     return this.admission.registerPrincipalScopedTools(names);
+  }
+
+  /**
+   * The provider and model the QA policy fixes for one chat, for a plugin that
+   * launches work out of it.
+   *
+   * A delegated run composes its model from its own profile, and a profile that
+   * names nothing inherits the parent — which used to mean the model some
+   * visitor had picked. This answers with the pair the role was given instead,
+   * so a delegation follows the policy of the chat it serves rather than the
+   * selection made inside it. `undefined` is the deployment naming no pair at
+   * all, which leaves the caller's own configuration in force.
+   *
+   * @param sessionId - the chat the work is delegated from.
+   */
+  modelPolicyForSession(sessionId: string): QaModelPair | undefined {
+    return this.access.modelPolicyFor(sessionId).pair;
   }
 
   getConfig(): ResolvedQaSurfaceConfig {
@@ -610,10 +830,12 @@ export class QaSurface extends TypertRemoteService {
    * check and the deployment's lockdown is the boundary, exactly as it is for
    * every other remote.
    *
-   * The grant mirrors `installQaSkillPolicy` to the letter — an empty
-   * `userSkills` list means the role keeps no separate user list, not that it
-   * grants nothing — so the palette can never offer a skill the typed gesture
-   * would refuse, nor hide one it would accept.
+   * The grant is {@link userInvocableSkillNames} — the one list the typed
+   * gesture is admitted or refused by — for every chat that has a role, woken
+   * or not: the palette a visitor sees before the chat runs is narrowed by that
+   * same rule, so it can neither offer a name the line would refuse nor hide
+   * one it would accept. `undefined` is answered only where the deployment has
+   * no roles to consult at all.
    */
   private async slashSessionGrant(
     token: string,
@@ -624,9 +846,12 @@ export class QaSurface extends TypertRemoteService {
     if (accounts === undefined) return undefined;
     if (agent === undefined) {
       // A cold chat has no capability snapshot to read, but it still has an
-      // owner, and that is what the catalog read must respect.
-      this.accountRemotes.run(() => this.access.session(token, sessionId));
-      return undefined;
+      // owner and a role, and both are what the catalog read must respect.
+      const policy = await this.accountRemotes.runAsync(
+        () => this.access.policyForColdSession(token, sessionId),
+        sessionId,
+      );
+      return userInvocableSkillNames(policy);
     }
     const resolved = await this.access.policyForSession(
       token,
@@ -634,8 +859,7 @@ export class QaSurface extends TypertRemoteService {
       agent as Agent,
     );
     if (resolved === undefined) return undefined;
-    const { policy } = resolved;
-    return policy.userSkills.length === 0 ? policy.skills : policy.userSkills;
+    return userInvocableSkillNames(resolved.policy);
   }
 
   /**
@@ -744,6 +968,20 @@ export class QaSurface extends TypertRemoteService {
   }
 
   /**
+   * Replace the caller's own notification channels. The account the token
+   * authenticates is the only one editable, and the answer is the whole public
+   * record, so the settings form re-reads what the stand now holds rather than
+   * what it meant to send.
+   */
+  @Remote("accountsUpdateNotifications")
+  accountsUpdateNotifications(
+    token: string,
+    input: QaAccountNotificationsInput,
+  ): QaAccountUserPublic {
+    return this.accountRemotes.updateNotifications(token, input);
+  }
+
+  /**
    * The caller's own integration tokens. The list is the account's own: the
    * token names it, and a secret is never part of a summary, so reading this
    * cannot repeat a credential that was already handed over.
@@ -792,6 +1030,27 @@ export class QaSurface extends TypertRemoteService {
   @Remote("describe")
   describe(): ResolvedQaSurfaceConfig {
     return this.getConfig();
+  }
+
+  /**
+   * Report how much of the deployment's request ceiling the stand is using, so
+   * a browser holds its question back instead of opening another turn on a
+   * model that is busy answering the ones it allows.
+   *
+   * The count is the Host's, not the browser's: a visitor cannot see another
+   * account's chats, and the HTTP API's questions are invisible to every chat
+   * view. Read-only, and a ceiling rather than a lock — a prompt rides the
+   * native session RPC this plugin does not own, so the boundary is the
+   * browser's own courtesy, and two questions sent in the same instant can
+   * still overshoot by one. What the ceiling buys is that steady state, not a
+   * strict bound.
+   */
+  @Remote("queueStatus")
+  queueStatus(): QaQueueStatus {
+    return qaQueueStatus(
+      this.getConfig().session.maxActiveRequests,
+      qaActiveRequests(this.ctx.agents.roots()),
+    );
   }
 
   /**
@@ -858,16 +1117,12 @@ export class QaSurface extends TypertRemoteService {
           ? {}
           : { agentPreset: config.session.agentPreset }),
       });
-      if (config.session.provider !== null && config.session.model !== null) {
-        await this.ctx.sessionController.selectModel({
-          sessionId: created.sessionId,
-          provider: config.session.provider,
-          model: config.session.model,
-          ...(config.session.reasoningEffort === null
-            ? {}
-            : { reasoningEffort: config.session.reasoningEffort }),
-        });
-      }
+      await applySessionModelPolicy(
+        this.ctx,
+        created.sessionId,
+        this.access.modelPolicyFor(String(created.sessionId)),
+        this.logger,
+      );
       const sessionId = String(created.sessionId);
       await this.admission.secureSession(token, sessionId);
       this.integrationPrincipals.attest(
@@ -895,6 +1150,35 @@ export class QaSurface extends TypertRemoteService {
         { cause: error },
       );
     }
+  }
+
+  /** Create an independently admitted ordinary branch of the caller's own chat. */
+  @Remote("forkSession")
+  async forkSession(
+    token: string,
+    sourceId: string,
+    answerSeq: number,
+  ): Promise<string> {
+    return this.accountRemotes.runAsync(
+      () =>
+        forkQaSession(
+          {
+            ctx: this.ctx,
+            config: this.getConfig(),
+            accounts: this.accountRemotes.resolve(this.getConfig()),
+            access: this.access,
+            admission: this.admission,
+            principals: this.integrationPrincipals,
+            provenance: this.provenance,
+            sessionFiles: createSessionEraser(),
+            logger: this.logger,
+          },
+          token,
+          sourceId,
+          answerSeq,
+        ),
+      sourceId,
+    );
   }
 
   /** The selector model for the signed-in user; admin grants are irrelevant. */
@@ -925,16 +1209,33 @@ export class QaSurface extends TypertRemoteService {
   }
 
   @Remote("accessCreateSubrole")
-  accessCreateSubrole(token: string, input: QaSubrole): QaSubrole {
-    return this.accountRemotes.run(() =>
+  async accessCreateSubrole(
+    token: string,
+    input: QaSubrole,
+  ): Promise<QaSubrole> {
+    return await this.accountRemotes.runAsync(() =>
       this.access.createSubrole(token, input),
     );
   }
 
   @Remote("accessUpdateSubrole")
-  accessUpdateSubrole(token: string, id: string, input: QaSubrole): QaSubrole {
-    return this.accountRemotes.run(() =>
+  async accessUpdateSubrole(
+    token: string,
+    id: string,
+    input: QaSubrole,
+  ): Promise<QaSubrole> {
+    return await this.accountRemotes.runAsync(() =>
       this.access.updateSubrole(token, id, input),
+    );
+  }
+
+  /** The pairs this Host can serve, for the surface that writes a policy. */
+  @Remote("accessModelCatalog")
+  async accessModelCatalog(
+    token: string,
+  ): Promise<readonly QaModelCatalogEntry[]> {
+    return await this.accountRemotes.runAsync(() =>
+      this.access.modelCatalog(token),
     );
   }
 
@@ -961,12 +1262,12 @@ export class QaSurface extends TypertRemoteService {
   }
 
   @Remote("accessUpdateAssignment")
-  accessUpdateAssignment(
+  async accessUpdateAssignment(
     token: string,
     userId: string,
     input: QaUserAccess,
-  ): QaUserAccess {
-    return this.accountRemotes.run(() =>
+  ): Promise<QaUserAccess> {
+    return await this.accountRemotes.runAsync(() =>
       this.access.updateAssignment(token, userId, input),
     );
   }
@@ -1078,6 +1379,79 @@ export class QaSurface extends TypertRemoteService {
     return { tools };
   }
 
+  // ---------------------------------------------------------------------------
+  // Expert memory
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Which experts hold memory, and how much.
+   *
+   * Reads the domain-experts service on the host plane rather than its remotes:
+   * those answer a trusted in-Harness caller and check no token, while this
+   * console answers a browser, so the permission check lives here.
+   */
+  @Remote("adminMemoryScopes")
+  adminMemoryScopes(token: string): Promise<readonly QaExpertMemoryScope[]> {
+    return this.accountRemotes.runAsync(() => this.admin.memoryScopes(token));
+  }
+
+  /** One page of one namespace, newest first, with the filter's match count. */
+  @Remote("adminMemoryRecords")
+  adminMemoryRecords(
+    token: string,
+    namespace: string,
+    query: string,
+    limit: number | null,
+    offset: number,
+  ): Promise<QaExpertMemoryPage> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.memoryRecords(token, namespace, query, limit, offset),
+    );
+  }
+
+  /** Rewrite one remembered line; the audit trail keeps both images. */
+  @Remote("adminMemoryCorrect")
+  adminMemoryCorrect(
+    token: string,
+    namespace: string,
+    key: string,
+    draft: QaExpertMemoryDraft,
+  ): Promise<QaExpertMemoryRecord> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.correctMemory(token, namespace, key, draft),
+    );
+  }
+
+  /** Drop one or several remembered lines of one namespace. */
+  @Remote("adminMemoryForget")
+  adminMemoryForget(
+    token: string,
+    namespace: string,
+    keys: readonly string[],
+  ): Promise<number> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.forgetMemory(token, namespace, keys),
+    );
+  }
+
+  /**
+   * Empty one namespace, confirming the count the operator was shown.
+   *
+   * The check is the console's, not the store's: what the operator clicked was
+   * a number on a screen, and memory an expert wrote in the meantime is not
+   * memory they agreed to erase.
+   */
+  @Remote("adminMemoryWipe")
+  adminMemoryWipe(
+    token: string,
+    namespace: string,
+    expectedRecords: number | null,
+  ): Promise<number> {
+    return this.accountRemotes.runAsync(() =>
+      this.admin.wipeMemory(token, namespace, expectedRecords),
+    );
+  }
+
   /**
    * Counters, attention lines and the newest quality signals.
    *
@@ -1182,9 +1556,12 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     conversationId: string,
   ): Promise<QaConversationDeletion> {
-    return this.accountRemotes.runAsync(() =>
-      this.admin.deleteConversation(token, conversationId),
-    );
+    return this.accountRemotes.runAsync(async () => {
+      const result = await this.admin.deleteConversation(token, conversationId);
+      if (this.getConfig().accounts.enabled)
+        for (const id of result.sessions) this.sharing().dropSession(id);
+      return result;
+    });
   }
 
   @Remote("adminFeedback")
@@ -1301,15 +1678,54 @@ export class QaSurface extends TypertRemoteService {
     sessionId: string,
   ): Promise<QaLockdownProof> {
     try {
+      const accountsForSharing = this.accountRemotes.resolve(this.getConfig());
+      const actor = accountsForSharing?.currentUser(token);
+      const actualOwnerId = accountsForSharing?.ownerIdOf(sessionId);
+      if (actualOwnerId !== undefined && actor?.id !== actualOwnerId) {
+        let shared: QaChatAccess | undefined;
+        try {
+          shared = this.sharing().access(token, sessionId);
+        } catch (error) {
+          if (
+            actor?.role !== "admin" ||
+            !this.getConfig().accounts.showOtherUsersChats
+          )
+            throw error;
+        }
+        if (shared !== undefined) {
+          const proof = await this.admission.secureSessionForUser(
+            shared.ownerId,
+            sessionId,
+          );
+          this.sharing().revalidate(token, shared);
+          return { ...proof, chatAccess: shared };
+        }
+      }
       const principal = this.principalForToken(token);
       const proof = await this.admission.secureSession(token, sessionId);
       const accounts = this.accountRemotes.resolve(this.getConfig());
       const ownerId = accounts?.ownerIdOf(sessionId);
       // Admin cross-user viewing is intentionally not credential delegation.
-      this.integrationPrincipals.attest(sessionId, principal?.userId, ownerId);
-      return proof;
+      if (principal?.userId === ownerId)
+        this.integrationPrincipals.attest(
+          sessionId,
+          principal?.userId,
+          ownerId,
+        );
+      const session = this.ctx.sessions.get(SessionId(sessionId));
+      const chatAccess =
+        actualOwnerId === actor?.id && actor !== undefined
+          ? this.sharing().access(token, sessionId)
+          : undefined;
+      return {
+        ...proof,
+        ...(chatAccess === undefined ? {} : { chatAccess }),
+        ...(session?.header.isSeeded === true &&
+        session.header.origin !== "subagent"
+          ? { inheritedThroughSeq: Number(session.inheritedEventCount) - 1 }
+          : {}),
+      };
     } catch (error) {
-      this.integrationPrincipals.attest(sessionId, undefined, undefined);
       // The carrier empties error.details, so the coarse reason rides the
       // wire message for the browser console; the specific mismatch facts
       // stay in this log only.
@@ -1319,15 +1735,232 @@ export class QaSurface extends TypertRemoteService {
           : (ACCOUNTS_REASON_MARKER.exec(
               error instanceof Error ? error.message : "",
             )?.at(1) ?? "attestation-failed");
-      this.logger.error("lockdown.rejected", {
-        sessionId,
-        reason,
-        error: error instanceof Error ? error.message : String(error),
-      });
+      this.logger[ADMISSION_ANSWERS.has(reason) ? "warn" : "error"](
+        "lockdown.rejected",
+        {
+          sessionId,
+          reason,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      );
       throw new Error(`${CONFIGURATION_ERROR} (reason: ${reason})`, {
         cause: error,
       });
     }
+  }
+
+  @Remote("chatVisible")
+  chatVisible(token: string): readonly QaChatAccess[] {
+    return this.sharing().visible(token);
+  }
+
+  @Remote("chatAccess")
+  chatAccess(token: string, sessionId: string): QaChatAccess {
+    return this.sharing().access(token, sessionId);
+  }
+
+  @Remote("chatGrants")
+  chatGrants(token: string, sessionId: string): readonly QaChatGrant[] {
+    return this.sharing().grants(token, sessionId);
+  }
+
+  @Remote("chatSetGrant")
+  chatSetGrant(
+    token: string,
+    sessionId: string,
+    email: string,
+    mode: QaChatMode | null,
+  ): readonly QaChatGrant[] {
+    if (
+      this.access.isDelegatedChild(sessionId) ||
+      this.getConfig().session.policy === "fixed"
+    )
+      throw new Error("Only an ordinary account-owned chat may be shared.");
+    const value = this.sharing().set(token, sessionId, email, mode);
+    this.chatTurnGuard.revoke(sessionId);
+    return value;
+  }
+
+  @Remote("chatAuthors")
+  chatAuthors(token: string, sessionId: string): readonly QaChatAuthor[] {
+    return this.sharing().authors(token, sessionId);
+  }
+
+  @Remote("chatAudit")
+  async chatAudit(
+    token: string,
+    sessionId: string,
+    full: boolean,
+  ): Promise<QaChatJson> {
+    this.requireChatOwner(token, sessionId);
+    await this.secureSession(token, sessionId);
+    this.requireChatOwner(token, sessionId);
+    const audit = this.ctx.get("sessionAudit") as
+      | { summary(id: string): unknown; audit(id: string): Promise<unknown> }
+      | undefined;
+    if (audit === undefined) throw new Error("Session audit is unavailable.");
+    const value = full
+      ? await audit.audit(sessionId)
+      : audit.summary(sessionId);
+    this.requireChatOwner(token, sessionId);
+    return value as QaChatJson;
+  }
+
+  @Remote("chatAttachmentPath")
+  async chatAttachmentPath(
+    token: string,
+    sessionId: string,
+    attachmentId: string,
+  ): Promise<string> {
+    const finish = await this.admitChatRead(token, sessionId);
+    const value = qaChatAttachmentPath(this.ctx, sessionId, attachmentId);
+    finish();
+    return value;
+  }
+
+  @Remote("chatList")
+  async chatList(token: string, signal: AbortSignal): Promise<QaChatJson> {
+    return (await this.chatTransport.list(
+      token,
+      signal,
+    )) as unknown as QaChatJson;
+  }
+
+  @Remote("chatSearch")
+  async chatSearch(
+    token: string,
+    request: SessionSearchRequest,
+    signal: AbortSignal,
+  ): Promise<QaChatJson> {
+    return (await this.chatTransport.search(
+      token,
+      request,
+      signal,
+    )) as unknown as QaChatJson;
+  }
+
+  @Remote("chatSelectModel")
+  chatSelectModel(
+    token: string,
+    request: SessionSelectModelRequest,
+  ): Promise<SessionSelectModelValue> {
+    this.requireChatOwner(token, String(request.sessionId));
+    if (this.getConfig().lockdown.enforceFixedModel)
+      throw new Error("The chat model is fixed by its policy.");
+    return this.chatTransport.selectModel(token, request);
+  }
+
+  @Remote("chatPage")
+  async chatPage(
+    token: string,
+    request: SessionPageRequest,
+    signal: AbortSignal,
+  ): Promise<QaChatJson> {
+    return (await this.chatTransport.page(
+      token,
+      request,
+      signal,
+    )) as unknown as QaChatJson;
+  }
+
+  @Remote({ mode: "stream" })
+  async *chatFollow(
+    token: string,
+    request: SessionFollowRequest,
+    signal: AbortSignal,
+  ): AsyncIterable<QaChatJson> {
+    for await (const frame of this.chatTransport.follow(token, request, signal))
+      yield frame as unknown as QaChatJson;
+  }
+
+  @Remote({ mode: "stream" })
+  async *chatControl(
+    token: string,
+    signal: AbortSignal,
+  ): AsyncIterable<QaChatJson> {
+    for await (const frame of this.chatTransport.control(token, signal))
+      yield frame as unknown as QaChatJson;
+  }
+
+  @Remote("chatProjections")
+  async chatProjections(
+    token: string,
+    sessionId: string,
+    signal: AbortSignal,
+  ): Promise<QaChatJson> {
+    return (await this.chatTransport.projections(
+      token,
+      sessionId,
+      signal,
+    )) as unknown as QaChatJson;
+  }
+
+  @Remote("chatPrompt")
+  chatPrompt(
+    token: string,
+    request: SessionPromptRequest,
+    signal: AbortSignal,
+  ): Promise<SessionPromptValue> {
+    return this.chatTransport.prompt(token, request, signal);
+  }
+
+  @Remote("chatAttachment")
+  chatAttachment(
+    token: string,
+    request: SessionAttachmentRequest,
+  ): Promise<SessionAttachmentValue> {
+    return this.chatTransport.attachment(token, request);
+  }
+
+  @Remote("chatRename")
+  chatRename(
+    token: string,
+    request: SessionRenameRequest,
+  ): Promise<SessionRenameValue> {
+    return this.chatTransport.rename(token, request);
+  }
+
+  @Remote("chatCancel")
+  chatCancel(token: string, sessionId: string): Promise<SessionCancelValue> {
+    return this.chatTransport.cancel(token, sessionId);
+  }
+
+  @Remote("chatUpdateQueue")
+  chatUpdateQueue(
+    token: string,
+    request: SessionUpdateQueueRequest,
+  ): Promise<SessionUpdateQueueValue> {
+    return this.chatTransport.updateQueue(token, request);
+  }
+
+  private async admitChatRead(
+    token: string,
+    sessionId: string,
+    filePath?: string,
+  ): Promise<() => void> {
+    if (!this.getConfig().accounts.enabled) {
+      await this.admission.secureSession(token, sessionId);
+      return () => undefined;
+    }
+    const access = this.sharing().access(token, sessionId);
+    await this.secureSession(token, sessionId);
+    this.sharing().revalidate(token, access);
+    if (
+      filePath !== undefined &&
+      access.mode !== "owner" &&
+      !qaChatPublishedFile(this.ctx, sessionId, filePath, (id, path) =>
+        this.provenance.sourceAllowed(id, path),
+      )
+    )
+      throw new Error("This file has not been shared in the chat.");
+    return () => {
+      this.sharing().revalidate(token, access);
+    };
+  }
+
+  private requireChatOwner(token: string, sessionId: string): void {
+    if (this.getConfig().accounts.enabled)
+      this.sharing().owner(token, sessionId);
   }
 
   /** Return canonical Host snapshots from plugin-owned durable provenance. */
@@ -1336,7 +1969,8 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     sessionId: string,
   ): Promise<readonly QaTurnSources[]> {
-    await this.admission.secureSession(token, sessionId);
+    const finish = await this.admitChatRead(token, sessionId);
+    finish();
     return this.provenance.bundles(sessionId);
   }
 
@@ -1349,7 +1983,12 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     sessionId: string,
   ): Promise<readonly QaPendingApproval[]> {
-    await this.admission.secureSession(token, sessionId);
+    await this.secureSession(token, sessionId);
+    if (
+      this.getConfig().accounts.enabled &&
+      this.sharing().access(token, sessionId).mode !== "owner"
+    )
+      return [];
     return this.approvals.list(sessionId);
   }
 
@@ -1365,7 +2004,9 @@ export class QaSurface extends TypertRemoteService {
     requestId: string,
     decision: QaApprovalDecision,
   ): Promise<boolean> {
+    this.requireChatOwner(token, sessionId);
     await this.admission.secureSession(token, sessionId);
+    this.requireChatOwner(token, sessionId);
     return this.approvals.answer(sessionId, requestId, decision);
   }
 
@@ -1378,7 +2019,12 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     sessionId: string,
   ): Promise<readonly QaPendingQuestion[]> {
-    await this.admission.secureSession(token, sessionId);
+    await this.secureSession(token, sessionId);
+    if (
+      this.getConfig().accounts.enabled &&
+      this.sharing().access(token, sessionId).mode !== "owner"
+    )
+      return [];
     return this.userQuestions.list(sessionId);
   }
 
@@ -1394,7 +2040,9 @@ export class QaSurface extends TypertRemoteService {
     requestId: string,
     answers: readonly QaQuestionAnswerItem[],
   ): Promise<boolean> {
+    this.requireChatOwner(token, sessionId);
     await this.admission.secureSession(token, sessionId);
+    this.requireChatOwner(token, sessionId);
     return this.userQuestions.answer(sessionId, requestId, answers);
   }
 
@@ -1405,7 +2053,9 @@ export class QaSurface extends TypertRemoteService {
     sessionId: string,
     requestId: string,
   ): Promise<boolean> {
+    this.requireChatOwner(token, sessionId);
     await this.admission.secureSession(token, sessionId);
+    this.requireChatOwner(token, sessionId);
     return this.userQuestions.cancel(sessionId, requestId);
   }
 
@@ -1424,7 +2074,7 @@ export class QaSurface extends TypertRemoteService {
     sessionId: string,
     sourcePath: string,
   ): Promise<QaSourceFilePreview> {
-    await this.admission.secureSession(token, sessionId);
+    const finish = await this.admitChatRead(token, sessionId, sourcePath);
     const config = this.getConfig();
     if (!config.sources.filePreview.enabled) {
       throw sourcePreviewRefusal("unavailable");
@@ -1436,7 +2086,7 @@ export class QaSurface extends TypertRemoteService {
     if (cwd === undefined) throw sourcePreviewRefusal("unavailable");
     const attachmentRoot = this.admission.attachmentRoot();
     try {
-      return await readSourceFilePreview({
+      const value = await readSourceFilePreview({
         sourcePath,
         cwd,
         isEvidence: (canonicalPath) =>
@@ -1446,7 +2096,35 @@ export class QaSurface extends TypertRemoteService {
         maxBytes: config.sources.filePreview.maxBytes,
         maxMarkdownRenderBytes:
           config.sources.filePreview.maxMarkdownRenderBytes,
+      }).catch(async (error: unknown) => {
+        // Only a format refusal follows successful evidence and root checks.
+        if (
+          !(error instanceof QaSourcePreviewError) ||
+          error.reason !== "unsupported"
+        )
+          throw error;
+        const document = await previewSourceDocument({
+          filePath: sourcePath,
+          cwd,
+          sessionId,
+          sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
+          ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
+          documents: () =>
+            this.ctx.get("documents") as DocumentsFace | undefined,
+          maxBytes: config.sources.filePreview.maxBytes,
+        });
+        return {
+          path: sourcePath,
+          content: "",
+          size: document.bytes,
+          truncated: false,
+          markdown: false,
+          renderableMarkdown: false,
+          document,
+        };
       });
+      finish();
+      return value;
     } catch (error) {
       this.logger.debug("source.preview-refused", {
         sessionId,
@@ -1473,6 +2151,7 @@ export class QaSurface extends TypertRemoteService {
     sessionId: string,
     path: string,
   ): Promise<QaWorkspaceListing> {
+    this.requireChatOwner(token, sessionId);
     await this.admission.secureSession(token, sessionId);
     const { config, cwd } = await this.browseContext(sessionId);
     try {
@@ -1500,11 +2179,11 @@ export class QaSurface extends TypertRemoteService {
     sessionId: string,
     path: string,
   ): Promise<QaWorkspaceFile> {
-    await this.admission.secureSession(token, sessionId);
+    const finish = await this.admitChatRead(token, sessionId, path);
     const { config, cwd } = await this.browseContext(sessionId);
     const attachmentRoot = this.admission.attachmentRoot();
     try {
-      return await readWorkspaceFile({
+      const value = await readWorkspaceFile({
         filePath: path ?? "",
         cwd,
         sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
@@ -1513,9 +2192,106 @@ export class QaSurface extends TypertRemoteService {
         maxMarkdownRenderBytes:
           config.sources.filePreview.maxMarkdownRenderBytes,
       });
+      finish();
+      return value;
     } catch (error) {
       throw this.browseRefusal("workspace.read-refused", sessionId, error);
     }
+  }
+
+  /** Download one bounded chunk after revalidating this chat's ownership. */
+  @Remote("readWorkspaceFileChunk")
+  async readWorkspaceFileChunk(
+    token: string,
+    sessionId: string,
+    path: string,
+    offset: number,
+    version: string | null,
+  ): Promise<QaWorkspaceFileChunk> {
+    const finish = await this.admitChatRead(token, sessionId, path);
+    const { config, cwd } = await this.browseContext(sessionId);
+    const attachmentRoot = this.admission.attachmentRoot();
+    try {
+      const value = await readWorkspaceFileChunk({
+        filePath: path ?? "",
+        cwd,
+        sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
+        ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
+        offset,
+        version,
+      });
+      finish();
+      return value;
+    } catch (error) {
+      throw this.browseRefusal("workspace.download-refused", sessionId, error);
+    }
+  }
+
+  @Remote("documentWorkflowStatus")
+  async documentWorkflowStatus(
+    token: string,
+    sessionId: string,
+    workflowId: string,
+  ): Promise<QaDocumentWorkflowStatus> {
+    const finish = await this.admitChatRead(token, sessionId);
+    const { cwd } = await this.browseContext(sessionId);
+    const workflow = (this.ctx.get("documents") as DocumentsFace | undefined)
+      ?.workflow;
+    if (workflow === undefined)
+      throw new Error("Document workflow is unavailable.");
+    const view = await workflow.read(
+      { workspaceRoot: cwd, sessionId },
+      workflowId,
+    );
+    finish();
+    return {
+      id: view.id,
+      revision: view.revision,
+      status: view.status,
+      sha256: view.draft?.sha256 ?? null,
+      blockers: view.blockers,
+    };
+  }
+
+  /** Browser-authenticated human consent; intentionally absent from the agent's tool registry. */
+  @Remote("approveDocumentWorkflow")
+  async approveDocumentWorkflow(
+    token: string,
+    sessionId: string,
+    workflowId: string,
+    revision: number,
+    sha256: string,
+  ): Promise<QaDocumentWorkflowStatus> {
+    this.requireChatOwner(token, sessionId);
+    await this.admission.secureSession(token, sessionId);
+    this.requireChatOwner(token, sessionId);
+    const caller = this.principalForToken(token);
+    const ownerId =
+      this.accountRemotes.resolve(this.getConfig())?.ownerIdOf(sessionId) ??
+      (this.getConfig().accounts.enabled
+        ? undefined
+        : this.principalForSession(sessionId)?.userId);
+    if (caller === undefined || ownerId !== caller.userId)
+      throw new Error("Document approval requires the chat owner's account.");
+    const { cwd } = await this.browseContext(sessionId);
+    const workflow = (this.ctx.get("documents") as DocumentsFace | undefined)
+      ?.workflow;
+    if (workflow === undefined)
+      throw new Error("Document workflow is unavailable.");
+    const view = await workflow.approve(
+      { workspaceRoot: cwd, sessionId },
+      workflowId,
+      revision,
+      sha256,
+      caller.userId,
+    );
+    return {
+      id: view.id,
+      revision: view.revision,
+      status: view.status,
+      sha256: view.draft?.sha256 ?? null,
+      blockers: view.blockers,
+    };
   }
 
   /**
@@ -1534,11 +2310,11 @@ export class QaSurface extends TypertRemoteService {
     sessionId: string,
     path: string,
   ): Promise<QaDocumentPreview> {
-    await this.admission.secureSession(token, sessionId);
+    const finish = await this.admitChatRead(token, sessionId, path);
     const { config, cwd } = await this.browseContext(sessionId);
     const attachmentRoot = this.admission.attachmentRoot();
     try {
-      return await previewConvertibleDocument({
+      const value = await previewConvertibleDocument({
         filePath: path ?? "",
         cwd,
         sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
@@ -1547,6 +2323,8 @@ export class QaSurface extends TypertRemoteService {
         sessionId,
         maxBytes: config.sources.filePreview.maxBytes,
       });
+      finish();
+      return value;
     } catch (error) {
       throw this.browseRefusal("workspace.preview-refused", sessionId, error);
     }

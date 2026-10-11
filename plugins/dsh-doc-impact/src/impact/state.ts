@@ -22,20 +22,27 @@ export class ImpactState {
   reconcile(nextImpacts: Iterable<Impact>): void {
     const next = [...nextImpacts];
     const nextIds = new Set(next.map((impact) => impact.id));
-    const activeRuleIds = new Set(next.map((impact) => impact.ruleId));
 
+    // A pending impact the current rules no longer produce is retired whether
+    // its rule changed shape or left the configuration (disabled or deleted):
+    // nothing can satisfy it any more, so it must stop steering the turn.
     for (const [id, impact] of this.#impacts) {
-      if (
-        impact.status === "pending" &&
-        activeRuleIds.has(impact.ruleId) &&
-        !nextIds.has(id)
-      ) {
+      if (impact.status === "pending" && !nextIds.has(id)) {
         this.#impacts.set(id, { ...impact, status: "superseded" });
       }
     }
     for (const impact of next) {
       const existing = this.#impacts.get(impact.id);
-      this.#impacts.set(impact.id, existing ?? impact);
+      // The same fingerprint reappearing after it was retired means the rule
+      // came back within this turn (switched off then on, or reverted), so the
+      // detection is current again. A status the agent or the target files
+      // earned deliberately survives.
+      this.#impacts.set(
+        impact.id,
+        existing === undefined || existing.status === "superseded"
+          ? impact
+          : existing,
+      );
     }
   }
 

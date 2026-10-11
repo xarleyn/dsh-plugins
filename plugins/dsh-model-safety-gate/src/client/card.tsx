@@ -1,24 +1,22 @@
 /**
  * The Safety Gate settings card.
  *
- * Two sources meet here: the `model-safety-gate` settings namespace, which is
- * the gate's configuration source on the Host, and the `safetyGate` Remote,
- * which reports what the running gate is actually doing. Everything the user
- * changes is written immediately as a path-addressed mutation; the status and
- * verdict views poll the Remote while the card is visible.
+ * Two sources meet here: the gate's live configuration form, which is the
+ * operator's write path, and the `safetyGate` Remote, which reports what the
+ * running gate is actually doing. Everything the user changes is committed
+ * immediately as a path-addressed mutation fenced by the revision the card
+ * read; the status and verdict views poll the Remote while the card is open.
  */
 
+import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
-import type { SettingsScope } from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
-import type {} from "@deepseek-ai/dsh-client-ui-settings-plugins/client";
+import type { ConfigForm } from "@deepseek-ai/dsh-client-ui-settings/client";
 import type {
   InjectFace,
   PropsRuntime,
 } from "@deepseek-ai/dsh-client-ui-slots";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import {
-  CardShell,
   bindSettingsExternalStore,
   startVisibilityAwarePolling,
 } from "@yadsh/dsh-plugin-kit/client";
@@ -33,7 +31,7 @@ import {
 
 import type { ModelSafetyGateConfig } from "../config.js";
 import type { SafetyGateInspect } from "../types.js";
-import { badgeText, isOverridden, overriddenKeys } from "./format.js";
+import { isOverridden, overriddenKeys } from "./format.js";
 import {
   AdvancedSection,
   AuditSection,
@@ -45,21 +43,39 @@ import {
   ToolsSection,
   VerdictsSection,
   type ConfigProps,
-} from "./sections.js";
+} from "./sections/index.js";
 
 const REFRESH_INTERVAL_MS = 3_000;
 
+/**
+ * The one-liner this row carries: the page draws it as the row's description.
+ *
+ * Exported because it is one string with `locale/en.json`'s `meta.description`,
+ * which the page reads first — a test pins the pair, so the row cannot describe
+ * something other than the page it opens.
+ */
+export const SAFETY_GATE_ROW_SUMMARY =
+  "Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results.";
+
 /** The face the slot entry injects into this card. */
 export interface SafetyGateCardFace {
-  readonly scope: SettingsScope<ModelSafetyGateConfig>;
+  /**
+   * The live Config of this plugin's namespace.
+   *
+   * Named `settingsForm`, not `form`: the row seat hands its registrant a
+   * `form` of its own — the page's `ConfigPageForm`, which is only
+   * `{ state, mutate }` and so can neither be subscribed to nor written field
+   * by field — and the renderer spreads that owner prop after this face.
+   */
+  readonly settingsForm: ConfigForm<ModelSafetyGateConfig>;
   inspect(): Promise<RemoteResult<SafetyGateInspect>>;
 }
 
-type CardProps = PropsRuntime<"settings.plugin.item"> &
+type CardProps = PropsRuntime<"plugins.row.config"> &
   InjectFace<SafetyGateCardFace>;
 
-/** Mutation operations as the bound scope declares them. */
-type ScopeOps = Parameters<SettingsScope<ModelSafetyGateConfig>["mutate"]>[0];
+/** Mutation operations as the configuration form declares them. */
+type FormOps = Parameters<ConfigForm<ModelSafetyGateConfig>["mutate"]>[0];
 
 function displayError(error: unknown): string {
   if (error instanceof Error) return error.message;
@@ -71,8 +87,11 @@ function displayError(error: unknown): string {
   return "The Safety Gate could not complete that request.";
 }
 
-export function SafetyGateCard({ scope, inspect }: CardProps) {
-  const store = useMemo(() => bindSettingsExternalStore(scope), [scope]);
+export function SafetyGateCard({ settingsForm, inspect }: CardProps) {
+  const store = useMemo(
+    () => bindSettingsExternalStore(settingsForm),
+    [settingsForm],
+  );
   const settings = useSyncExternalStore(
     store.subscribe,
     store.getSnapshot,
@@ -80,6 +99,7 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
   );
   const config = settings.value;
   const writable = settings.status === "ready" && settings.writable;
+  const revision = settings.revision;
 
   const [snapshot, setSnapshot] = useState<SafetyGateInspect | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -121,30 +141,30 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
   }, [refresh]);
 
   /**
-   * Path-addressed write into the namespace. The scope's mutation operations
-   * are typed for the wire's JSON values, which a control's value satisfies by
-   * construction; the cast keeps that boundary in one place.
+   * Path-addressed write into the live configuration. The form's operations are
+   * typed for the wire's JSON values, which a control's value satisfies by
+   * construction; the cast keeps that boundary in one place. The revision the
+   * card read fences the write, so an edit that raced this surface is refused
+   * rather than silently overwritten.
    */
   const write = useCallback(
     (path: readonly string[], value: unknown) => {
-      const ops = [
-        { op: "set", path: [...path], value },
-      ] as unknown as ScopeOps;
-      scope.mutate(ops).catch((cause: unknown) => {
+      const ops = [{ op: "set", path: [...path], value }] as unknown as FormOps;
+      settingsForm.mutate(ops, revision).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [scope],
+    [revision, settingsForm],
   );
 
   const unset = useCallback(
     (path: readonly string[]) => {
-      const ops = [{ op: "unset", path: [...path] }] as unknown as ScopeOps;
-      scope.mutate(ops).catch((cause: unknown) => {
+      const ops = [{ op: "unset", path: [...path] }] as unknown as FormOps;
+      settingsForm.mutate(ops, revision).catch((cause: unknown) => {
         setError(displayError(cause));
       });
     },
-    [scope],
+    [revision, settingsForm],
   );
 
   const overridden = useCallback(
@@ -157,16 +177,26 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
     const ops = overrides.map((key) => ({
       op: "unset",
       path: [key],
-    })) as unknown as ScopeOps;
-    scope.mutate(ops).catch((cause: unknown) => {
+    })) as unknown as FormOps;
+    settingsForm.mutate(ops, revision).catch((cause: unknown) => {
       setError(displayError(cause));
     });
-  }, [overrides, scope]);
+  }, [overrides, revision, settingsForm]);
 
-  if (settings.status === "unavailable") return null;
-
-  const enabled = snapshot?.enabled ?? config?.enabled ?? true;
-  const mode = snapshot?.mode ?? config?.mode;
+  // The frame here is the page's, so returning nothing would leave the reader inside
+  // an opened row with no section at all and no reason. A card that draws its own
+  // shell can stay invisible; this one owes a sentence.
+  if (settings.status === "unavailable") {
+    return (
+      <div className="msg-body">
+        <p className="msg-muted" data-testid="safety-card-unavailable">
+          The Safety Gate settings are not available in this session, so nothing
+          here can be read or changed yet. The running gate keeps the last
+          configuration it accepted.
+        </p>
+      </div>
+    );
+  }
 
   const sectionProps: ConfigProps = {
     config,
@@ -178,22 +208,29 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
   };
 
   return (
-    <CardShell
-      title="Model Safety Gate"
-      description="Deterministic and classifier checks for prompts, streamed output, tool calls, and tool results."
-      badge={
-        <span className="dsh-plugin-card__badge">
-          {badgeText(enabled, mode)}
-        </span>
-      }
-      label={(open) => `${open ? "Hide" : "Show"} settings: Model Safety Gate`}
-      bodyClassName="msg-body"
-    >
+    // The Plugins page draws this card's frame, its heading and its expand
+    // control, so the bundle renders the body and nothing around it (AGENTS.md).
+    <div className="msg-body">
       {settings.status === "loading" ? (
-        <p className="msg-muted">Loading the Safety Gate configuration…</p>
+        <p className="msg-muted" data-testid="safety-card-loading">
+          Loading the Safety Gate configuration…
+        </p>
       ) : (
         <>
-          {error !== null ? <div className="msg-error">{error}</div> : null}
+          {error !== null ? (
+            <div className="msg-error" data-testid="safety-card-error">
+              {error}
+            </div>
+          ) : null}
+          {snapshot?.configRejected ? (
+            <div
+              className="msg-error"
+              data-testid="safety-card-config-rejected"
+            >
+              The gate is still running its last workable configuration:{" "}
+              {snapshot.configRejected}
+            </div>
+          ) : null}
           <StatusSection
             inspect={snapshot}
             refreshing={refreshing}
@@ -224,6 +261,7 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
               <button
                 type="button"
                 className="msg-btn"
+                data-testid="safety-card-reset-overrides"
                 disabled={!writable}
                 onClick={resetAll}
               >
@@ -236,6 +274,20 @@ export function SafetyGateCard({ scope, inspect }: CardProps) {
           </div>
         </>
       )}
-    </CardShell>
+    </div>
   );
+}
+
+/**
+ * The entry the Plugins page renders for this bundle's row.
+ *
+ * The page seats the same entry in two views: as the row's `summary` one-liner
+ * wherever the bundle declares no description of its own, and as the `page`
+ * body below it. The summary lands inside the page's own text, so it stays a
+ * sentence — mounting the card there would draw a page within a line and start
+ * a second poll of the Remote.
+ */
+export function SafetyGateEntry(props: CardProps) {
+  if (props.view === "summary") return SAFETY_GATE_ROW_SUMMARY;
+  return <SafetyGateCard {...props} />;
 }

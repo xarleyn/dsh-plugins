@@ -42,7 +42,8 @@ export function InterfaceSection(props: ConfigProps) {
     <Section
       title="Интерфейс"
       modified={modified}
-      aside={resetAside(props, paths)}
+      testId="qa-settings-interface"
+      aside={resetAside(props, paths, "qa-settings-interface-reset")}
     >
       <div className="qa-card-grid">
         <Toggle
@@ -50,6 +51,7 @@ export function InterfaceSection(props: ConfigProps) {
           disabled={disabled}
           label="Заголовок страницы"
           hint="Название и подзаголовок в верхней полосе."
+          testId="qa-settings-interface-show-header"
           onChange={(value) => {
             props.write(["ui", "showHeader"], value);
           }}
@@ -59,6 +61,7 @@ export function InterfaceSection(props: ConfigProps) {
           disabled={disabled}
           label="Кнопка остановки"
           hint="Позволяет прервать ответ до его конца."
+          testId="qa-settings-interface-show-stop"
           onChange={(value) => {
             props.write(["ui", "showStop"], value);
           }}
@@ -72,6 +75,7 @@ export function InterfaceSection(props: ConfigProps) {
               ? "Требует «Разрешить сброс сессии» в разделе блокировки: без него хост отвергает конфигурацию."
               : "Создаёт новый чат, не покидая страницу."
           }
+          testId="qa-settings-interface-show-reset"
           onChange={(value) => {
             props.write(["ui", "showReset"], value);
           }}
@@ -81,6 +85,7 @@ export function InterfaceSection(props: ConfigProps) {
           disabled={disabled}
           label="Время сообщений"
           hint="Отметка времени у каждого сообщения."
+          testId="qa-settings-interface-show-timestamps"
           onChange={(value) => {
             props.write(["ui", "showTimestamps"], value);
           }}
@@ -90,6 +95,7 @@ export function InterfaceSection(props: ConfigProps) {
           disabled={disabled}
           label="Разметка в ответах"
           hint="Ответы рендерятся как Markdown, а не как обычный текст."
+          testId="qa-settings-interface-render-markdown"
           onChange={(value) => {
             props.write(["ui", "renderMarkdown"], value);
           }}
@@ -99,6 +105,7 @@ export function InterfaceSection(props: ConfigProps) {
           disabled={disabled}
           label="Список чатов"
           hint="Боковая история чатов этого браузера; переключение чата заново подтверждает политику."
+          testId="qa-settings-interface-show-session-list"
           onChange={(value) => {
             props.write(["ui", "showSessionList"], value);
           }}
@@ -108,6 +115,7 @@ export function InterfaceSection(props: ConfigProps) {
           disabled={disabled}
           label="Рассуждения модели"
           hint="Показывает ход рассуждений в свёрнутом блоке."
+          testId="qa-settings-interface-show-reasoning"
           onChange={(value) => {
             props.write(["ui", "showReasoning"], value);
           }}
@@ -117,6 +125,7 @@ export function InterfaceSection(props: ConfigProps) {
           disabled={disabled}
           label="Вызовы инструментов"
           hint="Показывает, какие инструменты вызывались и с чем."
+          testId="qa-settings-interface-show-tool-activity"
           onChange={(value) => {
             props.write(["ui", "showToolActivity"], value);
           }}
@@ -126,6 +135,7 @@ export function InterfaceSection(props: ConfigProps) {
           disabled={disabled}
           label="Позывные субагентов"
           hint="Завершение субагента подписывается устойчивым позывным («Дотошный Барсук») вместо короткого идентификатора; настоящая задача остаётся в списке субагентов и в раскрытой плашке."
+          testId="qa-settings-interface-subagent-codenames"
           onChange={(value) => {
             props.write(["ui", "subagentCodenames"], value);
           }}
@@ -137,13 +147,17 @@ export function InterfaceSection(props: ConfigProps) {
           max={1600}
           disabled={disabled}
           hint="Нижняя граница ширины переписки; шире посетитель расширяет её сам — до краёв страницы."
+          testId="qa-settings-interface-min-content-width"
           onChange={(value) => {
             props.write(["ui", "minContentWidth"], value);
           }}
         />
       </div>
       {reasoning || tools ? (
-        <Notice tone="warn">
+        <Notice
+          tone="warn"
+          testId="qa-settings-interface-notice-internals-visible"
+        >
           Рассуждения модели и вызовы инструментов становятся видны конечным
           пользователям. Включайте их там, где такое содержимое допустимо.
         </Notice>
@@ -154,6 +168,7 @@ export function InterfaceSection(props: ConfigProps) {
         disabled={disabled}
         placeholder={"Что ты умеешь?\nС чего начать?"}
         hint="По одному вопросу на строку: кнопки-подсказки над строкой ввода. Пустой список убирает их."
+        testId="qa-settings-interface-suggested-questions"
         parse={parseLineList}
         onCommit={(values) => {
           props.write(["suggestedQuestions"], values);
@@ -165,6 +180,7 @@ export function InterfaceSection(props: ConfigProps) {
         disabled={disabled}
         placeholder={"Думаю…\nСобираю ответ…"}
         hint="По одной фразе на строку: их сменяет индикатор, пока модель отвечает. Пустой список возвращает встроенные фразы — индикатор всегда что-то говорит."
+        testId="qa-settings-interface-thinking-phrases"
         parse={parseLineList}
         onCommit={(values) => {
           props.write(["thinkingPhrases"], values);

@@ -1,3 +1,276 @@
+## 0.7.1 (2026-10-08)
+
+### 🩹 Fixes
+
+- A refusal block reads as a refusal again, and a token the Host never declares ([#717](https://github.com/xarleyn/dsh-plugins/issues/717))
+  cannot be written down unnoticed.
+
+  Unknown `var(--dsw-…)` is not a missing colour: the substitution yields the
+  guaranteed-invalid value, so the browser drops the whole declaration at
+  computed-value time and says nothing. `--dsw-alias-bg-error` and
+  `--dsw-alias-label-error` are named by no theme sheet — the error ramp is
+  `--dsw-alias-state-error-primary` — so every block of refusal text written with
+  them lost its fill and its ink together and rendered as ordinary small text,
+  which is how issue #717 looked on the Memory tab of a stand with no access to
+  the service. The same mechanic had already cost `dsh-sleev` its focus and
+  invalid borders (`--dsw-alias-border-brand`, `--dsw-alias-border-error`) and
+  `dsh-session-scope` its chip fill (`--dsw-alias-fill-tsp-secondary`).
+
+  Text and borders now take `--dsw-alias-state-error-primary` with a `#b3261e`
+  fallback. The theme declares no error *surface* alias — `state-success` and
+  `state-warn` have a tint, `state-error` does not — so a block mixes the state
+  token the way the Host's own danger control does,
+  `color-mix(in srgb, … 8%, transparent)`, and keeps its soft red in both themes.
+  Three names that only ever survived behind a fallback are retired where a live
+  token exists (`--dsw-alias-bg-elevated` → `--dsw-alias-button-elevated-fill`,
+  `--dsw-alias-label-inverse` → `--dsw-alias-label-primary-foreground`), and
+  `--dsw-font-family-mono`, for which the theme offers no alias at all, becomes
+  the `ui-monospace` stack the other bundles already write. No computed value
+  changes except where a dead name had been silently winning.
+
+  `pnpm verify:tokens` (`scripts/verify-design-tokens.mjs`) is the class turned
+  into a gate: it collects every `--dsw-*` name substituted under any package's
+  `src/` and refuses one the installed `@deepseek-ai/dsh-client-ui-theme` does not
+  declare — a dead name behind a fallback included, because the fallback paints a
+  colour the Host never chose. The vocabulary comes from the pinned package rather
+  than a hand-kept list, so the check needs no harness checkout and reads the same
+  version the plugins build against; where the theme cannot be found the gate
+  reports that instead of passing. `dsh-plugin-log-ui`'s own bundle pin flips from
+  requiring `--dsw-alias-bg-error` to forbidding the dead error names.
+
+- Every plugin row on the Host's Plugins page is named in words. ([fff88762](https://github.com/xarleyn/dsh-plugins/commit/fff88762))
+
+  The page titles a bundle's row and fills its description line from the package's
+  exported `locale/en.json`, which the Host resolves through the package's `exports`
+  map without activating the plugin (`@deepseek-ai/dsh-app-boot` `package-meta.ts`).
+  Only `dsh-documents` shipped that file, so the other twenty-five rows were signed by
+  their full package specifier — an operator read `@yadsh/dsh-jev-compaction` where a
+  first-party row read a phrase. Each package now exports `./locale/en.json`, publishes
+  `locale/*.json`, and carries English `meta.title` and `meta.description`; where the
+  package already had a configuration card, its `summary` one-liner and the row's
+  description are one string, pinned by a test against the shipped file rather than
+  against a copy in the test. `pnpm verify:packages` asks all three halves of every
+  plugin package, so a row cannot fall back to a specifier unnoticed.
+
+  Two pages still seated on the deleted-in-spirit `settings.plugins.tab` move to the
+  panel with them. `dsh-prompt-firewall` edits its own Config namespace, so it takes the
+  row seat keyed `@yadsh/dsh-prompt-firewall#dsh-prompt-firewall` — the row id is the
+  namespace the Host serves the form under, so no saved value is orphaned — and with the
+  seat it gives up its shell, its header badge and its show/hide labels, taking the
+  Host's `--dsw-focus-ring-*` pair for every control it draws and answering the
+  unavailable namespace with a sentence instead of an empty section.
+  `dsh-domain-experts` owns no form — it edits domains through its Remote services — so
+  it takes the bundle-level seat `plugins.bundle.config`, keyed by the package name, and
+  drops the `<h2>` heading and the intro line the panel already draws from the row's own
+  display metadata.
+
+### ❤️ Thank You
+
+- qoder-bot
+- xarleyn @xarleyn
+
+## 0.7.0 (2026-10-04)
+
+### 🚀 Features
+
+- The settings card now opens from the plugin's own row on the host **Plugins** ([#648](https://github.com/xarleyn/dsh-plugins/issues/648))
+  page, not from a tab of the Settings "Built-in plugins" section.
+
+  The card edits exactly one thing — this bundle's own configuration — and the
+  Plugins page declares a seat for that: `plugins.row.config`, keyed by
+  `<package name>#<row id>`. The row this bundle's patch declares is
+  `web-fetch-authenticated`, the same string the Host files this plugin's live
+  Config under, so the seat moved and the namespace did not: a rule, a credential
+  ref, a limit or a policy saved before this release is read back by the card
+  after it.
+
+  The row's **Configure** control arrives with the seat. The page offers that
+  control only for a row whose configuration somebody registered, and until this
+  release no bundle registered one for this row, so the page had no way into its
+  settings either. The tab strip in Settings loses the tab this card added.
+
+  The chrome above the card belongs to the page. It reads the row's display
+  metadata from this bundle's own manifest, so the row is headed
+  `@yadsh/dsh-web-fetch-authenticated` with this package's description under it,
+  and the page draws the surface and the control that expands the section. The
+  card stopped drawing a second one: its border, header, chevron and open state
+  went, so the seat's page view is the configuration body, mounted as soon as the
+  page opens the row.
+
+  Whether the provider is enabled stays readable, but from another source and on
+  another clock than the header's badge had. The badge read the saved setting and
+  flipped in the same click; the pill in the status section states what the
+  provider itself reports, and the card asks for that report on a five-second poll
+  rather than after a write. So between a toggle and the next tick the pill is the
+  half that is behind, and while the page sits in the background — where the poll
+  waits for the page to become visible again — it stays behind until the reader
+  returns. The **Provider enabled** switch remains the immediate reading of the
+  setting. Where a row carries no description of its own, this seat's fallback line
+  is the same sentence as the package's description rather than a second one, so
+  editing the description cannot leave the row with two.
+
+  The keyboard still reaches every control this card draws. The page dresses its
+  own elements and leaves a plugin's to the plugin, so each field, button, icon
+  button, switch and fold of the body takes its ring from the Host's
+  `--dsw-focus-ring-width` and `--dsw-focus-ring-color`. Both halves carry a
+  fallback: where a token is undeclared the whole `outline` shorthand would
+  otherwise be dropped, which is the ring vanishing rather than a plain one.
+
+  An unavailable configuration now explains itself. The Plugins page is not the
+  settings directory, so it keeps answering from a browser the directory is not
+  served to; there the card used to render nothing, which on the old tab was an
+  absent row but on the page's frame is an opened section that is blank for no
+  stated reason. The card answers that state with a sentence instead, and with no
+  controls, because there is no configuration here to present read-only.
+
+  What the card shows is unchanged: the rule list, its write-only credential
+  fields, the network policy and limits, the connection tester, and the diagnostic
+  runner.
+
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- The plugin's redirect suite stops losing to its own timeout on a loaded Windows ([#290](https://github.com/xarleyn/dsh-plugins/issues/290))
+  run.
+
+  Vitest gives a test five seconds and this package re-exported the shared preset
+  with no override. The suite drives a local HTTP fixture and costs 55ms on an
+  idle machine, but a full `nx run-many -t test` runs eight projects at once, and
+  one redirect test was then observed hitting the five-second cap on a loopback
+  round-trip it normally finishes in milliseconds. The package now budgets 30
+  seconds per test, the allowance the browser plugin already gives its I/O-bound
+  suites.
+
+  No runtime behavior changed: the fix is test configuration.
+
+- Nothing the settings card does changed; what changed is how its source is cut, ([#423](https://github.com/xarleyn/dsh-plugins/issues/423), [#292](https://github.com/xarleyn/dsh-plugins/issues/292))
+  and which REST hops now have a test.
+
+  `src/client/sections.tsx` was 1632 lines — the one file of this package above
+  the fail threshold the repository is settling on, and the whole card body in a
+  single module: the provider overview, the global limits, the rule table, the
+  editor, the credential control, the tester and the diagnostics view. Each of
+  those now owns a file under `src/client/sections/`, the largest of them 335
+  lines, with the controls and the injected client face they share in
+  `sections/common.tsx` and the draft conversions in `sections/rule-draft.ts`.
+  `sections.tsx` stayed as the barrel the card imports, so the client entry and
+  the published contract are untouched and the built bundle still registers
+  itself under the package's full name.
+
+  The adapter's REST hop is now tested on the transport it actually uses. The
+  seam tests stub the transport and the provider tests walk happy paths, so the
+  request the adapter builds for itself — the rewritten `/rest/api/...` URL — was
+  the one hop no test ran through policy: a redirect that leaves the origin is
+  denied and the credential is never dialed there, a redirect that stays inside
+  the rule's paths is followed with the rule's own auth, a body larger than the
+  rule's cap is refused before it is read, an answer that is a login page rather
+  than JSON fails as an adapter failure instead of a parsed issue, and an
+  under-reported body that is cut mid-stream is refused rather than half-read.
+  Everything listens on loopback, so the suite reaches no network.
+
+- An IPv4 address written inside IPv6 no longer slips past the network classification. ([#335](https://github.com/xarleyn/dsh-plugins/issues/335))
+
+  `::ffff:7f00:1` is 127.0.0.1 — the same host in the other syntax, and the address both Node and the browser's URL parser connect to. The IPv6 branch of the classifier read its top bits instead, found no IPv4 range there, and called it `public`. A rule that denied loopback, the RFC1918 ranges, link-local and the cloud metadata endpoint `169.254.169.254` accepted every one of them as soon as the URL, or a DNS answer, used the mapped spelling. The dotted spelling `::ffff:127.0.0.1` did not parse at all, which made every IPv6 literal ending in a dotted quad unparseable.
+
+  An address is now judged by the bytes a connection reaches. A mapped literal collapses into its IPv4 before classification, takes the IPv4 class and the IPv4 verdict, and the socket is pinned to that IPv4 text instead of to a second spelling of it, so the address the policy approved and the address it judged cannot differ. A denied CIDR matches either byte form of the host and an allowed CIDR matches only the destination it names, so a rule that already blocked `::ffff:0:0/96` keeps blocking it. The deprecated IPv4-compatible block (`::x.y.z.w`) and the NAT64 well-known prefix (`64:ff9b::/96`) reach their embedded address only through a translation router this plugin cannot verify, so both fail closed as `reserved` and no allow-flag opens them, while `::`, `::1` and genuine IPv6 addresses keep their own classes.
+
+  What this does not claim: it is a classification bypass, not a demonstrated open proxy. No request reached these addresses while the bypass was being measured, and reaching them still needs a rule whose host, port and path patterns accept the URL.
+
+- The QA changelog names what #286 actually shipped, and the guards #286 added ([#286](https://github.com/xarleyn/dsh-plugins/issues/286))
+  gain the regression tests that hold them.
+
+  Version 0.13.0 described three of its own capabilities — the one-request
+  `/no-review` waiver, the automatic managed service profile for a new account,
+  and `web_fetch_file` for non-graphic attachments — nowhere, although the plan
+  that released them named all three; the curated list now carries them.
+
+  Documentation search pins the grep syntax it promises the model (character
+  classes and anchors) and its pattern budget, and `docs_read` refuses an
+  absolute path that leaves the documentation tree the way `docs_search` already
+  did. Automatic service binding is tested against both of the shapes it has to
+  stand down for: a deployment that offers no default profile, and one that
+  publishes several. Downloaded attachments test their leaf-only filename
+  directly, so a percent-encoded path cannot reach the store with separators.
+
+- The card keeps editing the live profile, now through the host's own mechanism. ([#524](https://github.com/xarleyn/dsh-plugins/issues/524), [#508](https://github.com/xarleyn/dsh-plugins/issues/508), [#523](https://github.com/xarleyn/dsh-plugins/issues/523), [#512](https://github.com/xarleyn/dsh-plugins/issues/512), [#511](https://github.com/xarleyn/dsh-plugins/issues/511))
+
+  Under `0.1.5` this plugin installed its own settings namespace from the host
+  half and pushed committed edits back into the running provider. `0.1.7` removed
+  that installation, and with it the slot the card was mounted into. What replaces
+  both is a marker on the schema: a field belongs to a live form while its node
+  carries `.volatile()`, and the namespace of such a profile is the profile entry
+  id. The six nodes the card edits — `enabled`, `rules`, `defaultPolicy`, `limits`,
+  `documents`, `audit` — now carry that marker, and only at the top level, because
+  the host rejects a live node nested inside a rule. The namespace stays
+  `web-fetch-authenticated`, which is the id `cordis.patch.yml` already declares, so
+  a policy written for the previous build is still read by this one.
+
+  The card moved to a tab of its own under Settings → Plugins, and keeps drawing
+  its own shell. Reading changed shape on the host side: the profile arrives as
+  stable references, so the provider takes one snapshot per operation instead of
+  cloning the entry config once at startup — a clone would have made the values it
+  logged permanent. Nothing about what an operator can change moved: the same rule
+  list, the same limits, the same write-only credential control, and an edit still
+  reaches the next request without a restart.
+
+  One log line moved. `auth_fetch.config_errors` used to be re-emitted on every
+  committed edit, because that was the only moment the plugin learned of one; it is
+  now emitted once, at startup. The card's Provider section has always listed the
+  same reasons live, and still does, so an invalid rule is reported where it is
+  edited rather than only in the log.
+
+- The settings card is addressable by a stable id. ([#466](https://github.com/xarleyn/dsh-plugins/issues/466), [#423](https://github.com/xarleyn/dsh-plugins/issues/423), [#560](https://github.com/xarleyn/dsh-plugins/issues/560))
+
+  Every section of `src/client`, the controls inside them and the states they
+  report now carry `data-testid` (epic #453): 84 ASCII kebab-case values, one zone
+  per section in the prefix — `wfa-card`, `wfa-status`, `wfa-global`, `wfa-rules`
+  with the rule row and its editor, advanced block, credential control and tester
+  under the same `wfa-rule` zone, and `wfa-diagnostics`. A browser run reaches the
+  provider pill, a config error or warning block, a rule row and its four actions,
+  the write-only credential pair and its save/remove, an editor field, a tester or
+  diagnostics report without naming any of them by the English copy they render or
+  by the `wfa-*` class they share with their siblings. A shared control (`Pill`,
+  `ToggleRow`, `IconButton`) takes its id from the call site that places it, so the
+  enabled pill of a row and the state pill of the credential block never answer to
+  one selector; a repeated node keeps the id of its template and no index is baked
+  into a name, while the six network checkboxes name the policy field they write.
+  The summary that expands the collapsed advanced block is named too, so the fields
+  behind it are reachable without clicking a phrase, and the block still opens
+  closed — nothing here moved but attributes. Layout wrappers, `MetaLine` facts and
+  the explanatory notes stay unnamed: an id marks a control, a state or a shell.
+
+  Nothing moved but attributes — every `className`, `role`, `aria-*`, placeholder
+  and text node of the card is what it was, and the settings-card shell contract of
+  `AGENTS.md` is untouched. No test located these nodes by class or copy, so none
+  had to be rewritten; the card has no DOM-rendering test, so the contract is
+  pinned against the source instead — `tests/client-testids.test.ts` reads the
+  client tree and holds the ids to their shape, their zone, their uniqueness and
+  their coverage, so an unnamed control fails a gate rather than a browser run.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+- Updated @yadsh/dsh-plugin-kit to 0.5.0
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.6.0 (2026-09-24)
 
 ### 🚀 Features

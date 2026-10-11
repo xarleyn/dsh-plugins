@@ -1,3 +1,89 @@
+## 0.2.5 (2026-10-08)
+
+### 🩹 Fixes
+
+- Every plugin row on the Host's Plugins page is named in words. ([fff88762](https://github.com/xarleyn/dsh-plugins/commit/fff88762))
+
+  The page titles a bundle's row and fills its description line from the package's
+  exported `locale/en.json`, which the Host resolves through the package's `exports`
+  map without activating the plugin (`@deepseek-ai/dsh-app-boot` `package-meta.ts`).
+  Only `dsh-documents` shipped that file, so the other twenty-five rows were signed by
+  their full package specifier — an operator read `@yadsh/dsh-jev-compaction` where a
+  first-party row read a phrase. Each package now exports `./locale/en.json`, publishes
+  `locale/*.json`, and carries English `meta.title` and `meta.description`; where the
+  package already had a configuration card, its `summary` one-liner and the row's
+  description are one string, pinned by a test against the shipped file rather than
+  against a copy in the test. `pnpm verify:packages` asks all three halves of every
+  plugin package, so a row cannot fall back to a specifier unnoticed.
+
+  Two pages still seated on the deleted-in-spirit `settings.plugins.tab` move to the
+  panel with them. `dsh-prompt-firewall` edits its own Config namespace, so it takes the
+  row seat keyed `@yadsh/dsh-prompt-firewall#dsh-prompt-firewall` — the row id is the
+  namespace the Host serves the form under, so no saved value is orphaned — and with the
+  seat it gives up its shell, its header badge and its show/hide labels, taking the
+  Host's `--dsw-focus-ring-*` pair for every control it draws and answering the
+  unavailable namespace with a sentence instead of an empty section.
+  `dsh-domain-experts` owns no form — it edits domains through its Remote services — so
+  it takes the bundle-level seat `plugins.bundle.config`, keyed by the package name, and
+  drops the `<h2>` heading and the intro line the panel already draws from the row's own
+  display metadata.
+
+### ❤️ Thank You
+
+- xarleyn
+
+## 0.2.4 (2026-10-04)
+
+### 🩹 Fixes
+
+- Every plugin declares the `0.1.7-rc.2` host — the metadata wave of the cutover. ([#511](https://github.com/xarleyn/dsh-plugins/issues/511), [#509](https://github.com/xarleyn/dsh-plugins/issues/509))
+
+  `compatibility.json` carries `>=0.1.7-rc.2 <0.2.0` and `0.1.7-rc.2` as its tested
+  release, and the Requirements/Compatibility lines of the README and SPEC that
+  restate that pair moved with it, so a package page and its manifest agree. The
+  checks that hard-code the pair moved in the same change: two `deepEqual`
+  assertions in the package verifiers, one bundle test, the plugin generator's
+  scaffold defaults with its test, and the fixtures of the repository gates that
+  read them.
+
+  Dated records keep the version they were written against. Phase 0 and spike
+  findings documents, `SPEC` baseline tags and permalinks into the harness tree,
+  and a released QA changelog entry still name `0.1.5-rc.2`, because each reports
+  what was observed on that host rather than what the package supports now.
+
+- A mined correction keeps the tool output that provoked it on harness 0.1.7. ([#528](https://github.com/xarleyn/dsh-plugins/issues/528), [#511](https://github.com/xarleyn/dsh-plugins/issues/511))
+
+  The harness retired the `tool-result` content block: one tool result is now a
+  first-class `tool`-role message whose own `content` is the result, so the text
+  walker in the mining pipeline unwrapped a block the host no longer emits and
+  every tool result reaching a correction would have arrived as empty context. The
+  walker now reads the text blocks that the new message shape actually carries.
+
+  The session fixtures were rebuilt on the current vocabulary instead of patched
+  in place, because a fixture is the only place this package states what a session
+  looks like: the header is stamped from `SESSION_FORMAT_VERSION` and branded
+  through `SessionId` rather than hand-written at version 3, an injected
+  non-human message carries a real producer source kind since `plugin` is absent
+  from both the role and the source axes, and the tool-result fixture emits the
+  `tool` role with its `toolCallId`.
+
+  Two things were checked and deliberately left alone. `session.snapshotEvents()`
+  is still merely deprecated in the host, so the live-session path keeps its call
+  site, and the plugin's own `tool-result` context label — in its types, its
+  extractor and its durable schema — is our vocabulary around a session event that
+  survives, not the retired content block. A corrupt stored session, which the
+  host's observation reader now reports as a catchable
+  `SESSION_QUERY_CORRUPT_SESSION`, counts as one failed session and the scan
+  continues with the rest of the workspace, which the engine suite already pins.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.1
+
+### ❤️ Thank You
+
+- qoder-bot
+
 ## 0.2.3 (2026-09-17)
 
 ### 🩹 Fixes

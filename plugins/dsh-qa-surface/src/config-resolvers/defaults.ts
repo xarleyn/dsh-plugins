@@ -32,6 +32,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       provider: null,
       model: null,
       reasoningEffort: null,
+      maxActiveRequests: 0,
     }),
     ui: Object.freeze({
       showHeader: true,
@@ -136,6 +137,12 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
     entry: Object.freeze({
       redirectNonLoopback: true,
       cookieBootstrap: true,
+    }),
+    // On by default: a finished turn is the fact a tester is waiting for, and
+    // the loudest channel it can use still needs the reader's own click.
+    notifications: Object.freeze({
+      enabled: true,
+      allowOs: true,
     }),
     tools: Object.freeze({
       dynamicActivation: true,

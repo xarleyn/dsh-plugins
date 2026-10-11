@@ -148,6 +148,26 @@ describe("/no-review command", () => {
     }
   });
 
+  it("preserves an attachment-only human request without inventing prompt text", () => {
+    const { definition } = registered();
+    const image = {
+      type: "image",
+      attachment: {
+        attachmentId: "demo-image" as never,
+        mediaType: "image/png",
+        bytes: 1,
+        width: 1,
+        height: 1,
+      },
+    } as const;
+    const call = invocation({ rawInput: "", attachments: [image] });
+    expect(definition.handler(call.value).kind).toBe("success");
+    expect(call.followups[0]).toMatchObject({
+      content: [{ type: "text", text: "" }, image],
+      source: { kind: "user" },
+    });
+  });
+
   it("allows a deployment to explicitly permit waivers in closed mode", () => {
     const { definition } = registered(
       resolveAnswerReviewGateConfig({

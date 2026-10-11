@@ -14,7 +14,10 @@ import { test } from "node:test";
 
 import {
   CATALOG_HEADER,
+  CATALOG_SEPARATOR,
+  LIBRARY_KIND,
   MANIFEST_FILE,
+  PLUGIN_KIND,
   PRIVATE_PACKAGE_LABEL,
   README_FILE,
   SCHEMA_FILE,
@@ -23,6 +26,7 @@ import {
   findManifestDrift,
   findManifestSchemaErrors,
   findReadmeDrift,
+  installCommand,
   renderCatalogTable,
   renderReadmeCatalog,
   schemaErrorsFor,
@@ -47,11 +51,18 @@ function fixtureRepo() {
     description: "Alpha plugin",
     homepage: "https://example.invalid/plugins/dsh-alpha",
     keywords: ["deepseek-harness", "dsh"],
+    dsh: { bundle: { patch: "./cordis.patch.yml" } },
   });
   writePackage(root, "plugins/dsh-private", {
     name: "@yadsh/dsh-private",
     description: "Private plugin",
     private: true,
+  });
+  writePackage(root, "packages/beta", {
+    name: "@yadsh/dsh-beta",
+    description: "Beta library",
+    homepage: "https://example.invalid/packages/beta",
+    keywords: ["deepseek-harness", "dsh"],
   });
   writePackage(root, "packages/config", {
     name: "@yadsh/dsh-config",
@@ -71,6 +82,56 @@ test("the committed manifest and README catalog are up to date", () => {
 
 test("the committed manifest matches docs/plugins.schema.json", () => {
   assert.deepEqual(findManifestSchemaErrors(repoRoot), []);
+});
+
+test("the committed catalog keeps the two install contracts apart", () => {
+  const entries = buildManifest(repoRoot).plugins;
+  const kinds = new Set(entries.map((entry) => entry.kind));
+  assert.deepEqual([...kinds].sort(), [LIBRARY_KIND, PLUGIN_KIND]);
+
+  for (const entry of entries) {
+    const manifest = JSON.parse(
+      readFileSync(path.join(repoRoot, entry.path, "package.json"), "utf8"),
+    );
+    const declaresBundle = manifest.dsh?.bundle !== undefined;
+    assert.equal(
+      entry.kind,
+      declaresBundle ? PLUGIN_KIND : LIBRARY_KIND,
+      `${entry.npm} is ${entry.kind} but declares a bundle: ${declaresBundle}`,
+    );
+    assert.equal(
+      entry.install.startsWith("dsh plugin "),
+      declaresBundle,
+      `${entry.npm} offers ${JSON.stringify(entry.install)}`,
+    );
+    if (entry.kind === LIBRARY_KIND) {
+      assert.equal(entry.install, `pnpm add ${entry.npm}`);
+    } else {
+      assert.equal(
+        entry.install,
+        `dsh plugin --profile <profile> add ${entry.npm}`,
+      );
+    }
+  }
+});
+
+test("each kind is catalogued with the install command it honors", () => {
+  assert.deepEqual(
+    buildManifest(fixtureRepo()).plugins.map((entry) => [
+      entry.path,
+      entry.kind,
+      entry.install,
+    ]),
+    [
+      ["packages/beta", LIBRARY_KIND, "pnpm add @yadsh/dsh-beta"],
+      [
+        "plugins/dsh-alpha",
+        PLUGIN_KIND,
+        "dsh plugin --profile <profile> add @yadsh/dsh-alpha",
+      ],
+    ],
+  );
+  assert.throws(() => installCommand("@yadsh/dsh-beta", "widget"), TypeError);
 });
 
 test("the generator writes a manifest the schema accepts", () => {
@@ -96,28 +157,48 @@ test("a structurally invalid manifest reports its schema path", () => {
   );
   writeFileSync(path.join(root, SCHEMA_FILE), JSON.stringify(schema));
 
+  const report = (...errors) =>
+    errors.map(
+      (error) => `${MANIFEST_FILE} does not match ${SCHEMA_FILE}: ${error}`,
+    );
+
   const manifest = buildManifest(root);
   manifest.plugins[0].client = "yes";
+  manifest.plugins[0].kind = "widget";
   delete manifest.plugins[0].homepage;
   manifest.plugins[0].extra = true;
-  assert.deepEqual(schemaErrorsFor(manifest, schema), [
-    `${MANIFEST_FILE} does not match ${SCHEMA_FILE}: ` +
+  assert.deepEqual(
+    schemaErrorsFor(manifest, schema),
+    report(
       "$.plugins[0].homepage: missing required property",
-    `${MANIFEST_FILE} does not match ${SCHEMA_FILE}: ` +
+      '$.plugins[0].kind: expected one of "plugin", "library", received "widget"',
       "$.plugins[0].client: expected boolean, received string",
-    `${MANIFEST_FILE} does not match ${SCHEMA_FILE}: ` +
       "$.plugins[0].extra: unexpected property",
-  ]);
+    ),
+  );
 
   writeFileSync(path.join(root, MANIFEST_FILE), serializeManifest(manifest));
-  assert.deepEqual(findManifestSchemaErrors(root), [
-    `${MANIFEST_FILE} does not match ${SCHEMA_FILE}: ` +
+  assert.deepEqual(
+    findManifestSchemaErrors(root),
+    report(
       "$.plugins[0].homepage: missing required property",
-    `${MANIFEST_FILE} does not match ${SCHEMA_FILE}: ` +
+      '$.plugins[0].kind: expected one of "plugin", "library", received "widget"',
       "$.plugins[0].client: expected boolean, received string",
-    `${MANIFEST_FILE} does not match ${SCHEMA_FILE}: ` +
       "$.plugins[0].extra: unexpected property",
-  ]);
+    ),
+  );
+
+  delete manifest.plugins[0].kind;
+  writeFileSync(path.join(root, MANIFEST_FILE), serializeManifest(manifest));
+  assert.deepEqual(
+    findManifestSchemaErrors(root),
+    report(
+      "$.plugins[0].kind: missing required property",
+      "$.plugins[0].homepage: missing required property",
+      "$.plugins[0].client: expected boolean, received string",
+      "$.plugins[0].extra: unexpected property",
+    ),
+  );
 });
 
 test("the generator refuses to write a schema-invalid catalog", () => {
@@ -151,30 +232,44 @@ test("the README catalog documents private packages the manifest skips", () => {
 
   assert.deepEqual(
     entries.map((entry) => entry.path),
-    ["plugins/dsh-alpha", "plugins/dsh-private", "packages/config"],
+    [
+      "plugins/dsh-alpha",
+      "plugins/dsh-private",
+      "packages/beta",
+      "packages/config",
+    ],
   );
   assert.deepEqual(
     entries.map((entry) => entry.npm),
-    ["@yadsh/dsh-alpha", null, null],
+    ["@yadsh/dsh-alpha", null, "@yadsh/dsh-beta", null],
+  );
+  assert.deepEqual(
+    entries.map((entry) => entry.kind),
+    [PLUGIN_KIND, null, LIBRARY_KIND, null],
   );
   assert.deepEqual(
     buildManifest(root).plugins.map((plugin) => plugin.path),
-    ["plugins/dsh-alpha"],
+    ["packages/beta", "plugins/dsh-alpha"],
   );
 });
 
-test("the rendered table marks private packages and normalizes cells", () => {
+test("the rendered table marks each row kind and the private packages", () => {
   const table = renderCatalogTable(collectCatalogEntries(fixtureRepo()));
 
   assert.equal(table.split("\n")[0], CATALOG_HEADER);
+  assert.equal(table.split("\n")[1], CATALOG_SEPARATOR);
   assert.match(
     table,
-    /^\| `plugins\/dsh-alpha` \| `@yadsh\/dsh-alpha` \| Alpha plugin \|$/mu,
+    /^\| `plugins\/dsh-alpha` \| `@yadsh\/dsh-alpha` \| DSH plugin \| Alpha plugin \|$/mu,
+  );
+  assert.match(
+    table,
+    /^\| `packages\/beta` \| `@yadsh\/dsh-beta` \| runtime library \| Beta library \|$/mu,
   );
   assert.match(
     table,
     new RegExp(
-      `^\\| \`packages/config\` \\| ${PRIVATE_PACKAGE_LABEL} \\| Shared configuration \\|$`,
+      `^\\| \`packages/config\` \\| ${PRIVATE_PACKAGE_LABEL} \\| not published \\| Shared configuration \\|$`,
       "mu",
     ),
   );
@@ -190,8 +285,8 @@ test("rendering the README replaces only the catalog table", () => {
     "Prose before the table.",
     "",
     CATALOG_HEADER,
-    "| --- | --- | --- |",
-    "| `plugins/dsh-stale` | `@yadsh/dsh-stale` | Stale plugin |",
+    CATALOG_SEPARATOR,
+    "| `plugins/dsh-stale` | `@yadsh/dsh-stale` | DSH plugin | Stale plugin |",
     "",
     "Prose after the table.",
     "",
@@ -213,7 +308,7 @@ test("a missing table is reported instead of silently passing", () => {
   assert.equal(renderReadmeCatalog(readme, collectCatalogEntries(root)), null);
   assert.deepEqual(findReadmeDrift(root), [
     `${README_FILE} is missing the ${JSON.stringify(CATALOG_HEADER)} ` +
-      `package table followed by "| --- | --- | --- |"`,
+      `package table followed by ${JSON.stringify(CATALOG_SEPARATOR)}`,
   ]);
 });
 
@@ -224,8 +319,8 @@ test("a stale row is reported as README drift", () => {
       "# Plugins",
       "",
       CATALOG_HEADER,
-      "| --- | --- | --- |",
-      "| `plugins/dsh-alpha` | `@yadsh/dsh-alpha` | Alpha plugin |",
+      CATALOG_SEPARATOR,
+      "| `plugins/dsh-alpha` | `@yadsh/dsh-alpha` | DSH plugin | Alpha plugin |",
       "",
     ].join("\n"),
     collectCatalogEntries(root),
@@ -236,6 +331,17 @@ test("a stale row is reported as README drift", () => {
   writeFileSync(
     path.join(root, README_FILE),
     readme.replace("| Alpha plugin |", "| Alpha plugin renamed |"),
+  );
+  assert.deepEqual(findReadmeDrift(root), [
+    `${README_FILE} package catalog is out of date with the workspace ` +
+      'manifests; run "pnpm plugins:manifest"',
+  ]);
+
+  // The kind column is part of the row: a table that still calls a plugin a
+  // library is as stale as one that renames it.
+  writeFileSync(
+    path.join(root, README_FILE),
+    readme.replace("| DSH plugin |", "| runtime library |"),
   );
   assert.deepEqual(findReadmeDrift(root), [
     `${README_FILE} package catalog is out of date with the workspace ` +

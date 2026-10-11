@@ -1,13 +1,14 @@
 /**
  * Client-bundle gate for @yadsh/dsh-session-scope.
  *
- * The bundle is an artifact now: `tsdown` wraps `src/client.ts` in the shell's
- * classic `window.__ModuleLoader__` factory, so this gate reads the built file
- * and asserts the contract the shell sees — the registration id, the composer
- * seat it claims, the non-durable RPC read it uses. Fragments name calls and
- * literals rather than imported identifiers, because the bundler is free to
- * rename what the module imported (`react` is emitted as an interop namespace)
- * while the call shapes are the contract.
+ * The bundle is an artifact now: `tsdown` wraps the `src/client/` modules in
+ * the shell's classic `window.__ModuleLoader__` factory, so this gate reads the
+ * built file and asserts the contract the shell sees — the registration id, the
+ * composer seat it claims, the non-durable RPC read it uses. Fragments name
+ * calls and literals rather than imported identifiers, because the bundler is
+ * free to rename what a module imported (`react` is emitted as an interop
+ * namespace) and to move a call across the module boundary, while the call
+ * shapes are the contract.
  *
  * Text alone cannot show that the factory still hands the shell a working
  * plugin, so the gate ends by running the built registration against a

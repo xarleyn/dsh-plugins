@@ -39,6 +39,10 @@ export function textChunks(
 }
 
 export const baseConfig = {
+  // The quarantine withholds text and cancels turns, which is enforcement:
+  // the gate profile has to ask for it. Mode coverage lives in
+  // `gate-modes.test.ts`, so the stream tests state it explicitly.
+  mode: "enforce" as const,
   output: {
     enabled: true,
     mode: "buffered" as const,

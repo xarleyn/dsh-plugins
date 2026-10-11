@@ -493,8 +493,24 @@ async function runBrowserPass({
     await page
       .getByRole("heading", { name: "Чем могу помочь?", exact: true })
       .waitFor();
-    await page.getByRole("textbox", { name: "Задать вопрос" }).waitFor();
-    const prompt = page.getByRole("textbox", { name: "Задать вопрос" });
+    // The slash-command palette gives the textarea a combobox role. Locate it
+    // by its stable accessible label so this smoke covers both palette states.
+    const prompt = page.getByLabel("Задать вопрос", { exact: true });
+    try {
+      await prompt.waitFor();
+    } catch (error) {
+      const composer = await page
+        .locator(".dsh-qa-composer-slot")
+        .evaluate((node) => ({
+          hidden: node.hidden,
+          text: node.textContent,
+          html: node.innerHTML.slice(0, 1_000),
+        }));
+      throw new Error(
+        `QA composer was unavailable: ${JSON.stringify(composer)}; console=${errors.join(" | ") || "(nothing)"}`,
+        { cause: error },
+      );
+    }
     const send = page.getByRole("button", { name: "Отправить", exact: true });
     await send.waitFor();
     const compatibility = page.locator(".dsh-qa-compatibility");
@@ -515,14 +531,30 @@ async function runBrowserPass({
         `historical incompatible Session was silently replaced: persisted=${JSON.stringify(historicalSession)} incompatible=${JSON.stringify(incompatibleSession.sessionId)}`,
       );
     }
-    // Simulate choosing New chat without exposing a reset button in this
-    // deliberately fixed smoke profile. The incompatible history remains on
-    // the Host; a reload with no active-id hint must create and attest a new
-    // Session under the current deployment composition.
+    // Create an attested blank fixture through QA's real admission, then
+    // restore it. A draft now materializes only on Send, which this model-less
+    // rig cannot exercise; attachment staging alone must not create a chat.
+    // The incompatible history remains on the Host.
     await page.evaluate(() =>
       globalThis.localStorage.removeItem(
         "dsh-qa-surface.session:v1:/qa:session",
       ),
+    );
+    const attestedSession = await rpc(
+      origin,
+      "qaSurface/createSession",
+      {
+        args: { token: "", subroleId: null, adminPreview: false },
+      },
+      cookie,
+    );
+    await page.evaluate(
+      (sessionId) =>
+        globalThis.localStorage.setItem(
+          "dsh-qa-surface.session:v1:/qa:session",
+          sessionId,
+        ),
+      attestedSession,
     );
     await page.reload();
     await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
@@ -625,21 +657,20 @@ async function runBrowserPass({
     if ((await fileNames.nth(1).textContent()) !== "spec.md") {
       throw new Error("the picker did not attach a text file");
     }
-    // This rig configures no model, so DSH's blocking "Add an API key" step
-    // owns the page: it marks #root inert and portals its own modal above the
-    // QA overlay, which no click inside the surface can reach. That host-level
-    // block is orthogonal to the QA surface (a real deployment pins a model),
-    // so the scenario lifts it before driving the composer.
-    await page.evaluate(() => {
-      globalThis.document.getElementById("root")?.removeAttribute("inert");
-      const dialog = globalThis.document.querySelector(
-        '[role="dialog"][aria-modal="true"]',
-      );
-      const overlay = dialog?.parentElement;
-      if (overlay instanceof globalThis.HTMLElement) {
-        overlay.style.display = "none";
-      }
-    });
+    // The Host offers its supported deferral on this model-less fixture.
+    // Complete that step before interacting with the QA composer.
+    async function deferModelSetup() {
+      const dialog = page.getByRole("dialog", {
+        name: "Add an API key to get started",
+        exact: true,
+      });
+      await dialog.waitFor({ timeout: 15_000 });
+      await dialog
+        .getByRole("button", { name: "Configure later", exact: true })
+        .click();
+      await dialog.waitFor({ state: "hidden" });
+    }
+    await deferModelSetup();
     await page.getByRole("button", { name: "Убрать spec.md" }).click();
     await waitFor(
       async () => (await fileNames.count()) === 1,
@@ -704,6 +735,189 @@ async function runBrowserPass({
     if (new URL(page.url()).pathname !== "/qa/child") {
       throw new Error(`child QA navigation was not restored: ${page.url()}`);
     }
+    await deferModelSetup();
+    // The palette the surface carries for itself. The Host's own Appearance row
+    // lives in the settings this overlay suppresses, so every one of the three
+    // preferences has to reach the Host token sheet from `/qa` alone — proven
+    // by the colours the surface ends up painting, not by the click.
+    const palette = page.getByRole("group", { name: "Тема оформления" });
+    await palette.waitFor({ timeout: 15_000 });
+    const themeStorageKey = "dsh-qa-surface.session:v1:/qa:theme";
+    const paintedPalette = () =>
+      page.locator("main.dsh-qa-surface").evaluate((node) => ({
+        background: globalThis.getComputedStyle(node).backgroundColor,
+        foreground: globalThis.getComputedStyle(node).color,
+        darkPalette:
+          globalThis.document.body.hasAttribute("data-ds-dark-theme"),
+        scheme: globalThis.document.documentElement.style.colorScheme,
+      }));
+    const pressedPalette = async () => {
+      const pressed = [];
+      for (const label of ["Светлая тема", "Тёмная тема", "Системная тема"]) {
+        if (
+          await palette
+            .getByRole("button", { name: label, pressed: true })
+            .count()
+        )
+          pressed.push(label);
+      }
+      return pressed;
+    };
+    /**
+     * The chosen cube has to look chosen. A `var(--dsw-alias-*)` the Host sheet
+     * never declares is not an error: the browser drops that one declaration at
+     * computed-value time and writes nothing to the console, so the control
+     * would keep working while quietly losing the only thing that tells a
+     * visitor which theme is on. No DOM assertion can invent that — it has to be
+     * measured off the painted cube.
+     */
+    const cubeColours = () =>
+      palette.evaluate((group) => {
+        const paint = (cube) => {
+          const style = globalThis.getComputedStyle(cube);
+          return `${style.backgroundColor}|${style.color}`;
+        };
+        const cubes = [...group.querySelectorAll("button")];
+        const chosen = cubes.find(
+          (cube) => cube.getAttribute("aria-pressed") === "true",
+        );
+        const resting = cubes.find(
+          (cube) => cube.getAttribute("aria-pressed") !== "true",
+        );
+        return chosen && resting
+          ? { chosen: paint(chosen), resting: paint(resting) }
+          : null;
+      });
+    const expectChosenThemeIsVisible = async (where) => {
+      const cubes = await cubeColours();
+      if (!cubes || cubes.chosen === cubes.resting) {
+        throw new Error(
+          `the chosen theme is not painted on its own cube ${where}: ${JSON.stringify(cubes)}`,
+        );
+      }
+    };
+    /**
+     * The palette reaches the document from an effect, after React processed
+     * the click (or after the OS answered), so the pass waits for the body
+     * attribute to agree before it measures colours — otherwise the assertion
+     * races the repaint and reports a stale document.
+     */
+    const awaitPalette = async (dark) => {
+      await page.waitForFunction(
+        (expected) =>
+          globalThis.document.body.hasAttribute("data-ds-dark-theme") ===
+          expected,
+        dark,
+        { timeout: 10_000 },
+      );
+      return paintedPalette();
+    };
+    const choosePalette = async (label, dark) => {
+      await palette.getByRole("button", { name: label }).click();
+      return awaitPalette(dark);
+    };
+    // Nobody has touched the control yet, so the stand must still be wearing
+    // the palette the Host booted it in: the surface writes nothing until this
+    // browser chooses, and the control reports the palette on screen rather
+    // than a preference nobody picked.
+    const booted = await paintedPalette();
+    if (
+      (await page.evaluate(
+        (key) => globalThis.localStorage.getItem(key),
+        themeStorageKey,
+      )) !== null ||
+      (await pressedPalette()).join() !==
+        (booted.darkPalette ? "Тёмная тема" : "Светлая тема")
+    ) {
+      throw new Error(
+        `an untouched stand was repainted by the surface: ${JSON.stringify(booted)}`,
+      );
+    }
+    await page.emulateMedia({ colorScheme: "light" });
+    const lightPalette = await choosePalette("Светлая тема", false);
+    await expectChosenThemeIsVisible("under the light palette");
+    const darkPalette = await choosePalette("Тёмная тема", true);
+    await expectChosenThemeIsVisible("under the dark palette");
+    if (lightPalette.darkPalette || !darkPalette.darkPalette) {
+      throw new Error(
+        `the palette control did not reach the token sheet: light=${JSON.stringify(lightPalette)} dark=${JSON.stringify(darkPalette)}`,
+      );
+    }
+    if (
+      lightPalette.background === darkPalette.background ||
+      lightPalette.foreground === darkPalette.foreground
+    ) {
+      throw new Error(
+        `light and dark painted the same colours: ${JSON.stringify({ lightPalette, darkPalette })}`,
+      );
+    }
+    // `system` owns no colours of its own: it answers the OS, both ways, and it
+    // stays the pressed cube while the OS decides which palette that is.
+    const systemLight = await choosePalette("Системная тема", false);
+    if (
+      systemLight.darkPalette ||
+      systemLight.background !== lightPalette.background ||
+      (await pressedPalette()).join() !== "Системная тема"
+    ) {
+      throw new Error(
+        `the system palette ignored a light OS: ${JSON.stringify(systemLight)}`,
+      );
+    }
+    await expectChosenThemeIsVisible(
+      "under a system palette the OS answers light",
+    );
+    await page.emulateMedia({ colorScheme: "dark" });
+    const systemDark = await awaitPalette(true);
+    if (
+      !systemDark.darkPalette ||
+      systemDark.background !== darkPalette.background ||
+      (await pressedPalette()).join() !== "Системная тема"
+    ) {
+      throw new Error(
+        `the system palette did not follow the OS into dark: ${JSON.stringify(systemDark)}`,
+      );
+    }
+    // The choice is this browser's, so a reload paints it before anyone
+    // touches the control — against an emulated dark OS with a stored
+    // preference, which is the answer the Host's own choice cannot produce.
+    await choosePalette("Светлая тема", false);
+    await page.reload();
+    await page.locator("main.dsh-qa-surface").waitFor({ timeout: 30_000 });
+    await deferModelSetup();
+    const reloaded = await awaitPalette(false);
+    if (
+      reloaded.darkPalette ||
+      reloaded.background !== lightPalette.background ||
+      (await pressedPalette()).join() !== "Светлая тема"
+    ) {
+      throw new Error(
+        `the palette choice did not survive the reload: ${JSON.stringify(reloaded)}`,
+      );
+    }
+    await expectChosenThemeIsVisible("after the reload");
+    // The Host booted this document under a dark OS; QA restored the stored
+    // light choice above. Leaving the route must return that borrowed native
+    // palette, which is visibly different from the browser's QA preference.
+    // Keep the OS stable so an independent Host repaint does not race cleanup.
+    await page.evaluate(() => {
+      globalThis.history.pushState(null, "", "/");
+    });
+    await page
+      .locator("main.dsh-qa-surface")
+      .waitFor({ state: "detached", timeout: 10_000 });
+    const handedBack = await page.evaluate(() => ({
+      darkPalette: globalThis.document.body.hasAttribute("data-ds-dark-theme"),
+      scheme: globalThis.document.documentElement.style.colorScheme,
+    }));
+    if (!handedBack.darkPalette || handedBack.scheme !== "dark") {
+      throw new Error(
+        `leaving /qa did not hand the harness palette back: ${JSON.stringify(handedBack)}`,
+      );
+    }
+    await page.evaluate((key) => {
+      globalThis.localStorage.removeItem(key);
+    }, themeStorageKey);
+    await page.emulateMedia({ colorScheme: null });
     if (errors.length > 0)
       throw new Error(`browser errors:\n${errors.join("\n")}`);
   } finally {
@@ -764,6 +978,18 @@ try {
       cwd: workspacePath,
       env: dshEnv,
     },
+  );
+  // This disposable profile writes its complete patch before boot and never
+  // mutates it while DSH is running. Startup reload avoids making the packed
+  // browser gate depend on the platform's optional Cordis HMR service.
+  const profileManifestPath = join(dshHome, "profiles", "web", "package.json");
+  const profileManifest = JSON.parse(
+    await readFile(profileManifestPath, "utf8"),
+  );
+  profileManifest.dsh.profile.patchReload = "startup";
+  await writeFile(
+    profileManifestPath,
+    `${JSON.stringify(profileManifest, null, 2)}\n`,
   );
   await writeFile(
     join(dshHome, "profiles", "web", "cordis.patch.yml"),
@@ -874,7 +1100,7 @@ try {
   if (packageEntry === undefined || batch === undefined) {
     throw new Error("packed QA client was absent from the DSH client graph");
   }
-  const bundleResponse = await fetch(`${origin}${batch.url}`, {
+  const bundleResponse = await fetch(new URL(batch.url, `${origin}/`), {
     headers: { cookie },
   });
   const bundle = await bundleResponse.text();

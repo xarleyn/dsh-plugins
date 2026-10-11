@@ -3,16 +3,27 @@ import type { EngineWorkspaceConfig } from "../engine/runtime.js";
 import type { ImpactRule } from "../config/types.js";
 import { createWorkspaceConfigSource } from "./config-source.js";
 import {
+  ConfigSchema,
+  plainEntryConfig,
+  readLiveConfig,
   resolvePluginConfig,
+  type DocImpactEntryConfig,
   type DocImpactPluginConfig,
 } from "./plugin-config.js";
 import { createEngineFileLogger } from "./engine-logger.js";
 import { registerLifecycle } from "./lifecycle.js";
-import { bootstrapSettings } from "./settings.js";
 import { createResolveTool, createStatusTool } from "./tools.js";
 import { createDocImpactCommand } from "./commands.js";
 
 export const name = "doc-impact";
+
+/**
+ * The entry configuration (SPEC §37). On `0.1.7` this schema *is* the settings
+ * surface: the profile entry id `dsh-doc-impact` is the namespace the browser
+ * card edits, and a field is editable live because its node is volatile.
+ */
+export type Config = DocImpactEntryConfig;
+export const Config = ConfigSchema;
 
 /** The tools service is required; agents, commands, and the web UI are optional services. */
 export const inject = ["tools"] as const;
@@ -38,7 +49,7 @@ export interface PluginContext {
     services: readonly string[],
     callback: (ctx: TContext) => void,
   ): unknown;
-  get(service: string): unknown;
+  effect(callback: () => (() => void) | void, name?: string): unknown;
   tools: {
     register(definition: unknown): () => void;
   };
@@ -50,16 +61,26 @@ export interface PluginContext {
 }
 
 /**
+ * Structural view of the host `settings` service — only the page policy this
+ * entry decides, so the entry keeps no hard dependency on an optional service.
+ */
+export interface SettingsFormsLike {
+  configure(presentation: { auto?: boolean }): () => void;
+}
+
+/**
  * dsh-doc-impact plugin entry (SPEC §14, §64): load config, wire the engine to
  * the public `agent/*` and `session/*` extension points, register the
- * `doc_impact_*` tools and the `/doc-impact` command, and expose the
- * `doc-impact` settings namespace behind Plugins → Plugin Configuration. No
- * agent-loop internals are imported or patched (SPEC §92-§93).
+ * `doc_impact_*` tools and the `/doc-impact` command, and keep the
+ * `dsh-doc-impact` volatile settings namespace that the Plugins panel's row card
+ * edits. No agent-loop internals are imported or patched (SPEC §92-§93).
  */
-export function apply(ctx: PluginContext, rawConfig?: unknown): void {
-  let entryConfig: DocImpactPluginConfig;
+export function apply(
+  ctx: PluginContext,
+  config?: DocImpactEntryConfig | Record<string, unknown>,
+): void {
   try {
-    entryConfig = resolvePluginConfig(rawConfig);
+    resolvePluginConfig(plainEntryConfig(config));
   } catch (error) {
     ctx.logger.error(
       "dsh-doc-impact: invalid plugin config, plugin disabled\n%s",
@@ -72,15 +93,20 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
   // Runtime diagnostics (engine + workspace config source) land in the
   // plugin log directory and keep mirroring to the host console.
   const engineLogger = createEngineFileLogger(logger);
-  // The effective config is live: before the settings namespace answers it is
-  // the entry config; afterwards the merged settings view (entry config as the
-  // composition base, user edits on top). `enabled: false` renders the engine
-  // inert without unregistering the surface.
-  let readConfig = (): DocImpactPluginConfig => entryConfig;
-  void bootstrapSettings(ctx, rawConfig, entryConfig, (read) => {
-    readConfig = read;
-  }).catch((error: unknown) => {
-    logger.warn("dsh-doc-impact: settings bootstrap failed (%s)", error);
+  // The effective config is live: every field the card edits is a volatile
+  // reference, so each operation takes one plain snapshot instead of reading a
+  // copy made at startup. `enabled: false` renders the engine inert without
+  // unregistering the surface.
+  const readConfig = (): DocImpactPluginConfig => readLiveConfig(config);
+  // The browser card owns this namespace, so the Host is told not to generate a
+  // second editor over the same fields.
+  ctx.inject(["settings"], (settingsCtx: { settings?: SettingsFormsLike }) => {
+    const settings = settingsCtx.settings;
+    if (settings === undefined) return;
+    ctx.effect(
+      () => settings.configure({ auto: false }),
+      "dsh-doc-impact.settings-presentation",
+    );
   });
 
   const loadWorkspaceConfig = createWorkspaceConfigSource(
@@ -141,6 +167,6 @@ export function apply(ctx: PluginContext, rawConfig?: unknown): void {
 
   ctx.logger.info(
     "dsh-doc-impact: active (workspace config: %s)",
-    entryConfig.configFile,
+    readConfig().configFile,
   );
 }

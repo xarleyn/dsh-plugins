@@ -165,6 +165,12 @@ export async function readSourceFilePreview({
     sharedReadOnlyRoots,
     ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
   });
+  if (
+    /\.(?:pdf|docx?|xlsx?|pptx?|odt|ods|odp|zip|png|jpe?g|gif|webp)$/iu.test(
+      file.canonical,
+    )
+  )
+    throw new QaSourcePreviewError("unsupported");
   const limit = Math.min(maxBytes, file.size);
   const buffer = Buffer.alloc(limit);
   const handle = await open(file.canonical, "r").catch(() => undefined);
@@ -172,9 +178,19 @@ export async function readSourceFilePreview({
   try {
     const { bytesRead } = await handle.read(buffer, 0, limit, 0);
     const markdown = /\.(?:md|markdown)$/iu.test(file.canonical);
+    let content: string;
+    try {
+      if (buffer.subarray(0, bytesRead).includes(0)) throw new Error("binary");
+      content = new TextDecoder("utf-8", { fatal: true }).decode(
+        buffer.subarray(0, bytesRead),
+        { stream: file.size > bytesRead },
+      );
+    } catch {
+      throw new QaSourcePreviewError("unsupported");
+    }
     return {
       path: canonicalPath,
-      content: buffer.subarray(0, bytesRead).toString("utf8"),
+      content,
       size: file.size,
       truncated: file.size > bytesRead,
       markdown,

@@ -1,5 +1,5 @@
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
-import { CredentialHelpNote } from "@yadsh/dsh-plugin-kit/client";
+import { CredentialHelpNote } from "./credential-help-note.js";
 import { useState } from "react";
 import type {
   CredentialSource,
@@ -91,6 +91,7 @@ interface TestitExtra {
 
 export function createTestitCard(remote: TestitRemote) {
   return createProviderCard<TestitExtra>({
+    provider: "testit",
     title: "Test IT",
     portalFallback: "Тест-кейсы, прогоны и результаты вашей Test IT",
     accountFallback: "Подключение Test IT",
@@ -152,16 +153,21 @@ export function createTestitCard(remote: TestitRemote) {
         : false;
     },
     credentialSection: (state, help) => {
+      const zone = state.testIdZone;
       const { instances, instanceId } = state.extra;
       const configured = instances.length > 0;
       if (!configured) return null;
       const needsChoice = instances.length > 1;
       const service = serviceConnectOption(state);
       const instancePicker = needsChoice ? (
-        <label className="dsh-qa-integrations__field">
+        <label
+          className="dsh-qa-integrations__field"
+          data-testid={`${zone}-instance-picker`}
+        >
           Инсталляция Test IT
           <select
             className="dsh-qa-integrations__input"
+            data-testid={`${zone}-instance`}
             value={instanceId}
             disabled={state.busy}
             onChange={(event) =>
@@ -177,7 +183,10 @@ export function createTestitCard(remote: TestitRemote) {
           </select>
         </label>
       ) : (
-        <span className="dsh-qa-integrations__muted">
+        <span
+          className="dsh-qa-integrations__muted"
+          data-testid={`${zone}-instance-static`}
+        >
           Инсталляция: {instances[0]?.label ?? ""}
         </span>
       );
@@ -186,7 +195,10 @@ export function createTestitCard(remote: TestitRemote) {
       // the checkbox and drops the secret field entirely.
       if (state.useService) {
         return (
-          <div className="dsh-qa-integrations__section">
+          <div
+            className="dsh-qa-integrations__section"
+            data-testid={`${zone}-credential`}
+          >
             {instancePicker}
             {service}
             <div className="dsh-qa-integrations__actions">
@@ -194,6 +206,7 @@ export function createTestitCard(remote: TestitRemote) {
                 className="dsh-qa-integrations__button dsh-qa-integrations__button--primary"
                 type="button"
                 disabled={state.busy || (needsChoice && instanceId === "")}
+                data-testid={`${zone}-connect`}
                 onClick={state.save}
               >
                 Подключить сервисный токен
@@ -203,6 +216,7 @@ export function createTestitCard(remote: TestitRemote) {
                   className="dsh-qa-integrations__button"
                   type="button"
                   disabled={state.busy}
+                  data-testid={`${zone}-credential-cancel`}
                   onClick={state.cancelCredential}
                 >
                   Отмена
@@ -213,13 +227,20 @@ export function createTestitCard(remote: TestitRemote) {
         );
       }
       return (
-        <div className="dsh-qa-integrations__section">
+        <div
+          className="dsh-qa-integrations__section"
+          data-testid={`${zone}-credential`}
+        >
           {service}
           {instancePicker}
-          <label className="dsh-qa-integrations__field">
+          <label
+            className="dsh-qa-integrations__field"
+            data-testid={`${zone}-credential-field`}
+          >
             API-токен Test IT
             <input
               className="dsh-qa-integrations__input"
+              data-testid={`${zone}-credential-input`}
               type="password"
               autoComplete="new-password"
               value={state.credential}
@@ -231,7 +252,10 @@ export function createTestitCard(remote: TestitRemote) {
             />
           </label>
           <CredentialHelpNote help={help} />
-          <p className="dsh-qa-integrations__hint">
+          <p
+            className="dsh-qa-integrations__hint"
+            data-testid={`${zone}-credential-hint`}
+          >
             Токен хранится в зашифрованном виде и после сохранения больше не
             отображается.
           </p>
@@ -244,6 +268,7 @@ export function createTestitCard(remote: TestitRemote) {
                 state.credential.trim() === "" ||
                 (needsChoice && instanceId === "")
               }
+              data-testid={`${zone}-connect`}
               onClick={state.save}
             >
               Сохранить и проверить
@@ -253,6 +278,7 @@ export function createTestitCard(remote: TestitRemote) {
                 className="dsh-qa-integrations__button"
                 type="button"
                 disabled={state.busy}
+                data-testid={`${zone}-credential-cancel`}
                 onClick={state.cancelCredential}
               >
                 Отмена
@@ -262,10 +288,14 @@ export function createTestitCard(remote: TestitRemote) {
         </div>
       );
     },
-    notConfiguredHint: () => (
-      <p className="dsh-qa-integrations__hint">
-        Оператор не настроил ни одной инсталляции Test IT, подключать нечего.
-      </p>
-    ),
+    notConfiguredHint: (state) =>
+      state.extra.instances.length === 0 ? (
+        <p
+          className="dsh-qa-integrations__hint"
+          data-testid={`${state.testIdZone}-not-configured`}
+        >
+          Оператор не настроил ни одной инсталляции Test IT, подключать нечего.
+        </p>
+      ) : null,
   });
 }

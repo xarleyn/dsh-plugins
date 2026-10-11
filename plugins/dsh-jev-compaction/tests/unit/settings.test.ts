@@ -1,179 +1,154 @@
 /**
- * Host-side settings section (result-shaping SPEC §34, §56).
+ * Host-side settings surface (result-shaping SPEC §34, §56).
  *
- * The section is the only writer of the plugin's live configuration, so these
- * tests pin the layering (composition entry as the base, user settings on top),
- * the live re-apply on change, and the refusal of values the schema cannot
- * express.
+ * Since 0.1.7 the plugin's own configuration *is* the settings namespace, so
+ * what this file pins is the two things the plugin still owns: declining the
+ * page the Host would generate for it, and re-resolving when the loader has
+ * moved a volatile reference.
  */
 
+import { Context } from "@deepseek-ai/cordis";
 import { describe, expect, it } from "vitest";
 
-import { resolveJevCompactionConfig } from "../../src/config.js";
-import type { JevCompactionConfig } from "../../src/config.js";
+import {
+  plainJevCompactionConfig,
+  resolveJevCompactionConfig,
+} from "../../src/config/index.js";
+import type {
+  JevCompactionConfig,
+  JevCompactionLiveConfig,
+} from "../../src/config/index.js";
+import { JevCompactionService } from "../../src/service.js";
 import { installJevCompactionSettings } from "../../src/settings/install.js";
 import { JEV_COMPACTION_SETTINGS_NAMESPACE } from "../../src/shared/settings.js";
 
-interface Installed {
+interface ConfigureCall {
+  readonly presentation: { auto?: boolean };
   readonly owner: unknown;
-  readonly namespace: string;
-  readonly schema: unknown;
-  readonly entry: unknown;
-  readonly hooks: {
-    setSource(current: () => JevCompactionConfig): void;
-    onChange(): void;
-    validate?(value: JevCompactionConfig): void;
-  };
 }
 
 /** Minimal host context: `inject` runs its callback with a settings service. */
 function fakeHost(options: { withSettings: boolean }): {
-  owner: unknown;
-  installed: Installed[];
+  owner: Context;
+  fiber: unknown;
+  calls: ConfigureCall[];
 } {
-  const installed: Installed[] = [];
-  const settings = {
-    installSection(
-      owner: unknown,
-      namespace: string,
-      schema: unknown,
-      entry: unknown,
-      hooks: Installed["hooks"],
-    ): void {
-      installed.push({ owner, namespace, schema, entry, hooks });
-    },
-  };
+  const calls: ConfigureCall[] = [];
+  const fiber = { name: "test-fiber" };
   const owner = {
+    fiber,
     inject(
       services: readonly string[],
       callback: (ctx: unknown) => void,
     ): void {
-      if (!options.withSettings || !services.includes("settings")) {
-        callback({});
-        return;
-      }
-      callback({ settings });
+      // An optional service that is not provided never reaches the callback,
+      // which is what the real `ctx.inject` does with `settings`.
+      if (!options.withSettings || !services.includes("settings")) return;
+      callback({
+        settings: {
+          configure(presentation: { auto?: boolean }, owner: unknown): void {
+            calls.push({ presentation, owner });
+          },
+        },
+        effect: (run: () => void) => run(),
+      });
     },
   };
-  return { owner, installed };
+  return { owner: owner as unknown as Context, fiber, calls };
 }
 
-const ENTRY: JevCompactionConfig = {
-  enabled: true,
-  decision: { provider: "typesafe" },
-};
-
-function install(options: { withSettings: boolean }) {
-  const host = fakeHost(options);
-  let source: () => JevCompactionConfig = () => ENTRY;
-  let changes = 0;
-  installJevCompactionSettings({
-    owner: host.owner as never,
-    entryConfig: ENTRY,
-    schema: { marker: "schema" },
-    setSource: (current) => {
-      source = current;
-    },
-    onChange: () => {
-      changes += 1;
-    },
-    validate: (value) => {
-      resolveJevCompactionConfig(value);
-    },
-  });
+/** One loader reference the test can move. */
+function reference<T>(value: T): { get(): T; set(next: T): void } {
+  let current = value;
   return {
-    installed: host.installed,
-    current: () => source(),
-    changes: () => changes,
+    get: () => current,
+    set: (next: T) => {
+      current = next;
+    },
   };
 }
 
 describe("installJevCompactionSettings", () => {
-  it("registers the section under the plugin's own namespace", () => {
-    const { installed } = install({ withSettings: true });
-    expect(installed).toHaveLength(1);
-    expect(installed[0]!.namespace).toBe(JEV_COMPACTION_SETTINGS_NAMESPACE);
-    expect(installed[0]!.namespace).toBe("jev-compaction");
-  });
-
-  it("passes the composition entry as the base layer", () => {
-    const { installed } = install({ withSettings: true });
-    expect(installed[0]!.entry).toBe(ENTRY);
-    expect(installed[0]!.schema).toEqual({ marker: "schema" });
+  it("declines the automatically generated page for this entry", () => {
+    const host = fakeHost({ withSettings: true });
+    installJevCompactionSettings(host.owner);
+    expect(host.calls).toHaveLength(1);
+    expect(host.calls[0]!.presentation).toEqual({ auto: false });
+    // The opt-out is per fiber, and it is the plugin's own fiber that owns the
+    // namespace — a child fiber's would be released with the child.
+    expect(host.calls[0]!.owner).toBe(host.fiber);
   });
 
   it("stays inert when the host exposes no settings service", () => {
-    const { installed, current, changes } = install({ withSettings: false });
-    expect(installed).toHaveLength(0);
-    // The plugin keeps running on its composition configuration.
-    expect(current()).toBe(ENTRY);
-    expect(changes()).toBe(0);
+    const host = fakeHost({ withSettings: false });
+    expect(() => installJevCompactionSettings(host.owner)).not.toThrow();
+    expect(host.calls).toHaveLength(0);
   });
 
-  it("adopts the settings-driven source and reports the change", () => {
-    const { installed, current, changes } = install({ withSettings: true });
-    const hooks = installed[0]!.hooks;
-    const userValue: JevCompactionConfig = {
-      enabled: true,
-      resultShaping: { enabled: true },
-    };
-    hooks.setSource(() => userValue);
-    hooks.onChange();
-    expect(current()).toBe(userValue);
-    expect(changes()).toBe(1);
-  });
-
-  it("rejects a value the schema cannot express before it is persisted", () => {
-    const { installed } = install({ withSettings: true });
-    const validate = installed[0]!.hooks.validate;
-    expect(validate).toBeDefined();
-    expect(() =>
-      validate!({ decisions: { fullThreshold: 0.2, truncateThreshold: 0.9 } }),
-    ).toThrow(/truncateThreshold/u);
-    expect(() => validate!({ trigger: { contextRatio: 2 } })).toThrow(
-      /contextRatio/u,
-    );
-    expect(() => validate!({})).not.toThrow();
+  it("addresses the section by the profile entry id", () => {
+    // 0.1.7 derives the namespace from the entry, so the one string the Host,
+    // the card and `cordis.patch.yml` agree on is the whole join.
+    expect(JEV_COMPACTION_SETTINGS_NAMESPACE).toBe("dsh-jev-compaction");
   });
 });
 
 describe("live configuration", () => {
-  it("resolves user settings over the composition default", () => {
+  it("detaches every volatile reference into one plain snapshot", () => {
+    const live = {
+      enabled: reference(true),
+      decisions: { fullThreshold: reference(0.7) },
+      resultShaping: { includeTools: reference(["bash"]) },
+      archive: { retentionDays: 14 },
+    } as unknown as JevCompactionLiveConfig;
+    expect(plainJevCompactionConfig(live)).toEqual({
+      enabled: true,
+      decisions: { fullThreshold: 0.7 },
+      resultShaping: { includeTools: ["bash"] },
+      archive: { retentionDays: 14 },
+    });
+  });
+
+  it("adopts a committed settings change without a restart", () => {
+    const ctx = new Context();
+    (
+      ctx as unknown as {
+        reflect: { provide(name: string, value: unknown): void };
+      }
+    ).reflect.provide("tokenMeter", {
+      measure: () => ({ nodes: [] }),
+      estimateMessage: () => 0,
+    });
+    const enabled = reference(true);
+    const service = new JevCompactionService(ctx, {
+      enabled,
+      trigger: { contextRatio: 0.7 },
+    } as unknown as JevCompactionConfig);
+
+    expect(service.config.enabled).toBe(true);
+    enabled.set(false);
+    (ctx as unknown as { emit(name: string, ...args: unknown[]): void }).emit(
+      "loader/volatile-update",
+      [["enabled"]],
+    );
+    expect(service.config.enabled).toBe(false);
+    service.dispose();
+  });
+
+  it("keeps running on the previous configuration when a commit is unresolvable", () => {
+    // The Host validates a write against the schema bounds only; a value that
+    // passes them and still cannot be resolved (a threshold pair the old
+    // `validate` hook used to refuse) must not reach the planner.
     const base = resolveJevCompactionConfig({
-      resultShaping: { enabled: false, thresholdChars: 20000 },
+      decisions: { fullThreshold: 0.7, truncateThreshold: 0.45 },
     });
-    const overridden = resolveJevCompactionConfig({
-      ...base,
-      resultShaping: { ...base.resultShaping, enabled: true },
-    });
-    expect(base.resultShaping.enabled).toBe(false);
-    expect(base.resultShaping.thresholdChars).toBe(20000);
-    expect(overridden.resultShaping.enabled).toBe(true);
-    // Untouched fields keep their resolved value.
-    expect(overridden.resultShaping.thresholdChars).toBe(20000);
-    expect(overridden.jev.baseUrl).toBe(base.jev.baseUrl);
-  });
-
-  it("defaults shaping off so the destructive path needs a deliberate opt-in", () => {
-    const config = resolveJevCompactionConfig({});
-    expect(config.resultShaping.enabled).toBe(false);
-    expect(config.archive.enabled).toBe(true);
-    expect(config.resultShaping.preserveErrors).toBe(true);
-    expect(config.resultShaping.maxPerTurn).toBe(2);
-    expect(config.resultShaping.minClassificationConfidence).toBe(0.6);
-    expect(config.resultShaping.includeTools).toContain("bash");
-    expect(config.resultShaping.excludeTools).toEqual([]);
-  });
-
-  it("normalizes tool lists and refuses to inherit a blank entry", () => {
-    const config = resolveJevCompactionConfig({
-      resultShaping: { includeTools: [" bash ", "bash", "", "  ", "pwsh"] },
-    });
-    expect(config.resultShaping.includeTools).toEqual(["bash", "pwsh"]);
-  });
-
-  it("keeps the deployment default when a list is absent", () => {
-    const config = resolveJevCompactionConfig({ resultShaping: {} });
-    expect(config.resultShaping.includeTools).toContain("run_tests");
+    expect(base.decisions.fullThreshold).toBe(0.7);
+    expect(() =>
+      resolveJevCompactionConfig({
+        decisions: { fullThreshold: 0.2, truncateThreshold: 0.9 },
+      }),
+    ).toThrow(/truncateThreshold/u);
+    expect(() =>
+      resolveJevCompactionConfig({ trigger: { contextRatio: 2 } }),
+    ).toThrow(/contextRatio/u);
   });
 });

@@ -7,7 +7,7 @@
  * want after noticing a shaped result, so they are the last to go.
  */
 
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 import type { LocalResultArchive } from "./local.js";
 
 /** What one collection pass did. */

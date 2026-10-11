@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-answer-review-gate",
-  "version": "0.2.0",
+  "version": "0.2.6",
   "description": "Independent answer review gate for DeepSeek Harness agent responses",
   "repository": {
     "type": "git",
@@ -20,10 +20,12 @@
       "types": "./lib/index.d.ts",
       "default": "./lib/index.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "files": [
     "lib",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
@@ -40,19 +42,22 @@
   "peerDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh",
     "@deepseek-ai/dsh-llm": "catalog:dsh",
-    "@deepseek-ai/schemastery": "catalog:dsh"
+    "@deepseek-ai/schemastery": "catalog:dsh",
+    "@deepseek-ai/dsh-scope": "catalog:dsh"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
     "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@types/node": "catalog:tooling",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "@yadsh/dsh-test-kit": "workspace:^",
     "eslint": "catalog:tooling",
     "typescript": "catalog:tooling",
-    "vitest": "catalog:tooling"
+    "vitest": "catalog:tooling",
+    "@deepseek-ai/dsh-scope": "catalog:dsh-dev"
   },
   "publishConfig": {
     "access": "public",
@@ -79,6 +84,7 @@
     "lint": "eslint src tests scripts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "verify:package": "node scripts/verify-package.mjs",
     "verify": "pnpm run verify:package",
     "check": "pnpm run lint && pnpm run typecheck && pnpm run test && pnpm run build && pnpm run verify",

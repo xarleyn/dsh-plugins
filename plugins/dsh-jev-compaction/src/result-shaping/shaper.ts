@@ -17,7 +17,7 @@
  * already had.
  */
 
-import type { ResolvedJevCompactionConfig } from "../config.js";
+import type { ResolvedJevCompactionConfig } from "../config/index.js";
 import type { SystemOneBackend } from "../jev/types.js";
 import { estimateStateTokens } from "../jev/types.js";
 import {

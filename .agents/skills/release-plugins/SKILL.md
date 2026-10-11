@@ -94,7 +94,7 @@ performance question: the Nx cache has restored green output for tasks that fail
 so a cached run is not evidence.
 
 ```bash
-NX_SKIP_NX_CACHE=true pnpm check      # lint, format, typecheck, test, build, verify, deps:check
+NX_SKIP_NX_CACHE=true pnpm check      # lint, format, typecheck, test, build, check:files, verify, deps:check
 pnpm test:release                     # workflow/script contract tests — via pnpm, never `node --test`
 pnpm release:check                    # plan gate, reads commits
 pnpm tarball:verify                   # every package; or tarball:verify:packages plugins/<dir>
@@ -237,8 +237,11 @@ The catalogue with symptoms, root causes and fixes is
   be yours, and `git add -A` will take their files. Stage explicit paths and
   assert the staged count; `git add` with a nonexistent pathspec adds nothing,
   silently.
-- **`pnpm test:release` via `node --test` fails** on `npm_execpath` (pnpm sets
-  it). Run it through pnpm.
+- **The release test finds its own package managers.** It reads `npm_execpath`
+  as a location rather than as node source — a standalone `pnpm.exe` is spawned
+  directly, a `.cjs`/`.js` wrapper through node — and falls back to the install
+  beside node or to PATH. So `node --test scripts/release-workflow.test.mjs`
+  reproduces what the gate runs.
 
 ## References
 

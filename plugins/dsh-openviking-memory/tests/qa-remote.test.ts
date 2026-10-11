@@ -205,8 +205,10 @@ describe("account-scoped memory Remote", () => {
     const view = await harness.plugin.userMemoryOverview("token-a");
 
     expect(view.connected).toBe(false);
-    expect(view.error).toBe("connect ECONNREFUSED");
+    expect(view.failure).toBe("unreachable");
     expect(view.totals).toEqual({ sections: 0, memories: 0, sessions: 0 });
+    // The reader sees a kind of failure, not the store's socket sentence.
+    expect(JSON.stringify(view)).not.toContain("ECONNREFUSED");
   });
 
   it("refuses the call for a token no account owns", async () => {

@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-web-fetch-authenticated",
-  "version": "0.6.0",
+  "version": "0.7.1",
   "description": "Authenticated, policy-gated WebFetchProvider for the DeepSeek Harness web capability seam (ctx.web)",
   "repository": {
     "type": "git",
@@ -35,6 +35,7 @@
       "types": "./lib/types/types.d.ts",
       "default": "./lib/types.js"
     },
+    "./locale/en.json": "./locale/en.json",
     "./package.json": "./package.json"
   },
   "dsh": {
@@ -48,8 +49,8 @@
       "inject": [
         "@deepseek-ai/dsh-api-gateway",
         "@deepseek-ai/dsh-client-connection",
-        "@deepseek-ai/dsh-client-ui-settings",
-        "@deepseek-ai/dsh-client-ui-settings-plugins"
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
+        "@deepseek-ai/dsh-client-ui-settings"
       ],
       "platform": "web"
     }
@@ -59,6 +60,7 @@
     "lib/**/*.js.map",
     "lib/**/*.d.ts",
     "lib/client.js",
+    "locale/*.json",
     "cordis.patch.yml",
     "compatibility.json",
     "README.md",
@@ -68,6 +70,7 @@
     "build": "node scripts/generate-typert.mjs && tsc -p tsconfig.build.json && tsdown",
     "lint": "eslint src tests scripts",
     "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "test:watch": "vitest",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "verify:package": "node scripts/verify-package.mjs",
@@ -93,8 +96,8 @@
     "@deepseek-ai/dsh-attachment": "catalog:dsh",
     "@deepseek-ai/dsh-client-connection": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh",
     "@deepseek-ai/dsh-credentials": "catalog:dsh",
     "@deepseek-ai/dsh-settings": "catalog:dsh",
@@ -106,7 +109,7 @@
   },
   "dependencies": {
     "@yadsh/dsh-plugin-log": "workspace:^",
-    "zod": "^4.4.3"
+    "zod": "catalog:runtime"
   },
   "devDependencies": {
     "@deepseek-ai/cordis": "catalog:dsh-dev",
@@ -114,8 +117,8 @@
     "@deepseek-ai/dsh-attachment": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-connection": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-renderer": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-client-ui-plugin-manager": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-settings": "catalog:dsh-dev",
-    "@deepseek-ai/dsh-client-ui-settings-plugins": "catalog:dsh-dev",
     "@deepseek-ai/dsh-client-ui-slots": "catalog:dsh-dev",
     "@deepseek-ai/dsh-credentials": "catalog:dsh-dev",
     "@deepseek-ai/dsh-llm": "catalog:dsh-dev",
@@ -125,13 +128,18 @@
     "@deepseek-ai/dsh-typert-protocol": "catalog:dsh-dev",
     "@deepseek-ai/dsh-web": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",
+    "@testing-library/react": "^16.3.0",
     "@types/node": "catalog:tooling",
     "@types/react": "catalog:frontend-dev",
+    "@types/react-dom": "catalog:frontend-dev",
+    "@vitest/coverage-v8": "catalog:tooling",
     "@yadsh/dsh-config": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-scripts": "workspace:^",
     "eslint": "catalog:tooling",
+    "jsdom": "catalog:tooling",
     "react": "catalog:frontend-dev",
+    "react-dom": "catalog:frontend-dev",
     "tsdown": "catalog:tooling",
     "typescript": "catalog:plugin-tooling",
     "vitest": "catalog:tooling"

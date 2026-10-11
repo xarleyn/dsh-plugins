@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { Context } from "@deepseek-ai/cordis";
 import { JevCompactionService } from "../../src/service.js";
 import {
@@ -7,7 +7,12 @@ import {
   buildFixtureSession,
   fakeAgent,
   fakeTokenMeter,
+  resultText,
 } from "../helpers/session.js";
+import { appendUserText } from "../eval/fixtures.js";
+import type { SystemOneBackend } from "../../src/jev/types.js";
+
+afterEach(() => vi.restoreAllMocks());
 
 function buildService(
   overrides: Record<string, unknown> = {},
@@ -59,12 +64,7 @@ describe("JevCompactionService pipeline", () => {
     const stubbed = session.surface.nodes.some((seq) => {
       const event = session.eventAt(seq);
       if (event === undefined || event.type !== "tool/result") return false;
-      const block = (
-        event.data as {
-          message: { content: [{ content: { text: string }[] }] };
-        }
-      ).message.content[0];
-      return block.content[0]?.text.includes("[dsh-jev-compaction]") === true;
+      return resultText(event).includes("[dsh-jev-compaction]");
     });
     expect(stubbed).toBe(true);
     service.dispose();
@@ -131,6 +131,127 @@ describe("JevCompactionService pipeline", () => {
     service.dispose();
   });
 
+  it("backs off repeated failures in the same turn, caps the delay, and lets manual runs bypass it", async () => {
+    let now = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const backend = new FailingBackend();
+    const score = vi.spyOn(backend, "score");
+    const { service } = buildService({}, backend);
+    const agent = fakeAgent(buildFixtureSession("svc-backoff"));
+    const signal = new AbortController().signal;
+    try {
+      for (const delay of [
+        30_000, 60_000, 120_000, 240_000, 300_000, 300_000,
+      ]) {
+        expect((await service.runAuto(agent, 5, signal)).skipped).toBe(
+          "jev-failed",
+        );
+        const calls = score.mock.calls.length;
+        now += delay - 1;
+        expect((await service.runAuto(agent, 5, signal)).skipped).toBe(
+          "failure-backoff",
+        );
+        expect(score).toHaveBeenCalledTimes(calls);
+        now += 1;
+      }
+      expect((await service.runAuto(agent, 5, signal)).skipped).toBe(
+        "jev-failed",
+      );
+      expect((await service.runManualDry(agent, signal)).skipped).toBe(
+        "jev-failed",
+      );
+      expect(score).toHaveBeenCalledTimes(8);
+      expect(agent.session.surface.replaceGeneration).toBe(0);
+    } finally {
+      service.dispose();
+    }
+  });
+
+  it("reports impossible protected state as fail-open and backs off before calling Jev", async () => {
+    const session = buildFixtureSession("svc-state-overflow");
+    for (let turn = 1; turn <= 3; turn += 1) {
+      appendUserText(session, "Не удалять исходные данные. ".repeat(100), turn);
+    }
+    const backend = new FakeDecisionBackend(0.05);
+    const score = vi.spyOn(backend, "score");
+    const { service } = buildService(
+      { state: { maxStateTokens: 1200 } },
+      backend,
+    );
+    const agent = fakeAgent(session);
+    const signal = new AbortController().signal;
+    const nodes = [...session.surface.nodes];
+    try {
+      const first = await service.runAuto(agent, 5, signal);
+      expect(first.skipped).toBe("jev-failed");
+      expect(first.error).toMatch(/protected context: .*budget: 1200/);
+      expect((await service.runAuto(agent, 5, signal)).skipped).toBe(
+        "failure-backoff",
+      );
+      expect(score).not.toHaveBeenCalled();
+      expect([...session.surface.nodes]).toEqual(nodes);
+      expect(session.surface.replaceGeneration).toBe(0);
+    } finally {
+      service.dispose();
+    }
+  });
+
+  it("clears failure backoff after a configuration correction and a successful decision", async () => {
+    let now = 1_000_000;
+    vi.spyOn(Date, "now").mockImplementation(() => now);
+    const backend = new FailingBackend() as SystemOneBackend;
+    const score = vi.spyOn(backend, "score");
+    const { service } = buildService({}, backend);
+    const agent = fakeAgent(buildFixtureSession("svc-backoff-reset"));
+    const signal = new AbortController().signal;
+    try {
+      await service.runAuto(agent, 5, signal);
+      expect((await service.runAuto(agent, 5, signal)).skipped).toBe(
+        "failure-backoff",
+      );
+      service.reapply();
+      score.mockImplementationOnce((state, questions) =>
+        new FakeDecisionBackend(1).score(state, questions),
+      );
+      expect((await service.runAuto(agent, 5, signal)).skipped).toBe(
+        "empty-plan",
+      );
+      expect((await service.runAuto(agent, 5, signal)).skipped).toBe(
+        "jev-failed",
+      );
+      now += 30_000;
+      expect((await service.runAuto(agent, 5, signal)).skipped).toBe(
+        "jev-failed",
+      );
+    } finally {
+      service.dispose();
+    }
+  });
+
+  it("does not penalize cancelled scoring with failure backoff", async () => {
+    const controller = new AbortController();
+    const backend = new FailingBackend();
+    const score = vi
+      .spyOn(backend, "score")
+      .mockImplementationOnce(async () => {
+        controller.abort();
+        throw new Error("cancelled");
+      });
+    const { service } = buildService({}, backend);
+    const agent = fakeAgent(buildFixtureSession("svc-backoff-abort"));
+    try {
+      expect((await service.runAuto(agent, 5, controller.signal)).skipped).toBe(
+        "busy",
+      );
+      expect(
+        (await service.runAuto(agent, 5, new AbortController().signal)).skipped,
+      ).toBe("jev-failed");
+      expect(score).toHaveBeenCalledTimes(2);
+    } finally {
+      service.dispose();
+    }
+  });
+
   it("dry-run never mutates the session", async () => {
     const session = buildFixtureSession("svc-dry");
     const nodesBefore = [...session.surface.nodes];
@@ -182,13 +303,7 @@ describe("JevCompactionService pipeline", () => {
       return (
         (event.data as { message: { source: { callId: string } } }).message
           .source.callId === "old-call" &&
-        (
-          event.data as {
-            message: { content: [{ content: { text: string }[] }] };
-          }
-        ).message.content[0]?.content[0]?.text.includes(
-          "[dsh-jev-compaction]",
-        ) === true
+        resultText(event).includes("[dsh-jev-compaction]")
       );
     });
     expect(stubbedSeq).toBeDefined();

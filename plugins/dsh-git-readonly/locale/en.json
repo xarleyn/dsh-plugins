@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Read-only Git",
+    "description": "Provenance tools that answer what a change was made for — branch, history, blame, commit — with no command line."
+  }
+}
