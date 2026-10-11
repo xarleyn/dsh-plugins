@@ -103,11 +103,14 @@ function manualVersionChange(repoRoot, base, head, file, before, after) {
       git(repoRoot, ["show", `${parents[0]}:${file}`]),
     );
     if (next.version === previous.version) continue;
-    return !/^chore\(release\):/u.test(
-      git(repoRoot, ["show", "-s", "--format=%s", commit]),
-    );
+    if (
+      !/^chore\(release\):/u.test(
+        git(repoRoot, ["show", "-s", "--format=%s", commit]),
+      )
+    )
+      return true;
   }
-  return true;
+  return false;
 }
 
 export function inspectRange({
