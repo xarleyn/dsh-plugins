@@ -190,7 +190,7 @@ describe("pi-ai login flows", () => {
       { type: "auth_url", url: "https://auth.example/plain" },
       {
         type: "device_code",
-        userCode: "WXYZ-1234",
+        userCode: "DEMO-CODE",
         verificationUri: "https://device.example",
       },
       { type: "progress", message: "Exchanging the code" },
@@ -216,7 +216,7 @@ describe("pi-ai login flows", () => {
         message:
           "Enter this code on the verification page to finish signing in.",
         url: "https://device.example",
-        code: "WXYZ-1234",
+        code: "DEMO-CODE",
       },
       { message: "Exchanging the code" },
       { message: "Signing in…" },
