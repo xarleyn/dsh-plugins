@@ -19,6 +19,10 @@ import {
   type QaSlashNativeCommand,
   type QaSlashNativeSkill,
 } from "./catalog.js";
+import {
+  parseSlashDraftTarget,
+  type QaSlashDraftTarget,
+} from "./draft-target.js";
 import { parseSlashLine } from "./parser.js";
 import { allowsSlashName, type QaSlashPolicy } from "./policy.js";
 
@@ -115,6 +119,14 @@ export interface QaSlashRemotes {
 
 export interface QaSlashRemotesOptions {
   readonly ctx: Context;
+  /** Reads the preset scope with the authenticated draft role, without a session. */
+  readonly draftSkills?: (
+    token: string,
+    target: QaSlashDraftTarget,
+  ) => Promise<{
+    readonly skills: readonly QaSlashNativeSkill[];
+    readonly grantedSkills: readonly string[] | undefined;
+  }>;
   readonly getConfig: () => ResolvedQaSurfaceConfig;
   readonly logger: PluginLogger;
   /**
@@ -288,6 +300,37 @@ export function createQaSlashRemotes(
 
   return {
     async catalog(token, sessionId) {
+      const draft = parseSlashDraftTarget(sessionId);
+      if (draft !== undefined) {
+        if (options.draftSkills === undefined)
+          throw new Error("Draft skill catalog is unavailable");
+        const { skills, grantedSkills } = await options.draftSkills(
+          token,
+          draft,
+        );
+        const config = getConfig();
+        if (!config.slashCommands.enabled)
+          return {
+            enabled: false,
+            entries: [],
+            deniedSkills: [],
+            commandSurface: "unavailable",
+          };
+        const entries = buildSlashCatalog({
+          skills,
+          commands: [],
+          grantedSkills,
+          skillPolicy: config.slashCommands.skills,
+          commandPolicy: config.slashCommands.commands,
+          commandSurface: "inactive",
+        });
+        return {
+          enabled: true,
+          entries,
+          deniedSkills: withheldSkills(skills, entries),
+          commandSurface: "inactive",
+        };
+      }
       const config = getConfig();
       if (!config.slashCommands.enabled) {
         return Object.freeze({
@@ -338,6 +381,8 @@ export function createQaSlashRemotes(
     },
 
     async execute(token, sessionId, line, attachments) {
+      if (parseSlashDraftTarget(sessionId) !== undefined)
+        return refusal("inactive-session");
       const config = getConfig();
       if (!config.slashCommands.enabled) return refusal("slash-disabled");
       const parsed = parseSlashLine(line);

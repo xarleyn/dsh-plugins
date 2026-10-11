@@ -782,3 +782,17 @@ toggle for `config.notifications`, the "the agent is waiting for your answer"
 signal (§9.2), subagent settlement notices (§9.3), and Phase 6 —
 taking `dsh-notification` off the stand, which is a deployment action
 and not a change in this repository.
+
+
+Pending notices are scoped to the authenticated principal and its current page
+lifecycle. Switching accounts hides the previous queue before commit and retires
+that generation's turn baseline, desktop handles and late permission/navigation
+callbacks, including logout followed by login as the same account. Each surface
+retains its own desktop handles; cleanup does not close another surface's notices.
+A desktop click focuses the page, opens the still-owned chat through the current
+navigation callback and removes its in-app line. No session identifier is added
+to the system payload. Handler revocation is deterministic; removing an already
+shown system notification is best effort and cannot erase operating-system history.
+Ownership removal prunes pending lines on authoritative live lists. Reconnecting
+or restoring lists do not discard a queue merely because their rows are transiently
+empty. The observed-start and reconnect rules above continue to apply.

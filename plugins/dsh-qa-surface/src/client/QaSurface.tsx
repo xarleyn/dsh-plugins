@@ -159,7 +159,9 @@ export interface QaSurfaceFace {
   readonly sessions: QaSessions;
   readonly conversation: QaConversation;
   /** Select the authenticated transport after asynchronous Host config loads. */
-  readonly resolveRuntime?: (accountsEnabled: boolean) => Pick<QaSurfaceFace, "sessions" | "conversation">;
+  readonly resolveRuntime?: (
+    accountsEnabled: boolean,
+  ) => Pick<QaSurfaceFace, "sessions" | "conversation">;
   readonly api: QaSessionsApi;
   readonly connection: ConnectionGenerationState;
   readonly secureSession: QaSecureSession;
@@ -766,13 +768,18 @@ export function QaSurface(props: QaSurfaceProps) {
   // comparison, so a fresh limits object would re-render it every frame.
   const limits = useMemo(() => attachmentLimits(config), [config]);
   const [fastMode, setFastMode] = useState(false);
-  useEffect(() => { setFastMode(false); }, [state.chatKey]);
+  useEffect(() => {
+    setFastMode(false);
+  }, [state.chatKey]);
   const handleRegenerate = useCallback(() => {
     void controller?.regenerate(fastMode);
   }, [controller, fastMode]);
-  const handleFork = useCallback((answerSeq: number) => {
-    return controller?.forkFromAnswer(answerSeq) ?? Promise.resolve();
-  }, [controller]);
+  const handleFork = useCallback(
+    (answerSeq: number) => {
+      return controller?.forkFromAnswer(answerSeq) ?? Promise.resolve();
+    },
+    [controller],
+  );
   const handleSwitch = useCallback(
     (sessionId: string) => {
       void controller?.switchTo(sessionId);
@@ -811,7 +818,9 @@ export function QaSurface(props: QaSurfaceProps) {
       text: string,
       attachments: readonly QaAttachmentDraft[],
       pick: string | null,
-    ) => controller?.send(text, attachments, pick, fastMode) ?? Promise.resolve(false),
+    ) =>
+      controller?.send(text, attachments, pick, fastMode) ??
+      Promise.resolve(false),
     [controller, fastMode],
   );
   // Closing the queue notice only uncovers the composer: the question the stand
@@ -974,14 +983,25 @@ export function QaSurface(props: QaSurfaceProps) {
     },
     [boundSourceApi, handleArtifactOpen, state.sessionId],
   );
-  const handleAttachmentOpen = useCallback((file: import("../types.js").QaFileView) => {
-    const id = state.sessionId;
-    const resolve = props.sharingApi?.attachmentPath;
-    if (id === null || resolve === undefined) return;
-    void resolve(accounts?.token() ?? "", id, file.attachmentId).then(result => {
-      if (result.ok) handleArtifactOpen({ path: result.value, name: file.name, bytes: file.bytes, format: "file" });
-    });
-  }, [state.sessionId, props.sharingApi, accounts, handleArtifactOpen]);
+  const handleAttachmentOpen = useCallback(
+    (file: import("../types.js").QaFileView) => {
+      const id = state.sessionId;
+      const resolve = props.sharingApi?.attachmentPath;
+      if (id === null || resolve === undefined) return;
+      void resolve(accounts?.token() ?? "", id, file.attachmentId).then(
+        (result) => {
+          if (result.ok)
+            handleArtifactOpen({
+              path: result.value,
+              name: file.name,
+              bytes: file.bytes,
+              format: "file",
+            });
+        },
+      );
+    },
+    [state.sessionId, props.sharingApi, accounts, handleArtifactOpen],
+  );
   const handleArtifactApprove = useCallback(
     async (artifact: QaArtifactView): Promise<void> => {
       const sessionId = state.sessionId;
@@ -1204,11 +1224,29 @@ export function QaSurface(props: QaSurfaceProps) {
         listState.byId,
         activeSessionId,
         (id) => ownerNames?.get(id),
-      ).map(row => {
-        const shared = accountsSnapshot.stage === "authed" ? accountsSnapshot.sharedChats?.find(chat => chat.sessionId === row.id) : undefined;
-        return shared === undefined ? row : { ...row, ownerName: shared.ownerName, meta: `${qaChatModeLabel(shared.mode)} · ${row.meta}` };
+      ).map((row) => {
+        const shared =
+          accountsSnapshot.stage === "authed"
+            ? accountsSnapshot.sharedChats?.find(
+                (chat) => chat.sessionId === row.id,
+              )
+            : undefined;
+        return shared === undefined
+          ? row
+          : {
+              ...row,
+              ownerName: shared.ownerName,
+              meta: `${qaChatModeLabel(shared.mode)} · ${row.meta}`,
+            };
       }),
-    [controller, listState, activeSessionId, ownerNames, state.chatsRevision, accountsSnapshot],
+    [
+      controller,
+      listState,
+      activeSessionId,
+      ownerNames,
+      state.chatsRevision,
+      accountsSnapshot,
+    ],
   );
   // A turn that ends in one of this browser's own chats gets a notice: the
   // sidebar dot going out is otherwise the only sign, and it is easy to miss
@@ -1217,8 +1255,14 @@ export function QaSurface(props: QaSurfaceProps) {
   // and another account's turn is not this reader's news.
   const turnNotices = useQaTurnNotifications({
     chats: chatRows,
+    principal: accessPrincipal,
+    chatsReady: controller !== undefined && listState.phase === "ready",
     ownChatIds:
-      accountsSnapshot.stage === "authed" ? accountsSnapshot.ownIds : undefined,
+      accountsSnapshot.stage === "authed"
+        ? accountsSnapshot.ownIds
+        : config.accounts.enabled
+          ? []
+          : undefined,
     notifications: config.notifications,
     storage: window.localStorage,
     storageKey: `${stateKey}:notifications`,
@@ -1365,10 +1409,20 @@ export function QaSurface(props: QaSurfaceProps) {
           resolveImage={resolveImage}
           onJumpToMessage={handleJumpToMessage}
           onArtifactOpen={workspaceReadable ? handleArtifactOpen : undefined}
-          onAttachmentOpen={props.sharingApi?.attachmentPath === undefined ? undefined : handleAttachmentOpen}
-          materialsOnly={state.chatAccess !== undefined && state.chatAccess.mode !== "owner"}
+          onAttachmentOpen={
+            props.sharingApi?.attachmentPath === undefined
+              ? undefined
+              : handleAttachmentOpen
+          }
+          materialsOnly={
+            state.chatAccess !== undefined && state.chatAccess.mode !== "owner"
+          }
           onArtifactApprove={
-            workspaceReadable && (state.chatAccess === undefined || state.chatAccess.mode === "owner") ? handleArtifactApprove : undefined
+            workspaceReadable &&
+            (state.chatAccess === undefined ||
+              state.chatAccess.mode === "owner")
+              ? handleArtifactApprove
+              : undefined
           }
           onArtifactDownload={
             workspaceReadable ? handleArtifactDownload : undefined
@@ -1752,8 +1806,14 @@ export function QaSurface(props: QaSurfaceProps) {
             />
           ) : null}
 
-          {state.chatAccess !== undefined && props.sharingApi !== undefined ?
-            <QaChatSharing key={state.chatAccess.sessionId} access={state.chatAccess} token={accounts?.token() ?? ""} api={props.sharingApi} /> : null}
+          {state.chatAccess !== undefined && props.sharingApi !== undefined ? (
+            <QaChatSharing
+              key={state.chatAccess.sessionId}
+              access={state.chatAccess}
+              token={accounts?.token() ?? ""}
+              api={props.sharingApi}
+            />
+          ) : null}
 
           <div
             className="dsh-qa-workspace"
@@ -1846,9 +1906,15 @@ export function QaSurface(props: QaSurfaceProps) {
                             onArtifactOpen={
                               workspaceReadable ? handleArtifactOpen : undefined
                             }
-                            onAttachmentOpen={props.sharingApi?.attachmentPath === undefined ? undefined : handleAttachmentOpen}
+                            onAttachmentOpen={
+                              props.sharingApi?.attachmentPath === undefined
+                                ? undefined
+                                : handleAttachmentOpen
+                            }
                             onArtifactApprove={
-                              workspaceReadable && (state.chatAccess === undefined || state.chatAccess.mode === "owner")
+                              workspaceReadable &&
+                              (state.chatAccess === undefined ||
+                                state.chatAccess.mode === "owner")
                                 ? handleArtifactApprove
                                 : undefined
                             }
@@ -1857,11 +1923,18 @@ export function QaSurface(props: QaSurfaceProps) {
                                 ? handleArtifactDownload
                                 : undefined
                             }
-                            onFork={props.forkSession !== undefined && controller !== undefined &&
-                              config.session.policy !== "fixed" && !state.compatibilityReadOnly &&
-                              state.viewingSubagent === null && (accounts === undefined ||
-                              (state.sessionId !== null && accounts.ownIds().includes(state.sessionId)))
-                                ? handleFork : undefined}
+                            onFork={
+                              props.forkSession !== undefined &&
+                              controller !== undefined &&
+                              config.session.policy !== "fixed" &&
+                              !state.compatibilityReadOnly &&
+                              state.viewingSubagent === null &&
+                              (accounts === undefined ||
+                                (state.sessionId !== null &&
+                                  accounts.ownIds().includes(state.sessionId)))
+                                ? handleFork
+                                : undefined
+                            }
                             onRateFeedback={rateFeedback}
                           />
                           {group !== undefined && group.turns.length > 1 ? (

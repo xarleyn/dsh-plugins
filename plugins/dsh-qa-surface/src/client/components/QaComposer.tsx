@@ -335,12 +335,19 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
           }
           onKeyDown={(event) => {
             if (navigation.open) {
-              if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+              if (
+                navigation.active !== -1 &&
+                (event.key === "ArrowDown" || event.key === "ArrowUp")
+              ) {
                 event.preventDefault();
                 navigation.move(event.key === "ArrowDown" ? 1 : -1);
                 return;
               }
-              if (event.key === "Tab") {
+              if (
+                event.key === "Tab" &&
+                navigation.active !== -1 &&
+                !event.shiftKey
+              ) {
                 // Tab inserts, it does not complete-and-run: the user still
                 // has to write the argument and press Enter again.
                 event.preventDefault();
@@ -353,6 +360,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
                 return;
               }
               if (
+                navigation.active !== -1 &&
                 event.key === "Enter" &&
                 !event.shiftKey &&
                 !event.nativeEvent.isComposing
@@ -465,8 +473,14 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
         </div>
       </div>
       {props.fastMode === true ? (
-        <p className="dsh-qa-composer__fast-warning" data-testid="qa-composer-fast-warning" role="status">
-          Fast включён для следующих сообщений. Автоматическое ревью ответов пропускается: ошибки и неподтверждённые утверждения могут остаться незамеченными. Проверка документов перед согласованием сохраняется.
+        <p
+          className="dsh-qa-composer__fast-warning"
+          data-testid="qa-composer-fast-warning"
+          role="status"
+        >
+          Fast включён для следующих сообщений. Автоматическое ревью ответов
+          пропускается: ошибки и неподтверждённые утверждения могут остаться
+          незамеченными. Проверка документов перед согласованием сохраняется.
         </p>
       ) : null}
     </div>

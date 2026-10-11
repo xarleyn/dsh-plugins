@@ -54,20 +54,26 @@ export function useSlashNavigation(
   options: UseSlashNavigationOptions,
 ): QaSlashNavigation {
   const { draft, slash, setDraft } = options;
-  const [dismissed, setDismissed] = useState(false);
+  const [dismissedDraft, setDismissedDraft] = useState<string | null>(null);
   const [pickedId, setPickedId] = useState<string | null>(null);
   const [active, setActive] = useState(0);
   const lastReopen = useRef(options.reopen);
 
   const query = slashPaletteQuery(draft);
-  const canOpen = slash.enabled && query !== undefined && !dismissed;
+  const canOpen =
+    slash.enabled && query !== undefined && dismissedDraft !== draft;
   const open = canOpen;
 
   useEffect(() => {
     if (lastReopen.current === options.reopen) return;
     lastReopen.current = options.reopen;
-    setDismissed(false);
+    setDismissedDraft(null);
   }, [options.reopen]);
+
+  useEffect(() => {
+    if (dismissedDraft !== null && dismissedDraft !== draft)
+      setDismissedDraft(null);
+  }, [draft, dismissedDraft]);
 
   // The ranking decides which rows are shown and in which order; the grouping
   // decides how they are captioned. Publishing the grouped order is what keeps
@@ -107,7 +113,6 @@ export function useSlashNavigation(
   const insert = useCallback(
     (entry: QaSlashCatalogEntry) => {
       setPickedId(entry.id);
-      setDismissed(true);
       setDraft(`/${entry.name} `);
     },
     [setDraft],
@@ -137,7 +142,7 @@ export function useSlashNavigation(
     },
     pick: insert,
     dismiss: () => {
-      setDismissed(true);
+      setDismissedDraft(draft);
     },
     picked,
   };

@@ -468,7 +468,10 @@ export class QaAccessService {
         const { headers } = await reader.list();
         const children = new Set(
           headers
-            .filter((header) => header.parentSessionId !== undefined && header.isFork !== true)
+            .filter(
+              (header) =>
+                header.parentSessionId !== undefined && header.isFork !== true,
+            )
             .map((header) => header.id),
         );
         for (const sessionId of children) {
@@ -504,6 +507,54 @@ export class QaAccessService {
     this.delegatedSweep = this.reclaimDelegatedSessions().finally(() => {
       this.delegatedSweep = undefined;
     });
+  }
+
+  /** Read-only preview for the role a draft will materialize; reserves nothing. */
+  async slashDraftSkills(
+    token: string,
+    requestedSubrole: string | null,
+    adminPreview: boolean,
+  ) {
+    const accounts = this.options.accounts();
+    const config = this.roles.snapshot();
+    let subroleId: string | undefined;
+    if (accounts !== undefined) {
+      const user = accounts.currentUser(token);
+      const assignment = normalizeUserAccess(
+        accounts.accessOf(user.id),
+        config,
+      );
+      subroleId = requestedSubrole ?? assignment.defaultSubrole;
+      if (
+        !config.subroles.some((role) => role.id === subroleId && role.enabled)
+      ) {
+        throw new TypeError("QA subrole is unavailable");
+      }
+      if (adminPreview && user.role !== "admin") {
+        throw new QaAccountsError(
+          "admin-required",
+          "Preview requires an admin account",
+        );
+      }
+      if (!adminPreview && !assignment.allowedSubroles.includes(subroleId)) {
+        throw new QaAccountsError(
+          "invalid-role",
+          "This QA subrole is not assigned to the account",
+        );
+      }
+    }
+    if (this.ctx.get("skills") === undefined)
+      throw new Error("Draft skill catalog is unavailable");
+    const catalog = await this.catalog.snapshot();
+    return {
+      skills: [...catalog.skills.values()].filter(
+        (skill) => skill.invocation.userInvocable,
+      ),
+      policy:
+        subroleId === undefined
+          ? undefined
+          : this.policyForRecord(config, undefined, subroleId, catalog),
+    };
   }
 
   current(token: string): QaCurrentAccess {
@@ -772,13 +823,19 @@ export class QaAccessService {
   }
 
   /** A participant's own live ceiling, without claiming or changing the chat. */
-  async participantPolicy(userId: string, sessionId: string): Promise<QaEffectiveCapabilityPolicy> {
+  async participantPolicy(
+    userId: string,
+    sessionId: string,
+  ): Promise<QaEffectiveCapabilityPolicy> {
     const accounts = this.requireAccounts();
-    if (accounts.accountById(userId) === undefined) throw new Error("Participant is unavailable.");
+    if (accounts.accountById(userId) === undefined)
+      throw new Error("Participant is unavailable.");
     const config = this.roles.snapshot();
     const assignment = normalizeUserAccess(accounts.accessOf(userId), config);
-    const subroleId = accounts.sessionAccess(sessionId)?.subroleId ?? assignment.defaultSubrole;
-    if (!assignment.allowedSubroles.includes(subroleId)) throw new Error("Participant cannot use this chat's role.");
+    const subroleId =
+      accounts.sessionAccess(sessionId)?.subroleId ?? assignment.defaultSubrole;
+    if (!assignment.allowedSubroles.includes(subroleId))
+      throw new Error("Participant cannot use this chat's role.");
     const catalog = await this.catalog.snapshot();
     return this.policyForRecord(config, undefined, subroleId, catalog);
   }

@@ -1,3 +1,4 @@
+import { slashDraftTarget } from "../../src/slash/draft-target.js";
 import { describe, expect, it, vi } from "vitest";
 import { resolveConfig } from "../../src/resolve-config.js";
 import { createQaSlashRemotes } from "../../src/slash/remotes.js";
@@ -111,6 +112,11 @@ function world(options: WorldOptions = {}) {
     getConfig: () => options.config ?? ENABLED,
     logger: logger as never,
     sessionGrant: grant,
+    draftSkills: async () => {
+      if (options.grantThrows === true) throw new Error("auth-required");
+      if (options.skillsFail === true) throw new Error("catalog unavailable");
+      return { skills: options.skills ?? SKILLS, grantedSkills: options.grant };
+    },
   });
   return { remotes, execute, list, skillList, grant, logger };
 }
@@ -410,5 +416,44 @@ describe("QA slash command admission", () => {
     const logged = JSON.stringify(logger.info.mock.calls);
     expect(logged).toContain("goal");
     expect(logged).not.toContain("засекреченный");
+  });
+});
+
+describe("draft slash catalogs", () => {
+  const target = slashDraftTarget("general", false);
+  it("lists granted draft skills without looking up a real session or command runtime", async () => {
+    const h = world({ noAgent: true, grant: ["generate-tkp"] });
+    const value = await h.remotes.catalog("token", target);
+    expect(value.entries.map((entry) => entry.name)).toEqual(["generate-tkp"]);
+    expect(value.commandSurface).toBe("inactive");
+    expect(h.skillList).not.toHaveBeenCalled();
+    expect(h.list).not.toHaveBeenCalled();
+    expect(h.grant).not.toHaveBeenCalled();
+  });
+  it("applies the selected role grant as well as deployment policy", async () => {
+    const h = world({ grant: [] });
+    expect((await h.remotes.catalog("token", target)).entries).toEqual([]);
+  });
+  it("does not turn an unread draft catalog into an empty successful answer", async () => {
+    await expect(
+      world({ skillsFail: true }).remotes.catalog("token", target),
+    ).rejects.toThrow(/unavailable/u);
+  });
+  it("refuses an unauthenticated draft read", async () => {
+    await expect(
+      world({ grantThrows: true }).remotes.catalog("bad-token", target),
+    ).rejects.toThrow(/auth-required/u);
+  });
+  it("cannot execute through a draft catalog target", async () => {
+    const h = world({ config: COMMANDS_ALLOWED });
+    expect(
+      await h.remotes.execute("token", target, "/compact", []),
+    ).toMatchObject({ kind: "refused", reason: "inactive-session" });
+    expect(h.execute).not.toHaveBeenCalled();
+  });
+  it("rejects malformed draft targets rather than treating them as sessions", async () => {
+    await expect(
+      world().remotes.catalog("token", "qa-slash-draft:[]"),
+    ).rejects.toThrow(/Invalid/u);
   });
 });

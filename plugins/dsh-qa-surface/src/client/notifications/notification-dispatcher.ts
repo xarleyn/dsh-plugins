@@ -103,23 +103,72 @@ export async function requestNotificationPermission(): Promise<QaNotificationPer
   }
 }
 
-/** Live desktop notices; an unreferenced one is closed by the browser at once. */
-const retainedNotices = new Set<Notification>();
+/** One surface's desktop handles, retained until closed or retired. */
+export class QaDesktopNotices {
+  private readonly handles = new Map<
+    Notification,
+    { sessionId: string; retire: () => void }
+  >();
 
-/**
- * Hand one finished turn to the desktop. Returns false when the platform
- * refuses: a notification that cannot be raised costs the reader nothing, and
- * the in-app line is already on its way.
- */
-export function raiseDesktopNotice(completion: QaTurnCompletion): boolean {
+  retain(
+    notice: Notification,
+    sessionId: string,
+    onOpen?: (sessionId: string) => void,
+  ): void {
+    let active = true;
+    const retire = () => {
+      active = false;
+      notice.onclick = null;
+      notice.removeEventListener?.("close", retire);
+      this.handles.delete(notice);
+    };
+    notice.onclick = () => {
+      if (!active) return;
+      try {
+        window.focus();
+        onOpen?.(sessionId);
+      } finally {
+        this.close(sessionId);
+      }
+    };
+    this.handles.set(notice, { sessionId, retire });
+    notice.addEventListener("close", retire);
+  }
+
+  /** Revoke callbacks even where the operating system refuses close(). */
+  close(sessionId?: string): void {
+    for (const [notice, handle] of this.handles) {
+      if (sessionId !== undefined && handle.sessionId !== sessionId) continue;
+      handle.retire();
+      try {
+        notice.close();
+      } catch {
+        /* Platform-owned history is best effort. */
+      }
+    }
+  }
+
+  keep(sessionIds: ReadonlySet<string>): void {
+    for (const handle of this.handles.values()) {
+      if (!sessionIds.has(handle.sessionId)) this.close(handle.sessionId);
+    }
+  }
+}
+
+const standaloneNotices = new QaDesktopNotices();
+
+/** The session id stays in the callback, never in the desktop payload. */
+export function raiseDesktopNotice(
+  completion: QaTurnCompletion,
+  onOpen?: (sessionId: string) => void,
+  notices = standaloneNotices,
+): boolean {
   if (typeof Notification === "undefined") return false;
   try {
     const notice = new Notification(completion.title, {
       body: QA_TURN_NOTICE_BODY,
     });
-    notice.onclick = () => window.focus();
-    retainedNotices.add(notice);
-    notice.addEventListener("close", () => retainedNotices.delete(notice));
+    notices.retain(notice, completion.sessionId, onOpen);
     return true;
   } catch {
     return false;

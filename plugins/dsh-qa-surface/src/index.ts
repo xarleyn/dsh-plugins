@@ -5,13 +5,33 @@ import { QaChatSharingStore } from "./chat-sharing/store.js";
 import { QaChatTransport } from "./chat-sharing/transport.js";
 import { QaChatTurnGuard } from "./chat-sharing/turn-guard.js";
 import { installQaNativeFence } from "./chat-sharing/native-fence.js";
-import { qaChatPublishedFile, qaChatAttachmentPath } from "./chat-sharing/resources.js";
+import {
+  qaChatPublishedFile,
+  qaChatAttachmentPath,
+} from "./chat-sharing/resources.js";
 import { installQaChatUploads } from "./chat-sharing/uploads.js";
-import type { QaChatAccess, QaChatGrant, QaChatMode, QaChatAuthor, QaChatJson } from "./chat-sharing/types.js";
-import type { SessionPageRequest, SessionFollowRequest, SessionPromptRequest,
-  SessionPromptValue, SessionAttachmentRequest, SessionAttachmentValue, SessionRenameRequest,
-  SessionRenameValue, SessionCancelValue, SessionUpdateQueueRequest, SessionUpdateQueueValue,
-  SessionSearchRequest, SessionSelectModelRequest, SessionSelectModelValue
+import type {
+  QaChatAccess,
+  QaChatGrant,
+  QaChatMode,
+  QaChatAuthor,
+  QaChatJson,
+} from "./chat-sharing/types.js";
+import type {
+  SessionPageRequest,
+  SessionFollowRequest,
+  SessionPromptRequest,
+  SessionPromptValue,
+  SessionAttachmentRequest,
+  SessionAttachmentValue,
+  SessionRenameRequest,
+  SessionRenameValue,
+  SessionCancelValue,
+  SessionUpdateQueueRequest,
+  SessionUpdateQueueValue,
+  SessionSearchRequest,
+  SessionSelectModelRequest,
+  SessionSelectModelValue,
 } from "@deepseek-ai/dsh-api-session-controller/types";
 import { forkQaSession } from "./session-fork-host.js";
 import type {} from "@deepseek-ai/dsh-api-session-controller";
@@ -85,7 +105,10 @@ import {
   defaultQaProvenanceDirectoryPath,
   FileQaProvenanceSnapshotStore,
 } from "./provenance/snapshot-store.js";
-import { previewConvertibleDocument, previewSourceDocument } from "./provenance/document-preview.js";
+import {
+  previewConvertibleDocument,
+  previewSourceDocument,
+} from "./provenance/document-preview.js";
 import { readWorkspaceFileChunk } from "./provenance/file-download.js";
 import {
   listWorkspaceDirectory,
@@ -311,11 +334,15 @@ export class QaSurface extends TypertRemoteService {
   private sharing(): QaChatSharingStore {
     const accounts = () => {
       const store = this.accountRemotes.resolve(this.getConfig());
-      if (store === undefined) throw new Error("QA accounts are required for chat sharing.");
+      if (store === undefined)
+        throw new Error("QA accounts are required for chat sharing.");
       return store;
     };
     accounts();
-    return this.chatSharingStore ??= new QaChatSharingStore(path.join(path.dirname(defaultAccountsFilePath()), "qa-chat-sharing.db"), accounts);
+    return (this.chatSharingStore ??= new QaChatSharingStore(
+      path.join(path.dirname(defaultAccountsFilePath()), "qa-chat-sharing.db"),
+      accounts,
+    ));
   }
 
   constructor(ctx: Context, entry: Partial<QaSurfaceConfigRefs> = {}) {
@@ -385,6 +412,28 @@ export class QaSurface extends TypertRemoteService {
     });
     this.slashRemotes = createQaSlashRemotes({
       ctx,
+      draftSkills: async (token, target) => {
+        this.accountRemotes.resolve(this.getConfig());
+        const preview = await this.access.slashDraftSkills(
+          token,
+          target.subroleId,
+          target.adminPreview,
+        );
+        return {
+          skills: preview.skills.map((skill) => ({
+            name: skill.name,
+            description: skill.description,
+            modelInvocable: skill.invocation.modelInvocable,
+            ...(skill.whenToUse === undefined
+              ? {}
+              : { whenToUse: skill.whenToUse }),
+          })),
+          grantedSkills:
+            preview.policy === undefined
+              ? undefined
+              : userInvocableSkillNames(preview.policy),
+        };
+      },
       getConfig: () => this.getConfig(),
       logger: this.logger,
       sessionGrant: (token, sessionId, agent) =>
@@ -438,13 +487,39 @@ export class QaSurface extends TypertRemoteService {
           message: error instanceof Error ? error.message : String(error),
         }),
     );
-    this.chatTransport = new QaChatTransport(ctx, () => this.sharing(), (token, id) => this.secureSession(token, id), (userId, id) => this.access.participantPolicy(userId, id));
-    this.chatTurnGuard = new QaChatTurnGuard(ctx, () => this.sharing(), (userId, id) => this.access.participantPolicy(userId, id), () => this.getConfig().accounts.enabled);
-    ctx.effect(() => () => { this.chatTurnGuard.dispose(); this.chatSharingStore?.storage.close(); }, "dsh-qa-surface.chat-sharing");
+    this.chatTransport = new QaChatTransport(
+      ctx,
+      () => this.sharing(),
+      (token, id) => this.secureSession(token, id),
+      (userId, id) => this.access.participantPolicy(userId, id),
+    );
+    this.chatTurnGuard = new QaChatTurnGuard(
+      ctx,
+      () => this.sharing(),
+      (userId, id) => this.access.participantPolicy(userId, id),
+      () => this.getConfig().accounts.enabled,
+    );
+    ctx.effect(
+      () => () => {
+        this.chatTurnGuard.dispose();
+        this.chatSharingStore?.storage.close();
+      },
+      "dsh-qa-surface.chat-sharing",
+    );
     ctx.inject(["typertGateway", "connection"], () => {
-      const dispose = installQaNativeFence(ctx, () => this.getConfig().accounts.enabled);
-      const disposeUploads = installQaChatUploads(ctx, () => this.sharing(), (token, id) => this.secureSession(token, id));
-      return async () => { dispose(); await disposeUploads(); };
+      const dispose = installQaNativeFence(
+        ctx,
+        () => this.getConfig().accounts.enabled,
+      );
+      const disposeUploads = installQaChatUploads(
+        ctx,
+        () => this.sharing(),
+        (token, id) => this.secureSession(token, id),
+      );
+      return async () => {
+        dispose();
+        await disposeUploads();
+      };
     });
     this.integration = new QaIntegrationService({
       getConfig: () => this.getConfig(),
@@ -1079,15 +1154,31 @@ export class QaSurface extends TypertRemoteService {
 
   /** Create an independently admitted ordinary branch of the caller's own chat. */
   @Remote("forkSession")
-  async forkSession(token: string, sourceId: string, answerSeq: number): Promise<string> {
-    return this.accountRemotes.runAsync(() => forkQaSession({
-      ctx: this.ctx, config: this.getConfig(),
-      accounts: this.accountRemotes.resolve(this.getConfig()),
-      access: this.access, admission: this.admission,
-      principals: this.integrationPrincipals, provenance: this.provenance,
-      sessionFiles: createSessionEraser(),
-      logger: this.logger,
-    }, token, sourceId, answerSeq), sourceId);
+  async forkSession(
+    token: string,
+    sourceId: string,
+    answerSeq: number,
+  ): Promise<string> {
+    return this.accountRemotes.runAsync(
+      () =>
+        forkQaSession(
+          {
+            ctx: this.ctx,
+            config: this.getConfig(),
+            accounts: this.accountRemotes.resolve(this.getConfig()),
+            access: this.access,
+            admission: this.admission,
+            principals: this.integrationPrincipals,
+            provenance: this.provenance,
+            sessionFiles: createSessionEraser(),
+            logger: this.logger,
+          },
+          token,
+          sourceId,
+          answerSeq,
+        ),
+      sourceId,
+    );
   }
 
   /** The selector model for the signed-in user; admin grants are irrelevant. */
@@ -1467,7 +1558,8 @@ export class QaSurface extends TypertRemoteService {
   ): Promise<QaConversationDeletion> {
     return this.accountRemotes.runAsync(async () => {
       const result = await this.admin.deleteConversation(token, conversationId);
-      if (this.getConfig().accounts.enabled) for (const id of result.sessions) this.sharing().dropSession(id);
+      if (this.getConfig().accounts.enabled)
+        for (const id of result.sessions) this.sharing().dropSession(id);
       return result;
     });
   }
@@ -1591,13 +1683,22 @@ export class QaSurface extends TypertRemoteService {
       const actualOwnerId = accountsForSharing?.ownerIdOf(sessionId);
       if (actualOwnerId !== undefined && actor?.id !== actualOwnerId) {
         let shared: QaChatAccess | undefined;
-        try { shared = this.sharing().access(token, sessionId); } catch (error) {
-          if (actor?.role !== "admin" || !this.getConfig().accounts.showOtherUsersChats) throw error;
+        try {
+          shared = this.sharing().access(token, sessionId);
+        } catch (error) {
+          if (
+            actor?.role !== "admin" ||
+            !this.getConfig().accounts.showOtherUsersChats
+          )
+            throw error;
         }
         if (shared !== undefined) {
-        const proof = await this.admission.secureSessionForUser(shared.ownerId, sessionId);
-        this.sharing().revalidate(token, shared);
-        return { ...proof, chatAccess: shared };
+          const proof = await this.admission.secureSessionForUser(
+            shared.ownerId,
+            sessionId,
+          );
+          this.sharing().revalidate(token, shared);
+          return { ...proof, chatAccess: shared };
         }
       }
       const principal = this.principalForToken(token);
@@ -1605,12 +1706,25 @@ export class QaSurface extends TypertRemoteService {
       const accounts = this.accountRemotes.resolve(this.getConfig());
       const ownerId = accounts?.ownerIdOf(sessionId);
       // Admin cross-user viewing is intentionally not credential delegation.
-      if (principal?.userId === ownerId) this.integrationPrincipals.attest(sessionId, principal?.userId, ownerId);
+      if (principal?.userId === ownerId)
+        this.integrationPrincipals.attest(
+          sessionId,
+          principal?.userId,
+          ownerId,
+        );
       const session = this.ctx.sessions.get(SessionId(sessionId));
-      const chatAccess = actualOwnerId === actor?.id && actor !== undefined ? this.sharing().access(token, sessionId) : undefined;
-      return { ...proof, ...(chatAccess === undefined ? {} : { chatAccess }),
-        ...(session?.header.isSeeded === true && session.header.origin !== "subagent"
-          ? { inheritedThroughSeq: Number(session.inheritedEventCount) - 1 } : {}) };
+      const chatAccess =
+        actualOwnerId === actor?.id && actor !== undefined
+          ? this.sharing().access(token, sessionId)
+          : undefined;
+      return {
+        ...proof,
+        ...(chatAccess === undefined ? {} : { chatAccess }),
+        ...(session?.header.isSeeded === true &&
+        session.header.origin !== "subagent"
+          ? { inheritedThroughSeq: Number(session.inheritedEventCount) - 1 }
+          : {}),
+      };
     } catch (error) {
       // The carrier empties error.details, so the coarse reason rides the
       // wire message for the browser console; the specific mismatch facts
@@ -1636,17 +1750,31 @@ export class QaSurface extends TypertRemoteService {
   }
 
   @Remote("chatVisible")
-  chatVisible(token: string): readonly QaChatAccess[] { return this.sharing().visible(token); }
+  chatVisible(token: string): readonly QaChatAccess[] {
+    return this.sharing().visible(token);
+  }
 
   @Remote("chatAccess")
-  chatAccess(token: string, sessionId: string): QaChatAccess { return this.sharing().access(token, sessionId); }
+  chatAccess(token: string, sessionId: string): QaChatAccess {
+    return this.sharing().access(token, sessionId);
+  }
 
   @Remote("chatGrants")
-  chatGrants(token: string, sessionId: string): readonly QaChatGrant[] { return this.sharing().grants(token, sessionId); }
+  chatGrants(token: string, sessionId: string): readonly QaChatGrant[] {
+    return this.sharing().grants(token, sessionId);
+  }
 
   @Remote("chatSetGrant")
-  chatSetGrant(token: string, sessionId: string, email: string, mode: QaChatMode | null): readonly QaChatGrant[] {
-    if (this.access.isDelegatedChild(sessionId) || this.getConfig().session.policy === "fixed")
+  chatSetGrant(
+    token: string,
+    sessionId: string,
+    email: string,
+    mode: QaChatMode | null,
+  ): readonly QaChatGrant[] {
+    if (
+      this.access.isDelegatedChild(sessionId) ||
+      this.getConfig().session.policy === "fixed"
+    )
       throw new Error("Only an ordinary account-owned chat may be shared.");
     const value = this.sharing().set(token, sessionId, email, mode);
     this.chatTurnGuard.revoke(sessionId);
@@ -1654,80 +1782,185 @@ export class QaSurface extends TypertRemoteService {
   }
 
   @Remote("chatAuthors")
-  chatAuthors(token: string, sessionId: string): readonly QaChatAuthor[] { return this.sharing().authors(token, sessionId); }
+  chatAuthors(token: string, sessionId: string): readonly QaChatAuthor[] {
+    return this.sharing().authors(token, sessionId);
+  }
 
   @Remote("chatAudit")
-  async chatAudit(token: string, sessionId: string, full: boolean): Promise<QaChatJson> {
+  async chatAudit(
+    token: string,
+    sessionId: string,
+    full: boolean,
+  ): Promise<QaChatJson> {
     this.requireChatOwner(token, sessionId);
     await this.secureSession(token, sessionId);
     this.requireChatOwner(token, sessionId);
-    const audit = this.ctx.get("sessionAudit") as { summary(id: string): unknown; audit(id: string): Promise<unknown> } | undefined;
+    const audit = this.ctx.get("sessionAudit") as
+      | { summary(id: string): unknown; audit(id: string): Promise<unknown> }
+      | undefined;
     if (audit === undefined) throw new Error("Session audit is unavailable.");
-    const value = full ? await audit.audit(sessionId) : audit.summary(sessionId);
+    const value = full
+      ? await audit.audit(sessionId)
+      : audit.summary(sessionId);
     this.requireChatOwner(token, sessionId);
     return value as QaChatJson;
   }
 
   @Remote("chatAttachmentPath")
-  async chatAttachmentPath(token: string, sessionId: string, attachmentId: string): Promise<string> {
+  async chatAttachmentPath(
+    token: string,
+    sessionId: string,
+    attachmentId: string,
+  ): Promise<string> {
     const finish = await this.admitChatRead(token, sessionId);
     const value = qaChatAttachmentPath(this.ctx, sessionId, attachmentId);
-    finish(); return value;
+    finish();
+    return value;
   }
 
   @Remote("chatList")
-  async chatList(token: string, signal: AbortSignal): Promise<QaChatJson> { return await this.chatTransport.list(token, signal) as unknown as QaChatJson; }
+  async chatList(token: string, signal: AbortSignal): Promise<QaChatJson> {
+    return (await this.chatTransport.list(
+      token,
+      signal,
+    )) as unknown as QaChatJson;
+  }
 
   @Remote("chatSearch")
-  async chatSearch(token: string, request: SessionSearchRequest, signal: AbortSignal): Promise<QaChatJson> { return await this.chatTransport.search(token, request, signal) as unknown as QaChatJson; }
+  async chatSearch(
+    token: string,
+    request: SessionSearchRequest,
+    signal: AbortSignal,
+  ): Promise<QaChatJson> {
+    return (await this.chatTransport.search(
+      token,
+      request,
+      signal,
+    )) as unknown as QaChatJson;
+  }
 
   @Remote("chatSelectModel")
-  chatSelectModel(token: string, request: SessionSelectModelRequest): Promise<SessionSelectModelValue> {
+  chatSelectModel(
+    token: string,
+    request: SessionSelectModelRequest,
+  ): Promise<SessionSelectModelValue> {
     this.requireChatOwner(token, String(request.sessionId));
-    if (this.getConfig().lockdown.enforceFixedModel) throw new Error("The chat model is fixed by its policy.");
+    if (this.getConfig().lockdown.enforceFixedModel)
+      throw new Error("The chat model is fixed by its policy.");
     return this.chatTransport.selectModel(token, request);
   }
 
   @Remote("chatPage")
-  async chatPage(token: string, request: SessionPageRequest, signal: AbortSignal): Promise<QaChatJson> { return await this.chatTransport.page(token, request, signal) as unknown as QaChatJson; }
+  async chatPage(
+    token: string,
+    request: SessionPageRequest,
+    signal: AbortSignal,
+  ): Promise<QaChatJson> {
+    return (await this.chatTransport.page(
+      token,
+      request,
+      signal,
+    )) as unknown as QaChatJson;
+  }
 
   @Remote({ mode: "stream" })
-  async *chatFollow(token: string, request: SessionFollowRequest, signal: AbortSignal): AsyncIterable<QaChatJson> { for await (const frame of this.chatTransport.follow(token, request, signal)) yield frame as unknown as QaChatJson; }
+  async *chatFollow(
+    token: string,
+    request: SessionFollowRequest,
+    signal: AbortSignal,
+  ): AsyncIterable<QaChatJson> {
+    for await (const frame of this.chatTransport.follow(token, request, signal))
+      yield frame as unknown as QaChatJson;
+  }
 
   @Remote({ mode: "stream" })
-  async *chatControl(token: string, signal: AbortSignal): AsyncIterable<QaChatJson> { for await (const frame of this.chatTransport.control(token, signal)) yield frame as unknown as QaChatJson; }
+  async *chatControl(
+    token: string,
+    signal: AbortSignal,
+  ): AsyncIterable<QaChatJson> {
+    for await (const frame of this.chatTransport.control(token, signal))
+      yield frame as unknown as QaChatJson;
+  }
 
   @Remote("chatProjections")
-  async chatProjections(token: string, sessionId: string, signal: AbortSignal): Promise<QaChatJson> { return await this.chatTransport.projections(token, sessionId, signal) as unknown as QaChatJson; }
+  async chatProjections(
+    token: string,
+    sessionId: string,
+    signal: AbortSignal,
+  ): Promise<QaChatJson> {
+    return (await this.chatTransport.projections(
+      token,
+      sessionId,
+      signal,
+    )) as unknown as QaChatJson;
+  }
 
   @Remote("chatPrompt")
-  chatPrompt(token: string, request: SessionPromptRequest, signal: AbortSignal): Promise<SessionPromptValue> { return this.chatTransport.prompt(token, request, signal); }
+  chatPrompt(
+    token: string,
+    request: SessionPromptRequest,
+    signal: AbortSignal,
+  ): Promise<SessionPromptValue> {
+    return this.chatTransport.prompt(token, request, signal);
+  }
 
   @Remote("chatAttachment")
-  chatAttachment(token: string, request: SessionAttachmentRequest): Promise<SessionAttachmentValue> { return this.chatTransport.attachment(token, request); }
+  chatAttachment(
+    token: string,
+    request: SessionAttachmentRequest,
+  ): Promise<SessionAttachmentValue> {
+    return this.chatTransport.attachment(token, request);
+  }
 
   @Remote("chatRename")
-  chatRename(token: string, request: SessionRenameRequest): Promise<SessionRenameValue> { return this.chatTransport.rename(token, request); }
+  chatRename(
+    token: string,
+    request: SessionRenameRequest,
+  ): Promise<SessionRenameValue> {
+    return this.chatTransport.rename(token, request);
+  }
 
   @Remote("chatCancel")
-  chatCancel(token: string, sessionId: string): Promise<SessionCancelValue> { return this.chatTransport.cancel(token, sessionId); }
+  chatCancel(token: string, sessionId: string): Promise<SessionCancelValue> {
+    return this.chatTransport.cancel(token, sessionId);
+  }
 
   @Remote("chatUpdateQueue")
-  chatUpdateQueue(token: string, request: SessionUpdateQueueRequest): Promise<SessionUpdateQueueValue> { return this.chatTransport.updateQueue(token, request); }
+  chatUpdateQueue(
+    token: string,
+    request: SessionUpdateQueueRequest,
+  ): Promise<SessionUpdateQueueValue> {
+    return this.chatTransport.updateQueue(token, request);
+  }
 
-  private async admitChatRead(token: string, sessionId: string, filePath?: string): Promise<() => void> {
-    if (!this.getConfig().accounts.enabled) { await this.admission.secureSession(token, sessionId); return () => undefined; }
+  private async admitChatRead(
+    token: string,
+    sessionId: string,
+    filePath?: string,
+  ): Promise<() => void> {
+    if (!this.getConfig().accounts.enabled) {
+      await this.admission.secureSession(token, sessionId);
+      return () => undefined;
+    }
     const access = this.sharing().access(token, sessionId);
     await this.secureSession(token, sessionId);
     this.sharing().revalidate(token, access);
-    if (filePath !== undefined && access.mode !== "owner" &&
-      !qaChatPublishedFile(this.ctx, sessionId, filePath, (id, path) => this.provenance.sourceAllowed(id, path)))
+    if (
+      filePath !== undefined &&
+      access.mode !== "owner" &&
+      !qaChatPublishedFile(this.ctx, sessionId, filePath, (id, path) =>
+        this.provenance.sourceAllowed(id, path),
+      )
+    )
       throw new Error("This file has not been shared in the chat.");
-    return () => { this.sharing().revalidate(token, access); };
+    return () => {
+      this.sharing().revalidate(token, access);
+    };
   }
 
   private requireChatOwner(token: string, sessionId: string): void {
-    if (this.getConfig().accounts.enabled) this.sharing().owner(token, sessionId);
+    if (this.getConfig().accounts.enabled)
+      this.sharing().owner(token, sessionId);
   }
 
   /** Return canonical Host snapshots from plugin-owned durable provenance. */
@@ -1751,7 +1984,11 @@ export class QaSurface extends TypertRemoteService {
     sessionId: string,
   ): Promise<readonly QaPendingApproval[]> {
     await this.secureSession(token, sessionId);
-    if (this.getConfig().accounts.enabled && this.sharing().access(token, sessionId).mode !== "owner") return [];
+    if (
+      this.getConfig().accounts.enabled &&
+      this.sharing().access(token, sessionId).mode !== "owner"
+    )
+      return [];
     return this.approvals.list(sessionId);
   }
 
@@ -1783,7 +2020,11 @@ export class QaSurface extends TypertRemoteService {
     sessionId: string,
   ): Promise<readonly QaPendingQuestion[]> {
     await this.secureSession(token, sessionId);
-    if (this.getConfig().accounts.enabled && this.sharing().access(token, sessionId).mode !== "owner") return [];
+    if (
+      this.getConfig().accounts.enabled &&
+      this.sharing().access(token, sessionId).mode !== "owner"
+    )
+      return [];
     return this.userQuestions.list(sessionId);
   }
 
@@ -1857,19 +2098,33 @@ export class QaSurface extends TypertRemoteService {
           config.sources.filePreview.maxMarkdownRenderBytes,
       }).catch(async (error: unknown) => {
         // Only a format refusal follows successful evidence and root checks.
-        if (!(error instanceof QaSourcePreviewError) || error.reason !== "unsupported")
+        if (
+          !(error instanceof QaSourcePreviewError) ||
+          error.reason !== "unsupported"
+        )
           throw error;
         const document = await previewSourceDocument({
-          filePath: sourcePath, cwd, sessionId,
+          filePath: sourcePath,
+          cwd,
+          sessionId,
           sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
           ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
-          documents: () => this.ctx.get("documents") as DocumentsFace | undefined,
+          documents: () =>
+            this.ctx.get("documents") as DocumentsFace | undefined,
           maxBytes: config.sources.filePreview.maxBytes,
         });
-        return { path: sourcePath, content: "", size: document.bytes,
-          truncated: false, markdown: false, renderableMarkdown: false, document };
+        return {
+          path: sourcePath,
+          content: "",
+          size: document.bytes,
+          truncated: false,
+          markdown: false,
+          renderableMarkdown: false,
+          document,
+        };
       });
-      finish(); return value;
+      finish();
+      return value;
     } catch (error) {
       this.logger.debug("source.preview-refused", {
         sessionId,
@@ -1937,7 +2192,8 @@ export class QaSurface extends TypertRemoteService {
         maxMarkdownRenderBytes:
           config.sources.filePreview.maxMarkdownRenderBytes,
       });
-      finish(); return value;
+      finish();
+      return value;
     } catch (error) {
       throw this.browseRefusal("workspace.read-refused", sessionId, error);
     }
@@ -1964,7 +2220,8 @@ export class QaSurface extends TypertRemoteService {
         offset,
         version,
       });
-      finish(); return value;
+      finish();
+      return value;
     } catch (error) {
       throw this.browseRefusal("workspace.download-refused", sessionId, error);
     }
@@ -2009,8 +2266,11 @@ export class QaSurface extends TypertRemoteService {
     await this.admission.secureSession(token, sessionId);
     this.requireChatOwner(token, sessionId);
     const caller = this.principalForToken(token);
-    const ownerId = this.accountRemotes.resolve(this.getConfig())?.ownerIdOf(sessionId) ??
-      (this.getConfig().accounts.enabled ? undefined : this.principalForSession(sessionId)?.userId);
+    const ownerId =
+      this.accountRemotes.resolve(this.getConfig())?.ownerIdOf(sessionId) ??
+      (this.getConfig().accounts.enabled
+        ? undefined
+        : this.principalForSession(sessionId)?.userId);
     if (caller === undefined || ownerId !== caller.userId)
       throw new Error("Document approval requires the chat owner's account.");
     const { cwd } = await this.browseContext(sessionId);
@@ -2063,7 +2323,8 @@ export class QaSurface extends TypertRemoteService {
         sessionId,
         maxBytes: config.sources.filePreview.maxBytes,
       });
-      finish(); return value;
+      finish();
+      return value;
     } catch (error) {
       throw this.browseRefusal("workspace.preview-refused", sessionId, error);
     }

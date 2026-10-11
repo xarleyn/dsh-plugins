@@ -76,6 +76,7 @@ type RedrawProps = Partial<Omit<ProbeProps, "chatIds">> & {
 
 function Probe(props: ProbeProps) {
   const notices = useQaTurnNotifications({
+    principal: null,
     chats: buildChatRows(props.chatIds, props.list.byId, props.activeSessionId),
     notifications: props.notifications,
     storage: window.localStorage,
