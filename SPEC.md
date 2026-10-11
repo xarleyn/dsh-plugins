@@ -747,6 +747,7 @@ The run has one `prepare` job of repository-wide checks, then one job per select
 # prepare — workspace-wide gates, run once
 pnpm install --frozen-lockfile
 pnpm deps:check
+pnpm audit --audit-level=high
 pnpm lint:workspace
 pnpm format
 pnpm check:files
