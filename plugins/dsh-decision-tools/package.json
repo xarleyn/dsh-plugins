@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-decision-tools",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "DeepSeek Harness decision, classification, scoring and ranking tools for System One backends",
   "repository": {
     "type": "git",

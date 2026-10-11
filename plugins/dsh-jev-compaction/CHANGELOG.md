@@ -1,3 +1,20 @@
+## 0.2.2 (2026-10-11)
+
+### 🩹 Fixes
+
+- Fit small decision-state budgets without a fixed five-message floor, preserve the last three privacy-bounded user messages and the task goal, and report the required protected-context budget when fitting is impossible. Bound repeated automatic failures with per-session exponential backoff while allowing manual retries and immediate recovery after configuration changes. Reduce fitting work on long histories through bounded searches. ([63bbadc8](https://github.com/xarleyn/dsh-plugins/commit/63bbadc8))
+
+  Keep durable compaction cards available beside the Host configuration row, including profiles without configuration forms, and preserve their opt-in settings through the modular configuration schema.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.2
+- Updated @yadsh/dsh-plugin-kit to 0.5.1
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.1 (2026-10-08)
 
 ### 🩹 Fixes

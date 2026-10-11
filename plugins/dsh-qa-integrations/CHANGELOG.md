@@ -1,3 +1,19 @@
+## 0.10.4 (2026-10-11)
+
+### 🩹 Fixes
+
+- Collect source evidence from current tool messages, documentation and document inputs, and structured integration results. Recover completed-turn evidence from journals, aggregate chat sources, resolve equivalent references consistently, and preview evidence documents through the native PDF viewer and document pipeline. ([92b29d42](https://github.com/xarleyn/dsh-plugins/commit/92b29d42))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.16.0
+- Updated @yadsh/dsh-plugin-log to 0.4.2
+- Updated @yadsh/dsh-plugin-kit to 0.5.1
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.10.3 (2026-10-08)
 
 ### 🩹 Fixes
