@@ -40,8 +40,21 @@ export class QaChatTransport {
   ) {}
 
   async list(token: string, signal: AbortSignal): Promise<SessionListValue> {
-    this.store().visible(token);
-    const value = await this.ctx.sessionController.list({}, signal);
+    const visible = this.store().visible(token);
+    const controller = this.ctx
+      .sessionController as typeof this.ctx.sessionController & {
+      listForSessions?(
+        ids: readonly ReturnType<typeof SessionId>[],
+        signal: AbortSignal,
+      ): Promise<SessionListValue>;
+    };
+    const value =
+      controller.listForSessions === undefined
+        ? await controller.list({}, signal)
+        : await controller.listForSessions(
+            visible.map((item) => SessionId(item.sessionId)),
+            signal,
+          );
     const allowed = new Set(
       this.store()
         .visible(token)
@@ -338,7 +351,7 @@ export class QaChatTransport {
       // A delegated child carries no membership of its own. Resolve its
       // authoritative lineage and require the root owner, never a participant.
       this.store().visible(token);
-      const listing = await this.ctx.sessionController.list({}, signal);
+      const listing = await this.list(token, signal);
       const rows = new Map(
         listing.items.map((item) => [String(item.sessionId), item]),
       );

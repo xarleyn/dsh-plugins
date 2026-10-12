@@ -61,7 +61,7 @@ describe("native operator boundary in accounts mode", () => {
       next: () => Promise<void>,
     ) => Promise<void> = async () => {};
     const ctx = {
-      get: () => gateway,
+      get: (name: string) => (name === "typertGateway" ? gateway : undefined),
       on: (_event: string, listener: typeof http) => {
         http = listener;
         return vi.fn();
@@ -109,5 +109,88 @@ describe("native operator boundary in accounts mode", () => {
     restore();
     expect(gateway.invoke).toBe(invoke);
     expect(gateway.wireStream.open).toBe(open);
+  });
+  it("admits only Connection-attested operator peers and HTTP requests", async () => {
+    const operator = {};
+    const client = {};
+    const invoke = vi.fn(async (_request: unknown) => "operator-value");
+    const stream = vi.fn(async (_request: unknown) => []);
+    const open = vi.fn(
+      async (
+        _endpoint: unknown,
+        _payload?: unknown,
+        _uplink?: unknown,
+        _peer?: unknown,
+      ) =>
+        (async function* () {
+          yield { type: "emit", event: "api-session/added", args: [] };
+        })(),
+    );
+    const gateway = { invoke, stream, wireStream: { open } };
+    let http = async (
+      _request: unknown,
+      _response: unknown,
+      _next: () => Promise<void>,
+    ) => {};
+    const trustedRequest = { url: "/api/session/page" };
+    const ctx = {
+      get: (name: string) =>
+        name === "typertGateway"
+          ? gateway
+          : {
+              isOperatorPeer: (peer: unknown) => peer === operator,
+              isOperatorRequest: (request: unknown) =>
+                request === trustedRequest,
+            },
+      on: (_event: string, listener: typeof http) => {
+        http = listener;
+        return vi.fn();
+      },
+    } as unknown as Context;
+    const restore = installQaNativeFence(ctx, () => true);
+    const request = {
+      namespace: "session",
+      method: "page",
+      args: {},
+      peer: operator,
+    };
+    await expect(gateway.invoke(request as never)).resolves.toBe(
+      "operator-value",
+    );
+    await expect(gateway.stream(request as never)).resolves.toEqual([]);
+    for (const peer of [client, { role: "operator" }, undefined]) {
+      await expect(
+        gateway.invoke({ ...request, peer } as never),
+      ).rejects.toThrow("QA");
+      await expect(
+        gateway.wireStream.open(
+          "session/follow" as never,
+          {} as never,
+          undefined as never,
+          peer as never,
+        ),
+      ).rejects.toThrow("QA");
+    }
+    const frames = [];
+    for await (const frame of await gateway.wireStream.open(
+      "$events" as never,
+      {} as never,
+      undefined as never,
+      operator as never,
+    ))
+      frames.push(frame);
+    expect(frames).toHaveLength(1);
+    const next = vi.fn(async () => {});
+    const response = { writeHead: vi.fn(), end: vi.fn() };
+    await http(trustedRequest, response, next);
+    expect(next).toHaveBeenCalledOnce();
+    await http(
+      { ...trustedRequest, headers: { "x-role": "operator" } },
+      response,
+      next,
+    );
+    expect(response.writeHead).toHaveBeenCalledWith(403, expect.anything());
+    expect(next).toHaveBeenCalledOnce();
+    restore();
   });
 });

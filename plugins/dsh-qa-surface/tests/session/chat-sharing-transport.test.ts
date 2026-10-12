@@ -68,6 +68,21 @@ const request = (id: string): SessionPromptRequest =>
   }) as unknown as SessionPromptRequest;
 const signal = () => new AbortController().signal;
 describe("authenticated QA chat transport", () => {
+  it("uses an account-scoped catalog and rechecks a grant revoked during the read", async () => {
+    const f = fixture();
+    const listForSessions = vi.fn(async () => {
+      f.store.set(f.owner.token, "chat-a", f.reader.user.email, null);
+      return {
+        items: [{ sessionId: "chat-a" }, { sessionId: "private-chat" }],
+      };
+    });
+    Object.assign(f.native, { listForSessions });
+    expect((await f.transport.list(f.reader.token, signal())).items).toEqual(
+      [],
+    );
+    expect(listForSessions).toHaveBeenCalledWith(["chat-a"], expect.anything());
+    expect(f.native.list).not.toHaveBeenCalled();
+  });
   it("refuses reader writes and outsider history/images before native work", async () => {
     const f = fixture();
     await expect(
