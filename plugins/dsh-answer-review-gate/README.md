@@ -77,9 +77,10 @@ by **stable domain id** (`reviewer.domain`, default `answer-reviewer`), so the
 reviewer persona, policy, tools and model are tuned in the domain-experts UI,
 not here. The verdict is derived from the expert's own structured protocol:
 findings and conflicts are the review objections; a run with no findings and no
-conflicts passes. Phase 1 bound: the domain-experts test entry owns its own
-lifecycle, so the reviewer run is not bound to the gate's abort signal (it is a
-bounded single run).
+conflicts passes. The domain-experts test entry owns its lifecycle: a running
+child cannot be interrupted through this face. The gate checks cancellation
+before and after each attempt, refuses a late verdict, and starts no recovery
+attempt after cancellation.
 
 ### `reviewer.backend: subagent`
 
@@ -89,9 +90,24 @@ optional persona (`reviewer.persona`), a read-only tool allow-list
 (`reviewer.allowedTools`; unset means the read-only set, an explicitly empty
 list means no tools) and an optional model route
 (`reviewer.route` / `reviewer.model` / `reviewer.reasoningEffort`). The verdict
-is requested as structured JSON; unparseable output is a reviewer failure, not
-a pass. For correlated-failure reduction, route the reviewer to a different
-provider or model than the primary agent.
+must be delivered by the native `structured_output` tool; prose and fenced
+JSON are not captured verdicts. For correlated-failure reduction, route the
+reviewer to a different provider or model than the primary agent.
+
+## Capture recovery and current review status
+
+If a reviewer ends without native structured output and without a diagnostic,
+the gate makes one fresh, isolated attempt on the same immutable candidate.
+The retry explicitly requests `structured_output`. Real provider errors,
+refusals and cancellation are not retried. Two missing captures follow the
+configured failure policy; reviewer prose is never promoted to PASS.
+
+The gate records a standard producer notice containing the answer sequence,
+content hash, human-request sequence and current status. QA Surface renders a
+compact current-status badge in QA and native chat. A later result replaces the
+badge for that request, and applies only to its recorded answer version. Replay
+preserves the status; earlier model-authored messages remain history. Waived,
+failed and cancelled reviews are visibly different from a verified answer.
 
 ## Failure policy (`failMode`)
 

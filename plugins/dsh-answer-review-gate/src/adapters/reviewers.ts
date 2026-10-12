@@ -6,7 +6,11 @@
 
 import type { ResolvedAnswerReviewGateConfig } from "../config.js";
 import { expertReviewPacket } from "./review-packet.js";
-import { textOfBlocks } from "../candidate.js";
+import {
+  assertReviewActive,
+  canRecoverCapture,
+  CAPTURE_RECOVERY_INSTRUCTION,
+} from "../recovery.js";
 import { restrictReviewerTools } from "../reviewer-tools.js";
 import {
   REVIEWER_OUTPUT_SCHEMA,
@@ -17,7 +21,6 @@ import type { QaModelPolicyPair } from "../qa-policy.js";
 import { ReviewerFailure } from "../types.js";
 import {
   deriveVerdictFromExpertResult,
-  parseReviewerVerdict,
   validateReviewerVerdict,
 } from "../verdict.js";
 import type {
@@ -73,20 +76,38 @@ export function createDomainExpertBackend(deps: {
         renderExpertReviewTask(input),
         deps.workspaceRoot,
       );
-      const outcome = await deps.face.testExpert(
-        deps.config.domain,
-        packet.task,
-        input.sessionId,
-        true,
-      );
-      await packet.verify();
-      if (!outcome.ok || outcome.result === null) {
-        throw new ReviewerFailure(
-          "expert-run-failed",
-          `${outcome.code}: ${outcome.message}`,
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        assertReviewActive(input);
+        const outcome = await deps.face.testExpert(
+          deps.config.domain,
+          attempt === 0
+            ? packet.task
+            : `${CAPTURE_RECOVERY_INSTRUCTION}\n\n${packet.task}`,
+          input.sessionId,
+          true,
         );
+        await packet.verify();
+        assertReviewActive(input);
+        if (!outcome.ok || outcome.result === null) {
+          throw new ReviewerFailure(
+            "expert-run-failed",
+            `${outcome.code}: ${outcome.message}`,
+          );
+        }
+        if (
+          canRecoverCapture(
+            attempt,
+            outcome.result.status,
+            outcome.result.structured !== false,
+            outcome.result.diagnostic,
+          )
+        ) {
+          input.onRecovery?.();
+          continue;
+        }
+        return deriveVerdictFromExpertResult(outcome.result);
       }
-      return deriveVerdictFromExpertResult(outcome.result);
+      throw new ReviewerFailure("expert-output-not-captured");
     },
   };
 }
@@ -138,75 +159,93 @@ export function createSubagentBackend(deps: {
           ? deps.config.reasoningEffort
           : (policy?.reasoningEffort ?? "");
       if (effort !== "") agentOptions.reasoningEffort = effort;
-      let run;
-      try {
-        run = await deps.face.start(deps.config.provider, {
-          label: "answer-review",
-          prompt: [
-            {
-              type: "text",
-              text: renderSubagentReviewerTask({
-                ...(input.conversationContext === undefined
-                  ? {}
-                  : { conversationContext: input.conversationContext }),
-                ...(input.primaryTools === undefined
-                  ? {}
-                  : { primaryTools: input.primaryTools }),
-                requestText: input.requestText,
-                requestAttachments: input.requestAttachments,
-                candidateText: input.candidateText,
-              }),
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        assertReviewActive(input);
+        let run;
+        try {
+          run = await deps.face.start(deps.config.provider, {
+            label: "answer-review",
+            prompt: [
+              {
+                type: "text",
+                text:
+                  (attempt === 0 ? "" : `${CAPTURE_RECOVERY_INSTRUCTION}\n\n`) +
+                  renderSubagentReviewerTask({
+                    ...(input.conversationContext === undefined
+                      ? {}
+                      : { conversationContext: input.conversationContext }),
+                    ...(input.primaryTools === undefined
+                      ? {}
+                      : { primaryTools: input.primaryTools }),
+                    requestText: input.requestText,
+                    requestAttachments: input.requestAttachments,
+                    candidateText: input.candidateText,
+                  }),
+              },
+            ],
+            parent: deps.parent,
+            signal: input.signal,
+            ...(deps.config.persona === ""
+              ? {}
+              : { persona: deps.config.persona }),
+            // Always send the allow-list, empty included: the host only calls
+            // `tools.restrict()` when a `toolFilter` is present, so omitting it
+            // for an empty list handed the reviewer the parent's whole tool
+            // surface — the opposite of the config's "empty means no tools".
+            // Re-read through the boundary here rather than trusting the resolved
+            // config: this is the call that composes the child, and a reviewer
+            // that could delete a workspace file parked the parent turn for an
+            // approval a delegated child can never receive.
+            toolFilter: {
+              allow: restrictReviewerTools(deps.config.allowedTools),
             },
-          ],
-          parent: deps.parent,
-          signal: input.signal,
-          ...(deps.config.persona === ""
-            ? {}
-            : { persona: deps.config.persona }),
-          // Always send the allow-list, empty included: the host only calls
-          // `tools.restrict()` when a `toolFilter` is present, so omitting it
-          // for an empty list handed the reviewer the parent's whole tool
-          // surface — the opposite of the config's "empty means no tools".
-          // Re-read through the boundary here rather than trusting the resolved
-          // config: this is the call that composes the child, and a reviewer
-          // that could delete a workspace file parked the parent turn for an
-          // approval a delegated child can never receive.
-          toolFilter: {
-            allow: restrictReviewerTools(deps.config.allowedTools),
-          },
-          ...(Object.keys(agentOptions).length > 0 ? { agentOptions } : {}),
-          outputSchema: REVIEWER_OUTPUT_SCHEMA,
-        });
-      } catch (error) {
-        // Unknown tool-filter names and unsupported composition surface here.
-        throw new ReviewerFailure(
-          "reviewer-start-failed",
-          error instanceof Error ? error.message : String(error),
-        );
-      }
-      try {
-        const result = await run.result;
-        if (result.stopReason !== "completed") {
+            ...(Object.keys(agentOptions).length > 0 ? { agentOptions } : {}),
+            outputSchema: REVIEWER_OUTPUT_SCHEMA,
+          });
+        } catch (error) {
+          // Unknown tool-filter names and unsupported composition surface here.
           throw new ReviewerFailure(
-            `reviewer-${result.stopReason}`,
-            result.diagnostic ?? "",
+            "reviewer-start-failed",
+            error instanceof Error ? error.message : String(error),
           );
         }
-        if (result.structured !== undefined) {
-          return validateReviewerVerdict(result.structured);
-        }
-        return parseReviewerVerdict(textOfBlocks(result.output));
-      } finally {
-        // Await the child teardown: `dispose()` is asynchronous on the host
-        // (the domain-experts runner awaits it too), so a fire-and-forget call
-        // left the child fiber running past the review. Disposal is
-        // best-effort — it must never mask the review outcome.
         try {
-          await run.dispose();
-        } catch {
-          /* disposal failure must not override the verdict or the failure */
+          const result = await run.result;
+          assertReviewActive(input);
+          if (
+            canRecoverCapture(
+              attempt,
+              result.stopReason,
+              result.structured !== undefined,
+              result.diagnostic,
+            )
+          ) {
+            input.onRecovery?.();
+            continue;
+          }
+          if (result.stopReason !== "completed") {
+            throw new ReviewerFailure(
+              `reviewer-${result.stopReason}`,
+              result.diagnostic ?? "",
+            );
+          }
+          if (result.structured !== undefined) {
+            return validateReviewerVerdict(result.structured);
+          }
+          throw new ReviewerFailure("reviewer-output-not-captured");
+        } finally {
+          // Await the child teardown: `dispose()` is asynchronous on the host
+          // (the domain-experts runner awaits it too), so a fire-and-forget call
+          // left the child fiber running past the review. Disposal is
+          // best-effort — it must never mask the review outcome.
+          try {
+            await run.dispose();
+          } catch {
+            /* disposal failure must not override the verdict or the failure */
+          }
         }
       }
+      throw new ReviewerFailure("reviewer-output-not-captured");
     },
   };
 }

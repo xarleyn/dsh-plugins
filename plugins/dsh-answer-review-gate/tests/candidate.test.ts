@@ -91,6 +91,7 @@ describe("collectCandidate", () => {
       requestText: "What locks does the runtime use?",
       requestAttachments: [],
       requestSeq: 0,
+      candidateSeq: 3,
       reviewWaiver: null,
     });
   });
