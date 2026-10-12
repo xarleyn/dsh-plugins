@@ -41,6 +41,46 @@ afterEach(() => {
 });
 
 describe("Markdown source preview", () => {
+  it("renders converted image captions split across paragraphs while retaining original line numbers", async () => {
+    const config = resolveConfig().sources;
+    render(
+      <QaSourcesPanel
+        sources={[source]}
+        initialDetail={{ ...source, locations: [{ lineStart: 6 }] }}
+        complete
+        sessionId="root"
+        sourceApi={
+          {
+            readSourceFile: async () => ({
+              ok: true,
+              value: {
+                ...value,
+                content:
+                  "# Guide\n\n![Diagram description\n\nAutomatically generated caption](../assets/demo.png)\n\nAfter the illustration.",
+                frontmatter: undefined,
+              },
+            }),
+            readSourceImage: async () => ({
+              ok: true,
+              value: "data:image/png;base64,AA==",
+            }),
+          } as never
+        }
+        display={config.display}
+        filePreview={config.filePreview}
+      />,
+    );
+    const image = await screen.findByTestId("qa-source-image-loaded");
+    expect(image.getAttribute("alt")).toContain(
+      "Automatically generated caption",
+    );
+    expect(
+      screen
+        .getByText("After the illustration.")
+        .closest("[data-source-line-start]")
+        ?.getAttribute("data-source-line-start"),
+    ).toBe("7");
+  });
   it("repositions repeated and different clicks in an already-open document without reloading it", async () => {
     const scroll = vi.fn();
     Object.defineProperty(HTMLElement.prototype, "scrollIntoView", {

@@ -27,6 +27,8 @@
  * header, a row being typed stays out of the cells).
  */
 
+import { parseInline } from "./inline.js";
+
 /** `#`-through-`######` heading levels. */
 export type HeadingDepth = 1 | 2 | 3 | 4 | 5 | 6;
 
@@ -452,14 +454,49 @@ export function parseBlocks(
       }
 
       const paragraph = collectParagraph(lines, index, streaming);
-      blocks.push(paragraph.block);
-      index = paragraph.next;
+      const convertedImage = multilineImage(lines, index, definitions);
+      blocks.push(convertedImage?.block ?? paragraph.block);
+      index = convertedImage?.next ?? paragraph.next;
     } finally {
       if (blocks.length > previous)
         ranges?.push({ start: start + 1, end: index });
     }
   }
   return blocks;
+}
+
+/** Document converters may leave blank lines inside a standalone image caption. */
+function multilineImage(
+  lines: readonly string[],
+  start: number,
+  definitions: ReadonlyMap<string, string>,
+): { block: MarkdownBlock; next: number } | undefined {
+  const first = (lines[start] ?? "").trimStart();
+  if (
+    !first.startsWith("![") ||
+    parseInline(first, { definitions, footnotes: new Map() }).some(
+      (node) => node.kind === "image",
+    )
+  )
+    return undefined;
+  let text = first;
+  for (
+    let cursor = start + 1;
+    cursor < Math.min(lines.length, start + 16);
+    cursor++
+  ) {
+    const line = lines[cursor] ?? "";
+    if (startsBlock(line) || text.length + line.length > 4096) return undefined;
+    text += `\n${line}`;
+    if (!text.includes("](")) continue;
+    const nodes = parseInline(text.trim(), {
+      definitions,
+      footnotes: new Map(),
+    });
+    if (nodes.length === 1 && nodes[0]?.kind === "image")
+      return { block: { kind: "paragraph", text }, next: cursor + 1 };
+  }
+  return undefined;
 }
 
 /**
