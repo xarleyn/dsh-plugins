@@ -1,7 +1,7 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { QaAccounts } from "../../src/accounts/store.js";
 import { QaChatSharingStore } from "../../src/chat-sharing/store.js";
 
@@ -36,6 +36,20 @@ afterEach(() => {
 });
 
 describe("durable chat membership", () => {
+  it("resolves one account provider per visibility batch and reads current grants on the next batch", () => {
+    const f = sharingFixture();
+    for (let i = 0; i < 30; i++)
+      f.accounts.reserveSession(f.owner.token, `synthetic-chat-${i}`);
+    const provider = vi.fn(() => f.accounts);
+    const store = new QaChatSharingStore(f.dbPath, provider);
+    stores.push(store);
+    expect(store.visible(f.owner.token)).toHaveLength(31);
+    expect(provider).toHaveBeenCalledOnce();
+    expect(store.visible(f.reader.token)).toHaveLength(1);
+    f.store.set(f.owner.token, "chat-a", f.reader.user.email, null);
+    expect(store.visible(f.reader.token)).toEqual([]);
+  });
+
   it("gates owner, reader, collaborator and outsider without administrator inheritance", () => {
     const f = sharingFixture();
     expect(f.store.owner(f.owner.token, "chat-a").mode).toBe("owner");

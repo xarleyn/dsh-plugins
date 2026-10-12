@@ -68,6 +68,30 @@ const request = (id: string): SessionPromptRequest =>
   }) as unknown as SessionPromptRequest;
 const signal = () => new AbortController().signal;
 describe("authenticated QA chat transport", () => {
+  it("rechecks current grants as one synchronous batch immediately before a control frame", async () => {
+    const f = fixture();
+    f.native.list.mockResolvedValue({
+      items: [{ sessionId: "chat-a", agentAvailable: true }],
+    } as never);
+    const visible = f.store.visible.bind(f.store);
+    let reads = 0;
+    vi.spyOn(f.store, "visible").mockImplementation((token) => {
+      if (++reads === 3)
+        f.store.set(f.owner.token, "chat-a", f.reader.user.email, null);
+      return visible(token);
+    });
+    const abort = new AbortController();
+    const iterable = f.transport.control(f.reader.token, abort.signal);
+    const stream = iterable[Symbol.asyncIterator]();
+    expect((await stream.next()).value).toEqual({
+      type: "baseline",
+      value: { projections: {} },
+    });
+    expect(f.native.projections).toHaveBeenCalledOnce();
+    abort.abort();
+    await stream.return?.();
+  });
+
   it("polls cold cache hints without replaying histories and still reads live projections", async () => {
     const f = fixture();
     f.native.list.mockResolvedValue({
