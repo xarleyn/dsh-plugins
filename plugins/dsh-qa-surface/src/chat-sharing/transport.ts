@@ -55,14 +55,17 @@ export class QaChatTransport {
             visible.map((item) => SessionId(item.sessionId)),
             signal,
           );
-    const allowed = new Set(
-      this.store()
-        .visible(token)
-        .map((item) => item.sessionId),
-    );
+    return this.filterListing(token, value);
+  }
+
+  private filterListing(
+    token: string,
+    value: SessionListValue,
+  ): SessionListValue {
+    const current = this.store().visible(token);
+    const allowed = new Set(current.map((item) => item.sessionId));
     const owned = new Set(
-      this.store()
-        .visible(token)
+      current
         .filter((item) => item.mode === "owner")
         .map((item) => item.sessionId),
     );
@@ -206,14 +209,15 @@ export class QaChatTransport {
           /* revoked between reads */
         }
       }
-      for (const id of Object.keys(projections)) {
-        try {
-          const access = await this.sessionAccess(token, id, signal, listing);
-          this.store().revalidate(token, access);
-        } catch {
-          delete projections[id];
-        }
-      }
+      // Recheck one current principal/grant snapshot immediately before this
+      // single baseline frame. There is no await between authorization and yield.
+      const allowed = new Set(
+        this.filterListing(token, listing).items.map((item) =>
+          String(item.sessionId),
+        ),
+      );
+      for (const id of Object.keys(projections))
+        if (!allowed.has(id)) delete projections[id];
       yield { type: "baseline", value: { projections } };
       await new Promise<void>((resolve) => {
         const done = () => {

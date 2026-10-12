@@ -33,6 +33,14 @@ export class QaChatSharingStore {
   access(token: string, sessionId: string): QaChatAccess {
     const accounts = this.accounts();
     const actor = accounts.currentUser(token);
+    return this.accessForActor(accounts, actor, sessionId);
+  }
+
+  private accessForActor(
+    accounts: QaAccounts,
+    actor: ReturnType<QaAccounts["currentUser"]>,
+    sessionId: string,
+  ): QaChatAccess {
     const ownerId = accounts.ownerIdOf(sessionId);
     const owner =
       ownerId === undefined ? undefined : accounts.accountById(ownerId);
@@ -147,17 +155,20 @@ export class QaChatSharingStore {
   }
 
   visible(token: string): readonly QaChatAccess[] {
-    const actor = this.accounts().currentUser(token);
+    // One synchronous authorization batch: refresh the account provider and
+    // verify the principal once, while reading every grant from current storage.
+    const accounts = this.accounts();
+    const actor = accounts.currentUser(token);
     const rows = this.storage.db
       .prepare("SELECT session_id FROM grants WHERE user_id=?")
       .all(actor.id) as unknown as { session_id: string }[];
     const ids = new Set([
-      ...this.accounts().ownedSessionIds(token),
+      ...accounts.ownedSessionIds(token),
       ...rows.map((row) => row.session_id),
     ]);
     return [...ids].flatMap((id) => {
       try {
-        return [this.access(token, id)];
+        return [this.accessForActor(accounts, actor, id)];
       } catch {
         return [];
       }
