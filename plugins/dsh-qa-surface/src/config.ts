@@ -269,6 +269,25 @@ const configSchema = z.object({
   accounts: z
     .object({
       enabled: z.boolean().default(D.accounts.enabled),
+      localLogin: z.boolean().default(D.accounts.localLogin),
+      oidc: z
+        .object({
+          enabled: z.boolean().default(D.accounts.oidc.enabled),
+          issuer: z.string().default(D.accounts.oidc.issuer),
+          clientId: z.string().default(D.accounts.oidc.clientId),
+          clientSecretEnv: z.string().default(D.accounts.oidc.clientSecretEnv),
+          redirectUri: z.string().default(D.accounts.oidc.redirectUri),
+          buttonLabel: z.string().default(D.accounts.oidc.buttonLabel),
+          autoProvision: z.boolean().default(D.accounts.oidc.autoProvision),
+          requiredRole: z.string().default(D.accounts.oidc.requiredRole),
+          adminRole: z.string().default(D.accounts.oidc.adminRole),
+          reviewerRole: z.string().default(D.accounts.oidc.reviewerRole),
+          sessionTtlSeconds: z
+            .number()
+            .step(1)
+            .default(D.accounts.oidc.sessionTtlSeconds),
+        })
+        .default({ ...D.accounts.oidc }),
       allowRegistration: z.boolean().default(D.accounts.allowRegistration),
       retention: z
         .object({

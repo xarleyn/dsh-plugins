@@ -1206,13 +1206,14 @@ export function QaSurface(props: QaSurfaceProps) {
             accounts.updateProfile(input),
         }
       : undefined;
-    // Not gated by a config key: changing your own password is the one
-    // account action that must never be switched off, since a deployment
-    // without it has no way back in short of an operator.
-    const password = {
-      onChange: (currentPassword: string, nextPassword: string) =>
-        accounts.changePassword(currentPassword, nextPassword),
-    };
+    // Corporate password management belongs to the identity provider.
+    const password =
+      accountsSnapshot.user.authMethod === "oidc"
+        ? undefined
+        : {
+            onChange: (currentPassword: string, nextPassword: string) =>
+              accounts.changePassword(currentPassword, nextPassword),
+          };
     const starters = config.accounts.starters.enabled
       ? {
           starters: accountsSnapshot.user.starters,
@@ -1513,6 +1514,12 @@ export function QaSurface(props: QaSurfaceProps) {
             title={config.branding.title}
             logoUrl={config.branding.logoUrl}
             allowRegistration={config.accounts.allowRegistration}
+            localLogin={config.accounts.localLogin}
+            oidcLabel={
+              config.accounts.oidc.enabled
+                ? config.accounts.oidc.buttonLabel
+                : null
+            }
           />
         </>
       );

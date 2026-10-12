@@ -137,8 +137,8 @@
     "@deepseek-ai/dsh-host-webserver": "catalog:dsh",
     "@deepseek-ai/dsh-llm": "catalog:dsh",
     "@deepseek-ai/dsh-permission-presets": "catalog:dsh",
-    "@deepseek-ai/dsh-session": "catalog:dsh",
     "@deepseek-ai/dsh-scope": "catalog:dsh",
+    "@deepseek-ai/dsh-session": "catalog:dsh",
     "@deepseek-ai/dsh-settings": "catalog:dsh",
     "@deepseek-ai/dsh-skill": "catalog:dsh",
     "@deepseek-ai/dsh-system-prompt": "catalog:dsh",
@@ -155,6 +155,7 @@
     "@yadsh/dsh-documents": "workspace:^",
     "@yadsh/dsh-plugin-kit": "workspace:^",
     "@yadsh/dsh-plugin-log": "workspace:^",
+    "openid-client": "6.8.8",
     "yaml": "^2.9.0",
     "zod": "catalog:runtime"
   },

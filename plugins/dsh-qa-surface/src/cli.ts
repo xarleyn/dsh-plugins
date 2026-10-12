@@ -25,6 +25,7 @@ const USAGE = `Usage:
   qa-accounts [--file <path>] add <email> --password-stdin [--name <name>] [--role admin|reviewer|user]
   qa-accounts [--file <path>] set-password <email> --password-stdin
   qa-accounts [--file <path>] set-role <email> <admin|reviewer|user>
+  qa-accounts [--file <path>] link-oidc <email> <issuer> <subject>
   qa-accounts [--file <path>] disable <email>     # blocks logins and revokes live tokens
   qa-accounts [--file <path>] enable <email>
   qa-accounts [--file <path>] revoke <email>      # invalidates every issued token
@@ -171,6 +172,19 @@ export function run(
     }
   };
   switch (command) {
+    case "link-oidc": {
+      try {
+        if (!first || !second || !third)
+          throw new Error("link-oidc requires email, issuer and subject");
+        const user = accounts.linkOidcIdentity(first, second, third);
+        io.out(
+          `${user.email} linked to corporate identity; local password and live tokens revoked`,
+        );
+        return 0;
+      } finally {
+        accounts.close();
+      }
+    }
     case "list": {
       const users = accounts.listUsers();
       if (users.length === 0) {

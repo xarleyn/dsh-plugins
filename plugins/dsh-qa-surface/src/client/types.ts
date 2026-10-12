@@ -654,6 +654,14 @@ export interface QaIntegrationTokenApi {
 
 /** Account remotes exposed by the plugin's own typert namespace. */
 export interface QaAccountsApi {
+  accountsOidcStart?(): Promise<
+    RemoteResult<import("../types.js").QaOidcStart>
+  >;
+  accountsOidcComplete?(
+    handoff: string,
+    completionKey: string,
+  ): Promise<RemoteResult<QaAccountSession>>;
+  accountsOidcLogout?(token: string): Promise<RemoteResult<string | null>>;
   chatVisible?(
     token: string,
   ): Promise<
