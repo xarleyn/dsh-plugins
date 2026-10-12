@@ -572,6 +572,34 @@ export class QaAccountsController {
     }
   }
 
+  async setServiceTokenClarifications(
+    tokenId: string,
+    allowed: boolean,
+  ): Promise<QaIntegrationTokenResult<null>> {
+    const token = this.tokenValue;
+    const update = this.options.remote.accountsSetServiceTokenClarifications;
+    if (
+      this.disposed ||
+      token === null ||
+      this.snapshot.stage !== "authed" ||
+      update === undefined
+    )
+      return { ok: false, error: accountsErrorMessage(null) };
+    try {
+      const result = await update.call(
+        this.options.remote,
+        token,
+        tokenId,
+        allowed,
+      );
+      if (!result.ok || !result.value.updated)
+        return { ok: false, error: accountsErrorMessage(null) };
+      return { ok: true, value: null };
+    } catch {
+      return { ok: false, error: accountsErrorMessage(null) };
+    }
+  }
+
   private async authenticate(
     mode: "login" | "register",
     call: () => Promise<

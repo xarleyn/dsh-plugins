@@ -146,8 +146,9 @@ const MAX_SESSION_ID_LENGTH = 200;
 export interface QaServiceTokenIssueInput {
   /** A note for the operator's token list; empty becomes a generic label. */
   readonly label?: string;
-  /** Requested scopes; unknown ones are dropped, empty falls back to `ask`. */
+  /** Requested scopes; unknown ones are dropped, explicit empty grants none. */
   readonly scopes?: readonly string[];
+  readonly allowClarifications?: boolean;
   /** How long the token lives; bounded, and the session TTL when omitted. */
   readonly ttlDays?: number;
   /**
@@ -160,6 +161,7 @@ export interface QaServiceTokenIssueInput {
 
 /** What a presented integration token resolved to. */
 export interface QaVerifiedServiceToken {
+  readonly allowClarifications: boolean;
   readonly tokenId: string;
   readonly userId: string;
   readonly scopes: readonly QaServiceTokenScope[];
@@ -1305,6 +1307,12 @@ export class QaAccounts {
     input: QaServiceTokenIssueInput = {},
   ): QaIssuedServiceToken {
     this.reloadIfChanged();
+    if (
+      input.allowClarifications !== undefined &&
+      typeof input.allowClarifications !== "boolean"
+    )
+      throw new TypeError("allowClarifications must be a boolean.");
+    const allowClarifications = input.allowClarifications ?? true;
     const scopes = normalizeServiceTokenScopes(
       input.scopes ?? QA_SERVICE_TOKEN_DEFAULT_SCOPES,
     );
@@ -1321,6 +1329,7 @@ export class QaAccounts {
       label: label === "" ? "integration" : label,
       hash: minted.hash,
       scopes,
+      allowClarifications,
       createdAt,
       expiresAt,
       lastUsedAt: null,
@@ -1332,6 +1341,7 @@ export class QaAccounts {
       token: minted.token,
       label: label === "" ? "integration" : label,
       scopes,
+      allowClarifications,
       createdAt,
       expiresAt,
       lastUsedAt: null,
@@ -1371,6 +1381,7 @@ export class QaAccounts {
       tokenId: record.id,
       userId: record.userId,
       scopes: normalizeServiceTokenScopes(record.scopes),
+      allowClarifications: record.allowClarifications,
     });
   }
 
@@ -1394,6 +1405,7 @@ export class QaAccounts {
           id: record.id,
           label: record.label,
           scopes: normalizeServiceTokenScopes(record.scopes),
+          allowClarifications: record.allowClarifications,
           createdAt: record.createdAt,
           expiresAt: record.expiresAt,
           lastUsedAt: record.lastUsedAt,
@@ -1416,6 +1428,36 @@ export class QaAccounts {
       toPublic(this.requireUser(token)),
       tokenId,
     );
+  }
+
+  recordIntegrationRequestPolicy(
+    sessionId: string,
+    requestId: string,
+    allowed: boolean,
+  ): void {
+    this.database.recordIntegrationRequestPolicy(sessionId, requestId, allowed);
+  }
+
+  setServiceTokenClarifications(
+    token: string,
+    tokenId: string,
+    allowed: boolean,
+  ): boolean {
+    if (typeof allowed !== "boolean")
+      throw new TypeError("allowClarifications must be a boolean.");
+    this.reloadIfChanged();
+    return this.database.setServiceTokenClarifications(
+      this.requireUser(token).id,
+      tokenId,
+      allowed,
+    );
+  }
+
+  integrationClarificationsAllowed(
+    sessionId: string,
+    requestId: string,
+  ): boolean {
+    return this.database.integrationClarificationsAllowed(sessionId, requestId);
   }
 
   /** Revoke one integration token of an account the caller has established. */

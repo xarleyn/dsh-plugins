@@ -225,6 +225,7 @@ export interface QaIntegrationRunner {
     /** The chat to continue, or null for a new conversation. */
     readonly chatId: string | null;
     readonly message: string;
+    readonly allowClarifications?: boolean;
     readonly attachments: readonly QaIntegrationAttachment[];
     readonly ticketKey: string | null;
     /** Ends the wait: the caller's own lifetime merged with the deployment's budget. */

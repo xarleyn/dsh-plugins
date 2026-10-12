@@ -5,6 +5,7 @@ import { QaChatSharingStore } from "./chat-sharing/store.js";
 import { QaChatTransport } from "./chat-sharing/transport.js";
 import { QaChatTurnGuard } from "./chat-sharing/turn-guard.js";
 import { installQaNativeFence } from "./chat-sharing/native-fence.js";
+import { QaIntegrationQuestionPolicy } from "./integration/question-policy.js";
 import {
   qaChatPublishedFile,
   qaChatAttachmentPath,
@@ -554,11 +555,21 @@ export class QaSurface extends TypertRemoteService {
       ownership,
       this.logger,
     );
+    const integrationQuestionPolicy = new QaIntegrationQuestionPolicy(
+      ctx,
+      () => this.accountRemotes.resolve(this.getConfig()),
+      (id) => ownership.rootOf(id),
+    );
+    ctx.effect(
+      () => () => integrationQuestionPolicy.dispose(),
+      "qa-surface: integration question policy",
+    );
     this.userQuestions = new QaQuestionGate(
       ctx,
       () => this.getConfig().interaction.questions === "interactive",
       ownership,
       this.logger,
+      (agent) => integrationQuestionPolicy.allowed(agent),
     );
     // The destructive tool of the QA catalog composes the same approval flow
     // around itself: registered without `prepend`, it sits inside the approval
@@ -1018,6 +1029,19 @@ export class QaSurface extends TypertRemoteService {
     tokenId: string,
   ): { readonly revoked: boolean } {
     return this.accountRemotes.revokeServiceToken(token, tokenId);
+  }
+
+  @Remote("accountsSetServiceTokenClarifications")
+  accountsSetServiceTokenClarifications(
+    token: string,
+    tokenId: string,
+    allowed: boolean,
+  ): { readonly updated: boolean } {
+    return this.accountRemotes.setServiceTokenClarifications(
+      token,
+      tokenId,
+      allowed,
+    );
   }
 
   /**

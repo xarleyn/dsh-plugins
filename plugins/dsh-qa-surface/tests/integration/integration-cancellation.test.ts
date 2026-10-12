@@ -130,7 +130,7 @@ function chatRunner(chat: ReturnType<typeof stuckChat>) {
         accounts: { enabled: true },
         integration: { enabled: true },
       }),
-    accounts: () => undefined,
+    accounts: () => ({ recordIntegrationRequestPolicy: vi.fn() }) as never,
     admission: { secureSessionForUser: async () => {} } as never,
     access: {} as never,
     sessionLog: chat.sessionLog,

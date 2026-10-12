@@ -119,6 +119,11 @@ export interface QaAccountRemotes {
     token: string,
     tokenId: string,
   ): { readonly revoked: boolean };
+  setServiceTokenClarifications(
+    token: string,
+    tokenId: string,
+    allowed: boolean,
+  ): { readonly updated: boolean };
 }
 
 /** Build the account-remotes context for one `QaSurface` service instance. */
@@ -289,6 +294,9 @@ export function createQaAccountRemotes(options: {
         return store.mintServiceToken(token, {
           ...(input.label === undefined ? {} : { label: input.label }),
           ...(input.scopes === undefined ? {} : { scopes: input.scopes }),
+          ...(input.allowClarifications === undefined
+            ? {}
+            : { allowClarifications: input.allowClarifications }),
           ...(input.ttlDays === undefined ? {} : { ttlDays: input.ttlDays }),
         });
       });
@@ -297,6 +305,12 @@ export function createQaAccountRemotes(options: {
       const store = requireAccounts();
       return run(() => ({
         revoked: store.revokeServiceToken(token, tokenId),
+      }));
+    },
+    setServiceTokenClarifications: (token, tokenId, allowed) => {
+      const store = requireAccounts();
+      return run(() => ({
+        updated: store.setServiceTokenClarifications(token, tokenId, allowed),
       }));
     },
   };

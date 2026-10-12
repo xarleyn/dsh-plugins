@@ -74,6 +74,7 @@ export function sourceCitations(
 
 /** Who a presented credential turned out to be. */
 export interface QaIntegrationIdentity {
+  readonly allowClarifications: boolean;
   readonly tokenId: string;
   readonly userId: string;
   readonly scopes: readonly QaServiceTokenScope[];
@@ -157,6 +158,7 @@ export class QaIntegrationService {
       tokenId: verified.tokenId,
       userId: verified.userId,
       scopes: verified.scopes,
+      allowClarifications: verified.allowClarifications,
     });
   }
 
@@ -202,6 +204,7 @@ export class QaIntegrationService {
         userId: identity.userId,
         chatId: request.sessionId,
         message: request.message,
+        allowClarifications: identity.allowClarifications,
         attachments: request.attachments,
         ticketKey: request.context.ticketKey,
         signal: combined,

@@ -60,6 +60,7 @@ function gateFor(input: {
   interactive: boolean;
   attested: readonly string[];
   logger?: unknown;
+  questionsAllowed?: () => boolean;
 }) {
   const fake = fakeContext();
   const ownership = new QaSessionOwnership((sessionId) =>
@@ -70,6 +71,7 @@ function gateFor(input: {
     () => input.interactive,
     ownership,
     (input.logger ?? SILENT_LOGGER) as never,
+    input.questionsAllowed,
   );
   gate.install();
   /** Invoke the gate exactly where the user-questions service would. */

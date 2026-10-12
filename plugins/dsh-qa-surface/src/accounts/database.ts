@@ -121,6 +121,18 @@ const MIGRATIONS: readonly SqliteMigration[] = [
       ALTER TABLE qa_accounts ADD COLUMN notifications_json TEXT;
     `,
   },
+  {
+    version: 4,
+    up: `
+      ALTER TABLE qa_service_tokens ADD COLUMN allow_clarifications INTEGER NOT NULL DEFAULT 1 CHECK(allow_clarifications IN (0,1));
+      CREATE TABLE qa_integration_request_policies (
+        session_id TEXT NOT NULL,
+        request_id TEXT NOT NULL,
+        allow_clarifications INTEGER NOT NULL CHECK(allow_clarifications IN (0,1)),
+        PRIMARY KEY(session_id, request_id)
+      );
+    `,
+  },
 ];
 
 interface AccountRow {
@@ -158,6 +170,7 @@ interface OwnershipRow {
 }
 
 interface ServiceTokenRow {
+  readonly allow_clarifications: number;
   readonly id: string;
   readonly user_id: string;
   readonly label: string;
@@ -176,6 +189,7 @@ interface ServiceTokenRow {
  * nowhere else.
  */
 export interface StoredServiceToken {
+  readonly allowClarifications: boolean;
   readonly id: string;
   readonly userId: string;
   readonly label: string;
@@ -196,6 +210,7 @@ function toServiceToken(row: ServiceTokenRow): StoredServiceToken {
     label: row.label,
     hash: row.token_hash,
     scopes: JSON.parse(row.scopes_json) as readonly string[],
+    allowClarifications: row.allow_clarifications === 1,
     createdAt: row.created_at,
     expiresAt: row.expires_at,
     lastUsedAt: row.last_used_at,
@@ -476,8 +491,8 @@ export class QaAccountsDatabase {
         .prepare(
           `INSERT INTO qa_service_tokens
              (id, user_id, label, token_hash, scopes_json, created_at,
-              expires_at, last_used_at, revoked_at, use_count)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+              expires_at, last_used_at, revoked_at, use_count, allow_clarifications)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         )
         .run(
           token.id,
@@ -490,8 +505,48 @@ export class QaAccountsDatabase {
           token.lastUsedAt,
           token.revokedAt,
           token.useCount,
+          token.allowClarifications ? 1 : 0,
         );
     });
+  }
+
+  /** Store the authenticated token policy before admitting its request to the inbox. */
+  recordIntegrationRequestPolicy(
+    sessionId: string,
+    requestId: string,
+    allowed: boolean,
+  ): void {
+    this.storage.db
+      .prepare(
+        "INSERT OR IGNORE INTO qa_integration_request_policies VALUES (?,?,?)",
+      )
+      .run(sessionId, requestId, allowed ? 1 : 0);
+  }
+
+  integrationClarificationsAllowed(
+    sessionId: string,
+    requestId: string,
+  ): boolean {
+    const row = this.storage.db
+      .prepare(
+        "SELECT allow_clarifications FROM qa_integration_request_policies WHERE session_id=? AND request_id=?",
+      )
+      .get(sessionId, requestId) as
+      { allow_clarifications: number } | undefined;
+    return row?.allow_clarifications !== 0;
+  }
+
+  setServiceTokenClarifications(
+    userId: string,
+    tokenId: string,
+    allowed: boolean,
+  ): boolean {
+    const result = this.storage.db
+      .prepare(
+        "UPDATE qa_service_tokens SET allow_clarifications=? WHERE id=? AND user_id=? AND revoked_at IS NULL AND expires_at>?",
+      )
+      .run(allowed ? 1 : 0, tokenId, userId, new Date().toISOString());
+    return result.changes > 0;
   }
 
   /**

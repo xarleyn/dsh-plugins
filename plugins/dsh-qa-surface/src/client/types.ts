@@ -650,10 +650,19 @@ export interface QaIntegrationTokenApi {
     input: QaServiceTokenCreateInput,
   ): Promise<QaIntegrationTokenResult<QaIssuedServiceToken>>;
   revoke(tokenId: string): Promise<QaIntegrationTokenResult<null>>;
+  setClarifications?(
+    tokenId: string,
+    allowed: boolean,
+  ): Promise<QaIntegrationTokenResult<null>>;
 }
 
 /** Account remotes exposed by the plugin's own typert namespace. */
 export interface QaAccountsApi {
+  accountsSetServiceTokenClarifications?(
+    token: string,
+    tokenId: string,
+    allowed: boolean,
+  ): Promise<RemoteResult<{ readonly updated: boolean }>>;
   chatVisible?(
     token: string,
   ): Promise<

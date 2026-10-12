@@ -115,7 +115,7 @@ function runnerOf(chat: ReturnType<typeof racingChat>) {
       agents: { get: () => chat.agent },
     } as never,
     getConfig: () => config,
-    accounts: () => undefined,
+    accounts: () => ({ recordIntegrationRequestPolicy: vi.fn() }) as never,
     admission: { secureSessionForUser: async () => {} } as never,
     access: {} as never,
     sessionLog: {

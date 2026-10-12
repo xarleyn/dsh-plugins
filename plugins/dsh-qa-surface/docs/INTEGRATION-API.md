@@ -452,3 +452,34 @@ copy, and it is the contract this implementation is tested against.
 Full suite: `pnpm --filter @yadsh/dsh-qa-surface test` (195 files, 1364 tests at
 the time of writing — the pre-existing 184 files stay green, which is the
 regression signal that matters most for the admission refactor).
+
+## Token clarification preference
+
+`ask` authorizes an external application to submit a request through `POST /qa/api/ask`.
+It does not control whether the assistant asks follow-up questions. The profile
+page calls this permission **Отправлять запросы ассистенту** and offers a separate
+**Разрешать уточняющие вопросы** switch when creating a token and on existing
+active tokens. The owner can change this preference without rotating the secret.
+
+`allowClarifications: false` preserves the token's scopes and tells the assistant
+to answer from available evidence, identify assumptions, and state what cannot
+be determined. The Host refuses the interactive clarification tool for that
+admitted turn and its delegated agents. The prompt also asks the model to avoid
+plain-text follow-up questions; language-model compliance with that instruction
+is distinct from the enforced tool boundary. Approval requirements remain intact.
+
+The preference is captured before inbox admission, so updating a token affects
+subsequent requests, including requests that continue an existing chat. A later
+browser turn or a request with clarifications enabled follows the deployment's
+normal question policy. Existing tokens and API callers that omit the field keep
+clarifications enabled. A token that lacks `ask` still receives HTTP 403.
+
+Token creation input example:
+
+```json
+{"label":"demo bridge","scopes":["ask","sessions:read"],"allowClarifications":false,"ttlDays":90}
+```
+
+The browser Remote `accountsSetServiceTokenClarifications(token, tokenId, allowed)`
+updates only the authenticated owner's active token. Unknown, foreign, expired
+and revoked tokens return `updated: false`; the secret and scopes are unchanged.

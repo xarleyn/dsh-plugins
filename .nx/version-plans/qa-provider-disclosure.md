@@ -9,3 +9,5 @@ Move owner sharing controls into a compact chat-history action menu and simplify
 Allow resizing the right-hand chat details panel with persisted width, viewport limits, and keyboard controls.
 
 Preserve the authenticated operator's native API access alongside the closed QA account boundary, use an account-scoped session catalog when the Host supports it, and explain the integration token's request permission explicitly.
+
+Add an independent, owner-controlled clarification preference for integration tokens and enforce it per admitted turn, including delegated agents, while retaining the ask permission.

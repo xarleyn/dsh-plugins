@@ -79,6 +79,7 @@ export function QaIntegrationTokensPage(props: {
     QA_SERVICE_TOKEN_DEFAULT_SCOPES,
   );
   const [busy, setBusy] = useState(false);
+  const [allowClarifications, setAllowClarifications] = useState(true);
   const [issued, setIssued] = useState<QaIssuedServiceToken | null>(null);
   const {
     copied,
@@ -88,6 +89,25 @@ export function QaIntegrationTokensPage(props: {
   } = useCopyAction(issued?.token ?? "");
   const [pendingRevoke, setPendingRevoke] = useState<string | null>(null);
   const [revoking, setRevoking] = useState<string | null>(null);
+  const [updating, setUpdating] = useState<string | null>(null);
+  const changeClarifications = async (
+    tokenId: string,
+    allowed: boolean,
+  ): Promise<void> => {
+    const update = props.api.setClarifications;
+    if (update === undefined) return;
+    setUpdating(tokenId);
+    try {
+      const result = await update(tokenId, allowed);
+      if (!result.ok) {
+        setError(result.error);
+        return;
+      }
+      await reload();
+    } finally {
+      setUpdating(null);
+    }
+  };
   useEffect(() => {
     let live = true;
     void props.api.list().then((result) => {
@@ -123,6 +143,7 @@ export function QaIntegrationTokensPage(props: {
       .create({
         label: label.trim(),
         scopes: [...scopes],
+        allowClarifications,
         ttlDays: days,
       })
       .then(async (result) => {
@@ -294,6 +315,30 @@ export function QaIntegrationTokensPage(props: {
                 ))}
               </select>
             </QaSettingsField>
+            <label
+              className="dsh-qa-settings__toggle"
+              data-testid="qa-settings-tokens-clarifications"
+            >
+              <input
+                type="checkbox"
+                checked={allowClarifications}
+                onChange={(event) =>
+                  setAllowClarifications(event.currentTarget.checked)
+                }
+              />
+              <span className="dsh-qa-settings__toggle-label">
+                Разрешать уточняющие вопросы
+              </span>
+            </label>
+            <p
+              className="dsh-qa-settings__field-hint"
+              data-testid="qa-settings-tokens-clarifications-hint"
+            >
+              Выключите, чтобы ассистент отвечал по имеющимся данным и отмечал
+              недостающую информацию, не ожидая ваших ответов. Право на отправку
+              запросов через API сохраняется. Изменение настройки действует на
+              следующие запросы.
+            </p>
             <QaSettingsActions>
               <QaSettingsButton
                 testId="qa-settings-tokens-create"
@@ -363,7 +408,10 @@ export function QaIntegrationTokensPage(props: {
                       className="dsh-qa-settings__row-description"
                       data-testid="qa-settings-tokens-row-scopes"
                     >
-                      {scopeLabels(token.scopes)}
+                      {scopeLabels(token.scopes)} ·{" "}
+                      {token.allowClarifications === false
+                        ? "без уточняющих вопросов"
+                        : "уточнения разрешены"}
                     </span>
                     <span
                       className="dsh-qa-settings__row-meta"
@@ -391,6 +439,27 @@ export function QaIntegrationTokensPage(props: {
                     )}
                     {state === "active" ? (
                       <QaSettingsActions>
+                        {props.api.setClarifications === undefined ? null : (
+                          <label
+                            className="dsh-qa-settings__toggle"
+                            data-testid="qa-settings-tokens-row-clarifications"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={token.allowClarifications !== false}
+                              disabled={updating === token.id}
+                              onChange={(event) => {
+                                void changeClarifications(
+                                  token.id,
+                                  event.currentTarget.checked,
+                                );
+                              }}
+                            />
+                            <span className="dsh-qa-settings__toggle-label">
+                              Разрешать уточняющие вопросы
+                            </span>
+                          </label>
+                        )}
                         {confirming ? (
                           <>
                             <QaSettingsButton

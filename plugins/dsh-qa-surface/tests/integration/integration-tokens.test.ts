@@ -50,6 +50,7 @@ describe("integration tokens", () => {
       tokenId: issued.id,
       userId: admin.user.id,
       scopes: ["ask"],
+      allowClarifications: true,
     });
     const summary = accounts.listServiceTokens(admin.token)[0];
     expect(summary?.useCount).toBe(1);
