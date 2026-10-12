@@ -49,7 +49,14 @@ export interface GateAgent {
   /** Durable session id of the agent (branded string at runtime). */
   readonly id: string;
   readonly session: {
-    append?(type: "user/message", data: unknown): unknown;
+    append?(
+      type: "user/message",
+      data: unknown,
+      intent: {
+        readonly surfaceOp: "append";
+        readonly sourceEventSeqs: readonly number[];
+      },
+    ): unknown;
     readonly header: {
       readonly origin?: string;
       readonly cwd?: string;
