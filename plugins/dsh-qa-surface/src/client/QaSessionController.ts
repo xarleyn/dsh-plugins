@@ -2545,11 +2545,22 @@ export class QaSessionController {
       this.disposed
     )
       return;
-    const id = String(session.sessionId);
+    // Delegated sessions have no independent QA membership. Their transcript
+    // transport checks authoritative lineage; the periodic account check must
+    // keep checking the owning chat, including while a child is on screen.
+    const delegated = this.viewingSubagent !== null;
+    const id = delegated ? this.chatSessionId : String(session.sessionId);
+    if (id === null) return;
+    const operation = this.generation;
     try {
       const result = await this.sharingApi.access(token, id);
-      if (this.session !== session || this.disposed) return;
-      if (!result.ok) {
+      if (
+        this.session !== session ||
+        this.disposed ||
+        operation !== this.generation
+      )
+        return;
+      if (!result.ok || (delegated && result.value.mode !== "owner")) {
         this.unbind();
         this.chatAccess = undefined;
         this.fail(
