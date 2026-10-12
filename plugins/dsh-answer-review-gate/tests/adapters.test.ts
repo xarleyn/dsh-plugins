@@ -277,7 +277,7 @@ describe("subagent backend", () => {
     expect(disposed).toBe(true);
   });
 
-  it("falls back to parsing the fenced verdict from the output text", async () => {
+  it("refuses a fenced verdict without native capture after bounded recovery", async () => {
     const face: SubagentsFace = {
       async start() {
         return {
@@ -299,8 +299,8 @@ describe("subagent backend", () => {
       config: SUBAGENT_CONFIG,
       parent: "p",
     });
-    await expect(backend.review(reviewInput())).resolves.toMatchObject({
-      verdict: "revise",
+    await expect(backend.review(reviewInput())).rejects.toMatchObject({
+      reason: "reviewer-output-not-captured",
     });
   });
 

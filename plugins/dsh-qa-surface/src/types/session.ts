@@ -124,6 +124,7 @@ export type QaMessage =
        * while the browser's own message id does not.
        */
       readonly seq?: number;
+      readonly review?: import("./answer-review.js").QaAnswerReview;
       /** Final text of a completed turn with a durable fork boundary. */
       readonly forkable?: boolean;
       /** Host turn this answer belongs to; groups regenerations into variants. */

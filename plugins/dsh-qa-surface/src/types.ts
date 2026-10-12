@@ -8,6 +8,7 @@ export type * from "./types/config.js";
 export type * from "./types/slash.js";
 export type * from "./types/documents.js";
 export type * from "./types/session.js";
+export type * from "./types/answer-review.js";
 export type * from "./types/quality.js";
 export type * from "./types/admin.js";
 export type {

@@ -136,6 +136,12 @@ export function deriveVerdictFromExpertResult(
       `expert run ended with status "${result.status}"`,
     );
   }
+  if (result.structured === false) {
+    throw new ReviewerFailure(
+      "expert-output-not-captured",
+      "the reviewer did not submit a native structured result",
+    );
+  }
   const issues: ReviewIssue[] = [
     ...result.findings.map((finding) => ({
       severity: "major" as const,

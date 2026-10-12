@@ -15,6 +15,7 @@ import type {
   QaWorkItem,
 } from "../types.js";
 import { artifactsOfToolResult } from "./chat-artifacts.js";
+import { answerReviewsOf } from "./answer-review.js";
 import { chatLegacyOf } from "./turn-sources.js";
 import { toWorkspaceRelativeText } from "./workspace-paths.js";
 import { parseSettlement, settlementView } from "./settlement.js";
@@ -737,7 +738,14 @@ export function projectTranscript(
   for (const turn of turns.values()) {
     emitTurn(legacy, running, turn, output, erroredTurns.get(turn.turn));
   }
+  const reviews = answerReviewsOf(snapshot);
   return output
     .sort((left, right) => left.order - right.order)
-    .map(({ message }) => message);
+    .map(({ message }) => {
+      const review =
+        message.role === "assistant" && message.seq !== undefined
+          ? reviews.get(message.seq)
+          : undefined;
+      return review === undefined ? message : { ...message, review };
+    });
 }

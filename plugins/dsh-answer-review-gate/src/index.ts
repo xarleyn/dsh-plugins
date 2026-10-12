@@ -28,6 +28,7 @@ import {
 import { AnswerReviewGate, type GateAgent, type GateLogSink } from "./gate.js";
 import { DELEGATION_TOOL_NAME } from "./delegation-tracker.js";
 import type { DomainExpertsFace, SubagentsFace } from "./types.js";
+import { reviewStatusNotice } from "./receipt.js";
 import {
   registerReviewWaiverCommand,
   type ReviewWaiverCommandRegistry,
@@ -136,6 +137,15 @@ export function apply(
 
   const audit = new ReviewAudit(config.audit.maxEntries);
   const gate = new AnswerReviewGate({
+    publishStatus: (agent, receipt) => {
+      try {
+        agent.session.append?.("user/message", reviewStatusNotice(receipt));
+      } catch {
+        logger.warn("gate.status-publication-failed", {
+          sessionId: String(agent.id),
+        });
+      }
+    },
     config: configSource,
     logger: logger as GateLogSink,
     audit,

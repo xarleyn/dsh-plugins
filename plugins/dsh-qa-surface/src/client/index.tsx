@@ -14,6 +14,14 @@ import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
+import {
+  answerReviewConversationDefinition,
+  QA_REVIEW_NODE,
+} from "./answer-review.js";
+import {
+  QaNativeAnswerReviewStatus,
+  QA_REVIEW_STYLES,
+} from "./components/QaAnswerReviewStatus.js";
 import { QaConfigController } from "./QaConfigController.js";
 import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
 import { QaAccountsController } from "./QaAccountsController.js";
@@ -570,6 +578,21 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   // the prelude runs before any application script, so the answer is final
   // for this page load.
   const kiosk = qaKioskMode();
+  ctx.effect(() => {
+    const disposers = [
+      injectCardStyles("dsh-qa-answer-review", QA_REVIEW_STYLES),
+      ctx.uiConversation.events.register(answerReviewConversationDefinition),
+      ctx.slots.inject("conversation.chat.node", () =>
+        ctx.slots.register(
+          { name: "conversation.chat.node", key: QA_REVIEW_NODE },
+          QaNativeAnswerReviewStatus,
+        ),
+      ),
+    ];
+    return () => {
+      for (const dispose of disposers.reverse()) dispose();
+    };
+  }, "dsh-qa-surface: answer review status");
   const panels = new QaSurfacePanelRegistry();
   const settingsSections = new QaUserSettingsSectionRegistry();
   // Cards that mount outside the QA overlay (the host's plugin settings) read

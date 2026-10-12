@@ -70,7 +70,7 @@ function harness(accounts: QaAccountsApi) {
   ctx.provide("remote.session", {});
   ctx.provide("remote.agentPresets", {});
   ctx.provide("sessions", { list: { getSnapshot: () => ({ byId: {} }) } });
-  ctx.provide("uiConversation", {});
+  ctx.provide("uiConversation", { events: { register: () => () => {} } });
   ctx.provide("connection", {
     generation: {
       getSnapshot: () => "generation-1",

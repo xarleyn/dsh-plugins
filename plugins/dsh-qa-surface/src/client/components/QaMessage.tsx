@@ -8,6 +8,7 @@ import type {
   QaSource,
   QaTurnSources,
 } from "../../types.js";
+import { QaAnswerReviewStatus } from "./QaAnswerReviewStatus.js";
 import { sameWorkItems } from "./QaWorkGroup.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
 import {
@@ -167,6 +168,10 @@ export function sameMessage(a: QaMessageModel, b: QaMessageModel): boolean {
     return (
       a.forkable === b.forkable &&
       a.seq === b.seq &&
+      a.review?.candidateSeq === b.review?.candidateSeq &&
+      a.review?.candidateHash === b.review?.candidateHash &&
+      a.review?.status === b.review?.status &&
+      a.review?.at === b.review?.at &&
       sameSources(a.sources, b.sources) &&
       sameArtifacts(a.artifacts, b.artifacts) &&
       (a.stats === undefined) === (b.stats === undefined) &&
@@ -729,6 +734,9 @@ export const QaMessage = memo(
           >
             Источники ({message.sources.length})
           </button>
+        ) : null}
+        {message.role === "assistant" && message.review !== undefined ? (
+          <QaAnswerReviewStatus review={message.review} />
         ) : null}
         {showActions ? (
           <div
