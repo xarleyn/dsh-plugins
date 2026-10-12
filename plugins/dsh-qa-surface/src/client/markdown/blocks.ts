@@ -79,6 +79,7 @@ export type MarkdownBlock =
 
 /** A parsed document: its blocks plus the reference targets they resolve. */
 export interface ParsedMarkdown {
+  readonly ranges: readonly { readonly start: number; readonly end: number }[];
   readonly blocks: readonly MarkdownBlock[];
   /** Link/image definitions by upper-cased identifier. */
   readonly definitions: ReadonlyMap<string, string>;
@@ -246,6 +247,7 @@ export function parseMarkdown(
   const definitions = new Map<string, string>();
   const footnotes = new Map<string, readonly MarkdownBlock[]>();
   const lines = text.replace(/\r\n?/gu, "\n").split("\n");
+  const ranges: { start: number; end: number }[] = [];
   return {
     blocks: parseBlocks(
       lines,
@@ -253,7 +255,9 @@ export function parseMarkdown(
       footnotes,
       0,
       options.streaming === true,
+      ranges,
     ),
+    ranges,
     definitions,
     footnotes,
   };
@@ -275,165 +279,185 @@ export function parseBlocks(
   footnotes: Map<string, readonly MarkdownBlock[]>,
   depth: number,
   streaming = false,
+  ranges?: { start: number; end: number }[],
 ): MarkdownBlock[] {
   const blocks: MarkdownBlock[] = [];
   const edge = liveEdge(lines, streaming);
   let index = 0;
   while (index < lines.length) {
-    const line = lines[index] ?? "";
-    if (isBlank(line)) {
-      index += 1;
-      continue;
-    }
-
-    const fence = FENCE.exec(line);
-    if (fence !== null) {
-      const code: string[] = [];
-      const indent = indentOf(line);
-      index += 1;
-      while (
-        index < lines.length &&
-        !closesFence(lines[index] ?? "", fence[1] ?? "")
-      ) {
-        code.push(
-          (lines[index] ?? "").slice(
-            Math.min(indent, indentOf(lines[index] ?? "")),
-          ),
-        );
+    const start = index;
+    const previous = blocks.length;
+    try {
+      const line = lines[index] ?? "";
+      if (isBlank(line)) {
         index += 1;
-      }
-      const closed = index < lines.length;
-      if (closed) index += 1;
-      const lang = /^\S+/u.exec(fence[2]?.trim() ?? "")?.[0];
-      blocks.push({
-        kind: "code",
-        text: closed || !streaming ? code.join("\n") : livePayload(code),
-        ...(lang === undefined ? {} : { lang }),
-        ...(closed || !streaming ? {} : { pending: true as const }),
-      });
-      continue;
-    }
-
-    const math = MATH_FLOW.exec(line);
-    if (math !== null) {
-      const parsed = parseMathFlow(
-        lines,
-        index,
-        math[1] ?? "",
-        edge,
-        streaming,
-      );
-      if (parsed !== undefined) {
-        blocks.push({
-          kind: "math",
-          text: parsed.text,
-          ...(parsed.pending ? { pending: true as const } : {}),
-        });
-        index = parsed.next;
         continue;
       }
-      // Settled text only: an unclosed or content-bearing opener line stays a
-      // paragraph, whose inline pass leaves the dollars literal.
-    }
 
-    const heading = ATX_HEADING.exec(line);
-    if (heading !== null) {
-      blocks.push({
-        kind: "heading",
-        depth: (heading[1] ?? "#").length as HeadingDepth,
-        text: (heading[2] ?? "").replace(/[ \t]+#+[ \t]*$/u, "").trim(),
-      });
-      index += 1;
-      continue;
-    }
-
-    if (RULE.test(line)) {
-      blocks.push({ kind: "rule" });
-      index += 1;
-      continue;
-    }
-
-    const quote = depth < MAX_DEPTH ? QUOTE.exec(line) : null;
-    if (quote !== null) {
-      const body: string[] = [];
-      while (index < lines.length) {
-        const current = lines[index] ?? "";
-        const inside = QUOTE.exec(current);
-        if (inside !== null) {
-          body.push(inside[1] ?? "");
+      const fence = FENCE.exec(line);
+      if (fence !== null) {
+        const code: string[] = [];
+        const indent = indentOf(line);
+        index += 1;
+        while (
+          index < lines.length &&
+          !closesFence(lines[index] ?? "", fence[1] ?? "")
+        ) {
+          code.push(
+            (lines[index] ?? "").slice(
+              Math.min(indent, indentOf(lines[index] ?? "")),
+            ),
+          );
           index += 1;
+        }
+        const closed = index < lines.length;
+        if (closed) index += 1;
+        const lang = /^\S+/u.exec(fence[2]?.trim() ?? "")?.[0];
+        blocks.push({
+          kind: "code",
+          text: closed || !streaming ? code.join("\n") : livePayload(code),
+          ...(lang === undefined ? {} : { lang }),
+          ...(closed || !streaming ? {} : { pending: true as const }),
+        });
+        continue;
+      }
+
+      const math = MATH_FLOW.exec(line);
+      if (math !== null) {
+        const parsed = parseMathFlow(
+          lines,
+          index,
+          math[1] ?? "",
+          edge,
+          streaming,
+        );
+        if (parsed !== undefined) {
+          blocks.push({
+            kind: "math",
+            text: parsed.text,
+            ...(parsed.pending ? { pending: true as const } : {}),
+          });
+          index = parsed.next;
           continue;
         }
-        // Lazy continuation: prose directly under a quote stays in the quote.
-        if (isBlank(current) || startsBlock(current)) break;
-        body.push(current);
+        // Settled text only: an unclosed or content-bearing opener line stays a
+        // paragraph, whose inline pass leaves the dollars literal.
+      }
+
+      const heading = ATX_HEADING.exec(line);
+      if (heading !== null) {
+        blocks.push({
+          kind: "heading",
+          depth: (heading[1] ?? "#").length as HeadingDepth,
+          text: (heading[2] ?? "").replace(/[ \t]+#+[ \t]*$/u, "").trim(),
+        });
         index += 1;
+        continue;
       }
-      blocks.push({
-        kind: "quote",
-        blocks: parseBlocks(body, definitions, footnotes, depth + 1, streaming),
-      });
-      continue;
-    }
 
-    const alignments = tableAlignments(lines, index, streaming);
-    if (alignments !== undefined && LIST_MARKER.exec(line) === null) {
-      const head = splitTableRow(line);
-      const rows: string[][] = [];
-      let cursor = index + 2;
-      while (cursor < lines.length) {
-        const row = lines[cursor] ?? "";
-        if (isBlank(row) || !row.includes("|") || startsBlock(row)) break;
-        // The row the stream is still typing stays inside the block but out of
-        // its cells: half a row would flash as a truncated one, and it is
-        // rendered by the next frame, which has the whole row.
-        if (cursor !== edge) rows.push(splitTableRow(row));
-        cursor += 1;
+      if (RULE.test(line)) {
+        blocks.push({ kind: "rule" });
+        index += 1;
+        continue;
       }
-      blocks.push({ kind: "table", align: alignments, head, rows });
-      index = cursor;
-      continue;
-    }
 
-    if (depth < MAX_DEPTH && LIST_MARKER.test(line)) {
-      const list = parseList(
-        lines,
-        index,
-        definitions,
-        footnotes,
-        depth,
-        streaming,
-      );
-      blocks.push(list.list);
-      index = list.next;
-      continue;
-    }
+      const quote = depth < MAX_DEPTH ? QUOTE.exec(line) : null;
+      if (quote !== null) {
+        const body: string[] = [];
+        while (index < lines.length) {
+          const current = lines[index] ?? "";
+          const inside = QUOTE.exec(current);
+          if (inside !== null) {
+            body.push(inside[1] ?? "");
+            index += 1;
+            continue;
+          }
+          // Lazy continuation: prose directly under a quote stays in the quote.
+          if (isBlank(current) || startsBlock(current)) break;
+          body.push(current);
+          index += 1;
+        }
+        blocks.push({
+          kind: "quote",
+          blocks: parseBlocks(
+            body,
+            definitions,
+            footnotes,
+            depth + 1,
+            streaming,
+          ),
+        });
+        continue;
+      }
 
-    const definition = DEFINITION.exec(line);
-    if (definition !== null) {
-      const id = (definition[1] ?? "").trim().toUpperCase();
-      if (!definitions.has(id)) definitions.set(id, definition[2] ?? "");
-      index += 1;
-      continue;
-    }
+      const alignments = tableAlignments(lines, index, streaming);
+      if (alignments !== undefined && LIST_MARKER.exec(line) === null) {
+        const head = splitTableRow(line);
+        const rows: string[][] = [];
+        let cursor = index + 2;
+        while (cursor < lines.length) {
+          const row = lines[cursor] ?? "";
+          if (isBlank(row) || !row.includes("|") || startsBlock(row)) break;
+          // The row the stream is still typing stays inside the block but out of
+          // its cells: half a row would flash as a truncated one, and it is
+          // rendered by the next frame, which has the whole row.
+          if (cursor !== edge) rows.push(splitTableRow(row));
+          cursor += 1;
+        }
+        blocks.push({ kind: "table", align: alignments, head, rows });
+        index = cursor;
+        continue;
+      }
 
-    const footnote = FOOTNOTE_DEFINITION.exec(line);
-    if (footnote !== null) {
-      const id = (footnote[1] ?? "").toUpperCase();
-      const body = footnoteBody(lines, index, footnote[2] ?? "");
-      if (!footnotes.has(id)) {
-        footnotes.set(
-          id,
-          parseBlocks(body.lines, definitions, footnotes, depth + 1, streaming),
+      if (depth < MAX_DEPTH && LIST_MARKER.test(line)) {
+        const list = parseList(
+          lines,
+          index,
+          definitions,
+          footnotes,
+          depth,
+          streaming,
         );
+        blocks.push(list.list);
+        index = list.next;
+        continue;
       }
-      index = body.next;
-      continue;
-    }
 
-    const paragraph = collectParagraph(lines, index, streaming);
-    blocks.push(paragraph.block);
-    index = paragraph.next;
+      const definition = DEFINITION.exec(line);
+      if (definition !== null) {
+        const id = (definition[1] ?? "").trim().toUpperCase();
+        if (!definitions.has(id)) definitions.set(id, definition[2] ?? "");
+        index += 1;
+        continue;
+      }
+
+      const footnote = FOOTNOTE_DEFINITION.exec(line);
+      if (footnote !== null) {
+        const id = (footnote[1] ?? "").toUpperCase();
+        const body = footnoteBody(lines, index, footnote[2] ?? "");
+        if (!footnotes.has(id)) {
+          footnotes.set(
+            id,
+            parseBlocks(
+              body.lines,
+              definitions,
+              footnotes,
+              depth + 1,
+              streaming,
+            ),
+          );
+        }
+        index = body.next;
+        continue;
+      }
+
+      const paragraph = collectParagraph(lines, index, streaming);
+      blocks.push(paragraph.block);
+      index = paragraph.next;
+    } finally {
+      if (blocks.length > previous)
+        ranges?.push({ start: start + 1, end: index });
+    }
   }
   return blocks;
 }

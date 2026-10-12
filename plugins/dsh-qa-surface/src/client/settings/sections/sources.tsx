@@ -255,6 +255,19 @@ export function SourcesSection(props: ConfigProps) {
               }}
             />
             <Toggle
+              checked={filePreview?.renderFrontmatter ?? false}
+              disabled={blocked || !(filePreview?.enabled ?? true)}
+              label="Оформлять YAML-шапку документа"
+              hint="Название и атрибуты отдельной карточкой; сведения об исходных файлах раскрываются по клику. Raw сохраняет исходный текст."
+              testId="qa-settings-sources-file-preview-frontmatter"
+              onChange={(value) =>
+                props.write(
+                  ["sources", "filePreview", "renderFrontmatter"],
+                  value,
+                )
+              }
+            />
+            <Toggle
               checked={filePreview?.allowRawToggle ?? true}
               disabled={blocked || !(filePreview?.enabled ?? true)}
               label="Переключатель «исходный текст»"

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readSourceImage as readSourceImagePreview } from "./provenance/source-image.js";
 import path from "node:path";
 import { defaultAccountsFilePath } from "./accounts/store.js";
 import { QaChatSharingStore } from "./chat-sharing/store.js";
@@ -2120,6 +2121,7 @@ export class QaSurface extends TypertRemoteService {
         maxBytes: config.sources.filePreview.maxBytes,
         maxMarkdownRenderBytes:
           config.sources.filePreview.maxMarkdownRenderBytes,
+        renderFrontmatter: config.sources.filePreview.renderFrontmatter,
       }).catch(async (error: unknown) => {
         // Only a format refusal follows successful evidence and root checks.
         if (
@@ -2155,6 +2157,44 @@ export class QaSurface extends TypertRemoteService {
         reason:
           error instanceof QaSourcePreviewError ? error.reason : "unavailable",
       });
+      throw sourcePreviewRefusal(
+        error instanceof QaSourcePreviewError ? error.reason : "unavailable",
+      );
+    }
+  }
+
+  /** Load one relative raster illustration of an attested Markdown source. */
+  @Remote("readSourceImage")
+  async readSourceImage(
+    token: string,
+    sessionId: string,
+    sourcePath: string,
+    imagePath: string,
+  ): Promise<string> {
+    const finish = await this.admitChatRead(token, sessionId, sourcePath);
+    const config = this.getConfig();
+    const cwd = this.ctx.agents.get(SessionId(sessionId))?.session.header.cwd;
+    if (!config.sources.filePreview.enabled || cwd === undefined)
+      throw sourcePreviewRefusal("unavailable");
+    const attachmentRoot = this.admission.attachmentRoot();
+    try {
+      const result = await readSourceImagePreview(
+        {
+          sourcePath,
+          cwd,
+          isEvidence: (canonicalPath) =>
+            this.provenance.sourceAllowed(sessionId, canonicalPath),
+          sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
+          ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
+          maxBytes: config.sources.filePreview.maxBytes,
+          maxMarkdownRenderBytes:
+            config.sources.filePreview.maxMarkdownRenderBytes,
+        },
+        imagePath,
+      );
+      finish();
+      return result;
+    } catch (error) {
       throw sourcePreviewRefusal(
         error instanceof QaSourcePreviewError ? error.reason : "unavailable",
       );

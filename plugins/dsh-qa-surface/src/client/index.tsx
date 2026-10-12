@@ -326,6 +326,12 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
   }
     ? Result
     : never;
+  readSourceImage(
+    token: string,
+    sessionId: string,
+    sourcePath: string,
+    imagePath: string,
+  ): Promise<RemoteResult<string>>;
   listWorkspaceFiles(
     token: string,
     sessionId: string,
@@ -784,6 +790,8 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             sessionId,
             sourcePath,
           ) as unknown as ReturnType<QaSourceApi["readSourceFile"]>,
+        readSourceImage: (token, sessionId, sourcePath, imagePath) =>
+          policyRemote.readSourceImage(token, sessionId, sourcePath, imagePath),
         listWorkspaceFiles: (token, sessionId, path) =>
           policyRemote.listWorkspaceFiles(
             token,

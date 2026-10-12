@@ -10,6 +10,7 @@ export interface QaSourceFilePreview {
   readonly markdown: boolean;
   readonly renderableMarkdown: boolean;
   readonly document?: QaDocumentPreview;
+  readonly frontmatter?: import("../markdown-frontmatter.js").MarkdownFrontmatter;
 }
 
 /**
