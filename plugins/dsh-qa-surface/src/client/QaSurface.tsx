@@ -618,6 +618,21 @@ export function QaSurface(props: QaSurfaceProps) {
           sessionId,
           sourcePath,
         ),
+      readSourceImage: (
+        sessionId: string,
+        sourcePath: string,
+        imagePath: string,
+      ) =>
+        props.sourceApi.readSourceImage?.(
+          accounts?.token() ?? "",
+          sessionId,
+          sourcePath,
+          imagePath,
+        ) ??
+        Promise.resolve({
+          ok: false as const,
+          error: new Error("unavailable"),
+        }),
       listWorkspaceFiles: (sessionId: string, path: string) =>
         props.sourceApi.listWorkspaceFiles(
           accounts?.token() ?? "",

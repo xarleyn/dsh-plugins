@@ -9,6 +9,7 @@ import {
 
 /** Inline source awareness handed down from the owning assistant message. */
 export interface MarkdownSourceContext {
+  readonly renderImage?: (src: string, alt: string) => ReactNode;
   readonly refs?: QaSourceRefs;
   /** Open a path-backed source in the sources drawer's detail view. */
   readonly onSourceOpen?: (source: QaSource) => void;
@@ -135,7 +136,10 @@ export function codeChip(
   return (
     <SourceChip
       source={source}
-      label={sourceFileName(source)}
+      label={
+        sourceFileName(source) +
+        (/[#:](?:L)?\d+(?:-L?\d+)?$/u.exec(value)?.[0] ?? "")
+      }
       onOpen={context.onSourceOpen}
     />
   );

@@ -108,7 +108,7 @@ export function useRightRail(ui: QaRightRailState): QaRightRailFacade {
     (source: QaSource) => {
       setDrawerSources(null);
       setDrawerCompleteness(null);
-      setDrawerDetail(source);
+      setDrawerDetail({ ...source });
       setRailOpen(true);
       setRailTab("sources");
       setAgentsOpen(false);

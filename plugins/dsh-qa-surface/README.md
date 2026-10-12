@@ -1,5 +1,16 @@
 # @yadsh/dsh-qa-surface
 
+Markdown source previews can present a leading YAML mapping as a compact document
+metadata card with expandable source and conversion details. Set
+`sources.filePreview.renderFrontmatter: true` (off by default), or use the
+**Sources → File preview** configuration switch. Raw always preserves the complete
+original file. Source chips ending in `:12-15` or `#L12-L15` open that physical
+line range and highlight its containing rendered blocks, including the YAML
+header's lines in the numbering. Relative PNG/JPEG/GIF/WebP illustrations load
+on approach to the viewport through `readSourceImage`: the parent must be an
+attested Markdown source, the exact image destination must appear in it, and the
+resolved file must pass readable-root, raster-format and preview-size checks.
+
 A focused, responsive QA/chat page for DeepSeek Harness at `/qa`. It replaces
 the presentation, not the harness: prompts, streaming, tools, skills, MCP,
 memory, persistence, permissions and telemetry continue through the native DSH

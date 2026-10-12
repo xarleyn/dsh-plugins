@@ -134,6 +134,9 @@ export function resolveSources(input: QaSurfaceConfig): SourcesSlice {
       allowRawToggle:
         input.sources?.filePreview?.allowRawToggle ??
         DEFAULT_QA_SURFACE_CONFIG.sources.filePreview.allowRawToggle,
+      renderFrontmatter:
+        input.sources?.filePreview?.renderFrontmatter ??
+        DEFAULT_QA_SURFACE_CONFIG.sources.filePreview.renderFrontmatter,
       maxBytes,
       maxMarkdownRenderBytes,
       maxListingEntries,

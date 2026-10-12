@@ -43,8 +43,16 @@ export function renderMarkdown(
   text: string,
   context: MarkdownSourceContext,
   options: MarkdownParseOptions = {},
+  sourceLines?: {
+    readonly offset: number;
+    readonly start?: number;
+    readonly end?: number;
+  },
 ): ReactNode[] {
-  const { blocks, definitions, footnotes } = parseMarkdown(text, options);
+  const { blocks, definitions, footnotes, ranges } = parseMarkdown(
+    text,
+    options,
+  );
   const pass: RenderContext = {
     ...context,
     definitions,
@@ -52,9 +60,36 @@ export function renderMarkdown(
     footnoteOrder: [],
     footnoteCounts: new Map(),
   };
-  const elements = blocks.map((block, index) =>
-    renderBlock(block, `b${index}`, pass),
-  );
+  const elements = blocks.map((block, index) => {
+    const element = renderBlock(block, `b${index}`, pass);
+    const range = ranges[index];
+    if (sourceLines === undefined || range === undefined) return element;
+    const start = range.start + sourceLines.offset;
+    const end = range.end + sourceLines.offset;
+    const highlighted =
+      sourceLines.start !== undefined &&
+      end >= sourceLines.start &&
+      start <= (sourceLines.end ?? sourceLines.start);
+    return (
+      <div
+        key={`b${index}`}
+        data-source-line-start={start}
+        data-source-line-end={end}
+        className={
+          highlighted
+            ? "dsh-qa-preview__block dsh-qa-preview__block--highlight"
+            : "dsh-qa-preview__block"
+        }
+        data-testid={
+          highlighted
+            ? "qa-source-preview-block-highlight"
+            : "qa-source-preview-block"
+        }
+      >
+        {element}
+      </div>
+    );
+  });
   const footnotesSection = renderFootnoteSection(pass);
   return footnotesSection === null ? elements : [...elements, footnotesSection];
 }
@@ -328,6 +363,12 @@ function inlineNodes(
         );
       }
       case "image": {
+        if (context.renderImage !== undefined)
+          return (
+            <Fragment key={nodeKey}>
+              {context.renderImage(node.src, node.alt)}
+            </Fragment>
+          );
         const src = remoteImage(node.src);
         if (src === undefined) {
           return (

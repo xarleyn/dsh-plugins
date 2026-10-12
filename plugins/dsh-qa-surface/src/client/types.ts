@@ -418,6 +418,12 @@ export interface QaSourceApi {
     | { readonly ok: true; readonly value: QaSourceFilePreview }
     | { readonly ok: false; readonly error: unknown }
   >;
+  readSourceImage?(
+    token: string,
+    sessionId: string,
+    sourcePath: string,
+    imagePath: string,
+  ): Promise<RemoteResult<string>>;
   /** One directory of the chat's own workspace, for the files panel. */
   listWorkspaceFiles(
     token: string,
@@ -491,6 +497,11 @@ export type QaBoundSourceApi = {
     | { readonly ok: true; readonly value: QaSourceFilePreview }
     | { readonly ok: false; readonly error: unknown }
   >;
+  readSourceImage?(
+    sessionId: string,
+    sourcePath: string,
+    imagePath: string,
+  ): Promise<RemoteResult<string>>;
   listWorkspaceFiles(
     sessionId: string,
     path: string,

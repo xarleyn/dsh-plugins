@@ -185,6 +185,7 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
       filePreview: Object.freeze({
         enabled: true,
         markdownRenderedByDefault: true,
+        renderFrontmatter: false,
         allowRawToggle: true,
         maxBytes: 2_000_000,
         maxMarkdownRenderBytes: 1_000_000,
