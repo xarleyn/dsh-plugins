@@ -104,4 +104,9 @@ describe("attested source images", () => {
       ),
     ]).toEqual(["a.png", "b.png", "c.png"]);
   });
+  it("recognizes a converter caption containing a blank line without consuming the next block", () => {
+    const text =
+      "# Guide\n\n![Diagram description\n\nAutomatically generated caption](../assets/demo.png)\n\nAfter the illustration.\n\n```\n![not an image](fake.png)\n```";
+    expect([...markdownImageTargets(text)]).toEqual(["../assets/demo.png"]);
+  });
 });
