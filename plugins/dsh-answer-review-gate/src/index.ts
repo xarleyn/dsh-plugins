@@ -139,7 +139,10 @@ export function apply(
   const gate = new AnswerReviewGate({
     publishStatus: (agent, receipt) => {
       try {
-        agent.session.append?.("user/message", reviewStatusNotice(receipt));
+        agent.session.append?.("user/message", reviewStatusNotice(receipt), {
+          surfaceOp: "append",
+          sourceEventSeqs: [receipt.candidateSeq],
+        });
       } catch {
         logger.warn("gate.status-publication-failed", {
           sessionId: String(agent.id),
