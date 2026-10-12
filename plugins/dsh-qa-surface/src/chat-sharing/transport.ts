@@ -191,14 +191,27 @@ export class QaChatTransport {
       > = {};
       for (const item of listing.items) {
         try {
-          const value = await this.projections(
-            token,
-            String(item.sessionId),
-            signal,
-          );
+          // Cold rows already carry bounded cache hints. Replaying every cold
+          // history on each polling tick thrashes the prepared-session cache.
+          const value = item.agentAvailable
+            ? await this.projections(token, String(item.sessionId), signal)
+            : item.projections === undefined
+              ? null
+              : {
+                  asOfSeq: item.projections.asOfSeq,
+                  values: item.projections.values,
+                };
           if (value !== null) projections[String(item.sessionId)] = value;
         } catch {
           /* revoked between reads */
+        }
+      }
+      for (const id of Object.keys(projections)) {
+        try {
+          const access = await this.sessionAccess(token, id, signal, listing);
+          this.store().revalidate(token, access);
+        } catch {
+          delete projections[id];
         }
       }
       yield { type: "baseline", value: { projections } };
@@ -344,14 +357,19 @@ export class QaChatTransport {
       if (this.locks.get(id) === next) this.locks.delete(id);
     }
   }
-  private async sessionAccess(token: string, id: string, signal: AbortSignal) {
+  private async sessionAccess(
+    token: string,
+    id: string,
+    signal: AbortSignal,
+    catalog?: SessionListValue,
+  ) {
     try {
       return this.store().access(token, id);
     } catch {
       // A delegated child carries no membership of its own. Resolve its
       // authoritative lineage and require the root owner, never a participant.
       this.store().visible(token);
-      const listing = await this.list(token, signal);
+      const listing = catalog ?? (await this.list(token, signal));
       const rows = new Map(
         listing.items.map((item) => [String(item.sessionId), item]),
       );

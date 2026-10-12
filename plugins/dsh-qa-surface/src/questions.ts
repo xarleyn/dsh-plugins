@@ -109,6 +109,7 @@ export class QaQuestionGate {
     private readonly interactive: () => boolean,
     private readonly ownership: QaSessionOwnership,
     private readonly logger: PluginLogger,
+    private readonly questionsAllowed: (agent: Agent) => boolean = () => true,
   ) {}
 
   /** Claim question requests for the chats this deployment answers. */
@@ -261,6 +262,11 @@ export class QaQuestionGate {
       // chain keeps it, and no identifier of that chat is written here.
       this.logger.debug("question.delegated", { reason: "unowned" });
       return next();
+    }
+    if (!this.questionsAllowed(request.agent!)) {
+      throw new Error(
+        "Clarifying questions are disabled for this integration request. Answer from available evidence without asking for input.",
+      );
     }
     if (!this.interactive()) {
       this.logger.info("question.unsupported", { sessionId });

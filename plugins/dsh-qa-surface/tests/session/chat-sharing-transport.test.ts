@@ -68,6 +68,41 @@ const request = (id: string): SessionPromptRequest =>
   }) as unknown as SessionPromptRequest;
 const signal = () => new AbortController().signal;
 describe("authenticated QA chat transport", () => {
+  it("polls cold cache hints without replaying histories and still reads live projections", async () => {
+    const f = fixture();
+    f.native.list.mockResolvedValue({
+      items: [
+        {
+          sessionId: "chat-a",
+          agentAvailable: false,
+          projections: { kind: "cached", asOfSeq: 2, values: {} },
+        },
+      ],
+    } as never);
+    const controller = new AbortController();
+    const coldIterable = f.transport.control(f.reader.token, controller.signal);
+    const stream = coldIterable[Symbol.asyncIterator]();
+    expect((await stream.next()).value).toEqual({
+      type: "baseline",
+      value: { projections: { "chat-a": { asOfSeq: 2, values: {} } } },
+    });
+    expect(f.native.projections).not.toHaveBeenCalled();
+    controller.abort();
+    await stream.return?.();
+    f.native.list.mockResolvedValue({
+      items: [{ sessionId: "chat-a", agentAvailable: true }],
+    } as never);
+    const liveController = new AbortController();
+    const liveIterable = f.transport.control(
+      f.reader.token,
+      liveController.signal,
+    );
+    const live = liveIterable[Symbol.asyncIterator]();
+    await live.next();
+    expect(f.native.projections).toHaveBeenCalledOnce();
+    liveController.abort();
+    await live.return?.();
+  });
   it("uses an account-scoped catalog and rechecks a grant revoked during the read", async () => {
     const f = fixture();
     const listForSessions = vi.fn(async () => {

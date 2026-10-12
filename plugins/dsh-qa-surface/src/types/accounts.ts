@@ -146,8 +146,10 @@ export type QaServiceTokenScope = "ask" | "sessions:read";
 export interface QaServiceTokenCreateInput {
   /** A note the operator's list shows; empty becomes a generic label. */
   readonly label?: string;
-  /** Requested scopes; unknown ones are dropped, empty falls back to `ask`. */
+  /** Requested scopes; unknown ones are dropped, explicit empty grants none. */
   readonly scopes?: readonly string[];
+  /** Whether API turns may ask clarifying questions; omitted preserves existing behavior. */
+  readonly allowClarifications?: boolean;
   /** How long the token lives, in days; bounded server-side. */
   readonly ttlDays?: number;
 }
@@ -161,6 +163,8 @@ export interface QaServiceTokenSummary {
   readonly id: string;
   readonly label: string;
   readonly scopes: readonly QaServiceTokenScope[];
+  /** Older Hosts omit this field and keep clarifications enabled. */
+  readonly allowClarifications?: boolean;
   readonly createdAt: string;
   readonly expiresAt: string;
   readonly lastUsedAt: string | null;

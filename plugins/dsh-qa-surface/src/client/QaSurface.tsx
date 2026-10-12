@@ -1187,6 +1187,8 @@ export function QaSurface(props: QaSurfaceProps) {
             list: () => accounts.serviceTokens(),
             create: (input) => accounts.createServiceToken(input),
             revoke: (tokenId) => accounts.revokeServiceToken(tokenId),
+            setClarifications: (tokenId, allowed) =>
+              accounts.setServiceTokenClarifications(tokenId, allowed),
           },
     [accounts, config.integration.enabled],
   );

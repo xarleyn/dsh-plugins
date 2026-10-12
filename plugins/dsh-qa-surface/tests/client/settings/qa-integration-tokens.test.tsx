@@ -121,6 +121,41 @@ afterEach(() => {
 });
 
 describe("integration tokens page", () => {
+  it("turns off clarifications while retaining the ask scope on a new token", async () => {
+    const { api, created } = tokenApi({});
+    render(<QaIntegrationTokensPage api={api} />);
+    fireEvent.click(
+      await screen.findByLabelText("Разрешать уточняющие вопросы"),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Создать токен" }));
+    await waitFor(() => expect(created).toHaveLength(1));
+    expect(created[0]).toMatchObject({
+      scopes: ["ask"],
+      allowClarifications: false,
+    });
+  });
+
+  it("updates an existing token without issuing a new secret", async () => {
+    let tokens = [summary()];
+    const { api, created } = tokenApi({});
+    api.list = async () => ({ ok: true, value: tokens });
+    api.setClarifications = async (_id, allowed) => {
+      tokens = [summary({ allowClarifications: allowed })];
+      return { ok: true, value: null };
+    };
+    render(<QaIntegrationTokensPage api={api} />);
+    const row = await screen.findByTestId(
+      "qa-settings-tokens-row-clarifications",
+    );
+    fireEvent.click(within(row).getByRole("checkbox"));
+    await waitFor(() =>
+      expect(within(row).getByRole<HTMLInputElement>("checkbox").checked).toBe(
+        false,
+      ),
+    );
+    expect(created).toEqual([]);
+    expect(screen.queryByTestId("qa-settings-tokens-secret")).toBeNull();
+  });
   it("explains what the token is and starts from an empty list", async () => {
     const { api } = tokenApi({});
     render(<QaIntegrationTokensPage api={api} />);
@@ -151,7 +186,12 @@ describe("integration tokens page", () => {
     );
     expect(secret.readOnly).toBe(true);
     expect(created).toEqual([
-      { label: "мост заявок", scopes: ["ask"], ttlDays: 90 },
+      {
+        label: "мост заявок",
+        scopes: ["ask"],
+        ttlDays: 90,
+        allowClarifications: true,
+      },
     ]);
     expect(
       screen.getByTestId("qa-settings-tokens-issued-notice").textContent,
