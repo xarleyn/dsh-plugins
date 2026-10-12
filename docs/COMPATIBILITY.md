@@ -48,6 +48,7 @@ instance.
 | `@yadsh/dsh-domain-experts` | Cordis, schemastery, agent, session, settings, storage-domain, subagent, tools, gateway, client renderer/settings, Typert protocol, React |
 | `@yadsh/dsh-draft-sessions` | Cordis, gateway, api-session-controller, api-workspace-controller, session, client connection/locale/renderer/UI, Typert protocol |
 | `@yadsh/dsh-git-readonly` | tools, schemastery |
+| `@yadsh/dsh-humanizer` | Cordis, schemastery, tools (checked against 0.2.0-rc.2) |
 | `@yadsh/dsh-kv-persist` | Cordis, schemastery, LLM |
 | `@yadsh/dsh-l10n-overrides` | Cordis, client locale |
 | `@yadsh/dsh-jev-compaction` | Cordis, schemastery, LLM, session |

@@ -47,6 +47,7 @@ stays listed as a private workspace package with no kind.
 | `plugins/dsh-domain-experts` | `@yadsh/dsh-domain-experts` | DSH plugin | Configurable domain-scoped expert agents for DeepSeek Harness |
 | `plugins/dsh-draft-sessions` | `@yadsh/dsh-draft-sessions` | DSH plugin | Persistent unsent draft sessions for DeepSeek Harness |
 | `plugins/dsh-git-readonly` | `@yadsh/dsh-git-readonly` | DSH plugin | Read-only git provenance tools for DeepSeek Harness agents |
+| `plugins/dsh-humanizer` | `@yadsh/dsh-humanizer` | DSH plugin | Humanizer text rewriting tools for DeepSeek Harness agents |
 | `plugins/dsh-jev-compaction` | `@yadsh/dsh-jev-compaction` | DSH plugin | Jev/System-One semantic pruning of stale tool results for DeepSeek Harness; keeps conversation text verbatim and forgets stale tool output before summary compaction is needed |
 | `plugins/dsh-kv-persist` | `@yadsh/dsh-kv-persist` | DSH plugin | Persistent KV-cache/session-state manager for DeepSeek Harness (llama.cpp slot snapshots) |
 | `plugins/dsh-l10n-overrides` | `@yadsh/dsh-l10n-overrides` | DSH plugin | English localization overrides for DeepSeek Harness plugins |
