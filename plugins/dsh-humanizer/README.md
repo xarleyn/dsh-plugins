@@ -22,7 +22,7 @@ build a local tarball from that checkout:
 pnpm install --frozen-lockfile
 pnpm --filter @yadsh/dsh-plugin-log build
 pnpm --filter @yadsh/dsh-humanizer build
-pnpm --filter @yadsh/dsh-humanizer pack --pack-destination ./dist
+pnpm --dir plugins/dsh-humanizer pack --pack-destination ./dist
 dsh plugin --profile web add <absolute-path-to-package.tgz>
 ```
 
