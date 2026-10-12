@@ -306,6 +306,17 @@ test("accepts a well-formed version plan", () => {
   );
 });
 
+test("rejects an unquoted scoped package key that Nx cannot parse as YAML", () => {
+  const errors = validateVersionPlan(
+    "plan.md",
+    versionPlan.replace('"@yadsh/dsh-doc-impact"', "@yadsh/dsh-doc-impact"),
+    knownProjects,
+  );
+
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /quote scoped package names.*YAML/u);
+});
+
 test("accepts a version plan written with CRLF line endings", () => {
   assert.deepEqual(
     validateVersionPlan(

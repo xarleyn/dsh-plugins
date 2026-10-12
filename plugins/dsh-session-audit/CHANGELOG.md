@@ -1,3 +1,20 @@
+## 0.2.4 (2026-10-11)
+
+### 🩹 Fixes
+
+- Update bundled math rendering dependencies, keep the client self-contained, and stabilize audit ordering regression coverage. ([#19](https://github.com/xarleyn/dsh-plugins/pull/19))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.2
+- Updated @yadsh/dsh-plugin-kit to 0.5.1
+- Updated @yadsh/dsh-audit-core to 0.1.2
+- Updated @yadsh/dsh-audit-ui to 0.1.3
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.3 (2026-10-08)
 
 ### 🩹 Fixes

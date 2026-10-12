@@ -427,7 +427,7 @@ assert.doesNotMatch(client, /заняты: перед вами/u);
 assert.match(client, /\.dsh-qa-request-queue__notice\{/u);
 assert.doesNotMatch(client, /\.dsh-qa-queue__notice\{/u);
 assert.match(client, /maxActiveRequests/u);
-assert.match(client, /2026-09-12\.1/u);
+assert.match(client, /2026-10-11\.1/u);
 assert.match(client, /dsh-qa-onboarding/u);
 assert.match(client, /require\("react-dom"\)/u);
 assert.match(client, /\.prompt\(/u);

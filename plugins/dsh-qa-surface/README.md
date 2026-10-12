@@ -1284,7 +1284,7 @@ curl -sS https://dsh.example.local/qa/api/ask \
   -H "Authorization: Bearer qsat.<id>.<secret>" \
   -H "Content-Type: application/json" \
   -d '{
-        "message": "Demo request 1\n\nDemo request 2",
+        "message": "Проверь демонстрационный запрос\n\nКомпоненты: Демо-продукт",
         "version": "3.8",
         "session_id": null,
         "context": {

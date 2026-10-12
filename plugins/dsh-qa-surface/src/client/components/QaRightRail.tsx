@@ -1,6 +1,7 @@
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, type ReactNode } from "react";
 import type { QaRailTab } from "../use-session-ui-state.js";
 import { isQaModalOpen } from "./QaModal.js";
+import { QaRightRailResize } from "./QaRightRailResize.js";
 
 /** One rail tab's strip chip: label, live count, and its body is the panel. */
 export interface QaRailTabModel {
@@ -16,10 +17,11 @@ export interface QaRightRailProps {
   readonly activeTab: QaRailTab;
   readonly onTabSelect: (tab: QaRailTab) => void;
   readonly onClose: () => void;
+  readonly stateKey?: string;
 }
 
 /**
- * The chat's right rail: a fixed column whose top edge is the tab strip,
+ * The chat's right rail: a resizable column whose top edge is the tab strip,
  * mirroring the Harness right Sidebar's chrome. Tabs are plain chips with
  * counts; the strip's last control collapses the whole column.
  *
@@ -34,7 +36,9 @@ export function QaRightRail({
   activeTab,
   onTabSelect,
   onClose,
+  stateKey = "dsh-qa",
 }: QaRightRailProps) {
+  const root = useRef<HTMLElement>(null);
   const active = tabs.find((tab) => tab.id === activeTab) ?? tabs[0];
   useEffect(() => {
     const onKey = (event: KeyboardEvent): void => {
@@ -48,10 +52,16 @@ export function QaRightRail({
   if (active === undefined) return null;
   return (
     <aside
+      ref={root}
       className="dsh-qa-panel"
       data-testid="qa-surface-rail"
       aria-label="Сведения о чате"
     >
+      <QaRightRailResize
+        root={root}
+        storage={window.localStorage}
+        storageKey={`${stateKey}:right-panel-width`}
+      />
       <div
         className="dsh-qa-panel__strip"
         data-testid="qa-surface-rail-tabs"

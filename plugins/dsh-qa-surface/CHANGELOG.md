@@ -1,3 +1,35 @@
+## 0.16.0 (2026-10-11)
+
+### 🚀 Features
+
+- Prepare grounded proposals and specifications through a persistent Markdown workflow with accumulated requirements, independent document review, revision-specific human approval and managed DOCX/PDF export. Download complete files independently of preview limits and preserve document comparison metadata and formatting spans. ([997b1c69](https://github.com/xarleyn/dsh-plugins/commit/997b1c69))
+
+  Add a warned Fast composer switch for turn-scoped automatic answer-review waivers, preserving mandatory document verification and revision-specific approval.
+
+  Keep draft filenames and approval actions readable on narrow screens and distinguish unknown artifact sizes from empty files.
+
+- Branch a chat from a completed answer with the native durable event prefix, independent ownership and admission, inherited role policy, and retained source evidence. Inherited document cards keep file access while approval remains bound to the original workflow session. ([40b99e70](https://github.com/xarleyn/dsh-plugins/commit/40b99e70))
+- Share an existing chat with selected accounts in read-only or collaboration mode. Enforce account access on history, live updates, messages and published resources, preserve participant authorship, and keep approvals and chat management with the owner. ([40b99e70](https://github.com/xarleyn/dsh-plugins/commit/40b99e70))
+
+### 🩹 Fixes
+
+- Show the role-filtered preset skill catalog before the first session is created. Reopen the slash palette after editing a dismissed draft, preserve normal keyboard behavior for empty lists, and discard superseded catalog responses. ([93b239f1](https://github.com/xarleyn/dsh-plugins/commit/93b239f1))
+- Scope pending turn notices and callbacks to the current account generation. Open the intended owned chat on desktop clicks and retire notification handlers when access or channel settings change. ([93b239f1](https://github.com/xarleyn/dsh-plugins/commit/93b239f1))
+- Collect source evidence from current tool messages, documentation and document inputs, and structured integration results. Recover completed-turn evidence from journals, aggregate chat sources, resolve equivalent references consistently, and preview evidence documents through the native PDF viewer and document pipeline. ([92b29d42](https://github.com/xarleyn/dsh-plugins/commit/92b29d42))
+- Update bundled math rendering dependencies, keep the client self-contained, and stabilize audit ordering regression coverage. ([#19](https://github.com/xarleyn/dsh-plugins/pull/19))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.7.0
+- Updated @yadsh/dsh-plugin-log to 0.4.2
+- Updated @yadsh/dsh-plugin-kit to 0.5.1
+- Updated @yadsh/dsh-audit-core to 0.1.2
+- Updated @yadsh/dsh-audit-ui to 0.1.3
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.15.7 (2026-10-08)
 
 ### 🩹 Fixes

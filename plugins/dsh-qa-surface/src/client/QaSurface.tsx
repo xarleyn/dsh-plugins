@@ -79,7 +79,7 @@ import {
   downloadWorkspacePath,
 } from "./workspace-download.js";
 import { QaFilesPanel } from "./components/QaFilesPanel.js";
-import { isQaModalOpen } from "./components/QaModal.js";
+import { QaModal, isQaModalOpen } from "./components/QaModal.js";
 import { QaRightRail, type QaRailTabModel } from "./components/QaRightRail.js";
 import { QaSourcesPanel } from "./components/QaSourcesPanel.js";
 import {
@@ -131,6 +131,7 @@ import { QaAdminPreviewBanner, QaRoleSelector } from "./role/RoleSelector.js";
 import { useQaAdminPreview } from "./role/preview.js";
 import { QaChatSharing, qaChatModeLabel } from "./components/QaChatSharing.js";
 import type { QaSharingApi } from "./chat-sharing-api.js";
+import type { QaChatAccess } from "../chat-sharing/types.js";
 
 const noopSubscribe = () => () => undefined;
 
@@ -803,6 +804,35 @@ export function QaSurface(props: QaSurfaceProps) {
   // The audit dialog's target, not its state: opening it is a view choice, and
   // closing it must not disturb the chat underneath.
   const [auditTarget, setAuditTarget] = useState<string | null>(null);
+  const [sharingTarget, setSharingTarget] = useState<QaChatAccess | null>(null);
+  const [sharingError, setSharingError] = useState<string | null>(null);
+  const sharingToken = accounts?.token() ?? "";
+  useEffect(() => {
+    setSharingTarget(null);
+    setSharingError(null);
+  }, [sharingToken]);
+  const openSharing = useCallback(
+    (sessionId: string) => {
+      const token = accounts?.token();
+      const api = props.sharingApi;
+      if (!token || api === undefined) return;
+      setSharingError(null);
+      void api
+        .access(token, sessionId)
+        .then((result) => {
+          if (accounts?.token() !== token) return;
+          if (result.ok && result.value.mode === "owner")
+            setSharingTarget(result.value);
+          else
+            setSharingError("Не удалось открыть управление доступом к чату.");
+        })
+        .catch(() => {
+          if (accounts?.token() === token)
+            setSharingError("Не удалось открыть управление доступом к чату.");
+        });
+    },
+    [accounts, props.sharingApi],
+  );
   const openAudit = useCallback((sessionId: string) => {
     setAuditTarget(sessionId);
   }, []);
@@ -1231,12 +1261,19 @@ export function QaSurface(props: QaSurfaceProps) {
                 (chat) => chat.sessionId === row.id,
               )
             : undefined;
+        const own =
+          accountsSnapshot.stage === "authed" &&
+          accountsSnapshot.ownIds.includes(row.id);
         return shared === undefined
-          ? row
+          ? { ...row, shareable: own }
           : {
               ...row,
+              shareable: own,
               ownerName: shared.ownerName,
-              meta: `${qaChatModeLabel(shared.mode)} · ${row.meta}`,
+              meta:
+                shared.mode === "owner"
+                  ? row.meta
+                  : `${qaChatModeLabel(shared.mode)} · ${row.meta}`,
             };
       }),
     [
@@ -1678,6 +1715,9 @@ export function QaSurface(props: QaSurfaceProps) {
             onSwitch={handleSwitch}
             onNewChat={handleNewChat}
             onDelete={handleDelete}
+            {...(props.sharingApi === undefined
+              ? {}
+              : { onShare: openSharing })}
             audits={chatAudits}
             {...(auditSnapshot.api === null ? {} : { onAudit: openAudit })}
             account={
@@ -1806,14 +1846,24 @@ export function QaSurface(props: QaSurfaceProps) {
             />
           ) : null}
 
-          {state.chatAccess !== undefined && props.sharingApi !== undefined ? (
+          {sharingTarget !== null && props.sharingApi !== undefined ? (
             <QaChatSharing
-              key={state.chatAccess.sessionId}
-              access={state.chatAccess}
+              key={sharingTarget.sessionId}
+              access={sharingTarget}
+              open
+              onClose={() => setSharingTarget(null)}
               token={accounts?.token() ?? ""}
               api={props.sharingApi}
             />
           ) : null}
+          <QaModal
+            open={sharingError !== null}
+            title="Доступ к чату"
+            closeLabel="Закрыть сообщение о доступе"
+            onClose={() => setSharingError(null)}
+          >
+            <p role="alert">{sharingError}</p>
+          </QaModal>
 
           <div
             className="dsh-qa-workspace"
@@ -2091,6 +2141,7 @@ export function QaSurface(props: QaSurfaceProps) {
         ) : null}
         {rail.railOpen ? (
           <QaRightRail
+            stateKey={stateKey}
             tabs={railTabs}
             activeTab={rail.railTab}
             onTabSelect={rail.selectTab}

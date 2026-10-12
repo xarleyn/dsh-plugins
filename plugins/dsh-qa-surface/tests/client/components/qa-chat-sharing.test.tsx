@@ -42,8 +42,15 @@ describe("account-specific chat sharing UI", () => {
         }),
       ),
     };
-    render(<QaChatSharing access={owner} token="synthetic-token" api={api} />);
-    fireEvent.click(screen.getByRole("button", { name: "Поделиться чатом" }));
+    render(
+      <QaChatSharing
+        access={owner}
+        token="synthetic-token"
+        api={api}
+        open
+        onClose={vi.fn()}
+      />,
+    );
     await waitFor(() =>
       expect(screen.getByLabelText("Адрес аккаунта")).not.toHaveProperty(
         "disabled",
@@ -91,7 +98,7 @@ describe("account-specific chat sharing UI", () => {
     );
   });
   it.each(["read", "collaborate"] as const)(
-    "shows %s and owner without access-management controls",
+    "does not mount owner controls for %s access",
     (mode) => {
       render(
         <QaChatSharing
@@ -103,12 +110,14 @@ describe("account-specific chat sharing UI", () => {
             grants: vi.fn(),
             set: vi.fn(),
           }}
+          open
+          onClose={vi.fn()}
         />,
       );
       expect(
         screen.queryByRole("button", { name: "Поделиться чатом" }),
       ).toBeNull();
-      expect(screen.getByText(/Demo Owner/u)).toBeTruthy();
+      expect(screen.queryByRole("dialog")).toBeNull();
     },
   );
 });

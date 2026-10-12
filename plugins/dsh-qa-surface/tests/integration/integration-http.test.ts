@@ -44,7 +44,7 @@ describe("integration ask body parsing", () => {
   it("reads the JSON encoding the bridge sends", () => {
     const parsed = parseAskBody(
       body({
-        message: "Demo request 1",
+        message: "Проверь демонстрационный запрос",
         version: "3.8",
         session_id: null,
         context: {
@@ -57,7 +57,7 @@ describe("integration ask body parsing", () => {
       "application/json; charset=utf-8",
       config,
     );
-    expect(parsed.message).toBe("Demo request 1");
+    expect(parsed.message).toBe("Проверь демонстрационный запрос");
     expect(parsed.version).toBe("3.8");
     expect(parsed.sessionId).toBeNull();
     expect(parsed.context.ticketKey).toBe("PROJ-456");
@@ -138,7 +138,7 @@ describe("integration multipart parsing", () => {
   it("reads the text fields, the JSON-string context and an inline image", () => {
     const parsed = parseAskBody(
       multipart([
-        { name: "message", value: "Demo request 2" },
+        { name: "message", value: "Компоненты: Демо-продукт" },
         { name: "version", value: "" },
         { name: "session_id", value: "" },
         {
@@ -158,7 +158,7 @@ describe("integration multipart parsing", () => {
       `multipart/form-data; boundary=${boundary}`,
       config,
     );
-    expect(parsed.message).toBe("Demo request 2");
+    expect(parsed.message).toBe("Компоненты: Демо-продукт");
     expect(parsed.version).toBeNull();
     expect(parsed.sessionId).toBeNull();
     expect(parsed.context.ticketKey).toBe("PROJ-123");

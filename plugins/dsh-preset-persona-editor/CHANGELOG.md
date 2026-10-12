@@ -1,3 +1,18 @@
+## 0.2.3 (2026-10-11)
+
+### 🩹 Fixes
+
+- Align Host compatibility and configuration surfaces with DSH 0.1.7, publish plugin display metadata, and carry the migrated runtime and package verification contracts onto the main line. ([d37ecb7b](https://github.com/xarleyn/dsh-plugins/commit/d37ecb7b))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.2
+- Updated @yadsh/dsh-plugin-kit to 0.5.1
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.2 (2026-10-08)
 
 ### 🩹 Fixes

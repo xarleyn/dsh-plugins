@@ -1,3 +1,18 @@
+## 0.2.6 (2026-10-11)
+
+### 🩹 Fixes
+
+- Protect the Plugins row configuration contract with rendering checks for its text summary, Host-owned form props, persisted settings and read-only states. ([33f6186b](https://github.com/xarleyn/dsh-plugins/commit/33f6186b))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-log to 0.4.2
+- Updated @yadsh/dsh-plugin-kit to 0.5.1
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.5 (2026-10-08)
 
 ### 🩹 Fixes
