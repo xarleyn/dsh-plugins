@@ -24,7 +24,7 @@ import {
 
 /** Scope names as the person choosing them reads them. */
 const SCOPE_LABELS: Record<QaServiceTokenScope, string> = {
-  ask: "Задавать вопросы",
+  ask: "Отправлять запросы ассистенту",
   "sessions:read": "Читать историю чатов",
 };
 
@@ -273,7 +273,10 @@ export function QaIntegrationTokensPage(props: {
               data-testid="qa-settings-tokens-scopes-hint"
             >
               Права ограничивают токен, но не расширяют доступ вашей учётной
-              записи: токен не может больше того, что можете вы.
+              записи: токен не может больше того, что можете вы. «Отправлять
+              запросы ассистенту» разрешает интеграции получать ответы через
+              API. Это право не управляет уточняющими вопросами ассистента. Без
+              него запросы на ответ вернут HTTP 403.
             </p>
             <QaSettingsField
               testId="qa-settings-tokens-ttl"

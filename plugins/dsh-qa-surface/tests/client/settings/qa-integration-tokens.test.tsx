@@ -128,6 +128,10 @@ describe("integration tokens page", () => {
       "не открывая браузер",
     );
     expect(await screen.findByTestId("qa-settings-tokens-empty")).toBeTruthy();
+    expect(screen.getByLabelText("Отправлять запросы ассистенту")).toBeTruthy();
+    expect(
+      screen.getByTestId("qa-settings-tokens-scopes-hint").textContent,
+    ).toContain("не управляет уточняющими вопросами");
   });
 
   it("shows the secret once and keeps it out of the list", async () => {
