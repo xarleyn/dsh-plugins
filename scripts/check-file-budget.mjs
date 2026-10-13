@@ -111,10 +111,6 @@ export const fileBudgetAllowlist = [
     reason: "legacy before the gate landed; owned by a refactor card",
   },
   {
-    path: "plugins/dsh-qa-surface/src/client/admin/QaAdmin.tsx",
-    reason: "legacy before the gate landed; owned by a refactor card",
-  },
-  {
     path: "plugins/dsh-qa-surface/src/index.ts",
     reason: "legacy before the gate landed; owned by a refactor card",
   },
