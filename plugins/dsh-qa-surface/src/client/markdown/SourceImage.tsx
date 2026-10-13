@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { QaZoomImage } from "../components/QaZoomImage.js";
 import { safeHref } from "./source-chip.js";
 
 /** Illustrations are fetched on approach to the viewport, never in a document-wide burst. */
@@ -65,9 +66,9 @@ export function SourceImage({
           {failed ? " — изображение недоступно" : " — загрузка изображения…"}
         </span>
       ) : (
-        <img
+        <QaZoomImage
           className="dsh-qa-md-image"
-          data-testid="qa-source-image-loaded"
+          testId="qa-source-image-loaded"
           src={url}
           alt={alt}
           loading="lazy"
