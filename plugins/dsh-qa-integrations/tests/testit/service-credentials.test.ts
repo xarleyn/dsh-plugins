@@ -208,7 +208,7 @@ describe("Test IT managed service credentials", () => {
         capability,
       );
       expect(state, capability).toBe(
-        capability === "attachments.read" ? "unavailable" : "available",
+        capability === "attachments.read" ? "partial" : "available",
       );
     }
   });

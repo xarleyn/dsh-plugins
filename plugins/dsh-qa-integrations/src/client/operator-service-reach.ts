@@ -2,6 +2,10 @@
  * How far the deployment's managed service credential reaches each capability
  * switch of the operator card.
  *
+ * Default reach of each integration area. The profile operation editor can
+ * explicitly open supported sensitive reads; the live account summary carries
+ * those decisions. This table describes defaults only.
+ *
  * A switch answers "does the agent see this area of the integration", and the
  * managed credential honours it only for the areas whose answer is not text a
  * build or another person produced. Those readings stay personal while the
@@ -27,8 +31,9 @@ export type ServiceReach = "whole" | "part";
  */
 export const SERVICE_REACH_NOTE: Readonly<Record<ServiceReach, string>> =
   Object.freeze({
-    whole: "с сервисным токеном недоступно: требуется личный аккаунт",
-    part: "с сервисным токеном читается не всё: для содержимого нужен личный аккаунт",
+    whole:
+      "по умолчанию нужен личный аккаунт; чтение можно разрешить в профиле сервисного аккаунта",
+    part: "по умолчанию доступно частично; для остальных чтений нужен личный аккаунт или разрешение в профиле сервисного аккаунта",
   });
 
 /** One provider's switches, keyed by the config flag the card addresses by. */

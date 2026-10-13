@@ -25,6 +25,8 @@ import {
 import GitlabProvider from "./providers/gitlab/index.js";
 import JiraProvider from "./providers/jira/index.js";
 import { IntegrationProviderRegistry } from "./providers/registry.js";
+import { SERVICE_POLICY_OPERATIONS } from "./service-credentials/catalog.js";
+import type { ServicePolicyOperation } from "./types.js";
 import TeamcityProvider from "./providers/teamcity/index.js";
 import { networkAllowsNothing } from "./providers/teamcity/config.js";
 import { TEAMCITY_INSTANCE_ID } from "./providers/teamcity/catalog.js";
@@ -480,6 +482,14 @@ export class QaIntegrations extends TypertRemoteService {
       enabled: this.enabled,
       providers: this.providerSummaries.map((provider) => provider.id),
     };
+  }
+
+  /** Non-secret operation metadata for the operator's profile editor. */
+  @Remote("serviceOperationCatalog")
+  serviceOperationCatalog(): Readonly<
+    Record<string, readonly ServicePolicyOperation[]>
+  > {
+    return SERVICE_POLICY_OPERATIONS;
   }
 
   @Remote("providers")

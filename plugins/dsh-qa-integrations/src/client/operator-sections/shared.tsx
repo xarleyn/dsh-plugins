@@ -8,9 +8,13 @@
 
 import type { ReactElement, ReactNode } from "react";
 import type { ControlProps } from "../operator-controls.js";
+import type { ServicePolicyOperation } from "../../types.js";
 
 /** The plumbing one section uses to reach the settings namespace. */
 export interface OperatorForm {
+  readonly serviceOperations?: Readonly<
+    Record<string, readonly ServicePolicyOperation[]>
+  >;
   /** The raw user layer of the namespace; absent means the schema default. */
   readonly config: Record<string, unknown>;
   readonly control: ControlProps;

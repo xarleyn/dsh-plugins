@@ -67,6 +67,46 @@ function serviceContext(boundary: ServiceResourceBoundary = BOUNDARY) {
 }
 
 describe("TeamCity managed service credentials", () => {
+  it("reads an explicitly allowed log only after proving its project boundary", async () => {
+    const calls: string[] = [];
+    const fetcher: typeof fetch = async (input) => {
+      const url = new URL(String(input));
+      calls.push(url.pathname);
+      return url.pathname.includes("downloadBuildLog")
+        ? new Response("Build completed\n", {
+            headers: { "content-type": "text/plain" },
+          })
+        : Response.json({
+            buildType: { id: "PAYMENTS_Build", projectId: "PAYMENTS" },
+          });
+    };
+    const { provider, plaintext } = credential(fetcher);
+    await expect(
+      provider.execute(
+        {
+          credential: plaintext,
+          ...serviceContext(),
+          serviceOperationPolicy: { "builds.log": "allow" },
+        },
+        "builds.log",
+        { buildId: 7 },
+      ),
+    ).resolves.toMatchObject({ text: "Build completed\n" });
+    expect(calls).toEqual(["/app/rest/builds/id:7", "/downloadBuildLog.html"]);
+    calls.length = 0;
+    await expect(
+      provider.execute(
+        {
+          credential: plaintext,
+          ...serviceContext({ projects: ["OTHER"] }),
+          serviceOperationPolicy: { "builds.log": "allow" },
+        },
+        "builds.log",
+        { buildId: 7 },
+      ),
+    ).rejects.toMatchObject({ code: "ServiceResourceNotAllowed" });
+    expect(calls).toEqual(["/app/rest/builds/id:7"]);
+  });
   it("classifies the build log and the artifact body as sensitive", () => {
     expect(TEAMCITY_OPERATIONS["builds.log"]?.security).toMatchObject({
       effect: "read",

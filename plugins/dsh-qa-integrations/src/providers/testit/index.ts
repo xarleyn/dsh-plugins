@@ -218,8 +218,12 @@ export class TestitProvider implements IntegrationProvider {
 
   capabilityServiceState(
     capability: IntegrationCapability,
+    policy?: Readonly<Record<string, "allow" | "deny">>,
   ): CapabilityServiceState | undefined {
-    return operationCapabilityServiceState(TESTIT_OPERATIONS, capability);
+    return operationCapabilityServiceState(TESTIT_OPERATIONS, capability, {
+      provider: this.id,
+      policy,
+    });
   }
 
   /**
@@ -320,6 +324,12 @@ export class TestitProvider implements IntegrationProvider {
       assertServiceOperationAllowed(
         definition.security,
         "This Test IT operation is not available through the service credential",
+        {
+          provider: this.id,
+          operation,
+          capability: definition.capability,
+          policy: context.serviceOperationPolicy,
+        },
       );
     }
     const boundary = serviceBoundaryOf(context);

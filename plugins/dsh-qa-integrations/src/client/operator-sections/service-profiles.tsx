@@ -8,6 +8,8 @@
 
 import { useEffect, useRef, useState, type ReactElement } from "react";
 import { RecordField } from "../operator-controls.js";
+import { ServiceOperationPolicyField } from "./service-operation-policy.js";
+import type { ServicePolicyOperation } from "../../types.js";
 import { draftNote, profileDraftMissing } from "../operator-drafts.js";
 import {
   Group,
@@ -82,7 +84,7 @@ function profileWire(draft: ProfileDraft): Record<string, unknown> {
   }
   if (draft.policy.length > 0) {
     wire.policy = Object.fromEntries(
-      draft.policy.map(([operation]) => [operation, "deny"]),
+      draft.policy.map(([operation, decision]) => [operation, decision]),
     );
   }
   return wire;
@@ -92,6 +94,7 @@ function profileWire(draft: ProfileDraft): Record<string, unknown> {
  * The managed-credential profile list editor.
  */
 function ServiceProfilesField(props: {
+  operations: Readonly<Record<string, readonly ServicePolicyOperation[]>>;
   profiles: readonly ProfileDraft[];
   disabled: boolean;
   write: (path: readonly string[], value: unknown) => void;
@@ -359,29 +362,13 @@ function ServiceProfilesField(props: {
               }}
               overridden={props.overridden}
             />
-            <RecordField
-              label="Запрещённые операции"
-              hint="каждая запись всегда хранит значение deny"
-              path={[...PROFILE_PATH]}
+            <ServiceOperationPolicyField
+              provider={row.provider}
+              operations={props.operations[row.provider] ?? []}
               testId={`qa-integrations-service-access-profile-${index}-policy`}
               entries={row.policy}
-              keyPlaceholder="mergeRequest.create"
-              valuePlaceholder=""
-              fixedValue="deny"
               disabled={props.disabled}
-              write={(_path, value) => {
-                commitRecord(
-                  index,
-                  "policy",
-                  Object.keys(value as Record<string, string>).map(
-                    (operation) => [operation, "deny"],
-                  ),
-                );
-              }}
-              unset={() => {
-                commitRecord(index, "policy", []);
-              }}
-              overridden={props.overridden}
+              onChange={(entries) => commitRecord(index, "policy", entries)}
             />
             {index >= storedCount.current ||
             profileDraftMissing(row).length > 0 ? (
@@ -453,6 +440,7 @@ export function ServiceAccessSection({
         hint="read-only аккаунт, которым развёртывание подключается вместо гостя"
       >
         <ServiceProfilesField
+          operations={form.serviceOperations ?? {}}
           profiles={profileDrafts(msc.profiles)}
           disabled={form.control.disabled}
           write={form.control.write}

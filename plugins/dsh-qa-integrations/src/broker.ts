@@ -141,7 +141,11 @@ export class IntegrationBroker {
     const granted = this.grantedCapabilities(integration, provider);
     const policy = granted.map((capability) => ({
       capability,
-      mode: this.repository.policy(integration, capability),
+      mode: this.repository.policy(
+        integration,
+        capability,
+        integration.credentialSource === "service" ? "allow" : "deny",
+      ),
     }));
     const secret = this.repository.secretFor(principal, providerId);
     return {
@@ -176,6 +180,15 @@ export class IntegrationBroker {
     integration: StoredIntegration,
     provider: IntegrationProvider,
   ): readonly IntegrationCapability[] {
+    if (integration.credentialSource === "service") {
+      const profile = this.serviceCredentials?.find(
+        provider.id,
+        integration.externalTenantId ?? "",
+      );
+      return profile?.enabled === true
+        ? this.serviceCapabilities(provider.id, profile)
+        : [];
+    }
     return integration.capabilities.filter((capability) =>
       provider.capabilities.includes(capability),
     );
@@ -231,7 +244,7 @@ export class IntegrationBroker {
         tenantId: profile.portal,
         externalUserId: `service:${profile.id}`,
         displayName: profile.label,
-        capabilities: this.serviceCapabilities(providerId),
+        capabilities: this.serviceCapabilities(providerId, profile),
         credentialSource: "service",
         serviceProfileId: profile.id,
       });
@@ -513,7 +526,7 @@ export class IntegrationBroker {
         provider: providerId,
         source: "service",
         serviceProfileId: resolved.profile.id,
-        capabilities: this.serviceCapabilities(providerId),
+        capabilities: this.serviceCapabilities(providerId, resolved.profile),
         tenantId: resolved.profile.portal,
         externalUserId: `service:${resolved.profile.id}`,
         displayName: resolved.profile.label,
@@ -738,7 +751,11 @@ export class IntegrationBroker {
     // has since withdrawn stays served until the connection is re-established
     // unless the live provider set is consulted as well. Denied here — before
     // the secret is decrypted and before anything reaches upstream.
-    const mode = this.repository.policy(integration, capability);
+    const mode = this.repository.policy(
+      integration,
+      capability,
+      integration.credentialSource === "service" ? "allow" : "deny",
+    );
     if (
       mode !== "allow" ||
       !this.grantedCapabilities(integration, provider).includes(capability)
@@ -781,6 +798,7 @@ export class IntegrationBroker {
           externalUserId: integration.externalUserId ?? undefined,
           credentialSource: integration.credentialSource,
           resourceBoundary: boundary,
+          serviceOperationPolicy: resolved?.profile.policy,
         },
         request.operation,
         request.input,
@@ -1069,6 +1087,7 @@ export class IntegrationBroker {
     }
     const decision = evaluateServiceOperation({
       metadata: query.metadata,
+      operation: query.operation,
       capability: query.capability,
       profile: resolved.profile,
       boundaryKind: query.boundaryKind,
@@ -1134,7 +1153,7 @@ export class IntegrationBroker {
       tenantId: profile.portal,
       externalUserId: `service:${profile.id}`,
       displayName: profile.label,
-      capabilities: this.serviceCapabilities(providerId),
+      capabilities: this.serviceCapabilities(providerId, profile),
       credentialSource: "service",
       serviceProfileId: profile.id,
     });
@@ -1221,12 +1240,15 @@ export class IntegrationBroker {
   /** Capabilities the managed credential can reach through this provider. */
   private serviceCapabilities(
     providerId: IntegrationProviderId,
+    profile?: ServiceCredentialProfile,
   ): readonly IntegrationCapability[] {
     const provider = this.providers.get(providerId);
     if (provider.capabilityServiceState === undefined) return [];
-    return provider.capabilities.filter(
-      (capability) =>
-        provider.capabilityServiceState?.(capability) === "available",
+    return provider.capabilities.filter((capability) =>
+      ["available", "partial"].includes(
+        provider.capabilityServiceState?.(capability, profile?.policy) ??
+          "unavailable",
+      ),
     );
   }
 
@@ -1241,11 +1263,6 @@ export class IntegrationBroker {
   ): IntegrationServiceSummary | null {
     const provider = this.providers.get(providerId);
     if (provider.capabilityServiceState === undefined) return null;
-    const capabilities: Record<string, CapabilityServiceState> = {};
-    for (const capability of provider.capabilities) {
-      capabilities[capability] =
-        provider.capabilityServiceState(capability) ?? "unavailable";
-    }
     const profile =
       integration === undefined
         ? undefined
@@ -1253,6 +1270,12 @@ export class IntegrationBroker {
             providerId,
             integration.externalTenantId ?? "",
           );
+    const capabilities: Record<string, CapabilityServiceState> = {};
+    for (const capability of provider.capabilities) {
+      capabilities[capability] =
+        provider.capabilityServiceState(capability, profile?.policy) ??
+        "unavailable";
+    }
     return {
       available: profile?.enabled === true,
       label: profile?.label ?? null,

@@ -1,3 +1,7 @@
+import {
+  serviceOperationAccess,
+  type ServiceOperationSelection,
+} from "./operation-policy.js";
 import type { OperationSecurityMetadata } from "./types.js";
 import type { CapabilityServiceState } from "../types.js";
 
@@ -19,22 +23,24 @@ export function operationCapabilityServiceState(
     >
   >,
   capability: string,
+  selection: ServiceOperationSelection = {},
 ): CapabilityServiceState {
-  let seen = false;
+  let allowed = 0;
+  let refused = 0;
   let sensitive = false;
-  for (const definition of Object.values(operations)) {
+  for (const [operation, definition] of Object.entries(operations)) {
     if (definition.capability !== capability) continue;
-    seen = true;
-    const { effect, sensitivity, serviceCredential } = definition.security;
-    if (effect !== "read" || serviceCredential !== "allow") {
-      // A write, an admin action or an explicitly denied operation makes the
-      // whole capability unreachable through a shared credential; a sensitive
-      // read only makes it personal-only, because sensitive reads stay
-      // available to the user's own account.
-      if (effect !== "read" || sensitivity === "normal") return "unavailable";
-      sensitive = true;
+    const access = serviceOperationAccess(definition.security, {
+      ...selection,
+      operation,
+      capability,
+    });
+    if (access === "allow") allowed += 1;
+    else {
+      refused += 1;
+      sensitive ||= access === "sensitive" || access === "secret";
     }
   }
-  if (!seen) return "unavailable";
-  return sensitive ? "sensitive" : "available";
+  if (allowed > 0) return refused > 0 ? "partial" : "available";
+  return sensitive ? "sensitive" : "unavailable";
 }
