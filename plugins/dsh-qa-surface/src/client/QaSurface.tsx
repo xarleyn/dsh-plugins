@@ -749,11 +749,23 @@ export function QaSurface(props: QaSurfaceProps) {
     // Body ownership (the shell-mask attribute, scroll locking) lives in the
     // guard above this surface: it must survive a crash that unmounts this
     // subtree.
+    const focusedAtRequest = document.activeElement;
     const frame = requestAnimationFrame(() => {
+      // A dialog or a newer focus choice owns the keyboard by this frame.
+      if (dialogOwnsKeyboard()) return;
+      const focused = document.activeElement;
+      if (
+        focused !== focusedAtRequest &&
+        focused instanceof HTMLElement &&
+        focused.isConnected &&
+        focused !== document.body &&
+        focused !== document.documentElement
+      )
+        return;
       document.querySelector<HTMLTextAreaElement>("#dsh-qa-prompt")?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [route.active]);
+  }, [route.active, dialogOwnsKeyboard]);
 
   // Stable identities for the memoized render path: message rows, the sidebar
   // and the composer compare callbacks by reference, so per-frame closures

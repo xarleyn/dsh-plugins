@@ -17,6 +17,7 @@ import {
   type QaSurfaceProps,
 } from "../../../src/client/QaSurface.js";
 import { QA_WELCOME_NOTICE_VERSION } from "../../../src/client/components/QaWelcomeNotice.js";
+import { QaModal } from "../../../src/client/components/QaModal.js";
 import { QaSurfacePanelRegistry } from "../../../src/client/panels/registry.js";
 import { qaStorageNamespace } from "../../../src/shared/session-key.js";
 import type { QaAccessApi } from "../../../src/client/types.js";
@@ -41,6 +42,7 @@ afterEach(() => {
   view = undefined;
   window.localStorage.clear();
   window.history.replaceState(null, "", "/");
+  vi.unstubAllGlobals();
 });
 
 /**
@@ -113,6 +115,66 @@ const historyRows = (): number =>
   document.querySelectorAll("[data-testid='qa-surface-sidebar-item']").length;
 
 describe("a visit to the QA surface", () => {
+  it("keeps initial composer autofocus when the queued frame has no new focus owner", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    mount(harness());
+    const composer = await screen.findByRole("combobox");
+    composer.blur();
+    expect(document.activeElement).toBe(document.body);
+    act(() => {
+      for (const callback of frames.splice(0)) callback(performance.now());
+    });
+    expect(document.activeElement).toBe(composer);
+  });
+
+  it("keeps an input selected before its initial composer focus frame runs", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    mount(harness());
+    await screen.findByRole("combobox");
+    const external = render(<input aria-label="External demo field" />);
+    const field = screen.getByLabelText("External demo field");
+    field.focus();
+    act(() => {
+      for (const callback of frames.splice(0)) callback(performance.now());
+    });
+    expect(document.activeElement).toBe(field);
+    external.unmount();
+  });
+
+  it("keeps an opened dialog's keyboard before the initial composer frame runs", async () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) =>
+      frames.push(callback),
+    );
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    mount(harness());
+    await screen.findByRole("combobox");
+    const modal = render(
+      <QaModal
+        open
+        title="Demo dialog"
+        closeLabel="Close demo dialog"
+        onClose={() => undefined}
+      >
+        <input aria-label="Dialog field" />
+      </QaModal>,
+    );
+    const field = screen.getByLabelText("Dialog field");
+    field.focus();
+    act(() => {
+      for (const callback of frames.splice(0)) callback(performance.now());
+    });
+    expect(document.activeElement).toBe(field);
+    modal.unmount();
+  });
   it("leaves no chat in the history over three visits", async () => {
     const world = harness();
     for (let visit = 0; visit < 3; visit += 1) {

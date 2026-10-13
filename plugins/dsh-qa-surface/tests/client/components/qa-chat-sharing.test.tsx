@@ -19,6 +19,43 @@ const owner: QaChatAccess = {
 };
 afterEach(cleanup);
 describe("account-specific chat sharing UI", () => {
+  it("keeps the address focused through refreshed parent callbacks and continued editing", async () => {
+    const api = {
+      access: vi.fn(),
+      visible: vi.fn(),
+      grants: vi.fn(async () => ({ ok: true as const, value: [] })),
+      set: vi.fn(),
+    };
+    const mounted = render(
+      <QaChatSharing
+        access={owner}
+        token="synthetic-token"
+        api={api}
+        open
+        onClose={() => undefined}
+      />,
+    );
+    const address = screen.getByLabelText("Адрес аккаунта") as HTMLInputElement;
+    await waitFor(() => expect(address.disabled).toBe(false));
+    address.focus();
+    fireEvent.change(address, { target: { value: "reader@" } });
+    mounted.rerender(
+      <QaChatSharing
+        access={{ ...owner }}
+        token="synthetic-token"
+        api={api}
+        open
+        onClose={() => undefined}
+      />,
+    );
+    expect(document.activeElement).toBe(address);
+    fireEvent.change(document.activeElement!, {
+      target: { value: "reader@example.com" },
+    });
+    expect(document.activeElement).toBe(address);
+    expect(address.value).toBe("reader@example.com");
+    expect(api.grants).toHaveBeenCalledOnce();
+  });
   it("grants, changes and revokes one named account and preserves the credentials explanation", async () => {
     const grant = {
       userId: "reader",

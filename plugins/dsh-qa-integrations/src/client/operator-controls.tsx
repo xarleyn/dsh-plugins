@@ -11,6 +11,7 @@
 
 import {
   useEffect,
+  useMemo,
   useRef,
   useState,
   type ReactElement,
@@ -39,6 +40,83 @@ export interface ControlProps {
 export interface ValueProps<T> {
   readonly path: readonly string[];
   readonly value: T;
+}
+
+/** A row's React identity is local and survives edits to its configured id. */
+export function useDraftRowIdentity<T extends { readonly id: string }>() {
+  const keys = useRef(new WeakMap<T, { key: number; stored: T }>());
+  const nextKey = useRef(0);
+  return useMemo(() => {
+    const record = (row: T) => {
+      let value = keys.current.get(row);
+      if (value === undefined) {
+        value = { key: nextKey.current++, stored: row };
+        keys.current.set(row, value);
+      }
+      return value;
+    };
+    const inherit = (row: T, previous: T | undefined): T => {
+      if (previous !== undefined) keys.current.set(row, record(previous));
+      return row;
+    };
+    return {
+      key: (row: T) => record(row).key,
+      patch: (row: T, patch: Partial<T>): T =>
+        inherit({ ...row, ...patch }, row),
+      reconcile: (
+        stored: readonly T[],
+        current: readonly T[],
+        pendingStart: number,
+      ): readonly T[] => {
+        const available = new Set(current);
+        const adopted = new Set<number>();
+        const rows = stored.map((incoming) => {
+          // Persisted identity wins over a temporarily duplicated id draft.
+          // A renamed row's acknowledgment can then match its current draft id.
+          const previous =
+            current.find(
+              (row) =>
+                available.has(row) && record(row).stored.id === incoming.id,
+            ) ??
+            current.find((row) => available.has(row) && row.id === incoming.id);
+          if (previous === undefined) return incoming;
+          available.delete(previous);
+          const identity = record(previous);
+          adopted.add(identity.key);
+          const canonical = identity.stored;
+          const row = Object.assign(
+            {},
+            incoming,
+            Object.fromEntries(
+              Object.keys(incoming).map((field) => {
+                const name = field as keyof T;
+                const baseline = JSON.stringify(canonical[name]);
+                const dirty = JSON.stringify(previous[name]) !== baseline;
+                return [
+                  field,
+                  dirty && JSON.stringify(incoming[name]) === baseline
+                    ? previous[name]
+                    : incoming[name],
+                ];
+              }),
+            ),
+          );
+          // A React updater can be replayed with the same previous rows.
+          // Keep their baseline intact and attach the new one only to its row.
+          keys.current.set(row, { key: identity.key, stored: incoming });
+          return row;
+        });
+        // Host acceptance may skip an incomplete draft before a complete one.
+        // Preserve only pending identities that the actual echo did not adopt.
+        return [
+          ...rows,
+          ...current
+            .slice(pendingStart)
+            .filter((row) => !adopted.has(record(row).key)),
+        ];
+      },
+    };
+  }, []);
 }
 
 function OverriddenMark(props: { shown: boolean; testId: string }) {
@@ -490,24 +568,25 @@ export function InstanceListField(props: {
   overridden: OverrideCheck;
 }): ReactElement {
   const deployments = props.deployments;
+  const identity = useDraftRowIdentity<InstanceDraft>();
   const [drafts, setDrafts] = useState<readonly InstanceDraft[]>(() =>
     props.instances.map((row) => ({ ...row })),
   );
   const storedCount = useRef(props.instances.length);
+  const storedRows = useRef(props.instances);
   useEffect(() => {
     // Rows the Host stores, plus the rows this card added and has not committed
     // yet: an unfinished row is the operator's draft, and a refuel from the
     // store must not take it off the screen.
-    setDrafts((current) => {
-      const accepted = Math.max(
-        0,
-        props.instances.length - storedCount.current,
-      );
-      const pending = current.slice(storedCount.current + accepted);
-      storedCount.current = props.instances.length;
-      return [...props.instances.map((row) => ({ ...row })), ...pending];
-    });
-  }, [props.instances]);
+    if (JSON.stringify(storedRows.current) === JSON.stringify(props.instances))
+      return;
+    storedRows.current = props.instances;
+    const pendingStart = storedCount.current;
+    storedCount.current = props.instances.length;
+    setDrafts((current) =>
+      identity.reconcile(props.instances, current, pendingStart),
+    );
+  }, [identity, props.instances]);
   /**
    * Writes the rows the Host can take — every stored row, plus the drafts that
    * are complete. An unfinished draft stays local: committing it is what used
@@ -534,7 +613,9 @@ export function InstanceListField(props: {
   };
   const edit = (index: number, patch: Partial<InstanceDraft>) => {
     commit(
-      drafts.map((row, at) => (at === index ? { ...row, ...patch } : row)),
+      drafts.map((row, at) =>
+        at === index ? identity.patch(row, patch) : row,
+      ),
     );
   };
   const testId = props.testId ?? testIdOf(props.path);
@@ -555,7 +636,7 @@ export function InstanceListField(props: {
             index < storedCount.current ? props.instances[index] : undefined;
           return (
             <li
-              key={`${index}:${row.id}`}
+              key={identity.key(row)}
               className="qai-op__instance"
               data-dsh-row-key={row.id}
               data-testid={`${testId}-row`}
@@ -573,7 +654,9 @@ export function InstanceListField(props: {
                     setDrafts(
                       drafts.map((draft, at) =>
                         at === index
-                          ? { ...draft, id: event.currentTarget.value }
+                          ? identity.patch(draft, {
+                              id: event.currentTarget.value,
+                            })
                           : draft,
                       ),
                     );
@@ -599,7 +682,9 @@ export function InstanceListField(props: {
                     setDrafts(
                       drafts.map((draft, at) =>
                         at === index
-                          ? { ...draft, label: event.currentTarget.value }
+                          ? identity.patch(draft, {
+                              label: event.currentTarget.value,
+                            })
                           : draft,
                       ),
                     );
@@ -625,7 +710,9 @@ export function InstanceListField(props: {
                     setDrafts(
                       drafts.map((draft, at) =>
                         at === index
-                          ? { ...draft, baseUrl: event.currentTarget.value }
+                          ? identity.patch(draft, {
+                              baseUrl: event.currentTarget.value,
+                            })
                           : draft,
                       ),
                     );
