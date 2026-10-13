@@ -117,4 +117,38 @@ describe("command rows in the transcript", () => {
     );
     expect(rows.map((row) => row.role)).toEqual(["user", "system"]);
   });
+
+  it("keeps a waived review out of the rows above the question", () => {
+    // Fast sends the turn as `/no-review <question>`, and the command event is
+    // logged before the message it queues: the row would sit over the question
+    // it belongs to, and the answer row already carries the review status.
+    const rows = nodes(
+      commandNode({
+        name: "no-review",
+        args: "Что на фото?",
+        outcome: null,
+      }),
+      {
+        kind: "user",
+        seq: 8,
+        time: 1,
+        content: [{ type: "text", text: "Что на фото?" }],
+        source: {},
+      } as ConversationNode,
+    );
+    expect(rows.map((row) => row.role)).toEqual(["user"]);
+  });
+
+  it("shows a refused waiver, the one outcome with no other voice", () => {
+    const rows = nodes(
+      commandNode({
+        name: "no-review",
+        outcome: { kind: "error", text: "Команда недоступна" },
+      }),
+    );
+    expect(commandOf(rows[0])).toMatchObject({
+      name: "no-review",
+      state: "error",
+    });
+  });
 });
