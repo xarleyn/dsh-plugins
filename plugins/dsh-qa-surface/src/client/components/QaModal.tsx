@@ -17,6 +17,26 @@ export function isQaModalOpen(): boolean {
   return openDialogs.length > 0;
 }
 
+/**
+ * Join the stack from a shell that draws its own chrome rather than this
+ * panel — the image lightbox is such a shell. One Escape press then closes the
+ * innermost layer instead of every dialog under it.
+ */
+export function joinQaDialogStack(): {
+  readonly innermost: () => boolean;
+  readonly leave: () => void;
+} {
+  const token = Symbol("dsh-qa-modal");
+  openDialogs.push(token);
+  return {
+    innermost: () => openDialogs.at(-1) === token,
+    leave: () => {
+      const index = openDialogs.indexOf(token);
+      if (index >= 0) openDialogs.splice(index, 1);
+    },
+  };
+}
+
 export interface QaModalProps {
   readonly open: boolean;
   /** Dialog title; also the dialog's accessible name. */

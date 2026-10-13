@@ -11,6 +11,7 @@ import type {
 import { QaAnswerReviewStatus } from "./QaAnswerReviewStatus.js";
 import { sameWorkItems } from "./QaWorkGroup.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
+import { QaZoomImage } from "./QaZoomImage.js";
 import {
   buildSourceRefs,
   sourceRefsSignature,
@@ -76,14 +77,12 @@ function QaAttachedImage({
     );
   }
   return (
-    <a href={url} target="_blank" rel="noreferrer">
-      <img
-        className="dsh-qa-message__image"
-        data-testid="qa-message-image"
-        src={url}
-        alt="Прикреплённое изображение"
-      />
-    </a>
+    <QaZoomImage
+      className="dsh-qa-message__image"
+      testId="qa-message-image"
+      src={url}
+      alt="Прикреплённое изображение"
+    />
   );
 }
 import type { QaFeedbackReason } from "../../types.js";

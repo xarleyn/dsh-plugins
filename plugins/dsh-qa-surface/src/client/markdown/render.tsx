@@ -8,6 +8,7 @@ import type {
 import { parseMarkdown } from "./blocks.js";
 import { parseInline, type MarkdownInline } from "./inline.js";
 import { CodeBlock, LinkGlyph } from "./CodeBlock.js";
+import { QaZoomImage } from "../components/QaZoomImage.js";
 import { renderTexToReact } from "./math.js";
 import {
   codeChip,
@@ -19,6 +20,8 @@ import {
 /** One render pass: the owner's source vocabulary plus the document's targets. */
 interface RenderContext extends MarkdownSourceContext {
   readonly definitions: ReadonlyMap<string, string>;
+  /** Inside a link, where an image cannot carry its own activation. */
+  readonly inLink?: boolean;
   /** Footnote bodies by upper-cased identifier. */
   readonly footnotes: ReadonlyMap<string, readonly MarkdownBlock[]>;
   /** Footnote identifiers in first-reference order, appended while rendering. */
@@ -358,7 +361,7 @@ function inlineNodes(
             rel="noopener noreferrer"
           >
             <LinkGlyph />
-            {children(node.children, nodeKey, context)}
+            {children(node.children, nodeKey, { ...context, inLink: true })}
           </a>
         );
       }
@@ -382,15 +385,16 @@ function inlineNodes(
           );
         }
         return (
-          <img
+          <QaZoomImage
             key={nodeKey}
             className="dsh-qa-md-image"
-            data-testid="qa-md-image"
+            testId="qa-md-image"
             src={src}
             alt={node.alt}
             loading="lazy"
             decoding="async"
             referrerPolicy="no-referrer"
+            zoomable={context.inLink !== true}
           />
         );
       }
