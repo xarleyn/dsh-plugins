@@ -327,9 +327,13 @@ export class QaChatTransport {
     );
   }
   async cancel(token: string, id: string): Promise<SessionCancelValue> {
-    return this.ownerOperation(token, id, () =>
-      this.ctx.sessionController.cancel({ sessionId: SessionId(id) }),
-    );
+    return this.ownerOperation(token, id, async () => {
+      const value = await this.ctx.sessionController.cancel({
+        sessionId: SessionId(id),
+      });
+      stopDelegatedWork(this.ctx, id);
+      return value;
+    });
   }
   async updateQueue(
     token: string,
@@ -435,5 +439,36 @@ export class QaChatTransport {
         } as unknown as SessionEventEntry["event"]["data"],
       },
     };
+  }
+}
+
+/**
+ * Stop the chat's delegated work with it. Cancelling the parent agent aborts
+ * one turn; a reviewer or a delegated run is its own resident agent and keeps
+ * working through the press, so the reader watches a Stop button that appears
+ * to do nothing. The Host walks this same lineage when a session is archived;
+ * here the reader asked for it, behind the owner check the caller already made.
+ */
+function stopDelegatedWork(ctx: Context, root: string): void {
+  const stopped = new Set<string>([root]);
+  const children = ctx
+    .agents.list()
+    .filter(
+      (agent) =>
+        agent.session.header.origin === "subagent" &&
+        agent.session.header.parentSession !== undefined,
+    );
+  let widened = true;
+  while (widened) {
+    widened = false;
+    for (const agent of children) {
+      const header = agent.session.header;
+      if (stopped.has(String(header.id))) continue;
+      if (!stopped.has(String(header.parentSession))) continue;
+      stopped.add(String(header.id));
+      if (agent.status === "running")
+        agent.cancel({ kind: "user" }, { keepInbox: true });
+      widened = true;
+    }
   }
 }

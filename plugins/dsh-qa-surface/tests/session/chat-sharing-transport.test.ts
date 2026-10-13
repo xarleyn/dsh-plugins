@@ -52,12 +52,41 @@ function fixture() {
     projections: vi.fn(async () => ({ asOfSeq: 1, values: {} })),
   };
   const admit = vi.fn(async () => undefined);
+  const agents = delegated();
   const transport = new QaChatTransport(
-    { sessionController: native } as unknown as Context,
+    {
+      sessionController: native,
+      agents: {
+        list: () => agents,
+        get: (id: string) =>
+          agents.find((agent) => agent.session.header.id === id),
+      },
+    } as unknown as Context,
     () => f.store,
     admit,
   );
-  return { ...f, native, admit, transport };
+  return { ...f, native, admit, agents, transport };
+}
+/** A chat with a running reviewer, an idle reviewer, a grandchild and a neighbour. */
+function delegated() {
+  const rows = [
+    { id: "review-running", parent: "chat-a", status: "running" },
+    { id: "review-idle", parent: "chat-a", status: "idle" },
+    { id: "grandchild", parent: "review-idle", status: "running" },
+    { id: "other-chat-child", parent: "chat-b", status: "running" },
+    { id: "plain-session", parent: undefined, status: "running" },
+  ];
+  return rows.map((row) => ({
+    session: {
+      header: {
+        id: row.id,
+        origin: row.parent === undefined ? undefined : "subagent",
+        parentSession: row.parent,
+      },
+    },
+    status: row.status,
+    cancel: vi.fn(),
+  }));
 }
 const request = (id: string): SessionPromptRequest =>
   ({
@@ -248,6 +277,28 @@ describe("authenticated QA chat transport", () => {
     }
     expect(f.native.rename).not.toHaveBeenCalled();
     expect(f.native.cancel).not.toHaveBeenCalled();
+  });
+  it("stops the chat's delegated work with the chat", async () => {
+    // Cancelling the parent aborts one turn. A reviewer or a delegated run is
+    // its own resident agent, so a Stop press that only reached the parent
+    // left the reader watching work that would not stop.
+    const f = fixture();
+    await f.transport.cancel(f.owner.token, "chat-a");
+    const [reviewRunning, reviewIdle, grandchild, neighbour, plain] = f.agents;
+    expect(reviewRunning?.cancel).toHaveBeenCalledWith(
+      { kind: "user" },
+      { keepInbox: true },
+    );
+    expect(grandchild?.cancel).toHaveBeenCalled();
+    expect(reviewIdle?.cancel).not.toHaveBeenCalled();
+    expect(neighbour?.cancel).not.toHaveBeenCalled();
+    expect(plain?.cancel).not.toHaveBeenCalled();
+  });
+  it("leaves delegated work alone when the parent refused the stop", async () => {
+    const f = fixture();
+    f.native.cancel.mockRejectedValue(new Error("session/agent-busy"));
+    await expect(f.transport.cancel(f.owner.token, "chat-a")).rejects.toThrow();
+    for (const agent of f.agents) expect(agent.cancel).not.toHaveBeenCalled();
   });
   it("filters search snippets and rechecks recipient access after search", async () => {
     const f = fixture();
