@@ -8,6 +8,7 @@ import type {
 import { parseMarkdown } from "./blocks.js";
 import { parseInline, type MarkdownInline } from "./inline.js";
 import { CodeBlock, LinkGlyph } from "./CodeBlock.js";
+import { QaZoomImage } from "../components/QaZoomImage.js";
 import { renderTexToReact } from "./math.js";
 import {
   codeChip,
@@ -19,6 +20,8 @@ import {
 /** One render pass: the owner's source vocabulary plus the document's targets. */
 interface RenderContext extends MarkdownSourceContext {
   readonly definitions: ReadonlyMap<string, string>;
+  /** Inside a link, where an image cannot carry its own activation. */
+  readonly inLink?: boolean;
   /** Footnote bodies by upper-cased identifier. */
   readonly footnotes: ReadonlyMap<string, readonly MarkdownBlock[]>;
   /** Footnote identifiers in first-reference order, appended while rendering. */
@@ -43,8 +46,16 @@ export function renderMarkdown(
   text: string,
   context: MarkdownSourceContext,
   options: MarkdownParseOptions = {},
+  sourceLines?: {
+    readonly offset: number;
+    readonly start?: number;
+    readonly end?: number;
+  },
 ): ReactNode[] {
-  const { blocks, definitions, footnotes } = parseMarkdown(text, options);
+  const { blocks, definitions, footnotes, ranges } = parseMarkdown(
+    text,
+    options,
+  );
   const pass: RenderContext = {
     ...context,
     definitions,
@@ -52,9 +63,36 @@ export function renderMarkdown(
     footnoteOrder: [],
     footnoteCounts: new Map(),
   };
-  const elements = blocks.map((block, index) =>
-    renderBlock(block, `b${index}`, pass),
-  );
+  const elements = blocks.map((block, index) => {
+    const element = renderBlock(block, `b${index}`, pass);
+    const range = ranges[index];
+    if (sourceLines === undefined || range === undefined) return element;
+    const start = range.start + sourceLines.offset;
+    const end = range.end + sourceLines.offset;
+    const highlighted =
+      sourceLines.start !== undefined &&
+      end >= sourceLines.start &&
+      start <= (sourceLines.end ?? sourceLines.start);
+    return (
+      <div
+        key={`b${index}`}
+        data-source-line-start={start}
+        data-source-line-end={end}
+        className={
+          highlighted
+            ? "dsh-qa-preview__block dsh-qa-preview__block--highlight"
+            : "dsh-qa-preview__block"
+        }
+        data-testid={
+          highlighted
+            ? "qa-source-preview-block-highlight"
+            : "qa-source-preview-block"
+        }
+      >
+        {element}
+      </div>
+    );
+  });
   const footnotesSection = renderFootnoteSection(pass);
   return footnotesSection === null ? elements : [...elements, footnotesSection];
 }
@@ -323,11 +361,17 @@ function inlineNodes(
             rel="noopener noreferrer"
           >
             <LinkGlyph />
-            {children(node.children, nodeKey, context)}
+            {children(node.children, nodeKey, { ...context, inLink: true })}
           </a>
         );
       }
       case "image": {
+        if (context.renderImage !== undefined)
+          return (
+            <Fragment key={nodeKey}>
+              {context.renderImage(node.src, node.alt)}
+            </Fragment>
+          );
         const src = remoteImage(node.src);
         if (src === undefined) {
           return (
@@ -341,15 +385,16 @@ function inlineNodes(
           );
         }
         return (
-          <img
+          <QaZoomImage
             key={nodeKey}
             className="dsh-qa-md-image"
-            data-testid="qa-md-image"
+            testId="qa-md-image"
             src={src}
             alt={node.alt}
             loading="lazy"
             decoding="async"
             referrerPolicy="no-referrer"
+            zoomable={context.inLink !== true}
           />
         );
       }

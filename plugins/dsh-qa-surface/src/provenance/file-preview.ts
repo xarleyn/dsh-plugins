@@ -7,6 +7,7 @@ import type {
   QaWorkspaceListing,
 } from "../types.js";
 import { canonicalizeWorkspacePath } from "./normalize.js";
+import { readFrontmatter } from "../markdown-frontmatter.js";
 
 /**
  * Coarse, wire-safe preview refusal codes. They ride the shared
@@ -56,6 +57,7 @@ export interface QaSourceFilePreviewRequest {
   readonly attachmentRoot?: string;
   readonly maxBytes: number;
   readonly maxMarkdownRenderBytes: number;
+  readonly renderFrontmatter?: boolean;
 }
 
 /** Canonical form of one root, or nothing when that root is not there at all. */
@@ -154,6 +156,7 @@ export async function readSourceFilePreview({
   attachmentRoot,
   maxBytes,
   maxMarkdownRenderBytes,
+  renderFrontmatter = false,
 }: QaSourceFilePreviewRequest): Promise<QaSourceFilePreview> {
   const canonicalPath = canonicalizeWorkspacePath(sourcePath, cwd);
   if (!isEvidence(canonicalPath)) {
@@ -166,7 +169,7 @@ export async function readSourceFilePreview({
     ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
   });
   if (
-    /\.(?:pdf|docx?|xlsx?|pptx?|odt|ods|odp|zip|png|jpe?g|gif|webp)$/iu.test(
+    /\.(?:pdf|docx?|xlsx?|pptx?|odt|ods|fods|csv|tsv|odp|zip|png|jpe?g|gif|webp)$/iu.test(
       file.canonical,
     )
   )
@@ -188,6 +191,8 @@ export async function readSourceFilePreview({
     } catch {
       throw new QaSourcePreviewError("unsupported");
     }
+    const frontmatter =
+      markdown && renderFrontmatter ? readFrontmatter(content) : undefined;
     return {
       path: canonicalPath,
       content,
@@ -195,6 +200,7 @@ export async function readSourceFilePreview({
       truncated: file.size > bytesRead,
       markdown,
       renderableMarkdown: markdown && file.size <= maxMarkdownRenderBytes,
+      ...(frontmatter === undefined ? {} : { frontmatter }),
     };
   } finally {
     await handle.close();
@@ -214,6 +220,10 @@ export interface QaWorkspaceListRequest {
 const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   bmp: "image/bmp",
   csv: "text/csv",
+  tsv: "text/tab-separated-values",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ods: "application/vnd.oasis.opendocument.spreadsheet",
+  fods: "application/vnd.oasis.opendocument.spreadsheet-flat-xml",
   gif: "image/gif",
   html: "text/html",
   jpeg: "image/jpeg",

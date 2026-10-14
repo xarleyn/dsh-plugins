@@ -29,6 +29,18 @@ function reportedSourceValidation(): HTMLInputElement {
 
 describe("sources settings section", () => {
   afterEach(cleanup);
+  it("makes structured document headers opt-in and writes the dedicated preview flag", () => {
+    const write = section({});
+    const toggle = screen.getByTestId(
+      "qa-settings-sources-file-preview-frontmatter",
+    ) as HTMLInputElement;
+    expect(toggle.checked).toBe(false);
+    fireEvent.click(toggle);
+    expect(write).toHaveBeenCalledWith(
+      ["sources", "filePreview", "renderFrontmatter"],
+      true,
+    );
+  });
 
   it("shows reported-source validation on and writes it off", () => {
     const write = section({});

@@ -1,3 +1,4 @@
+import type { QaSpreadsheetPreviewSelection } from "../types.js";
 import type { Context } from "@deepseek-ai/cordis";
 import type {
   ConnectionHandle,
@@ -14,6 +15,14 @@ import type {} from "@deepseek-ai/dsh-client-ui-renderer/client";
 import type {} from "@deepseek-ai/dsh-client-ui-plugin-manager/client";
 import type {} from "@deepseek-ai/dsh-client-ui-settings/client";
 import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
+import {
+  answerReviewConversationDefinition,
+  QA_REVIEW_NODE,
+} from "./answer-review.js";
+import {
+  QaNativeAnswerReviewStatus,
+  QA_REVIEW_STYLES,
+} from "./components/QaAnswerReviewStatus.js";
 import { QaConfigController } from "./QaConfigController.js";
 import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
 import { QaAccountsController } from "./QaAccountsController.js";
@@ -317,15 +326,23 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
     token: string,
     sessionId: string,
     sourcePath: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): QaSourceApi extends {
     readSourceFile(
       token: string,
       sessionId: string,
       sourcePath: string,
+      selection?: QaSpreadsheetPreviewSelection,
     ): infer Result;
   }
     ? Result
     : never;
+  readSourceImage(
+    token: string,
+    sessionId: string,
+    sourcePath: string,
+    imagePath: string,
+  ): Promise<RemoteResult<string>>;
   listWorkspaceFiles(
     token: string,
     sessionId: string,
@@ -356,11 +373,13 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
     token: string,
     sessionId: string,
     path: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): QaSourceApi extends {
     previewWorkspaceDocument(
       token: string,
       sessionId: string,
       path: string,
+      selection?: QaSpreadsheetPreviewSelection,
     ): infer Result;
   }
     ? Result
@@ -564,6 +583,21 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
   // the prelude runs before any application script, so the answer is final
   // for this page load.
   const kiosk = qaKioskMode();
+  ctx.effect(() => {
+    const disposers = [
+      injectCardStyles("dsh-qa-answer-review", QA_REVIEW_STYLES),
+      ctx.uiConversation.events.register(answerReviewConversationDefinition),
+      ctx.slots.inject("conversation.chat.node", () =>
+        ctx.slots.register(
+          { name: "conversation.chat.node", key: QA_REVIEW_NODE },
+          QaNativeAnswerReviewStatus,
+        ),
+      ),
+    ];
+    return () => {
+      for (const dispose of disposers.reverse()) dispose();
+    };
+  }, "dsh-qa-surface: answer review status");
   const panels = new QaSurfacePanelRegistry();
   const settingsSections = new QaUserSettingsSectionRegistry();
   // Cards that mount outside the QA overlay (the host's plugin settings) read
@@ -778,12 +812,15 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           policyRemote.sources(token, sessionId) as unknown as ReturnType<
             QaSourceApi["sources"]
           >,
-        readSourceFile: (token, sessionId, sourcePath) =>
+        readSourceFile: (token, sessionId, sourcePath, selection) =>
           policyRemote.readSourceFile(
             token,
             sessionId,
             sourcePath,
+            selection,
           ) as unknown as ReturnType<QaSourceApi["readSourceFile"]>,
+        readSourceImage: (token, sessionId, sourcePath, imagePath) =>
+          policyRemote.readSourceImage(token, sessionId, sourcePath, imagePath),
         listWorkspaceFiles: (token, sessionId, path) =>
           policyRemote.listWorkspaceFiles(
             token,
@@ -796,11 +833,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             sessionId,
             path,
           ) as unknown as ReturnType<QaSourceApi["readWorkspaceFile"]>,
-        previewWorkspaceDocument: (token, sessionId, path) =>
+        previewWorkspaceDocument: (token, sessionId, path, selection) =>
           policyRemote.previewWorkspaceDocument(
             token,
             sessionId,
             path,
+            selection,
           ) as unknown as ReturnType<QaSourceApi["previewWorkspaceDocument"]>,
       };
       const questionApi: QaQuestionApi = {

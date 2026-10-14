@@ -1,6 +1,8 @@
+import { QaSpreadsheetPreview } from "./QaSpreadsheetPreview.js";
 import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   QaDocumentPreview,
+  QaSpreadsheetPreviewSelection,
   QaWorkspaceEntry,
   QaWorkspaceFile,
 } from "../../types.js";
@@ -12,7 +14,7 @@ import {
   downloadWorkspacePath,
   fileNameOf,
 } from "../workspace-download.js";
-import { isConvertibleDocument } from "../../shared/documents.js";
+import { isPreviewableDocument } from "../../shared/documents.js";
 import { sourcePreviewFailureCopy } from "../source-preview.js";
 import { Markdown } from "./Markdown.js";
 import { QaModal } from "./QaModal.js";
@@ -124,6 +126,7 @@ function FileBody({
   converted,
   converting,
   conversionFailure,
+  loadSpreadsheet,
 }: {
   readonly file: QaWorkspaceFile;
   readonly raw: boolean;
@@ -131,12 +134,19 @@ function FileBody({
   readonly converted: QaDocumentPreview | undefined;
   readonly converting: boolean;
   readonly conversionFailure: string;
+  readonly loadSpreadsheet: (
+    selection: QaSpreadsheetPreviewSelection,
+  ) => Promise<Extract<QaDocumentPreview, { kind: "spreadsheet" }>>;
 }) {
   const nativePdf =
     file.mime === "application/pdf" && !file.truncated
       ? file.base64
       : undefined;
-  const pdf = usePdfUrl(converted?.base64 ?? nativePdf);
+  const pdf = usePdfUrl(
+    (converted?.kind === "pdf" ? converted.base64 : undefined) ?? nativePdf,
+  );
+  if (converted?.kind === "spreadsheet")
+    return <QaSpreadsheetPreview initial={converted} load={loadSpreadsheet} />;
   if (file.mime.startsWith("image/") && file.base64 !== undefined) {
     return (
       <img
@@ -173,7 +183,7 @@ function FileBody({
         className="dsh-qa-ws__status"
         data-testid="qa-surface-workspace-status"
       >
-        {isConvertibleDocument(file.mime)
+        {isPreviewableDocument(file.mime)
           ? conversionFailure
           : file.truncated
             ? "Файл больше предела предпросмотра — показана только его часть."
@@ -199,6 +209,7 @@ function FilePreview({
   converted,
   converting,
   conversionFailure,
+  loadSpreadsheet,
   onToggleRaw,
   onBack,
   onExpand,
@@ -210,6 +221,9 @@ function FilePreview({
   readonly converted: QaDocumentPreview | undefined;
   readonly converting: boolean;
   readonly conversionFailure: string;
+  readonly loadSpreadsheet: (
+    selection: QaSpreadsheetPreviewSelection,
+  ) => Promise<Extract<QaDocumentPreview, { kind: "spreadsheet" }>>;
   readonly onToggleRaw: () => void;
   readonly onBack: () => void;
   readonly onExpand: () => void;
@@ -304,6 +318,7 @@ function FilePreview({
         converted={converted}
         converting={converting}
         conversionFailure={conversionFailure}
+        loadSpreadsheet={loadSpreadsheet}
       />
     </div>
   );
@@ -440,7 +455,7 @@ export function QaWorkspaceBrowser({
             if (result.ok) {
               setFile(result.value);
               setFileStatus("ready");
-              if (isConvertibleDocument(result.value.mime)) convert(path);
+              if (isPreviewableDocument(result.value.mime)) convert(path);
             } else {
               setFileStatus("refused");
             }
@@ -469,6 +484,18 @@ export function QaWorkspaceBrowser({
     openFile(initialFile);
   }, [initialFile, openFile]);
 
+  const loadSpreadsheet = async (selection: QaSpreadsheetPreviewSelection) => {
+    if (opened === null) throw new Error("unavailable");
+    const result = await api.previewWorkspaceDocument(
+      sessionId,
+      opened,
+      selection,
+    );
+    if (!result.ok) throw result.error;
+    if (result.value.kind !== "spreadsheet") throw new Error("unsupported");
+    return result.value;
+  };
+
   if (opened !== null) {
     const closeFile = () => {
       setOpened(null);
@@ -484,6 +511,7 @@ export function QaWorkspaceBrowser({
           converted={converted}
           converting={converting}
           conversionFailure={conversionFailure}
+          loadSpreadsheet={loadSpreadsheet}
           onToggleRaw={() => setRaw((value) => !value)}
           onBack={closeFile}
           onExpand={() => setExpanded(true)}
@@ -538,6 +566,7 @@ export function QaWorkspaceBrowser({
                 converted={converted}
                 converting={converting}
                 conversionFailure={conversionFailure}
+                loadSpreadsheet={loadSpreadsheet}
               />
             )}
           </div>

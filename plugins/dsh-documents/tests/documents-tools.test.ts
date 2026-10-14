@@ -99,6 +99,9 @@ describe("document tool definitions", () => {
       "document_from_url",
       "document_convert",
       "document_inspect",
+      "spreadsheet_inspect",
+      "spreadsheet_read",
+      "spreadsheet_create",
     ]);
     expect(tools().map((definition) => definition.name)).toEqual([
       ...DOCUMENT_TOOL_NAMES,

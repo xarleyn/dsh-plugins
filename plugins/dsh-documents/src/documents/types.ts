@@ -9,7 +9,9 @@
  * (docs/specs/document-pipeline.md §4.1, §22).
  */
 
-/** Formats the pipeline can read and write. */
+export type * from "./spreadsheets/types.js";
+
+/** Formats the document conversion pipeline can read and write. */
 export type DocumentFormat = "md" | "docx" | "pdf";
 
 /** Formats a document can be created in. */

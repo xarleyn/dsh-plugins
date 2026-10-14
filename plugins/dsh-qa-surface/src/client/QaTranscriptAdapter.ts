@@ -15,6 +15,7 @@ import type {
   QaWorkItem,
 } from "../types.js";
 import { artifactsOfToolResult } from "./chat-artifacts.js";
+import { answerReviewsOf } from "./answer-review.js";
 import { chatLegacyOf } from "./turn-sources.js";
 import { toWorkspaceRelativeText } from "./workspace-paths.js";
 import { parseSettlement, settlementView } from "./settlement.js";
@@ -617,7 +618,14 @@ export function projectTranscript(
       // never sees either. Projecting them here is what makes the row land in
       // the right place in the transcript and survive a reload.
       const name = node.name;
-      if (name !== null) {
+      // `no-review` is both how Fast carries a turn and how a reader waives one
+      // review by hand, and the answer row already says which of the two
+      // happened. The command event is logged before the message it queues, so
+      // projecting it draws a control card above the question it belongs to.
+      // A refusal stays, because that is the one outcome with no other voice.
+      const silentWaiver =
+        name === "no-review" && node.outcome?.kind !== "error";
+      if (name !== null && !silentWaiver) {
         const args = (node.args ?? "").replace(/^[\t\n\r ]+/u, "");
         output.push({
           order: node.seq,
@@ -737,7 +745,14 @@ export function projectTranscript(
   for (const turn of turns.values()) {
     emitTurn(legacy, running, turn, output, erroredTurns.get(turn.turn));
   }
+  const reviews = answerReviewsOf(snapshot);
   return output
     .sort((left, right) => left.order - right.order)
-    .map(({ message }) => message);
+    .map(({ message }) => {
+      const review =
+        message.role === "assistant" && message.seq !== undefined
+          ? reviews.get(message.seq)
+          : undefined;
+      return review === undefined ? message : { ...message, review };
+    });
 }

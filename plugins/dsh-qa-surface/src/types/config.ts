@@ -51,6 +51,8 @@ export interface QaSourcesConfig {
   readonly filePreview?: {
     readonly enabled?: boolean;
     readonly markdownRenderedByDefault?: boolean;
+    /** Render a leading YAML mapping as a document metadata card. */
+    readonly renderFrontmatter?: boolean;
     readonly allowRawToggle?: boolean;
     readonly maxBytes?: number;
     readonly maxMarkdownRenderBytes?: number;
@@ -552,6 +554,7 @@ export interface ResolvedQaSurfaceConfig {
     readonly filePreview: {
       readonly enabled: boolean;
       readonly markdownRenderedByDefault: boolean;
+      readonly renderFrontmatter: boolean;
       readonly allowRawToggle: boolean;
       readonly maxBytes: number;
       readonly maxMarkdownRenderBytes: number;

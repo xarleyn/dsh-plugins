@@ -1,3 +1,4 @@
+import type { QaSpreadsheetPreviewSelection } from "../types.js";
 import {
   useCallback,
   useEffect,
@@ -612,12 +613,32 @@ export function QaSurface(props: QaSurfaceProps) {
     () => ({
       sources: (sessionId: string) =>
         props.sourceApi.sources(accounts?.token() ?? "", sessionId),
-      readSourceFile: (sessionId: string, sourcePath: string) =>
+      readSourceFile: (
+        sessionId: string,
+        sourcePath: string,
+        selection?: QaSpreadsheetPreviewSelection,
+      ) =>
         props.sourceApi.readSourceFile(
           accounts?.token() ?? "",
           sessionId,
           sourcePath,
+          selection,
         ),
+      readSourceImage: (
+        sessionId: string,
+        sourcePath: string,
+        imagePath: string,
+      ) =>
+        props.sourceApi.readSourceImage?.(
+          accounts?.token() ?? "",
+          sessionId,
+          sourcePath,
+          imagePath,
+        ) ??
+        Promise.resolve({
+          ok: false as const,
+          error: new Error("unavailable"),
+        }),
       listWorkspaceFiles: (sessionId: string, path: string) =>
         props.sourceApi.listWorkspaceFiles(
           accounts?.token() ?? "",
@@ -647,11 +668,16 @@ export function QaSurface(props: QaSurfaceProps) {
           sessionId,
           path,
         ),
-      previewWorkspaceDocument: (sessionId: string, path: string) =>
+      previewWorkspaceDocument: (
+        sessionId: string,
+        path: string,
+        selection?: QaSpreadsheetPreviewSelection,
+      ) =>
         props.sourceApi.previewWorkspaceDocument(
           accounts?.token() ?? "",
           sessionId,
           path,
+          selection,
         ),
     }),
     [accounts, props.sourceApi],
@@ -1187,6 +1213,8 @@ export function QaSurface(props: QaSurfaceProps) {
             list: () => accounts.serviceTokens(),
             create: (input) => accounts.createServiceToken(input),
             revoke: (tokenId) => accounts.revokeServiceToken(tokenId),
+            setClarifications: (tokenId, allowed) =>
+              accounts.setServiceTokenClarifications(tokenId, allowed),
           },
     [accounts, config.integration.enabled],
   );

@@ -492,6 +492,9 @@ const configSchema = z.object({
       filePreview: z
         .object({
           enabled: z.boolean().default(D.sources.filePreview.enabled),
+          renderFrontmatter: z
+            .boolean()
+            .default(D.sources.filePreview.renderFrontmatter),
           markdownRenderedByDefault: z
             .boolean()
             .default(D.sources.filePreview.markdownRenderedByDefault),

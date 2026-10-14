@@ -766,7 +766,9 @@ describe("AnswerReviewGate failure policy", () => {
       stopReason: "completed",
       output: [{ type: "text", text: "looks good to me" }],
     });
+    await face.settle({ stopReason: "completed", output: [] });
     expect(await pending).toBe("failure");
+    expect(face.started).toHaveLength(2);
   });
 
   it("steers at most one failure notice per turn", async () => {
@@ -778,10 +780,18 @@ describe("AnswerReviewGate failure policy", () => {
       steers,
     );
     const first = stop(gate, TEXT_A);
-    await face.settle({ stopReason: "error", output: [] });
+    await face.settle({
+      stopReason: "error",
+      output: [],
+      diagnostic: "provider unavailable",
+    });
     expect(await first).toBe("failure");
     const second = stop(gate, TEXT_B);
-    await face.settle({ stopReason: "error", output: [] });
+    await face.settle({
+      stopReason: "error",
+      output: [],
+      diagnostic: "provider unavailable",
+    });
     expect(await second).toBe("failure");
     expect(steers).toHaveLength(1);
   });

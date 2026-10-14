@@ -3,6 +3,18 @@ import { QA_QUESTIONS_UNSUPPORTED } from "../../src/questions.js";
 import { gateFor, QUESTIONS, sessionAgent } from "./questions.helpers.js";
 
 describe("QA question gate", () => {
+  it("never parks an integration clarification even when the deployment is interactive", async () => {
+    const { gate, ask } = gateFor({
+      interactive: true,
+      attested: ["s1"],
+      questionsAllowed: () => false,
+    });
+    await expect(
+      ask({ questions: QUESTIONS, agent: sessionAgent("s1") }),
+    ).rejects.toThrow("Clarifying questions are disabled");
+    expect(gate.list("s1")).toEqual([]);
+    gate.dispose();
+  });
   it("refuses a question for an attested chat while questions are unsupported", async () => {
     const { gate, ask } = gateFor({ interactive: false, attested: ["s1"] });
     await expect(

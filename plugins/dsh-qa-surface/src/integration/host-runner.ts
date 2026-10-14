@@ -270,6 +270,7 @@ export function createQaIntegrationRunner(
       readonly userId: string;
       readonly chatId: string | null;
       readonly message: string;
+      readonly allowClarifications?: boolean;
       readonly attachments: readonly QaIntegrationAttachment[];
       readonly ticketKey: string | null;
       readonly signal: AbortSignal;
@@ -303,6 +304,11 @@ export function createQaIntegrationRunner(
       // is exactly what a browser sends, and it is what makes the prompt
       // idempotent if the same question is ever retried.
       const requestId = randomUUID() as SessionRequestId;
+      requireAccounts().recordIntegrationRequestPolicy(
+        chatId,
+        String(requestId),
+        input.allowClarifications !== false,
+      );
       await ctx.sessionController.prompt(
         {
           requestId,

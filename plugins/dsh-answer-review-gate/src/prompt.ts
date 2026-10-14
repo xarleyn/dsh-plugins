@@ -144,8 +144,8 @@ export function renderSubagentReviewerTask(input: {
     input.candidateText,
     "</candidate_answer>",
     "",
-    "Respond with exactly one fenced JSON block and no other text:",
-    "```json",
+    "Finish by calling structured_output exactly once with the following result shape. " +
+      "A text verdict or fenced JSON block does not deliver the result:",
     JSON.stringify({
       verdict: "pass | revise",
       confidence: "low | medium | high",
@@ -160,7 +160,6 @@ export function renderSubagentReviewerTask(input: {
         },
       ],
     }),
-    "```",
     'Use "verdict": "revise" when at least one issue requires a correction, and "pass" only when no issue does. ' +
       "A pass is final for this candidate: it ships as written and asks for no further version, so never call " +
       "for another revision in a passing verdict. Do not rewrite the answer yourself.",
@@ -206,6 +205,8 @@ export function renderExpertReviewTask(input: {
     "Report every objection as a finding (claim, evidence, confidence); record contradicting sources as conflicts. " +
       "An answer with no findings and no conflicts passes — a pass is final for this candidate and asks for no " +
       "further version. Do not rewrite the answer yourself.",
+    "Finish by calling structured_output exactly once with summary, findings, conflicts, assumptions and followUps. " +
+      "A text verdict or fenced JSON block does not deliver this run's result.",
   ].join("\n");
 }
 

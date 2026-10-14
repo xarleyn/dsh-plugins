@@ -40,16 +40,32 @@ export class QaChatTransport {
   ) {}
 
   async list(token: string, signal: AbortSignal): Promise<SessionListValue> {
-    this.store().visible(token);
-    const value = await this.ctx.sessionController.list({}, signal);
-    const allowed = new Set(
-      this.store()
-        .visible(token)
-        .map((item) => item.sessionId),
-    );
+    const visible = this.store().visible(token);
+    const controller = this.ctx
+      .sessionController as typeof this.ctx.sessionController & {
+      listForSessions?(
+        ids: readonly ReturnType<typeof SessionId>[],
+        signal: AbortSignal,
+      ): Promise<SessionListValue>;
+    };
+    const value =
+      controller.listForSessions === undefined
+        ? await controller.list({}, signal)
+        : await controller.listForSessions(
+            visible.map((item) => SessionId(item.sessionId)),
+            signal,
+          );
+    return this.filterListing(token, value);
+  }
+
+  private filterListing(
+    token: string,
+    value: SessionListValue,
+  ): SessionListValue {
+    const current = this.store().visible(token);
+    const allowed = new Set(current.map((item) => item.sessionId));
     const owned = new Set(
-      this.store()
-        .visible(token)
+      current
         .filter((item) => item.mode === "owner")
         .map((item) => item.sessionId),
     );
@@ -178,16 +194,30 @@ export class QaChatTransport {
       > = {};
       for (const item of listing.items) {
         try {
-          const value = await this.projections(
-            token,
-            String(item.sessionId),
-            signal,
-          );
+          // Cold rows already carry bounded cache hints. Replaying every cold
+          // history on each polling tick thrashes the prepared-session cache.
+          const value = item.agentAvailable
+            ? await this.projections(token, String(item.sessionId), signal)
+            : item.projections === undefined
+              ? null
+              : {
+                  asOfSeq: item.projections.asOfSeq,
+                  values: item.projections.values,
+                };
           if (value !== null) projections[String(item.sessionId)] = value;
         } catch {
           /* revoked between reads */
         }
       }
+      // Recheck one current principal/grant snapshot immediately before this
+      // single baseline frame. There is no await between authorization and yield.
+      const allowed = new Set(
+        this.filterListing(token, listing).items.map((item) =>
+          String(item.sessionId),
+        ),
+      );
+      for (const id of Object.keys(projections))
+        if (!allowed.has(id)) delete projections[id];
       yield { type: "baseline", value: { projections } };
       await new Promise<void>((resolve) => {
         const done = () => {
@@ -297,9 +327,13 @@ export class QaChatTransport {
     );
   }
   async cancel(token: string, id: string): Promise<SessionCancelValue> {
-    return this.ownerOperation(token, id, () =>
-      this.ctx.sessionController.cancel({ sessionId: SessionId(id) }),
-    );
+    return this.ownerOperation(token, id, async () => {
+      const value = await this.ctx.sessionController.cancel({
+        sessionId: SessionId(id),
+      });
+      stopDelegatedWork(this.ctx, id);
+      return value;
+    });
   }
   async updateQueue(
     token: string,
@@ -331,14 +365,19 @@ export class QaChatTransport {
       if (this.locks.get(id) === next) this.locks.delete(id);
     }
   }
-  private async sessionAccess(token: string, id: string, signal: AbortSignal) {
+  private async sessionAccess(
+    token: string,
+    id: string,
+    signal: AbortSignal,
+    catalog?: SessionListValue,
+  ) {
     try {
       return this.store().access(token, id);
     } catch {
       // A delegated child carries no membership of its own. Resolve its
       // authoritative lineage and require the root owner, never a participant.
       this.store().visible(token);
-      const listing = await this.ctx.sessionController.list({}, signal);
+      const listing = catalog ?? (await this.list(token, signal));
       const rows = new Map(
         listing.items.map((item) => [String(item.sessionId), item]),
       );
@@ -400,5 +439,36 @@ export class QaChatTransport {
         } as unknown as SessionEventEntry["event"]["data"],
       },
     };
+  }
+}
+
+/**
+ * Stop the chat's delegated work with it. Cancelling the parent agent aborts
+ * one turn; a reviewer or a delegated run is its own resident agent and keeps
+ * working through the press, so the reader watches a Stop button that appears
+ * to do nothing. The Host walks this same lineage when a session is archived;
+ * here the reader asked for it, behind the owner check the caller already made.
+ */
+function stopDelegatedWork(ctx: Context, root: string): void {
+  const stopped = new Set<string>([root]);
+  const children = ctx
+    .agents.list()
+    .filter(
+      (agent) =>
+        agent.session.header.origin === "subagent" &&
+        agent.session.header.parentSession !== undefined,
+    );
+  let widened = true;
+  while (widened) {
+    widened = false;
+    for (const agent of children) {
+      const header = agent.session.header;
+      if (stopped.has(String(header.id))) continue;
+      if (!stopped.has(String(header.parentSession))) continue;
+      stopped.add(String(header.id));
+      if (agent.status === "running")
+        agent.cancel({ kind: "user" }, { keepInbox: true });
+      widened = true;
+    }
   }
 }

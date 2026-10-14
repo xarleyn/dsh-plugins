@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { QaSpreadsheetPreview } from "./QaSpreadsheetPreview.js";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   QaSource,
   QaSourceFilePreview,
@@ -7,7 +8,8 @@ import type {
 } from "../../types.js";
 import type { QaBoundSourceApi } from "../types.js";
 import { sourcePreviewFailureCopy } from "../source-preview.js";
-import { Markdown } from "./Markdown.js";
+import { QaMarkdownPreview } from "./QaMarkdownPreview.js";
+import { SourceImage } from "../markdown/SourceImage.js";
 import { KIND_LABELS, SourceIcon } from "./source-icon.js";
 import { usePdfUrl } from "./QaWorkspaceBrowser.js";
 
@@ -103,17 +105,19 @@ function RawFilePreview({
   preview,
   lineStart,
   lineEnd,
+  requestKey,
 }: {
   readonly preview: QaSourceFilePreview;
   readonly lineStart?: number;
   readonly lineEnd?: number;
+  readonly requestKey?: unknown;
 }) {
   const target = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     if (typeof target.current?.scrollIntoView === "function") {
       target.current.scrollIntoView({ block: "center" });
     }
-  }, [preview.path, lineStart]);
+  }, [preview.path, lineStart, lineEnd, requestKey]);
   const lines = preview.content.replace(/\r\n?/gu, "\n").split("\n");
   return (
     <pre className="dsh-qa-preview__raw" data-testid="qa-source-preview-raw">
@@ -172,7 +176,37 @@ function QaSourceDetail({
   const [preview, setPreview] = useState<QaSourceFilePreview | null>(null);
   const [previewError, setPreviewError] = useState<string | null>(null);
   const [mode, setMode] = useState<"rendered" | "raw">("raw");
-  const pdfUrl = usePdfUrl(preview?.document?.base64);
+  const imageCache = useMemo(
+    () => new Map<string, Promise<string | undefined>>(),
+    [sessionId, source.path, sourceApi],
+  );
+  const loadImage = useCallback(
+    (imagePath: string): Promise<string | undefined> => {
+      const cached = imageCache.get(imagePath);
+      if (cached !== undefined) return cached;
+      if (
+        sessionId === null ||
+        source.path === undefined ||
+        sourceApi.readSourceImage === undefined
+      )
+        return Promise.resolve(undefined);
+      const result = sourceApi
+        .readSourceImage(sessionId, source.path, imagePath)
+        .then((value) => (value.ok ? value.value : undefined));
+      imageCache.set(imagePath, result);
+      return result;
+    },
+    [imageCache, sessionId, source.path, sourceApi],
+  );
+  const renderImage = useCallback(
+    (src: string, alt: string) => (
+      <SourceImage src={src} alt={alt} load={loadImage} />
+    ),
+    [loadImage],
+  );
+  const pdfUrl = usePdfUrl(
+    preview?.document?.kind === "pdf" ? preview.document.base64 : undefined,
+  );
   const external =
     source.uri?.match(/^https?:\/\//iu)?.[0] === undefined
       ? undefined
@@ -219,6 +253,7 @@ function QaSourceDetail({
   }, [
     filePreviewConfig.enabled,
     filePreviewConfig.markdownRenderedByDefault,
+    filePreviewConfig.renderFrontmatter,
     sessionId,
     source.id,
     source.path,
@@ -347,7 +382,24 @@ function QaSourceDetail({
                 ) : null}
               </p>
             )}
-            {preview.document !== undefined ? (
+            {preview.document?.kind === "spreadsheet" ? (
+              <QaSpreadsheetPreview
+                initial={preview.document}
+                load={async (selection) => {
+                  if (source.path === undefined || sessionId === null)
+                    throw new Error("unavailable");
+                  const result = await sourceApi.readSourceFile(
+                    sessionId,
+                    source.path,
+                    selection,
+                  );
+                  if (!result.ok) throw result.error;
+                  if (result.value.document?.kind !== "spreadsheet")
+                    throw new Error("unsupported");
+                  return result.value.document;
+                }}
+              />
+            ) : preview.document !== undefined ? (
               pdfUrl === null ? (
                 <p>Готовлю предпросмотр…</p>
               ) : (
@@ -363,13 +415,22 @@ function QaSourceDetail({
                 className="dsh-qa-preview__markdown"
                 data-testid="qa-source-preview-markdown"
               >
-                <Markdown text={preview.content} />
+                <QaMarkdownPreview
+                  text={preview.content}
+                  renderFrontmatter={filePreviewConfig.renderFrontmatter}
+                  frontmatter={preview.frontmatter}
+                  lineStart={lineStart}
+                  lineEnd={lineEnd}
+                  renderImage={renderImage}
+                  requestKey={source}
+                />
               </div>
             ) : (
               <RawFilePreview
                 preview={preview}
                 lineStart={lineStart}
                 lineEnd={lineEnd}
+                requestKey={source}
               />
             )}
           </>
@@ -437,8 +498,8 @@ export function QaSourcesPanel({
   const detail =
     detailId === null
       ? undefined
-      : (sources.find((source) => source.id === detailId) ??
-        (initialDetail?.id === detailId ? initialDetail : undefined));
+      : ((initialDetail?.id === detailId ? initialDetail : undefined) ??
+        sources.find((source) => source.id === detailId));
   const groups = useMemo(() => {
     if (!display.groupByKind)
       return [{ key: "all", label: "Источники", sources }];

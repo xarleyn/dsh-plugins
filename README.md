@@ -43,7 +43,7 @@ stays listed as a private workspace package with no kind.
 | `plugins/dsh-cas-results` | `@yadsh/dsh-cas-results` | DSH plugin | Content-addressed offload store for bulky DeepSeek Harness tool results |
 | `plugins/dsh-decision-tools` | `@yadsh/dsh-decision-tools` | DSH plugin | DeepSeek Harness decision, classification, scoring and ranking tools for System One backends |
 | `plugins/dsh-doc-impact` | `@yadsh/dsh-doc-impact` | DSH plugin | Deterministic documentation impact engine for DeepSeek Harness |
-| `plugins/dsh-documents` | `@yadsh/dsh-documents` | DSH plugin | Managed document pipeline for the DeepSeek Harness: Markdown to DOCX/PDF, DOCX/PDF back to Markdown, and online sources as agent tools |
+| `plugins/dsh-documents` | `@yadsh/dsh-documents` | DSH plugin | Managed document pipeline for the DeepSeek Harness: DOCX/PDF, XLSX/CSV/TSV/OpenDocument spreadsheets, Markdown and online sources as agent tools |
 | `plugins/dsh-domain-experts` | `@yadsh/dsh-domain-experts` | DSH plugin | Configurable domain-scoped expert agents for DeepSeek Harness |
 | `plugins/dsh-draft-sessions` | `@yadsh/dsh-draft-sessions` | DSH plugin | Persistent unsent draft sessions for DeepSeek Harness |
 | `plugins/dsh-git-readonly` | `@yadsh/dsh-git-readonly` | DSH plugin | Read-only git provenance tools for DeepSeek Harness agents |

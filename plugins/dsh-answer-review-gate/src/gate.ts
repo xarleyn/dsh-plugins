@@ -42,12 +42,21 @@ import type {
 } from "./types.js";
 import { ReviewerFailure } from "./types.js";
 import type { ReviewAudit } from "./audit.js";
+import type { ReviewReceipt, ReviewStatus } from "./receipt.js";
 
 /** Minimal structural view of the reviewed agent. */
 export interface GateAgent {
   /** Durable session id of the agent (branded string at runtime). */
   readonly id: string;
   readonly session: {
+    append?(
+      type: "user/message",
+      data: unknown,
+      intent: {
+        readonly surfaceOp: "append";
+        readonly sourceEventSeqs: readonly number[];
+      },
+    ): unknown;
     readonly header: {
       readonly origin?: string;
       readonly cwd?: string;
@@ -64,6 +73,8 @@ export interface GateLogSink {
 }
 
 interface GateSessionState {
+  candidateSeq?: number;
+  lastReceipt?: string;
   /** Completed review attempts in the current user turn. */
   round: number;
   /**
@@ -94,6 +105,7 @@ interface GateSessionState {
 }
 
 export interface AnswerReviewGateDeps {
+  readonly publishStatus?: (agent: GateAgent, receipt: ReviewReceipt) => void;
   readonly config: () => ResolvedAnswerReviewGateConfig;
   readonly logger: GateLogSink;
   readonly audit: ReviewAudit;
@@ -199,6 +211,7 @@ export class AnswerReviewGate {
     }
 
     if (collected === null) return null;
+    state.candidateSeq = collected.candidateSeq;
     const hash = candidateHash(collected.text);
     if (
       collected.reviewWaiver !== null &&
@@ -223,6 +236,7 @@ export class AnswerReviewGate {
         userTurn: state.userTurn,
         commandId: collected.reviewWaiver.commandId,
       });
+      this.publishReceipt(agent, state, hash, "waived");
       return "waived";
     }
     if (collected.text.length < config.minCandidateChars) return null;
@@ -263,6 +277,7 @@ export class AnswerReviewGate {
       return "answer-shape";
     }
     if (state.lastPassedHash === hash) {
+      this.publishReceipt(agent, state, hash, "pass");
       this.deps.logger.info("gate.candidate-already-passed", {
         sessionId,
         turn,
@@ -319,6 +334,7 @@ export class AnswerReviewGate {
     const startedAt = this.deps.now();
     const backend = this.backendFor(agent, config);
     const input: ReviewInput = {
+      onRecovery: () => this.publishReceipt(agent, state, hash, "recovering"),
       conversationContext: reviewConversationContext(agent.session),
       ...(primaryReviewTools(agent) === undefined
         ? {}
@@ -339,6 +355,7 @@ export class AnswerReviewGate {
       candidateHash: hash,
     });
     let verdict: ReviewVerdict;
+    this.publishReceipt(agent, state, hash, "reviewing");
     try {
       verdict = await backend.review(input);
     } catch (error) {
@@ -350,6 +367,10 @@ export class AnswerReviewGate {
               error instanceof Error ? error.message : String(error),
             );
       state.round += 1;
+      if (signal.aborted) {
+        this.publishReceipt(agent, state, hash, "cancelled");
+        return "failure";
+      }
       return this.applyFailurePolicy(
         agent,
         sessionId,
@@ -366,6 +387,7 @@ export class AnswerReviewGate {
     state.round += 1;
     const durationMs = this.deps.now() - startedAt;
     if (verdict.verdict === "pass") {
+      this.publishReceipt(agent, state, hash, "pass");
       state.lastPassedHash = hash;
       this.record(config, {
         time: startedAt,
@@ -387,6 +409,7 @@ export class AnswerReviewGate {
       });
       return "pass";
     }
+    this.publishReceipt(agent, state, hash, "revise");
     this.record(config, {
       time: startedAt,
       sessionId,
@@ -446,6 +469,7 @@ export class AnswerReviewGate {
       outcome: "failure",
       failureReason: reason,
     });
+    this.publishReceipt(agent, state, hash, "failure");
     this.deps.logger.warn("gate.review-failed", { sessionId, turn, reason });
     if (config.failMode === "open") return "failure";
     if (state.failureSteered) return "failure";
@@ -486,6 +510,27 @@ export class AnswerReviewGate {
       ...(agent.session.header.cwd === undefined
         ? {}
         : { workspaceRoot: agent.session.header.cwd }),
+    });
+  }
+
+  private publishReceipt(
+    agent: GateAgent,
+    state: GateSessionState,
+    hash: string,
+    status: ReviewStatus,
+  ): void {
+    if (state.candidateSeq === undefined) return;
+    const key = `${state.candidateSeq}:${hash}:${status}`;
+    if (state.lastReceipt === key) return;
+    state.lastReceipt = key;
+    this.deps.publishStatus?.(agent, {
+      version: 1,
+      candidateSeq: state.candidateSeq,
+      candidateHash: hash,
+      requestSeq: state.userTurn,
+      round: state.round,
+      status,
+      at: this.deps.now(),
     });
   }
 

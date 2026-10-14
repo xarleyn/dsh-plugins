@@ -159,6 +159,24 @@ describe("integration service credentials", () => {
     );
   });
 
+  it("still answers with ask permission when clarifications are disabled", async () => {
+    const owner = accounts.login("op@example.com", "password-1");
+    const issued = accounts.mintServiceToken(owner.token, {
+      scopes: ["ask"],
+      allowClarifications: false,
+    });
+    const run = vi.fn(async () => turn());
+    const api = service({ accounts, runner: quietRunner(run) });
+    await api.ask(
+      `Bearer ${issued.token}`,
+      QUESTION,
+      new AbortController().signal,
+    );
+    expect(run).toHaveBeenCalledWith(
+      expect.objectContaining({ allowClarifications: false }),
+    );
+  });
+
   it("refuses when the deployment has no accounts or has the API off", async () => {
     const noAccounts = service({
       accounts: undefined,

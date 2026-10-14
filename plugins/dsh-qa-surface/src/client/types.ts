@@ -38,6 +38,7 @@ import type {
   QaTurnSources,
   QaWhoamiResult,
   QaDocumentPreview,
+  QaSpreadsheetPreviewSelection,
   QaWorkspaceFile,
   QaWorkspaceFileChunk,
   QaDocumentWorkflowStatus,
@@ -414,10 +415,17 @@ export interface QaSourceApi {
     token: string,
     sessionId: string,
     sourcePath: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): Promise<
     | { readonly ok: true; readonly value: QaSourceFilePreview }
     | { readonly ok: false; readonly error: unknown }
   >;
+  readSourceImage?(
+    token: string,
+    sessionId: string,
+    sourcePath: string,
+    imagePath: string,
+  ): Promise<RemoteResult<string>>;
   /** One directory of the chat's own workspace, for the files panel. */
   listWorkspaceFiles(
     token: string,
@@ -445,6 +453,7 @@ export interface QaSourceApi {
     token: string,
     sessionId: string,
     path: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): Promise<
     | { readonly ok: true; readonly value: QaDocumentPreview }
     | { readonly ok: false; readonly error: unknown }
@@ -487,10 +496,16 @@ export type QaBoundSourceApi = {
   readSourceFile(
     sessionId: string,
     sourcePath: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): Promise<
     | { readonly ok: true; readonly value: QaSourceFilePreview }
     | { readonly ok: false; readonly error: unknown }
   >;
+  readSourceImage?(
+    sessionId: string,
+    sourcePath: string,
+    imagePath: string,
+  ): Promise<RemoteResult<string>>;
   listWorkspaceFiles(
     sessionId: string,
     path: string,
@@ -508,6 +523,7 @@ export type QaBoundSourceApi = {
   previewWorkspaceDocument(
     sessionId: string,
     path: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): Promise<
     | { readonly ok: true; readonly value: QaDocumentPreview }
     | { readonly ok: false; readonly error: unknown }
@@ -650,10 +666,19 @@ export interface QaIntegrationTokenApi {
     input: QaServiceTokenCreateInput,
   ): Promise<QaIntegrationTokenResult<QaIssuedServiceToken>>;
   revoke(tokenId: string): Promise<QaIntegrationTokenResult<null>>;
+  setClarifications?(
+    tokenId: string,
+    allowed: boolean,
+  ): Promise<QaIntegrationTokenResult<null>>;
 }
 
 /** Account remotes exposed by the plugin's own typert namespace. */
 export interface QaAccountsApi {
+  accountsSetServiceTokenClarifications?(
+    token: string,
+    tokenId: string,
+    allowed: boolean,
+  ): Promise<RemoteResult<{ readonly updated: boolean }>>;
   chatVisible?(
     token: string,
   ): Promise<

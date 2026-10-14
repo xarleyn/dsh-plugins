@@ -1,14 +1,21 @@
 import { readFile } from "node:fs/promises";
 import type { DocumentsFace } from "@yadsh/dsh-documents";
 import { basename } from "node:path";
-import type { QaDocumentPreview } from "../types.js";
+import type {
+  QaDocumentPreview,
+  QaSpreadsheetPreviewSelection,
+} from "../types.js";
 import {
   mediaTypeOf,
   QaSourcePreviewError,
   resolveAllowedFile,
   type QaAllowedFileRequest,
 } from "./file-preview.js";
-import { isConvertibleDocument } from "../shared/documents.js";
+import {
+  isConvertibleDocument,
+  isSpreadsheetDocument,
+} from "../shared/documents.js";
+import { previewSpreadsheetDocument } from "./spreadsheet-preview.js";
 
 /** Look up the document subsystem a sibling Host plugin published. */
 export type DocumentsLookup = () => DocumentsFace | undefined;
@@ -19,6 +26,7 @@ export interface QaDocumentPreviewRequest extends QaAllowedFileRequest {
   readonly sessionId: string;
   /** Bytes of the rendered PDF the panel accepts before it gives up. */
   readonly maxBytes: number;
+  readonly selection?: QaSpreadsheetPreviewSelection;
 }
 
 /** The produced PDF, base64-encoded for the wire. */
@@ -50,11 +58,21 @@ export async function previewConvertibleDocument({
   documents,
   sessionId,
   maxBytes,
+  selection,
   ...file
 }: QaDocumentPreviewRequest): Promise<QaDocumentPreview> {
   const face = documents();
   if (face === undefined) throw new QaSourcePreviewError("unsupported");
   const resolved = await resolveAllowedFile(file);
+  if (isSpreadsheetDocument(mediaTypeOf(resolved.canonical))) {
+    return previewSpreadsheetDocument({
+      ...file,
+      documents,
+      sessionId,
+      maxBytes,
+      ...(selection === undefined ? {} : { selection }),
+    });
+  }
   if (!isConvertibleDocument(mediaTypeOf(resolved.canonical))) {
     throw new QaSourcePreviewError("unsupported");
   }

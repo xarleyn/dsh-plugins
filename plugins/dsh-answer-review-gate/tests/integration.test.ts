@@ -1,4 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { Session, SessionId } from "@deepseek-ai/dsh-session";
+import {
+  createAssistantMessage,
+  createUserMessage,
+} from "@deepseek-ai/dsh-llm";
 
 import { apply } from "../src/index.js";
 import type { GateHostContext } from "../src/index.js";
@@ -156,6 +161,105 @@ async function runWiredGate(options: {
 }
 
 describe("plugin wiring", () => {
+  it("persists recovered review receipts through the native Session surface contract and replay", async () => {
+    const session = Session.create(SessionId("native-review-demo"));
+    session.append(
+      "user/message",
+      createUserMessage({
+        source: { kind: "user" },
+        content: [{ type: "text", text: "Explain file locks" }],
+      }),
+      { surfaceOp: "append" },
+    );
+    const answer = session.append(
+      "assistant/message",
+      {
+        turn: 1,
+        step: 1,
+        message: createAssistantMessage({
+          source: { provider: "demo-provider", model: "demo-model" },
+          content: [
+            { type: "text", text: "File locks serialize journal writes." },
+          ],
+        }),
+        stream: [],
+      },
+      { surfaceOp: "append" },
+    );
+    let attempts = 0;
+    const { host, events } = makeHost({
+      domainExperts: domainFace({
+        ...EXPERT_PASS,
+        result: { ...EXPERT_PASS.result!, structured: true },
+      }),
+    });
+    host.get = (service) =>
+      service === "domainExperts"
+        ? {
+            testExpert: async () => {
+              attempts += 1;
+              return {
+                ...EXPERT_PASS,
+                result: {
+                  ...EXPERT_PASS.result!,
+                  structured: attempts > 1,
+                  status: attempts > 1 ? "completed" : "error",
+                },
+              };
+            },
+          }
+        : undefined;
+    apply(host, { minCandidateChars: 10 });
+    const steers: unknown[] = [];
+    await dispatch(events, "agent/turn-stopping", {
+      agent: {
+        id: String(session.id),
+        session,
+        steer: (message: unknown) => steers.push(message),
+      },
+      turn: 1,
+      signal: new AbortController().signal,
+    });
+    const receipts = session
+      .snapshotEvents()
+      .filter(
+        (event) =>
+          event.type === "user/message" &&
+          event.data.source.kind === "answer-review-status",
+      );
+    expect(
+      receipts.map((event) =>
+        event.type === "user/message" ? event.data.source : null,
+      ),
+    ).toMatchObject([
+      { receipt: { candidateSeq: answer.seq, status: "reviewing" } },
+      { receipt: { candidateSeq: answer.seq, status: "recovering" } },
+      { receipt: { candidateSeq: answer.seq, status: "pass" } },
+    ]);
+    expect(
+      receipts.every(
+        (event) =>
+          event.type === "user/message" &&
+          event.surfaceOp === "append" &&
+          event.sourceEventSeqs?.[0] === answer.seq,
+      ),
+    ).toBe(true);
+    expect(steers).toHaveLength(0);
+    const replay = Session.create(
+      SessionId("native-review-replay"),
+      session.snapshotEvents(),
+    );
+    expect(
+      replay
+        .snapshotEvents()
+        .filter(
+          (event) =>
+            event.type === "user/message" &&
+            event.data.source.kind === "answer-review-status",
+        ),
+    ).toEqual(receipts);
+  });
+
   it("registers the lifecycle seams globally", () => {
     const { host, events, commands } = makeHost({});
     apply(host);

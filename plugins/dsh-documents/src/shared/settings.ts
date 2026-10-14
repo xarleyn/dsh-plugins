@@ -20,6 +20,9 @@ export const DOCUMENT_TOOL_NAMES: readonly string[] = [
   "document_from_url",
   "document_convert",
   "document_inspect",
+  "spreadsheet_inspect",
+  "spreadsheet_read",
+  "spreadsheet_create",
 ];
 
 /**

@@ -108,7 +108,7 @@ describe("documents plugin", () => {
     expect(DocumentsPlugin.Config).toBe(ConfigSchema);
   });
 
-  test("registers the five document tools and the comparison pair", () => {
+  test("registers document and spreadsheet tools and the comparison pair", () => {
     const { registered } = plugin();
     expect(registered).toEqual([
       ...REGISTERED_TOOL_NAMES,
@@ -121,6 +121,9 @@ describe("documents plugin", () => {
       "document_from_url",
       "document_convert",
       "document_inspect",
+      "spreadsheet_inspect",
+      "spreadsheet_read",
+      "spreadsheet_create",
       "document_compare",
       "document_diff_read",
       ...DOCUMENT_WORKFLOW_TOOL_NAMES,
@@ -153,11 +156,13 @@ describe("documents plugin", () => {
     const face = provided.get("documents") as
       Record<string, unknown> | undefined;
     expect(face).toBeDefined();
-    // The three operations the panel needs, each bound to the live runtime
+    // The panel's operations, each bound to the live runtime
     // rather than to a snapshot of it.
     expect(typeof face?.toMarkdown).toBe("function");
     expect(typeof face?.convert).toBe("function");
     expect(typeof face?.inspect).toBe("function");
+    expect(typeof face?.inspectSpreadsheet).toBe("function");
+    expect(typeof face?.readSpreadsheet).toBe("function");
   });
 
   test("publishes nothing while the pipeline is disabled", () => {

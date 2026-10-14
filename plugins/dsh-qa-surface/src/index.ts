@@ -1,10 +1,12 @@
 import { randomUUID } from "node:crypto";
+import { readSourceImage as readSourceImagePreview } from "./provenance/source-image.js";
 import path from "node:path";
 import { defaultAccountsFilePath } from "./accounts/store.js";
 import { QaChatSharingStore } from "./chat-sharing/store.js";
 import { QaChatTransport } from "./chat-sharing/transport.js";
 import { QaChatTurnGuard } from "./chat-sharing/turn-guard.js";
 import { installQaNativeFence } from "./chat-sharing/native-fence.js";
+import { QaIntegrationQuestionPolicy } from "./integration/question-policy.js";
 import {
   qaChatPublishedFile,
   qaChatAttachmentPath,
@@ -132,6 +134,7 @@ import type {
   QaApprovalDecision,
   QaClaimResult,
   QaDocumentPreview,
+  QaSpreadsheetPreviewSelection,
   QaDocumentWorkflowStatus,
   QaIssuedServiceToken,
   QaLockdownProof,
@@ -554,11 +557,21 @@ export class QaSurface extends TypertRemoteService {
       ownership,
       this.logger,
     );
+    const integrationQuestionPolicy = new QaIntegrationQuestionPolicy(
+      ctx,
+      () => this.accountRemotes.resolve(this.getConfig()),
+      (id) => ownership.rootOf(id),
+    );
+    ctx.effect(
+      () => () => integrationQuestionPolicy.dispose(),
+      "qa-surface: integration question policy",
+    );
     this.userQuestions = new QaQuestionGate(
       ctx,
       () => this.getConfig().interaction.questions === "interactive",
       ownership,
       this.logger,
+      (agent) => integrationQuestionPolicy.allowed(agent),
     );
     // The destructive tool of the QA catalog composes the same approval flow
     // around itself: registered without `prepend`, it sits inside the approval
@@ -1018,6 +1031,19 @@ export class QaSurface extends TypertRemoteService {
     tokenId: string,
   ): { readonly revoked: boolean } {
     return this.accountRemotes.revokeServiceToken(token, tokenId);
+  }
+
+  @Remote("accountsSetServiceTokenClarifications")
+  accountsSetServiceTokenClarifications(
+    token: string,
+    tokenId: string,
+    allowed: boolean,
+  ): { readonly updated: boolean } {
+    return this.accountRemotes.setServiceTokenClarifications(
+      token,
+      tokenId,
+      allowed,
+    );
   }
 
   /**
@@ -2073,6 +2099,7 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     sessionId: string,
     sourcePath: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): Promise<QaSourceFilePreview> {
     const finish = await this.admitChatRead(token, sessionId, sourcePath);
     const config = this.getConfig();
@@ -2096,6 +2123,7 @@ export class QaSurface extends TypertRemoteService {
         maxBytes: config.sources.filePreview.maxBytes,
         maxMarkdownRenderBytes:
           config.sources.filePreview.maxMarkdownRenderBytes,
+        renderFrontmatter: config.sources.filePreview.renderFrontmatter,
       }).catch(async (error: unknown) => {
         // Only a format refusal follows successful evidence and root checks.
         if (
@@ -2112,6 +2140,7 @@ export class QaSurface extends TypertRemoteService {
           documents: () =>
             this.ctx.get("documents") as DocumentsFace | undefined,
           maxBytes: config.sources.filePreview.maxBytes,
+          ...(selection === undefined ? {} : { selection }),
         });
         return {
           path: sourcePath,
@@ -2131,6 +2160,44 @@ export class QaSurface extends TypertRemoteService {
         reason:
           error instanceof QaSourcePreviewError ? error.reason : "unavailable",
       });
+      throw sourcePreviewRefusal(
+        error instanceof QaSourcePreviewError ? error.reason : "unavailable",
+      );
+    }
+  }
+
+  /** Load one relative raster illustration of an attested Markdown source. */
+  @Remote("readSourceImage")
+  async readSourceImage(
+    token: string,
+    sessionId: string,
+    sourcePath: string,
+    imagePath: string,
+  ): Promise<string> {
+    const finish = await this.admitChatRead(token, sessionId, sourcePath);
+    const config = this.getConfig();
+    const cwd = this.ctx.agents.get(SessionId(sessionId))?.session.header.cwd;
+    if (!config.sources.filePreview.enabled || cwd === undefined)
+      throw sourcePreviewRefusal("unavailable");
+    const attachmentRoot = this.admission.attachmentRoot();
+    try {
+      const result = await readSourceImagePreview(
+        {
+          sourcePath,
+          cwd,
+          isEvidence: (canonicalPath) =>
+            this.provenance.sourceAllowed(sessionId, canonicalPath),
+          sharedReadOnlyRoots: config.lockdown.sharedReadOnlyRoots,
+          ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
+          maxBytes: config.sources.filePreview.maxBytes,
+          maxMarkdownRenderBytes:
+            config.sources.filePreview.maxMarkdownRenderBytes,
+        },
+        imagePath,
+      );
+      finish();
+      return result;
+    } catch (error) {
       throw sourcePreviewRefusal(
         error instanceof QaSourcePreviewError ? error.reason : "unavailable",
       );
@@ -2309,6 +2376,7 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     sessionId: string,
     path: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): Promise<QaDocumentPreview> {
     const finish = await this.admitChatRead(token, sessionId, path);
     const { config, cwd } = await this.browseContext(sessionId);
@@ -2322,6 +2390,7 @@ export class QaSurface extends TypertRemoteService {
         documents: () => this.ctx.get("documents") as DocumentsFace | undefined,
         sessionId,
         maxBytes: config.sources.filePreview.maxBytes,
+        ...(selection === undefined ? {} : { selection }),
       });
       finish();
       return value;

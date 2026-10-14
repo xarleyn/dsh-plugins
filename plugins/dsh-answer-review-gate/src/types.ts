@@ -154,6 +154,8 @@ export interface ReviewAuditEntry {
 
 /** The material the reviewer receives (`SPEC.md`, "Reviewer isolation"). */
 export interface ReviewInput {
+  /** One bounded recovery attempt is starting for the same candidate. */
+  readonly onRecovery?: () => void;
   readonly conversationContext?: string;
   readonly primaryTools?: readonly string[];
   /** Session id of the reviewed (primary) agent. */
@@ -211,6 +213,9 @@ export interface ExpertRunOutcome {
 /** The part of a domain-expert run result the verdict derivation reads. */
 export interface ExpertRunResult {
   readonly status: string;
+  /** False explicitly means the requested native result was not captured. */
+  readonly structured?: boolean;
+  readonly diagnostic?: string;
   readonly summary: string;
   readonly findings: readonly {
     readonly claim: string;

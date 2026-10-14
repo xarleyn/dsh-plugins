@@ -70,9 +70,20 @@ export function installQaNativeFence(
   const invoke = gateway.invoke;
   const stream = gateway.stream;
   const open = gateway.wireStream.open;
+  // Only Connection can attest a cookie role and the peer minted from it.
+  // Older Hosts without this capability retain the closed account boundary.
+  const connection = ctx.get("connection") as unknown as
+    | {
+        isOperatorRequest?(request: IncomingMessage): boolean;
+        isOperatorPeer?(peer: unknown): boolean;
+      }
+    | undefined;
+  const operatorPeer = (peer: unknown): boolean =>
+    peer !== undefined && connection?.isOperatorPeer?.(peer) === true;
   const check = (request: InvokeRemoteRequest) => {
     if (
       enabled() &&
+      !operatorPeer(request.peer) &&
       qaNativeEndpointDenied(request.namespace + "/" + request.method)
     )
       throw new Error(
@@ -89,7 +100,12 @@ export function installQaNativeFence(
   };
   const wire = gateway.wireStream as { open: typeof open };
   wire.open = async function (endpoint, payload, uplink, peer, signal) {
-    if (enabled() && endpoint !== "$events" && qaNativeEndpointDenied(endpoint))
+    if (
+      enabled() &&
+      !operatorPeer(peer) &&
+      endpoint !== "$events" &&
+      qaNativeEndpointDenied(endpoint)
+    )
       throw new Error(
         "QA account authentication is required through the QA chat API.",
       );
@@ -106,7 +122,7 @@ export function installQaNativeFence(
       for await (const frame of source) {
         // Remote notifications are Host-wide and have no account token. The
         // authenticated QA control/follow streams replace them for this surface.
-        if (enabled()) {
+        if (enabled() && !operatorPeer(peer)) {
           if (
             typeof frame !== "object" ||
             frame === null ||
@@ -130,6 +146,7 @@ export function installQaNativeFence(
       const api = pathname.indexOf("/api/");
       if (
         enabled() &&
+        connection?.isOperatorRequest?.(request) !== true &&
         api >= 0 &&
         pathname.slice(api + 5) !== "qa-chat-upload" &&
         pathname.slice(api + 5) !== "remote.mux" &&

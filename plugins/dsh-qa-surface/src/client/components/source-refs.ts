@@ -97,15 +97,31 @@ export function buildSourceRefs(sources: readonly QaSource[]): QaSourceRefs {
       return key === undefined ? undefined : byUrl.get(key);
     },
     resolvePath(token: string): QaSource | undefined {
-      const normalized = normalizePath(token);
+      const target = /^(.*?)(?:#L(\d+)(?:-L?(\d+))?|:(\d+)(?:-(\d+))?)$/u.exec(
+        token.trim(),
+      );
+      const normalized = normalizePath(target?.[1] ?? token);
       if (normalized === "") return undefined;
       const unique = (matches: typeof paths): QaSource | undefined => {
         const candidates = new Map(
           matches.map((entry) => [entry.source.id, entry.source]),
         );
-        return candidates.size === 1
-          ? candidates.values().next().value
-          : undefined;
+        if (candidates.size !== 1) return undefined;
+        const source = candidates.values().next().value;
+        if (source === undefined || target === null) return source;
+        const start = Number(target[2] ?? target[4]);
+        const end = Number(target[3] ?? target[5] ?? start);
+        if (
+          !Number.isSafeInteger(start) ||
+          !Number.isSafeInteger(end) ||
+          start < 1 ||
+          end < start
+        )
+          return undefined;
+        return {
+          ...source,
+          locations: [{ path: source.path, lineStart: start, lineEnd: end }],
+        };
       };
       const key = (path: (typeof paths)[number]) =>
         path.windows ? normalized.toLowerCase() : normalized;

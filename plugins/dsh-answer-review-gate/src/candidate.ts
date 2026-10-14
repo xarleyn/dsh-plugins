@@ -34,6 +34,8 @@ export interface CandidateSession extends WaiverSession {
 
 /** The candidate plus the user request it answers, when both were located. */
 export interface CollectedCandidate {
+  /** Immutable event position of the exact answer reviewed. */
+  readonly candidateSeq: number;
   readonly text: string;
   /** Latest real user message before the candidate; null when not found. */
   readonly requestText: string | null;
@@ -118,6 +120,7 @@ export function collectCandidate(
     const candidateSeq = nodes[i]!;
     const request = collectUserRequest(session, candidateSeq);
     return {
+      candidateSeq,
       text,
       requestText: request?.text ?? null,
       requestAttachments: request?.attachments ?? [],
