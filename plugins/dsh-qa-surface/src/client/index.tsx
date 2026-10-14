@@ -1,3 +1,4 @@
+import type { QaSpreadsheetPreviewSelection } from "../types.js";
 import type { Context } from "@deepseek-ai/cordis";
 import type {
   ConnectionHandle,
@@ -325,11 +326,13 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
     token: string,
     sessionId: string,
     sourcePath: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): QaSourceApi extends {
     readSourceFile(
       token: string,
       sessionId: string,
       sourcePath: string,
+      selection?: QaSpreadsheetPreviewSelection,
     ): infer Result;
   }
     ? Result
@@ -370,11 +373,13 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
     token: string,
     sessionId: string,
     path: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): QaSourceApi extends {
     previewWorkspaceDocument(
       token: string,
       sessionId: string,
       path: string,
+      selection?: QaSpreadsheetPreviewSelection,
     ): infer Result;
   }
     ? Result
@@ -807,11 +812,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           policyRemote.sources(token, sessionId) as unknown as ReturnType<
             QaSourceApi["sources"]
           >,
-        readSourceFile: (token, sessionId, sourcePath) =>
+        readSourceFile: (token, sessionId, sourcePath, selection) =>
           policyRemote.readSourceFile(
             token,
             sessionId,
             sourcePath,
+            selection,
           ) as unknown as ReturnType<QaSourceApi["readSourceFile"]>,
         readSourceImage: (token, sessionId, sourcePath, imagePath) =>
           policyRemote.readSourceImage(token, sessionId, sourcePath, imagePath),
@@ -827,11 +833,12 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             sessionId,
             path,
           ) as unknown as ReturnType<QaSourceApi["readWorkspaceFile"]>,
-        previewWorkspaceDocument: (token, sessionId, path) =>
+        previewWorkspaceDocument: (token, sessionId, path, selection) =>
           policyRemote.previewWorkspaceDocument(
             token,
             sessionId,
             path,
+            selection,
           ) as unknown as ReturnType<QaSourceApi["previewWorkspaceDocument"]>,
       };
       const questionApi: QaQuestionApi = {

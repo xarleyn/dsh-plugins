@@ -13,6 +13,43 @@ const CREATED = [
 ].join("\n");
 
 describe("artifactsOfToolResult", () => {
+  it.each(["csv", "tsv", "ods", "fods"])(
+    "cards a created %s attachment",
+    (format) => {
+      expect(
+        artifactsOfToolResult(
+          "spreadsheet_create",
+          `${format}: .qa/artifacts/documents/doc_demo/report.${format} (1 KiB, sha256 abc…)`,
+        ),
+      ).toEqual([
+        {
+          path: `.qa/artifacts/documents/doc_demo/report.${format}`,
+          name: `report.${format}`,
+          format,
+          bytes: 1024,
+        },
+      ]);
+    },
+  );
+  it("cards a created XLSX workbook without carding spreadsheet reads", () => {
+    const output =
+      "xlsx: .qa/artifacts/documents/doc_01ABC/report.xlsx (2 KiB, sha256 abc…)";
+    expect(artifactsOfToolResult("spreadsheet_create", output)).toEqual([
+      {
+        path: ".qa/artifacts/documents/doc_01ABC/report.xlsx",
+        name: "report.xlsx",
+        format: "xlsx",
+        bytes: 2048,
+      },
+    ]);
+    expect(artifactsOfToolResult("spreadsheet_read", output)).toEqual([]);
+    expect(
+      artifactsOfToolResult(
+        "spreadsheet_create",
+        "xlsx: /outside/report.xlsx (2 KiB)",
+      ),
+    ).toEqual([]);
+  });
   it.each([
     ["", null],
     [" (unknown)", null],

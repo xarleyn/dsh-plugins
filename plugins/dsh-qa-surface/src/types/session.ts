@@ -14,16 +14,32 @@ export interface QaSourceFilePreview {
 }
 
 /**
- * A file the panel renders by conversion rather than by bytes: the document
- * pipeline turned a Word file into PDF, and the browser shows that PDF.
+ * A PDF payload, including Word documents rendered by the document pipeline.
  */
-export interface QaDocumentPreview {
+export interface QaPdfPreview {
   readonly kind: "pdf";
   readonly base64: string;
   readonly mime: "application/pdf";
   readonly name: string;
   readonly bytes: number;
 }
+
+/** A bounded cell window; the complete workbook stays on the Host. */
+export interface QaSpreadsheetPreview {
+  readonly kind: "spreadsheet";
+  readonly name: string;
+  readonly bytes: number;
+  readonly inventory: import("@yadsh/dsh-documents").SpreadsheetInspectResult;
+  readonly page: import("@yadsh/dsh-documents").SpreadsheetReadResult;
+}
+
+export interface QaSpreadsheetPreviewSelection {
+  readonly sheet?: string;
+  readonly startRow?: number;
+  readonly startColumn?: number;
+}
+
+export type QaDocumentPreview = QaPdfPreview | QaSpreadsheetPreview;
 
 /** One directory entry of a chat's own workspace, as the files panel browses it. */
 export interface QaWorkspaceEntry {

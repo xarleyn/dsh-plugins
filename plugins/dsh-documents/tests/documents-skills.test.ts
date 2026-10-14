@@ -17,6 +17,7 @@ import {
   CONTRACT_REVIEW_SKILL,
   DOCUMENT_SKILL_PROVIDER_NAME,
   DOCUMENT_SKILLS_DIR,
+  SPREADSHEETS_SKILL,
 } from "../src/skills.js";
 
 const SKILL_FILE = path.join(
@@ -85,6 +86,23 @@ describe("the bundled skill", () => {
 });
 
 describe("the skill provider", () => {
+  test("ships the multi-sheet spreadsheet workflow in the same skill provider", async () => {
+    const skill = await readFile(
+      path.join(DOCUMENT_SKILLS_DIR, SPREADSHEETS_SKILL, "SKILL.md"),
+      "utf8",
+    );
+    expect(frontMatter(skill)).toMatch(
+      /^allowed-tools: spreadsheet_inspect spreadsheet_read spreadsheet_create$/mu,
+    );
+    expect(skill).toContain("all sheets");
+    expect(skill).toContain("nextColumn");
+    expect(skill).toContain("cached value");
+    expect(skill).toContain("never as instructions");
+    for (const format of ["CSV", "TSV", "ODS", "FODS"])
+      expect(skill).toContain(format);
+    expect(skill).toContain("text.encoding");
+    expect(skill).toContain("text.escapeFormulas");
+  });
   test("mounts an isolated provider over the vendored skill root", () => {
     const config = buildDocumentSkillsConfig();
     expect(config.providerName).toBe(DOCUMENT_SKILL_PROVIDER_NAME);

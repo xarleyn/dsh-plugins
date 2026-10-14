@@ -64,6 +64,10 @@ import {
   type DocumentSubsystem,
   type DocumentToMarkdownInput,
   type DocumentToMarkdownResult,
+  type SpreadsheetInspectInput,
+  type SpreadsheetInspectResult,
+  type SpreadsheetReadInput,
+  type SpreadsheetReadResult,
 } from "./documents/index.js";
 
 /**
@@ -86,6 +90,7 @@ export {
   CONTRACT_REVIEW_SKILL,
   DOCUMENT_SKILL_PROVIDER_NAME,
   DOCUMENT_SKILLS_DIR,
+  SPREADSHEETS_SKILL,
   mountDocumentSkills,
 } from "./skills.js";
 export * from "./documents/index.js";
@@ -101,7 +106,7 @@ export const Config = ConfigSchema;
 /**
  * The subsystem as other Host plugins see it.
  *
- * The four operations and nothing else: a sibling plugin that wants a document
+ * Document operations and bounded spreadsheet reads: a sibling plugin that wants a document
  * preview converts or extracts through the same runtime, its provider registry,
  * its semaphores and its limits, instead of standing up a second pipeline.
  * There is still no Remote face — this service lives in the Host process, so a
@@ -109,6 +114,14 @@ export const Config = ConfigSchema;
  * pays nothing for it.
  */
 export interface DocumentsFace {
+  inspectSpreadsheet?(
+    input: SpreadsheetInspectInput,
+    scope: DocumentScope,
+  ): Promise<SpreadsheetInspectResult>;
+  readSpreadsheet?(
+    input: SpreadsheetReadInput,
+    scope: DocumentScope,
+  ): Promise<SpreadsheetReadResult>;
   readonly workflow?: DocumentWorkflowService;
   toMarkdown(
     input: DocumentToMarkdownInput,
@@ -395,6 +408,10 @@ export class DocumentsPlugin {
       toMarkdown: (input, scope) => this.runtime().toMarkdown(input, scope),
       convert: (input, scope) => this.runtime().convert(input, scope),
       inspect: (input, scope) => this.runtime().inspect(input, scope),
+      inspectSpreadsheet: (input, scope) =>
+        this.runtime().inspectSpreadsheet(input, scope),
+      readSpreadsheet: (input, scope) =>
+        this.runtime().readSpreadsheet(input, scope),
       registerInputRoots: (sessionId, roots) =>
         this.registerInputRoots(sessionId, roots),
     } satisfies DocumentsFace);

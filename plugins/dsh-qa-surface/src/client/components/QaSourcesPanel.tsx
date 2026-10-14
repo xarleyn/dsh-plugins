@@ -1,3 +1,4 @@
+import { QaSpreadsheetPreview } from "./QaSpreadsheetPreview.js";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type {
   QaSource,
@@ -203,7 +204,9 @@ function QaSourceDetail({
     ),
     [loadImage],
   );
-  const pdfUrl = usePdfUrl(preview?.document?.base64);
+  const pdfUrl = usePdfUrl(
+    preview?.document?.kind === "pdf" ? preview.document.base64 : undefined,
+  );
   const external =
     source.uri?.match(/^https?:\/\//iu)?.[0] === undefined
       ? undefined
@@ -379,7 +382,24 @@ function QaSourceDetail({
                 ) : null}
               </p>
             )}
-            {preview.document !== undefined ? (
+            {preview.document?.kind === "spreadsheet" ? (
+              <QaSpreadsheetPreview
+                initial={preview.document}
+                load={async (selection) => {
+                  if (source.path === undefined || sessionId === null)
+                    throw new Error("unavailable");
+                  const result = await sourceApi.readSourceFile(
+                    sessionId,
+                    source.path,
+                    selection,
+                  );
+                  if (!result.ok) throw result.error;
+                  if (result.value.document?.kind !== "spreadsheet")
+                    throw new Error("unsupported");
+                  return result.value.document;
+                }}
+              />
+            ) : preview.document !== undefined ? (
               pdfUrl === null ? (
                 <p>Готовлю предпросмотр…</p>
               ) : (

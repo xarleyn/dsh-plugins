@@ -1,5 +1,5 @@
 /**
- * The five agent-facing document tools (§8–§11, §34) and their registration.
+ * Agent-facing document and spreadsheet tools and their registration.
  *
  * Registration is explicit and returns its disposers: the host may register
  * them globally (the default) or an agent scope may register the same
@@ -9,6 +9,11 @@
  */
 
 import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
+import {
+  createSpreadsheetTools,
+  SPREADSHEET_TOOL_NAMES,
+} from "./spreadsheets.js";
+export { SPREADSHEET_TOOL_NAMES } from "./spreadsheets.js";
 
 import { createDocumentCompareTool, DOCUMENT_COMPARE_TOOL } from "./compare.js";
 import { createDocumentConvertTool, DOCUMENT_CONVERT_TOOL } from "./convert.js";
@@ -37,6 +42,7 @@ export const DOCUMENT_TOOL_NAMES: readonly string[] = [
   DOCUMENT_FROM_URL_TOOL,
   DOCUMENT_CONVERT_TOOL,
   DOCUMENT_INSPECT_TOOL,
+  ...SPREADSHEET_TOOL_NAMES,
 ];
 
 /**
@@ -83,6 +89,7 @@ export function createDocumentTools(
     createDocumentFromUrlTool(options),
     createDocumentConvertTool(options),
     createDocumentInspectTool(options),
+    ...createSpreadsheetTools(options),
     ...(options.runtime.config.comparison.enabled
       ? [
           createDocumentCompareTool(options),

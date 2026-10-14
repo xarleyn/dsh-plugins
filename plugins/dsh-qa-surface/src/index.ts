@@ -134,6 +134,7 @@ import type {
   QaApprovalDecision,
   QaClaimResult,
   QaDocumentPreview,
+  QaSpreadsheetPreviewSelection,
   QaDocumentWorkflowStatus,
   QaIssuedServiceToken,
   QaLockdownProof,
@@ -2098,6 +2099,7 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     sessionId: string,
     sourcePath: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): Promise<QaSourceFilePreview> {
     const finish = await this.admitChatRead(token, sessionId, sourcePath);
     const config = this.getConfig();
@@ -2138,6 +2140,7 @@ export class QaSurface extends TypertRemoteService {
           documents: () =>
             this.ctx.get("documents") as DocumentsFace | undefined,
           maxBytes: config.sources.filePreview.maxBytes,
+          ...(selection === undefined ? {} : { selection }),
         });
         return {
           path: sourcePath,
@@ -2373,6 +2376,7 @@ export class QaSurface extends TypertRemoteService {
     token: string,
     sessionId: string,
     path: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): Promise<QaDocumentPreview> {
     const finish = await this.admitChatRead(token, sessionId, path);
     const { config, cwd } = await this.browseContext(sessionId);
@@ -2386,6 +2390,7 @@ export class QaSurface extends TypertRemoteService {
         documents: () => this.ctx.get("documents") as DocumentsFace | undefined,
         sessionId,
         maxBytes: config.sources.filePreview.maxBytes,
+        ...(selection === undefined ? {} : { selection }),
       });
       finish();
       return value;

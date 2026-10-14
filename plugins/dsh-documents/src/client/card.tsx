@@ -111,7 +111,7 @@ const OCR_MODES = [
  * is the body the page draws under its own heading, not a heading of its own.
  */
 export const DOCUMENTS_CARD_SUMMARY =
-  "Document pipeline: Markdown ↔ DOCX/PDF, text extraction, online sources.";
+  "Document pipeline: Markdown ↔ DOCX/PDF, XLSX/CSV/TSV/OpenDocument spreadsheets, text extraction, online sources.";
 
 /** The face the row entry injects into this card. */
 export interface DocumentsCardFace {

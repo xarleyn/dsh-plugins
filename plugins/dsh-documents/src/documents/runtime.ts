@@ -3,11 +3,21 @@
  *
  * One instance lives in the plugin and survives across calls, so the backend
  * registry, the concurrency semaphores and the version caches are shared
- * instead of rebuilt per request. The four operations are the whole surface:
- * everything else in this subsystem is an implementation detail behind them.
+ * instead of rebuilt per request. Document and spreadsheet operations share
+ * these dependencies and the same scope and resource limits.
  */
 
 import { ArtifactStore } from "./artifacts/store.js";
+import {
+  createSpreadsheet,
+  inspectSpreadsheet,
+  readSpreadsheet,
+} from "./spreadsheets/workbook.js";
+import type {
+  SpreadsheetCreateInput,
+  SpreadsheetReadInput,
+  SpreadsheetInspectInput,
+} from "./spreadsheets/types.js";
 import {
   applyDocumentsEnvOverrides,
   resolveDocumentsConfig,
@@ -86,6 +96,21 @@ export class DocumentRuntime {
   readonly providers: ProviderSet;
   private readonly deps: DocumentRuntimeDeps;
   private readonly seams: ProviderSeams;
+
+  async inspectSpreadsheet(
+    input: SpreadsheetInspectInput,
+    scope: DocumentScope,
+  ) {
+    return inspectSpreadsheet(this.deps, input, scope);
+  }
+
+  async readSpreadsheet(input: SpreadsheetReadInput, scope: DocumentScope) {
+    return readSpreadsheet(this.deps, input, scope);
+  }
+
+  async createSpreadsheet(input: SpreadsheetCreateInput, scope: DocumentScope) {
+    return createSpreadsheet(this.deps, input, scope);
+  }
 
   constructor(options: DocumentRuntimeOptions) {
     this.config = options.config;

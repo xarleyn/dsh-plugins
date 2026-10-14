@@ -368,14 +368,21 @@ export const webFetchExtractor: SourceExtractor = createWebFetchExtractor();
 export const documentSourceExtractor: SourceExtractor = {
   id: "document-input",
   matches: (context) =>
-    ["document_to_markdown", "document_inspect"].includes(context.toolName),
+    [
+      "document_to_markdown",
+      "document_inspect",
+      "spreadsheet_read",
+      "spreadsheet_inspect",
+    ].includes(context.toolName),
   extract(context) {
     const args = parsedArgs(context.args);
     const source = record(record(context.presentation)?.qaDocumentSource);
     const rawPath = typeof source?.path === "string" ? source.path : args.file;
     if (typeof rawPath !== "string" || rawPath.trim() === "") return [];
     const path = canonicalizeWorkspacePath(rawPath, context.workspaceRoot);
-    const metadataOnly = context.toolName === "document_inspect";
+    const metadataOnly = ["document_inspect", "spreadsheet_inspect"].includes(
+      context.toolName,
+    );
     const sourceSnippet =
       typeof source?.snippet === "string" ? snippet(source.snippet) : undefined;
     return [

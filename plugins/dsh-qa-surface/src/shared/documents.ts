@@ -23,3 +23,17 @@ export const QA_PDF_MEDIA_TYPE = "application/pdf";
 export function isConvertibleDocument(mediaType: string): boolean {
   return mediaType === QA_WORD_MEDIA_TYPE;
 }
+
+export function isSpreadsheetDocument(mediaType: string): boolean {
+  return [
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    "application/vnd.oasis.opendocument.spreadsheet",
+    "application/vnd.oasis.opendocument.spreadsheet-flat-xml",
+    "text/csv",
+    "text/tab-separated-values",
+  ].includes(mediaType);
+}
+
+export function isPreviewableDocument(mediaType: string): boolean {
+  return isConvertibleDocument(mediaType) || isSpreadsheetDocument(mediaType);
+}

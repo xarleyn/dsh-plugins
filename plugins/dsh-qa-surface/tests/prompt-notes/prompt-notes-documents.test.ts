@@ -24,6 +24,10 @@ describe("attached documents note", () => {
     // expected answer, and the report to make when the pipeline refuses.
     expect(text).toContain("document_inspect");
     expect(text).toContain("document_to_markdown");
+    expect(text).toContain("spreadsheet_inspect");
+    expect(text).toContain("spreadsheet_read");
+    expect(text).toContain("spreadsheet_create");
+    expect(text).toContain("all sheets");
     expect(text).toContain("document_from_url");
     expect(text).toMatch(/binary/u);
     expect(text).toMatch(/refusal is expected/u);

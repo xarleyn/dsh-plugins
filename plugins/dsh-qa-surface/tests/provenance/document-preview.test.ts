@@ -131,6 +131,7 @@ describe("workspace document preview", () => {
       name: "report.docx",
       bytes: 8,
     });
+    if (preview.kind !== "pdf") throw new Error("Expected PDF");
     expect(Buffer.from(preview.base64, "base64").toString("utf8")).toBe(
       "%PDF-1.4",
     );

@@ -136,6 +136,36 @@ describe("source evidence repair", () => {
     ).toMatchObject({ evidence: "read", metadata: { metadataOnly: false } });
   });
 
+  it("records spreadsheet pages as read sources and sheet inventories as metadata", () => {
+    expect(
+      registry.extract(
+        context(
+          "spreadsheet_read",
+          {},
+          { file: "input.xlsx", sheet: "Summary" },
+        ),
+      )[0],
+    ).toMatchObject({
+      path: "input.xlsx",
+      evidence: "read",
+      metadata: { metadataOnly: false },
+    });
+    expect(
+      registry.extract(
+        context("spreadsheet_inspect", {}, { file: "input.xlsx" }),
+      )[0],
+    ).toMatchObject({
+      path: "input.xlsx",
+      evidence: "queried",
+      metadata: { metadataOnly: true },
+    });
+    expect(
+      registry.extract(
+        context("spreadsheet_create", {}, { filename: "report.xlsx" }),
+      ),
+    ).toEqual([]);
+  });
+
   it.each([
     [
       "jira_get_issue",

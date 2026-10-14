@@ -38,6 +38,8 @@ export class QaSourceCollector {
         "docs_read",
         "document_to_markdown",
         "document_inspect",
+        "spreadsheet_inspect",
+        "spreadsheet_read",
       ].includes(context.toolName)
     )
       this.markIncomplete({
