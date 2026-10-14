@@ -85,6 +85,8 @@ import { registerTurnFailureLog } from "./turn-failure-log.js";
 import { entryRedirectRow } from "./entry-redirect.js";
 import { qaKioskDeployment } from "./ui-mode.js";
 import { registerQaNavigationRoute } from "./host-route.js";
+import { QaOidcService, oidcRefusal } from "./oidc/service.js";
+import { registerQaOidcRoute } from "./oidc/http.js";
 import { makeLaunchTokenSource } from "./launch-token.js";
 import { QaIntegrationPrincipalBindings } from "./integration-principals.js";
 import { registerQaIntegrationRoutes } from "./integration/http.js";
@@ -316,6 +318,12 @@ export class QaSurface extends TypertRemoteService {
   private webServer:
     Parameters<typeof registerQaNavigationRoute>[0] | undefined;
   private disposeRoute: (() => void) | undefined;
+  private readonly oidc = new QaOidcService({
+    config: () => this.getConfig(),
+    accounts: () => this.accountRemotes.resolve(this.getConfig()),
+  });
+  private disposeOidcRoute: (() => void) | undefined;
+  private oidcRouteKey: string | undefined;
   private routeKey: string | undefined;
   /**
    * The HTTP API an external application asks questions through. Constructed
@@ -699,6 +707,7 @@ export class QaSurface extends TypertRemoteService {
           const config = this.getConfig();
           this.refreshRoute();
           this.refreshIntegrationRoutes();
+          this.refreshOidcRoute();
           this.warnDocumentsMoved();
           this.warnLegacySlashDefaults();
           this.logger.info("config.updated", {
@@ -713,12 +722,17 @@ export class QaSurface extends TypertRemoteService {
       this.webServer = webContext.webServer;
       this.refreshRoute();
       this.refreshIntegrationRoutes();
+      this.refreshOidcRoute();
       webContext.effect(
         () => () => {
           this.disposeRoute?.();
           this.disposeRoute = undefined;
           this.routeKey = undefined;
           this.disposeIntegrationRoutes?.();
+          this.disposeOidcRoute?.();
+          this.disposeOidcRoute = undefined;
+          this.oidcRouteKey = undefined;
+          this.oidc.clear();
           this.disposeIntegrationRoutes = undefined;
           this.integrationRouteKey = undefined;
           this.webServer = undefined;
@@ -888,6 +902,25 @@ export class QaSurface extends TypertRemoteService {
   @Remote("accountsLogin")
   accountsLogin(email: string, password: string): QaAccountSession {
     return this.accountRemotes.login(email, password);
+  }
+
+  @Remote("accountsOidcStart")
+  accountsOidcStart(): Promise<import("./types.js").QaOidcStart> {
+    if (!this.disposeOidcRoute) return Promise.reject(oidcRefusal());
+    return this.oidc.start();
+  }
+
+  @Remote("accountsOidcComplete")
+  accountsOidcComplete(
+    handoff: string,
+    completionKey: string,
+  ): QaAccountSession {
+    return this.oidc.complete(handoff, completionKey);
+  }
+
+  @Remote("accountsOidcLogout")
+  accountsOidcLogout(token: string): Promise<string | null> {
+    return this.oidc.logout(token);
   }
 
   /** Identity probe; safe to call with an empty or expired token. */
@@ -2568,6 +2601,31 @@ export class QaSurface extends TypertRemoteService {
         basePath: config.integration.basePath,
         message: error instanceof Error ? error.message : String(error),
       });
+    }
+  }
+
+  private refreshOidcRoute(): void {
+    const config = this.getConfig();
+    const key =
+      config.enabled && config.accounts.enabled && config.accounts.oidc.enabled
+        ? JSON.stringify([config.accounts.oidc, config.route.path])
+        : undefined;
+    if (key === this.oidcRouteKey) return;
+    this.disposeOidcRoute?.();
+    this.disposeOidcRoute = undefined;
+    this.oidcRouteKey = undefined;
+    this.oidc.clear();
+    if (!key || !this.webServer) return;
+    try {
+      this.disposeOidcRoute = registerQaOidcRoute(
+        this.webServer,
+        config,
+        this.oidc,
+      );
+      this.oidcRouteKey = key;
+      this.logger.info("oidc.route-registered", {});
+    } catch {
+      this.logger.error("oidc.route-unavailable", {});
     }
   }
 

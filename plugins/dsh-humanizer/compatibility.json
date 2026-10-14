@@ -1,0 +1,9 @@
+{
+  "deepseekHarness": {
+    "testedReleases": ["0.2.0-rc.2"],
+    "channel": "next",
+    "requiredHostFeatures": ["tools/register"],
+    "range": ">=0.2.0-rc.2 <0.3.0-0"
+  },
+  "node": "^22.19.0 || >=24.0.0"
+}

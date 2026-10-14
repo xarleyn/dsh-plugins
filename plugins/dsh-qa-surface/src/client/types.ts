@@ -679,6 +679,14 @@ export interface QaAccountsApi {
     tokenId: string,
     allowed: boolean,
   ): Promise<RemoteResult<{ readonly updated: boolean }>>;
+  accountsOidcStart?(): Promise<
+    RemoteResult<import("../types.js").QaOidcStart>
+  >;
+  accountsOidcComplete?(
+    handoff: string,
+    completionKey: string,
+  ): Promise<RemoteResult<QaAccountSession>>;
+  accountsOidcLogout?(token: string): Promise<RemoteResult<string | null>>;
   chatVisible?(
     token: string,
   ): Promise<

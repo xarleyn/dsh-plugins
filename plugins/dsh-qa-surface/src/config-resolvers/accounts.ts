@@ -12,6 +12,7 @@ import {
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
 import { assertIntInRange } from "./shared.js";
+import { resolveOidc } from "./oidc.js";
 
 type AccountsSlice = ResolvedQaSurfaceConfig["accounts"];
 
@@ -147,6 +148,8 @@ export function resolveAccounts(
   );
   return Object.freeze({
     enabled: accountsEnabled,
+    localLogin: input.accounts?.localLogin ?? true,
+    oidc: resolveOidc(input),
     allowRegistration:
       input.accounts?.allowRegistration ??
       DEFAULT_QA_SURFACE_CONFIG.accounts.allowRegistration,

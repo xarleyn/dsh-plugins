@@ -65,6 +65,8 @@ export { defaultAccountsFilePath } from "./file.js";
 export type { QaIssuedServiceToken, QaServiceTokenSummary } from "../types.js";
 
 export interface QaAccountsOptions {
+  readonly oidcEnabled?: boolean;
+  readonly localLogin?: boolean;
   readonly sessionTtlDays: number;
   readonly allowRegistration: boolean;
   /** Login/registration attempts accepted per rolling minute, store-wide. */
@@ -187,6 +189,7 @@ function isAccountRole(value: unknown): value is QaAccountRole {
 
 function toPublic(user: StoredUser): QaAccountUserPublic {
   return {
+    ...(user.authMethod === "oidc" ? { authMethod: "oidc" as const } : {}),
     id: user.id,
     email: user.email,
     displayName: user.displayName,
@@ -236,6 +239,8 @@ export class QaAccounts {
   private readonly maxAuthAttemptsPerMinute: number;
   private readonly sessionTtlDays: number;
   private readonly allowRegistration: boolean;
+  private readonly oidcEnabled: boolean;
+  private readonly localLogin: boolean;
   /** Character cap on a stored profile's agent guidance. */
   private readonly instructionsMaxLength: number;
   /** Whether a deployment declares which identity handles an account may hold. */
@@ -253,6 +258,8 @@ export class QaAccounts {
   ) {
     this.sessionTtlDays = options.sessionTtlDays;
     this.allowRegistration = options.allowRegistration;
+    this.oidcEnabled = options.oidcEnabled ?? true;
+    this.localLogin = options.localLogin ?? true;
     this.maxAuthAttemptsPerMinute = options.maxAuthAttemptsPerMinute ?? 30;
     this.instructionsMaxLength =
       options.instructionsMaxLength ?? QA_PROFILE_DEFAULT_INSTRUCTIONS_MAX;
@@ -337,6 +344,8 @@ export class QaAccounts {
   ): QaAccountSession {
     this.reloadIfChanged();
     this.assertAuthBudget();
+    if (!this.localLogin)
+      throw new QaAccountsError("forbidden", "local authentication disabled");
     if (!this.allowRegistration) {
       throw new QaAccountsError(
         "registration-disabled",
@@ -375,6 +384,8 @@ export class QaAccounts {
   login(email: string, password: string): QaAccountSession {
     this.reloadIfChanged();
     this.assertAuthBudget();
+    if (!this.localLogin)
+      throw new QaAccountsError("forbidden", "local authentication disabled");
     const user = this.userByEmail(email.trim().toLowerCase());
     // One message for unknown email and wrong password, both scrypt-checked
     // in the known-user path so the timing does not enumerate addresses.
@@ -385,7 +396,10 @@ export class QaAccounts {
         "email or password is incorrect",
       );
     }
-    if (!passwordMatches(password, user.passwordHash)) {
+    if (
+      this.database.isOidcUser(user.id) ||
+      !passwordMatches(password, user.passwordHash)
+    ) {
       throw new QaAccountsError(
         "invalid-credentials",
         "email or password is incorrect",
@@ -404,7 +418,7 @@ export class QaAccounts {
 
   whoami(token: string): QaWhoamiResult {
     const file = this.authState();
-    const userId = verifyToken(file.secret, token, file.users);
+    const userId = this.verifyToken(token);
     if (userId === null) return { authenticated: false };
     const user = file.users.find((candidate) => candidate.id === userId);
     return user === undefined || user.disabled === true
@@ -416,7 +430,16 @@ export class QaAccounts {
   verifyToken(token: string): string | null {
     // Signature, expiry and token-version mechanics live in token.ts.
     const file = this.authState();
-    return verifyToken(file.secret, token, file.users);
+    const userId = verifyToken(
+      file.secret,
+      token,
+      file.users,
+      (id, uid) => this.oidcEnabled && this.database.oidcSessionActive(id, uid),
+    );
+    if (userId === null) return null;
+    if (this.database.isOidcUser(userId))
+      return this.oidcEnabled ? userId : null;
+    return this.localLogin ? userId : null;
   }
 
   private mintToken(userId: string): string {
@@ -426,6 +449,128 @@ export class QaAccounts {
       exp: Date.now() + this.sessionTtlDays * 86_400_000,
       ver: user?.tokenVersion ?? 0,
     });
+  }
+
+  /** Only the server OIDC verifier calls this with authenticated claims. */
+  loginOidc(identity: {
+    issuer: string;
+    subject: string;
+    email: string;
+    displayName: string;
+    role: QaAccountRole;
+    expiresAt: number;
+    autoProvision: boolean;
+  }): QaAccountSession {
+    if (
+      !this.oidcEnabled ||
+      !Number.isFinite(identity.expiresAt) ||
+      identity.expiresAt <= Date.now() ||
+      identity.expiresAt > Date.now() + 3_600_000
+    )
+      throw new QaAccountsError("forbidden", "invalid corporate session");
+    this.reloadIfChanged();
+    const id = this.database.oidcUserId(identity.issuer, identity.subject);
+    let user = this.file.users.find((candidate) => candidate.id === id);
+    if (!user) {
+      if (!identity.autoProvision || this.userByEmail(identity.email)) {
+        throw new QaAccountsError(
+          "forbidden",
+          "corporate account requires operator linking",
+        );
+      }
+      user = {
+        id: randomUUID(),
+        email: identity.email,
+        displayName: identity.displayName,
+        role: identity.role,
+        passwordHash: hashPassword(randomBytes(32).toString("hex")),
+        createdAt: new Date().toISOString(),
+        lastLoginAt: null,
+        tokenVersion: 0,
+      };
+      this.database.attachOidcIdentity(
+        identity.issuer,
+        identity.subject,
+        user,
+        true,
+      );
+      this.file = { ...this.file, users: [...this.file.users, user] };
+    }
+    if (user.disabled)
+      throw new QaAccountsError("account-disabled", "account disabled");
+    const sid = randomUUID();
+    const updated = this.database.authenticateOidc(
+      user.id,
+      identity.email,
+      identity.displayName,
+      identity.role,
+      sid,
+      identity.expiresAt,
+    );
+    if (!updated)
+      throw new QaAccountsError("account-disabled", "account disabled");
+    this.file = {
+      ...this.file,
+      users: this.file.users.map((entry) =>
+        entry.id === updated.id ? updated : entry,
+      ),
+    };
+    return {
+      token: mintToken(this.file.secret, {
+        uid: updated.id,
+        ver: updated.tokenVersion ?? 0,
+        exp: identity.expiresAt,
+        sid,
+      }),
+      user: toPublic(updated),
+    };
+  }
+
+  /** Operator-confirmed attachment preserves ownership and revokes old credentials. */
+  linkOidcIdentity(
+    email: string,
+    issuer: string,
+    subject: string,
+  ): QaAccountUserPublic {
+    this.reloadIfChanged();
+    const url = new URL(issuer);
+    if (
+      url.protocol !== "https:" ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.hash ||
+      !subject.trim()
+    ) {
+      throw new QaAccountsError("forbidden", "invalid corporate identity");
+    }
+    const user = this.userByEmail(email.trim().toLowerCase());
+    if (!user)
+      throw new QaAccountsError("invalid-credentials", "no such account");
+    const updated = {
+      ...user,
+      authMethod: "oidc" as const,
+      passwordHash: hashPassword(randomBytes(32).toString("hex")),
+      tokenVersion: (user.tokenVersion ?? 0) + 1,
+    };
+    this.database.attachOidcIdentity(url.href, subject, updated, false);
+    this.file = {
+      ...this.file,
+      users: this.file.users.map((entry) =>
+        entry.id === updated.id ? updated : entry,
+      ),
+    };
+    return toPublic(updated);
+  }
+
+  logoutOidc(token: string): boolean {
+    if (this.verifyToken(token) === null) return false;
+    const payload = JSON.parse(
+      Buffer.from(token.split(".")[1] ?? "", "base64url").toString(),
+    ) as { sid?: string };
+    if (!payload.sid) return false;
+    this.database.revokeOidcSession(payload.sid);
+    return true;
   }
 
   /**
@@ -438,7 +583,7 @@ export class QaAccounts {
    */
   requireUser(token: string): StoredUser {
     const file = this.authState();
-    const userId = verifyToken(file.secret, token, file.users);
+    const userId = this.verifyToken(token);
     const user =
       userId === null
         ? undefined
@@ -1113,6 +1258,13 @@ export class QaAccounts {
    * still theirs after signing in again.
    */
   setPassword(email: string, password: string): QaAccountUserPublic {
+    const existing = this.findUser(email);
+    if (existing && this.database.isOidcUser(existing.id)) {
+      throw new QaAccountsError(
+        "forbidden",
+        "corporate passwords are managed by the identity provider",
+      );
+    }
     validatePassword(password);
     return toPublic(
       this.editUser(email, (user) => ({
@@ -1164,7 +1316,13 @@ export class QaAccounts {
     this.reloadIfChanged();
     this.assertAuthBudget();
     const user = this.userByEmail(email.trim().toLowerCase());
-    if (user === undefined || user.disabled === true) return;
+    if (
+      !this.localLogin ||
+      user === undefined ||
+      user.disabled === true ||
+      this.database.isOidcUser(user.id)
+    )
+      return;
     this.database.recordPasswordReset(user.id, new Date().toISOString());
   }
 
