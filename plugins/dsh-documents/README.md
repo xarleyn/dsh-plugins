@@ -11,7 +11,7 @@ headers, footnotes, tracked revisions — and the diff, not the model, decides
 what changed. The model is given a change set with stable ids and interprets it.
 
 The plugin owns every backend command line, keeps the source, the assets, the
-outputs and a `manifest.json` in one artifact bundle, and exposes seven
+outputs and a `manifest.json` in one artifact bundle, and exposes
 semantic tools. An agent never calls `pandoc`, LibreOffice, Docling or a
 converter flag directly, so a deployment can replace a backend without touching
 a prompt, a skill or a workflow.
@@ -82,6 +82,9 @@ half-up rounding per line to two decimals. No price or tax treatment is inferred
 | `document_inspect` | Type, metadata, page/heading/table counts, encryption and macro flags — without converting |
 | `document_compare` | Two documents → a deterministic comparison artifact, a summary and a bounded preview |
 | `document_diff_read` | Pages of a comparison's changes, filtered by section, kind and signal |
+| `spreadsheet_inspect` | Sheets and dimensions of XLSX/ODS/FODS or a CSV/TSV table, with delimiter/encoding discovery |
+| `spreadsheet_read` | Bounded pages of one sheet, typed values, cell addresses, formulas and cached results |
+| `spreadsheet_create` | A new XLSX/ODS/FODS workbook or single-table CSV/TSV attachment |
 
 Each producing tool reports its files by their path **inside the session
 workspace** — `.qa/artifacts/documents/<id>/report.docx` — which is also the
@@ -111,6 +114,82 @@ lockdown:
 
 Every name must exist in the session's tool catalog, so the plugin must be
 installed and enabled wherever the allow-list mentions it.
+
+## Excel workbooks
+
+Excel tools run in-process through ExcelJS and do not require Pandoc, Docling or
+LibreOffice. The bundled `spreadsheets` skill teaches the agent to inspect every
+sheet, select sheets by exact name and read them in bounded rectangular pages.
+Allow-list `spreadsheet_inspect`, `spreadsheet_read` and `spreadsheet_create` in
+deployments that expose Excel to a chat. They follow `documents.enabled` and the
+same per-session attachment grants as the document tools.
+
+Reading defaults to 100 rows and 20 columns. At most 2000 cells fit in one call;
+long text can shorten the page further under `extraction.maxInlineChars`.
+`nextRow` continues the current column window. `nextColumn` starts the next
+window, for which row paging starts again at the first requested row. Empty
+cells and rows preserve their coordinates; hidden and empty sheets are listed.
+Results include the workbook hash so callers can detect changed input between
+pages. Dates use ISO values; merged ranges and number formats are explicit.
+
+Creation accepts `sheets: [{ name, rows, headerRow?, freezeRows?, columnWidths? }]`.
+Rows contain strings, numbers, booleans, `null`, `{ date: "2026-01-15" }` or
+`{ formula: "SUM(B2:B3)", result: 5 }`. Leading-zero identifiers stay strings,
+and a plain string beginning with `=` stays text. `headerRow` makes the first
+row bold, filterable and frozen by default. The result is a new `.xlsx` artifact
+beside `source.json` and `manifest.json`, readable by the same tools; existing
+uploads are never overwritten. Creating a spreadsheet observes the managed
+document workflow's general render authorization.
+
+Formula values are **cached results from the last save** and can be stale or
+absent. The tools do not calculate them; created workbooks request recalculation
+when opened in Excel. The Excel path accepts unencrypted XLSX; XLS and macro-enabled
+workbooks require an XLSX export. These tools do not render charts or round-trip
+an uploaded workbook's full formatting through recreation.
+
+The configured input-byte limit applies alongside XLSX caps: 128 sheets,
+100000 rows per sheet, 16384 columns, 200000 stored cells, 2048 ZIP entries and
+64 MiB of actual expanded contents. Each range is limited to 200000 cells;
+aggregate range area is limited to 800000 cells per worksheet to bound merged
+and validation range expansion. A sheet may contain at most 2000 merged ranges;
+column declarations obey Excel's column limit and the 200000 expansion budget.
+Unsafe archives, macro containers and
+unsupported formats are refused before workbook loading.
+
+## Open spreadsheet formats
+
+The same three tools read and create **CSV, TSV, ODS and FODS**. Select output
+with `format`; its default remains `xlsx`. Input format is detected from the
+container or extension; specify `format` for extensionless text. All formats
+use the existing input grants, artifact store, pagination and render authorization.
+
+CSV/TSV have one sheet named `Data`. Fields stay strings, preserving leading
+zeroes and exact source spelling. Quoted separators, doubled quotes, embedded
+newlines, whitespace, blank records and ragged rows are supported. Blank fields
+are empty strings; absent trailing fields in a shorter record are null cells.
+CSV detects comma/semicolon/tab/pipe separators; ambiguity requires
+`text.delimiter`. TSV always uses tab. Inspect results report `text.delimiter`
+and `text.encoding`; reuse them on reads. UTF-8 and UTF-16 BOMs are detected;
+without BOM, UTF-8 is assumed. Windows-1251 requires an explicit encoding.
+
+Creation accepts `text: { delimiter?, encoding?, bom?, escapeFormulas? }` and
+exactly one sheet for CSV/TSV. Supported encodings are `utf-8`, `utf-16le`,
+`utf-16be` and `windows-1251`. Output defaults to UTF-8 with BOM and CRLF.
+Booleans export as true/false, numbers retain numeric spelling, dates become
+ISO strings and nulls become empty fields. Formula cells are refused. Strings
+beginning with formula-trigger characters receive an apostrophe by default;
+`escapeFormulas: false` opts into exact literal export, which spreadsheet
+applications may interpret as formulas. Legacy encoding cannot silently
+replace unrepresentable characters. Styling does not survive a text export.
+
+ODS and its flat XML form FODS support multiple sheets and typed data. The
+native bounded reader handles repeated rows/columns, merged ranges and
+paragraphs/explicit spaces; trailing full-grid empty repetitions are ignored.
+Formula cells use explicit OpenFormula syntax (`of:=SUM([.B2:.B3])`) and saved
+results. Expressions are never recalculated or translated from Excel syntax.
+Creation writes table data, without XLSX layout options or existing charts and
+styles. Macro/script containers, encryption, entity declarations and excessive
+repetition are refused. These paths require no external conversion program.
 
 ## Comparing two revisions
 
@@ -296,6 +375,17 @@ manifest, security and resource limits — is in
 deterministic comparison in
 [`docs/specs/document-comparison.md`](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-documents/docs/specs/document-comparison.md),
 and the plugin surface itself in [`SPEC.md`](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-documents/SPEC.md).
+
+## Spreadsheet previews
+
+The Host service exposes optional `inspectSpreadsheet` and `readSpreadsheet`
+methods through `DocumentsFace`. Sibling plugins use the same parser, limits and
+session input-root policy as the agent tools. The QA files and sources panels
+render XLSX, CSV, TSV, ODS and FODS as read-only tables with sheet selection and
+bounded navigation across rows and columns. Formula cells display saved results
+and expose their expressions in a tooltip; preview does not recalculate formulas
+or reproduce workbook styling, merged cells or charts. Existing Word previews
+continue to use the document pipeline's PDF conversion.
 
 ## License
 

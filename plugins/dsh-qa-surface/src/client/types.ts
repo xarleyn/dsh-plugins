@@ -38,6 +38,7 @@ import type {
   QaTurnSources,
   QaWhoamiResult,
   QaDocumentPreview,
+  QaSpreadsheetPreviewSelection,
   QaWorkspaceFile,
   QaWorkspaceFileChunk,
   QaDocumentWorkflowStatus,
@@ -414,6 +415,7 @@ export interface QaSourceApi {
     token: string,
     sessionId: string,
     sourcePath: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): Promise<
     | { readonly ok: true; readonly value: QaSourceFilePreview }
     | { readonly ok: false; readonly error: unknown }
@@ -451,6 +453,7 @@ export interface QaSourceApi {
     token: string,
     sessionId: string,
     path: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): Promise<
     | { readonly ok: true; readonly value: QaDocumentPreview }
     | { readonly ok: false; readonly error: unknown }
@@ -493,6 +496,7 @@ export type QaBoundSourceApi = {
   readSourceFile(
     sessionId: string,
     sourcePath: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): Promise<
     | { readonly ok: true; readonly value: QaSourceFilePreview }
     | { readonly ok: false; readonly error: unknown }
@@ -519,6 +523,7 @@ export type QaBoundSourceApi = {
   previewWorkspaceDocument(
     sessionId: string,
     path: string,
+    selection?: QaSpreadsheetPreviewSelection,
   ): Promise<
     | { readonly ok: true; readonly value: QaDocumentPreview }
     | { readonly ok: false; readonly error: unknown }

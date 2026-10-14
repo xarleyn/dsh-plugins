@@ -579,6 +579,20 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-ws__download:hover{border-color:var(--dsw-alias-label-dimmed);color:var(--dsw-alias-label-primary)}
 .dsh-qa-ws__meta{margin:0 2px;color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:16px}
 .dsh-qa-ws__toggle{appearance:none;align-self:flex-start;padding:1px 3px;border:0;border-radius:5px;background:0 0;color:var(--dsh-qa-accent);font:inherit;font-size:11px;cursor:pointer}
+.dsh-qa-sheet{min-width:0;color:var(--dsw-alias-label-primary);font-size:12px}
+.dsh-qa-sheet__controls{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:8px 0}
+.dsh-qa-sheet__controls select,.dsh-qa-sheet__controls button{max-width:100%;font:inherit;color:inherit;background:var(--dsw-alias-bg-layer-2);border:1px solid var(--dsw-alias-border-l2);border-radius:6px;padding:5px 8px}
+.dsh-qa-sheet__controls button:disabled{opacity:.5}
+.dsh-qa-sheet__note{color:var(--dsw-alias-label-tertiary);font-size:11px}
+.dsh-qa-sheet__scroll{overflow:auto;max-height:65vh;border:1px solid var(--dsw-alias-border-l2);border-radius:8px}
+.dsh-qa-sheet table{border-collapse:separate;border-spacing:0;min-width:100%}
+.dsh-qa-sheet th,.dsh-qa-sheet td{padding:5px 8px;border-right:1px solid var(--dsw-alias-border-l2);border-bottom:1px solid var(--dsw-alias-border-l2);min-width:90px;max-width:320px;white-space:pre-wrap;overflow-wrap:anywhere;vertical-align:top}
+.dsh-qa-sheet th{position:sticky;background:var(--dsw-alias-bg-layer-2);font-weight:600}
+.dsh-qa-sheet thead th{top:0;z-index:1}
+.dsh-qa-sheet tbody th{left:0;min-width:36px}
+.dsh-qa-sheet td[data-type=number]{text-align:right;font-variant-numeric:tabular-nums}
+.dsh-qa-sheet td[data-type=error]{color:var(--dsw-alias-state-danger-primary)}
+.dsh-qa-sheet__caption{text-align:left;padding:6px 8px}
 .dsh-qa-ws__text{margin:0;padding:8px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-size:11px;line-height:16px;white-space:pre-wrap;word-break:break-word}
 .dsh-qa-ws__image{max-width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
 .dsh-qa-ws__pdf{width:100%;height:62vh;min-height:240px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3)}

@@ -169,7 +169,7 @@ export async function readSourceFilePreview({
     ...(attachmentRoot === undefined ? {} : { attachmentRoot }),
   });
   if (
-    /\.(?:pdf|docx?|xlsx?|pptx?|odt|ods|odp|zip|png|jpe?g|gif|webp)$/iu.test(
+    /\.(?:pdf|docx?|xlsx?|pptx?|odt|ods|fods|csv|tsv|odp|zip|png|jpe?g|gif|webp)$/iu.test(
       file.canonical,
     )
   )
@@ -220,6 +220,10 @@ export interface QaWorkspaceListRequest {
 const MIME_BY_EXTENSION: Readonly<Record<string, string>> = {
   bmp: "image/bmp",
   csv: "text/csv",
+  tsv: "text/tab-separated-values",
+  xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  ods: "application/vnd.oasis.opendocument.spreadsheet",
+  fods: "application/vnd.oasis.opendocument.spreadsheet-flat-xml",
   gif: "image/gif",
   html: "text/html",
   jpeg: "image/jpeg",

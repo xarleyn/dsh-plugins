@@ -170,7 +170,7 @@
       "name": "dsh-documents",
       "npm": "@yadsh/dsh-documents",
       "path": "plugins/dsh-documents",
-      "description": "Managed document pipeline for the DeepSeek Harness: Markdown to DOCX/PDF, DOCX/PDF back to Markdown, and online sources as agent tools",
+      "description": "Managed document pipeline for the DeepSeek Harness: DOCX/PDF, XLSX/CSV/TSV/OpenDocument spreadsheets, Markdown and online sources as agent tools",
       "keywords": [
         "deepseek",
         "deepseek-harness",
@@ -180,6 +180,12 @@
         "documents",
         "docx",
         "pdf",
+        "xlsx",
+        "excel",
+        "csv",
+        "tsv",
+        "ods",
+        "opendocument",
         "markdown",
         "ocr"
       ],

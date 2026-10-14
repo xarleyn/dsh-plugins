@@ -30,6 +30,8 @@ export {
   type ResolvedDocumentsConfig,
 } from "./config.js";
 export type * from "./types.js";
+export type * from "./spreadsheets/types.js";
+export { SPREADSHEET_LIMITS } from "./spreadsheets/guards.js";
 export {
   createDocumentRuntime,
   DocumentRuntime,
@@ -41,6 +43,7 @@ export {
   registerDocumentTools,
   DOCUMENT_COMPARISON_TOOL_NAMES,
   DOCUMENT_TOOL_NAMES,
+  SPREADSHEET_TOOL_NAMES,
   DOCUMENT_COMPARE_TOOL,
   DOCUMENT_CONVERT_TOOL,
   DOCUMENT_CREATE_TOOL,

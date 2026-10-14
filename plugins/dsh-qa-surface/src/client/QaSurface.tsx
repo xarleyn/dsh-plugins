@@ -1,3 +1,4 @@
+import type { QaSpreadsheetPreviewSelection } from "../types.js";
 import {
   useCallback,
   useEffect,
@@ -612,11 +613,16 @@ export function QaSurface(props: QaSurfaceProps) {
     () => ({
       sources: (sessionId: string) =>
         props.sourceApi.sources(accounts?.token() ?? "", sessionId),
-      readSourceFile: (sessionId: string, sourcePath: string) =>
+      readSourceFile: (
+        sessionId: string,
+        sourcePath: string,
+        selection?: QaSpreadsheetPreviewSelection,
+      ) =>
         props.sourceApi.readSourceFile(
           accounts?.token() ?? "",
           sessionId,
           sourcePath,
+          selection,
         ),
       readSourceImage: (
         sessionId: string,
@@ -662,11 +668,16 @@ export function QaSurface(props: QaSurfaceProps) {
           sessionId,
           path,
         ),
-      previewWorkspaceDocument: (sessionId: string, path: string) =>
+      previewWorkspaceDocument: (
+        sessionId: string,
+        path: string,
+        selection?: QaSpreadsheetPreviewSelection,
+      ) =>
         props.sourceApi.previewWorkspaceDocument(
           accounts?.token() ?? "",
           sessionId,
           path,
+          selection,
         ),
     }),
     [accounts, props.sourceApi],

@@ -56,11 +56,44 @@ remain authoritative for everything below the plugin surface.
 | `document_inspect` | structure and metadata without conversion |
 | `document_compare` | two documents → a deterministic comparison artifact, a summary and a bounded preview |
 | `document_diff_read` | pages of that comparison's changes, filtered by section, kind and signal |
+| `spreadsheet_inspect` | XLSX workbook → inventory of every sheet, dimensions, visibility and merged ranges |
+| `spreadsheet_read` | one XLSX sheet → a bounded rectangular page with typed cells, addresses and formula caches |
+| `spreadsheet_create` | named sheets and typed rows → a new XLSX artifact, JSON source and manifest |
 
 Registration is conditional on `enabled`, and the comparison pair on
 `comparison.enabled` as well; visibility is the deployment's allow-list. An
 unknown name in an allow-list fails a session closed, so a deployment that lists
 these tools must install the plugin.
+
+Spreadsheet tools use ExcelJS in-process without conversion programs. They use
+the same input grants, artifact store, render authorization, cancellation and
+concurrency slots as the document pipeline. Read pages contain at most 2000
+cells and obey `extraction.maxInlineChars`. Formula results are saved caches,
+never recalculated; output workbooks request recalculation on opening.
+XLS, encrypted and macro-enabled workbooks are unsupported. Container checks
+bound actual expanded bytes to 64 MiB, entries to 2048, sheets to 128, rows to
+100000, columns to 16384 and stored cells or any single range to 200000.
+Aggregate range area is limited to 800000 cells per worksheet; at most 2000
+merged ranges are accepted per sheet, and expanded column declarations are
+bounded by 200000. Reading reports
+all sheets, preserving blank positions and exposing merged ranges, dates,
+number formats and links. Creation builds a new workbook rather than modifying
+the upload or preserving every formatting feature of an existing workbook.
+
+The spreadsheet tools also support CSV, TSV, ODS and FODS via `format`, keeping
+XLSX as the default output. CSV/TSV expose a single `Data` sheet and retain fields
+as strings. Delimiter and encoding are reported, quotes and record boundaries
+are parsed by the CSV grammar, and ambiguous input requires explicit options.
+UTF-8/UTF-16 BOM discovery and explicit Windows-1251 are supported. Output uses
+proper quoting and configurable BOM; dangerous string prefixes are escaped by
+default without changing numeric inputs. Formula cells and multiple sheets are
+refused for delimited output. Lossy encoding is never substituted silently.
+
+ODS/FODS use hardened XML with bounded repeats and merged areas; ODS ZIP members
+obey the same expansion caps. Typed table values and explicit OpenFormula cached
+results survive, while recreation omits visual layout. Empty full-grid trailing
+repeats are discarded. Input reads are bounded to the lower of the configured
+byte cap and 64 MiB. Scripts, encryption and entity declarations are refused.
 
 ### 4.2 Configuration
 
@@ -79,6 +112,10 @@ plugin as a filesystem skill provider (`providerName: "documents"`, bundled root
 only) while comparison is on. It is the model-facing half of the split: the
 change set is the fact, the interpretation is the model's, and a difference
 without a `changeId` does not exist.
+
+`skills/spreadsheets/SKILL.md` is mounted by the same provider and teaches sheet
+discovery, row/column pagination, source hash checks, typed creation and output
+readback. The agent treats workbook content as untrusted source data.
 
 ### 4.3 Settings card
 

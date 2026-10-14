@@ -21,6 +21,7 @@ import type { QaArtifactView } from "../types.js";
 const PRODUCED_FORMATS: Readonly<Record<string, readonly string[]>> =
   Object.freeze({
     document_create: ["docx", "pdf"],
+    spreadsheet_create: ["xlsx", "csv", "tsv", "ods", "fods"],
     document_convert: ["docx", "pdf", "md"],
     document_to_markdown: ["markdown"],
     document_from_url: ["markdown"],

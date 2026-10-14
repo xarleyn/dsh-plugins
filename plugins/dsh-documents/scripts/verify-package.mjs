@@ -127,6 +127,25 @@ await runVerifyPackage({
       await readFromRoot("lib/documents/tools/diff-read.js"),
       /document_diff_read/u,
     );
+    const spreadsheets = await readFromRoot(
+      "lib/documents/tools/spreadsheets.js",
+    );
+    for (const tool of [
+      "spreadsheet_inspect",
+      "spreadsheet_read",
+      "spreadsheet_create",
+    ]) {
+      assert(
+        spreadsheets.includes(tool),
+        `the built spreadsheet tools must include ${tool}`,
+      );
+    }
+    const spreadsheetSkill = await readFromRoot("skills/spreadsheets/SKILL.md");
+    assert.match(spreadsheetSkill, /^name: spreadsheets$/mu);
+    assert.match(
+      spreadsheetSkill,
+      /^allowed-tools: spreadsheet_inspect spreadsheet_read spreadsheet_create$/mu,
+    );
 
     const skill = await readFromRoot("skills/contract-review/SKILL.md");
     assert.match(skill, /^---\r?\nname: contract-review$/mu);
