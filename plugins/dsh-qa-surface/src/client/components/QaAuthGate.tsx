@@ -12,6 +12,8 @@ export interface QaAuthGateProps {
   readonly title: string;
   readonly logoUrl: string | null;
   readonly allowRegistration: boolean;
+  readonly localLogin?: boolean;
+  readonly oidcLabel?: string | null;
 }
 
 /** The Host's address shape, mirrored so the card refuses before the round trip. */
@@ -64,18 +66,19 @@ export function QaAuthGate(props: QaAuthGateProps) {
   const gate = snapshot.stage === "gate" ? snapshot : undefined;
   const mode = gate?.mode ?? "login";
   const busy = gate?.busy ?? false;
+  const localLogin = props.localLogin ?? true;
   const notice = gate?.notice ?? null;
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [refusal, setRefusal] = useState<string | null>(null);
-  const showRegister = props.allowRegistration;
+  const showRegister = localLogin && props.allowRegistration;
   // The reset card is the same card with one field: the request only needs an
   // address, and asking for a password the user does not have would be absurd.
   const reset = mode === "reset";
   const error = refusal ?? gate?.error ?? null;
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (busy) return;
+    if (busy || !localLogin) return;
     const next = refusalOf(email, reset ? null : password);
     setRefusal(next);
     if (next !== null) return;
@@ -102,99 +105,119 @@ export function QaAuthGate(props: QaAuthGateProps) {
           <Logo logoUrl={props.logoUrl} />
           <h1 data-testid="qa-surface-auth-title">{props.title}</h1>
         </div>
-        {reset ? (
-          <p className="dsh-qa-auth__lead" data-testid="qa-surface-auth-lead">
-            Укажите email: заявку увидит оператор и сбросит пароль. Почта с
-            ссылкой на этом стенде не настроена.
-          </p>
-        ) : null}
-        {showRegister && !reset ? (
-          <div
-            className="dsh-qa-auth__tabs"
-            data-testid="qa-surface-auth-tabs"
-            role="tablist"
-            aria-label="Вход или регистрация"
-          >
-            <button
-              type="button"
-              role="tab"
-              data-testid="qa-surface-auth-tab-login"
-              aria-selected={mode === "login"}
-              className={
-                mode === "login"
-                  ? "dsh-qa-auth__tab dsh-qa-auth__tab--active"
-                  : "dsh-qa-auth__tab"
-              }
-              onClick={() => {
-                setRefusal(null);
-                accounts.setMode("login");
-              }}
-            >
-              Вход
-            </button>
-            <button
-              type="button"
-              role="tab"
-              data-testid="qa-surface-auth-tab-register"
-              aria-selected={mode === "register"}
-              className={
-                mode === "register"
-                  ? "dsh-qa-auth__tab dsh-qa-auth__tab--active"
-                  : "dsh-qa-auth__tab"
-              }
-              onClick={() => {
-                setRefusal(null);
-                accounts.setMode("register");
-              }}
-            >
-              Регистрация
-            </button>
-          </div>
-        ) : null}
-        {/* The constraints stay declarative: `noValidate` gives the card the answer. */}
-        <label
-          className="dsh-qa-auth__field"
-          data-testid="qa-surface-auth-email-field"
-        >
-          <span>Email</span>
-          <input
-            type="email"
-            name="email"
-            data-testid="qa-surface-auth-email"
-            autoComplete="email"
-            required
+        {props.oidcLabel ? (
+          <button
+            type="button"
+            className="dsh-qa-auth__submit"
+            data-testid="qa-surface-auth-oidc"
             disabled={busy}
-            value={email}
-            onChange={(event) => {
-              setRefusal(null);
-              setEmail(event.currentTarget.value);
+            onClick={() => {
+              void accounts.loginOidc();
             }}
-          />
-        </label>
-        {reset ? null : (
-          <label
-            className="dsh-qa-auth__field"
-            data-testid="qa-surface-auth-password-field"
           >
-            <span>Пароль</span>
-            <input
-              type="password"
-              name="password"
-              data-testid="qa-surface-auth-password"
-              autoComplete={
-                mode === "register" ? "new-password" : "current-password"
-              }
-              required
-              minLength={QA_MIN_PASSWORD_LENGTH}
-              disabled={busy}
-              value={password}
-              onChange={(event) => {
-                setRefusal(null);
-                setPassword(event.currentTarget.value);
-              }}
-            />
-          </label>
-        )}
+            {busy ? "Подождите…" : props.oidcLabel}
+          </button>
+        ) : null}
+        {localLogin ? (
+          <>
+            {reset ? (
+              <p
+                className="dsh-qa-auth__lead"
+                data-testid="qa-surface-auth-lead"
+              >
+                Укажите email: заявку увидит оператор и сбросит пароль. Почта с
+                ссылкой на этом стенде не настроена.
+              </p>
+            ) : null}
+            {showRegister && !reset ? (
+              <div
+                className="dsh-qa-auth__tabs"
+                data-testid="qa-surface-auth-tabs"
+                role="tablist"
+                aria-label="Вход или регистрация"
+              >
+                <button
+                  type="button"
+                  role="tab"
+                  data-testid="qa-surface-auth-tab-login"
+                  aria-selected={mode === "login"}
+                  className={
+                    mode === "login"
+                      ? "dsh-qa-auth__tab dsh-qa-auth__tab--active"
+                      : "dsh-qa-auth__tab"
+                  }
+                  onClick={() => {
+                    setRefusal(null);
+                    accounts.setMode("login");
+                  }}
+                >
+                  Вход
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  data-testid="qa-surface-auth-tab-register"
+                  aria-selected={mode === "register"}
+                  className={
+                    mode === "register"
+                      ? "dsh-qa-auth__tab dsh-qa-auth__tab--active"
+                      : "dsh-qa-auth__tab"
+                  }
+                  onClick={() => {
+                    setRefusal(null);
+                    accounts.setMode("register");
+                  }}
+                >
+                  Регистрация
+                </button>
+              </div>
+            ) : null}
+            {/* The constraints stay declarative: `noValidate` gives the card the answer. */}
+            <label
+              className="dsh-qa-auth__field"
+              data-testid="qa-surface-auth-email-field"
+            >
+              <span>Email</span>
+              <input
+                type="email"
+                name="email"
+                data-testid="qa-surface-auth-email"
+                autoComplete="email"
+                required
+                disabled={busy}
+                value={email}
+                onChange={(event) => {
+                  setRefusal(null);
+                  setEmail(event.currentTarget.value);
+                }}
+              />
+            </label>
+            {reset ? null : (
+              <label
+                className="dsh-qa-auth__field"
+                data-testid="qa-surface-auth-password-field"
+              >
+                <span>Пароль</span>
+                <input
+                  type="password"
+                  name="password"
+                  data-testid="qa-surface-auth-password"
+                  autoComplete={
+                    mode === "register" ? "new-password" : "current-password"
+                  }
+                  required
+                  minLength={QA_MIN_PASSWORD_LENGTH}
+                  disabled={busy}
+                  value={password}
+                  onChange={(event) => {
+                    setRefusal(null);
+                    setPassword(event.currentTarget.value);
+                  }}
+                />
+              </label>
+            )}
+          </>
+        ) : null}
         {error === null ? null : (
           <p
             className="dsh-qa-auth__error"
@@ -213,32 +236,36 @@ export function QaAuthGate(props: QaAuthGateProps) {
             {notice}
           </p>
         )}
-        <button
-          type="submit"
-          className="dsh-qa-auth__submit"
-          data-testid="qa-surface-auth-submit"
-          disabled={busy}
-        >
-          {busy
-            ? "Подождите…"
-            : reset
-              ? "Отправить заявку"
-              : mode === "register"
-                ? "Зарегистрироваться"
-                : "Войти"}
-        </button>
-        <button
-          type="button"
-          className="dsh-qa-auth__link"
-          data-testid="qa-surface-auth-forgot"
-          disabled={busy}
-          onClick={() => {
-            setRefusal(null);
-            accounts.setMode(reset ? "login" : "reset");
-          }}
-        >
-          {reset ? "Вернуться ко входу" : "Забыли пароль?"}
-        </button>
+        {localLogin ? (
+          <>
+            <button
+              type="submit"
+              className="dsh-qa-auth__submit"
+              data-testid="qa-surface-auth-submit"
+              disabled={busy}
+            >
+              {busy
+                ? "Подождите…"
+                : reset
+                  ? "Отправить заявку"
+                  : mode === "register"
+                    ? "Зарегистрироваться"
+                    : "Войти"}
+            </button>
+            <button
+              type="button"
+              className="dsh-qa-auth__link"
+              data-testid="qa-surface-auth-forgot"
+              disabled={busy}
+              onClick={() => {
+                setRefusal(null);
+                accounts.setMode(reset ? "login" : "reset");
+              }}
+            >
+              {reset ? "Вернуться ко входу" : "Забыли пароль?"}
+            </button>
+          </>
+        ) : null}
       </form>
     </main>
   );

@@ -33,6 +33,8 @@ export interface StoredNotifications {
 }
 
 export interface StoredUser {
+  /** Derived from the identity table when the database is loaded. */
+  readonly authMethod?: "oidc";
   readonly id: string;
   readonly email: string;
   readonly displayName: string;

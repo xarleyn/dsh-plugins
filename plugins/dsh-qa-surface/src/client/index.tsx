@@ -17,6 +17,7 @@ import { injectCardStyles } from "@yadsh/dsh-plugin-kit/client";
 import { QaConfigController } from "./QaConfigController.js";
 import { matchesQaRoute, QaRouteController } from "./QaRouteController.js";
 import { QaAccountsController } from "./QaAccountsController.js";
+import { createQaOidcBrowser } from "./oidc-browser.js";
 import { createQaAccountSessions } from "./account-sessions.js";
 import { createQaAccountUpload } from "./account-upload.js";
 import type { QaUploadCarrier } from "./account-upload.js";
@@ -862,6 +863,10 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
       // "not authenticated" and the browser shows the login card.
       const accounts = new QaAccountsController({
         remote: policyRemote,
+        oidcBrowser: createQaOidcBrowser(
+          window,
+          () => config.getSnapshot().config,
+        ),
         storage: window.localStorage,
         config: () => config.getSnapshot().config,
         legacyChatIds: () => {

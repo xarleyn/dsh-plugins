@@ -1,12 +1,17 @@
 import { describe, expect, it } from "vitest";
 import { ConfigSchema } from "../../src/config.js";
 import { docsDefaultVersionOf } from "../../src/config-resolvers/tools.js";
-import { resolveConfig } from "../../src/resolve-config.js";
+import {
+  resolveConfig,
+  DEFAULT_QA_SURFACE_CONFIG,
+} from "../../src/resolve-config.js";
 import { schemaParse } from "./config.helpers.js";
 
 describe("qa surface config", () => {
   it("keeps accounts off and registration open by default", () => {
     expect(resolveConfig().accounts).toEqual({
+      localLogin: true,
+      oidc: DEFAULT_QA_SURFACE_CONFIG.accounts.oidc,
       enabled: false,
       allowRegistration: true,
       sessionTtlDays: 30,
@@ -143,6 +148,8 @@ describe("qa surface config", () => {
     expect(resolveConfig({ accounts: { sessionTtlDays: 7 } }).accounts).toEqual(
       {
         enabled: false,
+        localLogin: true,
+        oidc: DEFAULT_QA_SURFACE_CONFIG.accounts.oidc,
         allowRegistration: true,
         sessionTtlDays: 7,
         maxAuthAttemptsPerMinute: 30,

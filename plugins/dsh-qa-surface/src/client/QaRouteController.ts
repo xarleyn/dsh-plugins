@@ -12,7 +12,11 @@ interface NavigationHistory {
 }
 
 interface NavigationWindow {
-  readonly location: { readonly pathname: string; readonly search?: string };
+  readonly location: {
+    readonly pathname: string;
+    readonly search?: string;
+    readonly hash?: string;
+  };
   readonly history: NavigationHistory;
   addEventListener(type: "popstate", listener: () => void): void;
   removeEventListener(type: "popstate", listener: () => void): void;
@@ -120,7 +124,9 @@ export class QaRouteController {
     Reflect.apply(this.originalReplaceState, this.target.history, [
       null,
       "",
-      requested,
+      requested.includes("#")
+        ? requested
+        : requested + (this.target.location.hash ?? ""),
     ]);
   }
 

@@ -11,6 +11,7 @@ import type {
   ResolvedQaSurfaceConfig,
 } from "../types.js";
 import { qaStorageNamespace } from "../shared/session-key.js";
+import type { QaOidcBrowser } from "./oidc-browser.js";
 import type {
   QaAccountsApi,
   QaIntegrationTokenResult,
@@ -134,6 +135,7 @@ export function accountsReasonOf(failure: unknown): string | null {
 }
 
 export interface QaAccountsControllerOptions {
+  readonly oidcBrowser?: QaOidcBrowser;
   readonly remote: QaAccountsApi;
   readonly storage: StorageLike | undefined;
   /** Config snapshot getter; the token key follows the deployment identity. */
@@ -164,6 +166,7 @@ export interface QaAccountsControllerOptions {
  * accounts disabled — the caller simply does not mount this controller.
  */
 export class QaAccountsController {
+  private logoutGeneration = 0;
   private readonly listeners = new Set<() => void>();
   private snapshot: QaAccountsSnapshot = { stage: "checking" };
   private tokenValue: string | null = null;
@@ -206,6 +209,27 @@ export class QaAccountsController {
   /** Boot probe: restore the stored token and ask the Host who it is. */
   async start(): Promise<void> {
     if (this.disposed || this.snapshot.stage !== "checking") return;
+    if (this.options.config().accounts.oidc.enabled) {
+      const handoff = this.options.oidcBrowser?.takeHandoff();
+      if (handoff) {
+        this.publish({
+          stage: "gate",
+          mode: "login",
+          busy: false,
+          error: null,
+        });
+        await this.authenticate("login", () => {
+          const complete = this.options.remote.accountsOidcComplete;
+          if (!complete) throw new Error("Corporate sign-in unavailable");
+          return complete.call(
+            this.options.remote,
+            handoff.handoff,
+            handoff.completionKey,
+          );
+        });
+        return;
+      }
+    }
     this.tokenValue = this.readStoredToken();
     if (this.tokenValue === null) {
       this.publish({ stage: "gate", mode: "login", busy: false, error: null });
@@ -234,12 +258,37 @@ export class QaAccountsController {
   }
 
   async login(email: string, password: string): Promise<void> {
+    this.logoutGeneration++;
     await this.authenticate("login", () =>
       this.options.remote.accountsLogin(email, password),
     );
   }
 
+  async loginOidc(): Promise<void> {
+    this.logoutGeneration++;
+    if (this.disposed || this.snapshot.stage !== "gate" || this.snapshot.busy)
+      return;
+    this.publish({ stage: "gate", mode: "login", busy: true, error: null });
+    try {
+      const result = await this.options.remote.accountsOidcStart?.();
+      if (this.disposed) return;
+      if (!result?.ok || !this.options.oidcBrowser)
+        throw new Error("Corporate sign-in unavailable");
+      this.options.oidcBrowser.begin(result.value);
+    } catch {
+      if (!this.disposed)
+        this.publish({
+          stage: "gate",
+          mode: "login",
+          busy: false,
+          error:
+            "Не удалось войти через корпоративную учётную запись. Попробуйте ещё раз.",
+        });
+    }
+  }
+
   async register(email: string, password: string): Promise<void> {
+    this.logoutGeneration++;
     if (this.snapshot.stage !== "gate") return;
     await this.authenticate("register", () =>
       this.options.remote.accountsRegister(email, password),
@@ -341,6 +390,25 @@ export class QaAccountsController {
 
   /** Drop the token and return to the gate (logout or expired identity). */
   signOut(): void {
+    const generation = ++this.logoutGeneration;
+    const token = this.tokenValue;
+    if (token && this.options.config().accounts.oidc.enabled) {
+      void this.options.remote
+        .accountsOidcLogout?.(token)
+        .then((result) => {
+          if (
+            !this.disposed &&
+            generation === this.logoutGeneration &&
+            this.snapshot.stage === "gate" &&
+            result.ok &&
+            result.value
+          )
+            this.options.oidcBrowser?.logout(result.value);
+        })
+        .catch(() => {
+          /* Local sign-out still completes if the provider is unavailable. */
+        });
+    }
     this.tokenValue = null;
     this.clearStoredToken();
     this.publish({ stage: "gate", mode: "login", busy: false, error: null });

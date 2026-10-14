@@ -2219,6 +2219,9 @@ importers:
       '@yadsh/dsh-plugin-log':
         specifier: workspace:^
         version: link:../../packages/plugin-log
+      openid-client:
+        specifier: 6.8.8
+        version: 6.8.8
       yaml:
         specifier: ^2.9.0
         version: 2.9.1
@@ -6680,6 +6683,9 @@ packages:
       '@swc/core':
         optional: true
 
+  oauth4webapi@3.8.8:
+    resolution: {integrity: sha512-8N28E+a/oxfXWBgOMt+ZP/JUf/XR+IFbvkAEPP3gznXOMv9BpAAwiIj0TFNz3tGTPc0ZQ8zmWBNgN1nAys0gng==}
+
   obug@2.2.1:
     resolution: {integrity: sha512-XrsrhT5sybtKI6wakr2SPOlGZWWYbUXZ7a0jT8/QOeAPau+1X/bSegNe5YR75oJmEZQbKningirmGOEJCIk61Q==}
     engines: {node: '>=12.20.0'}
@@ -6713,6 +6719,9 @@ packages:
         optional: true
       zod:
         optional: true
+
+  openid-client@6.8.8:
+    resolution: {integrity: sha512-ZsucJA5Ad04Uv7YN4ql+s4GXNmb9uAYQwyJTsJx7CH/MX3JZioLE2pVKi1SC+YrbSLA4Px3Gi30dMjgOZtb6pA==}
 
   optionator@0.9.4:
     resolution: {integrity: sha512-6IpQ7mKUxRcZNLIObR0hz7lxsapSSIYNZJwXPGeF0mTVqGKFIXj1DQcMoT22S3ROcLyY/rz0PWaWZ9ayWmad9g==}
@@ -11474,6 +11483,8 @@ snapshots:
       '@swc-node/register': 1.12.1(@swc/core@1.16.2)(@swc/types@0.1.28)(typescript@5.9.3)
       '@swc/core': 1.16.2
 
+  oauth4webapi@3.8.8: {}
+
   obug@2.2.1: {}
 
   on-exit-leak-free@2.1.2: {}
@@ -11498,6 +11509,11 @@ snapshots:
     optionalDependencies:
       ws: 8.21.3
       zod: 4.6.5
+
+  openid-client@6.8.8:
+    dependencies:
+      jose: 6.2.12
+      oauth4webapi: 3.8.8
 
   optionator@0.9.4:
     dependencies:

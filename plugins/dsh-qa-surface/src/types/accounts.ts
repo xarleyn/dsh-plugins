@@ -2,6 +2,8 @@ import type { QaAccountRole } from "./policy.js";
 
 /** The account fields projected to browsers; never includes credentials. */
 export interface QaAccountUserPublic {
+  /** Corporate passwords are managed outside QA. Absent on legacy/local accounts. */
+  readonly authMethod?: "oidc";
   readonly id: string;
   readonly email: string;
   readonly displayName: string;

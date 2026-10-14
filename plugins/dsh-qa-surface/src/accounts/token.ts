@@ -8,6 +8,8 @@ interface TokenUser {
 
 /** The claims carried by a v1 account token payload. */
 export interface TokenPayload {
+  /** OIDC-backed QA session; checked against the account database on every use. */
+  readonly sid?: string;
   readonly uid: string;
   /** Expiry, epoch milliseconds. */
   readonly exp: number;
@@ -44,6 +46,7 @@ export function verifyToken(
   secret: string,
   token: string,
   users: readonly TokenUser[],
+  sessionActive?: (id: string, userId: string) => boolean,
 ): string | null {
   if (typeof token !== "string") return null;
   const parts = token.split(".");
@@ -52,7 +55,7 @@ export function verifyToken(
   const signature = parts[2];
   if (payload === undefined || signature === undefined) return null;
   let expected: Buffer;
-  let decoded: { uid?: unknown; exp?: unknown; ver?: unknown };
+  let decoded: { uid?: unknown; exp?: unknown; ver?: unknown; sid?: unknown };
   try {
     expected = createHmac("sha256", secret).update(payload).digest();
     const expectedSignature = base64Url(expected);
@@ -69,7 +72,8 @@ export function verifyToken(
   if (
     typeof decoded.uid !== "string" ||
     typeof decoded.exp !== "number" ||
-    decoded.exp < Date.now()
+    !Number.isFinite(decoded.exp) ||
+    decoded.exp <= Date.now()
   ) {
     return null;
   }
@@ -80,5 +84,12 @@ export function verifyToken(
   if (user === undefined || version !== (user.tokenVersion ?? 0)) {
     return null;
   }
+  if (
+    decoded.sid !== undefined &&
+    (typeof decoded.sid !== "string" ||
+      sessionActive === undefined ||
+      !sessionActive(decoded.sid, decoded.uid))
+  )
+    return null;
   return decoded.uid;
 }
