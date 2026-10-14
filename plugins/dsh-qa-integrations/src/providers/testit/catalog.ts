@@ -159,6 +159,7 @@ const SENSITIVE_READ = {
   sensitivity: "sensitive",
   serviceCredential: "deny",
   requiresResourceBoundary: true,
+  serviceOverrideAllowed: false,
 } as const satisfies OperationSecurityMetadata;
 
 /**
@@ -172,6 +173,7 @@ const UNMAPPABLE_READ = {
   sensitivity: "normal",
   serviceCredential: "deny",
   requiresResourceBoundary: true,
+  serviceOverrideAllowed: false,
 } as const satisfies OperationSecurityMetadata;
 
 export interface TestitOperationDefinition {

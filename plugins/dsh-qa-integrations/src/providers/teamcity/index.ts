@@ -85,8 +85,10 @@ const URL_LIKE = /^https?:\/\//iu;
 const BUILD_ADDRESSED: readonly string[] = Object.freeze([
   "builds.get",
   "builds.changes",
+  "builds.log",
   "failures.get",
   "artifacts.list",
+  "artifacts.text",
 ]);
 
 /** Operations whose locator names a project or a build configuration. */
@@ -224,8 +226,12 @@ export class TeamcityProvider implements IntegrationProvider {
 
   capabilityServiceState(
     capability: IntegrationCapability,
+    policy?: Readonly<Record<string, "allow" | "deny">>,
   ): CapabilityServiceState | undefined {
-    return operationCapabilityServiceState(TEAMCITY_OPERATIONS, capability);
+    return operationCapabilityServiceState(TEAMCITY_OPERATIONS, capability, {
+      provider: this.id,
+      policy,
+    });
   }
 
   /** An empty id means this deployment's single server, as in `parseCredential`. */
@@ -345,6 +351,12 @@ export class TeamcityProvider implements IntegrationProvider {
       assertServiceOperationAllowed(
         definition.security,
         "This TeamCity operation is not available through the service credential",
+        {
+          provider: this.id,
+          operation,
+          capability: definition.capability,
+          policy: context.serviceOperationPolicy,
+        },
       );
     }
     const boundary = serviceBoundaryOf(context);

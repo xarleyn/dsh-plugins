@@ -126,13 +126,13 @@ describe("Bitrix24 managed service credentials", () => {
     ).resolves.toMatchObject({ ID: "1" });
   });
 
-  it("reports capability service states: write unavailable, mixed reads sensitive", () => {
+  it("reports capability service states: write unavailable, mixed reads partial", () => {
     const { fetcher } = stub(() => ({ json: {} }));
     const provider = new Bitrix24Provider(config(), fetcher);
     expect(provider.capabilityServiceState?.("crm.comment.write")).toBe(
       "unavailable",
     );
-    expect(provider.capabilityServiceState?.("crm.read")).toBe("sensitive");
+    expect(provider.capabilityServiceState?.("crm.read")).toBe("partial");
     expect(provider.capabilityServiceState?.("chat.read")).toBe("sensitive");
     expect(provider.capabilityServiceState?.("tasks.read")).toBe("available");
   });

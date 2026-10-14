@@ -10,13 +10,13 @@ describe("managed service credentials: configuration", () => {
     ).toThrow(/resource boundary/u);
   });
 
-  it("refuses an administrator policy that tries to widen the ceiling", () => {
+  it("refuses an unknown administrator policy decision", () => {
     expect(() =>
       resolveManagedServiceCredentials({
-        profiles: PROFILE_INPUT({ policy: { "records.write": "allow" } })
+        profiles: PROFILE_INPUT({ policy: { "logs.read": "confirm" } })
           .profiles,
       }),
-    ).toThrow(/can only be narrowed/u);
+    ).toThrow(/must be "allow" or "deny"/u);
   });
 
   it("refuses a profile that names both a secret file and an environment variable", () => {

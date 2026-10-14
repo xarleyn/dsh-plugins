@@ -258,7 +258,7 @@ describe("GitLab card: managed service credential", () => {
       "Сервисный аккаунт · управляется администратором",
     );
     expect(screen.getByTestId(`${Z}-service-mode-hint`).textContent).toContain(
-      "Только безопасное чтение: изменения",
+      "Чтение в пределах доступа, заданного администратором",
     );
     expect(screen.getByTestId(`${Z}-boundary-summary`).textContent).toContain(
       "projects: 2 из 2",

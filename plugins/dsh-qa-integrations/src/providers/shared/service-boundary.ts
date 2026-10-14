@@ -1,3 +1,7 @@
+import {
+  serviceOperationAccess,
+  type ServiceOperationSelection,
+} from "../../service-credentials/operation-policy.js";
 import { IntegrationError } from "../../errors.js";
 import {
   UNCLASSIFIED_OPERATION,
@@ -38,13 +42,13 @@ export function serviceResourceDenied(): IntegrationError {
 }
 
 /**
- * What the managed credential never answers, in the words a tool says before it
+ * What the managed credential refuses by default, in the words a tool says before it
  * is called. The model reads this instead of discovering it in a refusal, so it
  * neither promises a user a log it cannot fetch nor goes looking for a fault in
  * the stand's own integration.
  */
 export const SERVICE_CEILING_NOTICE =
-  "Needs a personal connection: under the deployment's managed service token the service ceiling refuses this reading, and the user switches this integration to their own account to get it.";
+  "By default this reading needs a personal connection. The administrator can permit it for a managed service profile; resource boundaries still apply.";
 
 /**
  * Whether the ceiling refuses one operation *as a reading* — the case worth
@@ -65,28 +69,27 @@ export function serviceCeilingRefusedReading(
 }
 
 /**
- * Refuse an operation the provider's own catalog does not mark as service-safe.
- * The broker decides this first and with the administrator's narrowing on top;
- * this guard is the second lock, so a caller that reaches a provider directly —
- * or a future bug in the broker — still cannot read a log through a shared
- * credential. An operation the provider does not classify is denied, exactly as
- * the broker's default is.
+ * Apply the catalog defaults and the trusted service profile's allow/deny rules.
+ * The broker decides this first; this guard repeats the decision for callers
+ * that reach a provider directly. An operation the provider does not classify
+ * is denied, exactly as the broker's default is.
  */
 export function assertServiceOperationAllowed(
   metadata: OperationSecurityMetadata | undefined,
   message: string,
+  selection: ServiceOperationSelection = {},
 ): void {
   const security = metadata ?? UNCLASSIFIED_OPERATION;
-  if (
-    security.effect === "read" &&
-    security.sensitivity === "normal" &&
-    security.serviceCredential === "allow"
-  ) {
-    return;
-  }
+  const access = serviceOperationAccess(security, selection);
+  if (access === "allow") return;
+  if (access === "policy")
+    throw new IntegrationError(
+      "OperationNotAllowedWithServiceCredential",
+      `${message}: this reading is disabled by deployment policy`,
+    );
   // The same order of reasons the broker answers with: a write is refused for
-  // being a write, and the sensitive answer is named as what needs a personal
-  // account, because that is the one thing the caller can still do about it.
+  // being a write; sensitive content requires a profile allowance or a personal
+  // account.
   if (security.effect !== "read") {
     throw new IntegrationError(
       "OperationNotAllowedWithServiceCredential",

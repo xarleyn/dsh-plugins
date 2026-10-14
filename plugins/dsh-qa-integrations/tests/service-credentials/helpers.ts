@@ -128,7 +128,7 @@ export function fakeProvider(options: {
       instanceId === "acme-app" || instanceId === ""
         ? "acme.example"
         : undefined,
-    capabilityServiceState: (capability) =>
+    capabilityServiceState: (capability, policy) =>
       operationCapabilityServiceState(
         Object.fromEntries(
           Object.entries(OPERATIONS).filter(
@@ -136,6 +136,7 @@ export function fakeProvider(options: {
           ),
         ),
         capability,
+        { provider: "acme", policy },
       ),
     parseCredential: (raw, opts) => ({
       credential: JSON.stringify({

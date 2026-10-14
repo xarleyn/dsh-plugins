@@ -257,8 +257,12 @@ export class GitlabProvider implements IntegrationProvider {
 
   capabilityServiceState(
     capability: IntegrationCapability,
+    policy?: Readonly<Record<string, "allow" | "deny">>,
   ): CapabilityServiceState | undefined {
-    return operationCapabilityServiceState(GITLAB_OPERATIONS, capability);
+    return operationCapabilityServiceState(GITLAB_OPERATIONS, capability, {
+      provider: this.id,
+      policy,
+    });
   }
 
   async validate(context: ProviderContext): Promise<ProviderValidation> {
@@ -359,6 +363,12 @@ export class GitlabProvider implements IntegrationProvider {
       assertServiceOperationAllowed(
         definition.security,
         "This GitLab operation is not available through the service credential",
+        {
+          provider: this.id,
+          operation,
+          capability: definition.capability,
+          policy: context.serviceOperationPolicy,
+        },
       );
     }
     const boundary = serviceBoundaryOf(context);

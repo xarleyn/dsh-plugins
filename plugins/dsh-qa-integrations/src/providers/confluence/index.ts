@@ -299,8 +299,12 @@ export class ConfluenceProvider implements IntegrationProvider {
 
   capabilityServiceState(
     capability: IntegrationCapability,
+    policy?: Readonly<Record<string, "allow" | "deny">>,
   ): CapabilityServiceState | undefined {
-    return operationCapabilityServiceState(CONFLUENCE_OPERATIONS, capability);
+    return operationCapabilityServiceState(CONFLUENCE_OPERATIONS, capability, {
+      provider: this.id,
+      policy,
+    });
   }
 
   async validate(context: ProviderContext): Promise<ProviderValidation> {
@@ -389,6 +393,12 @@ export class ConfluenceProvider implements IntegrationProvider {
       assertServiceOperationAllowed(
         definition.security,
         "This Confluence operation is not available through the service credential",
+        {
+          provider: this.id,
+          operation,
+          capability: definition.capability,
+          policy: context.serviceOperationPolicy,
+        },
       );
     }
     const boundary = serviceBoundaryOf(context);

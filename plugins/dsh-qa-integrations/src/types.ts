@@ -5,6 +5,20 @@ export type IntegrationAuthKind = "token" | "oauth" | "mcp_token";
 export type IntegrationStatus = "pending" | "connected" | "error" | "revoked";
 export type IntegrationPolicyMode = "allow" | "confirm" | "deny";
 
+/** Public operator metadata only; contains neither credentials nor addresses. */
+export interface ServicePolicyOperation {
+  readonly operation: string;
+  readonly capability: string;
+  readonly label: string;
+  readonly security: {
+    readonly effect: "read" | "write" | "admin";
+    readonly sensitivity: "normal" | "sensitive" | "secret";
+    readonly serviceCredential: "allow" | "deny";
+    readonly requiresResourceBoundary?: boolean;
+    readonly serviceOverrideAllowed?: false;
+  };
+}
+
 /**
  * Which credential the broker spends for one binding. Declared here rather than
  * next to the service-credential machinery because it is part of the stored
@@ -20,6 +34,8 @@ export type CredentialSource = "personal" | "service";
 export type CapabilityServiceState =
   /** Every operation of this capability is service-safe. */
   | "available"
+  /** Some reads are allowed, while other operations remain blocked. */
+  | "partial"
   /** At least one operation returns sensitive data: needs a personal account. */
   | "sensitive"
   /** At least one operation is a write, an admin action or explicitly denied. */

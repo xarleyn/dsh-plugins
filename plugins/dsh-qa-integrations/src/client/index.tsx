@@ -95,6 +95,13 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         // serves as soon as the entry exists — it does not wait for the Remote
         // to describe the deployment, because an operator's first act may be
         // enabling the plugin, and the card is the surface that does it.
+        const loadServiceOperations = async () => {
+          const result =
+            await face.remote.qaIntegrations.serviceOperationCatalog();
+          if (!result.ok)
+            throw new Error("Service operation catalog unavailable");
+          return result.value;
+        };
         const removeCard = face.configForms.whileServed(
           [QA_INTEGRATIONS_SETTINGS_NAMESPACE],
           () =>
@@ -107,6 +114,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
                   // mutate }` only — so the card edits the full form this entry
                   // resolves, under a name the owner prop cannot overwrite.
                   inject: () => ({
+                    loadServiceOperations,
                     settingsForm: face.configForms.get<QaIntegrationsConfig>(
                       QA_INTEGRATIONS_SETTINGS_NAMESPACE,
                     ),

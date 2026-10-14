@@ -32,7 +32,7 @@ export function isCredentialSource(value: unknown): value is CredentialSource {
 /** What an operation does upstream; only `read` can ever be service-reachable. */
 export type OperationEffect = "read" | "write" | "admin";
 
-/** How much an answer may reveal; sensitive and secret answers stay personal. */
+/** Sensitive reads need explicit permission; secret data stays personal. */
 export type DataSensitivity = "normal" | "sensitive" | "secret";
 
 /** Whether the deployment's managed credential may reach one operation. */
@@ -53,6 +53,8 @@ export interface OperationSecurityMetadata {
    * administrator-defined resource boundary.
    */
   readonly requiresResourceBoundary?: boolean;
+  /** False when the provider cannot prove a reading's resource ownership. */
+  readonly serviceOverrideAllowed?: false;
 }
 
 /**
@@ -113,8 +115,8 @@ export interface ServiceCredentialProfile {
   /** Set to false to retire a profile without deleting its configuration. */
   readonly enabled: boolean;
   readonly resources: ServiceResourceBoundary;
-  /** Administrator narrowing of the service ceiling; only ever removes. */
-  readonly policy: Readonly<Record<string, "deny">>;
+  /** Operator decisions for classified reads; denies take precedence. */
+  readonly policy: Readonly<Record<string, "allow" | "deny">>;
   /** Hash of the policy-relevant configuration of this profile. */
   readonly policyRevision: string;
 }

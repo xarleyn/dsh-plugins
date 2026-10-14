@@ -31,7 +31,7 @@ export interface ManagedServiceCredentialProfileInput {
   readonly resources?: Readonly<
     Record<string, readonly (string | number)[] | undefined>
   >;
-  /** Administrator narrowing of the service ceiling. Only `deny` is accepted. */
+  /** Allow or deny a classified reading by capability or operation name. */
   readonly policy?: Readonly<Record<string, string | undefined>>;
 }
 
@@ -67,7 +67,7 @@ export interface ManagedServiceCredentialProfileConfig {
   readonly authType: string;
   readonly secretRef: string;
   readonly resources: Readonly<Record<string, readonly string[]>>;
-  readonly policy: Readonly<Record<string, "deny">>;
+  readonly policy: Readonly<Record<string, "allow" | "deny">>;
 }
 
 export interface ManagedServiceCredentialsConfig {
@@ -187,28 +187,23 @@ function normalizeResources(
   return Object.freeze(kinds);
 }
 
-/**
- * Administrator policy of one profile. The service ceiling is a hard maximum,
- * so this map may only remove: a key set to anything but `deny` is rejected
- * rather than ignored, because an operator who wrote `allow` believes they
- * widened something.
- */
+/** Explicit profile decisions for classified reads, with conservative defaults. */
 function normalizePolicy(
   input: ManagedServiceCredentialProfileInput["policy"],
   id: string,
-): Readonly<Record<string, "deny">> {
-  const policy: Record<string, "deny"> = {};
+): Readonly<Record<string, "allow" | "deny">> {
+  const policy: Record<string, "allow" | "deny"> = {};
   for (const [rawKey, value] of Object.entries(input ?? {})) {
     const key = rawKey.trim();
     if (key === "") {
       throw configError(`profile ${id} has an empty policy key`);
     }
-    if (value !== "deny") {
+    if (value !== "deny" && value !== "allow") {
       throw configError(
-        `profile ${id}.policy["${rawKey}"] must be "deny": the service ceiling can only be narrowed`,
+        `profile ${id}.policy["${rawKey}"] must be "allow" or "deny"`,
       );
     }
-    policy[key] = "deny";
+    policy[key] = value;
   }
   return Object.freeze(policy);
 }

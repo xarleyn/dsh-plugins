@@ -6,6 +6,24 @@
 
 ## Implementation status
 
+### Current operation policy amendment
+
+The administrator can now allow or deny classified read operations in a managed
+service profile across all seven supported providers. A policy entry names a
+capability or an exact operation; provider-prefixed aliases are accepted too.
+An explicit deny takes precedence over any allow. Sensitive reads remain denied
+by default, but an explicit allowance can enable them, including build logs.
+Writes, administrative actions, secret reads and unclassified operations remain
+unavailable, as do operations whose resource membership cannot be checked.
+
+The broker and each provider enforce the same decision and retain the profile's
+resource boundary. Existing service connections use the current profile policy
+without reconnecting; explicit user prohibitions still apply. The operator card
+offers default, allow and deny choices from the server's operation catalog.
+This amendment supersedes the earlier deny-only and immutable sensitive-read
+ceiling descriptions below; their conservative defaults still apply when no
+allowance is configured.
+
 Milestone 1 of §38 is implemented: the generic service-credential core, GitLab
 and TeamCity.
 
