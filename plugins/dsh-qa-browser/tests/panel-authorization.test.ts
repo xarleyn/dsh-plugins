@@ -43,6 +43,35 @@ async function loadPlugin(config: QaBrowserConfig = {}): Promise<Surface> {
 }
 
 describe("QA Browser panel authorization", () => {
+  it.each(["read", "collaborate"])(
+    "refuses a %s participant before browser access",
+    async (mode) => {
+      const { ctx, service } = await loadPlugin();
+      const secureSession = vi.fn(async () => ({}));
+      ctx.provide("qaSurface", { secureSession, chatAccess: () => ({ mode }) });
+      await expect(service.panelState("qa-token", "session-x")).rejects.toThrow(
+        /chat owner/u,
+      );
+      await expect(
+        service.panelNewTab("qa-token", "session-x", "client-1"),
+      ).rejects.toThrow(/chat owner/u);
+      expect(secureSession).not.toHaveBeenCalled();
+    },
+  );
+
+  it("rechecks ownership after asynchronous policy admission", async () => {
+    const { ctx, service } = await loadPlugin();
+    let mode = "owner";
+    ctx.provide("qaSurface", {
+      chatAccess: () => ({ mode }),
+      secureSession: async () => {
+        mode = "read";
+      },
+    });
+    await expect(service.panelState("qa-token", "session-x")).rejects.toThrow(
+      /chat owner/u,
+    );
+  });
   it("refuses panel requests while QA Surface is unmounted", async () => {
     const { service } = await loadPlugin();
 
@@ -60,7 +89,10 @@ describe("QA Browser panel authorization", () => {
   it("authorizes the panel through the mounted QA Surface", async () => {
     const { ctx, service } = await loadPlugin();
     const secureSession = vi.fn(async () => ({}));
-    ctx.provide("qaSurface", { secureSession });
+    ctx.provide("qaSurface", {
+      secureSession,
+      chatAccess: () => ({ mode: "owner" }),
+    });
 
     await expect(service.panelState("qa-token", "session-x")).resolves.toEqual({
       session: null,
@@ -80,7 +112,10 @@ describe("QA Browser panel authorization", () => {
     const { ctx, service } = await loadPlugin({
       runtime: { mode: "attach", cdpEndpoint: "http://127.0.0.1:9222" },
     });
-    ctx.provide("qaSurface", { secureSession: async () => ({}) });
+    ctx.provide("qaSurface", {
+      secureSession: async () => ({}),
+      chatAccess: () => ({ mode: "owner" }),
+    });
 
     await expect(
       service.panelState("qa-token", "session-x"),
@@ -119,7 +154,10 @@ describe("QA Browser panel authorization", () => {
     ).rejects.toThrow(REFUSAL);
 
     const secureSession = vi.fn(async () => ({}));
-    ctx.provide("qaSurface", { secureSession });
+    ctx.provide("qaSurface", {
+      secureSession,
+      chatAccess: () => ({ mode: "owner" }),
+    });
     // With the boundary mounted the refusal is the browser's own: this chat has
     // no session yet, which is a different failure than an unauthorized caller.
     await expect(
@@ -135,7 +173,10 @@ describe("QA Browser panel authorization", () => {
     );
 
     const secureSession = vi.fn(async () => ({}));
-    ctx.provide("qaSurface", { secureSession });
+    ctx.provide("qaSurface", {
+      secureSession,
+      chatAccess: () => ({ mode: "owner" }),
+    });
 
     await expect(service.panelState("qa-token", "session-x")).resolves.toEqual(
       expect.objectContaining({ session: null, tabs: [] }),

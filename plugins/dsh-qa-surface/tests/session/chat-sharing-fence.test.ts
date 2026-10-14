@@ -5,6 +5,35 @@ import {
   qaNativeEndpointDenied,
 } from "../../src/chat-sharing/native-fence.js";
 describe("native operator boundary in accounts mode", () => {
+  it("admits tokenized browser panel methods while new and native browser methods stay closed", () => {
+    for (const method of [
+      "panelState",
+      "panelFrame",
+      "panelTakeControl",
+      "panelControlHeartbeat",
+      "panelReleaseControl",
+      "panelSelectTab",
+      "panelNavigate",
+      "panelPointer",
+      "panelKey",
+      "panelText",
+      "panelScroll",
+      "panelNewTab",
+      "panelCloseTab",
+      "panelHistory",
+      "panelViewport",
+    ]) {
+      expect(qaNativeEndpointDenied(`qaBrowser/${method}`)).toBe(false);
+    }
+    for (const method of [
+      "newOperatorMethod",
+      "navigate",
+      "listTabs",
+      "ensureSession",
+    ]) {
+      expect(qaNativeEndpointDenied(`qaBrowser/${method}`)).toBe(true);
+    }
+  });
   it("keeps token-authenticated personal integration cards and fails closed for new methods", () => {
     expect(qaNativeEndpointDenied("qaIntegrations/getGitlab")).toBe(false);
     expect(qaNativeEndpointDenied("qaIntegrations/credentialSource")).toBe(
