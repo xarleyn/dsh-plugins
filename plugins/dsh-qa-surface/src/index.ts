@@ -1819,7 +1819,8 @@ export class QaSurface extends TypertRemoteService {
     full: boolean,
   ): Promise<QaChatJson> {
     this.requireChatOwner(token, sessionId);
-    await this.secureSession(token, sessionId);
+    // Sidebar summaries read stored audit metadata; they do not need an agent.
+    if (full) await this.secureSession(token, sessionId);
     this.requireChatOwner(token, sessionId);
     const audit = this.ctx.get("sessionAudit") as
       | { summary(id: string): unknown; audit(id: string): Promise<unknown> }

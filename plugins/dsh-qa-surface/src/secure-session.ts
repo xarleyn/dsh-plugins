@@ -133,6 +133,7 @@ export class QaPolicyAdmission {
    * one set answers for the whole chat.
    */
   private readonly attested = new Set<string>();
+  private readonly questionWarnings = new Map<string, string>();
   private readonly workspaceAccess = new Map<string, UserWorkspaceAccess>();
   /**
    * Removers of the document input roots granted per session, so a grant lives
@@ -704,17 +705,21 @@ export class QaPolicyAdmission {
     // refusal of the chat.
     const questionsInteractive = config.interaction.questions === "interactive";
     const questionToolAllowed = policy.allow.includes(QA_ASK_QUESTION_TOOL);
-    if (questionsInteractive && !questionToolAllowed) {
+    const questionWarning = questionsInteractive
+      ? questionToolAllowed
+        ? null
+        : "not-allowed"
+      : questionToolAllowed
+        ? "unsupported"
+        : null;
+    if (questionWarning === null) {
+      this.questionWarnings.delete(sessionId);
+    } else if (this.questionWarnings.get(sessionId) !== questionWarning) {
+      this.questionWarnings.set(sessionId, questionWarning);
       this.logger.warn("question.config-incomplete", {
         sessionId,
         tool: QA_ASK_QUESTION_TOOL,
-        reason: "not-allowed",
-      });
-    } else if (!questionsInteractive && questionToolAllowed) {
-      this.logger.warn("question.config-incomplete", {
-        sessionId,
-        tool: QA_ASK_QUESTION_TOOL,
-        reason: "unsupported",
+        reason: questionWarning,
       });
     }
     const fingerprint = JSON.stringify([
@@ -955,6 +960,7 @@ export class QaPolicyAdmission {
     }
     this.appliedPolicies.clear();
     this.attested.clear();
+    this.questionWarnings.clear();
     this.workspaceAccess.clear();
     for (const remove of this.documentInputRoots.values()) remove();
     this.documentInputRoots.clear();
