@@ -759,9 +759,7 @@ describe("integrations operator card", () => {
     fireEvent.change(id, { target: { value: "qa-gitlab-audit" } });
     expect(id.value).toBe("qa-gitlab-audit");
     expect(stub.writes).toEqual([]);
-    // The row is keyed by its own id, so renaming it re-mounts it: the controls
-    // are read from the row that stands after the commit, not from the node the
-    // edit started on.
+    // Renaming preserves the row while the following toggle commits its wire value.
     fireEvent.click(
       screen
         .getByTestId("qa-integrations-service-access-profile-0")

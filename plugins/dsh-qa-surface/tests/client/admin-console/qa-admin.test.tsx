@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import {
+  act,
   fireEvent,
   render,
   screen,
@@ -177,6 +178,8 @@ function api() {
   } as unknown as QaAccessApi;
   return {
     value,
+    snapshot,
+    admin: vi.mocked(value.admin),
     updateSkillOverride,
     updateSubrole: value.updateSubrole as ReturnType<typeof vi.fn>,
   };
@@ -185,6 +188,169 @@ function api() {
 describe("QA administration", () => {
   beforeEach(() => {
     window.history.replaceState(null, "", "/qa/admin/access/subroles");
+  });
+
+  it("keeps the edited draft and tab after a refused save and allows retry", async () => {
+    const { value, updateSubrole } = api();
+    updateSubrole.mockResolvedValueOnce({ ok: false, error: "Save refused" });
+    render(
+      <QaAdmin
+        api={value}
+        token="demo-token"
+        routePath="/qa"
+        onPreview={() => undefined}
+      />,
+    );
+    await screen.findAllByTestId("qa-admin-role-card");
+    fireEvent.click(screen.getAllByTestId("qa-admin-role-edit")[0]!);
+    fireEvent.change(screen.getByTestId("qa-admin-role-name"), {
+      target: { value: "Edited demo role" },
+    });
+    fireEvent.click(screen.getByTestId("qa-admin-role-tab-tools"));
+    fireEvent.click(screen.getByTestId("qa-admin-role-save"));
+
+    expect(await screen.findByTestId("qa-admin-error")).toHaveProperty(
+      "textContent",
+      "Save refused",
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("qa-admin-role-save")).toHaveProperty(
+        "disabled",
+        false,
+      ),
+    );
+    expect(
+      screen
+        .getByTestId("qa-admin-role-tab-tools")
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    fireEvent.click(screen.getByTestId("qa-admin-role-tab-general"));
+    expect(screen.getByTestId("qa-admin-role-name")).toHaveProperty(
+      "value",
+      "Edited demo role",
+    );
+
+    fireEvent.click(screen.getByTestId("qa-admin-role-save"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("qa-admin-role-editor")).toBeNull(),
+    );
+    expect(updateSubrole).toHaveBeenCalledTimes(2);
+    expect(updateSubrole.mock.calls[1]?.[2]).toMatchObject({
+      name: "Edited demo role",
+    });
+  });
+
+  it("preserves an unsaved draft and picker filter across parent rerender and refreshed snapshot", async () => {
+    const { value, snapshot, admin, updateSubrole } = api();
+    const onPreview = () => undefined;
+    const mounted = render(
+      <QaAdmin
+        api={value}
+        token="demo-token"
+        routePath="/qa"
+        onPreview={onPreview}
+      />,
+    );
+    await screen.findAllByTestId("qa-admin-role-card");
+    fireEvent.click(screen.getAllByTestId("qa-admin-role-edit")[0]!);
+    fireEvent.change(screen.getByTestId("qa-admin-role-name"), {
+      target: { value: "Unsaved demo role" },
+    });
+    fireEvent.click(screen.getByTestId("qa-admin-role-tab-tools"));
+    const picker = screen.getByTestId("qa-admin-role-tools-always");
+    fireEvent.change(within(picker).getByRole("searchbox"), {
+      target: { value: "analytics" },
+    });
+    const fresh = structuredClone(snapshot);
+    fresh.config.subroles[0]!.name = "Host refreshed role";
+    admin.mockResolvedValueOnce({ ok: true, value: fresh });
+
+    // A refreshed credential triggers the existing parent snapshot read. The
+    // same mounted editor must keep what the operator has not saved yet.
+    await act(async () => {
+      mounted.rerender(
+        <QaAdmin
+          api={value}
+          token="refreshed-demo-token"
+          routePath="/qa"
+          onPreview={onPreview}
+        />,
+      );
+    });
+    await waitFor(() =>
+      expect(admin).toHaveBeenCalledWith("refreshed-demo-token"),
+    );
+    expect(
+      screen
+        .getByTestId("qa-admin-role-tab-tools")
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      within(screen.getByTestId("qa-admin-role-tools-always")).getByRole(
+        "searchbox",
+      ),
+    ).toHaveProperty("value", "analytics");
+    fireEvent.click(screen.getByTestId("qa-admin-role-tab-general"));
+    expect(screen.getByTestId("qa-admin-role-name")).toHaveProperty(
+      "value",
+      "Unsaved demo role",
+    );
+    expect(updateSubrole).not.toHaveBeenCalled();
+  });
+
+  it("keeps the saving editor mounted until the successful mutation refresh finishes", async () => {
+    const { value, snapshot, admin, updateSubrole } = api();
+    render(
+      <QaAdmin
+        api={value}
+        token="demo-token"
+        routePath="/qa"
+        onPreview={() => undefined}
+      />,
+    );
+    await screen.findAllByTestId("qa-admin-role-card");
+    fireEvent.click(screen.getAllByTestId("qa-admin-role-edit")[0]!);
+    fireEvent.change(screen.getByTestId("qa-admin-role-name"), {
+      target: { value: "Saved demo role" },
+    });
+    let finishRefresh!: (
+      result: Awaited<ReturnType<QaAccessApi["admin"]>>,
+    ) => void;
+    admin.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishRefresh = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByTestId("qa-admin-role-save"));
+    await waitFor(() => expect(admin).toHaveBeenCalledTimes(2));
+    expect(updateSubrole).toHaveBeenCalledWith(
+      "demo-token",
+      "analyst",
+      expect.objectContaining({ name: "Saved demo role" }),
+    );
+    expect(screen.getByTestId("qa-admin-role-save")).toHaveProperty(
+      "disabled",
+      true,
+    );
+    expect(screen.getByTestId("qa-admin-role-name")).toHaveProperty(
+      "value",
+      "Saved demo role",
+    );
+
+    const fresh = structuredClone(snapshot);
+    fresh.config.subroles[0]!.name = "Saved demo role";
+    await act(async () => {
+      finishRefresh({ ok: true, value: fresh });
+    });
+    await waitFor(() =>
+      expect(screen.queryByTestId("qa-admin-role-editor")).toBeNull(),
+    );
+    expect(
+      within(screen.getAllByTestId("qa-admin-role-card")[0]!).getByText(
+        "Saved demo role",
+      ),
+    ).toBeTruthy();
   });
 
   it("renders roles and the separate common capability editor", async () => {

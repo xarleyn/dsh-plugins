@@ -237,6 +237,42 @@ describe("service mode rate limiting", () => {
   });
 
   describe("through the broker", () => {
+    it("keeps a policy refusal from spending the service allowance", async () => {
+      const { broker, seen } = buildHarness(
+        path.join(root, "policy-allowance.db"),
+        managedInput({ perPrincipal: { requestsPerMinute: 1 } }),
+      );
+      const principal = { userId: "viewer" };
+      await broker.connect(principal, "acme", { token: "" });
+      broker.patchPolicy(principal, "acme", {
+        operation: "records.read",
+        mode: "deny",
+      });
+
+      await expect(broker.call(principal, CALL())).rejects.toMatchObject({
+        code: "OperationDeniedByPolicy",
+      });
+      expect(seen).toHaveLength(0);
+      expect(repositories.at(-1)?.read().audit.at(-1)).toMatchObject({
+        ownerUserId: "viewer",
+        operation: "records.get",
+        result: "denied",
+        credentialSource: "service",
+      });
+
+      broker.patchPolicy(principal, "acme", {
+        operation: "records.read",
+        mode: "allow",
+      });
+      await expect(broker.call(principal, CALL())).resolves.toMatchObject({
+        data: { named: "alpha" },
+      });
+      await expect(broker.call(principal, CALL())).rejects.toMatchObject({
+        code: "RateLimited",
+      });
+      expect(seen).toHaveLength(1);
+    });
+
     it("stops one principal at the per-user ceiling and lets another through", async () => {
       const { broker, seen } = buildHarness(
         path.join(root, "principal.db"),

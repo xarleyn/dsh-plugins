@@ -65,6 +65,10 @@ export interface QaModalProps {
  */
 export function QaModal(props: QaModalProps) {
   const closeButton = useRef<HTMLButtonElement>(null);
+  const onClose = useRef(props.onClose);
+  useEffect(() => {
+    onClose.current = props.onClose;
+  }, [props.onClose]);
   useEffect(() => {
     if (!props.open) return;
     closeButton.current?.focus();
@@ -73,7 +77,7 @@ export function QaModal(props: QaModalProps) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (openDialogs.at(-1) !== token) return;
-      props.onClose();
+      onClose.current();
     };
     window.addEventListener("keydown", onKey);
     return () => {
@@ -81,7 +85,7 @@ export function QaModal(props: QaModalProps) {
       const index = openDialogs.indexOf(token);
       if (index >= 0) openDialogs.splice(index, 1);
     };
-  }, [props.open, props.onClose]);
+  }, [props.open]);
   if (!props.open) return null;
   return (
     <div
