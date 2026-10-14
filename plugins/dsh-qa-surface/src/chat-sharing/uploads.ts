@@ -28,7 +28,37 @@ export function installQaChatUploads(
   const connection = ctx.get("connection") as unknown as {
     fetch: FetchRegistry;
   };
-  return connection.fetch.register({
+  // An unread streaming Request can close its socket before the Host flushes
+  // the refusal. Reject inaccessible uploads before the streaming bridge.
+  const stopHttp = ctx.on(
+    "connection/request",
+    async (request, response, next) => {
+      const url = new URL(request.url ?? "/", "http://localhost");
+      if (request.method === "POST" && url.pathname === "/api/qa-chat-upload") {
+        try {
+          store().write(
+            request.headers.authorization?.replace(/^Bearer /u, "") ?? "",
+            url.searchParams.get("sessionId") ?? "",
+          );
+        } catch {
+          response.writeHead(403, {
+            "Content-Type": "application/json; charset=utf-8",
+            "Cache-Control": "no-store",
+            Connection: "close",
+          });
+          response.end(
+            JSON.stringify({
+              ok: false,
+              error: { message: "File upload access was refused." },
+            }),
+          );
+          return;
+        }
+      }
+      await next();
+    },
+  );
+  const stopFetch = connection.fetch.register({
     path: "/api/qa-chat-upload",
     methods: ["POST"],
     requestBody: "streaming",
@@ -81,4 +111,8 @@ export function installQaChatUploads(
       }
     },
   });
+  return async () => {
+    stopHttp();
+    await stopFetch();
+  };
 }

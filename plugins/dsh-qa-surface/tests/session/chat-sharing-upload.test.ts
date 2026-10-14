@@ -20,6 +20,7 @@ describe("shared upload boundary", () => {
       },
     );
     const ctx = {
+      on: () => () => {},
       get: (name: string) =>
         name === "connection"
           ? {
