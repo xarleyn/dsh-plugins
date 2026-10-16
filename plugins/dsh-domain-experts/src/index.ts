@@ -509,20 +509,49 @@ export class DomainExpertsService extends TypertRemoteService {
     parentSessionId: string,
     structuredOutput?: boolean,
   ): Promise<ExpertRunResult> {
+    return this.runTestExpert(
+      domainId,
+      task,
+      parentSessionId,
+      structuredOutput,
+    );
+  }
+
+  /** In-process review input only: never exposes durable attachment refs through Remote. */
+  async reviewExpert(
+    domainId: string,
+    task: string,
+    parentSessionId: string,
+    images: NonNullable<ExpertRunInput["images"]>,
+  ): Promise<ExpertRunResult> {
+    return this.runTestExpert(domainId, task, parentSessionId, true, images);
+  }
+
+  private async runTestExpert(
+    domainId: string,
+    task: string,
+    parentSessionId: string,
+    structuredOutput?: boolean,
+    images: NonNullable<ExpertRunInput["images"]> = [],
+  ): Promise<ExpertRunResult> {
     return guarded(async () => {
       const { handles, definition } = await this.stores.addressed(domainId);
       const parent = testParentOf(
         agentsFaceOf(this.ctx.agents),
         parentSessionId,
       );
-      if (parent === undefined) {
+      if (
+        parent === undefined ||
+        (images.length > 0 &&
+          String(parent.session.header.id) !== parentSessionId)
+      ) {
         throw missingTestParent();
       }
       return accepted({
-        result: await runExpert(
-          this.executionDependencies(handles),
-          testRunInput(parent, definition, task, structuredOutput),
-        ),
+        result: await runExpert(this.executionDependencies(handles), {
+          ...testRunInput(parent, definition, task, structuredOutput),
+          images,
+        }),
       });
     }, expertRunRefusal);
   }

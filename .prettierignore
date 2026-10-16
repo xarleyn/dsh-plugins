@@ -31,3 +31,6 @@ node_modules/
 # but this entry pins the same files for `pnpm format` on its own terms: a
 # machine with local files here must not fail the format check.
 .private/
+
+# Local scratch workspaces and generated stand snapshots.
+.work/

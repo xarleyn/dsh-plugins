@@ -186,6 +186,24 @@ export function ProviderEditor({
           </p>
         ) : (
           <>
+            <label>
+              <input
+                type="checkbox"
+                checked={draft.userIdentity === "qa-account"}
+                onChange={(e) =>
+                  set(
+                    "userIdentity",
+                    e.target.checked ? "qa-account" : undefined,
+                  )
+                }
+              />
+              Require QA account identity (DeepSeek)
+            </label>
+            <p>
+              Uses one shared API key and an opaque ID for each QA chat owner.
+              Enable only on a gateway supporting DeepSeek user isolation.
+              Requests without an active QA owner are refused.
+            </p>
             <p>
               Empty generation fields inherit the provider default. Top K, Min P
               and Seed require a chat gateway that supports those extensions.

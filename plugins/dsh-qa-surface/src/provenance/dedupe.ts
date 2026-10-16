@@ -61,6 +61,18 @@ function mergePair(
   const uri = bestText(left.uri, right.uri);
   const path = bestText(left.path, right.path);
   const snippet = bestText(left.snippet, right.snippet);
+  const contentSource =
+    left.content === undefined
+      ? right
+      : right.content === undefined
+        ? left
+        : left.contentTruncated !== right.contentTruncated
+          ? right.contentTruncated === true
+            ? left
+            : right
+          : right.content.length >= left.content.length
+            ? right
+            : left;
   return {
     ...left,
     kind: stronger.kind,
@@ -74,6 +86,12 @@ function mergePair(
     ...(uri === undefined ? {} : { uri }),
     ...(path === undefined ? {} : { path }),
     ...(snippet === undefined ? {} : { snippet }),
+    ...(contentSource.content === undefined
+      ? {}
+      : {
+          content: contentSource.content,
+          contentTruncated: contentSource.contentTruncated === true,
+        }),
     locations: mergeFileRanges
       ? compactLocations([...left.locations, ...right.locations])
       : [

@@ -16,7 +16,7 @@ describe("integration config", () => {
     expect(config.integration).toEqual(DEFAULT_QA_SURFACE_CONFIG.integration);
     expect(config.integration.enabled).toBe(false);
     expect(config.integration.basePath).toBe("/qa/api");
-    expect(config.integration.requestTimeoutMs).toBe(90_000);
+    expect(config.integration.requestTimeoutMs).toBe(3_600_000);
     // The bridge publishes into a comment with its own budget.
     expect(config.integration.maxAnswerCharacters).toBe(4096);
   });
@@ -57,9 +57,9 @@ describe("integration config", () => {
     // a legitimate answer off.
     const config = resolveConfig({
       accounts: { enabled: true },
-      integration: { enabled: true, requestTimeoutMs: 1_800_000 },
+      integration: { enabled: true, requestTimeoutMs: 3_600_000 },
     });
-    expect(config.integration.requestTimeoutMs).toBe(1_800_000);
+    expect(config.integration.requestTimeoutMs).toBe(3_600_000);
     expect(() =>
       resolveConfig({
         accounts: { enabled: true },
@@ -124,6 +124,7 @@ describe("integration config", () => {
     );
     expect(config.integration.basePath).toBe("/bridge/api");
     expect(config.integration.enabled).toBe(true);
+    expect(config.integration.requestTimeoutMs).toBe(3_600_000);
     expect(config.integration.maxRequestBytes).toBe(33_554_432);
   });
 });

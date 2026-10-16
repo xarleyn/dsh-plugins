@@ -396,6 +396,20 @@ relevant tool/research summary
 
 It should NOT inherit the primary agent's hidden reasoning.
 
+The latest human request's durable image blocks must reach both backends as
+native prompt content, including image-only requests. The gate may describe
+image identity in the text packet, but must not declare the model text-only or
+replace the native images with unreadable handles. The Host owns model input
+capability checks and image request limits. A saved review packet contains the
+full text; its native images accompany every expert run, including structured
+capture recovery. A domain-experts build without the host-only image review
+entry fails explicitly with `expert-image-input-unavailable` under the existing
+failure policy. Durable image refs are not added to the browser Remote API.
+
+If the reviewer's runtime cannot inspect an attachment, that is a verification
+gap in its own run. It cannot infer that the primary agent lacks vision or
+demand that the primary deny reading the attachment on that basis.
+
 Ideally reviewer uses:
 
 - another model/provider;

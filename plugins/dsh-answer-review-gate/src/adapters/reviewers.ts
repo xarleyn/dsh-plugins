@@ -72,20 +72,37 @@ export function createDomainExpertBackend(deps: {
           "reviewer.domain is empty",
         );
       }
+      const images = input.requestImages ?? [];
+      if (images.length > 0 && deps.face.reviewExpert === undefined) {
+        throw new ReviewerFailure(
+          "expert-image-input-unavailable",
+          "the installed domain-experts service cannot receive review images; update it before reviewing this request",
+        );
+      }
       const packet = await expertReviewPacket(
         renderExpertReviewTask(input),
         deps.workspaceRoot,
       );
       for (let attempt = 0; attempt < 2; attempt += 1) {
         assertReviewActive(input);
-        const outcome = await deps.face.testExpert(
-          deps.config.domain,
+        const task =
           attempt === 0
             ? packet.task
-            : `${CAPTURE_RECOVERY_INSTRUCTION}\n\n${packet.task}`,
-          input.sessionId,
-          true,
-        );
+            : `${CAPTURE_RECOVERY_INSTRUCTION}\n\n${packet.task}`;
+        const outcome =
+          images.length > 0
+            ? await deps.face.reviewExpert!(
+                deps.config.domain,
+                task,
+                input.sessionId,
+                images,
+              )
+            : await deps.face.testExpert(
+                deps.config.domain,
+                task,
+                input.sessionId,
+                true,
+              );
         await packet.verify();
         assertReviewActive(input);
         if (!outcome.ok || outcome.result === null) {
@@ -182,6 +199,7 @@ export function createSubagentBackend(deps: {
                     candidateText: input.candidateText,
                   }),
               },
+              ...(input.requestImages ?? []),
             ],
             parent: deps.parent,
             signal: input.signal,

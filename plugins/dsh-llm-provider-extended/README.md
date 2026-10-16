@@ -89,6 +89,14 @@ Copy the existing stock instance's entire `config.providers` map to this row; ex
 
 User overrides stored under the previous settings namespace must be copied explicitly to the new namespace. The plugin does not move credential files, rewrite other adapter configurations, or restart a live Host automatically. The official DeepSeek adapter is a separate adapter and can remain installed when its provider routes/directory entries do not collide. Existing `dsh-llm-gateway-compat` behavior was not used as the implementation source; parity is with the pinned stock pi-ai adapter.
 
+## QA account identity with one shared key
+
+Enable **Require QA account identity (DeepSeek)** in the provider card, or add `userIdentity: qa-account` to that provider profile. Keep the same provider route, model and `apiKeyEnv` for every account. QA Surface supplies a stable opaque identifier for the active owner of an attested chat; its verified delegated calls inherit the same owner. Model inputs and browser-supplied tags cannot select that identity. The identifier contains no email, name or raw account UUID.
+
+The provider captures identity separately for each request before credential resolution. Chat Completions sends `user_id`, Responses sends `user`, and Anthropic Messages sends `metadata.user_id` while retaining other metadata. Enable this only on a backend implementing the DeepSeek user-isolation contract. Missing QA ownership, disabled accounts or an absent QA identity service fail with `MISSING_USER_ID` before HTTP. Native chats outside QA must use a route without this mode. Existing routes keep their original behavior until enabled; System One is not supported.
+
+DeepSeek documents user identity, KV-cache and scheduling isolation under [Rate Limit & Isolation](https://api-docs.deepseek.com/quick_start/rate_limit/). One shared key still shares the account's billing and concurrency limits; this mode does not create per-user balances or QA spending caps. [Responses API](https://api-docs.deepseek.com/guides/responses_api/) uses the protocol-specific `user` spelling.
+
 ## System One
 
 The fourth protocol calls `/systemone` relative to the configured base URL (normally ending in `/v1`); a URL already ending in `/systemone` is accepted. There is no implicit endpoint or hosted fallback. Requests are limited to 250,000 JSON characters and 64 questions, responses to 1 MiB, and deadlines to at most 300 seconds. Backend-specific limits may be lower.

@@ -350,6 +350,8 @@ async function runBrowserPass({
   presetScopedTool: scopedTool,
 }) {
   const { chromium } = await import("playwright");
+  const { QA_WELCOME_NOTICE_VERSION } =
+    await import("../lib/client/components/QaWelcomeNotice.js");
   const browser = await chromium.launch({ headless: true });
   try {
     const page = await browser.newPage({
@@ -440,7 +442,7 @@ async function runBrowserPass({
         (await page.evaluate(
           (key) => globalThis.localStorage.getItem(key),
           welcomeStorageKey,
-        )) !== "2026-09-12.1"
+        )) !== QA_WELCOME_NOTICE_VERSION
       ) {
         throw new Error("QA welcome acknowledgement was not persisted");
       }
@@ -1134,7 +1136,10 @@ try {
   );
 } finally {
   await stopProcess(host);
-  if (!completed) console.error(hostLog.join(""));
+  if (!completed)
+    console.error(
+      hostLog.join("").replace(/([?&]token=)[^\s&#]+/gu, "$1[redacted]"),
+    );
   if (!completed && keepFailedSmoke) {
     console.error(`kept failed smoke workspace: ${temporaryRoot}`);
   } else {

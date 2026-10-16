@@ -166,11 +166,11 @@ export interface ReviewInput {
   readonly requestText: string | null;
   /**
    * Handle text for every attachment (image/file) the user request carried,
-   * rendered with the host's `fileHandleText`/`textOnlyImageText` idiom. The
-   * reviewer sees that a named attachment existed and what kind it was, and
-   * that it cannot open it. Empty when the request carried no attachment.
+   * with neutral image metadata and explicit file access limitations.
    */
   readonly requestAttachments: readonly string[];
+  /** Original durable image blocks; the Host resolves bytes and route capabilities. */
+  readonly requestImages?: readonly Extract<ContentBlock, { type: "image" }>[];
   /** The candidate final answer text. */
   readonly candidateText: string;
   /** Cancellation owned by the reviewed agent's turn. */
@@ -194,6 +194,13 @@ export interface ReviewerBackend {
  * handled by the failure policy, never a load-time dependency.
  */
 export interface DomainExpertsFace {
+  /** Host-only entry; older installations must fail explicitly for image reviews. */
+  reviewExpert?(
+    domainId: string,
+    task: string,
+    parentSessionId: string,
+    images: readonly Extract<ContentBlock, { type: "image" }>[],
+  ): Promise<ExpertRunOutcome>;
   testExpert(
     domainId: string,
     task: string,

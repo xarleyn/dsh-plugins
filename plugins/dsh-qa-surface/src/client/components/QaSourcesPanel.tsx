@@ -12,6 +12,7 @@ import { QaMarkdownPreview } from "./QaMarkdownPreview.js";
 import { SourceImage } from "../markdown/SourceImage.js";
 import { KIND_LABELS, SourceIcon } from "./source-icon.js";
 import { usePdfUrl } from "./QaWorkspaceBrowser.js";
+import { matchesSourceText, QaSourceFilters } from "./QaSourceFilters.js";
 
 // Re-exported so the panel stays the icon's historical import site.
 export { SourceIcon } from "./source-icon.js";
@@ -93,8 +94,10 @@ function QaSourceCard({
           {sourceTarget(source)}
         </span>
         <OriginBadges source={source} showOrigin={showOriginBadges} />
-        {source.snippet === undefined ? null : (
-          <p data-testid="qa-sources-item-snippet">{source.snippet}</p>
+        {source.snippet === undefined && source.content === undefined ? null : (
+          <p data-testid="qa-sources-item-snippet">
+            {source.snippet ?? source.content?.slice(0, 240)}
+          </p>
         )}
       </span>
     </button>
@@ -435,7 +438,23 @@ function QaSourceDetail({
             )}
           </>
         ) : source.path === undefined ? (
-          source.snippet === undefined ? (
+          source.content !== undefined ? (
+            <>
+              <h3 className="dsh-qa-sourcedetail__content-label">
+                Полученный текст
+              </h3>
+              {source.contentTruncated === true ? (
+                <p
+                  className="dsh-qa-preview__notice"
+                  data-testid="qa-source-content-truncated"
+                >
+                  Текст сохранён частично: показан доступный фрагмент
+                  результата.
+                </p>
+              ) : null}
+              <p data-testid="qa-source-detail-content">{source.content}</p>
+            </>
+          ) : source.snippet === undefined ? (
             <p
               className="dsh-qa-sourcedetail__empty"
               data-testid="qa-source-detail-missing"
@@ -495,6 +514,22 @@ export function QaSourcesPanel({
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  const [query, setQuery] = useState("");
+  const [kind, setKind] = useState<QaSource["kind"] | "all">("all");
+  const filtered = useMemo(
+    () =>
+      sources.filter(
+        (source) =>
+          (kind === "all" || source.kind === kind) &&
+          matchesSourceText(source, query),
+      ),
+    [sources, kind, query],
+  );
+  const resetFilters = () => {
+    setQuery("");
+    setKind("all");
+    setExpanded(new Set());
+  };
   const detail =
     detailId === null
       ? undefined
@@ -502,18 +537,35 @@ export function QaSourcesPanel({
         sources.find((source) => source.id === detailId));
   const groups = useMemo(() => {
     if (!display.groupByKind)
-      return [{ key: "all", label: "Источники", sources }];
+      return [{ key: "all", label: "Источники", sources: filtered }];
     const grouped = new Map<QaSource["kind"], QaSource[]>();
-    for (const source of sources)
+    for (const source of filtered)
       grouped.set(source.kind, [...(grouped.get(source.kind) ?? []), source]);
     return [...grouped].map(([key, items]) => ({
       key,
       label: KIND_LABELS[key],
       sources: items,
     }));
-  }, [display.groupByKind, sources]);
+  }, [display.groupByKind, filtered]);
   return (
     <div className="dsh-qa-sourcespanel" data-testid="qa-sources-panel">
+      {detail === undefined && sources.length > 0 ? (
+        <QaSourceFilters
+          sources={sources}
+          query={query}
+          kind={kind}
+          count={filtered.length}
+          onQuery={(value) => {
+            setQuery(value);
+            setExpanded(new Set());
+          }}
+          onKind={(value) => {
+            setKind(value);
+            setExpanded(new Set());
+          }}
+          onReset={resetFilters}
+        />
+      ) : null}
       {detail === undefined && pinned && onShowAll !== undefined ? (
         <button
           type="button"
@@ -526,6 +578,14 @@ export function QaSourcesPanel({
       ) : null}
       {detail === undefined ? (
         <div className="dsh-qa-sources__list" data-testid="qa-sources-list">
+          {sources.length > 0 && filtered.length === 0 ? (
+            <p
+              className="dsh-qa-sources__empty"
+              data-testid="qa-sources-no-matches"
+            >
+              Ничего не найдено. Измените запрос или сбросьте фильтры.
+            </p>
+          ) : null}
           {!complete ? (
             <p
               className="dsh-qa-sources__incomplete"

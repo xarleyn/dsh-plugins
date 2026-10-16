@@ -246,6 +246,13 @@ export function apply(ctx: Context, config: Config): void {
   const adapter = new ExtendedAdapter({
     profiles,
     resolveApiKey,
+    resolveUserId: (options) => {
+      const identity = ctx.get("qaLlmIdentity") as
+        { forSession(sessionId: string): string | undefined } | undefined;
+      return options.sessionId === undefined
+        ? undefined
+        : identity?.forSession(String(options.sessionId));
+    },
     auth,
     resolveAttachments: () => ctx.get("attachments"),
     resolveImageAccess: (attachments, ref) =>
