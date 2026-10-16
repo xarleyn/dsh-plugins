@@ -70,6 +70,16 @@ lifecycle does not bypass it either.
 
 ## Reviewer backends
 
+Both backends receive the latest human request's original durable image blocks,
+including requests with no text. The Host applies the reviewer's selected model
+capabilities and image limits; the gate does not replace images with text-only
+placeholders. A reviewer that cannot inspect an attachment reports its own
+verification gap without inferring that the primary agent could not see it.
+Image review through `domain-expert` requires a matching domain-experts build
+with the host-only `reviewExpert` entry. Older builds report
+`expert-image-input-unavailable` through the configured failure policy rather
+than silently reviewing only the text.
+
 ### `reviewer.backend: domain-expert` (default)
 
 Runs the reviewer domain configured in [dsh-domain-experts](https://github.com/xarleyn/dsh-plugins/tree/main/plugins/dsh-domain-experts)

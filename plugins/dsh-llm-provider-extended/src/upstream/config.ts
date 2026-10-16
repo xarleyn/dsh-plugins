@@ -20,6 +20,7 @@ import {
   type GenerationDefaults,
 } from "../generation.js";
 import { resolveSystemProfile } from "../systemone.js";
+import { validateUserIdentityProtocol } from "../user-identity.js";
 
 import type {
   CacheRetention,
@@ -107,6 +108,8 @@ export type {
 
 /** Configuration for one pi-ai provider route; the `providers` dict key IS the route. */
 export interface PiAiProviderProfile {
+  /** Require the QA chat owner's pseudonym in DeepSeek-compatible requests. */
+  userIdentity?: "qa-account";
   /** Optional provider sampling defaults, overridden by model and explicit call values. */
   generation?: GenerationDefaults;
   /** Credential reference (environment-variable name) resolved per request through `ctx.credentials`. */
@@ -350,6 +353,7 @@ const modelProfile: z<PiAiModelProfile> = z.object({
 const modelOverride: z<PiAiModelOverride> = z.object(modelFields);
 
 const profile = z.object({
+  userIdentity: z.union(["qa-account"]),
   generation: GenerationSchema,
   apiKeyEnv: z.string().role("credential-ref"),
   displayName: z.string(),
@@ -397,6 +401,8 @@ const profile = z.object({
 
 /** Runtime schema for {@link Config}. */
 const systemProfile = z.object({
+  // Keep this known field visible to validation instead of silently dropping it.
+  userIdentity: z.union(["qa-account"]),
   api: z.const("systemone").required(),
   baseURL: z.string().required(),
   displayName: z.string(),
@@ -501,6 +507,8 @@ export function resolveProfiles(
   const entries = Object.entries(providers ?? {});
   const resolved = new Map<string, ResolvedPiAiProviderProfile>();
   for (const [provider, source] of entries) {
+    if (source.api !== undefined)
+      validateUserIdentityProtocol(source.userIdentity, source.api);
     if (source.api === "systemone") {
       resolved.set(provider, resolveSystemProfile(provider, source));
       continue;
@@ -612,6 +620,8 @@ export function resolveProfiles(
       displayName: _displayName,
       ...rest
     } = source;
+    for (const model of catalog?.models ?? [])
+      validateUserIdentityProtocol(source.userIdentity, model.api);
     resolved.set(provider, {
       ...rest,
       provider,

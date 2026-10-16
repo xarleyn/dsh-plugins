@@ -77,6 +77,22 @@ function shardPath(dir: string, sessionId: string): string {
   return path.join(dir, shardName(sessionId));
 }
 describe("FileQaProvenanceSnapshotStore", () => {
+  it("restores retrieved text and its partial marker after reopening the store", () => {
+    const { dir, store } = rig();
+    const original = bundle();
+    const saved = {
+      ...original,
+      sources: original.sources.map((source) => ({
+        ...source,
+        content: "Retained retrieval text\nSecond paragraph",
+        contentTruncated: true,
+      })),
+    };
+    store.put(saved);
+    expect(new FileQaProvenanceSnapshotStore(dir).list("session-1")).toEqual([
+      saved,
+    ]);
+  });
   it("persists snapshots for a fresh store instance", () => {
     const { dir, store } = rig();
     store.put(bundle());

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { ContentBlock } from "@deepseek-ai/dsh-llm";
 
 import {
   candidateHash,
@@ -79,6 +80,44 @@ function waiverLifecycle(
 }
 
 describe("collectCandidate", () => {
+  it("keeps an image-only human request instead of falling back to an older question", () => {
+    const image: ContentBlock = {
+      type: "image",
+      attachment: {
+        attachmentId: "sha256:cafebabe1234" as never,
+        mediaType: "image/png",
+        bytes: 2048,
+        width: 64,
+        height: 64,
+      },
+    };
+    const candidate = collectCandidate(
+      makeSession([
+        userMessage("An older question."),
+        {
+          type: "user/message",
+          data: {
+            id: "image-request",
+            source: { kind: "user" },
+            content: [image],
+          },
+        },
+        {
+          type: "user/message",
+          data: { source: { kind: "tool" }, content: [image] },
+        },
+        assistantMessage("The screenshot shows a duplicate value error."),
+        userMessage("A later question."),
+      ]),
+    );
+    expect(candidate).toMatchObject({
+      requestText: "",
+      requestSeq: 1,
+      requestImages: [image],
+    });
+    expect(candidate?.requestAttachments).toHaveLength(1);
+    expect(candidate?.requestAttachments[0]).not.toContain("accepts text only");
+  });
   it("collects the latest assistant message and the user request before it", () => {
     const session = makeSession([
       userMessage("What locks does the runtime use?"),
@@ -90,6 +129,7 @@ describe("collectCandidate", () => {
       text: "The runtime uses file locks around journal writes.",
       requestText: "What locks does the runtime use?",
       requestAttachments: [],
+      requestImages: [],
       requestSeq: 0,
       candidateSeq: 3,
       reviewWaiver: null,

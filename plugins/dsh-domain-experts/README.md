@@ -60,6 +60,14 @@ Then open the **Domain Experts** row of the Host's **Plugins** page.
 
 ## Managing domains
 
+Host plugins can run a structured image review through
+`ctx.domainExperts.reviewExpert(domainId, task, parentSessionId, images)`.
+It forwards already admitted durable image blocks to the expert child, where
+the Host applies the selected model's image capabilities and limits. This entry
+is in-process only; the browser test API does not accept attachment refs. Image
+reviews require the exact live parent session and do not fall back to another
+chat when that session is unavailable.
+
 The tab lists every domain with its scope counts and degradations. `Edit` — or
 the card itself — opens one in the same pane: identity and status, persona,
 filesystem and knowledge scope, memory namespaces, tool policy, cross-domain

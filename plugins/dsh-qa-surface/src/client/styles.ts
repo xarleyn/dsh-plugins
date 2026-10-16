@@ -2,6 +2,7 @@ import { QA_BLEED_MAX_WIDTH } from "./components/QaWidthHandle.js";
 import { QA_ADMIN_CONSOLE_STYLES } from "./admin/styles.js";
 import { AUDIT_UI_STYLES } from "@yadsh/dsh-audit-ui";
 import { KATEX_CSS } from "./markdown/katex-css.js";
+import { sourceFiltersStyles } from "./source-filters-styles.js";
 
 /**
  * Company interaction palette ("Цвета взаимодействия" guideline) — the single
@@ -591,7 +592,7 @@ export const QA_SURFACE_STYLES = String.raw`
 .dsh-qa-sheet thead th{top:0;z-index:1}
 .dsh-qa-sheet tbody th{left:0;min-width:36px}
 .dsh-qa-sheet td[data-type=number]{text-align:right;font-variant-numeric:tabular-nums}
-.dsh-qa-sheet td[data-type=error]{color:var(--dsw-alias-state-danger-primary)}
+.dsh-qa-sheet td[data-type=error]{color:var(--dsw-alias-state-error-primary)}
 .dsh-qa-sheet__caption{text-align:left;padding:6px 8px}
 .dsh-qa-ws__text{margin:0;padding:8px 9px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-primary);font-size:11px;line-height:16px;white-space:pre-wrap;word-break:break-word}
 .dsh-qa-ws__image{max-width:100%;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-2)}
@@ -1083,6 +1084,7 @@ ${QA_ADMIN_CONSOLE_STYLES}
  * rules from its own KaTeX stylesheet are harmless.
  */
 export const QA_ROOT_STYLES = `${QA_SURFACE_STYLES}
+${sourceFiltersStyles}
 ${KATEX_CSS}
 ${AUDIT_UI_STYLES}`;
 

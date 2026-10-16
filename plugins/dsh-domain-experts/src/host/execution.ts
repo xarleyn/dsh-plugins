@@ -164,6 +164,11 @@ export interface ExecutionDependencies {
 }
 
 export interface ExpertRunInput {
+  /** Host-admitted durable images, supplied only by in-process callers. */
+  readonly images?: readonly Extract<
+    SubagentStartRequest["prompt"][number],
+    { type: "image" }
+  >[];
   readonly structuredOutput?: boolean;
   readonly parent: Agent;
   readonly definition: DomainDefinition;
@@ -278,7 +283,7 @@ export async function runExpert(
     // The policy travels as the persona (a system section); the child's first
     // message is the caller's request. Sending the persona as the prompt as
     // well made the deployment's instructions read as user text.
-    prompt: [{ type: "text", text: profile.task }],
+    prompt: [{ type: "text", text: profile.task }, ...(input.images ?? [])],
     parent: input.parent,
     signal: input.signal,
     // The system section is the policy alone: the request — and anything the

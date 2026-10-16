@@ -21,12 +21,8 @@ import type {
 /**
  * The uploaded-file regression (`max-rounds` deaths on the production stand).
  *
- * The reviewer never received the attachments the user uploaded, so it read
- * facts sourced from a file as fabrication and refused forever. Option 1 makes
- * the reviewer *aware* an attachment existed — rendered with the host's own
- * `fileHandleText` / `textOnlyImageText` idiom — without pretending it can be
- * opened, and adds the protocol line that an unreadable attachment is not
- * evidence of fabrication.
+ * Files retain explicit access limits. Images must reach the reviewer as
+ * durable native blocks, without a text-only assertion invented by the gate.
  */
 
 const FILE_NAME = "PROJ-123-report.pdf";
@@ -166,9 +162,9 @@ function promptTextOf(spec: SubagentStartSpec): string {
     .join("\n");
 }
 
-async function reviewerPrompt(
+async function reviewerSpec(
   content: readonly ContentBlock[],
-): Promise<string> {
+): Promise<SubagentStartSpec> {
   const face = new ScriptedFace();
   const gate = makeGate(face);
   const agent = {
@@ -184,10 +180,41 @@ async function reviewerPrompt(
   await face.settle(face.resultOf(PASS));
   expect(await pending).toBe("pass");
   expect(face.started).toHaveLength(1);
-  return promptTextOf(face.started[0]!);
+  return face.started[0]!;
+}
+
+async function reviewerPrompt(
+  content: readonly ContentBlock[],
+): Promise<string> {
+  return promptTextOf(await reviewerSpec(content));
 }
 
 describe("reviewer sees uploaded attachments", () => {
+  it.each([true, false])(
+    "forwards native images, including image-only requests (text: %s)",
+    async (withText) => {
+      const images = [imageBlock(), imageBlock()];
+      const spec = await reviewerSpec([
+        ...(withText
+          ? [{ type: "text" as const, text: "Explain the screenshot." }]
+          : []),
+        ...images,
+        fileBlock(),
+      ]);
+      expect(spec.prompt.filter((block) => block.type === "image")).toEqual(
+        images,
+      );
+      expect(spec.prompt).not.toContainEqual(fileBlock());
+      const text = promptTextOf(spec);
+      expect(text).not.toContain(
+        "image omitted because this model accepts text only",
+      );
+      expect(text).not.toContain("You cannot open them");
+      expect(text).toContain(
+        "Never infer that the primary agent cannot see images",
+      );
+    },
+  );
   it("names the uploaded file in the reviewer prompt the gate started", async () => {
     const prompt = await reviewerPrompt([
       { type: "text", text: "Summarize the quarterly report." },

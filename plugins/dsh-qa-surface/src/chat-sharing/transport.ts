@@ -451,8 +451,8 @@ export class QaChatTransport {
  */
 function stopDelegatedWork(ctx: Context, root: string): void {
   const stopped = new Set<string>([root]);
-  const children = ctx
-    .agents.list()
+  const children = ctx.agents
+    .list()
     .filter(
       (agent) =>
         agent.session.header.origin === "subagent" &&

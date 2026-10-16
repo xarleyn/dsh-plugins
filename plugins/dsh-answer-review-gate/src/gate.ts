@@ -343,6 +343,7 @@ export class AnswerReviewGate {
       turn,
       requestText: collected.requestText,
       requestAttachments: collected.requestAttachments,
+      requestImages: collected.requestImages,
       candidateText: collected.text,
       signal,
     };
