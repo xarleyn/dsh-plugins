@@ -103,10 +103,21 @@ assert.match(
  * handing that control back to the Host's `focus.css`, which does not dress a
  * markup a plugin renders inside the section.
  */
-for (const control of ["uir-control", "uir-toggle", "uir-button"]) {
-  assert.ok(
-    client.includes(`.${control}:focus-visible{`),
-    `${control} renders no focus ring of its own`,
+// The shared kit emits rings for these mapped roles. Require the mapping at
+// the actual call, rather than a class mentioned elsewhere in the bundle.
+// plugin-kit's CSS tests assert a ring for every one of these roles.
+for (const [role, control] of [
+  ["control", "uir-control"],
+  ["toggle", "uir-toggle"],
+  ["button", "uir-button"],
+]) {
+  assert.match(
+    client,
+    new RegExp(
+      `settingsBodyStyles\\(\\{[^}]*\\b${role}:\\s*"\\.${control}"`,
+      "u",
+    ),
+    `${control} must map to the shared ${role} focus styling`,
   );
 }
 verifyPluginCardContract(client, { legacyPatterns: [/uir-card/u] });

@@ -1,3 +1,5 @@
+import { settingsBodyStyles } from "@yadsh/dsh-plugin-kit/client";
+
 /**
  * Card stylesheet: body rules for this plugin's own controls.
  *
@@ -18,29 +20,19 @@
  * bundle text.
  */
 
-export const styles: string = String.raw`
+export const styles: string =
+  String.raw`
 .jevc-body{flex-direction:column;gap:14px;padding-top:12px;display:flex}
 .jevc-section{display:flex;flex-direction:column;gap:8px}
 .jevc-section-title{color:var(--dsw-alias-label-primary);font-size:13px;font-weight:600;line-height:1.4}
 .jevc-hint{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1.5;margin:0}
-.jevc-row{display:flex;align-items:flex-start;gap:12px}
-.jevc-row-text{display:flex;flex-direction:column;flex:1;gap:2px;min-width:0}
 .jevc-row-label{color:var(--dsw-alias-label-primary);font-size:13px;line-height:1.4}
 .jevc-row-description{color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:1.5}
-.jevc-field{display:flex;flex-direction:column;gap:4px}
-.jevc-field-label{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:1.4}
-.jevc-input{appearance:none;width:100%;box-sizing:border-box;color:var(--dsw-alias-label-primary);background:var(--dsw-alias-bg-layer-3);border:1px solid var(--dsw-alias-border-l2);border-radius:8px;font:inherit;font-size:13px;padding:6px 8px}
-.jevc-input:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-2px}
-.jevc-input:disabled{color:var(--dsw-alias-label-dimmed)}
 .jevc-input--number{max-width:140px}
 .jevc-inline{display:flex;align-items:center;gap:8px}
 .jevc-unit{color:var(--dsw-alias-label-tertiary);font-size:12px}
-.jevc-toggle{appearance:none;position:relative;flex:none;width:34px;height:20px;margin:2px 0 0;background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l2);border-radius:999px;cursor:pointer;transition:background .16s,border-color .16s}
 .jevc-toggle::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;background:var(--dsw-alias-label-secondary);border-radius:999px;transition:transform .16s,background .16s}
-.jevc-toggle:checked{background:var(--dsw-alias-brand-primary);border-color:var(--dsw-alias-brand-primary)}
 .jevc-toggle:checked::after{background:var(--dsw-alias-label-primary-foreground);transform:translateX(14px)}
-.jevc-toggle:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}
-.jevc-toggle:disabled{cursor:default;opacity:.5}
 .jevc-tags{display:flex;flex-wrap:wrap;gap:6px}
 .jevc-tag{display:inline-flex;align-items:center;gap:6px;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-module-platform);border:1px solid var(--dsw-alias-border-l2);border-radius:999px;padding:1px 8px;font-size:12px;line-height:17px}
 .jevc-tag-remove{appearance:none;color:inherit;cursor:pointer;background:0 0;border:0;font:inherit;font-size:13px;line-height:1;padding:0}
@@ -103,4 +95,13 @@ export const styles: string = String.raw`
 .jevc-run-foot{color:var(--dsw-alias-label-tertiary);font-size:11px;line-height:1.5;margin:0}
 .jevc-run--skip .jevc-run-skip-line{display:flex;flex-wrap:wrap;align-items:center;gap:8px}
 .jevc-run-reason{color:var(--dsw-alias-label-secondary)}
-`;
+` +
+  settingsBodyStyles({
+    body: ".jevc-body",
+    field: ".jevc-field",
+    fieldLabel: ".jevc-field-label",
+    control: ".jevc-input",
+    toggleRow: ".jevc-row",
+    toggleCopy: ".jevc-row-text",
+    toggle: ".jevc-toggle",
+  });
