@@ -1,3 +1,5 @@
+import { settingsBodyStyles } from "@yadsh/dsh-plugin-kit/client";
+
 /**
  * Card body styles.
  *
@@ -11,39 +13,32 @@
  * hard-coded outline of our own is no answer either — the Host's `focus.css`
  * wins that fight on specificity under pointer modality.
  */
-export const styles: string = `.dsh-docs-body,.dsh-docs-body *{box-sizing:border-box}
+export const styles: string =
+  `.dsh-docs-body,.dsh-docs-body *{box-sizing:border-box}
 .dsh-docs-body{padding-top:14px;display:grid;gap:16px;color:var(--dsw-alias-label-primary)}
-.dsh-docs-section{display:grid;gap:10px}
 .dsh-docs-section-title{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .dsh-docs-section-title h3{font-size:13px;margin:0}
 .dsh-docs-muted{color:var(--dsw-alias-label-tertiary);font-size:12px;margin:0;line-height:1.5}
-.dsh-docs-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
-.dsh-docs-field{display:grid;gap:6px;min-width:0}
-.dsh-docs-field>span:first-child{font-size:11px;color:var(--dsw-alias-label-secondary);font-weight:600}
-.dsh-docs-field-hint{font-size:10px;color:var(--dsw-alias-label-tertiary);line-height:1.5}
-.dsh-docs-control{width:100%;min-height:34px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);padding:6px 10px;font:inherit;font-size:12px;outline:none}
-.dsh-docs-control:focus-visible{border-color:var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
-.dsh-docs-control:disabled{cursor:default;opacity:.45}
-.dsh-docs-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px}
-.dsh-docs-toggle-copy{display:grid;gap:2px}
-.dsh-docs-toggle-copy strong{font-size:12px;font-weight:500}
-.dsh-docs-toggle-copy span{font-size:10px;color:var(--dsw-alias-label-tertiary)}
-.dsh-docs-toggle{appearance:none;width:34px;height:19px;border-radius:999px;background:var(--dsw-alias-label-dimmed);position:relative;cursor:pointer;transition:.18s;flex:none}
-.dsh-docs-toggle:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:2px}
-.dsh-docs-toggle:after{content:'';position:absolute;top:3px;left:3px;width:13px;height:13px;border-radius:50%;background:var(--dsw-alias-bg-layer-3);transition:.18s}
-.dsh-docs-toggle:checked{background:var(--dsw-alias-brand-primary)}
-.dsh-docs-toggle:checked:after{transform:translateX(15px)}
-.dsh-docs-toggle:disabled{cursor:default;opacity:.45}
-.dsh-docs-btn{height:27px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);padding:0 10px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
 .dsh-docs-btn.link{background:transparent}
-.dsh-docs-btn:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed);background:var(--dsw-alias-interactive-bg-hover)}
-.dsh-docs-btn:focus-visible{outline:var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color, var(--dsw-alias-state-business-primary));outline-offset:-1px}
-.dsh-docs-btn:disabled{cursor:default;opacity:.45}
-.dsh-docs-notice{padding:9px 11px;border-radius:8px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);font-size:11px;line-height:1.5}
 .dsh-docs-notice.warn{background:color-mix(in srgb, var(--dsw-alias-state-error-primary, #b3261e) 8%, transparent);color:var(--dsw-alias-state-error-primary, #b3261e)}
 .dsh-docs-facts{display:grid;gap:6px;margin:0}
 .dsh-docs-facts>div{display:grid;grid-template-columns:minmax(0,130px) minmax(0,1fr);gap:10px}
 .dsh-docs-facts dt{font-size:11px;color:var(--dsw-alias-label-tertiary)}
 .dsh-docs-facts dd{margin:0;font-size:11px;color:var(--dsw-alias-label-primary);word-break:break-word}
-@media(max-width:720px){.dsh-docs-grid{grid-template-columns:1fr}}
-`;
+@media(max-width:720px){}
+` +
+  settingsBodyStyles({
+    body: ".dsh-docs-body",
+    section: ".dsh-docs-section",
+    sectionTitle: ".dsh-docs-section-title",
+    grid: ".dsh-docs-grid",
+    field: ".dsh-docs-field",
+    fieldLabel: ".dsh-docs-field>span:first-child",
+    hint: ".dsh-docs-field-hint",
+    control: ".dsh-docs-control",
+    button: ".dsh-docs-btn",
+    toggleRow: ".dsh-docs-toggle-row",
+    toggleCopy: ".dsh-docs-toggle-copy",
+    toggle: ".dsh-docs-toggle",
+    notice: ".dsh-docs-notice",
+  });

@@ -11,6 +11,7 @@ import {
   networkFromDraft,
   networkToDraft,
   newRuleId,
+  parseNonNegativeInt,
   parsePositiveInt,
   textToList,
   type NetworkDraft,
@@ -184,7 +185,7 @@ export function draftToRule(draft: RuleDraft): {
                 ? { prefix: draft.headerPrefix }
                 : {}),
             };
-  const maxRedirects = parsePositiveInt(draft.maxRedirects);
+  const maxRedirects = parseNonNegativeInt(draft.maxRedirects);
   if (draft.maxRedirects.trim() !== "" && maxRedirects === undefined) {
     errors.push("Max redirects must be a non-negative integer.");
   }

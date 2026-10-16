@@ -69,6 +69,35 @@ pnpm test
 pnpm typecheck
 ```
 
+## Operator settings body styles
+
+The `./client` export includes `settingsBodyStyles(selectors)` and the
+`SettingsBodySelectors` type. It shares the type scale (16 px section titles,
+14 px labels and values, 12 px hints), spacing, responsive grids, switches,
+buttons and Host focus rings of operator configuration pages. Supply the
+bundle's existing class selectors to preserve DOM hooks and saved settings.
+Pass trusted selectors from source, never user input. Omit roles with a
+specialized layout. The returned CSS belongs after the page's specialized
+rules; do not copy its declarations into plugins.
+
+The Host owns the row page's frame and heading. These body rules add neither.
+Keep namespace keys and path-addressed mutations in the plugin; the stylesheet
+does not decide defaults, write permissions or persistence. Annotated switch
+labels wrap, and grids collapse when their container cannot fit another field.
+
+```ts
+import { settingsBodyStyles } from "@yadsh/dsh-plugin-kit/client";
+
+const styles = settingsBodyStyles({
+  body: ".demo-settings",
+  grid: ".demo-settings-grid",
+  control: ".demo-settings-control",
+  toggleRow: ".demo-settings-toggle-row",
+  toggleCopy: ".demo-settings-toggle-copy",
+  toggle: ".demo-settings-toggle",
+});
+```
+
 ## License
 
 MIT

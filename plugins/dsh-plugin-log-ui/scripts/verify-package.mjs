@@ -192,7 +192,11 @@ await runVerifyPackage({
       client.includes("const PANEL_STYLE_KEY = `${CARD_STYLE_KEY}/panel`"),
       "the panel sheet must have its own key",
     );
-    assert.ok(client.includes(".plu-grid{"), "the card sheet must ship");
+    assert.match(
+      client,
+      /settingsBodyStyles\(\{[^}]*\bgrid:\s*"\.plu-grid"/u,
+      "the card must include its grid in the shared settings stylesheet",
+    );
     assert.ok(client.includes(".plu-log{"), "the panel sheet must ship");
 
     /*

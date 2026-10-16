@@ -73,6 +73,14 @@ export function parsePositiveInt(text: string): number | undefined {
   return Number.isInteger(value) && value > 0 ? value : undefined;
 }
 
+/** Redirect counts include zero; a blank field inherits the deployment default. */
+export function parseNonNegativeInt(text: string): number | undefined {
+  const trimmed = text.trim();
+  if (!/^\d+$/u.test(trimmed)) return undefined;
+  const value = Number(trimmed);
+  return Number.isSafeInteger(value) ? value : undefined;
+}
+
 /** Build the network policy half-draft checkbox state. */
 export interface NetworkDraft {
   allowPublic: boolean;

@@ -53,6 +53,7 @@ await runVerifyPackage({
       "injectCardStyles",
       "registerSettingsCard",
       "registerSettingsSlot",
+      "settingsBodyStyles",
     ]) {
       assert.ok(
         Object.hasOwn(client, name),
