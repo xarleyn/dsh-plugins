@@ -2,6 +2,7 @@ import { QA_BLEED_MAX_WIDTH } from "./components/QaWidthHandle.js";
 import { QA_ADMIN_CONSOLE_STYLES } from "./admin/styles.js";
 import { AUDIT_UI_STYLES } from "@yadsh/dsh-audit-ui";
 import { KATEX_CSS } from "./markdown/katex-css.js";
+import { sourceFiltersStyles } from "./source-filters-styles.js";
 
 /**
  * Company interaction palette ("Цвета взаимодействия" guideline) — the single
@@ -1083,6 +1084,7 @@ ${QA_ADMIN_CONSOLE_STYLES}
  * rules from its own KaTeX stylesheet are harmless.
  */
 export const QA_ROOT_STYLES = `${QA_SURFACE_STYLES}
+${sourceFiltersStyles}
 ${KATEX_CSS}
 ${AUDIT_UI_STYLES}`;
 

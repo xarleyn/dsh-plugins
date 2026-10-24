@@ -95,11 +95,14 @@ answer to "why can this service see my chat" is "it is your account's token".
 ### 2.5 A timeout is an answer, not an error
 
 The contract is not a fixed number of seconds: it is `requestTimeoutMs`, the
-budget the deployment gives the endpoint (90 seconds in the shipped default,
-and a stand running a local model typically raises it to the ceiling this
-build accepts). A bridge must read the budget from its own deployment
+budget the deployment gives the endpoint (one hour, or `3600000` ms, in the
+shipped default). A bridge must read the budget from its own deployment
 configuration rather than assume a value, because the wait before an answer
 scales with how long the model takes to answer.
+
+The bridge's HTTP client and any reverse proxy must also allow that wait, with
+some margin for transmitting the response. An explicit deployment override
+keeps its configured value when the package's default changes.
 
 When the turn is still running at `requestTimeoutMs`, the endpoint answers
 `200` with `escalate: true`, an empty `answer` and the `chat_id`, instead of a

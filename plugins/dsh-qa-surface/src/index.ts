@@ -81,6 +81,7 @@ import {
 import { QaFileDeleteGate } from "./qa-tools/file-delete-gate.js";
 import { QaQuestionGate } from "./questions.js";
 import { QaSessionOwnership } from "./session-ownership.js";
+import { QaLlmIdentity } from "./llm-identity.js";
 import { registerTurnFailureLog } from "./turn-failure-log.js";
 import { entryRedirectRow } from "./entry-redirect.js";
 import { qaKioskDeployment } from "./ui-mode.js";
@@ -559,6 +560,11 @@ export class QaSurface extends TypertRemoteService {
     const ownership = new QaSessionOwnership((sessionId) =>
       this.admission.knowsSession(sessionId),
     );
+    ownership.install(ctx);
+    new QaLlmIdentity(ctx, {
+      rootOf: (sessionId) => ownership.rootOf(sessionId),
+      accounts: () => this.accountRemotes.resolve(this.getConfig()),
+    });
     this.approvals = new QaApprovalGate(
       ctx,
       () => this.getConfig().interaction.approvals === "interactive",

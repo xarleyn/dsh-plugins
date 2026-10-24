@@ -60,6 +60,11 @@ import type {
   ImageAttachmentRef,
 } from "@deepseek-ai/dsh-attachment";
 import { generationPayload, validateGeneration } from "../generation.js";
+import {
+  resolveUserIdentity,
+  userIdentityPayload,
+  type QaUserIdResolver,
+} from "../user-identity.js";
 import { idleWatchdog, timeoutOf } from "@deepseek-ai/dsh-timeout";
 import type { ResolvedPiAiProviderProfile } from "./config.js";
 import { toPiContext } from "./context.js";
@@ -90,6 +95,8 @@ export interface PiAiAdapterOptions {
     provider: string,
     profile: ResolvedPiAiProviderProfile,
   ) => Promise<string | undefined>;
+  /** Trusted runtime identity, independent of the shared credential. */
+  resolveUserId?: QaUserIdResolver;
   /**
    * How every collection this adapter builds resolves auth the request-level
    * `apiKey` override does not cover. Required rather than optional: a
@@ -432,6 +439,12 @@ export class PiAiAdapter extends LlmAdapter {
       model,
       options.reasoningEffort ?? profile.reasoning,
     );
+    const userId = resolveUserIdentity(
+      profile.userIdentity,
+      model.api,
+      options,
+      this.config.resolveUserId,
+    );
     const apiKey = await this.config.resolveApiKey(options.provider, profile);
 
     const consumer = new AbortController();
@@ -495,7 +508,11 @@ export class PiAiAdapter extends LlmAdapter {
           ? {}
           : { temperature: generation.temperature }),
         onPayload: (payload) =>
-          generationPayload(payload, generation, model.api),
+          userIdentityPayload(
+            generationPayload(payload, generation, model.api),
+            userId,
+            model.api,
+          ),
         ...(options.maxTokens === undefined
           ? {}
           : { maxTokens: options.maxTokens }),

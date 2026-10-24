@@ -11,6 +11,7 @@ import {
   createKnowledgeExtractor,
 } from "./connectors.js";
 import { integrationExtractor } from "./integration-extractor.js";
+import { retainedSourceContent } from "./source-content.js";
 
 type UnknownRecord = Record<string, unknown>;
 
@@ -286,7 +287,7 @@ export function createWebSearchExtractor(
 const WEB_FETCH_ENVELOPE =
   /^(?:Fetched\s+\S+\s+\(HTTP\s+\d+\)|External web content follows\..*)$/u;
 
-function fetchedSnippet(
+function fetchedContent(
   value: string | undefined,
   uri: string,
 ): string | undefined {
@@ -301,7 +302,7 @@ function fetchedSnippet(
       return text.replace(/\/+$/u, "") !== target;
     })
     .join("\n");
-  return snippet(content);
+  return content.trim() || undefined;
 }
 
 export function createWebFetchExtractor(
@@ -335,13 +336,25 @@ export function createWebFetchExtractor(
           ? meta.title.trim()
           : undefined;
       const titleExplicit = explicitTitle !== undefined;
-      const sourceSnippet = fetchedSnippet(firstText(context.result), uri);
+      const textBlocks = Array.isArray(context.result)
+        ? context.result
+            .flatMap((block) => {
+              const item = record(block);
+              return item?.type === "text" && typeof item.text === "string"
+                ? [item.text]
+                : [];
+            })
+            .join("\n\n")
+        : firstText(context.result);
+      const content = fetchedContent(textBlocks, uri);
+      const sourceSnippet = snippet(content);
       return [
         {
           id: `web:${uri}`,
           kind: "web",
           title: explicitTitle ?? sourceTitleFromUrl(uri),
           uri,
+          ...retainedSourceContent(content, meta?.truncated === true),
           ...(sourceSnippet === undefined ? {} : { snippet: sourceSnippet }),
           locations: [],
           evidence: "fetched",

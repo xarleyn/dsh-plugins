@@ -222,13 +222,13 @@ export const DEFAULT_QA_SURFACE_CONFIG: ResolvedQaSurfaceConfig = Object.freeze(
     }),
     // The integration API is a network surface authenticated by an account's
     // token: a deployment opts in, and the default must never open it by
-    // accident. The answer budget is the caller's own contract (90 seconds),
-    // so the default matches it rather than leaving the endpoint hanging.
+    // accident. Allow one hour for a long-running answer by default; deployments
+    // can tune the budget to match their bridge and model.
     integration: Object.freeze({
       enabled: false,
       basePath: "/qa/api",
       tokenTtlDays: 90,
-      requestTimeoutMs: 90_000,
+      requestTimeoutMs: 3_600_000,
       maxConcurrent: 4,
       requestsPerMinute: 60,
       maxRequestBytes: 33_554_432,

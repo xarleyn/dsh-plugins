@@ -1,3 +1,5 @@
+import { settingsBodyStyles } from "@yadsh/dsh-plugin-kit/client";
+
 /*
  * The body of a card seated on the Host's Plugins row: the page draws the
  * surface, so nothing here styles a frame of our own. Focus rings come from the
@@ -6,32 +8,14 @@
  * would vanish instead of degrading, and raising specificity to beat the Host's
  * `focus.css` is the wrong repair.
  */
-export const styles: string = `
+export const styles: string =
+  `
 .wfa-body,.wfa-body *{box-sizing:border-box}
 .wfa-body{padding-top:16px;display:grid;gap:18px;color:var(--dsw-alias-label-primary)}
-.wfa-section{display:grid;gap:12px}
 .wfa-section-title{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .wfa-section-title h3{font-size:13px;margin:0}
 .wfa-muted{color:var(--dsw-alias-label-tertiary);font-size:12px;margin:0;line-height:1.5}
-.wfa-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
-.wfa-field{display:grid;gap:6px;min-width:0}
-.wfa-field>span{font-size:11px;color:var(--dsw-alias-label-secondary);font-weight:600}
-.wfa-control{width:100%;min-height:36px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-layer-3);color:var(--dsw-alias-label-primary);padding:7px 10px;font:inherit;font-size:12px;outline:none}
-textarea.wfa-control{resize:vertical}
-.wfa-control:focus-visible{border-color:var(--dsw-alias-brand-primary)}
 .wfa-control:focus-visible,.wfa-btn:focus-visible,.wfa-icon-btn:focus-visible,.wfa-toggle:focus-visible,.wfa-advanced summary:focus-visible{outline:var(--dsw-focus-ring-width,2px) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:-1px}
-.wfa-control:disabled{cursor:default;opacity:.45}
-.wfa-toggle-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 12px;border:1px solid var(--dsw-alias-border-l2);border-radius:9px}
-.wfa-toggle-copy{display:grid;gap:2px}
-.wfa-toggle-copy strong{font-size:12px;font-weight:500}
-.wfa-toggle-copy span{font-size:10px;color:var(--dsw-alias-label-tertiary)}
-.wfa-toggle{appearance:none;width:34px;height:19px;border-radius:999px;background:var(--dsw-alias-label-dimmed);position:relative;cursor:pointer;transition:.18s;flex:none}
-.wfa-toggle:after{content:'';position:absolute;top:3px;left:3px;width:13px;height:13px;border-radius:50%;background:var(--dsw-alias-bg-layer-3);transition:.18s}
-.wfa-toggle:checked{background:var(--dsw-alias-brand-primary)}
-.wfa-toggle:checked:after{transform:translateX(15px)}
-.wfa-toggle:disabled{cursor:default;opacity:.45}
-.wfa-btn{height:34px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);padding:0 12px;font:inherit;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap}
-.wfa-btn:hover:not(:disabled){border-color:var(--dsw-alias-label-dimmed);background:var(--dsw-alias-interactive-bg-hover)}
 .wfa-btn.primary{border-color:var(--dsw-alias-brand-primary);background:var(--dsw-alias-brand-primary);color:var(--dsw-alias-bg-layer-3)}
 .wfa-btn.danger{color:var(--dsw-alias-state-error-primary, #b3261e)}
 .wfa-icon-btn{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;border:1px solid transparent;border-radius:7px;background:transparent;color:var(--dsw-alias-label-tertiary);cursor:pointer;padding:0;flex:none}
@@ -39,7 +23,6 @@ textarea.wfa-control{resize:vertical}
 .wfa-icon-btn.danger:hover:not(:disabled){color:var(--dsw-alias-state-error-primary, #b3261e)}
 .wfa-icon-btn svg{width:14px;height:14px}
 .wfa-icon-btn:disabled{cursor:default;opacity:.45}
-.wfa-btn:disabled{cursor:default;opacity:.45}
 .wfa-rules{display:grid;gap:6px}
 .wfa-rule{display:grid;grid-template-columns:minmax(0,1fr) auto auto;gap:9px;align-items:center;padding:8px 10px;border:1px solid var(--dsw-alias-border-l2);border-radius:8px;font-size:11px}
 .wfa-rule-main{display:grid;gap:3px;min-width:0}
@@ -65,5 +48,18 @@ textarea.wfa-control{resize:vertical}
 .wfa-advanced summary{cursor:pointer;padding:11px 0;font-size:12px;font-weight:600}
 .wfa-advanced-content{padding:2px 0 13px;display:grid;gap:10px}
 .wfa-note{font-size:10px;color:var(--dsw-alias-label-tertiary);line-height:1.5}
-@media(max-width:720px){.wfa-grid{grid-template-columns:1fr}.wfa-checks{grid-template-columns:1fr}.wfa-rule{grid-template-columns:minmax(0,1fr)}.wfa-actions{justify-content:flex-start}}
-`;
+@media(max-width:720px){.wfa-checks{grid-template-columns:1fr}.wfa-rule{grid-template-columns:minmax(0,1fr)}.wfa-actions{justify-content:flex-start}}
+` +
+  settingsBodyStyles({
+    body: ".wfa-body",
+    section: ".wfa-section",
+    sectionTitle: ".wfa-section-title",
+    grid: ".wfa-grid",
+    field: ".wfa-field",
+    fieldLabel: ".wfa-field>span",
+    control: ".wfa-control",
+    button: ".wfa-btn",
+    toggleRow: ".wfa-toggle-row",
+    toggleCopy: ".wfa-toggle-copy",
+    toggle: ".wfa-toggle",
+  });

@@ -45,6 +45,9 @@ export interface QaSourceReference {
   readonly uri?: string;
   readonly path?: string;
   readonly snippet?: string;
+  /** Bounded text actually returned for this source by a retrieval tool. */
+  readonly content?: string;
+  readonly contentTruncated?: boolean;
   readonly locations: readonly QaSourceLocation[];
   readonly evidence: QaSourceEvidence;
   readonly origins: readonly QaSourceOrigin[];

@@ -1,3 +1,45 @@
+## 0.17.0 (2026-10-24)
+
+### 🚀 Features
+
+- Support one shared LLM provider credential with stable per-account request identities for DeepSeek user and KV-cache isolation, including verified delegated requests. ([64731c80](https://github.com/xarleyn/dsh-plugins/commit/64731c80))
+- Show retained retrieval text in source details and add source kind filters and text or URL search. ([64731c80](https://github.com/xarleyn/dsh-plugins/commit/64731c80))
+
+### 🩹 Fixes
+
+- Share readable operator settings controls and responsive form layouts across nine plugin configuration pages. Allow authenticated web fetch rules to save a zero redirect limit. ([a3e2badb](https://github.com/xarleyn/dsh-plugins/commit/a3e2badb))
+- Allow integration requests to wait up to one hour for an answer by default, and document matching HTTP client and reverse proxy budgets. ([64731c80](https://github.com/xarleyn/dsh-plugins/commit/64731c80))
+- Explain that the selected model provider receives the request and conversation context, including retrieved sources, and require a new acknowledgement of the updated welcome notice. ([ea71ad63](https://github.com/xarleyn/dsh-plugins/commit/ea71ad63))
+
+  Move owner sharing controls into a compact chat-history action menu and simplify the access dialog while retaining recipient mode labels and server-side owner authorization.
+
+  Allow resizing the right-hand chat details panel with persisted width, viewport limits, and keyboard controls.
+
+  Preserve the authenticated operator's native API access alongside the closed QA account boundary, use an account-scoped session catalog when the Host supports it, and explain the integration token's request permission explicitly.
+
+  Add an independent, owner-controlled clarification preference for integration tokens and enforce it per admitted turn, including delegated agents, while retaining the ask permission.
+
+  Recover once when a reviewer finishes without native structured output, and show the current independent review status for the exact answer version in QA and native chat.
+
+- Open a chat image, a document illustration and an answer's remote image in a full-size preview overlay that ends on Escape, on the mask and on its close control. ([5b162f5e](https://github.com/xarleyn/dsh-plugins/commit/5b162f5e))
+
+  Stop the chat's delegated work together with the chat, so pressing Stop ends a running reviewer or subagent instead of leaving it working behind the transcript.
+
+  Keep the review-waiver command out of the rows above the question it belongs to, since the answer row already carries the review status; a refused waiver stays visible.
+
+- Add tools for inspecting and reading XLSX, CSV, TSV, ODS and FODS tables and creating spreadsheet attachments with multiple sheets, typed data, bounded paging and explicit text encoding options. ([4a10808f](https://github.com/xarleyn/dsh-plugins/commit/4a10808f))
+
+  Preview spreadsheets in the files and sources panels with sheet selection and bounded row and column navigation.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.8.0
+- Updated @yadsh/dsh-plugin-kit to 0.6.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.16.0 (2026-10-11)
 
 ### 🚀 Features

@@ -57,6 +57,8 @@ const sourceSchema = z
     uri: z.string().optional(),
     path: z.string().optional(),
     snippet: z.string().optional(),
+    content: z.string().optional(),
+    contentTruncated: z.boolean().optional(),
     locations: z.array(locationSchema),
     evidence: z.enum([
       "read",

@@ -1,3 +1,24 @@
+## 0.8.0 (2026-10-24)
+
+### 🚀 Features
+
+- Add tools for inspecting and reading XLSX, CSV, TSV, ODS and FODS tables and creating spreadsheet attachments with multiple sheets, typed data, bounded paging and explicit text encoding options. ([4a10808f](https://github.com/xarleyn/dsh-plugins/commit/4a10808f))
+
+  Preview spreadsheets in the files and sources panels with sheet selection and bounded row and column navigation.
+
+
+### 🩹 Fixes
+
+- Share readable operator settings controls and responsive form layouts across nine plugin configuration pages. Allow authenticated web fetch rules to save a zero redirect limit. ([a3e2badb](https://github.com/xarleyn/dsh-plugins/commit/a3e2badb))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.6.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.7.0 (2026-10-11)
 
 ### 🚀 Features

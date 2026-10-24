@@ -14,14 +14,15 @@ const REVIEW_CATEGORIES =
   "question-not-covered";
 
 /**
- * One protocol line every reviewer backend receives: uploaded attachments are
- * rendered to the reviewer as unreadable handles, so an attachment it cannot
- * open must not be read as the answer inventing its content. Both shipped
- * reviewer prompts quote it — leaving one locale without it reproduces the
- * `max-rounds` deaths the attachments were meant to end.
+ * Both backends receive native images and attachment metadata. A route may
+ * still omit an image or lack file access; that is a local verification gap,
+ * never evidence about the primary agent's capabilities.
  */
 const ATTACHMENT_PROTOCOL =
-  "The user request may carry attachments (images or files) you cannot open. Their contents are not missing " +
+  "The user request may carry attachments. Inspect the supplied native image blocks when available; " +
+  "image handles are metadata, not a declaration that this model accepts text only. If the Host omits an image " +
+  "or you cannot open a file, report that specific verification gap. Never infer that the primary agent cannot " +
+  "see images from your own access limits or ask it to deny having read an image on that basis. Their contents are not missing " +
   "evidence to hold against the answer, and an attachment you cannot open is not proof that the answer " +
   "fabricated a claim: when a claim rests only on an attachment you cannot inspect, do not raise an unsupported " +
   "or fabrication finding about it — report that you could not verify that attachment.";
@@ -42,7 +43,7 @@ const REVIEW_TOOL_BOUNDARY =
 /**
  * The `<user_request>` body: the request text, then — when the request carried
  * attachments — the host handle text for each, so the reviewer learns a named
- * attachment existed and what kind it was without being able to open it.
+ * attachment existed and what kind it was. Native images travel alongside it.
  */
 function renderUserRequest(
   requestText: string | null,
@@ -53,8 +54,8 @@ function renderUserRequest(
   return [
     request,
     "",
-    `The user attached ${String(attachments.length)} item(s) to this request. You cannot open them; each is` +
-      " shown in the host's own handle form so you know it existed and what kind it was.",
+    `The user attached ${String(attachments.length)} item(s) to this request. Image blocks are supplied separately;` +
+      " the handles below identify the attachments and any file access limitations.",
     ...attachments.map((line) => `- ${line}`),
   ].join("\n");
 }

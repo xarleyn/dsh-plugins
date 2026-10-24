@@ -1260,7 +1260,7 @@ integration:
   enabled: true # requires accounts.enabled: true
   basePath: /qa/api # POST {basePath}/ask, GET {basePath}/session, GET {basePath}/health
   tokenTtlDays: 90
-  requestTimeoutMs: 90000 # the answer budget; a slow model wants a larger one, see docs/INTEGRATION-API.md §2.5
+  requestTimeoutMs: 3600000 # one-hour answer budget; see docs/INTEGRATION-API.md §2.5
   maxConcurrent: 4
   requestsPerMinute: 60
   maxAnswerCharacters: 4096 # the answer the ticket comment can hold
@@ -1515,6 +1515,12 @@ See [Configuration](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh
 See [Architecture](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/ARCHITECTURE.md),
 [Configuration](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/CONFIGURATION.md), and
 [Compatibility](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/COMPATIBILITY.md).
+
+## One shared LLM key with per-account identity
+
+With `@yadsh/dsh-llm-provider-extended`, enable **Require QA account identity (DeepSeek)** on a supported provider route (`userIdentity: qa-account`). All QA users keep the same provider, model and API-key reference. QA supplies a stable opaque identifier of each attested chat's active owner; verified delegated requests inherit that owner. The wire ID includes no email, display name or raw QA account UUID. Missing QA identity refuses a request on an enabled route before transport.
+
+DeepSeek uses `user_id` for Chat Completions, `user` for Responses and `metadata.user_id` for Anthropic Messages. This supports provider-side user/KV-cache isolation, while billing and account concurrency remain shared. No personal API-key entry is needed. Other providers and native chats outside QA should keep this mode disabled. See the [identity contract](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/specs/llm-user-identity.md).
 
 ## Develop
 

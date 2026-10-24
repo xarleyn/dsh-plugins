@@ -1,3 +1,13 @@
+## 0.6.0 (2026-10-24)
+
+### 🚀 Features
+
+- Share readable operator settings controls and responsive form layouts across nine plugin configuration pages. Allow authenticated web fetch rules to save a zero redirect limit. ([a3e2badb](https://github.com/xarleyn/dsh-plugins/commit/a3e2badb))
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.5.1 (2026-10-11)
 
 ### 🩹 Fixes
