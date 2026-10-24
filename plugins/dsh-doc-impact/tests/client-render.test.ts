@@ -69,7 +69,6 @@ const HOSTILE: NamespaceSnapshot = {
   user: { defaults: { mode: "require-attention" } },
   writable: true,
   revision: 4,
-  mode: "host",
 };
 
 /** A host form that never writes: the render pass must not reach the wire. */
@@ -102,7 +101,6 @@ const BASE_ONLY: NamespaceSnapshot = {
   user: {},
   writable: true,
   revision: 7,
-  mode: "host",
 };
 
 /** A namespace the Host has not resolved: no document, so no field to show. */
@@ -113,7 +111,6 @@ const PENDING: NamespaceSnapshot = {
   user: {},
   writable: false,
   revision: 0,
-  mode: "host",
 };
 
 /** The renderer the spec's kind prescribes. */

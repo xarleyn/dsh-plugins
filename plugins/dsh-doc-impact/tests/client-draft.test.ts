@@ -62,7 +62,6 @@ const OVERRIDDEN: NamespaceSnapshot = {
   },
   writable: true,
   revision: 1,
-  mode: "host",
 };
 
 /** A host form that answers every write by throwing, the way a moved-on revision fence does. */

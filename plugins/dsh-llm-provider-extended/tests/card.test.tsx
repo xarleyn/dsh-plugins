@@ -31,7 +31,6 @@ function fixture(writable = true, status: "ready" | "unavailable" = "ready") {
     value: { providers: { demo: profile } },
     base: {},
     user: {},
-    mode: "host",
   };
   const listeners = new Set<() => void>();
   const mutate = vi.fn(async (_ops: unknown, _revision?: number) => true);
