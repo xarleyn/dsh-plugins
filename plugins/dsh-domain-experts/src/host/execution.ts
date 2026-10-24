@@ -1,11 +1,10 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type {
-  ContinuableStart,
-  ContinuableStartSpec,
+  SubagentActivation,
+  SubagentActivationSpec,
   SubagentCapabilities,
   SubagentProvider,
   SubagentResult,
-  SubagentRun,
   SubagentStartRequest,
 } from "@deepseek-ai/dsh-subagent";
 import type {
@@ -37,8 +36,7 @@ import { expertLabelOf } from "./caller.js";
 /** The subagent surface this plugin consumes from the host context. */
 export interface SubagentsFace {
   getProvider(name: string): SubagentProvider | undefined;
-  start(name: string, request: SubagentStartRequest): Promise<SubagentRun>;
-  startContinuable?(spec: ContinuableStartSpec): Promise<ContinuableStart>;
+  startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation>;
   /** Direct children from the Host's durable parent-owned catalog. */
   childrenOf?(
     parentSessionId: string,
@@ -177,10 +175,16 @@ export interface ExpertRunInput {
   readonly callerDomain: string | null;
 }
 
-/** Capabilities this plugin requires from the selected provider. */
+/**
+ * Capabilities this plugin requires from the selected provider.
+ *
+ * The depth cap is the one start-time option every expert needs the runtime to
+ * enforce. The per-child persona and tool filter of the previous Host contract
+ * have no request field any more — the Host composes a child's persona and
+ * tools from its Agent Preset — so nothing here can be checked or sent for
+ * them; the tool policy is reported as degraded instead.
+ */
 const REQUIRED_CAPABILITIES: readonly (keyof SubagentCapabilities)[] = [
-  "persona",
-  "toolFilter",
   "depthLimit",
 ];
 
@@ -227,9 +231,9 @@ export async function runExpert(
     },
     input.request,
   );
-  // Resolution's own picture, plus what the start itself had to learn. The
-  // audit entry is written from this array, so a name the runtime refused is
-  // recorded rather than silently missing from the run.
+  // Resolution's own picture, plus what this start learned about the
+  // deployment. The audit entry is written from this array, so a policy the
+  // runtime cannot apply is recorded rather than silently missing from the run.
   const degradations = [...profile.degradations];
 
   const provider = dependencies.subagents.getProvider(
@@ -238,7 +242,7 @@ export async function runExpert(
   if (provider === undefined) {
     throw new DomainExpertsError(
       "SUBAGENT_PROVIDER_MISSING",
-      `Subagent provider "${dependencies.subagentProvider}" is not registered; configure the plugin with a provider that supports persona and tool filtering.`,
+      `Subagent provider "${dependencies.subagentProvider}" is not registered; configure the plugin with a provider that supports a delegation depth cap.`,
       { refs: [dependencies.subagentProvider] },
     );
   }
@@ -247,7 +251,7 @@ export async function runExpert(
     throw unsupportedCapability(
       provider.name,
       capability,
-      "an expert needs a per-child persona, tool masking and a recursion budget",
+      "an expert needs the runtime to enforce its recursion budget",
     );
   }
   if (
@@ -278,50 +282,71 @@ export async function runExpert(
     );
   }
 
-  const request: SubagentStartRequest = {
+  const spec: SubagentActivationSpec = {
+    provider: dependencies.subagentProvider,
     label: expertLabelOf(definition.id),
-    // The policy travels as the persona (a system section); the child's first
-    // message is the caller's request. Sending the persona as the prompt as
-    // well made the deployment's instructions read as user text.
-    prompt: [{ type: "text", text: profile.task }, ...(input.images ?? [])],
-    parent: input.parent,
+    request: {
+      // The start contract no longer carries a per-child persona: the Host
+      // composes a child's persona and tools from its Agent Preset. The
+      // composed policy therefore leads the child's first message and the
+      // caller's request follows it, so a candidate answer — anything the
+      // caller embedded in the request — still cannot read as deployment
+      // instruction.
+      prompt: [
+        { type: "text", text: profile.policy },
+        { type: "text", text: profile.task },
+        ...(input.images ?? []),
+      ],
+      parent: input.parent,
+      maxDepth: definition.delegation.maxDepth,
+      ...agentOptionsOf(definition, modelPolicy),
+      ...(input.structuredOutput === true
+        ? { outputSchema: EXPERT_REVIEW_OUTPUT_SCHEMA }
+        : {}),
+    },
     signal: input.signal,
-    // The system section is the policy alone: the request — and anything the
-    // caller embedded in it, up to a whole candidate answer — is the child's
-    // first message, never deployment instruction.
-    persona: profile.policy,
-    toolFilter: profile.toolFilter,
-    maxDepth: definition.delegation.maxDepth,
-    ...agentOptionsOf(definition, modelPolicy),
-    ...(input.structuredOutput === true
-      ? { outputSchema: EXPERT_REVIEW_OUTPUT_SCHEMA }
-      : {}),
+    // Parent delivery notifies the model; caller delivery returns the result
+    // to this call alone. A foreground expert answers through its tool result,
+    // so the parent model must not be notified; a background one hands the
+    // completion notice to the parent's model.
+    delivery: input.request.background ? "parent" : "caller",
   };
+
+  // The Host accepts no per-run tool scoping any more, so a domain that
+  // configures a tool policy starts with the parent's tool composition. Say so
+  // instead of letting the inspector's picture outrun the enforcement.
+  const configuredTools = [
+    ...new Set([...definition.tools.allow, ...definition.tools.deny]),
+  ];
+  if (configuredTools.length > 0) {
+    degradations.push(
+      degradation(
+        "TOOL_UNFILTERABLE",
+        `Tool${configuredTools.length > 1 ? "s" : ""} ${configuredTools
+          .map((name) => `"${name}"`)
+          .join(
+            ", ",
+          )} named in this expert's tool policy cannot be scoped per run on this Host: the child starts under its parent's tool composition. Express the policy in an Agent Preset selected for the expert.`,
+        configuredTools,
+      ),
+    );
+  }
 
   if (input.request.background) {
     return await startBackground(
       dependencies,
       input,
-      profile,
-      request,
+      degradations,
+      spec,
       startedAt,
       depth,
       memoryOwner,
     );
   }
 
-  let run: SubagentRun;
+  let activation: SubagentActivation;
   try {
-    run = await startWithRescue(
-      dependencies.subagentProvider,
-      (filter) =>
-        dependencies.subagents.start(
-          dependencies.subagentProvider,
-          withToolFilter(request, filter),
-        ),
-      request.toolFilter,
-      degradations,
-    );
+    activation = await dependencies.subagents.startActivation(spec);
   } catch (error) {
     throw relabelCapabilityFailure(error, dependencies.subagentProvider);
   }
@@ -330,9 +355,10 @@ export async function runExpert(
     ...pathOf(dependencies, callerSessionId, input.callerDomain),
     definition.id,
   ];
+  const childSessionId = String(activation.childId);
   dependencies.tracker.register({
     domainId: definition.id,
-    childSessionId: String(run.id),
+    childSessionId,
     callerSessionId,
     callerDomain: input.callerDomain,
     path,
@@ -342,11 +368,10 @@ export async function runExpert(
     memoryOwner,
   });
 
-  const childSessionId = String(run.id);
   try {
     let result: SubagentResult;
     try {
-      result = await run.result;
+      result = await activation.result;
     } catch (error) {
       const durationMs = dependencies.now() - startedAt;
       recordAudit(dependencies, input, {
@@ -391,62 +416,27 @@ export async function runExpert(
     };
   } finally {
     dependencies.tracker.release(childSessionId);
-    await run.dispose().catch(() => undefined);
+    await activation.dispose().catch(() => undefined);
   }
 }
 
 async function startBackground(
   dependencies: ExecutionDependencies,
   input: ExpertRunInput,
-  profile: Awaited<ReturnType<typeof resolveExpert>>,
-  request: SubagentStartRequest,
+  degradations: DomainDegradation[],
+  spec: SubagentActivationSpec,
   startedAt: number,
   depth: number,
   memoryOwner: MemoryOwner,
 ): Promise<DomainExpertResult> {
   const definition = input.definition;
-  const degradations = [...profile.degradations];
-  const startContinuable = dependencies.subagents.startContinuable;
-  if (startContinuable === undefined) {
-    throw new DomainExpertsError(
-      "UNSUPPORTED_SUBAGENT_CAPABILITY",
-      "Background expert runs need a provider that can start continuable children.",
-      { refs: [dependencies.subagentProvider] },
-    );
-  }
-  const continuableRequest: Omit<
-    SubagentStartRequest,
-    "label" | "signal" | "outputSchema"
-  > = {
-    prompt: request.prompt,
-    parent: request.parent,
-    ...(request.persona === undefined ? {} : { persona: request.persona }),
-    ...(request.toolFilter === undefined
-      ? {}
-      : { toolFilter: request.toolFilter }),
-    ...(request.maxDepth === undefined ? {} : { maxDepth: request.maxDepth }),
-    ...(request.agentOptions === undefined
-      ? {}
-      : { agentOptions: request.agentOptions }),
-  };
-  let started: ContinuableStart;
+  let activation: SubagentActivation;
   try {
-    started = await startWithRescue(
-      dependencies.subagentProvider,
-      (filter) =>
-        startContinuable.call(dependencies.subagents, {
-          provider: dependencies.subagentProvider,
-          label: request.label ?? expertLabelOf(definition.id),
-          request: withToolFilter(continuableRequest, filter),
-          signal: request.signal,
-        }),
-      continuableRequest.toolFilter,
-      degradations,
-    );
+    activation = await dependencies.subagents.startActivation(spec);
   } catch (error) {
     throw relabelCapabilityFailure(error, dependencies.subagentProvider);
   }
-  const childSessionId = String(started.childId);
+  const childSessionId = String(activation.childId);
   const path = [
     ...pathOf(
       dependencies,
@@ -532,131 +522,18 @@ function statusOf(
   }
 }
 
-/** The tool scoping a child composition carries, as the runtime declares it. */
-type ToolFilter = NonNullable<SubagentStartRequest["toolFilter"]>;
-
 /**
- * Tool names a runtime refusal named, or `undefined` when the failure is
- * something else. The refusal lists exactly the entries it could not resolve,
- * so the run can be retried without them instead of being lost.
- */
-export function unrestrictableToolNames(
-  error: unknown,
-): readonly string[] | undefined {
-  const detail = error instanceof Error ? error.message : String(error);
-  const listed = /names unknown global tools? ((?:"[^"]+"[, ]*)+);/u.exec(
-    detail,
-  );
-  if (listed === null) return undefined;
-  const names = [...listed[1]!.matchAll(/"([^"]+)"/gu)].map(
-    (match) => match[1] as string,
-  );
-  return names.length === 0 ? undefined : names;
-}
-
-/**
- * Refused allow-list names that may be dropped without weakening policy.
- * A refused deny-list name must stay fatal: removing it can make an own-layer
- * tool callable and would turn the expert's explicit deny into an allow.
- */
-function filterNamesIn(
-  filter: ToolFilter | undefined,
-  named: readonly string[],
-): readonly string[] {
-  if (filter === undefined) return [];
-  const allowed = new Set(filter.allow ?? []);
-  const denied = new Set(filter.deny ?? []);
-  return named.filter((name) => allowed.has(name) && !denied.has(name));
-}
-
-/** The same filter without `dropped`; `undefined` stays `undefined`. */
-function withoutToolNames(
-  filter: ToolFilter | undefined,
-  dropped: readonly string[],
-): ToolFilter | undefined {
-  if (filter === undefined) return undefined;
-  const gone = new Set(dropped);
-  return {
-    ...(filter.allow === undefined
-      ? {}
-      : { allow: filter.allow.filter((name) => !gone.has(name)) }),
-    ...(filter.deny === undefined
-      ? {}
-      : { deny: filter.deny.filter((name) => !gone.has(name)) }),
-  };
-}
-
-/** The same request carrying `filter` — or none, when it is `undefined`. */
-function withToolFilter<T extends { readonly toolFilter?: ToolFilter }>(
-  request: T,
-  filter: ToolFilter | undefined,
-): T {
-  const { toolFilter: _replaced, ...rest } = request;
-  return (filter === undefined ? rest : { ...rest, toolFilter: filter }) as T;
-}
-
-/**
- * Start a child, and when the runtime refuses the tool filter itself, start it
- * once more without refused allow-list names. Refused deny-list names remain
- * fatal because dropping one would weaken the expert's explicit policy.
- *
- * A filter may only name what the child INHERITS: `restrict()` rejects a name
- * that is the child's own, and a child composes its parent's preset into its
- * own scope, so every tool that preset mounts — the filesystem readers, the
- * skill catalog, the web tools — is exactly such a name. One entry then takes
- * the whole composition down, and an expert whose policy is otherwise sound
- * never starts. Dropping the name costs nothing there, because an own-layer
- * tool stays visible whatever the filter says; a name no plugin mounts at all
- * costs that single tool. Either way the run happens and the audit records
- * which names went missing, instead of the expert being lost with the
- * complaint that its policy names a tool.
- */
-async function startWithRescue<T>(
-  provider: string,
-  start: (filter: ToolFilter | undefined) => Promise<T>,
-  filter: ToolFilter | undefined,
-  degradations: DomainDegradation[],
-): Promise<T> {
-  try {
-    return await start(filter);
-  } catch (error) {
-    const named = unrestrictableToolNames(error);
-    const dropped = named === undefined ? [] : filterNamesIn(filter, named);
-    if (dropped.length === 0) throw relabelCapabilityFailure(error, provider);
-    degradations.push(
-      degradation(
-        "TOOL_UNFILTERABLE",
-        `Tool${dropped.length > 1 ? "s" : ""} ${dropped
-          .map((name) => `"${name}"`)
-          .join(
-            ", ",
-          )} cannot be named in an expert's tool filter on this deployment, so the run started without ${dropped.length > 1 ? "them" : "it"} in the filter. A tool the expert's own preset provides stays available; one nothing mounts is absent.`,
-        dropped,
-      ),
-    );
-    return await start(withoutToolNames(filter, dropped));
-  }
-}
-
-/**
- * The runtime rejects before a run exists when the composition cannot be
- * applied. Re-label its two actionable refusals into this plugin's taxonomy so
+ * The runtime rejects before an activation exists when the composition cannot
+ * be applied. Re-label its actionable refusal into this plugin's taxonomy so
  * callers see the design's error contract, keeping the original message.
  */
 function relabelCapabilityFailure(error: unknown, provider: string): unknown {
-  const detail = error instanceof Error ? error.message : String(error);
   const code = (error as { code?: unknown }).code;
   if (code === SUBAGENT_UNSUPPORTED_CODE) {
+    const detail = error instanceof Error ? error.message : String(error);
     return new DomainExpertsError(
       "UNSUPPORTED_SUBAGENT_CAPABILITY",
       `Subagent provider "${provider}" rejected the expert composition: ${detail}`,
-      { refs: [provider], cause: error },
-    );
-  }
-  if (/names unknown global tool/u.test(detail)) {
-    return new DomainExpertsError(
-      "WORKER_UNAVAILABLE",
-      `The expert's tool policy names a tool that is not registered in this deployment: ${detail}`,
       { refs: [provider], cause: error },
     );
   }
