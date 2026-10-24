@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationNode } from "@deepseek-ai/dsh-client-ui-conversation/client";
+import { PartialArguments } from "@deepseek-ai/dsh-util-values";
 import type { QaMessage } from "../../src/types.js";
 import { projectTranscript } from "../../src/client/QaTranscriptAdapter.js";
 import { legacy, snapshot } from "../helpers/conversation-fakes.js";
@@ -46,6 +47,8 @@ function created(
       seq: 3,
       time: 30,
       callId: "call-1",
+      name: "document_create",
+      args: PartialArguments.fromText('{"formats":["docx"]}'),
       call: null,
       callTime: null,
       content: [{ type: "text", text: toolResult }],
@@ -151,6 +154,8 @@ describe("transcript artifacts", () => {
               seq: 6,
               time: 60,
               callId: "call-2",
+              name: "document_convert",
+              args: PartialArguments.fromText("{}"),
               call: null,
               callTime: null,
               content: [{ type: "text", text: CREATED }],

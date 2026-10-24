@@ -7,6 +7,7 @@ import type {
   SessionPageRequest,
   SessionPage,
   SessionListValue,
+  SessionProjectionBaseline,
   SessionProjectionsValue,
   SessionPromptRequest,
   SessionPromptValue,
@@ -188,10 +189,7 @@ export class QaChatTransport {
     // No native Host-wide baseline or delta is exposed to a QA account.
     while (!signal.aborted) {
       const listing = await this.list(token, signal);
-      const projections: Record<
-        string,
-        NonNullable<SessionProjectionsValue>
-      > = {};
+      const projections: Record<string, SessionProjectionBaseline> = {};
       for (const item of listing.items) {
         try {
           // Cold rows already carry bounded cache hints. Replaying every cold
@@ -201,10 +199,17 @@ export class QaChatTransport {
             : item.projections === undefined
               ? null
               : {
+                  kind: item.projections.kind,
                   asOfSeq: item.projections.asOfSeq,
                   values: item.projections.values,
                 };
-          if (value !== null) projections[String(item.sessionId)] = value;
+          // A migration-required row has no event cut yet, so it cannot seed a
+          // baseline; the reader learns its state from its own projections read.
+          if (value !== null && value.kind !== "migration-required")
+            projections[String(item.sessionId)] = {
+              asOfSeq: value.asOfSeq,
+              values: value.values,
+            };
         } catch {
           /* revoked between reads */
         }
