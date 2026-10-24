@@ -1,3 +1,17 @@
+## 0.5.1 (2026-10-24)
+
+### 🩹 Fixes
+
+- Pass uploaded images to independent answer reviewers as native image input, including image-only requests and review recovery. Report reviewer access limits without treating them as limits of the primary agent. ([64731c80](https://github.com/xarleyn/dsh-plugins/commit/64731c80))
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-plugin-kit to 0.6.0
+
+### ❤️ Thank You
+
+- xarleyn
+
 ## 0.5.0 (2026-10-11)
 
 ### 🚀 Features

@@ -1,3 +1,25 @@
+## 0.2.8 (2026-10-24)
+
+### 🩹 Fixes
+
+- Explain that the selected model provider receives the request and conversation context, including retrieved sources, and require a new acknowledgement of the updated welcome notice. ([ea71ad63](https://github.com/xarleyn/dsh-plugins/commit/ea71ad63))
+
+  Move owner sharing controls into a compact chat-history action menu and simplify the access dialog while retaining recipient mode labels and server-side owner authorization.
+
+  Allow resizing the right-hand chat details panel with persisted width, viewport limits, and keyboard controls.
+
+  Preserve the authenticated operator's native API access alongside the closed QA account boundary, use an account-scoped session catalog when the Host supports it, and explain the integration token's request permission explicitly.
+
+  Add an independent, owner-controlled clarification preference for integration tokens and enforce it per admitted turn, including delegated agents, while retaining the ask permission.
+
+  Recover once when a reviewer finishes without native structured output, and show the current independent review status for the exact answer version in QA and native chat.
+
+- Pass uploaded images to independent answer reviewers as native image input, including image-only requests and review recovery. Report reviewer access limits without treating them as limits of the primary agent. ([64731c80](https://github.com/xarleyn/dsh-plugins/commit/64731c80))
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.2.7 (2026-10-11)
 
 ### 🩹 Fixes
