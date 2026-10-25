@@ -3,7 +3,7 @@
     "channel": "next",
     "range": ">=0.1.7-rc.2 <0.3.0-0",
     "testedReleases": ["0.1.7-rc.2"],
-    "requiredHostFeatures": ["tools/post-execute", "subagents/start"]
+    "requiredHostFeatures": ["tools/post-execute", "subagents/startActivation"]
   },
   "node": "^22.19.0 || >=24.0.0"
 }

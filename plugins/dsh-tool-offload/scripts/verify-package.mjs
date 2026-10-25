@@ -47,7 +47,7 @@ await runVerifyPackage({
     testedReleases: true,
     // The plugin requires the post-execute reshaping seam and the one-shot
     // subagent service.
-    hostFeatures: ["tools/post-execute", "subagents/start"],
+    hostFeatures: ["tools/post-execute", "subagents/startActivation"],
   },
   extra: async ({ packageRoot, readFile: readFromRoot }) => {
     // Safety-critical surface shipped by the build: no-tools worker invariant

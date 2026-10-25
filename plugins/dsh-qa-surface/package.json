@@ -186,6 +186,7 @@
     "@deepseek-ai/dsh-tools": "catalog:dsh-dev",
     "@deepseek-ai/dsh-typert-generator": "catalog:dsh-dev",
     "@deepseek-ai/dsh-typert-protocol": "catalog:dsh-dev",
+    "@deepseek-ai/dsh-util-values": "catalog:dsh-dev",
     "@deepseek-ai/dsh-workspace": "catalog:dsh-dev",
     "@deepseek-ai/schemastery": "catalog:dsh-dev",
     "@testing-library/react": "^16.3.0",
