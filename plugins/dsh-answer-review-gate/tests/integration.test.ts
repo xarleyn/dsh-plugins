@@ -11,8 +11,9 @@ import type { GateAgent } from "../src/gate.js";
 import type {
   DomainExpertsFace,
   ExpertRunOutcome,
+  SubagentActivation,
+  SubagentActivationSpec,
   SubagentsFace,
-  SubagentRunHandle,
 } from "../src/types.js";
 
 interface CapturedEvent {
@@ -404,18 +405,34 @@ describe("plugin wiring", () => {
 // a wired subagent backend reaches the face with the reviewed parent.
 describe("plugin wiring: subagent backend", () => {
   it("starts the reviewer child against the reviewed agent", async () => {
-    const started: unknown[] = [];
+    const started: SubagentActivationSpec[] = [];
     const face: SubagentsFace = {
-      start(_provider, request) {
-        started.push(request);
+      getProvider(name: string) {
+        if (name !== "spawn") return undefined;
+        return {
+          name,
+          capabilities: {
+            agentOptions: true,
+            agentPreset: true,
+            outputSchema: true,
+            depthLimit: true,
+          },
+          inheritsParentContext: true,
+        };
+      },
+      startActivation(
+        spec: SubagentActivationSpec,
+      ): Promise<SubagentActivation> {
+        started.push(spec);
         return Promise.resolve({
+          childId: "child-session",
           result: Promise.resolve({
             stopReason: "completed",
             output: [],
             structured: { verdict: "pass", summary: "ok", issues: [] },
           }),
           dispose: () => {},
-        } satisfies SubagentRunHandle);
+        });
       },
     };
     const { host, events } = makeHost({ subagents: face });

@@ -73,8 +73,12 @@ export type {
   ReviewSeverity,
   ReviewVerdict,
   SubagentsFace,
-  SubagentStartSpec,
-  SubagentRunHandle,
+  SubagentActivation,
+  SubagentActivationSpec,
+  SubagentAgentOptions,
+  SubagentCapabilitiesFace,
+  SubagentProviderFace,
+  SubagentRequestSpec,
   SubagentRunResult,
 } from "./types.js";
 

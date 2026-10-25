@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { createSubagentBackend } from "../src/adapters/reviewers.js";
+import {
+  createSubagentBackend,
+  type ReviewerConfig,
+} from "../src/adapters/reviewers.js";
 import {
   ANSWER_REVIEW_GATE_DEFAULTS,
   resolveAnswerReviewGateConfig,
@@ -17,6 +20,8 @@ import {
 } from "../src/prompt.js";
 import type {
   ReviewInput,
+  SubagentActivation,
+  SubagentActivationSpec,
   SubagentsFace,
   SubagentRunResult,
 } from "../src/types.js";
@@ -52,31 +57,44 @@ function reviewInput(): ReviewInput {
   };
 }
 
-/** The reviewer sub-config the backends consume, resolved from a raw one. */
-function reviewerConfig(allowedTools?: readonly string[]) {
-  return resolveAnswerReviewGateConfig({
-    reviewer: {
-      backend: "subagent",
-      ...(allowedTools === undefined
-        ? {}
-        : { allowedTools: [...allowedTools] }),
-    },
-  }).reviewer;
-}
+/** A passing reviewer result, for a face that must let the review settle. */
+const PASS_RESULT: SubagentRunResult = {
+  stopReason: "completed",
+  output: [],
+  structured: { verdict: "pass", summary: "ok", issues: [] },
+};
 
-/** A face that records the child it was asked to start. */
-function capturingFace(started: Record<string, unknown>[]): SubagentsFace {
+/** A face that records the specs it was asked to start. */
+function capturingFace(
+  started: SubagentActivationSpec[],
+  results: readonly SubagentRunResult[],
+): SubagentsFace {
   return {
-    async start(_provider, request) {
-      started.push(request as unknown as Record<string, unknown>);
+    getProvider(name: string) {
+      if (name !== "spawn") return undefined;
       return {
-        result: Promise.resolve({
-          stopReason: "completed",
-          output: [],
-          structured: { verdict: "pass", summary: "ok", issues: [] },
-        } satisfies SubagentRunResult),
-        dispose: () => {},
+        name,
+        capabilities: {
+          agentOptions: true,
+          agentPreset: true,
+          outputSchema: true,
+          depthLimit: true,
+        },
+        inheritsParentContext: true,
       };
+    },
+    async startActivation(spec) {
+      started.push(spec);
+      const outcome = results[started.length - 1];
+      if (outcome === undefined) {
+        throw new Error("unscripted review round");
+      }
+      const activation: SubagentActivation = {
+        childId: "child-session",
+        result: Promise.resolve(outcome),
+        dispose: () => undefined,
+      };
+      return activation;
     },
   };
 }
@@ -84,11 +102,13 @@ function capturingFace(started: Record<string, unknown>[]): SubagentsFace {
 /**
  * A reviewer sub-config that did not pass through the resolver: the backend
  * must hold the boundary on its own, because it is the call that composes the
- * child.
+ * child. `agentPreset` is deliberately absent — a config that skipped the
+ * resolver reaches the backend without the key, and the backend has to read
+ * that as "no preset", not refuse the review.
  */
-function rawReviewerConfig(allowedTools: readonly string[]) {
+function rawReviewerConfig(allowedTools: readonly string[]): ReviewerConfig {
   return {
-    backend: "subagent" as const,
+    backend: "subagent",
     domain: "answer-reviewer",
     provider: "spawn",
     model: "",
@@ -96,22 +116,22 @@ function rawReviewerConfig(allowedTools: readonly string[]) {
     reasoningEffort: "",
     persona: "",
     allowedTools,
-  };
+  } as unknown as ReviewerConfig;
 }
 
-/** The tool names the reviewer child is actually composed with. */
-async function startedToolFilter(
-  config: ReturnType<typeof reviewerConfig>,
-): Promise<readonly string[]> {
-  const started: Record<string, unknown>[] = [];
+/** The spec the reviewer child was started by. */
+async function startedSpec(
+  config: ReturnType<typeof rawReviewerConfig>,
+  results: readonly SubagentRunResult[] = [PASS_RESULT],
+): Promise<SubagentActivationSpec> {
+  const started: SubagentActivationSpec[] = [];
   const backend = createSubagentBackend({
-    face: capturingFace(started),
+    face: capturingFace(started, results),
     config,
     parent: "parent-agent",
   });
   await backend.review(reviewInput());
-  const filter = started[0]!["toolFilter"] as { allow: readonly string[] };
-  return filter.allow;
+  return started[0]!;
 }
 
 describe("reviewer tool boundary", () => {
@@ -177,32 +197,79 @@ describe("reviewer tool boundary", () => {
 });
 
 describe("reviewer child composition (gate branch)", () => {
-  it("composes the child without any destructive tool, even a listed one", async () => {
-    const allow = await startedToolFilter(
+  it("sends no tool filter in any form: the Host cannot scope a run's tools", async () => {
+    // The 0.2.1 start request carries no per-run tool scoping, so a requested
+    // list — destructive names included — composes nothing. The request must
+    // not pretend otherwise.
+    const spec = await startedSpec(
       rawReviewerConfig(["read", "docs_read", "file_delete", "bash"]),
     );
-    expect(allow).toEqual(["read", "docs_read"]);
-    for (const name of DESTRUCTIVE) {
-      expect(allow, name).not.toContain(name);
-    }
+    expect(spec.request).not.toHaveProperty("toolFilter");
+    // A config that skipped the resolver (no `agentPreset` key at all) is
+    // "no preset", not an unresolvable id.
+    expect(spec.request).not.toHaveProperty("agentPreset");
   });
 
-  it("still sends the filter when the reviewer is meant to have no tools", async () => {
-    // The host only restricts a child when a filter is present; an absent
-    // filter hands it the parent's whole surface, destructive tools included.
-    const started: Record<string, unknown>[] = [];
+  it("reports the unenforceable boundary once per backend, not per round", async () => {
+    // One review with a capture-loss round first: the degrade notice is about
+    // the composition, so it is told once for the backend, not per attempt.
+    const degradations: [string, string][] = [];
+    const started: SubagentActivationSpec[] = [];
     const backend = createSubagentBackend({
-      face: capturingFace(started),
-      config: reviewerConfig([]),
+      face: capturingFace(started, [
+        { stopReason: "error", output: [] },
+        PASS_RESULT,
+      ]),
+      config: rawReviewerConfig([]),
+      parent: "parent-agent",
+      onDegradation: (code, detail) => degradations.push([code, detail]),
+    });
+    await expect(backend.review(reviewInput())).resolves.toMatchObject({
+      verdict: "pass",
+    });
+    expect(started).toHaveLength(2);
+    expect(started[0]!.request).not.toHaveProperty("toolFilter");
+    expect(started[1]!.request).not.toHaveProperty("toolFilter");
+    expect(degradations).toEqual([
+      ["TOOL_UNFILTERABLE", expect.stringContaining("Agent Preset")],
+    ]);
+  });
+
+  it("leaves an explicitly empty list unenforced and says so", async () => {
+    // The old contract made "empty means no tools" hold by always sending the
+    // filter. This one cannot compose it, so the gate's guarantee is the
+    // reported limitation plus the Agent Preset the deployment selects.
+    const degradations: [string, string][] = [];
+    const started: SubagentActivationSpec[] = [];
+    const backend = createSubagentBackend({
+      face: capturingFace(started, [PASS_RESULT]),
+      config: { ...rawReviewerConfig([]), agentPreset: "" },
+      parent: "parent-agent",
+      onDegradation: (code, detail) => degradations.push([code, detail]),
+    });
+    await backend.review(reviewInput());
+    expect(started[0]!.request).not.toHaveProperty("toolFilter");
+    expect(degradations).toEqual([
+      ["TOOL_UNFILTERABLE", expect.stringContaining("Agent Preset")],
+    ]);
+  });
+
+  it("sends no filter for the read-only default either", async () => {
+    const spec = await startedSpec(
+      rawReviewerConfig([...REVIEWER_READ_ONLY_TOOLS]),
+    );
+    expect(spec.request).not.toHaveProperty("toolFilter");
+  });
+
+  it("sends a configured preset id through to the child request", async () => {
+    const started: SubagentActivationSpec[] = [];
+    const backend = createSubagentBackend({
+      face: capturingFace(started, [PASS_RESULT]),
+      config: { ...rawReviewerConfig([]), agentPreset: "reviewer-readonly" },
       parent: "parent-agent",
     });
     await backend.review(reviewInput());
-    expect(started[0]!["toolFilter"]).toEqual({ allow: [] });
-  });
-
-  it("sends the read-only default when the deployment named nothing", async () => {
-    const allow = await startedToolFilter(reviewerConfig());
-    expect(allow).toEqual(REVIEWER_READ_ONLY_TOOLS);
+    expect(started[0]!.request.agentPreset).toBe("reviewer-readonly");
   });
 });
 

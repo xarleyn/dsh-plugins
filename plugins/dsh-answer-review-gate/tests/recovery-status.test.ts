@@ -199,11 +199,25 @@ describe("capture recovery and durable review status", () => {
       config: { ...config.reviewer, backend: "subagent" },
       parent: "demo",
       face: {
-        async start(_provider, request) {
+        getProvider(name: string) {
+          if (name !== "spawn") return undefined;
+          return {
+            name,
+            capabilities: {
+              agentOptions: true,
+              agentPreset: true,
+              outputSchema: true,
+              depthLimit: true,
+            },
+            inheritsParentContext: true,
+          };
+        },
+        async startActivation(spec) {
           const first = prompts.length === 0;
           lifecycle.push("start");
-          prompts.push(JSON.stringify(request.prompt));
+          prompts.push(JSON.stringify(spec.request.prompt));
           return {
+            childId: "child-session",
             result: Promise.resolve(
               first ? { stopReason: "error", output: [] } : captured,
             ),
