@@ -14,10 +14,11 @@ agent picks tools.
 - **Deterministic routing.** Allowlist/denylist tool patterns, byte and
   estimated-token thresholds, and ordered selection rules pick the worker and
   prompt profile — no extra LLM in the routing path.
-- **Cheap no-tools workers.** Workers start through `ctx.subagents.start` on a
-  `spawn`-style provider with `toolFilter: { allow: [] }` — zero inherited
-  model-facing tools, zero authority expansion — and an exact cheap model via
-  `agentOptions`.
+- **Cheap no-tools workers.** Workers start through `ctx.subagents.startActivation`
+  on a `spawn`-style provider under an Agent Preset named per worker profile
+  (`workers.<name>.agentPreset`) — the preset mounts no model-facing tools, so
+  the worker inherits none and gains no authority — plus an exact cheap model
+  via `agentOptions`.
 - **Bounded parent context.** The worker receives the latest user task
   (byte-capped), the tool name, and the serialized arguments behind explicit
   `<PARENT_TASK>` / `<TOOL_CALL>` / `<TOOL_RESULT>` data boundaries, with a
@@ -44,7 +45,9 @@ dsh plugin --profile <profile> add @yadsh/dsh-tool-offload
 ```
 
 Requires a DSH release in the `>=0.1.7-rc.2 <0.2.0` range with a subagent
-provider that supports tool restrictions (the in-process `spawn` provider).
+provider that supports independent agent presets (the in-process `spawn`
+provider) and an Agent Preset that mounts no model-facing tools for the
+workers to run under.
 
 ## Configuration
 
@@ -60,7 +63,8 @@ All keys are optional; defaults in parentheses.
 | `routing.thresholds.minEstimatedTokens` | number | `6000` | Cheap `characters / 4` token estimate threshold. |
 | `routing.rules` | Rule[] | `[]` | Ordered rules; first match picks the worker/prompt profile or forces passthrough. Each rule: `id`, `match.tools`, `match.minBytes`, `action` (`offload`/`passthrough`), `worker`, `prompt`. |
 | `workers` | Record | — | Named worker profiles merged over the `default` profile. |
-| `workers.<name>.subagentProvider` | string | `spawn` | DSH subagent provider; must support tool restrictions. |
+| `workers.<name>.subagentProvider` | string | `spawn` | DSH subagent provider; must support independent agent presets. |
+| `workers.<name>.agentPreset` | string \| null | `null` | Agent Preset id the worker starts under; the preset owns the child's tool composition, so name one that mounts no model-facing tools. `null` keeps offloading unavailable for this profile — results pass through. |
 | `workers.<name>.provider` / `.model` | string \| null | `null` | Model route for the worker; `null` inherits the parent agent's route. Configure a cheap model here. |
 | `workers.<name>.maxTokens` | number \| null | `4000` | Worker output token cap. |
 | `workers.<name>.timeoutMs` | number | `45000` | Bounded worker timeout; on timeout the original result is restored. |
@@ -90,6 +94,7 @@ Example `cordis.patch.yml` profile override:
       config:
         workers:
           default:
+            agentPreset: bare-worker
             provider: zai
             model: glm-4.5-air
             maxTokens: 4000
@@ -103,8 +108,8 @@ Example `cordis.patch.yml` profile override:
 ## Compatibility
 
 - DeepSeek Harness `>=0.1.7-rc.2 <0.2.0` (tested on `0.1.7-rc.2`); requires the
-  `tools/post-execute` seam and the `subagents/start` service with a
-  tool-restriction-capable provider — see `compatibility.json`.
+  `tools/post-execute` seam and the `subagents` service with a provider that
+  supports independent agent presets — see `compatibility.json`.
 - Node.js `^22.19.0 || >=24.0.0`.
 - Only top-level ordinary tool results are offloaded; Code Mode (`run_code`)
   nested dispatches pass through untouched.

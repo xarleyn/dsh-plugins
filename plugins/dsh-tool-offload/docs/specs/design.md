@@ -170,14 +170,21 @@ Therefore the worker cannot:
 
 ### 6.2 Recommended worker restriction
 
-For in-process DSH subagents:
+For in-process DSH subagents on a Host that composes a child's tools from its
+Agent Preset, each worker profile names a preset id
+(`workers.<name>.agentPreset`) whose composition mounts no model-facing tools:
 
 ```text
-toolFilter:
-  allow: []
+- id: preset-offload-worker
+  name: '@deepseek-ai/dsh-agent-preset'
+  config:
+    id: offload-worker
+    plugins: []
 ```
 
-or the closest supported equivalent that removes inherited model-facing tools.
+The runner refuses to start a worker whose profile names no preset: a
+preset-free request joins the parent's current generation and would hand the
+child the parent's tools.
 
 The plugin should additionally use a worker persona that explicitly states:
 
@@ -287,7 +294,7 @@ It may be used later for optional hard policies, but not for MVP routing.
 Workers should use DSH's native one-shot subagent service:
 
 ```text
-ctx.subagents.start(...)
+ctx.subagents.startActivation(...)
 ```
 
 Preferred provider for the first implementation:
@@ -296,9 +303,12 @@ Preferred provider for the first implementation:
 spawn
 ```
 
-because in-process providers support child model overrides and tool restrictions.
+because in-process providers support child model overrides and independent
+Agent Preset selection; the preset owns the child's tool composition.
 
-Worker configuration should request an exact cheap model through `agentOptions` where the provider supports it.
+Worker configuration should request an exact cheap model through `agentOptions`
+where the provider supports it, and name a preset that mounts no model-facing
+tools.
 
 ---
 
@@ -331,7 +341,7 @@ Worker configuration should request an exact cheap model through `agentOptions` 
 │  PayloadBuilder                                  │
 │       |                                          │
 │       v                                          │
-│  WorkerRunner -> ctx.subagents.start("spawn")    │
+│  WorkerRunner -> subagents.startActivation       │
 │       |                                          │
 │       v                                          │
 │  ResultValidator                                 │
@@ -476,40 +486,42 @@ Tool-specific prompt profiles may override the "Your job" section.
 Responsibilities:
 
 - select configured subagent provider;
+- require the profile's Agent Preset (refuse otherwise — the preset owns the child's tool composition);
 - select cheap model;
 - set low reasoning effort;
 - set output token cap;
-- restrict child tools;
 - start one-shot worker;
 - observe cancellation;
 - collect final result;
-- dispose run;
+- dispose activation;
 - normalize failure.
 
 Pseudo-flow:
 
 ```ts
-const run = await ctx.subagents.start(config.worker.provider, {
+const activation = await ctx.subagents.startActivation({
+  provider: config.worker.provider,
   label: `tool-offload:${exec.name}`,
-  parent: exec.agent,
-  prompt,
+  request: {
+    prompt,
+    parent: exec.agent,
+    agentOptions: {
+      provider: config.worker.llmProvider,
+      model: config.worker.model,
+      reasoningEffort: config.worker.reasoningEffort,
+      maxTokens: config.worker.maxTokens,
+    },
+    agentPreset: config.worker.agentPreset,
+  },
   signal: exec.signal,
-  agentOptions: {
-    provider: config.worker.llmProvider,
-    model: config.worker.model,
-    reasoningEffort: config.worker.reasoningEffort,
-    maxTokens: config.worker.maxTokens,
-  },
-  toolFilter: {
-    allow: [],
-  },
+  delivery: 'caller',
 })
 
 try {
-  const workerResult = await run.result
+  const workerResult = await activation.result
   return normalizeWorkerResult(workerResult)
 } finally {
-  await run.dispose()
+  await activation.dispose()
 }
 ```
 
@@ -1673,7 +1685,7 @@ Tasks:
 - log tool name and result size;
 - verify replacement `content` reaches the main model;
 - verify canonical `value` remains unchanged;
-- create one-shot subagent through `ctx.subagents.start`;
+- create one-shot subagent through `ctx.subagents.startActivation`;
 - verify model override;
 - verify worker can be created with no usable tools;
 - verify cancellation/disposal.
@@ -1890,12 +1902,12 @@ The MVP is considered complete when all of the following are true.
 These should be answered by code/API verification rather than guessing:
 
 1. What is the most stable way in the targeted DSH version to extract the latest user task from `exec.agent.session`?
-2. Does the configured `spawn` provider expose all required capabilities (`agentOptions`, `toolFilter`) in the target deployment?
+2. Does the configured `spawn` provider expose all required capabilities (`agentOptions`, `agentPreset`) in the target deployment?
 3. What exact DSH model route identifiers should config use for custom providers?
 4. How should a plugin reliably mark its own worker child sessions for recursion prevention?
 5. Does top-level `content` replacement behave identically in native tool mode and all UI surfaces used by DSH Web?
 6. Which exact built-in tool names are present in the user's standard preset?
-7. Is an empty `toolFilter.allow` sufficient to hide all inherited model-facing tools in the target DSH version?
+7. Does the deployment declare an Agent Preset whose composition mounts no model-facing tools, for the worker profiles to select?
 8. Which telemetry service/interface is most appropriate in the plugin monorepo?
 9. What is the cleanest supported interception path for nested Code Mode dispatches?
 
@@ -1967,7 +1979,7 @@ DeepSeek Harness native concepts used by this design:
 - `tools/post-execute` model-facing content replacement;
 - `ctx.subagents` one-shot delegation;
 - child `agentOptions` model overrides;
-- subagent tool restrictions;
+- child Agent Preset selection;
 - cancellation and child run disposal.
 
 Relevant upstream references:

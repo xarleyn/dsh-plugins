@@ -21,6 +21,7 @@ describe("resolveToolOffloadConfig defaults", () => {
     expect(config.routing.thresholds.minEstimatedTokens).toBe(6_000);
     expect(config.defaultWorker).toBe("default");
     expect(config.workers.default!.subagentProvider).toBe("spawn");
+    expect(config.workers.default!.agentPreset).toBeNull();
     expect(config.workers.default!.provider).toBeNull();
     expect(config.workers.default!.model).toBeNull();
     expect(config.workers.default!.maxTokens).toBe(4_000);
@@ -63,12 +64,18 @@ describe("resolveToolOffloadConfig workers", () => {
   it("merges custom worker profiles over the built-in defaults", () => {
     const config = resolveToolOffloadConfig({
       workers: {
-        tiny: { provider: "zai", model: "glm-4.5-air", maxTokens: 2_500 },
+        tiny: {
+          agentPreset: "bare-worker",
+          provider: "zai",
+          model: "glm-4.5-air",
+          maxTokens: 2_500,
+        },
       },
       defaultWorker: "tiny",
     });
     expect(config.workers.tiny).toEqual({
       subagentProvider: "spawn",
+      agentPreset: "bare-worker",
       provider: "zai",
       model: "glm-4.5-air",
       maxTokens: 2_500,

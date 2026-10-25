@@ -28,21 +28,14 @@ import {
   type ToolOffloadConfig,
 } from "./config.js";
 import { qaModelPolicy } from "./qa-policy.js";
-import {
-  createPostExecuteListener,
-  type ToolOffloadListener,
-} from "./integration/post-execute.js";
+import { createPostExecuteListener } from "./integration/post-execute.js";
 import {
   deriveOffloadMetrics,
   OffloadCounters,
   type OffloadCounterSnapshot,
 } from "./telemetry/counters.js";
 import { KeyedLimiter, Semaphore } from "./utils/semaphore.js";
-import {
-  createSubagentRunner,
-  type SubagentsServiceLike,
-  type WorkerRunnerLike,
-} from "./worker/runner.js";
+import { createSubagentRunner, type WorkerRunnerLike } from "./worker/runner.js";
 
 /** Overridable internals for tests (fake runner, silent logger). */
 export interface ToolOffloadServiceDeps {
@@ -50,11 +43,6 @@ export interface ToolOffloadServiceDeps {
   readonly counters?: OffloadCounters;
   /** Prebuilt runner; defaults to a `ctx.subagents`-backed runner. */
   readonly runner?: WorkerRunnerLike;
-}
-
-interface OffloadHostContextLike {
-  subagents: SubagentsServiceLike;
-  on(event: "tools/post-execute", listener: ToolOffloadListener): () => void;
 }
 
 /** Aggregated statistics served by the service surface (SPEC §26-§27). */
@@ -111,7 +99,9 @@ export class ToolOffloadService extends Service {
       }) as PluginLogger & PluginLoggerLike);
 
     const disposers = this.disposers;
-    ctx.inject(["tools", "subagents"], (host: OffloadHostContextLike) => {
+    // Cordis 4 hands the callback the injected fork context, not the resolved
+    // services: `host.subagents` resolves through the declared requirement.
+    ctx.inject(["tools", "subagents"], (host: Context) => {
       // The runtime can arrive while the plugin is being torn down; mounting
       // there would collect undo actions nobody will ever walk.
       if (this.disposed) return;

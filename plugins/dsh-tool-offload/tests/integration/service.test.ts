@@ -36,7 +36,7 @@ function wire(overrides: ToolOffloadConfig = {}): Wiring {
   let mount: (c: unknown) => void = () => undefined;
   const host = {
     subagents: {
-      start: async () => undefined as never,
+      startActivation: async () => undefined as never,
       getProvider: () => undefined,
     },
     on(event: "tools/post-execute", listener: ToolOffloadListener) {

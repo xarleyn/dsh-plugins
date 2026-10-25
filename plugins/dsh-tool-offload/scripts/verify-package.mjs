@@ -68,8 +68,8 @@ await runVerifyPackage({
       "built runtime must reference the delegated-child origin guard",
     );
     assert.ok(
-      libText.includes("allow: []"),
-      "built runtime must keep the no-tools worker filter",
+      libText.includes("would inherit the parent's tool composition"),
+      "built runtime must refuse to start a worker without a no-tools preset",
     );
 
     // Attribution contract of the plugin (SPEC §28).

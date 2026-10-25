@@ -2,9 +2,13 @@
  * WorkerRunner (SPEC §9.5, §22-§25).
  *
  * The only component that knows the DSH subagent seam. Starts a one-shot
- * `spawn` worker with:
- * - `toolFilter: { allow: [] }` — the worker inherits no model-facing tools
- *   (SPEC §6.1: no authority expansion);
+ * `spawn` worker through `startActivation` with:
+ * - `agentPreset` from the worker profile — the Host composes a child's tools
+ *   from its Agent Preset, and the start contract carries no per-run tool
+ *   filter any more, so a preset that mounts no model-facing tools is the only
+ *   way to keep the worker tool-free (SPEC §6.1: no authority expansion). A
+ *   profile that names no preset refuses to start instead of handing the child
+ *   the parent's tools;
  * - an exact cheap model via `agentOptions` (keys omitted when unset so the
  *   child inherits the parent route, see `resolveChildAgentOptions`); an
  *   unset pair follows the QA policy of the chat the tool result came from,
@@ -12,13 +16,14 @@
  * - a merged cancellation signal (parent `exec.signal` + worker timeout).
  *
  * Every failure mode normalizes into a `WorkerOutcome`; nothing throws across
- * the integration seam. `run.dispose()` is always awaited, including on the
- * timeout path, so no child agent outlives the tool call (SPEC §22).
+ * the integration seam. `activation.dispose()` is always awaited, including on
+ * the timeout path, so no child agent outlives the tool call (SPEC §22).
  */
 
 import type {
-  SubagentRun,
-  SubagentStartRequest,
+  SubagentActivation,
+  SubagentActivationSpec,
+  SubagentProvider,
 } from "@deepseek-ai/dsh-subagent";
 import type { ToolExecution } from "@deepseek-ai/dsh-tools";
 
@@ -27,12 +32,8 @@ import type { QaModelPolicyPair } from "../qa-policy.js";
 
 /** Structural surface of `ctx.subagents` consumed by this plugin. */
 export interface SubagentsServiceLike {
-  start(name: string, request: SubagentStartRequest): Promise<SubagentRun>;
-  getProvider(name: string): SubagentProviderLike | undefined;
-}
-
-export interface SubagentProviderLike {
-  readonly capabilities: { readonly toolFilter: boolean };
+  startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation>;
+  getProvider(name: string): SubagentProvider | undefined;
 }
 
 export interface WorkerRunRequest {
@@ -82,10 +83,23 @@ export function createSubagentRunner(
           detail: `subagent provider "${request.profile.subagentProvider}" is not registered`,
         };
       }
-      if (!provider.capabilities.toolFilter) {
+      // SPEC §6.1: the worker inherits no model-facing tools. The start
+      // contract carries no per-run tool filter any more — a child's tool
+      // composition comes from its Agent Preset, and a request without one
+      // joins the parent's current generation. Starting an unfiltered worker
+      // would hand the child the parent's tools, so a profile that names no
+      // preset refuses to start and the tool result falls through unchanged.
+      const agentPreset = request.profile.agentPreset;
+      if (agentPreset === null) {
         return {
           kind: "unavailable",
-          detail: `subagent provider "${request.profile.subagentProvider}" does not support tool restrictions`,
+          detail: `worker profile names no agentPreset: the Host composes a child's tools from its Agent Preset and accepts no per-run tool filter, so a worker without one would inherit the parent's tool composition; configure workers.<name>.agentPreset with a preset that mounts no model-facing tools`,
+        };
+      }
+      if (!provider.capabilities.agentPreset) {
+        return {
+          kind: "unavailable",
+          detail: `subagent provider "${request.profile.subagentProvider}" does not support independent agent presets`,
         };
       }
       if (request.signal.aborted) return { kind: "aborted" };
@@ -97,7 +111,9 @@ export function createSubagentRunner(
         request.signal,
         AbortSignal.timeout(request.profile.timeoutMs),
       ]);
-      const agentOptions: SubagentStartRequest["agentOptions"] = {};
+      const agentOptions: NonNullable<
+        SubagentActivationSpec["request"]["agentOptions"]
+      > = {};
       // A profile that pins no model follows the policy of the chat this tool
       // result came from, rather than the model that chat happens to be on.
       const policy =
@@ -111,15 +127,22 @@ export function createSubagentRunner(
       if (request.profile.maxTokens !== null)
         agentOptions.maxTokens = request.profile.maxTokens;
 
-      let run: SubagentRun;
+      let activation: SubagentActivation;
       try {
-        run = await subagents.start(request.profile.subagentProvider, {
+        activation = await subagents.startActivation({
+          provider: request.profile.subagentProvider,
           label: request.label,
-          parent: request.parent,
-          prompt: [{ type: "text", text: request.prompt }],
+          request: {
+            prompt: [{ type: "text", text: request.prompt }],
+            parent: request.parent,
+            agentOptions,
+            agentPreset,
+          },
           signal,
-          agentOptions,
-          toolFilter: { allow: [] },
+          // Caller delivery returns the result to this call alone: the worker
+          // answers through the replaced tool content, so the parent model
+          // must not be notified of the child.
+          delivery: "caller",
         });
       } catch (error) {
         return mapStartupFailure(request, error);
@@ -128,7 +151,7 @@ export function createSubagentRunner(
       let timer: NodeJS.Timeout | undefined;
       try {
         const result = await Promise.race([
-          run.result,
+          activation.result,
           new Promise<never>((_, reject) => {
             timer = setTimeout(
               () => reject(new Error("worker-timeout-belt")),
@@ -160,7 +183,9 @@ export function createSubagentRunner(
           : { kind: "timeout" };
       } finally {
         if (timer !== undefined) clearTimeout(timer);
-        await run.dispose();
+        // Teardown failures are reported on the activation itself, not by
+        // replacing an already captured result; this seam must not throw.
+        await activation.dispose().catch(() => undefined);
       }
     },
   };

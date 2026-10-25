@@ -21,10 +21,12 @@ Guarantees, phrased as behavior:
    and never re-dispatches a different tool.
 3. The canonical tool `value` is never modified; only the model-facing
    `content` may be replaced.
-4. A worker never has tools: every worker starts with `toolFilter: { allow: [] }`
-   on a provider that supports tool restrictions, so it cannot read, write,
-   execute, reach the network, or spawn agents. A worker never triggers new
-   approvals.
+4. A worker never has tools: every worker starts under the Agent Preset named
+   by its worker profile (`workers.<name>.agentPreset`), and the runner refuses
+   to start unless that preset is configured and the provider supports
+   independent preset selection. The preset must mount no model-facing tools,
+   so the worker cannot read, write, execute, reach the network, or spawn
+   agents. A worker never triggers new approvals.
 5. A worker receives only: the byte-capped latest user task, the tool name,
    bounded serialized arguments, and the raw result — behind explicit
    `<PARENT_TASK>`/`<TOOL_CALL>`/`<TOOL_RESULT>` boundaries, with closing tags
@@ -90,7 +92,7 @@ guards; structured telemetry and `stats()`; optional annotation marker.
 delegation tool; Code Mode (`run_code`) nested-dispatch transformation;
 adaptive routing and dynamic thresholds; batching sibling reads; worker result
 caching/deduplication; multimodal workers; `reasoningEffort` knob (not
-reachable through the current `subagents.start` seam); diagnostic
+reachable through the current `subagents.startActivation` seam); diagnostic
 status tool.
 
 ## 5. Required end-to-end scenarios
