@@ -74,7 +74,6 @@ function scopeStub(initial: {
     user: initial.user,
     revision: 1,
     writable: initial.writable ?? true,
-    mode: "host" as const,
   };
   const listeners = new Set<() => void>();
   const writes: ScopeOp[] = [];

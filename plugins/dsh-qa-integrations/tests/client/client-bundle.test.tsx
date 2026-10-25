@@ -110,7 +110,6 @@ async function mountBundle(): Promise<MountedBundle> {
     user: {},
     revision: 1,
     writable: true,
-    mode: "host",
   };
   const face = {
     remote: {

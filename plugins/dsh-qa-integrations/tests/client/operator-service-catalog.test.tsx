@@ -12,7 +12,6 @@ function settingsForm() {
   const snapshot = {
     status: "ready" as const,
     writable: true,
-    mode: "host" as const,
     revision: 1,
     base: undefined,
     user: undefined,
@@ -52,20 +51,24 @@ describe("operator service operation catalog loading", () => {
       "Читать лог сборки (builds.log)",
     );
     fireEvent.change(control, { target: { value: "allow" } });
-    await waitFor(() =>
-      expect(form.mutate).toHaveBeenCalledWith([
-        expect.objectContaining({
-          op: "set",
-          path: ["managedServiceCredentials", "profiles"],
-          value: [
-            expect.objectContaining({
-              id: "build-reader",
-              resources: { projects: ["demo-project"] },
-              policy: { "builds.log": "allow" },
-            }),
-          ],
-        }),
-      ]),
+    await waitFor(
+      () =>
+        expect(form.mutate).toHaveBeenCalledWith([
+          expect.objectContaining({
+            op: "set",
+            path: ["managedServiceCredentials", "profiles"],
+            value: [
+              expect.objectContaining({
+                id: "build-reader",
+                resources: { projects: ["demo-project"] },
+                policy: { "builds.log": "allow" },
+              }),
+            ],
+          }),
+        ]),
+      // A workspace-wide test run starves the event loop long enough to
+      // outlive the default one-second polling window.
+      { timeout: 10_000 },
     );
     expect(loader).toHaveBeenCalledTimes(1);
   });
