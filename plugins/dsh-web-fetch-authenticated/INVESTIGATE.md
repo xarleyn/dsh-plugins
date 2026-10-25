@@ -150,10 +150,13 @@ line). Repo conventions verified against `plugins/dsh-prompt-firewall` and
 ## 8. Non-public integration points (isolated in `src/dsh-compat/`)
 
 1. “Is `ctx.web.fetchProvider` pinned to `authenticated`?” — `WebRuntime`
-   keeps `fetchProviderId` private and exposes no accessor. The status card
-   does a best-effort structural read
-   (`(ctx.web as {fetchProviderId?: string}).fetchProviderId`) and reports
-   “not pinned” when absent. Diagnostic only; behavior never depends on it.
+   publishes no accessor. Since DSH `0.2.1` the pinned id lives in a volatile
+   config field (`config.fetchProvider.get()`), resolved against the
+   `DSH_WEB_FETCH_PROVIDER` environment value in the Host's own precedence
+   (config first, then environment); earlier releases kept the resolved id in
+   a private `fetchProviderId` field. The status card does a best-effort
+   structural read of those shapes, newest first, and reports “not pinned”
+   when absent. Diagnostic only; behavior never depends on it.
 2. Nothing else. Registration, credentials, settings, UI slots, and RPC are
    all public seams per §1–§6.
 
