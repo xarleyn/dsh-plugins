@@ -35,7 +35,10 @@ import {
   type OffloadCounterSnapshot,
 } from "./telemetry/counters.js";
 import { KeyedLimiter, Semaphore } from "./utils/semaphore.js";
-import { createSubagentRunner, type WorkerRunnerLike } from "./worker/runner.js";
+import {
+  createSubagentRunner,
+  type WorkerRunnerLike,
+} from "./worker/runner.js";
 
 /** Overridable internals for tests (fake runner, silent logger). */
 export interface ToolOffloadServiceDeps {
