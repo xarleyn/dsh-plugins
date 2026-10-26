@@ -81,16 +81,88 @@ export function useRequestSlot(): {
 }
 
 /**
+ * How long a page waits for one Host answer before it stops waiting.
+ *
+ * The aggregate pages read conversation logs on the Host, and a log the store
+ * cannot answer for used to leave the request pending forever: the page then sat
+ * on «Загружаю…» with nothing to click. The Host bounds its own reads well
+ * inside this budget, so hitting it means the answer is lost, not that the
+ * deployment is merely slow.
+ */
+export const ADMIN_REQUEST_TIMEOUT_MS = 20_000;
+
+/** The copy a page shows once its deadline has passed. */
+export function adminTimeoutMessage(
+  timeoutMs: number = ADMIN_REQUEST_TIMEOUT_MS,
+): string {
+  return `Сервер не ответил за ${Math.round(timeoutMs / 1_000)} с. Нажмите «Обновить», чтобы повторить запрос.`;
+}
+
+/** What one Host call did inside its deadline. */
+export type BoundedOutcome<T> =
+  | { readonly status: "ok"; readonly value: T }
+  | { readonly status: "timeout" }
+  | { readonly status: "aborted" };
+
+/**
+ * Run one Host call under a deadline.
+ *
+ * A promise that never settles is the shape of the hang this exists for, so the
+ * deadline is a race rather than an abort alone: aborting the request is what
+ * asks the Host to stop working, and the timer is what lets the page go on
+ * without an answer. The abandoned call keeps running on its own; its eventual
+ * rejection is observed here so it never surfaces as an unhandled one.
+ */
+export async function callWithDeadline<T>(
+  call: (signal: AbortSignal) => Promise<T>,
+  outer: AbortSignal,
+  timeoutMs: number = ADMIN_REQUEST_TIMEOUT_MS,
+): Promise<BoundedOutcome<T>> {
+  if (outer.aborted) return { status: "aborted" };
+  const inner = new AbortController();
+  const forward = () => inner.abort();
+  outer.addEventListener("abort", forward, { once: true });
+  const pending = call(inner.signal);
+  void pending.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<"deadline">((resolve) => {
+    timer = setTimeout(() => {
+      inner.abort();
+      resolve("deadline");
+    }, timeoutMs);
+  });
+  try {
+    const outcome = await Promise.race([
+      pending.then((value) => ({ status: "ok" as const, value })),
+      deadline,
+    ]);
+    if (outcome === "deadline") {
+      return { status: outer.aborted ? "aborted" : "timeout" };
+    }
+    return outcome;
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+    outer.removeEventListener("abort", forward);
+  }
+}
+
+/**
  * Load one administrative resource, keeping the previous value visible while
  * it refreshes. Reviewers page through lists while new conversations arrive;
  * blanking the table on every reload would make that unusable.
  *
  * `load` receives the cancellation of the call it is making: pass it on to the
  * Remote, and a page the reviewer left stops being read on the server.
+ *
+ * The call is bounded by {@link ADMIN_REQUEST_TIMEOUT_MS}: a Host that does not
+ * answer leaves a stated error and a retry instead of an endless «Загружаю…».
+ * Whatever this page already held stays on screen — a partial answer is what a
+ * reviewer can still work with.
  */
 export function useAdminResource<T>(
   load: (signal: AbortSignal) => Promise<RemoteResult<T>>,
   deps: readonly unknown[],
+  options: { readonly timeoutMs?: number } = {},
 ): {
   readonly data: T | undefined;
   readonly error: string | undefined;
@@ -99,6 +171,7 @@ export function useAdminResource<T>(
   /** Adopt a value this page already holds, without re-asking the Host. */
   apply: (value: T) => void;
 } {
+  const timeoutMs = options.timeoutMs ?? ADMIN_REQUEST_TIMEOUT_MS;
   const [data, setData] = useState<T>();
   const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
@@ -111,10 +184,19 @@ export function useAdminResource<T>(
     const controller = request.start();
     setLoading(true);
     try {
-      const result = await load(controller.signal);
+      const outcome = await callWithDeadline(
+        load,
+        controller.signal,
+        timeoutMs,
+      );
       // A call this page abandoned has no answer worth showing: writing it
       // anyway is how a stale scan replaced whatever the reviewer opened next.
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || outcome.status === "aborted") return;
+      if (outcome.status === "timeout") {
+        setError(adminTimeoutMessage(timeoutMs));
+        return;
+      }
+      const result = outcome.value;
       if (result.ok) {
         setData(result.value);
         setError(undefined);

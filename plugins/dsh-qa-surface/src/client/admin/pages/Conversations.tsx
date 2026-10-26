@@ -22,6 +22,8 @@ import {
   Pager,
   Stamp,
   adminErrorMessage,
+  adminTimeoutMessage,
+  callWithDeadline,
   useAdminResource,
   useRequestSlot,
 } from "../shared.js";
@@ -78,27 +80,45 @@ export function AdminConversations(props: {
         from: from === "" ? null : new Date(from).toISOString(),
         to: to === "" ? null : new Date(`${to}T23:59:59.999Z`).toISOString(),
       };
-      const result = await props.api.conversations(
-        props.token,
-        query,
-        next,
-        PAGE_SIZE,
-        controller.signal,
-      );
-      // A page the reviewer changed or left while this was still being read on
-      // the server has no answer worth showing.
-      if (controller.signal.aborted) return;
-      setLoading(false);
-      if (!result.ok) {
-        setError(adminErrorMessage(result.error));
-        return;
+      try {
+        // The Host reads a log per row (and per search candidate). Without a
+        // deadline an answer that never arrives left the page on «Загружаю…»
+        // forever, even though the request had been accepted.
+        const outcome = await callWithDeadline(
+          (signal: AbortSignal) =>
+            props.api.conversations(
+              props.token,
+              query,
+              next,
+              PAGE_SIZE,
+              signal,
+            ),
+          controller.signal,
+        );
+        // A page the reviewer changed or left while this was still being read on
+        // the server has no answer worth showing.
+        if (controller.signal.aborted || outcome.status === "aborted") return;
+        if (outcome.status === "timeout") {
+          setError(adminTimeoutMessage());
+          return;
+        }
+        setError(undefined);
+        const result = outcome.value;
+        if (!result.ok) {
+          setError(adminErrorMessage(result.error));
+          return;
+        }
+        setTotal(result.value.total);
+        setCursor(result.value.nextCursor);
+        setRows((current) =>
+          append ? [...current, ...result.value.items] : result.value.items,
+        );
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        setError(adminErrorMessage(cause));
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
       }
-      setError(undefined);
-      setTotal(result.value.total);
-      setCursor(result.value.nextCursor);
-      setRows((current) =>
-        append ? [...current, ...result.value.items] : result.value.items,
-      );
     },
     [
       request,
@@ -132,6 +152,13 @@ export function AdminConversations(props: {
               : "Разговоры одного пользователя."}
           </p>
         </div>
+        <button
+          type="button"
+          data-testid="qa-admin-conversations-reload"
+          onClick={() => void load(null, false)}
+        >
+          Обновить
+        </button>
       </div>
       <div
         className="dsh-qa-admin__filters"

@@ -1,11 +1,18 @@
 import type { Context } from "@deepseek-ai/cordis";
+import { SessionId } from "@deepseek-ai/dsh-session/types";
 import type { QaSessions } from "./types.js";
 import type { QaChatWire, QaSessionRemotes } from "./chat-sharing-api.js";
-import type { SessionControlFrame } from "@deepseek-ai/dsh-api-session-controller/types";
+import type {
+  SessionControlFrame,
+  SessionListValue,
+  SessionSummary,
+} from "@deepseek-ai/dsh-api-session-controller/types";
 import type { ConnectionGenerationState } from "@deepseek-ai/dsh-client-connection/client";
 
 interface NativeSessions extends QaSessions {
   handleControlFrame(frame: SessionControlFrame): void;
+  handleSessionAdded(summary: SessionSummary): void;
+  handleSessionRemoved(sessionId: SessionId): void;
   handleConnected(): void;
 }
 /** Use the installed native Session class and projections with a tokenized transport. */
@@ -21,12 +28,35 @@ export function createQaAccountSessions(
   const refuse = async (): Promise<never> => {
     throw new Error("Use the authenticated QA operation.");
   };
+  // The secured transport owns the only Session-list feed this facade gets:
+  // the Host's forwarded api-session events are wired for the ambient
+  // instance alone, so a listing answer that the manager discards — a
+  // generation reset between the pull and its application is the shape this
+  // had on the stand — leaves the catalog blind to the chat the account just
+  // created, and the adoption refuses it with `sessions.retain: unknown
+  // session`. Replay every listing through the manager's own addition and
+  // removal paths, so a listed row lands whatever else happens to the pull
+  // that carried it. The replay is declared after the facade and referenced
+  // through the hoisted function below: the listing closure runs only once a
+  // caller pulls, which is always after the facade exists.
+  let listed: readonly string[] = [];
+  function replay({ items }: SessionListValue): void {
+    const ids = items.map((item) => String(item.sessionId));
+    for (const item of items) facadeSessions.handleSessionAdded(item);
+    for (const id of listed) {
+      if (!ids.includes(id)) facadeSessions.handleSessionRemoved(SessionId(id));
+    }
+    listed = ids;
+  }
   const session = {
     ...remote.session,
-    list: (_request, signal) =>
-      token() === null
-        ? Promise.resolve({ ok: true as const, value: { items: [] } })
-        : wire.chatList(token()!, signal),
+    list: async (_request: unknown, signal?: AbortSignal) => {
+      if (token() === null)
+        return { ok: true as const, value: { items: [] as SessionSummary[] } };
+      const result = await wire.chatList(token()!, signal);
+      if (result.ok) replay(result.value);
+      return result;
+    },
     page: (request, signal) => wire.chatPage(token() ?? "", request, signal),
     follow: (request, signal) =>
       wire.chatFollow(token() ?? "", request, signal),
@@ -59,6 +89,7 @@ export function createQaAccountSessions(
     remotes: QaSessionRemotes,
   ) => NativeSessions;
   const sessions = new Constructor(ctx.isolate("sessions"), secured);
+  const facadeSessions: NativeSessions = sessions;
   let control: AbortController | undefined;
   let disposed = false;
   const startControl = () => {

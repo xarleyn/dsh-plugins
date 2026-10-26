@@ -187,15 +187,17 @@ const SLASH_CATALOG_STALE_MS = 3_000;
 
 /**
  * How long a refused retain waits for its row to come into this browser's
- * Session catalog. Short on purpose, and shorter than the adoption timeout: the
- * row arrives either as a Host push or as the answer of the one pull asked for
- * here, so it is a round-trip away — while a whole `timeoutMs` of patience
- * would stack a second window onto the waits that follow and hold a chat that
- * never opens on screen for two of them. A row that misses this window loses
- * the chat, and the plate's «Повторить» re-runs the adoption on a catalog that
- * has had the pull.
+ * Session catalog. Shorter than the adoption timeout, but wide enough for the
+ * way the row actually arrives on a QA deployment: this surface has no
+ * forwarded-event push of its own — the row rides on the account's chat
+ * listing — and a listing that lands right after the create pays for the
+ * Host's shared catalog scan the create itself invalidated, which on a loaded
+ * stand takes longer than a round trip. The interval keeps asking for the
+ * listing while this waits, so the window only has to outlast one slow scan.
+ * A row that misses it loses the chat, and the plate's «Повторить» re-runs
+ * the adoption on a catalog that has had the pull.
  */
-const CATALOG_ROW_PATIENCE_MS = 5_000;
+const CATALOG_ROW_PATIENCE_MS = 15_000;
 
 /**
  * Spacing of the parked-request poll. A request is answered by a person, so a

@@ -58,7 +58,7 @@ export function AdminOverview(props: {
   ) => void;
   readonly onOpenQueue: () => void;
 }) {
-  const { data, error, reload } = useAdminResource(
+  const { data, error, loading, reload } = useAdminResource(
     (signal) => props.api.overview(props.token, signal),
     [props.api, props.token],
   );
@@ -95,7 +95,7 @@ export function AdminOverview(props: {
           className="dsh-qa-admin__empty"
           data-testid="qa-admin-overview-loading"
         >
-          Загружаю…
+          {loading ? "Загружаю…" : "Данные обзора не получены."}
         </p>
       ) : (
         <>

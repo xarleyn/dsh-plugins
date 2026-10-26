@@ -513,6 +513,16 @@ export function QaSurface(props: QaSurfaceProps) {
       setController(undefined);
       return;
     }
+    // The Host config loads after the face assembles, so the face's own
+    // `sessions` answer can predate the accounts answer: on an accounts
+    // deployment the assembled face froze on the ambient transport, whose
+    // catalog this surface's fence keeps empty, and every adoption then died
+    // on `sessions.retain: unknown session`. `resolveRuntime` is the
+    // selection the face exposes for exactly this moment.
+    const runtime =
+      accountsEnabled && props.resolveRuntime !== undefined
+        ? props.resolveRuntime(true)
+        : undefined;
     const facade =
       accountsEnabled && accounts
         ? {
@@ -527,9 +537,12 @@ export function QaSurface(props: QaSurfaceProps) {
           }
         : undefined;
     const next = new QaSessionController({
-      sessions: props.sessions,
+      sessions: runtime === undefined ? props.sessions : runtime.sessions,
       api: props.api,
-      conversation: props.conversation,
+      conversation:
+        runtime === undefined
+          ? props.conversation
+          : runtime.conversation,
       connection: props.connection,
       secureSession: props.secureSession,
       createSession: props.createSession,
@@ -576,6 +589,7 @@ export function QaSurface(props: QaSurfaceProps) {
     props.queueStatus,
     props.secureSession,
     props.sourceApi,
+    props.resolveRuntime,
     props.sharingApi,
     props.sessions,
     route.active,

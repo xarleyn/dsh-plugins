@@ -38,7 +38,56 @@ export interface QaStoredSessionHeader {
 
 export type QaSessionReadResult =
   | { readonly ok: true; readonly events: readonly StoredSessionEvent[] }
-  | { readonly ok: false; readonly reason: QaTranscriptUnavailableReason };
+  | {
+      readonly ok: false;
+      readonly reason: QaTranscriptUnavailableReason;
+      /**
+       * True when the answer is "storage did not answer in time" rather than a
+       * verdict about the log. A caller that scans many logs skips such a
+       * conversation and keeps the rest of its rows; the wire reason stays one
+       * of the shared three, so no page learns a new word.
+       */
+      readonly timedOut?: boolean;
+    };
+
+/**
+ * How long one stored log may take before the console stops waiting for it.
+ *
+ * The durable backend answers a read by listing every session the deployment
+ * keeps and replaying the log; a log whose owning process is mid-flush — a
+ * blank chat created and left open is the usual case on a stand — can hold that
+ * answer indefinitely. The console is a reading surface, so a conversation it
+ * cannot read in this budget is reported and skipped rather than allowed to
+ * park the whole page.
+ */
+export const QA_SESSION_READ_TIMEOUT_MS = 5_000;
+
+/** The same budget for the one listing every administrative page needs. */
+export const QA_SESSION_LIST_TIMEOUT_MS = 8_000;
+
+/** Marks a promise that did not settle inside the budget. */
+const TIMED_OUT = Symbol("qa-session-timed-out");
+
+/**
+ * Wait for `work` at most `ms`. A call that is still running afterwards is
+ * left behind: it keeps its own promise, and its eventual rejection belongs to
+ * nobody, so it is observed here instead of surfacing as an unhandled one.
+ */
+async function settleWithin<T>(
+  work: Promise<T>,
+  ms: number,
+): Promise<T | typeof TIMED_OUT> {
+  void work.catch(() => undefined);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const deadline = new Promise<typeof TIMED_OUT>((resolve) => {
+    timer = setTimeout(() => resolve(TIMED_OUT), ms);
+  });
+  try {
+    return await Promise.race([work, deadline]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
+}
 
 /**
  * One listing of the deployment's sessions together with what the answer
@@ -195,8 +244,22 @@ function eventOf(value: unknown): StoredSessionEvent | undefined {
  * Build the reader for one plugin instance. The services are looked up per
  * call rather than captured: a cordis provider is only visible once its fiber
  * is active, and a reference taken at construction time would stay dead.
+ *
+ * Every call that reaches storage is bounded. The bounded answer is a shape the
+ * callers already understand — a listing that answers only for the live store,
+ * a log that is "storage-unavailable" — so a store that never replies costs a
+ * page its detail instead of its whole payload. The budgets are options only so
+ * a test can watch the transition without waiting five seconds for it.
  */
-export function createSessionLogReader(ctx: Context): QaSessionLogReader {
+export function createSessionLogReader(
+  ctx: Context,
+  options: {
+    readonly readTimeoutMs?: number;
+    readonly listTimeoutMs?: number;
+  } = {},
+): QaSessionLogReader {
+  const readTimeoutMs = options.readTimeoutMs ?? QA_SESSION_READ_TIMEOUT_MS;
+  const listTimeoutMs = options.listTimeoutMs ?? QA_SESSION_LIST_TIMEOUT_MS;
   const sessions = (): SessionStoreLike | undefined =>
     (ctx as unknown as { get(name: string): unknown }).get("sessions") as
       SessionStoreLike | undefined;
@@ -260,7 +323,17 @@ export function createSessionLogReader(ctx: Context): QaSessionLogReader {
         return { headers: liveList(), complete: false };
       }
       try {
-        const records = await engine.listSessions();
+        const settled = await settleWithin(
+          engine.listSessions(),
+          listTimeoutMs,
+        );
+        if (settled === TIMED_OUT) {
+          // A listing that did not answer in time is no listing: the live view
+          // is what this page can still show, and `complete: false` tells the
+          // ownership sweep not to read the gap as deleted chats.
+          return { headers: liveList(), complete: false };
+        }
+        const records = settled;
         const stored = records
           .map((entry) => headerOf(entry.header))
           .filter(
@@ -292,8 +365,23 @@ export function createSessionLogReader(ctx: Context): QaSessionLogReader {
       const engine = query();
       if (engine !== undefined) {
         try {
-          const snapshot = await engine.readSession(sessionId);
-          const events = (Array.isArray(snapshot.events) ? snapshot.events : [])
+          const settled = await settleWithin(
+            engine.readSession(sessionId),
+            readTimeoutMs,
+          );
+          if (settled === TIMED_OUT) {
+            // A session this process holds answers from memory, without
+            // storage; anything else is reported as unreadable storage rather
+            // than left as a read the page waits on forever.
+            return (
+              liveRead(sessionId) ?? {
+                ok: false,
+                reason: "storage-unavailable",
+                timedOut: true,
+              }
+            );
+          }
+          const events = (Array.isArray(settled.events) ? settled.events : [])
             .map(eventOf)
             .filter(
               (event): event is StoredSessionEvent => event !== undefined,
