@@ -104,8 +104,16 @@ function createApi(namespace: DomainExpertsRemote): DomainExpertsApi {
       toOutcome(await namespace.inspectMemory(id, memoryNamespace, limit)),
     clearMemory: async (id, memoryNamespace) =>
       toOutcome(await namespace.clearMemory(id, memoryNamespace)),
+    /*
+     * The gateway's client compares the call's argument count with the
+     * endpoint's parameter count before it builds the request, and an optional
+     * parameter still counts: three arguments fail with
+     * "domainExperts/testExpert expected 4 argument(s), got 3" and never reach
+     * the host. The test tab asks for a plain investigated run, so the flag is
+     * `false` — the default the host's own test path applies.
+     */
     testExpert: async (id, task, parentSessionId) =>
-      toOutcome(await namespace.testExpert(id, task, parentSessionId)),
+      toOutcome(await namespace.testExpert(id, task, parentSessionId, false)),
     recentAudits: async (limit) =>
       toOutcome(await namespace.recentAudits(limit)),
   };
