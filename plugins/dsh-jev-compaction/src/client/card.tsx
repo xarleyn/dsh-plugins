@@ -118,6 +118,9 @@ export function JevCompactionCard({
   );
   const config = settings.value;
   const writable = settings.status === "ready" && settings.writable;
+  // The Host folded the old memory-mode flag into the namespace status: a card
+  // without an exposed Host document has no durable target behind it.
+  const formMode = settings.status === "unavailable" ? "memory" : "host";
 
   const [error, setError] = useState<string | null>(null);
 
@@ -253,7 +256,7 @@ export function JevCompactionCard({
                   className="jevc-status-value"
                   data-testid="jevc-status-mode"
                 >
-                  {settings.mode}
+                  {formMode}
                 </span>
               </span>
             </div>

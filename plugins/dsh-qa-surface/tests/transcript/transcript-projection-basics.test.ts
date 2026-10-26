@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationNode } from "@deepseek-ai/dsh-client-ui-conversation/client";
+import { PartialArguments } from "@deepseek-ai/dsh-util-values";
 import { projectTranscript } from "../../src/client/QaTranscriptAdapter.js";
 import { legacy, snapshot } from "../helpers/conversation-fakes.js";
 
@@ -41,6 +42,8 @@ describe("transcript projection", () => {
               seq: 3,
               time: 30,
               callId: "1",
+              name: "secretTool",
+              args: PartialArguments.fromText("{}"),
               call: null,
               callTime: null,
               content: [{ type: "text", text: "raw tool secret" }],
@@ -89,6 +92,7 @@ describe("transcript projection", () => {
                 callId: "running-1",
                 name: "bash",
                 phase: "start",
+                args: PartialArguments.fromText('{"command":"pwd"}'),
                 argsRaw: '{"command":"pwd"}',
                 turn: 2,
                 step: 1,
@@ -141,6 +145,10 @@ describe("transcript projection", () => {
               seq: 3,
               time: 4_000,
               callId: "call-1",
+              name: "bash",
+              args: PartialArguments.fromText(
+                '{"command":"rg TODO","description":"Find TODOs"}',
+              ),
               call: {
                 name: "bash",
                 argsRaw: '{"command":"rg TODO","description":"Find TODOs"}',
@@ -224,6 +232,7 @@ describe("transcript projection", () => {
               callId: "call-1",
               name: "bash",
               phase: "start",
+              args: PartialArguments.fromText('{"command":"pwd"}'),
               argsRaw: '{"command":"pwd"}',
               turn: 1,
               step: 1,
@@ -279,6 +288,8 @@ describe("transcript projection", () => {
               seq: 2,
               time: 2_000,
               callId: "call-err",
+              name: "read",
+              args: PartialArguments.fromText('{"path":"D:/secret"}'),
               call: { name: "read", argsRaw: '{"path":"D:/secret"}' },
               callTime: 1_100,
               content: [],
@@ -291,6 +302,8 @@ describe("transcript projection", () => {
               seq: 3,
               time: 3_000,
               callId: "call-stop",
+              name: "web_fetch",
+              args: PartialArguments.fromText('{"url":"https://example.com"}'),
               call: {
                 name: "web_fetch",
                 argsRaw: '{"url":"https://example.com"}',

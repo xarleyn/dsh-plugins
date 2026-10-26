@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { CoverageNotice } from "../CoverageNotice.js";
 import type {
   QaAdminAuditEvent,
   QaAuditQuery,
@@ -21,7 +22,10 @@ import {
   FilterField,
   Pager,
   adminErrorMessage,
+  adminTimeoutMessage,
+  callWithDeadline,
   useAdminResource,
+  useRequestSlot,
 } from "../shared.js";
 
 const PAGE_SIZE = 25;
@@ -41,10 +45,13 @@ export function AdminFeedback(props: {
   const [rows, setRows] = useState<readonly QaFeedbackRow[]>([]);
   const [cursor, setCursor] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
+  const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
+  const request = useRequestSlot();
 
   const load = useCallback(
     async (next: string | null, append: boolean) => {
+      const controller = request.start();
       setLoading(true);
       const query: QaFeedbackQuery = {
         rating: rating === "" ? null : rating,
@@ -54,21 +61,37 @@ export function AdminFeedback(props: {
             ? null
             : (reviewStatus as QaFeedbackQuery["reviewStatus"]),
       };
-      const result = await props.api.feedback(
-        props.token,
-        query,
-        next,
-        PAGE_SIZE,
-      );
-      setLoading(false);
-      if (!result.ok) return;
-      setTotal(result.value.total);
-      setCursor(result.value.nextCursor);
-      setRows((current) =>
-        append ? [...current, ...result.value.items] : result.value.items,
-      );
+      try {
+        // The Host reads a log per rated conversation for the title column.
+        // A log that does not answer costs its row's title, not the table.
+        const outcome = await callWithDeadline(
+          () => props.api.feedback(props.token, query, next, PAGE_SIZE),
+          controller.signal,
+        );
+        if (controller.signal.aborted || outcome.status === "aborted") return;
+        if (outcome.status === "timeout") {
+          setError(adminTimeoutMessage());
+          return;
+        }
+        setError(undefined);
+        const result = outcome.value;
+        if (!result.ok) {
+          setError(adminErrorMessage(result.error));
+          return;
+        }
+        setTotal(result.value.total);
+        setCursor(result.value.nextCursor);
+        setRows((current) =>
+          append ? [...current, ...result.value.items] : result.value.items,
+        );
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        setError(adminErrorMessage(cause));
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
     },
-    [props.api, props.token, rating, reason, reviewStatus],
+    [request, props.api, props.token, rating, reason, reviewStatus],
   );
 
   useEffect(() => {
@@ -89,6 +112,13 @@ export function AdminFeedback(props: {
             точности ответа.
           </p>
         </div>
+        <button
+          type="button"
+          data-testid="qa-admin-feedback-reload"
+          onClick={() => void load(null, false)}
+        >
+          Обновить
+        </button>
       </div>
       <div
         className="dsh-qa-admin__filters"
@@ -138,12 +168,25 @@ export function AdminFeedback(props: {
           </select>
         </FilterField>
       </div>
+      {error === undefined ? null : (
+        <p
+          className="dsh-qa-admin__error"
+          data-testid="qa-admin-feedback-error"
+          role="alert"
+        >
+          {error}
+        </p>
+      )}
       {rows.length === 0 ? (
         <p
           className="dsh-qa-admin__empty"
           data-testid="qa-admin-feedback-empty"
         >
-          {loading ? "Загружаю…" : "Оценок пока нет."}
+          {loading
+            ? "Загружаю…"
+            : error === undefined
+              ? "Оценок пока нет."
+              : "Оценки не загрузились."}
         </p>
       ) : (
         <table
@@ -268,10 +311,11 @@ export function AdminQuality(props: {
           className="dsh-qa-admin__empty"
           data-testid="qa-admin-quality-loading"
         >
-          Загружаю…
+          {resource.loading ? "Загружаю…" : "Данные аналитики не получены."}
         </p>
       ) : (
         <>
+          <CoverageNotice metrics={metrics} />
           <dl
             className="dsh-qa-admin__facts dsh-qa-admin__facts--wide"
             data-testid="qa-admin-quality-facts"
@@ -442,24 +486,46 @@ export function AdminAudit(props: {
   const [action, setAction] = useState("");
   const [cursor, setCursor] = useState<string | null>(null);
   const [total, setTotal] = useState(0);
+  const [error, setError] = useState<string>();
   const [loading, setLoading] = useState(true);
+  const request = useRequestSlot();
 
   const load = useCallback(
     async (next: string | null, append: boolean) => {
+      const controller = request.start();
       setLoading(true);
       const query: QaAuditQuery = {
         action: action === "" ? null : (action as QaAuditQuery["action"]),
       };
-      const result = await props.api.audit(props.token, query, next, PAGE_SIZE);
-      setLoading(false);
-      if (!result.ok) return;
-      setTotal(result.value.total);
-      setCursor(result.value.nextCursor);
-      setRows((current) =>
-        append ? [...current, ...result.value.items] : result.value.items,
-      );
+      try {
+        const outcome = await callWithDeadline(
+          () => props.api.audit(props.token, query, next, PAGE_SIZE),
+          controller.signal,
+        );
+        if (controller.signal.aborted || outcome.status === "aborted") return;
+        if (outcome.status === "timeout") {
+          setError(adminTimeoutMessage());
+          return;
+        }
+        setError(undefined);
+        const result = outcome.value;
+        if (!result.ok) {
+          setError(adminErrorMessage(result.error));
+          return;
+        }
+        setTotal(result.value.total);
+        setCursor(result.value.nextCursor);
+        setRows((current) =>
+          append ? [...current, ...result.value.items] : result.value.items,
+        );
+      } catch (cause) {
+        if (controller.signal.aborted) return;
+        setError(adminErrorMessage(cause));
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
     },
-    [props.api, props.token, action],
+    [request, props.api, props.token, action],
   );
 
   useEffect(() => {
@@ -480,6 +546,13 @@ export function AdminAudit(props: {
             и «после».
           </p>
         </div>
+        <button
+          type="button"
+          data-testid="qa-admin-audit-reload"
+          onClick={() => void load(null, false)}
+        >
+          Обновить
+        </button>
       </div>
       <div
         className="dsh-qa-admin__filters"
@@ -510,9 +583,22 @@ export function AdminAudit(props: {
           </select>
         </FilterField>
       </div>
+      {error === undefined ? null : (
+        <p
+          className="dsh-qa-admin__error"
+          data-testid="qa-admin-audit-error"
+          role="alert"
+        >
+          {error}
+        </p>
+      )}
       {rows.length === 0 ? (
         <p className="dsh-qa-admin__empty" data-testid="qa-admin-audit-empty">
-          {loading ? "Загружаю…" : "Изменений пока нет."}
+          {loading
+            ? "Загружаю…"
+            : error === undefined
+              ? "Изменений пока нет."
+              : "События не загрузились."}
         </p>
       ) : (
         <ol className="dsh-qa-audit" data-testid="qa-admin-audit-list">

@@ -4,6 +4,7 @@ import type {
   SessionPromptRequest,
   SessionPageRequest,
   SessionFollowFrame,
+  SessionProjectionsValue,
 } from "@deepseek-ai/dsh-api-session-controller/types";
 import { QaChatTransport } from "../../src/chat-sharing/transport.js";
 import { sharingFixture } from "./chat-sharing.helpers.js";
@@ -49,7 +50,12 @@ function fixture() {
       ],
     })),
     follow: vi.fn(),
-    projections: vi.fn(async () => ({ asOfSeq: 1, values: {} })),
+    // 0.2.1 projections carry their sequence space on the value itself.
+    projections: vi.fn(async (): Promise<SessionProjectionsValue> => ({
+      kind: "sequenced",
+      asOfSeq: 1,
+      values: {},
+    })),
   };
   const admit = vi.fn(async () => undefined);
   const agents = delegated();
@@ -155,6 +161,28 @@ describe("authenticated QA chat transport", () => {
     expect(f.native.projections).toHaveBeenCalledOnce();
     liveController.abort();
     await live.return?.();
+  });
+  it("omits a migration-required row from the control baseline", async () => {
+    // 0.2.1 splits SessionProjectionsValue by kind: a migration-required row
+    // carries no event cut, so it cannot seed an asOfSeq-keyed baseline.
+    const f = fixture();
+    f.native.projections.mockResolvedValue({
+      kind: "migration-required",
+      values: {},
+    });
+    f.native.list.mockResolvedValue({
+      items: [{ sessionId: "chat-a", agentAvailable: true }],
+    } as never);
+    const controller = new AbortController();
+    const iterable = f.transport.control(f.reader.token, controller.signal);
+    const stream = iterable[Symbol.asyncIterator]();
+    expect((await stream.next()).value).toEqual({
+      type: "baseline",
+      value: { projections: {} },
+    });
+    expect(f.native.projections).toHaveBeenCalledOnce();
+    controller.abort();
+    await stream.return?.();
   });
   it("uses an account-scoped catalog and rechecks a grant revoked during the read", async () => {
     const f = fixture();

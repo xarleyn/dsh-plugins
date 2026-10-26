@@ -12,10 +12,10 @@ import {
 } from "../src/prompt.js";
 import type {
   ReviewVerdict,
-  SubagentRunHandle,
+  SubagentActivation,
+  SubagentActivationSpec,
   SubagentRunResult,
   SubagentsFace,
-  SubagentStartSpec,
 } from "../src/types.js";
 
 /**
@@ -60,17 +60,29 @@ const PASS: ReviewVerdict = {
 
 /** Scripted subagent face: records the reviewer prompt the gate started. */
 class ScriptedFace implements SubagentsFace {
-  readonly started: SubagentStartSpec[] = [];
+  readonly started: SubagentActivationSpec[] = [];
   readonly queue: ((result: SubagentRunResult | Error) => void)[] = [];
 
-  start(
-    _provider: string,
-    request: SubagentStartSpec,
-  ): Promise<SubagentRunHandle> {
-    this.started.push(request);
+  getProvider(name: string) {
+    if (name !== "spawn") return undefined;
+    return {
+      name,
+      capabilities: {
+        agentOptions: true,
+        agentPreset: true,
+        outputSchema: true,
+        depthLimit: true,
+      },
+      inheritsParentContext: true,
+    };
+  }
+
+  startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation> {
+    this.started.push(spec);
     return new Promise((resolve) => {
       this.queue.push((outcome) => {
         resolve({
+          childId: "child-session",
           result:
             outcome instanceof Error
               ? Promise.reject(outcome)
@@ -152,8 +164,8 @@ function surfaceWithAttachment(
   } as unknown as GateAgent["session"];
 }
 
-function promptTextOf(spec: SubagentStartSpec): string {
-  return spec.prompt
+function promptTextOf(spec: SubagentActivationSpec): string {
+  return spec.request.prompt
     .filter(
       (block): block is Extract<ContentBlock, { type: "text" }> =>
         block.type === "text",
@@ -164,7 +176,7 @@ function promptTextOf(spec: SubagentStartSpec): string {
 
 async function reviewerSpec(
   content: readonly ContentBlock[],
-): Promise<SubagentStartSpec> {
+): Promise<SubagentActivationSpec> {
   const face = new ScriptedFace();
   const gate = makeGate(face);
   const agent = {
@@ -201,10 +213,10 @@ describe("reviewer sees uploaded attachments", () => {
         ...images,
         fileBlock(),
       ]);
-      expect(spec.prompt.filter((block) => block.type === "image")).toEqual(
-        images,
-      );
-      expect(spec.prompt).not.toContainEqual(fileBlock());
+      expect(
+        spec.request.prompt.filter((block) => block.type === "image"),
+      ).toEqual(images);
+      expect(spec.request.prompt).not.toContainEqual(fileBlock());
       const text = promptTextOf(spec);
       expect(text).not.toContain(
         "image omitted because this model accepts text only",

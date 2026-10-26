@@ -173,7 +173,6 @@ function makeForm(
     user: undefined,
     revision: 1,
     writable: true,
-    mode: "host",
     ...snapshot,
   };
   return {

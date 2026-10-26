@@ -76,7 +76,12 @@ describe("host-only reviewer images", () => {
         expect(
           request.prompt.filter((block) => block.type === "image"),
         ).toEqual(images);
+        // The composed policy leads the first message; the task follows it.
         expect(request.prompt[0]).toMatchObject({
+          type: "text",
+          text: expect.stringContaining("You are the designated expert"),
+        });
+        expect(request.prompt[1]).toMatchObject({
           type: "text",
           text: expect.stringContaining("Review the screenshot."),
         });

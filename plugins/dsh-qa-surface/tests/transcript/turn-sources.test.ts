@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ConversationNode } from "@deepseek-ai/dsh-client-ui-conversation/client";
+import { PartialArguments } from "@deepseek-ai/dsh-util-values";
 import {
   projectSources,
   sourceAnchorRoot,
@@ -34,6 +35,13 @@ describe("turn sources projection", () => {
       seq,
       time: seq * 10,
       callId,
+      // The paired call's wire name and argument view; an out-of-window
+      // call leaves the name empty and the argument view empty.
+      name: call?.name ?? "",
+      args:
+        call === null
+          ? PartialArguments.EMPTY
+          : PartialArguments.fromText(call.argsRaw),
       call,
       callTime: null,
       content: [{ type: "text" as const, text }],
@@ -146,6 +154,7 @@ describe("turn sources projection", () => {
               callId: "c5",
               name: "web_fetch",
               phase: "start",
+              args: PartialArguments.fromText('{"url":"https://example.com"}'),
               argsRaw: '{"url":"https://example.com"}',
               turn: 1,
               step: 1,

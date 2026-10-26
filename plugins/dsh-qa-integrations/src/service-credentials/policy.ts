@@ -1,3 +1,4 @@
+import { serviceOperationAccess } from "./operation-policy.js";
 import type { IntegrationErrorCode } from "../errors.js";
 import type { IntegrationCapability } from "../types.js";
 import type {
@@ -8,7 +9,8 @@ import type {
 
 /**
  * The service ceiling: an operation reaches a managed credential only when it
- * is a read, carries no more than normal sensitivity, and was classified as
+ * is a classified read and either uses its conservative default or an explicit
+ * profile allowance for sensitive content. It was classified as
  * service-safe on purpose. Upstream permissions are never part of this test:
  * a service token that happens to be able to trigger a build still cannot,
  * because the operation is a write.
@@ -51,11 +53,12 @@ function sensitiveReadMessage(
     capability === undefined
       ? "This operation"
       : `${profile.provider}.${capability}`;
-  return `${name} can return text a build or another person produced, which the deployment's managed service credential never reads. Switch this integration to your personal account to read it: neither your token nor the deployment's capability switch is at fault.`;
+  return `${name} can return text a build or another person produced, which this managed service profile does not permit reading. Ask the administrator to permit this reading, or switch this integration to your personal account: neither your token nor the deployment's capability switch is at fault.`;
 }
 
 export interface ServiceOperationQuery {
   readonly metadata: OperationSecurityMetadata;
+  readonly operation?: string | undefined;
   /** Capability the operation belongs to, when its provider declares one. */
   readonly capability: IntegrationCapability | undefined;
   readonly profile: ServiceCredentialProfile;
@@ -74,25 +77,31 @@ export function evaluateServiceOperation(
   query: ServiceOperationQuery,
 ): ServicePolicyDecision {
   const { metadata, capability, profile, boundaryKind } = query;
-  if (metadata.effect !== "read") {
+  const access = serviceOperationAccess(metadata, {
+    provider: profile.provider,
+    capability,
+    operation: query.operation,
+    policy: profile.policy,
+  });
+  if (access === "effect") {
     return denied(
       "OperationNotAllowedWithServiceCredential",
       "Only read operations are available through the service credential",
     );
   }
-  if (metadata.sensitivity !== "normal") {
+  if (access === "sensitive" || access === "secret") {
     return denied(
       "SensitiveReadRequiresPersonalCredential",
       sensitiveReadMessage(profile, capability),
     );
   }
-  if (metadata.serviceCredential !== "allow") {
+  if (access === "default") {
     return denied(
       "OperationNotAllowedWithServiceCredential",
       "This operation is not enabled for the service credential",
     );
   }
-  if (narrowed(profile, capability) !== undefined) {
+  if (access === "policy") {
     return denied(
       "OperationNotAllowedWithServiceCredential",
       "This operation is disabled for the service credential by deployment policy",
@@ -117,23 +126,6 @@ export function evaluateServiceOperation(
     }
   }
   return ALLOWED;
-}
-
-/** The policy key that narrows an operation, if the administrator set one. */
-function narrowed(
-  profile: ServiceCredentialProfile,
-  capability: IntegrationCapability | undefined,
-): string | undefined {
-  const keys = Object.keys(profile.policy);
-  if (keys.length === 0) return undefined;
-  for (const key of keys) {
-    if (capability !== undefined && key === capability) return key;
-    if (key.startsWith(`${profile.provider}.`)) {
-      const bare = key.slice(profile.provider.length + 1);
-      if (capability !== undefined && bare === capability) return key;
-    }
-  }
-  return undefined;
 }
 
 /** Exact membership of one identifier in one kind of a boundary. */

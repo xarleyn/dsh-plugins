@@ -37,14 +37,28 @@ export interface AnswerReviewGateConfig {
     readonly route?: string;
     /** Optional reasoning-effort override for the `subagent` backend. */
     readonly reasoningEffort?: string;
-    /** Persona instruction for the `subagent` reviewer child. */
+    /**
+     * Persona instruction for the `subagent` reviewer child, delivered as the
+     * first block of its task prompt (the Host accepts no per-child persona).
+     */
     readonly persona?: string;
+    /**
+     * Agent Preset id for the `subagent` reviewer child. This is where a
+     * reviewer's persona and tool set live on this Host: a per-run tool
+     * filter no longer exists, so a preset (from a provider that does not
+     * inherit the parent's composition) is the only way to scope the child's
+     * tools. The preset must exist in the Host's agent-presets registry.
+     */
+    readonly agentPreset?: string;
     /**
      * Read-only tool allow-list for the `subagent` reviewer child. Absent means
      * `REVIEWER_READ_ONLY_TOOLS` — reads and searches, and nothing that can
      * change state. An explicitly empty list means a tool-less reviewer.
      * Whatever is listed, the destructive names of `REVIEWER_FORBIDDEN_TOOLS`
-     * are removed: a reviewer never holds a tool that can delete or write.
+     * are removed. The Host accepts no per-run tool scoping any more, so this
+     * list no longer composes the child — the gate records the unenforceable
+     * boundary, and a deployment scopes the reviewer's tools with
+     * `reviewer.agentPreset` instead.
      */
     readonly allowedTools?: string[];
   };
@@ -96,6 +110,7 @@ export interface ResolvedAnswerReviewGateConfig {
     readonly route: string;
     readonly reasoningEffort: string;
     readonly persona: string;
+    readonly agentPreset: string;
     readonly allowedTools: readonly string[];
   };
   readonly maxReviewRounds: number;
@@ -124,6 +139,7 @@ export const ANSWER_REVIEW_GATE_DEFAULTS: ResolvedAnswerReviewGateConfig = {
     route: "",
     reasoningEffort: "",
     persona: "",
+    agentPreset: "",
     allowedTools: REVIEWER_READ_ONLY_TOOLS,
   },
   maxReviewRounds: 3,
@@ -198,6 +214,7 @@ export function resolveAnswerReviewGateConfig(
       route: cleanString(reviewer.route, ""),
       reasoningEffort: cleanString(reviewer.reasoningEffort, ""),
       persona: cleanString(reviewer.persona, ""),
+      agentPreset: cleanString(reviewer.agentPreset, ""),
       // An unset list means the read-only default; a set one is honoured only
       // for the names a reviewer may hold at all.
       allowedTools:
@@ -279,12 +296,20 @@ export const AnswerReviewGateConfigSchema: z<AnswerReviewGateConfig> = z
         persona: z
           .string()
           .default("")
-          .description("Persona instruction for the subagent reviewer."),
+          .description(
+            "Persona instruction for the subagent reviewer, delivered as the first block of its task prompt.",
+          ),
+        agentPreset: z
+          .string()
+          .default("")
+          .description(
+            "Agent Preset id for the subagent reviewer. Where a reviewer's persona and tool set live on this Host: per-run tool scoping no longer exists, so a preset from a provider that does not inherit the parent's composition is the only way to scope the child's tools.",
+          ),
         allowedTools: z
           .array(z.string())
           .default([...REVIEWER_READ_ONLY_TOOLS])
           .description(
-            "Read-only tool allow-list for the subagent reviewer. Unset means the read-only set (reads and searches); an explicitly empty list means no tools; deleting or writing a file is never allowed.",
+            "Read-only tool allow-list for the subagent reviewer. Unset means the read-only set (reads and searches); an explicitly empty list means no tools; deleting or writing a file is never allowed. The Host accepts no per-run tool scoping, so the list no longer composes the child — scope the tools with reviewer.agentPreset.",
           ),
       })
       .default({
@@ -295,6 +320,7 @@ export const AnswerReviewGateConfigSchema: z<AnswerReviewGateConfig> = z
         route: "",
         reasoningEffort: "",
         persona: "",
+        agentPreset: "",
         allowedTools: [...REVIEWER_READ_ONLY_TOOLS],
       }),
     maxReviewRounds: z

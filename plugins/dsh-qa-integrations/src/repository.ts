@@ -434,13 +434,14 @@ export class IntegrationRepository {
   policy(
     integration: StoredIntegration,
     operation: IntegrationCapability,
+    fallback: IntegrationPolicyMode = "deny",
   ): IntegrationPolicyMode {
     const row = this.storage.db
       .prepare(
         "SELECT mode FROM integration_policies WHERE integration_id = ? AND operation = ?",
       )
       .get(integration.id, operation) as { mode: string } | undefined;
-    return (row?.mode as IntegrationPolicyMode | undefined) ?? "deny";
+    return (row?.mode as IntegrationPolicyMode | undefined) ?? fallback;
   }
 
   connect(options: {

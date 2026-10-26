@@ -6,9 +6,22 @@ import type {
   QaChatWire,
   QaSessionRemotes,
 } from "../../../src/client/chat-sharing-api.js";
+import type { SessionSummary } from "@deepseek-ai/dsh-api-session-controller/types";
 import { createQaAccountSessions } from "../../../src/client/account-sessions.js";
 
 afterEach(() => vi.useRealTimers());
+
+/** One catalog row shaped the way the QA chat listing answers. */
+function listedRow(sessionId: string): SessionSummary {
+  return {
+    sessionId,
+    updatedAt: 0,
+    agentAvailable: false,
+    formatStatus: "current",
+    running: false,
+    blank: true,
+  } as SessionSummary;
+}
 
 describe("account Session bootstrap", () => {
   it("does not reset an in-flight catalog on repeated account notifications", () => {
@@ -17,6 +30,8 @@ describe("account Session bootstrap", () => {
     class NativeSessions {
       refresh = vi.fn(async () => undefined);
       handleConnected = connected;
+      handleSessionAdded = vi.fn();
+      handleSessionRemoved = vi.fn();
     }
     const disposers: (() => void)[] = [];
     const ctx = {
@@ -77,6 +92,8 @@ describe("account Session bootstrap", () => {
       }
       refresh = vi.fn(async () => undefined);
       handleConnected = vi.fn();
+      handleSessionAdded = vi.fn();
+      handleSessionRemoved = vi.fn();
     }
     const disposers: (() => void)[] = [];
     const ctx = {
@@ -126,4 +143,76 @@ describe("account Session bootstrap", () => {
       for (const dispose of disposers) dispose();
     }
   });
+
+  it("replays every listing through the manager's addition and removal paths", async () => {
+    vi.useFakeTimers();
+    const added = vi.fn();
+    const removed = vi.fn();
+    let listing: { ok: true; value: { items: SessionSummary[] } } = {
+      ok: true,
+      value: { items: [listedRow("session-first")] },
+    };
+    let secured: QaSessionRemotes | undefined;
+    class NativeSessions {
+      constructor(_context: unknown, remotes: QaSessionRemotes) {
+        secured = remotes;
+      }
+      refresh = vi.fn(async () => undefined);
+      handleConnected = vi.fn();
+      handleSessionAdded = added;
+      handleSessionRemoved = removed;
+    }
+    const disposers: (() => void)[] = [];
+    const ctx = {
+      isolate: () => ctx,
+      effect: (setup: () => () => void) => disposers.push(setup()),
+    } as unknown as Context;
+    const remote = {
+      session: {},
+      $stream: vi.fn(),
+    } as unknown as QaSessionRemotes;
+    const wire = {
+      chatList: vi.fn(async () => listing),
+    } as unknown as QaChatWire;
+    const generation = {
+      getSnapshot: () => undefined,
+      subscribe: () => () => undefined,
+    } as unknown as ConnectionGenerationState;
+    try {
+      createQaAccountSessions(
+        ctx,
+        { constructor: NativeSessions } as unknown as QaSessions,
+        remote,
+        wire,
+        () => "synthetic-account-token",
+        generation,
+        () => () => undefined,
+      );
+      const listed = await securedSessionList(secured);
+      expect(listed.ok).toBe(true);
+      // The row reached the manager even if the manager's own application of
+      // the pull is lost to a generation reset.
+      expect(added).toHaveBeenCalledWith(listing.value.items[0]);
+
+      listing = { ok: true, value: { items: [listedRow("session-second")] } };
+      await securedSessionList(secured);
+      expect(removed).toHaveBeenCalledWith("session-first");
+      expect(added).toHaveBeenLastCalledWith(listing.value.items[0]);
+    } finally {
+      for (const dispose of disposers) dispose();
+    }
+  });
 });
+
+/** Read one listing through the secured transport the way the facade does. */
+async function securedSessionList(
+  secured: QaSessionRemotes | undefined,
+): Promise<{ ok: boolean; value: { items: SessionSummary[] } }> {
+  const result = await (
+    secured!.session.list as (
+      request: unknown,
+    ) => Promise<{ ok: boolean; value: { items: SessionSummary[] } }>
+  )({});
+  expect(result.ok).toBe(true);
+  return result;
+}

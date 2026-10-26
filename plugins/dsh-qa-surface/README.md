@@ -23,6 +23,10 @@ Session and Agent Loop.
 
 ## What it does
 
+Corporate sign-in through Keycloak or another OpenID Connect provider is opt-in.
+The source tree includes `plugins/dsh-qa-surface/docs/oidc.md` with client settings,
+account linking, role admission, session limits and deployment acceptance.
+
 - contributes one root-scoped entry to the additive `shell.overlay` slot;
 - stays invisible outside the configured route;
 - creates or restores one real DSH Session;
@@ -422,7 +426,7 @@ enforce its own permissions.
 ### Writable per-user research space
 
 Set `accounts.perUserWorkspace: true` only together with accounts, a registered
-`session.workspaceId`, `lockdown.enforceFixedWorkspace: true`, and a
+`session.workspaceId`, `lockdown.enabled: true`, and a
 `workspace-write` + `never` permission preset:
 
 ```yaml
@@ -586,7 +590,7 @@ the drawers and the dialogs are painted from `--dsw-alias-*` tokens, and those
 tokens are declared under exactly those selectors. The font-size axis and a
 theme's own token overrides stay the Host's. `system` resolves through
 `prefers-color-scheme` and keeps listening, so a laptop going dark at dusk takes
-the chat with it. Once a preference is chosen the control marks the *preference*,
+the chat with it. Once a preference is chosen the control marks the _preference_,
 never the resolved palette, so «Системная тема» stays pressed while the operating
 system decides which theme that is.
 
@@ -989,7 +993,10 @@ export function apply(ctx: Context) {
     ctx.slots.inject("plugins.row.config", () =>
       ctx.slots.register(
         // `<package name>#<row id>`, the row id being the settings namespace.
-        { name: "plugins.row.config", key: "@yadsh/dsh-my-plugin#my-namespace" },
+        {
+          name: "plugins.row.config",
+          key: "@yadsh/dsh-my-plugin#my-namespace",
+        },
         MyCard,
       ),
     ),

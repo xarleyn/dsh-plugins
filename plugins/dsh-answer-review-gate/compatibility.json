@@ -1,7 +1,7 @@
 {
   "deepseekHarness": {
     "channel": "next",
-    "range": ">=0.1.7-rc.2 <0.2.0",
+    "range": ">=0.1.7-rc.2 <0.3.0-0",
     "testedReleases": ["0.1.7-rc.2"],
     "requiredHostFeatures": [
       "agent/turn-stopping",

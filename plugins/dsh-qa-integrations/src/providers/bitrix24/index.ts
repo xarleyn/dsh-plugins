@@ -156,8 +156,12 @@ export class Bitrix24Provider implements IntegrationProvider {
    */
   capabilityServiceState(
     capability: IntegrationCapability,
+    policy?: Readonly<Record<string, "allow" | "deny">>,
   ): CapabilityServiceState | undefined {
-    return operationCapabilityServiceState(BITRIX_OPERATIONS, capability);
+    return operationCapabilityServiceState(BITRIX_OPERATIONS, capability, {
+      provider: this.id,
+      policy,
+    });
   }
 
   /**
@@ -282,6 +286,12 @@ export class Bitrix24Provider implements IntegrationProvider {
       assertServiceOperationAllowed(
         definition.security,
         "This Bitrix24 operation is not available through the service credential",
+        {
+          provider: this.id,
+          operation,
+          capability: definition.capability,
+          policy: context.serviceOperationPolicy,
+        },
       );
     }
     const boundary = serviceBoundaryOf(context);

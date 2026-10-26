@@ -14,6 +14,7 @@ import type { QaQuickQuestion } from "../types.js";
 import { QaSlashPalette } from "../slash/SlashPalette.js";
 import { useSlashNavigation } from "../slash/useSlashNavigation.js";
 import { QaFileAttachment } from "./QaFileAttachment.js";
+import { isQaModalOpen } from "./QaModal.js";
 
 export interface QaComposerProps {
   readonly fastMode?: boolean;
@@ -53,6 +54,32 @@ export interface QaComposerProps {
 /** Stable id stem so `aria-activedescendant` can point at a palette row. */
 const SLASH_LIST_ID = "dsh-qa-slash";
 
+/**
+ * Return from the composer's own controls, or claim an unowned page. A send
+ * completion and a running-state update are not permission to leave a field
+ * the user has since entered, or to steer focus behind an open dialog.
+ */
+function focusComposer(
+  input: HTMLTextAreaElement | null,
+  owner: HTMLDivElement | null,
+): void {
+  if (input === null || owner === null || !input.isConnected || input.disabled)
+    return;
+  if (isQaModalOpen()) return;
+  const document = input.ownerDocument;
+  const active = document.activeElement;
+  if (
+    active !== null &&
+    active !== document.body &&
+    active !== document.documentElement &&
+    active.isConnected &&
+    !owner.contains(active)
+  ) {
+    return;
+  }
+  input.focus();
+}
+
 function AttachIcon() {
   return (
     <svg viewBox="0 0 18 18" aria-hidden="true">
@@ -81,6 +108,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
   const [dragOver, setDragOver] = useState(false);
   const [attachmentError, setAttachmentError] = useState<string | null>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
+  const focusOwner = useRef<HTMLDivElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const attachments = props.attachments;
   const limits = props.limits;
@@ -93,7 +121,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
     queueMicrotask(() => {
       const element = textarea.current;
       if (element === null) return;
-      element.focus();
+      focusComposer(element, focusOwner.current);
       element.setSelectionRange(text.length, text.length);
     });
   };
@@ -129,7 +157,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
       }
     } finally {
       setSubmitting(false);
-      textarea.current?.focus();
+      focusComposer(textarea.current, focusOwner.current);
     }
   };
 
@@ -159,7 +187,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
   };
 
   useEffect(() => {
-    if (!props.running) textarea.current?.focus();
+    if (!props.running) focusComposer(textarea.current, focusOwner.current);
   }, [props.running]);
 
   useEffect(() => {
@@ -180,6 +208,7 @@ export const QaComposer = memo(function QaComposer(props: QaComposerProps) {
       : (props.status ?? "Enter: отправить, Shift+Enter: новая строка");
   return (
     <div
+      ref={focusOwner}
       className={
         dragOver
           ? "dsh-qa-composer-wrap dsh-qa-composer-wrap--drag"

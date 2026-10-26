@@ -253,6 +253,8 @@ export interface QaSurfaceConfig {
     readonly frameAncestors?: string | null;
   };
   readonly accounts?: {
+    readonly localLogin?: boolean;
+    readonly oidc?: import("./oidc.js").QaOidcConfig;
     /** Opt-in; the QA gate stays off until the deployment turns this on. */
     readonly enabled?: boolean;
     readonly allowRegistration?: boolean;
@@ -461,6 +463,8 @@ export interface ResolvedQaSurfaceConfig {
     readonly frameAncestors: string | null;
   };
   readonly accounts: {
+    readonly localLogin: boolean;
+    readonly oidc: import("./oidc.js").ResolvedQaOidcConfig;
     readonly enabled: boolean;
     readonly allowRegistration: boolean;
     readonly sessionTtlDays: number;

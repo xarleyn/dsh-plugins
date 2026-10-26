@@ -59,6 +59,22 @@ function setup() {
       };
     },
   );
+  type GuardRequest = {
+    method?: string;
+    url?: string;
+    headers: { authorization?: string };
+  };
+  type GuardResponse = {
+    writeHead: (status: number, headers?: Record<string, unknown>) => unknown;
+    end: (body?: string) => unknown;
+  };
+  let guard:
+    | ((
+        request: GuardRequest,
+        response: GuardResponse,
+        next: () => Promise<void>,
+      ) => unknown)
+    | undefined;
   const ctx = {
     get: (name: string) =>
       name === "connection"
@@ -71,6 +87,10 @@ function setup() {
             },
           }
         : { uploadStream: upload },
+    on: (event: string, handler: NonNullable<typeof guard>) => {
+      guard = handler;
+      return () => {};
+    },
   } as unknown as Context;
   installQaChatUploads(
     ctx,
@@ -78,13 +98,41 @@ function setup() {
     async () => {},
     adapter,
   );
-  const request = (token: string, body = "data") =>
-    handle(
-      new Request(
-        `http://localhost/api/qa-chat-upload?sessionId=chat-a&formUploadId=${u.id}`,
-        { method: "POST", body, headers: { authorization: `Bearer ${token}` } },
-      ),
+  // The Host answers through the connection/request guard before the streaming
+  // bridge; only a request the guard lets through reaches the fetch handler.
+  const request = async (token: string, body = "data") => {
+    const url = `/api/qa-chat-upload?sessionId=chat-a&formUploadId=${u.id}`;
+    let status = 0;
+    let payload: string | undefined;
+    const proceed = guard?.(
+      { method: "POST", url, headers: { authorization: `Bearer ${token}` } },
+      {
+        writeHead: (code) => {
+          status = code;
+          return undefined;
+        },
+        end: (text?: string) => {
+          if (!status) status = 200;
+          payload = text;
+          return undefined;
+        },
+      },
+      async () => {},
     );
+    if (proceed) await proceed;
+    if (payload !== undefined)
+      return new Response(payload, {
+        status,
+        headers: { "content-type": "application/json; charset=utf-8" },
+      });
+    return handle(
+      new Request(`http://localhost${url}`, {
+        method: "POST",
+        body,
+        headers: { authorization: `Bearer ${token}` },
+      }),
+    );
+  };
   return { auth, f, r, u, upload, request };
 }
 describe("protected form upload route", () => {

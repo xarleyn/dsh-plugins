@@ -39,7 +39,6 @@ class FakeForm implements ConfigForm<SleevSettings> {
     user: {},
     revision: 0,
     writable: true,
-    mode: "host",
   };
 
   getSnapshot(): ConfigFormSnapshot<SleevSettings> {

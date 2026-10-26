@@ -12,6 +12,7 @@ import {
 import type { QaSurfaceConfig, ResolvedQaSurfaceConfig } from "../types.js";
 import { DEFAULT_QA_SURFACE_CONFIG } from "./defaults.js";
 import { assertIntInRange } from "./shared.js";
+import { resolveOidc } from "./oidc.js";
 
 type AccountsSlice = ResolvedQaSurfaceConfig["accounts"];
 
@@ -83,12 +84,10 @@ export function resolveAccounts(
   }
   if (
     perUserWorkspace &&
-    (!lockdown.enabled ||
-      !lockdown.enforceFixedWorkspace ||
-      lockdown.sandboxMode !== "workspace-write")
+    (!lockdown.enabled || lockdown.sandboxMode !== "workspace-write")
   ) {
     throw new TypeError(
-      "dsh-qa-surface: accounts.perUserWorkspace requires lockdown.enabled, enforceFixedWorkspace, and workspace-write",
+      "dsh-qa-surface: accounts.perUserWorkspace requires lockdown.enabled and workspace-write",
     );
   }
   if (lockdown.sandboxMode === "workspace-write" && !perUserWorkspace) {
@@ -147,6 +146,8 @@ export function resolveAccounts(
   );
   return Object.freeze({
     enabled: accountsEnabled,
+    localLogin: input.accounts?.localLogin ?? true,
+    oidc: resolveOidc(input),
     allowRegistration:
       input.accounts?.allowRegistration ??
       DEFAULT_QA_SURFACE_CONFIG.accounts.allowRegistration,

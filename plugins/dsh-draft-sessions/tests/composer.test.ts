@@ -84,6 +84,9 @@ function bridgeOptions(
     conversation: {
       input: {
         for: (() => inputs[inputIndex++]?.face) as never,
+        // Host 0.2.1 SessionInputResolver: the resolver also answers Host
+        // navigation; the bridge never calls it, so the fixture only admits.
+        requestDraftInitialization: () => "applied",
       },
     },
     debounceMs: 350,

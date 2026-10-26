@@ -152,7 +152,10 @@ describe("integrations client entry", () => {
         name: "plugins.row.config",
         key: "@yadsh/dsh-qa-integrations#qa-integrations",
         inject: expect.any(Function),
-        injected: { settingsForm: expect.anything() },
+        injected: {
+          settingsForm: expect.anything(),
+          loadServiceOperations: expect.any(Function),
+        },
       },
       {
         name: "plugins.bundle.config",
@@ -174,7 +177,10 @@ describe("integrations client entry", () => {
         name: "plugins.row.config",
         key: "@yadsh/dsh-qa-integrations#qa-integrations",
         inject: expect.any(Function),
-        injected: { settingsForm: expect.anything() },
+        injected: {
+          settingsForm: expect.anything(),
+          loadServiceOperations: expect.any(Function),
+        },
       },
     ]);
     // The stylesheet is mounted with the injection, not with the answer.

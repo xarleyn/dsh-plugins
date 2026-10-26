@@ -245,6 +245,12 @@ export interface QaQualityTrendPoint {
 }
 
 export interface QaQualityMetrics {
+  /** Counts derived from journals are incomplete until every journal was read. */
+  readonly coverage?: {
+    readonly complete: boolean;
+    readonly readConversations: number;
+    readonly totalConversations: number;
+  };
   readonly conversations: number;
   readonly activeUsers: number;
   readonly assistantMessages: number;

@@ -11,9 +11,8 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { Context } from "@deepseek-ai/cordis";
 import type {
+  SubagentActivationSpec,
   SubagentProvider,
-  SubagentRun,
-  SubagentStartRequest,
 } from "@deepseek-ai/dsh-subagent";
 import type { ToolDefinition } from "@deepseek-ai/dsh-tools";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
@@ -422,10 +421,8 @@ export function subagentsFaceOf(runtime: Context["subagents"]): SubagentsFace {
   return {
     getProvider: (providerName: string): SubagentProvider | undefined =>
       runtime.getProvider(providerName),
-    start: (
-      providerName: string,
-      request: SubagentStartRequest,
-    ): Promise<SubagentRun> => runtime.start(providerName, request),
+    startActivation: (spec: SubagentActivationSpec) =>
+      runtime.startActivation(spec),
     childrenOf: async (parentSessionId: string, signal: AbortSignal) => {
       const rows = await runtime.listChildren(
         parentSessionId as Parameters<Context["subagents"]["listChildren"]>[0],
@@ -436,13 +433,6 @@ export function subagentsFaceOf(runtime: Context["subagents"]): SubagentsFace {
         label: row.label,
       }));
     },
-    ...(typeof runtime.startContinuable === "function"
-      ? {
-          startContinuable: runtime.startContinuable.bind(
-            runtime,
-          ) as NonNullable<SubagentsFace["startContinuable"]>,
-        }
-      : {}),
   };
 }
 

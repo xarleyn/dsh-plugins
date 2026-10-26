@@ -244,8 +244,12 @@ export class JiraProvider implements IntegrationProvider {
 
   capabilityServiceState(
     capability: IntegrationCapability,
+    policy?: Readonly<Record<string, "allow" | "deny">>,
   ): CapabilityServiceState | undefined {
-    return operationCapabilityServiceState(JIRA_OPERATIONS, capability);
+    return operationCapabilityServiceState(JIRA_OPERATIONS, capability, {
+      provider: this.id,
+      policy,
+    });
   }
 
   /**
@@ -366,6 +370,12 @@ export class JiraProvider implements IntegrationProvider {
       assertServiceOperationAllowed(
         definition.security,
         "This Jira operation is not available through the service credential",
+        {
+          provider: this.id,
+          operation,
+          capability: definition.capability,
+          policy: context.serviceOperationPolicy,
+        },
       );
     }
     const boundary = serviceBoundaryOf(context);

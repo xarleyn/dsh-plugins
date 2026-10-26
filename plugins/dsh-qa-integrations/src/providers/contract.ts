@@ -34,6 +34,9 @@ export interface ProviderContext {
    * mapped to a resource first.
    */
   readonly resourceBoundary?: ServiceResourceBoundary | undefined;
+  /** Policy supplied by the broker, never by model input. */
+  readonly serviceOperationPolicy?:
+    Readonly<Record<string, "allow" | "deny">> | undefined;
 }
 
 export interface IntegrationProvider {
@@ -95,6 +98,7 @@ export interface IntegrationProvider {
    */
   capabilityServiceState?(
     capability: IntegrationCapability,
+    policy?: Readonly<Record<string, "allow" | "deny">>,
   ): CapabilityServiceState | undefined;
   /**
    * Which kind of resource an operation reads, in the profile's vocabulary

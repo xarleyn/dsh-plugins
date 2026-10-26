@@ -7,7 +7,9 @@
  */
 
 import { useEffect, useRef, useState, type ReactElement } from "react";
-import { RecordField } from "../operator-controls.js";
+import { RecordField, useDraftRowIdentity } from "../operator-controls.js";
+import { ServiceOperationPolicyField } from "./service-operation-policy.js";
+import type { ServicePolicyOperation } from "../../types.js";
 import { draftNote, profileDraftMissing } from "../operator-drafts.js";
 import {
   Group,
@@ -82,7 +84,7 @@ function profileWire(draft: ProfileDraft): Record<string, unknown> {
   }
   if (draft.policy.length > 0) {
     wire.policy = Object.fromEntries(
-      draft.policy.map(([operation]) => [operation, "deny"]),
+      draft.policy.map(([operation, decision]) => [operation, decision]),
     );
   }
   return wire;
@@ -92,22 +94,27 @@ function profileWire(draft: ProfileDraft): Record<string, unknown> {
  * The managed-credential profile list editor.
  */
 function ServiceProfilesField(props: {
+  operations: Readonly<Record<string, readonly ServicePolicyOperation[]>>;
   profiles: readonly ProfileDraft[];
   disabled: boolean;
   write: (path: readonly string[], value: unknown) => void;
   unset: (path: readonly string[]) => void;
   overridden: (path: readonly string[]) => boolean;
 }): ReactElement {
+  const identity = useDraftRowIdentity<ProfileDraft>();
   const [drafts, setDrafts] = useState<readonly ProfileDraft[]>(props.profiles);
   const storedCount = useRef(props.profiles.length);
+  const storedRows = useRef(props.profiles);
   useEffect(() => {
-    setDrafts((current) => {
-      const accepted = Math.max(0, props.profiles.length - storedCount.current);
-      const pending = current.slice(storedCount.current + accepted);
-      storedCount.current = props.profiles.length;
-      return [...props.profiles, ...pending];
-    });
-  }, [props.profiles]);
+    if (JSON.stringify(storedRows.current) === JSON.stringify(props.profiles))
+      return;
+    storedRows.current = props.profiles;
+    const pendingStart = storedCount.current;
+    storedCount.current = props.profiles.length;
+    setDrafts((current) =>
+      identity.reconcile(props.profiles, current, pendingStart),
+    );
+  }, [identity, props.profiles]);
   const commit = (
     next: readonly ProfileDraft[],
     unsetWhenEmpty = next.length === 0,
@@ -131,7 +138,9 @@ function ServiceProfilesField(props: {
   };
   const edit = (index: number, patch: Partial<ProfileDraft>) => {
     commit(
-      drafts.map((row, at) => (at === index ? { ...row, ...patch } : row)),
+      drafts.map((row, at) =>
+        at === index ? identity.patch(row, patch) : row,
+      ),
     );
   };
   const commitRecord = (
@@ -141,17 +150,18 @@ function ServiceProfilesField(props: {
   ) => {
     if (rows.length === 0) {
       commit(
-        drafts.map((row, at) => (at === index ? { ...row, [key]: [] } : row)),
+        drafts.map((row, at) =>
+          at === index ? identity.patch(row, { [key]: [] }) : row,
+        ),
       );
       return;
     }
     commit(
       drafts.map((row, at) =>
         at === index
-          ? {
-              ...row,
+          ? identity.patch(row, {
               [key]: rows,
-            }
+            })
           : row,
       ),
     );
@@ -167,7 +177,7 @@ function ServiceProfilesField(props: {
       <ul className="qai-op__profiles">
         {drafts.map((row, index) => (
           <li
-            key={`${index}:${row.id}`}
+            key={identity.key(row)}
             className="qai-op__profile"
             data-testid={`qa-integrations-service-access-profile-${index}`}
           >
@@ -214,7 +224,9 @@ function ServiceProfilesField(props: {
                     setDrafts(
                       drafts.map((draft, at) =>
                         at === index
-                          ? { ...draft, id: event.currentTarget.value }
+                          ? identity.patch(draft, {
+                              id: event.currentTarget.value,
+                            })
                           : draft,
                       ),
                     );
@@ -254,7 +266,9 @@ function ServiceProfilesField(props: {
                     setDrafts(
                       drafts.map((draft, at) =>
                         at === index
-                          ? { ...draft, instance: event.currentTarget.value }
+                          ? identity.patch(draft, {
+                              instance: event.currentTarget.value,
+                            })
                           : draft,
                       ),
                     );
@@ -277,7 +291,9 @@ function ServiceProfilesField(props: {
                     setDrafts(
                       drafts.map((draft, at) =>
                         at === index
-                          ? { ...draft, label: event.currentTarget.value }
+                          ? identity.patch(draft, {
+                              label: event.currentTarget.value,
+                            })
                           : draft,
                       ),
                     );
@@ -300,7 +316,9 @@ function ServiceProfilesField(props: {
                     setDrafts(
                       drafts.map((draft, at) =>
                         at === index
-                          ? { ...draft, secretFile: event.currentTarget.value }
+                          ? identity.patch(draft, {
+                              secretFile: event.currentTarget.value,
+                            })
                           : draft,
                       ),
                     );
@@ -323,7 +341,9 @@ function ServiceProfilesField(props: {
                     setDrafts(
                       drafts.map((draft, at) =>
                         at === index
-                          ? { ...draft, secretEnv: event.currentTarget.value }
+                          ? identity.patch(draft, {
+                              secretEnv: event.currentTarget.value,
+                            })
                           : draft,
                       ),
                     );
@@ -349,9 +369,9 @@ function ServiceProfilesField(props: {
                 commitRecord(
                   index,
                   "resources",
-                  Object.entries(
-                    value as Record<string, readonly string[]>,
-                  ).map(([kind, values]) => [kind, values.join(", ")]),
+                  Object.entries(value as Record<string, string>).map(
+                    ([kind, values]) => [kind, rawString(values)],
+                  ),
                 );
               }}
               unset={() => {
@@ -359,29 +379,13 @@ function ServiceProfilesField(props: {
               }}
               overridden={props.overridden}
             />
-            <RecordField
-              label="Запрещённые операции"
-              hint="каждая запись всегда хранит значение deny"
-              path={[...PROFILE_PATH]}
+            <ServiceOperationPolicyField
+              provider={row.provider}
+              operations={props.operations[row.provider] ?? []}
               testId={`qa-integrations-service-access-profile-${index}-policy`}
               entries={row.policy}
-              keyPlaceholder="mergeRequest.create"
-              valuePlaceholder=""
-              fixedValue="deny"
               disabled={props.disabled}
-              write={(_path, value) => {
-                commitRecord(
-                  index,
-                  "policy",
-                  Object.keys(value as Record<string, string>).map(
-                    (operation) => [operation, "deny"],
-                  ),
-                );
-              }}
-              unset={() => {
-                commitRecord(index, "policy", []);
-              }}
-              overridden={props.overridden}
+              onChange={(entries) => commitRecord(index, "policy", entries)}
             />
             {index >= storedCount.current ||
             profileDraftMissing(row).length > 0 ? (
@@ -453,6 +457,7 @@ export function ServiceAccessSection({
         hint="read-only аккаунт, которым развёртывание подключается вместо гостя"
       >
         <ServiceProfilesField
+          operations={form.serviceOperations ?? {}}
           profiles={profileDrafts(msc.profiles)}
           disabled={form.control.disabled}
           write={form.control.write}

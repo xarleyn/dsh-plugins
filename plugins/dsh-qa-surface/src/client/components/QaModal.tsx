@@ -65,6 +65,10 @@ export interface QaModalProps {
  */
 export function QaModal(props: QaModalProps) {
   const closeButton = useRef<HTMLButtonElement>(null);
+  const onClose = useRef(props.onClose);
+  useEffect(() => {
+    onClose.current = props.onClose;
+  }, [props.onClose]);
   useEffect(() => {
     if (!props.open) return;
     closeButton.current?.focus();
@@ -73,15 +77,28 @@ export function QaModal(props: QaModalProps) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (openDialogs.at(-1) !== token) return;
-      props.onClose();
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest(
+          '[role="menu"], [role="listbox"], [role="combobox"][aria-expanded="true"]',
+        )
+      )
+        return;
+      event.preventDefault();
+      event.stopPropagation();
+      onClose.current();
     };
-    window.addEventListener("keydown", onKey);
+    // Host tooltips can consume Escape during document capture. The top QA
+    // dialog owns it before that handler, including when its close button
+    // currently carries a Host tooltip.
+    window.addEventListener("keydown", onKey, true);
     return () => {
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
       const index = openDialogs.indexOf(token);
       if (index >= 0) openDialogs.splice(index, 1);
     };
-  }, [props.open, props.onClose]);
+  }, [props.open]);
   if (!props.open) return null;
   return (
     <div

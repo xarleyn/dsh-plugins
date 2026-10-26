@@ -3,6 +3,7 @@ export type * from "./forms/types.js";
 export type * from "./types/capability.js";
 export type * from "./types/access.js";
 export type * from "./types/accounts.js";
+export type * from "./types/oidc.js";
 export type * from "./types/skills.js";
 export type * from "./types/expert-memory.js";
 export type * from "./types/config.js";

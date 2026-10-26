@@ -1,10 +1,9 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type {
-  ContinuableStartSpec,
+  SubagentActivation,
+  SubagentActivationSpec,
   SubagentCapabilities,
   SubagentProvider,
-  SubagentRun,
-  SubagentStartRequest,
 } from "@deepseek-ai/dsh-subagent";
 import type { DomainDefinition, MemoryRecord } from "../../src/types.js";
 import { emptyDomainDraft } from "../../src/types.js";
@@ -91,18 +90,16 @@ export function domainOf(
 
 export const FULL_CAPABILITIES: SubagentCapabilities = {
   agentOptions: true,
+  agentPreset: true,
   outputSchema: true,
   depthLimit: true,
-  toolFilter: true,
-  persona: true,
 };
 
 export const NO_CAPABILITIES: SubagentCapabilities = {
   agentOptions: false,
+  agentPreset: false,
   outputSchema: false,
   depthLimit: false,
-  toolFilter: false,
-  persona: false,
 };
 
 /** Minimal session header the plugin reads. */
@@ -135,11 +132,6 @@ export function agentOf(options: {
   } as unknown as Agent;
 }
 
-export interface StartedRun {
-  readonly provider: string;
-  readonly request: SubagentStartRequest;
-}
-
 export interface FakeSubagentsOptions {
   readonly structured?: unknown;
   readonly name?: string;
@@ -148,18 +140,12 @@ export interface FakeSubagentsOptions {
   readonly stopReason?: string;
   readonly diagnostic?: string;
   readonly failWith?: unknown;
-  /**
-   * Refuse the first `start` only, then behave normally: the shape a runtime
-   * refusal takes when the caller retries without the names it named.
-   */
-  readonly failOnce?: unknown;
   readonly runId?: string;
-  readonly continuable?: boolean;
 }
 
 export interface FakeSubagents extends SubagentsFace {
-  readonly started: StartedRun[];
-  readonly continued: { readonly label: string }[];
+  /** Every activation the plugin asked the runtime to start, in order. */
+  readonly started: readonly SubagentActivationSpec[];
   readonly disposed: string[];
 }
 
@@ -167,15 +153,12 @@ export interface FakeSubagents extends SubagentsFace {
 export function fakeSubagents(
   options: FakeSubagentsOptions = {},
 ): FakeSubagents {
-  const started: StartedRun[] = [];
-  const continued: { readonly label: string }[] = [];
+  const started: SubagentActivationSpec[] = [];
   const disposed: string[] = [];
   const name = options.name ?? "spawn";
   const runId = options.runId ?? "child-session";
-  let attempts = 0;
   const face: FakeSubagents = {
     started,
-    continued,
     disposed,
     getProvider(providerName: string): SubagentProvider | undefined {
       if (providerName !== name) return undefined;
@@ -186,18 +169,10 @@ export function fakeSubagents(
         start: () => Promise.reject(new Error("not used")),
       } as unknown as SubagentProvider;
     },
-    start(
-      providerName: string,
-      request: SubagentStartRequest,
-    ): Promise<SubagentRun> {
+    startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation> {
       if (options.failWith !== undefined)
         return Promise.reject(options.failWith);
-      if (options.failOnce !== undefined && attempts === 0) {
-        attempts += 1;
-        return Promise.reject(options.failOnce);
-      }
-      attempts += 1;
-      started.push({ provider: providerName, request });
+      started.push(spec);
       const result = {
         ...(options.structured === undefined
           ? {}
@@ -209,23 +184,15 @@ export function fakeSubagents(
           : { diagnostic: options.diagnostic }),
       };
       return Promise.resolve({
-        id: runId,
-        localAgent: undefined,
+        childId: runId,
+        messageId: "m1",
         result: Promise.resolve(result),
         dispose: () => {
           disposed.push(runId);
           return Promise.resolve();
         },
-      } as unknown as SubagentRun);
+      } as unknown as SubagentActivation);
     },
-    ...(options.continuable === false
-      ? {}
-      : {
-          startContinuable: (spec: ContinuableStartSpec) => {
-            continued.push({ label: spec.label });
-            return Promise.resolve({ childId: `${runId}-bg`, messageId: "m1" });
-          },
-        }),
-  } as FakeSubagents;
+  };
   return face;
 }

@@ -11,6 +11,44 @@ afterEach(() => {
   for (const close of cleanup.splice(0)) close();
 });
 describe("shared resources and privileged QA operations", () => {
+  it("reads owner audit summaries without resuming or attesting a historical agent", async () => {
+    const f = sharingFixture();
+    cleanup.push(() => f.store.storage.close());
+    const surface = Object.create(QaSurface.prototype) as QaSurface;
+    const summary = vi.fn(() => ({ available: false }));
+    const audit = vi.fn(async () => ({ available: false }));
+    const secureSession = vi.fn(async () => {
+      throw new Error("historical composition mismatch");
+    });
+    Object.assign(surface, {
+      chatSharingStore: f.store,
+      accountRemotes: { resolve: () => f.accounts },
+      getConfig: () => ({ accounts: { enabled: true } }),
+      ctx: { get: () => ({ summary, audit }) },
+      secureSession,
+    });
+    for (let count = 0; count < 3; count++) {
+      await expect(
+        surface.chatAudit(f.owner.token, "chat-a", false),
+      ).resolves.toEqual({ available: false });
+    }
+    expect(secureSession).not.toHaveBeenCalled();
+    expect(summary).toHaveBeenCalledTimes(3);
+    for (const token of [
+      f.reader.token,
+      f.collaborator.token,
+      f.outsider.token,
+    ]) {
+      await expect(surface.chatAudit(token, "chat-a", false)).rejects.toThrow();
+    }
+    expect(summary).toHaveBeenCalledTimes(3);
+    await expect(
+      surface.chatAudit(f.owner.token, "chat-a", true),
+    ).rejects.toThrow("historical composition mismatch");
+    expect(secureSession).toHaveBeenCalledOnce();
+    expect(audit).not.toHaveBeenCalled();
+  });
+
   it("refuses participant approvals, question answers and directory browsing on the server", async () => {
     const f = sharingFixture();
     cleanup.push(() => f.store.storage.close());

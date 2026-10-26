@@ -26,6 +26,19 @@ function emptyView(choice: ScopeChoice): QaAdminSkillsView {
 /** How many accounts the picker offers; a deployment's directory is small. */
 const PICKER_LIMIT = 100;
 
+/**
+ * What the shared tab edits, said on the page itself.
+ *
+ * The store is the QA one — `<registered workspace>/.dsh/skills`, read by every
+ * QA session as `qa-shared` — and no write here can reach the catalog the host
+ * reads from its own skill directories (the `skill-filesystem` presets, shown
+ * in the console's «Навыки» section with the source «файл · filesystem»). That
+ * catalog is open beside this page, so an empty shared store read as "the stand
+ * has no skills" until the page named the difference.
+ */
+const SHARED_SCOPE_NOTE =
+  "Это отдельное хранилище QA, а не каталог навыков стенда: здесь лежат навыки, созданные в QA, и их читают все QA-сессии. Навыки, которые хост читает из своих каталогов (источник «файл · filesystem» в разделе «Навыки»), в этот список не входят и здесь не редактируются.";
+
 export interface AdminSkillFilesProps {
   readonly api: QaAdminApi;
   readonly token: string;
@@ -99,9 +112,9 @@ export function AdminSkillFiles(props: AdminSkillFilesProps) {
         <div>
           <h1>Редактор навыков</h1>
           <p>
-            Общие навыки видны на всём стенде. Личные навыки администратор
-            правит от имени владельца — тот увидит пометку «изменено
-            администратором». Каждая правка попадает в аудит.
+            Общие навыки QA видны во всех QA-сессиях. Личные навыки
+            администратор правит от имени владельца — тот увидит пометку
+            «изменено администратором». Каждая правка попадает в аудит.
           </p>
         </div>
       </div>
@@ -115,7 +128,7 @@ export function AdminSkillFiles(props: AdminSkillFilesProps) {
           aria-current={personal ? undefined : "page"}
           onClick={() => setChoice({ kind: "shared" })}
         >
-          Общие навыки стенда
+          Общие навыки QA
         </button>
         <button
           type="button"
@@ -162,7 +175,7 @@ export function AdminSkillFiles(props: AdminSkillFilesProps) {
         >
           <span data-testid="qa-admin-skill-files-owner">
             {view.data.owner === null
-              ? "Общее хранилище стенда"
+              ? "Общее хранилище QA"
               : `Личное хранилище ${
                   view.data.owner.displayName === ""
                     ? view.data.owner.email
@@ -176,6 +189,14 @@ export function AdminSkillFiles(props: AdminSkillFilesProps) {
           >
             {view.data.rootPath}
           </span>
+        </p>
+      )}
+      {personal || view.data === undefined ? null : (
+        <p
+          className="dsh-qa-admin__empty"
+          data-testid="qa-admin-skill-files-scope-note"
+        >
+          {SHARED_SCOPE_NOTE}
         </p>
       )}
       {personal && !chosen ? (

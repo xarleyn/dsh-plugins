@@ -29,7 +29,6 @@ function renderOpen(value: unknown): void {
     user: undefined,
     revision: 1,
     writable: true,
-    mode: "host" as const,
   };
   render(
     <Card

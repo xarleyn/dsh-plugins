@@ -1,6 +1,7 @@
 import type { QaReviewQueueRow } from "../../../types.js";
 import type { QaAdminApi } from "../../types.js";
 import { useAdminResource } from "../shared.js";
+import { CoverageNotice } from "../CoverageNotice.js";
 import {
   FEEDBACK_REASON_LABELS,
   REVIEW_PRIORITY_LABELS,
@@ -58,7 +59,7 @@ export function AdminOverview(props: {
   ) => void;
   readonly onOpenQueue: () => void;
 }) {
-  const { data, error, reload } = useAdminResource(
+  const { data, error, loading, reload } = useAdminResource(
     (signal) => props.api.overview(props.token, signal),
     [props.api, props.token],
   );
@@ -95,10 +96,11 @@ export function AdminOverview(props: {
           className="dsh-qa-admin__empty"
           data-testid="qa-admin-overview-loading"
         >
-          Загружаю…
+          {loading ? "Загружаю…" : "Данные обзора не получены."}
         </p>
       ) : (
         <>
+          <CoverageNotice metrics={data.metrics} />
           <div
             className="dsh-qa-admin__metrics"
             data-testid="qa-admin-overview-metrics"

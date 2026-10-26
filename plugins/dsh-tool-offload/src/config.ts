@@ -101,8 +101,15 @@ export interface OffloadRuleConfig {
 }
 
 export interface WorkerProfileConfig {
-  /** DSH subagent provider; must support tool restrictions (`spawn`). */
+  /** DSH subagent provider; must support independent agent presets (`spawn`). */
   readonly subagentProvider?: string;
+  /**
+   * Agent Preset id the worker starts under. The preset owns the child's tool
+   * composition, so name a preset that mounts no model-facing tools (SPEC
+   * §6.1). `null` or an omitted field keeps offloading unavailable for this
+   * profile: a worker without a preset would inherit the parent's tools.
+   */
+  readonly agentPreset?: string | null;
   /** Model provider route; omitted inherits the parent agent's route. */
   readonly provider?: string | null;
   /** Model id; omitted inherits the parent agent's model. */
@@ -159,6 +166,11 @@ export interface ResolvedOffloadRule {
 
 export interface ResolvedWorkerProfile {
   readonly subagentProvider: string;
+  /**
+   * Agent Preset id the worker starts under; `null` keeps this profile
+   * unavailable (a preset-free child would inherit the parent's tools).
+   */
+  readonly agentPreset: string | null;
   /** `null` inherits the parent agent's provider/model route. */
   readonly provider: string | null;
   readonly model: string | null;
@@ -176,6 +188,7 @@ export const TOOL_OFFLOAD_DEFAULTS = {
   minBytes: 24_000,
   minEstimatedTokens: 6_000,
   defaultWorker: "default",
+  workerAgentPreset: null,
   workerProvider: null,
   workerModel: null,
   workerMaxTokens: 4_000,
@@ -210,6 +223,7 @@ const BUILT_IN_RULE_TOOLS = [
 
 const WORKER_PROFILE_DEFAULTS: ResolvedWorkerProfile = {
   subagentProvider: "spawn",
+  agentPreset: TOOL_OFFLOAD_DEFAULTS.workerAgentPreset,
   provider: TOOL_OFFLOAD_DEFAULTS.workerProvider,
   model: TOOL_OFFLOAD_DEFAULTS.workerModel,
   maxTokens: TOOL_OFFLOAD_DEFAULTS.workerMaxTokens,
@@ -224,6 +238,7 @@ const workerProfileSchema = z
     subagentProvider: z
       .string()
       .default(WORKER_PROFILE_DEFAULTS.subagentProvider),
+    agentPreset: nullableString.default(WORKER_PROFILE_DEFAULTS.agentPreset),
     provider: nullableString.default(WORKER_PROFILE_DEFAULTS.provider),
     model: nullableString.default(WORKER_PROFILE_DEFAULTS.model),
     maxTokens: nullableNumber.default(WORKER_PROFILE_DEFAULTS.maxTokens),
@@ -231,6 +246,7 @@ const workerProfileSchema = z
   })
   .default({
     subagentProvider: WORKER_PROFILE_DEFAULTS.subagentProvider,
+    agentPreset: WORKER_PROFILE_DEFAULTS.agentPreset,
     provider: WORKER_PROFILE_DEFAULTS.provider,
     model: WORKER_PROFILE_DEFAULTS.model,
     maxTokens: WORKER_PROFILE_DEFAULTS.maxTokens,
@@ -435,6 +451,8 @@ export function resolveToolOffloadConfig(
       subagentProvider:
         profile.subagentProvider?.trim() ||
         WORKER_PROFILE_DEFAULTS.subagentProvider,
+      agentPreset:
+        profile.agentPreset?.trim() || WORKER_PROFILE_DEFAULTS.agentPreset,
       provider: profile.provider ?? WORKER_PROFILE_DEFAULTS.provider,
       model: profile.model ?? WORKER_PROFILE_DEFAULTS.model,
       maxTokens:

@@ -517,6 +517,16 @@ export function QaSurface(props: QaSurfaceProps) {
       setController(undefined);
       return;
     }
+    // The Host config loads after the face assembles, so the face's own
+    // `sessions` answer can predate the accounts answer: on an accounts
+    // deployment the assembled face froze on the ambient transport, whose
+    // catalog this surface's fence keeps empty, and every adoption then died
+    // on `sessions.retain: unknown session`. `resolveRuntime` is the
+    // selection the face exposes for exactly this moment.
+    const runtime =
+      accountsEnabled && props.resolveRuntime !== undefined
+        ? props.resolveRuntime(true)
+        : undefined;
     const facade =
       accountsEnabled && accounts
         ? {
@@ -531,9 +541,10 @@ export function QaSurface(props: QaSurfaceProps) {
           }
         : undefined;
     const next = new QaSessionController({
-      sessions: props.sessions,
+      sessions: runtime === undefined ? props.sessions : runtime.sessions,
       api: props.api,
-      conversation: props.conversation,
+      conversation:
+        runtime === undefined ? props.conversation : runtime.conversation,
       connection: props.connection,
       secureSession: props.secureSession,
       createSession: props.createSession,
@@ -580,6 +591,7 @@ export function QaSurface(props: QaSurfaceProps) {
     props.queueStatus,
     props.secureSession,
     props.sourceApi,
+    props.resolveRuntime,
     props.sharingApi,
     props.sessions,
     route.active,
@@ -699,6 +711,7 @@ export function QaSurface(props: QaSurfaceProps) {
     controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
     controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
   );
+  const failureDiagnostic = controller?.failureDiagnostic();
   useEffect(() => {
     if (
       state.sessionId === null ||
@@ -779,11 +792,23 @@ export function QaSurface(props: QaSurfaceProps) {
     // Body ownership (the shell-mask attribute, scroll locking) lives in the
     // guard above this surface: it must survive a crash that unmounts this
     // subtree.
+    const focusedAtRequest = document.activeElement;
     const frame = requestAnimationFrame(() => {
+      // A dialog or a newer focus choice owns the keyboard by this frame.
+      if (dialogOwnsKeyboard()) return;
+      const focused = document.activeElement;
+      if (
+        focused !== focusedAtRequest &&
+        focused instanceof HTMLElement &&
+        focused.isConnected &&
+        focused !== document.body &&
+        focused !== document.documentElement
+      )
+        return;
       document.querySelector<HTMLTextAreaElement>("#dsh-qa-prompt")?.focus();
     });
     return () => cancelAnimationFrame(frame);
-  }, [route.active]);
+  }, [route.active, dialogOwnsKeyboard]);
 
   // Stable identities for the memoized render path: message rows, the sidebar
   // and the composer compare callbacks by reference, so per-frame closures
@@ -1238,13 +1263,14 @@ export function QaSurface(props: QaSurfaceProps) {
             accounts.updateProfile(input),
         }
       : undefined;
-    // Not gated by a config key: changing your own password is the one
-    // account action that must never be switched off, since a deployment
-    // without it has no way back in short of an operator.
-    const password = {
-      onChange: (currentPassword: string, nextPassword: string) =>
-        accounts.changePassword(currentPassword, nextPassword),
-    };
+    // Corporate password management belongs to the identity provider.
+    const password =
+      accountsSnapshot.user.authMethod === "oidc"
+        ? undefined
+        : {
+            onChange: (currentPassword: string, nextPassword: string) =>
+              accounts.changePassword(currentPassword, nextPassword),
+          };
     const starters = config.accounts.starters.enabled
       ? {
           starters: accountsSnapshot.user.starters,
@@ -1545,6 +1571,12 @@ export function QaSurface(props: QaSurfaceProps) {
             title={config.branding.title}
             logoUrl={config.branding.logoUrl}
             allowRegistration={config.accounts.allowRegistration}
+            localLogin={config.accounts.localLogin}
+            oidcLabel={
+              config.accounts.oidc.enabled
+                ? config.accounts.oidc.buttonLabel
+                : null
+            }
           />
         </>
       );
@@ -2063,11 +2095,18 @@ export function QaSurface(props: QaSurfaceProps) {
                       role="alert"
                     >
                       <span>{state.error}</span>
-                      {state.phase === "error" ? (
+                      {failureDiagnostic ? (
+                        <span data-testid="qa-surface-error-detail">
+                          {failureDiagnostic.reason} Код обращения:{" "}
+                          {failureDiagnostic.id}
+                        </span>
+                      ) : null}
+                      {state.phase === "error" ||
+                      (state.sessionId === null && state.canSend) ? (
                         <button
                           type="button"
                           data-testid="qa-surface-error-retry"
-                          onClick={() => void controller?.ensureSession()}
+                          onClick={() => void controller?.retrySession()}
                         >
                           Повторить
                         </button>

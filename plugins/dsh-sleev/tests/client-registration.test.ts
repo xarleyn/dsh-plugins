@@ -22,7 +22,6 @@ const SNAPSHOT: ConfigFormSnapshot<SleevSettings> = {
   user: {},
   revision: 0,
   writable: true,
-  mode: "host",
 };
 
 // The card's controller builds its store on the Host snapshot-store package,

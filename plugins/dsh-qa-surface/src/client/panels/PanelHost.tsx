@@ -17,6 +17,7 @@ import type {
   QaSurfacePanelPresentation,
 } from "./contract.js";
 import type { QaSurfacePanelRegistry } from "./registry.js";
+import { isQaModalOpen } from "../components/QaModal.js";
 
 export const QA_PANEL_DEFAULT_RATIO = 0.42;
 export const QA_PANEL_MIN_PX = 320;
@@ -213,6 +214,16 @@ export function QaPanelHost({
     if (wasActive !== null && snapshot.activeKind === null) {
       const target = previousFocus.current;
       restoreFrame = requestAnimationFrame(() => {
+        // Restore only a keyboard left without an owner by the closing panel.
+        if (isQaModalOpen()) return;
+        const focused = document.activeElement;
+        if (
+          focused instanceof HTMLElement &&
+          focused.isConnected &&
+          focused !== document.body &&
+          focused !== document.documentElement
+        )
+          return;
         if (target?.isConnected) target.focus();
         else
           document
@@ -229,7 +240,19 @@ export function QaPanelHost({
 
   useEffect(() => {
     if (!snapshot.focus || snapshot.activeKind === null) return;
+    const focusedAtRequest = document.activeElement;
     const frame = requestAnimationFrame(() => {
+      // The explicit request yields if another control or dialog takes over.
+      if (isQaModalOpen()) return;
+      const focused = document.activeElement;
+      if (
+        focused !== focusedAtRequest &&
+        focused instanceof HTMLElement &&
+        focused.isConnected &&
+        focused !== document.body &&
+        focused !== document.documentElement
+      )
+        return;
       const target = root.current?.querySelector<HTMLElement>(
         "button:not([disabled]),input:not([disabled]),textarea:not([disabled]),[tabindex]:not([tabindex='-1'])",
       );
@@ -317,7 +340,8 @@ export function QaPanelHost({
           if (
             presentation === "fullscreen" &&
             event.key === "Escape" &&
-            !event.defaultPrevented
+            !event.defaultPrevented &&
+            !isQaModalOpen()
           ) {
             event.stopPropagation();
             panels.close({ reason: "user" });

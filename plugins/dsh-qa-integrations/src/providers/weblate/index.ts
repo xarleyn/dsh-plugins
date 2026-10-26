@@ -296,8 +296,12 @@ export class WeblateProvider implements IntegrationProvider {
 
   capabilityServiceState(
     capability: IntegrationCapability,
+    policy?: Readonly<Record<string, "allow" | "deny">>,
   ): CapabilityServiceState | undefined {
-    return operationCapabilityServiceState(WEBLATE_OPERATIONS, capability);
+    return operationCapabilityServiceState(WEBLATE_OPERATIONS, capability, {
+      provider: this.id,
+      policy,
+    });
   }
 
   async validate(context: ProviderContext): Promise<ProviderValidation> {
@@ -383,6 +387,12 @@ export class WeblateProvider implements IntegrationProvider {
       assertServiceOperationAllowed(
         definition.security,
         "This Weblate operation is not available through the service credential",
+        {
+          provider: this.id,
+          operation,
+          capability: definition.capability,
+          policy: context.serviceOperationPolicy,
+        },
       );
     }
     const boundary = serviceBoundaryOf(context);

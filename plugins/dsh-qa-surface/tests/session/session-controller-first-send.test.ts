@@ -115,12 +115,16 @@ describe("QA session controller: the chat a first send belongs to", () => {
 
     // The Host created and listed the session, but its binding never appeared,
     // so bind() falls short of adopting it. The identity has to go on naming no
-    // session: were it handed the session this attempt could not open, the
-    // retry below — which creates a different id — would read as another chat
-    // and rebuild the composer around the very question being retried.
+    // session until it can be opened. A retry must recover this same session
+    // and keep the composer around the question being retried.
     let unbound = "";
+    let restoreBinding = () => {};
     world.createSession.mockImplementationOnce(async () => {
       unbound = String(await world.create());
+      const binding = world.bindings.get(unbound)!;
+      restoreBinding = () => {
+        world.bindings.set(unbound, binding);
+      };
       world.bindings.delete(unbound);
       return { ok: true as const, value: unbound };
     });
@@ -131,10 +135,10 @@ describe("QA session controller: the chat a first send belongs to", () => {
       error: expect.stringMatching(/Не удалось начать чат/u),
     });
 
+    restoreBinding();
     expect(await controller.send("Первый вопрос")).toBe(true);
     // The draft's own chat, still the one the composer belongs to. The session
-    // the retry brought back is the head of the list the harness publishes: a
-    // fresh creation always goes in front, so no numbering is baked in here.
+    // the retry recovered is still the original successful creation.
     expect(controller.getSnapshot().chatKey).toBe(draftKey);
     const retried = String(world.list.getSnapshot().ids[0]);
     expect(controller.getSnapshot().sessionId).toBe(retried);
@@ -142,7 +146,8 @@ describe("QA session controller: the chat a first send belongs to", () => {
       [{ type: "text", text: "Первый вопрос" }],
       "queue",
     );
-    expect(world.faces.get(unbound)?.prompt).not.toHaveBeenCalled();
+    expect(retried).toBe(unbound);
+    expect(world.createSession).toHaveBeenCalledTimes(1);
     controller.dispose();
   });
 
@@ -180,6 +185,11 @@ describe("QA session controller: the chat a first send belongs to", () => {
       error: expect.stringMatching(/Не удалось начать чат/u),
     });
 
+    const recovered = world.faces.get(neverOpened)!;
+    recovered.source.set({
+      ...recovered.source.getSnapshot(),
+      openState: "open",
+    });
     expect(await controller.send("Первый вопрос")).toBe(true);
     // The retry's own session, taken from the head of the list the harness
     // publishes rather than from a number it happens to be on right now.
@@ -192,7 +202,8 @@ describe("QA session controller: the chat a first send belongs to", () => {
       [{ type: "text", text: "Первый вопрос" }],
       "queue",
     );
-    expect(world.faces.get(neverOpened)?.prompt).not.toHaveBeenCalled();
+    expect(retried).toBe(neverOpened);
+    expect(world.createSession).toHaveBeenCalledTimes(1);
     controller.dispose();
   });
 

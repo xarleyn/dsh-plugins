@@ -52,6 +52,7 @@ import {
 import type { SqliteMemoryProvider } from "./host/memory/sqlite.js";
 import { parallelBudgetOf } from "./host/policy.js";
 import { callerDomainOf } from "./host/caller.js";
+import { startRestrictedExpert } from "./host/tool-policy.js";
 import { PrincipalIdentities } from "./host/qa-principal.js";
 import type { ResolverDependencies } from "./host/resolver.js";
 import { createFilesystemProvider } from "./host/scopes/filesystem.js";
@@ -107,8 +108,8 @@ declare module "@deepseek-ai/cordis" {
  *
  * The service owns nothing the runtime already owns. Expert children are
  * ordinary DSH subagents started through `ctx.subagents`; the plugin only
- * composes the request (persona, tool mask, depth cap) and reports what it
- * could and could not enforce.
+ * composes the request (policy, task, depth cap) and reports what it could
+ * and could not enforce.
  *
  * What it serves — the store, the tools and the projections of the expert
  * catalog — is `catalog.ts`; the verdicts on one of its entries are
@@ -325,6 +326,13 @@ export class DomainExpertsService extends TypertRemoteService {
       perUserMemory: this.principals.perUserMemory(),
       principalOf: (sessionId) => this.principals.principalOf(sessionId),
       modelPolicyOf: (sessionId) => this.principals.modelPolicyOf(sessionId),
+      startActivation: (spec, filter) =>
+        startRestrictedExpert(
+          this.ctx,
+          subagentsFaceOf(this.ctx.subagents),
+          spec,
+          filter,
+        ),
     };
   }
 

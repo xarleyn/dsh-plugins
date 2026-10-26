@@ -138,6 +138,7 @@ export interface ProviderCardSpec<Extra> {
 const SERVICE_REASON: Readonly<Record<CapabilityServiceState, string>> =
   Object.freeze({
     available: "Доступно",
+    partial: "Доступно частично: часть операций запрещена",
     sensitive: "Требуется личный аккаунт",
     unavailable: "Недоступно с сервисным токеном",
   });
@@ -426,6 +427,7 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
       capability: IntegrationCapability,
     ): boolean =>
       serviceState?.capabilities[capability] === "available" ||
+      serviceState?.capabilities[capability] === "partial" ||
       serviceState?.capabilities[capability] === undefined;
 
     return (
@@ -516,8 +518,8 @@ export function createProviderCard<Extra>(spec: ProviderCardSpec<Extra>) {
                   className="dsh-qa-integrations__muted"
                   data-testid={`${zone}-service-mode-hint`}
                 >
-                  Только безопасное чтение: изменения, управление правами и
-                  секреты недоступны, даже если сервисный токен их позволяет.
+                  Чтение в пределах доступа, заданного администратором.
+                  Изменения, управление правами и секреты недоступны.
                 </span>
                 {serviceState?.resources == null ? null : (
                   <BoundarySummary

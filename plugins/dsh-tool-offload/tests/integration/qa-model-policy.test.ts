@@ -6,10 +6,12 @@
 
 import { describe, expect, it } from "vitest";
 import type {
+  SubagentActivation,
+  SubagentActivationSpec,
+  SubagentCapabilities,
   SubagentResult,
-  SubagentRun,
-  SubagentStartRequest,
 } from "@deepseek-ai/dsh-subagent";
+
 import {
   createSubagentRunner,
   type SubagentsServiceLike,
@@ -18,40 +20,55 @@ import {
 import { resolveToolOffloadConfig } from "../../src/config.js";
 import { fakeAgent } from "../fixtures/offload-fixtures.js";
 
+const FULL_CAPABILITIES: SubagentCapabilities = {
+  agentOptions: true,
+  agentPreset: true,
+  outputSchema: true,
+  depthLimit: true,
+};
+
 /** A worker profile that names no model, so it inherits by default. */
 const OPEN_PROFILE = resolveToolOffloadConfig({
-  workers: { default: { maxTokens: 2_500, timeoutMs: 5_000 } },
+  workers: {
+    default: { agentPreset: "bare-worker", maxTokens: 2_500, timeoutMs: 5_000 },
+  },
 }).workers.default!;
 
 const PINNED_PROFILE = resolveToolOffloadConfig({
   workers: {
-    default: { provider: "zai", model: "glm-4.5-air", timeoutMs: 5_000 },
+    default: {
+      agentPreset: "bare-worker",
+      provider: "zai",
+      model: "glm-4.5-air",
+      timeoutMs: 5_000,
+    },
   },
 }).workers.default!;
 
 function service(): {
   subagents: SubagentsServiceLike;
-  starts: SubagentStartRequest[];
+  specs: SubagentActivationSpec[];
 } {
-  const starts: SubagentStartRequest[] = [];
+  const specs: SubagentActivationSpec[] = [];
   const subagents: SubagentsServiceLike = {
-    start: async (_name, request) => {
-      starts.push(request);
+    startActivation: async (spec) => {
+      specs.push(spec);
       return {
-        id: "child-1",
+        childId: "child-1",
         result: Promise.resolve({
           output: [{ type: "text", text: "compact answer" }],
           stopReason: "completed",
         } satisfies SubagentResult),
         dispose: async () => undefined,
-      } as unknown as SubagentRun;
+      } as unknown as SubagentActivation;
     },
     getProvider: () => ({
       name: "spawn",
-      capabilities: { toolFilter: true, agentOptions: true },
+      capabilities: FULL_CAPABILITIES,
+      inheritsParentContext: false,
     }),
   };
-  return { subagents, starts };
+  return { subagents, specs };
 }
 
 function request(overrides: Partial<WorkerRunRequest> = {}): WorkerRunRequest {
@@ -67,7 +84,7 @@ function request(overrides: Partial<WorkerRunRequest> = {}): WorkerRunRequest {
 
 describe("the worker model under a QA policy", () => {
   it("takes the pair the policy of the chat names", async () => {
-    const { subagents, starts } = service();
+    const { subagents, specs } = service();
     const asked: string[] = [];
     const runner = createSubagentRunner(subagents, (sessionId) => {
       asked.push(sessionId);
@@ -75,7 +92,7 @@ describe("the worker model under a QA policy", () => {
     });
     await runner.run(request());
     expect(asked).toEqual(["session-parent"]);
-    expect(starts[0]?.agentOptions).toEqual({
+    expect(specs[0]?.request.agentOptions).toEqual({
       provider: "local",
       model: "small",
       maxTokens: 2_500,
@@ -83,7 +100,7 @@ describe("the worker model under a QA policy", () => {
   });
 
   it("keeps a model the profile pinned itself", async () => {
-    const { subagents, starts } = service();
+    const { subagents, specs } = service();
     const asked: string[] = [];
     const runner = createSubagentRunner(subagents, (sessionId) => {
       asked.push(sessionId);
@@ -91,7 +108,7 @@ describe("the worker model under a QA policy", () => {
     });
     await runner.run(request({ profile: PINNED_PROFILE }));
     expect(asked).toEqual([]);
-    expect(starts[0]?.agentOptions).toEqual({
+    expect(specs[0]?.request.agentOptions).toEqual({
       provider: "zai",
       model: "glm-4.5-air",
       maxTokens: 4_000,
@@ -99,17 +116,17 @@ describe("the worker model under a QA policy", () => {
   });
 
   it("inherits the parent where the deployment says nothing about models", async () => {
-    const { subagents, starts } = service();
+    const { subagents, specs } = service();
     const runner = createSubagentRunner(subagents, () => undefined);
     await runner.run(request());
-    expect(starts[0]?.agentOptions).toEqual({ maxTokens: 2_500 });
+    expect(specs[0]?.request.agentOptions).toEqual({ maxTokens: 2_500 });
   });
 
   it("runs unchanged with no policy source at all", async () => {
-    const { subagents, starts } = service();
+    const { subagents, specs } = service();
     const runner = createSubagentRunner(subagents);
     await runner.run(request({ profile: PINNED_PROFILE }));
-    expect(starts[0]?.agentOptions).toEqual({
+    expect(specs[0]?.request.agentOptions).toEqual({
       provider: "zai",
       model: "glm-4.5-air",
       maxTokens: 4_000,

@@ -133,6 +133,23 @@ const MIGRATIONS: readonly SqliteMigration[] = [
       );
     `,
   },
+  {
+    version: 5,
+    up: `
+      CREATE TABLE qa_oidc_identities (
+        issuer TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        user_id TEXT NOT NULL REFERENCES qa_accounts(id),
+        PRIMARY KEY (issuer, subject),
+        UNIQUE (user_id)
+      );
+      CREATE TABLE qa_oidc_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL REFERENCES qa_accounts(id),
+        expires_at INTEGER NOT NULL
+      );
+    `,
+  },
 ];
 
 interface AccountRow {
@@ -375,7 +392,12 @@ export class QaAccountsDatabase {
     return {
       version: 1,
       secret: this.secret,
-      users: users.map(toUser),
+      users: users.map((row) => {
+        const user = toUser(row);
+        return this.isOidcUser(user.id)
+          ? { ...user, authMethod: "oidc" as const }
+          : user;
+      }),
       ownership,
     };
   }
@@ -392,6 +414,98 @@ export class QaAccountsDatabase {
     this.storage.transaction(() => {
       this.writeUser(user, { replace: true });
     });
+  }
+
+  oidcUserId(issuer: string, subject: string): string | undefined {
+    const row = this.storage.db
+      .prepare(
+        "SELECT user_id FROM qa_oidc_identities WHERE issuer = ? AND subject = ?",
+      )
+      .get(issuer, subject) as { user_id: string } | undefined;
+    return row?.user_id;
+  }
+
+  isOidcUser(userId: string): boolean {
+    return (
+      this.storage.db
+        .prepare("SELECT 1 FROM qa_oidc_identities WHERE user_id = ?")
+        .get(userId) !== undefined
+    );
+  }
+
+  /** Account creation and identity attachment must commit together. */
+  attachOidcIdentity(
+    issuer: string,
+    subject: string,
+    user: StoredUser,
+    create: boolean,
+  ): void {
+    this.storage.transaction(() => {
+      if (create) this.writeUser(user);
+      else this.writeUser(user, { replace: true });
+      this.storage.db
+        .prepare(
+          "INSERT INTO qa_oidc_identities (issuer, subject, user_id) VALUES (?, ?, ?)",
+        )
+        .run(issuer, subject, user.id);
+    });
+  }
+
+  /** Re-read and update authentication facts under the same write transaction. */
+  authenticateOidc(
+    userId: string,
+    email: string,
+    displayName: string,
+    role: StoredUser["role"],
+    sid: string,
+    expiresAt: number,
+  ): StoredUser | undefined {
+    return this.storage.transaction(() => {
+      const row = this.storage.db
+        .prepare("SELECT * FROM qa_accounts WHERE id = ?")
+        .get(userId) as AccountRow | undefined;
+      if (!row || row.disabled) return undefined;
+      const version = row.token_version + (row.role !== role ? 1 : 0);
+      const lastLoginAt = new Date().toISOString();
+      this.storage.db
+        .prepare(
+          "UPDATE qa_accounts SET email = ?, display_name = ?, role = ?, token_version = ?, last_login_at = ? WHERE id = ?",
+        )
+        .run(email, displayName, role, version, lastLoginAt, userId);
+      this.storage.db
+        .prepare("DELETE FROM qa_oidc_sessions WHERE expires_at <= ?")
+        .run(Date.now());
+      this.storage.db
+        .prepare(
+          "INSERT INTO qa_oidc_sessions (id, user_id, expires_at) VALUES (?, ?, ?)",
+        )
+        .run(sid, userId, expiresAt);
+      return {
+        ...toUser(row),
+        email,
+        displayName,
+        role,
+        tokenVersion: version,
+        lastLoginAt,
+        authMethod: "oidc",
+      };
+    });
+  }
+
+  oidcSessionActive(id: string, userId: string): boolean {
+    return (
+      this.storage.db
+        .prepare(
+          "SELECT 1 FROM qa_oidc_sessions WHERE id = ? AND user_id = ? AND expires_at > ?",
+        )
+        .get(id, userId, Date.now()) !== undefined
+    );
+  }
+
+  revokeOidcSession(id: string): void {
+    this.storage.db
+      .prepare("DELETE FROM qa_oidc_sessions WHERE id = ?")
+      .run(id);
   }
 
   /**

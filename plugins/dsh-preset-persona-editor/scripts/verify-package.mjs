@@ -102,11 +102,14 @@ await runVerifyPackage({
 
     // The host half reads presets and writes nothing: since 0.1.7-rc.2 the Host
     // has no durable preset-authoring path, so the published Remote namespace
-    // must name the two reads and no operation that changes a preset.
+    // must name the two reads and no operation that changes a preset. The
+    // 0.2.1 generator carries the remote names inside JSON-escaped method
+    // signatures, so the name is read after the annotation instead of a
+    // `method:` field.
     const service = await readFile("lib/host/service.js");
     assert.match(service, /listPersonas/u);
     const wire = await readFile("lib/typert.host.js");
-    const methods = [...wire.matchAll(/method:\s*'([^']+)'/gu)].map(
+    const methods = [...wire.matchAll(/@Remote\D{0,3}([a-z]+)/gu)].map(
       (match) => match[1],
     );
     assert.deepEqual(

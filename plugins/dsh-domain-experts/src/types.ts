@@ -305,21 +305,27 @@ export interface ResolvedExpertProfile {
   /** The composed preview document: the policy plus its own `## Task` copy. */
   readonly persona: string;
   /**
-   * What the runtime installs as the child's system section: the same document
-   * without the task, so request material cannot read as instruction.
+   * The standing policy document: what used to reach the child as its system
+   * section before the Host start contract stopped carrying a per-child
+   * persona. It now leads the child's first message, ahead of the task, so
+   * request material still cannot read as instruction.
    */
   readonly policy: string;
   /**
-   * The caller's request alone: what the child receives as its first user
-   * message. The persona is a standing policy and reaches the child as a
-   * system section, so the request must not travel as policy text and the
-   * policy must not arrive looking like something the caller said.
+   * The caller's request alone: the second block of the child's first message,
+   * after the policy document. The composed preview keeps its own copy of the
+   * task under `## Task` for readers.
    */
   readonly task: string;
   readonly scope: DomainScope;
   readonly resources: readonly ResolvedResourceEntry[];
   readonly memory: readonly ResolvedMemoryEntry[];
   readonly tools: readonly ResolvedToolEntry[];
+  /**
+   * The domain's tool policy. A local managed child applies this through its
+   * scoped tool registry before the first prompt. The preset owns the tools
+   * available to restrict; an unknown name refuses creation.
+   */
   readonly toolFilter: {
     readonly allow: readonly string[];
     readonly deny: readonly string[];

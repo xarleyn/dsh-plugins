@@ -1,13 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { assertObjectJsonSchema } from "@deepseek-ai/dsh-tools";
+import type { SubagentActivationSpec } from "@deepseek-ai/dsh-subagent";
 import {
   RunTracker,
   runExpert,
-  unrestrictableToolNames,
   type ExecutionDependencies,
 } from "../src/host/execution.js";
 import { AuditRing } from "../src/host/audit.js";
-import { DomainExpertsError } from "../src/host/errors.js";
 import { DomainRegistry } from "../src/host/registry.js";
 import { DEPLOYMENT_MEMORY_OWNER } from "../src/host/resolver.js";
 import { createBuiltinMemoryProvider } from "../src/host/memory/builtin.js";
@@ -23,6 +22,7 @@ import {
   fakeSubagents,
   fixedClock,
   memoryRecordTableOf,
+  NO_CAPABILITIES,
   recordingLogger,
   type FakeSubagents,
   type RecordedLog,
@@ -139,6 +139,12 @@ async function run(
   });
 }
 
+/** The `text` payload of one block of the child's first message. */
+function textBlockOf(spec: SubagentActivationSpec, index: number): string {
+  const block = spec.request.prompt[index];
+  return block !== undefined && block.type === "text" ? block.text : "";
+}
+
 describe("execution: composition handed to the runtime", () => {
   it("uses validated native capture rather than malformed prose for a structured review", async () => {
     const result = {
@@ -153,7 +159,8 @@ describe("execution: composition handed to the runtime", () => {
       structured: result,
     });
     const outcome = await run(harness, PAYMENTS, { structuredOutput: true });
-    expect(harness.subagents.started[0]?.request.outputSchema).toMatchObject({
+    const request = harness.subagents.started[0]!.request;
+    expect(request.outputSchema).toMatchObject({
       type: "object",
       required: [
         "summary",
@@ -163,15 +170,13 @@ describe("execution: composition handed to the runtime", () => {
         "followUps",
       ],
     });
-    const request = harness.subagents.started[0]!.request;
     expect(() => assertObjectJsonSchema(request.outputSchema)).not.toThrow();
-    expect(request.persona).toContain(
+    const policy = textBlockOf(harness.subagents.started[0]!, 0);
+    expect(policy).toContain(
       "Finish by calling structured_output exactly once",
     );
-    expect(request.persona).not.toContain("Finish with one fenced code block");
-    expect(request.persona).toContain(
-      "confirmed user decisions only in summary",
-    );
+    expect(policy).not.toContain("Finish with one fenced code block");
+    expect(policy).toContain("confirmed user decisions only in summary");
     expect(outcome.structured).toBe(true);
     expect(outcome.summary).toBe(result.summary);
   });
@@ -197,37 +202,34 @@ describe("execution: composition handed to the runtime", () => {
     expect(harness.subagents.started).toHaveLength(0);
   });
 
-  it("hands the policy to the runtime as the persona and the request as the prompt", async () => {
+  it("hands the policy and the task to the runtime as the child's first message", async () => {
     const harness = harnessOf();
     await run(harness);
-    const started = harness.subagents.started[0];
-    expect(started?.provider).toBe("spawn");
-    expect(started?.request.label).toBe("domain-expert:payments");
-    // The system section is the policy: no task text, and therefore none of
-    // whatever the caller embedded in it (for the review gate, a candidate
-    // answer) — that material belongs to the child's first message.
-    expect(started?.request.persona).toContain("You are the designated expert");
-    expect(started?.request.persona).toContain("## Answer format");
-    expect(started?.request.persona).toContain(
-      "Finish with one fenced code block",
-    );
-    expect(started?.request.persona).not.toContain("## Task");
-    expect(started?.request.persona).not.toContain(
-      "Investigate the settlement status.",
-    );
-    expect(started?.request.toolFilter?.allow).toContain("domain_expert");
-    expect(started?.request.maxDepth).toBe(3);
-    // The child's first message is the caller's request, never the policy
-    // document: the persona reaches the child as a system section, and the
-    // deployment's instructions must not read as something the user said.
-    const promptBlock = started?.request.prompt[0];
-    const promptText =
-      promptBlock !== undefined && promptBlock.type === "text"
-        ? promptBlock.text
-        : "";
-    expect(promptText).toContain("Investigate the settlement status.");
-    expect(promptText).not.toContain("You are the designated expert");
-    expect(promptText).not.toContain("## Answer format");
+    const spec = harness.subagents.started[0]!;
+    expect(spec.provider).toBe("spawn");
+    expect(spec.label).toBe("domain-expert:payments");
+    // The start contract carries no per-child persona any more, so the
+    // composed policy leads the first message and the caller's request
+    // follows it as its own block: a candidate answer — anything the caller
+    // embedded in the task — still cannot read as deployment instruction.
+    const policy = textBlockOf(spec, 0);
+    expect(policy).toContain("You are the designated expert");
+    expect(policy).toContain("## Answer format");
+    expect(policy).toContain("Finish with one fenced code block");
+    expect(policy).not.toContain("## Task");
+    expect(policy).not.toContain("Investigate the settlement status.");
+    const task = textBlockOf(spec, 1);
+    expect(task).toContain("Investigate the settlement status.");
+    expect(task).not.toContain("You are the designated expert");
+    expect(task).not.toContain("## Answer format");
+    // The Host scopes no child's tools per run; nothing of the filter and no
+    // persona field travels with the request.
+    expect("toolFilter" in spec.request).toBe(false);
+    expect("persona" in spec.request).toBe(false);
+    expect(spec.request.maxDepth).toBe(3);
+    // A foreground run answers through this tool result, so the parent model
+    // must not be notified.
+    expect(spec.delivery).toBe("caller");
   });
 
   it("does not send model options when the domain inherits", async () => {
@@ -267,10 +269,9 @@ describe("execution: composition handed to the runtime", () => {
       {
         capabilities: {
           agentOptions: false,
+          agentPreset: true,
           outputSchema: true,
           depthLimit: true,
-          toolFilter: true,
-          persona: true,
         },
       },
       { modelPolicy: { "session-1": { provider: "local", model: "small" } } },
@@ -388,24 +389,30 @@ describe("execution: results and bookkeeping", () => {
 });
 
 describe("execution: background runs", () => {
-  it("starts a continuable child and reports the receipt", async () => {
+  it("starts a background child and reports the receipt", async () => {
     const harness = harnessOf(PAYMENTS, { runId: "child-bg" });
     const result = await run(harness, PAYMENTS, { background: true });
     expect(result.status).toBe("delegated");
-    expect(result.childSessionId).toBe("child-bg-bg");
+    expect(result.childSessionId).toBe("child-bg");
     expect(result.summary).toContain("background");
-    expect(harness.subagents.started).toEqual([]);
+    expect(harness.subagents.started).toHaveLength(1);
+    // A background run hands the completion notice to the parent's model.
+    expect(harness.subagents.started[0]?.delivery).toBe("parent");
+    expect(harness.subagents.started[0]?.request.maxDepth).toBe(3);
     // A durable child has no settle event, so it stays attributable.
-    expect(harness.tracker.find("child-bg-bg")?.background).toBe(true);
+    expect(harness.tracker.find("child-bg")?.background).toBe(true);
   });
 
-  it("refuses a background run when the provider cannot start continuable children", async () => {
-    const harness = harnessOf(PAYMENTS, { continuable: false });
-    await expect(
-      run(harness, PAYMENTS, { background: true }),
-    ).rejects.toMatchObject({
-      code: "UNSUPPORTED_SUBAGENT_CAPABILITY",
-    });
+  it("changes only the delivery between a foreground and a background run", async () => {
+    const harness = harnessOf(PAYMENTS);
+    await run(harness);
+    await run(harness, PAYMENTS, { background: true });
+    const [foreground, background] = harness.subagents.started;
+    expect(foreground?.delivery).toBe("caller");
+    expect(background?.delivery).toBe("parent");
+    expect(background?.request).toEqual(foreground?.request);
+    expect(background?.label).toBe(foreground?.label);
+    expect(background?.provider).toBe(foreground?.provider);
   });
 });
 
@@ -417,16 +424,8 @@ describe("execution: refusals", () => {
     });
   });
 
-  it("refuses a provider that cannot compose a persona", async () => {
-    const harness = harnessOf(PAYMENTS, {
-      capabilities: {
-        agentOptions: true,
-        outputSchema: true,
-        depthLimit: true,
-        toolFilter: true,
-        persona: false,
-      },
-    });
+  it("refuses a provider that cannot enforce a depth cap", async () => {
+    const harness = harnessOf(PAYMENTS, { capabilities: NO_CAPABILITIES });
     await expect(run(harness)).rejects.toMatchObject({
       code: "UNSUPPORTED_SUBAGENT_CAPABILITY",
     });
@@ -447,10 +446,9 @@ describe("execution: refusals", () => {
     const harness = harnessOf(pinned, {
       capabilities: {
         agentOptions: false,
+        agentPreset: true,
         outputSchema: true,
         depthLimit: true,
-        toolFilter: true,
-        persona: true,
       },
     });
     await expect(run(harness, pinned)).rejects.toMatchObject({
@@ -481,100 +479,35 @@ describe("execution: refusals", () => {
     });
   });
 
-  it("re-labels an unknown tool name as a worker problem", async () => {
-    const harness = harnessOf(PAYMENTS, {
-      failWith: new Error(
-        'tools.restrict() names unknown global tool "bash"; known global tools: x',
-      ),
-    });
-    const error = await run(harness).catch((thrown: unknown) => thrown);
-    expect(error).toBeInstanceOf(DomainExpertsError);
-    expect((error as DomainExpertsError).code).toBe("WORKER_UNAVAILABLE");
-  });
-
-  it("starts the expert again without the tool names the runtime refused", async () => {
-    // A child composes its parent's preset into its own scope, so a name that
-    // preset mounts — the filesystem readers, the skill catalog — is exactly
-    // what a tool filter may not mention.
-    const definition = domainOf("payments", {
-      tools: { allow: ["glob", "read"], deny: [] },
-    });
-    const harness = harnessOf(definition, {
-      failOnce: new Error(
-        'tools.restrict() names unknown global tools "glob", "read"; known global tools: domain_expert, domain_memory',
-      ),
-    });
-    const result = await run(harness, definition);
-    expect(result.status).toBe("completed");
-    // The refusal never became a started child; the retry is the one run.
-    expect(harness.subagents.started).toHaveLength(1);
-    const allow = harness.subagents.started[0]?.request.toolFilter?.allow;
-    expect(allow).not.toContain("glob");
-    expect(allow).not.toContain("read");
-    // The plugin's own tools were never in question and stay in the filter.
-    expect(allow).toContain("domain_expert");
-    expect(harness.audits.recent()[0]?.degraded).toContain("TOOL_UNFILTERABLE");
-  });
-
-  it("fails closed when the runtime cannot enforce an explicit deny", async () => {
-    const definition = domainOf("payments", {
-      tools: { allow: ["read"], deny: ["shell"] },
-    });
-    const harness = harnessOf(definition, {
-      failOnce: new Error(
-        'tools.restrict() names unknown global tool "shell"; known global tools: domain_expert, read',
-      ),
-    });
-
-    await expect(run(harness, definition)).rejects.toMatchObject({
-      code: "WORKER_UNAVAILABLE",
-    });
-    expect(harness.subagents.started).toHaveLength(0);
-    expect(harness.audits.recent()[0]?.degraded ?? []).not.toContain(
-      "TOOL_UNFILTERABLE",
-    );
-  });
-
-  it("reads the refused names out of the runtime's own wording", () => {
-    // Verbatim from a deployment whose chat preset mounts the filesystem
-    // readers and the skill catalog on the agent plane.
-    expect(
-      unrestrictableToolNames(
-        new Error(
-          'tools.restrict() names unknown global tools "glob", "grep", "read", "read_image", "skill"; known global tools: bitrix_find_chat, domain_expert, web_fetch_image',
-        ),
-      ),
-    ).toEqual(["glob", "grep", "read", "read_image", "skill"]);
-    expect(
-      unrestrictableToolNames(
-        new Error(
-          'tools.restrict() names unknown global tool "bash"; known global tools: read',
-        ),
-      ),
-    ).toEqual(["bash"]);
-    expect(unrestrictableToolNames(new Error("disk on fire"))).toBeUndefined();
-  });
-
-  it("does not retry around a name the filter never carried", async () => {
-    // The runtime names what it was given, so this cannot happen in practice;
-    // the assertion is that a refusal this plugin cannot explain stays loud
-    // instead of being retried away.
-    const harness = harnessOf(PAYMENTS, {
-      failOnce: new Error(
-        'tools.restrict() names unknown global tool "bash"; known global tools: x',
-      ),
-    });
-    await expect(run(harness)).rejects.toMatchObject({
-      code: "WORKER_UNAVAILABLE",
-    });
-    expect(harness.subagents.started).toHaveLength(0);
-  });
-
   it("lets an unrelated infrastructure fault through unchanged", async () => {
     const harness = harnessOf(PAYMENTS, {
       failWith: new Error("disk on fire"),
     });
     await expect(run(harness)).rejects.toThrowError("disk on fire");
+  });
+});
+
+describe("execution: the tool policy the runtime no longer scopes", () => {
+  it("starts with the parent's composition and reports a configured policy as degraded", async () => {
+    const definition = domainOf("payments", {
+      tools: { allow: ["read", "glob"], deny: ["shell"] },
+    });
+    const harness = harnessOf(definition);
+    const result = await run(harness, definition);
+    // The start request carries no filter at all: the Host scopes no child's
+    // tools per run.
+    expect(harness.subagents.started).toHaveLength(1);
+    expect("toolFilter" in harness.subagents.started[0]!.request).toBe(false);
+    expect(result.status).toBe("completed");
+    expect(harness.audits.recent()[0]?.degraded).toContain("TOOL_UNFILTERABLE");
+  });
+
+  it("does not degrade a domain that configures no tool policy", async () => {
+    const harness = harnessOf();
+    await run(harness);
+    expect(harness.audits.recent()[0]?.degraded ?? []).not.toContain(
+      "TOOL_UNFILTERABLE",
+    );
   });
 });
 
@@ -589,9 +522,9 @@ describe("execution: whose memory a run gets", () => {
       },
     );
     await run(harness);
-    const persona = harness.subagents.started[0]?.request.persona ?? "";
-    expect(persona).toContain("- domain/payments/u/user-a (read/write)");
-    expect(persona).toContain("- domain/payments (read-only)");
+    const policy = textBlockOf(harness.subagents.started[0]!, 0);
+    expect(policy).toContain("- domain/payments/u/user-a (read/write)");
+    expect(policy).toContain("- domain/payments (read-only)");
   });
 
   it("keeps the domain namespace writable without account scoping", async () => {
@@ -604,9 +537,9 @@ describe("execution: whose memory a run gets", () => {
       },
     );
     await run(harness);
-    const persona = harness.subagents.started[0]?.request.persona ?? "";
-    expect(persona).toContain("- domain/payments (read/write)");
-    expect(persona).not.toContain("/u/user-a");
+    const policy = textBlockOf(harness.subagents.started[0]!, 0);
+    expect(policy).toContain("- domain/payments (read/write)");
+    expect(policy).not.toContain("/u/user-a");
   });
 
   it("inherits the account through a delegated run whose session nobody attested", async () => {
@@ -623,7 +556,7 @@ describe("execution: whose memory a run gets", () => {
       memoryOwner: { mode: "per-user", userId: "user-a" },
     });
     await run(harness, PAYMENTS, { background: true, id: "session-1" });
-    const child = harness.tracker.find("child-session-bg");
+    const child = harness.tracker.find("child-session");
     expect(child?.memoryOwner).toEqual({ mode: "per-user", userId: "user-a" });
   });
 });

@@ -141,6 +141,8 @@ export function createQaAccountRemotes(options: {
     if (!config.accounts.enabled) return undefined;
     const memoKey = JSON.stringify([
       config.accounts.sessionTtlDays,
+      config.accounts.localLogin,
+      config.accounts.oidc.enabled,
       config.accounts.allowRegistration,
       config.accounts.maxAuthAttemptsPerMinute,
       config.accounts.profile.instructionsMaxLength,
@@ -149,6 +151,8 @@ export function createQaAccountRemotes(options: {
     if (accounts === undefined || accountsOptions !== memoKey) {
       accounts = new QaAccounts(defaultAccountsFilePath(), {
         sessionTtlDays: config.accounts.sessionTtlDays,
+        localLogin: config.accounts.localLogin,
+        oidcEnabled: config.accounts.oidc.enabled,
         allowRegistration: config.accounts.allowRegistration,
         maxAuthAttemptsPerMinute: config.accounts.maxAuthAttemptsPerMinute,
         instructionsMaxLength: config.accounts.profile.instructionsMaxLength,

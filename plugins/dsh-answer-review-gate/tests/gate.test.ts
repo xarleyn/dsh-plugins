@@ -10,10 +10,10 @@ import type { ResolvedAnswerReviewGateConfig } from "../src/config.js";
 import type {
   ReviewAuditEntry,
   ReviewVerdict,
-  SubagentRunHandle,
+  SubagentActivation,
+  SubagentActivationSpec,
   SubagentRunResult,
   SubagentsFace,
-  SubagentStartSpec,
 } from "../src/types.js";
 
 const PASS: ReviewVerdict = {
@@ -51,6 +51,7 @@ function config(
       route: "",
       reasoningEffort: "",
       persona: "",
+      agentPreset: "",
       allowedTools: [],
     },
     maxReviewRounds: 3,
@@ -107,19 +108,34 @@ interface SteerRecord {
   readonly summary: string;
 }
 
+/** Every start-time option a provider can honor. */
+const FULL_CAPABILITIES = {
+  agentOptions: true,
+  agentPreset: true,
+  outputSchema: true,
+  depthLimit: true,
+};
+
 /** Scripted subagent face: each start consumes the next queued result. */
 class ScriptedFace implements SubagentsFace {
-  readonly started: SubagentStartSpec[] = [];
+  readonly started: SubagentActivationSpec[] = [];
   readonly queue: ((result: SubagentRunResult | Error) => void)[] = [];
 
-  start(
-    _provider: string,
-    request: SubagentStartSpec,
-  ): Promise<SubagentRunHandle> {
-    this.started.push(request);
+  getProvider(name: string) {
+    if (name !== "spawn") return undefined;
+    return {
+      name,
+      capabilities: { ...FULL_CAPABILITIES },
+      inheritsParentContext: true,
+    };
+  }
+
+  startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation> {
+    this.started.push(spec);
     return new Promise((resolve) => {
       this.queue.push((outcome) => {
         resolve({
+          childId: "child-session",
           result:
             outcome instanceof Error
               ? Promise.reject(outcome)

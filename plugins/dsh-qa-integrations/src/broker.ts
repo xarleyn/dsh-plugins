@@ -1,5 +1,21 @@
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
-import { IntegrationError, type IntegrationErrorCode } from "./errors.js";
+import { IntegrationError } from "./errors.js";
+import {
+  callFailureFields,
+  healthCode,
+  isPolicyDenial,
+  refusedCredentialCode,
+  transportTimeoutFields,
+} from "./broker/outcomes.js";
+import {
+  connectedSummary,
+  disconnectedSummary,
+  grantedCapabilities,
+  providerSummary,
+  serviceCapabilities,
+  serviceCapabilityStates,
+  serviceSummary,
+} from "./broker/service-view.js";
 import type { IntegrationProvider } from "./providers/contract.js";
 import type { IntegrationProviderRegistry } from "./providers/registry.js";
 import type {
@@ -29,7 +45,6 @@ import {
   type ServiceResourceBoundary,
 } from "./service-credentials/types.js";
 import type {
-  CapabilityServiceState,
   CredentialInput,
   CredentialSource,
   IntegrationCapability,
@@ -37,7 +52,6 @@ import type {
   IntegrationPrincipal,
   IntegrationProviderId,
   IntegrationProviderSummary,
-  IntegrationServiceSummary,
   IntegrationSummary,
   IntegrationToolResult,
   PolicyPatch,
@@ -95,14 +109,7 @@ export class IntegrationBroker {
   }
 
   listProviders(): readonly IntegrationProviderSummary[] {
-    return this.providers.list().map((provider) => ({
-      id: provider.id,
-      displayName: provider.displayName,
-      enabled: true,
-      authModes: ["token"],
-      capabilities: provider.capabilities,
-      credentialHelp: provider.credentialHelp,
-    }));
+    return this.providers.list().map(providerSummary);
   }
 
   list(principal: IntegrationPrincipal): readonly IntegrationSummary[] {
@@ -118,67 +125,61 @@ export class IntegrationBroker {
     const provider = this.providers.get(providerId);
     this.ensureDefaultServiceBinding(principal, providerId);
     const integration = this.repository.find(principal, providerId);
-    const service = this.serviceSummary(providerId, integration);
-    if (integration === undefined) {
-      return {
-        provider: providerId,
-        displayName: provider.displayName,
-        status: "not_connected",
-        portal: null,
-        externalAccountName: null,
-        credentialConfigured: false,
-        credentialUpdatedAt: null,
-        capabilities: provider.capabilities,
-        capabilityInfo: provider.capabilityInfo,
-        // Nothing is granted yet, so nothing carries a policy either.
-        policy: [],
-        lastValidatedAt: null,
-        errorCode: null,
-        credentialSource: "personal",
-        service,
-      };
-    }
+    const profile =
+      provider.capabilityServiceState === undefined || integration === undefined
+        ? undefined
+        : this.serviceCredentials?.find(
+            providerId,
+            integration.externalTenantId ?? "",
+          );
+    const capabilities = serviceCapabilityStates(provider, profile?.policy);
+    const service = serviceSummary(
+      capabilities,
+      profile,
+      integration?.serviceSelection ?? null,
+    );
+    if (integration === undefined)
+      return disconnectedSummary(providerId, provider, service);
     const granted = this.grantedCapabilities(integration, provider);
     const policy = granted.map((capability) => ({
       capability,
-      mode: this.repository.policy(integration, capability),
+      mode: this.repository.policy(
+        integration,
+        capability,
+        integration.credentialSource === "service" ? "allow" : "deny",
+      ),
     }));
     const secret = this.repository.secretFor(principal, providerId);
-    return {
-      provider: providerId,
-      displayName: provider.displayName,
-      status: integration.status,
-      portal: integration.externalTenantId,
-      externalAccountName: integration.displayName,
-      credentialConfigured: secret !== undefined,
-      credentialUpdatedAt: secret?.updatedAt ?? null,
-      capabilities: granted,
-      capabilityInfo: provider.capabilityInfo,
+    return connectedSummary(
+      providerId,
+      provider,
+      integration,
+      granted,
       policy,
-      lastValidatedAt: integration.lastValidatedAt,
-      errorCode: integration.lastErrorCode,
-      credentialSource: integration.credentialSource,
+      secret,
       service,
-    };
+    );
   }
 
-  /**
-   * The capabilities a connection may use as it stands: the stored grant, with
-   * anything this deployment has since withdrawn from the provider removed.
-   * Everything that decides or displays the reach of a connection reads through
-   * here — the call gate, the operator card, and the policy editor — so a
-   * capability the deployment has taken away is neither served, nor offered as a
-   * switch, nor able to collect a fresh allowance. A grant that survives only in
-   * the database stops being served, rather than running until the connection is
-   * next established.
-   */
   private grantedCapabilities(
     integration: StoredIntegration,
     provider: IntegrationProvider,
   ): readonly IntegrationCapability[] {
-    return integration.capabilities.filter((capability) =>
-      provider.capabilities.includes(capability),
-    );
+    const profile =
+      integration.credentialSource === "service"
+        ? this.serviceCredentials?.find(
+            provider.id,
+            integration.externalTenantId ?? "",
+          )
+        : undefined;
+    return grantedCapabilities(integration, provider, profile);
+  }
+
+  private serviceCapabilities(
+    providerId: IntegrationProviderId,
+    profile?: ServiceCredentialProfile,
+  ): readonly IntegrationCapability[] {
+    return serviceCapabilities(this.providers.get(providerId), profile?.policy);
   }
 
   /**
@@ -231,7 +232,7 @@ export class IntegrationBroker {
         tenantId: profile.portal,
         externalUserId: `service:${profile.id}`,
         displayName: profile.label,
-        capabilities: this.serviceCapabilities(providerId),
+        capabilities: this.serviceCapabilities(providerId, profile),
         credentialSource: "service",
         serviceProfileId: profile.id,
       });
@@ -392,7 +393,13 @@ export class IntegrationBroker {
       // A probe the upstream never answered is the same invisible failure as a
       // read that did: the row goes to `error` and nothing says the deadline
       // ended the probe rather than the credential being wrong.
-      this.logTransportTimeout(providerId, "credential.validate", error);
+      const timeoutFields = transportTimeoutFields(
+        providerId,
+        "credential.validate",
+        error,
+      );
+      if (timeoutFields !== undefined)
+        this.logger.warn("transport.timeout", timeoutFields);
       throw error;
     }
   }
@@ -513,7 +520,7 @@ export class IntegrationBroker {
         provider: providerId,
         source: "service",
         serviceProfileId: resolved.profile.id,
-        capabilities: this.serviceCapabilities(providerId),
+        capabilities: this.serviceCapabilities(providerId, resolved.profile),
         tenantId: resolved.profile.portal,
         externalUserId: `service:${resolved.profile.id}`,
         displayName: resolved.profile.label,
@@ -738,7 +745,11 @@ export class IntegrationBroker {
     // has since withdrawn stays served until the connection is re-established
     // unless the live provider set is consulted as well. Denied here — before
     // the secret is decrypted and before anything reaches upstream.
-    const mode = this.repository.policy(integration, capability);
+    const mode = this.repository.policy(
+      integration,
+      capability,
+      integration.credentialSource === "service" ? "allow" : "deny",
+    );
     if (
       mode !== "allow" ||
       !this.grantedCapabilities(integration, provider).includes(capability)
@@ -781,6 +792,7 @@ export class IntegrationBroker {
           externalUserId: integration.externalUserId ?? undefined,
           credentialSource: integration.credentialSource,
           resourceBoundary: boundary,
+          serviceOperationPolicy: resolved?.profile.policy,
         },
         request.operation,
         request.input,
@@ -826,67 +838,28 @@ export class IntegrationBroker {
         serviceProfileId: resolved?.profile.id ?? null,
         sourceSessionId: request.sourceSessionId,
       });
-      this.logTransportTimeout(
+      const timeoutFields = transportTimeoutFields(
         request.provider,
         request.operation,
         error,
         resolved?.profile.id,
       );
+      if (timeoutFields !== undefined)
+        this.logger.warn("transport.timeout", timeoutFields);
       this.recordCallVerdict(principal, integration, error);
-      this.logCallFailure(
+      const failureFields = callFailureFields(
         request.provider,
         integration,
         request.operation,
         error,
         resolved?.profile.id,
       );
+      if (failureFields !== undefined)
+        this.logger.warn("tool.call-failed", failureFields);
       throw error;
     } finally {
       releaseSlot?.();
     }
-  }
-
-  /**
-   * Record a call this deployment's own deadline ended.
-   *
-   * Without it the failure is invisible where an operator looks for it: the
-   * audit row says `error`, the trail of the reason code is the chat, and the
-   * log — the one surface that outlives both — carried nothing about a provider
-   * that stopped answering. The provider and the operation are this call's; the
-   * deadline and the attempts come written on the error by the transport loop
-   * that spent them, which is the only party that ever knew them.
-   *
-   * Nothing upstream is named here: no address, no query, no body, no
-   * credential. Numbers, a provider id and an operation are enough to find the
-   * call again in the trail.
-   */
-  private logTransportTimeout(
-    provider: IntegrationProviderId,
-    operation: string,
-    error: unknown,
-    serviceProfileId?: string | undefined,
-  ): void {
-    if (
-      !(error instanceof IntegrationError) ||
-      error.code !== "UpstreamTimeout"
-    ) {
-      return;
-    }
-    const budget = error.budget;
-    this.logger.warn("transport.timeout", {
-      provider,
-      operation,
-      ...(budget === undefined
-        ? {}
-        : {
-            timeoutMs: budget.timeoutMs,
-            retries: budget.retries,
-            attempts: budget.attempts,
-          }),
-      ...(serviceProfileId === undefined
-        ? {}
-        : { serviceProfile: serviceProfileId }),
-    });
   }
 
   /**
@@ -910,14 +883,14 @@ export class IntegrationBroker {
     integration: StoredIntegration,
     error: unknown,
   ): void {
-    if (!(error instanceof IntegrationError)) return;
-    if (!REFUSED_CREDENTIAL_CODES.includes(error.code)) return;
+    const code = refusedCredentialCode(error);
+    if (code === undefined) return;
     this.recordValidation(
       principal,
       integration.provider,
       integration,
       false,
-      error.code,
+      code,
     );
   }
 
@@ -940,51 +913,6 @@ export class IntegrationBroker {
       true,
       null,
     );
-  }
-
-  /**
-   * Say in this plugin's own log what a refused live call met.
-   *
-   * The chat carries the sentence the model was shown, the audit trail carries
-   * the result, and neither is where an operator looks; before this a live
-   * refusal left no line behind at all. The fields describe the shape of the
-   * answer — its status, its media type, the class of the transport failure —
-   * never its body, and never a credential.
-   *
-   * Two refusals are left to their own records: a call this deployment's
-   * deadline ended is `transport.timeout`, budget and all, and a refusal decided
-   * without any answer — a policy switch, a connection that is not there — has
-   * no upstream to report on, which is what the absence of diagnostics says.
-   */
-  private logCallFailure(
-    provider: IntegrationProviderId,
-    integration: StoredIntegration,
-    operation: string,
-    error: unknown,
-    serviceProfileId?: string | undefined,
-  ): void {
-    if (!(error instanceof IntegrationError)) return;
-    if (error.code === "UpstreamTimeout" || error.diagnostics === undefined) {
-      return;
-    }
-    const facts = error.diagnostics;
-    this.logger.warn("tool.call-failed", {
-      provider,
-      operation,
-      reason: error.code,
-      integrationId: integration.id,
-      credentialSource: integration.credentialSource,
-      ...(facts.status === undefined ? {} : { status: facts.status }),
-      ...(facts.contentType === undefined
-        ? {}
-        : { contentType: facts.contentType }),
-      ...(facts.errorClass === undefined
-        ? {}
-        : { errorClass: facts.errorClass }),
-      ...(serviceProfileId === undefined
-        ? {}
-        : { serviceProfile: serviceProfileId }),
-    });
   }
 
   /**
@@ -1069,6 +997,7 @@ export class IntegrationBroker {
     }
     const decision = evaluateServiceOperation({
       metadata: query.metadata,
+      operation: query.operation,
       capability: query.capability,
       profile: resolved.profile,
       boundaryKind: query.boundaryKind,
@@ -1134,7 +1063,7 @@ export class IntegrationBroker {
       tenantId: profile.portal,
       externalUserId: `service:${profile.id}`,
       displayName: profile.label,
-      capabilities: this.serviceCapabilities(providerId),
+      capabilities: this.serviceCapabilities(providerId, profile),
       credentialSource: "service",
       serviceProfileId: profile.id,
     });
@@ -1218,50 +1147,6 @@ export class IntegrationBroker {
     });
   }
 
-  /** Capabilities the managed credential can reach through this provider. */
-  private serviceCapabilities(
-    providerId: IntegrationProviderId,
-  ): readonly IntegrationCapability[] {
-    const provider = this.providers.get(providerId);
-    if (provider.capabilityServiceState === undefined) return [];
-    return provider.capabilities.filter(
-      (capability) =>
-        provider.capabilityServiceState?.(capability) === "available",
-    );
-  }
-
-  /**
-   * Managed-credential state of one provider, as a client renders it. Null for a
-   * provider that supports no managed credential at all, so nothing about the
-   * feature appears where it does not apply.
-   */
-  private serviceSummary(
-    providerId: IntegrationProviderId,
-    integration: StoredIntegration | undefined,
-  ): IntegrationServiceSummary | null {
-    const provider = this.providers.get(providerId);
-    if (provider.capabilityServiceState === undefined) return null;
-    const capabilities: Record<string, CapabilityServiceState> = {};
-    for (const capability of provider.capabilities) {
-      capabilities[capability] =
-        provider.capabilityServiceState(capability) ?? "unavailable";
-    }
-    const profile =
-      integration === undefined
-        ? undefined
-        : this.serviceCredentials?.find(
-            providerId,
-            integration.externalTenantId ?? "",
-          );
-    return {
-      available: profile?.enabled === true,
-      label: profile?.label ?? null,
-      resources: profile?.resources ?? null,
-      selection: integration?.serviceSelection ?? null,
-      capabilities: Object.freeze(capabilities),
-    };
-  }
-
   private requireConnected(
     principal: IntegrationPrincipal,
     provider: IntegrationProviderId,
@@ -1330,48 +1215,4 @@ export class IntegrationBroker {
       );
     }
   }
-}
-
-/** What a probe verdict means for the stored binding, if anything. */
-function healthCode(
-  health: ServiceCredentialHealth | undefined,
-): IntegrationErrorCode | undefined {
-  switch (health?.status) {
-    case undefined:
-    case "healthy":
-      return undefined;
-    case "expired":
-      return "CredentialExpired";
-    case "revoked":
-      return "CredentialRevoked";
-    case "unsafe_scope":
-      return "ServiceCredentialUnsafeScope";
-    default:
-      return "ProviderUnavailable";
-  }
-}
-
-/**
- * Codes that mean the binding's own credential was refused, wherever the
- * upstream said so — a rejected token, an expired one, a redirect to a sign-in
- * page. They are the ones the operator's card can act on by reconnecting.
- */
-const REFUSED_CREDENTIAL_CODES: readonly IntegrationErrorCode[] = Object.freeze(
-  ["CredentialExpired", "CredentialRevoked", "InvalidCredential"],
-);
-
-/** Codes that mean "policy refused this", wherever the refusal was decided. */
-const DENIAL_CODES: readonly IntegrationErrorCode[] = Object.freeze([
-  "OperationDeniedByPolicy",
-  "OperationNotAllowedWithServiceCredential",
-  "SensitiveReadRequiresPersonalCredential",
-  "ServiceResourceNotAllowed",
-  "ServiceCredentialUnavailable",
-  "ServiceCredentialDisabled",
-  "ServiceCredentialInvalid",
-  "PersonalCredentialRequired",
-]);
-
-function isPolicyDenial(error: unknown): boolean {
-  return error instanceof IntegrationError && DENIAL_CODES.includes(error.code);
 }

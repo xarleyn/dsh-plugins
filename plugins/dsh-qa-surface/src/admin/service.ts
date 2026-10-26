@@ -66,6 +66,11 @@ import type {
 import { expertMemoryReasonOf } from "../integration/expert-memory.js";
 import { allows } from "./permissions.js";
 import { aggregateQuality, type QaConversationFact } from "./metrics.js";
+import {
+  readBudget as budgetOf,
+  QA_ADMIN_REQUEST_BUDGET_MS,
+  type QaReadBudget,
+} from "./read-budget.js";
 import { paginate } from "./paging.js";
 import { deriveQueue, type QaToolFailureSignal } from "./queue.js";
 import { QA_FEEDBACK_RATINGS, type QaQualityStore } from "./quality-store.js";
@@ -118,6 +123,20 @@ const TRANSCRIPT_TTL_MS = 30_000;
  * conversations a pass has already read, and the next pass pays for them again.
  */
 const TRANSCRIPT_CACHE_MAX = QA_ADMIN_SCAN_LIMIT + QA_ADMIN_PAGE_MAX;
+
+/**
+ * How long one page may spend reading conversation logs before it answers with
+ * what it already has. The newest logs are read until this budget is spent; the
+ * rest of the rows are marked unread instead of the page waiting for a store
+ * that may never answer. Without this,
+ * one conversation whose log cannot be read — a blank chat its process holds
+ * open is the usual case on a stand — parked the page for as long as the
+ * deployment runs.
+ */
+export const QA_ADMIN_PAGE_BUDGET_MS = 10_000;
+
+/** The same budget for the aggregate window the overview and metrics read. */
+export const QA_ADMIN_SCAN_BUDGET_MS = 10_000;
 
 /**
  * What one harvest request may carry. The browser replays its ratings in
@@ -371,17 +390,24 @@ export class QaAdminService {
    * creation happened to trigger housekeeping. The sweep is throttled, so this
    * costs a listing per interval at most.
    */
-  private async index(): Promise<readonly IndexedConversation[]> {
+  private async index(
+    within = budgetOf(() => this.now()),
+  ): Promise<readonly IndexedConversation[]> {
     const accounts = this.requireAccounts();
-    await this.options.access().sweepVanishedOwnership();
+    await within.read(
+      () => this.options.access().sweepVanishedOwnership(),
+      undefined,
+    );
     const directory = new Map(
       accounts.directory().map((user) => [user.id, user]),
     );
     const headers = new Map(
-      (await this.options.sessionLog.list()).headers.map((header) => [
-        header.id,
-        header,
-      ]),
+      (
+        await within.read(() => this.options.sessionLog.list(), {
+          headers: [],
+          complete: false,
+        })
+      ).headers.map((header) => [header.id, header]),
     );
     return accounts
       .listOwnershipRecords()
@@ -431,15 +457,24 @@ export class QaAdminService {
    * reads the log — and what the aggregate pages show instead is the newest
    * projection of every finished conversation, which is the cheaper lie.
    */
+  private now(): number {
+    return this.options.clock?.now() ?? Date.now();
+  }
+
   private async transcript(
     conversationId: string,
     fresh = false,
+    within?: QaReadBudget,
   ): Promise<
     | { readonly ok: true; readonly project: QaProjectedTranscript }
-    | { readonly ok: false; readonly reason: QaTranscriptUnavailableReason }
+    | {
+        readonly ok: false;
+        readonly reason: QaTranscriptUnavailableReason;
+        readonly timedOut?: boolean;
+      }
   > {
     const cached = this.transcripts.get(conversationId);
-    const now = this.options.clock?.now() ?? Date.now();
+    const now = this.now();
     if (cached !== undefined) {
       const stale =
         fresh ||
@@ -451,13 +486,33 @@ export class QaAdminService {
       }
       this.transcripts.delete(conversationId);
     }
-    const result = await this.options.sessionLog.read(conversationId);
+    // A cached projection is free and still worth serving; a stored read is
+    // what a page spends its budget on, so it is the one the budget stops.
+    if (within !== undefined && within.remaining() <= 0) {
+      return { ok: false, reason: "storage-unavailable", timedOut: true };
+    }
+    const fallback = {
+      ok: false as const,
+      reason: "storage-unavailable" as const,
+      timedOut: true,
+    };
+    const result =
+      within === undefined
+        ? await this.options.sessionLog.read(conversationId)
+        : await within.read(
+            () => this.options.sessionLog.read(conversationId),
+            fallback,
+          );
     if (!result.ok) {
-      return { ok: false, reason: result.reason };
+      return {
+        ok: false,
+        reason: result.reason,
+        ...(result.timedOut === true ? { timedOut: true } : {}),
+      };
     }
     const project = projectTranscript(result.events, this.redactor);
     this.retain(conversationId, {
-      at: this.options.clock?.now() ?? Date.now(),
+      at: this.now(),
       project,
     });
     return { ok: true, project };
@@ -489,6 +544,7 @@ export class QaAdminService {
   private async scanOf(
     rows: readonly IndexedConversation[],
     signal: AbortSignal | undefined,
+    within = budgetOf(() => this.now(), QA_ADMIN_SCAN_BUDGET_MS),
   ): Promise<QaAggregateRows> {
     signal?.throwIfAborted();
     const window = [...rows]
@@ -511,7 +567,7 @@ export class QaAdminService {
     const facts: QaConversationFact[] = [];
     const failures: QaToolFailureSignal[] = [];
     const waiting = new Set<AbortSignal | undefined>([signal]);
-    const promise = this.walk(window, waiting, facts, failures);
+    const promise = this.walk(window, waiting, facts, failures, within);
     const pass: QaRunningScan = { window: ids, promise, waiting };
     this.scanning = pass;
     void promise
@@ -533,18 +589,29 @@ export class QaAdminService {
    * up between two reads once every caller has left, so a reviewer who abandons a
    * page that has not answered does not keep the deployment reading logs for an
    * answer nobody will see.
+   *
+   * `within` is the pass's read budget. A log the budget no longer covers is not
+   * opened: the conversation keeps its row and is marked unread. Metrics then
+   * disclose the incomplete population instead of treating it as zero answers.
    */
   private async walk(
     window: readonly IndexedConversation[],
     waiting: ReadonlySet<AbortSignal | undefined>,
     facts: QaConversationFact[],
     failures: QaToolFailureSignal[],
+    within: QaReadBudget,
   ): Promise<QaAggregateRows> {
+    let skipped = 0;
     for (const row of window) {
       if (nobodyWaits(waiting)) {
         throw new Error("qa admin aggregate scan abandoned: no caller left");
       }
-      const transcript = await this.transcript(row.conversationId);
+      const transcript = await this.transcript(
+        row.conversationId,
+        false,
+        within,
+      );
+      if (!transcript.ok && transcript.timedOut === true) skipped += 1;
       facts.push({
         conversationId: row.conversationId,
         userId: row.userId,
@@ -554,6 +621,14 @@ export class QaAdminService {
               (message) => message.role === "assistant",
             ).length
           : 0,
+        readable: transcript.ok,
+        ...(transcript.ok
+          ? {
+              assistantMessageIds: transcript.project.messages
+                .filter((message) => message.role === "assistant")
+                .map((message) => message.id),
+            }
+          : {}),
         createdAt: row.createdAt,
       });
       if (transcript.ok) {
@@ -561,6 +636,12 @@ export class QaAdminService {
           ...this.failuresOf(row.conversationId, transcript.project),
         );
       }
+    }
+    if (skipped > 0) {
+      this.options.logger.warn("admin.scan-partial", {
+        window: window.length,
+        skipped,
+      });
     }
     return { facts, failures };
   }
@@ -574,12 +655,17 @@ export class QaAdminService {
     signal?: AbortSignal,
   ): Promise<QaAdminOverview> {
     this.require(token, "conversations.read.all");
-    const rows = await this.index();
-    const metrics = await this.metricsOf(rows, signal);
+    const within = budgetOf(() => this.now(), QA_ADMIN_REQUEST_BUDGET_MS);
+    const rows = await this.index(within);
+    // One pass answers both the counters and the review queue. Walking the
+    // window twice — once for the metrics and once for the queue — doubled the
+    // cost of the landing page on a store where every read is a listing.
+    const scan = await this.scanOf(rows, signal, within);
+    const metrics = await this.metricsOf(rows, signal, scan);
     const fresh = [...this.options.quality().allFeedback()].sort(
       (left, right) => right.createdAt.localeCompare(left.createdAt),
     );
-    const queue = await this.queueRows(rows, signal);
+    const queue = await this.queueRows(rows, signal, scan, within);
     return Object.freeze({
       metrics,
       alerts: this.alertsOf(metrics),
@@ -597,21 +683,37 @@ export class QaAdminService {
     signal?: AbortSignal,
   ): Promise<QaQualityMetrics> {
     this.require(token, "analytics.read");
-    return this.metricsOf(await this.index(), signal);
+    const within = budgetOf(() => this.now(), QA_ADMIN_REQUEST_BUDGET_MS);
+    return this.metricsOf(await this.index(within), signal, undefined, within);
   }
 
   private async metricsOf(
     rows: readonly IndexedConversation[],
     signal: AbortSignal | undefined,
+    scan?: QaAggregateRows,
+    within?: QaReadBudget,
   ): Promise<QaQualityMetrics> {
     const quality = this.options.quality();
     // Feedback and reviews are exact; the message counts come from the bounded
     // log scan and are labelled as such where they are shown.
-    return aggregateQuality({
-      conversations: (await this.scanOf(rows, signal)).facts,
-      feedback: quality.allFeedback(),
-      reviews: quality.allReviews(),
-    });
+    const aggregate = scan ?? (await this.scanOf(rows, signal, within));
+    const read = aggregate.facts.filter((row) => row.readable !== false).length;
+    const complete = read === rows.length;
+    return {
+      ...aggregateQuality({
+        conversations: aggregate.facts,
+        complete,
+        feedback: quality.allFeedback(),
+        reviews: quality.allReviews(),
+      }),
+      conversations: rows.length,
+      activeUsers: new Set(rows.map((row) => row.userId)).size,
+      coverage: {
+        complete,
+        readConversations: read,
+        totalConversations: rows.length,
+      },
+    };
   }
 
   /** One attention line per condition worth an administrator's time. */
@@ -980,7 +1082,8 @@ export class QaAdminService {
   ): Promise<QaAdminPage<QaConversationSummary>> {
     this.require(token, "conversations.read.all");
     signal?.throwIfAborted();
-    const rows = await this.index();
+    const within = budgetOf(() => this.now(), QA_ADMIN_REQUEST_BUDGET_MS);
+    const rows = await this.index(within);
     const quality = this.options.quality();
     const feedback = quality.allFeedback();
     const reviews = quality.allReviews();
@@ -1006,6 +1109,9 @@ export class QaAdminService {
       : rows;
 
     const candidates: IndexedConversation[] = [];
+    // A search reads one log per candidate, and a page reads one per row it
+    // shows. Both are bounded: once the budget is spent the remaining rows are
+    // listed without what only their logs could say.
     for (const row of searchable) {
       signal?.throwIfAborted();
       if (userIdFilter !== undefined && row.userId !== userIdFilter) continue;
@@ -1033,7 +1139,11 @@ export class QaAdminService {
       // for the summary of the rows that survive the filter.
       let title: string | undefined;
       if (searching) {
-        const transcript = await this.transcript(row.conversationId);
+        const transcript = await this.transcript(
+          row.conversationId,
+          false,
+          within,
+        );
         title = transcript.ok ? transcript.project.title : undefined;
       }
       if (
@@ -1064,7 +1174,14 @@ export class QaAdminService {
     const items: QaConversationSummary[] = [];
     for (const row of page.items) {
       signal?.throwIfAborted();
-      items.push(await this.summaryOf(row, feedback, reviews));
+      items.push(await this.summaryOf(row, feedback, reviews, within));
+    }
+    if (page.items.length > 0 && within.remaining() <= 0) {
+      // The page is complete; only what the logs would have added is missing.
+      this.options.logger.warn("admin.conversations-partial", {
+        rows: page.items.length,
+        budgetMs: QA_ADMIN_PAGE_BUDGET_MS,
+      });
     }
     return {
       items: Object.freeze(items),
@@ -1077,8 +1194,9 @@ export class QaAdminService {
     row: IndexedConversation,
     feedback: readonly QaMessageFeedback[],
     reviews: readonly QaConversationReview[],
+    within?: QaReadBudget,
   ): Promise<QaConversationSummary> {
-    const transcript = await this.transcript(row.conversationId);
+    const transcript = await this.transcript(row.conversationId, false, within);
     const mine = feedback.filter(
       (item) => item.conversationId === row.conversationId,
     );
@@ -1127,7 +1245,8 @@ export class QaAdminService {
         "this conversation belongs to another account",
       );
     }
-    const rows = await this.index();
+    const within = budgetOf(() => this.now(), QA_ADMIN_REQUEST_BUDGET_MS);
+    const rows = await this.index(within);
     const row = rows.find((entry) => entry.conversationId === conversationId);
     if (row === undefined) {
       throw new QaAccountsError(
@@ -1138,8 +1257,8 @@ export class QaAdminService {
     const quality = this.options.quality();
     const feedback = quality.allFeedback();
     const reviews = quality.allReviews();
-    const summary = await this.summaryOf(row, feedback, reviews);
-    const transcript = await this.transcript(conversationId, true);
+    const transcript = await this.transcript(conversationId, true, within);
+    const summary = await this.summaryOf(row, feedback, reviews, within);
     const project = transcript.ok ? transcript.project : undefined;
     const messages: QaConversationMessage[] = (project?.messages ?? []).map(
       (message) =>
@@ -1437,7 +1556,8 @@ export class QaAdminService {
     limit: number | undefined,
   ): Promise<QaAdminPage<QaFeedbackRow>> {
     this.require(token, "reviews.read");
-    const rows = await this.index();
+    const within = budgetOf(() => this.now(), QA_ADMIN_REQUEST_BUDGET_MS);
+    const rows = await this.index(within);
     const quality = this.options.quality();
     const reviews = quality.allReviews();
     const ratingFilter = given(query.rating);
@@ -1487,14 +1607,26 @@ export class QaAdminService {
       limit: clampLimit(limit),
     });
     // Titles are read for the rows on this page only: a title lives in the
-    // conversation's log, and paging is what keeps that work bounded.
+    // conversation's log, and paging is what keeps that work bounded. The read
+    // itself is bounded too — a rated conversation whose log does not answer
+    // loses its title, not the table.
     const titles = new Map<string, string | undefined>();
     for (const row of page.items) {
-      const transcript = await this.transcript(row.conversationId);
+      const transcript = await this.transcript(
+        row.conversationId,
+        false,
+        within,
+      );
       titles.set(
         row.conversationId,
         transcript.ok ? transcript.project.title : undefined,
       );
+    }
+    if (page.items.length > 0 && within.remaining() <= 0) {
+      this.options.logger.warn("admin.feedback-partial", {
+        rows: page.items.length,
+        budgetMs: QA_ADMIN_PAGE_BUDGET_MS,
+      });
     }
     return {
       items: Object.freeze(
@@ -1532,6 +1664,8 @@ export class QaAdminService {
   private async queueRows(
     rows?: readonly IndexedConversation[],
     signal?: AbortSignal,
+    scan?: QaAggregateRows,
+    within = budgetOf(() => this.now(), QA_ADMIN_PAGE_BUDGET_MS),
   ): Promise<readonly QaReviewQueueRow[]> {
     const conversations = rows ?? (await this.index());
     const quality = this.options.quality();
@@ -1541,14 +1675,19 @@ export class QaAdminService {
       feedback: quality.allFeedback(),
       reviews,
       manual: quality.manualQueue(),
-      failures: (await this.scanOf(conversations, signal)).failures,
+      failures: (scan ?? (await this.scanOf(conversations, signal, within)))
+        .failures,
     });
     const result: QaReviewQueueRow[] = [];
     for (const item of queue) {
       signal?.throwIfAborted();
       const row = byId.get(item.conversationId);
       if (row === undefined) continue;
-      const transcript = await this.transcript(item.conversationId);
+      const transcript = await this.transcript(
+        item.conversationId,
+        false,
+        within,
+      );
       const review = reviews.find((entry) => entry.id === item.reviewId);
       result.push(
         Object.freeze({
@@ -1578,7 +1717,13 @@ export class QaAdminService {
     signal?: AbortSignal,
   ): Promise<QaAdminPage<QaReviewQueueRow>> {
     this.require(token, "reviews.read");
-    const rows = await this.queueRows(await this.index(), signal);
+    const within = budgetOf(() => this.now(), QA_ADMIN_REQUEST_BUDGET_MS);
+    const rows = await this.queueRows(
+      await this.index(within),
+      signal,
+      undefined,
+      within,
+    );
     return paginate({
       rows,
       keyOf: (row) => `${row.priority}:${row.raisedAt}`,

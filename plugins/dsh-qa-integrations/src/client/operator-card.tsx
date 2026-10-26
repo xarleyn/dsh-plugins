@@ -22,12 +22,14 @@ import type {
 import { bindSettingsExternalStore } from "@yadsh/dsh-plugin-kit/client";
 import {
   useCallback,
+  useEffect,
   useMemo,
   useState,
   useSyncExternalStore,
   type ReactElement,
 } from "react";
 import type { QaIntegrationsConfig } from "../config.js";
+import type { ServicePolicyOperation } from "../types.js";
 import { Toggle, type ControlProps } from "./operator-controls.js";
 import { serviceReachNoteForPath } from "./operator-service-reach.js";
 import { Bitrix24Section } from "./operator-sections/bitrix24.js";
@@ -53,6 +55,9 @@ import { ServiceAccessSection } from "./operator-sections/service-profiles.js";
 
 /** The face the slot entry injects into this card. */
 export interface OperatorCardFace {
+  readonly loadServiceOperations?: () => Promise<
+    Readonly<Record<string, readonly ServicePolicyOperation[]>>
+  >;
   /**
    * The live Config of this plugin's namespace.
    *
@@ -116,7 +121,31 @@ export function OperatorCardEntry(props: CardProps): ReactElement | string {
   return <OperatorCard {...props} />;
 }
 
-export function OperatorCard({ settingsForm }: CardProps): ReactElement {
+export function OperatorCard({
+  settingsForm,
+  loadServiceOperations,
+}: CardProps): ReactElement {
+  const [serviceOperations, setServiceOperations] = useState<
+    Readonly<Record<string, readonly ServicePolicyOperation[]>>
+  >({});
+  const [catalogError, setCatalogError] = useState(false);
+  useEffect(() => {
+    if (loadServiceOperations === undefined) return;
+    let cancelled = false;
+    void loadServiceOperations()
+      .then((value) => {
+        if (!cancelled) {
+          setServiceOperations(value);
+          setCatalogError(false);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setCatalogError(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [loadServiceOperations]);
   const store = useMemo(
     () => bindSettingsExternalStore(settingsForm),
     [settingsForm],
@@ -227,7 +256,7 @@ export function OperatorCard({ settingsForm }: CardProps): ReactElement {
       />
     );
   };
-  const sections: OperatorForm = { config, control, toggle };
+  const sections: OperatorForm = { config, control, toggle, serviceOperations };
 
   return (
     // The Plugins page draws this card's frame, its title and its expand control,
@@ -235,6 +264,12 @@ export function OperatorCard({ settingsForm }: CardProps): ReactElement {
     // override marker is the body's own: it states what this section holds, which
     // the page's chrome does not know.
     <div className="qai-op__body">
+      {catalogError ? (
+        <p className="qai-op__error">
+          Не удалось загрузить операции сервисных аккаунтов. Обновите страницу
+          для повтора.
+        </p>
+      ) : null}
       {settings.status === "loading" ? (
         <p className="qai-op__muted" data-testid="qa-integrations-loading">
           Загружаем конфигурацию интеграций…

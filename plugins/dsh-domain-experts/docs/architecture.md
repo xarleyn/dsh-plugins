@@ -120,9 +120,13 @@ domain_expert(domain, task, context, output, mode, background)
   the resolution rather than reporting a fault: the name still reaches
   `toolFilter.allow` (`filterNamesOf` keeps every available entry). Dropping it
   would quietly narrow the expert on a deployment that does mount the tool;
-  keeping it costs one audit code. Where the runtime does refuse a name, the run
-  is retried without it and records `TOOL_UNFILTERABLE`, which names what went
-  missing.
+  keeping it lets the Host validate it on the actual child. A local activation
+  reserves its id and installs the restriction in the serial `agent/created`
+  event, after preset composition and before the first prompt. A successful
+  installation clears `TOOL_UNVERIFIED` from the run audit. An unknown name
+  refuses creation; there is no retry with a weaker policy. Providers without
+  local managed creation cannot run a configured tool policy. Adapters without
+  the lifecycle hook report `TOOL_UNFILTERABLE`.
 - **Expert-only tools are globally registered.** `domain_delegate`'s sibling
   concern — a top-level agent seeing `domain_memory` — is handled by refusing
   with `EXPERT_NOT_CALLER`, because the runtime offers no seam to register a

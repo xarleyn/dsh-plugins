@@ -332,7 +332,7 @@ export class AnswerReviewGate {
     config: ResolvedAnswerReviewGateConfig,
   ): Promise<BoundaryOutcome> {
     const startedAt = this.deps.now();
-    const backend = this.backendFor(agent, config);
+    const backend = this.backendFor(agent, config, sessionId);
     const input: ReviewInput = {
       onRecovery: () => this.publishReceipt(agent, state, hash, "recovering"),
       conversationContext: reviewConversationContext(agent.session),
@@ -490,6 +490,7 @@ export class AnswerReviewGate {
   private backendFor(
     agent: GateAgent,
     config: ResolvedAnswerReviewGateConfig,
+    sessionId: string,
   ): {
     readonly name: string;
     readonly reviewer: string;
@@ -503,6 +504,16 @@ export class AnswerReviewGate {
         // The reviewed chat's policy, not its visitor's picker: a reviewer that
         // followed the parent's model would change with every role on the stand.
         modelPolicy: qaModelPolicy(this.deps.qaSurface?.(), String(agent.id)),
+        // The activation contract scopes a child's tools through its Agent
+        // Preset only, so the configured allow-list composes nothing: the
+        // deployment must hear that from the gate, not read it in the config.
+        onDegradation: (code, detail) => {
+          this.deps.logger.warn("gate.reviewer-degraded", {
+            sessionId,
+            code,
+            detail,
+          });
+        },
       });
     }
     return createDomainExpertBackend({

@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Humanizer",
+    "description": "Rewrite prose drafts through a dedicated Humanizer model, with context limits and preservation warnings."
+  }
+}

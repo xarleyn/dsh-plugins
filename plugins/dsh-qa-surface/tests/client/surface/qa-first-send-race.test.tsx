@@ -323,14 +323,31 @@ describe("first send from a new QA chat", () => {
     // could not open did not take its identity, so nothing remounted the field.
     expect(promptField()).toBe(mounted);
     expect(promptField()).toHaveProperty("value", "Первый вопрос");
+    expect(screen.getByTestId("qa-surface-error-detail").textContent).toMatch(
+      /Код обращения/u,
+    );
+    expect(screen.getByTestId("qa-surface-error-retry")).toBeTruthy();
 
+    // The connection recovers; retry opens the original successful create.
+    const recovered = world.faces.get("created-2")!;
+    recovered.source.set({
+      ...recovered.source.getSnapshot(),
+      openState: "open",
+    });
+    fireEvent.click(screen.getByTestId("qa-surface-error-retry"));
+    await waitFor(() =>
+      expect(screen.queryByTestId("qa-surface-error")).toBeNull(),
+    );
+    expect(world.createSession).toHaveBeenCalledTimes(1);
+    expect(promptField()).toHaveProperty("value", "Первый вопрос");
     fireEvent.click(screen.getByRole("button", { name: "Отправить" }));
     await waitFor(() => {
-      expect(world.faces.get("created-3")?.prompt).toHaveBeenCalledWith(
+      expect(world.faces.get("created-2")?.prompt).toHaveBeenCalledWith(
         [{ type: "text", text: "Первый вопрос" }],
         "queue",
       );
     });
+    expect(world.createSession).toHaveBeenCalledTimes(1);
     expect(promptField()).toBe(mounted);
     await waitFor(() => expect(promptField()).toHaveProperty("value", ""));
 

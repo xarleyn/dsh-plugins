@@ -2,7 +2,10 @@ import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type { CredentialHelp } from "@yadsh/dsh-plugin-kit";
 import type { QaUserSettingsSectionProps } from "@yadsh/dsh-qa-surface/client/settings";
 import { useEffect, useRef, useState } from "react";
-import type { IntegrationProviderSummary } from "../types.js";
+import type {
+  IntegrationProviderSummary,
+  ServicePolicyOperation,
+} from "../types.js";
 import {
   createBitrix24Card,
   type Bitrix24Remote,
@@ -22,7 +25,15 @@ export interface CredentialHelpRemote {
   ): Promise<RemoteResult<readonly IntegrationProviderSummary[]>>;
 }
 
+/** The operator card reads the current service operation catalog. */
+export interface ServiceOperationCatalogRemote {
+  serviceOperationCatalog(): Promise<
+    RemoteResult<Readonly<Record<string, readonly ServicePolicyOperation[]>>>
+  >;
+}
+
 export type IntegrationsClientRemote = CredentialHelpRemote &
+  ServiceOperationCatalogRemote &
   IntegrationsRemote &
   Bitrix24Remote &
   ConfluenceRemote &

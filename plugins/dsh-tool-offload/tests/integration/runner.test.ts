@@ -1,15 +1,16 @@
 /**
  * Integration tests for the subagent-backed WorkerRunner against a fake
- * `ctx.subagents` service (SPEC §9.5, §22-§25: exact model config, no-tools
- * restriction, timeout, cancellation, disposal).
+ * `ctx.subagents` service (SPEC §9.5, §22-§25: preset-gated no-tools worker,
+ * exact model config, timeout, cancellation, disposal).
  */
 
 import { describe, expect, it } from "vitest";
 
 import type {
+  SubagentActivation,
+  SubagentActivationSpec,
+  SubagentCapabilities,
   SubagentResult,
-  SubagentRun,
-  SubagentStartRequest,
 } from "@deepseek-ai/dsh-subagent";
 
 import {
@@ -22,20 +23,19 @@ import { fakeAgent } from "../fixtures/offload-fixtures.js";
 
 interface ProviderStub {
   readonly name: string;
-  readonly capabilities: { readonly toolFilter: boolean };
+  readonly capabilities: SubagentCapabilities;
+  readonly inheritsParentContext: boolean;
 }
 
-function baseRequest(
-  overrides: Partial<WorkerRunRequest> = {},
-): WorkerRunRequest {
+/** A worker profile that names the no-tools preset the deployment provides. */
+function presetProfile(
+  overrides: Partial<WorkerRunRequest["profile"]> = {},
+): WorkerRunRequest["profile"] {
   return {
-    label: "dsh-tool-offload:read",
-    parent: fakeAgent(),
-    prompt: "PROMPT",
-    signal: new AbortController().signal,
-    profile: resolveToolOffloadConfig({
+    ...resolveToolOffloadConfig({
       workers: {
         default: {
+          agentPreset: "bare-worker",
           provider: "zai",
           model: "glm-4.5-air",
           maxTokens: 2_500,
@@ -47,53 +47,78 @@ function baseRequest(
   };
 }
 
-function fakeRun(result: SubagentRun["result"]): {
-  run: SubagentRun;
+function baseRequest(
+  overrides: Partial<WorkerRunRequest> = {},
+): WorkerRunRequest {
+  return {
+    label: "dsh-tool-offload:read",
+    parent: fakeAgent(),
+    prompt: "PROMPT",
+    signal: new AbortController().signal,
+    profile: presetProfile(),
+    ...overrides,
+  };
+}
+
+function fakeActivation(result: Promise<SubagentResult>): {
+  activation: SubagentActivation;
   disposed: () => boolean;
 } {
   let disposed = false;
-  const run = {
-    id: "child-1",
-    localAgent: undefined,
+  const activation = {
+    childId: "child-1",
     result,
     dispose: async () => {
       disposed = true;
     },
-  } as unknown as SubagentRun;
-  return { run, disposed: () => disposed };
+  } as unknown as SubagentActivation;
+  return { activation, disposed: () => disposed };
 }
+
+const FULL_CAPABILITIES: SubagentCapabilities = {
+  agentOptions: true,
+  agentPreset: true,
+  outputSchema: true,
+  depthLimit: true,
+};
 
 function service(
   overrides: {
     provider?: ProviderStub;
-    start?: (
-      name: string,
-      request: SubagentStartRequest,
-    ) => Promise<SubagentRun>;
+    startActivation?: (
+      spec: SubagentActivationSpec,
+    ) => Promise<SubagentActivation>;
   } = {},
 ): {
   subagents: SubagentsServiceLike;
-  starts: SubagentStartRequest[];
+  specs: SubagentActivationSpec[];
 } {
-  const starts: SubagentStartRequest[] = [];
+  const specs: SubagentActivationSpec[] = [];
   const subagents: SubagentsServiceLike = {
-    start: async (name, request) => {
-      starts.push(request);
-      if (overrides.start) return overrides.start(name, request);
-      const { run } = fakeRun(
+    startActivation: async (spec) => {
+      specs.push(spec);
+      if (overrides.startActivation) {
+        return overrides.startActivation(spec);
+      }
+      const { activation } = fakeActivation(
         Promise.resolve({
           output: [{ type: "text", text: "  compact answer  " }],
           stopReason: "completed",
         }),
       );
-      return run;
+      return activation;
     },
     getProvider: () =>
       "provider" in overrides
         ? overrides.provider
-        : { name: "spawn", capabilities: { toolFilter: true } },
+        : {
+            name: "spawn",
+            capabilities: FULL_CAPABILITIES,
+            // A spawned child starts fresh: it never sees the conversation.
+            inheritsParentContext: false,
+          },
   };
-  return { subagents, starts };
+  return { subagents, specs };
 }
 
 describe("createSubagentRunner availability (SPEC §36.7, §40.2)", () => {
@@ -104,16 +129,35 @@ describe("createSubagentRunner availability (SPEC §36.7, §40.2)", () => {
     expect(outcome).toMatchObject({ kind: "unavailable" });
   });
 
-  it("reports unavailable when the provider cannot restrict tools (SPEC §6.1)", async () => {
+  it("reports unavailable when the provider cannot select an independent preset", async () => {
     const { subagents } = service({
-      provider: { name: "acp", capabilities: { toolFilter: false } },
+      provider: {
+        name: "acp",
+        capabilities: { ...FULL_CAPABILITIES, agentPreset: false },
+        inheritsParentContext: false,
+      },
     });
     const runner = createSubagentRunner(subagents);
     const outcome = await runner.run(baseRequest());
     expect(outcome).toEqual({
       kind: "unavailable",
-      detail: 'subagent provider "spawn" does not support tool restrictions',
+      detail:
+        'subagent provider "spawn" does not support independent agent presets',
     });
+  });
+
+  it("never starts a worker without a no-tools preset (SPEC §6.1)", async () => {
+    const started = service();
+    const runner = createSubagentRunner(started.subagents);
+    const outcome = await runner.run(
+      baseRequest({ profile: presetProfile({ agentPreset: null }) }),
+    );
+    expect(outcome).toMatchObject({ kind: "unavailable" });
+    expect(
+      outcome.kind === "unavailable" &&
+        /would inherit the parent's tool composition/.test(outcome.detail),
+    ).toBe(true);
+    expect(started.specs).toHaveLength(0);
   });
 
   it("reports aborted without starting when the parent signal already fired", async () => {
@@ -125,13 +169,13 @@ describe("createSubagentRunner availability (SPEC §36.7, §40.2)", () => {
       baseRequest({ signal: controller.signal }),
     );
     expect(outcome).toEqual({ kind: "aborted" });
-    expect(started.starts).toHaveLength(0);
+    expect(started.specs).toHaveLength(0);
   });
 });
 
 describe("createSubagentRunner start contract (SPEC §6.1, §9.5)", () => {
-  it("starts a no-tools one-shot worker with the exact model override", async () => {
-    const { subagents, starts } = service();
+  it("starts a preset-scoped one-shot worker with the exact model override", async () => {
+    const { subagents, specs } = service();
     const runner = createSubagentRunner(subagents);
     const outcome = await runner.run(baseRequest());
     expect(outcome).toEqual({
@@ -139,38 +183,43 @@ describe("createSubagentRunner start contract (SPEC §6.1, §9.5)", () => {
       outputText: "compact answer",
       stopReason: "completed",
     });
-    const request = starts[0];
-    expect(request?.label).toBe("dsh-tool-offload:read");
-    expect(request?.toolFilter).toEqual({ allow: [] });
-    expect(request?.agentOptions).toEqual({
+    const spec = specs[0];
+    expect(spec?.provider).toBe("spawn");
+    expect(spec?.label).toBe("dsh-tool-offload:read");
+    expect(spec?.delivery).toBe("caller");
+    expect(spec?.request.agentPreset).toBe("bare-worker");
+    expect(spec?.request.agentOptions).toEqual({
       provider: "zai",
       model: "glm-4.5-air",
       maxTokens: 2_500,
     });
-    expect(request?.prompt).toEqual([{ type: "text", text: "PROMPT" }]);
+    expect(spec?.request.prompt).toEqual([{ type: "text", text: "PROMPT" }]);
+    expect(spec?.signal).toBeInstanceOf(AbortSignal);
   });
 
   it("omits agentOptions keys that would break route inheritance", async () => {
-    const { subagents, starts } = service();
+    const { subagents, specs } = service();
     const runner = createSubagentRunner(subagents);
-    const profile = resolveToolOffloadConfig({}).workers.default!;
-    await runner.run(baseRequest({ profile }));
-    expect(starts[0]?.agentOptions).toEqual({ maxTokens: 4_000 });
+    const inherited = resolveToolOffloadConfig({
+      workers: { default: { agentPreset: "bare-worker" } },
+    }).workers.default!;
+    await runner.run(baseRequest({ profile: inherited }));
+    expect(specs[0]?.request.agentOptions).toEqual({ maxTokens: 4_000 });
   });
 });
 
 describe("createSubagentRunner outcomes (SPEC §22)", () => {
   it("maps a worker error stop reason to failed with the diagnostic", async () => {
     const { subagents } = service({
-      start: async () => {
-        const { run } = fakeRun(
+      startActivation: async () => {
+        const { activation } = fakeActivation(
           Promise.resolve({
             output: [],
             stopReason: "error",
             diagnostic: "model unreachable",
           }),
         );
-        return run;
+        return activation;
       },
     });
     const outcome = await createSubagentRunner(subagents).run(baseRequest());
@@ -182,24 +231,23 @@ describe("createSubagentRunner outcomes (SPEC §22)", () => {
 
   it("maps an abort that the parent did not request to timeout", async () => {
     const { subagents } = service({
-      start: async () => {
-        const { run } = fakeRun(
+      startActivation: async () => {
+        const { activation } = fakeActivation(
           Promise.resolve({ output: [], stopReason: "aborted" }),
         );
-        return run;
+        return activation;
       },
     });
     const outcome = await createSubagentRunner(subagents).run(baseRequest());
     expect(outcome).toEqual({ kind: "timeout" });
   });
 
-  it("disposes the run after completion", async () => {
+  it("disposes the activation after completion", async () => {
     let disposed = false;
     const { subagents } = service({
-      start: async () => {
-        const run = {
-          id: "child-1",
-          localAgent: undefined,
+      startActivation: async () => {
+        const activation = {
+          childId: "child-1",
           result: Promise.resolve({
             output: [{ type: "text", text: "done" }],
             stopReason: "completed",
@@ -207,32 +255,33 @@ describe("createSubagentRunner outcomes (SPEC §22)", () => {
           dispose: async () => {
             disposed = true;
           },
-        } as unknown as SubagentRun;
-        return run;
+        } as unknown as SubagentActivation;
+        return activation;
       },
     });
     await createSubagentRunner(subagents).run(baseRequest());
     expect(disposed).toBe(true);
   });
 
-  it("times out and disposes a run that never settles (SPEC §23)", async () => {
+  it("times out and disposes an activation that never settles (SPEC §23)", async () => {
     let disposed = false;
     const { subagents } = service({
-      start: async () => {
-        const run = {
-          id: "child-1",
-          localAgent: undefined,
+      startActivation: async () => {
+        const activation = {
+          childId: "child-1",
           result: new Promise<SubagentResult>(() => undefined),
           dispose: async () => {
             disposed = true;
           },
-        } as unknown as SubagentRun;
-        return run;
+        } as unknown as SubagentActivation;
+        return activation;
       },
     });
     const runner = createSubagentRunner(subagents);
     const outcome = await runner.run(
-      baseRequest({ profile: { ...baseRequest().profile, timeoutMs: 30 } }),
+      baseRequest({
+        profile: presetProfile({ timeoutMs: 30 }),
+      }),
     );
     expect(outcome).toEqual({ kind: "timeout" });
     expect(disposed).toBe(true);
@@ -240,7 +289,7 @@ describe("createSubagentRunner outcomes (SPEC §22)", () => {
 
   it("maps startup rejection to failed with the message", async () => {
     const { subagents } = service({
-      start: async () => {
+      startActivation: async () => {
         throw new Error("capability rejected");
       },
     });

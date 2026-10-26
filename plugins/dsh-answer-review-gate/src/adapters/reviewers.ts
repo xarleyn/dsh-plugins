@@ -4,6 +4,8 @@
  * review material; both fail loudly instead of inventing a PASS.
  */
 
+import type { ContentBlock } from "@deepseek-ai/dsh-llm";
+
 import type { ResolvedAnswerReviewGateConfig } from "../config.js";
 import { expertReviewPacket } from "./review-packet.js";
 import {
@@ -11,7 +13,6 @@ import {
   canRecoverCapture,
   CAPTURE_RECOVERY_INSTRUCTION,
 } from "../recovery.js";
-import { restrictReviewerTools } from "../reviewer-tools.js";
 import {
   REVIEWER_OUTPUT_SCHEMA,
   renderExpertReviewTask,
@@ -27,6 +28,7 @@ import type {
   DomainExpertsFace,
   ReviewInput,
   ReviewerBackend,
+  SubagentAgentOptions,
   SubagentsFace,
 } from "../types.js";
 
@@ -130,8 +132,21 @@ export function createDomainExpertBackend(deps: {
 }
 
 /**
- * `reviewer.backend = subagent`: start a native reviewer child with this
- * plugin's persona/route settings, a read-only tool allow-list and the
+ * Audit/log code for the tool boundary this Host can no longer compose.
+ * The same limitation and the same code as dsh-domain-experts' degradation.
+ */
+const TOOL_UNFILTERABLE = "TOOL_UNFILTERABLE";
+
+/**
+ * The runtime's canonical code for a composition it refuses before an
+ * activation exists (`SubagentError`, `UNSUPPORTED_CAPABILITY`).
+ */
+const UNSUPPORTED_CAPABILITY_CODE = "UNSUPPORTED_CAPABILITY";
+
+/**
+ * `reviewer.backend = subagent`: start a native reviewer child as a foreground
+ * activation — `delivery: "caller"`, the awaited `activation.result`, then
+ * `dispose()` — with this plugin's persona and route settings and the
  * structured verdict schema. The reviewer is exempt from the gate
  * structurally — it is a subagent child.
  *
@@ -140,12 +155,22 @@ export function createDomainExpertBackend(deps: {
  * configuration silent on the model — the reviewer following whatever chat it is
  * reviewing — is where the QA policy speaks instead: the child then runs the
  * pair the reviewed chat's role was given, not the model some visitor picked.
+ *
+ * On the 0.2.1 activation contract the persona travels as the first block of
+ * the child's task prompt, and the tool allow-list has no request field any
+ * more: the Host composes a child's tools from its Agent Preset
+ * (`reviewer.agentPreset`, sent as `request.agentPreset`). A deployment that
+ * names a tool list without a preset gets a reviewer under the parent's tool
+ * composition, and the gate says so instead of letting the config read as
+ * enforcement.
  */
 export function createSubagentBackend(deps: {
   readonly face: SubagentsFace | undefined;
   readonly config: ReviewerConfig;
   readonly parent: unknown;
   readonly modelPolicy?: QaModelPolicyPair | undefined;
+  /** Told once per review when a configured guarantee cannot be composed. */
+  readonly onDegradation?: (code: string, detail: string) => void;
 }): ReviewerBackend {
   const policy = deps.config.model === "" ? deps.modelPolicy : undefined;
   const provider =
@@ -154,6 +179,10 @@ export function createSubagentBackend(deps: {
       : (policy?.provider ?? "inherit");
   const model =
     deps.config.model !== "" ? deps.config.model : (policy?.model ?? "inherit");
+  // `?? ""` keeps a config that did not pass the resolver honest too: an
+  // absent preset means "no preset", never "an unresolvable empty id".
+  const preset = deps.config.agentPreset ?? "";
+  let boundaryReported = false;
   return {
     name: "subagent",
     reviewer: `${deps.config.provider}/${provider}/${model}`,
@@ -164,71 +193,139 @@ export function createSubagentBackend(deps: {
           "the subagents service is not loaded",
         );
       }
-      const agentOptions: {
-        provider?: string;
-        model?: string;
-        reasoningEffort?: string;
-      } = {};
-      if (provider !== "inherit") agentOptions.provider = provider;
-      if (model !== "inherit") agentOptions.model = model;
       const effort =
         deps.config.reasoningEffort !== ""
           ? deps.config.reasoningEffort
           : (policy?.reasoningEffort ?? "");
-      if (effort !== "") agentOptions.reasoningEffort = effort;
+      const agentOptions: SubagentAgentOptions = {
+        ...(provider !== "inherit" ? { provider } : {}),
+        ...(model !== "inherit" ? { model } : {}),
+        ...(effort !== "" ? { reasoningEffort: effort } : {}),
+      };
+
+      // Preflight the provider's capability advertisement so a composition
+      // this backend cannot honor is refused with this plugin's reason rather
+      // than as a raw runtime rejection — and so an inheriting reviewer is not
+      // charged for an override it never asked for.
+      const backend = deps.face.getProvider(deps.config.provider);
+      if (backend === undefined) {
+        throw new ReviewerFailure(
+          "reviewer-provider-missing",
+          `subagent provider "${deps.config.provider}" is not registered`,
+        );
+      }
+      if (backend.capabilities.outputSchema !== true) {
+        throw new ReviewerFailure(
+          "reviewer-capability-unsupported",
+          `subagent provider "${backend.name}" cannot capture structured output; the review verdict needs it`,
+        );
+      }
+      if (
+        Object.keys(agentOptions).length > 0 &&
+        backend.capabilities.agentOptions !== true
+      ) {
+        throw new ReviewerFailure(
+          "reviewer-capability-unsupported",
+          `subagent provider "${backend.name}" cannot apply the reviewer's provider/model overrides`,
+        );
+      }
+      if (preset !== "" && backend.capabilities.agentPreset !== true) {
+        throw new ReviewerFailure(
+          "reviewer-capability-unsupported",
+          `subagent provider "${backend.name}" cannot select an agent preset for the reviewer`,
+        );
+      }
+
+      // The start request accepts no per-run tool scoping any more, so the
+      // configured allow-list composes nothing here. Say so once per review
+      // instead of letting the configuration read as enforcement.
+      if (!boundaryReported) {
+        boundaryReported = true;
+        deps.onDegradation?.(
+          TOOL_UNFILTERABLE,
+          "the reviewer's tool allow-list cannot be scoped per run on this Host: " +
+            "the child starts under the parent's tool composition. " +
+            "Express the boundary in an Agent Preset selected by reviewer.agentPreset.",
+        );
+      }
+
       for (let attempt = 0; attempt < 2; attempt += 1) {
         assertReviewActive(input);
-        let run;
+        const prompt: ContentBlock[] = [
+          // The activation contract carries no per-child persona: the
+          // configured instruction leads the child's first message, so it
+          // still frames everything the candidate says after it.
+          ...(deps.config.persona === ""
+            ? []
+            : [
+                {
+                  type: "text",
+                  text: deps.config.persona,
+                } satisfies ContentBlock,
+              ]),
+          {
+            type: "text",
+            text:
+              (attempt === 0 ? "" : `${CAPTURE_RECOVERY_INSTRUCTION}\n\n`) +
+              renderSubagentReviewerTask({
+                ...(input.conversationContext === undefined
+                  ? {}
+                  : { conversationContext: input.conversationContext }),
+                ...(input.primaryTools === undefined
+                  ? {}
+                  : { primaryTools: input.primaryTools }),
+                requestText: input.requestText,
+                requestAttachments: input.requestAttachments,
+                candidateText: input.candidateText,
+              }),
+          },
+          ...(input.requestImages ?? []),
+        ];
+        let activation;
         try {
-          run = await deps.face.start(deps.config.provider, {
+          activation = await deps.face.startActivation({
+            provider: deps.config.provider,
             label: "answer-review",
-            prompt: [
-              {
-                type: "text",
-                text:
-                  (attempt === 0 ? "" : `${CAPTURE_RECOVERY_INSTRUCTION}\n\n`) +
-                  renderSubagentReviewerTask({
-                    ...(input.conversationContext === undefined
-                      ? {}
-                      : { conversationContext: input.conversationContext }),
-                    ...(input.primaryTools === undefined
-                      ? {}
-                      : { primaryTools: input.primaryTools }),
-                    requestText: input.requestText,
-                    requestAttachments: input.requestAttachments,
-                    candidateText: input.candidateText,
-                  }),
-              },
-              ...(input.requestImages ?? []),
-            ],
-            parent: deps.parent,
-            signal: input.signal,
-            ...(deps.config.persona === ""
-              ? {}
-              : { persona: deps.config.persona }),
-            // Always send the allow-list, empty included: the host only calls
-            // `tools.restrict()` when a `toolFilter` is present, so omitting it
-            // for an empty list handed the reviewer the parent's whole tool
-            // surface — the opposite of the config's "empty means no tools".
-            // Re-read through the boundary here rather than trusting the resolved
-            // config: this is the call that composes the child, and a reviewer
-            // that could delete a workspace file parked the parent turn for an
-            // approval a delegated child can never receive.
-            toolFilter: {
-              allow: restrictReviewerTools(deps.config.allowedTools),
+            request: {
+              prompt,
+              parent: deps.parent,
+              ...(preset === "" ? {} : { agentPreset: preset }),
+              ...(Object.keys(agentOptions).length > 0 ? { agentOptions } : {}),
+              outputSchema: REVIEWER_OUTPUT_SCHEMA,
             },
-            ...(Object.keys(agentOptions).length > 0 ? { agentOptions } : {}),
-            outputSchema: REVIEWER_OUTPUT_SCHEMA,
+            signal: input.signal,
+            // A foreground reviewer: the parent model must not be notified,
+            // the result belongs to this review alone.
+            delivery: "caller",
           });
         } catch (error) {
-          // Unknown tool-filter names and unsupported composition surface here.
+          // The runtime refuses an unsupported composition before an
+          // activation exists; an unknown tool or option names surface here too.
+          if (
+            (error as { code?: unknown }).code === UNSUPPORTED_CAPABILITY_CODE
+          ) {
+            throw new ReviewerFailure(
+              "reviewer-capability-unsupported",
+              error instanceof Error ? error.message : String(error),
+            );
+          }
           throw new ReviewerFailure(
             "reviewer-start-failed",
             error instanceof Error ? error.message : String(error),
           );
         }
         try {
-          const result = await run.result;
+          let result;
+          try {
+            result = await activation.result;
+          } catch (error) {
+            // The contract rejects the result only when the Host could not
+            // capture one at all — a reviewer infrastructure failure.
+            throw new ReviewerFailure(
+              "reviewer-result-unavailable",
+              error instanceof Error ? error.message : String(error),
+            );
+          }
           assertReviewActive(input);
           if (
             canRecoverCapture(
@@ -257,7 +354,7 @@ export function createSubagentBackend(deps: {
           // left the child fiber running past the review. Disposal is
           // best-effort — it must never mask the review outcome.
           try {
-            await run.dispose();
+            await activation.dispose();
           } catch {
             /* disposal failure must not override the verdict or the failure */
           }

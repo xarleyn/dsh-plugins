@@ -26,9 +26,9 @@ import type { ReviewAudit } from "../src/audit.js";
 import type { ResolvedAnswerReviewGateConfig } from "../src/config.js";
 import type {
   ReviewVerdict,
-  SubagentRunHandle,
+  SubagentActivation,
+  SubagentActivationSpec,
   SubagentsFace,
-  SubagentStartSpec,
 } from "../src/types.js";
 
 const PASS: ReviewVerdict = {
@@ -66,6 +66,7 @@ function config(
       route: "",
       reasoningEffort: "",
       persona: "",
+      agentPreset: "",
       allowedTools: [],
     },
     maxReviewRounds: 2,
@@ -79,17 +80,31 @@ function config(
   };
 }
 
+/** Every start-time option a provider can honor. */
+const FULL_CAPABILITIES = {
+  agentOptions: true,
+  agentPreset: true,
+  outputSchema: true,
+  depthLimit: true,
+};
+
 /** A reviewer face that answers each round from a script, immediately. */
 class ScriptedReviewer implements SubagentsFace {
-  readonly started: SubagentStartSpec[] = [];
+  readonly started: SubagentActivationSpec[] = [];
 
   constructor(private readonly verdicts: readonly ReviewVerdict[]) {}
 
-  start(
-    _provider: string,
-    request: SubagentStartSpec,
-  ): Promise<SubagentRunHandle> {
-    this.started.push(request);
+  getProvider(name: string) {
+    if (name !== "spawn") return undefined;
+    return {
+      name,
+      capabilities: { ...FULL_CAPABILITIES },
+      inheritsParentContext: true,
+    };
+  }
+
+  startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation> {
+    this.started.push(spec);
     const verdict = this.verdicts[this.started.length - 1];
     if (verdict === undefined) {
       return Promise.reject(
@@ -97,6 +112,7 @@ class ScriptedReviewer implements SubagentsFace {
       );
     }
     return Promise.resolve({
+      childId: "child-session",
       result: Promise.resolve({
         stopReason: "completed",
         output: [],

@@ -3,8 +3,9 @@ import { createSubagentBackend } from "../src/adapters/reviewers.js";
 import { qaModelPolicy } from "../src/qa-policy.js";
 import type {
   ReviewInput,
+  SubagentActivation,
+  SubagentActivationSpec,
   SubagentsFace,
-  SubagentRunHandle,
   SubagentRunResult,
 } from "../src/types.js";
 
@@ -16,6 +17,7 @@ const CONFIG = {
   route: "",
   reasoningEffort: "",
   persona: "",
+  agentPreset: "",
   allowedTools: [],
 };
 
@@ -65,13 +67,27 @@ describe("the QA model policy behind the reviewer", () => {
 });
 
 describe("the reviewer child's model", () => {
-  /** The reviewer child, answering with the request it was started by. */
+  /** The reviewer child, answering with the spec it was started by. */
   const face = (
-    record: (request: Record<string, unknown>) => void,
+    record: (spec: SubagentActivationSpec) => void,
   ): SubagentsFace => ({
-    async start(_provider, request) {
-      record(request as unknown as Record<string, unknown>);
-      const handle: SubagentRunHandle = {
+    getProvider(name: string) {
+      if (name !== "spawn") return undefined;
+      return {
+        name,
+        capabilities: {
+          agentOptions: true,
+          agentPreset: true,
+          outputSchema: true,
+          depthLimit: true,
+        },
+        inheritsParentContext: true,
+      };
+    },
+    async startActivation(spec) {
+      record(spec);
+      const activation: SubagentActivation = {
+        childId: "child-session",
         result: Promise.resolve({
           stopReason: "completed",
           output: [],
@@ -79,14 +95,14 @@ describe("the reviewer child's model", () => {
         } satisfies SubagentRunResult),
         dispose: () => undefined,
       };
-      return handle;
+      return activation;
     },
   });
 
   it("follows the policy of the chat when its own configuration names no model", async () => {
-    const requests: Record<string, unknown>[] = [];
+    const specs: SubagentActivationSpec[] = [];
     const backend = createSubagentBackend({
-      face: face((request) => requests.push(request)),
+      face: face((spec) => specs.push(spec)),
       config: CONFIG,
       parent: "parent-agent",
       modelPolicy: {
@@ -96,7 +112,7 @@ describe("the reviewer child's model", () => {
       },
     });
     await backend.review(reviewInput());
-    expect(requests[0]?.["agentOptions"]).toEqual({
+    expect(specs[0]?.request.agentOptions).toEqual({
       provider: "local",
       model: "small",
       reasoningEffort: "low",
@@ -106,28 +122,28 @@ describe("the reviewer child's model", () => {
   });
 
   it("keeps the pair the deployment pinned for the reviewer", async () => {
-    const requests: Record<string, unknown>[] = [];
+    const specs: SubagentActivationSpec[] = [];
     const backend = createSubagentBackend({
-      face: face((request) => requests.push(request)),
+      face: face((spec) => specs.push(spec)),
       config: { ...CONFIG, model: "review-model", route: "review-route" },
       parent: "parent-agent",
       modelPolicy: { provider: "local", model: "small" },
     });
     await backend.review(reviewInput());
-    expect(requests[0]?.["agentOptions"]).toEqual({
+    expect(specs[0]?.request.agentOptions).toEqual({
       provider: "review-route",
       model: "review-model",
     });
   });
 
   it("inherits the parent when neither the configuration nor a policy speaks", async () => {
-    const requests: Record<string, unknown>[] = [];
+    const specs: SubagentActivationSpec[] = [];
     const backend = createSubagentBackend({
-      face: face((request) => requests.push(request)),
+      face: face((spec) => specs.push(spec)),
       config: CONFIG,
       parent: "parent-agent",
     });
     await backend.review(reviewInput());
-    expect(requests[0]?.["agentOptions"]).toBeUndefined();
+    expect(specs[0]?.request.agentOptions).toBeUndefined();
   });
 });
