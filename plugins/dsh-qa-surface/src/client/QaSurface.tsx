@@ -540,9 +540,7 @@ export function QaSurface(props: QaSurfaceProps) {
       sessions: runtime === undefined ? props.sessions : runtime.sessions,
       api: props.api,
       conversation:
-        runtime === undefined
-          ? props.conversation
-          : runtime.conversation,
+        runtime === undefined ? props.conversation : runtime.conversation,
       connection: props.connection,
       secureSession: props.secureSession,
       createSession: props.createSession,
@@ -709,6 +707,7 @@ export function QaSurface(props: QaSurfaceProps) {
     controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
     controller?.getSnapshot ?? (() => QA_SESSION_IDLE_STATE),
   );
+  const failureDiagnostic = controller?.failureDiagnostic();
   useEffect(() => {
     if (
       state.sessionId === null ||
@@ -2092,11 +2091,18 @@ export function QaSurface(props: QaSurfaceProps) {
                       role="alert"
                     >
                       <span>{state.error}</span>
-                      {state.phase === "error" ? (
+                      {failureDiagnostic ? (
+                        <span data-testid="qa-surface-error-detail">
+                          {failureDiagnostic.reason} Код обращения:{" "}
+                          {failureDiagnostic.id}
+                        </span>
+                      ) : null}
+                      {state.phase === "error" ||
+                      (state.sessionId === null && state.canSend) ? (
                         <button
                           type="button"
                           data-testid="qa-surface-error-retry"
-                          onClick={() => void controller?.ensureSession()}
+                          onClick={() => void controller?.retrySession()}
                         >
                           Повторить
                         </button>

@@ -77,11 +77,24 @@ export function QaModal(props: QaModalProps) {
     const onKey = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       if (openDialogs.at(-1) !== token) return;
+      const target = event.target;
+      if (
+        target instanceof Element &&
+        target.closest(
+          '[role="menu"], [role="listbox"], [role="combobox"][aria-expanded="true"]',
+        )
+      )
+        return;
+      event.preventDefault();
+      event.stopPropagation();
       onClose.current();
     };
-    window.addEventListener("keydown", onKey);
+    // Host tooltips can consume Escape during document capture. The top QA
+    // dialog owns it before that handler, including when its close button
+    // currently carries a Host tooltip.
+    window.addEventListener("keydown", onKey, true);
     return () => {
-      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keydown", onKey, true);
       const index = openDialogs.indexOf(token);
       if (index >= 0) openDialogs.splice(index, 1);
     };

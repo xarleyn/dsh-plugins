@@ -17,6 +17,57 @@ import { until } from "../helpers/settle.js";
  * case here opens its chat with a send rather than with the bootstrap.
  */
 describe("QA session controller: a retain that raced the session catalog", () => {
+  it("retries adoption of a successful create instead of creating an orphan on every send", async () => {
+    vi.useFakeTimers();
+    const world = harness();
+    const created: string[] = [];
+    world.createSession.mockImplementation(async () => {
+      const id = String(await world.serverSession());
+      created.push(id);
+      setTimeout(() => world.publishRow(id), 16_000);
+      return { ok: true as const, value: id };
+    });
+    world.refresh.mockImplementation(async () => undefined);
+    const controller = new QaSessionController({
+      ...world,
+      config: resolveConfig(),
+    });
+    try {
+      await controller.ensureSession();
+      const first = controller.send("First question");
+      await vi.advanceTimersByTimeAsync(15_100);
+      expect(await first).toBe(false);
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(await controller.send("Retry first question")).toBe(true);
+      expect(created).toHaveLength(1);
+      expect(controller.getSnapshot().sessionId).toBe(created[0]);
+    } finally {
+      controller.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("retains an authenticated create immediately without waiting for a catalog scan", async () => {
+    const world = harness();
+    world.createSession.mockImplementation(async () => ({
+      ok: true as const,
+      value: String(await world.serverSession()),
+    }));
+    const rememberAdmitted = vi.fn((id: string) => world.publishRow(id));
+    const controller = new QaSessionController({
+      ...world,
+      sessions: { ...world.sessions, rememberAdmitted },
+      config: resolveConfig(),
+    });
+    try {
+      await controller.ensureSession();
+      expect(await controller.send("First question")).toBe(true);
+      expect(rememberAdmitted).toHaveBeenCalledWith("created-1");
+      expect(world.retain).toHaveBeenCalledTimes(1);
+    } finally {
+      controller.dispose();
+    }
+  });
   it("restores a slow catalog after twenty seconds without replacing the chat", async () => {
     vi.useFakeTimers();
     const world = harness(["historical"]);

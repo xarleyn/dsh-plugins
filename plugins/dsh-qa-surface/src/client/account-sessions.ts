@@ -28,33 +28,46 @@ export function createQaAccountSessions(
   const refuse = async (): Promise<never> => {
     throw new Error("Use the authenticated QA operation.");
   };
-  // The secured transport owns the only Session-list feed this facade gets:
-  // the Host's forwarded api-session events are wired for the ambient
-  // instance alone, so a listing answer that the manager discards — a
-  // generation reset between the pull and its application is the shape this
-  // had on the stand — leaves the catalog blind to the chat the account just
-  // created, and the adoption refuses it with `sessions.retain: unknown
-  // session`. Replay every listing through the manager's own addition and
-  // removal paths, so a listed row lands whatever else happens to the pull
-  // that carried it. The replay is declared after the facade and referenced
-  // through the hoisted function below: the listing closure runs only once a
-  // caller pulls, which is always after the facade exists.
+  // Only the current identity/connection may publish a catalog. Native list
+  // pulls have their own generation fence; replay must obey it as well.
+  let epoch = 0;
+  let disposed = false;
+  const created = new Map<string, { summary: SessionSummary; until: number }>();
   let listed: readonly string[] = [];
-  function replay({ items }: SessionListValue): void {
+  function replay(value: SessionListValue): SessionListValue {
+    const items = [...value.items];
+    for (const [id, entry] of created) {
+      if (
+        items.some((item) => String(item.sessionId) === id) ||
+        entry.until <= Date.now()
+      ) {
+        created.delete(id);
+      } else items.push(entry.summary);
+    }
     const ids = items.map((item) => String(item.sessionId));
     for (const item of items) facadeSessions.handleSessionAdded(item);
     for (const id of listed) {
       if (!ids.includes(id)) facadeSessions.handleSessionRemoved(SessionId(id));
     }
     listed = ids;
+    return { ...value, items };
   }
   const session = {
     ...remote.session,
     list: async (_request: unknown, signal?: AbortSignal) => {
-      if (token() === null)
+      const identity = token();
+      const requestEpoch = epoch;
+      if (identity === null || disposed)
         return { ok: true as const, value: { items: [] as SessionSummary[] } };
-      const result = await wire.chatList(token()!, signal);
-      if (result.ok) replay(result.value);
+      const result = await wire.chatList(identity, signal);
+      if (
+        disposed ||
+        signal?.aborted ||
+        epoch !== requestEpoch ||
+        token() !== identity
+      )
+        return { ok: true as const, value: { items: [] as SessionSummary[] } };
+      if (result.ok) return { ...result, value: replay(result.value) };
       return result;
     },
     page: (request, signal) => wire.chatPage(token() ?? "", request, signal),
@@ -90,8 +103,24 @@ export function createQaAccountSessions(
   ) => NativeSessions;
   const sessions = new Constructor(ctx.isolate("sessions"), secured);
   const facadeSessions: NativeSessions = sessions;
+  sessions.rememberAdmitted = (id) => {
+    if (disposed || token() === null) return;
+    // QA create or read admission has already accepted this exact id.
+    // Seed only its existence; all history, projections and writes still use
+    // the authenticated Host transport. A pre-create scan cannot erase it.
+    const summary: SessionSummary = {
+      sessionId: SessionId(id),
+      updatedAt: Date.now(),
+      agentAvailable: true,
+      formatStatus: "current",
+      running: false,
+      blank: true,
+    };
+    created.set(id, { summary, until: Date.now() + 60_000 });
+    listed = [...new Set([...listed, id])];
+    sessions.handleSessionAdded(summary);
+  };
   let control: AbortController | undefined;
-  let disposed = false;
   const startControl = () => {
     if (
       control !== undefined ||
@@ -101,11 +130,13 @@ export function createQaAccountSessions(
     )
       return;
     const lifetime = new AbortController();
+    const controlEpoch = epoch;
     control = lifetime;
     void (async () => {
       try {
         for await (const frame of wire.chatControl(token()!, lifetime.signal)) {
-          if (lifetime.signal.aborted || disposed) return;
+          if (lifetime.signal.aborted || disposed || controlEpoch !== epoch)
+            return;
           sessions.handleControlFrame(frame);
         }
       } catch {
@@ -121,17 +152,23 @@ export function createQaAccountSessions(
     const next = token();
     const currentGeneration = generation.getSnapshot();
     const identityChanged = identity !== next;
+    if (identityChanged || connectedGeneration !== currentGeneration)
+      epoch += 1;
     if (identityChanged) {
       identity = next;
+      created.clear();
+      for (const id of listed) sessions.handleSessionRemoved(SessionId(id));
+      listed = [];
       control?.abort();
       control = undefined;
-      if (next === null || currentGeneration === undefined)
-        void sessions.refresh();
+      // Invalidate any native in-flight pull even when signing out: refresh
+      // alone would join the old identity's single-flight request.
+      sessions.handleConnected();
     }
     // Catalog/account notifications are not new connections. Resetting the
     // native baseline on each notification discards a slower in-flight list.
     if (next !== null && currentGeneration !== undefined) {
-      if (identityChanged || connectedGeneration !== currentGeneration)
+      if (!identityChanged && connectedGeneration !== currentGeneration)
         sessions.handleConnected();
       startControl();
     }
@@ -152,6 +189,7 @@ export function createQaAccountSessions(
   ctx.effect(
     () => () => {
       disposed = true;
+      epoch += 1;
       clearInterval(refresh);
       unsubscribe();
       unsubscribeGeneration();

@@ -86,7 +86,10 @@ import type {
 export type QaPromptContent = Parameters<SessionFace["prompt"]>[0];
 
 /** DSH session runtime surface the QA controller is allowed to touch. */
-export type QaSessions = ISessions;
+export type QaSessions = ISessions & {
+  /** Register an exact id admitted by authenticated QA create/read before retain. */
+  rememberAdmitted?(sessionId: string): void;
+};
 
 /** Narrow client API slice used to pin the preset and model of a fresh chat. */
 export type QaSessionsApi = {

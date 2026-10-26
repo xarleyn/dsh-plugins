@@ -10,6 +10,52 @@ import {
 afterEach(cleanup);
 
 describe("QA modal focus lifetime", () => {
+  it("leaves Escape to an expanded control inside the dialog", () => {
+    const close = vi.fn();
+    render(
+      <QaModal
+        open
+        title="Demo settings"
+        closeLabel="Close settings"
+        onClose={close}
+      >
+        <input
+          role="combobox"
+          aria-expanded="true"
+          aria-label="Choose option"
+        />
+      </QaModal>,
+    );
+    fireEvent.keyDown(screen.getByRole("combobox"), { key: "Escape" });
+    expect(close).not.toHaveBeenCalled();
+  });
+
+  it("owns Escape before a Host tooltip consumes document capture", () => {
+    const close = vi.fn();
+    const tooltip = (event: KeyboardEvent) => {
+      if (event.key === "Escape") event.stopPropagation();
+    };
+    document.addEventListener("keydown", tooltip, true);
+    try {
+      render(
+        <QaModal
+          open
+          title="Demo history"
+          closeLabel="Close history"
+          onClose={close}
+        >
+          History
+        </QaModal>,
+      );
+      fireEvent.keyDown(screen.getByRole("button", { name: "Close history" }), {
+        key: "Escape",
+      });
+      expect(close).toHaveBeenCalledOnce();
+    } finally {
+      document.removeEventListener("keydown", tooltip, true);
+    }
+  });
+
   it("keeps a field's focus and caret when its parent changes the close callback", () => {
     const firstClose = vi.fn();
     const latestClose = vi.fn();

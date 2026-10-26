@@ -24,6 +24,8 @@ export interface QaConversationFact {
   readonly userId: string;
   readonly subroleId: string;
   readonly assistantMessages: number;
+  readonly readable?: boolean;
+  readonly assistantMessageIds?: readonly string[];
   /** Epoch ms of the conversation's creation, for the activity window. */
   readonly createdAt: number;
 }
@@ -34,6 +36,8 @@ export interface QaAggregationInput {
   readonly reviews: readonly QaConversationReview[];
   /** Days of feedback history the trend shows; older buckets are dropped. */
   readonly trendDays?: number;
+  /** False when the request could not read every conversation in its population. */
+  readonly complete?: boolean;
 }
 
 /** Share of `total`, or null when there is nothing to take a share of. */
@@ -63,6 +67,7 @@ export function aggregateQuality({
   feedback,
   reviews,
   trendDays = 30,
+  complete = true,
 }: QaAggregationInput): QaQualityMetrics {
   const positives = feedback.filter(({ rating }) => rating === "positive");
   const negatives = feedback.filter(({ rating }) => rating === "negative");
@@ -151,6 +156,24 @@ export function aggregateQuality({
     (total, row) => total + row.assistantMessages,
     0,
   );
+  const byId = new Map(conversations.map((row) => [row.conversationId, row]));
+  const ratedTargets = new Set(
+    feedback
+      .filter((rating) => {
+        const row = byId.get(rating.conversationId);
+        return (
+          row !== undefined &&
+          row.readable !== false &&
+          (row.assistantMessageIds === undefined ||
+            row.assistantMessageIds.includes(rating.messageId))
+        );
+      })
+      .map((rating) =>
+        JSON.stringify([rating.conversationId, rating.messageId]),
+      ),
+  );
+  const coverageKnown =
+    complete && conversations.every((row) => row.readable !== false);
 
   return Object.freeze({
     conversations: conversations.length,
@@ -159,7 +182,9 @@ export function aggregateQuality({
     ratedMessages: feedback.length,
     positiveRatings: positives.length,
     negativeRatings: negatives.length,
-    ratingRate: rate(feedback.length, assistantMessages),
+    ratingRate: coverageKnown
+      ? rate(ratedTargets.size, assistantMessages)
+      : null,
     positiveRate: rate(positives.length, feedback.length),
     unreviewedNegatives,
     reviewedItems: reviews.length,

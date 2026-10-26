@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { CoverageNotice } from "../CoverageNotice.js";
 import type {
   QaAdminAuditEvent,
   QaAuditQuery,
@@ -314,6 +315,7 @@ export function AdminQuality(props: {
         </p>
       ) : (
         <>
+          <CoverageNotice metrics={metrics} />
           <dl
             className="dsh-qa-admin__facts dsh-qa-admin__facts--wide"
             data-testid="qa-admin-quality-facts"

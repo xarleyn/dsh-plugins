@@ -208,9 +208,11 @@ describe("account Session bootstrap", () => {
 async function securedSessionList(
   secured: QaSessionRemotes | undefined,
 ): Promise<{ ok: boolean; value: { items: SessionSummary[] } }> {
-  const result = await (secured!.session.list as (
-    request: unknown,
-  ) => Promise<{ ok: boolean; value: { items: SessionSummary[] } }>)({});
+  const result = await (
+    secured!.session.list as (
+      request: unknown,
+    ) => Promise<{ ok: boolean; value: { items: SessionSummary[] } }>
+  )({});
   expect(result.ok).toBe(true);
   return result;
 }

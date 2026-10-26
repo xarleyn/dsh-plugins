@@ -1,6 +1,7 @@
 import type { QaReviewQueueRow } from "../../../types.js";
 import type { QaAdminApi } from "../../types.js";
 import { useAdminResource } from "../shared.js";
+import { CoverageNotice } from "../CoverageNotice.js";
 import {
   FEEDBACK_REASON_LABELS,
   REVIEW_PRIORITY_LABELS,
@@ -99,6 +100,7 @@ export function AdminOverview(props: {
         </p>
       ) : (
         <>
+          <CoverageNotice metrics={data.metrics} />
           <div
             className="dsh-qa-admin__metrics"
             data-testid="qa-admin-overview-metrics"

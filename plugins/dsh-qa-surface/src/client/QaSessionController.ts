@@ -307,7 +307,13 @@ export class QaSessionController {
   private readonly unsubscribeConnection: () => void;
   private ensuring: Promise<void> | undefined;
   private materializing: Promise<boolean> | undefined;
+  /** A successful create survives a failed adoption; retry must not create again. */
+  private draftSessionId: string | undefined;
   private operationError: string | null = null;
+  private operationDiagnostic: {
+    readonly reason: string;
+    readonly id: string;
+  } | null = null;
   private admissionPending = false;
   private pendingSubmission: PendingSubmission | undefined;
   private pendingSequence = 0;
@@ -348,9 +354,9 @@ export class QaSessionController {
    * both a failed adoption and {@link unbind} take it back. The converse does
    * not hold: a held session may name nothing, which is the transcript of an
    * attestation this chat could not pass and whose caller still reads it. So a
-   * chat whose first send fell short keeps its identity while naming no session,
-   * and the retry — which brings a fresh id — stays in the composer the question
-   * was typed into instead of reading as a move to another chat.
+   * chat whose first send fell short keeps its identity while naming no session;
+   * a retry adopts the successful create it already holds and preserves the
+   * composer the question was typed into.
    */
   private namedSession: string | null = null;
   /**
@@ -472,6 +478,16 @@ export class QaSessionController {
     });
     this.ensuring = operation;
     return operation;
+  }
+
+  /** Retry opening a failed draft without abandoning its successful create. */
+  async retrySession(): Promise<void> {
+    if (this.drafting) await this.materializeDraft();
+    else await this.ensureSession();
+  }
+
+  failureDiagnostic(): { readonly reason: string; readonly id: string } | null {
+    return this.operationError === null ? null : this.operationDiagnostic;
   }
 
   /**
@@ -1181,6 +1197,7 @@ export class QaSessionController {
   private enterDraft(): void {
     this.generation += 1;
     this.materializing = undefined;
+    this.draftSessionId = undefined;
     this.drafting = true;
     if (this.namedSession !== null) {
       this.openChat();
@@ -1217,13 +1234,17 @@ export class QaSessionController {
     const attempt = (async () => {
       try {
         await this.waitForConnection();
-        const id = await createQaSession({
-          createSession: this.createSessionRemote,
-          token: this.accounts?.token() ?? "",
-          subroleId: this.selectedSubrole,
-          adminPreview: this.adminPreview,
-        });
+        const id =
+          this.draftSessionId ??
+          (await createQaSession({
+            createSession: this.createSessionRemote,
+            token: this.accounts?.token() ?? "",
+            subroleId: this.selectedSubrole,
+            adminPreview: this.adminPreview,
+          }));
         if (this.disposed || operation !== this.generation) return false;
+        this.draftSessionId = id;
+        this.sessions.rememberAdmitted?.(id);
         // A step back is not a materialized draft: this adoption never ended up
         // holding a session, so the draft has to stay a draft. Calling it done
         // leaves a chat with neither a session nor a draft behind, and every
@@ -1231,6 +1252,7 @@ export class QaSessionController {
         if (!(await this.bind(id, { operation }))) return false;
         if (this.disposed || operation !== this.generation) return false;
         this.drafting = false;
+        this.draftSessionId = undefined;
         if (this.config.session.policy === "browser-persistent") {
           this.chats.saveActive(id);
         }
@@ -1569,11 +1591,47 @@ export class QaSessionController {
     this.emit();
     try {
       await this.waitForConnection();
-      const list = await waitFor(
-        this.sessions.list,
-        (snapshot) => snapshot.phase === "ready",
-        this.timeoutMs,
-      );
+      const saved =
+        this.config.session.policy === "browser-persistent"
+          ? this.chats.activeId()
+          : null;
+      let admitted: string | null = null;
+      const savedSummary =
+        saved === null
+          ? undefined
+          : this.sessions.list.getSnapshot().byId[saved as SessionId];
+      if (
+        saved !== null &&
+        this.accounts !== undefined &&
+        this.sharingApi !== undefined &&
+        this.sessions.rememberAdmitted !== undefined &&
+        (savedSummary === undefined || !isDelegatedSession(savedSummary))
+      ) {
+        const identity = this.accounts.token();
+        if (identity !== null) {
+          const access = await this.sharingApi.access(identity, saved);
+          if (
+            this.disposed ||
+            operation !== this.generation ||
+            identity !== this.accounts.token()
+          )
+            return;
+          if (access.ok && access.value.sessionId === saved) {
+            // A direct Host read admission is sufficient to reopen this exact
+            // chat. A cold deployment-wide catalog scan must not gate restore.
+            this.sessions.rememberAdmitted(saved);
+            admitted = saved;
+          }
+        }
+      }
+      const list =
+        admitted === null
+          ? await waitFor(
+              this.sessions.list,
+              (snapshot) => snapshot.phase === "ready",
+              this.timeoutMs,
+            )
+          : this.sessions.list.getSnapshot();
       let id: string | null = null;
       let restored = false;
       let existing = false;
@@ -1595,8 +1653,8 @@ export class QaSessionController {
         // send into.
         if (
           stored !== null &&
-          summary !== undefined &&
-          !isDelegatedSession(summary)
+          (stored === admitted ||
+            (summary !== undefined && !isDelegatedSession(summary)))
         ) {
           id = stored;
           restored = true;
@@ -1882,7 +1940,7 @@ export class QaSessionController {
     // chat: it takes its own identity, so nothing the previous chat was holding
     // — an unsent question, staged attachments, an open drawer — walks into it.
     // A chat that names no session adopts under the identity it already has,
-    // which is what keeps a retried first send — it brings a fresh id — in the
+    // which is what keeps a retried first send in the
     // composer the question was typed into.
     if (this.namedSession !== null && this.namedSession !== id) this.openChat();
     this.unbind();
@@ -2455,12 +2513,29 @@ export class QaSessionController {
   }
 
   private fail(message: string, error: unknown): void {
-    // Policy attestation refusals already logged their precise reason; a
-    // second stack trace for the wrapper error is only console noise.
-    if (!(error instanceof QaPolicyAttestationError)) {
-      console.error("dsh-qa-surface: session operation failed", error);
-    }
     if (this.disposed) return;
+    const detail = error instanceof Error ? error.message : String(error);
+    const reason =
+      /transport|network|fetch|HTTP|connection|timed? ?out|timeout/iu.test(
+        detail,
+      )
+        ? "Не удалось связаться со стендом или дождаться его ответа."
+        : /sessions\.retain|unknown session|catalog/iu.test(detail)
+          ? "Стенд создал чат, но его запись ещё недоступна в истории."
+          : error instanceof QaPolicyAttestationError
+            ? "Настройки чата не прошли проверку политики стенда."
+            : "Стенд отклонил операцию. Подробности доступны оператору по коду обращения.";
+    // A diagnostic label, not an authority token. This also works on a LAN
+    // HTTP origin where crypto.randomUUID is unavailable.
+    const id = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+    this.operationDiagnostic = { reason, id };
+    if (error instanceof QaPolicyAttestationError) {
+      // The policy probe already logged the precise refusal without a wrapper
+      // stack. Add only the reference the user sees on the plate.
+      console.info("dsh-qa-surface: policy failure reference", { id });
+    } else {
+      console.error("dsh-qa-surface: session operation failed", error, { id });
+    }
     this.operationError = message;
     this.state = {
       ...QA_SESSION_IDLE_STATE,
