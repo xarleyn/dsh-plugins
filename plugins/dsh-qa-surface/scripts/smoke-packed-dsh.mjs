@@ -659,18 +659,33 @@ async function runBrowserPass({
     if ((await fileNames.nth(1).textContent()) !== "spec.md") {
       throw new Error("the picker did not attach a text file");
     }
-    // The Host offers its supported deferral on this model-less fixture.
-    // Complete that step before interacting with the QA composer.
+    // Provider readiness may complete onboarding without a credential dialog.
+    // Defer a seated step, then prove that the actual composer is actionable.
     async function deferModelSetup() {
       const dialog = page.getByRole("dialog", {
         name: "Add an API key to get started",
         exact: true,
       });
-      await dialog.waitFor({ timeout: 15_000 });
-      await dialog
-        .getByRole("button", { name: "Configure later", exact: true })
-        .click();
-      await dialog.waitFor({ state: "hidden" });
+      // Hosts with account onboarding first offer the API-key route. Follow
+      // that local choice before exercising the same credential deferral.
+      const signIn = page.getByRole("dialog", {
+        name: "Get started",
+        exact: true,
+      });
+      if (await signIn.isVisible()) {
+        await signIn
+          .getByRole("button", { name: "Add API Key", exact: true })
+          .click();
+      }
+      if (await dialog.isVisible()) {
+        await dialog
+          .getByRole("button", { name: "Configure later", exact: true })
+          .click();
+        await dialog.waitFor({ state: "hidden" });
+      }
+      // A different modal or an inert composer must still fail the smoke;
+      // absence of the optional credential step is not enough to pass.
+      await prompt.click({ trial: true, timeout: 15_000 });
     }
     await deferModelSetup();
     await page.getByRole("button", { name: "Убрать spec.md" }).click();
