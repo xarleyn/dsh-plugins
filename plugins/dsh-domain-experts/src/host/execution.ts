@@ -32,6 +32,7 @@ import type { QaModelPolicyPair } from "./qa-principal.js";
 import { parseExpertAnswer, textOfBlocks } from "./result.js";
 import { EXPERT_REVIEW_OUTPUT_SCHEMA } from "./review-output.js";
 import { expertLabelOf } from "./caller.js";
+import type { ExpertToolFilter } from "./tool-policy.js";
 
 /** The subagent surface this plugin consumes from the host context. */
 export interface SubagentsFace {
@@ -159,6 +160,11 @@ export interface ExecutionDependencies {
    * inherits its model keeps inheriting the caller's.
    */
   modelPolicyOf?(sessionId: string): QaModelPolicyPair | undefined;
+  /** Host lifecycle adapter applying a configured filter before first prompt. */
+  startActivation?(
+    spec: SubagentActivationSpec,
+    filter?: ExpertToolFilter,
+  ): Promise<SubagentActivation>;
 }
 
 export interface ExpertRunInput {
@@ -179,10 +185,8 @@ export interface ExpertRunInput {
  * Capabilities this plugin requires from the selected provider.
  *
  * The depth cap is the one start-time option every expert needs the runtime to
- * enforce. The per-child persona and tool filter of the previous Host contract
- * have no request field any more — the Host composes a child's persona and
- * tools from its Agent Preset — so nothing here can be checked or sent for
- * them; the tool policy is reported as degraded instead.
+ * enforce. The Host composes the child's preset; the lifecycle adapter applies
+ * its configured tool restriction on that child's scoped registry.
  */
 const REQUIRED_CAPABILITIES: readonly (keyof SubagentCapabilities)[] = [
   "depthLimit",
@@ -312,13 +316,15 @@ export async function runExpert(
     delivery: input.request.background ? "parent" : "caller",
   };
 
-  // The Host accepts no per-run tool scoping any more, so a domain that
-  // configures a tool policy starts with the parent's tool composition. Say so
-  // instead of letting the inspector's picture outrun the enforcement.
+  // The start request has no filter field. The Host adapter installs it on
+  // the reserved child's context before the initial prompt is submitted.
   const configuredTools = [
     ...new Set([...definition.tools.allow, ...definition.tools.deny]),
   ];
-  if (configuredTools.length > 0) {
+  if (
+    configuredTools.length > 0 &&
+    dependencies.startActivation === undefined
+  ) {
     degradations.push(
       degradation(
         "TOOL_UNFILTERABLE",
@@ -331,6 +337,23 @@ export async function runExpert(
       ),
     );
   }
+  const startActivation = async (activationSpec: SubagentActivationSpec) => {
+    if (dependencies.startActivation === undefined)
+      return dependencies.subagents.startActivation(activationSpec);
+    const activation = await dependencies.startActivation(
+      activationSpec,
+      configuredTools.length > 0 ? profile.toolFilter : undefined,
+    );
+    // The Host has now validated every configured name against the child's
+    // actual registry. The resolver's earlier uncertainty is settled.
+    if (configuredTools.length > 0) {
+      for (let index = degradations.length - 1; index >= 0; index -= 1) {
+        if (degradations[index]!.code === "TOOL_UNVERIFIED")
+          degradations.splice(index, 1);
+      }
+    }
+    return activation;
+  };
 
   if (input.request.background) {
     return await startBackground(
@@ -341,12 +364,13 @@ export async function runExpert(
       startedAt,
       depth,
       memoryOwner,
+      startActivation,
     );
   }
 
   let activation: SubagentActivation;
   try {
-    activation = await dependencies.subagents.startActivation(spec);
+    activation = await startActivation(spec);
   } catch (error) {
     throw relabelCapabilityFailure(error, dependencies.subagentProvider);
   }
@@ -428,11 +452,14 @@ async function startBackground(
   startedAt: number,
   depth: number,
   memoryOwner: MemoryOwner,
+  startActivation: (
+    spec: SubagentActivationSpec,
+  ) => Promise<SubagentActivation>,
 ): Promise<DomainExpertResult> {
   const definition = input.definition;
   let activation: SubagentActivation;
   try {
-    activation = await dependencies.subagents.startActivation(spec);
+    activation = await startActivation(spec);
   } catch (error) {
     throw relabelCapabilityFailure(error, dependencies.subagentProvider);
   }

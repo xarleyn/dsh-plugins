@@ -322,10 +322,9 @@ export interface ResolvedExpertProfile {
   readonly memory: readonly ResolvedMemoryEntry[];
   readonly tools: readonly ResolvedToolEntry[];
   /**
-   * The domain's tool policy as configuration states it. The Host start
-   * contract no longer scopes a child's tools per run — its Agent Preset owns
-   * tool composition — so this filter is reported, degraded when non-empty,
-   * and never sent with the start request.
+   * The domain's tool policy. A local managed child applies this through its
+   * scoped tool registry before the first prompt. The preset owns the tools
+   * available to restrict; an unknown name refuses creation.
    */
   readonly toolFilter: {
     readonly allow: readonly string[];

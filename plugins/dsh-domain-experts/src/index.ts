@@ -52,6 +52,7 @@ import {
 import type { SqliteMemoryProvider } from "./host/memory/sqlite.js";
 import { parallelBudgetOf } from "./host/policy.js";
 import { callerDomainOf } from "./host/caller.js";
+import { startRestrictedExpert } from "./host/tool-policy.js";
 import { PrincipalIdentities } from "./host/qa-principal.js";
 import type { ResolverDependencies } from "./host/resolver.js";
 import { createFilesystemProvider } from "./host/scopes/filesystem.js";
@@ -325,6 +326,13 @@ export class DomainExpertsService extends TypertRemoteService {
       perUserMemory: this.principals.perUserMemory(),
       principalOf: (sessionId) => this.principals.principalOf(sessionId),
       modelPolicyOf: (sessionId) => this.principals.modelPolicyOf(sessionId),
+      startActivation: (spec, filter) =>
+        startRestrictedExpert(
+          this.ctx,
+          subagentsFaceOf(this.ctx.subagents),
+          spec,
+          filter,
+        ),
     };
   }
 

@@ -191,14 +191,18 @@ sections list what a domain asks for but the deployment cannot supply
 (`SCOPE_PROVIDER_MISSING`, `MEMORY_PROVIDER_MISSING`, `WORKER_UNAVAILABLE`,
 `TOOL_UNVERIFIED`, `TOOL_UNFILTERABLE`, `DELEGATION_TARGET_MISSING`).
 
-A `N degraded` chip is not a broken expert, and the codes are not equally severe.
-`TOOL_UNVERIFIED` costs nothing: it is recorded for every allow-list name that is
-not a worker of this plugin — an ordinary tool such as `read` or `grep` — because
-the resolver cannot see the host's global tool registry, so it passes the name to
-the child unchanged and says it could not verify it. An expert that answers with
-`status="completed"` and this one code in the log had all the tools its policy
-asks for. `TOOL_UNFILTERABLE` is the code that can name a tool the expert did not
-get, and it names it.
+A `N degraded` chip lists limitations that need to be read individually.
+`TOOL_UNVERIFIED` in the inspector means that the resolver cannot validate an
+ordinary tool name such as `read` against a live child's registry. On a local
+managed provider, the plugin reserves the child id and applies `tools.restrict`
+to that child's context in the awaited `agent/created` lifecycle event, before
+the first prompt is submitted. The Host validates names, hides restricted
+inherited tools and refuses their execution; the child's own structured-output
+machinery remains available. A successful installation clears that uncertainty
+from the run's audit. An unknown tool refuses creation with `WORKER_UNAVAILABLE`;
+the run is never retried with a weaker policy. A backend without local child
+creation is refused when a policy is configured. An adapter without this
+lifecycle capability still reports `TOOL_UNFILTERABLE`.
 
 Path containment is implemented once, in `decidePath`/`resolveWithinRoot`:
 denial wins over any allow, a path that no rule classifies is refused, and

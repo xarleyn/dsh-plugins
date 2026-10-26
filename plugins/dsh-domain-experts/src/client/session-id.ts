@@ -9,7 +9,17 @@
  */
 interface SessionsFace {
   readonly list: {
-    getSnapshot(): { readonly current?: unknown };
+    getSnapshot(): {
+      readonly current?: unknown;
+      readonly byId?: Readonly<
+        Record<
+          string,
+          {
+            readonly retainedBy?: Readonly<Record<string, number>>;
+          }
+        >
+      >;
+    };
   };
 }
 
@@ -18,8 +28,18 @@ export function currentSessionId(ctx: unknown): string {
   const sessions = (ctx as { readonly sessions?: SessionsFace }).sessions;
   if (sessions === undefined) return "";
   try {
-    const current = sessions.list.getSnapshot().current;
-    return typeof current === "string" ? current : "";
+    const snapshot = sessions.list.getSnapshot();
+    if (typeof snapshot.current === "string" && snapshot.current !== "") {
+      return snapshot.current;
+    }
+    // Host 0.2 owns navigation in the main view, independently of the Session
+    // catalog. Its retainedBy projection identifies that view's held Session
+    // even while the Plugins panel is open. Never borrow an arbitrary running
+    // chat (or a gateway/preview reference) as the test's parent.
+    const selected = Object.entries(snapshot.byId ?? {}).filter(
+      ([, row]) => (row.retainedBy?.mainView ?? 0) > 0,
+    );
+    return selected.length === 1 ? selected[0]![0] : "";
   } catch {
     // A service that is present but not yet bound must not break the page.
     return "";
