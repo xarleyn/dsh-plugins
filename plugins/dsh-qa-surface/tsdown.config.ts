@@ -18,6 +18,11 @@ const client: UserConfig = {
   dts: false,
   sourcemap: true,
   clean: false,
+  // The client is one unsplit factory the QA page downloads on first paint, so
+  // it ships minified. Compression and identifier mangling stay off: package
+  // verification pins named shapes of this bundle (`const QA_VERSION = …`),
+  // and the sourcemap already carries every original name for debugging.
+  minify: { mangle: false, compress: false },
   define: {
     __DSH_QA_VERSION__: JSON.stringify(PACKAGE_VERSION),
   },

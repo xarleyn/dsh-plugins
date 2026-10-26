@@ -385,10 +385,12 @@ function verifyNoRelativeChunks(node) {
   ts.forEachChild(node, verifyNoRelativeChunks);
 }
 verifyNoRelativeChunks(clientSyntax);
-const escapedVersion = manifest.version.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
+const escapedVersion = manifest.version.replace(/[.*?^${}()|[\]\\]/gu, "\\$&");
+// The bundle ships minified, and the minifier normalizes string quoting, so
+// identity assertions stay quote-agnostic while still pinning the exact names.
 assert.match(
   client,
-  /__ModuleLoader__\.load\(\{\s*id:\s*"@yadsh\/dsh-qa-surface"/u,
+  /__ModuleLoader__\.load\(\{\s*id:\s*["'`]@yadsh\/dsh-qa-surface/u,
 );
 assert.doesNotMatch(
   client,
@@ -397,7 +399,7 @@ assert.doesNotMatch(
 );
 assert.match(
   client,
-  new RegExp(`const QA_VERSION = "${escapedVersion}"`, "u"),
+  new RegExp(`const QA_VERSION\\s*=\\s*["'\`]${escapedVersion}["'\`]`, "u"),
   "client bundle must embed the package version",
 );
 assert.doesNotMatch(client, /__DSH_QA_VERSION__/u);
@@ -407,9 +409,9 @@ assert.match(client, /qa\.surface\.panel/u);
 assert.match(client, /dsh-qa-extension-panel/u);
 assert.match(client, /dsh-qa-panel-launcher/u);
 assert.doesNotMatch(client, /playwright|BrowserPanel|browser process/u);
-assert.match(client, /id:\s*"dsh-qa-surface"/u);
+assert.match(client, /id:\s*["'`]dsh-qa-surface["'`]/u);
 assert.match(client, /settings\.onboarding/u);
-assert.match(client, /"welcome-notice"/u);
+assert.match(client, /["'`]welcome-notice["'`]/u);
 assert.match(client, /priority:\s*-1e3|priority:\s*-1000/u);
 assert.match(client, /Перед началом тестирования/u);
 // A question the stand has no room for is answered with the queue dialog, and
@@ -558,7 +560,7 @@ verifyPluginCardContract(client, {
 // The shared contract picks which half of itself applies from the seat named at
 // the registration, so the pin is the registration's own text rather than the
 // bare slot name — a comment or a leftover constant would answer the latter.
-assert.match(client, /name:\s*"plugins\.row\.config"/u);
+assert.match(client, /name:\s*["'`]plugins\.row\.config["'`]/u);
 // The seat key is `<package name>#<row id>`, and a key that drifts from that
 // pair says nothing when it fails: the row keeps its place on the page and
 // never gains the control that opens the card. So the bundle carries the join.
@@ -628,7 +630,7 @@ assert.doesNotMatch(client, /--dsw-alias-interactive-bg-active/u);
 // skills editor, with the legacy profile classes gone.
 assert.match(client, /dsh-qa-modal__panel--settings/u);
 assert.match(client, /dsh-qa-settings__nav/u);
-assert.match(client, /role:\s*"tablist"|"tablist"/u);
+assert.match(client, /role:\s*["'`]tablist["'`]/u);
 assert.match(client, /Открыть настройки/u);
 assert.doesNotMatch(client, /dsh-qa-profile/u);
 assert.doesNotMatch(client, /Открыть профиль/u);
