@@ -84,12 +84,10 @@ export function resolveAccounts(
   }
   if (
     perUserWorkspace &&
-    (!lockdown.enabled ||
-      !lockdown.enforceFixedWorkspace ||
-      lockdown.sandboxMode !== "workspace-write")
+    (!lockdown.enabled || lockdown.sandboxMode !== "workspace-write")
   ) {
     throw new TypeError(
-      "dsh-qa-surface: accounts.perUserWorkspace requires lockdown.enabled, enforceFixedWorkspace, and workspace-write",
+      "dsh-qa-surface: accounts.perUserWorkspace requires lockdown.enabled and workspace-write",
     );
   }
   if (lockdown.sandboxMode === "workspace-write" && !perUserWorkspace) {

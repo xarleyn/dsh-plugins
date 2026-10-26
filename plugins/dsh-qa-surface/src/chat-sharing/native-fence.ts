@@ -16,6 +16,26 @@ declare module "@deepseek-ai/cordis" {
 
 export function qaNativeEndpointDenied(endpoint: string): boolean {
   const normalized = decodeURIComponent(endpoint).replace(/^\//u, "");
+  if (normalized.startsWith("qaBrowser/")) {
+    // Panel methods validate the QA token and chat owner on the browser service.
+    return ![
+      "panelState",
+      "panelFrame",
+      "panelTakeControl",
+      "panelControlHeartbeat",
+      "panelReleaseControl",
+      "panelSelectTab",
+      "panelNavigate",
+      "panelPointer",
+      "panelKey",
+      "panelText",
+      "panelScroll",
+      "panelNewTab",
+      "panelCloseTab",
+      "panelHistory",
+      "panelViewport",
+    ].includes(normalized.slice("qaBrowser/".length));
+  }
   // QA accounts are an application identity, whereas the Host's other APIs
   // authenticate the deployment operator. An unknown endpoint fails closed.
   if (normalized.startsWith("qaIntegrations/")) {

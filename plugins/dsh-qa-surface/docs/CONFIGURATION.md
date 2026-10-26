@@ -78,8 +78,17 @@ uses the registered Workspace path only as a trusted base, creates
 `.qa-users/<account UUID>` below it, and passes that child as the Session cwd.
 It does not register or attach the child as a Workspace, so the operator sees
 all chats in the normal global DSH session list. This mode requires accounts,
-`workspaceId`, fixed-workspace enforcement, lockdown, and `workspace-write`;
+`workspaceId`, lockdown, and `workspace-write`;
 `fixed` session policy and a bare `workspace-write` configuration are rejected.
+
+The `lockdown.enforceFixedAgentPreset`, `lockdown.enforceFixedWorkspace`, and
+`lockdown.enforceFixedModel` flags control comparison with the current deployment
+composition. Operators can set all three to `false` while retaining personal
+workspaces. Account ownership, tool policy, sandbox policy, and the personal
+file boundary remain enforced. A historical chat whose cwd is outside its
+owner's current personal directory can pass composition admission, but its
+workspace tools still refuse execution; disabling comparison does not migrate
+that directory or reassign the chat.
 
 These chats appear under `Ungrouped` in the host's workspace browser, and that
 is a property of the mode rather than a misconfiguration. DSH grants Workspace

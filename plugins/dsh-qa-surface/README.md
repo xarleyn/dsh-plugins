@@ -421,7 +421,7 @@ enforce its own permissions.
 ### Writable per-user research space
 
 Set `accounts.perUserWorkspace: true` only together with accounts, a registered
-`session.workspaceId`, `lockdown.enforceFixedWorkspace: true`, and a
+`session.workspaceId`, `lockdown.enabled: true`, and a
 `workspace-write` + `never` permission preset:
 
 ```yaml

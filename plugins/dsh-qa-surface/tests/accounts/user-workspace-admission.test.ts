@@ -13,7 +13,7 @@ import { prepareQaUserWorkspace } from "../../src/user-workspace.js";
 const USER_ID = "123e4567-e89b-42d3-a456-426614174000";
 
 describe("per-user workspace admission", () => {
-  it("attests the child cwd and propagates its path guard to local subagents", async () => {
+  it.each([true, false])("guards personal paths with pin %s", async (fixed) => {
     const workspace = mkdtempSync(path.join(tmpdir(), "qa-admission-"));
     const shared = mkdtempSync(path.join(tmpdir(), "qa-admission-shared-"));
     const docs = path.join(shared, "docs");
@@ -105,6 +105,7 @@ describe("per-user workspace admission", () => {
           session: { workspaceId: "workspace-1" },
           accounts: { enabled: true, perUserWorkspace: true },
           lockdown: {
+            enforceFixedWorkspace: fixed,
             sandboxMode: "workspace-write",
             permissionPreset: "qa-workspace-write",
             toolPolicy: { allow: ["read", "write", "dsh_git_context"] },
@@ -207,6 +208,25 @@ describe("per-user workspace admission", () => {
     // A re-attestation refreshes the fence rather than stacking a second grant
     // on top of the first.
     expect(grants).toHaveLength(2);
+
+    session.header.cwd = path.join(workspace, "different-root");
+    if (fixed) {
+      await expect(
+        admission.secureSession("token", "session-parent"),
+      ).rejects.toMatchObject({ reason: "composition-mismatch" });
+    } else {
+      await expect(
+        admission.secureSession("token", "session-parent"),
+      ).resolves.toMatchObject({ workspaceMatches: true });
+      expect(
+        globalGuard({
+          name: "read",
+          arguments: { file_path: path.join(userRoot, "notes.md") },
+          agent,
+        }),
+      ).toMatch(/session cwd is outside this user's directory/u);
+    }
+    session.header.cwd = userRoot;
 
     agentDisposed?.({ agent: { session: child } } as never);
     expect(revoked).toEqual(["session-child"]);

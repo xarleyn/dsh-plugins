@@ -544,12 +544,22 @@ export class QaBrowserService extends TypertRemoteService {
     const qaSurface = this.context.get("qaSurface") as
       | {
           secureSession(token: string, id: string): Promise<unknown>;
+          chatAccess(token: string, id: string): { readonly mode: string };
         }
       | undefined;
-    if (qaSurface === undefined) {
+    if (qaSurface === undefined || typeof qaSurface.chatAccess !== "function") {
       throw new Error("QA Browser panel authorization is unavailable.");
     }
+    const requireOwner = (): void => {
+      if (qaSurface.chatAccess(qaToken, sessionId).mode !== "owner") {
+        throw new Error(
+          "QA Browser panel is available only to the chat owner.",
+        );
+      }
+    };
+    requireOwner();
     await qaSurface.secureSession(qaToken, sessionId);
+    requireOwner();
   }
 
   dispose(): Promise<void> {

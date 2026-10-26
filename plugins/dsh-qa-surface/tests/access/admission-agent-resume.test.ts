@@ -232,6 +232,34 @@ describe("agent materialization in policy admission", () => {
     admission.dispose();
   });
 
+  it("deduplicates question warnings until the mismatch changes or clears", async () => {
+    const options = {
+      live: true,
+      questions: "interactive" as "interactive" | "unsupported",
+      allow: ["read"],
+    };
+    const { admission, logged } = world(options);
+    const warnings = () =>
+      logged.filter((line) => line.includes("question.config-incomplete"));
+    await admission.secureSession("token", "session-cold");
+    await admission.secureSession("token", "session-cold");
+    expect(warnings()).toHaveLength(1);
+    options.questions = "unsupported";
+    await admission.secureSession("token", "session-cold");
+    options.allow.push("ask_user_question");
+    await admission.secureSession("token", "session-cold");
+    await admission.secureSession("token", "session-cold");
+    expect(warnings()).toHaveLength(2);
+    expect(warnings()[1]).toContain("unsupported");
+    options.questions = "interactive";
+    await admission.secureSession("token", "session-cold");
+    options.allow.pop();
+    await admission.secureSession("token", "session-cold");
+    expect(warnings()).toHaveLength(3);
+    expect(warnings()[2]).toContain("not-allowed");
+    admission.dispose();
+  });
+
   it("stays quiet when the question seam and the tool policy agree", async () => {
     const interactive = world({
       live: true,

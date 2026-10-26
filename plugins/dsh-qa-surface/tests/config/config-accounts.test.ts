@@ -214,6 +214,36 @@ describe("qa surface config", () => {
     ).toThrow(/fixed sessions/u);
   });
 
+  it("allows composition checks to be disabled while retaining personal workspaces", () => {
+    const input = {
+      session: { workspaceId: "workspace-1" },
+      accounts: { enabled: true, perUserWorkspace: true },
+      lockdown: {
+        enabled: true,
+        enforceFixedAgentPreset: false,
+        enforceFixedWorkspace: false,
+        enforceFixedModel: false,
+        sandboxMode: "workspace-write" as const,
+        permissionPreset: "qa-workspace-write",
+      },
+    };
+    const config = resolveConfig(schemaParse(input));
+    expect(config.accounts.perUserWorkspace).toBe(true);
+    expect(config.lockdown).toMatchObject(input.lockdown);
+    expect(() =>
+      resolveConfig({
+        ...input,
+        lockdown: { ...input.lockdown, enabled: false },
+      }),
+    ).toThrow(/requires lockdown.enabled/u);
+    expect(() =>
+      resolveConfig({
+        ...input,
+        lockdown: { ...input.lockdown, sandboxMode: "read-only" },
+      }),
+    ).toThrow(/workspace-write/u);
+  });
+
   it("resolves the QA tool delivery defaults and rejects an impossible policy", () => {
     expect(resolveConfig().tools).toEqual({
       dynamicActivation: true,
