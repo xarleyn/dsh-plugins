@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { OperatorCard } from "../../src/client/operator-card.js";
 import type { OperatorCardFace } from "../../src/client/operator-card.js";
 import type { ComponentType } from "react";
@@ -44,32 +44,26 @@ describe("operator service operation catalog loading", () => {
   it("loads host metadata and saves the allowance with the whole profile", async () => {
     const form = settingsForm();
     const loader = vi.fn(async () => SERVICE_POLICY_OPERATIONS);
-    render(
-      <Card settingsForm={form as never} loadServiceOperations={loader} />,
-    );
-    const control = await screen.findByLabelText(
-      "Читать лог сборки (builds.log)",
-    );
+    await act(async () => {
+      render(
+        <Card settingsForm={form as never} loadServiceOperations={loader} />,
+      );
+    });
+    const control = screen.getByLabelText("Читать лог сборки (builds.log)");
     fireEvent.change(control, { target: { value: "allow" } });
-    await waitFor(
-      () =>
-        expect(form.mutate).toHaveBeenCalledWith([
+    expect(form.mutate).toHaveBeenCalledWith([
+      expect.objectContaining({
+        op: "set",
+        path: ["managedServiceCredentials", "profiles"],
+        value: [
           expect.objectContaining({
-            op: "set",
-            path: ["managedServiceCredentials", "profiles"],
-            value: [
-              expect.objectContaining({
-                id: "build-reader",
-                resources: { projects: ["demo-project"] },
-                policy: { "builds.log": "allow" },
-              }),
-            ],
+            id: "build-reader",
+            resources: { projects: ["demo-project"] },
+            policy: { "builds.log": "allow" },
           }),
-        ]),
-      // A workspace-wide test run starves the event loop long enough to
-      // outlive the default one-second polling window.
-      { timeout: 10_000 },
-    );
+        ],
+      }),
+    ]);
     expect(loader).toHaveBeenCalledTimes(1);
   });
 
