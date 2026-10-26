@@ -9,6 +9,11 @@ import { QaToolActivationLifecycle } from "./lifecycle.js";
 import type { QaToolActivation } from "./types.js";
 
 export interface QaToolsOptions {
+  readonly forms?: import("../forms/gate.js").QaFormGate;
+  readonly formsEnabled?: () => boolean;
+  readonly formProjection?: (
+    submission: import("../forms/types.js").QaFormSubmission,
+  ) => Promise<unknown>;
   readonly logger: PluginLogger;
   readonly dynamicActivation: boolean;
   readonly activationSkill: string;
@@ -36,7 +41,7 @@ export class QaTools implements QaToolActivation {
   private readonly manager: QaToolActivationManager;
   private readonly detector: QaToolActivationDetector;
   private readonly lifecycle: QaToolActivationLifecycle;
-  private readonly catalogTools: readonly string[];
+  private catalogTools: readonly string[];
 
   constructor(
     private readonly ctx: Context,
@@ -46,6 +51,12 @@ export class QaTools implements QaToolActivation {
     // catalog is built before any agent exists and resolves `exec.agent` at
     // execution time.
     const catalog = createQaToolCatalog({
+      ...(options.forms === undefined || options.formsEnabled?.() === false
+        ? {}
+        : { forms: options.forms }),
+      ...(options.formProjection === undefined
+        ? {}
+        : { formProjection: options.formProjection }),
       catalogVersion: QA_TOOL_CATALOG_VERSION,
       activationMode: options.activationMode,
       catalogTools: () => this.catalogTools,
@@ -94,9 +105,32 @@ export class QaTools implements QaToolActivation {
     return this.catalogTools;
   }
 
+  refreshForms(): void {
+    const options = this.options;
+    const catalog = createQaToolCatalog({
+      ...(options.forms === undefined || options.formsEnabled?.() === false
+        ? {}
+        : { forms: options.forms }),
+      ...(options.formProjection === undefined
+        ? {}
+        : { formProjection: options.formProjection }),
+      catalogVersion: QA_TOOL_CATALOG_VERSION,
+      activationMode: options.activationMode,
+      catalogTools: () => this.catalogTools,
+      activeTools: (agent) => this.manager.activeToolNames(agent),
+      skillLoaded: (agent) =>
+        sessionLoadedSkill(agent.session, options.activationSkill),
+      docsRoot: options.docsRoot,
+      docsDefaultVersion: options.docsDefaultVersion,
+    });
+    this.manager.replaceCatalog(catalog);
+    this.catalogTools = catalog.map((d) => d.definition.name);
+  }
+
   dispose(): void {
     this.detector.disposeListeners();
     this.lifecycle.dispose();
+    this.manager.disposeAll();
   }
 
   /**

@@ -27,6 +27,7 @@ export function InterfaceSection(props: ConfigProps) {
     ["ui"],
     ["suggestedQuestions"],
     ["thinkingPhrases"],
+    ["forms"],
   ];
   const modified = overriddenAny(props, paths);
   const storedPhrases = config?.thinkingPhrases;
@@ -46,6 +47,14 @@ export function InterfaceSection(props: ConfigProps) {
       aside={resetAside(props, paths, "qa-settings-interface-reset")}
     >
       <div className="qa-card-grid">
+        <Toggle
+          checked={config?.forms?.enabled ?? false}
+          disabled={disabled}
+          label="Пошаговые формы"
+          testId="qa-settings-interface-forms-enabled"
+          hint="Разрешить отдельный request_user_form. Ответы и файлы проверяет сервер; роль должна иметь право на инструмент. Для файлов нужны QA-аккаунты и загрузчик Host."
+          onChange={(value) => props.write(["forms", "enabled"], value)}
+        />
         <Toggle
           checked={config?.ui?.showHeader ?? true}
           disabled={disabled}

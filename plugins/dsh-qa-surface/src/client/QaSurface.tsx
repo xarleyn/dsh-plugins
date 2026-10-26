@@ -62,6 +62,8 @@ import { QA_SESSION_IDLE_STATE } from "./types.js";
 import { QaAuthGate } from "./components/QaAuthGate.js";
 import { QaApproval } from "./components/QaApproval.js";
 import { QaQuestions } from "./components/QaQuestions.js";
+import { QaInputForms } from "./components/QaInputForm.js";
+import type { QaFormApi } from "./forms.js";
 import { QaRequestQueue } from "./components/QaRequestQueue.js";
 import { QaComposer } from "./components/QaComposer.js";
 import { QaQueueDock } from "./components/QaQueueDock.js";
@@ -188,6 +190,7 @@ export interface QaSurfaceFace {
   readonly approvalApi?: QaApprovalApi;
   /** Question half of the plugin's namespace, when the Host answers it. */
   readonly questionApi?: QaQuestionApi;
+  readonly formApi?: QaFormApi;
   /**
    * Slash half of the plugin's namespace. Absent on a Host build that predates
    * it: the composer then never opens a palette and ordinary prompts are
@@ -305,6 +308,7 @@ export function QaSurface(props: QaSurfaceProps) {
   /** Whether the chat on screen was itself created as an administrator preview. */
   const [sessionPreview, setSessionPreview] = useState(false);
   const [controller, setController] = useState<QaSessionController>();
+  const [formTakeover, setFormTakeover] = useState(false);
   const transcript = useRef<HTMLDivElement>(null);
   const chat = useRef<HTMLDivElement>(null);
   const nearBottom = useRef(true);
@@ -2086,6 +2090,25 @@ export function QaSurface(props: QaSurfaceProps) {
                     onStop={handleStop}
                     canStop={state.canStop}
                   />
+                  {config.forms.enabled && props.formApi && state.sessionId && (
+                    <QaInputForms
+                      key={`${accessPrincipal ?? "anonymous"}:${state.sessionId}`}
+                      api={props.formApi}
+                      policy={config.forms}
+                      session={state.sessionId}
+                      token={accounts?.token() ?? ""}
+                      canStop={state.canStop}
+                      onStop={handleStop}
+                      onResume={(id) => {
+                        void handleSend(
+                          `Продолжи сбор данных через request_user_form: action=resume, form_id=${id}. Используй только подтверждённый submission.`,
+                          [],
+                          null,
+                        );
+                      }}
+                      onTakeover={setFormTakeover}
+                    />
+                  )}
                   {/* A parked question takes the composer's place: the operator
                   answers the tool call that is already waiting, and cannot open
                   a new turn beside it. The composer stays mounted behind the
@@ -2094,7 +2117,7 @@ export function QaSurface(props: QaSurfaceProps) {
                   <div
                     className="dsh-qa-composer-slot"
                     data-testid="qa-surface-composer-slot"
-                    hidden={state.questions.length > 0}
+                    hidden={state.questions.length > 0 || formTakeover}
                   >
                     {/* Queued messages are not in the transcript yet, so this is
                     the only place they are on the screen at all. */}

@@ -3,6 +3,8 @@ import type { Agent } from "@deepseek-ai/dsh-agent";
 import { createFileDeleteTool } from "./file-delete.js";
 import { createDocsReadTool, createDocsSearchTool } from "./docs-tools.js";
 import type { QaToolDescriptor } from "./types.js";
+import { createRequestUserFormTool } from "./request-user-form.js";
+import type { QaFormGate } from "../forms/gate.js";
 
 /**
  * Deterministic catalog identity. The durable activation marker is derived from
@@ -12,10 +14,14 @@ import type { QaToolDescriptor } from "./types.js";
  *
  * Bump it whenever the catalog's tool set or their schemas change.
  */
-export const QA_TOOL_CATALOG_VERSION = "3";
+export const QA_TOOL_CATALOG_VERSION = "4";
 
 /** What the catalog's definitions read, beyond the execution record. */
 export interface QaToolsSelfcheckDeps {
+  readonly forms?: QaFormGate;
+  readonly formProjection?: (
+    submission: import("../forms/types.js").QaFormSubmission,
+  ) => Promise<unknown>;
   readonly catalogVersion: string;
   readonly activationMode: string;
   /** Names the catalog contributes, in catalog order. */
@@ -142,6 +148,18 @@ export function createQaToolCatalog(
       group: "workspace",
       tags: ["files", "destructive"],
     },
+    ...(deps.forms === undefined
+      ? []
+      : [
+          {
+            definition: createRequestUserFormTool(
+              deps.forms,
+              deps.formProjection,
+            ),
+            group: "interaction",
+            tags: ["forms", "input"],
+          },
+        ]),
   ];
 }
 

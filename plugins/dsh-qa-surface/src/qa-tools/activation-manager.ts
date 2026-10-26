@@ -35,8 +35,29 @@ export interface QaToolActivationManagerOptions {
  */
 export class QaToolActivationManager implements QaToolActivation {
   private readonly states = new WeakMap<Agent, QaToolActivationState>();
+  private readonly activeAgents = new Set<Agent>();
+  private catalog: readonly QaToolDescriptor[];
 
-  constructor(private readonly options: QaToolActivationManagerOptions) {}
+  constructor(private readonly options: QaToolActivationManagerOptions) {
+    this.catalog = options.catalog;
+  }
+
+  /** Reconcile feature switches only for scopes which already earned activation. */
+  replaceCatalog(catalog: readonly QaToolDescriptor[]): void {
+    assertValidQaToolCatalog(catalog);
+    if (
+      catalog.map((d) => d.definition.name).join("\n") ===
+      this.catalog.map((d) => d.definition.name).join("\n")
+    )
+      return;
+    const agents = [...this.activeAgents];
+    for (const agent of agents) this.disposeAgent(agent);
+    this.catalog = catalog;
+    for (const agent of agents) this.activate(agent, "restore");
+  }
+  disposeAll(): void {
+    for (const agent of [...this.activeAgents]) this.disposeAgent(agent);
+  }
 
   /**
    * Register the whole catalog on one agent, all or nothing.
@@ -63,7 +84,7 @@ export class QaToolActivationManager implements QaToolActivation {
     };
     this.states.set(agent, state);
 
-    const catalog = this.options.catalog;
+    const catalog = this.catalog;
     let toolName = "(preflight)";
     try {
       assertValidQaToolCatalog(catalog);
@@ -76,6 +97,7 @@ export class QaToolActivationManager implements QaToolActivation {
       }
       state.status = "active";
       state.catalogVersion = this.options.catalogVersion;
+      this.activeAgents.add(agent);
     } catch (error) {
       this.rollback(state);
       this.states.delete(agent);
@@ -105,7 +127,7 @@ export class QaToolActivationManager implements QaToolActivation {
   /** Names registered on this agent; the admission guard evaluates this per call. */
   activeToolNames(agent: Agent): readonly string[] {
     if (!this.isActive(agent)) return [];
-    return this.options.catalog.map((descriptor) => descriptor.definition.name);
+    return this.catalog.map((descriptor) => descriptor.definition.name);
   }
 
   /**
@@ -118,6 +140,7 @@ export class QaToolActivationManager implements QaToolActivation {
     if (state === undefined) return;
     this.rollback(state);
     this.states.delete(agent);
+    this.activeAgents.delete(agent);
     this.options.logger.debug("qa-tools.disposed", {
       agentId: String(agent.id),
     });

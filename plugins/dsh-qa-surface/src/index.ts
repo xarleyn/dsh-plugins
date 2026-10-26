@@ -80,6 +80,15 @@ import {
 } from "./attestation.js";
 import { QaFileDeleteGate } from "./qa-tools/file-delete-gate.js";
 import { QaQuestionGate } from "./questions.js";
+import { QaFormStore } from "./forms/store.js";
+import { QaFormService } from "./forms/service.js";
+import { QaFormGate } from "./forms/gate.js";
+import {
+  QaFormAttachmentAdapter,
+  type QaFormHostAttachments,
+} from "./forms/attachments.js";
+import { formFailure, QaFormError } from "./forms/errors.js";
+import type { QaFormCommand, QaFormResult, QaFormView } from "./forms/types.js";
 import { QaSessionOwnership } from "./session-ownership.js";
 import { QaLlmIdentity } from "./llm-identity.js";
 import { registerTurnFailureLog } from "./turn-failure-log.js";
@@ -288,6 +297,21 @@ export class QaSurface extends TypertRemoteService {
   private readonly approvals: QaApprovalGate;
   private readonly fileDeleteGate: QaFileDeleteGate;
   private readonly userQuestions: QaQuestionGate;
+  private formService?: QaFormService;
+  private readonly formGate: QaFormGate;
+  private readonly formAttachments: QaFormAttachmentAdapter;
+
+  private forms(): QaFormService {
+    return (this.formService ??= new QaFormService(
+      new QaFormStore(
+        path.join(path.dirname(defaultAccountsFilePath()), "qa-forms.db"),
+      ),
+      () => this.getConfig().forms,
+      (session) =>
+        this.accountRemotes.resolve(this.getConfig())?.ownerIdOf(session) ??
+        session,
+    ));
+  }
   private readonly provenance: QaProvenanceHost;
   private readonly notes: QaPromptNotes;
   /** Assigned after the admission gate; that gate only reads it per execution. */
@@ -359,6 +383,11 @@ export class QaSurface extends TypertRemoteService {
       pluginId: "dsh-qa-surface",
       consoleSink: createHostLoggerSink(ctx.logger),
     });
+    this.formAttachments = new QaFormAttachmentAdapter(
+      () => this.forms(),
+      () =>
+        ctx.get("attachments") as unknown as QaFormHostAttachments | undefined,
+    );
     this.accountRemotes = createQaAccountRemotes({
       getConfig: () => this.getConfig(),
       logger: this.logger,
@@ -519,6 +548,7 @@ export class QaSurface extends TypertRemoteService {
         ctx,
         () => this.sharing(),
         (token, id) => this.secureSession(token, id),
+        this.formAttachments,
       );
       return async () => {
         dispose();
@@ -577,7 +607,35 @@ export class QaSurface extends TypertRemoteService {
       () => this.getConfig().interaction.questions === "interactive",
       ownership,
       this.logger,
-      (agent) => integrationQuestionPolicy.allowed(agent),
+      (agent) =>
+        integrationQuestionPolicy.allowed(agent) &&
+        !this.formGate?.hasSession(
+          ownership.rootOf(String(agent.session.id)) ?? "",
+        ),
+    );
+    this.formGate = new QaFormGate(
+      () => this.forms(),
+      (id) => ownership.rootOf(id),
+      (id) =>
+        this.userQuestions.list(id).length > 0 ||
+        this.approvals.list(id).length > 0,
+      (exec) =>
+        this.getConfig().forms.enabled &&
+        exec.agent !== undefined &&
+        integrationQuestionPolicy.allowed(exec.agent) &&
+        this.admission.knowsSession(String(exec.agent.session.id)),
+      () =>
+        this.getConfig().accounts.enabled &&
+        this.ctx.get("fileUploads") !== undefined &&
+        this.formAttachments.available(),
+    );
+    this.formGate.install(ctx);
+    ctx.effect(
+      () => () => {
+        this.formGate.dispose();
+        this.formService?.store.close();
+      },
+      "dsh-qa-surface.forms",
     );
     // The destructive tool of the QA catalog composes the same approval flow
     // around itself: registered without `prepend`, it sits inside the approval
@@ -663,6 +721,9 @@ export class QaSurface extends TypertRemoteService {
     // The QA tool catalog is attached per agent, never at boot: nothing here
     // reaches the model until a managed agent loads the activation skill.
     this.tools = new QaTools(ctx, {
+      forms: this.formGate,
+      formsEnabled: () => this.getConfig().forms.enabled,
+      formProjection: (submission) => this.formAttachments.readable(submission),
       logger: this.logger,
       dynamicActivation: this.getConfig().tools.dynamicActivation,
       activationSkill: this.getConfig().tools.activationSkill,
@@ -675,6 +736,18 @@ export class QaSurface extends TypertRemoteService {
       docsDefaultVersion: () => docsDefaultVersionOf(this.getConfig().tools),
     });
     ctx.effect(() => () => this.tools.dispose(), "dsh-qa-surface.qa-tools");
+    const listenVolatile = ctx.on.bind(ctx) as unknown as (
+      event: string,
+      listener: () => void,
+    ) => () => void;
+    ctx.effect(
+      () =>
+        listenVolatile("loader/volatile-update", () => {
+          this.tools.refreshForms();
+          if (!this.getConfig().forms.enabled) this.formGate.cancelAll();
+        }),
+      "dsh-qa-surface.form-policy",
+    );
     // The root index gains one head script: non-loopback hostnames continue
     // into /qa, the loopback operator keeps the full harness UI. Not in the
     // kiosk composition: there the index itself is served under /qa, so the
@@ -780,6 +853,10 @@ export class QaSurface extends TypertRemoteService {
    * cannot be opened must not fail the page that triggered it.
    */
   private dropVanishedChats(sessionIds: readonly string[]): void {
+    for (const id of sessionIds) {
+      this.formGate?.cancel(id);
+      this.formService?.store.cancelSession(id);
+    }
     try {
       const rows = this.quality().dropConversations(sessionIds);
       this.logger.info("quality.vanished-conversations-dropped", {
@@ -2058,6 +2135,150 @@ export class QaSurface extends TypertRemoteService {
     )
       return [];
     return this.userQuestions.list(sessionId);
+  }
+
+  /** Forms stay owner-scoped; UUIDs and a browser-supplied session never grant access. */
+  private async admitForm(token: string, sessionId: string): Promise<void> {
+    try {
+      this.requireChatOwner(token, sessionId);
+      await this.secureSession(token, sessionId);
+      this.requireChatOwner(token, sessionId);
+    } catch {
+      throw new QaFormError("ACCESS_DENIED", "Form access is unavailable.");
+    }
+  }
+
+  @Remote("listForms")
+  async listForms(
+    token: string,
+    sessionId: string,
+  ): Promise<QaFormResult<QaFormView[]>> {
+    try {
+      await this.admitForm(token, sessionId);
+      if (!this.getConfig().forms.enabled) return { ok: true, value: [] };
+      this.formGate.touch(sessionId);
+      const service = this.forms();
+      return {
+        ok: true,
+        value: service.store
+          .list(sessionId)
+          .map((r) => service.view(r, this.formGate.waiting(r.id))),
+      };
+    } catch (error) {
+      return formFailure(error);
+    }
+  }
+
+  @Remote("getForm")
+  async getForm(
+    token: string,
+    sessionId: string,
+    formId: string,
+  ): Promise<QaFormResult<QaFormView>> {
+    try {
+      await this.admitForm(token, sessionId);
+      const s = this.forms();
+      return {
+        ok: true,
+        value: s.view(s.get(sessionId, formId), this.formGate.waiting(formId)),
+      };
+    } catch (error) {
+      return formFailure(error);
+    }
+  }
+
+  @Remote("mutateForm")
+  async mutateForm(
+    token: string,
+    sessionId: string,
+    command: QaFormCommand,
+  ): Promise<QaFormResult<QaFormView>> {
+    try {
+      await this.admitForm(token, sessionId);
+      const s = this.forms(),
+        r = s.command(sessionId, command);
+      this.logger.info("form.mutated", {
+        sessionId,
+        formId: r.id,
+        action: command.action,
+        revision: r.revision,
+        status: r.status,
+      });
+      this.formGate.notify(r, command.action === "pause");
+      return { ok: true, value: s.view(r, this.formGate.waiting(r.id)) };
+    } catch (error) {
+      return formFailure(error);
+    }
+  }
+
+  @Remote("validateFormStep")
+  async validateFormStep(
+    token: string,
+    sessionId: string,
+    formId: string,
+    stepId: string,
+    revision: number,
+  ): Promise<QaFormResult<null>> {
+    try {
+      await this.admitForm(token, sessionId);
+      this.forms().step(sessionId, formId, stepId, revision);
+      return { ok: true, value: null };
+    } catch (error) {
+      return formFailure(error);
+    }
+  }
+
+  @Remote("formCapabilities")
+  async formCapabilities(): Promise<{
+    enabled: boolean;
+    schemaVersion: number;
+    upload: boolean;
+  }> {
+    return {
+      enabled: this.getConfig().forms.enabled,
+      schemaVersion: 1,
+      upload:
+        this.getConfig().accounts.enabled &&
+        this.ctx.get("fileUploads") !== undefined &&
+        this.formAttachments.available(),
+    };
+  }
+
+  @Remote("readFormAttachment")
+  async readFormAttachment(
+    token: string,
+    sessionId: string,
+    formId: string,
+    resourceId: string,
+  ): Promise<QaFormResult<{ name: string; media_type: string; data: string }>> {
+    try {
+      await this.admitForm(token, sessionId);
+      const s = this.forms(),
+        r = s.get(sessionId, formId);
+      const file = Object.values(r.attachments)
+        .flat()
+        .find((f) => f.resource_id === resourceId);
+      if (!file)
+        return {
+          ok: false,
+          error: {
+            code: "ACCESS_DENIED",
+            message: "File access is unavailable.",
+          },
+        };
+      const data = s.store.resource(formId, resourceId);
+      this.requireChatOwner(token, sessionId);
+      return {
+        ok: true,
+        value: {
+          name: file.name,
+          media_type: file.media_type,
+          data: Buffer.from(data).toString("base64"),
+        },
+      };
+    } catch (error) {
+      return formFailure(error);
+    }
   }
 
   /**

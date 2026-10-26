@@ -1,4 +1,5 @@
 import { resolveAccounts } from "./config-resolvers/accounts.js";
+import { resolveFormPolicy } from "./forms/schema.js";
 import { resolveAttachments } from "./config-resolvers/attachments.js";
 import {
   normalizeRoutePath,
@@ -42,6 +43,7 @@ export function resolveConfig(
   const tools = resolveTools(input);
   const accounts = resolveAccounts(input, { session, lockdown });
   return Object.freeze({
+    forms: Object.freeze(resolveFormPolicy(input.forms)),
     enabled: basics.enabled,
     route: basics.route,
     branding: basics.branding,
