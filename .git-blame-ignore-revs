@@ -19,7 +19,7 @@
 # no-op that still looks correct.
 
 # style(repo): prettier the merged sources
-e9dd98f37ec7adfcf767da0d5d73dfc3eae0d7d4
+79425ba7627b2ee3b7e5017b82e2390a549384ba
 
 # style(dsh-openviking-memory): apply the shared prettier configuration
 79820878dc9878c4175911a421dc8a281c7ad896
