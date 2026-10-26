@@ -195,4 +195,18 @@ describe("QA tool activation manager", () => {
     });
     expect(register).not.toHaveBeenCalled();
   });
+
+  it("reconciles optional catalog entries only in activated scopes and disposes them", () => {
+    const active = fakeAgent("active"),
+      other = fakeAgent("other");
+    const { instance } = manager([tool("base")]);
+    instance.activate(active.agent, "skill");
+    instance.replaceCatalog([tool("base"), tool("request_user_form")]);
+    expect(active.registered).toEqual(["base", "request_user_form"]);
+    expect(other.registered).toEqual([]);
+    instance.replaceCatalog([tool("base")]);
+    expect(active.registered).toEqual(["base"]);
+    instance.disposeAll();
+    expect(active.registered).toEqual([]);
+  });
 });

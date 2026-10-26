@@ -127,6 +127,15 @@ export function StatusSection(props: StatusProps) {
           testId="qa-settings-status-tools"
         />
         <Chip
+          label="Пошаговые формы"
+          value={
+            (effective?.forms.enabled ?? config?.forms?.enabled)
+              ? "включены"
+              : "выключены"
+          }
+          testId="qa-settings-status-forms"
+        />
+        <Chip
           label="Проверено"
           value={formatClock(props.refreshedAt)}
           testId="qa-settings-status-checked-at"

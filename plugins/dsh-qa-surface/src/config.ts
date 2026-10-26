@@ -67,6 +67,58 @@ function readManifestVersion(): string | undefined {
 const nullableString = z.union([z.string(), z.const(null)]);
 
 const configSchema = z.object({
+  forms: z
+    .object({
+      enabled: z.boolean().default(D.forms.enabled),
+      maxSteps: z.number().step(1).min(1).default(D.forms.maxSteps),
+      maxItemsPerForm: z
+        .number()
+        .step(1)
+        .min(1)
+        .default(D.forms.maxItemsPerForm),
+      maxOptionsPerItem: z
+        .number()
+        .step(1)
+        .min(1)
+        .default(D.forms.maxOptionsPerItem),
+      maxSchemaBytes: z.number().step(1).min(1).default(D.forms.maxSchemaBytes),
+      maxTextLength: z.number().step(1).min(1).default(D.forms.maxTextLength),
+      maxTotalAnswerBytes: z
+        .number()
+        .step(1)
+        .min(1)
+        .default(D.forms.maxTotalAnswerBytes),
+      maxFilesPerItem: z
+        .number()
+        .step(1)
+        .min(1)
+        .default(D.forms.maxFilesPerItem),
+      maxFileSizeBytes: z
+        .number()
+        .step(1)
+        .min(1)
+        .default(D.forms.maxFileSizeBytes),
+      maxTotalFileBytesPerForm: z
+        .number()
+        .step(1)
+        .min(1)
+        .default(D.forms.maxTotalFileBytesPerForm),
+      maxConcurrentUploadsPerSession: z
+        .number()
+        .step(1)
+        .min(1)
+        .default(D.forms.maxConcurrentUploadsPerSession),
+      uploadIntentTtlSeconds: z
+        .number()
+        .step(1)
+        .min(1)
+        .default(D.forms.uploadIntentTtlSeconds),
+      allowedExtensions: z
+        .array(z.string())
+        .default([...D.forms.allowedExtensions]),
+    })
+    .default({ ...D.forms, allowedExtensions: [...D.forms.allowedExtensions] })
+    .volatile(),
   enabled: z.boolean().default(D.enabled).volatile(),
   route: z
     .object({

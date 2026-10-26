@@ -107,14 +107,18 @@ describe("QA Surface card body", () => {
         screen.getByTestId("qa-settings-status-route").textContent,
       ).toContain("/assistant");
     });
-    const status = section("qa-settings-status");
     expect(
       screen.getByTestId("qa-settings-status-accounts").textContent,
     ).toContain("включены");
     expect(
       screen.getByTestId("qa-settings-status-lockdown").textContent,
     ).toContain("только чтение");
-    expect(status.textContent).not.toContain("выключены");
+    expect(
+      screen.getByTestId("qa-settings-status-accounts").textContent,
+    ).not.toContain("выключены");
+    expect(
+      screen.getByTestId("qa-settings-status-forms").textContent,
+    ).toContain("выключены");
   });
 
   it("says so when the Host has not answered yet", async () => {

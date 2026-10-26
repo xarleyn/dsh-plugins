@@ -59,6 +59,8 @@ import type {
   QaSourceApi,
 } from "./types.js";
 import { QA_OVERLAY_STYLES, QA_ROOT_STYLES } from "./styles.js";
+import { QA_FORM_STYLES } from "./forms-styles.js";
+import { uploadQaFormFile, type QaFormApi } from "./forms.js";
 import { qaKioskBasePath, qaKioskMode } from "./kiosk.js";
 import { QaAuditController } from "./audit/controller.js";
 import { createQaAuditApi, type QaAuditRemote } from "./audit/types.js";
@@ -299,6 +301,10 @@ interface QaAdminRemote {
 }
 
 interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
+  listForms: QaFormApi["list"];
+  getForm: QaFormApi["get"];
+  mutateForm: QaFormApi["mutate"];
+  readFormAttachment: QaFormApi["file"];
   forkSession(
     token: string,
     sourceId: string,
@@ -862,6 +868,23 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             requestId,
           ) as unknown as ReturnType<QaQuestionApi["cancelQuestion"]>,
       };
+      const formApi: QaFormApi = {
+        list: (token, id) => policyRemote.listForms(token, id),
+        get: (token, id, form) => policyRemote.getForm(token, id, form),
+        mutate: (token, id, command) =>
+          policyRemote.mutateForm(token, id, command),
+        file: (token, id, form, resource) =>
+          policyRemote.readFormAttachment(token, id, form, resource),
+        upload: (token, id, upload, file, signal) =>
+          uploadQaFormFile(
+            ctx.get("fileUpload") as QaUploadCarrier | undefined,
+            token,
+            id,
+            upload,
+            file,
+            signal,
+          ),
+      };
       // Personal skills: the token rides every call, and the Host answers with
       // the caller's own storage. The section simply does not exist on a page
       // whose deployment cannot host one.
@@ -1134,7 +1157,9 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
         // The kiosk sheet carries no host-hiding rules: nothing native mounts
         // beneath the surface in that composition, so there is nothing to hide.
         style.textContent =
-          (kiosk ? QA_ROOT_STYLES : QA_OVERLAY_STYLES) + QA_SHARING_STYLES;
+          (kiosk ? QA_ROOT_STYLES : QA_OVERLAY_STYLES) +
+          QA_SHARING_STYLES +
+          QA_FORM_STYLES;
         document.head.append(style);
         return () => style.remove();
       }, "dsh-qa-surface: styles");
@@ -1193,6 +1218,7 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
             skillApi,
             approvalApi,
             questionApi,
+            formApi,
             slashApi,
             accounts,
             panels,

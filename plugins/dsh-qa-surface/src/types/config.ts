@@ -109,6 +109,7 @@ export interface QaNotesConfig {
 }
 
 export interface QaSurfaceConfig {
+  readonly forms?: Partial<import("../forms/types.js").QaFormPolicy>;
   readonly enabled?: boolean;
   readonly route?: {
     readonly path?: string;
@@ -392,6 +393,7 @@ export interface QaAttachmentsConfig {
 }
 
 export interface ResolvedQaSurfaceConfig {
+  readonly forms: Readonly<import("../forms/types.js").QaFormPolicy>;
   readonly enabled: boolean;
   readonly route: {
     readonly path: string;

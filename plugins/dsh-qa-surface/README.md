@@ -1,5 +1,10 @@
 # @yadsh/dsh-qa-surface
 
+The opt-in `request_user_form` tool collects required answers and item-bound
+files through durable step-by-step forms. It is disabled by default. See the
+[configuration, storage contract and acceptance guide](https://github.com/xarleyn/dsh-plugins/blob/main/plugins/dsh-qa-surface/docs/request-user-form.md)
+before enabling it and granting the tool to a QA role.
+
 Markdown source previews can present a leading YAML mapping as a compact document
 metadata card with expandable source and conversion details. Set
 `sources.filePreview.renderFrontmatter: true` (off by default), or use the
