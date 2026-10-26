@@ -1,27 +1,19 @@
-import { randomUUID, createHash } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import { SqliteDatabase } from "@yadsh/dsh-plugin-kit/sqlite";
 import { formAssert, QaFormError } from "./errors.js";
-import type { QaFormRecord } from "./types.js";
+import { fingerprint } from "./fingerprint.js";
+import type { QaFormRecord, QaFormStoreApi } from "./types.js";
 
-/** Stable object-key ordering for schema and idempotency fingerprints. */
-export function fingerprint(value: unknown): string {
-  const canonical = (v: unknown): unknown =>
-    Array.isArray(v)
-      ? v.map(canonical)
-      : v !== null && typeof v === "object"
-        ? Object.fromEntries(
-            Object.entries(v)
-              .sort(([a], [b]) => a.localeCompare(b))
-              .map(([k, x]) => [k, canonical(x)]),
-          )
-        : v;
-  return `sha256:${createHash("sha256")
-    .update(JSON.stringify(canonical(value)))
-    .digest("hex")}`;
+// Node suites import the fingerprint from the store; keep that path working.
+export { fingerprint } from "./fingerprint.js";
+
+interface MutationReceipt {
+  hash: string;
+  result: string;
 }
 
 /** Full synchronous commits: snapshot, revision and mutation receipt share one transaction. */
-export class QaFormStore {
+export class QaFormStore implements QaFormStoreApi {
   readonly storage: SqliteDatabase;
   constructor(file: string) {
     this.storage = new SqliteDatabase(file, [
@@ -142,6 +134,26 @@ export class QaFormStore {
       "This form cannot be edited.",
     );
   }
+  private mutationReceipt(formId: string, id: string): MutationReceipt | null {
+    const row = this.storage.db
+      .prepare("SELECT hash,result FROM mutations WHERE form_id=? AND id=?")
+      .get(formId, id);
+    return row ? { hash: String(row.hash), result: String(row.result) } : null;
+  }
+  replayedMutation(
+    formId: string,
+    mutationId: string,
+    input: unknown,
+  ): QaFormRecord | null {
+    const prior = this.mutationReceipt(formId, mutationId);
+    if (!prior) return null;
+    formAssert(
+      prior.hash === fingerprint(input),
+      "IDEMPOTENCY_CONFLICT",
+      "The mutation identity was already used for different data.",
+    );
+    return JSON.parse(prior.result) as QaFormRecord;
+  }
   mutate(
     session: string,
     id: string,
@@ -159,16 +171,14 @@ export class QaFormStore {
     return this.storage.transaction(() => {
       const record = this.get(session, id),
         hash = fingerprint(input);
-      const prior = this.storage.db
-        .prepare("SELECT hash,result FROM mutations WHERE form_id=? AND id=?")
-        .get(id, mutationId);
+      const prior = this.mutationReceipt(id, mutationId);
       if (prior) {
         formAssert(
           prior.hash === hash,
           "IDEMPOTENCY_CONFLICT",
           "The mutation identity was already used for different data.",
         );
-        return JSON.parse(String(prior.result)) as QaFormRecord;
+        return JSON.parse(prior.result) as QaFormRecord;
       }
       if (record.revision !== revision)
         throw new QaFormError(

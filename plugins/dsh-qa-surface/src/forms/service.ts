@@ -7,11 +7,11 @@ import {
   normalizeFormAnswer,
   validateForm,
 } from "./validation.js";
-import { fingerprint, type QaFormStore } from "./store.js";
 import type {
   QaFormCommand,
   QaFormPolicy,
   QaFormRecord,
+  QaFormStoreApi,
   QaFormUpload,
   QaFormView,
 } from "./types.js";
@@ -66,7 +66,7 @@ const commandParser = z.discriminatedUnion("action", [
 
 export class QaFormService {
   constructor(
-    readonly store: QaFormStore,
+    readonly store: QaFormStoreApi,
     readonly policy: () => Readonly<QaFormPolicy>,
     private readonly ownerOf: (session: string) => string = (id) => id,
   ) {}
@@ -130,15 +130,9 @@ export class QaFormService {
     const existing = this.get(session, c.form_id);
     // New submit retries may use a fresh key, but cannot create a second snapshot.
     if (c.action === "submit" && existing.status === "submitted") {
-      const prior = this.store.storage.db
-        .prepare("SELECT hash FROM mutations WHERE form_id=? AND id=?")
-        .get(c.form_id, c.mutation_id);
-      formAssert(
-        !prior || prior.hash === fingerprint(c),
-        "IDEMPOTENCY_CONFLICT",
-        "The mutation identity was already used for different data.",
+      return (
+        this.store.replayedMutation(c.form_id, c.mutation_id, c) ?? existing
       );
-      return existing;
     }
     return this.store.mutate(
       session,

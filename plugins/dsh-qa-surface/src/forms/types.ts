@@ -179,3 +179,52 @@ export type QaFormResult<T> =
         field_errors?: QaFormFieldError[];
       };
     };
+
+/**
+ * The store surface the service programs against.
+ *
+ * The service must never reach into a concrete storage backend: the shipped
+ * store is sqlite (durable), and the client component tests mount an in-memory
+ * implementation, which a browser test environment could never load through
+ * the sqlite bridge.
+ */
+export interface QaFormStoreApi {
+  list(session: string): QaFormRecord[];
+  create(
+    session: string,
+    key: string,
+    schema: QaFormRecord["schema"],
+    creator?: string,
+  ): QaFormRecord;
+  get(session: string, id: string): QaFormRecord;
+  editableOrSubmitted(record: QaFormRecord): void;
+  mutate(
+    session: string,
+    id: string,
+    revision: number,
+    mutationId: string,
+    input: unknown,
+    work: (r: QaFormRecord) => void,
+  ): QaFormRecord;
+  update(
+    session: string,
+    id: string,
+    work: (r: QaFormRecord) => void,
+  ): QaFormRecord;
+  resource(formId: string, id: string): Uint8Array;
+  saveResource(formId: string, id: string, data: Uint8Array): void;
+  storedBytes(session: string): number;
+  identityReservedBytes(creator: string): number;
+  cancelSession(session: string): void;
+  /**
+   * Submit retries are idempotent: when this mutation identity was already
+   * applied, return its recorded result and refuse a reused identity that
+   * carries different data. `null` means the identity is unused.
+   */
+  replayedMutation(
+    formId: string,
+    mutationId: string,
+    input: unknown,
+  ): QaFormRecord | null;
+  close(): void;
+}

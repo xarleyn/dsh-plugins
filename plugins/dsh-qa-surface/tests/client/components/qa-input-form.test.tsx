@@ -11,14 +11,15 @@ import { QaInputForm } from "../../../src/client/components/QaInputForm.js";
 import { QaFormItem } from "../../../src/client/components/QaFormItem.js";
 import type { QaFormApi } from "../../../src/client/forms.js";
 import type { QaFormView } from "../../../src/forms/types.js";
-import { fixture, textOnly } from "../../forms/fixture.js";
+import { textOnly } from "../../forms/schemas.js";
+import { memoryFixture } from "../../forms/memory-store.js";
 const closes: (() => void)[] = [];
 afterEach(() => {
   cleanup();
   for (const close of closes.splice(0)) close();
 });
 function setup() {
-  const f = fixture();
+  const f = memoryFixture();
   closes.push(() => f.close());
   const record = f.service.create("chat-a", "intake", textOnly);
   const view = () => f.service.view(f.service.get("chat-a", record.id), true);
