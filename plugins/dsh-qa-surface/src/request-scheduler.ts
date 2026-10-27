@@ -214,6 +214,14 @@ export class QaRequestScheduler {
     const duration =
       this.completed.reduce((sum, value) => sum + value, 0) /
       this.completed.length;
+    // An overdue turn has no defensible remaining time. Do not keep promising
+    // "less than a minute" while an unusually long request is still working.
+    if (
+      [...this.active.values()].some(
+        (started) => this.now() - started >= duration,
+      )
+    )
+      return null;
     const slots = [...this.active.values()].map((started) =>
       Math.max(1000, duration - (this.now() - started)),
     );

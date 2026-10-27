@@ -180,6 +180,8 @@ describe("server request admission", () => {
     expect(f.queue.status("waiting").estimatedWaitMs).toBe(60000);
     f.time(210000);
     expect(f.queue.status("waiting").estimatedWaitMs).toBe(30000);
+    f.time(241000);
+    expect(f.queue.status("waiting").estimatedWaitMs).toBeNull();
     f.queue.release(a.agent);
     await b.ready;
     f.queue.dispose();
