@@ -9,6 +9,8 @@ import {
   remoteMethods,
 } from "@deepseek-ai/dsh-typert-protocol";
 import { QA_SURFACE_SETTINGS_NAMESPACE, QaSurface } from "../../src/index.js";
+import type { Agent } from "@deepseek-ai/dsh-agent";
+import type { QaRequestScheduler } from "../../src/request-scheduler.js";
 
 /**
  * Wiring under a real Cordis context.
@@ -371,29 +373,61 @@ describe("wiring: document approval belongs to the authenticated chat owner", ()
 
 describe("wiring: the request ceiling is counted on the Host", () => {
   it("counts the top-level turns the harness reports, and only those", async () => {
-    const { surface, liveRoots, liveChildren, dispose } = await world({
+    const { surface, chat, liveRoots, liveChildren, dispose } = await world({
       session: { maxActiveRequests: 2 },
     });
     // Nothing was ever sent through this plugin, so every place the answer
     // counts arrived by another road: the HTTP API, another account, another
     // surface. That is why the read lives here and not in the browser.
-    liveRoots.push({ status: "idle" }, { status: "running" });
+    const first = chat("first-active");
+    liveRoots.push({ status: "idle" }, first);
+    const scheduler = (
+      surface as unknown as { requestScheduler: QaRequestScheduler }
+    ).requestScheduler;
+    await scheduler.acquire(
+      first as unknown as Agent,
+      new AbortController().signal,
+    );
     // A delegated expert is a live agent and not a root: it rides the turn that
     // delegated it, and counting it would bill one conversation twice.
     liveChildren.push({ status: "running" }, { status: "running" });
-    expect(surface.queueStatus()).toEqual({ limit: 2, active: 1, full: false });
-    liveRoots.push({ status: "running" });
+    expect(surface.queueStatus()).toMatchObject({
+      limit: 2,
+      active: 1,
+      full: false,
+      managed: true,
+    });
+    const second = chat("second-active");
+    liveRoots.push(second);
+    await scheduler.acquire(
+      second as unknown as Agent,
+      new AbortController().signal,
+    );
     expect(surface.queueStatus()).toMatchObject({ active: 2, full: true });
     await dispose();
   });
 
   it("reports a stand without a ceiling as never full", async () => {
-    const { surface, liveRoots, dispose } = await world();
-    for (let index = 0; index < 9; index += 1)
-      liveRoots.push({ status: "running" });
+    const { surface, chat, liveRoots, dispose } = await world();
+    const scheduler = (
+      surface as unknown as { requestScheduler: QaRequestScheduler }
+    ).requestScheduler;
+    for (let index = 0; index < 9; index += 1) {
+      const current = chat(`active-${String(index)}`);
+      liveRoots.push(current);
+      await scheduler.acquire(
+        current as unknown as Agent,
+        new AbortController().signal,
+      );
+    }
     // The default config sets no ceiling, so the browser is told the truth
     // rather than a full stand it would have to refuse a visitor over.
-    expect(surface.queueStatus()).toEqual({ limit: 0, active: 9, full: false });
+    expect(surface.queueStatus()).toMatchObject({
+      limit: 0,
+      active: 9,
+      full: false,
+      managed: true,
+    });
     await dispose();
   });
 });
