@@ -1,4 +1,5 @@
 import type { Agent } from "@deepseek-ai/dsh-agent";
+import type { Context } from "@deepseek-ai/cordis";
 import type {
   SubagentActivation,
   SubagentActivationSpec,
@@ -133,6 +134,7 @@ export function agentOf(options: {
 }
 
 export interface FakeSubagentsOptions {
+  readonly context?: Context;
   readonly structured?: unknown;
   readonly name?: string;
   readonly capabilities?: SubagentCapabilities;
@@ -166,13 +168,26 @@ export function fakeSubagents(
         name,
         capabilities: options.capabilities ?? FULL_CAPABILITIES,
         inheritsParentContext: true,
+        ...(options.context ? { prepareContinuable: async () => ({}) } : {}),
         start: () => Promise.reject(new Error("not used")),
       } as unknown as SubagentProvider;
     },
-    startActivation(spec: SubagentActivationSpec): Promise<SubagentActivation> {
+    async startActivation(
+      spec: SubagentActivationSpec,
+    ): Promise<SubagentActivation> {
       if (options.failWith !== undefined)
         return Promise.reject(options.failWith);
       started.push(spec);
+      const childId = spec.childId ?? runId;
+      if (options.context) {
+        await options.context.serial("agent/created", {
+          agent: {
+            ...agentOf({ id: childId }),
+            ctx: { tools: { restrict: () => () => {} } },
+          } as unknown as Agent,
+          source: "create" as never,
+        });
+      }
       const result = {
         ...(options.structured === undefined
           ? {}
@@ -184,11 +199,11 @@ export function fakeSubagents(
           : { diagnostic: options.diagnostic }),
       };
       return Promise.resolve({
-        childId: runId,
+        childId,
         messageId: "m1",
         result: Promise.resolve(result),
         dispose: () => {
-          disposed.push(runId);
+          disposed.push(childId);
           return Promise.resolve();
         },
       } as unknown as SubagentActivation);

@@ -48,13 +48,17 @@ function fixture(
     table: (name: keyof typeof tables) => tables[name],
     close: () => Promise.resolve(),
   } as unknown as DomainExpertsStorage;
-  const runtime = fakeSubagents(
-    options.descriptorFromStart ? { runId: "resumed" } : {},
-  );
+  let currentContext: Context | undefined;
+  const runtime = fakeSubagents({
+    get context() {
+      return currentContext;
+    },
+  });
   const lookups: string[] = [];
   const lookupSignals: AbortSignal[] = [];
   function open() {
     const ctx = new Context();
+    currentContext = ctx;
     const tools = new Map<string, ToolDefinition>();
     ctx.provide("tools", {
       register: (tool: ToolDefinition) => {
@@ -75,7 +79,9 @@ function fixture(
           options.missingRow
             ? []
             : (options.duplicateRow ? [1, 2] : [1]).map(() => ({
-                id: "resumed",
+                id: options.descriptorFromStart
+                  ? runtime.started[0]?.childId
+                  : "resumed",
                 label: options.descriptorFromStart
                   ? runtime.started[0]?.label
                   : (options.label ?? "domain-expert:payments"),
@@ -104,7 +110,7 @@ describe("cold caller: policy on the real host service", () => {
       { domain: "payments", task: "inspect settlement", background: true },
       agentOf({ id: "root" }),
     );
-    expect(receipt["childSessionId"]).toBe("resumed");
+    expect(receipt["childSessionId"]).toBe(f.runtime.started[0]?.childId);
     expect(f.runtime.started).toHaveLength(1);
     expect(f.runtime.started[0]?.label).toBe("domain-expert:payments");
     await first.service["stores"].close();
@@ -116,7 +122,7 @@ describe("cold caller: policy on the real host service", () => {
         second.tool,
         { domain: "inventory", task: "inspect stock" },
         agentOf({
-          id: "resumed",
+          id: String(receipt["childSessionId"]),
           origin: "subagent",
           parentSession: "root",
           depth: 1,

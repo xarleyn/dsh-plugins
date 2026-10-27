@@ -23,6 +23,7 @@ describe("host-only reviewer images", () => {
         memory: memoryRecordTableOf(),
       };
       const subagents = fakeSubagents({
+        context: ctx,
         structured: {
           summary: "Verified image evidence.",
           findings: [],

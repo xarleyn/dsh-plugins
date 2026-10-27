@@ -158,6 +158,12 @@ Domain definitions are **not** plugin configuration: they are durable records in
 the plugin's own storage domain, edited in the Domain Experts tab. That keeps an
 arbitrarily large expert catalog out of `cordis.yml`.
 
+An empty tool allow/deny configuration keeps the resolved expert infrastructure
+filter (`domain_expert` and `domain_memory`); it does not inherit the Host's
+entire tool catalog. The expert's own scoped documentation and evidence tools
+remain available. The same filter is applied when starting a new or continuable
+expert, before its first model request.
+
 Cross-domain access has one effective switch: turning off `allowCrossDomain`
 also turns off the namespaces selected in `directRead`. They remain saved but
 are absent from automatic recall, the memory tools and the inspector.

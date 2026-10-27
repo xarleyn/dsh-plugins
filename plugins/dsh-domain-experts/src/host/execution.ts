@@ -342,7 +342,9 @@ export async function runExpert(
       return dependencies.subagents.startActivation(activationSpec);
     const activation = await dependencies.startActivation(
       activationSpec,
-      configuredTools.length > 0 ? profile.toolFilter : undefined,
+      // Empty operator lists still resolve to the expert's infrastructure
+      // tools. Omitting that filter exposes the whole inherited catalogue.
+      profile.toolFilter,
     );
     // The Host has now validated every configured name against the child's
     // actual registry. The resolver's earlier uncertainty is settled.
