@@ -1,6 +1,6 @@
 {
   "name": "@yadsh/dsh-llm-provider-extended",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Full DSH provider adapter with generation controls and typed System One decisions",
   "repository": {
     "type": "git",

@@ -1,3 +1,34 @@
+## 0.18.0 (2026-10-27)
+
+### 🚀 Features
+
+- Add opt-in corporate OpenID Connect sign-in with explicit account linking, ([4d91f7c4](https://github.com/xarleyn/dsh-plugins/commit/4d91f7c4))
+  configured client role admission, and short revocable QA sessions.
+
+- Add opt-in durable step-by-step forms with independently required answers and files, immutable submissions, versioned attachment replacement, and explicit pause/resume. ([7af5a181](https://github.com/xarleyn/dsh-plugins/commit/7af5a181))
+
+### 🩹 Fixes
+
+- Register newly created authenticated chats before opening them, preserve their ([250c9811](https://github.com/xarleyn/dsh-plugins/commit/250c9811))
+  identity when adoption is retried, and discard catalog responses from previous
+  accounts or connections. Bound administrative requests by one deadline and
+  disclose incomplete journal coverage without reporting misleading percentages.
+
+  Restore saved chats after direct read admission without waiting for a global catalog scan. Keep Escape on the current dialog, improve secondary text contrast, and retain a useful failure reason and retry for failed drafts.
+
+- Allow deployment composition comparisons to be disabled while retaining personal workspace access boundaries. ([322a0058](https://github.com/xarleyn/dsh-plugins/commit/322a0058))
+- Keep input focus and selection in settings and chat-sharing dialogs during background updates. Return focus to the composer only while it still owns the interaction. ([8ef03080](https://github.com/xarleyn/dsh-plugins/commit/8ef03080))
+
+  Keep integration instance and service-profile editors mounted while editing their identifiers.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-documents to 0.8.1
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.17.0 (2026-10-24)
 
 ### 🚀 Features

@@ -1,3 +1,31 @@
+## 0.11.0 (2026-10-27)
+
+### 🚀 Features
+
+- Configure allowed and denied reads per managed service credential profile across integration providers. Share build logs and other supported readings within the profile's resource boundary, apply changes to existing connections, and report partial access in account cards. ([ca626068](https://github.com/xarleyn/dsh-plugins/commit/ca626068))
+
+### 🩹 Fixes
+
+- Build the workspace against DeepSeek Harness 0.2.1-rc.3 and widen the published Host support to the whole 0.1.7-to-0.3.0 line. ([2a16d478](https://github.com/xarleyn/dsh-plugins/commit/2a16d478))
+
+  The dependency graph is made homogeneous rather than re-typed: the workspace root declares the 26 Host packages that peer resolution pulls in on its own as development roots through `catalog:dsh-dev`, that catalog gains the ten keys the set was missing, and every development pin moves to `0.2.1-rc.3`. Without those roots the same install keeps 26 packages at 0.1.7-rc.2 and reports conflicting peers, because a catalog entry only reaches a package some dependency edge actually names.
+
+  Each package now declares `>=0.1.7-rc.2 <0.3.0-0` as its supported Host range. The ceiling is written as `-0` so that the host's `includePrerelease` comparison cannot let a release candidate of the next minor line inside it. `compatibility.json` keeps `testedReleases` at `0.1.7-rc.2`: the range says what is supported, the list says what was verified, and acceptance against a real 0.2.1-rc.3 host has not run yet.
+
+  The lockfile is deduplicated as part of the same change, which the workspace dependency rules require.
+
+- Keep input focus and selection in settings and chat-sharing dialogs during background updates. Return focus to the composer only while it still owns the interaction. ([8ef03080](https://github.com/xarleyn/dsh-plugins/commit/8ef03080))
+
+  Keep integration instance and service-profile editors mounted while editing their identifiers.
+
+### 🧱 Updated Dependencies
+
+- Updated @yadsh/dsh-qa-surface to 0.18.0
+
+### ❤️ Thank You
+
+- xarleyn @xarleyn
+
 ## 0.10.5 (2026-10-24)
 
 ### 🩹 Fixes
