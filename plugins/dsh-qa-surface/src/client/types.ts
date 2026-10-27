@@ -132,10 +132,13 @@ export type QaForkSession = (
 
 /**
  * The Host's live read of the request ceiling (`qaSurface/queueStatus`), asked
- * per send: how many questions the stand is answering and whether one more
- * fits.
+ * per send and for the current waiting chat. Supplying a session id requires
+ * current account read access; global reads expose counts only.
  */
-export type QaQueueStatusRemote = () => Promise<RemoteResult<QaQueueStatus>>;
+export type QaQueueStatusRemote = (
+  token?: string,
+  sessionId?: string,
+) => Promise<RemoteResult<QaQueueStatus>>;
 
 /** Role selector plus administrator mutation channel. */
 export interface QaAccessApi {

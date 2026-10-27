@@ -54,10 +54,8 @@ export interface QaBoundProjectionInput {
   readonly questions: readonly QaPendingQuestion[];
   readonly operationError: string | null;
   /**
-   * A send the stand had no room for. The dialog is the whole of what the
-   * visitor learns: the question never reached the Host, so the transcript has
-   * no row to carry the refusal on. Distinct from `queue`, the waiting rows of
-   * this chat.
+   * Server admission status for this waiting chat, or a legacy Host's
+   * pre-send refusal. Distinct from `queue`, the next messages of this chat.
    */
   readonly requestQueue: QaQueueStatus | null;
   readonly policyReady: boolean;
