@@ -488,6 +488,36 @@ describe("execution: refusals", () => {
 });
 
 describe("execution: the tool policy the runtime no longer scopes", () => {
+  it("passes the resolved infrastructure filter even with empty configured lists", async () => {
+    const definition = domainOf("payments", {
+      tools: { allow: [], deny: [] },
+    });
+    const harness = harnessOf(definition);
+    const filters: unknown[] = [];
+    const wired = {
+      ...harness,
+      dependencies: {
+        ...harness.dependencies,
+        startActivation: async (
+          spec: SubagentActivationSpec,
+          filter:
+            | {
+                readonly allow: readonly string[];
+                readonly deny: readonly string[];
+              }
+            | undefined,
+        ) => {
+          filters.push(filter);
+          return harness.subagents.startActivation(spec);
+        },
+      },
+    };
+    await run(wired, definition);
+    expect(filters).toEqual([
+      { allow: ["domain_expert", "domain_memory"], deny: [] },
+    ]);
+  });
+
   it("starts with the parent's composition and reports a configured policy as degraded", async () => {
     const definition = domainOf("payments", {
       tools: { allow: ["read", "glob"], deny: ["shell"] },
