@@ -321,8 +321,8 @@ interface QaPolicyRemote extends QaAccountsApi, QaAdminRemote {
   ): Promise<RemoteResult<QaLockdownProof>>;
   describe(): Promise<RemoteResult<ResolvedQaSurfaceConfig>>;
   queueStatus(
-    token?: string,
-    sessionId?: string,
+    token: string,
+    sessionId: string,
   ): Promise<RemoteResult<QaQueueStatus>>;
   sources(
     token: string,
@@ -693,11 +693,14 @@ export async function apply(ctx: Context): Promise<() => Promise<void>> {
           sessionId,
         ) as unknown as ReturnType<QaSecureSession>;
       // The stand's live load, asked once per send. Only the Host can say it:
-      // a browser sees its own chats and never the HTTP API's questions.
+      // a browser sees its own chats and never the HTTP API's questions. Both
+      // wire arguments are always sent: the gateway client counts declared
+      // parameters, not the TypeScript optionals, so an omitted trailing
+      // optional fails the call on the browser before the Host ever sees it —
+      // the 0-vs-2 refusal every initial send used to log. An empty session id
+      // is the Host's global read.
       const queueStatus: QaQueueStatusRemote = (token, sessionId) =>
-        sessionId === undefined
-          ? policyRemote.queueStatus()
-          : policyRemote.queueStatus(token ?? "", sessionId);
+        policyRemote.queueStatus(token ?? "", sessionId ?? "");
       const qaApi: QaSessionsApi = {
         selectModel: (request) =>
           config.getSnapshot().config?.accounts.enabled

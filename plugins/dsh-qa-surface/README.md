@@ -690,6 +690,17 @@ Changing the limit does not interrupt already active turns: lowering it admits
 no new chat until the active count fits, and raising it releases more waiters.
 Commands that do not run a turn remain usable while the stand is full.
 
+The number is the chain's last layer, and the two above it override it per turn:
+a subrole may carry `maxActiveRequests` (edited on the «Саброли» page's model
+tab), and an account may carry one (the user card's «Слоты очереди этого
+аккаунта» select). The account beats the role, the role beats the deployment,
+and 0 is a real value that lifts the ceiling for that role's or account's turns
+outright. A turn whose principal raises the number fits while a lower ceiling
+would refuse it, and one full principal does not starve the queue behind it.
+The status read answers the caller's own chain: a chat's read uses the chat's
+account, the pre-send read uses the visitor's, and a stand without accounts
+keeps the one deployment number.
+
 Regeneration: the last committed answer offers a retry action. The session log
 is append-only, so "regenerate" sends a hidden instruction as an ordinary
 prompt and the answer arrives as a follow-up turn; the projection hides that

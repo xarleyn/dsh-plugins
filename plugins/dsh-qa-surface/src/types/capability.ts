@@ -149,6 +149,12 @@ export interface QaSubrole {
    * deployment's pair serves it.
    */
   readonly model?: QaModelPair;
+  /**
+   * How many of the stand's slots this role's turns may fill at once, ahead of
+   * the deployment's `session.maxActiveRequests`. 0 lifts the ceiling for this
+   * role's turns; absent keeps the deployment's number.
+   */
+  readonly maxActiveRequests?: number;
   readonly ui?: {
     readonly icon?: string;
     readonly accent?: string;
@@ -188,6 +194,12 @@ export interface QaUserAccess {
    * deployment shares. Absent means the account keeps no opinion.
    */
   readonly model?: QaModelPair;
+  /**
+   * How many of the stand's slots this account's turns may fill at once,
+   * ahead of what its role says. 0 lifts the ceiling for this account's
+   * turns; absent keeps the role's or the deployment's number.
+   */
+  readonly maxActiveRequests?: number;
 }
 
 export type QaCapabilitySourceKind =

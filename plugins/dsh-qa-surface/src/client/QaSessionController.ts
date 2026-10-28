@@ -1180,10 +1180,14 @@ export class QaSessionController {
    * lazily ({@link materializeDraft}). Fixed-policy deployments cannot draft.
    *
    * A draft is a chat of its own, so entering one takes the screen the way
-   * {@link switchTo} does; see the note where the generation moves. Stopping the
-   * turn that was running first takes a round-trip, and a chat opened through it
-   * keeps the screen: the draft is what the visitor asked for before that click,
-   * so this call gives up rather than taking the chat back from under them.
+   * {@link switchTo} does; see the note where the generation moves. The turn
+   * another chat is answering keeps answering: the deployment's slots and its
+   * FIFO queue exist so a visitor can open a fresh chat — or send into one —
+   * without stopping the turn that is still working. This method used to stop
+   * it first, which is how «Новый чат» came to abort the running turn of the
+   * chat it left (every second send of the 28.10 acceptance wave died exactly
+   * there); a stopped turn is now the stop button's own gesture and nothing
+   * else.
    */
   async startDraft(policyChange = false): Promise<void> {
     if (
@@ -1194,25 +1198,6 @@ export class QaSessionController {
         !this.config.lockdown.allowSessionReset)
     )
       return;
-    const previous = this.session;
-    const owned = this.generation;
-    if (
-      !this.compatibilityReadOnly &&
-      previous?.getSnapshot().running === true
-    ) {
-      try {
-        await previous.cancel();
-      } catch (error) {
-        console.error("dsh-qa-surface: stop before draft failed", error);
-      }
-      // Asking the Host to stop a running turn is a round-trip, and the visitor
-      // reaches the chat list through it. Whoever took the screen during that
-      // window owns it: a draft asked for before the trip would otherwise take
-      // the screen back, unbind the chat that had just been adopted, and answer
-      // its send with nothing — the same takeover this method's own generation
-      // raise exists to stop.
-      if (this.disposed || this.generation !== owned) return;
-    }
     this.enterDraft();
   }
 

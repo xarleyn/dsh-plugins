@@ -11,6 +11,7 @@ import type {
   QaToolSelection,
   QaUserAccess,
 } from "../types.js";
+import { QA_MAX_ACTIVE_REQUESTS_MAX } from "../config-resolvers/session.js";
 import { normalizeModelPair } from "./model-policy.js";
 import {
   normalizeSkillOverride,
@@ -20,6 +21,32 @@ import {
 
 const CAPABILITY_ID = /^[a-zA-Z0-9][a-zA-Z0-9._:/-]{0,199}$/u;
 const SUBROLE_ID = /^[a-z0-9][a-z0-9-]{0,63}$/u;
+
+/**
+ * Normalize one queue-slots override.
+ *
+ * An absent field keeps no opinion and the layer below it speaks. 0 is a real
+ * value — it lifts the ceiling for this role or account — while anything that
+ * is not an integer from 0 to {@link QA_MAX_ACTIVE_REQUESTS_MAX} is refused,
+ * the same range the deployment's own field accepts.
+ */
+export function normalizeQueueSlots(
+  value: number | undefined,
+  label: string,
+): number | undefined {
+  if (value === undefined || value === null) return undefined;
+  if (
+    typeof value !== "number" ||
+    !Number.isSafeInteger(value) ||
+    value < 0 ||
+    value > QA_MAX_ACTIVE_REQUESTS_MAX
+  ) {
+    throw new TypeError(
+      `${label} must be an integer from 0 to ${String(QA_MAX_ACTIVE_REQUESTS_MAX)}`,
+    );
+  }
+  return value;
+}
 
 function uniqueIds(
   values: readonly string[],
@@ -120,6 +147,10 @@ export function normalizeSubrole(value: QaSubrole): QaSubrole {
   const icon = value.ui?.icon?.trim();
   const accent = value.ui?.accent?.trim();
   const model = normalizeModelPair(value.model, `subrole ${id}.model`);
+  const maxActiveRequests = normalizeQueueSlots(
+    value.maxActiveRequests,
+    `subrole ${id}.maxActiveRequests`,
+  );
   return Object.freeze({
     id,
     name,
@@ -127,6 +158,9 @@ export function normalizeSubrole(value: QaSubrole): QaSubrole {
     enabled: value.enabled === true,
     capabilities: normalizeCapabilitySelection(value.capabilities),
     ...(model === undefined ? {} : { model }),
+    ...(maxActiveRequests === undefined
+      ? {}
+      : { maxActiveRequests }),
     ...(icon === undefined && accent === undefined
       ? {}
       : {
@@ -268,10 +302,15 @@ export function normalizeUserAccess(
       ? requestedDefault
       : (allowed[0] as string);
   const model = normalizeModelPair(value?.model, "account model");
+  const maxActiveRequests = normalizeQueueSlots(
+    value?.maxActiveRequests,
+    "account maxActiveRequests",
+  );
   return Object.freeze({
     allowedSubroles: Object.freeze(allowed),
     defaultSubrole,
     ...(model === undefined ? {} : { model }),
+    ...(maxActiveRequests === undefined ? {} : { maxActiveRequests }),
   });
 }
 
