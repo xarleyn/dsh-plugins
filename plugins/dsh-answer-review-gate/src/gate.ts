@@ -36,6 +36,7 @@ import type {
   DomainExpertsFace,
   ReviewAuditEntry,
   ReviewInput,
+  ReviewRoundRecord,
   ReviewSeverity,
   ReviewVerdict,
   SubagentsFace,
@@ -91,6 +92,13 @@ interface GateSessionState {
   lastTurn: number;
   /** One failure-policy steer per user turn — failure steers must not loop. */
   failureSteered: boolean;
+  /**
+   * Findings of the completed revision rounds of this user turn, oldest
+   * first. Each round's reviewer receives them so it verifies their
+   * resolution instead of re-reviewing from scratch — the mechanism that
+   * keeps the issue count from growing between rounds.
+   */
+  history: ReviewRoundRecord[];
   /**
    * One answer-shape steer per user turn: a draft that opens by arguing with
    * the review is demanded back as an answer once, and a second such draft is
@@ -345,6 +353,9 @@ export class AnswerReviewGate {
       requestAttachments: collected.requestAttachments,
       requestImages: collected.requestImages,
       candidateText: collected.text,
+      ...(state.history.length === 0
+        ? {}
+        : { reviewHistory: [...state.history] }),
       signal,
     };
     this.deps.logger.info("gate.review-started", {
@@ -390,6 +401,9 @@ export class AnswerReviewGate {
     if (verdict.verdict === "pass") {
       this.publishReceipt(agent, state, hash, "pass");
       state.lastPassedHash = hash;
+      // The pass settles every finding the previous rounds raised: a changed
+      // candidate reviewed later in this turn starts from a clean slate.
+      state.history = [];
       this.record(config, {
         time: startedAt,
         sessionId,
@@ -429,6 +443,14 @@ export class AnswerReviewGate {
       verdict: "revise",
       issues: verdict.issues.length,
       rounds: state.round,
+    });
+    // Record this round's findings: the next round's reviewer is charged with
+    // verifying their resolution, which is what makes the loop converge
+    // instead of re-finding fresh objections every time.
+    state.history.push({
+      round: state.round,
+      summary: verdict.summary,
+      issues: verdict.issues,
     });
     this.deps.steerMessage(
       agent,
@@ -567,6 +589,7 @@ export class AnswerReviewGate {
         failureSteered: false,
         answerShapeSteered: false,
         reviewing: false,
+        history: [],
       };
       this.states.set(sessionId, fresh);
       return fresh;
@@ -578,6 +601,7 @@ export class AnswerReviewGate {
       existing.failureSteered = false;
       existing.answerShapeSteered = false;
       existing.lastPassedHash = undefined;
+      existing.history = [];
     }
     return existing;
   }
@@ -607,3 +631,4 @@ function countIssues(verdict: ReviewVerdict): Record<ReviewSeverity, number> {
   for (const issue of verdict.issues) counts[issue.severity] += 1;
   return counts;
 }
+

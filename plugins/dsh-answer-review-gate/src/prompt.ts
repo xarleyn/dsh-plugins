@@ -6,7 +6,7 @@
 
 import { boundContextSummary } from "@deepseek-ai/dsh-llm";
 
-import type { ReviewVerdict } from "./types.js";
+import type { ReviewRoundRecord, ReviewVerdict } from "./types.js";
 
 const REVIEW_CATEGORIES =
   "factually-wrong | unsupported | contradicted | outdated | overstated | " +
@@ -74,6 +74,64 @@ function readableHumanContext(text: string): string {
     .join("\n");
 }
 
+/**
+ * Bound on the findings rendered per previous round. A round that returned a
+ * pathological issue count must not push the candidate out of the packet, and
+ * the overflow line tells the reviewer exactly what was dropped.
+ */
+const MAX_HISTORY_ISSUES_PER_ROUND = 12;
+
+/**
+ * Revision history for a re-review (`SPEC.md`, "Revision behavior"): the
+ * findings the previous rounds raised, as delimited reviewer input, with the
+ * convergence protocol as the gate's own prose around it.
+ *
+ * Without this block every round re-reviews the candidate from scratch and
+ * hunts for fresh objections while the previous ones sit unresolved — the
+ * issue count grows between rounds and the round budget burns on divergence.
+ * With it, the round targets settlement: resolved findings are not restated,
+ * still-standing ones are re-raised, and new objections are admitted only when
+ * they are material. The block uses the same hostile-input bounds as the
+ * revision steer: every field is length-capped and the closing marker is
+ * neutralized inside the body.
+ */
+export function renderReviewHistory(
+  history: readonly ReviewRoundRecord[],
+): string {
+  const field = (text: string): string =>
+    neutralizeMarker(text.slice(0, MAX_REVIEW_NOTE_CHARS), "</review_history>");
+  return [
+    "This candidate is a revision: earlier rounds of this review rejected previous versions, and the primary answered with corrections. The findings those rounds raised are listed below, oldest first. Review this candidate against them first:",
+    "- A finding the candidate now resolves is settled — do not restate it.",
+    "- A finding that still holds is re-raised, with the current evidence.",
+    "- A new objection is raised only when it materially affects the answer's correctness for the user's request. Restating settled findings or adding speculative ones keeps a corrected answer from shipping and makes the review diverge.",
+    "<review_history>",
+    ...history.flatMap((record) => {
+      const header = `Round ${record.round} findings${record.summary === "" ? ":" : ` (reviewer summary: ${field(record.summary)}):`}`;
+      const rendered = record.issues
+        .slice(0, MAX_HISTORY_ISSUES_PER_ROUND)
+        .map(
+          (issue) =>
+            `- [${issue.severity}/${issue.category}] ${field(issue.claim)} — ${field(issue.problem)}` +
+            (issue.requiredFix === ""
+              ? ""
+              : ` Required fix: ${field(issue.requiredFix)}`),
+        );
+      const overflow = record.issues.length - MAX_HISTORY_ISSUES_PER_ROUND;
+      return [
+        header,
+        ...(rendered.length > 0
+          ? rendered
+          : ["- (no itemized findings were recorded)"]),
+        ...(overflow > 0
+          ? [`- (${String(overflow)} further findings of this round were omitted for size)`]
+          : []),
+      ];
+    }),
+    "</review_history>",
+  ].join("\n");
+}
+
 function reviewContext(input: {
   readonly conversationContext?: string;
   readonly primaryTools?: readonly string[];
@@ -108,6 +166,7 @@ export function renderSubagentReviewerTask(input: {
   readonly requestText: string | null;
   readonly candidateText: string;
   readonly requestAttachments?: readonly string[];
+  readonly reviewHistory?: readonly ReviewRoundRecord[];
 }): string {
   const request = renderUserRequest(
     input.requestText,
@@ -137,6 +196,9 @@ export function renderSubagentReviewerTask(input: {
       "source you meant. If a source is unavailable for this run, report that instead of guessing its contents.",
     "",
     REVIEW_TOOL_BOUNDARY,
+    ...(input.reviewHistory === undefined || input.reviewHistory.length === 0
+      ? []
+      : ["", renderReviewHistory(input.reviewHistory)]),
     "",
     "<user_request>",
     request,
@@ -174,6 +236,7 @@ export function renderExpertReviewTask(input: {
   readonly requestText: string | null;
   readonly candidateText: string;
   readonly requestAttachments?: readonly string[];
+  readonly reviewHistory?: readonly ReviewRoundRecord[];
 }): string {
   const request = renderUserRequest(
     input.requestText,
@@ -195,6 +258,9 @@ export function renderExpertReviewTask(input: {
       "record it, change the source or the query, and never repeat the same call or a near-variant of it. Read tools " +
       "take an explicit path: a pattern without one searches your own working directory and says nothing about the " +
       "source you meant. If a source is unavailable for this run, report that instead of guessing its contents.",
+    ...(input.reviewHistory === undefined || input.reviewHistory.length === 0
+      ? []
+      : ["", renderReviewHistory(input.reviewHistory)]),
     "",
     "<user_request>",
     request,
@@ -246,10 +312,23 @@ export const REVIEWER_OUTPUT_SCHEMA: Record<string, unknown> = {
  */
 const MAX_REVIEW_NOTE_CHARS = 2000;
 
+/**
+ * Neutralize one delimited block's closing marker inside reviewer/finding
+ * prose: a quotation carrying the real marker would otherwise end the block
+ * early and have its remainder read as the gate's own instruction. The match
+ * is case-insensitive and the found text's slashes are escaped in place, so
+ * the original casing survives as data.
+ */
+function neutralizeMarker(text: string, marker: string): string {
+  const pattern = new RegExp(marker.replace(/\//gu, "\\/"), "giu");
+  return text.replace(pattern, (found) => found.replace(/\//gu, "\\/"));
+}
+
 function reviewNoteField(text: string): string {
-  return text
-    .slice(0, MAX_REVIEW_NOTE_CHARS)
-    .replace(/<\/review_notes>/giu, "<\\/review_notes>");
+  return neutralizeMarker(
+    text.slice(0, MAX_REVIEW_NOTE_CHARS),
+    "</review_notes>",
+  );
 }
 
 /**
