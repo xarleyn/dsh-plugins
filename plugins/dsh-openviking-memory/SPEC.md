@@ -256,7 +256,8 @@ and both depend on QA Surface (`@yadsh/dsh-qa-surface`), which is optional:
   travels as one header on a per-account client, so separation is only real
   where the plugin itself speaks for a session: profile reads, recall searches,
   capture, commit, the replay of a queued turn (which refuses to send a turn
-  whose owner has not come back) and the account page's reader are all scoped,
+  whose owner has not come back), the account page's reader, and the
+  account-scoped re-read of the model's own retrieval calls are all scoped,
   and a test keeps two accounts' requests apart. The bridged
   `mcp__openviking__*` tools and the skill prompts that name them are not: they
   run in one stdio child mounted for the whole process, whose identity is fixed
@@ -264,9 +265,22 @@ and both depend on QA Surface (`@yadsh/dsh-qa-surface`), which is optional:
   model-initiated `remember`, `search` or `read` therefore works on the
   deployment space, not the account's — so a fact the model stored through a
   tool is shared by every account even on a scoped deployment, and the card's
-  multi-user section says so. Closing the gap needs a per-session identity in
-  DSH's MCP client or native tool implementations in this plugin; neither is a
-  change of header.
+  multi-user section says so.
+- **An empty retrieval answer is re-read in the account's own space.** The
+  one-child proxy above means an upstream "no matches" says nothing about the
+  asking account's memory, only about the deployment's: on a scoped
+  deployment, the wave acceptance of 2026-10-28 (lane L05) confirmed a seed
+  write the model could not recall with its own tools. So `tools/post-execute`
+  re-reads an empty `search`/`find`/`grep` — a successful answer no text block
+  of which names a `viking://` URI — through the asking session's own
+  account-scoped client (`runtime.searchAnswerForAgent`, the same pipeline the
+  automatic recall runs), and replaces the model-facing content when that
+  re-read finds hits. Errors pass through untouched, unattributed sessions
+  keep the upstream answer, and unscoped deployments skip the re-read outright
+  (there the tools already read the one space every write lands in). Writes
+  stay unscoped: the deployment-space facts remain shared, and closing that
+  half needs a per-session identity in DSH's MCP client or native tool
+  implementations in this plugin; neither is a change of header.
 - **What was written before scoping stays where it was.** The space is chosen by
   the header, so memory filed under the deployment identity — `OPENVIKING_USER`,
   or the store's own user when that is empty — appears in no account's space

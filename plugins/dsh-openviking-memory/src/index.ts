@@ -30,7 +30,11 @@ import type { UserMessage } from "@deepseek-ai/dsh-llm";
 import type {} from "@deepseek-ai/dsh-session";
 import type { Session } from "@deepseek-ai/dsh-session";
 import type {} from "@deepseek-ai/dsh-settings";
-import type {} from "@deepseek-ai/dsh-tools";
+import type {
+  PostToolDecision,
+  ToolExecution,
+  ToolExecutionResult,
+} from "@deepseek-ai/dsh-tools";
 import { Remote, TypertRemoteService } from "@deepseek-ai/dsh-typert-protocol";
 import type { PluginLogger } from "@yadsh/dsh-plugin-log";
 
@@ -55,6 +59,11 @@ import {
   QaUserMemorySettingsStore,
   effectiveInjectionPlan,
 } from "./qa/user-settings.js";
+import {
+  isMemorySearchTool,
+  memoryToolQueryOf,
+  resultCarriesMemoryHits,
+} from "./qa/search-fallback.js";
 import { OpenVikingRuntime, type SessionScoping } from "./runtime.js";
 import type { QaUserMemoryOverview } from "./types.js";
 import { mountOpenVikingSkills } from "./skills.js";
@@ -307,6 +316,16 @@ export default class OpenVikingMemory extends TypertRemoteService {
     // the explicit option the listener only sees calls in the plugin's scope.
     ctx.on("tools/pre-execute", guardVikingUri, { global: true });
 
+    // The bridged retrieval tools answer through the deployment-identity proxy,
+    // so under `qaUserScoping` an empty answer says nothing about the asking
+    // account's memory. Re-read an empty answer through the session's own
+    // account-scoped client before the model takes "no matches" at face value.
+    ctx.on(
+      "tools/post-execute",
+      (exec, result, next) => this.memorySearchFallback(exec, result, next),
+      { global: true },
+    );
+
     // Mounted last, and deliberately not awaited: the bridge's apply blocks on
     // its first tools/list, so a server that accepts the connection but never
     // answers would otherwise hold up every registration above it.
@@ -458,6 +477,46 @@ export default class OpenVikingMemory extends TypertRemoteService {
       user: userId,
       plan: effectiveInjectionPlan(plan, this.userSettings.read(userId)),
     };
+  }
+
+  /**
+   * Re-read an empty answer of a bridged retrieval tool through the asking
+   * session's account-scoped client (`runtime.searchAnswerForAgent`).
+   *
+   * Every other answer passes through untouched, and so does every failure
+   * here: the fallback may only replace a clean "no matches" with the
+   * account's own hits, never turn a transport error into fabricated memory.
+   */
+  private async memorySearchFallback(
+    exec: ToolExecution,
+    result: Readonly<ToolExecutionResult>,
+    next: () => Promise<PostToolDecision>,
+  ): Promise<PostToolDecision> {
+    const decision = await next();
+    try {
+      if (decision.kind !== "accept") return decision;
+      if (exec.parent !== undefined) return decision;
+      if (!isMemorySearchTool(exec.name)) return decision;
+      if (resultCarriesMemoryHits(result)) return decision;
+      const query = memoryToolQueryOf(exec.name, exec.arguments);
+      if (query === null) return decision;
+      const agent = exec.agent;
+      if (agent === undefined || exec.signal.aborted) return decision;
+      const answer = await this.runtime.searchAnswerForAgent(agent, query);
+      if (answer === null) return decision;
+      this.logger.info("qa_memory_search_fallback", {
+        sessionId: String(agent.session.id),
+        tool: exec.name,
+        queryLength: query.length,
+      });
+      return { kind: "accept", content: [{ type: "text", text: answer }] };
+    } catch (error) {
+      this.logger.warn("qa_memory_search_fallback_failed", {
+        tool: exec.name,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      return decision;
+    }
   }
 
   /**

@@ -401,6 +401,42 @@ export class OpenVikingRuntime {
     return pluginMessage(framed, "recall");
   }
 
+  /**
+   * The account-scoped answer to one model-facing retrieval query, or null
+   * when this session must not produce one.
+   *
+   * The bridged MCP tools answer through a deployment-identity proxy (`mcp.ts`
+   * forwards the resolved config through the child environment once, at mount),
+   * so under `qaUserScoping` their answer describes a space the session's
+   * memory was never written into. The host re-reads the same query through
+   * the session's own account-scoped client — the exact pipeline the automatic
+   * recall runs (`buildRecallBlock`), so the tool answer carries the same
+   * framing and budget the injected block would.
+   *
+   * A deployment without per-account scoping answers null: there its tools
+   * already read the one space every write lands in, and a second read would
+   * only duplicate the upstream request.
+   */
+  async searchAnswerForAgent(
+    agent: Agent,
+    query: string,
+  ): Promise<string | null> {
+    const state = await this.initialize(agent);
+    if (!state.ready) return null;
+    if (!state.scoping.allowed || state.scoping.user === undefined) return null;
+    return await buildRecallBlock(
+      (path, init, options) => state.client.fetchJSON(path, init, options),
+      state.config,
+      query,
+      {
+        actorPeerId: state.config.peerId,
+        legacyPeerId: state.config.legacyPeerId,
+        sessionId: state.ovSessionId,
+        log: (stage, data) => this.log(stage, data),
+      },
+    );
+  }
+
   capture(session: Session, event: RuntimeEvent): void {
     const state = this.stateFor(session);
     if (!state.scoping.allowed || !state.config.syncTurns) return;
