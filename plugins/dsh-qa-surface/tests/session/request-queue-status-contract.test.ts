@@ -41,14 +41,14 @@ describe("queue status wire contract", () => {
     const f = make();
     f.read("", "");
     expect(f.access).not.toHaveBeenCalled();
-    expect(f.status).toHaveBeenCalledWith(undefined);
+    expect(f.status).toHaveBeenCalledWith(undefined, undefined);
   });
 
   it("checks the chat's account before returning its position", () => {
     const f = make();
     f.read("owner", "owned-chat");
     expect(f.access).toHaveBeenCalledWith("owner", "owned-chat");
-    expect(f.status).toHaveBeenCalledWith("owned-chat");
+    expect(f.status).toHaveBeenCalledWith("owned-chat", undefined);
   });
 
   it("still refuses a foreign or unauthenticated chat position", () => {

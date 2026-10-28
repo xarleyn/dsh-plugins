@@ -37,7 +37,7 @@ describe("queue position authorization", () => {
     // read, which is what a draft chat's first send asks for.
     f.read("", "");
     expect(f.access).not.toHaveBeenCalled();
-    expect(f.status).toHaveBeenCalledWith(undefined);
+    expect(f.status).toHaveBeenCalledWith(undefined, undefined);
   });
   it("checks the current account before returning its chat position", () => {
     const f = make();

@@ -397,6 +397,10 @@ export class QaSurface extends TypertRemoteService {
       () => qaRequestRoots(ctx, this.getConfig().session.maxActiveRequests > 0),
       Date.now,
       (agent) => qaRequestFamilyBusy(ctx, agent),
+      // The ceiling one turn fills against, resolved per admission: a role or
+      // an account that overrides the deployment's number is read here, where
+      // the scheduler decides, not once at boot.
+      (agent) => this.queueSlotsOverride(agent),
     );
     ctx.effect(
       () => this.requestScheduler.install(ctx),
@@ -1206,7 +1210,59 @@ export class QaSurface extends TypertRemoteService {
     if (requested !== undefined && this.getConfig().accounts.enabled) {
       this.sharing().access(token, requested);
     }
-    return this.requestScheduler.status(requested);
+    return this.requestScheduler.status(
+      requested,
+      this.queueCeiling(token, requested),
+    );
+  }
+
+  /**
+   * The ceiling this read answers against: the chat's own account chain when
+   * the read names a chat, the caller's account chain when it does not (the
+   * pre-send check carries a token but no chat yet), and the deployment's
+   * number whenever accounts are off or nobody matches. `undefined` is the
+   * scheduler's signal to fall back to that number, so the branch is a value
+   * rather than a flag.
+   */
+  private queueCeiling(
+    token: string,
+    sessionId: string | undefined,
+  ): number | undefined {
+    const config = this.getConfig();
+    if (!config.accounts.enabled) return undefined;
+    const accounts = this.accountRemotes.resolve(config);
+    if (accounts === undefined) return undefined;
+    if (sessionId !== undefined) {
+      return accounts.ownerIdOf(sessionId) === undefined
+        ? undefined
+        : this.access.queueSlotsFor(sessionId);
+    }
+    try {
+      return this.access.queueSlotsForUser(accounts.currentUser(token).id);
+    } catch {
+      // An anonymous or stale browser still deserves the deployment's numbers:
+      // the read is advisory, and the browser holds its question back on its
+      // own only for a ceiling it can actually name.
+      return undefined;
+    }
+  }
+
+  /**
+   * The ceiling override one arriving turn fills against, or `undefined` when
+   * the deployment default governs it: without accounts every turn shares the
+   * one number, and an unowned session (an integration or an admin preview)
+   * stays in that shared pool whatever its role might say.
+   */
+  private queueSlotsOverride(agent: Agent): number | undefined {
+    const config = this.getConfig();
+    if (!config.accounts.enabled) return undefined;
+    const sessionId = String(agent.session.id);
+    if (sessionId === "") return undefined;
+    const accounts = this.accountRemotes.resolve(config);
+    if (accounts === undefined || accounts.ownerIdOf(sessionId) === undefined) {
+      return undefined;
+    }
+    return this.access.queueSlotsFor(sessionId);
   }
 
   /**

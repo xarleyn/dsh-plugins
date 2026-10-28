@@ -19,12 +19,29 @@ export class QaRequestScheduler {
   private readonly retiring = new Map<Agent, boolean>();
   private closed = false;
 
+  /**
+   * @param limit - the deployment's ceiling, the chain's last layer.
+   * @param roots - the root agents the queue gates.
+   * @param now - the clock, injectable for the wait estimate's tests.
+   * @param familyBusy - whether a root's descendants still answer.
+   * @param overrideLimit - the ceiling one specific turn fills against, when
+   *   its role or account overrides the deployment's number. `undefined`
+   *   defers to `limit`; this is read per admission, so a settings write is
+   *   visible to the next turn without reloading the plugin.
+   */
   constructor(
     private readonly limit: () => number,
     private readonly roots: () => readonly Agent[],
     private readonly now: () => number = Date.now,
     private readonly familyBusy: (agent: Agent) => boolean = () => false,
+    private readonly overrideLimit: (agent: Agent) => number | undefined = () =>
+      undefined,
   ) {}
+
+  /** The effective ceiling one arriving turn is measured against. */
+  private limitFor(agent: Agent): number {
+    return this.overrideLimit(agent) ?? this.limit();
+  }
 
   install(ctx: Context): () => void {
     const guards = new Map<Agent, () => void>();
@@ -173,9 +190,14 @@ export class QaRequestScheduler {
         if (this.completed.length > 20) this.completed.shift();
       }
     }
-    const limit = this.limit();
     for (const [agent, entry] of this.waiting) {
-      if (limit > 0 && this.active.size >= limit) break;
+      // Each arrival is measured against its own ceiling: a turn whose role or
+      // account raises the number fits while a lower one would not, and one
+      // full principal must not starve the queue behind it. With every layer
+      // keeping the deployment's number the two walk in lockstep, which is the
+      // single-ceiling behaviour this scheduler has always had.
+      const limit = this.limitFor(agent);
+      if (limit > 0 && this.active.size >= limit) continue;
       this.waiting.delete(agent);
       entry.signal.removeEventListener("abort", entry.cancel);
       if (entry.signal.aborted) {
@@ -189,13 +211,19 @@ export class QaRequestScheduler {
     }
   }
 
-  status(sessionId?: string): QaQueueStatus {
+  /**
+   * Report admission as one read sees it.
+   * @param sessionId - the chat whose FIFO position is asked, if any.
+   * @param ceiling - the effective ceiling of the principal this read is for,
+   *   when the caller has resolved it; the deployment's number otherwise.
+   */
+  status(sessionId?: string, ceiling?: number): QaQueueStatus {
     this.pump();
     const position =
       [...this.waiting.keys()].findIndex(
         (agent) => String(agent.session.id) === sessionId,
       ) + 1;
-    const limit = this.limit();
+    const limit = ceiling ?? this.limit();
     return {
       limit,
       active: this.active.size,
