@@ -61,6 +61,16 @@ export interface AnswerReviewGateConfig {
      * `reviewer.agentPreset` instead.
      */
     readonly allowedTools?: string[];
+    /**
+     * Wall-clock budget for one review round in milliseconds, covering the
+     * whole `review()` call including its one bounded capture-recovery
+     * attempt. When it expires the round ends as a reviewer failure under the
+     * configured failure policy instead of holding the user's turn open while
+     * a stuck reviewer never answers. `0` disables the deadline. Transport
+     * retries stay with the provider's own retry policy; the deadline adds
+     * none.
+     */
+    readonly roundTimeoutMs?: number;
   };
   /** Review/revision rounds per user turn before the failure policy applies (clamped 1-10). */
   readonly maxReviewRounds?: number;
@@ -112,6 +122,8 @@ export interface ResolvedAnswerReviewGateConfig {
     readonly persona: string;
     readonly agentPreset: string;
     readonly allowedTools: readonly string[];
+    /** 0 disables the per-round review deadline. */
+    readonly roundTimeoutMs: number;
   };
   readonly maxReviewRounds: number;
   readonly failMode: "open" | "warn" | "closed";
@@ -141,6 +153,11 @@ export const ANSWER_REVIEW_GATE_DEFAULTS: ResolvedAnswerReviewGateConfig = {
     persona: "",
     agentPreset: "",
     allowedTools: REVIEWER_READ_ONLY_TOOLS,
+    // Healthy review rounds on the reference stand complete within minutes;
+    // the observed pathology was a reviewer that never answered for 16-18
+    // minutes while the user's turn stayed open. Ten minutes per round is
+    // several times the healthy duration and still bounds the turn.
+    roundTimeoutMs: 600_000,
   },
   maxReviewRounds: 3,
   failMode: "warn",
@@ -191,6 +208,20 @@ function oneOf<T extends string>(
     : fallback;
 }
 
+/**
+ * Clamp the per-round review deadline. `0` is an explicit opt-out and passes
+ * through; junk values fall back to the default, and real values are bounded
+ * so a mistyped setting can neither disable the deadline silently nor pin a
+ * review to a sub-second budget.
+ */
+function clampRoundTimeout(value: number | undefined): number {
+  if (value === 0) return 0;
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) {
+    return ANSWER_REVIEW_GATE_DEFAULTS.reviewer.roundTimeoutMs;
+  }
+  return Math.min(1_800_000, Math.max(10_000, Math.floor(value)));
+}
+
 /** Normalize raw config into fully defaulted, clamped values. */
 export function resolveAnswerReviewGateConfig(
   raw: AnswerReviewGateConfig | undefined,
@@ -221,6 +252,7 @@ export function resolveAnswerReviewGateConfig(
         reviewer.allowedTools === undefined
           ? REVIEWER_READ_ONLY_TOOLS
           : restrictReviewerTools(reviewer.allowedTools),
+      roundTimeoutMs: clampRoundTimeout(reviewer.roundTimeoutMs),
     },
     maxReviewRounds: clampInteger(
       entry.maxReviewRounds,
@@ -311,6 +343,12 @@ export const AnswerReviewGateConfigSchema: z<AnswerReviewGateConfig> = z
           .description(
             "Read-only tool allow-list for the subagent reviewer. Unset means the read-only set (reads and searches); an explicitly empty list means no tools; deleting or writing a file is never allowed. The Host accepts no per-run tool scoping, so the list no longer composes the child — scope the tools with reviewer.agentPreset.",
           ),
+        roundTimeoutMs: z
+          .number()
+          .default(600_000)
+          .description(
+            "Wall-clock budget for one review round in milliseconds (10000-1800000; 0 disables). An expired deadline ends the round under the failure policy instead of holding the turn open. The deadline adds no retries of its own.",
+          ),
       })
       .default({
         backend: "domain-expert",
@@ -322,6 +360,7 @@ export const AnswerReviewGateConfigSchema: z<AnswerReviewGateConfig> = z
         persona: "",
         agentPreset: "",
         allowedTools: [...REVIEWER_READ_ONLY_TOOLS],
+        roundTimeoutMs: 600_000,
       }),
     maxReviewRounds: z
       .number()

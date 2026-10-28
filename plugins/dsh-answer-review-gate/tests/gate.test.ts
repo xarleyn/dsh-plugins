@@ -53,6 +53,9 @@ function config(
       persona: "",
       agentPreset: "",
       allowedTools: [],
+      // Fixtures run without wall-clock pressure unless a test is about the
+      // deadline itself.
+      roundTimeoutMs: 0,
     },
     maxReviewRounds: 3,
     failMode: "warn",
