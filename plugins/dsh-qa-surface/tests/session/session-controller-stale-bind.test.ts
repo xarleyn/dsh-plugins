@@ -562,13 +562,14 @@ describe("QA session controller: an adoption the visitor left behind", () => {
     controller.dispose();
   });
 
-  it("keeps the chat a switch opened during the stop of a running turn", async () => {
-    // Entering a draft stops the turn that is running first, and that is a
-    // round-trip — the one wait between chats that lets another chat be opened
-    // underneath it. The draft was asked for before the click that opened this
-    // one, so it has to give the screen back rather than resume as its owner:
-    // unbinding a session that had just been adopted leaves a visitor looking at
-    // an empty chat they never chose, whose every question then goes nowhere.
+  it("leaves the running turn answering when a draft takes the screen", async () => {
+    // «Новый чат» is how a visitor reaches a fresh chat while the current one
+    // still answers. Stopping the running turn used to be part of the click,
+    // which is how a send into the second chat came to abort the first: the
+    // 28.10 acceptance wave pressed the button before every second send, and
+    // each running turn died on it. The turn keeps answering its own chat now
+    // — the deployment's slots and FIFO queue exist for exactly this — and the
+    // stop button stays the only gesture that stops it.
     const world = harness(["saved", "other"]);
     world.stored.set("dsh-qa-surface.session:v1:/qa:session", "saved");
     const controller = new QaSessionController({
@@ -586,36 +587,19 @@ describe("QA session controller: an adoption the visitor left behind", () => {
       ...openFace.source.getSnapshot(),
       running: true,
     });
-    let releaseCancel!: () => void;
-    openFace?.cancel.mockImplementationOnce(
-      () =>
-        new Promise((resolve) => {
-          releaseCancel = () =>
-            resolve({ ok: true as const, value: { accepted: true as const } });
-        }),
-    );
 
-    const drafting = controller.startDraft();
-    await until(() => (openFace?.cancel.mock.calls.length ?? 0) > 0);
-
-    // The visitor changes their mind mid-round-trip and opens another chat.
-    await controller.switchTo("other");
-    const liveKey = controller.getSnapshot().chatKey;
-    releaseCancel();
-    await drafting;
-
+    // The draft takes the screen at once, without a stop round-trip and
+    // without touching the turn the chat it left is answering.
+    await controller.startDraft();
+    expect(openFace?.cancel).not.toHaveBeenCalled();
     expect(controller.getSnapshot()).toMatchObject({
-      sessionId: "other",
-      chatKey: liveKey,
+      sessionId: null,
       canSend: true,
       error: null,
     });
-    // The chat that won the screen is still a chat the next question rides.
+    // The abandoned chat is retired from this browser's view only; the next
+    // question rides whatever chat took the screen.
     expect(await controller.send("Второй вопрос")).toBe(true);
-    expect(world.faces.get("other")?.prompt).toHaveBeenCalledWith(
-      [{ type: "text", text: "Второй вопрос" }],
-      "queue",
-    );
     controller.dispose();
   });
 
