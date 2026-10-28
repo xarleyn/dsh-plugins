@@ -1193,13 +1193,20 @@ export class QaSurface extends TypertRemoteService {
    * Report server admission. Global reads expose counts only; a chat's FIFO
    * position requires that account's current read access to the chat. The
    * scheduler gates every root turn, including native and integration sends.
+   *
+   * Both arguments are part of the wire contract: the gateway client counts
+   * declared parameters rather than TypeScript optionals, so a call that omits
+   * them is refused on the browser before the Host ever sees it. An empty
+   * session id is the global read — the shape every initial send asks for,
+   * while its draft chat has no session to name yet.
    */
   @Remote("queueStatus")
-  queueStatus(token?: string, sessionId?: string): QaQueueStatus {
-    if (sessionId !== undefined && this.getConfig().accounts.enabled) {
-      this.sharing().access(token ?? "", sessionId);
+  queueStatus(token: string, sessionId: string): QaQueueStatus {
+    const requested = sessionId === "" ? undefined : sessionId;
+    if (requested !== undefined && this.getConfig().accounts.enabled) {
+      this.sharing().access(token, requested);
     }
-    return this.requestScheduler.status(sessionId);
+    return this.requestScheduler.status(requested);
   }
 
   /**

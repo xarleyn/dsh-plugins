@@ -14,21 +14,28 @@ describe("queue position authorization", () => {
       waiting: true,
       position: 1,
     }));
-    const surface = {
+    // The stand-in inherits the prototype, so `queueStatus` reaches its own
+    // helpers (`queueCeiling`) while every service it reads stays a fake.
+    const surface = Object.assign(Object.create(QaSurface.prototype), {
       getConfig: () => ({ accounts: { enabled: true } }),
+      // No accounts store on this stand-in: the ceiling read then answers the
+      // deployment default, which is what these assertions measure.
+      accountRemotes: { resolve: () => undefined },
       sharing: () => ({ access }),
       requestScheduler: { status },
-    } as unknown as QaSurface;
+    }) as unknown as QaSurface;
     return {
       access,
       status,
       read: (token?: string, id?: string) =>
-        QaSurface.prototype.queueStatus.call(surface, token, id),
+        QaSurface.prototype.queueStatus.call(surface, token ?? "", id ?? ""),
     };
   };
   it("allows global counts without a chat lookup", () => {
     const f = make();
-    f.read();
+    // The wire contract is two arguments; the empty session id is the global
+    // read, which is what a draft chat's first send asks for.
+    f.read("", "");
     expect(f.access).not.toHaveBeenCalled();
     expect(f.status).toHaveBeenCalledWith(undefined);
   });

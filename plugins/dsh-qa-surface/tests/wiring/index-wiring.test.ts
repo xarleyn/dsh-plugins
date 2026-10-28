@@ -391,7 +391,7 @@ describe("wiring: the request ceiling is counted on the Host", () => {
     // A delegated expert is a live agent and not a root: it rides the turn that
     // delegated it, and counting it would bill one conversation twice.
     liveChildren.push({ status: "running" }, { status: "running" });
-    expect(surface.queueStatus()).toMatchObject({
+    expect(surface.queueStatus("", "")).toMatchObject({
       limit: 2,
       active: 1,
       full: false,
@@ -403,7 +403,7 @@ describe("wiring: the request ceiling is counted on the Host", () => {
       second as unknown as Agent,
       new AbortController().signal,
     );
-    expect(surface.queueStatus()).toMatchObject({ active: 2, full: true });
+    expect(surface.queueStatus("", "")).toMatchObject({ active: 2, full: true });
     await dispose();
   });
 
@@ -422,7 +422,7 @@ describe("wiring: the request ceiling is counted on the Host", () => {
     }
     // The default config sets no ceiling, so the browser is told the truth
     // rather than a full stand it would have to refuse a visitor over.
-    expect(surface.queueStatus()).toMatchObject({
+    expect(surface.queueStatus("", "")).toMatchObject({
       limit: 0,
       active: 9,
       full: false,
