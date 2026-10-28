@@ -559,6 +559,17 @@ On `REVISE`:
    answer.
 5. Materially changed candidate is reviewed again.
 
+The re-review of step 5 is charged with the previous rounds' findings, not run
+from scratch: every completed REVISE round is recorded per user turn and the
+next round's reviewer task carries them in a delimited `<review_history>`
+block. The round then targets settlement — a finding the candidate resolves is
+not restated, a still-standing one is re-raised with current evidence, and a
+new objection is admitted only when it is material. A reviewer that re-reviews
+blind hunts for fresh objections while the previous ones sit unresolved; on a
+live stand that showed up as the issue count growing between rounds (2 → 5 → 7)
+until the round budget burned out. The block uses the same hostile-input bounds
+as `<review_notes>`: length-capped fields and a neutralized closing marker.
+
 The revision steer therefore carries no rebuttal channel. An earlier text asked
 the primary to state the disproof of an objection it rejected while forbidding
 any mention of the review in the same instruction; a live primary resolved the
@@ -598,6 +609,19 @@ maxReviewRounds = 3
 ```
 
 After exceeding the maximum, apply configured failure policy.
+
+Each round is also wall-clock bounded: `reviewer.roundTimeoutMs` (default
+600000 ms, `0` disables, clamped 10000-1800000) covers one whole `review()`
+call, including its one bounded capture-recovery attempt. The deadline adds no
+retries of its own — transport retries stay with the provider's configured
+retry policy — and an expired deadline is a reviewer failure
+(`review-timeout`) under the configured failure policy, never a PASS. This is
+what keeps a reviewer that stopped answering from holding the user's turn open
+indefinitely: a live turn once sat in its review phase for 16-18 minutes until
+the system tore the turn down as incomplete. The deadline aborts the round's
+signal, so the subagent backend cancels and disposes its child; the
+domain-experts face owns its runs and cannot be interrupted, so its late
+result is dropped and the run finishes unobserved.
 
 ---
 
@@ -646,6 +670,7 @@ interface Config {
     provider?: string
     model?: string
     reasoningEffort?: string
+    roundTimeoutMs?: number
   }
 
   maxReviewRounds: number
@@ -684,6 +709,7 @@ enabled: true
 reviewer:
   backend: domain-expert
   domain: answer-reviewer
+  roundTimeoutMs: 600000
 
 maxReviewRounds: 3
 failMode: warn

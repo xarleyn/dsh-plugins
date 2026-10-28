@@ -36,6 +36,7 @@ import type {
   DomainExpertsFace,
   ReviewAuditEntry,
   ReviewInput,
+  ReviewRoundRecord,
   ReviewSeverity,
   ReviewVerdict,
   SubagentsFace,
@@ -91,6 +92,13 @@ interface GateSessionState {
   lastTurn: number;
   /** One failure-policy steer per user turn — failure steers must not loop. */
   failureSteered: boolean;
+  /**
+   * Findings of the completed revision rounds of this user turn, oldest
+   * first. Each round's reviewer receives them so it verifies their
+   * resolution instead of re-reviewing from scratch — the mechanism that
+   * keeps the issue count from growing between rounds.
+   */
+  history: ReviewRoundRecord[];
   /**
    * One answer-shape steer per user turn: a draft that opens by arguing with
    * the review is demanded back as an answer once, and a second such draft is
@@ -333,6 +341,16 @@ export class AnswerReviewGate {
   ): Promise<BoundaryOutcome> {
     const startedAt = this.deps.now();
     const backend = this.backendFor(agent, config, sessionId);
+    // The round's cancellation surface merges the reviewed turn's own abort
+    // with the configured per-round deadline: the turn signal alone never
+    // fired while nobody cancelled it, so a reviewer that stopped answering
+    // held the user's turn open indefinitely. The subagent backend forwards
+    // this signal to its child and disposes it; the domain-expert face owns
+    // its run and cannot be cancelled, so its late result is simply dropped.
+    const round = new AbortController();
+    const forwardAbort = () => round.abort(signal.reason);
+    if (signal.aborted) round.abort(signal.reason);
+    else signal.addEventListener("abort", forwardAbort, { once: true });
     const input: ReviewInput = {
       onRecovery: () => this.publishReceipt(agent, state, hash, "recovering"),
       conversationContext: reviewConversationContext(agent.session),
@@ -345,7 +363,10 @@ export class AnswerReviewGate {
       requestAttachments: collected.requestAttachments,
       requestImages: collected.requestImages,
       candidateText: collected.text,
-      signal,
+      ...(state.history.length === 0
+        ? {}
+        : { reviewHistory: [...state.history] }),
+      signal: round.signal,
     };
     this.deps.logger.info("gate.review-started", {
       sessionId,
@@ -358,7 +379,11 @@ export class AnswerReviewGate {
     let verdict: ReviewVerdict;
     this.publishReceipt(agent, state, hash, "reviewing");
     try {
-      verdict = await backend.review(input);
+      verdict = await withRoundDeadline(
+        backend.review(input),
+        config.reviewer.roundTimeoutMs,
+        round,
+      );
     } catch (error) {
       const failure =
         error instanceof ReviewerFailure
@@ -372,6 +397,14 @@ export class AnswerReviewGate {
         this.publishReceipt(agent, state, hash, "cancelled");
         return "failure";
       }
+      if (failure.reason === REVIEW_TIMEOUT_REASON) {
+        this.deps.logger.warn("gate.review-timeout", {
+          sessionId,
+          turn,
+          round: state.round - 1,
+          timeoutMs: config.reviewer.roundTimeoutMs,
+        });
+      }
       return this.applyFailurePolicy(
         agent,
         sessionId,
@@ -384,12 +417,17 @@ export class AnswerReviewGate {
         this.deps.now() - startedAt,
         backend,
       );
+    } finally {
+      signal.removeEventListener("abort", forwardAbort);
     }
     state.round += 1;
     const durationMs = this.deps.now() - startedAt;
     if (verdict.verdict === "pass") {
       this.publishReceipt(agent, state, hash, "pass");
       state.lastPassedHash = hash;
+      // The pass settles every finding the previous rounds raised: a changed
+      // candidate reviewed later in this turn starts from a clean slate.
+      state.history = [];
       this.record(config, {
         time: startedAt,
         sessionId,
@@ -429,6 +467,14 @@ export class AnswerReviewGate {
       verdict: "revise",
       issues: verdict.issues.length,
       rounds: state.round,
+    });
+    // Record this round's findings: the next round's reviewer is charged with
+    // verifying their resolution, which is what makes the loop converge
+    // instead of re-finding fresh objections every time.
+    state.history.push({
+      round: state.round,
+      summary: verdict.summary,
+      issues: verdict.issues,
     });
     this.deps.steerMessage(
       agent,
@@ -567,6 +613,7 @@ export class AnswerReviewGate {
         failureSteered: false,
         answerShapeSteered: false,
         reviewing: false,
+        history: [],
       };
       this.states.set(sessionId, fresh);
       return fresh;
@@ -578,6 +625,7 @@ export class AnswerReviewGate {
       existing.failureSteered = false;
       existing.answerShapeSteered = false;
       existing.lastPassedHash = undefined;
+      existing.history = [];
     }
     return existing;
   }
@@ -606,4 +654,47 @@ function countIssues(verdict: ReviewVerdict): Record<ReviewSeverity, number> {
   };
   for (const issue of verdict.issues) counts[issue.severity] += 1;
   return counts;
+}
+
+/** Reviewer-failure reason of an expired per-round deadline. */
+const REVIEW_TIMEOUT_REASON = "review-timeout";
+
+/**
+ * Wall-clock bound for one review round (`reviewer.roundTimeoutMs`).
+ *
+ * The deadline covers the whole `review()` call, including the backend's own
+ * bounded capture-recovery attempt; it adds no retry of its own — transport
+ * retries stay with the provider's configured retry policy, and an expired
+ * round is terminal for this attempt. `0` (or junk) disables the bound.
+ *
+ * Firing aborts the round's controller first, so a backend that can cancel
+ * what it started does so through the signal it already holds, then rejects.
+ * `Promise.race` keeps its subscription to the losing backend promise, so a
+ * later settlement — a disposed child, a late expert result — is handled and
+ * discarded, never an unhandled rejection.
+ */
+async function withRoundDeadline(
+  run: Promise<ReviewVerdict>,
+  timeoutMs: number,
+  round: AbortController,
+): Promise<ReviewVerdict> {
+  if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) return run;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      run,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+          const failure = new ReviewerFailure(
+            REVIEW_TIMEOUT_REASON,
+            `the reviewer returned no verdict within ${Math.round(timeoutMs / 1000)}s`,
+          );
+          round.abort(failure);
+          reject(failure);
+        }, timeoutMs);
+      }),
+    ]);
+  } finally {
+    if (timer !== undefined) clearTimeout(timer);
+  }
 }

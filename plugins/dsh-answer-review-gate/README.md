@@ -32,6 +32,22 @@ User → primary agent → research / tools / background subagents
   budget belongs to the user request the candidate answers — the agent turns
   and revisions that request takes share one budget, and no agent turn hands
   out a fresh one.
+- The loop is meant to converge: the reviewer of round N receives the findings
+  of the previous rounds in a delimited `<review_history>` block and verifies
+  their resolution first — a settled finding is not restated, a still-standing
+  one is re-raised with current evidence, and new objections are admitted only
+  when they are material. Without that context every round re-reviews the
+  candidate from scratch and the issue count grows between rounds instead of
+  collapsing.
+- Each review round runs against a wall-clock deadline
+  (`reviewer.roundTimeoutMs`, default 10 minutes, `0` disables). An expired
+  deadline aborts what the backend can cancel (a subagent child; a domain
+  expert run is owned by its service and its late result is dropped), ends the
+  round as a reviewer failure under the configured failure policy — the honest
+  unverified qualification, never a PASS — and releases the turn instead of
+  holding it open while a stuck reviewer never answers. The deadline adds no
+  retries of its own; transport retries stay with the provider's configured
+  retry policy.
 - A revision steer admits exactly one visible artifact: the corrected answer.
   Findings are handed back as a delimited `<review_notes>` block, and the steer
   asks for no account of the review — a demand to "state the disproof" of a
@@ -149,6 +165,7 @@ reviewer:
   # reasoningEffort: ""
   # persona: ""
   # allowedTools: []          # unset means the read-only set; [] means no tools
+  # roundTimeoutMs: 600000    # per-round wall-clock budget; 0 disables
 maxReviewRounds: 3
 failMode: warn
 trackBackgroundDelegations: true
@@ -171,6 +188,7 @@ audit:
 | `reviewer.route` / `reviewer.model` / `reviewer.reasoningEffort` | Reviewer route overrides for the `subagent` backend. |
 | `reviewer.persona` | Persona instruction for the `subagent` reviewer. |
 | `reviewer.allowedTools` | Read-only tool allow-list. Unset means the read-only set (`read`, `read_image`, `glob`, `grep`, `docs_read`, `docs_search`); an explicitly empty list means the reviewer works without tools. Destructive and writing names are removed whatever the list says. |
+| `reviewer.roundTimeoutMs` | Wall-clock budget for one review round (10000–1800000, default 600000; `0` disables). An expired deadline ends the round under the failure policy instead of holding the turn open. |
 | `maxReviewRounds` | Review/revision rounds per user turn before the failure policy applies (1–10). |
 | `failMode` | `open` / `warn` / `closed`, see above. |
 | `trackBackgroundDelegations` | Suppress review while the session's background work is pending. |
