@@ -227,13 +227,10 @@ test("the PR workflow also builds pull requests that target a release branch", a
   );
 });
 
-test("the tooling test command still names every tooling test that exists", async () => {
-  // CI runs `pnpm test:release`, whose value is a list of files written out one by
-  // one. A test file added under one of these directories and left out of the list
-  // is a gate no run ever executes, and describing the series by its mask — the way
-  // `docs/VERIFICATION.md` put it until this check existed — is what hides the
-  // difference, so the list and the directories are compared here rather than
-  // trusted to the attention of whoever adds the next file.
+test("the tooling and integration commands name every root test exactly once", async () => {
+  // Tooling tests run without plugin builds; public integration tests build their
+  // prerequisites first. Both are mandatory gates, and their combined explicit
+  // lists must still cover every root test exactly once.
   const manifest = JSON.parse(
     await readFile(new URL("../package.json", import.meta.url), "utf8"),
   );
@@ -243,11 +240,35 @@ test("the tooling test command still names every tooling test that exists", asyn
     /^node --test \S/u,
     "`test:release` no longer opens with `node --test` followed by its file list, so this check would be reading a different command",
   );
-  const named = command
-    .slice("node --test ".length)
-    .trim()
-    .split(/\s+/u)
-    .sort();
+  const integration = manifest.scripts["test:integration"];
+  assert.match(
+    integration,
+    /^nx run-many -t build --projects=\S+ && node --test \S/u,
+    "public integration tests must build their package prerequisites before Node imports them",
+  );
+  const localGates = manifest.scripts.check.split(" && ");
+  assert.ok(localGates.includes("pnpm test"));
+  assert.ok(localGates.includes("pnpm test:integration"));
+  assert.ok(manifest.scripts.test.split(" && ").includes("pnpm test:release"));
+  for (const [file, job, nextJob] of [
+    ["ci.yml", "prepare", "projects"],
+    ["release.yml", "gates", "projects"],
+  ]) {
+    const workflow = await readFile(
+      new URL(`../.github/workflows/${file}`, import.meta.url),
+      "utf8",
+    );
+    const gates = workflow.slice(
+      workflow.indexOf(`  ${job}:`),
+      workflow.indexOf(`  ${nextJob}:`),
+    );
+    assert.match(gates, /run: pnpm test:release/u);
+    assert.match(gates, /run: pnpm test:integration/u);
+  }
+  const named = [
+    ...command.slice("node --test ".length).trim().split(/\s+/u),
+    ...integration.split(" && node --test ")[1].trim().split(/\s+/u),
+  ].sort();
 
   const onDisk = [];
   for (const directory of ["scripts", "packages/plugin-scripts"]) {
@@ -262,7 +283,7 @@ test("the tooling test command still names every tooling test that exists", asyn
   assert.deepEqual(
     named,
     onDisk,
-    "`test:release` must name exactly the `*.test.mjs` files of `scripts/` and `packages/plugin-scripts/` — one entry each, no duplicates. A file on disk the command omits is a check that never runs; an entry with no file behind it fails `node --test` on the spot.",
+    "`test:release` and `test:integration` must together name exactly the `*.test.mjs` files of `scripts/` and `packages/plugin-scripts/` — one entry each, no duplicates. Both commands must run in local check, CI and release gates.",
   );
 });
 

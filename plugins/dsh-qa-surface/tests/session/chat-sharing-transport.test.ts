@@ -62,6 +62,21 @@ function fixture() {
   const transport = new QaChatTransport(
     {
       sessionController: native,
+      get: () => ({
+        searchSessions: async () => {
+          const result = await native.search();
+          return {
+            items: result.items.map((item) => ({
+              header: { id: item.sessionId },
+              bestMatch: {
+                ...item,
+                type: "user/message",
+                surface: "current",
+              },
+            })),
+          };
+        },
+      }),
       agents: {
         list: () => agents,
         get: (id: string) =>

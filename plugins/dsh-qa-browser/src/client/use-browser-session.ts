@@ -7,7 +7,8 @@
  * lease is renewed and handed back — so the component reads as the chrome it
  * assembles and this module owns the conversation with the runtime.
  */
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { coalesceBrowserRefresh } from "./refresh-queue.js";
 import type { RemoteResult } from "@deepseek-ai/dsh-typert-protocol";
 import type { QaSurfacePanelOwnerProps } from "@yadsh/dsh-qa-surface/client/panels";
 
@@ -54,6 +55,24 @@ export function useBrowserSession({
   /** The lease length the Host last advertised, read when a heartbeat is armed. */
   const leaseSeconds = useRef(30);
   const requestSequence = useRef(0);
+  // A panel owner signal survives chat switches. A queued refresh belongs to
+  // one identity and must never invalidate or overwrite the next chat's read.
+  const identity = useMemo(
+    () => ({}),
+    [owner.qaToken, owner.sessionId, owner.signal, browserRemote],
+  );
+  const latestIdentity = useRef<object | null>(identity);
+  latestIdentity.current = identity;
+  const current = useCallback(
+    () => latestIdentity.current === identity && !owner.signal.aborted,
+    [identity, owner.signal],
+  );
+  useEffect(() => {
+    latestIdentity.current = identity;
+    return () => {
+      if (latestIdentity.current === identity) latestIdentity.current = null;
+    };
+  }, [identity]);
 
   // One pass over the polled state decides the tab, the lease, the refusals and
   // the address; everything below reads that decision instead of repeating it.
@@ -61,17 +80,16 @@ export function useBrowserSession({
   const { ownsControl } = view;
   leaseSeconds.current = state?.humanControlLeaseSeconds ?? 30;
 
-  const refresh = useCallback(
+  const read = useCallback(
     async (forceFrame: boolean) => {
-      if (!owner.visible || owner.sessionId === null) return;
+      if (!current() || !owner.visible || owner.sessionId === null) return;
       const sequence = ++requestSequence.current;
       setLoading(true);
       try {
         const next = remoteValue(
           await browserRemote.panelState(owner.qaToken, owner.sessionId),
         );
-        if (sequence !== requestSequence.current || owner.signal.aborted)
-          return;
+        if (sequence !== requestSequence.current || !current()) return;
         setState(next);
         const tab = selectedTab(next);
         if (tab === undefined) {
@@ -95,17 +113,15 @@ export function useBrowserSession({
             tab.id,
           ),
         );
-        if (sequence !== requestSequence.current || owner.signal.aborted)
-          return;
+        if (sequence !== requestSequence.current || !current()) return;
         lastFrame.current = { tabId: tab.id, revision: nextFrame.revision };
         setFrame(nextFrame);
         setError(null);
       } catch (cause) {
-        if (sequence !== requestSequence.current || owner.signal.aborted)
-          return;
+        if (sequence !== requestSequence.current || !current()) return;
         setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
-        if (sequence === requestSequence.current && !owner.signal.aborted) {
+        if (sequence === requestSequence.current && current()) {
           setLoading(false);
         }
       }
@@ -116,7 +132,12 @@ export function useBrowserSession({
       owner.signal,
       owner.visible,
       browserRemote,
+      current,
     ],
+  );
+  const refresh = useMemo(
+    () => coalesceBrowserRefresh(read, current),
+    [read, current],
   );
 
   /** Run one remote mutation, then re-read the state and the image behind it. */
@@ -125,14 +146,16 @@ export function useBrowserSession({
       setLoading(true);
       try {
         remoteValue(await call());
+        if (!current()) return;
         await refresh(true);
       } catch (cause) {
-        setError(cause instanceof Error ? cause.message : String(cause));
+        if (current())
+          setError(cause instanceof Error ? cause.message : String(cause));
       } finally {
-        setLoading(false);
+        if (current()) setLoading(false);
       }
     },
-    [refresh],
+    [refresh, current],
   );
 
   // The busy flag, not the tabs array, is the dependency: every poll produces
@@ -143,7 +166,7 @@ export function useBrowserSession({
 
   useEffect(() => {
     if (!owner.visible || owner.sessionId === null) return;
-    void refresh(true);
+    void refresh(false);
     const timer = window.setInterval(
       () => void refresh(false),
       ownsControl || anyTabLoading ? POLL_ACTIVE_MS : POLL_IDLE_MS,
@@ -171,6 +194,7 @@ export function useBrowserSession({
           .panelControlHeartbeat(owner.qaToken, sessionId, clientId)
           .then(remoteValue)
           .catch((cause: unknown) => {
+            if (!current()) return;
             setError(cause instanceof Error ? cause.message : String(cause));
             void refresh(false);
           });
@@ -187,6 +211,7 @@ export function useBrowserSession({
     ownsControl,
     browserRemote,
     refresh,
+    current,
   ]);
 
   /**
@@ -198,11 +223,11 @@ export function useBrowserSession({
     if (!ownsControl || owner.sessionId === null) return;
     const sessionId = owner.sessionId;
     return () => {
-      void browserRemote.panelReleaseControl(
-        owner.qaToken,
-        sessionId,
-        clientId,
-      );
+      void browserRemote
+        .panelReleaseControl(owner.qaToken, sessionId, clientId)
+        .catch(() => {
+          /* The retiring chat has no active UI to receive this error. */
+        });
     };
   }, [clientId, owner.qaToken, owner.sessionId, ownsControl, browserRemote]);
 

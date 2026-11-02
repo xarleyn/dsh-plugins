@@ -19,6 +19,7 @@ import type {
   ToolExecutionResult,
 } from "@deepseek-ai/dsh-tools";
 import type { PluginLoggerLike } from "@yadsh/dsh-plugin-log";
+import { resolvePostExecuteContent } from "@yadsh/dsh-plugin-kit/post-execute";
 
 import type { ResolvedToolOffloadConfig } from "../config.js";
 import { extractParentTask } from "../context/parent-context.js";
@@ -74,6 +75,8 @@ export function createPostExecuteListener(
     let attemptStarted = false;
     try {
       if (downstream.kind !== "accept") return downstream;
+      const effective = resolvePostExecuteContent(downstream, result.content);
+      if (effective.kind !== "content") return downstream;
       if (exec.parent !== undefined) return downstream; // code-mode sub-dispatch: model never sees this content
       const config = readConfig();
       if (!config.enabled) return downstream;
@@ -102,7 +105,10 @@ export function createPostExecuteListener(
         );
       }
 
-      const candidate = inspectResult(exec, result);
+      const candidate = inspectResult(exec, {
+        ...result,
+        content: effective.content,
+      });
       counters.increment("candidates");
       counters.recordTool(candidate.toolName);
 
@@ -186,7 +192,7 @@ export function createPostExecuteListener(
           detail,
           durationMs,
         });
-        return applyFallback(downstream, candidate, config, detail);
+        return applyFallback(effective.decision, candidate, config, detail);
       }
 
       const validation = validateWorkerOutput(
@@ -206,7 +212,7 @@ export function createPostExecuteListener(
           durationMs,
         });
         return applyFallback(
-          downstream,
+          effective.decision,
           candidate,
           config,
           `output rejected: ${validation.reason}`,
@@ -234,7 +240,7 @@ export function createPostExecuteListener(
       const text = config.annotation.enabled
         ? `${OFFLOAD_ANNOTATION_MARKER}\n${validation.text}`
         : validation.text;
-      return { kind: "accept", content: [{ type: "text", text }] };
+      return { ...effective.decision, content: [{ type: "text", text }] };
     } catch (error) {
       if (attemptStarted) counters.increment("failed");
       logger.warn("offload.pipeline_failed", {
@@ -256,7 +262,7 @@ function skip(
   logger: PluginLoggerLike,
   config: ResolvedToolOffloadConfig,
   tool: string,
-  downstream: PostToolDecision,
+  downstream: Extract<PostToolDecision, { kind: "accept" }>,
   reason: SkipReason,
 ): PostToolDecision {
   counters.increment("passthrough");
@@ -267,7 +273,7 @@ function skip(
 }
 
 function applyFallback(
-  downstream: PostToolDecision,
+  downstream: Extract<PostToolDecision, { kind: "accept"; value?: undefined }>,
   candidate: OffloadCandidate,
   config: ResolvedToolOffloadConfig,
   detail: string,
@@ -279,7 +285,7 @@ function applyFallback(
     config.validation.maxOutputBytes,
   );
   if (text === null) return downstream;
-  return { kind: "accept", content: [{ type: "text", text }] };
+  return { ...downstream, content: [{ type: "text", text }] };
 }
 
 /**

@@ -123,6 +123,9 @@ export class AuditService implements SessionAuditProvider {
   /** Whether the previous pass also failed to list the corpus. */
   private corpusListingBroken = false;
   private started = false;
+  private stopped = false;
+  private lifecycleGeneration = 0;
+  private stopping: Promise<void> | undefined;
   private refreshing = false;
   private pendingRefresh: Promise<AuditRefreshStats> | undefined;
 
@@ -156,6 +159,10 @@ export class AuditService implements SessionAuditProvider {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    const generation = ++this.lifecycleGeneration;
+    await this.stopping;
+    if (generation !== this.lifecycleGeneration) return;
+    this.stopped = false;
     this.logger.info("audit root initialized", {
       root: this.options.config.auditRoot,
       watch: this.options.config.watch,
@@ -164,15 +171,32 @@ export class AuditService implements SessionAuditProvider {
     await this.refresh();
     // The scan is asynchronous, so a stop can land inside it. Starting the
     // watcher after that would leave a watcher nothing owns.
-    if (!this.started) return;
+    if (!this.started || generation !== this.lifecycleGeneration) return;
     await this.watcher.start();
   }
 
   /** Stop watching and forget everything derived from the filesystem. */
-  async stop(): Promise<void> {
-    if (!this.started) return;
+  stop(): Promise<void> {
     this.started = false;
+    this.stopped = true;
+    this.lifecycleGeneration += 1;
+    if (this.stopping !== undefined) return this.stopping;
+    const stopping = this.finishStop().finally(() => {
+      if (this.stopping === stopping) this.stopping = undefined;
+    });
+    this.stopping = stopping;
+    return stopping;
+  }
+
+  private async finishStop(): Promise<void> {
     await this.watcher.stop();
+    // A scan can still be inside file or session resolution. Drain it before
+    // clearing derived state; a restart waits for this same barrier.
+    try {
+      await this.pendingRefresh;
+    } catch {
+      // The refresh caller owns its failure; teardown must still clear state.
+    }
     this.registry.clear();
     this.seen.clear();
     this.lastGood.clear();
@@ -190,6 +214,13 @@ export class AuditService implements SessionAuditProvider {
    * half-copied directory at the same time.
    */
   refresh(): Promise<AuditRefreshStats> {
+    if (this.stopped) {
+      return Promise.resolve({
+        scanned: 0,
+        changed: 0,
+        ...this.registry.counts(),
+      });
+    }
     if (this.pendingRefresh !== undefined) return this.pendingRefresh;
     const run = this.runRefresh().finally(() => {
       this.pendingRefresh = undefined;

@@ -40,7 +40,7 @@ import {
   stat,
   chmod,
 } from "node:fs/promises";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { homedir } from "node:os";
 import { isRetryableFailure } from "./retryable.js";
@@ -224,7 +224,7 @@ function pendingFilename(dedupKey: string, retries: number = 0): string {
 }
 
 function retryFilename(filename: string, retries: number): string {
-  const bare = filename.replace(/\.(json|processing)$/, "");
+  const bare = pendingFromProcessingFilename(filename).replace(/\.json$/, "");
   const nextBare = /_\d+$/.test(bare)
     ? bare.replace(/_\d+$/, `_${retries}`)
     : `${bare}_${retries}`;
@@ -232,11 +232,20 @@ function retryFilename(filename: string, retries: number): string {
 }
 
 function processingFilename(filename: string): string {
-  return filename.replace(/\.json$/, ".processing");
+  // The lease is part of the atomic rename itself. Refreshing mtime after a
+  // rename leaves a window in which an old backlog item looks stale again.
+  return filename.replace(
+    /\.json$/,
+    `.${Date.now()}.${randomUUID()}.processing`,
+  );
 }
 
+const LEASE_SUFFIX = /\.(\d+)\.[a-f0-9-]+\.processing$/;
+
 function pendingFromProcessingFilename(filename: string): string {
-  return filename.replace(/\.processing$/, ".json");
+  return filename
+    .replace(LEASE_SUFFIX, ".json")
+    .replace(/\.processing$/, ".json");
 }
 
 function isRetryableReplayFailure(
@@ -307,8 +316,11 @@ async function recoverStaleProcessing(dir: string): Promise<number> {
     if (!f.endsWith(".processing")) continue;
     const from = join(dir, f);
     try {
-      const s = await stat(from);
-      if (now - s.mtimeMs < PROCESSING_STALE_MS) continue;
+      const lease = LEASE_SUFFIX.exec(f);
+      // Retain recovery support for pre-lease .processing files after upgrade.
+      const claimedAt =
+        lease === null ? (await stat(from)).mtimeMs : Number(lease[1]);
+      if (now - claimedAt < PROCESSING_STALE_MS) continue;
       const to = join(dir, pendingFromProcessingFilename(f));
       await rename(from, to);
       recovered++;
@@ -479,11 +491,19 @@ export async function incrementRetry(
 ): Promise<boolean> {
   const dir = getPendingDir();
   const maxRetries = getMaxRetries();
+  // Transfer ownership before changing content. A late failure from a lease
+  // already recovered by another worker cannot create a second queued retry.
+  const owned = processingFilename(pendingFromProcessingFilename(filename));
+  try {
+    await rename(join(dir, filename), join(dir, owned));
+  } catch {
+    return false;
+  }
   entry.retries = (entry.retries || 0) + 1;
 
   if (entry.retries > maxRetries) {
     try {
-      await unlink(join(dir, filename));
+      await unlink(join(dir, owned));
     } catch {
       // Best effort.
     }
@@ -491,18 +511,17 @@ export async function incrementRetry(
   }
 
   const newFilename = retryFilename(filename, entry.retries);
-  // Atomic write: write to a unique temp file in the same directory, then
-  // rename into place. Avoids leaving a half-written JSON if the process
-  // crashes mid-write.
-  const tmpFilename = `${newFilename}.tmp.${process.pid}.${Date.now()}`;
+  // Replace content while it is still leased, then publish it with a single
+  // rename. A crash at either boundary leaves one recoverable complete entry.
+  const tmpFilename = `${owned}.${randomUUID()}.tmp`;
   try {
     await writeFile(join(dir, tmpFilename), JSON.stringify(entry), {
       encoding: "utf-8",
       flag: "wx",
       mode: PENDING_FILE_MODE,
     });
-    await rename(join(dir, tmpFilename), join(dir, newFilename));
-    await unlink(join(dir, filename)).catch(() => {});
+    await rename(join(dir, tmpFilename), join(dir, owned));
+    await rename(join(dir, owned), join(dir, newFilename));
     return true;
   } catch {
     await unlink(join(dir, tmpFilename)).catch(() => {});

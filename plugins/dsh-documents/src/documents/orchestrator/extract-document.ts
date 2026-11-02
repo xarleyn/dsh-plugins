@@ -236,6 +236,12 @@ export async function extractToMarkdown(
     await scope.store.removeWorkDir(workDir);
 
     await cache?.remember({
+      assets: extracted.assets.map((asset) => ({
+        artifactId,
+        outputName: path.join("assets", asset.path),
+        path: scope.store.path(path.join(artifactId, "assets", asset.path)),
+        mediaType: asset.mediaType,
+      })),
       outputs: [
         {
           role: "extract",

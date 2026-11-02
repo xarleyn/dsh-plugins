@@ -33,6 +33,8 @@ import { parseExpertAnswer, textOfBlocks } from "./result.js";
 import { EXPERT_REVIEW_OUTPUT_SCHEMA } from "./review-output.js";
 import { expertLabelOf } from "./caller.js";
 import type { ExpertToolFilter } from "./tool-policy.js";
+import type { RunTracker } from "./run-tracker.js";
+export { RunTracker, type ActiveRun } from "./run-tracker.js";
 
 /** The subagent surface this plugin consumes from the host context. */
 export interface SubagentsFace {
@@ -56,85 +58,14 @@ export interface LogSink {
   warn(event: string, fields?: Record<string, unknown>): void;
 }
 
-/** One expert child currently running in this process. */
-export interface ActiveRun {
-  readonly domainId: string;
-  readonly childSessionId: string;
-  readonly callerSessionId: string;
-  readonly callerDomain: string | null;
-  /** Domain chain that produced this run, outermost first. */
-  readonly path: readonly string[];
-  readonly depth: number;
-  readonly background: boolean;
-  /** Parallel budget the caller's own configuration allows. */
-  readonly maxParallel: number;
-  /**
-   * Whose memory namespaces this run reads and writes.
-   *
-   * Carried by the run rather than re-resolved per call: a child's session was
-   * never attested by an account, so `domain_memory` inside it has to ask the
-   * run, not the session, and the persona the child was started with has to
-   * agree with the answer.
-   */
-  readonly memoryOwner: MemoryOwner;
-}
-
-/**
- * Session id -> the expert run it belongs to.
- *
- * `domain_delegate` needs to know which domain its own child belongs to, and
- * the runtime exposes no domain marker on a session. The coordinator
- * therefore records the mapping when it starts a run. It is process-local;
- * callerDomainOf recovers delegation identity from the Host's durable child
- * catalog after eviction or restart and refuses unknown identity. Memory
- * ownership still requires this live record rather than a creation label.
- */
-export class RunTracker {
-  private readonly runs = new Map<string, ActiveRun>();
-  private readonly limit: number;
-
-  constructor(limit = 512) {
-    this.limit = Math.max(1, Math.trunc(limit));
-  }
-
-  register(run: ActiveRun): void {
-    this.runs.delete(run.childSessionId);
-    this.runs.set(run.childSessionId, run);
-    while (this.runs.size > this.limit) {
-      const oldest = this.runs.keys().next();
-      if (oldest.done === true) break;
-      this.runs.delete(oldest.value);
-    }
-  }
-
-  release(childSessionId: string): void {
-    this.runs.delete(childSessionId);
-  }
-
-  find(sessionId: string): ActiveRun | undefined {
-    return this.runs.get(sessionId);
-  }
-
-  /** Expert children a given caller session currently has in flight. */
-  countForCaller(callerSessionId: string): number {
-    let count = 0;
-    for (const run of this.runs.values()) {
-      if (run.callerSessionId === callerSessionId) count += 1;
-    }
-    return count;
-  }
-
-  get size(): number {
-    return this.runs.size;
-  }
-}
-
 export interface ExecutionDependencies {
   readonly resolver: ResolverDependencies;
   readonly subagents: SubagentsFace;
   /** Registry name of the in-process provider that supports composition. */
   readonly subagentProvider: string;
   readonly tracker: RunTracker;
+  /** The caller's configured cap, including defaults for a top-level chat. */
+  parallelLimit?(callerSessionId: string, callerDomain: string | null): number;
   readonly audits: AuditRing;
   readonly logger: LogSink;
   readonly now: () => number;
@@ -203,6 +134,39 @@ const REQUIRED_CAPABILITIES: readonly (keyof SubagentCapabilities)[] = [
 export async function runExpert(
   dependencies: ExecutionDependencies,
   input: ExpertRunInput,
+): Promise<DomainExpertResult> {
+  input.signal.throwIfAborted();
+  const callerSessionId = String(input.parent.session.header.id);
+  const limit =
+    dependencies.parallelLimit?.(callerSessionId, input.callerDomain) ??
+    dependencies.tracker.find(callerSessionId)?.maxParallel ??
+    3;
+  const release = dependencies.tracker.reserve(callerSessionId, limit);
+  if (release === undefined) {
+    throw new DomainExpertsError(
+      "PARALLELISM_EXCEEDED",
+      `This caller allows ${String(limit)} parallel expert call${limit === 1 ? "" : "s"} and ${String(dependencies.tracker.countForCaller(callerSessionId))} are already running; wait for one to finish.`,
+      { refs: [input.definition.id] },
+    );
+  }
+  let activationOwnsPermit = false;
+  try {
+    return await executeExpert(dependencies, input, (activation) => {
+      activationOwnsPermit = true;
+      // Both fulfillment and rejection settle capacity, without disposing the
+      // durable background child or forgetting its memory-owner identity.
+      void activation.result.then(release, release);
+    });
+  } finally {
+    // Resolution/start failures never handed their permit to an activation.
+    if (!activationOwnsPermit) release();
+  }
+}
+
+async function executeExpert(
+  dependencies: ExecutionDependencies,
+  input: ExpertRunInput,
+  onActivation: (activation: SubagentActivation) => void,
 ): Promise<DomainExpertResult> {
   const startedAt = dependencies.now();
   const callerSessionId = String(input.parent.session.header.id);
@@ -338,15 +302,20 @@ export async function runExpert(
     );
   }
   const startActivation = async (activationSpec: SubagentActivationSpec) => {
-    if (dependencies.startActivation === undefined)
-      return dependencies.subagents.startActivation(activationSpec);
-    const activation = await dependencies.startActivation(
-      activationSpec,
-      configuredTools.length > 0 ? profile.toolFilter : undefined,
-    );
+    const activation =
+      dependencies.startActivation === undefined
+        ? await dependencies.subagents.startActivation(activationSpec)
+        : await dependencies.startActivation(
+            activationSpec,
+            configuredTools.length > 0 ? profile.toolFilter : undefined,
+          );
+    onActivation(activation);
     // The Host has now validated every configured name against the child's
     // actual registry. The resolver's earlier uncertainty is settled.
-    if (configuredTools.length > 0) {
+    if (
+      configuredTools.length > 0 &&
+      dependencies.startActivation !== undefined
+    ) {
       for (let index = degradations.length - 1; index >= 0; index -= 1) {
         if (degradations[index]!.code === "TOOL_UNVERIFIED")
           degradations.splice(index, 1);
@@ -439,7 +408,6 @@ export async function runExpert(
       structured: parsed.structured,
     };
   } finally {
-    dependencies.tracker.release(childSessionId);
     await activation.dispose().catch(() => undefined);
   }
 }

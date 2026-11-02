@@ -14,6 +14,8 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 import { CacheStore } from "../src/documents/cache/store.js";
+import { CACHE_ENTRY_VERSION } from "../src/documents/cache/key.js";
+import { DoclingExtractor } from "../src/documents/providers/docling.js";
 import { DocumentError } from "../src/documents/errors.js";
 import { docxBytes, pdfBytes } from "./helpers/document-fixtures.js";
 import { stubProviderSet } from "./helpers/document-providers.js";
@@ -48,6 +50,76 @@ async function cacheEntries(workspace: string): Promise<string[]> {
 }
 
 describe("conversion cache", () => {
+  test.each([
+    "intact",
+    "missing",
+    "tampered",
+    "old-schema",
+    "missing-descriptors",
+  ])("materializes and verifies extracted image bytes: %s", async (state) => {
+    let calls = 0;
+    const extractor = new DoclingExtractor({
+      baseUrl: "https://docling.example.com",
+      timeoutMs: 1000,
+      maxResponseBytes: 4096,
+      maxImages: 2,
+      fetchImpl: async () => {
+        calls += 1;
+        return new Response(
+          JSON.stringify({
+            md_content: "![image](data:image/png;base64,aW1hZ2U=)",
+          }),
+        );
+      },
+    });
+    const documents = runtime({
+      providers: {
+        ...stub,
+        providers: { ...stub.providers, docling: extractor },
+      },
+    });
+    const source = await writeInput("report.pdf", pdfBytes());
+    const first = await documents.convert(
+      { file: source, targetFormat: "md" },
+      scope(),
+    );
+    const originalAsset = path.join(
+      path.dirname(first.manifestPath),
+      "assets",
+      "image-001.png",
+    );
+    if (state === "missing") await rm(originalAsset);
+    if (state === "tampered") await writeFile(originalAsset, "other");
+    if (state === "old-schema" || state === "missing-descriptors") {
+      const [name] = await cacheEntries(scope().workspaceRoot);
+      const file = path.join(
+        artifactRootOf(scope().workspaceRoot),
+        ".cache",
+        name!,
+      );
+      const entry = JSON.parse(await readFile(file, "utf8"));
+      if (state === "old-schema") entry.version = 1;
+      else delete entry.assets;
+      await writeFile(file, JSON.stringify(entry));
+    }
+    const second = await documents.convert(
+      { file: source, targetFormat: "md" },
+      scope(),
+    );
+    expect(
+      await readFile(
+        path.join(path.dirname(second.manifestPath), "assets", "image-001.png"),
+        "utf8",
+      ),
+    ).toBe("image");
+    expect(await readFile(second.files[0]!.path, "utf8")).toContain(
+      "assets/image-001.png",
+    );
+    expect(calls).toBe(state === "intact" ? 1 : 2);
+    expect((await manifestOf(second.manifestPath)).cache?.hit).toBe(
+      state === "intact" ? true : undefined,
+    );
+  });
   test("a repeated extraction reuses the stored Markdown instead of the backend", async () => {
     const source = await writeInput(
       "report.docx",
@@ -293,7 +365,7 @@ describe("conversion cache", () => {
 
 describe("CacheStore budgets", () => {
   const entry = (key: string, accessedAt: string, bytes: number) => ({
-    version: 1 as const,
+    version: CACHE_ENTRY_VERSION,
     key,
     operation: "document_convert" as const,
     createdAt: accessedAt,
@@ -311,6 +383,7 @@ describe("CacheStore budgets", () => {
       },
     ],
     backends: [],
+    assets: [],
     warnings: [],
   });
 

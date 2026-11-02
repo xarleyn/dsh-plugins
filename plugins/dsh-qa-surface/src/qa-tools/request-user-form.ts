@@ -8,6 +8,7 @@ export function createRequestUserFormTool(
   gate: QaFormGate,
   project?: (
     submission: import("../forms/types.js").QaFormSubmission,
+    sessionId: string,
   ) => Promise<unknown>,
 ): ToolDefinition {
   return defineTool({
@@ -122,7 +123,7 @@ export function createRequestUserFormTool(
       const outcome = await gate.request(args, exec);
       const result =
         outcome.status === "submitted" && project
-          ? await project(outcome)
+          ? await project(outcome, String(exec.agent?.session.id ?? ""))
           : outcome;
       exec.signal.throwIfAborted();
       return z.json().parse(result);

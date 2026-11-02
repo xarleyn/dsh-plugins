@@ -14,7 +14,7 @@ on:
         default: false
         type: boolean
       publish_only:
-        description: Publish versions already tagged by a previous run
+        description: Recover the wave or package versions tagged at the selected commit
         required: true
         default: false
         type: boolean
@@ -25,8 +25,7 @@ on:
         type: boolean
 
 permissions:
-  contents: write
-  id-token: write
+  contents: read
 
 concurrency:
   group: release
@@ -40,9 +39,9 @@ concurrency:
 # target by target.
 jobs:
   # Resolves the release once - version plans, release commit, selected
-  # packages, registry preflight - and hands the jobs below the two things
+  # packages, registry preflight - and hands the jobs below the three things
   # they cannot compute for themselves: the release commit, which exists only
-  # on this runner, and the matrix of packages to fan out.
+  # on this runner, the immutable plan and the matrix of packages to fan out.
   prepare:
     name: Prepare the release
     runs-on: ubuntu-latest
@@ -51,15 +50,28 @@ jobs:
       matrix: ${{ steps.packages.outputs.matrix }}
       gates_projects: ${{ steps.packages.outputs.gates_projects }}
       release_commit: ${{ steps.capture.outputs.created }}
+      base_sha: ${{ steps.packages.outputs.base_sha }}
+      release_tree: ${{ steps.packages.outputs.release_tree }}
+      plan_sha: ${{ steps.packages.outputs.plan_sha }}
 
     steps:
       - name: Checkout release ref
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          # Release whatever ref the workflow was dispatched on: main for
-          # regular releases, a branch for test releases without touching main.
-          ref: ${{ github.ref_name }}
+          # Every job uses this dispatch revision even if its branch advances.
+          ref: ${{ github.sha }}
+
+      - name: Record the immutable release base
+        env:
+          PUBLISH_ONLY: ${{ inputs.publish_only }}
+        shell: bash
+        run: |
+          if [[ "$PUBLISH_ONLY" != "true" && "$GITHUB_REF_TYPE" != "branch" ]]; then
+            echo "Normal releases require a branch; use publish_only for an existing release tag." >&2
+            exit 1
+          fi
+          git rev-parse HEAD > "$RUNNER_TEMP/release-base.sha"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -147,6 +159,8 @@ jobs:
 
       - name: Select release packages
         id: packages
+        env:
+          RELEASE_REF: ${{ github.ref }}
         shell: bash
         run: |
           # A preview changes nothing and publishes nothing, so there is no
@@ -162,26 +176,26 @@ jobs:
             selection_args+=(--release-commit)
           fi
 
-          DSH_ALL_PROJECTS_JSON="$(pnpm nx show projects --json)" \
-            node scripts/workspace-packages.mjs "${selection_args[@]}" --require \
-              --format=release-matrix >> "$GITHUB_OUTPUT"
           node scripts/workspace-packages.mjs "${selection_args[@]}" --require --format=tsv > "$RUNNER_TEMP/release-packages.tsv"
-
+          plan_args=(plan --base="$(cat "$RUNNER_TEMP/release-base.sha")" --ref="$RELEASE_REF" --tsv="$RUNNER_TEMP/release-packages.tsv" --output="$RUNNER_TEMP/release-plan.json")
           if [[ "${{ inputs.publish_only }}" == "true" ]]; then
-            # A release-wave tag on HEAD means the release commit is already
-            # pushed. Per-package tags are the previous release scheme and
-            # keep answering for releases made before the wave tag existed.
-            if git tag --points-at HEAD | grep -q '^release/'; then
-              echo "HEAD carries the release wave tag $(git tag --points-at HEAD | grep '^release/' | head -1)"
-            else
-              while IFS=$'\t' read -r name version _directory _tarball; do
-                git rev-parse --verify --quiet "refs/tags/${name}@${version}^{commit}" > /dev/null || {
-                  echo "Missing release tag ${name}@${version}" >&2
-                  exit 1
-                }
-              done < "$RUNNER_TEMP/release-packages.tsv"
-            fi
+            plan_args+=(--publish-only)
           fi
+          node scripts/release-provenance.mjs "${plan_args[@]}" >> "$GITHUB_OUTPUT"
+          plan_sha="$(sha256sum "$RUNNER_TEMP/release-plan.json" | cut -d ' ' -f1)"
+          export DSH_PROJECTS_JSON="$(node scripts/release-provenance.mjs names --plan="$RUNNER_TEMP/release-plan.json" --expected-plan="$plan_sha")"
+          DSH_ALL_PROJECTS_JSON="$(pnpm nx show projects --json)" \
+            node scripts/workspace-packages.mjs --require --format=release-matrix >> "$GITHUB_OUTPUT"
+
+      - name: Upload the prepared release plan
+        if: steps.packages.outputs.count != '0'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-plan
+          path: ${{ runner.temp }}/release-plan.json
+          if-no-files-found: error
+          retention-days: 30
+          overwrite: true
 
       # npm cannot claim a package name through Trusted Publishing: a Trusted
       # Publisher is configured on a package that already exists, and the
@@ -211,13 +225,15 @@ jobs:
     needs: prepare
     if: needs.prepare.result == 'success' && needs.prepare.outputs.count != '0'
     runs-on: ubuntu-latest
+    env:
+      RELEASE_PLAN_SHA: ${{ needs.prepare.outputs.plan_sha }}
 
     steps:
       - name: Checkout release ref
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.ref_name }}
+          ref: ${{ needs.prepare.outputs.base_sha }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -248,6 +264,15 @@ jobs:
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: git am "$RUNNER_TEMP/release-commit.patch"
 
+      - name: Download the prepared release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: release-plan
+          path: ${{ runner.temp }}
+
+      - name: Verify the prepared source tree
+        run: node scripts/release-provenance.mjs verify-tree --plan="$RUNNER_TEMP/release-plan.json" --expected-plan="$RELEASE_PLAN_SHA"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -269,6 +294,9 @@ jobs:
       - name: Test repository tooling
         run: pnpm test:release
 
+      - name: Test result processor integration
+        run: pnpm test:integration
+
       - name: Verify the projects outside the release
         if: needs.prepare.outputs.gates_projects != ''
         env:
@@ -280,6 +308,8 @@ jobs:
     needs: prepare
     if: needs.prepare.result == 'success' && needs.prepare.outputs.count != '0'
     runs-on: ubuntu-latest
+    env:
+      RELEASE_PLAN_SHA: ${{ needs.prepare.outputs.plan_sha }}
     strategy:
       fail-fast: false
       max-parallel: 20
@@ -289,7 +319,7 @@ jobs:
       - name: Checkout release ref
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.ref_name }}
+          ref: ${{ needs.prepare.outputs.base_sha }}
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -317,6 +347,15 @@ jobs:
           GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
         run: git am "$RUNNER_TEMP/release-commit.patch"
 
+      - name: Download the prepared release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: release-plan
+          path: ${{ runner.temp }}
+
+      - name: Verify the prepared source tree
+        run: node scripts/release-provenance.mjs verify-tree --plan="$RUNNER_TEMP/release-plan.json" --expected-plan="$RELEASE_PLAN_SHA"
+
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
@@ -325,26 +364,23 @@ jobs:
           NX_PROJECT: ${{ matrix.project }}
         run: pnpm nx run-many -t lint typecheck test build verify --projects="$NX_PROJECT" --output-style=static
 
-      # The tarball this job publishes is the one it also verifies: packing and
-      # inspecting it here is what keeps a broken package from reaching the
-      # publish loop, and the artifact it uploads is what that loop publishes.
-      - name: Pack the release tarball
-        env:
-          PACKAGE_DIRECTORY: ${{ matrix.directory }}
-        run: |
-          mkdir -p tarballs
-          pnpm --dir "$PACKAGE_DIRECTORY" pack --pack-destination "$GITHUB_WORKSPACE/tarballs"
-
+      # The gate exports its exact inspected/installed tarball after success.
       - name: Verify the release tarball
         env:
           PACKAGE_DIRECTORY: ${{ matrix.directory }}
+          TARBALL_VERIFY_OUTPUT_DIR: ${{ github.workspace }}/tarballs
         run: pnpm tarball:verify:packages "$PACKAGE_DIRECTORY"
+
+      - name: Record verified tarball provenance
+        env:
+          PACKAGE_DIRECTORY: ${{ matrix.directory }}
+        run: node scripts/release-provenance.mjs record-artifact --plan="$RUNNER_TEMP/release-plan.json" --expected-plan="$RELEASE_PLAN_SHA" --directory="$PACKAGE_DIRECTORY" --tarballs="$GITHUB_WORKSPACE/tarballs"
 
       - name: Upload the release tarball
         uses: actions/upload-artifact@v4
         with:
           name: npm-tarball-${{ matrix.slug }}
-          path: ${{ github.workspace }}/tarballs/*.tgz
+          path: ${{ github.workspace }}/tarballs/*
           if-no-files-found: error
           retention-days: 30
           # Artifacts are immutable within a run, so a rerun of this job would
@@ -354,8 +390,9 @@ jobs:
   # Publication is the only step that changes state outside this repository, so
   # it runs on its own runner after every gate has passed, and before the
   # release commit is pushed. A publish that fails leaves the branch untouched,
-  # version plans included, and a rerun resolves the same versions and retries
-  # only what npm is missing. Publishing first is also what makes a pushed tag
+  # version plans included. Retained verified artifacts support exact recovery;
+  # rebuilt bytes must match any version npm already accepted. Publishing first
+  # is also what makes a pushed tag
   # mean something: every tag in the repository names a version the registry
   # already has.
   publish:
@@ -365,13 +402,18 @@ jobs:
       needs.prepare.result == 'success' && needs.prepare.outputs.count != '0' &&
       needs.gates.result == 'success' && needs.projects.result == 'success'
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      RELEASE_PLAN_SHA: ${{ needs.prepare.outputs.plan_sha }}
 
     steps:
       - name: Checkout release ref
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          ref: ${{ github.ref_name }}
+          ref: ${{ needs.prepare.outputs.base_sha }}
 
       # This job reads package.json and talks to the registry; it builds
       # nothing, so it installs nothing.
@@ -388,10 +430,7 @@ jobs:
           name: release-commit
           path: ${{ runner.temp }}
 
-      # Replaying the commit here, rather than pushing what the prepare job
-      # committed, is what keeps the push and the publication on one commit:
-      # this runner is the one that pushes it, and the identity below is also
-      # what the wave tag is created with.
+      # Commit timestamps may differ on replay; the prepared tree must not.
       - name: Replay the release commit
         if: needs.prepare.outputs.release_commit == 'true'
         shell: bash
@@ -400,6 +439,15 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git am "$RUNNER_TEMP/release-commit.patch"
 
+      - name: Download the prepared release plan
+        uses: actions/download-artifact@v4
+        with:
+          name: release-plan
+          path: ${{ runner.temp }}
+
+      - name: Verify the prepared source tree
+        run: node scripts/release-provenance.mjs verify-tree --plan="$RUNNER_TEMP/release-plan.json" --expected-plan="$RELEASE_PLAN_SHA"
+
       - name: Download release tarballs
         uses: actions/download-artifact@v4
         with:
@@ -407,24 +455,15 @@ jobs:
           path: ${{ github.workspace }}/tarballs
           merge-multiple: true
 
-      # Read back from the tree that is about to be pushed, so the rows below
-      # name the tarballs the package jobs produced, versions included.
-      - name: Select release packages
-        shell: bash
-        run: |
-          selection_args=()
-          if [[ "${{ inputs.publish_only }}" == "false" ]]; then
-            selection_args+=(--release-commit)
-          fi
-
-          node scripts/workspace-packages.mjs "${selection_args[@]}" --require --format=tsv > "$RUNNER_TEMP/release-packages.tsv"
+      - name: Verify release artifact provenance
+        run: node scripts/release-provenance.mjs verify-artifacts --plan="$RUNNER_TEMP/release-plan.json" --expected-plan="$RELEASE_PLAN_SHA" --tarballs="$GITHUB_WORKSPACE/tarballs" --tsv="$RUNNER_TEMP/release-packages.tsv"
 
       - name: Upload release artifacts
         if: inputs.dry_run == false
         uses: actions/upload-artifact@v4
         with:
           name: npm-tarballs
-          path: tarballs/*.tgz
+          path: tarballs/*
           if-no-files-found: error
           retention-days: 30
           # Artifacts are immutable within a run, so a rerun of this job would
@@ -433,6 +472,12 @@ jobs:
 
       - name: Upgrade npm for trusted publishing
         run: npm install --global npm@^11.15.0
+
+      - name: Verify already published artifact integrity
+        run: node scripts/release-provenance.mjs registry --plan="$RUNNER_TEMP/release-plan.json" --expected-plan="$RELEASE_PLAN_SHA" --tarballs="$GITHUB_WORKSPACE/tarballs"
+
+      - name: Refuse a stale release before publication
+        run: node scripts/release-provenance.mjs preflight --plan="$RUNNER_TEMP/release-plan.json" --expected-plan="$RELEASE_PLAN_SHA"
 
       # The publish job owns the order, the adoption of versions npm already
       # has and the refusal to publish a package whose dependency is missing;
@@ -459,11 +504,20 @@ jobs:
         if: inputs.dry_run == false
         run: node scripts/publish-release.mjs --verify-install --tsv="$RUNNER_TEMP/release-packages.tsv"
 
+      - name: Verify published artifact integrity
+        if: inputs.dry_run == false
+        run: node scripts/release-provenance.mjs registry --plan="$RUNNER_TEMP/release-plan.json" --expected-plan="$RELEASE_PLAN_SHA" --tarballs="$GITHUB_WORKSPACE/tarballs" --require-all
+
+      - name: Refuse branch or tag drift after publication
+        if: inputs.dry_run == false
+        run: node scripts/release-provenance.mjs preflight --plan="$RUNNER_TEMP/release-plan.json" --expected-plan="$RELEASE_PLAN_SHA" --after-publication
+
       # One tag per release run replaces one tag per released package: the
       # wave tag names a commit whose every version npm already has, so the
       # repository's tag list stops growing by one tag per released package.
-      # Annotated, so the push below forwards it with --follow-tags.
+      # The atomic push below sends this tag with a compare-and-swap branch update.
       - name: Tag the release wave
+        id: wave
         if: inputs.dry_run == false && inputs.publish_only == false
         shell: bash
         run: |
@@ -475,10 +529,13 @@ jobs:
             suffix=$((suffix + 1))
           done
           git tag -a "$wave_tag" -m "Release wave ${wave_tag#release/}"
+          echo "tag=$wave_tag" >> "$GITHUB_OUTPUT"
 
       - name: Push release commit and tags
         if: inputs.dry_run == false && inputs.publish_only == false
-        run: git push origin HEAD:${{ github.ref_name }} --follow-tags --atomic
+        env:
+          RELEASE_WAVE_TAG: ${{ steps.wave.outputs.tag }}
+        run: node scripts/release-provenance.mjs push --plan="$RUNNER_TEMP/release-plan.json" --expected-plan="$RELEASE_PLAN_SHA" --tag="$RELEASE_WAVE_TAG"
 
       - name: Create the release-wave GitHub Release
         if: inputs.dry_run == false && inputs.create_github_releases

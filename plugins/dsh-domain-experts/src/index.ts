@@ -272,16 +272,25 @@ export class DomainExpertsService extends TypertRemoteService {
       parallelBudget: (callerSessionId, callerDomain) =>
         parallelBudgetOf(
           this.tracker.countForCaller(callerSessionId),
-          this.tracker.find(callerSessionId)?.maxParallel ??
-            (callerDomain === null
-              ? undefined
-              : this.stores.handles?.domains.get(callerDomain)?.delegation
-                  .maxParallel) ??
-            this.config().defaultMaxParallel,
+          this.parallelLimit(callerSessionId, callerDomain),
         ),
       memory: () => this.memoryProvider(),
       logger: this.logger,
     };
+  }
+
+  private parallelLimit(
+    callerSessionId: string,
+    callerDomain: string | null,
+  ): number {
+    return (
+      this.tracker.find(callerSessionId)?.maxParallel ??
+      (callerDomain === null
+        ? undefined
+        : this.stores.handles?.domains.get(callerDomain)?.delegation
+            .maxParallel) ??
+      this.config().defaultMaxParallel
+    );
   }
 
   /** The memory provider the deployment selected. */
@@ -320,6 +329,8 @@ export class DomainExpertsService extends TypertRemoteService {
       subagents: subagentsFaceOf(this.ctx.subagents),
       subagentProvider: this.config().subagentProvider,
       tracker: this.tracker,
+      parallelLimit: (callerSessionId, callerDomain) =>
+        this.parallelLimit(callerSessionId, callerDomain),
       audits: this.audits,
       logger: this.logger,
       now: Date.now,

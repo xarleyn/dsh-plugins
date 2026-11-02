@@ -166,7 +166,14 @@ function parseRange(
       let closed = false;
       while (index < end) {
         const candidate = lines[index] ?? "";
-        if (candidate.trimEnd().startsWith(marker.slice(0, 3))) {
+        const closingFence = /^ {0,3}(`{3,}|~{3,})[\t ]*$/u.exec(
+          candidate,
+        )?.[1];
+        if (
+          closingFence !== undefined &&
+          closingFence[0] === marker[0] &&
+          closingFence.length >= marker.length
+        ) {
           index += 1;
           closed = true;
           break;

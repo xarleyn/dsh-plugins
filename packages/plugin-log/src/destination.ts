@@ -12,7 +12,9 @@ import { renderTextRecord } from "./format.js";
 
 export type ClosableDestination = DestinationStream & {
   destroyed?: boolean;
+  on?: (event: string, listener: (error: Error) => void) => unknown;
   once?: (event: string, listener: () => void) => unknown;
+  destroy?: () => unknown;
   end?: () => unknown;
   flushSync?: () => void;
 };
@@ -92,6 +94,16 @@ export function closeQuietly(destination: ClosableDestination): void {
     destination.end?.();
   } catch {
     // Fail-open: closing must never surface.
+  }
+}
+
+/** A failed sink cannot flush; discard its buffer and release the handle. */
+export function destroyQuietly(destination: ClosableDestination): void {
+  try {
+    if (destination.destroy !== undefined) destination.destroy();
+    else closeQuietly(destination);
+  } catch {
+    // File logging must never make the host fail while retiring a broken sink.
   }
 }
 

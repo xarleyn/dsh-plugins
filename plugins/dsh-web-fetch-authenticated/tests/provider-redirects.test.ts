@@ -30,6 +30,41 @@ async function track(server: FixtureServer): Promise<FixtureServer> {
 }
 
 describe("redirect policy", () => {
+  test("rejects an ambiguous redirect target before resolving or sending its auth", async () => {
+    const server = await track(
+      await startFixture({
+        "/redirect/start": {
+          redirectStatus: 302,
+          redirectLocation: "/secure/final",
+        },
+        "/secure/final": { body: "must not arrive" },
+      }),
+    );
+    const base = fixtureRule(server.origin);
+    const source = {
+      ...base,
+      id: "source",
+      match: { ...base.match, allowPaths: ["/redirect/**"] },
+      redirects: {
+        mode: "allowlist" as const,
+        allowedOrigins: [server.origin],
+        maxRedirects: 3,
+      },
+    };
+    const target = {
+      ...base,
+      id: "target-one",
+      match: { ...base.match, allowPaths: ["/secure/**"] },
+    };
+    const { provider, lookups } = newProvider(
+      configWith([source, target, { ...target, id: "target-two" }]),
+    );
+    await expectCode("AUTH_FETCH_AMBIGUOUS_MATCH", () =>
+      provider.fetch({ url: `${server.origin}/redirect/start` }),
+    );
+    expect(server.requests).toHaveLength(1);
+    expect(lookups).toHaveLength(1);
+  });
   test("same-origin redirect keeps auth and follows", async () => {
     const server = await track(
       await startFixture({

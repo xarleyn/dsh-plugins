@@ -173,7 +173,7 @@ describe("output stream guard — quarantine guarantee (design SPEC §11–§13)
     });
     const cancelCalls: string[] = [];
     const { lookup } = makeLookup(cancelCalls);
-    const safe = "ordinary answer text ".repeat(20); // 420 chars, 4 windows
+    const safe = "ordinary answer text ".repeat(20); // 420 chars
     const chunks: StreamChunk[] = [
       { type: "block-start", index: 0, blockType: "text" },
       { type: "text-delta", index: 0, text: safe },
@@ -195,8 +195,8 @@ describe("output stream guard — quarantine guarantee (design SPEC §11–§13)
         .map((chunk) => (chunk.type === "text-delta" ? chunk.text : ""))
         .join(""),
     ).toBe(safe);
-    // One check per window: nothing was released that a check had not covered.
-    expect(gate.metrics.snapshot().checks.text).toBe(4);
+    // Each window after the first reserves 48 characters for overlap.
+    expect(gate.metrics.snapshot().checks.text).toBe(5);
   });
 
   it("stops releasing where an uncovered tail of the same buffer is blocked", async () => {

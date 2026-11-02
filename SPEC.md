@@ -758,6 +758,7 @@ pnpm verify:tokens
 pnpm verify:packages
 pnpm verify:pr-rules --base="$NX_BASE" --head="$NX_HEAD"
 pnpm test:release
+pnpm test:integration
 pnpm release:check --base="$NX_BASE" --head="$NX_HEAD"
 
 # projects — one runner per selected project
@@ -936,7 +937,8 @@ Root `package.json` provides the convenient commands — this excerpt is the cur
     "test": "pnpm test:release && nx run-many -t test",
     "typecheck": "nx run-many -t typecheck",
     "lint": "pnpm lint:workspace && nx run-many -t lint",
-    "check": "pnpm lint && pnpm format && pnpm typecheck && pnpm test && pnpm build && pnpm check:files && pnpm verify && pnpm deps:check",
+    "test:integration": "nx run-many -t build --projects=@yadsh/dsh-cas-results,@yadsh/dsh-tool-offload,@yadsh/dsh-jev-compaction && node --test scripts/post-execute-composition.test.mjs",
+    "check": "pnpm lint && pnpm format && pnpm typecheck && pnpm test && pnpm build && pnpm test:integration && pnpm check:files && pnpm verify && pnpm deps:check",
 
     "affected:build": "nx affected -t build",
     "affected:test": "nx affected -t test",

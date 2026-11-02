@@ -7,6 +7,7 @@ import {
   statSync,
 } from "node:fs";
 import path from "node:path";
+import { qaFilesystemIntent } from "./filesystem-intent.js";
 
 /** Stable, non-workspace child used to keep account directories out of sight. */
 export const QA_USER_WORKSPACES_DIRECTORY = ".qa-users";
@@ -29,6 +30,8 @@ export interface QaToolExecutionLike {
 export interface QaUserWorkspaceReadPolicy {
   /** Shared directories exposed only to read-only filesystem tools. */
   readonly sharedReadOnlyRoots?: readonly string[];
+  /** Exact canonical files derived from this conversation's trusted references. */
+  readonly attachmentFiles?: readonly string[];
 }
 
 function samePath(left: string, right: string): boolean {
@@ -143,56 +146,6 @@ function record(value: unknown): Record<string, unknown> | undefined {
     : undefined;
 }
 
-function requestedPaths(execution: QaToolExecutionLike): readonly string[] {
-  const args = record(execution.arguments);
-  if (args === undefined) return [];
-  switch (execution.name) {
-    case "read":
-    case "read_image":
-    case "write":
-    case "edit": {
-      return typeof args.file_path === "string" ? [args.file_path] : [];
-    }
-    case "glob":
-    case "grep": {
-      return [typeof args.path === "string" ? args.path : "."];
-    }
-    case "str_replace_editor": {
-      return typeof args.path === "string" ? [args.path] : [];
-    }
-    default:
-      return [];
-  }
-}
-
-/**
- * Whether the named path is only read. Directory-wide tools stay confined even
- * for reads: the attachment store is shared by every account, and only the
- * exact file an upload produced is meant to be reachable.
- */
-function readsSharedRoot(execution: QaToolExecutionLike): boolean {
-  if (
-    execution.name === "read" ||
-    execution.name === "read_image" ||
-    execution.name === "glob" ||
-    execution.name === "grep"
-  ) {
-    return true;
-  }
-  return (
-    execution.name === "str_replace_editor" &&
-    record(execution.arguments)?.command === "view"
-  );
-}
-
-function readsSingleFile(execution: QaToolExecutionLike): boolean {
-  if (execution.name === "read" || execution.name === "read_image") return true;
-  return (
-    execution.name === "str_replace_editor" &&
-    record(execution.arguments)?.command === "view"
-  );
-}
-
 function directoryBytes(root: string, stopAfter: number): number {
   let total = 0;
   const pending = [root];
@@ -209,28 +162,13 @@ function directoryBytes(root: string, stopAfter: number): number {
   return total;
 }
 
-function requestedWriteBytes(execution: QaToolExecutionLike): number {
-  const args = record(execution.arguments);
-  if (args === undefined) return 0;
-  const values = [args.content, args.new_string, args.new_str];
-  return values.reduce<number>(
-    (total, value) =>
-      total + (typeof value === "string" ? Buffer.byteLength(value) : 0),
-    0,
-  );
-}
-
 /**
  * Monotonic guard used in addition to DSH's workspace-write sandbox. It
  * fences model-controlled file paths for both reads and writes, rejects tools
  * whose implementation can walk above cwd, and enforces bounded scratch use.
  *
- * `attachmentRoot` is the one deliberate read exemption: an uploaded file is
- * an immutable content-addressed copy the deployment stores outside every
- * workspace, and the model reaches it exactly as the harness intends (the
- * prompt carries the stored path). Reads of a single such file are allowed;
- * directory-wide tools stay confined because the store is shared by every
- * account, and writes are never exempted.
+ * `attachmentRoot` identifies the storage backend, never authority to read it.
+ * Only regular files in `attachmentFiles` may cross the workspace boundary.
  */
 export function qaUserWorkspaceDenial(
   execution: QaToolExecutionLike,
@@ -257,20 +195,19 @@ export function qaUserWorkspaceDenial(
   ) {
     return PATH_DENIAL;
   }
-  const readsShared = readsSharedRoot(execution);
-  const readsOneFile = readsSingleFile(execution);
+  const intent = qaFilesystemIntent(execution.name, args);
   try {
     const sharedReadOnlyRoots = (readPolicy.sharedReadOnlyRoots ?? []).map(
       canonicalCandidate,
     );
-    for (const requested of requestedPaths(execution)) {
+    for (const requested of intent === undefined ? [] : [intent.path]) {
       const absolute = path.isAbsolute(requested)
         ? requested
         : path.resolve(root, requested);
       const canonical = canonicalCandidate(absolute);
       if (pathIsInside(canonical, root)) continue;
       if (
-        readsShared &&
+        intent?.kind === "read" &&
         sharedReadOnlyRoots.some((readRoot) =>
           pathIsInside(canonical, readRoot),
         )
@@ -280,21 +217,21 @@ export function qaUserWorkspaceDenial(
       // Resolved only for a path the fence would otherwise refuse, so the
       // common case pays no extra filesystem walk.
       if (
-        readsOneFile &&
+        intent?.kind === "read" &&
+        intent.fileOnlyGrant &&
         attachmentRoot !== undefined &&
-        pathIsInside(canonical, canonicalCandidate(attachmentRoot))
+        pathIsInside(canonical, canonicalCandidate(attachmentRoot)) &&
+        (readPolicy.attachmentFiles ?? []).some((file) =>
+          samePath(canonical, file),
+        ) &&
+        statSync(canonical).isFile()
       ) {
         continue;
       }
       return PATH_DENIAL;
     }
-    if (
-      execution.name === "write" ||
-      execution.name === "edit" ||
-      (execution.name === "str_replace_editor" &&
-        record(execution.arguments)?.command !== "view")
-    ) {
-      const requested = requestedWriteBytes(execution);
+    if (intent?.kind === "write") {
+      const requested = intent.bytes;
       if (
         requested > QA_USER_WORKSPACE_MAX_WRITE_BYTES ||
         directoryBytes(root, QA_USER_WORKSPACE_MAX_BYTES) + requested >

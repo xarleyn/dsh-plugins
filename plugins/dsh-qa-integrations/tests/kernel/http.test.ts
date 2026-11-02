@@ -226,6 +226,30 @@ describe("fetchWithRetries", () => {
     statusFailure: () => new IntegrationError("ResourceNotFound", "gone"),
   });
 
+  it.each([403, 503])(
+    "cancels an unread HTTP %s body before returning",
+    async (status) => {
+      let cancelled = false;
+      const response = new Response(
+        new ReadableStream({
+          cancel() {
+            cancelled = true;
+          },
+        }),
+        { status },
+      );
+      await expect(
+        fetchWithRetries(
+          async () => response,
+          TARGET,
+          policy(20, 0),
+          async () => "unused",
+        ),
+      ).rejects.toMatchObject({ code: "ResourceNotFound" });
+      expect(cancelled).toBe(true);
+    },
+  );
+
   it("holds the attempt budget over the read it hands the response to", async () => {
     // Clearing the timer once the headers arrived is the defect: the body is
     // read after that point, so it had to keep its own deadline.

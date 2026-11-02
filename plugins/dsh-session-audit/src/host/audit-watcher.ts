@@ -54,23 +54,40 @@ export class AuditWatcher {
   private settleTimer: NodeJS.Timeout | undefined;
   private coalesceTimer: NodeJS.Timeout | undefined;
   private reconcileTimer: NodeJS.Timeout | undefined;
-  private stopped = false;
+  private stopped = true;
+  private generation = 0;
+  private starting: Promise<void> | undefined;
 
   constructor(private readonly options: AuditWatcherOptions) {}
 
   /** Establish the watcher and the reconciliation timer. */
-  async start(): Promise<void> {
+  start(): Promise<void> {
+    if (!this.stopped) return this.starting ?? Promise.resolve();
+    this.stopped = false;
+    const generation = ++this.generation;
+    const starting = this.startGeneration(generation).finally(() => {
+      if (this.starting === starting) this.starting = undefined;
+    });
+    this.starting = starting;
+    return starting;
+  }
+
+  private async startGeneration(generation: number): Promise<void> {
+    const current = (): boolean =>
+      !this.stopped && generation === this.generation;
     if (this.options.rescanIntervalMs > 0) {
-      this.reconcileTimer = setInterval(
-        () => this.options.onRecheck(),
-        this.options.rescanIntervalMs,
-      );
+      this.reconcileTimer = setInterval(() => {
+        if (current()) this.options.onRecheck();
+      }, this.options.rescanIntervalMs);
       this.reconcileTimer.unref?.();
     }
     if (!this.options.watch) return;
 
     try {
       const root = await canonicalizeWatchPath(this.options.root);
+      // stop() can finish while path resolution is pending. A later start
+      // belongs to a different generation, even if it watches the same root.
+      if (!current()) return;
       const watcher = chokidarWatch(root, {
         persistent: true,
         // The initial scan is the service's job; a watcher that also reported
@@ -89,15 +106,18 @@ export class AuditWatcher {
         usePolling: this.options.watchMode === "poll",
         ignorePermissionErrors: true,
       });
-      watcher.on("all", () => this.scheduleRecheck());
+      watcher.on("all", () => {
+        if (current()) this.scheduleRecheck();
+      });
       watcher.on("error", (error) => {
-        if (this.stopped) return;
+        if (!current()) return;
         this.options.onFallback(
           error instanceof Error ? error.message : String(error),
         );
       });
       this.watcher = watcher;
     } catch (error) {
+      if (!current()) return;
       this.options.onFallback(
         error instanceof Error ? error.message : String(error),
       );
@@ -107,6 +127,7 @@ export class AuditWatcher {
   /** Tear everything down. Safe to call twice. */
   async stop(): Promise<void> {
     this.stopped = true;
+    this.generation += 1;
     if (this.settleTimer !== undefined) clearTimeout(this.settleTimer);
     if (this.coalesceTimer !== undefined) clearTimeout(this.coalesceTimer);
     if (this.reconcileTimer !== undefined) clearInterval(this.reconcileTimer);

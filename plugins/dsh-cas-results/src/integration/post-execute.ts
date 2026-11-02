@@ -6,9 +6,9 @@
  * waterfall and validates it against the tool's output schema, so replacing
  * `value` there would either be ignored or break the tool. The plugin
  * therefore subscribes to `tools/post-execute`, which is the registry's
- * supported result-reshaping seam: scanning still operates on the canonical
- * `result.value` (SPEC §8), while the accepted decision replaces only the
- * model-facing `content` with the bounded preview. `value` stays canonical
+ * supported result-reshaping seam: scanning operates on the canonical
+ * `result.value` unless a downstream listener already projected its content.
+ * The accepted decision replaces only model-facing `content`; `value` stays canonical
  * for execution-local consumers; durable session events never carry it.
  *
  * Every failure inside the transformation is contained: the downstream
@@ -23,6 +23,7 @@ import type {
   ToolExecutionResult,
 } from "@deepseek-ai/dsh-tools";
 import type { PluginLoggerLike } from "@yadsh/dsh-plugin-log";
+import { resolvePostExecuteContent } from "@yadsh/dsh-plugin-kit/post-execute";
 
 import type { ResolvedCasResultsConfig } from "../config.js";
 import { transformValue, type JsonValue } from "../transform/scan-value.js";
@@ -43,12 +44,6 @@ export interface PostExecuteListenerOptions {
   readonly logger: PluginLoggerLike;
 }
 
-/** Structural view of one text content block; avoids a `dsh-llm` peer. */
-interface TextBlockLike {
-  readonly type: string;
-  readonly text?: unknown;
-}
-
 export function createPostExecuteListener(
   options: PostExecuteListenerOptions,
 ): CasPostExecuteListener {
@@ -57,38 +52,56 @@ export function createPostExecuteListener(
     const decision = await next();
     try {
       if (decision.kind !== "accept") return decision;
+      const effective = resolvePostExecuteContent(decision, result.content);
+      if (effective.kind !== "content") return decision;
       if (exec.parent !== undefined) return decision; // code-mode sub-dispatch: model never sees content
       if (isOwnToolName(exec.name)) return decision; // recursion protection (SPEC §21)
       const config = readConfig();
       if (!config.enabled) return decision;
       if (result.isError && !config.includeErrors) return decision; // errors untouched by default (SPEC AC8)
 
-      const previewText = result.isError
-        ? await transformErrorContent(
-            result,
-            exec,
-            config,
-            store,
-            counters,
-            logger,
-          )
-        : await transformSuccessValue(
-            result.value as JsonValue,
-            exec,
-            config,
-            store,
-            counters,
-            logger,
-          );
-      if (previewText === null) return decision;
+      let content: ToolExecutionResult["content"];
+      if (result.isError || effective.replaced) {
+        let changed = false;
+        const blocks = [];
+        for (const block of effective.content) {
+          if (block.type !== "text") {
+            blocks.push(block);
+            continue;
+          }
+          const preview = await (
+            result.isError ? transformErrorText : transformSuccessValue
+          )(block.text, exec, config, store, counters, logger);
+          changed ||= preview !== null;
+          blocks.push(preview === null ? block : { ...block, text: preview });
+        }
+        if (!changed) return decision;
+        content = blocks;
+      } else {
+        const previewText = await transformSuccessValue(
+          result.value as JsonValue,
+          exec,
+          config,
+          store,
+          counters,
+          logger,
+        );
+        if (previewText === null) return decision;
+        content = [{ type: "text", text: previewText }];
+      }
 
       counters.increment(
         "previewBytes",
-        Buffer.byteLength(previewText, "utf8"),
+        content.reduce(
+          (bytes, block) =>
+            bytes +
+            (block.type === "text" ? Buffer.byteLength(block.text, "utf8") : 0),
+          0,
+        ),
       );
       return {
-        kind: "accept",
-        content: [{ type: "text", text: previewText }],
+        ...effective.decision,
+        content,
       };
     } catch (error) {
       counters.increment("storageErrors");
@@ -128,11 +141,11 @@ async function transformSuccessValue(
     casHits: outcome.casHits,
     logicalBytes: outcome.logicalBytesOffloaded,
   });
-  // Every oversized field of a structured value becomes one bounded preview
-  // block; they share the model-facing content replacement.
-  return outcome.replacements
-    .map((replacement) => replacement.previewText)
-    .join("\n\n");
+  // Preserve the field names, scalar status metadata and small sibling values.
+  // Only each oversized string has been substituted with a bounded preview.
+  return typeof outcome.value === "string"
+    ? outcome.value
+    : JSON.stringify(outcome.value, null, 2);
 }
 
 /**
@@ -140,8 +153,8 @@ async function transformSuccessValue(
  * oversized text blocks of the error content are offloaded with a head-only
  * preview and the error tail stays addressable in the CAS.
  */
-async function transformErrorContent(
-  result: Readonly<ToolExecutionResult>,
+async function transformErrorText(
+  text: string,
   exec: ToolExecution,
   config: ResolvedCasResultsConfig,
   store: CasStore,
@@ -150,24 +163,11 @@ async function transformErrorContent(
 ): Promise<string | null> {
   const policy = resolveToolPolicy(config, exec.name);
   if (policy === null) return null;
-  const blocks = (result.content as readonly TextBlockLike[]).filter(
-    (block) => block.type === "text" && typeof block.text === "string",
-  );
-  let largest: { index: number; text: string; bytes: number } | undefined;
-  for (let index = 0; index < blocks.length; index += 1) {
-    const text = blocks[index]?.text as string;
-    const bytes = Buffer.byteLength(text, "utf8");
-    if (
-      bytes >= policy.thresholds.textBytes &&
-      (largest === undefined || bytes > largest.bytes)
-    ) {
-      largest = { index, text, bytes };
-    }
-  }
-  if (largest === undefined) return null;
+  const bytes = Buffer.byteLength(text, "utf8");
+  if (bytes < policy.thresholds.textBytes) return null;
   counters.increment("resultsScanned");
   const object = await store.put({
-    payload: Buffer.from(largest.text, "utf8"),
+    payload: Buffer.from(text, "utf8"),
     kind: "text",
     mediaType: "text/plain",
     encoding: "utf8",
@@ -177,16 +177,16 @@ async function transformErrorContent(
     stringsScanned: 1,
     objectsStored: object.reused ? 0 : 1,
     casHits: object.reused ? 1 : 0,
-    logicalBytesOffloaded: largest.bytes,
+    logicalBytesOffloaded: bytes,
   });
   logger.debug("cas.offloaded_error_block", {
     tool: exec.name,
     ref: object.ref,
-    bytes: largest.bytes,
+    bytes,
   });
-  const head = largest.text.slice(0, Math.min(policy.preview.maxChars, 2048));
+  const head = text.slice(0, Math.min(policy.preview.maxChars, 2048));
   return [
-    `[dsh-cas-results: ${largest.bytes}B text → ${Buffer.byteLength(head, "utf8")}B preview; ${object.ref}; use dsh_cas_retrieve]`,
+    `[dsh-cas-results: ${bytes}B text → ${Buffer.byteLength(head, "utf8")}B preview; ${object.ref}; use dsh_cas_retrieve]`,
     "type: text/plain",
     "",
     head,

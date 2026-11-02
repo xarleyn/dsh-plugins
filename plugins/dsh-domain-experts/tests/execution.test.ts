@@ -318,10 +318,11 @@ describe("execution: results and bookkeeping", () => {
     expect(result.durationMs).toBe(0);
   });
 
-  it("releases the run from the tracker and disposes the child", async () => {
+  it("releases activation capacity, retains identity and disposes the foreground child", async () => {
     const harness = harnessOf(PAYMENTS, { runId: "child-1" });
     await run(harness);
-    expect(harness.tracker.size).toBe(0);
+    expect(harness.tracker.countForCaller("session-1")).toBe(0);
+    expect(harness.tracker.find("child-1")?.domainId).toBe("payments");
     expect(harness.subagents.disposed).toEqual(["child-1"]);
   });
 
@@ -399,7 +400,7 @@ describe("execution: background runs", () => {
     // A background run hands the completion notice to the parent's model.
     expect(harness.subagents.started[0]?.delivery).toBe("parent");
     expect(harness.subagents.started[0]?.request.maxDepth).toBe(3);
-    // A durable child has no settle event, so it stays attributable.
+    // Settlement releases capacity, but a durable child stays attributable.
     expect(harness.tracker.find("child-bg")?.background).toBe(true);
   });
 

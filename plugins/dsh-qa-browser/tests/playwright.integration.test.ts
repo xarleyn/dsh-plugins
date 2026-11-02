@@ -14,9 +14,8 @@ import {
   devToolsHostProbe,
   discoverChromium,
   freePort,
-  removeProfileDir,
   startExternalChromium,
-  stopExternalChromium,
+  withExternalChromium,
   waitForExit,
   withAttachedChromium,
 } from "./external-chromium.helpers.js";
@@ -187,88 +186,89 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
     const debugPort = await freePort();
     const external = await startExternalChromium(executable, debugPort);
 
-    try {
-      // A page the deployment owns, opened in the browser's own context
-      // before this runtime ever dials in. Attach mode promises the person
-      // keeps it, so the test has to be able to lose it.
-      const personUrl = `http://127.0.0.1:${String(fixturePort)}/person-tab`;
-      const opened = await fetch(
-        `http://127.0.0.1:${String(debugPort)}/json/new?${encodeURIComponent(personUrl)}`,
-        { method: "PUT" },
-      );
-      expect(opened.ok).toBe(true);
+    await withExternalChromium(
+      external,
+      debugPort,
+      async () => {
+        // A page the deployment owns, opened in the browser's own context
+        // before this runtime ever dials in. Attach mode promises the person
+        // keeps it, so the test has to be able to lose it.
+        const personUrl = `http://127.0.0.1:${String(fixturePort)}/person-tab`;
+        const opened = await fetch(
+          `http://127.0.0.1:${String(debugPort)}/json/new?${encodeURIComponent(personUrl)}`,
+          { method: "PUT" },
+        );
+        expect(opened.ok).toBe(true);
 
-      const config = resolveQaBrowserConfig({
-        runtime: {
-          mode: "attach",
-          cdpEndpoint: `http://127.0.0.1:${String(debugPort)}`,
-        },
-        security: { network: { denyHosts: ["localhost"] } },
-      });
-      const manager = new QaBrowserSessionManager({
-        config,
-        provider: new PlaywrightBrowserProvider(),
-        policy: new BrowserNetworkPolicy(config.security.network),
-        startIdleTimer: false,
-      });
-      managers.push(manager);
+        const config = resolveQaBrowserConfig({
+          runtime: {
+            mode: "attach",
+            cdpEndpoint: `http://127.0.0.1:${String(debugPort)}`,
+          },
+          security: { network: { denyHosts: ["localhost"] } },
+        });
+        const manager = new QaBrowserSessionManager({
+          config,
+          provider: new PlaywrightBrowserProvider(),
+          policy: new BrowserNetworkPolicy(config.security.network),
+          startIdleTimer: false,
+        });
+        managers.push(manager);
 
-      const session = await manager.ensureSession("attach-session");
-      const tabId = session.selectedTabId!;
-      const result = await manager.navigate("attach-session", tabId, {
-        url: `http://127.0.0.1:${String(fixturePort)}/`,
-      });
-      const snapshot = await manager.snapshot("attach-session", tabId);
-      const image = await manager.screenshot("attach-session", tabId);
+        const session = await manager.ensureSession("attach-session");
+        const tabId = session.selectedTabId!;
+        const result = await manager.navigate("attach-session", tabId, {
+          url: `http://127.0.0.1:${String(fixturePort)}/`,
+        });
+        const snapshot = await manager.snapshot("attach-session", tabId);
+        const image = await manager.screenshot("attach-session", tabId);
 
-      expect(result).toMatchObject({
-        ok: true,
-        title: "QA Browser fixture",
-      });
-      expect(snapshot.lines.some((line) => line.name === "Continue")).toBe(
-        true,
-      );
-      expect(image.subarray(0, 8)).toEqual(
-        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
-      );
+        expect(result).toMatchObject({
+          ok: true,
+          title: "QA Browser fixture",
+        });
+        expect(snapshot.lines.some((line) => line.name === "Continue")).toBe(
+          true,
+        );
+        expect(image.subarray(0, 8)).toEqual(
+          Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+        );
 
-      // The gate is the Host's, not the browser's: a policy the deployment
-      // set has to hold on a browser it did not start either — both the
-      // destination asked for and the redirect Chromium decides to follow.
-      await expect(
-        manager.navigate("attach-session", tabId, {
-          url: `http://localhost:${String(fixturePort)}/`,
-        }),
-      ).rejects.toMatchObject({ code: "BROWSER_HOST_BLOCKED" });
-      await expect(
-        manager.navigate("attach-session", tabId, {
-          url: `http://127.0.0.1:${String(fixturePort)}/redirect-denied`,
-        }),
-      ).rejects.toMatchObject({ code: "BROWSER_HOST_BLOCKED" });
+        // The gate is the Host's, not the browser's: a policy the deployment
+        // set has to hold on a browser it did not start either — both the
+        // destination asked for and the redirect Chromium decides to follow.
+        await expect(
+          manager.navigate("attach-session", tabId, {
+            url: `http://localhost:${String(fixturePort)}/`,
+          }),
+        ).rejects.toMatchObject({ code: "BROWSER_HOST_BLOCKED" });
+        await expect(
+          manager.navigate("attach-session", tabId, {
+            url: `http://127.0.0.1:${String(fixturePort)}/redirect-denied`,
+          }),
+        ).rejects.toMatchObject({ code: "BROWSER_HOST_BLOCKED" });
 
-      // The promise attach mode exists to keep: our teardown closes the
-      // session's own context and drops the link, while the browser — which
-      // someone else started, possibly with their own tabs in it — stays up.
-      await manager.dispose();
-      const endpoint = await fetch(
-        `http://127.0.0.1:${String(debugPort)}/json/version`,
-      );
-      expect(endpoint.ok).toBe(true);
-      const targets = (await (
-        await fetch(`http://127.0.0.1:${String(debugPort)}/json/list`)
-      ).json()) as { type: string; url: string }[];
-      const pageUrls = targets
-        .filter((target) => target.type === "page")
-        .map((target) => target.url);
-      expect(pageUrls).toContain(personUrl);
-      expect(pageUrls).not.toContain(
-        `http://127.0.0.1:${String(fixturePort)}/`,
-      );
-    } finally {
-      await stopExternalChromium(external.child, debugPort);
-      await removeProfileDir(external.userDataDir);
-      await new Promise<void>((resolve) => server.close(() => resolve()));
-    }
+        // The promise attach mode exists to keep: our teardown closes the
+        // session's own context and drops the link, while the browser — which
+        // someone else started, possibly with their own tabs in it — stays up.
+        await manager.dispose();
+        const endpoint = await fetch(
+          `http://127.0.0.1:${String(debugPort)}/json/version`,
+        );
+        expect(endpoint.ok).toBe(true);
+        const targets = (await (
+          await fetch(`http://127.0.0.1:${String(debugPort)}/json/list`)
+        ).json()) as { type: string; url: string }[];
+        const pageUrls = targets
+          .filter((target) => target.type === "page")
+          .map((target) => target.url);
+        expect(pageUrls).toContain(personUrl);
+        expect(pageUrls).not.toContain(
+          `http://127.0.0.1:${String(fixturePort)}/`,
+        );
+      },
+      () => new Promise<void>((resolve) => server.close(() => resolve())),
+    );
   }, 120_000);
 
   it("joins a browser through a ws endpoint pinned to one address", async () => {
@@ -289,61 +289,62 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
         "utf8",
       ),
     });
-    try {
-      const { webSocketDebuggerUrl } = (await (
-        await fetch(`http://127.0.0.1:${String(debugPort)}/json/version`)
-      ).json()) as { webSocketDebuggerUrl?: string };
-      expect(typeof webSocketDebuggerUrl).toBe("string");
-      const endpoint = webSocketDebuggerUrl!;
+    await withExternalChromium(
+      external,
+      debugPort,
+      async () => {
+        const { webSocketDebuggerUrl } = (await (
+          await fetch(`http://127.0.0.1:${String(debugPort)}/json/version`)
+        ).json()) as { webSocketDebuggerUrl?: string };
+        expect(typeof webSocketDebuggerUrl).toBe("string");
+        const endpoint = webSocketDebuggerUrl!;
 
-      const config = resolveQaBrowserConfig({
-        runtime: { mode: "attach", cdpEndpoint: endpoint },
-      });
-      const manager = new QaBrowserSessionManager({
-        config,
-        provider: new PlaywrightBrowserProvider(),
-        policy: new BrowserNetworkPolicy(config.security.network),
-        startIdleTimer: false,
-      });
-      managers.push(manager);
+        const config = resolveQaBrowserConfig({
+          runtime: { mode: "attach", cdpEndpoint: endpoint },
+        });
+        const manager = new QaBrowserSessionManager({
+          config,
+          provider: new PlaywrightBrowserProvider(),
+          policy: new BrowserNetworkPolicy(config.security.network),
+          startIdleTimer: false,
+        });
+        managers.push(manager);
 
-      const session = await manager.ensureSession("attach-pinned-ws");
-      const tabId = session.selectedTabId!;
-      const pageUrl = `http://127.0.0.1:${String(probe.port)}/`;
-      const result = await manager.navigate("attach-pinned-ws", tabId, {
-        url: pageUrl,
-      });
-      expect(result).toMatchObject({ ok: true, title: "QA Browser fixture" });
+        const session = await manager.ensureSession("attach-pinned-ws");
+        const tabId = session.selectedTabId!;
+        const pageUrl = `http://127.0.0.1:${String(probe.port)}/`;
+        const result = await manager.navigate("attach-pinned-ws", tabId, {
+          url: pageUrl,
+        });
+        expect(result).toMatchObject({ ok: true, title: "QA Browser fixture" });
 
-      // The page this session drives is a target of the browser behind that
-      // endpoint — which is the only reading that tells a joined browser apart
-      // from one the runtime started for itself and never showed anyone.
-      const listed = (await (
-        await fetch(`http://127.0.0.1:${String(debugPort)}/json/list`)
-      ).json()) as { type: string; url: string }[];
-      expect(
-        listed.filter((target) => target.type === "page").map((t) => t.url),
-      ).toContain(pageUrl);
+        // The page this session drives is a target of the browser behind that
+        // endpoint — which is the only reading that tells a joined browser apart
+        // from one the runtime started for itself and never showed anyone.
+        const listed = (await (
+          await fetch(`http://127.0.0.1:${String(debugPort)}/json/list`)
+        ).json()) as { type: string; url: string }[];
+        expect(
+          listed.filter((target) => target.type === "page").map((t) => t.url),
+        ).toContain(pageUrl);
 
-      // Same promise as the `http` case, on the endpoint form that recommendation
-      // points at: the link and our own context go, the browser does not.
-      await manager.dispose();
-      const stillUp = await fetch(
-        `http://127.0.0.1:${String(debugPort)}/json/version`,
-      );
-      expect(stillUp.ok).toBe(true);
-    } finally {
-      await stopExternalChromium(external.child, debugPort);
-      await removeProfileDir(external.userDataDir);
-      await probe.close();
-    }
+        // Same promise as the `http` case, on the endpoint form that recommendation
+        // points at: the link and our own context go, the browser does not.
+        await manager.dispose();
+        const stillUp = await fetch(
+          `http://127.0.0.1:${String(debugPort)}/json/version`,
+        );
+        expect(stillUp.ok).toBe(true);
+      },
+      () => probe.close(),
+    );
   }, 120_000);
 
   it("reads a killed attached browser as a dropped link, never as a crash", async () => {
     const executable = discoverChromium();
     const debugPort = await freePort();
     const external = await startExternalChromium(executable, debugPort);
-    try {
+    await withExternalChromium(external, debugPort, async () => {
       const config = resolveQaBrowserConfig({
         runtime: {
           mode: "attach",
@@ -389,10 +390,7 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
       await expect(
         manager.snapshot("attach-dropped", tabId),
       ).rejects.toMatchObject({ code: "BROWSER_CONNECTION_LOST" });
-    } finally {
-      await stopExternalChromium(external.child, debugPort);
-      await removeProfileDir(external.userDataDir);
-    }
+    });
   }, 120_000);
 
   it("answers only the endpoint forms the browser itself accepts", async () => {
@@ -407,7 +405,7 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
     const debugPort = await freePort();
     const port = String(debugPort);
     const external = await startExternalChromium(executable, debugPort);
-    try {
+    await withExternalChromium(external, debugPort, async () => {
       const ask = await devToolsHostProbe(debugPort);
       // What answers: an address, the one name Chromium recognises, and any IP —
       // the header has to parse as an address, not belong to this machine.
@@ -451,7 +449,7 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
       const flagged = await startExternalChromium(executable, flaggedPort, [
         "--remote-allow-origins=*",
       ]);
-      try {
+      await withExternalChromium(flagged, flaggedPort, async () => {
         const askFlagged = await devToolsHostProbe(flaggedPort);
         const flaggedAddress = `127.0.0.1:${String(flaggedPort)}`;
         const flaggedName = `chromium:${String(flaggedPort)}`;
@@ -483,14 +481,8 @@ describe.skipIf(!enabled)("Playwright Browser runtime", () => {
         expect(
           await askFlagged({ host: flaggedName, socket: true }),
         ).toBeGreaterThanOrEqual(400);
-      } finally {
-        await stopExternalChromium(flagged.child, flaggedPort);
-        await removeProfileDir(flagged.userDataDir);
-      }
-    } finally {
-      await stopExternalChromium(external.child, debugPort);
-      await removeProfileDir(external.userDataDir);
-    }
+      });
+    });
   }, 120_000);
 
   it("denies a refused WebSocket handshake on a browser it only joined", async () => {

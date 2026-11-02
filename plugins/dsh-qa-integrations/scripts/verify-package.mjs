@@ -678,11 +678,45 @@ assert.match(readPolicy, /export function credentialPageFailure/u);
 // the refusal can name a status, a media type and a transport error class.
 assert.match(readPolicy, /withTransportDiagnostics/u);
 assert.match(readPolicy, /errorClassOf/u);
-// The budget covers the whole exchange: a chunk is read against the attempt's
-// own signal, and the stream is released on every exit from the read — a body
-// that stops arriving is refused by the deadline, not waited on forever.
-assert.match(readPolicy, /withinDeadline\(reader\.read\(\), signal\)/u);
-assert.match(readPolicy, /void reader\.cancel\(\)/u);
+// The public host-only reader owns byte limits, deadlines and stream cleanup.
+// This adapter passes both budgets through and keeps provider error semantics.
+// Behavioral coverage lives in kernel/{http,read-budget}.test.ts and plugin-kit's
+// http-transport.test.ts; verify the source and shipped adapter use that contract.
+assert(
+  manifest.dependencies?.["@yadsh/dsh-plugin-kit"],
+  "the shared HTTP reader must be a runtime dependency",
+);
+const readPolicyArtifact = await readFile(
+  new URL("lib/providers/kernel/read-policy.js", root),
+  "utf8",
+);
+for (const policy of [readPolicy, readPolicyArtifact]) {
+  assert.match(
+    policy,
+    /import\s*\{[^}]*\breadResponseBytes\b[^}]*\}\s*from "@yadsh\/dsh-plugin-kit\/http"/u,
+  );
+  assert.match(
+    policy,
+    /await readResponseBytes\(response,\s*\{\s*maxBytes,\s*signal,?\s*\}\)/u,
+  );
+  assert.match(
+    policy,
+    /if \(signal\.aborted\)\s*\{\s*throw new IntegrationError\(\s*"UpstreamTimeout"/u,
+  );
+  assert.match(
+    policy,
+    /await readBoundedText\(response,\s*maxBytes,\s*label,\s*signal\)/u,
+  );
+  assert.match(
+    policy,
+    /if \(body\.truncated\)\s*\{\s*throw withTransportDiagnostics\(\s*new IntegrationError\("ResultTooLarge"/u,
+  );
+  assert.match(
+    policy,
+    /if \(!response\.ok\)\s*\{\s*cancelResponseBody\(response\)/u,
+  );
+  assert.match(policy, /return await read\(response, controller\.signal\)/u);
+}
 // The two budgets a deployment chooses between are the kernel's named rules, so
 // a transport that wants the longer one says which; an inline lambda is where a
 // provider's comment and its retry behaviour start to disagree.

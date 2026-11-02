@@ -49,6 +49,18 @@ async function scaffold(options: Schema, root = "plugins/dsh-example-plugin") {
 }
 
 describe("dsh-plugin generator", () => {
+  it("ships exported English discovery metadata", async () => {
+    const { manifest, read } = await scaffold({
+      name: "example-plugin",
+      description: "Example plugin",
+    });
+    expect(manifest.exports["./locale/en.json"]).toBe("./locale/en.json");
+    expect(manifest.files).toContain("locale");
+    expect(JSON.parse(read("locale/en.json"))).toEqual({
+      meta: { title: "Example Plugin", description: "Example plugin" },
+    });
+  });
+
   it("publishes the canonical package identity", async () => {
     const { manifest, root, read } = await scaffold({
       name: "example-plugin",
@@ -62,6 +74,7 @@ describe("dsh-plugin generator", () => {
     expect(manifest.engines.node).toBe("^22.19.0 || >=24.0.0");
     expect(manifest.files).toEqual([
       "lib",
+      "locale",
       "cordis.patch.yml",
       "compatibility.json",
       "README.md",
@@ -113,7 +126,11 @@ describe("dsh-plugin generator", () => {
       /name: ['"]@yadsh\/dsh-example-plugin['"]/,
     );
     expect(manifest.main.startsWith("./lib/")).toBe(true);
-    expect(Object.keys(manifest.exports)).toEqual([".", "./package.json"]);
+    expect(Object.keys(manifest.exports)).toEqual([
+      ".",
+      "./locale/en.json",
+      "./package.json",
+    ]);
   });
 
   it("keeps the host entrypoint a Cordis plugin", async () => {

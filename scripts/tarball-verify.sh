@@ -29,6 +29,7 @@
 #   scripts/tarball-verify.sh --all
 #
 # Environment flags:
+#   TARBALL_VERIFY_OUTPUT_DIR=path     copy each exact verified tarball here
 #   TARBALL_VERIFY_KEEP=1               keep temp working dirs for debugging
 #   TARBALL_VERIFY_SKIP_INSTALL=1       skip gate 7 entirely
 #   TARBALL_VERIFY_SKIP_SMOKE_IMPORT=1  skip only the entry-module load check
@@ -768,6 +769,13 @@ verify_package() {
 
   # ---- gate 7: install from tarball ----------------------------------------
   gate_install "$rel" "$name" "$tgz"
+
+  # Export the artifact that passed the gates, without running prepack again.
+  if [ "$FAILURES" -eq "$before" ] && [ -n "${TARBALL_VERIFY_OUTPUT_DIR:-}" ]; then
+    node "$REPO_ROOT/scripts/release-provenance.mjs" export-tarball \
+      --file="$tgz" --directory="$TARBALL_VERIFY_OUTPUT_DIR" || \
+      fail "$rel: cannot export the verified tarball"
+  fi
 
   # ---- verdict --------------------------------------------------------------
   if [ "$FAILURES" -eq "$before" ]; then

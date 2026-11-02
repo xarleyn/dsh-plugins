@@ -74,6 +74,47 @@ afterAll(async () => {
 });
 
 describe("git baseline detector", () => {
+  it("uses session-relative paths for dirty files under a nested cwd", async () => {
+    const root = await initRepo();
+    repos.push(root);
+    const cwd = join(root, "nested");
+    await mkdir(join(cwd, "src"), { recursive: true });
+    await writeFile(join(cwd, "src", "code.ts"), "initial");
+    await writeFile(join(root, "outside.txt"), "outside");
+    await commitAll(root, "initial");
+    await writeFile(join(cwd, "src", "code.ts"), "preexisting edit");
+    await writeFile(join(root, "outside.txt"), "outside edit");
+    const detector = createGitDetector(options);
+    const baseline = await detector.captureBaseline(cwd);
+    expect(baseline.files.get("src/code.ts")?.exists).toBe(true);
+    expect(baseline.files.has("../outside.txt")).toBe(false);
+    await writeFile(join(cwd, "src", "code.ts"), "agent edit");
+    expect(paths(await changed(detector, cwd, baseline))).toEqual(
+      new Map([["src/code.ts", "modified"]]),
+    );
+    expect(await detector.listFiles(cwd)).toContain("src/code.ts");
+    await commitAll(root, "commit nested and unrelated outside edits");
+    expect(paths(await changed(detector, cwd, baseline))).toEqual(
+      new Map([["src/code.ts", "modified"]]),
+    );
+  });
+
+  it("reports the old committed rename as deleted and its destination as added", async () => {
+    const cwd = await initRepo();
+    repos.push(cwd);
+    await writeFile(join(cwd, "old.md"), "same content\n");
+    await commitAll(cwd, "initial");
+    const detector = createGitDetector(options);
+    const baseline = await detector.captureBaseline(cwd);
+    await git(cwd, "mv", "old.md", "new.md");
+    await commitAll(cwd, "rename");
+    expect(paths(await changed(detector, cwd, baseline))).toEqual(
+      new Map([
+        ["new.md", "added"],
+        ["old.md", "deleted"],
+      ]),
+    );
+  });
   it("detects agent modifications in a clean workspace", async () => {
     const cwd = await initRepo();
     repos.push(cwd);

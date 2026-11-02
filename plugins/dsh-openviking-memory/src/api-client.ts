@@ -157,8 +157,29 @@ export class OpenVikingClient {
         },
         signal: controller.signal,
       });
-      const body = (await response.json().catch(() => ({}))) as
-        Envelope | null | undefined;
+      // An unreadable 2xx is an unknown outcome, never a write acknowledgement.
+      // Let the transport failure path retain it for retry instead of deleting
+      // the durable pending entry on a fabricated empty success.
+      let decoded: unknown;
+      try {
+        decoded = await response.json();
+      } catch {
+        if (response.ok)
+          throw new Error("OpenViking returned an unreadable JSON response");
+        // An explicit HTTP refusal keeps its retry/auth classification even
+        // when a gateway supplies an HTML error page instead of JSON.
+        decoded = {};
+      }
+      if (
+        decoded === null ||
+        typeof decoded !== "object" ||
+        Array.isArray(decoded)
+      ) {
+        if (response.ok)
+          throw new Error("OpenViking returned an invalid JSON response");
+        decoded = {};
+      }
+      const body = decoded as Envelope;
       const traceId = (body?.result?.trace_id ||
         body?.error?.trace_id ||
         body?.trace_id ||

@@ -114,6 +114,7 @@ export class QaFormAttachmentAdapter {
   constructor(
     private readonly service: () => QaFormService,
     private readonly host: () => QaFormHostAttachments | undefined,
+    private readonly grantFile?: (sessionId: string, file: string) => void,
   ) {}
   available(): boolean {
     const host = this.host();
@@ -300,11 +301,23 @@ export class QaFormAttachmentAdapter {
     });
   }
   /** Exact saved bytes are re-projected through the Host on each successful resume. */
-  async readable(submission: QaFormSubmission): Promise<
+  async readable(
+    submission: QaFormSubmission,
+    sessionId?: string,
+  ): Promise<
     QaFormSubmission & {
       resources: { resource_id: string; read_path: string }[];
     }
   > {
+    if (sessionId !== undefined) {
+      const saved = this.service().get(sessionId, submission.form_id);
+      formAssert(
+        saved.submission?.submission_id === submission.submission_id,
+        "ACCESS_DENIED",
+        "The submitted form is unavailable in this chat.",
+      );
+      submission = saved.submission!;
+    }
     const resources: { resource_id: string; read_path: string }[] = [];
     for (const item of submission.items)
       for (const file of item.files) {
@@ -342,7 +355,16 @@ export class QaFormAttachmentAdapter {
           "The Host has no file reader projection.",
         );
         resources.push({ resource_id: file.resource_id, read_path: readPath });
+        if (sessionId !== undefined) this.grantFile?.(sessionId, readPath);
       }
     return { ...submission, resources };
+  }
+
+  /** Rebuild exact grants from this chat's persisted, verified submissions. */
+  async restore(sessionId: string): Promise<void> {
+    for (const record of this.service().store.list(sessionId)) {
+      if (record.status === "submitted" && record.submission !== undefined)
+        await this.readable(record.submission, sessionId);
+    }
   }
 }

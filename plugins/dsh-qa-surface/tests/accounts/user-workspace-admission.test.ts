@@ -1,7 +1,7 @@
-import { mkdirSync, mkdtempSync } from "node:fs";
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import {
   QaAttestationError,
   qaAttestationFailureMessage,
@@ -11,11 +11,17 @@ import { QaPolicyAdmission } from "../../src/secure-session.js";
 import { prepareQaUserWorkspace } from "../../src/user-workspace.js";
 
 const USER_ID = "123e4567-e89b-42d3-a456-426614174000";
+const directories: string[] = [];
+afterEach(() => {
+  for (const dir of directories.splice(0))
+    rmSync(dir, { recursive: true, force: true });
+});
 
 describe("per-user workspace admission", () => {
   it.each([true, false])("guards personal paths with pin %s", async (fixed) => {
     const workspace = mkdtempSync(path.join(tmpdir(), "qa-admission-"));
     const shared = mkdtempSync(path.join(tmpdir(), "qa-admission-shared-"));
+    directories.push(workspace, shared);
     const docs = path.join(shared, "docs");
     const code = path.join(shared, "code");
     const nextDocs = path.join(shared, "next-docs");
@@ -29,6 +35,12 @@ describe("per-user workspace admission", () => {
       header: { id: "session-parent", cwd: userRoot, createdAt: Date.now() },
       surface: { nodes: [] },
       eventAt: () => undefined,
+      snapshotEvents: () => [
+        {
+          type: "user/message",
+          data: { content: [{ type: "file", attachment: "own" }] },
+        },
+      ],
     };
     const agent = {
       session,
@@ -57,10 +69,18 @@ describe("per-user workspace admission", () => {
     // The mounted attachment store; the exemption semantics themselves are
     // covered in user-workspace.test.ts.
     const attachmentRoot = path.join(workspace, "attachments");
-    // The hand-over the document pipeline needs: the root the fence above
-    // opens is granted to the session's own `document_*` calls (#174).
+    mkdirSync(attachmentRoot);
+    const attachmentFile = path.join(attachmentRoot, "own.txt");
+    writeFileSync(attachmentFile, "own upload");
+    // Documents receives the same exact accepted file as the workspace fence.
     const grants: { sessionId: string; roots: readonly string[] }[] = [];
     const revoked: string[] = [];
+    const documents = {
+      registerInputRoots: (sessionId: string, roots: readonly string[]) => {
+        grants.push({ sessionId, roots });
+        return () => revoked.push(sessionId);
+      },
+    };
     const context = {
       on: (name: string, listener: (event: never) => void) => {
         if (name === "session/created") childCreated = listener;
@@ -71,18 +91,9 @@ describe("per-user workspace admission", () => {
       agentPresets: { composedPreset: () => undefined },
       workspaceRegistry: { get: () => ({ path: workspace }) },
       get: (name: string) => {
-        if (name === "attachments") return { root: attachmentRoot };
-        if (name === "documents") {
-          return {
-            registerInputRoots: (
-              sessionId: string,
-              roots: readonly string[],
-            ) => {
-              grants.push({ sessionId, roots });
-              return () => revoked.push(sessionId);
-            },
-          };
-        }
+        if (name === "attachments")
+          return { root: attachmentRoot, fileHostPath: () => attachmentFile };
+        if (name === "documents") return documents;
         return undefined;
       },
       permissionPresets: {
@@ -128,7 +139,7 @@ describe("per-user workspace admission", () => {
       sandboxModeMatches: true,
     });
     expect(grants).toEqual([
-      { sessionId: "session-parent", roots: [attachmentRoot] },
+      { sessionId: "session-parent", roots: [attachmentFile] },
     ]);
     expect(
       globalGuard({
@@ -171,8 +182,8 @@ describe("per-user workspace admission", () => {
     // A delegated child runs the same tools against the same store, so it
     // inherits the grant the way it inherits the fence.
     expect(grants).toEqual([
-      { sessionId: "session-parent", roots: [attachmentRoot] },
-      { sessionId: "session-child", roots: [attachmentRoot] },
+      { sessionId: "session-parent", roots: [attachmentFile] },
+      { sessionId: "session-child", roots: [attachmentFile] },
     ]);
     expect(
       globalGuard({
@@ -311,5 +322,47 @@ describe("per-user workspace admission", () => {
         new Error("transport failed"),
       ),
     ).toBe("Unable to create a QA session.");
+  });
+
+  it("keeps failed creations closed to every tool and future admission even when cleanup fails", async () => {
+    const guards: ((execution: unknown) => string | undefined)[] = [];
+    const admission = new QaPolicyAdmission(
+      {
+        get: () => undefined,
+        on: () => {},
+        tools: {
+          guard: (fn: (execution: unknown) => string | undefined) => {
+            guards.push(fn);
+            return () => {};
+          },
+        },
+      } as never,
+      () => resolveConfig({}),
+      { error() {} } as never,
+    );
+    admission.rejectSession("failed");
+    const execution = {
+      agent: { session: { id: "failed" } },
+      name: "read",
+      arguments: { file_path: "own.txt" },
+    };
+    expect(guards.some((guard) => guard(execution) !== undefined)).toBe(true);
+    await expect(
+      admission.secureSession("token", "failed"),
+    ).rejects.toMatchObject({ reason: "attestation-failed" });
+    admission.rejectSession("another-failure");
+    admission.forgetRejectedSession("failed");
+    expect(guards.every((guard) => guard(execution) === undefined)).toBe(true);
+    expect(
+      guards.some(
+        (guard) =>
+          guard({
+            ...execution,
+            agent: { session: { id: "another-failure" } },
+          }) !== undefined,
+      ),
+    ).toBe(true);
+    expect(admission.knowsSession("failed")).toBe(false);
+    admission.dispose();
   });
 });
